@@ -3469,7 +3469,7 @@ public class ServiceHost {
         try {
             long now = Utils.getNowMicrosUtc();
             this.state.lastMaintenanceTimeUtcMicros = now;
-            applyMemoryLimit();
+            applyMemoryLimit(now + getMaintenanceIntervalMicros() / 2);
             performPendingOperationMaintenance();
             this.maintenanceHelper.performMaintenance(post);
             performNodeSelectorChangeMaintenance();
@@ -3578,7 +3578,7 @@ public class ServiceHost {
      * Estimates how much memory is used by host caches, queues and based on the memory limits
      * takes appropriate action: clears cached service state, temporarily stops services
      */
-    private void applyMemoryLimit() {
+    private void applyMemoryLimit(long timeLimitMicros) {
         long memoryLimitLowMB = getServiceMemoryLimitMB(ROOT_PATH,
                 MemoryLimitType.HIGH_WATERMARK);
 
@@ -3589,22 +3589,14 @@ public class ServiceHost {
             return;
         }
 
-        long memoryLimitHighMB = getServiceMemoryLimitMB(ROOT_PATH,
-                MemoryLimitType.HIGH_WATERMARK);
-
+        log(Level.INFO, "Estimated memory use (MB):%d", memoryInUseMB);
         // make sure our service count matches the list contents, they could drift. We normally avoid using size() on
         // concurrent skip lists, since its a O(N) operation, but if we are over the memory limit, its ok to do occasionally
         synchronized (this.state) {
             this.state.serviceCount = this.attachedServices.size();
         }
 
-        // Limit number of services we try to pause within a maintenance interval. If we are over the high watermark
-        // go through more services. Default interval is one second, so this means a reduction in heap of 50->100 MB
-        // per second.
-        final long servicePauseLimit = memoryLimitHighMB < memoryInUseMB ? 10000 : 1000;
-
         int pauseServiceCount = 0;
-        int iterationCount = 0;
         for (Service service : this.attachedServices.values()) {
             ServiceDocument s = this.cachedServiceStates.get(service.getSelfLink());
 
@@ -3658,7 +3650,7 @@ public class ServiceHost {
                 this.serviceFactoriesUnderMemoryPressure.add(factoryPath);
             }
 
-            if (++iterationCount >= servicePauseLimit) {
+            if (timeLimitMicros < Utils.getNowMicrosUtc()) {
                 break;
             }
         }
@@ -3804,6 +3796,7 @@ public class ServiceHost {
 
                         Service serviceEntry = this.pendingPauseServices.remove(path);
                         if (serviceEntry == null) {
+                            log(Level.INFO, "aborting pause for %s", path);
                             resumeService(path, s);
                             // this means service received a request and is active. Its OK, the index will have
                             // a stale entry that will get deleted next time we query for this self link.
@@ -3811,9 +3804,12 @@ public class ServiceHost {
                             return;
                         }
 
+
                         synchronized (this.state) {
                             this.state.serviceCount--;
-                            this.attachedServices.remove(s.getSelfLink());
+                            if (null == this.attachedServices.remove(path)) {
+                                log(Level.INFO, "pause did not work for %s", path);
+                            }
                         }
                     }));
         }

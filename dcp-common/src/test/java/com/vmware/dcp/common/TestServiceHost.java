@@ -94,7 +94,6 @@ public class TestServiceHost {
         } catch (Throwable e) {
             throw new Exception(e);
         }
-
     }
 
     @Test
@@ -815,7 +814,7 @@ public class TestServiceHost {
                     this.serviceCount,
                     ExampleServiceState.class, bodySetter, factoryURI);
             Thread.sleep(500);
-            this.host.log("created %d services, total: %d", this.serviceCount,
+            this.host.log("created %d services, created so far: %d", this.serviceCount,
                     selfLinkCounter.get());
             Runtime.getRuntime().gc();
             this.host.logMemoryInfo();
