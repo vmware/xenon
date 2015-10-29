@@ -47,6 +47,7 @@ import com.vmware.dcp.services.common.RoleService.RoleState;
 import com.vmware.dcp.services.common.ServiceUriPaths;
 import com.vmware.dcp.services.common.UserGroupService.UserGroupState;
 import com.vmware.dcp.services.common.UserService.UserState;
+import com.vmware.dcp.services.common.authn.AuthenticationConstants;
 
 public class TestAuthorization extends BasicTestCase {
 
@@ -151,10 +152,60 @@ public class TestAuthorization extends BasicTestCase {
         // add docs accessible by jane
         exampleServices.putAll(createExampleServices("jane"));
 
-        // Try to GET all example services
+        verifyJaneAccess(exampleServices, null);
+
+
+        // Execute get on factory trying to get all example services
+        final ServiceDocumentQueryResult[] factoryGetResult = new ServiceDocumentQueryResult[1];
+        Operation getFactory = Operation.createGet(
+                UriUtils.buildUri(this.host, ExampleFactoryService.SELF_LINK))
+                .setCompletion((o, e) -> {
+                    if (e != null) {
+                        this.host.failIteration(e);
+                        return;
+                    }
+
+                    factoryGetResult[0] = o.getBody(ServiceDocumentQueryResult.class);
+                    this.host.completeIteration();
+                });
+
+        this.host.testStart(1);
+        this.host.send(getFactory);
+        this.host.testWait();
+
+        // Make sure only the authorized services were returned
+        assertAuthorizedServicesInResult(exampleServices, factoryGetResult[0]);
+
+        // Execute query task trying to get all example services
+        QueryTask.QuerySpecification q = new QueryTask.QuerySpecification();
+        q.query.setTermPropertyName(ServiceDocument.FIELD_NAME_KIND)
+                .setTermMatchValue(Utils.buildKind(ExampleServiceState.class));
+        URI u = this.host.createQueryTaskService(QueryTask.create(q));
+        QueryTask task = this.host.waitForQueryTaskCompletion(q, 1, 1, u, false, true, false);
+        assertEquals(TaskState.TaskStage.FINISHED, task.taskInfo.stage);
+
+        // Make sure only the authorized services were returned
+        assertAuthorizedServicesInResult(exampleServices, task.results);
+
+        // reset the auth context
+        OperationContext.setAuthorizationContext(null);
+
+        // Assume Jane's identity by header token
+        String authToken = generateAuthToken(this.userServicePath);
+
+        verifyJaneAccess(exampleServices, authToken);
+    }
+
+	private void verifyJaneAccess(Map<URI, ExampleServiceState> exampleServices, String authToken) throws Throwable {
+		// Try to GET all example services
         this.host.testStart(exampleServices.size());
         for (Entry<URI, ExampleServiceState> entry : exampleServices.entrySet()) {
             Operation get = Operation.createGet(entry.getKey());
+            // force to create a remote context
+            if (authToken != null) {
+	            get.forceRemote(); 
+	            get.getRequestHeaders().put(AuthenticationConstants.DCP_AUTH_TOKEN_HEADER, authToken);
+            }
             if (entry.getValue().name.equals("jane")) {
                 // Expect 200 OK
                 get.setCompletion((o, e) -> {
@@ -192,42 +243,7 @@ public class TestAuthorization extends BasicTestCase {
             this.host.send(get);
         }
         this.host.testWait();
-
-        // Execute get on factory trying to get all example services
-        final ServiceDocumentQueryResult[] factoryGetResult = new ServiceDocumentQueryResult[1];
-        Operation get = Operation.createGet(
-                UriUtils.buildUri(this.host, ExampleFactoryService.SELF_LINK))
-                .setCompletion((o, e) -> {
-                    if (e != null) {
-                        this.host.failIteration(e);
-                        return;
-                    }
-
-                    factoryGetResult[0] = o.getBody(ServiceDocumentQueryResult.class);
-                    this.host.completeIteration();
-                });
-
-        this.host.testStart(1);
-        this.host.send(get);
-        this.host.testWait();
-
-        // Make sure only the authorized services were returned
-        assertAuthorizedServicesInResult(exampleServices, factoryGetResult[0]);
-
-        // Execute query task trying to get all example services
-        QueryTask.QuerySpecification q = new QueryTask.QuerySpecification();
-        q.query.setTermPropertyName(ServiceDocument.FIELD_NAME_KIND)
-                .setTermMatchValue(Utils.buildKind(ExampleServiceState.class));
-        URI u = this.host.createQueryTaskService(QueryTask.create(q));
-        QueryTask task = this.host.waitForQueryTaskCompletion(q, 1, 1, u, false, true, false);
-        assertEquals(TaskState.TaskStage.FINISHED, task.taskInfo.stage);
-
-        // Make sure only the authorized services were returned
-        assertAuthorizedServicesInResult(exampleServices, task.results);
-
-        // reset the auth context
-        OperationContext.setAuthorizationContext(null);
-    }
+	}
 
     private void assertAuthorizedServicesInResult(Map<URI, ExampleServiceState> exampleServices,
             ServiceDocumentQueryResult result) {
@@ -377,6 +393,13 @@ public class TestAuthorization extends BasicTestCase {
 
         // Associate resulting authorization context with this thread
         OperationContext.setAuthorizationContext(ab.getResult());
+    }
+
+    private String generateAuthToken(String userServicePath) throws GeneralSecurityException {
+        Claims.Builder builder = new Claims.Builder();
+        builder.setSubject(userServicePath);
+        Claims claims = builder.getResult();
+        return this.host.getTokenSigner().sign(claims);
     }
 
     private ExampleServiceState exampleServiceState(String name, Long counter) {
