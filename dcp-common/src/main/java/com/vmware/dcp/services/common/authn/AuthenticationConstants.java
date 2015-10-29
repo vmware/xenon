@@ -21,5 +21,6 @@ public class AuthenticationConstants {
     public static final String JWT_ISSUER = "dcp";
     // jwt cookie name
     public static final String DCP_JWT_COOKIE = "dcp-auth-cookie";
-
+    // jwt token name
+    public static final String DCP_AUTH_TOKEN_HEADER = "X-VMware-DCP-Auth-Token";
 }
