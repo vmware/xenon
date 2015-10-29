@@ -331,6 +331,8 @@ public class Operation implements Cloneable {
      */
     public static final String PRAGMA_DIRECTIVE_NO_INDEX_UPDATE = "dcp-no-index-update";
 
+    public static final String REQUEST_AUTH_TOKEN_HEADER = VMWARE_DCP_HEADER_NAME_PREFIX
+            + "Auth-Token";
     public static final String REQUEST_CALLBACK_LOCATION_HEADER = VMWARE_DCP_HEADER_NAME_PREFIX
             + "Request-Callback-Location";
     public static final String RESPONSE_CALLBACK_STATUS_HEADER = VMWARE_DCP_HEADER_NAME_PREFIX
