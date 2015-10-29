@@ -299,7 +299,11 @@ public class StatefulService implements Service {
                 case PUT:
                     handlePut(request);
                     break;
+                case OPTIONS:
+                    handleOptions(request);
+                    break;
                 default:
+                    getHost().failRequestActionNotSupported(request);
                     break;
                 }
             }
@@ -556,6 +560,10 @@ public class StatefulService implements Service {
 
     public void handlePatch(Operation patch) {
         getHost().failRequestActionNotSupported(patch);
+    }
+
+    public void handleOptions(Operation options) {
+        getHost().failRequestActionNotSupported(options);
     }
 
     /**

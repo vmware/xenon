@@ -478,8 +478,8 @@ public class LuceneDocumentIndexService extends StatelessService {
                 case POST:
                     handleDocumentPostOrDelete(op);
                     break;
-                case PUT:
                 default:
+                    getHost().failRequestActionNotSupported(op);
                     break;
                 }
             } catch (Throwable e) {
