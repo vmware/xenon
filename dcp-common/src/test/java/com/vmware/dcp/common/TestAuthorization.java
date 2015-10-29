@@ -47,6 +47,7 @@ import com.vmware.dcp.services.common.RoleService.RoleState;
 import com.vmware.dcp.services.common.ServiceUriPaths;
 import com.vmware.dcp.services.common.UserGroupService.UserGroupState;
 import com.vmware.dcp.services.common.UserService.UserState;
+import com.vmware.dcp.services.common.authn.AuthenticationConstants;
 
 public class TestAuthorization extends BasicTestCase {
 
@@ -71,8 +72,7 @@ public class TestAuthorization extends BasicTestCase {
     public void testAuthPrincipalQuery() throws Throwable {
         assumeIdentity(this.userServicePath);
         createExampleServices("jane");
-        host.createAndWaitSimpleDirectQuery(ServiceDocument.FIELD_NAME_AUTH_PRINCIPAL_LINK,
-                this.userServicePath, 2, 2);
+        host.createAndWaitSimpleDirectQuery(ServiceDocument.FIELD_NAME_AUTH_PRINCIPAL_LINK, this.userServicePath, 2, 2);
     }
 
     @Test
@@ -107,43 +107,37 @@ public class TestAuthorization extends BasicTestCase {
         OperationContext.setAuthorizationContext(null);
         ExampleServiceState state = exampleServiceState("jane", new Long("100"));
         this.host.testStart(1);
-        this.host.send(
-                Operation.createPost(UriUtils.buildUri(this.host, ExampleFactoryService.SELF_LINK))
-                        .setBody(state)
-                        .setCompletion((o, e) -> {
-                            if (o.getStatusCode() != Operation.STATUS_CODE_FORBIDDEN) {
-                                String message = String.format("Expected %d, got %s",
-                                        Operation.STATUS_CODE_FORBIDDEN,
-                                        o.getStatusCode());
-                                this.host.failIteration(new IllegalStateException(message));
-                                return;
-                            }
+        this.host.send(Operation.createPost(UriUtils.buildUri(this.host, ExampleFactoryService.SELF_LINK))
+                .setBody(state).setCompletion((o, e) -> {
+                    if (o.getStatusCode() != Operation.STATUS_CODE_FORBIDDEN) {
+                        String message = String.format("Expected %d, got %s", Operation.STATUS_CODE_FORBIDDEN,
+                                o.getStatusCode());
+                        this.host.failIteration(new IllegalStateException(message));
+                        return;
+                    }
 
-                            this.host.completeIteration();
-                        }));
+                    this.host.completeIteration();
+                }));
         this.host.testWait();
 
-        // issue a GET on a factory with no auth context, no documents should be returned
+        // issue a GET on a factory with no auth context, no documents should be
+        // returned
         this.host.testStart(1);
-        this.host.send(
-                Operation.createGet(UriUtils.buildUri(this.host, ExampleFactoryService.SELF_LINK))
-                        .setCompletion((o, e) -> {
-                            if (e != null) {
-                                this.host.failIteration(new IllegalStateException(e));
-                                return;
-                            }
-                            ServiceDocumentQueryResult res = o
-                                    .getBody(ServiceDocumentQueryResult.class);
-                            if (!res.documentLinks.isEmpty()) {
-                                String message = String.format(
-                                        "Expected 0 results; Got %d",
-                                        res.documentLinks.size());
-                                this.host.failIteration(new IllegalStateException(message));
-                                return;
-                            }
+        this.host.send(Operation.createGet(UriUtils.buildUri(this.host, ExampleFactoryService.SELF_LINK))
+                .setCompletion((o, e) -> {
+                    if (e != null) {
+                        this.host.failIteration(new IllegalStateException(e));
+                        return;
+                    }
+                    ServiceDocumentQueryResult res = o.getBody(ServiceDocumentQueryResult.class);
+                    if (!res.documentLinks.isEmpty()) {
+                        String message = String.format("Expected 0 results; Got %d", res.documentLinks.size());
+                        this.host.failIteration(new IllegalStateException(message));
+                        return;
+                    }
 
-                            this.host.completeIteration();
-                        }));
+                    this.host.completeIteration();
+                }));
         this.host.testWait();
 
         // Assume Jane's identity
@@ -151,52 +145,11 @@ public class TestAuthorization extends BasicTestCase {
         // add docs accessible by jane
         exampleServices.putAll(createExampleServices("jane"));
 
-        // Try to GET all example services
-        this.host.testStart(exampleServices.size());
-        for (Entry<URI, ExampleServiceState> entry : exampleServices.entrySet()) {
-            Operation get = Operation.createGet(entry.getKey());
-            if (entry.getValue().name.equals("jane")) {
-                // Expect 200 OK
-                get.setCompletion((o, e) -> {
-                    if (o.getStatusCode() != Operation.STATUS_CODE_OK) {
-                        String message = String.format("Expected %d, got %s",
-                                Operation.STATUS_CODE_OK,
-                                o.getStatusCode());
-                        this.host.failIteration(new IllegalStateException(message));
-                        return;
-                    }
-                    ExampleServiceState body = o.getBody(ExampleServiceState.class);
-                    if (!body.documentAuthPrincipalLink.equals(this.userServicePath)) {
-                        String message = String.format("Expected %s, got %s",
-                                this.userServicePath, body.documentAuthPrincipalLink);
-                        this.host.failIteration(new IllegalStateException(message));
-                        return;
-                    }
-                    this.host.completeIteration();
-                });
-            } else {
-                // Expect 403 Forbidden
-                get.setCompletion((o, e) -> {
-                    if (o.getStatusCode() != Operation.STATUS_CODE_FORBIDDEN) {
-                        String message = String.format("Expected %d, got %s",
-                                Operation.STATUS_CODE_FORBIDDEN,
-                                o.getStatusCode());
-                        this.host.failIteration(new IllegalStateException(message));
-                        return;
-                    }
-
-                    this.host.completeIteration();
-                });
-            }
-
-            this.host.send(get);
-        }
-        this.host.testWait();
+        verifyJaneAccess(exampleServices, null);
 
         // Execute get on factory trying to get all example services
         final ServiceDocumentQueryResult[] factoryGetResult = new ServiceDocumentQueryResult[1];
-        Operation get = Operation.createGet(
-                UriUtils.buildUri(this.host, ExampleFactoryService.SELF_LINK))
+        Operation getFactory = Operation.createGet(UriUtils.buildUri(this.host, ExampleFactoryService.SELF_LINK))
                 .setCompletion((o, e) -> {
                     if (e != null) {
                         this.host.failIteration(e);
@@ -208,7 +161,7 @@ public class TestAuthorization extends BasicTestCase {
                 });
 
         this.host.testStart(1);
-        this.host.send(get);
+        this.host.send(getFactory);
         this.host.testWait();
 
         // Make sure only the authorized services were returned
@@ -227,6 +180,58 @@ public class TestAuthorization extends BasicTestCase {
 
         // reset the auth context
         OperationContext.setAuthorizationContext(null);
+
+        // Assume Jane's identity by header token
+        String authToken = generateAuthToken(this.userServicePath);
+
+        verifyJaneAccess(exampleServices, authToken);
+    }
+
+    private void verifyJaneAccess(Map<URI, ExampleServiceState> exampleServices, String authToken) throws Throwable {
+        // Try to GET all example services
+        this.host.testStart(exampleServices.size());
+        for (Entry<URI, ExampleServiceState> entry : exampleServices.entrySet()) {
+            Operation get = Operation.createGet(entry.getKey());
+            // force to create a remote context
+            if (authToken != null) {
+                get.forceRemote();
+                get.getRequestHeaders().put(AuthenticationConstants.DCP_AUTH_TOKEN_HEADER, authToken);
+            }
+            if (entry.getValue().name.equals("jane")) {
+                // Expect 200 OK
+                get.setCompletion((o, e) -> {
+                    if (o.getStatusCode() != Operation.STATUS_CODE_OK) {
+                        String message = String.format("Expected %d, got %s", Operation.STATUS_CODE_OK,
+                                o.getStatusCode());
+                        this.host.failIteration(new IllegalStateException(message));
+                        return;
+                    }
+                    ExampleServiceState body = o.getBody(ExampleServiceState.class);
+                    if (!body.documentAuthPrincipalLink.equals(this.userServicePath)) {
+                        String message = String.format("Expected %s, got %s", this.userServicePath,
+                                body.documentAuthPrincipalLink);
+                        this.host.failIteration(new IllegalStateException(message));
+                        return;
+                    }
+                    this.host.completeIteration();
+                });
+            } else {
+                // Expect 403 Forbidden
+                get.setCompletion((o, e) -> {
+                    if (o.getStatusCode() != Operation.STATUS_CODE_FORBIDDEN) {
+                        String message = String.format("Expected %d, got %s", Operation.STATUS_CODE_FORBIDDEN,
+                                o.getStatusCode());
+                        this.host.failIteration(new IllegalStateException(message));
+                        return;
+                    }
+
+                    this.host.completeIteration();
+                });
+            }
+
+            this.host.send(get);
+        }
+        this.host.testWait();
     }
 
     private void assertAuthorizedServicesInResult(Map<URI, ExampleServiceState> exampleServices,
@@ -245,11 +250,9 @@ public class TestAuthorization extends BasicTestCase {
     private void createRoles() throws Throwable {
         this.host.testStart(3);
 
-        URI postUserGroupsUri =
-                UriUtils.buildUri(this.host, ServiceUriPaths.CORE_AUTHZ_USER_GROUPS);
+        URI postUserGroupsUri = UriUtils.buildUri(this.host, ServiceUriPaths.CORE_AUTHZ_USER_GROUPS);
 
-        URI postResourceGroupsUri =
-                UriUtils.buildUri(this.host, ServiceUriPaths.CORE_AUTHZ_RESOURCE_GROUPS);
+        URI postResourceGroupsUri = UriUtils.buildUri(this.host, ServiceUriPaths.CORE_AUTHZ_RESOURCE_GROUPS);
 
         // Create user group
         UserGroupState userGroupState = new UserGroupState();
@@ -259,9 +262,7 @@ public class TestAuthorization extends BasicTestCase {
         userGroupState.query.setTermMatchType(MatchType.TERM);
         userGroupState.query.setTermMatchValue("jane@doe.com");
 
-        this.host.send(Operation
-                .createPost(postUserGroupsUri)
-                .setBody(userGroupState)
+        this.host.send(Operation.createPost(postUserGroupsUri).setBody(userGroupState)
                 .setCompletion(this.host.getCompletion()));
 
         // Create resource group for example service state
@@ -281,9 +282,7 @@ public class TestAuthorization extends BasicTestCase {
         nameClause.setTermMatchType(MatchType.TERM);
         exampleResourceGroupState.query.addBooleanClause(nameClause);
 
-        this.host.send(Operation
-                .createPost(postResourceGroupsUri)
-                .setBody(exampleResourceGroupState)
+        this.host.send(Operation.createPost(postResourceGroupsUri).setBody(exampleResourceGroupState)
                 .setCompletion(this.host.getCompletion()));
 
         // Create resource group to allow GETs on ALL query tasks
@@ -297,9 +296,7 @@ public class TestAuthorization extends BasicTestCase {
         queryTaskKindClause.setTermMatchType(MatchType.TERM);
         queryTaskResourceGroupState.query.addBooleanClause(queryTaskKindClause);
 
-        this.host.send(Operation
-                .createPost(postResourceGroupsUri)
-                .setBody(queryTaskResourceGroupState)
+        this.host.send(Operation.createPost(postResourceGroupsUri).setBody(queryTaskResourceGroupState)
                 .setCompletion(this.host.getCompletion()));
 
         this.host.testWait();
@@ -307,18 +304,14 @@ public class TestAuthorization extends BasicTestCase {
         // Create roles tying these together
         this.host.testStart(2);
 
-        String userGroupLink = UriUtils
-                .extendUri(postUserGroupsUri, userGroupState.documentSelfLink)
-                .getPath();
+        String userGroupLink = UriUtils.extendUri(postUserGroupsUri, userGroupState.documentSelfLink).getPath();
 
         String exampleServiceResourceGroupLink = UriUtils
-                .extendUri(postResourceGroupsUri, exampleResourceGroupState.documentSelfLink)
-                .getPath();
+                .extendUri(postResourceGroupsUri, exampleResourceGroupState.documentSelfLink).getPath();
         createRole(userGroupLink, exampleServiceResourceGroupLink);
 
         String queryTaskResourceGroupLink = UriUtils
-                .extendUri(postResourceGroupsUri, queryTaskResourceGroupState.documentSelfLink)
-                .getPath();
+                .extendUri(postResourceGroupsUri, queryTaskResourceGroupState.documentSelfLink).getPath();
         createRole(userGroupLink, queryTaskResourceGroupLink);
 
         this.host.testWait();
@@ -333,10 +326,8 @@ public class TestAuthorization extends BasicTestCase {
         roleState.verbs.add(Action.POST);
         roleState.policy = Policy.ALLOW;
 
-        this.host.send(Operation
-                .createPost(UriUtils.buildUri(this.host, ServiceUriPaths.CORE_AUTHZ_ROLES))
-                .setBody(roleState)
-                .setCompletion(this.host.getCompletion()));
+        this.host.send(Operation.createPost(UriUtils.buildUri(this.host, ServiceUriPaths.CORE_AUTHZ_ROLES))
+                .setBody(roleState).setCompletion(this.host.getCompletion()));
     }
 
     private String createUser(String email) throws Throwable {
@@ -347,19 +338,16 @@ public class TestAuthorization extends BasicTestCase {
 
         URI postUserUri = UriUtils.buildUri(this.host, ServiceUriPaths.CORE_AUTHZ_USERS);
         this.host.testStart(1);
-        this.host.send(Operation
-                .createPost(postUserUri)
-                .setBody(userState)
-                .setCompletion((o, e) -> {
-                    if (e != null) {
-                        this.host.failIteration(e);
-                        return;
-                    }
+        this.host.send(Operation.createPost(postUserUri).setBody(userState).setCompletion((o, e) -> {
+            if (e != null) {
+                this.host.failIteration(e);
+                return;
+            }
 
-                    UserState state = o.getBody(UserState.class);
-                    userUriPath[0] = state.documentSelfLink;
-                    this.host.completeIteration();
-                }));
+            UserState state = o.getBody(UserState.class);
+            userUriPath[0] = state.documentSelfLink;
+            this.host.completeIteration();
+        }));
         this.host.testWait();
 
         return userUriPath[0];
@@ -377,6 +365,13 @@ public class TestAuthorization extends BasicTestCase {
 
         // Associate resulting authorization context with this thread
         OperationContext.setAuthorizationContext(ab.getResult());
+    }
+
+    private String generateAuthToken(String userServicePath) throws GeneralSecurityException {
+        Claims.Builder builder = new Claims.Builder();
+        builder.setSubject(userServicePath);
+        Claims claims = builder.getResult();
+        return this.host.getTokenSigner().sign(claims);
     }
 
     private ExampleServiceState exampleServiceState(String name, Long counter) {
@@ -397,12 +392,8 @@ public class TestAuthorization extends BasicTestCase {
             o.setBody(it.next());
         };
 
-        Map<URI, ExampleServiceState> states = this.host.doFactoryChildServiceStart(
-                null,
-                bodies.size(),
-                ExampleServiceState.class,
-                bodySetter,
-                UriUtils.buildUri(this.host, ExampleFactoryService.SELF_LINK));
+        Map<URI, ExampleServiceState> states = this.host.doFactoryChildServiceStart(null, bodies.size(),
+                ExampleServiceState.class, bodySetter, UriUtils.buildUri(this.host, ExampleFactoryService.SELF_LINK));
 
         return states;
     }
