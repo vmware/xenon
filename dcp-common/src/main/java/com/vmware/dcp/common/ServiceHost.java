@@ -2450,13 +2450,15 @@ public class ServiceHost {
     }
 
     private void populateAuthorizationContext(Operation op) {
-
-        Map<String, String> cookies = op.getCookies();
-        if (cookies == null) {
-            return;
+        String token = op.getRequestHeader(Operation.REQUEST_AUTH_TOKEN_HEADER);
+        if (token == null) {
+            Map<String, String> cookies = op.getCookies();
+            if (cookies == null) {
+                return;
+            }
+            token = cookies.get(AuthenticationConstants.DCP_JWT_COOKIE);
         }
 
-        String token = cookies.get(AuthenticationConstants.DCP_JWT_COOKIE);
         if (token == null) {
             return;
         }
