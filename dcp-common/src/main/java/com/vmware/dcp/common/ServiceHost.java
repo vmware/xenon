@@ -83,6 +83,7 @@ import com.vmware.dcp.common.ServiceHost.ServiceHostState.MemoryLimitType;
 import com.vmware.dcp.common.ServiceHost.ServiceHostState.SslClientAuthMode;
 import com.vmware.dcp.common.ServiceMaintenanceRequest.MaintenanceReason;
 import com.vmware.dcp.common.ServiceSubscriptionState.ServiceSubscriber;
+import com.vmware.dcp.common.http.netty.ChannelPipelineInitializer;
 import com.vmware.dcp.common.http.netty.NettyHttpListener;
 import com.vmware.dcp.common.http.netty.NettyHttpServiceClient;
 import com.vmware.dcp.common.jwt.Signer;
@@ -397,6 +398,8 @@ public class ServiceHost {
     private ServiceRequestListener httpListener;
     private ServiceRequestListener httpsListener;
 
+    private ChannelPipelineInitializer channelPipelineInitializer = pipeline -> { };
+
     private URI documentIndexServiceUri;
     private URI authorizationServiceUri;
     private URI transactionServiceUri;
@@ -661,6 +664,20 @@ public class ServiceHost {
         }
         this.state.httpPort = port;
         return this;
+    }
+
+    public ChannelPipelineInitializer getChannelPipelineInitializer() {
+        return this.channelPipelineInitializer;
+    }
+
+    /**
+     * Sets host channel pipleine initializer.
+     *
+     * @param channelPipelineInitializer channel pipleine initializer.
+     * @see ChannelPipelineInitializer
+     */
+    public void setChannelPipelineInitializer(ChannelPipelineInitializer channelPipelineInitializer) {
+        this.channelPipelineInitializer = channelPipelineInitializer;
     }
 
     public boolean isAuthorizationEnabled() {

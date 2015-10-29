@@ -68,6 +68,7 @@ class NettyHttpServerInitializer extends ChannelInitializer<SocketChannel> {
         p.addLast(new NettyWebSocketRequestHandler(this.host,
                 ServiceUriPaths.CORE_WEB_SOCKET_ENDPOINT,
                 ServiceUriPaths.WEB_SOCKET_SERVICE_PREFIX));
+        this.host.getChannelPipelineInitializer().initPipeline(p);
         p.addLast(new NettyHttpClientRequestHandler(this.host));
     }
 }
