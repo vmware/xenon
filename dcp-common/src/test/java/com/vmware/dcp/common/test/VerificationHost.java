@@ -209,7 +209,11 @@ public class VerificationHost extends ExampleServiceHost {
 
     public static AtomicInteger hostNumber = new AtomicInteger();
 
-    public static VerificationHost create(Integer port, URI storageSandbox)
+    public static VerificationHost create(Integer port, URI storageSandbox) throws Exception {
+        return create(port, ServiceHost.LOOPBACK_ADDRESS, storageSandbox);
+    }
+
+    public static VerificationHost create(Integer port, String bindAddress, URI storageSandbox)
             throws Exception {
 
         if (storageSandbox == null) {
@@ -220,7 +224,7 @@ public class VerificationHost extends ExampleServiceHost {
         args.id = "host-" + hostNumber.incrementAndGet();
         args.port = port;
         args.sandbox = new File(storageSandbox).toPath();
-        args.bindAddress = ServiceHost.LOOPBACK_ADDRESS;
+        args.bindAddress = bindAddress;
         try {
             h.initialize(args);
             h.referer = UriUtils.buildUri(h, "test-client-send");
