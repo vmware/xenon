@@ -54,7 +54,7 @@ import com.vmware.dcp.services.common.authn.AuthenticationConstants;
  * Processes client requests on behalf of the HTTP listener and submits them to the service host or websocket client for
  * processing
  */
-class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<Object> {
+public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<Object> {
 
     private final ServiceHost host;
 

@@ -20,7 +20,7 @@ import io.netty.util.AttributeKey;
 import com.vmware.dcp.common.Operation;
 import com.vmware.dcp.common.Operation.SocketContext;
 
-class NettyChannelContext extends SocketContext {
+public class NettyChannelContext extends SocketContext {
     static final AttributeKey<Operation> OPERATION_KEY = AttributeKey
             .<Operation> valueOf("operation");
     public static final int BUFFER_SIZE = 4096 * 16;

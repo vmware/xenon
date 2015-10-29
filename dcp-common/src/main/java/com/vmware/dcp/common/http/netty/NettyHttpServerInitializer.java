@@ -26,8 +26,13 @@ import com.vmware.dcp.common.ServiceHost;
 import com.vmware.dcp.common.ServiceHost.ServiceHostState.SslClientAuthMode;
 import com.vmware.dcp.services.common.ServiceUriPaths;
 
-class NettyHttpServerInitializer extends ChannelInitializer<SocketChannel> {
-    static final String SSL_HANDLER = "ssl";
+public class NettyHttpServerInitializer extends ChannelInitializer<SocketChannel> {
+    public static final String AGGREGATOR_HANDLER = "aggregator";
+    public static final String DCP_HANDLER = "dcp";
+    public static final String DCP_WEBSOCKET_HANDLER = "dcp_ws";
+    public static final String DECODER_HANDLER = "decoder";
+    public static final String ENCODER_HANDLER = "encoder";
+    public static final String SSL_HANDLER = "ssl";
 
     private final SslContext sslContext;
     private ServiceHost host;
@@ -61,13 +66,13 @@ class NettyHttpServerInitializer extends ChannelInitializer<SocketChannel> {
             p.addLast(SSL_HANDLER, handler);
         }
 
-        p.addLast("decoder", new HttpRequestDecoder());
-        p.addLast("encoder", new HttpResponseEncoder());
-        p.addLast("aggregator",
+        p.addLast(DECODER_HANDLER, new HttpRequestDecoder());
+        p.addLast(ENCODER_HANDLER, new HttpResponseEncoder());
+        p.addLast(AGGREGATOR_HANDLER,
                 new HttpObjectAggregator(NettyChannelContext.MAX_REQUEST_SIZE));
-        p.addLast(new NettyWebSocketRequestHandler(this.host,
+        p.addLast(DCP_WEBSOCKET_HANDLER, new NettyWebSocketRequestHandler(this.host,
                 ServiceUriPaths.CORE_WEB_SOCKET_ENDPOINT,
                 ServiceUriPaths.WEB_SOCKET_SERVICE_PREFIX));
-        p.addLast(new NettyHttpClientRequestHandler(this.host));
+        p.addLast(DCP_HANDLER, new NettyHttpClientRequestHandler(this.host));
     }
 }

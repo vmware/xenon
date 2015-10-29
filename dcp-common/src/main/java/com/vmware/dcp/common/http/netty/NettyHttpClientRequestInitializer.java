@@ -25,7 +25,13 @@ import io.netty.handler.ssl.SslHandler;
 
 import com.vmware.dcp.common.Operation.SocketContext;
 
-class NettyHttpClientRequestInitializer extends ChannelInitializer<SocketChannel> {
+public class NettyHttpClientRequestInitializer extends ChannelInitializer<SocketChannel> {
+
+    public static final String AGGREGATOR_HANDLER = "aggregator";
+    public static final String DCP_HANDLER = "dcp";
+    public static final String DECODER_HANDLER = "decoder";
+    public static final String ENCODER_HANDLER = "encoder";
+    public static final String SSL_HANDLER = "ssl";
 
     private final NettyChannelPool pool;
 
@@ -42,11 +48,11 @@ class NettyHttpClientRequestInitializer extends ChannelInitializer<SocketChannel
         if (this.pool.getSSLContext() != null) {
             SSLEngine engine = this.pool.getSSLContext().createSSLEngine();
             engine.setUseClientMode(true);
-            p.addLast("ssl", new SslHandler(engine));
+            p.addLast(SSL_HANDLER, new SslHandler(engine));
         }
-        p.addLast("encoder", new HttpRequestEncoder());
-        p.addLast("decoder", new HttpResponseDecoder());
-        p.addLast("aggregator", new HttpObjectAggregator(SocketContext.MAX_REQUEST_SIZE));
-        p.addLast(new NettyHttpServerResponseHandler(this.pool));
+        p.addLast(ENCODER_HANDLER, new HttpRequestEncoder());
+        p.addLast(DECODER_HANDLER, new HttpResponseDecoder());
+        p.addLast(AGGREGATOR_HANDLER, new HttpObjectAggregator(SocketContext.MAX_REQUEST_SIZE));
+        p.addLast(DCP_HANDLER, new NettyHttpServerResponseHandler(this.pool));
     }
 }

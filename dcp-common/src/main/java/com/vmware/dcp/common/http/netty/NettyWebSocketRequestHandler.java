@@ -44,7 +44,7 @@ import com.vmware.dcp.common.UriUtils;
 import com.vmware.dcp.common.Utils;
 import com.vmware.dcp.common.WebSocketService;
 
-class NettyWebSocketRequestHandler extends SimpleChannelInboundHandler<Object> {
+public class NettyWebSocketRequestHandler extends SimpleChannelInboundHandler<Object> {
     public static class CreateServiceResponse {
         public String uri;
     }

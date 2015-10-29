@@ -37,7 +37,7 @@ import com.vmware.dcp.common.Utils;
  * Processes responses from a remote HTTP server and completes the request associated with the
  * channel
  */
-class NettyHttpServerResponseHandler extends SimpleChannelInboundHandler<HttpObject> {
+public class NettyHttpServerResponseHandler extends SimpleChannelInboundHandler<HttpObject> {
 
     private NettyChannelPool pool;
 
