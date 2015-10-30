@@ -57,6 +57,7 @@ import com.vmware.dcp.common.Service.Action;
 import com.vmware.dcp.common.Service.ServiceOption;
 import com.vmware.dcp.common.ServiceClient;
 import com.vmware.dcp.common.ServiceConfigUpdateRequest;
+import com.vmware.dcp.common.ServiceConfiguration;
 import com.vmware.dcp.common.ServiceDocument;
 import com.vmware.dcp.common.ServiceDocumentDescription;
 import com.vmware.dcp.common.ServiceDocumentDescription.Builder;
@@ -2146,6 +2147,34 @@ public class VerificationHost extends ExampleServiceHost {
             this.timeoutSeconds = (int) TimeUnit.MICROSECONDS.toSeconds(
                     ServiceHostState.DEFAULT_OPERATION_TIMEOUT_MICROS);
         }
+    }
+
+    public void setOperationQueueLimit(URI serviceUri, int limit) throws Throwable {
+        // send a set limit configuration request
+        ServiceConfigUpdateRequest body = ServiceConfigUpdateRequest.create();
+        body.operationQueueLimit = limit;
+        URI configUri = UriUtils.buildConfigUri(serviceUri);
+        testStart(1);
+        send(Operation.createPatch(configUri).setBody(body)
+                .setCompletion(getCompletion()));
+        testWait();
+
+        // verify new operation limit is set
+        testStart(1);
+        send(Operation.createGet(configUri).setCompletion((o, e) -> {
+            if (e != null) {
+                failIteration(e);
+                return;
+            }
+            ServiceConfiguration cfg = o.getBody(ServiceConfiguration.class);
+            if (cfg.operationQueueLimit != body.operationQueueLimit) {
+                failIteration(new IllegalStateException("Invalid queue limit"));
+                return;
+            }
+
+            completeIteration();
+        }));
+        testWait();
     }
 
     public void toggleNegativeTestMode(boolean enable) {

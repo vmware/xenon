@@ -20,6 +20,7 @@ import com.vmware.dcp.common.Service.ServiceOption;
 public class ServiceConfiguration extends ServiceDocument {
     public static final String KIND = Utils.buildKind(ServiceConfiguration.class);
     public long maintenanceIntervalMicros;
+    public int operationQueueLimit;
     public long epoch;
     public EnumSet<ServiceOption> options;
 
