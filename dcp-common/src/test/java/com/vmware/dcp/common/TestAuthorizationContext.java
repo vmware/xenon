@@ -13,6 +13,9 @@
 
 package com.vmware.dcp.common;
 
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotEquals;
+
 import java.net.URI;
 import java.security.GeneralSecurityException;
 import java.util.HashMap;
@@ -27,6 +30,7 @@ import com.vmware.dcp.common.Operation.CompletionHandler;
 import com.vmware.dcp.common.OperationJoin.JoinedCompletionHandler;
 import com.vmware.dcp.common.Service.Action;
 import com.vmware.dcp.common.test.VerificationHost;
+import com.vmware.dcp.services.common.GuestUserService;
 import com.vmware.dcp.services.common.QueryTask.Query;
 import com.vmware.dcp.services.common.QueryTask.QueryTerm.MatchType;
 import com.vmware.dcp.services.common.ResourceGroupService.ResourceGroupState;
@@ -149,7 +153,7 @@ public class TestAuthorizationContext extends BasicTestCase {
 
     public static class SetAuthorizationContextTestService extends StatelessService {
         public static final String SELF_LINK = "/set-authorization-context-test";
-        public static final String EXPECT_CONTEXT = "expectContext";
+        public static final String EXPECT_USER_CONTEXT = "expectUserContext";
 
         @Override
         public void handleRequest(Operation op) {
@@ -188,28 +192,26 @@ public class TestAuthorizationContext extends BasicTestCase {
 
         private void handleGetAuthorizationContext(Operation op) {
             AuthorizationContext ctx = op.getAuthorizationContext();
-            Map<String, String> params = UriUtils.parseUriQueryParams(op.getUri());
-            String expectContext = params.get(EXPECT_CONTEXT);
-            if (expectContext.equals(Boolean.toString(true))) {
-                if (ctx == null) {
-                    op.fail(new IllegalStateException("ctx == null"));
-                    return;
-                }
-
-                Claims claims = ctx.getClaims();
-                if (claims == null) {
-                    op.fail(new IllegalStateException("claims == null"));
-                    return;
-                }
-
-                op.setBody(claims).complete();
-            } else {
-                if (ctx != null) {
-                    op.fail(new IllegalStateException("ctx != null"));
-                    return;
-                }
-                op.complete();
+            if (ctx == null) {
+                op.fail(new IllegalStateException("ctx == null"));
+                return;
             }
+
+            Claims claims = ctx.getClaims();
+            if (claims == null) {
+                op.fail(new IllegalStateException("claims == null"));
+                return;
+            }
+
+            Map<String, String> params = UriUtils.parseUriQueryParams(op.getUri());
+            String expectContext = params.get(EXPECT_USER_CONTEXT);
+            if (expectContext.equals(Boolean.toString(true))) {
+                assertNotEquals(GuestUserService.SELF_LINK, claims.getSubject());
+            } else {
+                assertEquals(GuestUserService.SELF_LINK, claims.getSubject());
+            }
+
+            op.setBody(claims).complete();
         }
     }
 
@@ -238,7 +240,7 @@ public class TestAuthorizationContext extends BasicTestCase {
         // Get to check the context was picked up from the cookie
         URI getUri = UriUtils.extendUriWithQuery(
                 UriUtils.buildUri(this.host, SetAuthorizationContextTestService.SELF_LINK),
-                SetAuthorizationContextTestService.EXPECT_CONTEXT, "true");
+                SetAuthorizationContextTestService.EXPECT_USER_CONTEXT, "true");
         this.host.testStart(1);
         this.host.send(Operation
                 .createGet(getUri)
@@ -286,7 +288,7 @@ public class TestAuthorizationContext extends BasicTestCase {
         // Get should not see an auth context
         URI getUri = UriUtils.extendUriWithQuery(
                 UriUtils.buildUri(this.host, SetAuthorizationContextTestService.SELF_LINK),
-                SetAuthorizationContextTestService.EXPECT_CONTEXT, "false");
+                SetAuthorizationContextTestService.EXPECT_USER_CONTEXT, "false");
         this.host.testStart(1);
         this.host.send(Operation
                 .createGet(getUri)
