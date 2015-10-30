@@ -3,7 +3,8 @@
 # vim backups of files that are open at time of commit
 *.swp
 .settings/*
-/bin
+bin/Y
+*/bin
 target
 .classpath
 .project
