@@ -21,7 +21,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import org.junit.Test;
 
@@ -316,6 +318,90 @@ public class TestStatefulService extends BasicReusableHostTestCase {
         }
         this.host.testWait();
         this.host.toggleNegativeTestMode(false);
+    }
+
+    @Test
+    public void operationQueueLimit() throws Throwable {
+        Service lifoService = new MinimalTestService();
+        lifoService.toggleOption(ServiceOption.LIFO_QUEUE, true);
+        lifoService = this.host.startServiceAndWait(lifoService, UUID.randomUUID().toString(),
+                null);
+
+        Service fifoService = new MinimalTestService();
+        fifoService = this.host.startServiceAndWait(lifoService, UUID.randomUUID().toString(),
+                null);
+
+        int limit = 10;
+        this.host.log("Verifying LIFO service");
+        setOperationQueueLimit(lifoService.getUri(), limit);
+        verifyOperationQueueLimit(lifoService.getUri(), limit);
+
+        this.host.log("Verifying FIFO service");
+        setOperationQueueLimit(fifoService.getUri(), limit);
+        verifyOperationQueueLimit(fifoService.getUri(), limit);
+    }
+
+    private void verifyOperationQueueLimit(URI serviceUri, int limit) throws Throwable {
+        // testing that limit was applied is tricky: the runtime can process over 1M ops/sec on a
+        // modern machine, so we need to make sure we issue enough that some fail before the queue is
+        // serviced below the limit. Either way we must ensure all operations complete, with at least
+        // one of them failing with the proper error
+
+        AtomicInteger cancelledOpCount = new AtomicInteger();
+        int count = limit * 100;
+        Operation patch = Operation.createPatch(serviceUri)
+                .setBody(this.host.buildMinimalTestState())
+                .setCompletion((o, e) -> {
+                    if (e != null) {
+                        if (e instanceof CancellationException) {
+                            cancelledOpCount.incrementAndGet();
+                            this.host.completeIteration();
+                            return;
+                        }
+                        this.host.failIteration(e);
+                        return;
+                    }
+
+                    this.host.completeIteration();
+                });
+
+        this.host.testStart(count);
+        for (int i = 0; i < count; i++) {
+            this.host.send(patch);
+        }
+        this.host.testWait();
+
+        if (cancelledOpCount.get() < count / Utils.DEFAULT_THREAD_COUNT) {
+            throw new IllegalStateException("no operations where cancelled");
+        }
+    }
+
+    private void setOperationQueueLimit(URI serviceUri, int limit) throws Throwable {
+        // send a set limit configuration request
+        ServiceConfigUpdateRequest body = ServiceConfigUpdateRequest.create();
+        body.operationQueueLimit = limit;
+        URI configUri = UriUtils.buildConfigUri(serviceUri);
+        this.host.testStart(1);
+        this.host.send(Operation.createPatch(configUri).setBody(body)
+                .setCompletion(this.host.getCompletion()));
+        this.host.testWait();
+
+        // verify new operation limit is set
+        this.host.testStart(1);
+        this.host.send(Operation.createGet(configUri).setCompletion((o, e) -> {
+            if (e != null) {
+                this.host.failIteration(e);
+                return;
+            }
+            ServiceConfiguration cfg = o.getBody(ServiceConfiguration.class);
+            if (cfg.operationQueueLimit != body.operationQueueLimit) {
+                this.host.failIteration(new IllegalStateException("Invalid queue limit"));
+                return;
+            }
+
+            this.host.completeIteration();
+        }));
+        this.host.testWait();
     }
 
 }

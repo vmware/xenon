@@ -518,6 +518,8 @@ public class Utils {
             break;
         case INSTRUMENTATION:
             break;
+        case LIFO_QUEUE:
+            break;
         case NONE:
             break;
         case UTILITY:

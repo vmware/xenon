@@ -34,8 +34,17 @@ public class TestOperationQueue {
     }
 
     @Test
-    public void offerAndPollWithDefaults() {
-        OperationQueue q = OperationQueue.create(this.count, null);
+    public void fifoOfferAndPoll() {
+        offerAndPoll(true);
+    }
+
+    @Test
+    public void lifoOfferAndPoll() {
+        offerAndPoll(false);
+    }
+
+    private void offerAndPoll(boolean isFifo) {
+        OperationQueue q = createQueue(isFifo);
 
         try {
             q.offer(null);
@@ -61,21 +70,50 @@ public class TestOperationQueue {
         // verify operations beyond limit are not queued
         assertTrue(false == q.offer(Operation.createGet(null)));
 
+        // increase limit
+        q.setLimit(this.count + 1);
+        assertEquals(this.count + 1, q.getLimit());
+        // add an operation
+        Operation lastOp = Operation.createGet(null);
+        assertTrue(q.offer(lastOp));
+
+        if (!isFifo) {
+            // dequeue most recent, over the initial limit operation
+            assertEquals(lastOp, q.poll());
+        }
+
         // dequeue all operations, make sure they exist in our external list, in the expected order
-        for (Operation op : ops) {
+        for (int i = 0; i < ops.size(); i++) {
+            Operation op = null;
+            if (isFifo) {
+                op = ops.get(i);
+            } else {
+                op = ops.get(this.count - 1 - i);
+            }
             Operation qOp = q.poll();
+
             if (qOp.getId() != op.getId()) {
                 throw new IllegalStateException("unexpected operation from queue");
             }
         }
 
-        // verify no more operations remain
-        assertTrue(q.poll() == null);
+        if (isFifo) {
+            // finally, dequeue most recent, over the initial limit operation
+            assertEquals(lastOp, q.poll());
+            // verify no more operations remain
+            assertTrue(q.poll() == null);
+        }
+    }
+
+    private OperationQueue createQueue(boolean isFifo) {
+        OperationQueue q = isFifo ? OperationQueue.createFifo(this.count)
+                : OperationQueue.createLifo(this.count);
+        return q;
     }
 
     @Test
     public void toCollection() {
-        OperationQueue q = OperationQueue.create(this.count, null);
+        OperationQueue q = OperationQueue.createFifo(this.count);
         final String pragma = UUID.randomUUID().toString();
         for (int i = 0; i < this.count; i++) {
             Operation op = Operation.createPost(null).addPragmaDirective(pragma);

@@ -25,7 +25,7 @@ public class NettyChannelContext extends SocketContext {
             .<Operation> valueOf("operation");
     public static final int BUFFER_SIZE = 4096 * 16;
 
-    public static PooledByteBufAllocator ALLOCATOR = NettyChannelContext.createAllocator();
+    public static final PooledByteBufAllocator ALLOCATOR = NettyChannelContext.createAllocator();
 
     static PooledByteBufAllocator createAllocator() {
         // We are using defaults from the code internals since the pooled allocator does not
