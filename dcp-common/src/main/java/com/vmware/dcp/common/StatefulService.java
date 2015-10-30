@@ -1614,6 +1614,9 @@ public class StatefulService implements Service {
                     logFine("Epoch updated to %d", this.context.epoch);
                 }
             }
+            if (body.operationQueueLimit != null) {
+                this.context.operationQueue.setLimit(body.operationQueueLimit);
+            }
             this.context.utilityService.handlePatchConfiguration(request, body);
             return;
         }
@@ -1623,6 +1626,7 @@ public class StatefulService implements Service {
             cfg.options = getOptions();
             cfg.maintenanceIntervalMicros = getMaintenanceIntervalMicros();
             cfg.epoch = this.context.epoch;
+            cfg.operationQueueLimit = this.context.operationQueue.getLimit();
             request.setBody(cfg).complete();
             return;
         }

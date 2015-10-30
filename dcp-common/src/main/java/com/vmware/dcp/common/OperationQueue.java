@@ -13,9 +13,11 @@
 
 package com.vmware.dcp.common;
 
-import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Deque;
 import java.util.EnumSet;
+import java.util.concurrent.ConcurrentLinkedDeque;
 
 /**
  * Queue implementation customized for the needs of a service. Depending on creation options
@@ -37,15 +39,26 @@ class OperationQueue {
 
     private int limit;
 
+    private int elementCount;
+
     private EnumSet<Option> options;
 
-    private ArrayDeque<Operation> store = new ArrayDeque<>(1);
+    private Deque<Operation> store = new ConcurrentLinkedDeque<>();
 
     private OperationQueue() {
     }
 
     public int getLimit() {
         return this.limit;
+    }
+
+    public void setLimit(int limit) {
+        if (limit <= 0) {
+            throw new IllegalArgumentException("limit must be greater than zero");
+        }
+        // we do not drain the queue if its beyond the limit, new operation will just
+        // fail to enqueue until the queue depth drops below the limit
+        this.limit = limit;
     }
 
     EnumSet<Option> getOptions() {
@@ -67,11 +80,15 @@ class OperationQueue {
             throw new IllegalArgumentException("op is required");
         }
 
-        if (this.store.size() >= this.limit) {
+        if (this.elementCount >= this.limit) {
             return false;
         }
 
-        return this.store.offer(op);
+        if (this.store.offer(op)) {
+            this.elementCount++;
+            return true;
+        }
+        return false;
     }
 
     /**
@@ -79,11 +96,23 @@ class OperationQueue {
      * queue if the queue is configured as FIFO, otherwise its removed from the tail
      */
     public Operation poll() {
-        return this.store.poll();
+        Operation op = this.store.poll();
+        if (op == null) {
+            return null;
+        }
+        this.elementCount--;
+        if (this.elementCount < 0) {
+            throw new IllegalStateException("elementCount is negative");
+        }
+        return op;
     }
 
-    public Collection<Operation> toCollection() {
-        return this.store.clone();
+    Collection<Operation> toCollection() {
+        ArrayList<Operation> clone = new ArrayList<>(this.elementCount);
+        for (Operation op : this.store) {
+            clone.add(op);
+        }
+        return clone;
     }
 
     public void clear() {

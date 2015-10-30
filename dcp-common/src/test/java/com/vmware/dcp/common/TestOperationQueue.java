@@ -61,14 +61,25 @@ public class TestOperationQueue {
         // verify operations beyond limit are not queued
         assertTrue(false == q.offer(Operation.createGet(null)));
 
+        // increase limit
+        q.setLimit(this.count + 1);
+        assertEquals(this.count + 1, q.getLimit());
+        // add an operation
+        Operation lastOp = Operation.createGet(null);
+        assertTrue(q.offer(lastOp));
+
+
         // dequeue all operations, make sure they exist in our external list, in the expected order
         for (Operation op : ops) {
             Operation qOp = q.poll();
+
             if (qOp.getId() != op.getId()) {
                 throw new IllegalStateException("unexpected operation from queue");
             }
         }
 
+        // finally, dequeue most recent, over the initial limit operation
+        assertEquals(lastOp, q.poll());
         // verify no more operations remain
         assertTrue(q.poll() == null);
     }
