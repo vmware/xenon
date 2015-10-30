@@ -81,6 +81,8 @@ public class ServiceUriPaths {
             ServiceUriPaths.CORE_AUTHZ, "verification");
     public static final String CORE_AUTHZ_SYSTEM_USER = UriUtils.buildUriPath(
             ServiceUriPaths.CORE_AUTHZ, "system-user");
+    public static final String CORE_AUTHZ_GUEST_USER = UriUtils.buildUriPath(
+            ServiceUriPaths.CORE_AUTHZ, "guest-user");
 
     public static final String CORE_AUTHN = UriUtils.buildUriPath(ServiceUriPaths.CORE, "authn");
     public static final String CORE_AUTHN_BASIC = UriUtils.buildUriPath(ServiceUriPaths.CORE_AUTHN,

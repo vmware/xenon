@@ -248,11 +248,11 @@ public class AuthorizationContextService extends StatelessService {
                         }
                     }
 
-                    // If no user groups apply to this user, we can safely say
-                    // this operation is not authorized.
+                    // If no user groups apply to this user, we are sure no roles
+                    // will apply and we can populate the authorization context.
                     if (userGroupStates.isEmpty()) {
                         // TODO(DCP-782): Add negative cache
-                        failForbidden(claims.getSubject());
+                        populateAuthorizationContext(ctx, claims, null);
                         return;
                     }
 
@@ -369,7 +369,7 @@ public class AuthorizationContextService extends StatelessService {
                 }
             }
 
-            populateAuthenticationContext(ctx, claims, roles);
+            populateAuthorizationContext(ctx, claims, roles);
         };
 
         // Fire off GET for every resource group
@@ -385,31 +385,37 @@ public class AuthorizationContextService extends StatelessService {
         join.sendWith(getHost());
     }
 
-    private void populateAuthenticationContext(AuthorizationContext ctx, Claims claims,
-            Collection<Role> roles) {
-        Query q = new Query();
-        q.occurance = Occurance.MUST_OCCUR;
-        for (Role role : roles) {
-            Query resourceGroupQuery = role.resourceGroupState.query;
-            resourceGroupQuery.occurance = Occurance.SHOULD_OCCUR;
-            q.addBooleanClause(resourceGroupQuery);
-        }
-
-        QueryFilter f;
-
-        try {
-            f = QueryFilter.create(q);
-        } catch (QueryFilterException qfe) {
-            logWarning("Error creating query filter: %s", qfe.toString());
-            failThrowable(claims.getSubject(), qfe);
-            return;
+    private void populateAuthorizationContext(AuthorizationContext ctx, Claims claims, Collection<Role> roles) {
+        if (roles == null) {
+            roles = Collections.emptyList();
         }
 
         AuthorizationContext.Builder builder = AuthorizationContext.Builder.create();
         builder.setClaims(ctx.getClaims());
         builder.setToken(ctx.getToken());
-        builder.setResourceQuery(q);
-        builder.setResourceQueryFilter(f);
+
+        if (!roles.isEmpty()) {
+            Query q = new Query();
+            q.occurance = Occurance.MUST_OCCUR;
+            for (Role role : roles) {
+                Query resourceGroupQuery = role.resourceGroupState.query;
+                resourceGroupQuery.occurance = Occurance.SHOULD_OCCUR;
+                q.addBooleanClause(resourceGroupQuery);
+            }
+
+            builder.setResourceQuery(q);
+
+            try {
+                builder.setResourceQueryFilter(QueryFilter.create(q));
+            } catch (QueryFilterException qfe) {
+                logWarning("Error creating query filter: %s", qfe.toString());
+                failThrowable(claims.getSubject(), qfe);
+                return;
+            }
+        } else {
+            // No applicable roles; don't allow access
+            builder.setResourceQueryFilter(QueryFilter.FALSE);
+        }
 
         AuthorizationContext newContext = builder.getResult();
         this.authorizationContextCache.put(ctx.getToken(), newContext);

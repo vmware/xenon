@@ -20,6 +20,7 @@ import static org.junit.Assert.assertTrue;
 import java.net.URI;
 import java.security.GeneralSecurityException;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedList;
@@ -38,9 +39,10 @@ import com.vmware.dcp.common.test.VerificationHost;
 import com.vmware.dcp.services.common.AuthorizationContextService;
 import com.vmware.dcp.services.common.ExampleFactoryService;
 import com.vmware.dcp.services.common.ExampleService.ExampleServiceState;
+import com.vmware.dcp.services.common.GuestUserService;
 import com.vmware.dcp.services.common.QueryTask;
 import com.vmware.dcp.services.common.QueryTask.Query;
-import com.vmware.dcp.services.common.QueryTask.QueryTerm.MatchType;
+import com.vmware.dcp.services.common.QueryTask.Query.Builder;
 import com.vmware.dcp.services.common.ResourceGroupService.ResourceGroupState;
 import com.vmware.dcp.services.common.RoleService.Policy;
 import com.vmware.dcp.services.common.RoleService.RoleState;
@@ -95,6 +97,64 @@ public class TestAuthorization extends BasicTestCase {
         this.host.testStart(1);
         this.host.run(task);
         this.host.testWait();
+    }
+
+    @Test
+    public void testGuestAuthorization() throws Throwable {
+        OperationContext.setAuthorizationContext(this.host.getSystemAuthorizationContext());
+
+        this.host.testStart(3);
+
+        // Create user group for guest user
+        String userGroupLink =
+                createUserGroup("guest-user-group", Builder.create()
+                        .addFieldClause(
+                                ServiceDocument.FIELD_NAME_SELF_LINK,
+                                GuestUserService.SELF_LINK)
+                        .build());
+
+        // Create resource group for example service state
+        String exampleServiceResourceGroupLink =
+                createResourceGroup("guest-resource-group", Builder.create()
+                        .addFieldClause(
+                                ExampleServiceState.FIELD_NAME_KIND,
+                                Utils.buildKind(ExampleServiceState.class))
+                        .addFieldClause(
+                                ExampleServiceState.FIELD_NAME_NAME,
+                                "guest")
+                        .build());
+
+        // Create roles tying these together
+        createRole(userGroupLink, exampleServiceResourceGroupLink);
+
+        this.host.testWait();
+
+        // Create some example services; some accessible, some not
+        Map<URI, ExampleServiceState> exampleServices = new HashMap<>();
+        exampleServices.putAll(createExampleServices("jane"));
+        exampleServices.putAll(createExampleServices("guest"));
+
+        OperationContext.setAuthorizationContext(null);
+
+        // Execute get on factory trying to get all example services
+        final ServiceDocumentQueryResult[] factoryGetResult = new ServiceDocumentQueryResult[1];
+        Operation getFactory = Operation.createGet(UriUtils.buildUri(this.host, ExampleFactoryService.SELF_LINK))
+                .setCompletion((o, e) -> {
+                    if (e != null) {
+                        this.host.failIteration(e);
+                        return;
+                    }
+
+                    factoryGetResult[0] = o.getBody(ServiceDocumentQueryResult.class);
+                    this.host.completeIteration();
+                });
+
+        this.host.testStart(1);
+        this.host.send(getFactory);
+        this.host.testWait();
+
+        // Make sure only the authorized services were returned
+        assertAuthorizedServicesInResult("guest", exampleServices, factoryGetResult[0]);
     }
 
     @Test
@@ -170,7 +230,7 @@ public class TestAuthorization extends BasicTestCase {
         this.host.testWait();
 
         // Make sure only the authorized services were returned
-        assertAuthorizedServicesInResult(exampleServices, factoryGetResult[0]);
+        assertAuthorizedServicesInResult("jane", exampleServices, factoryGetResult[0]);
 
         // Execute query task trying to get all example services
         QueryTask.QuerySpecification q = new QueryTask.QuerySpecification();
@@ -181,7 +241,7 @@ public class TestAuthorization extends BasicTestCase {
         assertEquals(TaskState.TaskStage.FINISHED, task.taskInfo.stage);
 
         // Make sure only the authorized services were returned
-        assertAuthorizedServicesInResult(exampleServices, task.results);
+        assertAuthorizedServicesInResult("jane", exampleServices, task.results);
 
         // reset the auth context
         OperationContext.setAuthorizationContext(null);
@@ -241,12 +301,13 @@ public class TestAuthorization extends BasicTestCase {
         this.host.testWait();
     }
 
-    private void assertAuthorizedServicesInResult(Map<URI, ExampleServiceState> exampleServices,
+    private void assertAuthorizedServicesInResult(String name,
+            Map<URI, ExampleServiceState> exampleServices,
             ServiceDocumentQueryResult result) {
         Set<String> selfLinks = new HashSet<>(result.documentLinks);
         for (Entry<URI, ExampleServiceState> entry : exampleServices.entrySet()) {
             String selfLink = entry.getKey().getPath();
-            if (entry.getValue().name.equals("jane")) {
+            if (entry.getValue().name.equals(name)) {
                 assertTrue(selfLinks.contains(selfLink));
             } else {
                 assertFalse(selfLinks.contains(selfLink));
@@ -255,85 +316,75 @@ public class TestAuthorization extends BasicTestCase {
     }
 
     private void createRoles() throws Throwable {
-        this.host.testStart(3);
+        this.host.testStart(5);
 
+        // Create user group for jane@doe.com
+        String userGroupLink =
+                createUserGroup("janes-user-group", Builder.create()
+                        .addFieldClause(
+                                "email",
+                                "jane@doe.com")
+                        .build());
+
+        // Create resource group for example service state
+        String exampleServiceResourceGroupLink =
+                createResourceGroup("janes-resource-group", Builder.create()
+                        .addFieldClause(
+                                ExampleServiceState.FIELD_NAME_KIND,
+                                Utils.buildKind(ExampleServiceState.class))
+                        .addFieldClause(
+                                ExampleServiceState.FIELD_NAME_NAME,
+                                "jane")
+                        .build());
+
+        // Create resource group to allow GETs on ALL query tasks
+        String queryTaskResourceGroupLink =
+                createResourceGroup("any-query-task-resource-group", Builder.create()
+                        .addFieldClause(
+                                ExampleServiceState.FIELD_NAME_KIND,
+                                Utils.buildKind(QueryTask.class))
+                        .build());
+
+        // Create roles tying these together
+        createRole(userGroupLink, exampleServiceResourceGroupLink);
+        createRole(userGroupLink, queryTaskResourceGroupLink);
+
+        this.host.testWait();
+    }
+
+    private String createUserGroup(String name, Query q) {
         URI postUserGroupsUri =
                 UriUtils.buildUri(this.host, ServiceUriPaths.CORE_AUTHZ_USER_GROUPS);
-
-        URI postResourceGroupsUri =
-                UriUtils.buildUri(this.host, ServiceUriPaths.CORE_AUTHZ_RESOURCE_GROUPS);
+        String selfLink =
+                UriUtils.extendUri(postUserGroupsUri, name).getPath();
 
         // Create user group
         UserGroupState userGroupState = new UserGroupState();
-        userGroupState.documentSelfLink = "janes-user-group";
-        userGroupState.query = new Query();
-        userGroupState.query.setTermPropertyName("email");
-        userGroupState.query.setTermMatchType(MatchType.TERM);
-        userGroupState.query.setTermMatchValue("jane@doe.com");
+        userGroupState.documentSelfLink = selfLink;
+        userGroupState.query = q;
 
         this.host.send(Operation
                 .createPost(postUserGroupsUri)
                 .setBody(userGroupState)
                 .setCompletion(this.host.getCompletion()));
+        return selfLink;
+    }
 
-        // Create resource group for example service state
-        ResourceGroupState exampleResourceGroupState = new ResourceGroupState();
-        exampleResourceGroupState.documentSelfLink = "janes-resource-group";
-        exampleResourceGroupState.query = new Query();
+    private String createResourceGroup(String name, Query q) {
+        URI postResourceGroupsUri =
+                UriUtils.buildUri(this.host, ServiceUriPaths.CORE_AUTHZ_RESOURCE_GROUPS);
+        String selfLink =
+                UriUtils.extendUri(postResourceGroupsUri, name).getPath();
 
-        Query kindClause = new Query();
-        kindClause.setTermPropertyName(ExampleServiceState.FIELD_NAME_KIND);
-        kindClause.setTermMatchValue(Utils.buildKind(ExampleServiceState.class));
-        kindClause.setTermMatchType(MatchType.TERM);
-        exampleResourceGroupState.query.addBooleanClause(kindClause);
-
-        Query nameClause = new Query();
-        nameClause.setTermPropertyName(ExampleServiceState.FIELD_NAME_NAME);
-        nameClause.setTermMatchValue("jane");
-        nameClause.setTermMatchType(MatchType.TERM);
-        exampleResourceGroupState.query.addBooleanClause(nameClause);
+        ResourceGroupState resourceGroupState = new ResourceGroupState();
+        resourceGroupState.documentSelfLink = selfLink;
+        resourceGroupState.query = q;
 
         this.host.send(Operation
                 .createPost(postResourceGroupsUri)
-                .setBody(exampleResourceGroupState)
+                .setBody(resourceGroupState)
                 .setCompletion(this.host.getCompletion()));
-
-        // Create resource group to allow GETs on ALL query tasks
-        ResourceGroupState queryTaskResourceGroupState = new ResourceGroupState();
-        queryTaskResourceGroupState.documentSelfLink = "any-query-task-resource-group";
-        queryTaskResourceGroupState.query = new Query();
-
-        Query queryTaskKindClause = new Query();
-        queryTaskKindClause.setTermPropertyName(ExampleServiceState.FIELD_NAME_KIND);
-        queryTaskKindClause.setTermMatchValue(Utils.buildKind(QueryTask.class));
-        queryTaskKindClause.setTermMatchType(MatchType.TERM);
-        queryTaskResourceGroupState.query.addBooleanClause(queryTaskKindClause);
-
-        this.host.send(Operation
-                .createPost(postResourceGroupsUri)
-                .setBody(queryTaskResourceGroupState)
-                .setCompletion(this.host.getCompletion()));
-
-        this.host.testWait();
-
-        // Create roles tying these together
-        this.host.testStart(2);
-
-        String userGroupLink = UriUtils
-                .extendUri(postUserGroupsUri, userGroupState.documentSelfLink)
-                .getPath();
-
-        String exampleServiceResourceGroupLink = UriUtils
-                .extendUri(postResourceGroupsUri, exampleResourceGroupState.documentSelfLink)
-                .getPath();
-        createRole(userGroupLink, exampleServiceResourceGroupLink);
-
-        String queryTaskResourceGroupLink = UriUtils
-                .extendUri(postResourceGroupsUri, queryTaskResourceGroupState.documentSelfLink)
-                .getPath();
-        createRole(userGroupLink, queryTaskResourceGroupLink);
-
-        this.host.testWait();
+        return selfLink;
     }
 
     private void createRole(String userGroupLink, String resourceGroupLink) {

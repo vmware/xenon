@@ -69,6 +69,7 @@ import org.apache.lucene.index.Term;
 import org.apache.lucene.search.BooleanClause.Occur;
 import org.apache.lucene.search.BooleanQuery;
 import org.apache.lucene.search.IndexSearcher;
+import org.apache.lucene.search.MatchNoDocsQuery;
 import org.apache.lucene.search.NumericRangeQuery;
 import org.apache.lucene.search.PrefixQuery;
 import org.apache.lucene.search.Query;
@@ -798,7 +799,15 @@ public class LuceneDocumentIndexService extends StatelessService {
             return tq;
         }
 
-        rq = LuceneQueryConverter.convertToLuceneQuery(ctx.getResourceQuery());
+        // If the resource query in the authorization context is unspecified,
+        // use a Lucene query that doesn't return any documents so that every
+        // result will be empty.
+        if (ctx.getResourceQuery() == null) {
+            rq = new MatchNoDocsQuery();
+        } else {
+            rq = LuceneQueryConverter.convertToLuceneQuery(ctx.getResourceQuery());
+        }
+
         BooleanQuery bq = new BooleanQuery();
         bq.add(rq, Occur.FILTER);
         bq.add(tq, Occur.FILTER);
