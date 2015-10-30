@@ -73,6 +73,16 @@ public class QueryFilter {
         }
     }
 
+    /**
+     * Static QueryFilter that always evaluates to true.
+     */
+    public static final QueryFilter TRUE = new QueryFilter(StaticEvaluator.TRUE);
+
+    /**
+     * Static QueryFilter that always evaluates to false.
+     */
+    public static final QueryFilter FALSE = new QueryFilter(StaticEvaluator.FALSE);
+
     private final Evaluator evaluator;
 
     public static QueryFilter create(Query q) throws QueryFilterException {
@@ -350,6 +360,7 @@ public class QueryFilter {
      */
     static class StaticEvaluator implements Evaluator {
         static final Evaluator TRUE = new StaticEvaluator(true);
+        static final Evaluator FALSE = new StaticEvaluator(false);
 
         private boolean value;
 
