@@ -48,6 +48,7 @@ public class ServiceErrorResponse {
 
     public static final String KIND = Utils.buildKind(ServiceErrorResponse.class);
     public String message;
+    public String messageId;
     public List<String> stackTrace;
     public int statusCode;
     public EnumSet<ErrorDetail> details;

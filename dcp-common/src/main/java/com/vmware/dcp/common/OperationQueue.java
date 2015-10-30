@@ -13,9 +13,10 @@
 
 package com.vmware.dcp.common;
 
-import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.Collection;
-import java.util.EnumSet;
+import java.util.Deque;
+import java.util.concurrent.ConcurrentLinkedDeque;
 
 /**
  * Queue implementation customized for the needs of a service. Depending on creation options
@@ -24,32 +25,46 @@ import java.util.EnumSet;
  */
 class OperationQueue {
 
-    public enum Option {
-        LIFO, FIFO, EVICT
-    }
-
-    public static OperationQueue create(int limit, EnumSet<Option> options) {
+    public static OperationQueue createFifo(int limit) {
         OperationQueue opDeque = new OperationQueue();
         opDeque.limit = limit;
-        opDeque.options = options;
         return opDeque;
     }
 
+    public static OperationQueue createLifo(int limit) {
+        OperationQueue opDeque = new OperationQueue();
+        opDeque.limit = -limit;
+        return opDeque;
+    }
+
+    /**
+     * Maximum number of elements in the queue. The choice of FIFO or LIFO is encoded in the limit:
+     * A positive limit indicates FIFO, a negative limit indicates LIFO
+     */
     private int limit;
 
-    private EnumSet<Option> options;
+    private int elementCount;
 
-    private ArrayDeque<Operation> store = new ArrayDeque<>(1);
+    /**
+     * Underlying storage for the operation queue. The choice of data structure is subject to
+     * change but any changes will not be visible to the consumers of OperationQueue
+     */
+    private Deque<Operation> store = new ConcurrentLinkedDeque<>();
 
     private OperationQueue() {
     }
 
     public int getLimit() {
-        return this.limit;
+        return Math.abs(this.limit);
     }
 
-    EnumSet<Option> getOptions() {
-        return this.options;
+    public void setLimit(int limit) {
+        if (limit <= 0) {
+            throw new IllegalArgumentException("limit must be greater than zero");
+        }
+        // we do not drain the queue if its beyond the limit, new operation will just
+        // fail to enqueue until the queue depth drops below the limit
+        this.limit = this.limit < 0 ? -limit : limit;
     }
 
     public boolean isEmpty() {
@@ -67,11 +82,27 @@ class OperationQueue {
             throw new IllegalArgumentException("op is required");
         }
 
-        if (this.store.size() >= this.limit) {
-            return false;
-        }
+        // we use non restricted queue so we do not check for offer failures
 
-        return this.store.offer(op);
+        if (this.limit < 0) {
+            // LIFO queue
+            if (this.elementCount >= -this.limit) {
+                return false;
+            }
+
+            this.store.offerFirst(op);
+            this.elementCount++;
+            return true;
+        } else {
+            // FIFO queue
+            if (this.elementCount >= this.limit) {
+                return false;
+            }
+
+            this.store.offerLast(op);
+            this.elementCount++;
+            return true;
+        }
     }
 
     /**
@@ -79,11 +110,23 @@ class OperationQueue {
      * queue if the queue is configured as FIFO, otherwise its removed from the tail
      */
     public Operation poll() {
-        return this.store.poll();
+        Operation op = this.store.poll();
+        if (op == null) {
+            return null;
+        }
+        this.elementCount--;
+        if (this.elementCount < 0) {
+            throw new IllegalStateException("elementCount is negative");
+        }
+        return op;
     }
 
-    public Collection<Operation> toCollection() {
-        return this.store.clone();
+    Collection<Operation> toCollection() {
+        ArrayList<Operation> clone = new ArrayList<>(this.elementCount);
+        for (Operation op : this.store) {
+            clone.add(op);
+        }
+        return clone;
     }
 
     public void clear() {
