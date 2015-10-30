@@ -46,6 +46,7 @@ public class TaskFSMTracker extends FSMTracker<TaskStage, TaskStage> implements 
                 break;
 
             case STARTED:
+                transitions.put(TaskStage.STARTED, TaskStage.STARTED);
                 transitions.put(TaskStage.FINISHED, TaskStage.FINISHED);
                 transitions.put(TaskStage.FAILED, TaskStage.FAILED);
                 transitions.put(TaskStage.CANCELLED, TaskStage.CANCELLED);
