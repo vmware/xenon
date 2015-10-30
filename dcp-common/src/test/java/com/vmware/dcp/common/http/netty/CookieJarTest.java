@@ -21,6 +21,7 @@ import java.util.Map;
 
 import io.netty.handler.codec.http.Cookie;
 import io.netty.handler.codec.http.DefaultCookie;
+
 import org.junit.Before;
 import org.junit.Test;
 
@@ -68,5 +69,27 @@ public class CookieJarTest {
 
         uri = URI.create("https://domain.com/otherpath");
         assertEquals(1, this.cookieJar.list(uri).size());
+    }
+
+    @Test
+    public void testCookieDecode() {
+        String cookieString = "key1=val1; key2=val2";
+        Map<String, String> cookies = CookieJar.decodeCookies(cookieString);
+        assertEquals(cookies.get("key1"), "val1");
+        assertEquals(cookies.get("key2"), "val2");
+        cookieString = "foo=bar";
+        cookies = CookieJar.decodeCookies(cookieString);
+        assertEquals(cookies.get("foo"), "bar");
+        cookieString = "";
+        cookies = CookieJar.decodeCookies(cookieString);
+        assertEquals(cookies.size(), 0);
+        cookieString = ";";
+        cookies = CookieJar.decodeCookies(cookieString);
+        assertEquals(cookies.size(), 0);
+        cookieString = "foo=;foo=bar";
+        cookies = CookieJar.decodeCookies(cookieString);
+        assertEquals(cookies.size(), 1);
+        assertEquals(cookies.get("foo"), "bar");
+
     }
 }
