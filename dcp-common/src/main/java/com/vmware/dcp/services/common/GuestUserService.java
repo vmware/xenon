@@ -13,17 +13,25 @@
 
 package com.vmware.dcp.services.common;
 
+import com.vmware.dcp.common.Operation;
+import com.vmware.dcp.common.ServiceDocument;
 import com.vmware.dcp.common.StatelessService;
 
 /**
- * This service represents the system user.
+ * This service represents the guest user.
  *
  * It only exists to occupy a GET-able URI on every service host, such that it is
- * possible to assert the identity of the system user without having to extend
- * the set of claims with an "isSystemUser" field, or something along those lines.
+ * possible to assert the identity of the guest user without having to extend
+ * the set of claims with an "isGuestUser" field, or something along those lines.
  *
- * @see {@link GuestUserService}
+ * @see {@link SystemUserService}
  */
-public class SystemUserService extends StatelessService {
-    public static final String SELF_LINK = ServiceUriPaths.CORE_AUTHZ_SYSTEM_USER;
+public class GuestUserService extends StatelessService {
+    public static final String SELF_LINK = ServiceUriPaths.CORE_AUTHZ_GUEST_USER;
+
+    public void handleGet(Operation op) {
+        ServiceDocument state = new ServiceDocument();
+        state.documentSelfLink = SELF_LINK;
+        op.setBody(state).complete();
+    }
 }
