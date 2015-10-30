@@ -156,6 +156,12 @@ public interface Service {
          */
         DOCUMENT_OWNER,
 
+        /**
+         * Service will queue operation in last in first out order. If limit on operation queue is exceeded,
+         * oldest operation in the queue will be cancelled to make room for the most recent one
+         */
+        LIFO_QUEUE,
+
         NONE
     }
 
