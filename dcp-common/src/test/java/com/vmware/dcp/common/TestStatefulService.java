@@ -22,6 +22,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import org.junit.Test;
 
@@ -133,6 +134,17 @@ public class TestStatefulService extends BasicReusableHostTestCase {
         if (c < 1) {
             c = this.host.computeIterationsFromMemory((int) sc);
         }
+
+        this.host.testStart(services.size());
+        for (Service s : services) {
+            ServiceConfigUpdateRequest body = ServiceConfigUpdateRequest.create();
+            body.operationQueueLimit = (int) c;
+            URI configUri = UriUtils.buildConfigUri(s.getUri());
+            this.host.send(Operation.createPatch(configUri).setBody(body)
+                    .setCompletion(this.host.getCompletion()));
+        }
+        this.host.testWait();
+
         this.host.doPutPerService(c, props, services);
         this.host.doPutPerService(c, props, services);
         this.host.doPutPerService(c, props, services);
@@ -318,4 +330,75 @@ public class TestStatefulService extends BasicReusableHostTestCase {
         this.host.toggleNegativeTestMode(false);
     }
 
+    @Test
+    public void operationQueueLimit() throws Throwable {
+        Service lifoService = new MinimalTestService();
+        lifoService.toggleOption(ServiceOption.LIFO_QUEUE, true);
+        lifoService = this.host.startServiceAndWait(lifoService, UUID.randomUUID().toString(),
+                null);
+
+        Service fifoService = new MinimalTestService();
+        fifoService = this.host.startServiceAndWait(lifoService, UUID.randomUUID().toString(),
+                null);
+
+        int limit = 2;
+        this.host.log("Verifying LIFO service");
+        this.host.setOperationQueueLimit(lifoService.getUri(), limit);
+        verifyOperationQueueLimit(lifoService.getUri(), limit);
+
+        this.host.log("Verifying FIFO service");
+        this.host.setOperationQueueLimit(fifoService.getUri(), limit);
+        verifyOperationQueueLimit(fifoService.getUri(), limit);
+    }
+
+    private void verifyOperationQueueLimit(URI serviceUri, int limit) throws Throwable {
+        // testing that limit was applied is tricky: the runtime can process over 1M ops/sec on a
+        // modern machine, so we need to make sure we issue enough that some fail before the queue is
+        // serviced below the limit. Either way we must ensure all operations complete, with at least
+        // one of them failing with the proper error
+
+        AtomicInteger cancelledOpCount = new AtomicInteger();
+        int count = limit * 100;
+        Operation patch = Operation.createPatch(serviceUri)
+                .setBody(this.host.buildMinimalTestState())
+                .setCompletion((o, e) -> {
+                    if (e != null) {
+                        if (o.getStatusCode() != Operation.STATUS_CODE_UNAVAILABLE) {
+                            this.host.failIteration(
+                                    new IllegalStateException("unexpected status code"));
+                            return;
+                        }
+                        String retrySeconds = o.getResponseHeader(Operation.RETRY_AFTER_HEADER);
+                        if (retrySeconds == null || Integer.parseInt(retrySeconds) < 1) {
+                            this.host.failIteration(
+                                    new IllegalStateException("missing or unexpected retry-after"));
+                            return;
+                        }
+
+                        cancelledOpCount.incrementAndGet();
+                        this.host.completeIteration();
+                        return;
+                    }
+
+                    this.host.completeIteration();
+                });
+
+        this.host.testStart(count);
+        for (int i = 0; i < count; i++) {
+            this.host.send(patch);
+        }
+        this.host.testWait();
+
+        if (cancelledOpCount.get() < Math.min(2, limit)) {
+            throw new IllegalStateException("not enough operations where cancelled");
+        }
+
+        // make sure no operations are cancelled if we are below the limit
+        this.host.testStart(limit - 1);
+        for (int i = 0; i < limit - 1; i++) {
+            this.host.send(patch.setCompletion(this.host.getCompletion()));
+        }
+        this.host.testWait();
+
+    }
 }

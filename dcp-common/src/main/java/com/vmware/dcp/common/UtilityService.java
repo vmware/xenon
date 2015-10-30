@@ -433,6 +433,7 @@ public class UtilityService implements Service {
         }
 
         if (updateBody.maintenanceIntervalMicros == null
+                && updateBody.operationQueueLimit == null
                 && updateBody.epoch == null
                 && (updateBody.addOptions == null || updateBody.addOptions.isEmpty())
                 && (updateBody.removeOptions == null || updateBody.removeOptions
