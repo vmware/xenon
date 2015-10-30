@@ -308,6 +308,7 @@ public class Operation implements Cloneable {
     public static final String CONTENT_TYPE_HEADER = "Content-Type";
     public static final String CONTENT_RANGE_HEADER = "Content-Range";
     public static final String RANGE_HEADER = "Range";
+    public static final String RETRY_AFTER_HEADER = "Retry-After";
 
     public static final String VMWARE_DCP_HEADER_NAME_PREFIX = "X-VMware-DCP-";
 
@@ -375,6 +376,7 @@ public class Operation implements Cloneable {
     public static final int STATUS_CODE_SERVER_FAILURE_THRESHOLD = HttpURLConnection.HTTP_INTERNAL_ERROR;
     public static final int STATUS_CODE_FAILURE_THRESHOLD = HttpURLConnection.HTTP_BAD_REQUEST;
     public static final int STATUS_CODE_UNAUTHORIZED = HttpURLConnection.HTTP_UNAUTHORIZED;
+    public static final int STATUS_CODE_UNAVAILABLE = HttpURLConnection.HTTP_UNAVAILABLE;
     public static final int STATUS_CODE_FORBIDDEN = HttpURLConnection.HTTP_FORBIDDEN;
     public static final int STATUS_CODE_TIMEOUT = HttpURLConnection.HTTP_CLIENT_TIMEOUT;
     public static final int STATUS_CODE_CONFLICT = HttpURLConnection.HTTP_CONFLICT;
@@ -386,6 +388,7 @@ public class Operation implements Cloneable {
     public static final int STATUS_CODE_ACCEPTED = HttpURLConnection.HTTP_ACCEPTED;
     public static final int STATUS_CODE_BAD_REQUEST = HttpURLConnection.HTTP_BAD_REQUEST;
     public static final int STATUS_CODE_BAD_METHOD = HttpURLConnection.HTTP_BAD_METHOD;
+
     public static final String MEDIA_TYPE_EVERYTHING_WILDCARDS = "*/*";
     public static final String EMPTY_JSON_BODY = "{}";
     public static final String HEADER_FIELD_VALUE_SEPARATOR = ":";

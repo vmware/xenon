@@ -89,8 +89,13 @@ public class StatefulService implements Service {
             throw new IllegalArgumentException("stateType is required");
         }
         this.context.stateType = stateType;
-        this.context.operationQueue = OperationQueue.create(Service.OPERATION_QUEUE_DEFAULT_LIMIT,
-                null);
+        if (this.context.options.contains(ServiceOption.LIFO_QUEUE)) {
+            this.context.operationQueue = OperationQueue
+                    .createLifo(Service.OPERATION_QUEUE_DEFAULT_LIMIT);
+        } else {
+            this.context.operationQueue = OperationQueue
+                    .createFifo(Service.OPERATION_QUEUE_DEFAULT_LIMIT);
+        }
     }
 
     @Override
@@ -1352,6 +1357,10 @@ public class StatefulService implements Service {
         this.context.opProcessingChain = opProcessingChain;
     }
 
+    protected void setOperationQueueLimit(int limit) {
+        this.context.operationQueue.setLimit(limit);
+    }
+
     @Override
     public void setProcessingStage(Service.ProcessingStage stage) {
         IllegalStateException failure = null;
@@ -1614,6 +1623,9 @@ public class StatefulService implements Service {
                     logFine("Epoch updated to %d", this.context.epoch);
                 }
             }
+            if (body.operationQueueLimit != null) {
+                setOperationQueueLimit(body.operationQueueLimit);
+            }
             this.context.utilityService.handlePatchConfiguration(request, body);
             return;
         }
@@ -1623,6 +1635,7 @@ public class StatefulService implements Service {
             cfg.options = getOptions();
             cfg.maintenanceIntervalMicros = getMaintenanceIntervalMicros();
             cfg.epoch = this.context.epoch;
+            cfg.operationQueueLimit = this.context.operationQueue.getLimit();
             request.setBody(cfg).complete();
             return;
         }
