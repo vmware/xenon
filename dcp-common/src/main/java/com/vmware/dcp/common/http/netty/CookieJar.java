@@ -108,27 +108,15 @@ public class CookieJar {
 
     public static Map<String, String> decodeCookies(String header) {
         Map<String, String> cookies = new HashMap<>();
-        for (int pos = 0; pos < header.length();) {
-            // Find character separating key and value
-            int eq = header.indexOf("=", pos);
-            if (eq == -1) {
-                break;
+        String [] cookiePairs = header.split(";");
+        if (cookiePairs.length != 0) {
+            for (String cookiePair : cookiePairs) {
+                String[] keyVal = cookiePair.split("=");
+                if (keyVal.length == 2) {
+                    cookies.put(keyVal[0].trim(), keyVal[1].trim());
+                }
             }
-
-            // Find end of cookie
-            int eoc = header.indexOf("; ", eq);
-            if (eoc == -1) {
-                eoc = header.length();
-            }
-
-            String key = header.substring(pos, eq);
-            String value = header.substring(eq + 1, eoc);
-            cookies.put(key, value);
-
-            // Advance to next cookie
-            pos = eoc;
         }
-
         return cookies;
     }
 
