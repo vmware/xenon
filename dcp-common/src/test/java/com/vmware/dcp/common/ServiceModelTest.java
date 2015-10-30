@@ -539,6 +539,44 @@ public class ServiceModelTest {
     }
 
     @Test
+    public void lifoInMemoryServicePut() throws Throwable {
+        List<Service> services = this.host.doThroughputServiceStart(
+                1, MinimalTestService.class, this.host.buildMinimalTestState(),
+                EnumSet.of(ServiceOption.LIFO_QUEUE), null);
+
+        // send a set limit configuration request
+        ServiceConfigUpdateRequest body = ServiceConfigUpdateRequest.create();
+        body.operationQueueLimit = 10;
+
+        URI configUri = UriUtils.buildConfigUri(services.get(0).getUri());
+        this.host.testStart(1);
+        this.host.send(Operation.createPatch(configUri).setBody(body)
+                .setCompletion(this.host.getCompletion()));
+        this.host.testWait();
+
+        // verify new operation limit is set
+        this.host.testStart(1);
+        this.host.send(Operation.createGet(configUri).setCompletion((o, e) -> {
+            if (e != null) {
+                this.host.failIteration(e);
+                return;
+            }
+            ServiceConfiguration cfg = o.getBody(ServiceConfiguration.class);
+            if (cfg.operationQueueLimit != body.operationQueueLimit) {
+                this.host.failIteration(new IllegalStateException("Invalid queue limit"));
+                return;
+            }
+
+            this.host.completeIteration();
+        }));
+        this.host.testWait();
+
+        // issue N * 10 operations in parallel, where N is the new queue limit. Expect the most recent N
+        // to be reflected in the service state. If not, LIFO is not working, queue limit is not working either
+
+    }
+
+    @Test
     public void throughputInMemoryServicePut() throws Throwable {
         EnumSet<TestProperty> props = EnumSet.noneOf(TestProperty.class);
         Class<? extends StatefulService> type = MinimalTestService.class;
