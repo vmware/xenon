@@ -25,7 +25,7 @@ import org.junit.Test;
 import com.vmware.dcp.common.test.MinimalTestServiceState;
 import com.vmware.dcp.services.common.MinimalTestService;
 
-public class TestOperationSequence extends BasicReportTestCase {
+public class TestOperationSequence extends BasicReusableHostTestCase {
     private List<Service> services;
 
     @Before
