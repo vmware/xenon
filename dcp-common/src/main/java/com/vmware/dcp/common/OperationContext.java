@@ -36,7 +36,7 @@ public class OperationContext {
      */
     private static final ThreadLocal<String> threadContextId = new ThreadLocal<>();
 
-    public static void setContextId(String contextId) {
+    static void setContextId(String contextId) {
         threadContextId.set(contextId);
     }
 
@@ -50,7 +50,7 @@ public class OperationContext {
         threadAuthContext.set(ctx);
     }
 
-    static AuthorizationContext getAuthorizationContext() {
+    public static AuthorizationContext getAuthorizationContext() {
         return threadAuthContext.get();
     }
 
