@@ -20,23 +20,17 @@ import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
 import org.junit.Test;
 
 import com.vmware.dcp.common.Service.ServiceOption;
 import com.vmware.dcp.common.ServiceStats.ServiceStat;
-import com.vmware.dcp.common.test.VerificationHost;
 import com.vmware.dcp.services.common.ExampleFactoryService;
 import com.vmware.dcp.services.common.ExampleService.ExampleServiceState;
 import com.vmware.dcp.services.common.MinimalTestService;
 
-public class TestUtilityService extends BasicReportTestCase {
-    public void beforeHostStart(VerificationHost host) {
-        host.setMaintenanceIntervalMicros(TimeUnit.MILLISECONDS
-                .toMicros(VerificationHost.FAST_MAINT_INTERVAL_MILLIS));
-    }
+public class TestUtilityService extends BasicReusableHostTestCase {
 
     private List<Service> createServices(int count) throws Throwable {
         List<Service> services = this.host.doThroughputServiceStart(
