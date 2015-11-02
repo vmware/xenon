@@ -27,6 +27,7 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URL;
 import java.nio.file.Files;
+import java.security.GeneralSecurityException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -48,6 +49,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import java.util.logging.Level;
 
+import com.vmware.dcp.common.Claims;
 import com.vmware.dcp.common.CommandLineArgumentParser;
 import com.vmware.dcp.common.Operation;
 import com.vmware.dcp.common.Operation.AuthorizationContext;
@@ -2457,4 +2459,25 @@ public class VerificationHost extends ExampleServiceHost {
         super.setAuthorizationContext(null);
     }
 
+    /**
+     * Inject user identity into operation context.
+     *
+     * @param userServicePath user document link
+     * @param properties custom properties in claims
+     * @throws GeneralSecurityException any generic security exception
+     */
+    public void assumeIdentity(String userServicePath, Map<String, String> properties) throws GeneralSecurityException {
+        Claims.Builder builder = new Claims.Builder();
+        builder.setSubject(userServicePath);
+        builder.setProperties(properties);
+        Claims claims = builder.getResult();
+        String token = getTokenSigner().sign(claims);
+
+        AuthorizationContext.Builder ab = AuthorizationContext.Builder.create();
+        ab.setClaims(claims);
+        ab.setToken(token);
+
+        // Associate resulting authorization context with this thread
+        setAuthorizationContext(ab.getResult());
+    }
 }
