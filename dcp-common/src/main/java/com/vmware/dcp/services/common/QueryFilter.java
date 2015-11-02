@@ -32,6 +32,7 @@ import com.vmware.dcp.common.ServiceDocumentDescription.PropertyDescription;
 import com.vmware.dcp.common.ServiceDocumentDescription.TypeName;
 import com.vmware.dcp.services.common.QueryTask.Query;
 import com.vmware.dcp.services.common.QueryTask.Query.Occurance;
+import com.vmware.dcp.services.common.QueryTask.QuerySpecification;
 import com.vmware.dcp.services.common.QueryTask.QueryTerm;
 import com.vmware.dcp.services.common.QueryTask.QueryTerm.MatchType;
 
@@ -573,12 +574,13 @@ public class QueryFilter {
                 return false;
             }
 
-            Object o = ReflectionUtils.getPropertyValue(pd, document);
-            if (o == null || !(o instanceof String)) {
+            Object propValue = ReflectionUtils.getPropertyValue(pd, document);
+            String matchAs = QuerySpecification.toMatchValue(propValue);
+            if (matchAs == null) {
                 return false;
             }
 
-            Evaluator e = this.table.get(o);
+            Evaluator e = this.table.get(matchAs);
             if (e == null) {
                 return false;
             }

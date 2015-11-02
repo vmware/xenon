@@ -17,6 +17,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
+import java.net.URI;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedList;
@@ -51,11 +52,20 @@ public class TestQueryFilter {
         public String c7;
         public String c8;
 
+        public Color e1;
+        public URI u1;
+        public Boolean b1;
+
         public List<String> l1;
         public List<String> l2;
 
         public Map<String, String> m1;
         public Map<String, String> m2;
+    }
+
+    public enum Color {
+        RED,
+        BLUE
     }
 
     final ServiceDocumentDescription description =
@@ -433,6 +443,60 @@ public class TestQueryFilter {
         assertTrue(filter.evaluate(document, this.description));
 
         document.m2.put("k2", "v3");
+        assertFalse(filter.evaluate(document, this.description));
+    }
+
+    @Test
+    public void evaluateWithEnum() throws QueryFilterException {
+        QueryFilter filter = QueryFilter.create(Query.Builder.create()
+                .addFieldClause("e1", Color.RED)
+                .build());
+        QueryFilterDocument document;
+
+        document = new QueryFilterDocument();
+        document.e1 = Color.RED;
+        assertTrue(filter.evaluate(document, this.description));
+
+        document.e1 = Color.BLUE;
+        assertFalse(filter.evaluate(document, this.description));
+
+        document.e1 = null;
+        assertFalse(filter.evaluate(document, this.description));
+    }
+
+    @Test
+    public void evaluateWithURI() throws QueryFilterException {
+        QueryFilter filter = QueryFilter.create(Query.Builder.create()
+                .addFieldClause("u1", URI.create("http://www.net.com"))
+                .build());
+        QueryFilterDocument document;
+
+        document = new QueryFilterDocument();
+        document.u1 = URI.create("http://www.net.com");
+        assertTrue(filter.evaluate(document, this.description));
+
+        document.u1 = URI.create("http://www.com.net");
+        assertFalse(filter.evaluate(document, this.description));
+
+        document.u1 = null;
+        assertFalse(filter.evaluate(document, this.description));
+    }
+
+    @Test
+    public void evaluateWithBoolean() throws QueryFilterException {
+        QueryFilter filter = QueryFilter.create(Query.Builder.create()
+                .addFieldClause("b1", true)
+                .build());
+        QueryFilterDocument document;
+
+        document = new QueryFilterDocument();
+        document.b1 = true;
+        assertTrue(filter.evaluate(document, this.description));
+
+        document.b1 = false;
+        assertFalse(filter.evaluate(document, this.description));
+
+        document.b1 = null;
         assertFalse(filter.evaluate(document, this.description));
     }
 

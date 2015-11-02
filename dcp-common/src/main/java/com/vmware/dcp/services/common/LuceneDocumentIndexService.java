@@ -1329,13 +1329,15 @@ public class LuceneDocumentIndexService extends StatelessService {
                         v.toString()));
             }
         } else if (v instanceof URI) {
-            luceneField = new StringField(fieldName, v.toString(), fsv);
+            String uriValue = QuerySpecification.toMatchValue((URI) v);
+            luceneField = new StringField(fieldName, uriValue, fsv);
             if (isSorted) {
                 luceneDocValuesField = new SortedDocValuesField(fieldName, new BytesRef(
                         v.toString()));
             }
         } else if (pd.typeName.equals(TypeName.ENUM)) {
-            luceneField = new StringField(fieldName, v.toString(), fsv);
+            String enumValue = QuerySpecification.toMatchValue((Enum<?>) v);
+            luceneField = new StringField(fieldName, enumValue, fsv);
             if (isSorted) {
                 luceneDocValuesField = new SortedDocValuesField(fieldName, new BytesRef(
                         v.toString()));
@@ -1356,7 +1358,7 @@ public class LuceneDocumentIndexService extends StatelessService {
             luceneField = new DoubleField(fieldName, (double) v,
                     fsv == Store.NO ? this.doubleUnStoredField : this.doubleStoredField);
         } else if (pd.typeName.equals(TypeName.BOOLEAN)) {
-            String booleanValue = ((boolean) v) ? "true" : "false";
+            String booleanValue = QuerySpecification.toMatchValue((boolean) v);
             luceneField = new StringField(fieldName, booleanValue, fsv);
             if (isSorted) {
                 luceneDocValuesField = new SortedDocValuesField(fieldName, new BytesRef(

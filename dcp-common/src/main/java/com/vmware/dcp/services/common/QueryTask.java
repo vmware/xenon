@@ -13,6 +13,7 @@
 
 package com.vmware.dcp.services.common;
 
+import java.net.URI;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.EnumSet;
@@ -146,6 +147,41 @@ public class QueryTask extends ServiceDocument {
 
         public static String buildCollectionItemName(String fieldName) {
             return fieldName + FIELD_NAME_CHARACTER + COLLECTION_FIELD_SUFFIX;
+        }
+
+        /**
+         * Convert the given value to a normalized string representation that is used for
+         * both generating indexed values and query criteria used to match against those
+         * indexes.
+         *
+         * @return A string value that can be used to both index and query, or NULL if the given
+         */
+        public static String toMatchValue(Object value) {
+            if (value == null) {
+                return null;
+            } else if (value instanceof String) {
+                return (String) value;
+            } else if (value instanceof Boolean) {
+                return toMatchValue((boolean) value);
+            } else if (value instanceof URI) {
+                return toMatchValue((URI) value);
+            } else if (value instanceof Enum) {
+                return toMatchValue((Enum<?>) value);
+            } else {
+                return value.toString();
+            }
+        }
+
+        public static String toMatchValue(boolean value) {
+            return value ? "true" : "false";
+        }
+
+        public static String toMatchValue(URI value) {
+            return value == null ? null : value.toString();
+        }
+
+        public static String toMatchValue(Enum<?> value) {
+            return value == null ? null : value.name();
         }
 
         /**
@@ -400,6 +436,18 @@ public class QueryTask extends ServiceDocument {
              */
             public Builder addFieldClause(String fieldName, String fieldValue) {
                 return addFieldClause(fieldName, fieldValue, MatchType.TERM);
+            }
+
+            /**
+             * Add a clause which matches a top level field name.
+             * @param fieldName the top level field name.
+             * @param fieldValue the field value to match.
+             * @return a reference to this object.
+             */
+            public Builder addFieldClause(String fieldName, Object fieldValue) {
+                return addFieldClause(fieldName,
+                        QuerySpecification.toMatchValue(fieldValue),
+                        MatchType.TERM);
             }
 
             /**
