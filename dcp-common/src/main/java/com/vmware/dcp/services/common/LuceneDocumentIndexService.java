@@ -784,13 +784,14 @@ public class LuceneDocumentIndexService extends StatelessService {
     private Query updateQuery(Operation op, Query tq) {
         Query rq = null;
         AuthorizationContext ctx = op.getAuthorizationContext();
+
+        // Allow operation if isAuthorizationEnabled is set to false
+        if (!this.getHost().isAuthorizationEnabled()) {
+            return tq;
+        }
+
         if (ctx == null) {
-            // No authorization context; allow operation if isAuthorizationEnabled is set to false
-            // We allow this as the default while we're transitioning from not authorizing requests
-            // at all to authorizing all requests.
-            if (!this.getHost().isAuthorizationEnabled()) {
-                return tq;
-            }
+            // Don't allow operation if no authorization context and auth is enabled
             return null;
         }
 

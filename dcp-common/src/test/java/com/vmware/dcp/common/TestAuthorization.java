@@ -71,7 +71,7 @@ public class TestAuthorization extends BasicTestCase {
 
     @Test
     public void testAuthPrincipalQuery() throws Throwable {
-        assumeIdentity(this.userServicePath);
+        host.assumeIdentity(this.userServicePath, null);
         createExampleServices("jane");
         host.createAndWaitSimpleDirectQuery(ServiceDocument.FIELD_NAME_AUTH_PRINCIPAL_LINK,
                 this.userServicePath, 2, 2);
@@ -79,7 +79,7 @@ public class TestAuthorization extends BasicTestCase {
 
     @Test
     public void testScheduleAndRunContext() throws Throwable {
-        assumeIdentity(this.userServicePath);
+        host.assumeIdentity(this.userServicePath, null);
 
         AuthorizationContext callerAuthContext = OperationContext.getAuthorizationContext();
         Runnable task = () -> {
@@ -206,7 +206,7 @@ public class TestAuthorization extends BasicTestCase {
         this.host.testWait();
 
         // Assume Jane's identity
-        assumeIdentity(this.userServicePath);
+        host.assumeIdentity(this.userServicePath, null);
         // add docs accessible by jane
         exampleServices.putAll(createExampleServices("jane"));
 
@@ -426,20 +426,6 @@ public class TestAuthorization extends BasicTestCase {
         this.host.testWait();
 
         return userUriPath[0];
-    }
-
-    private void assumeIdentity(String userServicePath) throws GeneralSecurityException {
-        Claims.Builder builder = new Claims.Builder();
-        builder.setSubject(userServicePath);
-        Claims claims = builder.getResult();
-        String token = this.host.getTokenSigner().sign(claims);
-
-        AuthorizationContext.Builder ab = AuthorizationContext.Builder.create();
-        ab.setClaims(claims);
-        ab.setToken(token);
-
-        // Associate resulting authorization context with this thread
-        OperationContext.setAuthorizationContext(ab.getResult());
     }
 
     private String generateAuthToken(String userServicePath) throws GeneralSecurityException {
