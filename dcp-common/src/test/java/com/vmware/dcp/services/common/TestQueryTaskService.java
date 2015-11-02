@@ -15,6 +15,7 @@ package com.vmware.dcp.services.common;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 import java.net.URI;
@@ -1843,6 +1844,35 @@ public class TestQueryTaskService {
         }
         assertTrue(task.results.documentLinks.size() == task.results.documents
                 .size());
+    }
+
+    @Test
+    public void toMatchValue() throws Throwable {
+        final String str = "aaa";
+        final Enum<?> enumV = TaskStage.CANCELLED;
+        final String uriStr = "http://about.drekware.com";
+        final URI uriV = URI.create(uriStr);
+
+        // Object-based calls
+        assertNull(QuerySpecification.toMatchValue((Object) null));
+        assertEquals(str, QuerySpecification.toMatchValue(str));
+        assertEquals("CANCELLED", QuerySpecification.toMatchValue((Object) enumV));
+        assertEquals(uriStr, QuerySpecification.toMatchValue((Object) uriV));
+        assertEquals("2345", QuerySpecification.toMatchValue(2345L));
+        assertEquals("true", QuerySpecification.toMatchValue((Object) true));
+        assertEquals("false", QuerySpecification.toMatchValue((Object) false));
+
+        // Boolean-specific calls
+        assertEquals("true", QuerySpecification.toMatchValue(true));
+        assertEquals("false", QuerySpecification.toMatchValue(false));
+
+        // Enum-specific calls
+        assertNull(QuerySpecification.toMatchValue((Enum<?>) null));
+        assertEquals("CANCELLED", QuerySpecification.toMatchValue(enumV));
+
+        // URI-specific calls
+        assertNull(QuerySpecification.toMatchValue((URI) null));
+        assertEquals(uriStr, QuerySpecification.toMatchValue(uriV));
     }
 
     private void verifyTaskAutoExpiration(URI u) throws Throwable {
