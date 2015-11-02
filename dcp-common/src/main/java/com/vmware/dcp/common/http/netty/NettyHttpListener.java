@@ -47,11 +47,18 @@ public class NettyHttpListener implements ServiceRequestListener {
     private NioEventLoopGroup childGroup;
     private SslContext sslContext;
     private ChannelHandler childChannelHandler;
+    private boolean allowUpgrade = false;
 
     public NettyHttpListener(ServiceHost host) {
         this.host = host;
     }
 
+    public NettyHttpListener(ServiceHost host, boolean allowUpgrade) {
+        this.host = host;
+        this.allowUpgrade = allowUpgrade;
+    }
+
+    @Override
     public long getActiveClientCount() {
         // TODO Add tracking of client connections by exposing a counter the
         // NettyHttpRequestHandler instance can increment/decrement
@@ -77,7 +84,7 @@ public class NettyHttpListener implements ServiceRequestListener {
         this.childGroup = new NioEventLoopGroup(EVENT_LOOP_THREAD_COUNT, f);
 
         if (this.childChannelHandler == null) {
-            this.childChannelHandler = new NettyHttpServerInitializer(this.host, this.sslContext);
+            this.childChannelHandler = new NettyHttpServerInitializer(this.host, this.sslContext, this.allowUpgrade);
         }
 
         ServerBootstrap b = new ServerBootstrap();

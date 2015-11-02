@@ -13,12 +13,23 @@
 
 package com.vmware.dcp.common.http.netty;
 
+import java.util.Collections;
+
+import io.netty.channel.ChannelHandlerAdapter;
+import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInitializer;
 import io.netty.channel.ChannelPipeline;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.handler.codec.http.HttpObjectAggregator;
 import io.netty.handler.codec.http.HttpRequestDecoder;
 import io.netty.handler.codec.http.HttpResponseEncoder;
+import io.netty.handler.codec.http.HttpServerCodec;
+import io.netty.handler.codec.http.HttpServerUpgradeHandler;
+import io.netty.handler.codec.http2.DefaultHttp2Connection;
+import io.netty.handler.codec.http2.Http2ConnectionHandler;
+import io.netty.handler.codec.http2.Http2ServerUpgradeCodec;
+import io.netty.handler.codec.http2.HttpToHttp2ConnectionHandler;
+import io.netty.handler.codec.http2.InboundHttp2ToHttpAdapter;
 import io.netty.handler.ssl.SslContext;
 import io.netty.handler.ssl.SslHandler;
 
@@ -36,14 +47,29 @@ public class NettyHttpServerInitializer extends ChannelInitializer<SocketChannel
 
     private final SslContext sslContext;
     private ServiceHost host;
+    private boolean allowUpgrade;
+    private HttpToHttp2ConnectionHandler connectionHandler;
 
-    public NettyHttpServerInitializer(ServiceHost host, SslContext sslContext) {
+    public NettyHttpServerInitializer(ServiceHost host, SslContext sslContext, boolean allowUpgrade) {
         this.sslContext = sslContext;
         this.host = host;
+        this.allowUpgrade = allowUpgrade;
     }
 
     @Override
     public void initChannel(SocketChannel ch) {
+        if (!this.allowUpgrade) {
+            initForNoUpgrade(ch);
+        } else {
+            if (this.sslContext == null) {
+                initForUpgradeByClearText(ch);
+            } else {
+                initForUpgradeBySsl(ch);
+            }
+        }
+    }
+
+    private void initForNoUpgrade(SocketChannel ch) {
         ChannelPipeline p = ch.pipeline();
         ch.config().setAllocator(NettyChannelContext.ALLOCATOR);
         ch.config().setSendBufferSize(NettyChannelContext.BUFFER_SIZE);
@@ -74,5 +100,77 @@ public class NettyHttpServerInitializer extends ChannelInitializer<SocketChannel
                 ServiceUriPaths.CORE_WEB_SOCKET_ENDPOINT,
                 ServiceUriPaths.WEB_SOCKET_SERVICE_PREFIX));
         p.addLast(DCP_HANDLER, new NettyHttpClientRequestHandler(this.host));
+    }
+
+    private void initForUpgradeBySsl(SocketChannel ch) {
+        if (this.sslContext != null) {
+            SslHandler handler = this.sslContext.newHandler(ch.alloc());
+            SslClientAuthMode mode = this.host.getState().sslClientAuthMode;
+            if (mode != null) {
+                switch (mode) {
+                case NEED:
+                    handler.engine().setNeedClientAuth(true);
+                    break;
+                case WANT:
+                    handler.engine().setWantClientAuth(true);
+                    break;
+                default:
+                    break;
+                }
+            }
+            ch.pipeline().addLast(handler,
+                    new NettyHttp2OrHttpClientRequestHandler(this.host));
+        }
+    }
+
+    private void initForUpgradeByClearText(SocketChannel ch) {
+        ChannelPipeline p = ch.pipeline();
+        ch.config().setAllocator(NettyChannelContext.ALLOCATOR);
+        ch.config().setSendBufferSize(NettyChannelContext.BUFFER_SIZE);
+        ch.config().setReceiveBufferSize(NettyChannelContext.BUFFER_SIZE);
+
+        DefaultHttp2Connection connection = new DefaultHttp2Connection(true);
+        InboundHttp2ToHttpAdapter listener = new InboundHttp2ToHttpAdapter.Builder(connection)
+                .propagateSettings(true)
+                .validateHttpHeaders(false)
+                .maxContentLength(NettyChannelContext.MAX_REQUEST_SIZE)
+                .build();
+
+        this.connectionHandler = new HttpToHttp2ConnectionHandler(connection, listener);
+
+        HttpServerCodec sourceCodec = new HttpServerCodec();
+        HttpServerUpgradeHandler.UpgradeCodec upgradeCodec =
+                new Http2ServerUpgradeCodec(new Http2ConnectionHandler(connection, listener));
+
+        HttpServerUpgradeHandler upgradeHandler =
+                new HttpServerUpgradeHandler(sourceCodec,
+                        Collections.singletonList(upgradeCodec),
+                        NettyChannelContext.MAX_REQUEST_SIZE);
+
+        p.addLast("sourcecodec", sourceCodec);
+        p.addLast("upgrader", upgradeHandler);
+        p.addLast("logger", new UserEventLogger());
+    }
+
+    private void configureHttp2ClearTextPipeline(ChannelHandlerContext ctx) {
+        //Configures the pipeline AFTER an upgrade was successful
+        ChannelPipeline p = ctx.pipeline();
+
+        p.addAfter("upgrader", "connection", this.connectionHandler);
+        p.addAfter("connection", "handler", new NettyHttpClientRequestHandler(this.host));
+    }
+
+    private class UserEventLogger extends ChannelHandlerAdapter {
+        @Override
+        public void userEventTriggered(ChannelHandlerContext ctx, Object evt) {
+            System.out.println("User Event Triggered: " + evt);
+
+            if (evt instanceof  HttpServerUpgradeHandler.UpgradeEvent) {
+                // Write an HTTP/2 response to the upgrade request
+                configureHttp2ClearTextPipeline(ctx);
+            }
+
+            ctx.fireUserEventTriggered(evt);
+        }
     }
 }

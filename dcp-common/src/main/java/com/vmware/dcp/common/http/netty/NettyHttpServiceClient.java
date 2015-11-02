@@ -103,7 +103,7 @@ public class NettyHttpServiceClient implements ServiceClient {
         sc.executor = executor;
         sc.scheduledExecutor = scheduledExecutor;
         sc.host = host;
-        sc.channelPool = new NettyChannelPool(executor);
+        sc.channelPool = new NettyChannelPool(executor, true);
         String proxy = System.getenv(ENV_VAR_NAME_HTTP_PROXY);
         if (proxy != null) {
             sc.setHttpProxy(new URI(proxy));

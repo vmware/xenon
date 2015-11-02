@@ -22,9 +22,13 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
+import javax.net.ssl.KeyManagerFactory;
 import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLException;
+import javax.net.ssl.TrustManagerFactory;
 
 import io.netty.bootstrap.Bootstrap;
 import io.netty.channel.Channel;
@@ -33,6 +37,15 @@ import io.netty.channel.ChannelFutureListener;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioSocketChannel;
+import io.netty.handler.codec.http2.Http2OrHttpChooser.SelectedProtocol;
+import io.netty.handler.codec.http2.Http2SecurityUtil;
+import io.netty.handler.ssl.ApplicationProtocolConfig;
+import io.netty.handler.ssl.ApplicationProtocolConfig.Protocol;
+import io.netty.handler.ssl.ApplicationProtocolConfig.SelectedListenerFailureBehavior;
+import io.netty.handler.ssl.ApplicationProtocolConfig.SelectorFailureBehavior;
+import io.netty.handler.ssl.SslContext;
+import io.netty.handler.ssl.SslProvider;
+import io.netty.handler.ssl.SupportedCipherSuiteFilter;
 
 import com.vmware.dcp.common.Operation;
 import com.vmware.dcp.common.ServiceHost.ServiceHostState;
@@ -49,6 +62,8 @@ public class NettyChannelPool {
         public Set<NettyChannelContext> inUseChannels = new HashSet<>();
         public List<Operation> pendingRequests = new ArrayList<>();
     }
+
+    private Map<String, NettyChannelContext> http2Channels = new ConcurrentSkipListMap<>();
 
     private static final long CHANNEL_EXPIRATION_MICROS =
             ServiceHostState.DEFAULT_OPERATION_TIMEOUT_MICROS * 2;
@@ -68,10 +83,21 @@ public class NettyChannelPool {
     private int connectionLimit = 1;
 
     private SSLContext sslContext;
+    private io.netty.handler.ssl.SslContext clientContext;
+    private NettyHttpClientRequestInitializer nettyInitializer;
 
+    // Try to upgrade to HTTP/2
+    private boolean tryUpgrade = false;
 
     public NettyChannelPool(ExecutorService executor) {
         this.executor = executor;
+        this.nettyInitializer = new NettyHttpClientRequestInitializer(this, this.tryUpgrade);
+    }
+
+    public NettyChannelPool(ExecutorService executor, boolean tryUpgrade) {
+        this.executor = executor;
+        this.tryUpgrade = tryUpgrade;
+        this.nettyInitializer = new NettyHttpClientRequestInitializer(this, this.tryUpgrade);
     }
 
     public NettyChannelPool setThreadTag(String tag) {
@@ -95,8 +121,8 @@ public class NettyChannelPool {
         });
         this.bootStrap = new Bootstrap();
         this.bootStrap.group(this.eventGroup)
-                .channel(NioSocketChannel.class)
-                .handler(new NettyHttpClientRequestInitializer(this));
+            .channel(NioSocketChannel.class)
+            .handler(this.nettyInitializer);
     }
 
     public boolean isStarted() {
@@ -146,6 +172,65 @@ public class NettyChannelPool {
             port = UriUtils.HTTP_DEFAULT_PORT;
         }
 
+        if (this.tryUpgrade) {
+            connectHttp2ChannelContext(host, port, doNotReUse, request);
+        } else {
+            connectHttp1ChannelContext(host, port, doNotReUse, request);
+        }
+    }
+
+    private void connectHttp2ChannelContext(String host, int port, boolean doNotReUse,
+            Operation request) {
+        String key = toConnectionKey(host, port);
+
+        NettyChannelContext context = this.http2Channels.get(key);
+
+        if (context == null) {
+            context = new NettyChannelContext(host, port, key);
+
+            this.http2Channels.put(key, context);
+        }
+
+        // If channel doesn't exist, create one.  The channel initializer will setup the HTTP/2
+        // negotiation.
+        if (context.getChannel() == null) {
+            ChannelFuture connectFuture = this.bootStrap.connect(host, port);
+            Channel ch = connectFuture.syncUninterruptibly().channel();
+            NettyHttp2ClientSettingsHandler http2SettingsHandler =
+                    this.nettyInitializer.settingsHandler();
+            try {
+                //Cannot do this inside listener
+                http2SettingsHandler.awaitSettings(5, TimeUnit.SECONDS);
+            } catch (Exception e) {
+                System.err.printf("Await - %s\n", e.toString());
+            }
+            context.setChannel(ch).setOperation(request).setChannelIsHttp2(true);
+            request.complete();
+
+            //            final NettyChannelContext finalContext = context;
+
+            //            connectFuture.addListener(new ChannelFutureListener() {
+            //                @Override
+            //                public void operationComplete(ChannelFuture future) throws Exception {
+            //                    if (future.isSuccess()) {
+            //                        Channel ch = future.channel();
+            ////                        Channel ch = future.syncUninterruptibly().channel();
+            //                        NettyHttp2ClientSettingsHandler http2SettingsHandler =
+            //                                NettyChannelPool.this.nettyInitializer.settingsHandler();
+            //                        http2SettingsHandler.awaitSettings(5, TimeUnit.SECONDS);
+            //                        finalContext.setChannel(ch).setOperation(request).setChannelIsHttp2(true);
+            //                        request.complete();
+            //                    } else {
+            //                        //Failed to negotiate HTTP/2.  Fallback to HTTP 1.1
+            //                        connectHttp1ChannelContext(host, port, doNotReUse, request);
+            //                    }
+            //                }
+            //            });
+        }
+    }
+
+    private void connectHttp1ChannelContext(String host, int port, boolean doNotReUse,
+            Operation request) {
         try {
             String key = toConnectionKey(host, port);
             NettyChannelGroup group = getChannelGroup(key);
@@ -237,29 +322,32 @@ public class NettyChannelPool {
         Operation pendingOp = null;
         Channel ch = context.getChannel();
         isClose = isClose || !ch.isWritable() || !ch.isOpen();
-        NettyChannelGroup group = this.channelGroups.get(context.getKey());
-        if (group == null) {
-            context.close();
-            return;
-        }
-        synchronized (group) {
-            if (!group.pendingRequests.isEmpty()) {
-                pendingOp = group.pendingRequests
-                        .remove(group.pendingRequests.size() - 1);
+
+        if (!context.isHttp2Channel()) {
+            NettyChannelGroup group = this.channelGroups.get(context.getKey());
+            if (group == null) {
+                context.close();
+                return;
+            }
+            synchronized (group) {
+                if (!group.pendingRequests.isEmpty()) {
+                    pendingOp = group.pendingRequests
+                            .remove(group.pendingRequests.size() - 1);
+                }
+
+                if (isClose) {
+                    group.inUseChannels.remove(context);
+                } else {
+                    if (pendingOp == null) {
+                        group.availableChannels.add(context);
+                        group.inUseChannels.remove(context);
+                    }
+                }
             }
 
             if (isClose) {
-                group.inUseChannels.remove(context);
-            } else {
-                if (pendingOp == null) {
-                    group.availableChannels.add(context);
-                    group.inUseChannels.remove(context);
-                }
+                context.close();
             }
-        }
-
-        if (isClose) {
-            context.close();
         }
 
         if (pendingOp == null) {
@@ -347,10 +435,53 @@ public class NettyChannelPool {
         if (isStarted()) {
             throw new IllegalStateException("Already started");
         }
+
+        //        if (!this.tryUpgrade) {
         this.sslContext = context;
+        //        this.tryUpgrade = false;
+        //        } else {
+        //            try {
+        //                TrustManagerFactory trustManagerFactory = TrustManagerFactory
+        //                        .getInstance(TrustManagerFactory.getDefaultAlgorithm());
+        //                trustManagerFactory.init((KeyStore) null);
+        //                this.setSSLContext(null, trustManagerFactory);
+        //            } catch (Exception e) {
+        //
+        //            }
+        //        }
+    }
+
+    public void setSSLContext(KeyManagerFactory keyManagerFactory, TrustManagerFactory trustManagerFactory) throws SSLException {
+        if (this.tryUpgrade) {
+            this.clientContext = SslContext.newClientContext(SslProvider.JDK,
+                    null, trustManagerFactory,
+                    null, null, null, keyManagerFactory,
+                    Http2SecurityUtil.CIPHERS,
+                    SupportedCipherSuiteFilter.INSTANCE,
+                    new ApplicationProtocolConfig(
+                            Protocol.ALPN,
+                            SelectorFailureBehavior.FATAL_ALERT,
+                            SelectedListenerFailureBehavior.FATAL_ALERT,
+                            SelectedProtocol.HTTP_2.protocolName(),
+                            SelectedProtocol.HTTP_1_1.protocolName()),
+                    0, 0);
+        }
     }
 
     public SSLContext getSSLContext() {
+        //        if (!this.tryUpgrade) {
         return this.sslContext;
+        //        } else {
+        //            JdkSslClientContext jdkSslClientContext = (JdkSslClientContext) this.clientContext;
+        //            return jdkSslClientContext.context();
+        //        }
+    }
+
+    public io.netty.handler.ssl.SslContext getNettySslContext() {
+        if (this.tryUpgrade) {
+            return this.clientContext;
+        } else {
+            return null;
+        }
     }
 }

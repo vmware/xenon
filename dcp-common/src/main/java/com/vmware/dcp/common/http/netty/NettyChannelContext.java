@@ -40,6 +40,7 @@ public class NettyChannelContext extends SocketContext {
     String host;
     private Channel channel;
     private final String key;
+    private boolean isHttp2Channel = false;
 
     public NettyChannelContext(String host, int port, String key) {
         this.host = host;
@@ -72,6 +73,15 @@ public class NettyChannelContext extends SocketContext {
 
     public Channel getChannel() {
         return this.channel;
+    }
+
+    public NettyChannelContext setChannelIsHttp2(boolean isHttp2Channel) {
+        this.isHttp2Channel = isHttp2Channel;
+        return this;
+    }
+
+    public boolean isHttp2Channel() {
+        return this.isHttp2Channel;
     }
 
     @Override

@@ -92,7 +92,6 @@ import com.vmware.dcp.services.common.AuthCredentialsFactoryService;
 import com.vmware.dcp.services.common.AuthorizationContextService;
 import com.vmware.dcp.services.common.ConsistentHashingNodeSelectorService;
 import com.vmware.dcp.services.common.FileContentService;
-import com.vmware.dcp.services.common.GuestUserService;
 import com.vmware.dcp.services.common.LuceneBlobIndexService;
 import com.vmware.dcp.services.common.LuceneDocumentIndexService;
 import com.vmware.dcp.services.common.LuceneLocalQueryTaskFactoryService;
@@ -418,7 +417,6 @@ public class ServiceHost {
     private Verifier tokenVerifier;
 
     private AuthorizationContext systemAuthorizationContext;
-    private AuthorizationContext guestAuthorizationContext;
     private ConcurrentSkipListMap<String, Class<? extends Service>> privilegedServiceList = new ConcurrentSkipListMap<>();
 
     protected ServiceHost() {
@@ -903,7 +901,7 @@ public class ServiceHost {
                 r -> new Thread(r, getUri().toString() + "/scheduled/" + this.state.id));
 
         if (this.httpListener == null) {
-            this.httpListener = new NettyHttpListener(this);
+            this.httpListener = new NettyHttpListener(this, true);
         }
 
         this.httpListener.start(getPort(), this.state.bindAddress);
@@ -911,7 +909,7 @@ public class ServiceHost {
         if ((this.state.certificateFileReference != null
                 || this.state.privateKeyFileReference != null)
                 && this.httpsListener == null) {
-            this.httpsListener = new NettyHttpListener(this);
+            this.httpsListener = new NettyHttpListener(this, false);
         }
 
         if (this.httpsListener != null) {
@@ -1010,7 +1008,6 @@ public class ServiceHost {
         coreServices.add(new RoleFactoryService());
         coreServices.add(new UserFactoryService());
         coreServices.add(new SystemUserService());
-        coreServices.add(new GuestUserService());
         coreServices.add(new TenantFactoryService());
         Service transactionFactoryService = new TransactionFactoryService();
         coreServices.add(transactionFactoryService);
@@ -2453,27 +2450,17 @@ public class ServiceHost {
     }
 
     private void populateAuthorizationContext(Operation op) {
-        AuthorizationContext ctx = getAuthorizationContext(op);
-        if (ctx == null) {
-            // No (valid) authorization context, fall back to guest context
-            ctx = getGuestAuthorizationContext();
-        }
-
-        op.setAuthorizationContext(ctx);
-    }
-
-    private AuthorizationContext getAuthorizationContext(Operation op) {
         String token = op.getRequestHeader(Operation.REQUEST_AUTH_TOKEN_HEADER);
         if (token == null) {
             Map<String, String> cookies = op.getCookies();
             if (cookies == null) {
-                return null;
+                return;
             }
             token = cookies.get(AuthenticationConstants.DCP_JWT_COOKIE);
         }
 
         if (token == null) {
-            return null;
+            return;
         }
 
         try {
@@ -2481,17 +2468,14 @@ public class ServiceHost {
             Claims claims = this.getTokenVerifier().verify(token, Claims.class);
             Long expirationTime = claims.getExpirationTime();
             if (expirationTime != null && expirationTime <= Utils.getNowMicrosUtc()) {
-                return null;
+                return;
             }
-
             b.setClaims(claims);
             b.setToken(token);
-            return b.getResult();
+            op.setAuthorizationContext(b.getResult());
         } catch (TokenException | GeneralSecurityException e) {
             log(Level.INFO, "Error verifying token: %s", e);
         }
-
-        return null;
     }
 
     private void failRequestServiceNotFound(Operation inboundOp) {
@@ -4293,16 +4277,15 @@ public class ServiceHost {
     }
 
     /**
-     * Generate new authorization context for a system user.
+     * Generate new authorization context for the system user.
      *
      * @return fresh authorization context
      */
-    private AuthorizationContext createAuthorizationContext(String userLink) {
+    private AuthorizationContext createSystemAuthorizationContext() {
         Claims.Builder cb = new Claims.Builder();
         cb.setIssuer(AuthenticationConstants.JWT_ISSUER);
-        cb.setSubject(userLink);
-
-        // Set an effective expiration to never
+        cb.setSubject(SystemUserService.SELF_LINK);
+        // set an effective expiration to never
         Calendar cal = Calendar.getInstance();
         cal.set(9999, Calendar.DECEMBER, 31);
         cb.setExpirationTime(TimeUnit.MILLISECONDS.toMicros(cal.getTimeInMillis()));
@@ -4335,24 +4318,8 @@ public class ServiceHost {
         AuthorizationContext ctx = this.systemAuthorizationContext;
         if (ctx == null) {
             // No locking needed; duplicate work is benign
-            ctx = createAuthorizationContext(SystemUserService.SELF_LINK);
+            ctx = createSystemAuthorizationContext();
             this.systemAuthorizationContext = ctx;
-        }
-
-        return ctx;
-    }
-
-    /**
-     * Return the guest user's authorization context.
-     *
-     * @return authorization context.
-     */
-    protected AuthorizationContext getGuestAuthorizationContext() {
-        AuthorizationContext ctx = this.guestAuthorizationContext;
-        if (ctx == null) {
-            // No locking needed; duplicate work is benign
-            ctx = createAuthorizationContext(GuestUserService.SELF_LINK);
-            this.guestAuthorizationContext = ctx;
         }
 
         return ctx;
