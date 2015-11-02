@@ -17,7 +17,12 @@ import java.io.UnsupportedEncodingException;
 import java.net.InetSocketAddress;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.text.DateFormat;
+import java.text.SimpleDateFormat;
+import java.util.Date;
 import java.util.Map.Entry;
+import java.util.TimeZone;
+import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 
 import javax.net.ssl.SSLSession;
@@ -58,8 +63,12 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
 
     private final ServiceHost host;
 
+    private final   DateFormat dateFormatter;
+
     public NettyHttpClientRequestHandler(ServiceHost host) {
         this.host = host;
+        this.dateFormatter = new SimpleDateFormat("EEE, dd-MMM-yyyy HH:mm:ss zzz");
+        this.dateFormatter.setTimeZone(TimeZone.getTimeZone("GMT"));
     }
 
     @Override
@@ -320,7 +329,12 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
 
             // Add Path qualifier, cookie applies everywhere
             buf.append("; Path=/");
-
+            // Add an Expires qualifier if set in the Claims object
+            if (authorizationContext.getClaims().getExpirationTime() != null) {
+                buf.append("; Expires=");
+                buf.append(this.dateFormatter.format(new Date(TimeUnit.MICROSECONDS.toMillis(
+                        authorizationContext.getClaims().getExpirationTime()))));
+            }
             response.headers().add(Operation.SET_COOKIE_HEADER, buf.toString());
         }
 
