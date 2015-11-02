@@ -18,6 +18,7 @@ import java.net.InetSocketAddress;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.Map.Entry;
+import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 
 import javax.net.ssl.SSLSession;
@@ -320,7 +321,12 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
 
             // Add Path qualifier, cookie applies everywhere
             buf.append("; Path=/");
-
+            // Add an Max-Age qualifier if an expiry is set in the Claims object
+            if (authorizationContext.getClaims().getExpirationTime() != null) {
+                buf.append("; Max-Age=");
+                long maxAge = authorizationContext.getClaims().getExpirationTime() - Utils.getNowMicrosUtc();
+                buf.append(maxAge > 0 ? TimeUnit.MICROSECONDS.toSeconds(maxAge) : 0);
+            }
             response.headers().add(Operation.SET_COOKIE_HEADER, buf.toString());
         }
 

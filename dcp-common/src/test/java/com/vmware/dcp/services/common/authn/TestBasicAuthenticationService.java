@@ -15,13 +15,18 @@ package com.vmware.dcp.services.common.authn;
 
 import java.net.URI;
 import java.util.Base64;
+import java.util.Map;
 
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 
+
+
+
 import com.vmware.dcp.common.Operation;
 import com.vmware.dcp.common.UriUtils;
+import com.vmware.dcp.common.http.netty.CookieJar;
 import com.vmware.dcp.common.test.VerificationHost;
 import com.vmware.dcp.services.common.AuthCredentialsFactoryService;
 import com.vmware.dcp.services.common.AuthCredentialsService.AuthCredentialsServiceState;
@@ -39,12 +44,15 @@ public class TestBasicAuthenticationService {
     private static final String INVALID_PASSWORD = "invalid-password";
     private static final String BASIC_AUTH_PREFIX = "Basic ";
     private static final String BASIC_AUTH_USER_SEPERATOR = ":";
+    private static final String SET_COOKIE_HEADER = "Set-Cookie";
 
     @Before
     public void setUp() throws Exception {
         this.host = VerificationHost.create(0, null);
         try {
+            this.host.setAuthorizationEnabled(true);
             this.host.start();
+            this.host.setSystemAuthorizationContext();
             this.host.waitForServiceAvailable(AuthCredentialsFactoryService.SELF_LINK);
             this.host.waitForServiceAvailable(BasicAuthenticationService.SELF_LINK);
             this.host.waitForServiceAvailable(UserFactoryService.SELF_LINK);
@@ -80,6 +88,7 @@ public class TestBasicAuthenticationService {
             this.host.send(userOp);
             this.host.send(authOp);
             this.host.testWait();
+            this.host.resetAuthorizationContext();
         } catch (Throwable e) {
             throw new Exception(e);
         }
@@ -236,10 +245,11 @@ public class TestBasicAuthenticationService {
                         Operation logoutOp = Operation
                                 .createPost(authServiceUri)
                                 .setBody(request)
+                                .forceRemote()
                                 .setCompletion(
                                         (oo, ee) -> {
                                             if (ee != null) {
-                                                this.host.failIteration(e);
+                                                this.host.failIteration(ee);
                                                 return;
                                             }
                                             if (oo.getStatusCode() != Operation.STATUS_CODE_OK) {
@@ -247,15 +257,15 @@ public class TestBasicAuthenticationService {
                                                         "Invalid status code returned"));
                                                 return;
                                             }
-                                            if (oo.getAuthorizationContext() == null) {
+                                            String cookieHeader = oo.getResponseHeader(SET_COOKIE_HEADER);
+                                            if (cookieHeader == null) {
                                                 this.host.failIteration(new IllegalStateException(
-                                                        "Authorization context not set"));
-                                                return;
+                                                        "Cookie is null"));
                                             }
-                                            if (oo.getAuthorizationContext().getClaims()
-                                                    .getExpirationTime() != 0) {
+                                            Map<String, String> cookieElements = CookieJar.decodeCookies(cookieHeader);
+                                            if (!cookieElements.get("Max-Age").equals("0")) {
                                                 this.host.failIteration(new IllegalStateException(
-                                                        "Invalid expiration time"));
+                                                        "Max-Age for cookie is not zero"));
                                             }
                                             this.host.resetAuthorizationContext();
                                             this.host.completeIteration();
