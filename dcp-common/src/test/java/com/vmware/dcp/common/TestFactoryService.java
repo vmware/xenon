@@ -14,6 +14,7 @@
 package com.vmware.dcp.common;
 
 import static org.junit.Assert.assertEquals;
+
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
@@ -31,8 +32,24 @@ import org.junit.Test;
 import com.vmware.dcp.common.Service.ServiceOption;
 import com.vmware.dcp.common.test.MinimalTestServiceState;
 import com.vmware.dcp.common.test.TestProperty;
+import com.vmware.dcp.services.common.ExampleService.ExampleServiceState;
 import com.vmware.dcp.services.common.MinimalFactoryTestService;
 import com.vmware.dcp.services.common.MinimalTestService;
+
+class TypeMismatchTestFactoryService extends FactoryService {
+
+    public TypeMismatchTestFactoryService() {
+        super(ExampleServiceState.class);
+    }
+
+    @Override
+    public Service createServiceInstance() throws Throwable {
+        // intentionally create a child service with a different state type than the one we declare
+        // in our constructor, for a negative test
+        Service s = new MinimalTestService();
+        return s;
+    }
+}
 
 public class TestFactoryService extends BasicReusableHostTestCase {
 
@@ -43,6 +60,48 @@ public class TestFactoryService extends BasicReusableHostTestCase {
     @Before
     public void setup() throws Throwable {
         this.factoryUri = UriUtils.buildUri(this.host, SomeFactoryService.class);
+    }
+
+    @Test
+    public void factoryWithChildServiceStateTypeMismatch() {
+        this.host.toggleNegativeTestMode(true);
+        Operation post = Operation
+                .createPost(UriUtils.buildUri(this.host, UUID.randomUUID().toString()))
+                .setCompletion(this.host.getExpectedFailureCompletion());
+        this.host.startService(post, new TypeMismatchTestFactoryService());
+        this.host.toggleNegativeTestMode(false);
+    }
+
+    @Test
+    public void factoryClonePostExpectFailure() throws Throwable {
+        MinimalFactoryTestService f = new MinimalFactoryTestService();
+        MinimalFactoryTestService factoryService = (MinimalFactoryTestService) this.host
+                .startServiceAndWait(f, UUID.randomUUID().toString(), null);
+
+        // create a child service
+        MinimalTestServiceState initState = (MinimalTestServiceState) this.host
+                .buildMinimalTestState();
+        initState.documentSelfLink = UUID.randomUUID().toString();
+
+        this.host.testStart(1);
+        this.host.send(Operation.createPost(factoryService.getUri())
+                .setBody(initState)
+                .setCompletion(this.host.getCompletion()));
+        this.host.testWait();
+
+        ServiceDocumentQueryResult rsp = this.host.getFactoryState(factoryService.getUri());
+
+        // create a clone POST, by setting the source link
+        initState = new MinimalTestServiceState();
+        initState.documentSelfLink = UUID.randomUUID().toString();
+        initState.documentSourceLink = rsp.documentLinks.iterator().next();
+
+        // we expect this to fail since the minimal factory service does not support clone
+        this.host.testStart(1);
+        this.host.send(Operation.createPost(factoryService.getUri())
+                .setBody(initState)
+                .setCompletion(this.host.getExpectedFailureCompletion()));
+        this.host.testWait();
     }
 
     @Test

@@ -24,6 +24,14 @@ import org.junit.Test;
 
 import com.vmware.dcp.common.Service.Action;
 
+class RequestBody {
+    public enum Kind {
+        X, Y
+    }
+
+    public Kind kind;
+}
+
 public class TestRequestRouter {
 
     private RequestRouter router;
@@ -31,13 +39,6 @@ public class TestRequestRouter {
     private int yCount;
     private int zCount;
 
-    public static class RequestBody {
-        public enum Kind {
-            X, Y
-        }
-
-        public Kind kind;
-    }
 
     @Before
     public void setUp() throws Exception {
