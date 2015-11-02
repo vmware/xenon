@@ -1910,8 +1910,7 @@ public class ServiceHost {
 
         initialState.documentSelfLink = s.getSelfLink();
         initialState.documentKind = Utils.buildKind(initialState.getClass());
-        initialState.documentAuthPrincipalLink = (post.getAuthorizationContext() != null) ? post
-                .getAuthorizationContext().getClaims().getSubject() : null;
+        initialState.documentAuthPrincipalLink = getDocumentAuthPrincipalLink(post, initialState);
         post.setBody(initialState);
         if (!s.hasOption(ServiceOption.CONCURRENT_UPDATE_HANDLING)) {
             initialState = Utils.clone(initialState);
@@ -3908,6 +3907,20 @@ public class ServiceHost {
         return this.state.maintenanceIntervalMicros;
     }
 
+    private String getDocumentAuthPrincipalLink(Operation op, ServiceDocument state) {
+        if (op.getAuthorizationContext() != null) {
+            // if the documentAuthPrincipalLink has never been set or
+            // the service is being updated by a non system user
+            // set the documentAuthPrincipalLink
+            if (state.documentAuthPrincipalLink == null ||
+                    !op.getAuthorizationContext().getClaims().getSubject()
+                    .equals(ServiceUriPaths.CORE_AUTHZ_SYSTEM_USER)) {
+                return op.getAuthorizationContext().getClaims().getSubject();
+            }
+        }
+        return state.documentAuthPrincipalLink;
+    }
+
     void saveServiceState(Service s, Operation op, ServiceDocument state) {
         if (state == null) {
             op.fail(new IllegalArgumentException("linkedState is required"));
@@ -3919,8 +3932,7 @@ public class ServiceHost {
         // it will be set to the system user. The specified state is expected to have the documentAuthPrincipalLink
         // set from when it was first saved.
         if (!op.isFromReplication()) {
-            state.documentAuthPrincipalLink = (op.getAuthorizationContext() != null) ?
-                    op.getAuthorizationContext().getClaims().getSubject() : null;
+            state.documentAuthPrincipalLink = getDocumentAuthPrincipalLink(op, state);
         }
 
         if (this.transactionService != null) {
