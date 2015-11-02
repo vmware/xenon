@@ -16,7 +16,9 @@ package com.vmware.dcp.services.common;
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Predicate;
@@ -37,14 +39,26 @@ import com.vmware.dcp.common.Utils;
 import com.vmware.dcp.services.common.SimpleTransactionService.EndTransactionRequest.TransactionOutcome;
 
 public class SimpleTransactionService extends StatefulService {
+    public static class EnrollmentInfo {
+        /**
+         * True if the service state has been updated during this transaction
+         */
+        public boolean isUpdated;
+
+        /**
+         * The state of the service prior to enrolling in this transaction
+         */
+        public ServiceDocument originalState;
+    }
 
     public static class SimpleTransactionServiceState extends ServiceDocument {
+
         public TaskState taskInfo;
 
         /**
          * Services that have enrolled in this transaction
          */
-        public Set<String> enrolledServicesLinks;
+        public Map<String, EnrollmentInfo> enrolledServices;
 
         /**
          * Services that have been created in the context of this transaction
@@ -65,6 +79,7 @@ public class SimpleTransactionService extends StatefulService {
         public String kind = KIND;
         public String serviceSelfLink;
         public Action action;
+        public ServiceDocument previousState;
     }
 
     /**
@@ -83,10 +98,11 @@ public class SimpleTransactionService extends StatefulService {
 
     public static class TxUtils {
         public static Operation buildEnrollRequest(ServiceHost host, String transactionId,
-                String serviceSelfLink, Action action) {
+                String serviceSelfLink, Action action, ServiceDocument previousState) {
             EnrollRequest body = new EnrollRequest();
             body.serviceSelfLink = serviceSelfLink;
             body.action = action;
+            body.previousState = previousState;
             return Operation
                     .createPatch(buildTransactionUri(host, transactionId))
                     .setBody(body);
@@ -117,7 +133,18 @@ public class SimpleTransactionService extends StatefulService {
         public static final String KIND = Utils
                 .buildKind(ClearTransactionRequest.class);
         public String kind;
+        public TransactionOutcome transactionOutcome;
+        public ServiceDocument originalState;
     }
+
+
+    /**
+     * Indicates a request to delete an enrolled service at the end of the transaction either
+     * because the service has been created during the transaction and the transaction has
+     * aborted, or because the service has been deleted during the transaction and the
+     * transaction has been committed.
+     */
+    static final String PRAGMA_DIRECTIVE_DELETE_ON_TRANSACTION_END = "dcp-simpletx-delete-on-transaction-end";
 
     public static class TransactionalRequestFilter implements Predicate<Operation> {
         private Service service;
@@ -207,7 +234,7 @@ public class SimpleTransactionService extends StatefulService {
                 }
             } else {
                 if (requestTransactionId == null) { // non-transactional write
-                    if (currentStateTransactionId == null) {
+                    if (currentStateTransactionId == null || request.hasPragmaDirective(PRAGMA_DIRECTIVE_DELETE_ON_TRANSACTION_END)) {
                         return false;
                     } else {
                         logTransactionConflict(request, currentState);
@@ -236,19 +263,22 @@ public class SimpleTransactionService extends StatefulService {
                 return;
             }
 
-            // if currentState.documentTransactionId is null the service is probably deleted-pending-commit,
-            // so we're not going to warn
-            if (currentState.documentTransactionId != null
-                    && !request.getTransactionId().equals(currentState.documentTransactionId)) {
+            if (!request.getTransactionId().equals(currentState.documentTransactionId)) {
                 this.service
                         .getHost()
                         .log(Level.WARNING,
                                 "Request to clear transaction %s from service %s but current transaction is: %s",
                                 request.getTransactionId(), this.service.getSelfLink(),
                                 currentState.documentTransactionId);
-            } else {
-                currentState.documentTransactionId = null;
+                return;
             }
+
+            if (clearTransactionRequest.transactionOutcome == TransactionOutcome.ABORT) {
+                currentState = clearTransactionRequest.originalState;
+            }
+
+            currentState.documentTransactionId = null;
+            this.service.setState(request, currentState);
         }
 
         private void handleEnrollInTransaction(Operation request) {
@@ -260,10 +290,11 @@ public class SimpleTransactionService extends StatefulService {
                 }
                 serviceSelfLink = UriUtils.buildUriPath(serviceSelfLink, body.documentSelfLink);
             }
+
             Operation enrollRequest = SimpleTransactionService.TxUtils
                     .buildEnrollRequest(this.service.getHost(),
                             request.getTransactionId(), serviceSelfLink,
-                            request.getAction())
+                            request.getAction(), this.service.getState(request))
                     .setCompletion(
                             (o, e) -> {
                                 if (e != null) {
@@ -346,8 +377,8 @@ public class SimpleTransactionService extends StatefulService {
             state.taskInfo = new TaskState();
             state.taskInfo.stage = TaskStage.STARTED;
         }
-        if (state.enrolledServicesLinks == null) {
-            state.enrolledServicesLinks = new HashSet<>();
+        if (state.enrolledServices == null) {
+            state.enrolledServices = new HashMap<>();
         }
         if (state.createdServicesLinks == null) {
             state.createdServicesLinks = new HashSet<>();
@@ -374,7 +405,15 @@ public class SimpleTransactionService extends StatefulService {
             return;
         }
 
-        currentState.enrolledServicesLinks.add(body.serviceSelfLink);
+        EnrollmentInfo enrollmentInfo = currentState.enrolledServices.get(body.serviceSelfLink);
+        if (enrollmentInfo == null) {
+            enrollmentInfo = new EnrollmentInfo();
+            enrollmentInfo.isUpdated = body.action != Action.GET;
+            enrollmentInfo.originalState = body.previousState;
+            currentState.enrolledServices.put(body.serviceSelfLink, enrollmentInfo);
+        } else {
+            enrollmentInfo.isUpdated = enrollmentInfo.isUpdated || body.action != Action.GET;
+        }
         if (body.action == Action.POST) {
             currentState.createdServicesLinks.add(body.serviceSelfLink);
         }
@@ -410,46 +449,45 @@ public class SimpleTransactionService extends StatefulService {
 
         String transactionId = this.getSelfLink().substring(
                 this.getSelfLink().lastIndexOf(UriUtils.URI_PATH_CHAR) + 1);
-        Collection<Operation> clearTransactionRequests = createClearTransactionRequests(
-                currentState, transactionId);
         Collection<Operation> deleteRequests = createDeleteRequests(currentState,
                 body.transactionOutcome);
-        if (clearTransactionRequests != null && !clearTransactionRequests.isEmpty()) {
-            clearTransactionAndDeleteServices(patch, transactionId,
-                    clearTransactionRequests,
-                    deleteRequests);
-        } else if (deleteRequests != null && !deleteRequests.isEmpty()) {
-            deleteServices(patch, transactionId, deleteRequests);
+        Collection<Operation> clearTransactionRequests = createClearTransactionRequests(
+                currentState, transactionId, body.transactionOutcome);
+        if (deleteRequests != null && !deleteRequests.isEmpty()) {
+            deleteServicesAndClearTransactions(patch, transactionId,
+                    deleteRequests, clearTransactionRequests);
+        } else if (clearTransactionRequests != null && !clearTransactionRequests.isEmpty()) {
+            clearTransactions(patch, transactionId, clearTransactionRequests);
         } else {
             patch.complete();
         }
     }
 
-    private void clearTransactionAndDeleteServices(Operation patch,
+    private void deleteServicesAndClearTransactions(Operation patch,
             String transactionId,
-            Collection<Operation> clearTransactionRequests, Collection<Operation> deleteRequests) {
-        OperationJoin.create(clearTransactionRequests).setCompletion((ops, exs) -> {
+            Collection<Operation> deleteRequests, Collection<Operation> clearTransactionRequests) {
+        OperationJoin.create(deleteRequests).setCompletion((ops, exs) -> {
             if (exs != null) {
                 patch.fail(new IllegalStateException(String.format(
-                        "Transaction %s failed to clear from some services",
+                        "Transaction %s failed to delete some services",
                         transactionId)));
                 return;
             }
 
-            if (deleteRequests != null && !deleteRequests.isEmpty()) {
-                deleteServices(patch, transactionId, deleteRequests);
+            if (clearTransactionRequests != null && !clearTransactionRequests.isEmpty()) {
+                clearTransactions(patch, transactionId, clearTransactionRequests);
             } else {
                 patch.complete();
             }
         }).sendWith(this);
     }
 
-    private void deleteServices(Operation patch, String transactionId,
-            Collection<Operation> deleteRequests) {
-        OperationJoin.create(deleteRequests).setCompletion((ops, exs) -> {
+    private void clearTransactions(Operation patch, String transactionId,
+            Collection<Operation> clearTransactionRequests) {
+        OperationJoin.create(clearTransactionRequests).setCompletion((ops, exs) -> {
             if (exs != null) {
                 patch.fail(new IllegalStateException(String.format(
-                        "Transaction %s failed to delete some services",
+                        "Transaction %s failed to clear from some services",
                         transactionId)));
                 return;
             }
@@ -459,19 +497,24 @@ public class SimpleTransactionService extends StatefulService {
     }
 
     private Collection<Operation> createClearTransactionRequests(
-            SimpleTransactionServiceState currentState, String transactionId) {
-        if (currentState.enrolledServicesLinks.isEmpty()) {
+            SimpleTransactionServiceState currentState, String transactionId,
+            EndTransactionRequest.TransactionOutcome transactionOutcome) {
+        if (currentState.enrolledServices.isEmpty()) {
             return null;
         }
 
         Collection<Operation> requests = new ArrayList<Operation>(
-                currentState.enrolledServicesLinks.size());
-        for (String serviceSelfLink : currentState.enrolledServicesLinks) {
+                currentState.enrolledServices.size());
+        for (String serviceSelfLink : currentState.enrolledServices.keySet()) {
+            EnrollmentInfo enrollmentInfo = currentState.enrolledServices.get(serviceSelfLink);
             ClearTransactionRequest body = new ClearTransactionRequest();
             body.kind = ClearTransactionRequest.KIND;
+            body.transactionOutcome = transactionOutcome;
+            if (enrollmentInfo.isUpdated) {
+                body.originalState = enrollmentInfo.originalState;
+            }
             Operation op = Operation.createPatch(UriUtils.buildUri(getHost(), serviceSelfLink))
-                    .setTransactionId(transactionId)
-                    .setBody(body);
+                    .setTransactionId(transactionId).setBody(body);
             requests.add(op);
         }
 
@@ -489,7 +532,9 @@ public class SimpleTransactionService extends StatefulService {
         Collection<Operation> requests = new ArrayList<Operation>(servicesToBDeleted.size());
         for (String serviceSelfLink : servicesToBDeleted) {
             Operation op = Operation.createDelete(UriUtils.buildUri(getHost(), serviceSelfLink));
+            op.addPragmaDirective(PRAGMA_DIRECTIVE_DELETE_ON_TRANSACTION_END);
             requests.add(op);
+            currentState.enrolledServices.remove(serviceSelfLink);
         }
 
         return requests;

@@ -14,8 +14,10 @@
 package com.vmware.dcp.services.common;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
 
 import java.net.URI;
+import java.util.Random;
 import java.util.UUID;
 
 import org.junit.Before;
@@ -106,6 +108,97 @@ public class TestSimpleTransactionService extends BasicTestCase {
         }
         countAccounts(null, ACCOUNTS / 2);
         sumAccounts(null, 100.0 * ACCOUNTS / 2);
+    }
+
+    @Test
+    public void testSingleClientMultipleActiveTransactions() throws Throwable {
+        String[] txids = new String[ACCOUNTS];
+        for (int i = 0; i < ACCOUNTS; i++) {
+            txids[i] = newTransaction();
+            String accountId = String.valueOf(i);
+            createAccount(txids[i], accountId, true);
+            if (i % 2 == 0) {
+                depositToAccount(txids[i], accountId, 100.0, true);
+            }
+        }
+
+        for (int i = 0; i < ACCOUNTS; i++) {
+            String accountId = String.valueOf(i);
+            for (int j = 0; j <= i; j++) {
+                BankAccountServiceState account = null;
+                boolean txConflict = false;
+                try {
+                    account = getAccount(txids[j], accountId);
+                } catch (IllegalStateException e) {
+                    txConflict = true;
+                }
+                if (j != i) {
+                    assertTrue(txConflict);
+                    continue;
+                }
+                if (i % 2 == 0) {
+                    assertEquals(100.0, account.balance, 0);
+                } else {
+                    assertEquals(0, account.balance, 0);
+                }
+            }
+        }
+
+        for (int i = 0; i < ACCOUNTS; i++) {
+            commit(txids[i]);
+        }
+        countAccounts(null, ACCOUNTS);
+        sumAccounts(null, 100.0 * ACCOUNTS / 2);
+
+        deleteAccounts(null, ACCOUNTS);
+        countAccounts(null, 0);
+    }
+
+    @Test
+    public void testSingleClientMultiDocumentTransactions() throws Throwable {
+        String txid = newTransaction();
+        for (int i = 0; i < ACCOUNTS; i++) {
+            String accountId = String.valueOf(i);
+            createAccount(txid, accountId, true);
+            depositToAccount(txid, accountId, 100.0, true);
+        }
+        commit(txid);
+
+        String[] txids = new String[ACCOUNTS / 3];
+        Random rand = new Random();
+        for (int k = 0; k < ACCOUNTS / 3; k++) {
+            int i = rand.nextInt(ACCOUNTS);
+            int j = rand.nextInt(ACCOUNTS);
+            if (i == j) {
+                j = (j + 1) % ACCOUNTS;
+            }
+            int amount = 1 + rand.nextInt(3);
+            txids[k] = newTransaction();
+            try {
+                withdrawFromAccount(txids[k], String.valueOf(i), amount, true);
+                depositToAccount(txids[k], String.valueOf(j), amount, true);
+            } catch (IllegalStateException e) {
+                abort(txids[k]);
+                txids[k] = null;
+                continue;
+            }
+        }
+
+        for (int k = 0; k < ACCOUNTS / 3; k++) {
+            if (txids[k] == null) {
+                continue;
+            }
+            if (k % 5 == 0) {
+                abort(txids[k]);
+            } else {
+                commit(txids[k]);
+            }
+        }
+
+        sumAccounts(null, 100.0 * ACCOUNTS);
+
+        deleteAccounts(null, ACCOUNTS);
+        countAccounts(null, 0);
     }
 
     private String newTransaction() throws Throwable {
@@ -231,11 +324,16 @@ public class TestSimpleTransactionService extends BasicTestCase {
         long count = 0;
         for (String serviceSelfLink : task.results.documentLinks) {
             String accountId = serviceSelfLink.substring(serviceSelfLink.lastIndexOf('/') + 1);
-            BankAccountServiceState account = getAccount(transactionId, accountId);
-            if (transactionId == null && account.documentTransactionId != null) {
+            try {
+                BankAccountServiceState account = getAccount(transactionId, accountId);
+                if (transactionId == null && account.documentTransactionId != null) {
+                    continue;
+                }
+                count++;
+            } catch (IllegalStateException ex) {
                 continue;
             }
-            count++;
+
         }
         assertEquals(expected, count);
     }
@@ -258,11 +356,15 @@ public class TestSimpleTransactionService extends BasicTestCase {
         double sum = 0;
         for (String serviceSelfLink : task.results.documentLinks) {
             String accountId = serviceSelfLink.substring(serviceSelfLink.lastIndexOf('/') + 1);
-            BankAccountServiceState account = getAccount(transactionId, accountId);
-            if (transactionId == null && account.documentTransactionId != null) {
+            try {
+                BankAccountServiceState account = getAccount(transactionId, accountId);
+                if (transactionId == null && account.documentTransactionId != null) {
+                    continue;
+                }
+                sum += account.balance;
+            } catch (IllegalStateException ex) {
                 continue;
             }
-            sum += account.balance;
         }
         assertEquals(expected, sum, 0);
     }
@@ -279,6 +381,7 @@ public class TestSimpleTransactionService extends BasicTestCase {
     private void depositToAccount(String transactionId, String accountId, double amountToDeposit,
             boolean independentTest)
             throws Throwable {
+        Throwable[] ex = new Throwable[1];
         if (independentTest) {
             this.host.testStart(1);
         }
@@ -290,7 +393,12 @@ public class TestSimpleTransactionService extends BasicTestCase {
                 .setBody(body)
                 .setCompletion((o, e) -> {
                     if (operationFailed(o, e)) {
-                        this.host.failIteration(e);
+                        if (e instanceof IllegalStateException) {
+                            ex[0] = e;
+                            this.host.completeIteration();
+                        } else {
+                            this.host.failIteration(e);
+                        }
                         return;
                     }
                     this.host.completeIteration();
@@ -302,6 +410,49 @@ public class TestSimpleTransactionService extends BasicTestCase {
         if (independentTest) {
             this.host.testWait();
         }
+
+        if (ex[0] != null) {
+            throw ex[0];
+        }
+    }
+
+    private void withdrawFromAccount(String transactionId, String accountId,
+            double amountToWithdraw,
+            boolean independentTest)
+            throws Throwable {
+        Throwable[] ex = new Throwable[1];
+        if (independentTest) {
+            this.host.testStart(1);
+        }
+        BankAccountServiceRequest body = new BankAccountServiceRequest();
+        body.kind = BankAccountServiceRequest.Kind.WITHDRAW;
+        body.amount = amountToWithdraw;
+        Operation patch = Operation
+                .createPatch(buildAccountUri(accountId))
+                .setBody(body)
+                .setCompletion((o, e) -> {
+                    if (operationFailed(o, e)) {
+                        if (e instanceof IllegalStateException) {
+                            ex[0] = e;
+                            this.host.completeIteration();
+                        } else {
+                            this.host.failIteration(e);
+                        }
+                        return;
+                    }
+                    this.host.completeIteration();
+                });
+        if (transactionId != null) {
+            patch.setTransactionId(transactionId);
+        }
+        this.host.send(patch);
+        if (independentTest) {
+            this.host.testWait();
+        }
+
+        if (ex[0] != null) {
+            throw ex[0];
+        }
     }
 
     private void verifyAccountBalance(String transactionId, String accountId, double expectedBalance)
@@ -312,13 +463,19 @@ public class TestSimpleTransactionService extends BasicTestCase {
 
     private BankAccountServiceState getAccount(String transactionId, String accountId)
             throws Throwable {
+        Throwable[] ex = new Throwable[1];
         BankAccountServiceState[] responses = new BankAccountServiceState[1];
         this.host.testStart(1);
         Operation get = Operation
                 .createGet(buildAccountUri(accountId))
                 .setCompletion((o, e) -> {
                     if (operationFailed(o, e)) {
-                        this.host.failIteration(e);
+                        if (e instanceof IllegalStateException) {
+                            ex[0] = e;
+                            this.host.completeIteration();
+                        } else {
+                            this.host.failIteration(e);
+                        }
                         return;
                     }
                     responses[0] = o.getBody(BankAccountServiceState.class);
@@ -329,6 +486,11 @@ public class TestSimpleTransactionService extends BasicTestCase {
         }
         this.host.send(get);
         this.host.testWait();
+
+        if (ex[0] != null) {
+            throw ex[0];
+        }
+
         return responses[0];
     }
 
