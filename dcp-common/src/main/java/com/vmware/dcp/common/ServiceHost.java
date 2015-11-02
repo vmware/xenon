@@ -1907,8 +1907,14 @@ public class ServiceHost {
 
         initialState.documentSelfLink = s.getSelfLink();
         initialState.documentKind = Utils.buildKind(initialState.getClass());
-        initialState.documentAuthPrincipalLink = (post.getAuthorizationContext() != null) ? post
-                .getAuthorizationContext().getClaims().getSubject() : null;
+        if (post.getAuthorizationContext() != null) {
+            if (initialState.documentAuthPrincipalLink == null ||
+                    !post.getAuthorizationContext().getClaims().getSubject()
+                    .equals(ServiceUriPaths.CORE_AUTHZ_SYSTEM_USER)) {
+                initialState.documentAuthPrincipalLink =
+                    post.getAuthorizationContext().getClaims().getSubject();
+            }
+        }
         post.setBody(initialState);
         if (!s.hasOption(ServiceOption.CONCURRENT_UPDATE_HANDLING)) {
             initialState = Utils.clone(initialState);
@@ -3900,8 +3906,17 @@ public class ServiceHost {
         // it will be set to the system user. The specified state is expected to have the documentAuthPrincipalLink
         // set from when it was first saved.
         if (!op.isFromReplication()) {
-            state.documentAuthPrincipalLink = (op.getAuthorizationContext() != null) ?
-                    op.getAuthorizationContext().getClaims().getSubject() : null;
+            if (op.getAuthorizationContext() != null) {
+                // if the documentAuthPrincipalLink has never been set or
+                // the service is being updated by a non system user
+                // set the documentAuthPrincipalLink
+                if (state.documentAuthPrincipalLink == null ||
+                        !op.getAuthorizationContext().getClaims().getSubject()
+                        .equals(ServiceUriPaths.CORE_AUTHZ_SYSTEM_USER)) {
+                    state.documentAuthPrincipalLink =
+                        op.getAuthorizationContext().getClaims().getSubject();
+                }
+            }
         }
 
         if (this.transactionService != null) {
