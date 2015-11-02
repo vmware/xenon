@@ -3929,6 +3929,7 @@ public class ServiceHost {
             return;
         }
 
+        boolean deleteFromVersion = op.getAction() == Action.DELETE && op.getRequestHeader(Operation.DELETE_FROM_VERSION_HEADER) != null;
         Operation post = Operation.createPost(u)
                 .setReferer(op.getReferer())
                 .setBodyNoCloning(body)
@@ -3938,8 +3939,14 @@ public class ServiceHost {
                         op.fail(e);
                         return;
                     }
+                    if (deleteFromVersion) {
+                        clearCachedServiceState(s.getSelfLink());
+                    }
                     op.complete();
                 });
+        if (deleteFromVersion) {
+            post.addRequestHeader(Operation.DELETE_FROM_VERSION_HEADER, op.getRequestHeader(Operation.DELETE_FROM_VERSION_HEADER));
+        }
         sendRequest(post);
     }
 

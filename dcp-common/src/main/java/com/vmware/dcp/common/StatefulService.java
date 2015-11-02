@@ -736,6 +736,7 @@ public class StatefulService implements Service {
         boolean processPending = true;
         try {
             if (op.getAction() == Action.DELETE && op.getTransactionId() == null
+                    && op.getRequestHeader(Operation.DELETE_FROM_VERSION_HEADER) == null
                     && handleDeleteCompletion(op)) {
                 processPending = false;
                 return;

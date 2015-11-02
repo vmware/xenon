@@ -38,7 +38,6 @@ import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import com.esotericsoftware.kryo.KryoException;
-
 import com.google.gson.JsonParser;
 
 import org.apache.lucene.analysis.Analyzer;
@@ -1167,7 +1166,7 @@ public class LuceneDocumentIndexService extends StatelessService {
 
         s.documentDescription = null;
 
-        boolean isDelete = postOrDelete.getAction() == Action.DELETE;
+        boolean isDelete =  s.documentUpdateAction == Action.DELETE.toString();
         Document doc = new Document();
 
         Field refererField = new StringField(LUCENE_FIELD_NAME_REFERER, postOrDelete
@@ -1223,6 +1222,11 @@ public class LuceneDocumentIndexService extends StatelessService {
                 s.documentVersion, this.longStoredField);
 
         doc.add(versionField);
+
+        if (isDelete && postOrDelete.getRequestHeader(Operation.DELETE_FROM_VERSION_HEADER) != null) {
+            deleteLastVersionsDocumentFromIndex(postOrDelete, s);
+            return;
+        }
 
         boolean isPermanentDelete = isDelete && postOrDelete.getTransactionId() == null
                 && s.documentExpirationTimeMicros > 0
@@ -1533,6 +1537,47 @@ public class LuceneDocumentIndexService extends StatelessService {
         sendRequest(Operation.createDelete(this, state.documentSelfLink)
                 .setBodyNoCloning(state)
                 .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_NO_INDEX_UPDATE));
+    }
+
+    private void deleteLastVersionsDocumentFromIndex(Operation delete, ServiceDocument state) throws Throwable {
+        long deleteFromVersion = Long.parseLong(delete.getRequestHeader(Operation.DELETE_FROM_VERSION_HEADER));
+        if (deleteFromVersion < 0 || deleteFromVersion > state.documentVersion) {
+            delete.fail(new IllegalArgumentException(String.format("deleteFromVersion: %d", deleteFromVersion)));
+            return;
+        }
+
+        if (deleteFromVersion == 0) {
+            deleteAllDocumentsForSelfLink(delete, state);
+            return;
+        }
+
+        IndexWriter wr = this.writer;
+        if (wr == null) {
+            delete.fail(new CancellationException());
+            return;
+        }
+
+        Query linkQuery = new TermQuery(new Term(ServiceDocument.FIELD_NAME_SELF_LINK,
+                state.documentSelfLink));
+        NumericRangeQuery<Long> versionQuery = NumericRangeQuery.newLongRange(
+                ServiceDocument.FIELD_NAME_VERSION, deleteFromVersion, state.documentVersion,
+                true,
+                true);
+        BooleanQuery bq = new BooleanQuery();
+        bq.add(versionQuery, Occur.MUST);
+        bq.add(linkQuery, Occur.MUST);
+        logInfo("trimming index last versions for %s from %d to %d", state.documentSelfLink, deleteFromVersion,
+                state.documentVersion);
+        wr.deleteDocuments(bq);
+
+        long now = Utils.getNowMicrosUtc();
+        SelfLinkInfo info = this.selfLinks.get(state.documentSelfLink);
+        if (info != null) {
+            info.updateMicros = now;
+        }
+        this.indexUpdateTimeMicros = now;
+
+        delete.complete();
     }
 
     /**
