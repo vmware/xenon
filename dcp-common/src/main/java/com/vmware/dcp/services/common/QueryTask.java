@@ -386,6 +386,32 @@ public class QueryTask extends ServiceDocument {
             }
 
             /**
+             * Add a clause which matches a property with at least one of several specified
+             * values (analogous to a SQL "IN" statement).
+             * @param fieldName the field name.
+             * @param itemNames the item names in the collection to match.
+             * @return a reference to this object.
+             */
+            public Builder addInClause(String fieldName, Collection<String> itemNames) {
+                if (itemNames.size() == 1) {
+                    return addFieldClause(
+                            fieldName,
+                            itemNames.iterator().next());
+                }
+
+                Query inClause = new Query();
+                for (String itemName : itemNames) {
+                    Query clause = new Query()
+                            .setTermPropertyName(fieldName)
+                            .setTermMatchValue(itemName);
+                    clause.occurance = Occurance.SHOULD_OCCUR;
+                    inClause.addBooleanClause(clause);
+                }
+
+                return addClause(inClause);
+            }
+
+            /**
              * Add a clause which matches a collection containing at least one of several specified
              * values (analogous to a SQL "IN" statement).
              * @param collectionFieldName the collection field name.
@@ -394,25 +420,9 @@ public class QueryTask extends ServiceDocument {
              */
             public Builder addInCollectionItemClause(String collectionFieldName,
                     Collection<String> itemNames) {
-                if (itemNames.size() == 1) {
-                    return addCollectionItemClause(
-                            collectionFieldName,
-                            itemNames.iterator().next());
-                }
-
                 String collectionItemFieldName = QuerySpecification.buildCollectionItemName(
                         collectionFieldName);
-
-                Query inClause = new Query();
-                for (String itemName : itemNames) {
-                    Query clause = new Query()
-                            .setTermPropertyName(collectionItemFieldName)
-                            .setTermMatchValue(itemName);
-                    clause.occurance = Occurance.SHOULD_OCCUR;
-                    inClause.addBooleanClause(clause);
-                }
-
-                return addClause(inClause);
+                return addInClause(collectionItemFieldName, itemNames);
             }
 
             /**

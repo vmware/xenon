@@ -487,6 +487,8 @@ public class TestQueryTaskService {
                     "id",
                     newState.id, services.size(), 1);
 
+            doInQuery("id",
+                    newState.id, services.size(), 1);
             doInCollectionQuery("listOfStrings", newState.listOfStrings,
                     services.size(), services.size());
 
@@ -519,6 +521,20 @@ public class TestQueryTaskService {
                     QuerySpecification.buildCompositeFieldName(mapName, (String) e.getKey()),
                     e.getValue().toString(), documentCount, expectedResultCount);
         }
+    }
+
+    private void doInQuery(String fieldName, String fieldValue, long documentCount,
+            long expectedResultCount) throws Throwable {
+        QuerySpecification spec = new QuerySpecification();
+        spec.query = Query.Builder.create().addInClause(
+                fieldName,
+                Arrays.asList(
+                        UUID.randomUUID().toString(),
+                        fieldValue,
+                        UUID.randomUUID().toString())
+                ).build();
+        this.host.createAndWaitSimpleDirectQuery(spec,
+                documentCount, expectedResultCount);
     }
 
     @SuppressWarnings({ "rawtypes" })
