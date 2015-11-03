@@ -2896,14 +2896,7 @@ public class ServiceHost {
     }
 
     public void sendRequest(Operation op) {
-        if (op.isJoined()) {
-            for (Operation currentOp : op.getJoinedOperations()) {
-                prepareRequest(currentOp);
-            }
-        } else {
-            prepareRequest(op);
-        }
-
+        prepareRequest(op);
         traceOperation(op);
 
         if (this.isStopping()) {

@@ -77,12 +77,7 @@ public final class WebSocketService extends StatelessService {
 
     @Override
     public void handleRequest(Operation op) {
-        if (op.isJoined()) {
-            op.getJoinedOperations().forEach(this::prepareRequest);
-        } else {
-            prepareRequest(op);
-        }
-
+        prepareRequest(op);
         Operation.SerializedOperation serializedOperation = Operation.SerializedOperation
                 .create(op);
         this.pendingOperations.put(op.getId(), op);

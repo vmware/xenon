@@ -1412,14 +1412,7 @@ public class StatefulService implements Service {
 
     @Override
     public void sendRequest(Operation op) {
-        if (op.isJoined()) {
-            for (Operation currentOp : op.getJoinedOperations()) {
-                prepareRequest(currentOp);
-            }
-        } else {
-            prepareRequest(op);
-        }
-
+        prepareRequest(op);
         this.context.host.sendRequest(op);
     }
 

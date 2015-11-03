@@ -15,14 +15,11 @@ package com.vmware.dcp.common;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertTrue;
 
 import java.util.Arrays;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.UUID;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
 
 import org.junit.Before;
@@ -41,125 +38,21 @@ public class TestJoinOperationHandler extends BasicReportTestCase {
     }
 
     @Test
-    public void joinWith() throws Throwable {
-        Operation op1 = createServiceOperation(this.services.get(0));
-        Operation op2 = createServiceOperation(this.services.get(1));
-        Operation op3 = createServiceOperation(this.services.get(2));
-
-        CompletionHandler h = host.getCompletion();
-        CompletionHandler completion = (o, e) -> {
-            try {
-                assertNotNull(o.getJoinedOperation(op1)
-                        .getBody(MinimalTestServiceState.class));
-                assertNotNull(o.getJoinedOperation(op2)
-                        .getBody(MinimalTestServiceState.class));
-                assertNotNull(o.getJoinedOperation(op3)
-                        .getBody(MinimalTestServiceState.class));
-                host.completeIteration();
-            } catch (Throwable ex) {
-                host.failIteration(ex);
-            }
-        };
-
-        host.testStart(3);
-
-        host.sendRequest(op1.setCompletion(h).forceRemote()
-                .joinWith(op2).setCompletion(h).forceRemote()
-                .joinWith(op3).setCompletion(completion));
-
-        host.testWait();
-
-        // re-send again the join operations:
-        for (int i = 0; i < 16; i++) {
-            host.testStart(3);
-            host.sendRequest(op1.setCompletion(h)
-                    .joinWith(op2).setCompletion(h)
-                    .joinWith(op3).setCompletion(completion));
-            host.testWait();
-        }
-    }
-
-    @Test
-    public void concurrentJoinWith() throws Throwable {
-        int iterations = 8;
-        CountDownLatch completionLatch = new CountDownLatch(iterations);
-        for (int i = 0; i < iterations; i++) {
-            Operation operation = null;
-            for (int j = 0; j < 3; j++) {
-                Operation currentOp = Operation.createGet(this.services.get(j).getUri())
-                        .forceRemote()
-                        .setCompletion(host.getCompletion())
-                        .setReferer(host.getUri());
-                if (operation == null) {
-                    operation = currentOp;
-                } else {
-                    operation.joinWith(currentOp);
-                }
-            }
-
-            operation.setCompletion((o, e) -> {
-                for (Operation op : o.getJoinedOperations()) {
-                    assertNotNull(op.getBody(MinimalTestServiceState.class));
-                }
-
-                completionLatch.countDown();
-            });
-
-            Operation op = operation;
-            host.run(() -> {
-                host.sendRequest(op);
-            });
-        }
-
-        boolean completed = completionLatch.await(10, TimeUnit.SECONDS);
-        assertTrue(completed);
-    }
-
-    @Test
-    public void multiThreadedJoinPatternSingleOperation() throws Throwable {
-        int iterations = 8;
-        CountDownLatch completionLatch = new CountDownLatch(iterations);
-        for (int i = 0; i < iterations; i++) {
-            Operation operation = Operation.createGet(this.services.get(0).getUri())
-                    .forceRemote()
-                    .setCompletion(host.getCompletion())
-                    .setReferer(host.getUri());
-
-            operation.setCompletion((o, e) -> {
-                assertEquals(o.getJoinedOperations().size(), 1);
-                completionLatch.countDown();
-            });
-
-            host.run(() -> {
-                host.sendRequest(operation);
-            });
-        }
-
-        boolean completed = completionLatch.await(this.host.getTimeoutSeconds(), TimeUnit.SECONDS);
-        assertTrue(completed);
-    }
-
-    @Test
     public void testJoin() throws Throwable {
         Operation op1 = createServiceOperation(this.services.get(0));
         Operation op2 = createServiceOperation(this.services.get(1));
         Operation op3 = createServiceOperation(this.services.get(2));
 
-        CompletionHandler joinCompletion = (o, e) -> {
+        CompletionHandler completion = (o, e) -> {
             try {
-                assertNotNull(o.getJoinedOperation(op1)
-                        .getBody(MinimalTestServiceState.class));
-                assertNotNull(o.getJoinedOperation(op2)
-                        .getBody(MinimalTestServiceState.class));
-                assertNotNull(o.getJoinedOperation(op3)
-                        .getBody(MinimalTestServiceState.class));
                 host.completeIteration();
             } catch (Throwable ex) {
                 host.failIteration(ex);
             }
         };
-
-        op3.setCompletion(joinCompletion);
+        op1.setCompletion(completion);
+        op2.setCompletion(completion);
+        op3.setCompletion(completion);
 
         host.testStart(3);
         OperationJoin.create(op1, op2, op3).sendWith(host);
@@ -278,22 +171,22 @@ public class TestJoinOperationHandler extends BasicReportTestCase {
 
     @Test
     public void testOnJoinCompletionError() throws Throwable {
-        CompletionHandler completion = (o, e) -> {
-            // should not call join operation completion if error.
-            host.failIteration(e);
-        };
-        Operation op1 = createServiceOperation(this.services.get(0)).setCompletion(completion);
+        CompletionHandler perOpCompletion = (o, e) -> host.completeIteration();
+
+        Operation op1 = createServiceOperation(this.services.get(0))
+                .setCompletion(perOpCompletion);
 
         MinimalTestServiceState body = new MinimalTestServiceState();
         body.id = null; // expect validation error.
         Operation op2 = Operation.createPatch(this.services.get(1).getUri())
                 .setBody(body)
                 .setReferer(host.getUri())
-                .forceRemote().setCompletion(completion);
+                .forceRemote().setCompletion(perOpCompletion);
 
-        Operation op3 = createServiceOperation(this.services.get(2)).setCompletion(completion);
+        Operation op3 = createServiceOperation(this.services.get(2)).setCompletion(perOpCompletion);
 
-        host.testStart(3);
+        // we expect per operation completion to be called, and the joined handler to be called
+        host.testStart(6);
         OperationJoin
                 .create(op1, op2, op3)
                 .setCompletion((ops, exc) -> {

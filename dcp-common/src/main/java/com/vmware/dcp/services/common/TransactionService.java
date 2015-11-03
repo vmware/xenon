@@ -74,11 +74,9 @@ public class TransactionService extends StatefulService {
      * Capture possible resolution requests; resolved by the PATCH handler
      */
     public enum ResolutionKind {
-        COMMIT,
-        ABORT,
+        COMMIT, ABORT,
         // fire up notifications upon completion self-patch
-        COMMITTED,
-        ABORTED
+        COMMITTED, ABORTED
     }
 
     /**
@@ -179,7 +177,8 @@ public class TransactionService extends StatefulService {
         // Default state
         s.taskSubStage = s.taskSubStage == null ? SubStage.COLLECTING : s.taskSubStage;
         s.options = s.options == null ? new Options() : s.options;
-        s.servicesToCoordinators = s.servicesToCoordinators == null ? new LinkedHashMap<>() : s.servicesToCoordinators;
+        s.servicesToCoordinators = s.servicesToCoordinators == null ? new LinkedHashMap<>()
+                : s.servicesToCoordinators;
         s.readLinks = s.readLinks == null ? new HashSet<>() : s.readLinks;
         s.modifiedLinks = s.modifiedLinks == null ? new HashSet<>() : s.modifiedLinks;
         s.dependentLinks = s.dependentLinks == null ? new HashSet<>() : s.dependentLinks;
@@ -191,14 +190,14 @@ public class TransactionService extends StatefulService {
         allocateResolutionService(start);
     }
 
-
     /**
      * Allocate the stateless subservice responsible for initiating the commit resolution, while it holds the client
      * until the resolution is complete.
      */
     private void allocateResolutionService(Operation op) {
         Operation startResolutionService = Operation.createPost(
-                UriUtils.extendUri(getUri(), TransactionResolutionService.RESOLUTION_SUFFIX)).setCompletion((o, e) -> {
+                UriUtils.extendUri(getUri(), TransactionResolutionService.RESOLUTION_SUFFIX))
+                .setCompletion((o, e) -> {
                     if (e != null) {
                         op.fail(e);
                         return;
@@ -229,7 +228,8 @@ public class TransactionService extends StatefulService {
         // evolved, either by (being asked to) commit/abort or having seen more operations -- in any case, this
         // "pending" is the most recent one, so we're good.
         if (record.pendingTransactions != null) {
-            existing.servicesToCoordinators.put(put.getReferer().toString(), record.pendingTransactions);
+            existing.servicesToCoordinators.put(put.getReferer().toString(),
+                    record.pendingTransactions);
         }
         if (!record.isSuccessful) {
             if (existing.failedLinks == null) {
@@ -257,9 +257,11 @@ public class TransactionService extends StatefulService {
         // In the first two cases, another coordinator is asking about state
         // in the fall-back, client is sending a commit/abort request.
         if (patch.getRequestHeader(Operation.VMWARE_DCP_TRANSACTION_HEADER) != null) {
-            if (patch.getRequestHeader(Operation.VMWARE_DCP_TRANSACTION_HEADER).equals(Operation.TX_TRY_COMMIT)) {
+            if (patch.getRequestHeader(Operation.VMWARE_DCP_TRANSACTION_HEADER)
+                    .equals(Operation.TX_TRY_COMMIT)) {
                 handleTryCommit(patch);
-            } else if (patch.getRequestHeader(Operation.VMWARE_DCP_TRANSACTION_HEADER).equals(Operation.TX_ENSURE_COMMIT)) {
+            } else if (patch.getRequestHeader(Operation.VMWARE_DCP_TRANSACTION_HEADER)
+                    .equals(Operation.TX_ENSURE_COMMIT)) {
                 handleEnsureCommit(patch);
             }
         } else {
@@ -282,7 +284,8 @@ public class TransactionService extends StatefulService {
                 patch.complete();
             } else {
                 getHost().failRequestActionNotSupported(patch);
-                patch.fail(new IllegalArgumentException("Unrecognized resolution kind: " + resolution.kind));
+                patch.fail(new IllegalArgumentException(
+                        "Unrecognized resolution kind: " + resolution.kind));
             }
         }
     }
@@ -310,7 +313,8 @@ public class TransactionService extends StatefulService {
             operationJoins.add(OperationJoin.create(createNotifyServicesToCommit(existing)));
         }
 
-        OperationSequence os = OperationSequence.create(operationJoins.toArray(new OperationJoin[operationJoins.size()]));
+        OperationSequence os = OperationSequence
+                .create(operationJoins.toArray(new OperationJoin[operationJoins.size()]));
         os.setCompletion((operations, failures) -> {
             if (failures != null) {
                 handleAbort(op);
@@ -339,7 +343,9 @@ public class TransactionService extends StatefulService {
         Operation operation = Operation
                 .createPatch(getUri())
                 .setCompletion((o, e) -> {
-                    logInfo("There was a problem");
+                    if (e != null) {
+                        logWarning("Failure self patching: %s", e.getMessage());
+                    }
                 })
                 .setBody(resolve);
         sendRequest(operation);
@@ -350,13 +356,14 @@ public class TransactionService extends StatefulService {
      */
     private void handleAbort(Operation op) {
         TransactionServiceState existing = getState(op);
-        OperationJoin.create(createNotifyServicesToAbort(existing)).setCompletion((operations, failures) -> {
-            if (failures != null) {
-                logWarning("Transaction failed to abort!");
-                return;
-            }
-            selfPatch(ResolutionKind.ABORTED);
-        });
+        OperationJoin.create(createNotifyServicesToAbort(existing))
+                .setCompletion((operations, failures) -> {
+                    if (failures != null) {
+                        logWarning("Transaction failed to abort: %s", failures.toString());
+                        return;
+                    }
+                    selfPatch(ResolutionKind.ABORTED);
+                }).sendWith(this);
     }
 
     /**
@@ -365,14 +372,14 @@ public class TransactionService extends StatefulService {
      * it is maintained across all nodes.
      */
     private void handleTryCommit(Operation op) {
-        // TODO: optimize by maintaining a flat, top-level hashset
+        // TODO: optimize by maintaining a flat, top-level set
         TransactionServiceState existing = getState(op);
         TransactionServiceState exchangeState = new TransactionServiceState();
         for (Set<String> serviceSet : existing.servicesToCoordinators.values()) {
             if (serviceSet.contains(op.getReferer().toString())) {
                 // notify about deterministic resolution..
                 exchangeState.taskSubStage = SubStage.RESOLVING_CIRCULAR;
-                // ..and resolve deterministcally
+                // ..and resolve deterministically
                 if (!compareTo(op.getReferer())) {
                     existing.taskSubStage = SubStage.ABORTED;
                 }
@@ -488,7 +495,7 @@ public class TransactionService extends StatefulService {
         for (String service : state.modifiedLinks) {
             operations.add(createNotifyOp(UriUtils.buildUri(service), Operation.TX_ABORT));
         }
-        return  operations;
+        return operations;
     }
 
     /**
@@ -523,7 +530,7 @@ public class TransactionService extends StatefulService {
      * Prepare an operation to resolve precedence with a remote coordinator
      */
     private Operation createNotifyOp(URI service, String header, Object body,
-                             Operation.CompletionHandler callback) {
+            Operation.CompletionHandler callback) {
         return Operation
                 .createPatch(service)
                 .addRequestHeader(Operation.VMWARE_DCP_TRANSACTION_HEADER, header)

@@ -17,8 +17,6 @@ import java.net.HttpURLConnection;
 import java.net.URI;
 import java.security.Principal;
 import java.util.Arrays;
-import java.util.Collection;
-import java.util.Collections;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.Map;
@@ -421,8 +419,6 @@ public class Operation implements Cloneable {
     private InstrumentationContext instrumentationCtx;
     public EnumSet<OperationOption> options = EnumSet.noneOf(OperationOption.class);
 
-    volatile OperationJoin joinHandler;
-
     public static Operation create(SerializedOperation ctx, ServiceHost host) {
         Operation op = new Operation();
         op.action = ctx.action;
@@ -515,7 +511,6 @@ public class Operation implements Cloneable {
         clone.contentType = this.contentType;
         clone.retriesRemaining = this.retriesRemaining;
         clone.retryCount = this.retryCount;
-        clone.joinHandler = this.joinHandler;
 
         if (this.cookies != null) {
             clone.cookies = new HashMap<>(this.cookies);
@@ -1249,87 +1244,6 @@ public class Operation implements Cloneable {
             this.remoteCtx.responseHeaders.put(e.getKey(), e.getValue());
         }
         return this;
-    }
-
-    /**
-     * Join multiple {@link Operation}s together so that all {@link CompletionHandler} are invoked
-     * after all joined {@link Operation}s have completed.
-     *
-     * @param op
-     *            - the {@link Operation} to be joined with the current operation.
-     *
-     * @return the {@link Operation} passed as a parameter.
-     */
-    public Operation joinWith(Operation op) {
-        if (op == null) {
-            throw new IllegalArgumentException("'operation' is required.");
-        }
-
-        if (this.joinHandler == null) {
-            this.joinHandler = OperationJoin.create(this, op);
-            return op;
-        }
-
-        if (this.joinHandler.getOperation(this.id) != this) {
-            this.joinHandler.join(this);// reset the cloned operations
-        }
-
-        this.joinHandler.join(op);
-        op.joinHandler = this.joinHandler;
-        return op;
-    }
-
-    /**
-     * Join the completion handlers during {@link ServiceClient#send(Operation)}.
-     */
-    public void joinCompletionHandlers() {
-        this.joinHandler.addCompletionHandler(this);
-    }
-
-    /**
-     * Indicates whether this is a single {@link Operation} instance or it is part of a join set of
-     * {@link Operation}s that are proceeded together.
-     *
-     * @return true if the {@link Operation} has joined other {@link Operation}s; false otherwise;
-     */
-    public boolean isJoined() {
-        return this.joinHandler != null && !this.joinHandler.isEmpty();
-    }
-
-    OperationJoin resetJoinHandler(OperationJoin joinHandler) {
-        OperationJoin oj = this.joinHandler;
-        this.joinHandler = joinHandler;
-        return oj;
-    }
-
-    /**
-     * Get a collection of all joined {@link Operation}s.
-     *
-     * @return a collection of all joined {@link Operation}s or a singleton collection of the
-     *         current {@link Operation} if not in joined mode.
-     */
-    public Collection<Operation> getJoinedOperations() {
-        if (isJoined()) {
-            return this.joinHandler.getOperations();
-        }
-        return Collections.singleton(this);
-    }
-
-    /**
-     * Get the cloned {@link Operation} based on the original {@link Operation#getId()} usually to
-     * be used within the {@link CompletionHandler} in order to get the operation result from the
-     * cloned {@link Operation} with the same <code>id</code>.
-     *
-     * @param op
-     *            the initial {@link Operation} instance.
-     *
-     * @return the {@link Operation} with the same <code>id</code> base on the current context.
-     */
-    public Operation getJoinedOperation(Operation op) {
-        if (op != null && isJoined()) {
-            return this.joinHandler.getOperation(op.getId());
-        }
-        return null;
     }
 
     public boolean isNotification() {
