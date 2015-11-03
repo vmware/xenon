@@ -2,6 +2,10 @@
 
 ## 0.2.0-SNAPSHOT
 
+* Remove Operation.joinWith and associated support code in service
+client. Joins are created and sent with OperationJoin.create() and
+sendWith.
+
 * Add Claims class to common package that extends the Claims in the jwt
 package to include a properties map. This can be used to carry arbitrary
 session state.

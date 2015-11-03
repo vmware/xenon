@@ -62,14 +62,7 @@ public class StatelessService implements Service {
 
     @Override
     public void sendRequest(Operation op) {
-        if (op.isJoined()) {
-            for (Operation currentOp : op.getJoinedOperations()) {
-                prepareRequest(currentOp);
-            }
-        } else {
-            prepareRequest(op);
-        }
-
+        prepareRequest(op);
         this.host.sendRequest(op);
     }
 

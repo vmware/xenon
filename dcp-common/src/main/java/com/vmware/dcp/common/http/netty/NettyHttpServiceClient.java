@@ -41,7 +41,6 @@ import io.netty.handler.codec.http.HttpVersion;
 import com.vmware.dcp.common.Operation;
 import com.vmware.dcp.common.Operation.AuthorizationContext;
 import com.vmware.dcp.common.Operation.CompletionHandler;
-import com.vmware.dcp.common.OperationJoin;
 import com.vmware.dcp.common.Service.Action;
 import com.vmware.dcp.common.ServiceClient;
 import com.vmware.dcp.common.ServiceErrorResponse;
@@ -164,12 +163,7 @@ public class NettyHttpServiceClient implements ServiceClient {
 
     @Override
     public void send(Operation op) {
-        if (!op.isJoined()) {
-            sendSingleRequest(op);
-            return;
-        }
-
-        OperationJoin.sendWith(this, op);
+        sendSingleRequest(op);
     }
 
     private void sendSingleRequest(Operation op) {
@@ -233,14 +227,7 @@ public class NettyHttpServiceClient implements ServiceClient {
      */
     @Override
     public void sendWithCallback(Operation op) {
-        if (!op.isJoined()) {
-            sendWithCallbackSingleRequest(op);
-            return;
-        }
-
-        // SendWithCallback pattern is going away, so fail this here and avoid adding a
-        // OperationJoin.sendWithCallback
-        op.fail(new IllegalStateException("Joined operations not supported"));
+        sendWithCallbackSingleRequest(op);
     }
 
     private void sendWithCallbackSingleRequest(Operation req) {

@@ -165,7 +165,7 @@ public class OperationSequence {
     }
 
     /**
-     * Send the join operations using the {@link ServiceHost}.
+     * Send using the {@link ServiceHost}.
      */
     public void sendWith(ServiceHost host) {
         if (this.parent != null) {
@@ -176,7 +176,7 @@ public class OperationSequence {
     }
 
     /**
-     * Send the join operations using the {@link Service}.
+     * Send using the {@link Service}.
      */
     public void sendWith(Service service) {
         if (this.parent != null) {
@@ -187,7 +187,7 @@ public class OperationSequence {
     }
 
     /**
-     * Send the join operations using the {@link ServiceClient}.
+     * Send using the {@link ServiceClient}.
      */
     public void sendWith(ServiceClient client) {
         if (this.parent != null) {
