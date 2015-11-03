@@ -21,7 +21,7 @@ import java.util.concurrent.ConcurrentLinkedDeque;
 /**
  * Queue implementation customized for the needs of a service. Depending on creation options
  * it will act as a limited capacity {@code Deque} with either FIFO or LIFO behavior.
- * The queue is not thread safe and should be sued within a synchronized context
+ * The queue is not thread safe and should be used within a synchronized context
  */
 class OperationQueue {
 
