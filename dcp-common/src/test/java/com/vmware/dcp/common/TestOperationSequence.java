@@ -47,16 +47,14 @@ public class TestOperationSequence extends BasicReusableHostTestCase {
         // the uri and the body will be set based on the result of the first set of operations.
         Operation op4 = Operation.createPatch(null)
                 .setBody(null)
-                .setReferer(host.getUri())
-                .setCompletion(host.getCompletion());
+                .setReferer(host.getUri());
         Operation op5 = createServiceOperation(this.services.get(1));
         Operation op6 = createServiceOperation(this.services.get(2));
 
         // the uri and the body will be set based on the result of the second set of operations.
         Operation op7 = Operation.createPatch(null)
                 .setBody(null)
-                .setReferer(host.getUri())
-                .setCompletion(host.getCompletion());
+                .setReferer(host.getUri());
         Operation op8 = createServiceOperation(this.services.get(1));
         Operation op9 = createServiceOperation(this.services.get(2));
 
@@ -149,8 +147,7 @@ public class TestOperationSequence extends BasicReusableHostTestCase {
         // the uri and the body will be set based on the result of the first set of operations.
         Operation op4 = Operation.createPatch(this.services.get(2).getUri())
                 .setBody(state2)
-                .setReferer(host.getUri())
-                .setCompletion(host.getCompletion());
+                .setReferer(host.getUri());
         Operation op5 = createServiceOperation(this.services.get(1));
         Operation op6 = createServiceOperation(this.services.get(2));
 
@@ -159,8 +156,7 @@ public class TestOperationSequence extends BasicReusableHostTestCase {
         // the uri and the body will be set based on the result of the second set of operations.
         Operation op7 = Operation.createPatch(this.services.get(2).getUri())
                 .setBody(state3)
-                .setReferer(host.getUri())
-                .setCompletion(host.getCompletion());
+                .setReferer(host.getUri());
         Operation op8 = createServiceOperation(this.services.get(0));
         Operation op9 = createServiceOperation(this.services.get(1));
 
@@ -173,7 +169,6 @@ public class TestOperationSequence extends BasicReusableHostTestCase {
                     if (exc != null) {
                         host.failIteration(exc.values().iterator().next());
                     } else {
-
                         assertTrue(ops.containsKey(op1.getId()));
                         assertTrue(ops.containsKey(op2.getId()));
                         assertTrue(ops.containsKey(op3.getId()));
@@ -207,24 +202,28 @@ public class TestOperationSequence extends BasicReusableHostTestCase {
                         host.failIteration(exc.values().iterator().next());
                     } else {
 
-                        assertTrue(ops.containsKey(op1.getId()));
-                        assertTrue(ops.containsKey(op2.getId()));
-                        assertTrue(ops.containsKey(op3.getId()));
-                        assertTrue(ops.containsKey(op4.getId()));
-                        assertTrue(ops.containsKey(op5.getId()));
-                        assertTrue(ops.containsKey(op6.getId()));
-                        assertTrue(ops.containsKey(op7.getId()));
-                        assertTrue(ops.containsKey(op8.getId()));
-                        assertTrue(ops.containsKey(op9.getId()));
+                        try {
+                            assertTrue(ops.containsKey(op1.getId()));
+                            assertTrue(ops.containsKey(op2.getId()));
+                            assertTrue(ops.containsKey(op3.getId()));
+                            assertTrue(ops.containsKey(op4.getId()));
+                            assertTrue(ops.containsKey(op5.getId()));
+                            assertTrue(ops.containsKey(op6.getId()));
+                            assertTrue(ops.containsKey(op7.getId()));
+                            assertTrue(ops.containsKey(op8.getId()));
+                            assertTrue(ops.containsKey(op9.getId()));
 
-                        Operation o7 = ops.get(op7.getId());
-                        MinimalTestServiceState body = o7
-                                .getBody(MinimalTestServiceState.class);
-                        int currentCount = Integer.parseInt(body.id);
-                        assertEquals(3, currentCount);
+                            Operation o7 = ops.get(op7.getId());
+                            MinimalTestServiceState body = o7
+                                    .getBody(MinimalTestServiceState.class);
+                            int currentCount = Integer.parseInt(body.id);
+                            assertEquals(3, currentCount);
 
-                        assertEquals(9, ops.values().size());
-                        host.completeIteration();
+                            assertEquals(9, ops.values().size());
+                            host.completeIteration();
+                        } catch (Throwable e) {
+                            this.host.failIteration(e);
+                        }
                     }
                 })
                 .sendWith(host);
@@ -248,17 +247,27 @@ public class TestOperationSequence extends BasicReusableHostTestCase {
         host.testStart(2);
         OperationSequence.create(op1, op2, op3)// initial joined operations
                 .setCompletion((ops, exc) -> {
-                    assertEquals(1, exc.values().size());
+                    try {
+                        assertEquals(1, exc.values().size());
+                    } catch (Throwable e) {
+                        this.host.failIteration(e);
+                        return;
+                    }
                     if (exc != null) {
                         exc.clear();
                         host.completeIteration();
                     }
                 })
-                .next(op4, op5, op6)// expected exception on this level
+                .next(op4, op5, op6)// expected one exception on this level
                 .setCompletion((ops, exc) -> {
                     if (exc != null) {
-                        assertEquals(2, exc.values().size());
-                        assertEquals(6, ops.values().size());
+                        try {
+                            assertEquals(1, exc.values().size());
+                            assertEquals(6, ops.values().size());
+                        } catch (Throwable e) {
+                            this.host.failIteration(e);
+                            return;
+                        }
                         host.completeIteration();
                     } else {
                         host.failIteration(new IllegalStateException("Expected exception"));
@@ -268,12 +277,17 @@ public class TestOperationSequence extends BasicReusableHostTestCase {
         host.testWait();
 
         host.testStart(1);
-        OperationSequence.create(op1, op2, op3)// expected exception on this level
-                .next(op4, op5, op6)// expected exception on this level
+        OperationSequence.create(op1, op2, op3)
+                .next(op4, op5, op6)
                 .setCompletion((ops, exc) -> {
                     if (exc != null) {
-                        assertEquals(2, exc.values().size());
-                        assertEquals(6, ops.values().size());
+                        try {
+                            assertEquals(2, exc.values().size());
+                            assertEquals(6, ops.values().size());
+                        } catch (Throwable e) {
+                            host.failIteration(e);
+                            return;
+                        }
                         host.completeIteration();
                     } else {
                         host.failIteration(new IllegalStateException("Expected exception"));
@@ -293,7 +307,6 @@ public class TestOperationSequence extends BasicReusableHostTestCase {
     private Operation createServiceOperation(Service s) {
         return Operation.createGet(s.getUri())
                 .setReferer(host.getUri())
-                .setCompletion(host.getCompletion())
                 .forceRemote();
     }
 

@@ -13,15 +13,12 @@
 
 package com.vmware.dcp.common;
 
-import java.util.ArrayList;
 import java.util.Collection;
-import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Stream;
 
-import com.vmware.dcp.common.Operation.AuthorizationContext;
 import com.vmware.dcp.common.Operation.CompletionHandler;
 
 /**
@@ -32,16 +29,14 @@ import com.vmware.dcp.common.Operation.CompletionHandler;
  */
 public class OperationJoin {
     private static final int APPROXIMATE_EXPECTED_CAPACITY = 4;
-    private final AtomicInteger count;
     private final ConcurrentHashMap<Long, Operation> operations;
-    private final ConcurrentHashMap<Long, CompletionHandlerProxy> operationHandlers;
+    private ConcurrentHashMap<Long, Throwable> failures;
     volatile JoinedCompletionHandler joinedCompletion;
     private OperationContext opContext;
+    private AtomicInteger pendingCount = new AtomicInteger();
 
     private OperationJoin() {
-        this.count = new AtomicInteger();
         this.operations = new ConcurrentHashMap<>(APPROXIMATE_EXPECTED_CAPACITY);
-        this.operationHandlers = new ConcurrentHashMap<>(APPROXIMATE_EXPECTED_CAPACITY);
         this.opContext = OperationContext.getOperationContext();
     }
 
@@ -55,9 +50,9 @@ public class OperationJoin {
         }
 
         OperationJoin joinOp = new OperationJoin();
+        CompletionHandler nestedParentHandler = joinOp.createParentCompletion();
         for (Operation op : ops) {
-            joinOp.join(op);
-            op.joinCompletionHandlers();
+            joinOp.prepareOperation(nestedParentHandler, op);
         }
 
         return joinOp;
@@ -73,8 +68,9 @@ public class OperationJoin {
         }
 
         OperationJoin joinOp = new OperationJoin();
+        CompletionHandler nestedParentHandler = joinOp.createParentCompletion();
         for (Operation op : ops) {
-            joinOp.join(op);
+            joinOp.prepareOperation(nestedParentHandler, op);
         }
 
         return joinOp;
@@ -86,91 +82,97 @@ public class OperationJoin {
      */
     public static OperationJoin create(Stream<Operation> ops) {
         OperationJoin joinOp = new OperationJoin();
-        ops.forEach((op) -> joinOp.join(op));
+        CompletionHandler nestedParentHandler = joinOp.createParentCompletion();
+        ops.forEach((op) -> joinOp.prepareOperation(nestedParentHandler, op));
 
         if (joinOp.isEmpty()) {
             throw new IllegalArgumentException("At least one operation to join expected");
         }
-
         return joinOp;
     }
 
-    /**
-     * Send an already joined operation using the {@link ServiceClient}.
-     */
-    public static void sendWith(ServiceClient serviceClient, Operation joinedOp) {
-        if (!joinedOp.isJoined()) {
-            serviceClient.send(joinedOp);
-            return;
-        }
-
-        // We prepare the joined operations for send, and temporarily hide that they are joined.
-        // By removing the join handler before sending, we avoid a recursion on a local forward:
-        // the client will not try to enumerate through joined operations again.
-
-        // clone the operation list in case the caller is joining new operations while sending.
-        Collection<Operation> joinedOps = new ArrayList<>(joinedOp.getJoinedOperations());
-        for (Operation currentOp : joinedOps) {
-            currentOp.joinCompletionHandlers();
-        }
-
-        // second pass nests a completion and resets the join so the operation appears stand-alone
-        for (Operation currentOp : joinedOps) {
-            Operation clone = currentOp.clone();
-            OperationJoin oj = clone.resetJoinHandler(null);
-            clone.nestCompletion((o, e) -> {
-                clone.resetJoinHandler(oj);
-                clone.transferResponseHeadersFrom(o);
-                clone.setBodyNoCloning(o.getBodyRaw()).setStatusCode(o.getStatusCode());
-                if (e != null) {
-                    clone.fail(e);
-                } else {
-                    clone.complete();
-                }
-            });
-
-            // the currentOp is no longer joined, so there is no risk of the client calling us back
-            serviceClient.send(clone);
-        }
+    private void prepareOperation(CompletionHandler nestedParentHandler, Operation op) {
+        this.operations.put(op.getId(), op);
+        op.nestCompletion(nestedParentHandler);
+        this.pendingCount.incrementAndGet();
     }
+
+    private CompletionHandler createParentCompletion() {
+        CompletionHandler nestedParentHandler = (o, e) -> {
+            if (e != null) {
+                synchronized (this.pendingCount) {
+                    if (this.failures == null) {
+                        this.failures = new ConcurrentHashMap<>();
+                    }
+                }
+                this.failures.put(o.getId(), e);
+            }
+
+            Operation originalOp = this.operations.get(o.getId());
+            originalOp.setStatusCode(o.getStatusCode())
+                    .transferResponseHeadersFrom(o)
+                    .setBodyNoCloning(o.getBodyRaw());
+
+            if (this.pendingCount.decrementAndGet() != 0) {
+                return;
+            }
+
+            OperationContext.restoreOperationContext(this.opContext);
+            // call each operation completion individually
+            for (Operation op : this.operations.values()) {
+                Throwable t = null;
+                if (this.failures != null) {
+                    t = this.failures.get(op.getId());
+                }
+                if (t != null) {
+                    op.fail(t);
+                } else {
+                    op.complete();
+                }
+            }
+
+            if (this.joinedCompletion != null) {
+                this.joinedCompletion.handle(this.operations, this.failures);
+            }
+        };
+        return nestedParentHandler;
+    }
+
 
     /**
      * Send the join operations using the {@link ServiceHost}.
      */
     public void sendWith(ServiceHost host) {
-        validateSendRequest(host);
-        host.sendRequest(getOperations().iterator().next());
+        if (host == null) {
+            throw new IllegalArgumentException("host must not be null.");
+        }
+        for (Operation op : this.operations.values()) {
+            host.sendRequest(op);
+        }
     }
 
     /**
      * Send the join operations using the {@link Service}.
      */
     public void sendWith(Service service) {
-        validateSendRequest(service);
-        service.sendRequest(getOperations().iterator().next());
+        if (service == null) {
+            throw new IllegalArgumentException("service must not be null.");
+        }
+        for (Operation op : this.operations.values()) {
+            service.sendRequest(op);
+        }
     }
 
     /**
      * Send the join operations using the {@link ServiceClient}.
      */
     public void sendWith(ServiceClient client) {
-        validateSendRequest(client);
-        client.send(getOperations().iterator().next());
-    }
-
-    public OperationJoin join(Operation op) {
-        if (op == null) {
-            throw new IllegalArgumentException("'operation' must not be null.");
+        if (client == null) {
+            throw new IllegalArgumentException("client must not be null.");
         }
-        op.joinHandler = this;
-        Operation existingOp = this.operations.put(op.getId(), op);
-
-        // when re-joining the count should be incremented again even when the operations are
-        // already presented.
-        if (existingOp == null || this.operations.size() > this.count.get()) {
-            this.count.incrementAndGet();
+        for (Operation op : this.operations.values()) {
+            client.send(op);
         }
-        return this;
     }
 
     public OperationJoin setCompletion(JoinedCompletionHandler joinedCompletion) {
@@ -203,33 +205,12 @@ public class OperationJoin {
         return this.operations.values();
     }
 
+    public Map<Long, Throwable> getFailures() {
+        return this.failures;
+    }
+
     public Operation getOperation(long id) {
         return this.operations.get(id);
-    }
-
-    void addCompletionHandler(Operation op) {
-        CompletionHandler completion = op.getCompletion();
-        if (completion instanceof CompletionHandlerProxy) {
-            CompletionHandler previousHandler = ((CompletionHandlerProxy) completion).completionHandler;
-            if (this.operationHandlers.containsKey(op.getId())
-                    && completion == previousHandler) {
-                return;
-            }
-            completion = previousHandler;
-        }
-
-        CompletionHandlerProxy proxyHandler = new CompletionHandlerProxy(this, completion);
-        op.setCompletion(proxyHandler);
-        this.operationHandlers.put(op.getId(), proxyHandler);
-    }
-
-    private void validateSendRequest(Object sender) {
-        if (sender == null) {
-            throw new IllegalArgumentException("'sender' must not be null.");
-        }
-        if (isEmpty()) {
-            throw new IllegalStateException("No joined operations to be sent.");
-        }
     }
 
     @FunctionalInterface
@@ -237,85 +218,15 @@ public class OperationJoin {
         void handle(Map<Long, Operation> ops, Map<Long, Throwable> failures);
     }
 
-    private static class CompletionHandlerProxy implements CompletionHandler {
-        private final CompletionHandler completionHandler;
-        private final OperationJoin join;
-        private volatile Throwable failure;
-        private volatile Operation completedOp;
-
-        private CompletionHandlerProxy(OperationJoin joinHandler,
-                CompletionHandler completionHandler) {
-            this.join = joinHandler;
-            this.completionHandler = completionHandler;
-        }
-
-        @Override
-        public void handle(final Operation completedOp, final Throwable failure) {
-            if (this.join.count.get() <= 0) {
-                return;
-            }
-
-            this.failure = failure;
-            this.completedOp = completedOp;
-            this.join.operations.put(completedOp.getId(), completedOp);
-
-            if (this.join.count.decrementAndGet() == 0) {
-                if (this.join.joinedCompletion != null) {
-                    OperationContext origContext = OperationContext.getOperationContext();
-                    OperationContext.restoreOperationContext(this.join.opContext);
-                    this.join.joinedCompletion
-                            .handle(this.join.operations, this.join.getFailures());
-                    OperationContext.restoreOperationContext(origContext);
-                    return;
-                }
-                for (CompletionHandlerProxy proxyCompletion : this.join.operationHandlers.values()) {
-                    CompletionHandler handler = proxyCompletion.completionHandler;
-                    if (handler != null) {
-                        AuthorizationContext origContext = OperationContext
-                                .getAuthorizationContext();
-                        OperationContext.setAuthorizationContext(proxyCompletion.completedOp
-                                .getAuthorizationContext());
-                        handler.handle(proxyCompletion.completedOp, proxyCompletion.failure);
-                        OperationContext.setAuthorizationContext(origContext);
-                    }
-                }
-            }
-        }
-    }
-
-    Map<Long, Throwable> getFailures() {
-        Map<Long, Throwable> failures = null;
-        for (CompletionHandlerProxy proxyCompletion : this.operationHandlers.values()) {
-            if (proxyCompletion.failure != null) {
-                if (failures == null) {
-                    failures = new HashMap<>();
-                }
-                failures.put(proxyCompletion.completedOp.getId(), proxyCompletion.failure);
-            }
-        }
-        return failures;
-    }
 
     public void fail(Throwable t) {
-        if (this.joinedCompletion != null) {
-            Map<Long, Throwable> errors = new HashMap<>(1);
-            errors.put(this.operations.keys().nextElement(), t);
-            OperationContext origContext = OperationContext.getOperationContext();
-            OperationContext.restoreOperationContext(this.opContext);
-            this.joinedCompletion.handle(this.operations, errors);
-            OperationContext.restoreOperationContext(origContext);
-
-        } else {
-            for (Map.Entry<Long, Operation> entry : this.operations.entrySet()) {
-                CompletionHandlerProxy handler = this.operationHandlers.get(entry.getKey());
-                if (handler != null && handler.completedOp == null) {
-                    AuthorizationContext origContext = OperationContext.getAuthorizationContext();
-                    OperationContext.setAuthorizationContext(entry.getValue()
-                            .getAuthorizationContext());
-                    handler.handle(entry.getValue(), t);
-                    OperationContext.setAuthorizationContext(origContext);
-                }
-            }
+        this.failures = new ConcurrentHashMap<>();
+        this.failures.put(this.operations.keys().nextElement(), t);
+        OperationContext origContext = OperationContext.getOperationContext();
+        OperationContext.restoreOperationContext(this.opContext);
+        for (Operation op : this.operations.values()) {
+            op.fail(t);
         }
+        OperationContext.restoreOperationContext(origContext);
     }
 }
