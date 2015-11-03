@@ -26,13 +26,13 @@ public class TestRootNamespaceService extends BasicReportTestCase {
 
     @Before
     public void prepare() throws Throwable {
-        this.host.waitForServiceAvailable(RootNamespaceService.SELF_LINK);
+        this.host.waitForServiceAvailable(FactoriesListingService.SELF_LINK);
     }
 
     @Test
     public void getRootNamespaceService() throws Throwable {
-        this.host.waitForServiceAvailable(RootNamespaceService.SELF_LINK);
-        URI serviceUri = UriUtils.buildUri(this.host, RootNamespaceService.class);
+        this.host.waitForServiceAvailable(FactoriesListingService.SELF_LINK);
+        URI serviceUri = UriUtils.buildUri(this.host, FactoriesListingService.class);
 
         this.host.testStart(1);
 

@@ -18,7 +18,7 @@ import java.util.logging.Level;
 import com.vmware.dcp.common.Operation;
 import com.vmware.dcp.common.ServiceHost;
 import com.vmware.dcp.common.UriUtils;
-import com.vmware.dcp.services.common.RootNamespaceService;
+import com.vmware.dcp.services.common.FactoriesListingService;
 
 public class SampleServiceCustomUiHost extends ServiceHost {
 
@@ -40,8 +40,8 @@ public class SampleServiceCustomUiHost extends ServiceHost {
         startDefaultCoreServicesSynchronously();
 
         super.startService(
-                Operation.createPost(UriUtils.buildUri(this, RootNamespaceService.class)),
-                new RootNamespaceService()
+                Operation.createPost(UriUtils.buildUri(this, FactoriesListingService.class)),
+                new FactoriesListingService()
         );
 
         // start the example custom ui factory

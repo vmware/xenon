@@ -91,6 +91,7 @@ import com.vmware.dcp.common.jwt.Verifier.TokenException;
 import com.vmware.dcp.services.common.AuthCredentialsFactoryService;
 import com.vmware.dcp.services.common.AuthorizationContextService;
 import com.vmware.dcp.services.common.ConsistentHashingNodeSelectorService;
+import com.vmware.dcp.services.common.FactoriesListingService;
 import com.vmware.dcp.services.common.FileContentService;
 import com.vmware.dcp.services.common.GuestUserService;
 import com.vmware.dcp.services.common.LuceneBlobIndexService;
@@ -988,6 +989,7 @@ public class ServiceHost {
         List<Service> coreServices = new ArrayList<>();
         coreServices.add(new ServiceHostManagementService());
         coreServices.add(new ProcessFactoryService());
+        coreServices.add(new FactoriesListingService());
         coreServices.add(new ServiceContextIndexService());
         coreServices.add(new LuceneBlobIndexService());
         coreServices.add(new ODataQueryService());

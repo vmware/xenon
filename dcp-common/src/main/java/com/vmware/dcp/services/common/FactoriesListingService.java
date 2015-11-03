@@ -18,10 +18,10 @@ import java.util.EnumSet;
 import com.vmware.dcp.common.Operation;
 import com.vmware.dcp.common.StatelessService;
 
-public class RootNamespaceService extends StatelessService {
-    public static final String SELF_LINK = "/";
+public class FactoriesListingService extends StatelessService {
+    public static final String SELF_LINK = "/core/factories";
 
-    public RootNamespaceService() {
+    public FactoriesListingService() {
         super();
     }
 

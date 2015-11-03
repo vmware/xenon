@@ -19,7 +19,7 @@ import com.vmware.dcp.common.Operation;
 import com.vmware.dcp.common.ServiceHost;
 import com.vmware.dcp.common.UriUtils;
 import com.vmware.dcp.services.common.ExampleFactoryService;
-import com.vmware.dcp.services.common.RootNamespaceService;
+import com.vmware.dcp.services.common.FactoriesListingService;
 import com.vmware.dcp.ui.UiService;
 
 /**
@@ -47,8 +47,13 @@ public class DecentralizedControlPlaneHost extends ServiceHost {
         setAuthorizationContext(this.getSystemAuthorizationContext());
 
         super.startService(
-                Operation.createPost(UriUtils.buildUri(this, RootNamespaceService.class)),
-                new RootNamespaceService()
+                Operation.createPost(UriUtils.buildUri(this, FactoriesListingService.class)),
+                new FactoriesListingService()
+        );
+
+        super.startService(
+                Operation.createPost(UriUtils.buildUri(this, FactoriesListingService.class)),
+                new FactoriesListingService()
         );
 
         // start an example factory for folks that want to experiment with service instances

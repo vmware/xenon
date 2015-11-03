@@ -42,8 +42,8 @@ public class ExampleServiceHost extends ServiceHost {
         setAuthorizationContext(this.getSystemAuthorizationContext());
 
         super.startService(
-                Operation.createPost(UriUtils.buildUri(this, RootNamespaceService.class)),
-                new RootNamespaceService()
+                Operation.createPost(UriUtils.buildUri(this, FactoriesListingService.class)),
+                new FactoriesListingService()
         );
 
         super.startService(
