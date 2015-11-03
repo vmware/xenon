@@ -358,9 +358,11 @@ public class TestStatefulService extends BasicReusableHostTestCase {
         // one of them failing with the proper error
 
         AtomicInteger cancelledOpCount = new AtomicInteger();
-        int count = 2000;
+        int count = 100;
+        MinimalTestServiceState body = (MinimalTestServiceState) this.host.buildMinimalTestState();
+        body.id = MinimalTestService.STRING_MARKER_DELAY_COMPLETION;
         Operation patch = Operation.createPatch(serviceUri)
-                .setBody(this.host.buildMinimalTestState())
+                .setBody(body)
                 .setCompletion((o, e) -> {
                     if (e != null) {
                         if (o.getStatusCode() != Operation.STATUS_CODE_UNAVAILABLE) {
@@ -389,7 +391,8 @@ public class TestStatefulService extends BasicReusableHostTestCase {
         }
         this.host.testWait();
 
-        if (cancelledOpCount.get() < Math.min(2, limit)) {
+        this.host.log("Ops cancelled: %d", cancelledOpCount.get());
+        if (cancelledOpCount.get() < limit / 20) {
             throw new IllegalStateException("not enough operations where cancelled");
         }
 

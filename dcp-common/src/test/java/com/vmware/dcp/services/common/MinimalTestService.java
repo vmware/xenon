@@ -30,6 +30,7 @@ public class MinimalTestService extends StatefulService {
     public static final String STRING_MARKER_TIMEOUT_REQUEST = "do not complete this request";
     public static final String STRING_MARKER_HAS_CONTEXT_ID = "check context id";
     public static final String STRING_MARKER_USE_DIFFERENT_CONTENT_TYPE = "change content type on response";
+    public static final String STRING_MARKER_DELAY_COMPLETION = "do a tight loop";
     public static final String TEST_HEADER_NAME = "TestServiceHeader";
 
     public static final String PLAIN_TEXT_RESPONSE = createPlainTextResponse();
@@ -37,6 +38,7 @@ public class MinimalTestService extends StatefulService {
 
     public static final String STAT_NAME_MAINTENANCE_SUCCESS_COUNT = "maintSuccessCount";
     public static final String STAT_NAME_MAINTENANCE_FAILURE_COUNT = "maintFailureCount";
+
 
     public static class MinimalTestServiceErrorResponse extends ServiceErrorResponse {
 
@@ -93,6 +95,15 @@ public class MinimalTestService extends StatefulService {
         if (patchBody.id == null) {
             patch.fail(new IllegalArgumentException(ERROR_MESSAGE_ID_IS_REQUIRED),
                     MinimalTestServiceErrorResponse.create(ERROR_MESSAGE_ID_IS_REQUIRED));
+            return;
+        }
+
+        if (patchBody.id.equals(STRING_MARKER_DELAY_COMPLETION)) {
+            try {
+                Thread.sleep(25);
+            } catch (InterruptedException e) {
+            }
+            patch.complete();
             return;
         }
 
