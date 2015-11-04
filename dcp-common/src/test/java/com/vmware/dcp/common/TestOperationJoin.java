@@ -29,7 +29,7 @@ import com.vmware.dcp.common.Operation.CompletionHandler;
 import com.vmware.dcp.common.test.MinimalTestServiceState;
 import com.vmware.dcp.services.common.MinimalTestService;
 
-public class TestJoinOperationHandler extends BasicReportTestCase {
+public class TestOperationJoin extends BasicReportTestCase {
     private List<Service> services;
 
     @Before
@@ -211,7 +211,6 @@ public class TestJoinOperationHandler extends BasicReportTestCase {
 
     private Operation createServiceOperation(Service s) {
         return Operation.createGet(s.getUri())
-                .setReferer(host.getUri())
-                .setCompletion(host.getCompletion());
+                .setReferer(host.getUri());
     }
 }
