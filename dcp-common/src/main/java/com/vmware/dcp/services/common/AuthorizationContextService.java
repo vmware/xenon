@@ -28,9 +28,8 @@ import com.vmware.dcp.common.Operation;
 import com.vmware.dcp.common.Operation.AuthorizationContext;
 import com.vmware.dcp.common.OperationJoin;
 import com.vmware.dcp.common.OperationJoin.JoinedCompletionHandler;
+import com.vmware.dcp.common.QueryFilterUtils;
 import com.vmware.dcp.common.ServiceDocument;
-import com.vmware.dcp.common.ServiceDocumentDescription;
-import com.vmware.dcp.common.ServiceDocumentDescription.Builder;
 import com.vmware.dcp.common.ServiceDocumentQueryResult;
 import com.vmware.dcp.common.ServiceHost.ServiceNotFoundException;
 import com.vmware.dcp.common.StatelessService;
@@ -44,7 +43,6 @@ import com.vmware.dcp.services.common.QueryTask.QueryTerm.MatchType;
 import com.vmware.dcp.services.common.ResourceGroupService.ResourceGroupState;
 import com.vmware.dcp.services.common.RoleService.RoleState;
 import com.vmware.dcp.services.common.UserGroupService.UserGroupState;
-import com.vmware.dcp.services.common.UserService.UserState;
 
 /**
  * The authorization context service takes an operation's authorization context and
@@ -95,13 +93,6 @@ public class AuthorizationContextService extends StatelessService {
 
     private Map<String, AuthorizationContext> authorizationContextCache =
             new ConcurrentHashMap<>();
-
-    /**
-     * Description of user state.
-     *
-     * Needed here to evaluate a user state against user group queries.
-     */
-    private ServiceDocumentDescription userStateDescription;
 
     /**
      * The service host will invoke this method to allow a service to handle
@@ -160,12 +151,6 @@ public class AuthorizationContextService extends StatelessService {
     }
 
     @Override
-    public void handleStart(Operation op) {
-        this.userStateDescription = Builder.create().buildDescription(UserState.class);
-        op.complete();
-    }
-
-    @Override
     public void handleRequest(Operation op) {
         AuthorizationContext ctx = op.getAuthorizationContext();
         if (ctx == null) {
@@ -208,18 +193,25 @@ public class AuthorizationContextService extends StatelessService {
                         return;
                     }
 
-                    UserState userState = o.getBody(UserState.class);
+                    ServiceDocument userState = QueryFilterUtils.getServiceState(o, getHost());
+
+                    // If the native user state could not be extracted, we are sure no roles
+                    // will apply and we can populate the authorization context.
+                    if (userState == null) {
+                        populateAuthorizationContext(ctx, claims, null);
+                        return;
+                    }
+
                     loadUserGroups(ctx, claims, userState);
                 });
-        // do not queue as the user might no longer be present
-        // in the system
-        get.addRequestHeader(Operation.PRAGMA_HEADER,
-                Operation.PRAGMA_DIRECTIVE_NO_QUEUING);
+
+        // Do not queue as the user might no longer be present in the system
+        get.addRequestHeader(Operation.PRAGMA_HEADER, Operation.PRAGMA_DIRECTIVE_NO_QUEUING);
         setAuthorizationContext(get, getSystemAuthorizationContext());
         sendRequest(get);
     }
 
-    private void loadUserGroups(AuthorizationContext ctx, Claims claims, UserState userState) {
+    private void loadUserGroups(AuthorizationContext ctx, Claims claims, ServiceDocument userState) {
         URI getUserGroupsUri = UriUtils.buildUri(getHost(), ServiceUriPaths.CORE_AUTHZ_USER_GROUPS);
         getUserGroupsUri = UriUtils.buildExpandLinksQueryUri(getUserGroupsUri);
         Operation get = Operation.createGet(getUserGroupsUri)
@@ -238,7 +230,7 @@ public class AuthorizationContextService extends StatelessService {
 
                         try {
                             QueryFilter f = QueryFilter.create(userGroupState.query);
-                            if (f.evaluate(userState, this.userStateDescription)) {
+                            if (QueryFilterUtils.evaluate(f, userState, getHost())) {
                                 userGroupStates.add(userGroupState);
                             }
                         } catch (QueryFilterException qfe) {

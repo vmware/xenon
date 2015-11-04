@@ -327,12 +327,21 @@ public class StatelessService implements Service {
 
     @Override
     public ServiceDocument getDocumentTemplate() {
+        ServiceDocument d;
+
         try {
-            return this.stateType.newInstance();
+            d = this.stateType.newInstance();
         } catch (Throwable e) {
             logSevere(e);
             return null;
         }
+
+        if (getHost() == null) {
+            return d;
+        }
+
+        d.documentDescription = getHost().buildDocumentDescription(this);
+        return d;
     }
 
     public void logSevere(Throwable e) {

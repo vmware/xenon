@@ -23,9 +23,29 @@ import com.vmware.dcp.services.common.QueryFilter;
 public class QueryFilterUtils {
 
     /**
+     * Infrastructure use only.
+     *
+     * Decodes an operation body using the type defined on the corresponding service instance.
+     * This is useful where a service's type is not known up front and a query filter
+     * needs to be evaluated against its state.
+     *
+     * The service pointed to by the operation's URI path must be started on the host.
+     */
+    public static ServiceDocument getServiceState(Operation op, ServiceHost host) {
+        Service s = host.findService(op.getUri().getPath());
+        Class<? extends ServiceDocument> type = s.getStateType();
+        if (type == null) {
+            return null;
+        }
+
+        return op.getBody(type);
+    }
+
+    /**
      * Evaluates the given document state given the filter and an available service document
-     * description cached by the service host. The service associated with the state must be
-     * started on the host.
+     * description cached by the service host.
+     *
+     * The service associated with the state must be started on the host.
      */
     public static boolean evaluate(QueryFilter filter, ServiceDocument state, ServiceHost host) {
         ServiceDocumentDescription sdd = host.buildDocumentDescription(state.documentSelfLink);
@@ -35,5 +55,4 @@ public class QueryFilterUtils {
         }
         return filter.evaluate(state, sdd);
     }
-
 }
