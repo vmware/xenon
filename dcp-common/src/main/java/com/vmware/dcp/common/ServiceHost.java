@@ -2401,11 +2401,11 @@ public class ServiceHost {
             return true;
         }
 
-        if (this.isAuthorizationEnabled()) {
-            if (inboundOp.getAuthorizationContext() == null) {
-                populateAuthorizationContext(inboundOp);
-            }
+        if (inboundOp.getAuthorizationContext() == null) {
+            populateAuthorizationContext(inboundOp);
+        }
 
+        if (this.isAuthorizationEnabled()) {
             if (this.authorizationService != null) {
                 inboundOp.nestCompletion(op -> {
                     handleAuthorizedRequest(service, op);
@@ -2458,7 +2458,7 @@ public class ServiceHost {
 
     private void populateAuthorizationContext(Operation op) {
         AuthorizationContext ctx = getAuthorizationContext(op);
-        if (ctx == null) {
+        if (ctx == null && isAuthorizationEnabled()) {
             // No (valid) authorization context, fall back to guest context
             ctx = getGuestAuthorizationContext();
         }
