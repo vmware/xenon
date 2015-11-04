@@ -1036,7 +1036,11 @@ public class ServiceHost {
                 Operation.createPost(UriUtils.buildUri(this, ServiceUriPaths.SYSTEM_LOG)),
                 new ServiceHostLogService(ServiceHostLogService.DEFAULT_SYSTEM_LOG_NAME));
 
-        startUiFileContentServices(new WebSocketService(null, null));
+        // Create service without starting it.
+        // Needed to start the UI resource service associated with the WebSocketService.
+        Service webSocketService = new WebSocketService(null, null);
+        webSocketService.setHost(this);
+        startUiFileContentServices(webSocketService);
 
         schedule(() -> {
             joinPeers(peers, ServiceUriPaths.DEFAULT_NODE_GROUP);
