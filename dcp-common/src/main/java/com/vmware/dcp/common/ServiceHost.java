@@ -2401,11 +2401,11 @@ public class ServiceHost {
             return true;
         }
 
-        if (this.isAuthorizationEnabled()) {
-            if (inboundOp.getAuthorizationContext() == null) {
-                populateAuthorizationContext(inboundOp);
-            }
+        if (inboundOp.getAuthorizationContext() == null) {
+            populateAuthorizationContext(inboundOp);
+        }
 
+        if (this.isAuthorizationEnabled()) {
             if (this.authorizationService != null) {
                 inboundOp.nestCompletion(op -> {
                     handleAuthorizedRequest(service, op);
