@@ -66,7 +66,7 @@ public class NettyHttpServerInitializer extends ChannelInitializer<SocketChannel
             p.addLast(SSL_HANDLER, handler);
         }
 
-        p.addLast(DECODER_HANDLER, new HttpRequestDecoder());
+        p.addLast(DECODER_HANDLER, new HttpRequestDecoder(4096, 65536, 65536));
         p.addLast(ENCODER_HANDLER, new HttpResponseEncoder());
         p.addLast(AGGREGATOR_HANDLER,
                 new HttpObjectAggregator(NettyChannelContext.MAX_REQUEST_SIZE));
