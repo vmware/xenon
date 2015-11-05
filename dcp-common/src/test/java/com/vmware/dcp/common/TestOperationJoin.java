@@ -16,10 +16,13 @@ package com.vmware.dcp.common;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Stream;
 
 import org.junit.Before;
@@ -31,6 +34,7 @@ import com.vmware.dcp.services.common.MinimalTestService;
 
 public class TestOperationJoin extends BasicReportTestCase {
     private List<Service> services;
+    private final int numberOfServices = 3;
 
     @Before
     public void prepare() throws Throwable {
@@ -79,6 +83,76 @@ public class TestOperationJoin extends BasicReportTestCase {
         this.host.startService(startPostTwo, new MinimalTestService());
 
         this.host.testWait();
+    }
+
+    @Test
+    public void testJoinWithBatch() throws Throwable {
+        for (int numberOfOperations = 1; numberOfOperations < 5; numberOfOperations++) {
+            for (int batchSize = 1; batchSize < numberOfOperations; batchSize++) {
+                Collection<Operation> ops = getOperations(
+                        numberOfOperations,
+                        this.services.get(0),
+                        (o, e) -> {
+                            try {
+                                host.completeIteration();
+                            } catch (Throwable ex) {
+                                host.failIteration(ex);
+                            }
+                        });
+                host.testStart(numberOfOperations);
+                OperationJoin.create(ops).sendWith(host, batchSize);
+                host.testWait();
+            }
+        }
+    }
+
+    @Test
+    public void testJoinWithBatchSize() throws Throwable {
+        Service testService = new MinimalTestService();
+        testService = this.host.startServiceAndWait(testService, UUID.randomUUID().toString(), null);
+        int limit = 40;
+        this.host.setOperationQueueLimit(testService.getUri(), limit);
+        AtomicInteger cancelledOpCount = new AtomicInteger();
+        int count = 100;
+        MinimalTestServiceState body = (MinimalTestServiceState) this.host.buildMinimalTestState();
+        body.id = MinimalTestService.STRING_MARKER_DELAY_COMPLETION;
+        Collection<Operation> ops1 = getOperations(count, testService, (o, e) -> {
+            if (e != null) {
+                if (o.getStatusCode() != Operation.STATUS_CODE_UNAVAILABLE) {
+                    this.host.failIteration(
+                            new IllegalStateException("unexpected status code"));
+                    return;
+                }
+                String retrySeconds = o.getResponseHeader(Operation.RETRY_AFTER_HEADER);
+                if (retrySeconds == null || Integer.parseInt(retrySeconds) < 1) {
+                    this.host.failIteration(
+                            new IllegalStateException("missing or unexpected retry-after"));
+                    return;
+                }
+
+                cancelledOpCount.incrementAndGet();
+                this.host.completeIteration();
+                return;
+            }
+
+            this.host.completeIteration();
+        });
+
+        // make sure no operations are cancelled if we are below the limit
+        this.host.testStart(count);
+        OperationJoin.create(ops1).sendWith(host, limit - 1);
+        this.host.testWait();
+    }
+
+    private Collection<Operation> getOperations(int n, Service service, CompletionHandler handler) {
+        Collection<Operation> ops = new ArrayList<>();
+        for (int i = 0; i < n; i++) {
+            Operation op = createServiceOperation(service);
+            op.setCompletion(handler);
+            ops.add(op);
+        }
+
+        return ops;
     }
 
     @Test
@@ -203,14 +277,17 @@ public class TestOperationJoin extends BasicReportTestCase {
     }
 
     private List<Service> initServices() throws Throwable {
-        int numberOfServices = 3;
-        return host.doThroughputServiceStart(numberOfServices,
+        return host.doThroughputServiceStart(this.numberOfServices,
                 MinimalTestService.class, host.buildMinimalTestState(),
                 EnumSet.noneOf(Service.ServiceOption.class), null);
     }
 
     private Operation createServiceOperation(Service s) {
-        return Operation.createGet(s.getUri())
-                .setReferer(host.getUri());
+        MinimalTestServiceState body = (MinimalTestServiceState) this.host.buildMinimalTestState();
+        body.id = MinimalTestService.STRING_MARKER_DELAY_COMPLETION;
+
+        return Operation.createPatch(s.getUri())
+                .setBody(body)
+                .setReferer(this.host.getUri());
     }
 }
