@@ -150,12 +150,6 @@ public class LuceneQueryTaskService extends StatefulService {
         }
 
         QueryTask patchBody = patch.getBody(QueryTask.class);
-        if (patchBody.querySpec != null) {
-            patch.fail(new IllegalArgumentException(
-                    "specification can not be changed"));
-            return;
-        }
-
         TaskState newTaskState = patchBody.taskInfo;
 
         if (newTaskState == null) {
@@ -259,6 +253,7 @@ public class LuceneQueryTaskService extends StatefulService {
                         if (e == null) {
                             task.results = (ServiceDocumentQueryResult) o.getBodyRaw();
                         }
+
                         handleQueryCompletion(task, e, directOp);
                     });
 
@@ -282,7 +277,9 @@ public class LuceneQueryTaskService extends StatefulService {
         long delta = task.documentExpirationTimeMicros - Utils.getNowMicrosUtc();
         delta = Math.max(1, delta);
         getHost().schedule(() -> {
-            cancelContinuousQueryOnIndex(task);
+            if (task.querySpec.options.contains(QueryOption.CONTINUOUS)) {
+                cancelContinuousQueryOnIndex(task);
+            }
             sendRequest(delete);
         }, delta, TimeUnit.MICROSECONDS);
     }
@@ -291,6 +288,8 @@ public class LuceneQueryTaskService extends StatefulService {
         QueryTask body = new QueryTask();
         body.documentSelfLink = task.documentSelfLink;
         body.taskInfo.stage = TaskStage.CANCELLED;
+        body.querySpec = task.querySpec;
+        body.documentKind = task.documentKind;
         Operation cancelActiveQueryPatch = Operation
                 .createPatch(this, task.indexLink)
                 .setBodyNoCloning(body);
@@ -376,8 +375,6 @@ public class LuceneQueryTaskService extends StatefulService {
                 directOp.setBodyNoCloning(task).complete();
             } else {
                 // PATCH self to finished
-                task.querySpec = null;
-                task.postProcessingSpec = null;
                 // we do not clone our state since we already cloned before the query
                 // started
                 sendRequest(Operation.createPatch(getUri()).setBodyNoCloning(task));
