@@ -16,7 +16,9 @@ package com.vmware.dcp.common;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.UUID;
@@ -31,6 +33,7 @@ import com.vmware.dcp.services.common.MinimalTestService;
 
 public class TestOperationJoin extends BasicReportTestCase {
     private List<Service> services;
+    private final int numberOfServices = 10;
 
     @Before
     public void prepare() throws Throwable {
@@ -79,6 +82,37 @@ public class TestOperationJoin extends BasicReportTestCase {
         this.host.startService(startPostTwo, new MinimalTestService());
 
         this.host.testWait();
+    }
+
+    @Test
+    public void testJoinWithBatch() throws Throwable {
+        for (int numberOfOperations = 1; numberOfOperations < this.numberOfServices; numberOfOperations++) {
+            for (int batchSize = 1; batchSize < numberOfOperations; batchSize++) {
+                Collection<Operation> ops = getOperations(numberOfOperations);
+                host.testStart(numberOfOperations);
+                OperationJoin.create(ops).sendWith(host, batchSize);
+                host.testWait();
+            }
+        }
+    }
+
+    private Collection<Operation> getOperations(int n) {
+        Collection<Operation> ops = new ArrayList<>();
+        CompletionHandler completion = (o, e) -> {
+            try {
+                host.completeIteration();
+            } catch (Throwable ex) {
+                host.failIteration(ex);
+            }
+        };
+
+        for (int i = 0; i < n; i++) {
+            Operation op = createServiceOperation(this.services.get(i));
+            op.setCompletion(completion);
+            ops.add(op);
+        }
+
+        return ops;
     }
 
     @Test
@@ -203,8 +237,7 @@ public class TestOperationJoin extends BasicReportTestCase {
     }
 
     private List<Service> initServices() throws Throwable {
-        int numberOfServices = 3;
-        return host.doThroughputServiceStart(numberOfServices,
+        return host.doThroughputServiceStart(this.numberOfServices,
                 MinimalTestService.class, host.buildMinimalTestState(),
                 EnumSet.noneOf(Service.ServiceOption.class), null);
     }
