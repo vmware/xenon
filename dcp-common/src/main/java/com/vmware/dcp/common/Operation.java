@@ -41,6 +41,11 @@ import com.vmware.dcp.services.common.SystemUserService;
  */
 public class Operation implements Cloneable {
 
+    @FunctionalInterface
+    public interface CompletionHandler {
+        void handle(Operation completedOp, Throwable failure);
+    }
+
     public static class SocketContext {
         public static final int MAX_REQUEST_SIZE = 1024 * 1024 * 16;
 
@@ -74,75 +79,11 @@ public class Operation implements Cloneable {
         public long operationCompletionTimeMicrosUtc;
     }
 
-    public static enum OperationOption {
-        REPLICATED, REPLICATION_DISABLED, REMOTE, NOTIFICATION_DISABLED, REPLICATED_TARGET
-    }
-
-    public static class SerializedOperation extends ServiceDocument {
-        public Action action;
-        public String host;
-        public int port;
-        public String path;
-        public String query;
-        public Long id;
-        public URI referer;
-        public String jsonBody;
-        public int statusCode;
-        public EnumSet<OperationOption> options;
-        public String contextId;
-        public String transactionId;
-
-        public static final ServiceDocumentDescription DESCRIPTION = Operation.SerializedOperation
-                .buildDescription();
-
-        public static final String KIND = Utils.buildKind(Operation.SerializedOperation
-                .class);
-
-        public static SerializedOperation create(Operation op) {
-            SerializedOperation ctx = new SerializedOperation();
-            ctx.contextId = op.getContextId();
-            ctx.action = op.action;
-            ctx.referer = op.referer;
-            ctx.id = op.id;
-            ctx.options = op.options.clone();
-            ctx.transactionId = op.getTransactionId();
-            if (op.uri != null) {
-                ctx.host = op.uri.getHost();
-                ctx.port = op.uri.getPort();
-                ctx.path = op.uri.getPath();
-                ctx.query = op.uri.getQuery();
-            }
-
-            Object body = op.getBodyRaw();
-            if (body instanceof String) {
-                ctx.jsonBody = (String) body;
-            } else {
-                ctx.jsonBody = Utils.toJson(body);
-            }
-
-            ctx.documentKind = KIND;
-            ctx.documentExpirationTimeMicros = op.expirationMicrosUtc;
-            return ctx;
-        }
-
-        public static boolean isValid(SerializedOperation sop) {
-            if (sop.action == null || sop.id == null || sop.jsonBody == null || sop.path == null
-                    || sop.referer == null) {
-                return false;
-            }
-            return true;
-        }
-
-        public static ServiceDocumentDescription buildDescription() {
-            EnumSet<Service.ServiceOption> options = EnumSet.of(Service.ServiceOption.PERSISTENCE);
-            return Builder.create().buildDescription(SerializedOperation.class, options);
-        }
-    }
 
     /**
      * Operation metadata being sent to the transaction coordinator.
      */
-    public static class OperationTransactionRecord {
+    public static class TransactionContext {
 
         /**
          * Action the service received
@@ -152,17 +93,12 @@ public class Operation implements Cloneable {
         /**
          * Set of pending transactions on the same service
          */
-        public Set<String> pendingTransactions;
+        public Set<String> coordinatorLinks;
 
         /**
          * Notify whether the service completed (true) or failed (false) the operation
          */
         public boolean isSuccessful;
-    }
-
-    @FunctionalInterface
-    public interface CompletionHandler {
-        void handle(Operation completedOp, Throwable failure);
     }
 
     static class RemoteContext {
@@ -302,19 +238,101 @@ public class Operation implements Cloneable {
         }
     }
 
+    public static enum OperationOption {
+        REPLICATED, REPLICATION_DISABLED, REMOTE, NOTIFICATION_DISABLED, REPLICATED_TARGET
+    }
+
+    public static class SerializedOperation extends ServiceDocument {
+        public Action action;
+        public String host;
+        public int port;
+        public String path;
+        public String query;
+        public Long id;
+        public URI referer;
+        public String jsonBody;
+        public int statusCode;
+        public EnumSet<OperationOption> options;
+        public String contextId;
+        public String transactionId;
+
+        public static final ServiceDocumentDescription DESCRIPTION = Operation.SerializedOperation
+                .buildDescription();
+
+        public static final String KIND = Utils.buildKind(Operation.SerializedOperation
+                .class);
+
+        public static SerializedOperation create(Operation op) {
+            SerializedOperation ctx = new SerializedOperation();
+            ctx.contextId = op.getContextId();
+            ctx.action = op.action;
+            ctx.referer = op.referer;
+            ctx.id = op.id;
+            ctx.options = op.options.clone();
+            ctx.transactionId = op.getTransactionId();
+            if (op.uri != null) {
+                ctx.host = op.uri.getHost();
+                ctx.port = op.uri.getPort();
+                ctx.path = op.uri.getPath();
+                ctx.query = op.uri.getQuery();
+            }
+
+            Object body = op.getBodyRaw();
+            if (body instanceof String) {
+                ctx.jsonBody = (String) body;
+            } else {
+                ctx.jsonBody = Utils.toJson(body);
+            }
+
+            ctx.documentKind = KIND;
+            ctx.documentExpirationTimeMicros = op.expirationMicrosUtc;
+            return ctx;
+        }
+
+        public static boolean isValid(SerializedOperation sop) {
+            if (sop.action == null || sop.id == null || sop.jsonBody == null || sop.path == null
+                    || sop.referer == null) {
+                return false;
+            }
+            return true;
+        }
+
+        public static ServiceDocumentDescription buildDescription() {
+            EnumSet<Service.ServiceOption> options = EnumSet.of(Service.ServiceOption.PERSISTENCE);
+            return Builder.create().buildDescription(SerializedOperation.class, options);
+        }
+    }
+
+    // HTTP Header definitions
+
     public static final String REFERER_HEADER = "Referer";
     public static final String CONTENT_TYPE_HEADER = "Content-Type";
     public static final String CONTENT_RANGE_HEADER = "Content-Range";
     public static final String RANGE_HEADER = "Range";
     public static final String RETRY_AFTER_HEADER = "Retry-After";
+    public static final String PRAGMA_HEADER = "Pragma";
+    public static final String SET_COOKIE_HEADER = "Set-Cookie";
+    public static final String LOCATION_HEADER = "Location";
+    public static final String USER_AGENT_HEADER = "User-Agent";
+
+    // Proprietary header definitions
 
     public static final String VMWARE_DCP_HEADER_NAME_PREFIX = "X-VMware-DCP-";
-
     public static final String CONTEXT_ID_HEADER = VMWARE_DCP_HEADER_NAME_PREFIX + "Context-Id";
-
-    public static final String PRAGMA_HEADER = "Pragma";
-
-    public static final String SET_COOKIE_HEADER = "Set-Cookie";
+    public static final String REQUEST_CALLBACK_LOCATION_HEADER = VMWARE_DCP_HEADER_NAME_PREFIX
+            + "Request-Callback-Location";
+    public static final String RESPONSE_CALLBACK_STATUS_HEADER = VMWARE_DCP_HEADER_NAME_PREFIX
+            + "Response-Callback-Status";
+    public static final String REQUEST_AUTH_TOKEN_HEADER = VMWARE_DCP_HEADER_NAME_PREFIX
+            + "Auth-Token";
+    public static final String ENTRY_NODE_HEADER = VMWARE_DCP_HEADER_NAME_PREFIX
+            + "Entry-Node";
+    public static final String REPLICATION_TARGET_HEADER = VMWARE_DCP_HEADER_NAME_PREFIX
+            + "Replication-Target";
+    public static final String REPLICATION_PHASE_HEADER = VMWARE_DCP_HEADER_NAME_PREFIX
+            + "Replication-Phase";
+    public static final String VMWARE_DCP_TRANSACTION_HEADER = VMWARE_DCP_HEADER_NAME_PREFIX
+            + "Transaction-Phase";
 
     public static final String PRAGMA_DIRECTIVE_NO_QUEUING = "dcp-no-queuing";
     public static final String PRAGMA_DIRECTIVE_QUEUE_FOR_SERVICE_AVAILABILITY = "dcp-queue-for-service-availability";
@@ -330,37 +348,12 @@ public class Operation implements Cloneable {
      */
     public static final String PRAGMA_DIRECTIVE_NO_INDEX_UPDATE = "dcp-no-index-update";
 
-    public static final String REQUEST_AUTH_TOKEN_HEADER = VMWARE_DCP_HEADER_NAME_PREFIX
-            + "Auth-Token";
-    public static final String REQUEST_CALLBACK_LOCATION_HEADER = VMWARE_DCP_HEADER_NAME_PREFIX
-            + "Request-Callback-Location";
-    public static final String RESPONSE_CALLBACK_STATUS_HEADER = VMWARE_DCP_HEADER_NAME_PREFIX
-            + "Response-Callback-Status";
-
-    public static final String ENTRY_NODE_HEADER = VMWARE_DCP_HEADER_NAME_PREFIX
-            + "Entry-Node";
-
-    public static final String REPLICATION_TARGET_HEADER = VMWARE_DCP_HEADER_NAME_PREFIX
-            + "Replication-Target";
-
-    public static final String REPLICATION_PHASE_HEADER = VMWARE_DCP_HEADER_NAME_PREFIX
-            + "Replication-Phase";
-
-    public static final String VMWARE_DCP_TRANSACTION_HEADER = VMWARE_DCP_HEADER_NAME_PREFIX
-            + "Transaction-Phase";
-
     public static final String TX_TRY_COMMIT = "try-commit";
     public static final String TX_ENSURE_COMMIT = "ensure-commit";
     public static final String TX_COMMIT = "commit";
     public static final String TX_ABORT = "abort";
-
     public static final String REPLICATION_PHASE_COMMIT = "commit";
-
     public static final String REPLICATION_PHASE_SYNCHRONIZE = "synchronize";
-
-    public static final String LOCATION_HEADER = "Location";
-
-    public static final String USER_AGENT_HEADER = "User-Agent";
 
     public static final String MEDIA_TYPE_APPLICATION_JSON = "application/json";
     public static final String MEDIA_TYPE_APPLICATION_OCTET_STREAM = "application/octet-stream";
@@ -371,6 +364,7 @@ public class Operation implements Cloneable {
     public static final String MEDIA_TYPE_APPLICATION_JAVASCRIPT = "application/javascript";
     public static final String MEDIA_TYPE_IMAGE_SVG_XML = "image/svg+xml";
     public static final String MEDIA_TYPE_APPLICATION_FONT_WOFF2 = "application/font-woff2";
+
     public static final int STATUS_CODE_SERVER_FAILURE_THRESHOLD = HttpURLConnection.HTTP_INTERNAL_ERROR;
     public static final int STATUS_CODE_FAILURE_THRESHOLD = HttpURLConnection.HTTP_BAD_REQUEST;
     public static final int STATUS_CODE_UNAUTHORIZED = HttpURLConnection.HTTP_UNAUTHORIZED;
@@ -404,8 +398,6 @@ public class Operation implements Cloneable {
     private Action action;
     private ServiceDocument linkedState;
     private volatile CompletionHandler completion;
-    private RemoteContext remoteCtx;
-    private AuthorizationContext authorizationCtx;
     private String contextId;
     private String transactionId;
     private long expirationMicrosUtc;
@@ -413,10 +405,13 @@ public class Operation implements Cloneable {
     private Object serializedBody;
     private String contentType = MEDIA_TYPE_APPLICATION_JSON;
     private long contentLength;
-    private Map<String, String> cookies;
-    private int retryCount;
-    private int retriesRemaining;
+    private RemoteContext remoteCtx;
+    private AuthorizationContext authorizationCtx;
     private InstrumentationContext instrumentationCtx;
+    private Map<String, String> cookies;
+    private short retryCount;
+    private short retriesRemaining;
+
     public EnumSet<OperationOption> options = EnumSet.noneOf(OperationOption.class);
 
     public static Operation create(SerializedOperation ctx, ServiceHost host) {
@@ -709,8 +704,11 @@ public class Operation implements Cloneable {
         if (retryCount < 0) {
             throw new IllegalArgumentException("retryCount must be positive");
         }
-        this.retryCount = retryCount;
-        this.retriesRemaining = retryCount;
+        if (retryCount > Short.MAX_VALUE) {
+            throw new IllegalArgumentException("retryCount must be less than " + Short.MAX_VALUE);
+        }
+        this.retryCount = (short) retryCount;
+        this.retriesRemaining = (short) retryCount;
         return this;
     }
 
@@ -916,6 +914,10 @@ public class Operation implements Cloneable {
     }
 
     Operation addHeader(String headerLine, boolean isResponse) {
+        if (headerLine == null) {
+            throw new IllegalArgumentException("headerLine is required");
+        }
+
         int idx = headerLine.indexOf(HEADER_FIELD_VALUE_SEPARATOR);
         if (idx == -1 || idx < 3) {
             throw new IllegalArgumentException("headerLine does not appear valid");

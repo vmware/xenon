@@ -25,7 +25,7 @@ import java.util.logging.Logger;
 
 import com.vmware.dcp.common.Operation.AuthorizationContext;
 import com.vmware.dcp.common.Operation.InstrumentationContext;
-import com.vmware.dcp.common.Operation.OperationTransactionRecord;
+import com.vmware.dcp.common.Operation.TransactionContext;
 import com.vmware.dcp.common.ServiceDocumentDescription.PropertyDescription;
 import com.vmware.dcp.common.ServiceErrorResponse.ErrorDetail;
 import com.vmware.dcp.common.ServiceStats.ServiceStat;
@@ -797,9 +797,9 @@ public class StatefulService implements Service {
      * Notify the transaction coordinator asynchronously (taking no action upon response)
      */
     protected void notifyTransactionCoordinator(Operation op, Throwable e) {
-        OperationTransactionRecord operationsLogRecord = new OperationTransactionRecord();
+        TransactionContext operationsLogRecord = new TransactionContext();
         operationsLogRecord.action = op.getAction();
-        operationsLogRecord.pendingTransactions = this.context.txCoordinatorLinks;
+        operationsLogRecord.coordinatorLinks = this.context.txCoordinatorLinks;
         operationsLogRecord.isSuccessful = e == null;
 
         URI transactionCoordinator = UriUtils.buildTransactionUri(getHost(), op.getTransactionId());

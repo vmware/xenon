@@ -25,7 +25,46 @@ import com.vmware.dcp.common.Operation.CompletionHandler;
 import com.vmware.dcp.common.test.MinimalTestServiceState;
 import com.vmware.dcp.services.common.MinimalTestService;
 
-public class TestOperation extends BasicReportTestCase {
+public class TestOperation extends BasicReusableHostTestCase {
+
+    @Test
+    public void setterValidation() {
+        Operation op = Operation.createGet(this.host.getUri());
+
+        Runnable r = () -> {
+            op.setRetryCount(Short.MAX_VALUE * 2);
+        };
+        verifyArgumentException(r);
+
+        r = () -> {
+            op.setRetryCount(-10);
+        };
+        verifyArgumentException(r);
+
+        r = () -> {
+            op.addHeader("sadfauisydf", false);
+        };
+        verifyArgumentException(r);
+
+        r = () -> {
+            op.addHeader("", false);
+        };
+        verifyArgumentException(r);
+
+        r = () -> {
+            op.addHeader(null, false);
+        };
+        verifyArgumentException(r);
+    }
+
+    private void verifyArgumentException(Runnable r) {
+        try {
+            r.run();
+            throw new IllegalStateException("Should have failed");
+        } catch (IllegalArgumentException e) {
+            return;
+        }
+    }
 
     @Test
     public void operationDoubleCompletion() throws Throwable {

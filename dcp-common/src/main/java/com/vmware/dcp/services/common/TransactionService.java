@@ -23,7 +23,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 import com.vmware.dcp.common.Operation;
-import com.vmware.dcp.common.Operation.OperationTransactionRecord;
+import com.vmware.dcp.common.Operation.TransactionContext;
 import com.vmware.dcp.common.OperationJoin;
 import com.vmware.dcp.common.OperationSequence;
 import com.vmware.dcp.common.ServiceDocument;
@@ -216,7 +216,7 @@ public class TransactionService extends StatefulService {
             put.fail(new IllegalArgumentException("Body is required"));
             return;
         }
-        OperationTransactionRecord record = put.getBody(OperationTransactionRecord.class);
+        TransactionContext record = put.getBody(TransactionContext.class);
         TransactionServiceState existing = getState(put);
 
         if (record.action == Action.GET) {
@@ -227,9 +227,9 @@ public class TransactionService extends StatefulService {
         // This has the possibility of overwriting existing pending, but that's OK, because it means the service
         // evolved, either by (being asked to) commit/abort or having seen more operations -- in any case, this
         // "pending" is the most recent one, so we're good.
-        if (record.pendingTransactions != null) {
+        if (record.coordinatorLinks != null) {
             existing.servicesToCoordinators.put(put.getReferer().toString(),
-                    record.pendingTransactions);
+                    record.coordinatorLinks);
         }
         if (!record.isSuccessful) {
             if (existing.failedLinks == null) {
