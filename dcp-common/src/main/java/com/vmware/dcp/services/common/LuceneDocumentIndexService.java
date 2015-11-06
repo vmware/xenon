@@ -1196,6 +1196,10 @@ public class LuceneDocumentIndexService extends StatelessService {
                 link.intern(),
                 Field.Store.YES);
         doc.add(selfLinkField);
+        Field sortedSelfLinkField = new SortedDocValuesField(ServiceDocument.FIELD_NAME_SELF_LINK,
+                new BytesRef(
+                        link.intern().toString()));
+        doc.add(sortedSelfLinkField);
 
         if (s.documentKind != null) {
             Field kindField = new StringField(ServiceDocument.FIELD_NAME_KIND,

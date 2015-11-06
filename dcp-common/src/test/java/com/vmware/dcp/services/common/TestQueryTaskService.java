@@ -71,6 +71,7 @@ import com.vmware.dcp.services.common.QueryTask.Query;
 import com.vmware.dcp.services.common.QueryTask.Query.Occurance;
 import com.vmware.dcp.services.common.QueryTask.QuerySpecification;
 import com.vmware.dcp.services.common.QueryTask.QuerySpecification.QueryOption;
+import com.vmware.dcp.services.common.QueryTask.QuerySpecification.SortOrder;
 import com.vmware.dcp.services.common.QueryTask.QueryTerm.MatchType;
 import com.vmware.dcp.services.common.QueryValidationTestService.QueryValidationServiceState;
 
@@ -925,7 +926,7 @@ public class TestQueryTaskService {
     }
 
     @Test
-    public void paginatedSortTestOnExampleStates() throws Throwable {
+    public void paginatedSortOnLongAndSelfLink() throws Throwable {
         doPaginatedSortTestOnExampleStates(false);
         doPaginatedSortTestOnExampleStates(true);
     }
@@ -996,7 +997,35 @@ public class TestQueryTaskService {
         this.host.testWait();
 
         assertEquals(serviceCount, numberOfDocumentLinks[0]);
-        validateSortedResults(documents);
+        validateSortedResults(documents, ExampleServiceState.FIELD_NAME_COUNTER);
+
+        // do another query but sort on self links
+        numberOfDocumentLinks[0] = 0;
+        q.sortOrder = SortOrder.ASC;
+        q.sortTerm = new QueryTask.QueryTerm();
+        q.sortTerm.propertyType = TypeName.STRING;
+        q.sortTerm.propertyName = ServiceDocument.FIELD_NAME_SELF_LINK;
+        task = QueryTask.create(q);
+        task.setDirect(isDirect);
+        taskURI = this.host.createQueryTaskService(task, false,
+                task.taskInfo.isDirect, task, null);
+        if (!task.taskInfo.isDirect) {
+            task = this.host.waitForQueryTaskCompletion(task.querySpec, 0, 0,
+                    taskURI, false, false);
+        }
+
+        nextPageLink = task.results.nextPageLink;
+        assertNotNull(nextPageLink);
+
+        documents = Collections.synchronizedList(new ArrayList<>());
+
+        toDelete = new ArrayList<>(exampleServices);
+        this.host.testStart(1);
+        getNextPageResults(nextPageLink, resultLimit, numberOfDocumentLinks, toDelete, documents);
+        this.host.testWait();
+
+        assertEquals(serviceCount, numberOfDocumentLinks[0]);
+        validateSortedResults(documents, ServiceDocument.FIELD_NAME_SELF_LINK);
 
         this.host.testStart(toDelete.size());
         for (URI u : toDelete) {
@@ -1007,13 +1036,18 @@ public class TestQueryTaskService {
         this.host.testWait();
     }
 
-    private void validateSortedResults(List<ExampleServiceState> documents) {
-        int i;
-
+    private void validateSortedResults(List<ExampleServiceState> documents, String fieldName) {
         ExampleServiceState prevDoc = documents.get(0);
-        for (i = 1; i < documents.size(); i++) {
+
+        for (int i = 1; i < documents.size(); i++) {
             ExampleServiceState currentDoc = documents.get(i);
-            assertTrue("Sort Test Failed", currentDoc.counter < prevDoc.counter);
+            this.host.log("%s", currentDoc.documentSelfLink);
+            if (fieldName.equals(ServiceDocument.FIELD_NAME_SELF_LINK)) {
+                int r = currentDoc.documentSelfLink.compareTo(prevDoc.documentSelfLink);
+                assertTrue("Sort by self link failed", r > 0);
+            } else {
+                assertTrue("Sort Test Failed", currentDoc.counter < prevDoc.counter);
+            }
             prevDoc = currentDoc;
         }
     }
