@@ -2509,4 +2509,14 @@ public class VerificationHost extends ExampleServiceHost {
         // Associate resulting authorization context with this thread
         setAuthorizationContext(ab.getResult());
     }
+
+    public void deleteAllChildServices(URI factoryURI) throws Throwable {
+        ServiceDocumentQueryResult res = getFactoryState(factoryURI);
+        testStart(res.documentLinks.size());
+        for (String link : res.documentLinks) {
+            send(Operation.createDelete(UriUtils.buildUri(this, link))
+                    .setCompletion(getCompletion()));
+        }
+        testWait();
+    }
 }

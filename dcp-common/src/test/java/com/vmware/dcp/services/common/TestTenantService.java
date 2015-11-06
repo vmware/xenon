@@ -26,33 +26,26 @@ import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 
+import com.vmware.dcp.common.BasicReusableHostTestCase;
 import com.vmware.dcp.common.Operation;
 import com.vmware.dcp.common.ServiceDocumentQueryResult;
 import com.vmware.dcp.common.UriUtils;
 import com.vmware.dcp.common.Utils;
 import com.vmware.dcp.common.test.TestProperty;
-import com.vmware.dcp.common.test.VerificationHost;
 
-public class TestTenantService {
+public class TestTenantService extends BasicReusableHostTestCase {
     public static final int SERVICE_COUNT = 100;
-    private VerificationHost host;
     private URI factoryURI;
 
     @Before
     public void setUp() throws Exception {
-        this.host = VerificationHost.create(0, null);
-        try {
-            this.host.start();
-            this.host.waitForServiceAvailable(TenantFactoryService.SELF_LINK);
-            this.factoryURI = UriUtils.buildUri(this.host, TenantFactoryService.class);
-        } catch (Throwable e) {
-            throw new Exception(e);
-        }
+        this.factoryURI = UriUtils.buildUri(this.host, TenantFactoryService.class);
     }
 
     @After
-    public void tearDown() throws InterruptedException {
-        this.host.tearDown();
+    public void tearDown() throws Throwable {
+        // delete all services
+        this.host.deleteAllChildServices(this.factoryURI);
     }
 
     @Test

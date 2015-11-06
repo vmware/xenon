@@ -25,13 +25,13 @@ import java.util.logging.Logger;
 import org.junit.Before;
 import org.junit.Test;
 
-import com.vmware.dcp.common.BasicReportTestCase;
+import com.vmware.dcp.common.BasicReusableHostTestCase;
 import com.vmware.dcp.common.Operation;
 import com.vmware.dcp.common.UriUtils;
 import com.vmware.dcp.common.Utils;
 import com.vmware.dcp.services.common.ServiceHostLogService.LogServiceState;
 
-public class TestServiceHostLogService extends BasicReportTestCase {
+public class TestServiceHostLogService extends BasicReusableHostTestCase {
     private static final String LOG_MESSAGE = "this is log message number ";
 
     private URI uri;
@@ -62,7 +62,7 @@ public class TestServiceHostLogService extends BasicReportTestCase {
     }
 
     @Test
-    public void testGetAll() throws Throwable {
+    public void get() throws Throwable {
         int count = 100;
         publish(count);
 
@@ -95,31 +95,25 @@ public class TestServiceHostLogService extends BasicReportTestCase {
 
         assertTrue(foundFirst);
         assertTrue(foundLast);
-    }
 
-    @Test
-    public void testGetTail() throws Throwable {
-        int count = 20; // tail -n $count
-        int total = count * 10;
-        publish(total);
-
-        URI uri = new URI(this.uri.toString() + "?lineCount=" + count);
+        int tailCount = count / 2;
+        URI uri = new URI(this.uri.toString() + "?lineCount=" + tailCount);
 
         this.host.testStart(1);
-        Operation get = Operation
+        get = Operation
                 .createGet(uri)
                 .setCompletion(this.host.getCompletion());
         this.host.send(get);
         this.host.testWait();
 
-        ServiceHostLogService.LogServiceState serviceState =
+        serviceState =
                 this.host.getServiceState(null, ServiceHostLogService.LogServiceState.class, uri);
 
-        List<String> items = serviceState.items;
-        assertEquals(count, items.size());
+        items = serviceState.items;
+        assertEquals(tailCount, items.size());
 
-        int last = total - 1;
-        boolean foundLast = false;
+        last = count - 1;
+        foundLast = false;
         for (String item : items) {
             if (item.contains(LOG_MESSAGE + last)) {
                 foundLast = true;

@@ -19,13 +19,13 @@ import java.net.URI;
 
 import org.junit.Test;
 
-import com.vmware.dcp.common.BasicTestCase;
+import com.vmware.dcp.common.BasicReusableHostTestCase;
 import com.vmware.dcp.common.Operation;
 import com.vmware.dcp.common.UriUtils;
 import com.vmware.dcp.services.common.QueryTask.Query;
 import com.vmware.dcp.services.common.UserGroupService.UserGroupState;
 
-public class TestUserGroupService extends BasicTestCase {
+public class TestUserGroupService extends BasicReusableHostTestCase {
 
     @Test
     public void testFactoryPost() throws Throwable {

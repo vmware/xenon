@@ -39,17 +39,15 @@ public class TestExampleService extends BasicReportTestCase {
 
     @Before
     public void prepare() throws Throwable {
-        this.host.waitForServiceAvailable(ExampleFactoryService.SELF_LINK);
-    }
-
-    @Test
-    public void factoryPost() throws Throwable {
         // make sure example factory is started. the host does not wait for it
         // to start since its not a core service. Note that in production code
         // this is all asynchronous, you should not block and wait, just pass a
         // completion
         this.host.waitForServiceAvailable(ExampleFactoryService.SELF_LINK);
+    }
 
+    @Test
+    public void factoryPost() throws Throwable {
         URI factoryUri = UriUtils.buildUri(this.host,
                 ExampleFactoryService.class);
         int childCount = 100;
