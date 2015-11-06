@@ -1177,7 +1177,6 @@ public class LuceneDocumentIndexService extends StatelessService {
 
         s.documentDescription = null;
 
-        boolean isDelete = postOrDelete.getAction() == Action.DELETE;
         Document doc = new Document();
 
         Field refererField = new StringField(LUCENE_FIELD_NAME_REFERER, postOrDelete
@@ -1238,7 +1237,7 @@ public class LuceneDocumentIndexService extends StatelessService {
 
         doc.add(versionField);
 
-        boolean isPermanentDelete = isDelete && postOrDelete.getTransactionId() == null
+        boolean isPermanentDelete = postOrDelete.getTransactionId() == null
                 && s.documentExpirationTimeMicros > 0
                 && s.documentExpirationTimeMicros < Utils.getNowMicrosUtc();
 
@@ -1247,7 +1246,7 @@ public class LuceneDocumentIndexService extends StatelessService {
             return;
         }
 
-        if (isDelete || desc.propertyDescriptions == null
+        if (desc.propertyDescriptions == null
                 || desc.propertyDescriptions.isEmpty()) {
             // no additional property type information, so we will add the
             // document with common fields indexed plus the full body
