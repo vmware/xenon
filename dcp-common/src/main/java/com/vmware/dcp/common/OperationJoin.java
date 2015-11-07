@@ -182,7 +182,7 @@ public class OperationJoin {
         }
 
         Operation op = null;
-        synchronized (this.pendingCount) {
+        synchronized (this.operationIterator) {
             if (this.operationIterator.hasNext()) {
                 op = this.operationIterator.next();
             }
