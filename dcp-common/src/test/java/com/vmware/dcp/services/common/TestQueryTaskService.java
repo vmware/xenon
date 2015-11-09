@@ -316,7 +316,7 @@ public class TestQueryTaskService {
 
     private QueryValidationServiceState createContinuousQueryTasks(Throwable[] failure,
             CountDownLatch stateUpdates)
-            throws Throwable, InterruptedException {
+                    throws Throwable, InterruptedException {
         QueryValidationServiceState newState = new QueryValidationServiceState();
         final String stringValue = UUID.randomUUID().toString();
         Query query = Query.Builder.create()
@@ -454,7 +454,7 @@ public class TestQueryTaskService {
 
     private void doComplexStateQueries(List<URI> services, int versionCount,
             QueryValidationServiceState newState)
-            throws Throwable {
+                    throws Throwable {
 
         for (int i = 0; i < 5; i++) {
             this.host.log("%d", i);
@@ -532,8 +532,8 @@ public class TestQueryTaskService {
                 Arrays.asList(
                         UUID.randomUUID().toString(),
                         fieldValue,
-                        UUID.randomUUID().toString())
-                ).build();
+                        UUID.randomUUID().toString()))
+                .build();
         this.host.createAndWaitSimpleDirectQuery(spec,
                 documentCount, expectedResultCount);
     }
@@ -541,7 +541,7 @@ public class TestQueryTaskService {
     @SuppressWarnings({ "rawtypes" })
     private void doInCollectionQuery(String collName, Collection coll, long documentCount,
             long expectedResultCount)
-            throws Throwable {
+                    throws Throwable {
         for (Object val : coll) {
             QuerySpecification spec = new QuerySpecification();
             spec.query = Query.Builder.create().addInCollectionItemClause(
@@ -549,8 +549,8 @@ public class TestQueryTaskService {
                     Arrays.asList(
                             UUID.randomUUID().toString(),
                             (String) val,
-                            UUID.randomUUID().toString())
-                    ).build();
+                            UUID.randomUUID().toString()))
+                    .build();
             this.host.createAndWaitSimpleDirectQuery(spec,
                     documentCount, expectedResultCount);
         }
@@ -633,7 +633,7 @@ public class TestQueryTaskService {
     }
 
     @Test
-    public void replicatedBooleanDirectQueryTasksOnExampleStates() throws Throwable {
+    public void replicatedQueryTasksOnExampleStates() throws Throwable {
 
         setUpHost();
         int nodeCount = 3;
@@ -801,6 +801,30 @@ public class TestQueryTaskService {
                 continue;
             }
             return;
+        }
+
+        // issue a paginated task query on one of the nodes. Then use the next page links verifying th elinks
+        // are forwarded to the node that executed the query
+        QueryTask remoteTask = QueryTask.Builder.create().setQuery(query).build();
+        remoteTask.documentExpirationTimeMicros = Utils.getNowMicrosUtc()
+                + TimeUnit.DAYS.toMicros(1);
+        remoteTask.querySpec.resultLimit = exampleStates.size() / 10;
+        QueryTask results = QueryTask.Builder.create().build();
+        URI taskUri = this.host.createQueryTaskService(null, remoteTask, false, false, results,
+                null);
+
+        results = this.host.waitForQueryTaskCompletion(remoteTask.querySpec, exampleStates.size(),
+                1, taskUri,
+                false, false);
+
+        assertTrue(results.results.nextPageLink != null);
+
+        // verify that using the next page link on each host works
+        for (VerificationHost h : this.host.getInProcessHostMap().values()) {
+            URI linkUri = UriUtils.buildUri(h, results.results.nextPageLink);
+            QueryTask r = this.host.getServiceState(null,
+                    QueryTask.class, linkUri);
+            assertTrue(r.results.documentCount > 0);
         }
 
         throw new TimeoutException("lingering query tasks");
@@ -1742,29 +1766,33 @@ public class TestQueryTaskService {
         Operation get = Operation
                 .createGet(u)
                 .setCompletion((o, e) -> {
-                    if (e != null) {
-                        this.host.failIteration(e);
-                        return;
-                    }
-
-                    QueryTask page = o.getBody(QueryTask.class);
-                    int nlinks = page.results.documentLinks.size();
-                    assertTrue(nlinks <= resultLimit);
-                    assertEquals(LuceneQueryPageService.KIND, page.documentKind);
-                    assertEquals(nextPageLink, page.results.prevPageLink);
-
-                    numberOfDocumentLinks[0] += nlinks;
-
-                    if (page.results.nextPageLink == null || nlinks == 0) {
-                        if (numberOfDocumentLinks[0] == 0) {
-                            this.host.completeIteration();
+                    try {
+                        if (e != null) {
+                            this.host.failIteration(e);
+                            return;
                         }
-                        return;
-                    }
 
-                    this.host.completeIteration();
-                    getNextPageLinks(page.results.nextPageLink,
-                            resultLimit, numberOfDocumentLinks, serviceURIs);
+                        QueryTask page = o.getBody(QueryTask.class);
+                        int nlinks = page.results.documentLinks.size();
+                        assertTrue(nlinks <= resultLimit);
+                        assertEquals(LuceneQueryPageService.KIND, page.documentKind);
+                        assertEquals(nextPageLink, page.results.prevPageLink);
+
+                        numberOfDocumentLinks[0] += nlinks;
+
+                        if (page.results.nextPageLink == null || nlinks == 0) {
+                            if (numberOfDocumentLinks[0] == 0) {
+                                this.host.completeIteration();
+                            }
+                            return;
+                        }
+
+                        this.host.completeIteration();
+                        getNextPageLinks(page.results.nextPageLink,
+                                resultLimit, numberOfDocumentLinks, serviceURIs);
+                    } catch (Throwable e1) {
+                        this.host.failIteration(e1);
+                    }
                 });
 
         this.host.send(get);
@@ -1801,7 +1829,7 @@ public class TestQueryTaskService {
 
     private void createWaitAndValidateQueryTask(long versionCount,
             List<URI> services, QueryTask.QuerySpecification q, boolean forceRemote)
-            throws Throwable {
+                    throws Throwable {
         createWaitAndValidateQueryTask(versionCount, services, q, forceRemote, false);
     }
 
@@ -1863,7 +1891,7 @@ public class TestQueryTaskService {
     private void createWaitAndValidateQueryTask(long versionCount,
             List<URI> services, QueryTask.QuerySpecification q, boolean forceRemote,
             boolean isDirect)
-            throws Throwable {
+                    throws Throwable {
         QueryTask task = QueryTask.create(q).setDirect(isDirect);
         if (isDirect) {
             task.documentExpirationTimeMicros = Utils.getNowMicrosUtc()
@@ -2036,7 +2064,7 @@ public class TestQueryTaskService {
 
     private List<URI> startQueryTargetServices(int serviceCount,
             QueryValidationServiceState initState)
-            throws Throwable {
+                    throws Throwable {
         List<URI> queryValidationServices = new ArrayList<>();
         List<Service> services = this.host.doThroughputServiceStart(
                 serviceCount, QueryValidationTestService.class,

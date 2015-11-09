@@ -159,18 +159,34 @@ public class UriUtils {
                 null);
     }
 
-    public static URI extendUri(URI uri, String uriPath) {
+    public static URI extendUri(URI uri, String path) {
+        String query = null;
+        if (path != null && path.contains(UriUtils.URI_QUERY_CHAR)) {
+            String[] pathAndQuery = path.split("\\" + UriUtils.URI_QUERY_CHAR);
+            path = pathAndQuery[0];
+            query = pathAndQuery[1];
+        }
+
         return buildUri(uri.getScheme(), uri.getHost(), uri.getPort(),
-                normalizeUriPath(uri.getPath()) + normalizeUriPath(uriPath),
-                null);
+                normalizeUriPath(uri.getPath()) + normalizeUriPath(path),
+                query);
     }
 
     public static URI buildUri(String host, int port, String path, String query) {
         return buildUri(HTTP_SCHEME, host, port, path, query);
     }
 
+    public static URI buildUri(ServiceHost host, String path, String query) {
+        return UriUtils.buildUri("http", ServiceHost.LOCAL_HOST, host.getPort(), path, query);
+    }
+
     public static URI buildUri(String scheme, String host, int port, String path, String query) {
         try {
+            if (path != null && path.contains(UriUtils.URI_QUERY_CHAR)) {
+                String[] pathAndQuery = path.split("\\" + UriUtils.URI_QUERY_CHAR);
+                path = pathAndQuery[0];
+                query = pathAndQuery[1];
+            }
             path = normalizeUriPath(path);
             return new URI(scheme, null, host, port, path, query, null);
         } catch (URISyntaxException e) {
@@ -180,17 +196,6 @@ public class UriUtils {
         }
     }
 
-    public static URI buildUri(ServiceHost host, String path, String query) {
-        try {
-            path = normalizeUriPath(path);
-            return new URI("http", null, ServiceHost.LOCAL_HOST,
-                    host.getPort(), path, query, null);
-        } catch (URISyntaxException e) {
-            Utils.log(UriUtils.class, Utils.class.getSimpleName(), Level.SEVERE, "%s",
-                    Utils.toString(e));
-            return null;
-        }
-    }
 
     public static String normalizeUriPath(String path) {
         if (path == null) {
@@ -246,9 +251,29 @@ public class UriUtils {
      * from the path argument
      */
     public static URI buildUri(URI baseUri, String... path) {
+        String query = null;
+        String buildPath = null;
+        for (String p : path) {
+            if (p.contains(UriUtils.URI_QUERY_CHAR)) {
+                String[] pathAndQuery = p.split("\\" + UriUtils.URI_QUERY_CHAR);
+                p = pathAndQuery[0];
+                if (query == null) {
+                    query = pathAndQuery[1];
+                } else {
+                    query += pathAndQuery[1];
+                }
+            }
+            p = normalizeUriPath(p);
+            if (buildPath == null) {
+                buildPath = p;
+            } else {
+                buildPath += p;
+            }
+        }
+
         try {
             return new URI(baseUri.getScheme(), baseUri.getUserInfo(), baseUri.getHost(),
-                    baseUri.getPort(), UriUtils.buildUriPath(path), null, null);
+                    baseUri.getPort(), buildPath, query, null);
         } catch (Throwable e) {
             Utils.log(Utils.class, Utils.class.getSimpleName(), Level.SEVERE,
                     "Failure building uri %s, %s: %s", baseUri, path,
@@ -451,6 +476,10 @@ public class UriUtils {
         return null;
     }
 
+    /**
+     * Builds a forwarder service URI using the target service path as the node selection key.
+     * If the key argument is supplied, it is used instead
+     */
     public static URI buildForwardRequestUri(URI targetService, String key, String selectorPath) {
         URI u = UriUtils.buildUri(targetService, UriUtils.buildUriPath(
                 selectorPath,

@@ -928,10 +928,17 @@ public class LuceneDocumentIndexService extends StatelessService {
                 "query-page",
                 Utils.getNowMicrosUtc() + ""));
 
+        LuceneQueryPage page = new LuceneQueryPage(u.getPath(), after);
+        // the page link must point to this node, since the index searcher and results have been
+        // computed locally. Transform the link to a forwarder link, which will transparently
+        // forward requests to this node
+        URI forwarderUri = UriUtils.buildForwardToPeerUri(u, getHost().getId(),
+                ServiceUriPaths.DEFAULT_NODE_SELECTOR, EnumSet.noneOf(ServiceOption.class));
+        page.link = forwarderUri.getPath() + UriUtils.URI_QUERY_CHAR + forwarderUri.getQuery();
         QuerySpecification spec = new QuerySpecification();
         spec.options = options;
         spec.context.nativeQuery = tq;
-        spec.context.nativePage = new LuceneQueryPage(u.getPath(), after);
+        spec.context.nativePage = page;
         spec.context.nativeSearcher = s;
         spec.context.nativeSort = sort;
         spec.resultLimit = count;
@@ -959,7 +966,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         }
 
         getHost().startService(startPost, new LuceneQueryPageService(spec, indexLink));
-        return u.getPath();
+        return page.link;
     }
 
     private void processQueryResults(ServiceOption targetIndex, EnumSet<QueryOption> options,

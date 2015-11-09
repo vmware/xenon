@@ -63,6 +63,43 @@ public class TestUriUtils {
     }
 
     @Test
+    public void buildUri() throws URISyntaxException {
+        URI baseUri = new URI("http://localhost:8000/something");
+        URI baseHttpsUri = new URI("https://localhost:8000/something");
+
+        String pathSegment = UUID.randomUUID().toString();
+        String pathSegment2 = UUID.randomUUID().toString();
+        URI u = UriUtils.buildUri(baseUri, pathSegment);
+        assertEquals("http", u.getScheme());
+        assertEquals("/" + pathSegment, u.getPath());
+        assertTrue(u.getQuery() == null);
+
+        u = UriUtils.buildUri(baseUri, pathSegment, pathSegment2);
+        assertEquals("http", u.getScheme());
+        assertEquals("/" + pathSegment + "/" + pathSegment2, u.getPath());
+        assertTrue(u.getQuery() == null);
+
+        u = UriUtils.buildUri(baseHttpsUri, pathSegment);
+        assertEquals("https", u.getScheme());
+        assertEquals("/" + pathSegment, u.getPath());
+        assertTrue(u.getQuery() == null);
+        assertEquals(8000, u.getPort());
+
+        String query = "key=value&key2=value2";
+        String pathWithQuery = pathSegment + "?" + query;
+        u = UriUtils.buildUri(baseUri, pathWithQuery, pathSegment2);
+        assertEquals("/" + pathSegment + "/" + pathSegment2, u.getPath());
+        assertEquals(query, u.getQuery());
+
+        pathWithQuery = pathSegment + "?" + query;
+        String pathWithQuery2 = pathSegment2 + "?" + query;
+        String combinedQuery = query + query;
+        u = UriUtils.buildUri(baseUri, pathWithQuery, pathWithQuery2);
+        assertEquals("/" + pathSegment + "/" + pathSegment2, u.getPath());
+        assertEquals(combinedQuery, u.getQuery());
+    }
+
+    @Test
     public void extendUri() throws URISyntaxException {
         String basePath = UriUtils.buildUriPath("some", UUID.randomUUID().toString());
         URI baseUri = new URI("http://localhost:8000");
@@ -81,6 +118,12 @@ public class TestUriUtils {
         assertEquals(basePath + "/" + path, u.getPath());
         assertTrue(u.getQuery() == null);
         assertEquals(8000, u.getPort());
+
+        String query = "key=value&key2=value2";
+        String pathWithQuery = path + "?" + query;
+        u = UriUtils.extendUri(httpBase, pathWithQuery);
+        assertEquals(basePath + "/" + path, u.getPath());
+        assertEquals(query, u.getQuery());
     }
 
     @Test

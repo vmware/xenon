@@ -70,8 +70,9 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
 
     @Override
     protected void messageReceived(ChannelHandlerContext ctx, Object msg) {
+        Operation request = null;
         try {
-            Operation request = ctx.channel().attr(NettyChannelContext.OPERATION_KEY).get();
+            request = ctx.channel().attr(NettyChannelContext.OPERATION_KEY).get();
             if (!(msg instanceof FullHttpRequest)) {
                 return;
             }
@@ -79,18 +80,13 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
             FullHttpRequest nettyRequest = (FullHttpRequest) msg;
 
             long expMicros = Utils.getNowMicrosUtc() + this.host.getOperationTimeoutMicros();
-            try {
-                URI messageUri = new URI(nettyRequest.uri());
-                request = Operation.createGet(null);
-                request.setAction(Action.valueOf(nettyRequest.method().toString()))
-                        .setExpiration(expMicros);
-                request.setUri(UriUtils.buildUri(this.host, messageUri.getPath(),
-                        messageUri.getQuery()));
-                ctx.channel().attr(NettyChannelContext.OPERATION_KEY).set(request);
-            } catch (URISyntaxException e) {
-                sendResponse(ctx, request);
-                return;
-            }
+            URI targetUri = new URI(nettyRequest.uri());
+            request = Operation.createGet(null);
+            request.setAction(Action.valueOf(nettyRequest.method().toString()))
+                    .setExpiration(expMicros);
+            request.setUri(UriUtils.buildUri(this.host, targetUri.getPath(),
+                    targetUri.getQuery()));
+            ctx.channel().attr(NettyChannelContext.OPERATION_KEY).set(request);
 
             if (nettyRequest.decoderResult().isFailure()) {
                 request.setStatusCode(Operation.STATUS_CODE_BAD_REQUEST);
@@ -100,13 +96,19 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
                 sendResponse(ctx, request);
                 return;
             }
-
             parseRequestHeaders(ctx, request, nettyRequest);
-
             decodeRequestBody(ctx, request, nettyRequest.content());
-
         } catch (Throwable e) {
             this.host.log(Level.SEVERE, "Uncaught exception: %s", Utils.toString(e));
+            if (request == null) {
+                request = Operation.createGet(this.host.getUri());
+            }
+            int sc = Operation.STATUS_CODE_BAD_REQUEST;
+            if (e instanceof URISyntaxException) {
+                request.setUri(this.host.getUri());
+            }
+            request.setStatusCode(sc).setBodyNoCloning(ServiceErrorResponse.create(e, sc));
+            sendResponse(ctx, request);
         }
     }
 
