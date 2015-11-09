@@ -93,6 +93,7 @@ public class Netty2WaySslAuthTest {
         this.host = new VerificationHost();
         ServiceHost.Arguments args = new ServiceHost.Arguments();
         args.securePort = 0;
+        args.port = 0;
         args.keyFile = getCanonicalFileForResource("/ssl/server.pem").toPath();
         args.certificateFile = getCanonicalFileForResource("/ssl/server.crt").toPath();
         args.sslClientAuthMode = SslClientAuthMode.WANT;

@@ -255,6 +255,7 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
         ExampleServiceHost h = new ExampleServiceHost();
         try {
             ServiceHost.Arguments args = new ServiceHost.Arguments();
+            args.port = 0;
             args.sandbox = Files.createTempDirectory(null).toAbsolutePath();
             h.initialize(args);
             h.start();
@@ -305,6 +306,7 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
             h.stop();
 
             h = new ExampleServiceHost();
+            args.port = 0;
             h.initialize(args);
             h.setServiceStateCaching(false);
 
