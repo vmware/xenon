@@ -13,18 +13,22 @@
 
 package com.vmware.dcp.services.common;
 
+import java.net.URI;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
 import com.vmware.dcp.common.Operation;
 import com.vmware.dcp.common.Operation.CompletionHandler;
 import com.vmware.dcp.common.ServiceDocument;
+import com.vmware.dcp.common.ServiceDocumentDescription;
 import com.vmware.dcp.common.ServiceDocumentQueryResult;
 import com.vmware.dcp.common.StatefulService;
 import com.vmware.dcp.common.TaskState;
 import com.vmware.dcp.common.TaskState.TaskStage;
+import com.vmware.dcp.common.UriUtils;
 import com.vmware.dcp.common.Utils;
 import com.vmware.dcp.services.common.ExampleService.ExampleServiceState;
 import com.vmware.dcp.services.common.QueryTask.QuerySpecification;
@@ -60,24 +64,31 @@ public class LuceneQueryTaskService extends StatefulService {
             return;
         }
 
-        if (initState.documentExpirationTimeMicros == 0) {
-            // always set expiration so we do not accumulate tasks
-            initState.documentExpirationTimeMicros = Utils.getNowMicrosUtc()
-                    + TimeUnit.SECONDS.toMicros(DEFAULT_EXPIRATION_SECONDS);
-        }
-        initState.taskInfo.stage = TaskStage.CREATED;
-
-        if (!initState.taskInfo.isDirect) {
-            // complete POST immediately
-            startPost.setStatusCode(Operation.STATUS_CODE_ACCEPTED).complete();
-            // kick off query processing by patching self to STARTED
-            QueryTask patchBody = new QueryTask();
-            patchBody.taskInfo = new TaskState();
-            patchBody.taskInfo.stage = TaskStage.STARTED;
-            sendRequest(Operation.createPatch(getUri()).setBody(patchBody));
+        // If the request has BROADCAST option, a forwarding service needs to be created,
+        // and all nodes needs to be requested.
+        if (initState.querySpec.options != null && initState.querySpec.options.contains(QueryOption
+                .BROADCAST)) {
+            createAndSendBroadcastQuery(initState, startPost);
         } else {
-            // Complete POST when we have results
-            this.convertAndForwardToLucene(initState, startPost);
+            if (initState.documentExpirationTimeMicros == 0) {
+                // always set expiration so we do not accumulate tasks
+                initState.documentExpirationTimeMicros = Utils.getNowMicrosUtc()
+                        + TimeUnit.SECONDS.toMicros(DEFAULT_EXPIRATION_SECONDS);
+            }
+            initState.taskInfo.stage = TaskStage.CREATED;
+
+            if (!initState.taskInfo.isDirect) {
+                // complete POST immediately
+                startPost.setStatusCode(Operation.STATUS_CODE_ACCEPTED).complete();
+                // kick off query processing by patching self to STARTED
+                QueryTask patchBody = new QueryTask();
+                patchBody.taskInfo = new TaskState();
+                patchBody.taskInfo.stage = TaskStage.STARTED;
+                sendRequest(Operation.createPatch(getUri()).setBody(patchBody));
+            } else {
+                // Complete POST when we have results
+                this.convertAndForwardToLucene(initState, startPost);
+            }
         }
     }
 
@@ -101,6 +112,54 @@ public class LuceneQueryTaskService extends StatefulService {
         }
 
         return true;
+    }
+
+    private void createAndSendBroadcastQuery(QueryTask queryTask, Operation origOperation) {
+        queryTask.querySpec.options.remove(QueryOption.BROADCAST);
+
+        if (!queryTask.querySpec.options.contains(QueryOption.SORT)) {
+            queryTask.querySpec.options.add(QueryOption.SORT);
+            queryTask.querySpec.sortTerm = new QueryTask.QueryTerm();
+            queryTask.querySpec.sortTerm.propertyType = ServiceDocumentDescription.TypeName.STRING;
+            queryTask.querySpec.sortTerm.propertyName = ServiceDocument.FIELD_NAME_SELF_LINK;
+        }
+
+        URI localQueryTaskFactoryUri = UriUtils.buildUri(this.getHost(), ServiceUriPaths.CORE_LOCAL_QUERY_TASKS);
+        URI forwardingService = UriUtils.buildBroadcastRequestUri(localQueryTaskFactoryUri,
+                ServiceUriPaths.DEFAULT_NODE_SELECTOR);
+
+        Operation op = Operation
+                .createPost(forwardingService)
+                .setBody(queryTask)
+                .setReferer(origOperation.getReferer())
+                .setCompletion((o, e) -> {
+                    if (e != null) {
+                        failTask(e, o, null);
+                        return;
+                    }
+
+                    NodeGroupBroadcastResponse rsp = o.getBody((NodeGroupBroadcastResponse.class));
+                    if (!rsp.failures.isEmpty()) {
+                        failTask(new IllegalStateException("Failures received: " + Utils.toJsonHtml(rsp)), o, null);
+                        return;
+                    }
+
+                    collectBroadcastQueryResults(rsp.jsonResponses, queryTask);
+
+                    handleQueryCompletion(queryTask, null, origOperation);
+                });
+        this.getHost().sendRequest(op);
+    }
+
+    private void collectBroadcastQueryResults(Map<URI, String> jsonResponses, QueryTask queryTask) {
+        // Simply return the first response. Will do the merge in the next CR.
+
+        String jsonRsp = jsonResponses.values().iterator().next();
+        QueryTask result = Utils.fromJson(jsonRsp, QueryTask.class);
+
+        queryTask.results = result.results;
+        queryTask.taskInfo.stage = TaskStage.FINISHED;
+        queryTask.taskInfo.durationMicros = result.results.queryTimeMicros;
     }
 
     @Override
