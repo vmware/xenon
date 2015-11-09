@@ -875,6 +875,169 @@ public class TestQueryTaskService {
     }
 
     @Test
+    public void nonPaginatedBroadcastQueryTasksOnExampleStates() throws Throwable {
+
+        setUpHost();
+
+        int nodeCount = 3;
+        this.host.setUpPeerHosts(nodeCount);
+        this.host.joinNodesAndVerifyConvergence(nodeCount);
+
+        verifyOnlySupportSortOnSelfLinkInBroadcast();
+
+        VerificationHost targetHost = this.host.getPeerHost();
+        URI exampleFactoryURI = UriUtils.buildUri(targetHost, ExampleFactoryService.SELF_LINK);
+
+        int serviceCount = 100;
+        this.host.testStart(serviceCount);
+        List<URI> exampleServices = new ArrayList<>();
+        for (int i = 0; i < serviceCount; i++) {
+            ExampleServiceState s = new ExampleServiceState();
+            s.name = "document" + i;
+            s.documentSelfLink = s.name;
+
+            exampleServices.add(UriUtils.buildUri(this.host.getUri(),
+                    ExampleFactoryService.SELF_LINK, s.documentSelfLink));
+
+            this.host.send(Operation.createPost(exampleFactoryURI)
+                    .setBody(s)
+                    .setCompletion(this.host.getCompletion()));
+        }
+        this.host.testWait();
+
+        QuerySpecification q = new QuerySpecification();
+        Query kindClause = new Query();
+        kindClause.setTermPropertyName(ServiceDocument.FIELD_NAME_KIND)
+                .setTermMatchValue(Utils.buildKind(ExampleServiceState.class));
+        q.query = kindClause;
+        q.options = EnumSet.of(QueryOption.EXPAND_CONTENT, QueryOption.BROADCAST);
+
+        QueryTask task = QueryTask.create(q);
+        task.setDirect(true);
+
+        this.host.createQueryTaskService(task, false, task.taskInfo.isDirect, task, null);
+
+        assertTrue(serviceCount == task.results.documentCount);
+    }
+
+    private void verifyOnlySupportSortOnSelfLinkInBroadcast() throws Throwable {
+        VerificationHost targetHost = this.host.getPeerHost();
+
+        QuerySpecification q = new QuerySpecification();
+        Query kindClause = new Query();
+        kindClause.setTermPropertyName(ServiceDocument.FIELD_NAME_KIND)
+                .setTermMatchValue(Utils.buildKind(ExampleServiceState.class));
+        q.query = kindClause;
+        q.options = EnumSet.of(QueryOption.EXPAND_CONTENT, QueryOption.SORT, QueryOption.BROADCAST);
+        q.sortTerm = new QueryTask.QueryTerm();
+        q.sortTerm.propertyType = TypeName.STRING;
+        q.sortTerm.propertyName = ExampleServiceState.FIELD_NAME_NAME;
+
+        QueryTask task = QueryTask.create(q);
+        task.setDirect(true);
+
+        targetHost.testStart(1);
+
+        URI factoryUri = UriUtils.buildUri(targetHost, ServiceUriPaths.CORE_QUERY_TASKS);
+        Operation startPost = Operation
+                .createPost(factoryUri)
+                .setBody(task)
+                .setCompletion((o, e) -> {
+                    assertNotNull(e);
+                    assertTrue(e.getMessage().contains("broadcasted query only supports sorting on " +
+                            "[documentSelfLink]"));
+
+                    targetHost.completeIteration();
+                });
+        targetHost.send(startPost);
+
+        targetHost.testWait();
+    }
+
+    @Test
+    public void paginatedBroadcastQueryTasksOnExampleStates () throws Throwable {
+        setUpHost();
+
+        int nodeCount = 3;
+        this.host.setUpPeerHosts(nodeCount);
+        this.host.joinNodesAndVerifyConvergence(nodeCount);
+
+        verifyOnlySupportSortOnSelfLinkInBroadcast();
+
+        VerificationHost targetHost = this.host.getPeerHost();
+        URI exampleFactoryURI = UriUtils.buildUri(targetHost, ExampleFactoryService.SELF_LINK);
+
+        int serviceCount = 100;
+        int resultLimit = 30;
+        this.host.testStart(serviceCount);
+        List<URI> exampleServices = new ArrayList<>();
+        for (int i = 0; i < serviceCount; i++) {
+            ExampleServiceState s = new ExampleServiceState();
+            s.name = "document" + i;
+            s.documentSelfLink = s.name;
+
+            exampleServices.add(UriUtils.buildUri(this.host.getUri(),
+                    ExampleFactoryService.SELF_LINK, s.documentSelfLink));
+
+            this.host.send(Operation.createPost(exampleFactoryURI)
+                    .setBody(s)
+                    .setCompletion(this.host.getCompletion()));
+        }
+        this.host.testWait();
+
+        QuerySpecification q = new QuerySpecification();
+        Query kindClause = new Query();
+        kindClause.setTermPropertyName(ServiceDocument.FIELD_NAME_KIND)
+                .setTermMatchValue(Utils.buildKind(ExampleServiceState.class));
+        q.query = kindClause;
+        q.options = EnumSet.of(QueryOption.EXPAND_CONTENT, QueryOption.BROADCAST);
+        q.resultLimit = resultLimit;
+
+        QueryTask task = QueryTask.create(q);
+        task.setDirect(true);
+
+        this.host.createQueryTaskService(task, false, task.taskInfo.isDirect, task, null);
+
+        assertTrue(0 == task.results.documentCount);
+        assertTrue(task.results.nextPageLink.contains(UriUtils.buildUriPath(ServiceUriPaths.CORE,
+                        BroadcastQueryPageService.SELF_LINK_PREFIX)));
+
+        String nextPageLink = task.results.nextPageLink;
+        Set<String> documentLinks = new HashSet<>();
+        while (nextPageLink != null) {
+            List<String> pageLinks = new ArrayList<>();
+            URI u = UriUtils.buildUri(targetHost, nextPageLink);
+
+            targetHost.testStart(1);
+            Operation get = Operation
+                    .createGet(u)
+                    .setCompletion((o, e) -> {
+                        if (e != null) {
+                            targetHost.failIteration(e);
+                            return;
+                        }
+
+                        QueryTask rsp = o.getBody(QueryTask.class);
+                        pageLinks.add(rsp.results.nextPageLink);
+                        documentLinks.addAll(rsp.results.documentLinks);
+
+                        targetHost.completeIteration();
+                    });
+
+            targetHost.send(get);
+            targetHost.testWait();
+
+            nextPageLink = pageLinks.isEmpty() ? null : pageLinks.get(0);
+        }
+
+        assertEquals(serviceCount, documentLinks.size());
+
+        for (int i = 0; i < serviceCount; i++) {
+            assertTrue(documentLinks.contains("/core/examples/document" + i));
+        }
+    }
+
+    @Test
     public void sortTestOnExampleStates() throws Throwable {
         doSortTestOnExampleStates(false);
         doSortTestOnExampleStates(true);
