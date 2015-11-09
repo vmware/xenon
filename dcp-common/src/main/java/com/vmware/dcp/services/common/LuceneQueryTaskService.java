@@ -13,18 +13,26 @@
 
 package com.vmware.dcp.services.common;
 
+import java.net.URI;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.EnumSet;
 import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.stream.Collectors;
 
 import com.vmware.dcp.common.Operation;
 import com.vmware.dcp.common.Operation.CompletionHandler;
 import com.vmware.dcp.common.ServiceDocument;
+import com.vmware.dcp.common.ServiceDocumentDescription;
 import com.vmware.dcp.common.ServiceDocumentQueryResult;
 import com.vmware.dcp.common.StatefulService;
 import com.vmware.dcp.common.TaskState;
 import com.vmware.dcp.common.TaskState.TaskStage;
+import com.vmware.dcp.common.UriUtils;
 import com.vmware.dcp.common.Utils;
 import com.vmware.dcp.services.common.ExampleService.ExampleServiceState;
 import com.vmware.dcp.services.common.QueryTask.QuerySpecification;
@@ -74,6 +82,7 @@ public class LuceneQueryTaskService extends StatefulService {
             QueryTask patchBody = new QueryTask();
             patchBody.taskInfo = new TaskState();
             patchBody.taskInfo.stage = TaskStage.STARTED;
+            patchBody.querySpec = initState.querySpec;
             sendRequest(Operation.createPatch(getUri()).setBody(patchBody));
         } else {
             // Complete POST when we have results
@@ -100,7 +109,119 @@ public class LuceneQueryTaskService extends StatefulService {
             return false;
         }
 
+        if (initState.querySpec.options != null
+                && initState.querySpec.options.contains(QueryOption.BROADCAST)
+                && initState.querySpec.options.contains(QueryOption.SORT)
+                && initState.querySpec.sortTerm != null
+                && initState.querySpec.sortTerm.propertyName != ServiceDocument.FIELD_NAME_SELF_LINK) {
+            startPost.fail(new IllegalArgumentException("broadcasted query only supports sorting on [" +
+                    ServiceDocument.FIELD_NAME_SELF_LINK + "]"));
+            return false;
+        }
+
+        if (initState.querySpec.options != null
+                && initState.querySpec.options.contains(QueryOption.BROADCAST)
+                && initState.taskInfo.isDirect) {
+            startPost.fail(new IllegalArgumentException("Direct query is not supported in broadcast"));
+        }
+
         return true;
+    }
+
+    private void createAndSendBroadcastQuery(QueryTask origQueryTask) {
+        QueryTask queryTask = Utils.clone(origQueryTask);
+        queryTask.setDirect(true);
+
+        queryTask.querySpec.options.remove(QueryOption.BROADCAST);
+
+        if (!queryTask.querySpec.options.contains(QueryOption.SORT)) {
+            queryTask.querySpec.options.add(QueryOption.SORT);
+            queryTask.querySpec.sortOrder = QuerySpecification.SortOrder.ASC;
+            queryTask.querySpec.sortTerm = new QueryTask.QueryTerm();
+            queryTask.querySpec.sortTerm.propertyType = ServiceDocumentDescription.TypeName.STRING;
+            queryTask.querySpec.sortTerm.propertyName = ServiceDocument.FIELD_NAME_SELF_LINK;
+        }
+
+        URI localQueryTaskFactoryUri = UriUtils.buildUri(this.getHost(), ServiceUriPaths.CORE_LOCAL_QUERY_TASKS);
+        URI forwardingService = UriUtils.buildBroadcastRequestUri(localQueryTaskFactoryUri,
+                ServiceUriPaths.DEFAULT_NODE_SELECTOR);
+
+        Operation op = Operation
+                .createPost(forwardingService)
+                .setBody(queryTask)
+                .setReferer(this.getUri())
+                .setCompletion((o, e) -> {
+                    if (e != null) {
+                        failTask(e, o, null);
+                        return;
+                    }
+
+                    NodeGroupBroadcastResponse rsp = o.getBody((NodeGroupBroadcastResponse.class));
+                    if (!rsp.failures.isEmpty()) {
+                        failTask(new IllegalStateException("Failures received: " + Utils.toJsonHtml(rsp)), o, null);
+                        return;
+                    }
+
+                    collectBroadcastQueryResults(rsp.jsonResponses, queryTask);
+
+                    queryTask.taskInfo.stage = TaskStage.FINISHED;
+                    sendRequest(Operation.createPatch(getUri()).setBodyNoCloning(queryTask));
+                });
+        this.getHost().sendRequest(op);
+    }
+
+    private void collectBroadcastQueryResults(Map<URI, String> jsonResponses, QueryTask queryTask) {
+        long startTime = Utils.getNowMicrosUtc();
+
+        List<ServiceDocumentQueryResult> queryResults = new ArrayList<>();
+        queryTask.taskInfo.durationMicros = 0L;
+        for (Map.Entry<URI, String> entry : jsonResponses.entrySet()) {
+            QueryTask rsp = Utils.fromJson(entry.getValue(), QueryTask.class);
+            queryResults.add(rsp.results);
+        }
+
+        boolean isPaginatedQuery = queryTask.querySpec.resultLimit != null
+                && queryTask.querySpec.resultLimit < Integer.MAX_VALUE;
+
+        if (!isPaginatedQuery) {
+            boolean isAscOrder = queryTask.querySpec.sortOrder == null
+                    || queryTask.querySpec.sortOrder == QuerySpecification.SortOrder.ASC;
+            queryTask.results = Utils.mergeQueryResults(queryResults, isAscOrder);
+        } else {
+            URI broadcastPageServiceUri = UriUtils.buildUri(this.getHost(), UriUtils.buildUriPath(ServiceUriPaths.CORE,
+                    BroadcastQueryPageService.SELF_LINK_PREFIX, String.valueOf(Utils.getNowMicrosUtc())));
+
+            URI forwarderUri = UriUtils.buildForwardToPeerUri(broadcastPageServiceUri, getHost().getId(),
+                    ServiceUriPaths.DEFAULT_NODE_SELECTOR, EnumSet.noneOf(ServiceOption.class));
+
+            ServiceDocument postBody = new ServiceDocument();
+            postBody.documentSelfLink = broadcastPageServiceUri.getPath();
+
+            Operation startPost = Operation
+                    .createPost(broadcastPageServiceUri)
+                    .setBody(postBody)
+                    .setCompletion((o, e) -> {
+                        if (e != null) {
+                            failTask(e, o, null);
+                            return;
+                        }
+
+                        queryTask.results = new ServiceDocumentQueryResult();
+                        queryTask.results.documentCount = 0L;
+                        queryTask.results.nextPageLink = forwarderUri.getPath() + UriUtils.URI_QUERY_CHAR +
+                                forwarderUri.getQuery();
+
+                    });
+
+            List<String> nextPageLinks = queryResults.stream().map(r -> r.nextPageLink).collect(Collectors.toList());
+
+            this.getHost().startService(startPost,
+                    new BroadcastQueryPageService(queryTask.querySpec, nextPageLinks));
+        }
+
+        long timeElapsed = Utils.getNowMicrosUtc() - startTime;
+        queryTask.taskInfo.durationMicros = timeElapsed + Collections.max(queryResults.stream().map(r -> r
+                .queryTimeMicros).collect(Collectors.toList()));
     }
 
     @Override
@@ -152,6 +273,8 @@ public class LuceneQueryTaskService extends StatefulService {
         QueryTask patchBody = patch.getBody(QueryTask.class);
         TaskState newTaskState = patchBody.taskInfo;
 
+        this.results = patchBody.results;
+
         if (newTaskState == null) {
             patch.fail(new IllegalArgumentException("taskInfo is required"));
             return;
@@ -190,7 +313,11 @@ public class LuceneQueryTaskService extends StatefulService {
         patch.complete();
 
         if (newTaskState.stage == TaskStage.STARTED) {
-            convertAndForwardToLucene(state, null);
+            if (patchBody.querySpec.options.contains(QueryOption.BROADCAST)) {
+                createAndSendBroadcastQuery(patchBody);
+            } else {
+                convertAndForwardToLucene(state, null);
+            }
         }
     }
 
@@ -377,6 +504,7 @@ public class LuceneQueryTaskService extends StatefulService {
                 // PATCH self to finished
                 // we do not clone our state since we already cloned before the query
                 // started
+                System.out.println("Patching itself : " + getUri());
                 sendRequest(Operation.createPatch(getUri()).setBodyNoCloning(task));
             }
         } finally {
