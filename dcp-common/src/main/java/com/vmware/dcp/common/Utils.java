@@ -28,7 +28,10 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.ArrayList;
 import java.util.EnumSet;
+import java.util.HashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.Callable;
@@ -833,5 +836,82 @@ public class Utils {
             }
         }
         return modified;
+    }
+
+    /**
+     * Merges a list of @ServiceDocumentQueryResult that were already <b>sorted</b> on <i>documentLink</i>.
+     * The merge will be done in linear time.
+     *
+     * @param dataSources A list of @ServiceDocumentQueryResult <b>sorted</b> on <i>documentLink</i>.
+     * @param isAscOrder  Whether the document links are sorted in ascending order.
+     * @return The merging result.
+     */
+    public static ServiceDocumentQueryResult mergeQueryResults(List<ServiceDocumentQueryResult> dataSources,
+                                                               boolean isAscOrder) {
+
+        // To hold the merge result.
+        ServiceDocumentQueryResult result = new ServiceDocumentQueryResult();
+        result.documents = new HashMap<>();
+        result.documentCount = 0L;
+
+        // For each list of documents to be merged, a pointer is maintained to indicate which element
+        // is to be merged. The initial values are 0s.
+        int[] indices = new int[dataSources.size()];
+
+        // Keep going until the last element in each list has been merged.
+        while (true) {
+            // Always pick the document link that is the smallest or largest depending on "isAscOrder" from
+            // all lists to be merged. "documentLinkPicked" is used to keep the winner.
+            String documentLinkPicked = null;
+
+            // Ties could happen among the lists. That is, multiple elements could be picked in one iteration,
+            // and the lists where they locate need to be recorded so that their pointers could be adjusted accordingly.
+            List<Integer>sourcesPicked = new ArrayList<>();
+
+            // In each iteration, the current elements in all lists need to be compared to pick the winners.
+            for (int i = 0; i < dataSources.size(); i++) {
+                // If the current list still have elements left to be merged, then proceed.
+                if (indices[i] < dataSources.get(i).documentCount) {
+                    String documentLink = dataSources.get(i).documentLinks.get(indices[i]);
+                    if (documentLinkPicked == null) {
+                        // No document link has been picked in this iteration, so it is the winner at the current time.
+                        documentLinkPicked = documentLink;
+                        sourcesPicked.add(i);
+                    } else {
+                        if (isAscOrder && documentLink.compareTo(documentLinkPicked) < 0
+                                || !isAscOrder && documentLink.compareTo(documentLinkPicked) > 0) {
+                            // If this document link is smaller or bigger (depending on isAscOrder),
+                            // then replace the original winner.
+                            documentLinkPicked = documentLink;
+                            sourcesPicked.clear();
+                            sourcesPicked.add(i);
+                        } else if (documentLink.equals(documentLinkPicked)) {
+                            // If it is a tie, we will need to record this element too so that
+                            // it won't be processed in the next iteration.
+                            sourcesPicked.add(i);
+                        }
+                    }
+                }
+            }
+
+            if (documentLinkPicked != null) {
+                // Save the winner to the result.
+                result.documentLinks.add(documentLinkPicked);
+                result.documents.put(documentLinkPicked,
+                        dataSources.get(sourcesPicked.get(0)).documents.get(documentLinkPicked));
+                result.documentCount++;
+
+                // Move the pointer of the lists where the winners locate.
+                for (int i : sourcesPicked) {
+                    indices[i]++;
+                }
+            } else {
+                // No document was picked, that means all lists had been processed,
+                // and the merging work is done.
+                break;
+            }
+        }
+
+        return result;
     }
 }
