@@ -95,6 +95,11 @@ public class QueryTask extends ServiceDocument {
              * Infrastructure use only. Query originated from a query task service
              */
             TASK,
+
+            /**
+             * Need to broadcast this task to all nodes
+             */
+            BROADCAST,
         }
 
         public enum SortOrder {
