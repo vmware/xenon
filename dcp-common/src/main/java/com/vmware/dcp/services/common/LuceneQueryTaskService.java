@@ -13,18 +13,22 @@
 
 package com.vmware.dcp.services.common;
 
+import java.net.URI;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
 import com.vmware.dcp.common.Operation;
 import com.vmware.dcp.common.Operation.CompletionHandler;
 import com.vmware.dcp.common.ServiceDocument;
+import com.vmware.dcp.common.ServiceDocumentDescription;
 import com.vmware.dcp.common.ServiceDocumentQueryResult;
 import com.vmware.dcp.common.StatefulService;
 import com.vmware.dcp.common.TaskState;
 import com.vmware.dcp.common.TaskState.TaskStage;
+import com.vmware.dcp.common.UriUtils;
 import com.vmware.dcp.common.Utils;
 import com.vmware.dcp.services.common.ExampleService.ExampleServiceState;
 import com.vmware.dcp.services.common.QueryTask.QuerySpecification;
@@ -60,24 +64,65 @@ public class LuceneQueryTaskService extends StatefulService {
             return;
         }
 
-        if (initState.documentExpirationTimeMicros == 0) {
-            // always set expiration so we do not accumulate tasks
-            initState.documentExpirationTimeMicros = Utils.getNowMicrosUtc()
-                    + TimeUnit.SECONDS.toMicros(DEFAULT_EXPIRATION_SECONDS);
-        }
-        initState.taskInfo.stage = TaskStage.CREATED;
+        // If the request has BROADCAST option, a forwarding service needs to be created,
+        // and all nodes needs to be requested.
+        if (initState.querySpec.options.contains(QueryOption.BROADCAST)) {
+            initState.querySpec.options.remove(QueryOption.BROADCAST);
 
-        if (!initState.taskInfo.isDirect) {
-            // complete POST immediately
-            startPost.setStatusCode(Operation.STATUS_CODE_ACCEPTED).complete();
-            // kick off query processing by patching self to STARTED
-            QueryTask patchBody = new QueryTask();
-            patchBody.taskInfo = new TaskState();
-            patchBody.taskInfo.stage = TaskStage.STARTED;
-            sendRequest(Operation.createPatch(getUri()).setBody(patchBody));
+            if (!initState.querySpec.options.contains(QueryOption.SORT)) {
+                initState.querySpec.options.add(QueryOption.SORT);
+                initState.querySpec.sortTerm = new QueryTask.QueryTerm();
+                initState.querySpec.sortTerm.propertyType = ServiceDocumentDescription.TypeName.STRING;
+                initState.querySpec.sortTerm.propertyName = ServiceDocument.FIELD_NAME_SELF_LINK;
+            }
+
+            URI localQueryTaskFactoryUri = UriUtils.buildUri(this.getHost(), ServiceUriPaths.CORE_LOCAL_QUERY_TASKS);
+            URI forwardingService = UriUtils.buildBroadcastRequestUri(localQueryTaskFactoryUri,
+                    ServiceUriPaths.DEFAULT_NODE_SELECTOR);
+
+            Operation op = Operation
+                    .createPost(forwardingService)
+                    .setBody(initState)
+                    .setReferer(startPost.getReferer())
+                    .setCompletion((o, e) -> {
+                        if (e != null) {
+                            return;
+                        }
+
+                        NodeGroupBroadcastResponse rsp = o.getBody((NodeGroupBroadcastResponse.class));
+                        if (!rsp.failures.isEmpty()) {
+                            return;
+                        }
+
+                        // Should merge the query results here.
+                        for (Map.Entry<URI, String> entry : rsp.jsonResponses.entrySet()) {
+                            String jsonRsp = entry.getValue();
+                            QueryTask task = Utils.fromJson(jsonRsp, QueryTask.class);
+                            System.out.println("response from " + task.documentSelfLink + " " + task
+                                    .documentOwner + " with " + task.results.documentCount + " documents.");
+                        }
+                    });
+            this.getHost().sendRequest(op);
         } else {
-            // Complete POST when we have results
-            this.convertAndForwardToLucene(initState, startPost);
+            if (initState.documentExpirationTimeMicros == 0) {
+                // always set expiration so we do not accumulate tasks
+                initState.documentExpirationTimeMicros = Utils.getNowMicrosUtc()
+                        + TimeUnit.SECONDS.toMicros(DEFAULT_EXPIRATION_SECONDS);
+            }
+            initState.taskInfo.stage = TaskStage.CREATED;
+
+            if (!initState.taskInfo.isDirect) {
+                // complete POST immediately
+                startPost.setStatusCode(Operation.STATUS_CODE_ACCEPTED).complete();
+                // kick off query processing by patching self to STARTED
+                QueryTask patchBody = new QueryTask();
+                patchBody.taskInfo = new TaskState();
+                patchBody.taskInfo.stage = TaskStage.STARTED;
+                sendRequest(Operation.createPatch(getUri()).setBody(patchBody));
+            } else {
+                // Complete POST when we have results
+                this.convertAndForwardToLucene(initState, startPost);
+            }
         }
     }
 
