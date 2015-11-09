@@ -633,7 +633,7 @@ public class TestQueryTaskService {
     }
 
     @Test
-    public void replicatedBooleanDirectQueryTasksOnExampleStates() throws Throwable {
+    public void replicatedQueryTasksOnExampleStates() throws Throwable {
 
         setUpHost();
         int nodeCount = 3;
@@ -780,6 +780,20 @@ public class TestQueryTaskService {
 
         this.host.log("owners:%s", owners);
         assertTrue(owners.size() > 1);
+
+        // issue a paginated task query on one of the nodes. Then use the next page links verifying th elinks
+        // are forwarded to the node that executed the query
+        QueryTask remoteTask = QueryTask.Builder.create().setQuery(query).build();
+        remoteTask.documentExpirationTimeMicros = Utils.getNowMicrosUtc()
+                + TimeUnit.DAYS.toMicros(1);
+        remoteTask.querySpec.resultLimit = exampleStates.size() / 10;
+        QueryTask results = QueryTask.Builder.create().build();
+        URI taskUri = this.host.createQueryTaskService(null, remoteTask, false, false, results,
+                null);
+
+        results = this.host.waitForQueryTaskCompletion(remoteTask.querySpec, exampleStates.size(),
+                1, taskUri,
+                false, false);
 
         exp = this.host.getTestExpiration();
         while (new Date().before(exp)) {

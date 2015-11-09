@@ -959,7 +959,13 @@ public class LuceneDocumentIndexService extends StatelessService {
         }
 
         getHost().startService(startPost, new LuceneQueryPageService(spec, indexLink));
-        return u.getPath();
+
+        // the page link must point to this node, since the index searcher and results have been
+        // computed locally. Transform the link to a forwarder link, which will transparently
+        // forward requests to this node
+        URI forwarderUri = UriUtils.buildForwardToPeerUri(u, getHost().getId(),
+                ServiceUriPaths.DEFAULT_NODE_SELECTOR, EnumSet.noneOf(ServiceOption.class));
+        return forwarderUri.getPath() + UriUtils.URI_QUERY_CHAR + forwarderUri.getQuery();
     }
 
     private void processQueryResults(ServiceOption targetIndex, EnumSet<QueryOption> options,

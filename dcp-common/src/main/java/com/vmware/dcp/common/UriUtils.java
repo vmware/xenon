@@ -451,6 +451,10 @@ public class UriUtils {
         return null;
     }
 
+    /**
+     * Builds a forwarder service URI using the target service path as the node selection key.
+     * If the key argument is supplied, it is used instead
+     */
     public static URI buildForwardRequestUri(URI targetService, String key, String selectorPath) {
         URI u = UriUtils.buildUri(targetService, UriUtils.buildUriPath(
                 selectorPath,
