@@ -844,6 +844,91 @@ public class TestQueryTaskService {
     }
 
     @Test
+    public void onlySupportSortOnSelfLinkInBroadcast() throws Throwable {
+        setUpHost();
+
+        int nodeCount = 3;
+        this.host.setUpPeerHosts(nodeCount);
+        this.host.joinNodesAndVerifyConvergence(nodeCount);
+
+        VerificationHost targetHost = this.host.getPeerHost();
+
+        QuerySpecification q = new QuerySpecification();
+        Query kindClause = new Query();
+        kindClause.setTermPropertyName(ServiceDocument.FIELD_NAME_KIND)
+                .setTermMatchValue(Utils.buildKind(ExampleServiceState.class));
+        q.query = kindClause;
+        q.options = EnumSet.of(QueryOption.EXPAND_CONTENT, QueryOption.SORT, QueryOption.BROADCAST);
+        q.sortTerm = new QueryTask.QueryTerm();
+        q.sortTerm.propertyType = TypeName.STRING;
+        q.sortTerm.propertyName = ExampleServiceState.FIELD_NAME_NAME;
+
+        QueryTask task = QueryTask.create(q);
+        task.setDirect(true);
+
+        targetHost.testStart(1);
+
+        URI factoryUri = UriUtils.buildUri(targetHost, ServiceUriPaths.CORE_QUERY_TASKS);
+        Operation startPost = Operation
+                .createPost(factoryUri)
+                .setBody(task)
+                .setCompletion((o, e) -> {
+                    assertNotNull(e);
+                    assertTrue(e.getMessage().contains("broadcasted query only supports sorting on " +
+                            "[documentSelfLink]"));
+
+                    targetHost.completeIteration();
+                });
+        targetHost.send(startPost);
+
+        targetHost.testWait();
+    }
+
+    @Test
+    public void nonPaginatedBroadcastQueryTasksOnExampleStates() throws Throwable {
+
+        setUpHost();
+
+        int nodeCount = 3;
+        this.host.setUpPeerHosts(nodeCount);
+        this.host.joinNodesAndVerifyConvergence(nodeCount);
+
+        VerificationHost targetHost = this.host.getPeerHost();
+        URI exampleFactoryURI = UriUtils.buildUri(targetHost, ExampleFactoryService.SELF_LINK);
+
+        int serviceCount = 100;
+        this.host.testStart(serviceCount);
+        List<URI> exampleServices = new ArrayList<>();
+        for (int i = 0; i < serviceCount; i++) {
+            ExampleServiceState s = new ExampleServiceState();
+            s.name = "document" + i;
+            s.documentSelfLink = s.name;
+
+            exampleServices.add(UriUtils.buildUri(this.host.getUri(),
+                    ExampleFactoryService.SELF_LINK, s.documentSelfLink));
+
+            this.host.send(Operation.createPost(exampleFactoryURI)
+                    .setBody(s)
+                    .setCompletion(this.host.getCompletion()));
+        }
+        this.host.testWait();
+
+        QuerySpecification q = new QuerySpecification();
+        Query kindClause = new Query();
+        kindClause.setTermPropertyName(ServiceDocument.FIELD_NAME_KIND)
+                .setTermMatchValue(Utils.buildKind(ExampleServiceState.class));
+        q.query = kindClause;
+        q.options = EnumSet.of(QueryOption.EXPAND_CONTENT, QueryOption.BROADCAST);
+
+        QueryTask task = QueryTask.create(q);
+        task.setDirect(true);
+
+        this.host.createQueryTaskService(task, false, task.taskInfo.isDirect, task, null);
+
+        assertTrue(serviceCount == task.results.documentCount);
+    }
+
+    @Test
     public void sortTestOnExampleStates() throws Throwable {
         doSortTestOnExampleStates(false);
         doSortTestOnExampleStates(true);
@@ -874,6 +959,7 @@ public class TestQueryTaskService {
         q.query = kindClause;
         q.options = EnumSet.of(QueryOption.SORT);
         q.sortOrder = QuerySpecification.SortOrder.ASC;
+
         q.sortTerm = new QueryTask.QueryTerm();
         q.sortTerm.propertyType = TypeName.STRING;
         q.sortTerm.propertyName = ExampleServiceState.FIELD_NAME_NAME;
