@@ -337,7 +337,7 @@ public class QueryTask extends ServiceDocument {
         }
 
         /**
-         * Rfc7519Builder class for constructing {@linkplain com.vmware.dcp.services.common.QueryTask.Query DCP queries}.
+         * Builder class for constructing {@linkplain Query DCP queries}.
          */
         public static final class Builder {
             private final Query query;
@@ -348,7 +348,7 @@ public class QueryTask extends ServiceDocument {
             }
 
             /**
-             * Constructs a query that {@linkplain com.vmware.dcp.services.common.QueryTask.Query.Occurance#MUST_OCCUR must occur} in matched documents.
+             * Constructs a query that {@linkplain Occurance#MUST_OCCUR must occur} in matched documents.
              * @return a reference to this object.
              */
             public static Builder create() {
@@ -356,7 +356,7 @@ public class QueryTask extends ServiceDocument {
             }
 
             /**
-             * Constructs a query with the given {@linkplain com.vmware.dcp.services.common.QueryTask.Query.Occurance occurance}.
+             * Constructs a query with the given {@linkplain Occurance occurance}.
              * @param occurance the occurance.
              * @return a reference to this object.
              */
@@ -365,12 +365,23 @@ public class QueryTask extends ServiceDocument {
             }
 
             /**
-             * Add a clause which matches the {@linkplain com.vmware.dcp.common.ServiceDocument#documentKind document kind} of the provided class.
+             * Add a clause which matches the {@linkplain ServiceDocument#documentKind document kind} of the provided class.
              * @param documentClass the service document class.
              * @return a reference to this object.
              */
             public Builder addKindFieldClause(Class<? extends ServiceDocument> documentClass) {
                 return addFieldClause(FIELD_NAME_KIND, Utils.buildKind(documentClass));
+            }
+
+            /**
+             * Add a clause with the specified occurance which matches the
+             * {@linkplain ServiceDocument#documentKind document kind} of the provided class.
+             * @param documentClass the service document class.
+             * @param occurance the occurance for this clause.
+             * @return a reference to this object.
+             */
+            public Builder addKindFieldClause(Class<? extends ServiceDocument> documentClass, Occurance occurance) {
+                return addFieldClause(FIELD_NAME_KIND, Utils.buildKind(documentClass), occurance);
             }
 
             /**
@@ -386,6 +397,20 @@ public class QueryTask extends ServiceDocument {
             }
 
             /**
+             * Add a clause with the specified occurance which matches a collection item.
+             * @param collectionFieldName the collection field name.
+             * @param itemName the item name in the collection to match.
+             * @param occurance the occurance for this clause.
+             * @return a reference to this object.
+             */
+            public Builder addCollectionItemClause(String collectionFieldName, String itemName, Occurance occurance) {
+                return addFieldClause(
+                        QuerySpecification.buildCollectionItemName(collectionFieldName),
+                        itemName,
+                        occurance);
+            }
+
+            /**
              * Add a clause which matches a property with at least one of several specified
              * values (analogous to a SQL "IN" statement).
              * @param fieldName the field name.
@@ -393,22 +418,30 @@ public class QueryTask extends ServiceDocument {
              * @return a reference to this object.
              */
             public Builder addInClause(String fieldName, Collection<String> itemNames) {
+                return addInClause(fieldName, itemNames, Occurance.MUST_OCCUR);
+            }
+
+            /**
+             * Add a clause with the given occurance which matches a property with at least one of several specified
+             * values (analogous to a SQL "IN" statement).
+             * @param fieldName the field name.
+             * @param itemNames the item names in the collection to match.
+             * @param occurance the occurance for this clause.
+             * @return a reference to this object.
+             */
+            public Builder addInClause(String fieldName, Collection<String> itemNames, Occurance occurance) {
                 if (itemNames.size() == 1) {
                     return addFieldClause(
                             fieldName,
                             itemNames.iterator().next());
                 }
 
-                Query inClause = new Query();
+                Query.Builder inClause = Query.Builder.create(occurance);
                 for (String itemName : itemNames) {
-                    Query clause = new Query()
-                            .setTermPropertyName(fieldName)
-                            .setTermMatchValue(itemName);
-                    clause.occurance = Occurance.SHOULD_OCCUR;
-                    inClause.addBooleanClause(clause);
+                    inClause.addFieldClause(fieldName, itemName, Occurance.SHOULD_OCCUR);
                 }
 
-                return addClause(inClause);
+                return addClause(inClause.build());
             }
 
             /**
@@ -426,6 +459,21 @@ public class QueryTask extends ServiceDocument {
             }
 
             /**
+             * Add a clause with the given occurance which matches a collection containing at least one of several
+             * specified values (analogous to a SQL "IN" statement).
+             * @param collectionFieldName the collection field name.
+             * @param itemNames the item names in the collection to match.
+             * @param occurance the occurance for this clause.
+             * @return a reference to this object.
+             */
+            public Builder addInCollectionItemClause(String collectionFieldName,
+                    Collection<String> itemNames, Occurance occurance) {
+                String collectionItemFieldName = QuerySpecification.buildCollectionItemName(
+                        collectionFieldName);
+                return addInClause(collectionItemFieldName, itemNames, occurance);
+            }
+
+            /**
              * Add a clause which matches a nested field value.
              * @param parentFieldName the top level field name.
              * @param nestedFieldName the nested field name.
@@ -439,17 +487,35 @@ public class QueryTask extends ServiceDocument {
             }
 
             /**
-             * Add a clause which matches a top level field name.
+             * Add a clause with the given occurance which matches a nested field value.
+             * @param parentFieldName the top level field name.
+             * @param nestedFieldName the nested field name.
+             * @param nestedFieldValue the nested field value to match.
+             * @param occurance the occurance for this clause.
+             * @return a reference to this object.
+             */
+            public Builder addCompositeFieldClause(String parentFieldName, String nestedFieldName,
+                    String nestedFieldValue, Occurance occurance) {
+                return addFieldClause(
+                        QuerySpecification.buildCompositeFieldName(parentFieldName, nestedFieldName),
+                        nestedFieldValue,
+                        occurance);
+            }
+
+            /**
+             * Add a {@link Occurance#MUST_OCCUR} clause which matches a top level field name using
+             * {@link MatchType#TERM}.
              * @param fieldName the top level field name.
              * @param fieldValue the field value to match.
              * @return a reference to this object.
              */
             public Builder addFieldClause(String fieldName, String fieldValue) {
-                return addFieldClause(fieldName, fieldValue, MatchType.TERM);
+                return addFieldClause(fieldName, fieldValue, MatchType.TERM, Occurance.MUST_OCCUR);
             }
 
             /**
-             * Add a clause which matches a top level field name.
+             * Add a {@link Occurance#MUST_OCCUR} clause which matches a top level field name using
+             * {@link MatchType#TERM}.
              * @param fieldName the top level field name.
              * @param fieldValue the field value to match.
              * @return a reference to this object.
@@ -457,21 +523,50 @@ public class QueryTask extends ServiceDocument {
             public Builder addFieldClause(String fieldName, Object fieldValue) {
                 return addFieldClause(fieldName,
                         QuerySpecification.toMatchValue(fieldValue),
-                        MatchType.TERM);
+                        MatchType.TERM,
+                        Occurance.MUST_OCCUR);
             }
 
             /**
-             * Add a clause which matches a top level field name with the provided {@link com.vmware.dcp.services.common.QueryTask.QueryTerm.MatchType}.
+             * Add a {@link Occurance#MUST_OCCUR} clause which matches a top level field name with the provided
+             * {@link MatchType}
              * @param fieldName the top level field name.
              * @param fieldValue the field value to match.
              * @param matchType the match type.
              * @return a reference to this object.
              */
             public Builder addFieldClause(String fieldName, String fieldValue, MatchType matchType) {
+                return addFieldClause(fieldName, fieldValue, matchType, Occurance.MUST_OCCUR);
+            }
+
+            /**
+             * Add a clause which matches a top level field name using {@link MatchType#TERM} with the provided
+             * {@link Occurance}.
+             * @param fieldName the top level field name.
+             * @param fieldValue the field value to match.
+             * @param occurance the {@link Occurance} for this clause.
+             * @return a reference to this object.
+             */
+            public Builder addFieldClause(String fieldName, String fieldValue, Occurance occurance) {
+                return addFieldClause(fieldName, fieldValue, MatchType.TERM, occurance);
+            }
+
+            /**
+             * Add a clause which matches a top level field name with the provided {@link MatchType} and
+             * {@link Occurance}.
+             * @param fieldName the top level field name.
+             * @param fieldValue the field value to match.
+             * @param matchType the match type.
+             * @param occurance the {@link Occurance} for this clause.
+             * @return a reference to this object.
+             */
+            public Builder addFieldClause(String fieldName, String fieldValue, MatchType matchType,
+                    Occurance occurance) {
                 Query clause = new Query()
                         .setTermPropertyName(fieldName)
                         .setTermMatchValue(fieldValue)
                         .setTermMatchType(matchType);
+                clause.occurance = occurance;
                 this.query.addBooleanClause(clause);
                 return this;
             }

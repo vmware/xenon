@@ -74,6 +74,7 @@ import com.vmware.dcp.services.common.QueryTask.QuerySpecification.QueryOption;
 import com.vmware.dcp.services.common.QueryTask.QuerySpecification.SortOrder;
 import com.vmware.dcp.services.common.QueryTask.QueryTerm.MatchType;
 import com.vmware.dcp.services.common.QueryValidationTestService.QueryValidationServiceState;
+import com.vmware.dcp.services.common.TenantService.TenantState;
 
 public class TestQueryTaskService {
     private static final String TEXT_VALUE = "the decentralized control plane is a nice framework for queries";
@@ -2050,4 +2051,60 @@ public class TestQueryTaskService {
 
     }
 
+    @Test
+    public void testQueryBuilderShouldOccur() throws Throwable {
+        setUpHost();
+        URI exampleFactoryUri = UriUtils.buildUri(host, ExampleFactoryService.SELF_LINK);
+        URI tenantFactoryUri = UriUtils.buildUri(host, TenantFactoryService.SELF_LINK);
+        host.testStart(2);
+
+        ExampleServiceState exampleServiceState = new ExampleServiceState();
+        exampleServiceState.name = "Foo";
+        exampleServiceState.keyValues.put("exampleKey", "exampleValue");
+        Operation postExample = Operation.createPost(exampleFactoryUri)
+                .setBody(exampleServiceState)
+                .setCompletion(host.getCompletion());
+        host.send(postExample);
+
+        TenantState tenantState = new TenantState();
+        tenantState.name = "Pepsi";
+        Operation postTenant = Operation.createPost(tenantFactoryUri)
+                .setBody(tenantState)
+                .setCompletion(host.getCompletion());
+        host.send(postTenant);
+
+        host.testWait();
+
+        QuerySpecification spec = new QuerySpecification();
+        spec.query = Query.Builder.create()
+                .addKindFieldClause(TenantState.class, Occurance.SHOULD_OCCUR)
+                .addKindFieldClause(ExampleServiceState.class, Occurance.SHOULD_OCCUR)
+                .build();
+        this.host.createAndWaitSimpleDirectQuery(spec, 2, 2);
+
+        spec.query = Query.Builder.create()
+                .addKindFieldClause(TenantState.class, Occurance.SHOULD_OCCUR)
+                .build();
+        this.host.createAndWaitSimpleDirectQuery(spec, 2, 1);
+
+        spec.query = Query.Builder.create()
+                .addFieldClause("name", "Pepsi", Occurance.SHOULD_OCCUR)
+                .addKindFieldClause(ExampleServiceState.class, Occurance.SHOULD_OCCUR)
+                .build();
+        this.host.createAndWaitSimpleDirectQuery(spec, 2, 2);
+
+        spec.query = Query.Builder.create()
+                .addCompositeFieldClause(ExampleServiceState.FIELD_NAME_KEY_VALUES, "exampleKey", "exampleValue",
+                        Occurance.SHOULD_OCCUR)
+                .addKindFieldClause(TenantState.class, Occurance.SHOULD_OCCUR)
+                .build();
+        this.host.createAndWaitSimpleDirectQuery(spec, 2, 2);
+
+        spec.query = Query.Builder.create()
+                .addCompositeFieldClause(ExampleServiceState.FIELD_NAME_KEY_VALUES, "exampleKey", "exampleValue",
+                        Occurance.SHOULD_OCCUR)
+                .addKindFieldClause(TenantState.class, Occurance.MUST_OCCUR)
+                .build();
+        this.host.createAndWaitSimpleDirectQuery(spec, 2, 1);
+    }
 }
