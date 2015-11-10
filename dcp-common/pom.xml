@@ -10,6 +10,17 @@
 
   <artifactId>dcp-common</artifactId>
 
+  <licenses>
+    <license>
+      <name>License</name>
+      <url>https://github.com/vmware/xenon/blob/master/License.txt</url>
+    </license>
+    <license>
+      <name>Notice</name>
+      <url>https://github.com/vmware/xenon/blob/master/Notice.txt</url>
+    </license>
+  </licenses>
+
   <properties>
     <gson.version>2.3.1</gson.version>
     <kryo.version>3.0.2</kryo.version>

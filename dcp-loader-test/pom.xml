@@ -12,6 +12,17 @@
 
   <name>dcp-loader-test</name>
 
+  <licenses>
+    <license>
+      <name>License</name>
+      <url>https://github.com/vmware/xenon/blob/master/License.txt</url>
+    </license>
+    <license>
+      <name>Notice</name>
+      <url>https://github.com/vmware/xenon/blob/master/Notice.txt</url>
+    </license>
+  </licenses>
+
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
   </properties>

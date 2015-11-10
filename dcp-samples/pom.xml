@@ -10,6 +10,17 @@
 
   <artifactId>dcp-samples</artifactId>
 
+  <licenses>
+    <license>
+      <name>License</name>
+      <url>https://github.com/vmware/xenon/blob/master/License.txt</url>
+    </license>
+    <license>
+      <name>Notice</name>
+      <url>https://github.com/vmware/xenon/blob/master/Notice.txt</url>
+    </license>
+  </licenses>
+
   <dependencies>
     <dependency>
       <groupId>${project.groupId}</groupId>

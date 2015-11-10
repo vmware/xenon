@@ -9,6 +9,17 @@
 
   <artifactId>dcp-websocket-test</artifactId>
 
+  <licenses>
+    <license>
+      <name>License</name>
+      <url>https://github.com/vmware/xenon/blob/master/License.txt</url>
+    </license>
+    <license>
+      <name>Notice</name>
+      <url>https://github.com/vmware/xenon/blob/master/Notice.txt</url>
+    </license>
+  </licenses>
+
   <properties>
     <rhino.version>1.7.7</rhino.version>
   </properties>
