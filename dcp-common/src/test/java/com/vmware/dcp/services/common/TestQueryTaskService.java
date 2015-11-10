@@ -14,6 +14,7 @@
 package com.vmware.dcp.services.common;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
@@ -801,7 +802,7 @@ public class TestQueryTaskService {
                 Thread.sleep(1000);
                 continue;
             }
-            return;
+            break;
         }
 
         // issue a paginated task query on one of the nodes. Then use the next page links verifying th elinks
@@ -819,16 +820,27 @@ public class TestQueryTaskService {
                 false, false);
 
         assertTrue(results.results.nextPageLink != null);
+        URI nextLink = UriUtils.buildUri(targetHost, results.results.nextPageLink);
+        QueryTask resultsFirstPage = this.host.getServiceState(null,
+                QueryTask.class, nextLink);
 
-        // verify that using the next page link on each host works
+        assertTrue(resultsFirstPage.results.documentCount > 0);
+        assertEquals(resultsFirstPage.results.prevPageLink, null);
+
+        // verify that using the next page link and prev page link on each host works
         for (VerificationHost h : this.host.getInProcessHostMap().values()) {
-            URI linkUri = UriUtils.buildUri(h, results.results.nextPageLink);
-            QueryTask r = this.host.getServiceState(null,
-                    QueryTask.class, linkUri);
-            assertTrue(r.results.documentCount > 0);
-        }
+            URI nextLinkUri = UriUtils.buildUri(h, resultsFirstPage.results.nextPageLink);
+            QueryTask resultNextLink = this.host.getServiceState(null,
+                    QueryTask.class, nextLinkUri);
 
-        throw new TimeoutException("lingering query tasks");
+            assertTrue(resultNextLink.results.documentCount > 0);
+
+            URI prevLinkUri = UriUtils.buildUri(h, resultNextLink.results.prevPageLink);
+            QueryTask resultPrevLink = this.host.getServiceState(null,
+                    QueryTask.class, prevLinkUri);
+
+            assertTrue(resultPrevLink.results.documentCount > 0);
+        }
     }
 
     @Test
@@ -912,10 +924,11 @@ public class TestQueryTaskService {
 
     private void getNextPageResults(String nextPageLink, int resultLimit,
             final int[] numberOfDocumentLinks, final List<URI> toDelete,
-            List<ExampleServiceState> documents) {
+            List<ExampleServiceState> documents, List<URI> pageLinks) {
 
         URI u = UriUtils.buildUri(this.host, nextPageLink);
         toDelete.add(u);
+        pageLinks.add(u);
 
         Operation get = Operation
                 .createGet(u)
@@ -934,8 +947,7 @@ public class TestQueryTaskService {
                         documents.add(document);
                     }
                     assertTrue(nlinks <= resultLimit);
-                    assertEquals(LuceneQueryPageService.KIND, page.documentKind);
-                    assertEquals(nextPageLink, page.results.prevPageLink);
+                    verifyLinks(nextPageLink, pageLinks, page);
 
                     numberOfDocumentLinks[0] += nlinks;
                     if (page.results.nextPageLink == null || nlinks == 0) {
@@ -944,7 +956,7 @@ public class TestQueryTaskService {
                     }
 
                     getNextPageResults(page.results.nextPageLink,
-                            resultLimit, numberOfDocumentLinks, toDelete, documents);
+                            resultLimit, numberOfDocumentLinks, toDelete, documents, pageLinks);
                 });
 
         this.host.send(get);
@@ -1017,8 +1029,9 @@ public class TestQueryTaskService {
         assertTrue(numberOfDocumentLinks[0] == 0);
 
         List<URI> toDelete = new ArrayList<>(exampleServices);
+        List<URI> pageLinks = new ArrayList<>();
         this.host.testStart(1);
-        getNextPageResults(nextPageLink, resultLimit, numberOfDocumentLinks, toDelete, documents);
+        getNextPageResults(nextPageLink, resultLimit, numberOfDocumentLinks, toDelete, documents, pageLinks);
         this.host.testWait();
 
         assertEquals(serviceCount, numberOfDocumentLinks[0]);
@@ -1045,8 +1058,9 @@ public class TestQueryTaskService {
         documents = Collections.synchronizedList(new ArrayList<>());
 
         toDelete = new ArrayList<>(exampleServices);
+        pageLinks.clear();
         this.host.testStart(1);
-        getNextPageResults(nextPageLink, resultLimit, numberOfDocumentLinks, toDelete, documents);
+        getNextPageResults(nextPageLink, resultLimit, numberOfDocumentLinks, toDelete, documents, pageLinks);
         this.host.testWait();
 
         assertEquals(serviceCount, numberOfDocumentLinks[0]);
@@ -1776,8 +1790,7 @@ public class TestQueryTaskService {
                         QueryTask page = o.getBody(QueryTask.class);
                         int nlinks = page.results.documentLinks.size();
                         assertTrue(nlinks <= resultLimit);
-                        assertEquals(LuceneQueryPageService.KIND, page.documentKind);
-                        assertEquals(nextPageLink, page.results.prevPageLink);
+                        verifyLinks(nextPageLink, serviceURIs, page);
 
                         numberOfDocumentLinks[0] += nlinks;
 
@@ -1797,6 +1810,32 @@ public class TestQueryTaskService {
                 });
 
         this.host.send(get);
+    }
+
+    private void verifyLinks(String nextPageLink, List<URI> serviceURIs, QueryTask page) {
+        assertEquals(LuceneQueryPageService.KIND, page.documentKind);
+        assertNotEquals(nextPageLink, page.results.nextPageLink);
+        assertNotEquals(nextPageLink, page.results.prevPageLink);
+
+        if (serviceURIs.size() >= 1) {
+            URI currentPageForwardUri = UriUtils.buildForwardToPeerUri(
+                    UriUtils.buildUri(page.documentSelfLink), this.host.getId(),
+                    ServiceUriPaths.DEFAULT_NODE_SELECTOR,
+                    EnumSet.noneOf(ServiceOption.class));
+
+            String currentPageLink = currentPageForwardUri.getPath()
+                    + UriUtils.URI_QUERY_CHAR + currentPageForwardUri.getQuery();
+
+            assertEquals(serviceURIs.get(serviceURIs.size() - 1), UriUtils.buildUri(this.host,
+                    currentPageLink));
+        }
+
+        if (serviceURIs.size() >= 2) {
+            assertEquals(serviceURIs.get(serviceURIs.size() - 2), UriUtils.buildUri(this.host,
+                    page.results.prevPageLink));
+        } else {
+            assertEquals(null, page.results.prevPageLink);
+        }
     }
 
     public QueryValidationServiceState doTaskStageQuery(int sc, int versionCount,
