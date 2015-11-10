@@ -2000,7 +2000,8 @@ public class ServiceHost {
         // have more recent state version than we do, then pick the latest one
         // (or the most valid one, depending on peer consensus)
 
-        SynchronizePeersRequest t = new SynchronizePeersRequest();
+        SynchronizePeersRequest t = SynchronizePeersRequest.create();
+        t.stateDescription = buildDocumentDescription(s);
         t.wasOwner = s.hasOption(ServiceOption.DOCUMENT_OWNER);
         t.isOwner = rsp.isLocalHostOwner;
         t.ownerNodeReference = rsp.ownerNodeReference;
@@ -2088,7 +2089,7 @@ public class ServiceHost {
                 ServiceUriPaths.SERVICE_URI_SUFFIX_SYNCHRONIZATION);
         Operation synchPost = Operation
                 .createPost(synchServiceForGroup)
-                .setBody(t)
+                .setBodyNoCloning(t)
                 .setReferer(s.getUri())
                 .setCompletion(c);
         sendRequest(synchPost);
