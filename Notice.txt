@@ -1,0 +1,7 @@
+Xenon version 0.2
+
+Copyright (c) 2014-2015 VMware, Inc. All rights reserved.
+
+This product is licensed to you under the Apache License version 2.0 (the �License�).
+
+This product may include a number of components with separate copyright notices and license terms. Your use of the source code for these components is subject to the terms and conditions of the respective component license as noted in the LICENSE file.
