@@ -905,7 +905,8 @@ public class LuceneDocumentIndexService extends StatelessService {
                 expiration += queryTime;
                 rsp.nextPageLink = createNextPage(op, s, options, tq, sort, bottom, count,
                         expiration,
-                        indexLink);
+                        indexLink,
+                        hasPage);
                 break;
             }
 
@@ -921,20 +922,33 @@ public class LuceneDocumentIndexService extends StatelessService {
             ScoreDoc after,
             int count,
             long expiration,
-            String indexLink) {
+            String indexLink,
+            boolean hasPage) {
 
         URI u = UriUtils.buildUri(getHost(), UriUtils.buildUriPath(
                 ServiceUriPaths.CORE,
                 "query-page",
                 Utils.getNowMicrosUtc() + ""));
 
-        LuceneQueryPage page = new LuceneQueryPage(u.getPath(), after);
         // the page link must point to this node, since the index searcher and results have been
         // computed locally. Transform the link to a forwarder link, which will transparently
         // forward requests to this node
         URI forwarderUri = UriUtils.buildForwardToPeerUri(u, getHost().getId(),
                 ServiceUriPaths.DEFAULT_NODE_SELECTOR, EnumSet.noneOf(ServiceOption.class));
-        page.link = forwarderUri.getPath() + UriUtils.URI_QUERY_CHAR + forwarderUri.getQuery();
+        String nextLink = forwarderUri.getPath() + UriUtils.URI_QUERY_CHAR + forwarderUri.getQuery();
+
+        URI forwarderUriOfPrevLinkForNewPage = UriUtils.buildForwardToPeerUri(op.getReferer(), getHost().getId(),
+                ServiceUriPaths.DEFAULT_NODE_SELECTOR, EnumSet.noneOf(ServiceOption.class));
+        String prevLinkForNewPage = forwarderUriOfPrevLinkForNewPage.getPath()
+                + UriUtils.URI_QUERY_CHAR + forwarderUriOfPrevLinkForNewPage.getQuery();
+
+        // Requests to core/query-page are forwarded to document-index (this service) and
+        // referer of that forwarded request is set to original query-page request.
+        // This method is called when query-page wants to create new page for a paginated query.
+        // If a new page is going to be created then it is safe to use query-page link
+        // from referer as previous page link of this new page being created.
+        LuceneQueryPage page = new LuceneQueryPage(hasPage ? prevLinkForNewPage : null, after);
+
         QuerySpecification spec = new QuerySpecification();
         spec.options = options;
         spec.context.nativeQuery = tq;
@@ -966,7 +980,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         }
 
         getHost().startService(startPost, new LuceneQueryPageService(spec, indexLink));
-        return page.link;
+        return nextLink;
     }
 
     private void processQueryResults(ServiceOption targetIndex, EnumSet<QueryOption> options,
