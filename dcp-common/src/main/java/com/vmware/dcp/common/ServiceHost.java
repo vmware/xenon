@@ -328,15 +328,20 @@ public class ServiceHost {
          */
         public Map<String, Double> relativeMemoryLimits = new ConcurrentSkipListMap<>();
 
-        // these obviously should not be traced unless specified otherwise.
-        private TreeSet<String> selfLinkBlackList = new TreeSet<>(Arrays.asList(new String[] {
-                ServiceUriPaths.NODE_GROUP_FACTORY,
-                ServiceUriPaths.UI_SERVICE_CORE_PATH,
-                ServiceUriPaths.DEFAULT_NODE_GROUP,
-                ServiceUriPaths.DEFAULT_NODE_SELECTOR,
-                ServiceUriPaths.CORE_DOCUMENT_INDEX,
-                ServiceUriPaths.CORE_OPERATION_INDEX,
-                ServiceUriPaths.CORE_QUERY_TASKS }));
+        /**
+         * Infrastructure use only.
+         *
+         * Set of links that should be excluded from operation tracing
+         */
+        private transient TreeSet<String> operationTrackingLinkBlackList = new TreeSet<>(
+                Arrays.asList(new String[] {
+                        ServiceUriPaths.NODE_GROUP_FACTORY,
+                        ServiceUriPaths.UI_SERVICE_CORE_PATH,
+                        ServiceUriPaths.DEFAULT_NODE_GROUP,
+                        ServiceUriPaths.DEFAULT_NODE_SELECTOR,
+                        ServiceUriPaths.CORE_DOCUMENT_INDEX,
+                        ServiceUriPaths.CORE_OPERATION_INDEX,
+                        ServiceUriPaths.CORE_QUERY_TASKS }));
         public String[] initialPeerNodes;
     }
 
@@ -1044,7 +1049,7 @@ public class ServiceHost {
 
         schedule(() -> {
             joinPeers(peers, ServiceUriPaths.DEFAULT_NODE_GROUP);
-        }, this.state.maintenanceIntervalMicros, TimeUnit.MICROSECONDS);
+        } , this.state.maintenanceIntervalMicros, TimeUnit.MICROSECONDS);
     }
 
     public List<URI> getInitialPeerHosts() {
@@ -1275,7 +1280,7 @@ public class ServiceHost {
                         // the remote peer has likely not started, retry, once
                         se.schedule(() -> {
                             sendJoinPeerRequest(joinBody, localNodeGroupUri, false);
-                        }, 15, TimeUnit.SECONDS);
+                        } , 15, TimeUnit.SECONDS);
                         return;
                     }
 
@@ -1304,7 +1309,7 @@ public class ServiceHost {
 
     protected void startCoreServicesSynchronously(List<Operation> startPosts,
             List<Service> services)
-            throws Throwable {
+                    throws Throwable {
         CountDownLatch l = new CountDownLatch(services.size());
         Throwable[] failure = new Throwable[1];
         StringBuilder sb = new StringBuilder();
@@ -1482,7 +1487,7 @@ public class ServiceHost {
             schedule(() -> {
                 sendRequest(Operation.createDelete(UriUtils.buildUri(this,
                         notificationTarget.getSelfLink())));
-            }, delta, TimeUnit.MICROSECONDS);
+            } , delta, TimeUnit.MICROSECONDS);
         }
 
         request.reference = subscriptionUri;
@@ -2892,7 +2897,8 @@ public class ServiceHost {
 
     private void handleUncaughtException(Service s, Operation op, Throwable e) {
         if (!Utils.isValidationError(e)) {
-            log(Level.SEVERE, "Uncaught exception in service %s: %s", s.getUri(), Utils.toString(e));
+            log(Level.SEVERE, "Uncaught exception in service %s: %s", s.getUri(),
+                    Utils.toString(e));
         } else if (this.logger.isLoggable(Level.FINE)) {
             log(Level.FINE, "Validation Error in service %s: %s", s.getUri(), Utils.toString(e));
         }
@@ -2923,7 +2929,7 @@ public class ServiceHost {
             return;
         }
 
-        if (this.state.selfLinkBlackList.contains(op.getUri().getPath())) {
+        if (this.state.operationTrackingLinkBlackList.contains(op.getUri().getPath())) {
             return;
         }
 
@@ -2953,7 +2959,7 @@ public class ServiceHost {
         if (op.getCompletion() == null) {
             op.setCompletion((o, e) -> {
                 if (e != null) {
-                    log(Level.WARNING,"Operation to %s failed: %s", o.getUri(), e.getMessage());
+                    log(Level.WARNING, "Operation to %s failed: %s", o.getUri(), e.getMessage());
                 }
             });
         }
@@ -3470,7 +3476,7 @@ public class ServiceHost {
         return this.scheduledExecutor.schedule(() -> {
             OperationContext.setAuthorizationContext(origContext);
             executeRunnableSafe(task);
-        }, delay, unit);
+        } , delay, unit);
     }
 
     private void executeRunnableSafe(Runnable task) {
@@ -3640,7 +3646,7 @@ public class ServiceHost {
             if (s != null
                     && this.state.lastMaintenanceTimeUtcMicros
                             - s.documentUpdateTimeMicros < service
-                            .getMaintenanceIntervalMicros() * 2) {
+                                    .getMaintenanceIntervalMicros() * 2) {
                 continue;
             }
 
@@ -3687,7 +3693,7 @@ public class ServiceHost {
         // the service from the pendingStopService map (since its active).
         schedule(() -> {
             pauseServices();
-        }, getMaintenanceIntervalMicros(), TimeUnit.MICROSECONDS);
+        } , getMaintenanceIntervalMicros(), TimeUnit.MICROSECONDS);
     }
 
     boolean checkAndResumePausedService(Operation inboundOp) {
@@ -3745,7 +3751,7 @@ public class ServiceHost {
                                 "Retrying index lookup for %s, pending pause: %d",
                                 path, pendingPauseCount);
                         checkAndResumePausedService(inboundOp);
-                    }, 1, TimeUnit.SECONDS);
+                    } , 1, TimeUnit.SECONDS);
             return true;
         }
 
@@ -3827,7 +3833,6 @@ public class ServiceHost {
                             notifyServiceAvailabilitySubscribers(s);
                             return;
                         }
-
 
                         synchronized (this.state) {
                             this.state.serviceCount--;
@@ -3920,8 +3925,8 @@ public class ServiceHost {
         // it will be set to the system user. The specified state is expected to have the documentAuthPrincipalLink
         // set from when it was first saved.
         if (!op.isFromReplication()) {
-            state.documentAuthPrincipalLink = (op.getAuthorizationContext() != null) ?
-                    op.getAuthorizationContext().getClaims().getSubject() : null;
+            state.documentAuthPrincipalLink = (op.getAuthorizationContext() != null)
+                    ? op.getAuthorizationContext().getClaims().getSubject() : null;
         }
 
         if (this.transactionService != null) {
