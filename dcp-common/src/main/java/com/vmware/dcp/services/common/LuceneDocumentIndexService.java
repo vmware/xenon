@@ -905,7 +905,8 @@ public class LuceneDocumentIndexService extends StatelessService {
                 expiration += queryTime;
                 rsp.nextPageLink = createNextPage(op, s, options, tq, sort, bottom, count,
                         expiration,
-                        indexLink);
+                        indexLink,
+                        hasPage);
                 break;
             }
 
@@ -921,7 +922,8 @@ public class LuceneDocumentIndexService extends StatelessService {
             ScoreDoc after,
             int count,
             long expiration,
-            String indexLink) {
+            String indexLink,
+            boolean hasPage) {
 
         URI u = UriUtils.buildUri(getHost(), UriUtils.buildUriPath(
                 ServiceUriPaths.CORE,
@@ -931,7 +933,13 @@ public class LuceneDocumentIndexService extends StatelessService {
         QuerySpecification spec = new QuerySpecification();
         spec.options = options;
         spec.context.nativeQuery = tq;
-        spec.context.nativePage = new LuceneQueryPage(u.getPath(), after);
+
+        // Requests to core/query-page are forwarded to document-index (this service) and
+        // referer of that forwarded request is set to original query-page request.
+        // This method is called when query-page wants to create new page for a paginated query.
+        // If a new page is going to be created then it is safe to use query-page link
+        // from referer as previous page link of this new page being created.
+        spec.context.nativePage = new LuceneQueryPage(hasPage ? op.getReferer().getPath() : null, after);
         spec.context.nativeSearcher = s;
         spec.context.nativeSort = sort;
         spec.resultLimit = count;
