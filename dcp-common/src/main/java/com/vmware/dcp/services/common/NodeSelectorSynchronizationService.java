@@ -32,6 +32,7 @@ import com.vmware.dcp.common.Operation.CompletionHandler;
 import com.vmware.dcp.common.Service;
 import com.vmware.dcp.common.ServiceDocument;
 import com.vmware.dcp.common.ServiceDocument.DocumentRelationship;
+import com.vmware.dcp.common.ServiceDocumentDescription;
 import com.vmware.dcp.common.StatelessService;
 import com.vmware.dcp.common.UriUtils;
 import com.vmware.dcp.common.Utils;
@@ -46,14 +47,22 @@ public class NodeSelectorSynchronizationService extends StatelessService {
 
     public static class SynchronizePeersRequest {
         public static final String KIND = Utils.buildKind(SynchronizePeersRequest.class);
+
+        public static SynchronizePeersRequest create() {
+            SynchronizePeersRequest r = new SynchronizePeersRequest();
+            r.kind = KIND;
+            return r;
+        }
+
         public ServiceDocument state;
+        public ServiceDocumentDescription stateDescription;
         public EnumSet<ServiceOption> options;
         public String factoryLink;
         public boolean wasOwner;
         public boolean isOwner;
         public URI ownerNodeReference;
         public String ownerNodeId;
-        public String kind = KIND;
+        public String kind;
     }
 
     private Service parent;
@@ -203,7 +212,7 @@ public class NodeSelectorSynchronizationService extends StatelessService {
         }
 
         EnumSet<DocumentRelationship> results = ServiceDocument.compare(request.state,
-                bestPeerRsp, null);
+                bestPeerRsp, request.stateDescription, Utils.getTimeComparisonEpsilonMicros());
 
         if (results.contains(DocumentRelationship.IN_CONFLICT)) {
             markServiceInConflict(request.state);

@@ -210,19 +210,19 @@ public class ServiceDocument {
     }
 
     /**
-     * Compares two documents and returns an enum set describing the relationship between them.
+     * Infrastructure use only.
+     * Compares two documents and returns an set describing the relationship between them.
      *
      * All relationship flags are relative to the first parameter (stateA). The timeEpsilon is used
-     * to determine if two time stamps are essentially equal (if their delta is within epsilon)
+     * to determine if the update times between the two documents happened too close to each other
+     * to safely determine order.
      *
-     * For example, if NEWER_VERSION is set, it means stateA has newer version than stateB
+     * If document A is preferred, the PREFERRED option will be set
      */
     public static EnumSet<DocumentRelationship> compare(ServiceDocument stateA,
             ServiceDocument stateB,
-            Long timeEpsilon) {
-        if (timeEpsilon == null) {
-            timeEpsilon = Utils.getTimeComparisonEpsilonMicros();
-        }
+            ServiceDocumentDescription desc,
+            long timeEpsilon) {
 
         boolean preferred = false;
         EnumSet<DocumentRelationship> results = EnumSet.noneOf(DocumentRelationship.class);
@@ -239,31 +239,33 @@ public class ServiceDocument {
             results.add(DocumentRelationship.EQUAL_VERSION);
         }
 
-        if (Math.abs(stateA.documentUpdateTimeMicros - stateB.documentUpdateTimeMicros) <= timeEpsilon) {
+        if (stateA.documentUpdateTimeMicros == stateB.documentUpdateTimeMicros) {
             results.add(DocumentRelationship.EQUAL_TIME);
         } else if (stateA.documentUpdateTimeMicros > stateB.documentUpdateTimeMicros) {
             results.add(DocumentRelationship.NEWER_UPDATE_TIME);
         }
 
-        if (results.contains(DocumentRelationship.EQUAL_VERSION)
-                && !results.contains(DocumentRelationship.EQUAL_TIME)) {
-
-            if (stateA.documentUpdateTimeMicros != 0 && stateB.documentUpdateTimeMicros != 0) {
-                // documents have the same version yet where updated at very different times.
-                // TODO Unless contentSignature is used, we can not be certain this is a true
-                // conflict
-                results.add(DocumentRelationship.IN_CONFLICT);
-                preferred = false;
-            } else if (results.contains(DocumentRelationship.NEWER_UPDATE_TIME)) {
+        // TODO We only attempt conflict detection if versions match. Otherwise we pick the highest
+        // version which is not always correct. We need to formalize the eventual consistency model
+        // and do proper merges for divergent states (due to partitioning, etc). Dotted version
+        // vectors and other schemes are relatively easy to implement using our existing tracking
+        // data
+        if (results.contains(DocumentRelationship.EQUAL_VERSION)) {
+            if (results.contains(DocumentRelationship.NEWER_UPDATE_TIME)) {
                 preferred = true;
+            } else if (Math.abs(stateA.documentUpdateTimeMicros
+                    - stateB.documentUpdateTimeMicros) < timeEpsilon) {
+                // documents changed within time epsilon so we can not safely determine which one
+                // is newer.
+                if (!ServiceDocument.equals(desc, stateA, stateB)) {
+                    results.add(DocumentRelationship.IN_CONFLICT);
+                }
             }
         }
 
         if (preferred) {
             results.add(DocumentRelationship.PREFERRED);
         }
-
-        // TODO Compare document signatures
 
         return results;
     }
