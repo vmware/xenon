@@ -14,6 +14,7 @@
 package com.vmware.dcp.services.common;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
@@ -888,10 +889,11 @@ public class TestQueryTaskService {
 
     private void getNextPageResults(String nextPageLink, int resultLimit,
             final int[] numberOfDocumentLinks, final List<URI> toDelete,
-            List<ExampleServiceState> documents) {
+            List<ExampleServiceState> documents, List<URI> pageLinks) {
 
         URI u = UriUtils.buildUri(this.host, nextPageLink);
         toDelete.add(u);
+        pageLinks.add(u);
 
         Operation get = Operation
                 .createGet(u)
@@ -911,7 +913,20 @@ public class TestQueryTaskService {
                     }
                     assertTrue(nlinks <= resultLimit);
                     assertEquals(LuceneQueryPageService.KIND, page.documentKind);
-                    assertEquals(nextPageLink, page.results.prevPageLink);
+                    assertNotEquals(nextPageLink, page.results.nextPageLink);
+                    assertNotEquals(nextPageLink, page.results.prevPageLink);
+
+                    if (pageLinks.size() >= 1) {
+                        assertEquals(pageLinks.get(pageLinks.size() - 1),
+                                UriUtils.buildUri(this.host, page.documentSelfLink));
+                    }
+
+                    if (pageLinks.size() >= 2) {
+                        assertEquals(pageLinks.get(pageLinks.size() - 2),
+                                UriUtils.buildUri(this.host, page.results.prevPageLink));
+                    } else {
+                        assertEquals(null, page.results.prevPageLink);
+                    }
 
                     numberOfDocumentLinks[0] += nlinks;
                     if (page.results.nextPageLink == null || nlinks == 0) {
@@ -920,7 +935,7 @@ public class TestQueryTaskService {
                     }
 
                     getNextPageResults(page.results.nextPageLink,
-                            resultLimit, numberOfDocumentLinks, toDelete, documents);
+                            resultLimit, numberOfDocumentLinks, toDelete, documents, pageLinks);
                 });
 
         this.host.send(get);
@@ -993,8 +1008,9 @@ public class TestQueryTaskService {
         assertTrue(numberOfDocumentLinks[0] == 0);
 
         List<URI> toDelete = new ArrayList<>(exampleServices);
+        List<URI> pageLinks = new ArrayList<>();
         this.host.testStart(1);
-        getNextPageResults(nextPageLink, resultLimit, numberOfDocumentLinks, toDelete, documents);
+        getNextPageResults(nextPageLink, resultLimit, numberOfDocumentLinks, toDelete, documents, pageLinks);
         this.host.testWait();
 
         assertEquals(serviceCount, numberOfDocumentLinks[0]);
@@ -1021,8 +1037,9 @@ public class TestQueryTaskService {
         documents = Collections.synchronizedList(new ArrayList<>());
 
         toDelete = new ArrayList<>(exampleServices);
+        pageLinks.clear();
         this.host.testStart(1);
-        getNextPageResults(nextPageLink, resultLimit, numberOfDocumentLinks, toDelete, documents);
+        getNextPageResults(nextPageLink, resultLimit, numberOfDocumentLinks, toDelete, documents, pageLinks);
         this.host.testWait();
 
         assertEquals(serviceCount, numberOfDocumentLinks[0]);
@@ -1752,7 +1769,20 @@ public class TestQueryTaskService {
                     int nlinks = page.results.documentLinks.size();
                     assertTrue(nlinks <= resultLimit);
                     assertEquals(LuceneQueryPageService.KIND, page.documentKind);
-                    assertEquals(nextPageLink, page.results.prevPageLink);
+                    assertNotEquals(nextPageLink, page.results.nextPageLink);
+                    assertNotEquals(nextPageLink, page.results.prevPageLink);
+
+                    if (serviceURIs.size() >= 1) {
+                        assertEquals(serviceURIs.get(serviceURIs.size() - 1),
+                                UriUtils.buildUri(this.host, page.documentSelfLink));
+                    }
+
+                    if (serviceURIs.size() >= 2) {
+                        assertEquals(serviceURIs.get(serviceURIs.size() - 2),
+                                UriUtils.buildUri(this.host, page.results.prevPageLink));
+                    } else {
+                        assertEquals(null, page.results.prevPageLink);
+                    }
 
                     numberOfDocumentLinks[0] += nlinks;
 

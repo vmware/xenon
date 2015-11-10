@@ -905,7 +905,8 @@ public class LuceneDocumentIndexService extends StatelessService {
                 expiration += queryTime;
                 rsp.nextPageLink = createNextPage(op, s, options, tq, sort, bottom, count,
                         expiration,
-                        indexLink);
+                        indexLink,
+                        hasPage);
                 break;
             }
 
@@ -921,7 +922,8 @@ public class LuceneDocumentIndexService extends StatelessService {
             ScoreDoc after,
             int count,
             long expiration,
-            String indexLink) {
+            String indexLink,
+            boolean hasPage) {
 
         URI u = UriUtils.buildUri(getHost(), UriUtils.buildUriPath(
                 ServiceUriPaths.CORE,
@@ -931,7 +933,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         QuerySpecification spec = new QuerySpecification();
         spec.options = options;
         spec.context.nativeQuery = tq;
-        spec.context.nativePage = new LuceneQueryPage(u.getPath(), after);
+        spec.context.nativePage = new LuceneQueryPage(hasPage ? op.getReferer().getPath() : null, after);
         spec.context.nativeSearcher = s;
         spec.context.nativeSort = sort;
         spec.resultLimit = count;
