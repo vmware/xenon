@@ -7,8 +7,22 @@
   <version>0.2.0-SNAPSHOT</version>
   <packaging>pom</packaging>
   <description>
-    Decentralized Control Plane
+    Xenon is both a set of software components and a service oriented design pattern. The runtime is
+    implemented in Java and acts as the host for the lightweight, asynchronous services. The programming
+    model is language agnostic (does not rely on Java specific constructs) so implementations in other
+    languages are encouraged.
   </description>
+
+  <licenses>
+    <license>
+      <name>License</name>
+      <url>https://github.com/vmware/xenon/blob/master/License.txt</url>
+    </license>
+    <license>
+      <name>Notice</name>
+      <url>https://github.com/vmware/xenon/blob/master/Notice.txt</url>
+    </license>
+  </licenses>
 
   <modules>
     <module>dcp-common</module>
@@ -29,8 +43,8 @@
 
   <repositories>
     <repository>
-      <id>enatai-snapshots</id>
-      <url>https://enatai-repo.eng.vmware.com/nexus/content/repositories/snapshots</url>
+      <id>maven-central</id>
+      <url>https://oss.sonatype.org/content/repositories/snapshots</url>
       <releases>
         <enabled>false</enabled>
       </releases>
@@ -42,12 +56,12 @@
 
   <distributionManagement>
     <repository>
-      <id>enatai-repo</id>
-      <url>https://enatai-repo.eng.vmware.com/nexus/content/repositories/releases</url>
+      <id>maven-central</id>
+      <url>https://oss.sonatype.org/service/local/staging/deploy/maven2/</url>
     </repository>
     <snapshotRepository>
-      <id>enatai-repo</id>
-      <url>https://enatai-repo.eng.vmware.com/nexus/content/repositories/snapshots</url>
+      <id>maven-central</id>
+      <url>https://oss.sonatype.org/content/repositories/snapshots</url>
     </snapshotRepository>
   </distributionManagement>
 
@@ -132,7 +146,7 @@
   </profiles>
 
   <scm>
-    <connection>scm:git:ssh://enatai-gerrit.eng.vmware.com:29418/dcp.git</connection>
+    <connection>scm:git:git@github.com:vmware/xenon.git</connection>
     <tag>HEAD</tag>
   </scm>
 
