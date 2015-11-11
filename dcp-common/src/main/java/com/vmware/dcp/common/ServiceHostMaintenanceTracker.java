@@ -18,14 +18,15 @@ import java.util.Map.Entry;
 import java.util.Set;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.ConcurrentSkipListMap;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.logging.Level;
 
-import com.vmware.dcp.common.Operation.CompletionHandler;
 import com.vmware.dcp.common.Service.ProcessingStage;
 import com.vmware.dcp.common.Service.ServiceOption;
 import com.vmware.dcp.common.ServiceMaintenanceRequest.MaintenanceReason;
 
+/**
+ * Sequences service periodic maintenance
+ */
 class ServiceHostMaintenanceTracker {
     public static ServiceHostMaintenanceTracker create(ServiceHost host) {
         ServiceHostMaintenanceTracker smt = new ServiceHostMaintenanceTracker();
@@ -100,55 +101,6 @@ class ServiceHostMaintenanceTracker {
 
                 performServiceMaintenance(servicePath, s);
             }
-        }
-
-        performIOMaintenance(op);
-    }
-
-    private void performIOMaintenance(Operation op) {
-        try {
-            int expected = 0;
-            ServiceClient c = this.host.getClient();
-            if (c != null) {
-                expected++;
-            }
-            ServiceRequestListener l = this.host.getListener();
-            if (l != null) {
-                expected++;
-            }
-            ServiceRequestListener sl = this.host.getSecureListener();
-            if (sl != null) {
-                expected++;
-            }
-
-            AtomicInteger pending = new AtomicInteger(expected);
-            CompletionHandler ch = ((o, e) -> {
-                int r = pending.decrementAndGet();
-                if (e != null) {
-                    op.fail(e);
-                    return;
-                }
-                if (r != 0) {
-                    return;
-                }
-                op.complete();
-            });
-
-            if (c != null) {
-                c.handleMaintenance(Operation.createPost(null).setCompletion(ch));
-            }
-
-            if (l != null) {
-                l.handleMaintenance(Operation.createPost(null).setCompletion(ch));
-            }
-
-            if (sl != null) {
-                sl.handleMaintenance(Operation.createPost(null).setCompletion(ch));
-            }
-            Utils.performMaintenance();
-        } catch (Throwable e) {
-            this.host.log(Level.WARNING, "Exception: %s", Utils.toString(e));
-            op.fail(e);
         }
     }
 

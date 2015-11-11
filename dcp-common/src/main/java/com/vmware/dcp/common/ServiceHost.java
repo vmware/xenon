@@ -59,6 +59,7 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import java.util.logging.ConsoleHandler;
 import java.util.logging.FileHandler;
@@ -278,6 +279,24 @@ public class ServiceHost {
      */
     public static final int DEFAULT_SERVICE_INSTANCE_COST_BYTES = Service.MAX_SERIALIZED_SIZE_BYTES
             / 2;
+    private static final long ONE_MINUTE_IN_MICROS = TimeUnit.MINUTES.toMicros(1);
+
+    public static class RequestRateInfo {
+        /**
+         * Request limit (upper bound) in requests per second
+         */
+        public double limit;
+
+        /**
+         * Number of requests since most recent time window
+         */
+        public AtomicInteger count = new AtomicInteger();
+
+        /**
+         * Start time in microseconds since epoch for the timing window
+         */
+        public long startTimeMicros;
+    }
 
     public static class ServiceHostState extends ServiceDocument {
         public static enum MemoryLimitType {
@@ -327,6 +346,18 @@ public class ServiceHost {
          * The empty path, "", is reserved for the host memory limit
          */
         public Map<String, Double> relativeMemoryLimits = new ConcurrentSkipListMap<>();
+
+        /**
+         * Request limits, in operations per second. Each limit is associated with a key,
+         * derived from some context (user, tenant, context id). An operation is associated with
+         * a key and then service host tracks and applies the limit for each in bound request that
+         * belongs to the same context.
+         *
+         * Rate limiting is a global back pressure mechanism that is independent of the target
+         * service and any additional throttling applied during service request
+         * processing
+         */
+        public Map<String, RequestRateInfo> requestRateLimits = new ConcurrentSkipListMap<>();
 
         /**
          * Infrastructure use only.
@@ -2848,6 +2879,12 @@ public class ServiceHost {
     private void queueOrScheduleRequest(Service s, Operation op) {
         boolean processRequest = true;
         try {
+
+            if (applyRequestRateLimit(op)) {
+                processRequest = false;
+                return;
+            }
+
             ProcessingStage stage = s.getProcessingStage();
             if (stage == ProcessingStage.AVAILABLE) {
                 return;
@@ -2894,6 +2931,50 @@ public class ServiceHost {
                 });
             }
         }
+    }
+
+    private boolean applyRequestRateLimit(Operation op) {
+        if (this.state.requestRateLimits.isEmpty()) {
+            return false;
+        }
+
+        AuthorizationContext authCtx = op.getAuthorizationContext();
+        if (authCtx == null) {
+            return false;
+        }
+
+        Claims claims = authCtx.getClaims();
+        if (claims == null) {
+            return false;
+        }
+
+        String subject = claims.getSubject();
+        if (subject == null) {
+            return false;
+        }
+
+        // TODO: use the roles that applied during authorization as the rate limiting key.
+        // We currently just use the subject but this is going to change.
+        RequestRateInfo rateInfo = this.state.requestRateLimits.get(subject);
+        if (rateInfo == null) {
+            return false;
+        }
+
+        double count = rateInfo.count.incrementAndGet();
+        long now = Utils.getNowMicrosUtc();
+        long delta = now - rateInfo.startTimeMicros;
+        double deltaInSeconds = delta / 1000000.0;
+        if (delta < getMaintenanceIntervalMicros()) {
+            return false;
+        }
+
+        double requestsPerSec = count / deltaInSeconds;
+        if (requestsPerSec > rateInfo.limit) {
+            this.failRequestLimitExceeded(op);
+            return true;
+        }
+
+        return false;
     }
 
     private void handleUncaughtException(Service s, Operation op, Throwable e) {
@@ -3253,6 +3334,21 @@ public class ServiceHost {
     }
 
     /**
+     * Infrastructure use only.
+     *
+     * Sets an upper limit, in terms of operations per second, for all operations
+     * associated with some context. The context is (tenant, user, referrer) is used
+     * to derive the key.
+     */
+    public ServiceHost setRequestRateLimit(String key, double operationsPerSecond) {
+        RequestRateInfo ri = new RequestRateInfo();
+        ri.limit = operationsPerSecond;
+        ri.startTimeMicros = Utils.getNowMicrosUtc();
+        this.state.requestRateLimits.put(key, ri);
+        return this;
+    }
+
+    /**
      * Set a relative memory limit for a given service.
      */
     public ServiceHost setServiceMemoryLimit(String servicePath, double percentOfTotal) {
@@ -3450,16 +3546,6 @@ public class ServiceHost {
         }
     }
 
-    private void scheduleMaintenance() {
-        if (isStopping()) {
-            return;
-        }
-        this.maintenanceTask = schedule(
-                () -> performMaintenance(Operation.createPost(getUri())),
-                getMaintenanceIntervalMicros(),
-                TimeUnit.MICROSECONDS);
-    }
-
     public void run(Runnable task) {
         if (this.executor.isShutdown()) {
             throw new IllegalStateException("Stopped");
@@ -3494,33 +3580,125 @@ public class ServiceHost {
         }
     }
 
+    private enum MaintenanceStage {
+        UTILS, MEMORY, IO, NODE_SELECTORS, SERVICE
+    }
+
     /**
-     * Periodically called by a core service so all services have a chance to run fixed interval
-     * tasks (grooming, commits, statistics gathering). The logic must be asynchronous communicating
-     * completion through the supplied operation
-     *
-     * @param post
+     * Initiates host periodic maintenance cycle
      */
-    private void performMaintenance(Operation post) {
+    private void scheduleMaintenance() {
+        this.state.lastMaintenanceTimeUtcMicros = Utils.getNowMicrosUtc();
+        this.maintenanceTask = schedule(
+                () -> performMaintenanceStage(Operation.createPost(getUri()),
+                        MaintenanceStage.UTILS),
+                getMaintenanceIntervalMicros(),
+                TimeUnit.MICROSECONDS);
+    }
+
+
+    /**
+     * Performs maintenance tasks for the given stage. Only a single instance of this
+     * state machine must be active per host, at any time. Maintenance is re-scheduled
+     * when the final stage is complete.
+     */
+    private void performMaintenanceStage(Operation post, MaintenanceStage stage) {
 
         try {
             long now = Utils.getNowMicrosUtc();
-            this.state.lastMaintenanceTimeUtcMicros = now;
-            applyMemoryLimit(now + getMaintenanceIntervalMicros() / 2);
-            performPendingOperationMaintenance();
-            this.maintenanceHelper.performMaintenance(post);
-            performNodeSelectorChangeMaintenance();
+            switch (stage) {
+            case UTILS:
+                Utils.performMaintenance();
+                stage = MaintenanceStage.MEMORY;
+                break;
+            case MEMORY:
+                applyMemoryLimit(now + getMaintenanceIntervalMicros() / 2);
+                stage = MaintenanceStage.IO;
+                break;
+            case IO:
+                performIOMaintenance(post, now, MaintenanceStage.NODE_SELECTORS);
+                return;
+            case NODE_SELECTORS:
+                performNodeSelectorChangeMaintenance();
+                stage = MaintenanceStage.SERVICE;
+                break;
+            case SERVICE:
+                this.maintenanceHelper.performMaintenance(post);
+                stage = null;
+                break;
+            default:
+                stage = null;
+                break;
+            }
+
+            if (stage == null) {
+                post.complete();
+                scheduleMaintenance();
+                return;
+            }
+            performMaintenanceStage(post, stage);
         } catch (Throwable e) {
             log(Level.SEVERE, "Uncaught exception: %s", Utils.toString(e));
             post.fail(e);
-        } finally {
-            scheduleMaintenance();
+        }
+    }
+
+    private void performIOMaintenance(Operation post, long now, MaintenanceStage nextStage) {
+        try {
+            performPendingOperationMaintenance();
+
+            // reset request limits, start new time window
+            for (RequestRateInfo rri : this.state.requestRateLimits.values()) {
+                if (now - rri.startTimeMicros < ONE_MINUTE_IN_MICROS) {
+                    // reset only after a fixed interval
+                    return;
+                }
+                rri.startTimeMicros = now;
+                rri.count.set(0);
+            }
+
+            int expected = 0;
+            ServiceClient c = getClient();
+            if (c != null) {
+                expected++;
+            }
+            ServiceRequestListener l = getListener();
+            if (l != null) {
+                expected++;
+            }
+            ServiceRequestListener sl = getSecureListener();
+            if (sl != null) {
+                expected++;
+            }
+
+            AtomicInteger pending = new AtomicInteger(expected);
+            CompletionHandler ch = ((o, e) -> {
+                int r = pending.decrementAndGet();
+                if (r != 0) {
+                    return;
+                }
+                performMaintenanceStage(post, nextStage);
+            });
+
+            if (c != null) {
+                c.handleMaintenance(Operation.createPost(null).setCompletion(ch));
+            }
+
+            if (l != null) {
+                l.handleMaintenance(Operation.createPost(null).setCompletion(ch));
+            }
+
+            if (sl != null) {
+                sl.handleMaintenance(Operation.createPost(null).setCompletion(ch));
+            }
+        } catch (Throwable e) {
+            log(Level.WARNING, "Exception: %s", Utils.toString(e));
+            performMaintenanceStage(post, nextStage);
         }
     }
 
     private void performPendingOperationMaintenance() {
         long now = Utils.getNowMicrosUtc();
-
         Iterator<Operation> startOpsIt = this.pendingStartOperations.iterator();
         checkOperationExpiration(now, startOpsIt);
 

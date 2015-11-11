@@ -32,13 +32,14 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 
 import org.junit.After;
-import org.junit.Before;
 import org.junit.Test;
 
+import com.vmware.dcp.common.Operation.CompletionHandler;
 import com.vmware.dcp.common.Service.ServiceOption;
 import com.vmware.dcp.common.ServiceHost.ServiceAlreadyStartedException;
 import com.vmware.dcp.common.ServiceHost.ServiceHostState;
@@ -47,12 +48,14 @@ import com.vmware.dcp.common.ServiceStats.ServiceStat;
 import com.vmware.dcp.common.test.MinimalTestServiceState;
 import com.vmware.dcp.common.test.TestProperty;
 import com.vmware.dcp.common.test.VerificationHost;
+import com.vmware.dcp.services.common.AuthorizationContextService;
 import com.vmware.dcp.services.common.ExampleFactoryService;
 import com.vmware.dcp.services.common.ExampleService.ExampleServiceState;
 import com.vmware.dcp.services.common.ExampleServiceHost;
 import com.vmware.dcp.services.common.MinimalTestService;
 import com.vmware.dcp.services.common.NodeGroupService.NodeGroupState;
 import com.vmware.dcp.services.common.NodeState;
+import com.vmware.dcp.services.common.ServiceHostManagementService;
 import com.vmware.dcp.services.common.ServiceUriPaths;
 
 public class TestServiceHost {
@@ -71,10 +74,6 @@ public class TestServiceHost {
 
     public long testDurationSeconds = 0;
 
-    @Before
-    public void setUp() throws Exception {
-        setUp(false);
-    }
 
     public void beforeHostStart(VerificationHost host) {
         host.setMaintenanceIntervalMicros(TimeUnit.MILLISECONDS
@@ -98,6 +97,7 @@ public class TestServiceHost {
 
     @Test
     public void allocateExecutor() throws Throwable {
+        setUp(false);
         Service s = this.host.startServiceAndWait(MinimalTestService.class, UUID.randomUUID()
                 .toString());
         ExecutorService exec = this.host.allocateExecutor(s);
@@ -109,7 +109,59 @@ public class TestServiceHost {
     }
 
     @Test
+    public void requestRateLimits() throws Throwable {
+        setUp(true);
+        this.host.setAuthorizationService(new AuthorizationContextService());
+        this.host.setAuthorizationEnabled(true);
+        this.host.setMaintenanceIntervalMicros(TimeUnit.MILLISECONDS.toMicros(100));
+        this.host.start();
+
+        Service s = this.host.startServiceAndWait(MinimalTestService.class, UUID.randomUUID()
+                .toString());
+        OperationContext.setAuthorizationContext(this.host.getSystemAuthorizationContext());
+        String userPath = this.host.createUserService("someone@example.org");
+        OperationContext.setAuthorizationContext(null);
+        this.host.assumeIdentity(userPath, null);
+        // set limit for this user to 1 request / second
+        this.host.setRequestRateLimit(userPath, 1.0);
+        Thread.sleep(this.host.getMaintenanceIntervalMicros() / 1000);
+        AtomicInteger failureCount = new AtomicInteger();
+        CompletionHandler c = (o, e) -> {
+            if (e != null) {
+                if (o.getStatusCode() == Operation.STATUS_CODE_UNAVAILABLE) {
+                    failureCount.incrementAndGet();
+                }
+            }
+            this.host.completeIteration();
+        };
+
+        // send 1000 requests, at once, clearly violating the limit, and expect failures
+        int count = 1000;
+
+        this.host.testStart(count);
+        for (int i = 0; i < count; i++) {
+            Operation op = null;
+
+            if (i % 2 == 0) {
+                // every other operation send request to another service, request rate limiting
+                // should apply across services, its the user that matters
+                op = Operation.createGet(UriUtils.buildUri(this.host,
+                        ServiceHostManagementService.SELF_LINK)).setCompletion(c);
+            } else {
+                op = Operation.createPatch(s.getUri())
+                        .setBody(this.host.buildMinimalTestState())
+                        .setCompletion(c);
+            }
+            this.host.send(op);
+        }
+        this.host.testWait();
+
+        assertTrue(failureCount.get() > 0);
+    }
+
+    @Test
     public void postFailureOnAlreadyStarted() throws Throwable {
+        setUp(false);
         Service s = this.host.startServiceAndWait(MinimalTestService.class, UUID.randomUUID()
                 .toString());
         this.host.testStart(1);
@@ -134,6 +186,7 @@ public class TestServiceHost {
 
     @Test
     public void startUpWithArgumentsAndHostConfigValidation() throws Throwable {
+        setUp(false);
         ExampleServiceHost h = new ExampleServiceHost();
 
         try {
@@ -215,7 +268,7 @@ public class TestServiceHost {
 
             // attempt to set the limit for a service after a host has started, it should fail
             try {
-                this.host.setServiceMemoryLimit(ServiceUriPaths.CORE_OPERATION_INDEX, 0.2);
+                h.setServiceMemoryLimit(ServiceUriPaths.CORE_OPERATION_INDEX, 0.2);
                 throw new IllegalStateException("Should have failed");
             } catch (Throwable e) {
 
@@ -272,6 +325,7 @@ public class TestServiceHost {
 
     @Test
     public void setPublicUri() throws Throwable {
+        setUp(false);
         ExampleServiceHost h = new ExampleServiceHost();
 
         try {
@@ -317,6 +371,7 @@ public class TestServiceHost {
 
     @Test
     public void setAuthEnforcement() throws Throwable {
+        setUp(false);
         ExampleServiceHost h = new ExampleServiceHost();
         try {
             String bindAddress = "127.0.0.1";
@@ -360,6 +415,7 @@ public class TestServiceHost {
 
     @Test
     public void serviceStartExpiration() throws Throwable {
+        setUp(false);
         long maintenanceIntervalMicros = TimeUnit.MILLISECONDS.toMicros(100);
         // set a small period so its pretty much guaranteed to execute
         // maintenance during this test
@@ -382,6 +438,7 @@ public class TestServiceHost {
 
     @Test
     public void serviceHostMaintenanceAndStatsReporting() throws Throwable {
+        setUp(false);
         long maintenanceIntervalMicros = TimeUnit.MILLISECONDS.toMicros(100);
         verifyMaintenanceDelayStat(maintenanceIntervalMicros);
 
@@ -633,6 +690,7 @@ public class TestServiceHost {
     @Test
     public void registerForServiceAvailabilityTimeout()
             throws Throwable {
+        setUp(false);
         int c = 10;
         this.host.testStart(c);
         // issue requests to service paths we know do not exist, but induce the automatic
@@ -650,6 +708,7 @@ public class TestServiceHost {
     @Test
     public void registerForServiceAvailabilityBeforeAndAfterMultiple()
             throws Throwable {
+        setUp(false);
         int serviceCount = 100;
         this.host.testStart(serviceCount * 3);
         String[] links = new String[serviceCount];
@@ -671,6 +730,7 @@ public class TestServiceHost {
 
     @Test
     public void queueRequestForServiceWithNonFactoryParent() throws Throwable {
+        setUp(false);
         class DelayedStartService extends StatelessService {
             @Override
             public void handleStart(Operation start) {
@@ -700,7 +760,7 @@ public class TestServiceHost {
 
     @Test
     public void servicePauseDueToMemoryPressure() throws Throwable {
-        this.host.stop();
+        setUp(true);
 
         // set memory limit low to force service pause
         this.host.setServiceMemoryLimit(ServiceHost.ROOT_PATH, 0.00001);
@@ -869,6 +929,7 @@ public class TestServiceHost {
 
     @Test
     public void thirdPartyClientPost() throws Throwable {
+        setUp(false);
         this.host.waitForServiceAvailable(ExampleFactoryService.SELF_LINK);
 
         String name = UUID.randomUUID().toString();
@@ -923,6 +984,7 @@ public class TestServiceHost {
 
     @Test
     public void getAvailableServicesWithOptions() throws Throwable {
+        setUp(false);
         int serviceCount = 5;
         List<URI> exampleURIs = new ArrayList<>();
         this.host.createExampleServices(this.host, serviceCount, exampleURIs,
@@ -957,6 +1019,7 @@ public class TestServiceHost {
      **/
     @Test
     public void testServiceCustomUIPath() throws Throwable {
+        setUp(false);
         String resourcePath = "customUiPath";
         //Service with custom path
         class CustomUiPathService extends StatelessService {
@@ -992,6 +1055,9 @@ public class TestServiceHost {
 
     @After
     public void tearDown() {
+        if (this.host == null) {
+            return;
+        }
         this.host.tearDown();
     }
 
