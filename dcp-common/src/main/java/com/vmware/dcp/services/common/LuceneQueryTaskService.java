@@ -21,6 +21,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 import com.vmware.dcp.common.Operation;
@@ -39,8 +41,15 @@ import com.vmware.dcp.services.common.QueryTask.QuerySpecification.QueryOption;
 import com.vmware.dcp.services.common.QueryTask.QueryTerm.MatchType;
 
 public class LuceneQueryTaskService extends StatefulService {
+
+    public static class LuceneQueryTaskServiceState extends ServiceDocument {
+        public Map<URI, String> nextPageLinks = new HashMap<>();
+        public Map<URI, String> prevPageLinks = new HashMap<>();
+    }
+
     private static final long DEFAULT_EXPIRATION_SECONDS = 600;
     private ServiceDocumentQueryResult results;
+    private LuceneQueryTaskServiceState state = new LuceneQueryTaskServiceState();
 
     public LuceneQueryTaskService() {
         super(QueryTask.class);
@@ -164,21 +173,43 @@ public class LuceneQueryTaskService extends StatefulService {
     }
 
     private void collectBroadcastQueryResults(Map<URI, String> jsonResponses, QueryTask queryTask) {
-        List<ServiceDocumentQueryResult> queryResults = new ArrayList<>();
-        for (Map.Entry<URI, String> entry : jsonResponses.entrySet()) {
-            QueryTask rsp = Utils.fromJson(entry.getValue(), QueryTask.class);
-            queryResults.add(rsp.results);
+        boolean isPaginatedQuery = queryTask.querySpec.resultLimit != null
+                && queryTask.querySpec.resultLimit < Integer.MAX_VALUE;
+
+        if (!isPaginatedQuery) {
+            List<ServiceDocumentQueryResult> queryResults = new ArrayList<>();
+            for (Map.Entry<URI, String> entry : jsonResponses.entrySet()) {
+                QueryTask rsp = Utils.fromJson(entry.getValue(), QueryTask.class);
+                queryResults.add(rsp.results);
+            }
+
+            long startTime = System.currentTimeMillis();
+            ServiceDocumentQueryResult mergeResult = mergeSortedList(queryResults);
+            long timeElapsed = (System.currentTimeMillis() - startTime) * 1000;
+
+            queryTask.results = mergeResult;
+            queryTask.taskInfo.stage = TaskStage.FINISHED;
+            queryTask.taskInfo.durationMicros = timeElapsed + Collections.max(queryResults.stream()
+                    .map(r -> r.queryTimeMicros)
+                    .collect(Collectors.toList()));
+        } else {
+            queryTask.taskInfo.durationMicros = 0L;
+            for (Map.Entry<URI, String> entry : jsonResponses.entrySet()) {
+                URI hostUri = extractHostUri(entry.getKey());
+                QueryTask rsp = Utils.fromJson(entry.getValue(), QueryTask.class);
+
+                this.state.nextPageLinks.put(hostUri, rsp.results.nextPageLink);
+                this.state.prevPageLinks.put(hostUri, rsp.results.prevPageLink);
+
+                if (rsp.results.queryTimeMicros > queryTask.taskInfo.durationMicros) {
+                    queryTask.taskInfo.durationMicros = rsp.results.queryTimeMicros;
+                }
+            }
+
+            queryTask.results = new ServiceDocumentQueryResult();
+            queryTask.results.documentCount = new Long(0);
+            queryTask.taskInfo.stage = TaskStage.FINISHED;
         }
-
-        long startTime = System.currentTimeMillis();
-        ServiceDocumentQueryResult mergeResult = mergeSortedList(queryResults);
-        long timeElapsed = (System.currentTimeMillis() - startTime) * 1000;
-
-        queryTask.results = mergeResult;
-        queryTask.taskInfo.stage = TaskStage.FINISHED;
-        queryTask.taskInfo.durationMicros = timeElapsed + Collections.max(queryResults.stream()
-                .map(r -> r.queryTimeMicros)
-                .collect(Collectors.toList()));
     }
 
     private ServiceDocumentQueryResult mergeSortedList(List<ServiceDocumentQueryResult> dataSources) {
@@ -224,6 +255,14 @@ public class LuceneQueryTaskService extends StatefulService {
         }
 
         return result;
+    }
+
+    private URI extractHostUri(URI serviceLink) {
+        Pattern p = Pattern.compile("(.*)/core.*");
+        Matcher m = p.matcher(serviceLink.toString());
+        m.matches();
+
+        return UriUtils.buildUri(m.group(1));
     }
 
     @Override
@@ -507,6 +546,11 @@ public class LuceneQueryTaskService extends StatefulService {
                 scheduleTaskExpiration(task);
             }
         }
+    }
+
+    @Override
+    public void handlePut(Operation put) {
+        // Process the request for a page.
     }
 
     @Override
