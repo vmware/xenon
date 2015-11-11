@@ -48,7 +48,6 @@ import com.vmware.dcp.services.common.RoleService.Policy;
 import com.vmware.dcp.services.common.RoleService.RoleState;
 import com.vmware.dcp.services.common.ServiceUriPaths;
 import com.vmware.dcp.services.common.UserGroupService.UserGroupState;
-import com.vmware.dcp.services.common.UserService.UserState;
 
 public class TestAuthorization extends BasicTestCase {
 
@@ -64,7 +63,7 @@ public class TestAuthorization extends BasicTestCase {
     @Before
     public void setupRoles() throws Throwable {
         OperationContext.setAuthorizationContext(this.host.getSystemAuthorizationContext());
-        this.userServicePath = createUser("jane@doe.com");
+        this.userServicePath = this.host.createUserService("jane@doe.com");
         createRoles();
         OperationContext.setAuthorizationContext(null);
     }
@@ -400,32 +399,6 @@ public class TestAuthorization extends BasicTestCase {
                 .createPost(UriUtils.buildUri(this.host, ServiceUriPaths.CORE_AUTHZ_ROLES))
                 .setBody(roleState)
                 .setCompletion(this.host.getCompletion()));
-    }
-
-    private String createUser(String email) throws Throwable {
-        final String[] userUriPath = new String[1];
-
-        UserState userState = new UserState();
-        userState.email = email;
-
-        URI postUserUri = UriUtils.buildUri(this.host, ServiceUriPaths.CORE_AUTHZ_USERS);
-        this.host.testStart(1);
-        this.host.send(Operation
-                .createPost(postUserUri)
-                .setBody(userState)
-                .setCompletion((o, e) -> {
-                    if (e != null) {
-                        this.host.failIteration(e);
-                        return;
-                    }
-
-                    UserState state = o.getBody(UserState.class);
-                    userUriPath[0] = state.documentSelfLink;
-                    this.host.completeIteration();
-                }));
-        this.host.testWait();
-
-        return userUriPath[0];
     }
 
     private String generateAuthToken(String userServicePath) throws GeneralSecurityException {
