@@ -333,7 +333,7 @@ public class ServiceHost {
          *
          * Set of links that should be excluded from operation tracing
          */
-        private transient TreeSet<String> operationTrackingLinkBlackList = new TreeSet<>(
+        private transient TreeSet<String> operationTracingLinkExclusionList = new TreeSet<>(
                 Arrays.asList(new String[] {
                         ServiceUriPaths.NODE_GROUP_FACTORY,
                         ServiceUriPaths.UI_SERVICE_CORE_PATH,
@@ -1622,18 +1622,18 @@ public class ServiceHost {
             post.setReferer(post.getUri());
         }
 
-        String serviceUriPath = UriUtils.normalizeUriPath(post.getUri().getPath());
-        serviceUriPath = serviceUriPath.intern();
+        String servicePath = UriUtils.normalizeUriPath(post.getUri().getPath());
+        servicePath = servicePath.intern();
 
         service.setHost(this);
         if (service.getSelfLink() == null) {
-            service.setSelfLink(serviceUriPath);
+            service.setSelfLink(servicePath);
         }
 
         // if the service is a helper for one of the known URI suffixes, do not
         // add it to the map. We will special case dispatching to it
 
-        if (isHelperServicePath(serviceUriPath)) {
+        if (isHelperServicePath(servicePath)) {
             if (!service.hasOption(Service.ServiceOption.UTILITY)) {
                 post.fail(new IllegalStateException(
                         "Service is using an utility URI path but has not enabled "
@@ -1643,10 +1643,10 @@ public class ServiceHost {
             // do not directly attach utility services
         } else {
             synchronized (this.state) {
-                Service previous = this.attachedServices.put(serviceUriPath, service);
+                Service previous = this.attachedServices.put(servicePath, service);
                 if (previous != null) {
-                    this.attachedServices.put(serviceUriPath, previous);
-                    post.fail(new ServiceAlreadyStartedException(serviceUriPath));
+                    this.attachedServices.put(servicePath, previous);
+                    post.fail(new ServiceAlreadyStartedException(servicePath));
                     return this;
                 }
 
@@ -2100,7 +2100,7 @@ public class ServiceHost {
         sendRequest(synchPost);
     }
 
-    void loadServiceState(Service s, String selfLink, Operation op,
+    void loadServiceState(Service s, String servicePath, Operation op,
             Class<? extends ServiceDocument> stateType) {
 
         ServiceDocument state = getCachedServiceState(s.getSelfLink());
@@ -2129,7 +2129,7 @@ public class ServiceHost {
         }
 
         URI u = UriUtils.buildDocumentQueryUri(this,
-                selfLink,
+                servicePath,
                 false,
                 true,
                 s.getOptions());
@@ -2930,7 +2930,7 @@ public class ServiceHost {
             return;
         }
 
-        if (this.state.operationTrackingLinkBlackList.contains(op.getUri().getPath())) {
+        if (this.state.operationTracingLinkExclusionList.contains(op.getUri().getPath())) {
             return;
         }
 
@@ -3197,21 +3197,21 @@ public class ServiceHost {
      * handler provided must track how many times it has been called
      */
     public void registerForServiceAvailability(
-            CompletionHandler completion, String... selfLinks) {
-        if (selfLinks == null || selfLinks.length == 0) {
+            CompletionHandler completion, String... servicePaths) {
+        if (servicePaths == null || servicePaths.length == 0) {
             throw new IllegalArgumentException("selfLinks are required");
         }
         Operation op = Operation.createPost(null)
                 .setCompletion(completion)
                 .setExpiration(getOperationTimeoutMicros() + Utils.getNowMicrosUtc());
-        registerForServiceAvailability(op, selfLinks);
+        registerForServiceAvailability(op, servicePaths);
     }
 
     void registerForServiceAvailability(
-            Operation opTemplate, String... selfLinks) {
-        final boolean doOpClone = selfLinks.length > 1;
+            Operation opTemplate, String... servicePaths) {
+        final boolean doOpClone = servicePaths.length > 1;
         // clone client supplied array since this method mutates it
-        final String[] clonedLinks = Arrays.copyOf(selfLinks, selfLinks.length);
+        final String[] clonedLinks = Arrays.copyOf(servicePaths, servicePaths.length);
 
         synchronized (this.state) {
             for (int i = 0; i < clonedLinks.length; i++) {
@@ -3252,6 +3252,9 @@ public class ServiceHost {
         }
     }
 
+    /**
+     * Set a relative memory limit for a given service.
+     */
     public ServiceHost setServiceMemoryLimit(String servicePath, double percentOfTotal) {
         if (servicePath == null) {
             throw new IllegalArgumentException("servicePath is required");
@@ -3282,8 +3285,11 @@ public class ServiceHost {
         return this;
     }
 
-    public Long getServiceMemoryLimitMB(String selfLink, MemoryLimitType limitType) {
-        Double limitAsPercentTotalMemory = this.state.relativeMemoryLimits.get(selfLink);
+    /**
+     * Retrieves the memory limit, in MB for a given service path
+     */
+    public Long getServiceMemoryLimitMB(String servicePath, MemoryLimitType limitType) {
+        Double limitAsPercentTotalMemory = this.state.relativeMemoryLimits.get(servicePath);
         if (limitAsPercentTotalMemory == null) {
             return null;
         }
@@ -3303,16 +3309,16 @@ public class ServiceHost {
         }
     }
 
-    public ProcessingStage getServiceStage(String selfLink) {
-        Service s = this.findService(selfLink);
+    public ProcessingStage getServiceStage(String servicePath) {
+        Service s = this.findService(servicePath);
         if (s == null) {
             return null;
         }
         return s.getProcessingStage();
     }
 
-    public boolean checkServiceAvailable(String selfLink) {
-        Service s = this.findService(selfLink);
+    public boolean checkServiceAvailable(String servicePath) {
+        Service s = this.findService(servicePath);
         if (s == null) {
             return false;
         }
@@ -3847,8 +3853,8 @@ public class ServiceHost {
                 this.state.serviceCount);
     }
 
-    private ServiceDocument getCachedServiceState(String selfLink) {
-        ServiceDocument state = this.cachedServiceStates.get(selfLink);
+    private ServiceDocument getCachedServiceState(String servicePath) {
+        ServiceDocument state = this.cachedServiceStates.get(servicePath);
         if (state == null) {
             return null;
         }
@@ -3856,15 +3862,15 @@ public class ServiceHost {
         // Check if this is expired and, if so, remove it from cache.
         if (state.documentExpirationTimeMicros > 0 &&
                 state.documentExpirationTimeMicros < Utils.getNowMicrosUtc()) {
-            clearCachedServiceState(selfLink);
+            clearCachedServiceState(servicePath);
             return null;
         }
 
         return state;
     }
 
-    private void clearCachedServiceState(String selfLink) {
-        this.cachedServiceStates.remove(selfLink);
+    private void clearCachedServiceState(String servicePath) {
+        this.cachedServiceStates.remove(servicePath);
     }
 
     public ServiceHost setOperationTimeOutMicros(long timeoutMicros) {
@@ -4119,15 +4125,15 @@ public class ServiceHost {
      * Queries services in the AVAILABLE stage using a simple exact or prefix match on the supplied
      * self link
      */
-    public void queryServiceUris(String selfLink, Operation get) {
+    public void queryServiceUris(String servicePath, Operation get) {
         // TODO Use Radix trees for efficient prefix searches. This is not
         // urgent since we consider queries directly on the host instead of the
         // document index, to be rare
 
         ServiceDocumentQueryResult r = new ServiceDocumentQueryResult();
 
-        boolean doPrefixMatch = selfLink.endsWith(UriUtils.URI_WILDCARD_CHAR);
-        selfLink = selfLink.replace(UriUtils.URI_WILDCARD_CHAR, "");
+        boolean doPrefixMatch = servicePath.endsWith(UriUtils.URI_WILDCARD_CHAR);
+        servicePath = servicePath.replace(UriUtils.URI_WILDCARD_CHAR, "");
 
         for (Service s : this.attachedServices.values()) {
             if (s.getProcessingStage() != ProcessingStage.AVAILABLE) {
@@ -4136,18 +4142,18 @@ public class ServiceHost {
             if (s.hasOption(ServiceOption.UTILITY)) {
                 continue;
             }
-            String servicePath = s.getSelfLink();
+            String path = s.getSelfLink();
             if (doPrefixMatch) {
-                if (!servicePath.startsWith(selfLink)) {
+                if (!path.startsWith(servicePath)) {
                     continue;
                 }
             } else {
-                if (!servicePath.equals(selfLink)) {
+                if (!path.equals(servicePath)) {
                     continue;
                 }
             }
 
-            r.documentLinks.add(servicePath);
+            r.documentLinks.add(path);
         }
         r.documentOwner = getId();
         get.setBodyNoCloning(r).complete();
@@ -4200,8 +4206,8 @@ public class ServiceHost {
     /**
      * Infrastructure use only. Create service document description.
      */
-    ServiceDocumentDescription buildDocumentDescription(String selfLink) {
-        Service s = findService(selfLink);
+    ServiceDocumentDescription buildDocumentDescription(String servicePath) {
+        Service s = findService(servicePath);
         if (s == null) {
             return null;
         }
