@@ -33,13 +33,15 @@ import com.vmware.dcp.common.Operation.CompletionHandler;
 import com.vmware.dcp.common.test.MinimalTestServiceState;
 import com.vmware.dcp.services.common.MinimalTestService;
 
-public class TestOperationJoin extends BasicReportTestCase {
+public class TestOperationJoin extends BasicReusableHostTestCase {
     private List<Service> services;
     private final int numberOfServices = 3;
 
     @Before
     public void prepare() throws Throwable {
+        if (this.services == null) {
         this.services = initServices();
+        }
     }
 
     @Test
@@ -141,10 +143,10 @@ public class TestOperationJoin extends BasicReportTestCase {
         // Using queue limit feature of Service to only take batch size of requests.
         // If batching is not done right by OperationJoin then test service will not
         // accept extra operations and this test will fail.
-        int limit = 40;
+        int limit = 2;
         this.host.setOperationQueueLimit(testService.getUri(), limit);
         AtomicInteger cancelledOpCount = new AtomicInteger();
-        int count = 100;
+        int count = 10;
         MinimalTestServiceState body = (MinimalTestServiceState) this.host.buildMinimalTestState();
         body.id = MinimalTestService.STRING_MARKER_DELAY_COMPLETION;
         Collection<Operation> ops1 = getOperations(count, testService, (o, e) -> {
