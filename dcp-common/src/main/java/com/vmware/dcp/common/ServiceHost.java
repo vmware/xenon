@@ -329,6 +329,18 @@ public class ServiceHost {
         public Map<String, Double> relativeMemoryLimits = new ConcurrentSkipListMap<>();
 
         /**
+         * Request limits, in operations per second. Each limit is associated with a key,
+         * derived from some context (user, tenant, context id). An operation is associated with
+         * a key and then service host tracks and applies the limit for each in bound request that
+         * belongs to the same context.
+         *
+         * Rate limiting is a global back pressure mechanism that is independent of the target
+         * service and any additional throttling applied during service request
+         * processing
+         */
+        public Map<String, Double> requestRateLimits = new ConcurrentSkipListMap<>();
+
+        /**
          * Infrastructure use only.
          *
          * Set of links that should be excluded from operation tracing
@@ -2848,6 +2860,12 @@ public class ServiceHost {
     private void queueOrScheduleRequest(Service s, Operation op) {
         boolean processRequest = true;
         try {
+
+            if (applyRequestRateLimit(op)) {
+                processRequest = false;
+                return;
+            }
+
             ProcessingStage stage = s.getProcessingStage();
             if (stage == ProcessingStage.AVAILABLE) {
                 return;
@@ -2894,6 +2912,37 @@ public class ServiceHost {
                 });
             }
         }
+    }
+
+    private boolean applyRequestRateLimit(Operation op) {
+        if (this.state.requestRateLimits.isEmpty()) {
+            return false;
+        }
+
+        AuthorizationContext authCtx = op.getAuthorizationContext();
+        if (authCtx == null) {
+            return false;
+        }
+
+        Claims claims = authCtx.getClaims();
+        if (claims == null) {
+            return false;
+        }
+
+        String subject = claims.getSubject();
+        if (subject == null) {
+            return false;
+        }
+
+        // TODO: use the roles that applied during authorization as the rate limiting key.
+        // We currently just use the subject but this is going to change.
+        Double opsPerSecLimit = this.state.requestRateLimits.get(subject);
+        if (opsPerSecLimit == null) {
+            return false;
+        }
+
+        // TODO track and check against limit
+        return false;
     }
 
     private void handleUncaughtException(Service s, Operation op, Throwable e) {
@@ -3250,6 +3299,18 @@ public class ServiceHost {
                 o.complete();
             });
         }
+    }
+
+    /**
+     * Infrastructure use only.
+     *
+     * Sets an upper limit, in terms of operations per second, for all operations
+     * associated with some context. The context is (tenant, user, referrer) is used
+     * to derive the key.
+     */
+    public ServiceHost setRequestRateLimit(String key, double operationsPerSecond) {
+        this.state.requestRateLimits.put(key, operationsPerSecond);
+        return this;
     }
 
     /**
