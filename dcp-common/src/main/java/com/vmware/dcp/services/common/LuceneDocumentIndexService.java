@@ -911,6 +911,7 @@ public class LuceneDocumentIndexService extends StatelessService {
             }
 
             after = page.after = bottom;
+            resultLimit -= rsp.documentLinks.size();
         } while (true);
 
         return rsp;

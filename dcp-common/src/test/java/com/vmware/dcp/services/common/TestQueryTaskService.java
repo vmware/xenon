@@ -810,7 +810,8 @@ public class TestQueryTaskService {
         QueryTask remoteTask = QueryTask.Builder.create().setQuery(query).build();
         remoteTask.documentExpirationTimeMicros = Utils.getNowMicrosUtc()
                 + TimeUnit.DAYS.toMicros(1);
-        remoteTask.querySpec.resultLimit = exampleStates.size() / 10;
+        int pageSize = exampleStates.size() / 10;
+        remoteTask.querySpec.resultLimit = pageSize;
         QueryTask results = QueryTask.Builder.create().build();
         URI taskUri = this.host.createQueryTaskService(null, remoteTask, false, false, results,
                 null);
@@ -824,7 +825,13 @@ public class TestQueryTaskService {
         QueryTask resultsFirstPage = this.host.getServiceState(null,
                 QueryTask.class, nextLink);
 
-        assertTrue(resultsFirstPage.results.documentCount > 0);
+        assertEquals(resultsFirstPage.results.documentLinks.size(), pageSize);
+        assertEquals(resultsFirstPage.results.prevPageLink, null);
+
+        QueryTask resultsFirstPageSecondTime = this.host.getServiceState(null, QueryTask.class, nextLink);
+        assertEquals(resultsFirstPage.results.documentLinks.size(),
+                resultsFirstPageSecondTime.results.documentLinks.size());
+        assertEquals(resultsFirstPage.results.documentCount, resultsFirstPageSecondTime.results.documentCount);
         assertEquals(resultsFirstPage.results.prevPageLink, null);
 
         // verify that using the next page link and prev page link on each host works
@@ -833,13 +840,17 @@ public class TestQueryTaskService {
             QueryTask resultNextLink = this.host.getServiceState(null,
                     QueryTask.class, nextLinkUri);
 
-            assertTrue(resultNextLink.results.documentCount > 0);
+            assertEquals(resultNextLink.results.documentCount.compareTo((long)pageSize), 0);
+            assertEquals(resultNextLink.results.documentLinks.size(), pageSize);
 
             URI prevLinkUri = UriUtils.buildUri(h, resultNextLink.results.prevPageLink);
             QueryTask resultPrevLink = this.host.getServiceState(null,
                     QueryTask.class, prevLinkUri);
 
-            assertTrue(resultPrevLink.results.documentCount > 0);
+            assertEquals(resultPrevLink.results.documentCount.compareTo((long)pageSize), 0);
+            assertEquals(resultPrevLink.results.documentLinks.size(), pageSize);
+
+            // TODO; verify that firstPage results and secondPage->prevPageLink results are same.
         }
     }
 
