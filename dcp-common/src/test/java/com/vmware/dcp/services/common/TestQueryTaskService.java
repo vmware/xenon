@@ -327,7 +327,7 @@ public class TestQueryTaskService {
         newState.stringValue = stringValue;
 
         QueryTask task = QueryTask.Builder.create()
-                .setOptions(EnumSet.of(QueryOption.CONTINUOUS, QueryOption.EXPAND_CONTENT))
+                .addOptions(EnumSet.of(QueryOption.CONTINUOUS, QueryOption.EXPAND_CONTENT))
                 .setQuery(query)
                 .build();
         URI updateQueryTask = this.host.createQueryTaskService(
@@ -1149,7 +1149,7 @@ public class TestQueryTaskService {
                 .addFieldClause(ServiceDocument.FIELD_NAME_SELF_LINK, delete.getUri().getPath())
                 .build();
         queryTask = QueryTask.Builder.create()
-                .setOptions(EnumSet.of(QueryOption.EXPAND_CONTENT))
+                .addOption(QueryOption.EXPAND_CONTENT)
                 .setQuery(query)
                 .build();
         u = this.host.createQueryTaskService(queryTask, forceRemote);
@@ -1186,7 +1186,7 @@ public class TestQueryTaskService {
                 .addFieldClause(ServiceDocument.FIELD_NAME_SELF_LINK, services.get(0).getPath())
                 .build();
 
-        queryTask = QueryTask.Builder.create().setOptions(currentOptions).setQuery(query).build();
+        queryTask = QueryTask.Builder.create().addOptions(currentOptions).setQuery(query).build();
         u = this.host.createQueryTaskService(queryTask, forceRemote);
         finishedTaskState = this.host.waitForQueryTaskCompletion(queryTask.querySpec,
                 services.size(), 1, u, forceRemote, true);
@@ -1433,8 +1433,10 @@ public class TestQueryTaskService {
                 .addFieldClause("serviceLink", SERVICE_LINK_VALUE)
                 .build();
 
-        queryTask = QueryTask.Builder.create().setOptions(EnumSet.of(QueryOption.EXPAND_CONTENT))
-                .setQuery(query).build();
+        queryTask = QueryTask.Builder.create()
+                .addOption(QueryOption.EXPAND_CONTENT)
+                .setQuery(query)
+                .build();
         u = this.host.createQueryTaskService(queryTask);
         finishedTaskState = this.host.waitForQueryTaskCompletion(queryTask.querySpec,
                 serviceCount, versionCount, u, false, true);

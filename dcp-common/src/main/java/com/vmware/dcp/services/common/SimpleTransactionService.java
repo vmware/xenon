@@ -282,7 +282,7 @@ public class SimpleTransactionService extends StatefulService {
                 queryBuilder.addRangeClause(ServiceDocument.FIELD_NAME_VERSION, QueryTask.NumericRange.createLongRange(
                         clearTransactionRequest.originalVersion, clearTransactionRequest.originalVersion, true, true));
                 QueryTask.Builder queryTaskBuilder = QueryTask.Builder.createDirectTask().setQuery(queryBuilder.build());
-                queryTaskBuilder.setOptions(EnumSet.of(QueryOption.EXPAND_CONTENT, QueryOption.INCLUDE_ALL_VERSIONS));
+                queryTaskBuilder.addOptions(EnumSet.of(QueryOption.EXPAND_CONTENT, QueryOption.INCLUDE_ALL_VERSIONS));
                 QueryTask task = queryTaskBuilder.build();
 
                 Operation post = Operation.createPost(UriUtils.buildUri(this.service.getHost(),

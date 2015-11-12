@@ -572,15 +572,27 @@ public class QueryTask extends ServiceDocument {
             }
 
             /**
-             * Add a clause which matches a {@link com.vmware.dcp.services.common.QueryTask.NumericRange} for a given numeric field.
+             * Add a clause which matches a {@link NumericRange} for a given numeric field.
              * @param fieldName the top level numeric field name.
              * @param range a numeric range.
              * @return a reference to this object.
              */
             public Builder addRangeClause(String fieldName, NumericRange<?> range) {
+                return addRangeClause(fieldName, range, Occurance.MUST_OCCUR);
+            }
+
+            /**
+             * Add a clause with the given occurance which matches a {@link NumericRange} for a given numeric field.
+             * @param fieldName the top level numeric field name.
+             * @param range a numeric range.
+             * @param occurance the {@link Occurance} for this clause.
+             * @return a reference to this object.
+             */
+            public Builder addRangeClause(String fieldName, NumericRange<?> range, Occurance occurance) {
                 Query clause = new Query()
                         .setTermPropertyName(fieldName)
                         .setNumericRange(range);
+                clause.occurance = occurance;
                 this.query.addBooleanClause(clause);
                 return this;
             }
@@ -790,14 +802,34 @@ public class QueryTask extends ServiceDocument {
             sortTerm.propertyType = fieldType;
             this.querySpec.sortTerm = sortTerm;
             this.querySpec.sortOrder = sortOrder;
+            addOption(QueryOption.SORT);
             return this;
         }
 
         /**
-         * Set {@linkplain com.vmware.dcp.services.common.QueryTask.QuerySpecification.QueryOption query options}.
-         * @param queryOptions the set of query options.
+         * Add the given {@linkplain QueryOption query option}.
+         * @param queryOption the query option to add.
          * @return a reference to this object.
          */
+        public Builder addOption(QueryOption queryOption) {
+            this.querySpec.options.add(queryOption);
+            return this;
+        }
+
+        /**
+         * Add all of the provided query options to the current set of options.
+         * @param queryOptions the set of query options to add.
+         * @return a reference to this object.
+         */
+        public Builder addOptions(EnumSet<QueryOption> queryOptions) {
+            this.querySpec.options.addAll(queryOptions);
+            return this;
+        }
+
+        /**
+         * Please use {@link #addOptions(EnumSet)} instead.
+         */
+        @Deprecated
         public Builder setOptions(EnumSet<QueryOption> queryOptions) {
             this.querySpec.options = queryOptions;
             return this;
