@@ -73,6 +73,7 @@ import com.vmware.dcp.common.TaskState;
 import com.vmware.dcp.common.UriUtils;
 import com.vmware.dcp.common.Utils;
 import com.vmware.dcp.services.common.AuthorizationContextService;
+import com.vmware.dcp.services.common.ConsistentHashingNodeSelectorService;
 import com.vmware.dcp.services.common.ExampleFactoryService;
 import com.vmware.dcp.services.common.ExampleService.ExampleServiceState;
 import com.vmware.dcp.services.common.ExampleServiceHost;
@@ -1433,6 +1434,23 @@ public class VerificationHost extends ExampleServiceHost {
 
     public Map<String, NodeState> getNodeStateMap() {
         return this.peerHostIdToNodeState;
+    }
+
+    public void scheduleSynchronizationIfAutoSyncDisabled() throws Throwable {
+        if (this.isPeerSynchronizationEnabled()) {
+            return;
+        }
+        for (VerificationHost peerHost : getInProcessHostMap().values()) {
+            peerHost.scheduleNodeGroupChangeMaintenance(
+                    ServiceUriPaths.DEFAULT_NODE_SELECTOR);
+            ServiceStats selectorStats = getServiceState(null, ServiceStats.class,
+                    UriUtils.buildStatsUri(peerHost, ServiceUriPaths.DEFAULT_NODE_SELECTOR));
+            ServiceStat synchStat = selectorStats.entries
+                    .get(ConsistentHashingNodeSelectorService.STAT_NAME_SYNCHRONIZATION_COUNT);
+            if (synchStat != null && synchStat.latestValue > 0) {
+                throw new IllegalStateException("Automatic synchronization was triggered");
+            }
+        }
     }
 
     public void setUpPeerHosts(int localHostCount) throws Throwable {

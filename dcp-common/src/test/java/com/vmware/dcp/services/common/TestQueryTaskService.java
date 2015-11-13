@@ -637,6 +637,7 @@ public class TestQueryTaskService {
     public void replicatedQueryTasksOnExampleStates() throws Throwable {
 
         setUpHost();
+        this.host.setPeerSynchronizationEnabled(false);
         int nodeCount = 3;
         this.host.setUpPeerHosts(nodeCount);
         this.host.joinNodesAndVerifyConvergence(nodeCount);
@@ -782,6 +783,9 @@ public class TestQueryTaskService {
         this.host.log("owners:%s", owners);
         assertTrue(owners.size() > 1);
 
+        // induce synchronization during the query to verify it does not interfere (due to state updates)
+        this.host.scheduleSynchronizationIfAutoSyncDisabled();
+
         exp = this.host.getTestExpiration();
         while (new Date().before(exp)) {
             boolean isConverged = true;
@@ -815,6 +819,7 @@ public class TestQueryTaskService {
             int pageSize = exampleStates.size() / 10;
             remoteTask.querySpec.resultLimit = pageSize;
             QueryTask results = QueryTask.Builder.create().build();
+
             URI taskUri = this.host.createQueryTaskService(null, remoteTask, false, false, results,
                     null);
 
@@ -860,8 +865,7 @@ public class TestQueryTaskService {
                 QueryTask resultPrevLink = this.host.getServiceState(null,
                         QueryTask.class, prevLinkUri);
 
-                assertEquals(resultPrevLink.results.documentCount.compareTo((long) pageSize), 0);
-                assertEquals(resultPrevLink.results.documentLinks.size(), pageSize);
+                assertEquals(pageSize, resultPrevLink.results.documentLinks.size());
             }
 
             // everything converged, all done
@@ -870,6 +874,15 @@ public class TestQueryTaskService {
 
         if (new Date().after(exp)) {
             throw new TimeoutException();
+        }
+
+        // verify that example states did not change due to the induced synchronization
+        Map<URI, ExampleServiceState> exampleStatesAfter = this.host.getServiceState(null,
+                ExampleServiceState.class, exampleServices);
+        for (Entry<URI, ExampleServiceState> afterEntry : exampleStatesAfter.entrySet()) {
+            ExampleServiceState beforeState = exampleStates.get(afterEntry.getKey());
+            ExampleServiceState afterState = afterEntry.getValue();
+            assertEquals(beforeState.documentVersion, afterState.documentVersion);
         }
 
     }
@@ -1071,7 +1084,8 @@ public class TestQueryTaskService {
         // do another query but sort on self links
         numberOfDocumentLinks[0] = 0;
 
-        queryTaskBuilder = isDirect ? QueryTask.Builder.createDirectTask() : QueryTask.Builder.create();
+        queryTaskBuilder = isDirect ? QueryTask.Builder.createDirectTask() : QueryTask.Builder
+                .create();
         queryTaskBuilder
                 .setQuery(kindClause)
                 .orderAscending(ServiceDocument.FIELD_NAME_SELF_LINK, TypeName.STRING)
@@ -2215,9 +2229,11 @@ public class TestQueryTaskService {
                 .build();
         this.host.createAndWaitSimpleDirectQuery(spec, 2, 1);
 
-        spec.query = Query.Builder.create()
+        spec.query = Query.Builder
+                .create()
                 .addRangeClause(ExampleServiceState.FIELD_NAME_COUNTER,
-                        NumericRange.createEqualRange(exampleServiceState.counter), Occurance.SHOULD_OCCUR)
+                        NumericRange.createEqualRange(exampleServiceState.counter),
+                        Occurance.SHOULD_OCCUR)
                 .addKindFieldClause(TenantState.class, Occurance.SHOULD_OCCUR)
                 .build();
         this.host.createAndWaitSimpleDirectQuery(spec, 2, 2);

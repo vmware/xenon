@@ -716,11 +716,14 @@ public class StatefulService implements Service {
 
         ServiceDocument linkedState = null;
         boolean isUpdate = op.getAction() != Action.GET;
-        boolean isStateUpdated = isUpdate
-                && op.getStatusCode() != Operation.STATUS_CODE_NOT_MODIFIED;
+        boolean isStateUpdated = isUpdate;
 
         if (op.isFromReplication()) {
             isStateUpdated = true;
+        }
+
+        if (op.getStatusCode() == Operation.STATUS_CODE_NOT_MODIFIED) {
+            isStateUpdated = false;
         }
 
         // evolve the common properties such as version
@@ -1146,48 +1149,68 @@ public class StatefulService implements Service {
         boolean wasOwner = hasOption(ServiceOption.DOCUMENT_OWNER);
 
         clonedRequest.setBody(request.getLinkedState()).setCompletion((o, e) -> {
-            if (e != null) {
-                failRequest(request, e);
-                return;
-            }
-
-            boolean isOwner = hasOption(ServiceOption.DOCUMENT_OWNER);
-
-            if (!isOwner) {
-                completeSynchronizationRequest(request, failure);
-                return;
-            }
-
-            // update and index using latest state from peers
-            ServiceDocument state = (ServiceDocument) o.getBodyRaw();
-            if (state != null) {
-                if (hasOption(ServiceOption.DOCUMENT_OWNER)) {
-                    state.documentOwner = getHost().getId();
-                }
-                synchronized (this.context) {
-                    if (state.documentEpoch != null) {
-                        this.context.epoch = Math.max(this.context.epoch, state.documentEpoch);
-                    }
-                    this.context.version = Math
-                            .max(this.context.version, state.documentVersion);
-                }
-
-                // update synchronized linked state with the update operation, so it gets indexed
-                request.linkState(state);
-            }
-
-            completeSynchronizationRequest(request, failure);
-
-            if (wasOwner) {
-                return;
-            }
-
-            getHost().scheduleServiceOptionToggleMaintenance(getSelfLink(),
-                    EnumSet.of(ServiceOption.DOCUMENT_OWNER), null);
+            handleSynchronizeWithPeersCompletion(request, failure, wasOwner, o, e);
         });
 
         clonedRequest.setRetryCount(0);
         getHost().selectServiceOwnerAndSynchState(this, clonedRequest, true);
+    }
+
+    private void handleSynchronizeWithPeersCompletion(Operation request, Throwable failure,
+            boolean wasOwner, Operation o, Throwable e) {
+        if (e != null) {
+            failRequest(request, e);
+            return;
+        }
+
+        boolean isOwner = hasOption(ServiceOption.DOCUMENT_OWNER);
+        boolean isStateUpdated = false;
+
+        if (!isOwner) {
+            completeSynchronizationRequest(request, failure);
+            return;
+        }
+
+        // update and index using latest state from peers
+        ServiceDocument state = (ServiceDocument) o.getBodyRaw();
+        if (state != null) {
+            if (hasOption(ServiceOption.DOCUMENT_OWNER)) {
+                state.documentOwner = getHost().getId();
+            }
+            synchronized (this.context) {
+                if (state.documentEpoch != null) {
+                    if (state.documentEpoch > this.context.epoch) {
+                        this.context.epoch = state.documentEpoch;
+                        isStateUpdated = true;
+                    }
+                }
+
+                if (state.documentVersion > this.context.version) {
+                    this.context.version = state.documentVersion;
+                    isStateUpdated = true;
+                }
+            }
+
+            // update synchronized linked state with the update operation, so it gets indexed
+            request.linkState(state);
+        }
+
+        if (!wasOwner) {
+            isStateUpdated = true;
+        }
+
+        if (!isStateUpdated) {
+            request.setStatusCode(Operation.STATUS_CODE_NOT_MODIFIED);
+        }
+
+        completeSynchronizationRequest(request, failure);
+
+        if (wasOwner) {
+            return;
+        }
+
+        getHost().scheduleServiceOptionToggleMaintenance(getSelfLink(),
+                EnumSet.of(ServiceOption.DOCUMENT_OWNER), null);
     }
 
     private void completeSynchronizationRequest(Operation request, Throwable failure) {
