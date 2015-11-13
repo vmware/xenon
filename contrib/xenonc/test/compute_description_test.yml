@@ -1,0 +1,14 @@
+action: POST
+
+path: /resources/compute-descriptions
+
+body:
+  zoneId: {{ uuid }}
+  documentSelfLink: {{ .documentSelfLink }}
+  supportedChildren:
+    - VM_GUEST
+
+  instanceAdapterReference: http://localhost:8082/provisioning/esx/instance-service
+  powerAdapterReference: http://localhost:8082/provisioning/esx/power-service
+  bootAdapterReference: http://localhost:8082/provisioning/esx/boot-service
+  enumerationAdapterReference: http://localhost:8082/provisioning/esx/enumeration-service

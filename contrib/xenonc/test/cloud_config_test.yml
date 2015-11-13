@@ -1,0 +1,32 @@
+#cloud-config
+
+ssh_authorized_keys:
+  - ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDDz32MtEUVESsqwRFiTpNYz+d+bsZunlZ4QY/ljq0h65EIg2YrJUJpzVzxN9oBEoo4VsscqGSnVqMiyJ1Da1cvdVlAVVjacPVAnXzu32dEcrYP0XkBpysKrgSc0XqEcCs8sCAbjR9F96oFDVAONBix0gyElGhijqpBbaemql5mpn+0zEQ+c2MNygEUXsl1ImLyP3+HOeiVdabP5FePUby0gX12VZ3aUSKh0t1T5TT9ZU6zYWJhybVrn2Zi27ZdXwx9il182iDIfxXKlQ8rVxjR6vQh9pwSjQ7Fw7xwO/Ra82xn4+Demfz4eOVyvwjUBcLXIzkycDUCK+5XTRRydvZj dcp@enatai
+
+coreos:
+  units:
+    - name: update-engine-stub.service
+      command: stop
+      mask: true
+
+    - name: update-engine-stub.timer
+      command: stop
+      mask: true
+
+    - name: update-engine.service
+      command: stop
+      mask: true
+
+    - name: 99-other.network
+      content: |
+        [Match]
+        Name=en*
+
+        [Network]
+        DHCP=yes
+
+write_files:
+  - path: /etc/systemd/system/docker.service.d/50-insecure-registry.conf
+    content: |
+        [Service]
+        Environment=DOCKER_OPTS='--insecure-registry=0.0.0.0/0'

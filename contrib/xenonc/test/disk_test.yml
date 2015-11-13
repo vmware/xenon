@@ -1,0 +1,16 @@
+action: post
+
+path: /resources/disks
+
+body:
+  id: {{ uuid }}
+  name: CoreOS configuration
+  type: CDROM
+  customizationServiceReference: http://localhost:8082/provisioning/boot-config-service/iso
+  bootOrder: 2
+  bootConfig:
+    label: {{ uuid }}
+    files:
+      - path: openstack/latest/user_data
+        contents: |
+          {{ include `cloud_config_test.yml` | indent 10 }}
