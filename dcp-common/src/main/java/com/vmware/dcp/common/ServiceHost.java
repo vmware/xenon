@@ -30,6 +30,7 @@ import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.security.GeneralSecurityException;
 import java.security.KeyStore;
+import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Calendar;
@@ -64,7 +65,6 @@ import java.util.logging.ConsoleHandler;
 import java.util.logging.FileHandler;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManagerFactory;
 
@@ -117,7 +117,6 @@ import com.vmware.dcp.services.common.TransactionFactoryService;
 import com.vmware.dcp.services.common.UpdateIndexRequest;
 import com.vmware.dcp.services.common.UserFactoryService;
 import com.vmware.dcp.services.common.UserGroupFactoryService;
-import com.vmware.dcp.services.common.authn.AuthenticationConstants;
 import com.vmware.dcp.services.common.authn.BasicAuthenticationService;
 
 /**
@@ -213,6 +212,11 @@ public class ServiceHost {
          * This option will be set to true and authn/authz enabled by default after a transition period
          */
         public boolean isAuthorizationEnabled = false;
+
+        /**
+         * Command line argument. Specifies the secret to use to sign and verify tokens.
+         */
+        public String tokenSecret;
     }
 
     private static final CharSequence PACKAGE_NAME = ServiceHost.class.getPackage().getName();
@@ -310,6 +314,7 @@ public class ServiceHost {
         public String id;
         public boolean isPeerSynchronizationEnabled;
         public boolean isAuthorizationEnabled;
+        public String tokenSecret;
 
         public transient boolean isStarted;
         public transient boolean isStopping;
@@ -488,10 +493,9 @@ public class ServiceHost {
         updateSystemInfo(false);
 
         // Create token signer and verifier
-        this.tokenSigner = new Signer(
-                AuthenticationConstants.JWT_SECRET.getBytes(Utils.CHARSET));
-        this.tokenVerifier = new Verifier(
-                AuthenticationConstants.JWT_SECRET.getBytes(Utils.CHARSET));
+        prepareTokenSecret();
+        this.tokenSigner = new Signer(this.state.tokenSecret.getBytes(Utils.CHARSET));
+        this.tokenVerifier = new Verifier(this.state.tokenSecret.getBytes(Utils.CHARSET));
 
         // Set default limits for memory utilization on core services and the host
         setServiceMemoryLimit(ROOT_PATH, DEFAULT_PCT_MEMORY_LIMIT);
@@ -502,6 +506,23 @@ public class ServiceHost {
         setServiceMemoryLimit(ServiceUriPaths.CORE_SERVICE_CONTEXT_INDEX,
                 DEFAULT_PCT_MEMORY_LIMIT_BLOB_INDEX);
         return this;
+    }
+
+    private void prepareTokenSecret() {
+        if (this.state.tokenSecret != null) {
+            return;
+        }
+
+        SecureRandom random = new SecureRandom();
+        byte[] bytes = new byte[32];
+        random.nextBytes(bytes);
+        StringBuilder secret = new StringBuilder();
+        for (byte b : bytes) {
+            secret.append(String.format("%02x", b));
+        }
+
+        log(Level.WARNING, "No token secret specified, using random string");
+        this.state.tokenSecret = secret.toString();
     }
 
     private void initializeStateFromArguments(File s, Arguments args) throws URISyntaxException {
@@ -524,6 +545,10 @@ public class ServiceHost {
         this.state.isPeerSynchronizationEnabled = args.isPeerSynchronizationEnabled;
 
         this.state.isAuthorizationEnabled = args.isAuthorizationEnabled;
+
+        if (args.tokenSecret != null) {
+            this.state.tokenSecret = args.tokenSecret;
+        }
 
         File hostStateFile = new File(s, SERVICE_HOST_STATE_FILE);
         String errorFmt = hostStateFile.getPath()
@@ -890,7 +915,6 @@ public class ServiceHost {
     }
 
     private ServiceHost startImpl() throws Throwable {
-
         synchronized (this.state) {
             if (isStarted()) {
                 return this;
@@ -2479,7 +2503,7 @@ public class ServiceHost {
             if (cookies == null) {
                 return null;
             }
-            token = cookies.get(AuthenticationConstants.DCP_JWT_COOKIE);
+            token = cookies.get(Operation.REQUEST_AUTH_TOKEN_COOKIE);
         }
 
         if (token == null) {
@@ -4312,7 +4336,7 @@ public class ServiceHost {
      */
     private AuthorizationContext createAuthorizationContext(String userLink) {
         Claims.Builder cb = new Claims.Builder();
-        cb.setIssuer(AuthenticationConstants.JWT_ISSUER);
+        cb.setIssuer(Claims.DEFAULT_ISSUER);
         cb.setSubject(userLink);
 
         // Set an effective expiration to never

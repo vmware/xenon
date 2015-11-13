@@ -49,7 +49,6 @@ import com.vmware.dcp.common.ServiceErrorResponse;
 import com.vmware.dcp.common.ServiceHost;
 import com.vmware.dcp.common.UriUtils;
 import com.vmware.dcp.common.Utils;
-import com.vmware.dcp.services.common.authn.AuthenticationConstants;
 
 /**
  * Processes client requests on behalf of the HTTP listener and submits them to the service host or websocket client for
@@ -317,7 +316,7 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
         AuthorizationContext authorizationContext = request.getAuthorizationContext();
         if (authorizationContext != null && authorizationContext.shouldPropagateToClient()) {
             StringBuilder buf = new StringBuilder()
-                    .append(AuthenticationConstants.DCP_JWT_COOKIE)
+                    .append(Operation.REQUEST_AUTH_TOKEN_COOKIE)
                     .append('=')
                     .append(authorizationContext.getToken());
 
