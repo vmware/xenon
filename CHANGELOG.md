@@ -1,6 +1,10 @@
 # CHANGELOG
 
-## 0.2.0-SNAPSHOT
+## 0.3.0-SNAPSHOT
+
+* Use random authorization context token secret if none is specified.
+
+## 0.2.0
 
 * Request rate limiting support using authorization subject.
 New serviceHost.setRequestRateLimit method and rate tracking

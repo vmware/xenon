@@ -50,7 +50,6 @@ import com.vmware.dcp.common.ServiceHost;
 import com.vmware.dcp.common.UriUtils;
 import com.vmware.dcp.common.Utils;
 import com.vmware.dcp.services.common.ServiceUriPaths;
-import com.vmware.dcp.services.common.authn.AuthenticationConstants;
 
 /**
  * Asynchronous request / response client with concurrent connection management
@@ -214,7 +213,7 @@ public class NettyHttpServiceClient implements ServiceClient {
             cookies = new HashMap<>();
         }
 
-        cookies.put(AuthenticationConstants.DCP_JWT_COOKIE, ctx.getToken());
+        cookies.put(Operation.REQUEST_AUTH_TOKEN_COOKIE, ctx.getToken());
         op.setCookies(cookies);
     }
 
