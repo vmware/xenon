@@ -218,7 +218,7 @@ public class BasicAuthenticationService extends StatelessService {
 
     private boolean associateAuthorizationContext(Operation op, String userLink, long expirationTime) {
         Claims.Builder builder = new Claims.Builder();
-        builder.setIssuer(AuthenticationConstants.JWT_ISSUER);
+        builder.setIssuer(Claims.DEFAULT_ISSUER);
         builder.setSubject(userLink);
         builder.setExpirationTime(expirationTime);
 
