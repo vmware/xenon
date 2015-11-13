@@ -637,10 +637,12 @@ public class TestQueryTaskService {
     public void replicatedQueryTasksOnExampleStates() throws Throwable {
 
         setUpHost();
+        this.host.setPeerSynchronizationEnabled(false);
         int nodeCount = 3;
         this.host.setUpPeerHosts(nodeCount);
         this.host.joinNodesAndVerifyConvergence(nodeCount);
         int serviceCount = 100;
+
 
         // pick one host to send the POSTs through, DCP will forward to peers
         VerificationHost targetHost = this.host.getPeerHost();
@@ -815,6 +817,9 @@ public class TestQueryTaskService {
             int pageSize = exampleStates.size() / 10;
             remoteTask.querySpec.resultLimit = pageSize;
             QueryTask results = QueryTask.Builder.create().build();
+
+            // induce synchronization during the query to verify it does not interfere (due to state updates)
+            this.host.scheduleSynchronizationIfAutoSyncDisabled();
             URI taskUri = this.host.createQueryTaskService(null, remoteTask, false, false, results,
                     null);
 
@@ -860,8 +865,8 @@ public class TestQueryTaskService {
                 QueryTask resultPrevLink = this.host.getServiceState(null,
                         QueryTask.class, prevLinkUri);
 
-                assertEquals(resultPrevLink.results.documentCount.compareTo((long) pageSize), 0);
-                assertEquals(resultPrevLink.results.documentLinks.size(), pageSize);
+                assertTrue(resultPrevLink.results.documentCount > 0);
+                assertTrue(!resultPrevLink.results.documentLinks.isEmpty());
             }
 
             // everything converged, all done
@@ -872,6 +877,14 @@ public class TestQueryTaskService {
             throw new TimeoutException();
         }
 
+        // verify that example states did not change due to the induced synchronization
+        Map<URI, ExampleServiceState> exampleStatesAfter = this.host.getServiceState(null,
+                ExampleServiceState.class, exampleServices);
+        for (Entry<URI, ExampleServiceState> afterEntry : exampleStatesAfter.entrySet()) {
+            ExampleServiceState beforeState = exampleStates.get(afterEntry.getKey());
+            ExampleServiceState afterState = afterEntry.getValue();
+            assertEquals(beforeState.documentVersion, afterState.documentVersion);
+        }
     }
 
     @Test

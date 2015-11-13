@@ -554,7 +554,7 @@ public class TestNodeGroupService {
             peerNodeGroupUris.add(UriUtils.buildUri(h, ServiceUriPaths.DEFAULT_NODE_GROUP));
             this.host.waitForNodeGroupConvergence(peerNodeGroupUris, this.nodeCount,
                     this.nodeCount, true);
-            scheduleSynchronizationIfAutoSyncDisabled();
+            this.host.scheduleSynchronizationIfAutoSyncDisabled();
 
             int peerNodeCount = h.getInitialPeerHosts().size();
             // include self in peers
@@ -581,7 +581,7 @@ public class TestNodeGroupService {
                 throw new TimeoutException("Notifications on group convergence");
             }
 
-            scheduleSynchronizationIfAutoSyncDisabled();
+            this.host.scheduleSynchronizationIfAutoSyncDisabled();
 
             // now verify all nodes synchronize and see the example service instances that existed on the single
             // host
@@ -625,24 +625,6 @@ public class TestNodeGroupService {
                 VerificationHost.cleanupStorage(h.getStorageSandbox());
             }
         }
-    }
-
-    private void scheduleSynchronizationIfAutoSyncDisabled() throws Throwable {
-        if (this.isPeerSynchronizationEnabled) {
-            return;
-        }
-        for (VerificationHost peerHost : this.host.getInProcessHostMap().values()) {
-            peerHost.scheduleNodeGroupChangeMaintenance(
-                    ServiceUriPaths.DEFAULT_NODE_SELECTOR);
-            ServiceStats selectorStats = this.host.getServiceState(null, ServiceStats.class,
-                    UriUtils.buildStatsUri(peerHost, ServiceUriPaths.DEFAULT_NODE_SELECTOR));
-            ServiceStat synchStat = selectorStats.entries
-                    .get(ConsistentHashingNodeSelectorService.STAT_NAME_SYNCHRONIZATION_COUNT);
-            if (synchStat != null && synchStat.latestValue > 0) {
-                throw new IllegalStateException("Automatic synchronization was triggered");
-            }
-        }
-
     }
 
     /**
@@ -1118,7 +1100,7 @@ public class TestNodeGroupService {
                 throw new TimeoutException();
             }
 
-            this.scheduleSynchronizationIfAutoSyncDisabled();
+            this.host.scheduleSynchronizationIfAutoSyncDisabled();
             expectedVersion += 1;
             doStateUpdateReplicationTest(Action.DELETE, this.serviceCount, 1,
                     expectedVersion,
@@ -1739,7 +1721,7 @@ public class TestNodeGroupService {
 
         this.host.waitForNodeGroupConvergence(this.host.getNodeGroupMap().size());
 
-        scheduleSynchronizationIfAutoSyncDisabled();
+        this.host.scheduleSynchronizationIfAutoSyncDisabled();
 
         waitForReplicatedFactoryChildServiceConvergence(childStatesPerLink,
                 this.replicationServiceStatePostUpdateConvergenceChecker,
