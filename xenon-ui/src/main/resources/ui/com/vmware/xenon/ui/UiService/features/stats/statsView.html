@@ -1,0 +1,14 @@
+<div ng-controller="StatsController as ctrl">
+    <h1 class="page-header">Stats</h1>
+    <div ng-if="ctrl.results.length > 0">
+        <div ng-repeat="result in ctrl.results">
+            <p class="strong">{{result[0].key}}</p>
+            <nvd3 options='ctrl.chartOptions' data='result'></nvd3>
+        </div>
+    </div>
+    <div ng-if="ctrl.results.length == 0">
+        <div class="zeroData">
+            <span class="glyphicon glyphicon-info-sign"></span> No stats exist.
+        </div>
+    </div>
+</div>

@@ -1,0 +1,116 @@
+<div ng-controller="QueryController as ctrl">
+    <script type="text/ng-template" id="advancedQueryRow">
+        <ul>
+            <li ng-repeat="rule in booleanClauses track by $index" class="form-inline">
+                <select ng-model="rule.occurance"
+                        ng-options="param.id as param.name for param in ctrl.booleanConnectors"
+                        ng-change="ctrl.adjustChildren(rule)"
+                        ng-show="rule.occurance && !rule.term"
+                        class="form-control"
+                        ></select>
+                <select ng-model="rule.term.propertyName"
+                        ng-options="param.id as param.name for param in ctrl.searchParameters"
+                        ng-show="rule.term"
+                        class="form-control"
+                        ></select>
+                <select ng-model="rule.term.matchType"
+                        ng-options="type.id as type.name for type in
+                            ctrl.matchTypes"
+                        ng-show="rule.term"
+                        class="form-control"
+                        ></select>
+                <input ng-model="rule.term.matchValue" ng-show="rule.term" class="form-control"/>
+                <button class="btn btn-default btn-sm"
+                        ng-click="ctrl.addRule(booleanClauses, $index, rule.occurance, null)"
+                        ng-show="booleanClauses.length > 1 || rule.term"
+                        ><span class="glyphicon glyphicon-plus glyph-green"></span></button>
+                <button class="btn btn-default btn-sm"
+                        ng-click="ctrl.deleteRule(booleanClauses, $index)"
+                        ng-show="booleanClauses.length > 1"><span
+                        class="glyphicon glyphicon-remove glyph-red"></span>
+                </button>
+                <div ng-if="rule.booleanClauses" class="nested-block"
+                     ng-include="'advancedQueryRow'"
+                     onload="booleanClauses = rule.booleanClauses"></div>
+
+                <button class="btn btn-default btn-sm btn-nested"
+                        ng-click="ctrl.addNestedRule(rule, null)"
+                        ng-if="rule.occurance && !rule.term">
+                    Add nested rule
+                </button>
+            </li>
+        </ul>
+    </script>
+
+    <h1 class="page-header">Queries</h1>
+
+    <div class="queryOptions">
+        <div class="col-sm-2">
+            <label>Order:</label>
+            <div class="btn-group" role="group" aria-label="Order">
+                <button type="button" class="btn btn-sm"
+                        ng-click="ctrl.setOrder('ASC')"><span
+                        class="glyphicon glyphicon-sort-by-attributes"></span></button>
+                <button type="button" class="btn btn-sm"
+                        ng-click="ctrl.setOrder('DESC')"><span
+                        class="glyphicon glyphicon-sort-by-attributes-alt"></span></button>
+            </div>
+        </div>
+        <div class="col-sm-2 expand"><input type="checkbox" ng-model="ctrl.query.expand"> Expand
+            Results</div>
+
+    </div>
+
+    <div class="querySwitch"><ul class="nav nav-tabs querySwitch" role="tablist">
+        <li ng-class="ctrl.queryType === 'simple' ? 'active' : ''"><a
+                ng-click="ctrl.switchQueryView('simple')">Simple Query</a></li>
+        <li ng-class="ctrl.queryType === 'advanced' ? 'active' : ''"><a
+                ng-click="ctrl.switchQueryView('advanced')">Advanced Query</a></li>
+    </ul>
+    </div>
+
+    <div ng-show="ctrl.queryType === 'advanced'" ng-include="'advancedQueryRow'"></div>
+    <div ng-show="ctrl.queryType === 'simple'" class="form-inline">
+        <select ng-model="ctrl.simpleQuery[0].term.propertyName"
+                ng-options="param.id as param.name for param in ctrl.searchParameters"
+                class="form-control"></select>
+        <select ng-model="ctrl.simpleQuery[0].term.matchType"
+                ng-options="type.id as type.name for type in
+                            ctrl.matchTypes"
+                class="form-control"></select>
+        <input ng-model="ctrl.simpleQuery[0].term.matchValue" class="form-control"/>
+    </div>
+
+    <div class="querySubmit">
+        <button class="btn btn-primary"
+                ng-click="ctrl.submitQuery()"
+                ng-hide="ctrl.queryingResults"> Submit
+        </button>
+        <button class="btn btn-primary" ng-show="ctrl.queryingResults">
+                <span class="glyphicon glyphicon-refresh glyphicon-refresh-animate"
+                        ></span> Loading...
+        </button>
+    </div>
+
+    <h2 class="section-header"
+        ng-if="(ctrl.simpleResults && ctrl.queryType === 'simple') ||
+        (ctrl.advancedResults && ctrl.queryType === 'advanced')">Results</h2>
+    <div ng-if="ctrl.simpleResults.documentLinks.length > 0
+            || ctrl.advancedResults.documentLinks.length > 0">
+        <div  ng-show="ctrl.queryType === 'advanced'"
+              ng-repeat="selfLink in ctrl.advancedResults.documentLinks">
+            <a ng-href="{{baseUrl + selfLink}}">{{::selfLink}}</a>
+        </div>
+        <div  ng-show="ctrl.queryType === 'simple'"
+              ng-repeat="selfLink in ctrl.simpleResults.documentLinks">
+            <a ng-href="{{baseUrl + selfLink}}">{{::selfLink}}</a>
+        </div>
+    </div>
+    <div ng-if="ctrl.simpleResults.documentLinks.length == 0
+            && ctrl.advancedResults.documentLinks.length == 0">
+        <div class="zeroData">
+            <span class="glyphicon glyphicon-info-sign"></span> No documents were found.
+        </div>
+    </div>
+
+</div>

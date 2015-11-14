@@ -31,7 +31,7 @@ existing lucene index
 
 * Add QueryFilter for in-place evaluation of query specifications against documents.
 
-* Add support for JavaScript DCP services connected over WebSocket.
+* Add support for JavaScript XENON services connected over WebSocket.
 
 ## 0.1.0
 
