@@ -1,0 +1,74 @@
+<div ng-controller="HomeController as ctrl">
+    <div ng-if="!instance">
+        <h1 class="page-header">Home</h1>
+    <div ng-if="!instance">
+        <div class="system-state" ng-if="ctrl.system">
+            <div><label>Status:</label>
+            <span ng-if="ctrl.system.isStarted"
+                  class="glyphicon glyphicon-ok-sign glyph-green"></span>
+            <span ng-if="!ctrl.system.isStarted"
+                  class="glyphicon glyphicon-off glyph-red"></span></div>
+            <div ng-if="ctrl.system.isStopping"><label>Is stopping:</label>
+                <span class="glyphicon glyphicon-refresh glyphicon-refresh-animate"></span></div>
+            <div><label>Available Processors:</label>:
+                {{ctrl.system.systemInfo.availableProcessorCount}}
+            </div>
+        </div>
+
+        <div class="container-fluid margin-bottom-30">
+            <div class="col-md-4" ng-if="ctrl.memory.length > 0">
+                <nvd3 options="ctrl.donutOptions" data="ctrl.memory"></nvd3>
+                <p class="strong text-align-center">Memory (bytes)</p>
+            </div>
+
+
+            <div class="col-md-4" ng-if="ctrl.disk.length > 0">
+                <nvd3 options="ctrl.donutOptions" data="ctrl.disk"></nvd3>
+                <p class="strong text-align-center">Disk Space (bytes)</p>
+            </div>
+
+            <div class="col-md-4">
+                <div class="circle-text"><div>{{ctrl.singletonServices.length}}</div></div>
+                <p class="strong text-align-center">Service Instances</p>
+            </div>
+        </div>
+    </div>
+
+
+        <h2 class="section-header">Instances
+            <a href="#/{{path}}/{{service}}/addService"><span
+                    class="glyphicon glyphicon-plus glyph-green glyph-small"></span></a></span></h2>
+
+        <div ng-if="ctrl.documents.length > 0">
+            <table class="table table-striped">
+                <tr ng-repeat="result in ctrl.documents">
+                    <td><a
+                            ng-href="{{baseUrl + uiBase + ctrl.documents[$index]}}/home">{{ctrl.documents[$index]}}</a>
+                    </td>
+                    <td><button ng-click="deleteInstance(result)"><span
+                            class="glyph-red glyphicon glyphicon-remove"></span></button>
+                    </td>
+                </tr>
+            </table>
+        </div>
+        <div ng-if="ctrl.documents.length == 0">
+            <div class="zeroData">
+                <span class="glyphicon glyphicon-info-sign"></span> No services exist.
+            </div>
+        </div>
+    </div>
+
+    <div ng-if="instance">
+        <h1 class="page-header">Instance</h1>
+        <table class="table table-striped">
+            <tr ng-repeat="(key, value) in ctrl.instance">
+                <td class="medium">
+                    {{key}}
+                </td>
+                <td>
+                    {{value}}
+                </td>
+            </tr>
+        </table>
+    </div>
+</div>

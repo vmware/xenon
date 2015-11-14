@@ -1,0 +1,30 @@
+/*
+ * Copyright (c) 2015 VMware, Inc. All Rights Reserved.
+ */
+
+'use strict';
+
+angular.module('xenonDefault').service('QueryService', ['$http', 'UtilService',
+    function ($http, UtilService) {
+
+        this.postQuery = function (path, querySpec) {
+            var req = {
+                method: 'POST',
+                url: UtilService.getBaseUrl() + '/' + path + '/' + CONSTANTS.QUERY_SRVC,
+                headers: {
+                    'Content-Type': CONSTANTS.CONTENT_TYPE.JSON
+                },
+                data: querySpec
+            };
+            return $http(req);
+        };
+
+        this.getQueryResults = function (queryPath) {
+            var req = {
+                method: 'GET',
+                url: UtilService.getBaseUrl() + queryPath
+            };
+            return $http(req);
+        }
+
+    }]);

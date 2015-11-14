@@ -1,0 +1,12 @@
+<div ng-controller="ManageInstanceController as ctrl">
+    <h1 class="page-header">Update Service (PATCH)</h1>
+    <form class="form-horizontal">
+            <json-tree json="ctrl.patchDoc" collapsed-level="100" edit-level="high"
+                       json-keys="ctrl.documentKeys"></json-tree>
+        <div class="form-group">
+            <div class="col-sm-offset-2 col-sm-10">
+                <button ng-click="ctrl.patchDocument()" class="btn btn-primary">Update</button>
+            </div>
+        </div>
+    </form>
+</div>
