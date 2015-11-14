@@ -34,12 +34,12 @@ premise, and service deployments.
 ## Getting started
 
 For detailed information please refer to the [wiki](https://github.com/vmware/xenon/wiki). Tutorials for each
-Xenon service patterns will be made available in the coming months. Various samples are under the dcp-samples directory.
+Xenon service patterns will be made available in the coming months. Various samples are under the xenon-samples directory.
 
 ### Building the code
 
 A detailed list of pre-requisite tools can be found in the
-[developer guide](https://github.com/vmware/xenon/wiki/dcp-DeveloperGuide#prerequisites).
+[developer guide](https://github.com/vmware/xenon/wiki/xenon-DeveloperGuide#prerequisites).
 
 Once you have installed all the pre-requisites from the root of the repository execute the following command:
 

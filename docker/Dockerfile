@@ -3,10 +3,10 @@ FROM jre8-minimal:latest
 
 ADD root /
 
-RUN mkdir -p /opt/dcp
-ADD base /opt/dcp
+RUN mkdir -p /opt/xenon
+ADD base /opt/xenon
 
 RUN echo "hosts: files dns" > /etc/nsswitch.conf
 
-WORKDIR /opt/dcp
+WORKDIR /opt/xenon
 CMD bin/run.sh

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <profiles version="12">
-<profile kind="CodeFormatterProfile" name="VMware DCP" version="12">
+<profile kind="CodeFormatterProfile" name="VMware XENON" version="12">
 <setting id="org.eclipse.jdt.core.compiler.codegen.inlineJsrBytecode" value="enabled"/>
 <setting id="org.eclipse.jdt.core.compiler.codegen.targetPlatform" value="1.8"/>
 <setting id="org.eclipse.jdt.core.compiler.compliance" value="1.8"/>

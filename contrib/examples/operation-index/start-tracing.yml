@@ -4,4 +4,4 @@ path: /core/management
 
 body:
   enable: {{ .enable }}
-  kind: com:vmware:dcp:services:common:ServiceHostManagementService:ConfigureOperationTracingRequest
+  kind: com:vmware:xenon:services:common:ServiceHostManagementService:ConfigureOperationTracingRequest

@@ -1,0 +1,67 @@
+<div ng-controller="DashboardController as ctrl">
+    <h1 class="page-header">Dashboard</h1>
+
+    <div class="system-state" ng-if="ctrl.system">
+        <div><label>Status:</label>
+            <span ng-if="ctrl.system.isStarted"
+                  class="glyphicon glyphicon-ok-sign glyph-green"></span>
+            <span ng-if="!ctrl.system.isStarted"
+                  class="glyphicon glyphicon-off glyph-red"></span></div>
+        <div ng-if="ctrl.system.isStopping"><label>Is stopping:</label>
+            <span class="glyphicon glyphicon-refresh glyphicon-refresh-animate"></span></div>
+        <div><label>Available Processors:</label>:
+            {{ctrl.system.systemInfo.availableProcessorCount}}
+        </div>
+    </div>
+
+    <div class="container-fluid margin-bottom-30">
+        <div class="col-md-4" ng-if="ctrl.memory.length > 0">
+            <nvd3 options="ctrl.donutOptions" data="ctrl.memory"></nvd3>
+            <p class="strong text-align-center">Memory (bytes)</p>
+        </div>
+
+
+        <div class="col-md-4" ng-if="ctrl.disk.length > 0">
+            <nvd3 options="ctrl.donutOptions" data="ctrl.disk"></nvd3>
+            <p class="strong text-align-center">Disk Space (bytes)</p>
+        </div>
+
+        <div class="col-md-4">
+            <div class="circle-text"><div>{{ctrl.singletonServices.length}}</div></div>
+            <p class="strong text-align-center">Service Instances</p>
+        </div>
+    </div>
+    <div class="container-fluid">
+        <div class="col-md-4" ng-if="ctrl.nodeGroups.length > 0">
+            <table class="table table-striped table-bordered table-fixed">
+                <thead>
+                <tr>
+                    <th>Node Groups</th>
+                </tr>
+                </thead>
+
+                <tr ng-repeat="group in ctrl.nodeGroups">
+                    <td class="medium">
+                        {{group}}
+                    </td>
+                </tr>
+            </table>
+        </div>
+
+        <div class="col-md-4" ng-if="ctrl.factoryServices.length > 0">
+            <table class="table table-striped table-bordered table-fixed">
+                <thead>
+                <tr>
+                    <th>Factory Services</th>
+                </tr>
+                </thead>
+
+                <tr ng-repeat="factorySvc in ctrl.factoryServices">
+                    <td class="medium">
+                        <a href="#{{factorySvc}}/home">{{factorySvc}}</a>
+                    </td>
+                </tr>
+            </table>
+        </div>
+    </div>
+</div>

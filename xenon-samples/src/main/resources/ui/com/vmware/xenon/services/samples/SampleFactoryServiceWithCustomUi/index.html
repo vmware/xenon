@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta content="utf-8" http-equiv="encoding">
+</head>
+
+<body>
+<script>
+    var pathname = window.location.pathname;
+    pathname = pathname.substring(0, pathname.length - 3);
+    window.location.href = window.location.origin + "/core/ui/custom#" + pathname +
+    "/home";
+</script>
+</body>
+</html>

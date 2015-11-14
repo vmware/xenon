@@ -1,7 +1,7 @@
 #!/bin/sh -e
 
 # Workaround lock bug
-rm -f /var/log/dcpHost.*.log.lck
+rm -f /var/log/xenonHost.*.log.lck
 
 # Be receptive to core dumps
 ulimit -c unlimited
@@ -13,14 +13,14 @@ ulimit -n 65536
 JAVA_OPTS="${JAVA_OPTS:-} -Dfile.encoding=UTF-8"
 
 mkdir -p /tmp
-cd /opt/dcp
+cd /opt/xenon
 export PATH=$PWD/bin:$PATH
 
 echo "$(date): starting jvm"
 
 status=0
 set +e
-/opt/jre/bin/java ${JAVA_OPTS} -jar lib/dcp.jar "$@"
+/opt/jre/bin/java ${JAVA_OPTS} -jar lib/xenon.jar "$@"
 status=$?
 set -e
 
