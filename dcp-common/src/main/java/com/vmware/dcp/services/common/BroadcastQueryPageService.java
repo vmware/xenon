@@ -77,7 +77,9 @@ public class BroadcastQueryPageService extends StatelessService {
                         }
 
                         QueryTask rsp = o.getBody(QueryTask.class);
-                        responses.add(rsp);
+                        if (rsp != null) {
+                            responses.add(rsp);
+                        }
 
                         if (remainingQueries.decrementAndGet() == 0) {
                             rsp.results = collectPagesAndStartNewServices(responses, get);
@@ -93,7 +95,9 @@ public class BroadcastQueryPageService extends StatelessService {
         List<String> nextPageLinks = new ArrayList<>();
         List<String> prevPageLinks = new ArrayList<>();
         for (QueryTask rsp : responses) {
-            queryResults.add(rsp.results);
+            if (rsp.results != null) {
+                queryResults.add(rsp.results);
+            }
 
             if (rsp.results.nextPageLink != null) {
                 nextPageLinks.add(rsp.results.nextPageLink);
