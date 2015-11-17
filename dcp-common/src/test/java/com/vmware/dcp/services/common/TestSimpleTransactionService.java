@@ -17,8 +17,11 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
 import java.net.URI;
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Random;
 import java.util.UUID;
+import java.util.concurrent.Phaser;
 
 import org.junit.Before;
 import org.junit.Test;
@@ -41,7 +44,7 @@ import com.vmware.dcp.services.common.TestSimpleTransactionService.BankAccountSe
 
 public class TestSimpleTransactionService extends BasicTestCase {
 
-    static final int ACCOUNTS = 10;
+    static final int ACCOUNTS = 20;
 
     @Before
     public void setUp() throws Exception {
@@ -195,6 +198,81 @@ public class TestSimpleTransactionService extends BasicTestCase {
                 commit(txids[k]);
             }
         }
+
+        sumAccounts(null, 100.0 * ACCOUNTS);
+
+        deleteAccounts(null, ACCOUNTS);
+        countAccounts(null, 0);
+    }
+
+    @Test
+    public void testSingleClientMultiDocumentConcurrentTransactions() throws Throwable {
+        String txid = newTransaction();
+        for (int i = 0; i < ACCOUNTS; i++) {
+            String accountId = String.valueOf(i);
+            createAccount(txid, accountId, true);
+            depositToAccount(txid, accountId, 100.0, true);
+        }
+        commit(txid);
+
+        int numOfTransfers = ACCOUNTS / 3;
+        String[] txids = new String[numOfTransfers];
+        for (int k = 0; k < numOfTransfers; k++) {
+            txids[k] = newTransaction();
+        }
+
+        // each transaction will issue at least 2 operations: withdraw, (potentially deposit) and commit/abort
+        Phaser phaser = new Phaser(numOfTransfers * 2);
+        Collection<Operation> requests = new ArrayList<Operation>(numOfTransfers);
+        Random rand = new Random();
+        for (int k = 0; k < numOfTransfers; k++) {
+            final String tid = txids[k];
+            int i = rand.nextInt(ACCOUNTS);
+            int j = rand.nextInt(ACCOUNTS);
+            if (i == j) {
+                j = (j + 1) % ACCOUNTS;
+            }
+            final int final_j = j;
+            int amount = 1 + rand.nextInt(3);
+            Operation withdraw = createWithdrawOperation(tid, String.valueOf(i), amount);
+            withdraw.setCompletion((o, e) -> {
+                phaser.arrive();
+                if (e != null) {
+                    Operation abort = SimpleTransactionService.TxUtils.buildAbortRequest(this.host, tid);
+                    abort.setCompletion((op, ex) -> {
+                        phaser.arrive();
+                    });
+                    this.host.send(abort);
+                    return;
+                }
+                phaser.register();
+                Operation deposit = createDepositOperation(tid, String.valueOf(final_j), amount);
+                deposit.setCompletion((op, ex) -> {
+                    phaser.arrive();
+                    if (ex != null) {
+                        Operation abort = SimpleTransactionService.TxUtils.buildAbortRequest(this.host, tid);
+                        abort.setCompletion((op2, ex2) -> {
+                            phaser.arrive();
+                        });
+                        this.host.send(abort);
+                        return;
+                    }
+                    Utils.logWarning("Transaction %s: Committing", tid);
+                    Operation commit = SimpleTransactionService.TxUtils.buildCommitRequest(this.host, tid);
+                    commit.setCompletion((op2, ex2) -> {
+                        phaser.arrive();
+                    });
+                    this.host.send(commit);
+                });
+                this.host.send(deposit);
+            });
+            requests.add(withdraw);
+        }
+
+        for (Operation withdraw : requests) {
+            this.host.send(withdraw);
+        }
+        phaser.awaitAdvance(0);
 
         sumAccounts(null, 100.0 * ACCOUNTS);
 
@@ -386,27 +464,19 @@ public class TestSimpleTransactionService extends BasicTestCase {
         if (independentTest) {
             this.host.testStart(1);
         }
-        BankAccountServiceRequest body = new BankAccountServiceRequest();
-        body.kind = BankAccountServiceRequest.Kind.DEPOSIT;
-        body.amount = amountToDeposit;
-        Operation patch = Operation
-                .createPatch(buildAccountUri(accountId))
-                .setBody(body)
-                .setCompletion((o, e) -> {
-                    if (operationFailed(o, e)) {
-                        if (e instanceof IllegalStateException) {
-                            ex[0] = e;
-                            this.host.completeIteration();
-                        } else {
-                            this.host.failIteration(e);
-                        }
-                        return;
-                    }
+        Operation patch = createDepositOperation(transactionId, accountId, amountToDeposit);
+        patch.setCompletion((o, e) -> {
+            if (operationFailed(o, e)) {
+                if (e instanceof IllegalStateException) {
+                    ex[0] = e;
                     this.host.completeIteration();
-                });
-        if (transactionId != null) {
-            patch.setTransactionId(transactionId);
-        }
+                } else {
+                    this.host.failIteration(e);
+                }
+                return;
+            }
+            this.host.completeIteration();
+        });
         this.host.send(patch);
         if (independentTest) {
             this.host.testWait();
@@ -415,6 +485,20 @@ public class TestSimpleTransactionService extends BasicTestCase {
         if (ex[0] != null) {
             throw ex[0];
         }
+    }
+
+    private Operation createDepositOperation(String transactionId, String accountId, double amount) {
+        BankAccountServiceRequest body = new BankAccountServiceRequest();
+        body.kind = BankAccountServiceRequest.Kind.DEPOSIT;
+        body.amount = amount;
+        Operation patch = Operation
+                .createPatch(buildAccountUri(accountId))
+                .setBody(body);
+        if (transactionId != null) {
+            patch.setTransactionId(transactionId);
+        }
+
+        return patch;
     }
 
     private void withdrawFromAccount(String transactionId, String accountId,
@@ -428,24 +512,19 @@ public class TestSimpleTransactionService extends BasicTestCase {
         BankAccountServiceRequest body = new BankAccountServiceRequest();
         body.kind = BankAccountServiceRequest.Kind.WITHDRAW;
         body.amount = amountToWithdraw;
-        Operation patch = Operation
-                .createPatch(buildAccountUri(accountId))
-                .setBody(body)
-                .setCompletion((o, e) -> {
-                    if (operationFailed(o, e)) {
-                        if (e instanceof IllegalStateException) {
-                            ex[0] = e;
-                            this.host.completeIteration();
-                        } else {
-                            this.host.failIteration(e);
-                        }
-                        return;
-                    }
+        Operation patch = createWithdrawOperation(transactionId, accountId, amountToWithdraw);
+        patch.setCompletion((o, e) -> {
+            if (operationFailed(o, e)) {
+                if (e instanceof IllegalStateException) {
+                    ex[0] = e;
                     this.host.completeIteration();
-                });
-        if (transactionId != null) {
-            patch.setTransactionId(transactionId);
-        }
+                } else {
+                    this.host.failIteration(e);
+                }
+                return;
+            }
+            this.host.completeIteration();
+        });
         this.host.send(patch);
         if (independentTest) {
             this.host.testWait();
@@ -454,6 +533,20 @@ public class TestSimpleTransactionService extends BasicTestCase {
         if (ex[0] != null) {
             throw ex[0];
         }
+    }
+
+    private Operation createWithdrawOperation(String transactionId, String accountId, double amount) {
+        BankAccountServiceRequest body = new BankAccountServiceRequest();
+        body.kind = BankAccountServiceRequest.Kind.WITHDRAW;
+        body.amount = amount;
+        Operation patch = Operation
+                .createPatch(buildAccountUri(accountId))
+                .setBody(body);
+        if (transactionId != null) {
+            patch.setTransactionId(transactionId);
+        }
+
+        return patch;
     }
 
     private void verifyAccountBalance(String transactionId, String accountId, double expectedBalance)
