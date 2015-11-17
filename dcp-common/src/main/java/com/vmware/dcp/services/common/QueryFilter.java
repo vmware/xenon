@@ -24,6 +24,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.NoSuchElementException;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import com.vmware.dcp.common.ReflectionUtils;
 import com.vmware.dcp.common.ServiceDocument;
@@ -409,6 +411,22 @@ public class QueryFilter {
             return true;
         }
 
+        private boolean evaluateString(Term term, String o) {
+            if (term.term.matchType == MatchType.TERM) {
+                return o.equals(term.term.matchValue);
+            } else if (term.term.matchType == MatchType.WILDCARD) {
+                String normalize = term.term.matchValue
+                                        .replace("*", ".*")
+                                        .replace("+", ".+");
+                String regex = "(" + normalize + ")";
+                Pattern pattern = Pattern.compile(regex);
+                Matcher matcher = pattern.matcher(o);
+                return matcher.matches();
+            }
+
+            return true;
+        }
+
         @SuppressWarnings("unchecked")
         private boolean evaluateTerm(Term term, Object o, PropertyDescription pd, int depth) {
             if (o == null) {
@@ -421,11 +439,11 @@ public class QueryFilter {
                 }
 
                 if (term.negate) {
-                    if (o.equals(term.term.matchValue)) {
+                    if (evaluateString(term, (String)o)) {
                         return false;
                     }
                 } else {
-                    if (!o.equals(term.term.matchValue)) {
+                    if (!evaluateString(term, (String) o)) {
                         return false;
                     }
                 }
@@ -485,7 +503,8 @@ public class QueryFilter {
         static Evaluator create(Conjunction conjunction) throws QueryFilterException {
             ArrayList<Term> terms = new ArrayList<>();
             for (Term term : conjunction) {
-                if (term.term.matchType != MatchType.TERM) {
+                if (term.term.matchType != MatchType.TERM &&
+                        term.term.matchType != MatchType.WILDCARD) {
                     throw new UnsupportedMatchTypeException(term);
                 }
 
