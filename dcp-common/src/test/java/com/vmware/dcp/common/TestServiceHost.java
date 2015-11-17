@@ -116,12 +116,13 @@ public class TestServiceHost {
         this.host.setMaintenanceIntervalMicros(TimeUnit.MILLISECONDS.toMicros(100));
         this.host.start();
 
-        Service s = this.host.startServiceAndWait(MinimalTestService.class, UUID.randomUUID()
-                .toString());
-        OperationContext.setAuthorizationContext(this.host.getSystemAuthorizationContext());
+        this.host.setSystemAuthorizationContext();
+        Service s = this.host.startServiceAndWait(MinimalTestService.class, UUID.randomUUID().toString());
         String userPath = this.host.createUserService("someone@example.org");
-        OperationContext.setAuthorizationContext(null);
+        this.host.resetAuthorizationContext();
+
         this.host.assumeIdentity(userPath, null);
+
         // set limit for this user to 1 request / second
         this.host.setRequestRateLimit(userPath, 1.0);
         Thread.sleep(this.host.getMaintenanceIntervalMicros() / 1000);
