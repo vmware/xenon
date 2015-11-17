@@ -109,6 +109,7 @@ public class TestODataQueryService {
     @Test
     public void uriEncodedQueries() throws Throwable {
         testSimpleStringQuery();
+        testSimpleBooleanStringQuery();
         testGTQuery();
         testGEQuery();
         testLTQuery();
@@ -135,6 +136,46 @@ public class TestODataQueryService {
         outState = Utils.fromJson(
                 out.get(inState.documentSelfLink), ExampleService.ExampleServiceState.class);
         assertTrue(outState.name.equals(inState.name));
+    }
+
+    private void testSimpleBooleanStringQuery() throws Throwable {
+        ExampleService.ExampleServiceState inState1 = new ExampleService.ExampleServiceState();
+        inState1.name = "TEST STRING 1";
+        postExample(inState1);
+
+        ExampleService.ExampleServiceState inState2 = new ExampleService.ExampleServiceState();
+        inState2.name = "TEST STRING 2";
+        postExample(inState2);
+
+        ExampleService.ExampleServiceState inState3 = new ExampleService.ExampleServiceState();
+        inState3.name = "TEST STRING 3";
+        postExample(inState3);
+
+        String queryString = "$filter=(name eq 'TEST STRING 1') or (name eq 'TEST STRING 2')";
+
+        Map<String, Object> out = doQuery(queryString);
+        assertNotNull(out);
+        assertEquals(2, out.size());
+
+        ExampleService.ExampleServiceState outState1 = Utils.fromJson(
+                out.get(inState1.documentSelfLink), ExampleService.ExampleServiceState.class);
+        assertTrue(outState1.name.equals(inState1.name));
+
+        ExampleService.ExampleServiceState outState2 = Utils.fromJson(
+                out.get(inState2.documentSelfLink), ExampleService.ExampleServiceState.class);
+        assertTrue(outState2.name.equals(inState2.name));
+
+        out = doFactoryServiceQuery(queryString);
+        assertNotNull(out);
+        assertEquals(2, out.size());
+
+        outState1 = Utils.fromJson(
+                out.get(inState1.documentSelfLink), ExampleService.ExampleServiceState.class);
+        assertTrue(outState1.name.equals(inState1.name));
+
+        outState2 = Utils.fromJson(
+                out.get(inState2.documentSelfLink), ExampleService.ExampleServiceState.class);
+        assertTrue(outState2.name.equals(inState2.name));
     }
 
     private void testGTQuery() throws Throwable {

@@ -27,6 +27,7 @@ import org.apache.lucene.search.TermQuery;
 import org.apache.lucene.search.WildcardQuery;
 
 import com.vmware.dcp.common.ServiceDocumentDescription;
+import com.vmware.dcp.services.common.QueryTask.Query.Occurance;
 
 /**
  * Convert {@link QueryTask.QuerySpecification} to native Lucene query.
@@ -123,14 +124,14 @@ class LuceneQueryConverter {
 
         // Recursively build the boolean query. We allow arbitrary nesting and grouping.
         for (QueryTask.Query q : query.booleanClauses) {
-            buildBooleanQuery(parentQuery, q);
+            buildBooleanQuery(parentQuery, q, query.occurance);
         }
         return parentQuery;
     }
 
-    static void buildBooleanQuery(BooleanQuery parent, QueryTask.Query clause) {
+    static void buildBooleanQuery(BooleanQuery parent, QueryTask.Query clause, Occurance queryOccurance) {
         Query lq = convertToLuceneQuery(clause);
-        BooleanClause bc = new BooleanClause(lq, convertToLuceneOccur(clause.occurance));
+        BooleanClause bc = new BooleanClause(lq, convertToLuceneOccur(queryOccurance));
         parent.add(bc);
     }
 
