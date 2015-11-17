@@ -24,6 +24,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.NoSuchElementException;
+import java.util.regex.Pattern;
 
 import com.vmware.dcp.common.ReflectionUtils;
 import com.vmware.dcp.common.ServiceDocument;
@@ -110,12 +111,23 @@ public class QueryFilter {
     static class Term {
         final QueryTerm term;
         final boolean negate;
+        final Pattern pattern;
 
         final List<String> propertyParts;
 
         Term(QueryTerm term, boolean negate) {
             this.term = term;
             this.negate = negate;
+
+            if (term.matchType == MatchType.WILDCARD) {
+                String normalize = term.matchValue
+                        .replace("*", ".*")
+                        .replace("+", ".+");
+                String regex = "^(" + normalize + ")$";
+                this.pattern = Pattern.compile(regex);
+            } else {
+                this.pattern = null;
+            }
 
             // Build collection of parts the propertyName is made up of.
             // Cheaper to build once than to build at run time.
@@ -409,6 +421,14 @@ public class QueryFilter {
             return true;
         }
 
+        private boolean evaluateString(Term term, String o) {
+            if (term.term.matchType == MatchType.WILDCARD) {
+                return term.pattern.matcher(o).matches();
+            }
+
+            return o.equals(term.term.matchValue);
+        }
+
         @SuppressWarnings("unchecked")
         private boolean evaluateTerm(Term term, Object o, PropertyDescription pd, int depth) {
             if (o == null) {
@@ -421,11 +441,11 @@ public class QueryFilter {
                 }
 
                 if (term.negate) {
-                    if (o.equals(term.term.matchValue)) {
+                    if (evaluateString(term, (String)o)) {
                         return false;
                     }
                 } else {
-                    if (!o.equals(term.term.matchValue)) {
+                    if (!evaluateString(term, (String) o)) {
                         return false;
                     }
                 }
@@ -485,7 +505,8 @@ public class QueryFilter {
         static Evaluator create(Conjunction conjunction) throws QueryFilterException {
             ArrayList<Term> terms = new ArrayList<>();
             for (Term term : conjunction) {
-                if (term.term.matchType != MatchType.TERM) {
+                if (term.term.matchType != MatchType.TERM &&
+                        term.term.matchType != MatchType.WILDCARD) {
                     throw new UnsupportedMatchTypeException(term);
                 }
 
