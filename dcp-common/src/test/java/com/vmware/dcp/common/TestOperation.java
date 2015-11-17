@@ -18,6 +18,7 @@ import static org.junit.Assert.assertTrue;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Consumer;
 
 import org.junit.Test;
 
@@ -26,6 +27,7 @@ import com.vmware.dcp.common.test.MinimalTestServiceState;
 import com.vmware.dcp.services.common.MinimalTestService;
 
 public class TestOperation extends BasicReusableHostTestCase {
+    private List<Service> services;
 
     @Test
     public void setterValidation() {
@@ -96,7 +98,7 @@ public class TestOperation extends BasicReusableHostTestCase {
 
     @Test
     public void operationWithContextId() throws Throwable {
-        List<Service> services = this.host.doThroughputServiceStart(1,
+        this.services = this.host.doThroughputServiceStart(1,
                 MinimalTestService.class,
                 this.host.buildMinimalTestState(),
                 EnumSet.noneOf(Service.ServiceOption.class), null);
@@ -109,7 +111,7 @@ public class TestOperation extends BasicReusableHostTestCase {
 
         this.host.testStart(1);
         this.host.send(Operation
-                .createPatch(services.get(0).getUri())
+                .createPatch(this.services.get(0).getUri())
                 .forceRemote()
                 .setBody(body)
                 .setContextId(body.stringValue)
@@ -125,7 +127,7 @@ public class TestOperation extends BasicReusableHostTestCase {
 
     @Test
     public void operationWithoutContextId() throws Throwable {
-        List<Service> services = this.host.doThroughputServiceStart(1,
+        this.services = this.host.doThroughputServiceStart(1,
                 MinimalTestService.class,
                 this.host.buildMinimalTestState(),
                 EnumSet.noneOf(Service.ServiceOption.class), null);
@@ -136,7 +138,7 @@ public class TestOperation extends BasicReusableHostTestCase {
 
         this.host.testStart(1);
         this.host.send(Operation
-                .createPatch(services.get(0).getUri())
+                .createPatch(this.services.get(0).getUri())
                 .forceRemote()
                 .setBody(body)
                 .setCompletion((o, e) -> {
@@ -151,4 +153,45 @@ public class TestOperation extends BasicReusableHostTestCase {
         this.host.testWait();
     }
 
+    @Test
+    public void testSendWithOnHost() throws Throwable {
+        testSendWith((o) -> o.sendWith(this.host));
+    }
+
+    @Test
+    public void testSendWithOnService() throws Throwable {
+        testSendWith((o) -> o.sendWith(this.services.get(0)));
+    }
+
+    @Test
+    public void testSendWithOnServiceClient() throws Throwable {
+        testSendWith((o) -> o.sendWith(this.host.getClient()));
+    }
+
+    public void testSendWith(Consumer<Operation> sendOperation) throws Throwable {
+        this.services = this.host.doThroughputServiceStart(1,
+                MinimalTestService.class,
+                this.host.buildMinimalTestState(),
+                EnumSet.noneOf(Service.ServiceOption.class), null);
+
+        MinimalTestServiceState body = new MinimalTestServiceState();
+        body.id = MinimalTestService.STRING_MARKER_HAS_CONTEXT_ID;
+        body.stringValue = "request-id";
+
+        this.host.testStart(1);
+        sendOperation.accept(Operation
+                .createPatch(this.services.get(0).getUri())
+                .forceRemote()
+                .setBody(body)
+                .setContextId(body.stringValue)
+                .setReferer(this.host.getReferer())
+                .setCompletion((o, e) -> {
+                    if (e != null) {
+                        this.host.failIteration(e);
+                        return;
+                    }
+                    this.host.completeIteration();
+                }));
+        this.host.testWait();
+    }
 }
