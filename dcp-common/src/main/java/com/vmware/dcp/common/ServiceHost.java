@@ -1806,10 +1806,13 @@ public class ServiceHost {
                 Long finalVersion = version;
 
                 post.nestCompletion((o) -> {
-                    normalizeInitialServiceState(s, post, finalVersion,
-                            hasClientSuppliedInitialState);
-                    if (!authorizeServiceState(s, post.hasBody() ? post.getBody(s.getStateType())
-                            : null, post)) {
+                    ServiceDocument document = null;
+                    if (post.hasBody()) {
+                        document = post.getBody(s.getStateType());
+                    }
+
+                    normalizeInitialServiceState(s, post, finalVersion);
+                    if (!authorizeServiceState(s, document, post)) {
                         post.fail(Operation.STATUS_CODE_FORBIDDEN);
                         return;
                     }
@@ -1903,8 +1906,7 @@ public class ServiceHost {
      * Invoke the service setInitialState method and ensures the state has proper self link and
      * kind. It caches the state and sets it as the body to the post operation
      */
-    void normalizeInitialServiceState(Service s, Operation post, Long finalVersion,
-            boolean hasClientSuppliedState) {
+    void normalizeInitialServiceState(Service s, Operation post, Long finalVersion) {
         if (!post.hasBody()) {
             return;
         }
