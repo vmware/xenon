@@ -20,6 +20,7 @@ import static org.junit.Assert.fail;
 import java.io.File;
 import java.net.URI;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.TimeoutException;
 
@@ -163,19 +164,53 @@ public class LoaderServiceTest {
                 .createPost(defaultURI)
                 .setBody("");
         this.host.send(createPost);
+        verifyService(defaultURI);
 
+        // specify an absolute URI for the path
+        URI absUri = UriUtils.buildUri(this.host,
+                UriUtils.buildUriPath(LoaderFactoryService.SELF_LINK, "absolute"));
+        LoaderServiceState d = new LoaderServiceState();
+        d.documentSelfLink = "absolute";
+        d.path = newDirectory.getPath();
+        d.servicePackages = new HashMap<String, LoaderService.LoaderServiceInfo>();
+        this.host.testStart(1);
+        this.host.send(Operation
+                   .createPost(UriUtils.buildUri(this.host, LoaderFactoryService.class))
+                   .setBody(d)
+                   .setReferer(UriUtils.buildUri(this.host, ""))
+                   .setCompletion((createOp, createEx) -> {
+                       if (createEx != null) {
+                           this.host.failIteration(createEx);
+                           return;
+                       }
+                       Operation post = Operation
+                                   .createPost(absUri)
+                                   .setBody(d).setReferer(UriUtils.buildUri(this.host, ""))
+                                   .setCompletion((postOp, postEx) -> {
+                                       if (postEx != null) {
+                                           this.host.failIteration(createEx);
+                                           return;
+                                       }
+                                       this.host.completeIteration();
+                                   });
+                       this.host.sendRequest(post);
+                   }));
+        this.host.testWait();
+        verifyService(absUri);
+    }
+
+    private void verifyService(URI serviceUri) throws Throwable {
         // Verify the services are loaded
         Date expiration = this.host.getTestExpiration();
         while (new Date().before(expiration)) {
-            defaultServiceState = this.host
-                    .getServiceState(null, LoaderServiceState.class, defaultURI);
-
+            LoaderServiceState serviceState = this.host
+                    .getServiceState(null, LoaderServiceState.class, serviceUri);
             // Now there is one service package
             this.host.log("Verifying existence of loaded service packages");
-            if (defaultServiceState.servicePackages.size() == 1) {
+            if (serviceState.servicePackages.size() == 1) {
                 // Expecting 3 test service classes in the package
                 this.host.log("Verifying loaded service classes");
-                if (defaultServiceState.servicePackages.values().iterator()
+                if (serviceState.servicePackages.values().iterator()
                         .next().serviceClasses.size() == 3) {
                     this.host.log("Found expected service classes");
                     break;
@@ -185,7 +220,6 @@ public class LoaderServiceTest {
             } else {
                 this.host.log("Waiting for service packages to be loaded");
             }
-
             Thread.sleep(1000L);
         }
 
