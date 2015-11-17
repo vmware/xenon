@@ -151,4 +151,32 @@ public class TestOperation extends BasicReusableHostTestCase {
         this.host.testWait();
     }
 
+    @Test
+    public void sendOperationWithHost() throws Throwable {
+        List<Service> services = this.host.doThroughputServiceStart(1,
+                MinimalTestService.class,
+                this.host.buildMinimalTestState(),
+                EnumSet.noneOf(Service.ServiceOption.class), null);
+
+        MinimalTestServiceState body = new MinimalTestServiceState();
+        body.id = MinimalTestService.STRING_MARKER_HAS_CONTEXT_ID;
+        body.stringValue = "request-id";
+
+        this.host.testStart(1);
+        Operation
+                .createPatch(services.get(0).getUri())
+                .forceRemote()
+                .setBody(body)
+                .setContextId(body.stringValue)
+                .setReferer(this.host.getReferer())
+                .setCompletion((o, e) -> {
+                    if (e != null) {
+                        this.host.failIteration(e);
+                        return;
+                    }
+                    this.host.completeIteration();
+                })
+                .sendWith(this.host);
+        this.host.testWait();
+    }
 }
