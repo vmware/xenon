@@ -54,11 +54,10 @@ class ServiceHostMaintenanceTracker {
         }
     }
 
-    public void performMaintenance(Operation op) {
-        long end = Utils.getNowMicrosUtc() + this.host.getMaintenanceIntervalMicros();
-        while (Utils.getNowMicrosUtc() < end) {
+    public void performMaintenance(Operation op, long deadline) {
+        while (Utils.getNowMicrosUtc() < deadline) {
             if (this.host.isStopping()) {
-                op.fail(new CancellationException("Host is not started"));
+                op.fail(new CancellationException("Host is stopping"));
                 return;
             }
 
@@ -67,14 +66,12 @@ class ServiceHostMaintenanceTracker {
             // the nextExpiration map is a concurrent data structure, but since each value is a Set, we want
             // to make sure modifications to that Set are not lost if a concurrent add() is happening
             synchronized (this) {
-
                 // get any services set to expire within the current maintenance interval
                 Entry<Long, Set<String>> e = this.nextExpiration.firstEntry();
-                if (e == null || e.getKey() > end) {
+                if (e == null || e.getKey() > deadline) {
                     // no service requires maintenance, yet
-                    break;
+                    return;
                 }
-
                 services = e.getValue();
                 this.nextExpiration.remove(e.getKey());
             }
@@ -128,12 +125,12 @@ class ServiceHostMaintenanceTracker {
                             }
 
                             // schedule again, for next maintenance interval
-                        schedule(s);
-                        if (ex != null) {
-                            this.host.log(Level.WARNING, "Service %s failed maintenance: %s",
-                                    servicePath, Utils.toString(ex));
-                        }
-                    });
+                            schedule(s);
+                            if (ex != null) {
+                                this.host.log(Level.WARNING, "Service %s failed maintenance: %s",
+                                        servicePath, Utils.toString(ex));
+                            }
+                        });
         this.host.run(() -> {
             try {
                 OperationContext.setAuthorizationContext(this.host
