@@ -103,9 +103,13 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
     private final String EXAMPLES_BODIES_FILE = "example_bodies.json";
     private final String INDEX_DIR_NAME = "lucene510";
 
+    private FaultInjectionLuceneDocumentIndexService indexService;
+
     @Override
     public void beforeHostStart(VerificationHost host) {
         host.setMaintenanceIntervalMicros(TimeUnit.MILLISECONDS.toMicros(100));
+        this.indexService = new FaultInjectionLuceneDocumentIndexService();
+        host.setDocumentIndexingService(this.indexService);
     }
 
     @Test
@@ -159,6 +163,8 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
     @Test
     public void corruptIndexWhileRunning() throws Throwable {
         this.host.setOperationTimeOutMicros(TimeUnit.SECONDS.toMicros(5));
+        this.host.setServiceStateCaching(false);
+
         Map<URI, ExampleServiceState> exampleServices = this.host.doFactoryChildServiceStart(null,
                 this.serviceCount, ExampleServiceState.class,
                 (o) -> {
@@ -167,21 +173,13 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
                     o.setBody(b);
                 }, UriUtils.buildUri(this.host, ExampleFactoryService.SELF_LINK));
 
-        this.host.stop();
-        FaultInjectionLuceneDocumentIndexService indexService = new FaultInjectionLuceneDocumentIndexService();
-        // use a service that we can poke while host is running.
-        this.host.setDocumentIndexingService(indexService);
-        this.host.setServiceStateCaching(false);
-        this.host.setPort(0);
-        this.host.start();
 
         exampleServices = updateUriMapWithNewPort(this.host.getPort(), exampleServices);
-
         // make sure all services have started
         this.host.getServiceState(null, ExampleServiceState.class, exampleServices.keySet());
 
         // close the writer!
-        indexService.closeWriter();
+        this.indexService.closeWriter();
         // issue some updates, which at least some failing and expect recovery
         updateServices(exampleServices, true);
 
