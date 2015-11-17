@@ -167,8 +167,8 @@ public class LuceneDocumentIndexService extends StatelessService {
     protected final Object searchSync = new Object();
     protected IndexSearcher searcher = null;
     protected IndexWriter writer = null;
-    protected final Semaphore writerAvailable =
-            new Semaphore(UPDATE_THREAD_COUNT + QUERY_THREAD_COUNT);
+    protected final Semaphore writerAvailable = new Semaphore(
+            UPDATE_THREAD_COUNT + QUERY_THREAD_COUNT);
 
     protected Map<String, QueryTask> activeQueries = new ConcurrentSkipListMap<>();
 
@@ -314,7 +314,8 @@ public class LuceneDocumentIndexService extends StatelessService {
         CheckIndex chkIndex = new CheckIndex(dir);
 
         try {
-            for (CheckIndex.Status.SegmentInfoStatus segmentInfo : chkIndex.checkIndex().segmentInfos) {
+            for (CheckIndex.Status.SegmentInfoStatus segmentInfo : chkIndex
+                    .checkIndex().segmentInfos) {
                 if (!segmentInfo.version.equals(Version.LATEST)) {
                     logInfo("Found Index version %s", segmentInfo.version.toString());
                     doUpgrade = true;
@@ -875,9 +876,9 @@ public class LuceneDocumentIndexService extends StatelessService {
                 end = Utils.getNowMicrosUtc();
 
                 if (hasOption(ServiceOption.INSTRUMENTATION)) {
-                    String statName = options.contains(QueryOption.INCLUDE_ALL_VERSIONS) ?
-                            STAT_NAME_QUERY_ALL_VERSIONS_DURATION_MICROS :
-                            STAT_NAME_QUERY_DURATION_MICROS;
+                    String statName = options.contains(QueryOption.INCLUDE_ALL_VERSIONS)
+                            ? STAT_NAME_QUERY_ALL_VERSIONS_DURATION_MICROS
+                            : STAT_NAME_QUERY_DURATION_MICROS;
                     ServiceStat st = getHistogramStat(statName);
                     setStat(st, queryTime);
 
@@ -936,9 +937,11 @@ public class LuceneDocumentIndexService extends StatelessService {
         // forward requests to this node
         URI forwarderUri = UriUtils.buildForwardToPeerUri(u, getHost().getId(),
                 ServiceUriPaths.DEFAULT_NODE_SELECTOR, EnumSet.noneOf(ServiceOption.class));
-        String nextLink = forwarderUri.getPath() + UriUtils.URI_QUERY_CHAR + forwarderUri.getQuery();
+        String nextLink = forwarderUri.getPath() + UriUtils.URI_QUERY_CHAR
+                + forwarderUri.getQuery();
 
-        URI forwarderUriOfPrevLinkForNewPage = UriUtils.buildForwardToPeerUri(op.getReferer(), getHost().getId(),
+        URI forwarderUriOfPrevLinkForNewPage = UriUtils.buildForwardToPeerUri(op.getReferer(),
+                getHost().getId(),
                 ServiceUriPaths.DEFAULT_NODE_SELECTOR, EnumSet.noneOf(ServiceOption.class));
         String prevLinkForNewPage = forwarderUriOfPrevLinkForNewPage.getPath()
                 + UriUtils.URI_QUERY_CHAR + forwarderUriOfPrevLinkForNewPage.getQuery();
@@ -1497,7 +1500,7 @@ public class LuceneDocumentIndexService extends StatelessService {
     private boolean checkAndDeleteExpiratedDocuments(String link, IndexSearcher searcher,
             Integer docId,
             Document doc, long now)
-            throws Throwable {
+                    throws Throwable {
         long expiration = 0;
         boolean hasExpired = false;
         IndexableField expirationValue = doc
@@ -1507,20 +1510,28 @@ public class LuceneDocumentIndexService extends StatelessService {
             hasExpired = expiration <= now;
         }
 
-        if (hasExpired) {
-            adjustStat(STAT_NAME_DOCUMENT_EXPIRATION_COUNT, 1);
-            if (searcher != null) {
-                doc = searcher.getIndexReader().document(docId, this.fieldsToLoadWithExpand);
-            }
-            ServiceDocument s = getStateFromLuceneDocument(doc, link);
-            deleteAllDocumentsForSelfLink(Operation.createDelete(null), s);
-            return true;
+        if (!hasExpired) {
+            return false;
         }
 
-        return false;
+        adjustStat(STAT_NAME_DOCUMENT_EXPIRATION_COUNT, 1);
+
+        // update document with one that has all fields, including binary state
+        doc = searcher.getIndexReader().document(docId, this.fieldsToLoadWithExpand);
+
+        ServiceDocument s = null;
+        try {
+            s = getStateFromLuceneDocument(doc, link);
+        } catch (Throwable e) {
+            logWarning("Error deserializing state for %s: %s", link, e.getMessage());
+        }
+
+        deleteAllDocumentsForSelfLink(Operation.createDelete(null), link, s);
+        return true;
     }
 
-    private void checkDocumentRetentionLimit(ServiceDocument state, ServiceDocumentDescription desc) {
+    private void checkDocumentRetentionLimit(ServiceDocument state,
+            ServiceDocumentDescription desc) {
         if (this.selfLinksRequiringRetentionLimit.containsKey(state.documentSelfLink)) {
             return;
         }
@@ -1550,12 +1561,17 @@ public class LuceneDocumentIndexService extends StatelessService {
         reOpenWriterSynchronously();
     }
 
-    private void deleteAllDocumentsForSelfLink(Operation postOrDelete, ServiceDocument state)
-            throws Throwable {
-        deleteDocumentsFromIndex(postOrDelete, state.documentSelfLink, null, 0);
+    private void deleteAllDocumentsForSelfLink(Operation postOrDelete, String link,
+            ServiceDocument state)
+                    throws Throwable {
+        deleteDocumentsFromIndex(postOrDelete, link, null, 0);
         ServiceStat st = getStat(STAT_NAME_SERVICE_DELETE_COUNT);
         adjustStat(st, 1);
-        logFine("%s expired", state.documentSelfLink);
+        logFine("%s expired", link);
+        if (state == null) {
+            return;
+        }
+
         applyActiveQueries(state, null);
         // remove service, if its running
         sendRequest(Operation.createDelete(this, state.documentSelfLink)
