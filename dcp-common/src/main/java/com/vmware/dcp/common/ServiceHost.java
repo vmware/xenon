@@ -3590,10 +3590,12 @@ public class ServiceHost {
      * Initiates host periodic maintenance cycle
      */
     private void scheduleMaintenance() {
-        this.state.lastMaintenanceTimeUtcMicros = Utils.getNowMicrosUtc();
         this.maintenanceTask = schedule(
-                () -> performMaintenanceStage(Operation.createPost(getUri()),
-                        MaintenanceStage.UTILS),
+                () -> {
+                    this.state.lastMaintenanceTimeUtcMicros = Utils.getNowMicrosUtc();
+                    performMaintenanceStage(Operation.createPost(getUri()),
+                            MaintenanceStage.UTILS);
+                } ,
                 getMaintenanceIntervalMicros(),
                 TimeUnit.MICROSECONDS);
     }
@@ -3608,13 +3610,16 @@ public class ServiceHost {
 
         try {
             long now = Utils.getNowMicrosUtc();
+            long deadline = this.state.lastMaintenanceTimeUtcMicros
+                    + this.state.maintenanceIntervalMicros;
+
             switch (stage) {
             case UTILS:
                 Utils.performMaintenance();
                 stage = MaintenanceStage.MEMORY;
                 break;
             case MEMORY:
-                applyMemoryLimit(now + getMaintenanceIntervalMicros() / 2);
+                applyMemoryLimit(deadline);
                 stage = MaintenanceStage.IO;
                 break;
             case IO:
@@ -3625,7 +3630,7 @@ public class ServiceHost {
                 stage = MaintenanceStage.SERVICE;
                 break;
             case SERVICE:
-                this.maintenanceHelper.performMaintenance(post);
+                this.maintenanceHelper.performMaintenance(post, deadline);
                 stage = null;
                 break;
             default:
@@ -3795,7 +3800,7 @@ public class ServiceHost {
      * Estimates how much memory is used by host caches, queues and based on the memory limits
      * takes appropriate action: clears cached service state, temporarily stops services
      */
-    private void applyMemoryLimit(long timeLimitMicros) {
+    private void applyMemoryLimit(long deadlineMicros) {
         long memoryLimitLowMB = getServiceMemoryLimitMB(ROOT_PATH,
                 MemoryLimitType.HIGH_WATERMARK);
 
@@ -3804,13 +3809,6 @@ public class ServiceHost {
 
         if (memoryLimitLowMB > memoryInUseMB) {
             return;
-        }
-
-        log(Level.INFO, "Estimated memory use (MB):%d", memoryInUseMB);
-        // make sure our service count matches the list contents, they could drift. We normally avoid using size() on
-        // concurrent skip lists, since its a O(N) operation, but if we are over the memory limit, its ok to do occasionally
-        synchronized (this.state) {
-            this.state.serviceCount = this.attachedServices.size();
         }
 
         int pauseServiceCount = 0;
@@ -3867,7 +3865,7 @@ public class ServiceHost {
                 this.serviceFactoriesUnderMemoryPressure.add(factoryPath);
             }
 
-            if (timeLimitMicros < Utils.getNowMicrosUtc()) {
+            if (deadlineMicros < Utils.getNowMicrosUtc()) {
                 break;
             }
         }
@@ -3876,8 +3874,14 @@ public class ServiceHost {
             return;
         }
 
-        // schedule a task to actually stop the services. If a request arrives in the mean time, it will remove
-        // the service from the pendingStopService map (since its active).
+        // Make sure our service count matches the list contents, they could drift. Using size()
+        // on a concurrent data structure is costly so we do this only when pausing services
+        synchronized (this.state) {
+            this.state.serviceCount = this.attachedServices.size();
+        }
+
+        // schedule a task to actually stop the services. If a request arrives in the mean time,
+        // it will remove the service from the pendingStopService map (since its active).
         schedule(() -> {
             pauseServices();
         } , getMaintenanceIntervalMicros(), TimeUnit.MICROSECONDS);
@@ -4022,9 +4026,8 @@ public class ServiceHost {
                         }
 
                         synchronized (this.state) {
-                            this.state.serviceCount--;
-                            if (null == this.attachedServices.remove(path)) {
-                                log(Level.INFO, "pause did not work for %s", path);
+                            if (null != this.attachedServices.remove(path)) {
+                                this.state.serviceCount--;
                             }
                         }
                     }));

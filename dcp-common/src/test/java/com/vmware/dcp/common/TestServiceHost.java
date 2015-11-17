@@ -25,8 +25,11 @@ import java.util.Collections;
 import java.util.Date;
 import java.util.EnumSet;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -438,26 +441,20 @@ public class TestServiceHost {
 
     @Test
     public void serviceHostMaintenanceAndStatsReporting() throws Throwable {
-        setUp(false);
-        long maintenanceIntervalMicros = TimeUnit.MILLISECONDS.toMicros(100);
-        verifyMaintenanceDelayStat(maintenanceIntervalMicros);
-
-        this.host.log("Stopping this.host so we can set memory limit");
-        tearDown();
-
         setUp(true);
 
-        // pretty much guarantee host will clear service state cache by setting its limit low
+        // induce host to clear service state cache by setting mem limit low
         this.host.setServiceMemoryLimit(ServiceHost.ROOT_PATH, 0.0001);
+        long maintIntervalMillis = 100;
+        long maintenanceIntervalMicros = TimeUnit.MILLISECONDS.toMicros(maintIntervalMillis);
+        this.host.setMaintenanceIntervalMicros(maintenanceIntervalMicros);
         this.host.start();
 
-        long sleepTimeMillis = TimeUnit.MICROSECONDS.toMillis(maintenanceIntervalMicros);
-        // set a small period so its pretty much guaranteed to execute
-        // maintenance during this test
-        this.host.setMaintenanceIntervalMicros(maintenanceIntervalMicros);
+        verifyMaintenanceDelayStat(maintenanceIntervalMicros);
+
         long start = Utils.getNowMicrosUtc();
         long serviceCount = 100;
-        long opCount = 10;
+        long opCount = 2;
         EnumSet<ServiceOption> caps = EnumSet.of(ServiceOption.PERSISTENCE,
                 ServiceOption.INSTRUMENTATION, ServiceOption.PERIODIC_MAINTENANCE);
 
@@ -479,10 +476,12 @@ public class TestServiceHost {
 
         long count = 0;
         long cacheMissCount = 0;
+        Set<URI> servicesWithMaintenance = new HashSet<>();
 
         Date exp = this.host.getTestExpiration();
         while (new Date().before(exp)) {
             count = 0;
+
             // issue GET to actually make the cache miss occur (if the cache has been cleared)
             this.host.getServiceState(null, MinimalTestServiceState.class, uris);
 
@@ -491,10 +490,10 @@ public class TestServiceHost {
             Map<URI, ServiceStats> stats = this.host.getServiceState(null,
                     ServiceStats.class, statUris);
 
-            for (ServiceStats s : stats.values()) {
-
+            for (Entry<URI, ServiceStats> e : stats.entrySet()) {
                 long maintFailureCount = 0;
-                long maintSuccessCount = 0;
+                ServiceStats s = e.getValue();
+
                 for (ServiceStat st : s.entries.values()) {
                     if (st.name.equals(Service.STAT_NAME_MAINTENANCE_COUNT)) {
                         count += (long) st.latestValue;
@@ -505,7 +504,7 @@ public class TestServiceHost {
                         continue;
                     }
                     if (st.name.equals(MinimalTestService.STAT_NAME_MAINTENANCE_SUCCESS_COUNT)) {
-                        maintSuccessCount++;
+                        servicesWithMaintenance.add(e.getKey());
                         continue;
                     }
                     if (st.name.equals(MinimalTestService.STAT_NAME_MAINTENANCE_FAILURE_COUNT)) {
@@ -515,16 +514,23 @@ public class TestServiceHost {
                 }
 
                 assertTrue("maintenance failed", maintFailureCount == 0);
-                assertTrue("maintenance never occured", maintSuccessCount > 0);
             }
 
-            if (this.host.getListener().getActiveClientCount() == 0 && count >= services.size()
-                    && cacheMissCount >= 1) {
-                break;
+            // verify that every single service has seen at least one maintenance interval
+            if (servicesWithMaintenance.size() < serviceCount) {
+                this.host.log("Services with maintenance: %d, expected %d",
+                        servicesWithMaintenance.size(), serviceCount);
+                Thread.sleep(maintIntervalMillis * 2);
+                continue;
             }
 
-            // make sure a couple of maintenance cycles execute
-            Thread.sleep(sleepTimeMillis * 2);
+            if (cacheMissCount < 1) {
+                this.host.log("No cache clears seen");
+                Thread.sleep(maintIntervalMillis * 2);
+                continue;
+            }
+
+            break;
         }
         long end = Utils.getNowMicrosUtc();
 
@@ -600,7 +606,7 @@ public class TestServiceHost {
         while (new Date().before(exp)) {
 
             // let maintenance run
-            Thread.sleep(sleepTimeMillis);
+            Thread.sleep(maintIntervalMillis);
             rsp = this.host.getFactoryState(UriUtils.buildUri(this.host,
                     ExampleFactoryService.class));
             if (rsp.documentLinks == null || rsp.documentLinks.size() == 0) {
