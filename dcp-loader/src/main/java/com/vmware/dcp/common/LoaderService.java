@@ -193,7 +193,10 @@ public class LoaderService extends StatefulService {
     private Map<String, LoaderServiceInfo> loadFromFileSystem(LoaderServiceState state)
             throws ClassNotFoundException, InstantiationException,
             IllegalAccessException {
-        File libDir = new File(new File(getHost().getStorageSandbox()), state.path);
+        File libDir = new File(state.path);
+        if (!libDir.isAbsolute()) {
+            libDir = new File(new File(getHost().getStorageSandbox()), state.path);
+        }
 
         if (!libDir.exists()) {
             if (!libDir.mkdirs()) {
