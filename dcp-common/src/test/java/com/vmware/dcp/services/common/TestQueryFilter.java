@@ -500,11 +500,72 @@ public class TestQueryFilter {
         assertFalse(filter.evaluate(document, this.description));
     }
 
-    @Test(expected = UnsupportedMatchTypeException.class)
-    public void unsupportedMatchTypeWildcard() throws QueryFilterException {
-        Query q = createTerm("c1", "v1");
+    @Test()
+    public void matchTypeWildcard() throws QueryFilterException {
+        Query q = createTerm(ServiceDocument.FIELD_NAME_SELF_LINK, "*");
         q.term.matchType = MatchType.WILDCARD;
-        QueryFilter.create(q);
+        QueryFilter filter = QueryFilter.create(q);
+        QueryFilterDocument document;
+
+        document = new QueryFilterDocument();
+        document.documentSelfLink = "/test/test.com";
+        assertTrue(filter.evaluate(document, this.description));
+
+        document.documentSelfLink = "\\*a@#$%$^%&%^&/ttt/uri";
+        assertTrue(filter.evaluate(document, this.description));
+
+        q = createTerm(ServiceDocument.FIELD_NAME_SELF_LINK, "/test*");
+        q.term.matchType = MatchType.WILDCARD;
+        filter = QueryFilter.create(q);
+
+        document = new QueryFilterDocument();
+        document.documentSelfLink = "/test.com/test";
+        assertTrue(filter.evaluate(document, this.description));
+
+        document.documentSelfLink = "/ttt/uri";
+        assertFalse(filter.evaluate(document, this.description));
+
+        document.documentSelfLink = "aaatestaaa";
+        assertFalse(filter.evaluate(document, this.description));
+
+        q = createTerm(ServiceDocument.FIELD_NAME_SELF_LINK, "*test");
+        q.term.matchType = MatchType.WILDCARD;
+        filter = QueryFilter.create(q);
+
+        document = new QueryFilterDocument();
+        document.documentSelfLink = "/test.com/test";
+        assertTrue(filter.evaluate(document, this.description));
+
+        document.documentSelfLink = "/ttt/uri";
+        assertFalse(filter.evaluate(document, this.description));
+
+        document.documentSelfLink = "aaatestaaa";
+        assertFalse(filter.evaluate(document, this.description));
+
+        q = createTerm(ServiceDocument.FIELD_NAME_SELF_LINK, "abc()*test*");
+        q.term.matchType = MatchType.WILDCARD;
+        filter = QueryFilter.create(q);
+
+        document = new QueryFilterDocument();
+        document.documentSelfLink = "abc()/test/test.com";
+        assertTrue(filter.evaluate(document, this.description));
+
+        document.documentSelfLink = "/ttt/uri";
+        assertFalse(filter.evaluate(document, this.description));
+
+        q = createTerm(ServiceDocument.FIELD_NAME_SELF_LINK, "");
+        q.term.matchType = MatchType.WILDCARD;
+        filter = QueryFilter.create(q);
+
+        document.documentSelfLink = "";
+        assertTrue(filter.evaluate(document, this.description));
+
+        document = new QueryFilterDocument();
+        document.documentSelfLink = "abc()/test/test.com";
+        assertFalse(filter.evaluate(document, this.description));
+
+        document.documentSelfLink = "/ttt/uri";
+        assertFalse(filter.evaluate(document, this.description));
     }
 
     @Test(expected = UnsupportedMatchTypeException.class)
@@ -564,6 +625,23 @@ public class TestQueryFilter {
         return q;
     }
 
+    Query createBenchmarkQueryForWildcard() {
+        Query q = new Query();
+        for (int i = 0; i < 100; i++) {
+            Query r = new Query();
+            r.occurance = Occurance.SHOULD_OCCUR;
+            for (int j = 1; j < 8; j++) {
+                Query c = createTerm(String.format("c%d", j), String.format("*%d*", i));
+                c.term.matchType = MatchType.WILDCARD;
+                c.occurance = Occurance.MUST_OCCUR;
+                r.addBooleanClause(c);
+            }
+            q.addBooleanClause(r);
+        }
+
+        return q;
+    }
+
     @Test
     public void throughputQueryFilterCreation() throws QueryFilterException {
         if (!this.isStressTest) {
@@ -604,6 +682,30 @@ public class TestQueryFilter {
 
         r.run(TimeUnit.SECONDS.toMillis(3));
         r.print("queryFilterEvaluationPass");
+    }
+
+    @Test
+    public void throughputQueryFilterEvaluationForWildcardPass() throws QueryFilterException {
+        if (!this.isStressTest) {
+            return;
+        }
+        QueryFilter filter = QueryFilter.create(createBenchmarkQueryForWildcard());
+        QueryFilterDocument document = new QueryFilterDocument();
+        document.c1 = "99";
+        document.c2 = "99";
+        document.c3 = "99";
+        document.c4 = "99";
+        document.c5 = "99";
+        document.c6 = "99";
+        document.c7 = "99";
+        document.c8 = "99";
+
+        TimeBoundRunner r = new TimeBoundRunner(() -> {
+            assertTrue(filter.evaluate(document, this.description));
+        });
+
+        r.run(TimeUnit.SECONDS.toMillis(3));
+        r.print("queryFilterEvaluationForWildcardPass");
     }
 
     @Test
