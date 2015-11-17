@@ -481,6 +481,18 @@ public class Operation implements Cloneable {
         return createOperation(Action.GET, uri);
     }
 
+    public void sendWith(ServiceHost host) {
+        host.sendRequest(this);
+    }
+
+    public void sendWith(Service service) {
+        service.sendRequest(this);
+    }
+
+    public void sendWith(ServiceClient client) {
+        client.send(this);
+    }
+
     @Override
     public String toString() {
         SerializedOperation sop = SerializedOperation.create(this);
