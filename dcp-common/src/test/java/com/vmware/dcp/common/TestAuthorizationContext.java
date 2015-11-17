@@ -217,9 +217,11 @@ public class TestAuthorizationContext extends BasicTestCase {
 
     @Test
     public void internalAuthorizationContextSetsCookie() throws Throwable {
+        this.host.setSystemAuthorizationContext();
         this.host.addPrivilegedService(SetAuthorizationContextTestService.class);
         this.host.startServiceAndWait(SetAuthorizationContextTestService.class,
                 SetAuthorizationContextTestService.SELF_LINK);
+        this.host.resetAuthorizationContext();
 
         String user = "test-subject@test.com";
         provisionUser(user, SetAuthorizationContextTestService.SELF_LINK);
@@ -232,9 +234,10 @@ public class TestAuthorizationContext extends BasicTestCase {
         // Post to get a cookie
         URI postUri = UriUtils.buildUri(this.host, SetAuthorizationContextTestService.SELF_LINK);
         this.host.testStart(1);
-        this.host.send(
-                Operation.createPost(postUri).setBody(expected)
-                        .setCompletion(this.host.getCompletion()).forceRemote());
+        this.host.send(Operation
+                .createPost(postUri)
+                .setBody(expected)
+                .setCompletion(this.host.getCompletion()).forceRemote());
         this.host.testWait();
 
         // Get to check the context was picked up from the cookie
@@ -265,9 +268,11 @@ public class TestAuthorizationContext extends BasicTestCase {
 
     @Test
     public void testExpiredAuthorizationContext() throws Throwable {
+        this.host.setSystemAuthorizationContext();
         this.host.addPrivilegedService(SetAuthorizationContextTestService.class);
         this.host.startServiceAndWait(SetAuthorizationContextTestService.class,
                 SetAuthorizationContextTestService.SELF_LINK);
+        this.host.resetAuthorizationContext();
 
         String user = "test-subject@test.com";
         provisionUser(user, SetAuthorizationContextTestService.SELF_LINK);
@@ -280,9 +285,10 @@ public class TestAuthorizationContext extends BasicTestCase {
         // Post to create an expired auth context
         URI postUri = UriUtils.buildUri(this.host, SetAuthorizationContextTestService.SELF_LINK);
         this.host.testStart(1);
-        this.host.send(
-                Operation.createPost(postUri).setBody(expected)
-                        .setCompletion(this.host.getCompletion()).forceRemote());
+        this.host.send(Operation
+                .createPost(postUri)
+                .setBody(expected)
+                .setCompletion(this.host.getCompletion()).forceRemote());
         this.host.testWait();
 
         // Get should not see an auth context
@@ -332,13 +338,16 @@ public class TestAuthorizationContext extends BasicTestCase {
 
     @Test
     public void privilegedServiceAuthContextCheck() throws Throwable {
-        this.host.startServiceAndWait(WhitelistAuthorizationContextTestService.class,
+        this.host.setSystemAuthorizationContext();
+        this.host.startServiceAndWait(
+                WhitelistAuthorizationContextTestService.class,
                 WhitelistAuthorizationContextTestService.SELF_LINK);
+        this.host.resetAuthorizationContext();
+
         URI testUri = UriUtils.buildUri(this.host,
                 WhitelistAuthorizationContextTestService.SELF_LINK);
 
-        // Make a call to test auth context functions without whitelisting the
-        // service
+        // Make a call to test auth context functions without whitelisting the service
         this.host.testStart(1);
         this.host.send(Operation
                 .createGet(testUri)
@@ -358,8 +367,7 @@ public class TestAuthorizationContext extends BasicTestCase {
 
         this.host.addPrivilegedService(WhitelistAuthorizationContextTestService.class);
 
-        // Make a call to test auth context functions after whitelisting the
-        // service
+        // Make a call to test auth context functions after whitelisting the service
         this.host.testStart(1);
         this.host.send(Operation
                 .createGet(testUri)
@@ -449,12 +457,12 @@ public class TestAuthorizationContext extends BasicTestCase {
     public void testOperationJoin() throws Throwable {
         // create two services with two different auth contexts
         String user1 = "user1@test.com";
-        String serviceName1 = "claims-1";
+        String serviceName1 = "/claims-1";
         AuthorizationContext ctx1 = createAuthorizationContext(user1, this.host);
         provisionUser(user1, serviceName1);
 
         String user2 = "user2@test.com";
-        String serviceName2 = "claims-2";
+        String serviceName2 = "/claims-2";
         AuthorizationContext ctx2 = createAuthorizationContext(user2, this.host);
         provisionUser(user2, serviceName2);
 
@@ -501,7 +509,7 @@ public class TestAuthorizationContext extends BasicTestCase {
         Operation getOp2 = Operation.createGet(claimsUri2).setCompletion(handler)
                 .setReferer(this.host.getReferer());
         getOp2.setAuthorizationContext(ctx2);
-        host.setSystemAuthorizationContext();
+        this.host.setSystemAuthorizationContext();
         OperationJoin joinOp = OperationJoin.create(getOp1, getOp2);
         this.host.testStart(2);
         joinOp.sendWith(this.host);
@@ -525,6 +533,6 @@ public class TestAuthorizationContext extends BasicTestCase {
         this.host.testStart(1);
         joinOpWithHandler.sendWith(this.host);
         this.host.testWait();
-        host.resetSystemAuthorizationContext();
+        this.host.resetSystemAuthorizationContext();
     }
 }

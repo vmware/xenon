@@ -984,8 +984,18 @@ public class ServiceHost {
             throw new IllegalStateException("Already started");
         }
 
-        // normalize peer list and find our external address. This must be done BEFORE node group
-        // starts
+        // Capture authorization context; this function executes as the system user
+        AuthorizationContext ctx = OperationContext.getAuthorizationContext();
+        OperationContext.setAuthorizationContext(getSystemAuthorizationContext());
+
+        // Start authorization service first since it sits in the dispatch path
+        if (this.authorizationService != null) {
+            addPrivilegedService(this.authorizationService.getClass());
+            startCoreServicesSynchronously(this.authorizationService);
+        }
+
+        // Normalize peer list and find our external address
+        // This must be done BEFORE node group starts.
         List<URI> peers = getInitialPeerHosts();
 
         startDefaultReplicationAndNodeGroupServices();
@@ -1047,9 +1057,12 @@ public class ServiceHost {
         webSocketService.setHost(this);
         startUiFileContentServices(webSocketService);
 
+        // Restore authorization context
+        OperationContext.setAuthorizationContext(ctx);
+
         schedule(() -> {
             joinPeers(peers, ServiceUriPaths.DEFAULT_NODE_GROUP);
-        } , this.state.maintenanceIntervalMicros, TimeUnit.MICROSECONDS);
+        }, this.state.maintenanceIntervalMicros, TimeUnit.MICROSECONDS);
     }
 
     public List<URI> getInitialPeerHosts() {
@@ -1149,13 +1162,6 @@ public class ServiceHost {
     }
 
     private void startDefaultReplicationAndNodeGroupServices() throws Throwable {
-
-        // Start authorization service first since it sits in the dispatch path
-        if (this.authorizationService != null) {
-            addPrivilegedService(this.authorizationService.getClass());
-            startCoreServicesSynchronously(this.authorizationService);
-        }
-
         // start the node group factory allowing for N number of independent groups
         startCoreServicesSynchronously(new NodeGroupFactoryService());
 
@@ -1622,17 +1628,15 @@ public class ServiceHost {
             post.setReferer(post.getUri());
         }
 
-        String servicePath = UriUtils.normalizeUriPath(post.getUri().getPath());
-        servicePath = servicePath.intern();
-
         service.setHost(this);
+
+        String servicePath = UriUtils.normalizeUriPath(post.getUri().getPath()).intern();
         if (service.getSelfLink() == null) {
             service.setSelfLink(servicePath);
         }
 
         // if the service is a helper for one of the known URI suffixes, do not
         // add it to the map. We will special case dispatching to it
-
         if (isHelperServicePath(servicePath)) {
             if (!service.hasOption(Service.ServiceOption.UTILITY)) {
                 post.fail(new IllegalStateException(
@@ -1652,7 +1656,6 @@ public class ServiceHost {
 
                 this.state.serviceCount++;
             }
-
         }
 
         if (post.getExpirationMicrosUtc() == 0) {
@@ -1748,14 +1751,27 @@ public class ServiceHost {
 
             switch (next) {
             case INITIALIZING:
-                ProcessingStage nextStage = isServiceIndexed(s)
-                        ? ProcessingStage.LOADING_INITIAL_STATE : ProcessingStage.SYNCHRONIZING;
+                final ProcessingStage nextStage =
+                        isServiceIndexed(s) ?
+                                ProcessingStage.LOADING_INITIAL_STATE :
+                                ProcessingStage.SYNCHRONIZING;
 
                 buildDocumentDescription(s);
                 if (post.hasBody()) {
                     // make sure body is in native form and has creation time
                     ServiceDocument d = post.getBody(s.getStateType());
                     d.documentUpdateTimeMicros = Utils.getNowMicrosUtc();
+                }
+
+                // Populate authorization context if necessary
+                if (this.isAuthorizationEnabled() &&
+                        this.authorizationService != null &&
+                        this.authorizationService.getProcessingStage() == ProcessingStage.AVAILABLE) {
+                    post.nestCompletion(op -> {
+                        processServiceStart(nextStage, s, post, hasClientSuppliedInitialState);
+                    });
+                    queueOrScheduleRequest(this.authorizationService, post);
+                    break;
                 }
 
                 processServiceStart(nextStage, s, post, hasClientSuppliedInitialState);
@@ -2102,26 +2118,26 @@ public class ServiceHost {
         sendRequest(synchPost);
     }
 
-    void loadServiceState(Service s, String servicePath, Operation op,
-            Class<? extends ServiceDocument> stateType) {
-
+    void loadServiceState(Service s, Operation op) {
         ServiceDocument state = getCachedServiceState(s.getSelfLink());
-        if (state != null) {
-            if (!s.hasOption(ServiceOption.CONCURRENT_UPDATE_HANDLING)) {
-                state = Utils.clone(state);
-            }
 
+        // Clone state if it might change while processing
+        if (state != null && !s.hasOption(ServiceOption.CONCURRENT_UPDATE_HANDLING)) {
+            state = Utils.clone(state);
+        }
+
+        // If there either is cached state, or the service is not indexed (meaning nothing
+        // will be found in the index), subject this request to
+        if (state != null || !isServiceIndexed(s)) {
             if (!authorizeServiceState(s, state, op)) {
                 op.fail(Operation.STATUS_CODE_FORBIDDEN);
                 return;
             }
 
-            op.linkState(state).complete();
-            return;
-        }
+            if (state != null) {
+                op.linkState(state);
+            }
 
-        if (!isServiceIndexed(s)) {
-            // in memory, non indexed service has no cached state, it can deal with that ...
             op.complete();
             return;
         }
@@ -2130,11 +2146,7 @@ public class ServiceHost {
             s.adjustStat(Service.STAT_NAME_CACHE_MISS_COUNT, 1);
         }
 
-        URI u = UriUtils.buildDocumentQueryUri(this,
-                servicePath,
-                false,
-                true,
-                s.getOptions());
+        URI u = UriUtils.buildDocumentQueryUri(this, s.getSelfLink(), false, true, s.getOptions());
         Operation loadGet = Operation
                 .createGet(u)
                 .setReferer(op.getReferer())
@@ -2143,16 +2155,19 @@ public class ServiceHost {
                         op.fail(e);
                         return;
                     }
-                    if (o.hasBody()) {
-                        ServiceDocument st = o.getBody(stateType);
-                        if (!authorizeServiceState(s, st, op)) {
-                            op.fail(Operation.STATUS_CODE_FORBIDDEN);
-                            return;
-                        }
 
-                        op.linkState(st);
+                    if (!o.hasBody()) {
+                        op.fail(new IllegalStateException("Unable to locate service state in index"));
+                        return;
                     }
-                    op.complete();
+
+                    ServiceDocument st = o.getBody(s.getStateType());
+                    if (!authorizeServiceState(s, st, op)) {
+                        op.fail(Operation.STATUS_CODE_FORBIDDEN);
+                        return;
+                    }
+
+                    op.linkState(st).complete();
                 });
 
         Service indexService = this.documentIndexService;
@@ -2165,11 +2180,6 @@ public class ServiceHost {
     }
 
     private boolean authorizeServiceState(Service service, ServiceDocument document, Operation op) {
-        // No service state, so there is nothing to check
-        if (document == null) {
-            return true;
-        }
-
         // Authorization not enabled, so there is nothing to check
         if (!this.isAuthorizationEnabled()) {
             return true;
@@ -2183,6 +2193,21 @@ public class ServiceHost {
         // Allow unconditionally if this is the system user
         if (ctx.isSystemUser()) {
             return true;
+        }
+
+        // No service state specified; build artificial state for service so it can be subjected
+        // to this authorization check (e.g. stateful without initial state, stateless services).
+        if (document == null) {
+            Class<? extends ServiceDocument> clazz = service.getStateType();
+            try {
+                document = clazz.newInstance();
+            } catch (InstantiationException | IllegalAccessException e) {
+                log(Level.SEVERE, "Unable to instantiate %s: %s", clazz.toString(), e.toString());
+                return false;
+            }
+
+            document.documentSelfLink = service.getSelfLink();
+            document.documentKind = Utils.buildKind(clazz);
         }
 
         ServiceDocumentDescription documentDescription = buildDocumentDescription(service);

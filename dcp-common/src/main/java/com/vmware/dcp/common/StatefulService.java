@@ -559,7 +559,7 @@ public class StatefulService implements Service {
             failRequest(request, ex);
         });
 
-        getHost().loadServiceState(this, this.context.selfLink, request, this.context.stateType);
+        getHost().loadServiceState(this, request);
         return true;
     }
 
@@ -1042,7 +1042,7 @@ public class StatefulService implements Service {
             // state has already been linked with the operation
             handleRequest(op, OperationProcessingStage.PROCESSING_FILTERS);
         });
-        getHost().loadServiceState(this, this.context.selfLink, op, this.context.stateType);
+        getHost().loadServiceState(this, op);
     }
 
     private void processPending(Operation op) {
