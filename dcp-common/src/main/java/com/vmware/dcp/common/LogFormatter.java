@@ -16,7 +16,7 @@ package com.vmware.dcp.common;
 import java.util.logging.Formatter;
 import java.util.logging.LogRecord;
 
-class LogFormatter extends Formatter {
+public class LogFormatter extends Formatter {
 
     public static class LogItem {
         public String l;
