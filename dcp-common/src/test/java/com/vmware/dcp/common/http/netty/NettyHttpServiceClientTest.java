@@ -36,7 +36,9 @@ import io.netty.handler.ssl.util.InsecureTrustManagerFactory;
 import io.netty.handler.ssl.util.SelfSignedCertificate;
 
 import org.junit.After;
+import org.junit.AfterClass;
 import org.junit.Before;
+import org.junit.BeforeClass;
 import org.junit.Test;
 
 import com.vmware.dcp.common.CommandLineArgumentParser;
@@ -44,6 +46,7 @@ import com.vmware.dcp.common.Operation;
 import com.vmware.dcp.common.Service;
 import com.vmware.dcp.common.ServiceClient;
 import com.vmware.dcp.common.ServiceDocument;
+import com.vmware.dcp.common.ServiceHost;
 import com.vmware.dcp.common.StatefulService;
 import com.vmware.dcp.common.StatelessService;
 import com.vmware.dcp.common.UriUtils;
@@ -57,52 +60,64 @@ import com.vmware.dcp.services.common.MinimalTestService;
 
 public class NettyHttpServiceClientTest {
 
+    private static VerificationHost HOST;
+
     private VerificationHost host;
-    private NettyHttpServiceClient client;
 
     public String testURI;
 
-    public int requestCount = 100;
+    public int requestCount = 16;
 
     public int connectionCount = 32;
 
-    @Before
-    public void setUp() throws Exception {
-        CommandLineArgumentParser.parseFromProperties(this);
-        this.host = VerificationHost.create(0, null);
-        CommandLineArgumentParser.parseFromProperties(this.host);
-
-        this.host.setMaintenanceIntervalMicros(
+    @BeforeClass
+    public static void setUpOnce() throws Exception {
+        HOST = VerificationHost.create(0, null);
+        CommandLineArgumentParser.parseFromProperties(HOST);
+        HOST.setMaintenanceIntervalMicros(
                 TimeUnit.MILLISECONDS.toMicros(VerificationHost.FAST_MAINT_INTERVAL_MILLIS));
 
-        this.client = (NettyHttpServiceClient) NettyHttpServiceClient.create(
-                getClass().getCanonicalName(),
+        ServiceClient client = (NettyHttpServiceClient) NettyHttpServiceClient.create(
+                NettyHttpServiceClientTest.class.getCanonicalName(),
                 Executors.newFixedThreadPool(4),
-                Executors.newScheduledThreadPool(1), this.host);
+                Executors.newScheduledThreadPool(1), HOST);
 
         SSLContext clientContext = SSLContext.getInstance(ServiceClient.TLS_PROTOCOL_NAME);
         clientContext.init(null, InsecureTrustManagerFactory.INSTANCE.getTrustManagers(), null);
-        this.client.setSSLContext(clientContext);
-        this.host.setClient(this.client);
+        client.setSSLContext(clientContext);
+        HOST.setClient(client);
 
         SelfSignedCertificate ssc = new SelfSignedCertificate();
-        this.host.setCertificateFileReference(ssc.certificate().toURI());
-        this.host.setPrivateKeyFileReference(ssc.privateKey().toURI());
+        HOST.setCertificateFileReference(ssc.certificate().toURI());
+        HOST.setPrivateKeyFileReference(ssc.privateKey().toURI());
 
         try {
-            this.host.start();
+            HOST.start();
         } catch (Throwable e) {
-            throw new Exception(e);
+            throw new RuntimeException(e);
         }
-
-        this.host.setStressTest(this.host.isStressTest);
     }
 
     @After
-    public void tearDown() {
-        this.client.stop();
-        this.host.tearDown();
+    public void cleanUp() {
+        this.host.setOperationTimeOutMicros(
+                TimeUnit.SECONDS
+                        .toMicros(ServiceHost.ServiceHostState.DEFAULT_OPERATION_TIMEOUT_MICROS));
+        ((NettyHttpServiceClient) this.host.getClient()).setConnectionLimitPerHost(
+                NettyHttpServiceClient.DEFAULT_CONNECTIONS_PER_HOST);
     }
+
+    @AfterClass
+    public static void tearDown() {
+        HOST.tearDown();
+    }
+
+    @Before
+    public void setUp() {
+        CommandLineArgumentParser.parseFromProperties(this);
+        this.host = HOST;
+    }
+
 
     @Test
     public void throughputGetRemote() throws Throwable {
@@ -115,7 +130,7 @@ public class NettyHttpServiceClientTest {
                 .log(
                         "Starting HTTP GET stress test against %s, request count: %d, connection limit: %d",
                         this.testURI, this.requestCount, this.connectionCount);
-        this.client.setConnectionLimitPerHost(this.connectionCount);
+        this.host.getClient().setConnectionLimitPerHost(this.connectionCount);
         long start = Utils.getNowMicrosUtc();
         getThirdPartyServerResponse(this.testURI, this.requestCount);
         long end = Utils.getNowMicrosUtc();
@@ -135,11 +150,12 @@ public class NettyHttpServiceClientTest {
                 .log(
                         "Starting HTTP POST stress test against %s, request count: %d, connection limit: %d",
                         this.testURI, this.requestCount, this.connectionCount);
-        this.client.setConnectionLimitPerHost(this.connectionCount);
+        this.host.getClient().setConnectionLimitPerHost(this.connectionCount);
         long start = Utils.getNowMicrosUtc();
         ExampleServiceState body = new ExampleServiceState();
         body.name = UUID.randomUUID().toString();
-        this.host.sendHttpRequest(this.client, this.testURI, Utils.toJson(body), this.requestCount);
+        this.host.sendHttpRequest(this.host.getClient(), this.testURI, Utils.toJson(body),
+                this.requestCount);
         long end = Utils.getNowMicrosUtc();
         double thpt = this.requestCount / ((end - start) / 1000000.0);
         this.host.log("Connection limit: %d, Request count: %d, Requests per second:%f",
@@ -301,6 +317,7 @@ public class NettyHttpServiceClientTest {
         }
         this.host.testWait();
         this.host.toggleNegativeTestMode(false);
+        this.host.setOperationTimeOutMicros(TimeUnit.SECONDS.toMicros(10));
     }
 
     @Test
@@ -517,7 +534,7 @@ public class NettyHttpServiceClientTest {
 
     @Test
     public void throughputPutRemote() throws Throwable {
-        long serviceCount = 32;
+        long serviceCount = 64;
         List<Service> services = this.host.doThroughputServiceStart(serviceCount,
                 MinimalTestService.class,
                 this.host.buildMinimalTestState(),
@@ -645,13 +662,12 @@ public class NettyHttpServiceClientTest {
     }
 
     private String getThirdPartyServerResponse(String uri, int count) throws Throwable {
-        return this.host.sendHttpRequest(this.client, uri, null, count);
+        return this.host.sendHttpRequest(this.host.getClient(), uri, null, count);
     }
 
-    final String cookieServicePath = "/test/cookies";
-
     public void singleCookieTest(boolean forceRemote) throws Throwable {
-        this.host.startServiceAndWait(CookieService.class, this.cookieServicePath);
+        String link = UUID.randomUUID().toString();
+        this.host.startServiceAndWait(CookieService.class, link);
 
         // Ask cookie service to set a cookie
         CookieServiceState setState = new CookieServiceState();
@@ -660,7 +676,7 @@ public class NettyHttpServiceClientTest {
         setState.cookies.put("key", "value");
 
         Operation setOp = Operation
-                .createPatch(UriUtils.buildUri(this.host, this.cookieServicePath))
+                .createPatch(UriUtils.buildUri(this.host, link))
                 .setCompletion(this.host.getCompletion())
                 .setBody(setState);
         if (forceRemote) {
@@ -673,7 +689,7 @@ public class NettyHttpServiceClientTest {
         // Retrieve set cookies
         List<Map<String, String>> actualCookies = new ArrayList<>();
         Operation getOp = Operation
-                .createGet(UriUtils.buildUri(this.host, this.cookieServicePath))
+                .createGet(UriUtils.buildUri(this.host, link))
                 .setCompletion((o, e) -> {
                     if (e != null) {
                         this.host.failIteration(e);
