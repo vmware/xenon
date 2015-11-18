@@ -605,9 +605,12 @@ public class Operation implements Cloneable {
     }
 
     public Operation setBody(Object body) {
-        // TODO If operation is remote convert directly to JSON
         if (body != null) {
-            this.body = Utils.clone(body);
+            if (isRemote()) {
+                this.body = body;
+            } else {
+                this.body = Utils.clone(body);
+            }
         } else {
             this.body = null;
         }

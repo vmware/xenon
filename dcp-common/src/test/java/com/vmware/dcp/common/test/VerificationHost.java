@@ -1098,6 +1098,7 @@ public class VerificationHost extends ExampleServiceHost {
                 }
 
                 Object b = binaryBody != null ? binaryBody : body;
+                b = Utils.clone(b);
 
                 if (isConcurrentSend) {
                     Operation putClone = updateOp.clone();
@@ -1108,6 +1109,7 @@ public class VerificationHost extends ExampleServiceHost {
                 } else if (properties.contains(TestProperty.CALLBACK_SEND)) {
                     sendRequestWithCallback(updateOp.setBody(b).setReferer(getReferer()));
                 } else {
+
                     send(updateOp.setBody(b));
                 }
 
