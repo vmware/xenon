@@ -252,7 +252,7 @@ public class Operation implements Cloneable {
     }
 
     public static enum OperationOption {
-        REPLICATED, REPLICATION_DISABLED, REMOTE, NOTIFICATION_DISABLED, REPLICATED_TARGET
+        REPLICATED, REPLICATION_DISABLED, CLONING_DISABLED, NOTIFICATION_DISABLED, REPLICATED_TARGET
     }
 
     public static class SerializedOperation extends ServiceDocument {
@@ -618,9 +618,12 @@ public class Operation implements Cloneable {
     }
 
     public Operation setBody(Object body) {
-        // TODO If operation is remote convert directly to JSON
         if (body != null) {
-            this.body = Utils.clone(body);
+            if (isCloningDisabled()) {
+                this.body = body;
+            } else {
+                this.body = Utils.clone(body);
+            }
         } else {
             this.body = null;
         }
@@ -1271,6 +1274,22 @@ public class Operation implements Cloneable {
             this.remoteCtx.responseHeaders.put(e.getKey(), e.getValue());
         }
         return this;
+    }
+
+    /**
+     * Infrastructure use only.
+     *
+     * If cloning is disabled, setBody() will not
+     * clone the supplied argument. Requests received from external clients
+     * can avoid the overhead of cloning a response body by disabling cloning
+     */
+    public Operation setCloningDisabled(boolean disable) {
+        this.options.add(OperationOption.CLONING_DISABLED);
+        return this;
+    }
+
+    public boolean isCloningDisabled() {
+        return this.options.contains(OperationOption.CLONING_DISABLED);
     }
 
     public boolean isNotification() {

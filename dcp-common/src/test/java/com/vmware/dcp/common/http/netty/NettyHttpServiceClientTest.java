@@ -68,6 +68,8 @@ public class NettyHttpServiceClientTest {
 
     public int requestCount = 16;
 
+    public int serviceCount = 16;
+
     public int connectionCount = 32;
 
     @BeforeClass
@@ -534,29 +536,37 @@ public class NettyHttpServiceClientTest {
 
     @Test
     public void throughputPutRemote() throws Throwable {
-        long serviceCount = 64;
-        List<Service> services = this.host.doThroughputServiceStart(serviceCount,
+        List<Service> services = this.host.doThroughputServiceStart(this.serviceCount,
                 MinimalTestService.class,
                 this.host.buildMinimalTestState(),
                 null, null);
 
-        for (int i = 0; i < 2; i++) {
+        if (!this.host.isStressTest()) {
+            this.host.log("Single connection runs");
+            ((NettyHttpServiceClient) this.host.getClient()).setConnectionLimitPerHost(1);
             this.host.doPutPerService(
                     this.requestCount,
                     EnumSet.of(TestProperty.FORCE_REMOTE),
                     services);
+        }
+
+        for (int i = 0; i < 5; i++) {
+            this.host.doPutPerService(
+                    this.requestCount,
+                    EnumSet.of(TestProperty.FORCE_REMOTE),
+                    services);
+            for (int k = 0; k < 5; k++) {
+                Runtime.getRuntime().gc();
+                Runtime.getRuntime().runFinalization();
+            }
+        }
+
+        if (!this.host.isStressTest()) {
             this.host.doPutPerService(
                     this.requestCount,
                     EnumSet.of(TestProperty.FORCE_REMOTE, TestProperty.CALLBACK_SEND),
                     services);
         }
-
-        this.host.log("Single connection run");
-        ((NettyHttpServiceClient) this.host.getClient()).setConnectionLimitPerHost(1);
-        this.host.doPutPerService(
-                this.requestCount,
-                EnumSet.of(TestProperty.FORCE_REMOTE),
-                services);
     }
 
     @Test

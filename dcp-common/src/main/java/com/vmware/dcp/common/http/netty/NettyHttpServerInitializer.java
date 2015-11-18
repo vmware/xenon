@@ -33,9 +33,6 @@ public class NettyHttpServerInitializer extends ChannelInitializer<SocketChannel
     public static final String DECODER_HANDLER = "decoder";
     public static final String ENCODER_HANDLER = "encoder";
     public static final String SSL_HANDLER = "ssl";
-    public static final int MAX_INITIAL_LINE_LENGTH = 4096;
-    public static final int MAX_HEADER_SIZE = 65536;
-    public static final int MAX_CHUNK_SIZE = 65536;
 
     private final SslContext sslContext;
     private ServiceHost host;
@@ -69,7 +66,10 @@ public class NettyHttpServerInitializer extends ChannelInitializer<SocketChannel
             p.addLast(SSL_HANDLER, handler);
         }
 
-        p.addLast(DECODER_HANDLER, new HttpRequestDecoder(MAX_INITIAL_LINE_LENGTH, MAX_HEADER_SIZE, MAX_CHUNK_SIZE));
+        p.addLast(DECODER_HANDLER, new HttpRequestDecoder(
+                NettyChannelContext.MAX_INITIAL_LINE_LENGTH,
+                NettyChannelContext.MAX_HEADER_SIZE,
+                NettyChannelContext.MAX_CHUNK_SIZE, false));
         p.addLast(ENCODER_HANDLER, new HttpResponseEncoder());
         p.addLast(AGGREGATOR_HANDLER,
                 new HttpObjectAggregator(NettyChannelContext.getMaxRequestSize()));

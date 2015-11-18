@@ -64,28 +64,22 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
     }
 
     @Override
-    public void channelReadComplete(ChannelHandlerContext ctx) {
-        ctx.flush();
-    }
-
-    @Override
     protected void messageReceived(ChannelHandlerContext ctx, Object msg) {
         Operation request = null;
         try {
-            request = ctx.channel().attr(NettyChannelContext.OPERATION_KEY).get();
             if (!(msg instanceof FullHttpRequest)) {
                 return;
             }
             // Start of request processing, initialize in-bound operation
             FullHttpRequest nettyRequest = (FullHttpRequest) msg;
-
             long expMicros = Utils.getNowMicrosUtc() + this.host.getOperationTimeoutMicros();
             URI targetUri = new URI(nettyRequest.uri());
             request = Operation.createGet(null);
             request.setAction(Action.valueOf(nettyRequest.method().toString()))
                     .setExpiration(expMicros);
-            request.setUri(UriUtils.buildUri(this.host, targetUri.getPath(),
-                    targetUri.getQuery()));
+            URI uri = new URI(UriUtils.HTTP_SCHEME, null, ServiceHost.LOCAL_HOST,
+                    this.host.getPort(), targetUri.getPath(), targetUri.getQuery(), null);
+            request.setUri(uri);
             ctx.channel().attr(NettyChannelContext.OPERATION_KEY).set(request);
 
             if (nettyRequest.decoderResult().isFailure()) {
@@ -199,6 +193,7 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
             sendResponse(ctx, request);
         });
 
+        request.setCloningDisabled(true);
         Operation localOp = request;
         if (request.getRequestCallbackLocation() != null) {
             localOp = processRequestWithCallback(request);
@@ -287,7 +282,7 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
             }
             response = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1,
                     HttpResponseStatus.INTERNAL_SERVER_ERROR,
-                    Unpooled.wrappedBuffer(data));
+                    Unpooled.wrappedBuffer(data), false, false);
             response.headers().set(HttpHeaderNames.CONTENT_TYPE, request.getContentType());
             response.headers().setInt(HttpHeaderNames.CONTENT_LENGTH,
                     response.content().readableBytes());
@@ -297,10 +292,10 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
 
         if (bodyBuffer == null || request.getStatusCode() == Operation.STATUS_CODE_NOT_MODIFIED) {
             response = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1,
-                    HttpResponseStatus.valueOf(request.getStatusCode()));
+                    HttpResponseStatus.valueOf(request.getStatusCode()), false, false);
         } else {
             response = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1,
-                    HttpResponseStatus.valueOf(request.getStatusCode()), bodyBuffer);
+                    HttpResponseStatus.valueOf(request.getStatusCode()), bodyBuffer, false, false);
         }
 
         response.headers().set(HttpHeaderNames.CONTENT_TYPE,
@@ -323,7 +318,7 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
 
             // Add Path qualifier, cookie applies everywhere
             buf.append("; Path=/");
-            // Add an Max-Age qualifier if an expiry is set in the Claims object
+            // Add an Max-Age qualifier if an expiration is set in the Claims object
             if (authorizationContext.getClaims().getExpirationTime() != null) {
                 buf.append("; Max-Age=");
                 long maxAge = authorizationContext.getClaims().getExpirationTime() - Utils.getNowMicrosUtc();
