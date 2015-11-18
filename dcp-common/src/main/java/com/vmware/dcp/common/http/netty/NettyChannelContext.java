@@ -25,6 +25,10 @@ public class NettyChannelContext extends SocketContext {
             .<Operation> valueOf("operation");
     public static final int BUFFER_SIZE = 4096 * 16;
 
+    public static final int MAX_INITIAL_LINE_LENGTH = 4096;
+    public static final int MAX_HEADER_SIZE = 65536;
+    public static final int MAX_CHUNK_SIZE = 65536;
+
     public static final PooledByteBufAllocator ALLOCATOR = NettyChannelContext.createAllocator();
 
     static PooledByteBufAllocator createAllocator() {

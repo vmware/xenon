@@ -62,11 +62,11 @@ public class NettyHttpServiceClient implements ServiceClient {
      */
     public static final int DEFAULT_CONNECTIONS_PER_HOST = 128;
 
-    public static final int MAX_REQUEST_SIZE = 1024 * 1024;
-
     public static final Logger LOGGER = Logger.getLogger(ServiceClient.class
             .getName());
     private static final String ENV_VAR_NAME_HTTP_PROXY = "http_proxy";
+
+    private static final int DEFAULT_EVENT_LOOP_THREAD_COUNT = 2;
 
     private URI httpProxy;
     private String userAgent;
@@ -128,7 +128,7 @@ public class NettyHttpServiceClient implements ServiceClient {
         }
 
         this.channelPool.setThreadTag(buildThreadTag());
-        this.channelPool.setThreadCount(Utils.DEFAULT_THREAD_COUNT / 2);
+        this.channelPool.setThreadCount(DEFAULT_EVENT_LOOP_THREAD_COUNT);
         this.channelPool.start();
 
         if (this.sslContext != null) {
@@ -364,7 +364,7 @@ public class NettyHttpServiceClient implements ServiceClient {
             } else {
                 ByteBuf content = Unpooled.wrappedBuffer(body);
                 request = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, method, pathAndQuery,
-                        content);
+                        content, false);
             }
 
             for (Entry<String, String> nameValue : op.getRequestHeaders().entrySet()) {
@@ -381,7 +381,7 @@ public class NettyHttpServiceClient implements ServiceClient {
             }
 
             if (op.getReferer() != null) {
-                request.headers().set(Operation.REFERER_HEADER, op.getReferer().toString());
+                request.headers().set(HttpHeaderNames.REFERER, op.getReferer().toString());
             }
 
             if (op.getCookies() != null) {
@@ -418,11 +418,10 @@ public class NettyHttpServiceClient implements ServiceClient {
     }
 
     private boolean checkScheme(Operation op) {
-        if (op.getUri().getScheme().equals(UriUtils.HTTP_SCHEME)) {
+        String scheme = op.getUri().getScheme();
+        if (scheme.equals(UriUtils.HTTP_SCHEME)) {
             return true;
         }
-
-        String scheme = op.getUri().getScheme();
 
         if (scheme.equals(UriUtils.HTTPS_SCHEME)) {
             if (this.getSSLContext() == null) {
@@ -436,8 +435,7 @@ public class NettyHttpServiceClient implements ServiceClient {
             }
         }
 
-        fail(new IllegalArgumentException("scheme not supported:" + op.getUri().getScheme()),
-                op);
+        fail(new IllegalArgumentException("scheme not supported:" + op.getUri().getScheme()), op);
         return false;
     }
 

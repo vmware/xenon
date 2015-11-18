@@ -43,8 +43,7 @@ public class NettyHttpListener implements ServiceRequestListener {
     private int port;
     private ServiceHost host;
     private Channel serverChannel;
-    private NioEventLoopGroup parentGroup;
-    private NioEventLoopGroup childGroup;
+    private NioEventLoopGroup eventLoopGroup;
     private SslContext sslContext;
     private ChannelHandler childChannelHandler;
 
@@ -73,15 +72,13 @@ public class NettyHttpListener implements ServiceRequestListener {
                             + this.host.getId()));
         };
 
-        this.parentGroup = new NioEventLoopGroup(EVENT_LOOP_THREAD_COUNT, f);
-        this.childGroup = new NioEventLoopGroup(EVENT_LOOP_THREAD_COUNT, f);
-
+        this.eventLoopGroup = new NioEventLoopGroup(EVENT_LOOP_THREAD_COUNT, f);
         if (this.childChannelHandler == null) {
             this.childChannelHandler = new NettyHttpServerInitializer(this.host, this.sslContext);
         }
 
         ServerBootstrap b = new ServerBootstrap();
-        b.group(this.parentGroup, this.childGroup)
+        b.group(this.eventLoopGroup)
                 .channel(NioServerSocketChannel.class)
                 .childHandler(this.childChannelHandler);
 
@@ -109,8 +106,7 @@ public class NettyHttpListener implements ServiceRequestListener {
         }
 
         this.serverChannel.close();
-        this.parentGroup.shutdownGracefully();
-        this.childGroup.shutdownGracefully();
+        this.eventLoopGroup.shutdownGracefully();
         this.serverChannel = null;
     }
 
