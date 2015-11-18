@@ -1838,11 +1838,12 @@ public class ServiceHost {
 
                 post.nestCompletion((o) -> {
                     ServiceDocument document = null;
+
+                    normalizeInitialServiceState(s, post, finalVersion);
+
                     if (post.hasBody()) {
                         document = post.getBody(s.getStateType());
                     }
-
-                    normalizeInitialServiceState(s, post, finalVersion);
                     if (!authorizeServiceState(s, document, post)) {
                         post.fail(Operation.STATUS_CODE_FORBIDDEN);
                         return;

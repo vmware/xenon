@@ -503,7 +503,6 @@ public class LuceneQueryTaskService extends StatefulService {
                 // PATCH self to finished
                 // we do not clone our state since we already cloned before the query
                 // started
-                System.out.println("Patching itself : " + getUri());
                 sendRequest(Operation.createPatch(getUri()).setBodyNoCloning(task));
             }
         } finally {
