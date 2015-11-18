@@ -418,11 +418,10 @@ public class NettyHttpServiceClient implements ServiceClient {
     }
 
     private boolean checkScheme(Operation op) {
-        if (op.getUri().getScheme().equals(UriUtils.HTTP_SCHEME)) {
+        String scheme = op.getUri().getScheme();
+        if (scheme.equals(UriUtils.HTTP_SCHEME)) {
             return true;
         }
-
-        String scheme = op.getUri().getScheme();
 
         if (scheme.equals(UriUtils.HTTPS_SCHEME)) {
             if (this.getSSLContext() == null) {
@@ -436,8 +435,7 @@ public class NettyHttpServiceClient implements ServiceClient {
             }
         }
 
-        fail(new IllegalArgumentException("scheme not supported:" + op.getUri().getScheme()),
-                op);
+        fail(new IllegalArgumentException("scheme not supported:" + op.getUri().getScheme()), op);
         return false;
     }
 
