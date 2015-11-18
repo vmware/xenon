@@ -34,6 +34,11 @@ public class QueryTask extends ServiceDocument {
 
     public static final String KIND = Utils.buildKind(QueryTask.class);
 
+    /**
+     * A list of tenant links which can access this service.
+     */
+    public List<String> tenantLinks;
+
     public static class QuerySpecification {
         public static final String FIELD_NAME_CHARACTER = ".";
         public static final String FIELD_NAME_REGEXP = "\\" + FIELD_NAME_CHARACTER;
