@@ -1015,6 +1015,11 @@ public class ServiceHost {
             throw new IllegalStateException("Already started");
         }
 
+        addPrivilegedService(ServiceHostManagementService.class);
+        addPrivilegedService(OperationIndexService.class);
+        addPrivilegedService(LuceneBlobIndexService.class);
+        addPrivilegedService(BasicAuthenticationService.class);
+
         // normalize peer list and find our external address. This must be done BEFORE node group
         // starts
         List<URI> peers = getInitialPeerHosts();
@@ -1051,7 +1056,7 @@ public class ServiceHost {
         Service transactionFactoryService = new TransactionFactoryService();
         coreServices.add(transactionFactoryService);
 
-        addPrivilegedService(BasicAuthenticationService.class);
+
         coreServices.add(new BasicAuthenticationService());
 
         Service[] coreServiceArray = new Service[coreServices.size()];
