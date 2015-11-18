@@ -154,6 +154,10 @@ public class NettyHttpServiceClient implements ServiceClient {
             this.sslChannelPool.stop();
         }
         this.isStarted = false;
+
+        if (this.host != null) {
+            this.host.stopService(this.callbackService);
+        }
     }
 
     public ServiceClient setHttpProxy(URI proxy) {
