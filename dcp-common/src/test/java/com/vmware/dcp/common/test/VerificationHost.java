@@ -54,6 +54,7 @@ import com.vmware.dcp.common.CommandLineArgumentParser;
 import com.vmware.dcp.common.Operation;
 import com.vmware.dcp.common.Operation.AuthorizationContext;
 import com.vmware.dcp.common.Operation.CompletionHandler;
+import com.vmware.dcp.common.Operation.SocketContext;
 import com.vmware.dcp.common.Service;
 import com.vmware.dcp.common.Service.Action;
 import com.vmware.dcp.common.Service.ServiceOption;
@@ -99,7 +100,6 @@ import com.vmware.dcp.services.common.ServiceUriPaths;
 import com.vmware.dcp.services.common.UserService.UserState;
 
 public class VerificationHost extends ExampleServiceHost {
-    private static final int LARGE_PAYLOAD_SIZE_BYTES = 1024 * 512;
 
     public static final String TMP_PATH_PREFIX = VerificationHost.class.getCanonicalName() + ".";
 
@@ -993,7 +993,11 @@ public class VerificationHost extends ExampleServiceHost {
 
         if (properties.contains(TestProperty.LARGE_PAYLOAD)) {
             Random r = new Random();
-            byte[] data = new byte[LARGE_PAYLOAD_SIZE_BYTES];
+            int byteCount = SocketContext.getMaxRequestSize() / 8;
+            if (properties.contains(TestProperty.FORCE_FAILURE)) {
+                byteCount = SocketContext.getMaxRequestSize() * 2;
+            }
+            byte[] data = new byte[byteCount];
             r.nextBytes(data);
             if (properties.contains(TestProperty.BINARY_PAYLOAD)) {
                 binaryBody = data;
@@ -1029,7 +1033,6 @@ public class VerificationHost extends ExampleServiceHost {
 
             if (properties.contains(TestProperty.LARGE_PAYLOAD)) {
                 updateOp.setCompletion(getExpectedFailureCompletion());
-
             } else {
                 updateOp.setCompletion((o, ex) -> {
                     if (ex == null) {
