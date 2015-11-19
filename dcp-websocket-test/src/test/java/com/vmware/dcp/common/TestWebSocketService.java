@@ -16,11 +16,11 @@ package com.vmware.dcp.common;
 import java.io.File;
 import java.io.InputStreamReader;
 import java.net.URI;
+import java.util.Date;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.UUID;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 import org.junit.Assert;
 import org.junit.Before;
@@ -43,22 +43,22 @@ import com.vmware.dcp.services.common.ServiceUriPaths;
  * <p/>
  * ToDo: migrate to PhantomJS whenever 2.* is available in Maven Central for all platforms
  */
-public class TestWebSocketService extends BasicTestCase {
-    public static final long LONG_TIMEOUT_MILLIS = 2000;
-    public static final int WAIT_TICK = 10;
+public class TestWebSocketService extends BasicReusableHostTestCase {
     public static final String WS_TEST_JS_PATH = "/ws-test/ws-test.js";
     public static final String HOST = "host";
     public static final String LOCATION = "location";
     public static final String DOCUMENT = "document";
     public static final String WS_TEST_JS = "ws-test.js";
     public static final String OBJECTS_CREATED = "objectsCreated";
-    public static final String EXAMPLES_SUBSCRIPTIONS =
-            ExampleFactoryService.SELF_LINK + ServiceHost.SERVICE_URI_SUFFIX_SUBSCRIPTIONS;
+    public static final String EXAMPLES_SUBSCRIPTIONS = ExampleFactoryService.SELF_LINK
+            + ServiceHost.SERVICE_URI_SUFFIX_SUBSCRIPTIONS;
 
-    private String echoServiceUri;
-    private String observerServiceUri;
-    private Context context;
-    private Scriptable scope;
+    private static String echoServiceUri;
+    private static String observerServiceUriForStop;
+    private static String observerServiceUriForClose;
+    private static String observerServiceUriForUnsubscribe;
+    private static Context context;
+    private static Scriptable scope;
 
     private static class EchoServiceResponse {
         public String method;
@@ -71,6 +71,12 @@ public class TestWebSocketService extends BasicTestCase {
 
     @Before
     public void setUp() throws Throwable {
+
+        if (this.host.getServiceStage(WS_TEST_JS_PATH) != null) {
+            // already configured on reusable host
+            return;
+        }
+
         // Bootstrap auxiliary test services
         List<Operation> ops = new LinkedList<>();
         ops.add(Operation.createPost(UriUtils.buildUri(host, WS_TEST_JS_PATH)));
@@ -82,104 +88,115 @@ public class TestWebSocketService extends BasicTestCase {
         // Prepare JavaScript context with WebSocket API emulation
         JsExecutor
                 .executeSynchronously(() -> {
-                    this.context = Context.enter();
-                    this.scope = this.context.initStandardObjects();
-                    ScriptableObject.defineClass(this.scope, JsWebSocket.class);
-                    ScriptableObject.defineClass(this.scope, JsDocument.class);
-                    ScriptableObject.defineClass(this.scope, JsA.class);
+                    context = Context.enter();
+                    scope = context.initStandardObjects();
+                    ScriptableObject.defineClass(scope, JsWebSocket.class);
+                    ScriptableObject.defineClass(scope, JsDocument.class);
+                    ScriptableObject.defineClass(scope, JsA.class);
                     NativeObject location = new NativeObject();
                     location.defineProperty(HOST, host.getPublicUri().getHost() + ":"
                             + host.getPublicUri().getPort(),
                             NativeObject.READONLY);
-                    ScriptableObject.putProperty(this.scope, LOCATION, location);
-                    ScriptableObject.putProperty(this.scope, DOCUMENT,
-                            this.context.newObject(this.scope, JsDocument.CLASS_NAME));
-                    this.context.evaluateReader(
-                            this.scope,
+                    ScriptableObject.putProperty(scope, LOCATION, location);
+                    ScriptableObject.putProperty(scope, DOCUMENT,
+                            context.newObject(scope, JsDocument.CLASS_NAME));
+                    context.evaluateReader(
+                            scope,
                             new InputStreamReader(
                                     UriUtils.buildUri(host, ServiceUriPaths.WS_SERVICE_LIB_JS_PATH)
                                             .toURL().openStream()),
                             ServiceUriPaths.WS_SERVICE_LIB_JS, 1, null);
-                    this.context.evaluateReader(this.scope, new InputStreamReader(UriUtils
+                    context.evaluateReader(scope, new InputStreamReader(UriUtils
                             .buildUri(host,
-                                    WS_TEST_JS_PATH).toURL().openStream()), WS_TEST_JS, 1, null);
+                                    WS_TEST_JS_PATH)
+                            .toURL().openStream()), WS_TEST_JS, 1, null);
                     return null;
                 });
-        this.echoServiceUri = waitAndGetValue("echoServiceUri");
-        this.observerServiceUri = waitAndGetValue("observerServiceUri");
+        echoServiceUri = waitAndGetValue("echoServiceUri");
 
+        observerServiceUriForStop = waitAndGetValue("observerServiceUriForStop");
+        observerServiceUriForClose = waitAndGetValue("observerServiceUriForClose");
+        observerServiceUriForUnsubscribe = waitAndGetValue("observerServiceUriForUnsubscribe");
+    }
+
+    @Test
+    public void actions() throws Throwable {
+        testGet();
+        testPost();
+        testPatch();
+        testPut();
+        testDelete();
     }
 
     /**
      * Tests that GET method is correctly forwarded to JS and response is correctly forwarded back
+     * @throws Throwable
      */
-    @Test
-    public void testGet() throws Exception {
-        Operation op = Operation.createGet(URI.create(this.echoServiceUri));
+    private void testGet() throws Throwable {
+        Operation op = Operation.createGet(URI.create(echoServiceUri));
         testEchoOperation(op);
     }
 
     /**
      * Tests that POST method is correctly forwarded to JS and response is correctly forwarded back
+     * @throws Throwable
      */
-    @Test
-    public void testPost() throws Exception {
-        Operation op = Operation.createPost(URI.create(this.echoServiceUri));
+    private void testPost() throws Throwable {
+        Operation op = Operation.createPost(URI.create(echoServiceUri));
         testEchoOperation(op);
     }
 
     /**
      * Tests that PUT method is correctly forwarded to JS and response is correctly forwarded back
+     * @throws Throwable
      */
-    @Test
-    public void testPut() throws Exception {
-        Operation op = Operation.createPut(URI.create(this.echoServiceUri));
+    private void testPut() throws Throwable {
+        Operation op = Operation.createPut(URI.create(echoServiceUri));
         testEchoOperation(op);
     }
 
     /**
      * Tests that PATCH method is correctly forwarded to JS and response is correctly forwarded back
+     * @throws Throwable
      */
-    @Test
-    public void testPatch() throws Exception {
-        Operation op = Operation.createPatch(URI.create(this.echoServiceUri));
+    private void testPatch() throws Throwable {
+        Operation op = Operation.createPatch(URI.create(echoServiceUri));
         testEchoOperation(op);
     }
 
     /**
      * Tests that DELETE method is correctly forwarded to JS and response is correctly forwarded back
+     * @throws Throwable
      */
-    @Test
-    public void testDelete() throws Exception {
-        Operation op = Operation.createDelete(URI.create(this.echoServiceUri));
+    private void testDelete() throws Throwable {
+        Operation op = Operation.createDelete(URI.create(echoServiceUri));
         testEchoOperation(op);
+    }
+
+    @Test
+    public void subscriptionLifecycle() throws Throwable {
+        subscribeUnsubscribe();
+        subscribeStop();
+        subscribeClose();
     }
 
     /**
      * Tests that JS service can subscribe and receive notifications and then that it can gracefully unsubscribe
+     * @throws Throwable
      */
-    @Test
-    public void testSubscribeUnsubscribe() throws Exception {
+    private void subscribeUnsubscribe() throws Throwable {
         // Validate that observer service is subscribed to example factory
         String someValue = UUID.randomUUID().toString();
-        URI observerUri = URI.create(this.observerServiceUri);
+        URI observerUri = URI.create(observerServiceUriForUnsubscribe);
         waitForSubscriptionToAppear(observerUri, EXAMPLES_SUBSCRIPTIONS);
 
         // Validate that observer receives notifications
-        Operation postExample = Operation.createPost(UriUtils.buildUri(host,
-                ExampleFactoryService.SELF_LINK));
-        ExampleService.ExampleServiceState body = new ExampleService.ExampleServiceState();
-        body.name = someValue;
-        postExample.setBody(body);
-        postExample.setReferer(observerUri);
-        Operation postRes = completeOperationSynchronously(postExample);
-        String created = waitAndGetArrayAsText(OBJECTS_CREATED);
-        Assert.assertEquals("Document self link",
-                postRes.getBody(ExampleService.ExampleServiceState.class).documentSelfLink, created);
+        verifyNotification(someValue, observerUri);
 
         JsExecutor.executeSynchronously(() -> {
-            this.context.evaluateString(
-                    this.scope, "observerService.unsubscribe('/core/examples/subscriptions')",
+            context.evaluateString(
+                    scope,
+                    "observerServiceForUnsubscribe.unsubscribe('/core/examples/subscriptions')",
                     "<cmd>", 1, null);
         });
         // Invoke unsubscribe() method and verify that subscription is unregistered
@@ -189,56 +206,34 @@ public class TestWebSocketService extends BasicTestCase {
     /**
      * Tests that JS service can subscribe and receive notifications and that subscription is removed when service is
      * stopped
+     * @throws Throwable
      */
-    @Test
-    public void testSubscribeStop() throws Exception {
+    private void subscribeStop() throws Throwable {
         // Validate that observer service is subscribed to example factory
         String someValue = UUID.randomUUID().toString();
-        URI observerUri = URI.create(this.observerServiceUri);
+        URI observerUri = URI.create(observerServiceUriForStop);
         waitForSubscriptionToAppear(observerUri, EXAMPLES_SUBSCRIPTIONS);
-
-        // Validate that observer receives notifications
-        Operation postExample = Operation.createPost(UriUtils.buildUri(host,
-                ExampleFactoryService.SELF_LINK));
-        ExampleService.ExampleServiceState body = new ExampleService.ExampleServiceState();
-        body.name = someValue;
-        postExample.setBody(body);
-        postExample.setReferer(observerUri);
-        Operation postRes = completeOperationSynchronously(postExample);
-        String created = waitAndGetArrayAsText(OBJECTS_CREATED);
-        Assert.assertEquals("Document self link",
-                postRes.getBody(ExampleService.ExampleServiceState.class).documentSelfLink, created);
+        verifyNotification(someValue, observerUri);
 
         // Invoke stop() method and verify that subscription is unregistered
-        JsExecutor.executeSynchronously(() -> this.context.evaluateString(this.scope,
-                "observerService.stop()", "<cmd>", 1, null));
+        JsExecutor.executeSynchronously(() -> context.evaluateString(scope,
+                "observerServiceForStop.stop()", "<cmd>", 1, null));
         waitForSubscriptionToDisappear(observerUri, EXAMPLES_SUBSCRIPTIONS);
     }
 
     /**
      * Tests that JS service can subscribe and receive notifications and that subscription is removed when connection
      * is closed ungracefully (i.e. browser tab is closed).
+     * @throws Throwable
      */
-    @Test
-    public void testSubscribeClose() throws Exception {
+    public void subscribeClose() throws Throwable {
         // Validate that observer service is subscribed to example factory
         String someValue = UUID.randomUUID().toString();
-        URI observerUri = URI.create(this.observerServiceUri);
+        URI observerUri = URI.create(observerServiceUriForClose);
         waitForSubscriptionToAppear(observerUri, EXAMPLES_SUBSCRIPTIONS);
-
-        // Validate that observer receives notifications
-        Operation postExample = Operation.createPost(UriUtils.buildUri(host,
-                ExampleFactoryService.SELF_LINK));
-        ExampleService.ExampleServiceState body = new ExampleService.ExampleServiceState();
-        body.name = someValue;
-        postExample.setBody(body);
-        postExample.setReferer(observerUri);
-        Operation postRes = completeOperationSynchronously(postExample);
-        String created = waitAndGetArrayAsText(OBJECTS_CREATED);
-        Assert.assertEquals("Document self link",
-                postRes.getBody(ExampleService.ExampleServiceState.class).documentSelfLink, created);
-        ((JsWebSocket) JsExecutor.executeSynchronously(() -> this.context.evaluateString(
-                this.scope,
+        verifyNotification(someValue, observerUri);
+        ((JsWebSocket) JsExecutor.executeSynchronously(() -> context.evaluateString(
+                scope,
                 "connection.webSocket",
                 "<cmd>", 1,
                 null))).close();
@@ -246,34 +241,51 @@ public class TestWebSocketService extends BasicTestCase {
         waitForSubscriptionToDisappear(observerUri, EXAMPLES_SUBSCRIPTIONS);
     }
 
+    private void verifyNotification(String someValue, URI observerUri) throws Throwable {
+        Operation postExample = Operation.createPost(UriUtils.buildUri(host,
+                ExampleFactoryService.SELF_LINK));
+        ExampleService.ExampleServiceState body = new ExampleService.ExampleServiceState();
+        body.name = someValue;
+        postExample.setBody(body);
+        postExample.setReferer(observerUri);
+        Operation postRes = completeOperationSynchronously(postExample);
+        String link = postRes.getBody(ExampleService.ExampleServiceState.class).documentSelfLink;
+        waitAndGetArrayAsText(OBJECTS_CREATED, link);
+    }
+
     private String waitAndGetValue(String varName) throws Exception {
-        long timeoutMillis = LONG_TIMEOUT_MILLIS;
-        while (true) {
+        Date exp = this.host.getTestExpiration();
+        while (new Date().before(exp)) {
             Object v = JsExecutor.executeSynchronously(() -> ScriptableObject.getProperty(
-                    this.scope,
+                    scope,
                     varName));
             String value = v == null ? null : v.toString();
             if (value != null && !value.isEmpty() && !(v instanceof Undefined)) {
                 return value;
             }
-            timeoutMillis -= WAIT_TICK;
-            if (timeoutMillis < 0) {
-                Assert.fail("Failed to get echo service URI");
-            }
-            Thread.sleep(WAIT_TICK);
+
+            Thread.sleep(100);
         }
+
+        throw new TimeoutException();
     }
 
-    private Operation completeOperationSynchronously(Operation op) throws InterruptedException,
-            java.util.concurrent.ExecutionException, java.util.concurrent.TimeoutException {
-        CompletableFuture<Operation> future = new CompletableFuture<>();
-        op.setCompletion((completedOp, failure) -> future.complete(completedOp));
-        host.send(op);
-        return future.get(1, TimeUnit.SECONDS);
+    private Operation completeOperationSynchronously(Operation op) throws Throwable {
+        Operation[] res = new Operation[1];
+        this.host.testStart(1);
+        host.send(op.setCompletion((o, e) -> {
+            if (e != null) {
+                this.host.failIteration(e);
+            } else {
+                res[0] = o;
+                this.host.completeIteration();
+            }
+        }));
+        this.host.testWait();
+        return res[0];
     }
 
-    private void testEchoOperation(Operation op) throws InterruptedException,
-            java.util.concurrent.ExecutionException, java.util.concurrent.TimeoutException {
+    private void testEchoOperation(Operation op) throws Throwable {
         String someValue = UUID.randomUUID().toString();
         EchoServiceRequest echoServiceRequest = new EchoServiceRequest();
         echoServiceRequest.someValue = someValue;
@@ -286,64 +298,58 @@ public class TestWebSocketService extends BasicTestCase {
     }
 
     private void waitForSubscriptionToAppear(URI observerUri, String subscriptionPath)
-            throws Exception {
+            throws Throwable {
         Operation getSubscriptions = Operation.createGet(UriUtils.buildUri(host, subscriptionPath));
         getSubscriptions.setReferer(observerUri);
-        long timeout = LONG_TIMEOUT_MILLIS;
-        for (;;) {
+        Date exp = this.host.getTestExpiration();
+        while (new Date().before(exp)) {
             Operation res = completeOperationSynchronously(getSubscriptions);
             ServiceSubscriptionState state = res.getBody(ServiceSubscriptionState.class);
             if (state.subscribers.containsKey(observerUri)) {
-                break;
+                return;
             }
 
-            timeout -= WAIT_TICK;
-            if (timeout < 0) {
-                Assert.fail("Subscription is not set up");
-            }
-            Thread.sleep(WAIT_TICK);
+            Thread.sleep(100);
         }
+
+        throw new TimeoutException();
     }
 
     private void waitForSubscriptionToDisappear(URI observerUri, String subscriptionPath)
-            throws Exception {
+            throws Throwable {
         Operation getSubscriptions = Operation.createGet(UriUtils.buildUri(host, subscriptionPath));
         getSubscriptions.setReferer(observerUri);
-        long timeout = LONG_TIMEOUT_MILLIS;
-        for (;;) {
+        Date exp = this.host.getTestExpiration();
+        while (new Date().before(exp)) {
             Operation res = completeOperationSynchronously(getSubscriptions);
             ServiceSubscriptionState state = res.getBody(ServiceSubscriptionState.class);
             if (!state.subscribers.containsKey(observerUri)) {
-                break;
+                return;
             }
-
-            timeout -= WAIT_TICK;
-            if (timeout < 0) {
-                Assert.fail("Subscription is not unregistered");
-            }
-            Thread.sleep(WAIT_TICK);
+            Thread.sleep(100);
         }
+        throw new TimeoutException();
     }
 
-    private String waitAndGetArrayAsText(String name) throws InterruptedException {
-        long timeoutMillis = LONG_TIMEOUT_MILLIS;
-        while (true) {
+    private void waitAndGetArrayAsText(String name, String expected) throws Throwable {
+        Date exp = this.host.getTestExpiration();
+        while (new Date().before(exp)) {
             Scriptable o = (Scriptable) JsExecutor.executeSynchronously(() -> ScriptableObject
-                    .getProperty(this.scope, name));
+                    .getProperty(scope, name));
             if (o.getIds().length > 0) {
                 List<String> values = new LinkedList<>();
                 for (Object id : o.getIds()) {
                     Object v = o.get((Integer) id, null);
                     values.add(v == null ? null : v.toString());
                 }
-                return String.join(Operation.CR_LF, values);
+                String s = String.join(Operation.CR_LF, values);
+                if (s.contains(expected)) {
+                    return;
+                }
             }
-            timeoutMillis -= WAIT_TICK;
-            if (timeoutMillis < 0) {
-                Assert.fail("Failed to get echo service URI");
-            }
-            Thread.sleep(WAIT_TICK);
+            Thread.sleep(100);
         }
+        throw new TimeoutException();
     }
 
 }
