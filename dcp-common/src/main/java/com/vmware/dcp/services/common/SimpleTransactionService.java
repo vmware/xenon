@@ -278,7 +278,7 @@ public class SimpleTransactionService extends StatefulService {
             if (clearTransactionRequest.transactionOutcome == TransactionOutcome.ABORT && clearTransactionRequest.isUpdated) {
                 // restore previous state
                 Query.Builder queryBuilder = Query.Builder.create();
-                queryBuilder.addKindFieldClause(currentState.getClass());
+                queryBuilder.addFieldClause(ServiceDocument.FIELD_NAME_SELF_LINK, this.service.getSelfLink());
                 queryBuilder.addRangeClause(ServiceDocument.FIELD_NAME_VERSION, QueryTask.NumericRange.createLongRange(
                         clearTransactionRequest.originalVersion, clearTransactionRequest.originalVersion, true, true));
                 QueryTask.Builder queryTaskBuilder = QueryTask.Builder.createDirectTask().setQuery(queryBuilder.build());
@@ -299,6 +299,9 @@ public class SimpleTransactionService extends StatefulService {
                                 return;
                             }
                             Object doc =  rsp.results.documents.get(rsp.results.documentLinks.get(0));
+                            this.service.getHost().log(Level.INFO,
+                                    "Aborting transaction %s on service %s, current version %d, restoring version %d",
+                                    request.getTransactionId(), this.service.getSelfLink(), currentState.documentVersion, clearTransactionRequest.originalVersion);
                             ServiceDocument state = Utils.fromJson(doc, currentState.getClass());
                             state.documentTransactionId = null;
                             this.service.setState(request, state);

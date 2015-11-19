@@ -242,9 +242,11 @@ public class TestSimpleTransactionService extends BasicReusableHostTestCase {
             }
             final int final_j = j;
             int amount = 1 + rand.nextInt(3);
+            Utils.logWarning("Transaction %s: Transferring $%d from %d to %d", tid, amount, i, final_j);
             Operation withdraw = createWithdrawOperation(tid, buildAccountId(i), amount);
             withdraw.setCompletion((o, e) -> {
                 if (e != null) {
+                    Utils.logWarning("Transaction %s: failed to withdraw, aborting...", tid);
                     Operation abort = SimpleTransactionService.TxUtils.buildAbortRequest(this.host,
                             tid);
                     abort.setCompletion((op, ex) -> {
@@ -256,6 +258,7 @@ public class TestSimpleTransactionService extends BasicReusableHostTestCase {
                 Operation deposit = createDepositOperation(tid, buildAccountId(final_j), amount);
                 deposit.setCompletion((op, ex) -> {
                     if (ex != null) {
+                        Utils.logWarning("Transaction %s: failed to deposit, aborting...", tid);
                         Operation abort = SimpleTransactionService.TxUtils.buildAbortRequest(
                                 this.host, tid);
                         abort.setCompletion((op2, ex2) -> {
@@ -460,10 +463,13 @@ public class TestSimpleTransactionService extends BasicReusableHostTestCase {
             String accountId = serviceSelfLink.substring(serviceSelfLink.lastIndexOf('/') + 1);
             try {
                 BankAccountServiceState account = getAccount(transactionId, accountId);
+                Utils.logWarning("Retrieved account id %s in transaction %s.  balance=%f, documentTransactionId=%s",
+                        accountId, transactionId, account.balance, account.documentTransactionId);
                 if (transactionId == null && account.documentTransactionId != null) {
                     continue;
                 }
                 sum += account.balance;
+                Utils.logWarning("Sum so far: %f", sum);
             } catch (IllegalStateException ex) {
                 continue;
             }
