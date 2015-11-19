@@ -35,6 +35,15 @@ public class ResourceGroupService extends StatefulService {
 
     @Override
     public void handleStart(Operation op) {
+        handleOp(op);
+    }
+
+    @Override
+    public void handlePut(Operation put) {
+        handleOp(put);
+    }
+
+    private void handleOp(Operation op) {
         if (!op.hasBody()) {
             op.fail(new IllegalArgumentException("body is required"));
             return;
