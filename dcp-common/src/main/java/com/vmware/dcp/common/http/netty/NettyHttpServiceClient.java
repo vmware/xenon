@@ -278,12 +278,12 @@ public class NettyHttpServiceClient implements ServiceClient {
         // Extract cookies into cookie jar, regardless of where this operation ends up being handled.
         clone.nestCompletion((o, e) -> {
             if (e != null) {
-                o.fail(e);
+                clone.fail(e);
                 return;
             }
 
-            handleSetCookieHeaders(o);
-            o.complete();
+            handleSetCookieHeaders(clone);
+            clone.complete();
         });
 
         if (this.cookieJar.isEmpty()) {

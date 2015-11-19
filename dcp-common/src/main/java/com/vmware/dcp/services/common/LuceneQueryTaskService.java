@@ -114,15 +114,17 @@ public class LuceneQueryTaskService extends StatefulService {
                 && initState.querySpec.options.contains(QueryOption.SORT)
                 && initState.querySpec.sortTerm != null
                 && initState.querySpec.sortTerm.propertyName != ServiceDocument.FIELD_NAME_SELF_LINK) {
-            startPost.fail(new IllegalArgumentException("broadcasted query only supports sorting on [" +
-                    ServiceDocument.FIELD_NAME_SELF_LINK + "]"));
+            startPost.fail(new IllegalArgumentException(QueryOption.BROADCAST
+                    + " only supports sorting on ["
+                    + ServiceDocument.FIELD_NAME_SELF_LINK + "]"));
             return false;
         }
 
         if (initState.querySpec.options != null
                 && initState.querySpec.options.contains(QueryOption.BROADCAST)
                 && initState.taskInfo.isDirect) {
-            startPost.fail(new IllegalArgumentException("Direct query is not supported in broadcast"));
+            startPost.fail(new IllegalArgumentException("Direct query is not supported with option "
+                    + QueryOption.BROADCAST));
         }
 
         return true;

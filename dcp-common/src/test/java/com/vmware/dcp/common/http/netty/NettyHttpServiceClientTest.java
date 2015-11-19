@@ -74,6 +74,8 @@ public class NettyHttpServiceClientTest {
 
     @BeforeClass
     public static void setUpOnce() throws Exception {
+
+        NettyChannelContext.setMaxRequestSize(1024 * 512);
         HOST = VerificationHost.create(0, null);
         CommandLineArgumentParser.parseFromProperties(HOST);
         HOST.setMaintenanceIntervalMicros(
@@ -119,7 +121,6 @@ public class NettyHttpServiceClientTest {
         CommandLineArgumentParser.parseFromProperties(this);
         this.host = HOST;
     }
-
 
     @Test
     public void throughputGetRemote() throws Throwable {
@@ -488,11 +489,17 @@ public class NettyHttpServiceClientTest {
         List<Service> services = this.host.doThroughputServiceStart(
                 1, MinimalTestService.class, this.host.buildMinimalTestState(), null,
                 null);
+        // force failure by using a payload higher than max size
+        this.host.doPutPerService(EnumSet.of(TestProperty.FORCE_REMOTE,
+                TestProperty.SINGLE_ITERATION, TestProperty.LARGE_PAYLOAD,
+                TestProperty.BINARY_PAYLOAD, TestProperty.FORCE_FAILURE),
+                services);
+
         // large, binary body
         this.host.doPutPerService(EnumSet.of(TestProperty.FORCE_REMOTE,
                 TestProperty.SINGLE_ITERATION, TestProperty.LARGE_PAYLOAD,
-                TestProperty.BINARY_PAYLOAD),
-                services);
+                TestProperty.BINARY_PAYLOAD), services);
+
         // try local (do not force remote)
         this.host.doPutPerService(
                 EnumSet.of(TestProperty.SINGLE_ITERATION, TestProperty.LARGE_PAYLOAD,

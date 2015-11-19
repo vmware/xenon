@@ -413,25 +413,27 @@ public abstract class FactoryService extends StatelessService {
 
                             URI remotePeerService = SelectOwnerResponse.buildUriToOwner(rsp,
                                     getSelfLink(), null);
+
+                            CompletionHandler fc = (fo, fe) -> {
+                                o.setBodyNoCloning(fo.getBodyRaw());
+                                o.setStatusCode(fo.getStatusCode());
+                                o.transferResponseHeadersFrom(fo);
+                                if (fe != null) {
+                                    o.fail(fe);
+                                    return;
+                                }
+                                o.complete();
+                            };
+
                             Operation forwardOp = o.clone().setUri(remotePeerService)
-                                    .setCompletion((fo, fe) -> {
-                                        if (fe != null) {
-                                            o.setStatusCode(fo.getStatusCode());
-                                            o.fail(fe);
-                                            return;
-                                        }
-                                        o.setStatusCode(Operation.STATUS_CODE_OK)
-                                                .setBodyNoCloning(fo.getBodyRaw());
-                                        o.transferResponseHeadersFrom(fo);
-                                        o.complete();
-                                    });
+                                    .setCompletion(fc);
 
                             // fix up selfLink so it does not have factory prefix
-                        initialState.documentSelfLink = initialState.documentSelfLink
-                                .replace(getSelfLink(), "");
+                            initialState.documentSelfLink = initialState.documentSelfLink
+                                    .replace(getSelfLink(), "");
 
-                        getHost().sendRequest(forwardOp);
-                    });
+                            getHost().sendRequest(forwardOp);
+                        });
         getHost().selectOwner(getPeerNodeSelectorPath(),
                 o.getUri().getPath(), selectOp);
     }

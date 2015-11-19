@@ -897,7 +897,25 @@ public class TestQueryTaskService {
 
         verifyOnlySupportSortOnSelfLinkInBroadcast();
         verifyNotAllowDirectQueryInBroadcast();
-        nonpaginatedBroadcastQueryTasksOnExampleStates();
+
+        VerificationHost targetHost = this.host.getPeerHost();
+        URI exampleFactoryURI = UriUtils.buildUri(targetHost, ExampleFactoryService.SELF_LINK);
+
+        this.host.testStart(this.serviceCount);
+        List<URI> exampleServices = new ArrayList<>();
+        for (int i = 0; i < this.serviceCount; i++) {
+            ExampleServiceState s = new ExampleServiceState();
+            s.name = "document" + i;
+            s.documentSelfLink = s.name;
+            exampleServices.add(UriUtils.buildUri(this.host.getUri(),
+                    ExampleFactoryService.SELF_LINK, s.documentSelfLink));
+            this.host.send(Operation.createPost(exampleFactoryURI)
+                    .setBody(s)
+                    .setCompletion(this.host.getCompletion()));
+        }
+        this.host.testWait();
+
+        nonpaginatedBroadcastQueryTasksOnExampleStates(targetHost);
         paginatedbroadcastQueryTasksOnExampleStates();
     }
 
@@ -923,11 +941,7 @@ public class TestQueryTaskService {
                 .createPost(factoryUri)
                 .setBody(task)
                 .setCompletion((o, e) -> {
-                    assertNotNull(e);
-                    assertTrue(e.getMessage().contains("broadcasted query only supports sorting on [" +
-                            ServiceDocument.FIELD_NAME_SELF_LINK + "]"));
-
-                    targetHost.completeIteration();
+                    validateBroadcastQueryPostFailure(targetHost, o, e);
                 });
         targetHost.send(startPost);
 
@@ -954,38 +968,31 @@ public class TestQueryTaskService {
                 .createPost(factoryUri)
                 .setBody(task)
                 .setCompletion((o, e) -> {
-                    assertNotNull(e);
-                    assertTrue(e.getMessage().contains("Direct query is not supported in broadcast"));
-
-                    targetHost.completeIteration();
+                    validateBroadcastQueryPostFailure(targetHost, o, e);
                 });
         targetHost.send(startPost);
 
         targetHost.testWait();
     }
 
-    private void nonpaginatedBroadcastQueryTasksOnExampleStates() throws Throwable {
-
-        VerificationHost targetHost = this.host.getPeerHost();
-        URI exampleFactoryURI = UriUtils.buildUri(targetHost, ExampleFactoryService.SELF_LINK);
-
-        int serviceCount = 100;
-        this.host.testStart(serviceCount);
-        List<URI> exampleServices = new ArrayList<>();
-        for (int i = 0; i < serviceCount; i++) {
-            ExampleServiceState s = new ExampleServiceState();
-            s.name = "document" + i;
-            s.documentSelfLink = s.name;
-
-            exampleServices.add(UriUtils.buildUri(this.host.getUri(),
-                    ExampleFactoryService.SELF_LINK, s.documentSelfLink));
-
-            this.host.send(Operation.createPost(exampleFactoryURI)
-                    .setBody(s)
-                    .setCompletion(this.host.getCompletion()));
+    private void validateBroadcastQueryPostFailure(VerificationHost targetHost, Operation o,
+            Throwable e) {
+        if (e != null) {
+            ServiceErrorResponse rsp = o.getBody(ServiceErrorResponse.class);
+            if (rsp.message == null
+                    || !rsp.message.contains(QueryOption.BROADCAST.toString())) {
+                targetHost.failIteration(new IllegalStateException("Expected failure"));
+                return;
+            }
+            targetHost.completeIteration();
+        } else {
+            targetHost.failIteration(new IllegalStateException("expected failure"));
         }
-        this.host.testWait();
+        targetHost.completeIteration();
+    }
 
+    private void nonpaginatedBroadcastQueryTasksOnExampleStates(VerificationHost targetHost)
+            throws Throwable {
         QuerySpecification q = new QuerySpecification();
         Query kindClause = new Query();
         kindClause.setTermPropertyName(ServiceDocument.FIELD_NAME_KIND)
@@ -1008,8 +1015,7 @@ public class TestQueryTaskService {
                     }
 
                     QueryTask rsp = o.getBody(QueryTask.class);
-                    assertTrue(serviceCount == rsp.results.documentCount);
-
+                    assertTrue(this.serviceCount == rsp.results.documentCount);
                     targetHost.completeIteration();
                 });
         targetHost.send(startGet);
@@ -1019,25 +1025,9 @@ public class TestQueryTaskService {
     private void paginatedbroadcastQueryTasksOnExampleStates () throws Throwable {
 
         VerificationHost targetHost = this.host.getPeerHost();
-        URI exampleFactoryURI = UriUtils.buildUri(targetHost, ExampleFactoryService.SELF_LINK);
 
         int serviceCount = 100;
         int resultLimit = 30;
-        this.host.testStart(serviceCount);
-        List<URI> exampleServices = new ArrayList<>();
-        for (int i = 0; i < serviceCount; i++) {
-            ExampleServiceState s = new ExampleServiceState();
-            s.name = "document" + i;
-            s.documentSelfLink = s.name;
-
-            exampleServices.add(UriUtils.buildUri(this.host.getUri(),
-                    ExampleFactoryService.SELF_LINK, s.documentSelfLink));
-
-            this.host.send(Operation.createPost(exampleFactoryURI)
-                    .setBody(s)
-                    .setCompletion(this.host.getCompletion()));
-        }
-        this.host.testWait();
 
         QuerySpecification q = new QuerySpecification();
         Query kindClause = new Query();
