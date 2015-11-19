@@ -242,9 +242,12 @@ public class TestSimpleTransactionService extends BasicReusableHostTestCase {
             }
             final int final_j = j;
             int amount = 1 + rand.nextInt(3);
+            this.host
+                    .log("Transaction %s: Transferring $%d from %d to %d", tid, amount, i, final_j);
             Operation withdraw = createWithdrawOperation(tid, buildAccountId(i), amount);
             withdraw.setCompletion((o, e) -> {
                 if (e != null) {
+                    this.host.log("Transaction %s: failed to withdraw, aborting...", tid);
                     Operation abort = SimpleTransactionService.TxUtils.buildAbortRequest(this.host,
                             tid);
                     abort.setCompletion((op, ex) -> {
@@ -256,6 +259,7 @@ public class TestSimpleTransactionService extends BasicReusableHostTestCase {
                 Operation deposit = createDepositOperation(tid, buildAccountId(final_j), amount);
                 deposit.setCompletion((op, ex) -> {
                     if (ex != null) {
+                        this.host.log("Transaction %s: failed to deposit, aborting...", tid);
                         Operation abort = SimpleTransactionService.TxUtils.buildAbortRequest(
                                 this.host, tid);
                         abort.setCompletion((op2, ex2) -> {
@@ -264,7 +268,7 @@ public class TestSimpleTransactionService extends BasicReusableHostTestCase {
                         this.host.send(abort);
                         return;
                     }
-                    Utils.logWarning("Transaction %s: Committing", tid);
+                    this.host.log("Transaction %s: Committing", tid);
                     Operation commit = SimpleTransactionService.TxUtils.buildCommitRequest(
                             this.host, tid);
                     commit.setCompletion((op2, ex2) -> {
