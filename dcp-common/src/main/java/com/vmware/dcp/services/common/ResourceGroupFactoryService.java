@@ -22,6 +22,7 @@ public class ResourceGroupFactoryService extends FactoryService {
 
     public ResourceGroupFactoryService() {
         super(ResourceGroupState.class);
+        super.toggleOption(ServiceOption.IDEMPOTENT_POST, true);
     }
 
     @Override
