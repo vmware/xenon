@@ -136,9 +136,8 @@ public class NettyHttpServerResponseHandler extends SimpleChannelInboundHandler<
         if (op.getStatusCode() < Operation.STATUS_CODE_FAILURE_THRESHOLD) {
             return false;
         }
-        String errorMsg = String.format("Service %s returned error %d for %s: %s",
-                op.getUri(), op.getStatusCode(), op.getAction(),
-                Utils.toJsonHtml(op.getBodyRaw()));
+        String errorMsg = String.format("Service %s returned error %d for %s",
+                op.getUri(), op.getStatusCode(), op.getAction());
 
         if (!op.hasBody()) {
             op.setBodyNoCloning(Utils

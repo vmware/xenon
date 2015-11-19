@@ -923,11 +923,11 @@ public class TestQueryTaskService {
                 .createPost(factoryUri)
                 .setBody(task)
                 .setCompletion((o, e) -> {
-                    assertNotNull(e);
-                    assertTrue(e.getMessage().contains("broadcasted query only supports sorting on [" +
-                            ServiceDocument.FIELD_NAME_SELF_LINK + "]"));
-
-                    targetHost.completeIteration();
+                    if (e != null) {
+                        targetHost.completeIteration();
+                    } else {
+                        targetHost.failIteration(new IllegalStateException("Expected failure"));
+                    }
                 });
         targetHost.send(startPost);
 
@@ -954,9 +954,11 @@ public class TestQueryTaskService {
                 .createPost(factoryUri)
                 .setBody(task)
                 .setCompletion((o, e) -> {
-                    assertNotNull(e);
-                    assertTrue(e.getMessage().contains("Direct query is not supported in broadcast"));
-
+                    if (e != null) {
+                        targetHost.completeIteration();
+                    } else {
+                        targetHost.failIteration(new IllegalStateException("expected failure"));
+                    }
                     targetHost.completeIteration();
                 });
         targetHost.send(startPost);
