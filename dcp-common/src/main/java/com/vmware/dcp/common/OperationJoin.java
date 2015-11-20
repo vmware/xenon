@@ -34,6 +34,7 @@ public class OperationJoin {
     private static final int APPROXIMATE_EXPECTED_CAPACITY = 4;
     public static final String ERROR_MSG_BATCH_LIMIT_VIOLATED = "batch limit violated";
     public static final String ERROR_MSG_INVALID_BATCH_SIZE = "batch size must be greater than 0";
+    public static final String ERROR_MSG_OPERATIONS_ALREADY_SET = "operations have already been set";
     private final ConcurrentHashMap<Long, Operation> operations;
     private ConcurrentHashMap<Long, Throwable> failures;
     volatile JoinedCompletionHandler joinedCompletion;
@@ -50,21 +51,20 @@ public class OperationJoin {
     }
 
     /**
+     * Create {@link OperationJoin} with no operations in preparation for {@link Operation}s to
+     * be added at a later time.
+     */
+    public static OperationJoin create() {
+        return new OperationJoin();
+    }
+
+    /**
      * Create {@link OperationJoin} with an array of {@link Operation}s to be joined together in
      * parallel execution.
      */
     public static OperationJoin create(Operation... ops) {
-        if (ops.length == 0) {
-            throw new IllegalArgumentException("At least one operation to join expected");
-        }
-
         OperationJoin joinOp = new OperationJoin();
-        CompletionHandler nestedParentHandler = joinOp.createParentCompletion();
-        for (Operation op : ops) {
-            joinOp.prepareOperation(nestedParentHandler, op);
-        }
-
-        joinOp.operationIterator = joinOp.operations.values().iterator();
+        joinOp.setOperations(ops);
         return joinOp;
     }
 
@@ -73,17 +73,8 @@ public class OperationJoin {
      * parallel execution.
      */
     public static OperationJoin create(Collection<Operation> ops) {
-        if (ops.isEmpty()) {
-            throw new IllegalArgumentException("At least one operation to join expected");
-        }
-
         OperationJoin joinOp = new OperationJoin();
-        CompletionHandler nestedParentHandler = joinOp.createParentCompletion();
-        for (Operation op : ops) {
-            joinOp.prepareOperation(nestedParentHandler, op);
-        }
-
-        joinOp.operationIterator = joinOp.operations.values().iterator();
+        joinOp.setOperations(ops);
         return joinOp;
     }
 
@@ -93,14 +84,72 @@ public class OperationJoin {
      */
     public static OperationJoin create(Stream<Operation> ops) {
         OperationJoin joinOp = new OperationJoin();
-        CompletionHandler nestedParentHandler = joinOp.createParentCompletion();
-        ops.forEach((op) -> joinOp.prepareOperation(nestedParentHandler, op));
-        joinOp.operationIterator = joinOp.operations.values().iterator();
+        joinOp.setOperations(ops);
+        return joinOp;
+    }
 
-        if (joinOp.isEmpty()) {
+    /**
+     * Set the {@link Operation}s for the current {@link OperationJoin}. This is a one-time
+     * operation.
+     */
+    public OperationJoin setOperations(Operation... ops) {
+        if (ops.length == 0) {
             throw new IllegalArgumentException("At least one operation to join expected");
         }
-        return joinOp;
+
+        if (this.operationIterator != null) {
+            throw new IllegalStateException(ERROR_MSG_OPERATIONS_ALREADY_SET);
+        }
+
+        CompletionHandler nestedParentHandler = createParentCompletion();
+        for (Operation op : ops) {
+            prepareOperation(nestedParentHandler, op);
+        }
+
+        this.operationIterator = this.operations.values().iterator();
+        return this;
+    }
+
+    /**
+     * Set the {@link Operation}s for the current {@link OperationJoin}. This is a one-time
+     * operation.
+     */
+    public OperationJoin setOperations(Collection<Operation> ops) {
+        if (ops.isEmpty()) {
+            throw new IllegalArgumentException("At least one operation to join expected");
+        }
+
+        if (this.operationIterator != null) {
+            throw new IllegalStateException(ERROR_MSG_OPERATIONS_ALREADY_SET);
+        }
+
+        CompletionHandler nestedParentHandler = createParentCompletion();
+        for (Operation op : ops) {
+            prepareOperation(nestedParentHandler, op);
+        }
+
+        this.operationIterator = this.operations.values().iterator();
+        return this;
+    }
+
+    /**
+     * Set the {@link Operation}s for the current {@link OperationJoin}. This is a one-time
+     * operation.
+     */
+    public OperationJoin setOperations(Stream<Operation> ops) {
+        if (this.operationIterator != null) {
+            throw new IllegalStateException(ERROR_MSG_OPERATIONS_ALREADY_SET);
+        }
+
+        CompletionHandler nestedParentHandler = createParentCompletion();
+        ops.forEach((op) -> prepareOperation(nestedParentHandler, op));
+        this.operationIterator = this.operations.values().iterator();
+
+        if (isEmpty()) {
+            throw new IllegalArgumentException("At least one operation to join expected");
+        }
+
+        return this;
     }
 
     private void prepareOperation(CompletionHandler nestedParentHandler, Operation op) {
@@ -154,12 +203,15 @@ public class OperationJoin {
     }
 
     private void sendWithBatch() {
-        int count = 0;
+        if (this.operationIterator == null || !this.operationIterator.hasNext()) {
+            throw new IllegalStateException("No operations to be sent");
+        }
 
         // Move the operations to local list to avoid concurrency issues with iterator
         // when sendNext could be called from handler of returning operation
         // before we get out of this method.
         ArrayList<Operation> localOperationList = new ArrayList<>();
+        int count = 0;
         while (this.operationIterator.hasNext()) {
             localOperationList.add(this.operationIterator.next());
             count++;

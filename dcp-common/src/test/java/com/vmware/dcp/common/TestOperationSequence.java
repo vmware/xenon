@@ -297,6 +297,45 @@ public class TestOperationSequence extends BasicReusableHostTestCase {
         host.testWait();
     }
 
+    @Test
+    public void testJoinWithDeferredOperations() throws Throwable {
+        Operation op1 = createServiceOperation(this.services.get(0));
+        Operation op2 = createServiceOperation(this.services.get(1));
+        Operation op3 = createServiceOperation(this.services.get(2));
+        OperationJoin join = OperationJoin.create();
+
+        host.testStart(1);
+        OperationSequence
+                .create(op1, op2, op3)
+                .setCompletion((ops, exc) -> {
+                    if (exc != null) {
+                        host.failIteration(exc.values().iterator().next());
+                    } else {
+                        assertTrue(ops.containsKey(op1.getId()));
+                        assertTrue(ops.containsKey(op2.getId()));
+                        assertTrue(ops.containsKey(op3.getId()));
+                        Operation op4 = createServicePatch(ops.get(op1.getId()));
+                        Operation op5 = createServicePatch(ops.get(op2.getId()));
+                        Operation op6 = createServicePatch(ops.get(op3.getId()));
+                        join.setOperations(op4, op5, op6);
+                    }
+                })
+                .next(join)
+                .setCompletion((ops, exc) -> {
+                    if (exc != null) {
+                        host.failIteration(exc.values().iterator().next());
+                    } else {
+                        assertTrue(ops.containsKey(op1.getId()));
+                        assertTrue(ops.containsKey(op2.getId()));
+                        assertTrue(ops.containsKey(op3.getId()));
+                        assertEquals(ops.values().size(), 6);
+                        host.completeIteration();
+                    }
+                })
+                .sendWith(host);
+        host.testWait();
+    }
+
     private List<Service> initServices() throws Throwable {
         int numberOfServices = 3;
         return host.doThroughputServiceStart(numberOfServices,
@@ -310,4 +349,10 @@ public class TestOperationSequence extends BasicReusableHostTestCase {
                 .forceRemote();
     }
 
+    private Operation createServicePatch(Operation op) {
+        return Operation.createPatch(op.getUri())
+                .setReferer(host.getUri())
+                .forceRemote()
+                .setBody(op.getBody(MinimalTestServiceState.class));
+    }
 }

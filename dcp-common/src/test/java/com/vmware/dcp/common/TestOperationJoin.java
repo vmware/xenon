@@ -310,6 +310,79 @@ public class TestOperationJoin extends BasicReusableHostTestCase {
         host.testWait();
     }
 
+    @Test
+    public void testSetOperations() throws Throwable {
+        OperationJoin operationJoin = OperationJoin.create();
+        Operation op1 = createServiceOperation(this.services.get(0));
+        Operation op2 = createServiceOperation(this.services.get(1));
+        Operation op3 = createServiceOperation(this.services.get(2));
+
+        host.testStart(1);
+        operationJoin
+            .setOperations(op1, op2, op3)
+            .setCompletion((ops, exs) -> {
+                if (exs != null) {
+                    host.failIteration(exs.values().iterator().next());
+                } else {
+                    host.completeIteration();
+                }
+            }).sendWith(host);
+        host.testWait();
+    }
+
+    @Test
+    public void testSetOperationsWithCollection() throws Throwable {
+        OperationJoin operationJoin = OperationJoin.create();
+        Operation op1 = createServiceOperation(this.services.get(0));
+        Operation op2 = createServiceOperation(this.services.get(1));
+        Operation op3 = createServiceOperation(this.services.get(2));
+
+        host.testStart(1);
+        operationJoin
+            .setOperations(Arrays.asList(op1, op2, op3))
+            .setCompletion((ops, exs) -> {
+                if (exs != null) {
+                    host.failIteration(exs.values().iterator().next());
+                } else {
+                    host.completeIteration();
+                }
+            }).sendWith(host);
+        host.testWait();
+    }
+
+    @Test
+    public void testSetOperationsWithStream() throws Throwable {
+        OperationJoin operationJoin = OperationJoin.create();
+        Operation op1 = createServiceOperation(this.services.get(0));
+        Operation op2 = createServiceOperation(this.services.get(1));
+        Operation op3 = createServiceOperation(this.services.get(2));
+
+        host.testStart(1);
+        operationJoin
+            .setOperations(Stream.of(op1, op2, op3))
+            .setCompletion((ops, exs) -> {
+                if (exs != null) {
+                    host.failIteration(exs.values().iterator().next());
+                } else {
+                    host.completeIteration();
+                }
+            }).sendWith(host);
+        host.testWait();
+    }
+
+    @Test
+    public void testSetOperationsFailureWithoutOperations() throws Throwable {
+        OperationJoin operationJoin = OperationJoin.create();
+        host.testStart(1);
+        try {
+            operationJoin.sendWith(host);
+            host.failIteration(new IllegalStateException("Expected exception"));
+        } catch (IllegalStateException e) {
+            host.completeIteration();
+        }
+        host.testWait();
+    }
+
     private List<Service> initServices() throws Throwable {
         return host.doThroughputServiceStart(this.numberOfServices,
                 MinimalTestService.class, host.buildMinimalTestState(),
