@@ -198,6 +198,14 @@
         <additionalparam>-Xdoclint:none</additionalparam>
       </properties>
       <build>
+        <resources>
+          <resource>
+            <directory>src/main/resources</directory>
+          </resource>
+          <resource>
+            <directory>target/extra-resources</directory>
+          </resource>
+        </resources>
         <plugins>
           <plugin>
             <groupId>org.apache.maven.plugins</groupId>
@@ -223,6 +231,34 @@
                 <goals>
                   <goal>sign</goal>
                 </goals>
+              </execution>
+            </executions>
+          </plugin>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-resources-plugin</artifactId>
+            <version>2.7</version>
+            <executions>
+              <execution>
+                <id>copy-license</id>
+                <!-- Bind to initialize phase so that the default resources target
+                     picks these files up from target/extra-resources. //-->
+                <phase>initialize</phase>
+                <goals>
+                  <goal>copy-resources</goal>
+                </goals>
+                <configuration>
+                  <outputDirectory>${basedir}/target/extra-resources</outputDirectory>
+                  <resources>
+                    <resource>
+                      <directory>${basedir}/..</directory>
+                      <includes>
+                        <include>LICENSE</include>
+                        <include>NOTICE</include>
+                      </includes>
+                    </resource>
+                  </resources>
+                </configuration>
               </execution>
             </executions>
           </plugin>
