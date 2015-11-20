@@ -1030,7 +1030,11 @@ public class TestQueryTaskService {
                     }
 
                     QueryTask rsp = o.getBody(QueryTask.class);
-                    assertTrue(this.serviceCount == rsp.results.documentCount);
+                    if (this.serviceCount != rsp.results.documentCount) {
+                        targetHost.failIteration(new IllegalStateException("Incorrect number of documents returned: "
+                                + this.serviceCount + " expected, but " + rsp.results.documentCount + " returned"));
+                        return;
+                    }
                     targetHost.completeIteration();
                 });
         targetHost.send(startGet);
@@ -1067,9 +1071,19 @@ public class TestQueryTaskService {
                     }
 
                     QueryTask rsp = o.getBody(QueryTask.class);
-                    assertTrue(0 == rsp.results.documentCount);
-                    assertTrue(rsp.results.nextPageLink.contains(UriUtils.buildUriPath(ServiceUriPaths.CORE,
-                            BroadcastQueryPageService.SELF_LINK_PREFIX)));
+                    if (rsp.results.documentCount != 0) {
+                        targetHost.failIteration(new IllegalStateException("Incorrect number of documents returned: " +
+                                "0 expected, but " + rsp.results.documentCount + " returned"));
+                        return;
+                    }
+
+                    String expectedPageLinkSegment = UriUtils.buildUriPath(ServiceUriPaths.CORE,
+                            BroadcastQueryPageService.SELF_LINK_PREFIX);
+                    if (!rsp.results.nextPageLink.contains(expectedPageLinkSegment)) {
+                        targetHost.failIteration(new IllegalStateException("Incorrect next page link returned: " +
+                                rsp.results.nextPageLink));
+                        return;
+                    }
 
                     targetHost.completeIteration();
                 });
