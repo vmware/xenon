@@ -97,7 +97,7 @@ public class UtilityService implements Service {
         switch (op.getAction()) {
         case POST:
             // synchronize to avoid concurrent modification during serialization for GET
-            synchronized (this) {
+            synchronized (this.subscriptions) {
                 this.subscriptions.subscribers.put(body.reference, body);
             }
             if (!body.replayState) {
@@ -125,14 +125,16 @@ public class UtilityService implements Service {
             break;
         case DELETE:
             // synchronize to avoid concurrent modification during serialization for GET
-            synchronized (this) {
+            synchronized (this.subscriptions) {
                 this.subscriptions.subscribers.remove(body.reference);
             }
             break;
         case GET:
-            synchronized (this) {
-                op.setBody(this.subscriptions);
+            ServiceDocument rsp = null;
+            synchronized (this.subscriptions) {
+                rsp = Utils.clone(this.subscriptions);
             }
+            op.setBody(rsp);
             break;
         default:
             op.fail(new NotActiveException());
@@ -384,9 +386,12 @@ public class UtilityService implements Service {
                 populateDocumentProperties(s);
                 op.setBody(s).complete();
             } else {
+                ServiceDocument rsp = null;
                 synchronized (this.stats) {
-                    op.setBody(populateDocumentProperties(this.stats));
+                    rsp = populateDocumentProperties(this.stats);
+                    rsp = Utils.clone(rsp);
                 }
+                op.setBody(rsp);
                 op.complete();
             }
             break;
