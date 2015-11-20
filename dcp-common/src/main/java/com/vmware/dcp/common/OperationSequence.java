@@ -104,6 +104,7 @@ public class OperationSequence {
     private volatile OperationSequence child;
     private volatile OperationSequence parent;
     private volatile Object sender;
+    private volatile boolean cumulative = true;
 
     private OperationSequence(OperationJoin join) {
         this.join = join;
@@ -160,6 +161,11 @@ public class OperationSequence {
     }
 
     public OperationSequence setCompletion(JoinedCompletionHandler joinedCompletion) {
+        return setCompletion(true, joinedCompletion);
+    }
+
+    public OperationSequence setCompletion(boolean cumulative, JoinedCompletionHandler joinedCompletion) {
+        this.cumulative = cumulative;
         this.join.setCompletion(joinedCompletion);
         return this;
     }
@@ -235,10 +241,15 @@ public class OperationSequence {
 
             final AtomicBoolean errors = new AtomicBoolean();
             if (this.joinedCompletionHandler != null) {
-                final Map<Long, Operation> allOps = this.sequence.getAllCompletedOperations();
-                final Map<Long, Throwable> allFailures = this.sequence.getAllFailures();
-                this.joinedCompletionHandler.handle(allOps, allFailures);
-                errors.set(allFailures != null && !allFailures.isEmpty());
+                if (this.sequence.cumulative) {
+                    final Map<Long, Operation> allOps = this.sequence.getAllCompletedOperations();
+                    final Map<Long, Throwable> allFailures = this.sequence.getAllFailures();
+                    this.joinedCompletionHandler.handle(allOps, allFailures);
+                    errors.set(allFailures != null && !allFailures.isEmpty());
+                } else {
+                    this.joinedCompletionHandler.handle(ops, failures);
+                    errors.set(failures != null && !failures.isEmpty());
+                }
             }
             if (this.sequence.child != null && !errors.get()) {
                 try {

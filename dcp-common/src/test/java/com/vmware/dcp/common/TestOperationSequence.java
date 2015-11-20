@@ -314,6 +314,7 @@ public class TestOperationSequence extends BasicReusableHostTestCase {
                         assertTrue(ops.containsKey(op1.getId()));
                         assertTrue(ops.containsKey(op2.getId()));
                         assertTrue(ops.containsKey(op3.getId()));
+                        assertEquals(ops.values().size(), 3);
                         Operation op4 = createServicePatch(ops.get(op1.getId()));
                         Operation op5 = createServicePatch(ops.get(op2.getId()));
                         Operation op6 = createServicePatch(ops.get(op3.getId()));
@@ -342,6 +343,56 @@ public class TestOperationSequence extends BasicReusableHostTestCase {
         } catch (IllegalStateException e) {
             host.completeIteration();
         }
+        host.testWait();
+    }
+
+    @Test
+    public void testJoinWithNonCumulativeHandlers() throws Throwable {
+        Operation op1 = createServiceOperation(this.services.get(0));
+        Operation op2 = createServiceOperation(this.services.get(1));
+        Operation op3 = createServiceOperation(this.services.get(2));
+        OperationJoin join1 = OperationJoin.create();
+        OperationJoin join2 = OperationJoin.create();
+
+        host.testStart(1);
+        OperationSequence
+                .create(op1, op2, op3)
+                .setCompletion((ops, exc) -> {
+                    if (exc != null) {
+                        host.failIteration(exc.values().iterator().next());
+                    } else {
+                        assertTrue(ops.containsKey(op1.getId()));
+                        assertTrue(ops.containsKey(op2.getId()));
+                        assertTrue(ops.containsKey(op3.getId()));
+                        assertEquals(ops.values().size(), 3);
+                        Operation op4 = createServicePatch(ops.get(op1.getId()));
+                        Operation op5 = createServicePatch(ops.get(op2.getId()));
+                        Operation op6 = createServicePatch(ops.get(op3.getId()));
+                        join1.setOperations(op4, op5, op6);
+                    }
+                })
+                .next(join1)
+                .setCompletion(false, (ops, exc) -> {
+                    if (exc != null) {
+                        host.failIteration(exc.values().iterator().next());
+                    } else {
+                        assertEquals(ops.values().size(), 3);
+                        join2.setOperations(ops.values().stream().map((op) -> createServicePatch(op)));
+                    }
+                })
+                .next(join2)
+                .setCompletion(true, (ops, exc) -> {
+                    if (exc != null) {
+                        host.failIteration(exc.values().iterator().next());
+                    } else {
+                        assertTrue(ops.containsKey(op1.getId()));
+                        assertTrue(ops.containsKey(op2.getId()));
+                        assertTrue(ops.containsKey(op3.getId()));
+                        assertEquals(ops.values().size(), 9);
+                        host.completeIteration();
+                    }
+                })
+                .sendWith(host);
         host.testWait();
     }
 
