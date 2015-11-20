@@ -71,6 +71,8 @@ public class Operation implements Cloneable {
 
         private static int maxRequestSize = 1024 * 1024 * 16;
 
+        private static int MAX_CLIENT_REQUEST_SIZE = 1024 * 1024 * 128;
+
         /**
          * Set maximum request/response size for socket I/O.
          * Note that this has to be called very early before client / listener initialize.
@@ -82,6 +84,10 @@ public class Operation implements Cloneable {
 
         public static int getMaxRequestSize() {
             return maxRequestSize;
+        }
+
+        public static int getMaxClientRequestSize() {
+            return MAX_CLIENT_REQUEST_SIZE;
         }
     }
 

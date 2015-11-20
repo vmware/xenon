@@ -55,7 +55,8 @@ public class NettyHttpClientRequestInitializer extends ChannelInitializer<Socket
                 NettyChannelContext.MAX_INITIAL_LINE_LENGTH,
                 NettyChannelContext.MAX_HEADER_SIZE,
                 NettyChannelContext.MAX_CHUNK_SIZE, false));
-        p.addLast(AGGREGATOR_HANDLER, new HttpObjectAggregator(SocketContext.getMaxRequestSize()));
+        p.addLast(AGGREGATOR_HANDLER,
+                new HttpObjectAggregator(SocketContext.getMaxClientRequestSize()));
         p.addLast(DCP_HANDLER, new NettyHttpServerResponseHandler(this.pool));
     }
 }

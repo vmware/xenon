@@ -39,6 +39,7 @@ import org.junit.After;
 import org.junit.AfterClass;
 import org.junit.Before;
 import org.junit.BeforeClass;
+import org.junit.Ignore;
 import org.junit.Test;
 
 import com.vmware.dcp.common.CommandLineArgumentParser;
@@ -509,6 +510,19 @@ public class NettyHttpServiceClientTest {
         // large, string (JSON) body
         this.host.doPutPerService(EnumSet.of(TestProperty.FORCE_REMOTE,
                 TestProperty.SINGLE_ITERATION, TestProperty.LARGE_PAYLOAD),
+                services);
+    }
+
+    @Ignore("https://www.pivotaltracker.com/story/show/108641312")
+    @Test
+    public void putOverMaxRequestLimit() throws Throwable {
+        List<Service> services = this.host.doThroughputServiceStart(
+                1, MinimalTestService.class, this.host.buildMinimalTestState(), null,
+                null);
+        // force failure by using a payload higher than max size
+        this.host.doPutPerService(EnumSet.of(TestProperty.FORCE_REMOTE,
+                TestProperty.SINGLE_ITERATION, TestProperty.LARGE_PAYLOAD,
+                TestProperty.BINARY_PAYLOAD, TestProperty.FORCE_FAILURE),
                 services);
     }
 

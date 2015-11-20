@@ -456,8 +456,9 @@ public class NettyHttpServiceClient implements ServiceClient {
         if (this.sslChannelPool != null && this.sslChannelPool.isContextInUse(ctx)) {
             pool = this.sslChannelPool;
         }
-        pool.returnOrClose(ctx, !op.isKeepAlive());
+
         op.setSocketContext(null);
+        pool.returnOrClose(ctx, !op.isKeepAlive());
 
         if (this.scheduledExecutor.isShutdown()) {
             op.fail(new CancellationException());
