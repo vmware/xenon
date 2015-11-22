@@ -1,5 +1,12 @@
 # CHANGELOG
 
+## 0.3.0-SNAPSHOT
+
+* Renamed packages, build artifacts and various properties to
+Xenon (from DCP). This is a runtime and binary breaking change
+since HTTP headers, runtime properties, command line arguments
+have changed.
+
 ## 0.2.0-SNAPSHOT
 
 * Request rate limiting support using authorization subject.
