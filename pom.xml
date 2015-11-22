@@ -2,12 +2,12 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
 
-  <groupId>com.vmware.dcp</groupId>
-  <artifactId>dcp-parent</artifactId>
+  <groupId>com.vmware.xenon</groupId>
+  <artifactId>xenon-parent</artifactId>
   <version>0.3.0-SNAPSHOT</version>
   <packaging>pom</packaging>
 
-  <name>dcp-parent</name>
+  <name>xenon-parent</name>
   <description>
     Xenon is both a set of software components and a service oriented design pattern. The runtime is
     implemented in Java and acts as the host for the lightweight, asynchronous services. The programming
@@ -55,9 +55,9 @@
   </scm>
 
   <modules>
-    <module>dcp-common</module>
-    <module>dcp-loader</module>
-    <module>dcp-ui</module>
+    <module>xenon-common</module>
+    <module>xenon-loader</module>
+    <module>xenon-ui</module>
   </modules>
 
   <properties>
@@ -113,10 +113,10 @@
     <profile>
       <id>development</id>
       <modules>
-        <module>dcp-host</module>
-        <module>dcp-samples</module>
-        <module>dcp-loader-test</module>
-        <module>dcp-websocket-test</module>
+        <module>xenon-host</module>
+        <module>xenon-samples</module>
+        <module>xenon-loader-test</module>
+        <module>xenon-websocket-test</module>
       </modules>
       <activation>
         <activeByDefault>true</activeByDefault>
@@ -126,10 +126,10 @@
     <profile>
       <id>coverage</id>
       <modules>
-        <module>dcp-host</module>
-        <module>dcp-samples</module>
-        <module>dcp-loader-test</module>
-        <module>dcp-websocket-test</module>
+        <module>xenon-host</module>
+        <module>xenon-samples</module>
+        <module>xenon-loader-test</module>
+        <module>xenon-websocket-test</module>
       </modules>
       <build>
         <plugins>
@@ -363,7 +363,7 @@
         </executions>
         <configuration>
           <generateGitPropertiesFile>true</generateGitPropertiesFile>
-          <generateGitPropertiesFilename>src/main/resources/dcp.git.properties</generateGitPropertiesFilename>
+          <generateGitPropertiesFilename>src/main/resources/xenon.git.properties</generateGitPropertiesFilename>
           <excludeProperties>
             <excludeProperty>git.branch.*</excludeProperty>
             <excludeProperty>git.build.*</excludeProperty>
