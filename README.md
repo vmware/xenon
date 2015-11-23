@@ -39,7 +39,7 @@ Xenon service patterns will be made available in the coming months. Various samp
 ### Building the code
 
 A detailed list of pre-requisite tools can be found in the
-[developer guide](https://github.com/vmware/xenon/wiki/dcp-DeveloperGuide#prerequisites).
+[developer guide](https://github.com/vmware/xenon/wiki/Developer-Guide).
 
 Once you have installed all the pre-requisites from the root of the repository execute the following command:
 
