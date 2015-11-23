@@ -1556,7 +1556,6 @@ public class TestQueryTaskService {
                 .setNumericRange(
                         NumericRange.createLongRange(offset, sc - offset,
                                 false, false));
-        q.query.term.range.precisionStep = Integer.MAX_VALUE;
 
         URI u = this.host.createQueryTaskService(QueryTask.create(q), false);
         QueryTask finishedTaskState = this.host.waitForQueryTaskCompletion(q,
@@ -1574,7 +1573,6 @@ public class TestQueryTaskService {
         q = new QueryTask.QuerySpecification();
         q.query.setTermPropertyName(longFieldName).setNumericRange(
                 NumericRange.createLongRange(0L, (long) (sc - 1), true, true));
-        q.query.term.range.precisionStep = Integer.MAX_VALUE;
         u = this.host.createQueryTaskService(QueryTask.create(q));
         finishedTaskState = this.host.waitForQueryTaskCompletion(q, services.size(),
                 versionCount, u, false, true);
@@ -1586,7 +1584,6 @@ public class TestQueryTaskService {
         q = new QueryTask.QuerySpecification();
         q.query.setTermPropertyName(longFieldName).setNumericRange(
                 NumericRange.createLongRange(null, (long) (sc - 1), true, true));
-        q.query.term.range.precisionStep = Integer.MAX_VALUE;
         u = this.host.createQueryTaskService(QueryTask.create(q));
         finishedTaskState = this.host.waitForQueryTaskCompletion(q, services.size(),
                 versionCount, u, false, true);
@@ -1598,7 +1595,6 @@ public class TestQueryTaskService {
         q = new QueryTask.QuerySpecification();
         q.query.setTermPropertyName(longFieldName).setNumericRange(
                 NumericRange.createLongRange(0L, null, true, true));
-        q.query.term.range.precisionStep = Integer.MAX_VALUE;
         u = this.host.createQueryTaskService(QueryTask.create(q));
         finishedTaskState = this.host.waitForQueryTaskCompletion(q, services.size(),
                 versionCount, u, false, true);
@@ -1612,7 +1608,6 @@ public class TestQueryTaskService {
         q.query.setTermPropertyName(doubleFieldName).setNumericRange(
                 NumericRange.createDoubleRange(DOUBLE_MIN_OFFSET, DOUBLE_MIN_OFFSET + sc * 0.1,
                         true, true));
-        q.query.term.range.precisionStep = Integer.MAX_VALUE;
         u = this.host.createQueryTaskService(QueryTask.create(q));
         finishedTaskState = this.host.waitForQueryTaskCompletion(q, services.size(),
                 versionCount, u, false, true);
@@ -1625,7 +1620,6 @@ public class TestQueryTaskService {
         q.query.setTermPropertyName(doubleFieldName).setNumericRange(
                 NumericRange.createDoubleRange(DOUBLE_MIN_OFFSET, DOUBLE_MIN_OFFSET + sc * 0.05,
                         true, false));
-        q.query.term.range.precisionStep = Integer.MAX_VALUE;
         u = this.host.createQueryTaskService(QueryTask.create(q));
         finishedTaskState = this.host.waitForQueryTaskCompletion(q, services.size(),
                 versionCount, u, false, true);

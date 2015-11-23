@@ -162,7 +162,6 @@ public class ODataQueryVisitor {
             if (isNumeric((String) rightSide)) {
                 // create a rangeA
                 QueryTask.NumericRange<?> r = createRange(rightSide.toString(), operator);
-                r.precisionStep = Integer.MAX_VALUE;
                 q.setNumericRange(r);
 
             } else {
