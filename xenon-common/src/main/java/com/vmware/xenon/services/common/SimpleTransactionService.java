@@ -16,7 +16,6 @@ package com.vmware.xenon.services.common;
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -37,8 +36,6 @@ import com.vmware.xenon.common.TaskState;
 import com.vmware.xenon.common.TaskState.TaskStage;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
-import com.vmware.xenon.services.common.QueryTask.Query;
-import com.vmware.xenon.services.common.QueryTask.QuerySpecification.QueryOption;
 import com.vmware.xenon.services.common.SimpleTransactionService.EndTransactionRequest.TransactionOutcome;
 
 public class SimpleTransactionService extends StatefulService {
@@ -277,37 +274,28 @@ public class SimpleTransactionService extends StatefulService {
 
             if (clearTransactionRequest.transactionOutcome == TransactionOutcome.ABORT && clearTransactionRequest.isUpdated) {
                 // restore previous state
-                Query.Builder queryBuilder = Query.Builder.create();
-                queryBuilder.addFieldClause(ServiceDocument.FIELD_NAME_SELF_LINK, this.service.getSelfLink());
-                queryBuilder.addRangeClause(ServiceDocument.FIELD_NAME_VERSION, QueryTask.NumericRange.createLongRange(
-                        clearTransactionRequest.originalVersion, clearTransactionRequest.originalVersion, true, true));
-                QueryTask.Builder queryTaskBuilder = QueryTask.Builder.createDirectTask().setQuery(queryBuilder.build());
-                queryTaskBuilder.addOptions(EnumSet.of(QueryOption.EXPAND_CONTENT, QueryOption.INCLUDE_ALL_VERSIONS));
-                QueryTask task = queryTaskBuilder.build();
-
-                Operation post = Operation.createPost(UriUtils.buildUri(this.service.getHost(),
-                        ServiceUriPaths.CORE_QUERY_TASKS)).setBody(task).setCompletion((o, e) -> {
-                            if (e != null) {
-                                request.fail(e);
-                                return;
-                            }
-                            QueryTask rsp = o.getBody(QueryTask.class);
-                            if (rsp.results.documentLinks.isEmpty()) {
-                                request.fail(new IllegalStateException(String.format(
-                                        "Could not find original state of service %s version %d to restore at the end of abort",
-                                        this.service.getSelfLink(), clearTransactionRequest.originalVersion)));
-                                return;
-                            }
-                            Object doc =  rsp.results.documents.get(rsp.results.documentLinks.get(0));
-                            this.service.getHost().log(Level.INFO,
-                                    "Aborting transaction %s on service %s, current version %d, restoring version %d",
-                                    request.getTransactionId(), this.service.getSelfLink(), currentState.documentVersion, clearTransactionRequest.originalVersion);
-                            ServiceDocument state = Utils.fromJson(doc, currentState.getClass());
-                            state.documentTransactionId = null;
-                            this.service.setState(request, state);
-                            request.complete();
-                        });
-                this.service.sendRequest(post);
+                URI previousStateQueryUri = UriUtils.buildDocumentQueryUri(
+                        this.service.getHost(),
+                        this.service.getSelfLink(),
+                        false,
+                        false,
+                        ServiceOption.PERSISTENCE);
+                previousStateQueryUri = UriUtils.appendQueryParam(previousStateQueryUri, ServiceDocument.FIELD_NAME_VERSION,
+                        Long.toString(clearTransactionRequest.originalVersion));
+                Operation previousStateGet = Operation.createGet(previousStateQueryUri).setCompletion((o, e) -> {
+                    if (e != null) {
+                        request.fail(e);
+                        return;
+                    }
+                    ServiceDocument previousState = o.getBody(currentState.getClass());
+                    this.service.getHost().log(Level.INFO,
+                            "Aborting transaction %s on service %s, current version %d, restoring version %d",
+                            request.getTransactionId(), this.service.getSelfLink(), currentState.documentVersion, clearTransactionRequest.originalVersion);
+                    previousState.documentTransactionId = null;
+                    this.service.setState(request, previousState);
+                    request.complete();
+                });
+                this.service.sendRequest(previousStateGet);
             } else {
                 currentState.documentTransactionId = null;
                 request.complete();
