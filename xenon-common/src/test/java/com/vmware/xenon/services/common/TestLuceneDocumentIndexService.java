@@ -16,6 +16,7 @@ package com.vmware.xenon.services.common;
 import static javax.xml.bind.DatatypeConverter.printBase64Binary;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
@@ -583,6 +584,105 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
                 throw new TimeoutException("Requests never completed");
             }
         }
+    }
+
+    @Test
+    public void queryAnyVersionOfDocument() throws Throwable {
+        this.host.waitForServiceAvailable(ExampleFactoryService.SELF_LINK);
+        final String initialServiceNameValue = "initial-" + UUID.randomUUID().toString();
+        URI factoryUri = UriUtils.buildUri(this.host, ExampleFactoryService.SELF_LINK);
+        Consumer<Operation> setInitialStateBody = (o) -> {
+            ExampleServiceState body = new ExampleServiceState();
+            body.name = initialServiceNameValue;
+            o.setBody(body);
+        };
+
+        Map<URI, ExampleServiceState> services = this.host.doFactoryChildServiceStart(
+            null, 1, ExampleServiceState.class,
+            setInitialStateBody, factoryUri);
+
+        URI serviceUri = services.keySet().iterator().next();
+        ExampleServiceState state = services.values().iterator().next();
+
+        assertEquals(state.documentVersion, 0);
+        queryDocumentIndexByVersionAndVerify(state.documentSelfLink, 0L, 0L);
+        queryDocumentIndexByVersionAndVerify(state.documentSelfLink, null, 0L);
+        queryDocumentIndexByVersionAndVerify(state.documentSelfLink, 1L, null);
+        queryDocumentIndexByVersionAndVerify(state.documentSelfLink, 10L, null);
+
+        state = updateDocumentStateToIncrementVersion(initialServiceNameValue, serviceUri);
+
+        assertEquals(state.documentVersion, 1);
+        queryDocumentIndexByVersionAndVerify(state.documentSelfLink, 0L, 0L);
+        queryDocumentIndexByVersionAndVerify(state.documentSelfLink, 1L, 1L);
+        queryDocumentIndexByVersionAndVerify(state.documentSelfLink, null, 1L);
+        queryDocumentIndexByVersionAndVerify(state.documentSelfLink, 10L, null);
+    }
+
+    private ExampleServiceState updateDocumentStateToIncrementVersion(String initialServiceNameValue,
+                                                                   URI serviceUri) throws Throwable {
+        ExampleServiceState state;ExampleServiceState updatedState = new ExampleServiceState();
+        updatedState.name = initialServiceNameValue;
+        updatedState.counter = Utils.getNowMicrosUtc();
+        this.host.testStart(1);
+        Operation patchState = Operation.createPatch(serviceUri).setBody(updatedState)
+            .setCompletion((o, e) -> {
+                if (e != null) {
+                    throw new IllegalStateException("Cannot patch test service");
+                }
+                this.host.completeIteration();
+            });
+        this.host.send(patchState);
+        this.host.testWait();
+
+        state = this.host.getServiceState(null,
+            ExampleServiceState.class, serviceUri);
+        return state;
+    }
+
+    private void queryDocumentIndexByVersionAndVerify(String selfLink, Long version, Long latestVersion)
+        throws Throwable {
+
+        URI localQueryUri = UriUtils.buildDocumentQueryUri(
+            this.host,
+            selfLink,
+            false,
+            true,
+            ServiceOption.PERSISTENCE);
+
+        if (version != null) {
+            localQueryUri = UriUtils.appendQueryParam(localQueryUri, ServiceDocument.FIELD_NAME_VERSION,
+                Long.toString(version));
+        }
+
+        this.host.testStart(1);
+        Operation remoteGet = Operation.createGet(localQueryUri)
+            .setReferer(this.host.getUri())
+            .setCompletion((o, e) -> {
+                if (e != null) {
+                    throw new IllegalStateException("Could not query document-index");
+                }
+
+                // No result expected when latestVersion is null
+                if (latestVersion == null) {
+                    assertFalse(o.hasBody());
+                    this.host.completeIteration();
+                    return;
+                }
+
+                ExampleServiceState result = o.getBody(ExampleServiceState.class);
+
+                if (version == null) {
+                    assertEquals(result.documentVersion, latestVersion.intValue());
+                } else {
+                    assertEquals(result.documentVersion, version.intValue());
+                }
+
+                this.host.completeIteration();
+            });
+
+        this.host.send(remoteGet);
+        this.host.testWait();
     }
 
     @Test

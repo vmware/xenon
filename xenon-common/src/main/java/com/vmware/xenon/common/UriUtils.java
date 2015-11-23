@@ -303,7 +303,7 @@ public class UriUtils {
         StringBuilder sb = new StringBuilder();
 
         boolean doKey = true;
-        boolean isFirst = true;
+        boolean isFirst = u.getQuery() == null ? true : false;
         for (String s : keyValues) {
             if (doKey) {
                 if (!isFirst) {
@@ -320,8 +320,9 @@ public class UriUtils {
         }
 
         try {
+            String query = u.getQuery() == null ? sb.toString() : u.getQuery() + sb.toString();
             u = new URI(u.getScheme(), null, u.getHost(),
-                    u.getPort(), u.getPath(), sb.toString(), null);
+                    u.getPort(), u.getPath(), query, null);
             return u;
         } catch (URISyntaxException e) {
             Utils.log(UriUtils.class, Utils.class.getSimpleName(), Level.SEVERE, "%s",
@@ -391,6 +392,13 @@ public class UriUtils {
         }
 
         return extendUriWithQuery(indexURI, queryArgs.toArray(new String[0]));
+    }
+
+    public static URI appendQueryParam(URI uri, String param, String value) {
+        List<String> queryArgs = new ArrayList<>();
+        queryArgs.add(param);
+        queryArgs.add(value);
+        return extendUriWithQuery(uri, queryArgs.toArray(new String[0]));
     }
 
     public static Map<String, String> parseUriQueryParams(URI uri) {
