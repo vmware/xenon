@@ -1185,6 +1185,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         t.setDocValuesType(DocValuesType.NUMERIC);
         t.setIndexOptions(IndexOptions.DOCS);
         t.setNumericType(type);
+        t.setNumericPrecisionStep(QueryTask.DEFAULT_PRECISION_STEP);
         return t;
     }
 

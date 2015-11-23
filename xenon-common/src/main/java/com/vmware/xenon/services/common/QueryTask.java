@@ -35,6 +35,12 @@ public class QueryTask extends ServiceDocument {
     public static final String KIND = Utils.buildKind(QueryTask.class);
 
     /**
+     * Default precision step used for indexing long and double values. This is also the default value used for
+     * {@link NumericRange#precisionStep}.
+     */
+    public static final int DEFAULT_PRECISION_STEP = 16;
+
+    /**
      * A list of tenant links which can access this service.
      */
     public List<String> tenantLinks;
@@ -243,7 +249,7 @@ public class QueryTask extends ServiceDocument {
 
         public boolean isMinInclusive;
         public boolean isMaxInclusive;
-        public int precisionStep = 4;
+        public int precisionStep = DEFAULT_PRECISION_STEP;
 
         public static NumericRange<Long> createLongRange(Long min, Long max,
                 boolean isMinInclusive, boolean isMaxInclusive) {
