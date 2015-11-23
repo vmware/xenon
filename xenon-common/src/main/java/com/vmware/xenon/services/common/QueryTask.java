@@ -19,6 +19,8 @@ import java.util.Collection;
 import java.util.EnumSet;
 import java.util.List;
 
+import org.apache.lucene.util.NumericUtils;
+
 import com.vmware.xenon.common.Service.ServiceOption;
 import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.ServiceDocumentDescription.TypeName;
@@ -243,7 +245,7 @@ public class QueryTask extends ServiceDocument {
 
         public boolean isMinInclusive;
         public boolean isMaxInclusive;
-        public int precisionStep = 4;
+        public int precisionStep = NumericUtils.PRECISION_STEP_DEFAULT;
 
         public static NumericRange<Long> createLongRange(Long min, Long max,
                 boolean isMinInclusive, boolean isMaxInclusive) {
