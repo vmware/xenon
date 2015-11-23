@@ -586,6 +586,90 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
     }
 
     @Test
+    public void queryAnyVersionOfDocument() throws Throwable {
+        int serviceCount = 1;
+        List<Service> services = this.host.doThroughputServiceStart(
+                serviceCount, MinimalTestService.class,
+                this.host.buildMinimalTestState(),
+                EnumSet.of(ServiceOption.PERSISTENCE), null);
+
+        Map<URI, MinimalTestServiceState> statesBeforeUpdate = this.host.getServiceState(null,
+                MinimalTestServiceState.class, services);
+
+        MinimalTestServiceState state = statesBeforeUpdate.values().iterator().next();
+
+        assertEquals(state.documentVersion, 0);
+        queryDocumentIndexByVersionAndVerify(state.documentSelfLink, 0L, 0L);
+        queryDocumentIndexByVersionAndVerify(state.documentSelfLink, null, 0L);
+        queryDocumentIndexByVersionAndVerify(state.documentSelfLink, 1L, null);
+        queryDocumentIndexByVersionAndVerify(state.documentSelfLink, 10L, null);
+
+        this.host.doPutPerService(1, EnumSet.noneOf(TestProperty.class), services);
+        Map<URI, MinimalTestServiceState> statesAfterUpdate = this.host.getServiceState(null,
+                MinimalTestServiceState.class, services);
+
+        state = statesAfterUpdate.values().iterator().next();
+        assertEquals(state.documentVersion, 1);
+        queryDocumentIndexByVersionAndVerify(state.documentSelfLink, 0L, 0L);
+        queryDocumentIndexByVersionAndVerify(state.documentSelfLink, 1L, 1L);
+        queryDocumentIndexByVersionAndVerify(state.documentSelfLink, null, 1L);
+        queryDocumentIndexByVersionAndVerify(state.documentSelfLink, 10L, null);
+    }
+
+    private void queryDocumentIndexByVersionAndVerify(String selfLink, Long version, Long latestVersion)
+        throws Throwable {
+
+        URI localQueryUri = UriUtils.buildDocumentQueryUri(
+                this.host,
+                selfLink,
+                false,
+                true,
+                ServiceOption.PERSISTENCE);
+
+        if (version != null) {
+            localQueryUri = UriUtils.appendQueryParam(localQueryUri, ServiceDocument.FIELD_NAME_VERSION,
+                Long.toString(version));
+        }
+
+        this.host.testStart(1);
+        Operation remoteGet = Operation.createGet(localQueryUri)
+                .setReferer(this.host.getUri())
+                .setCompletion((o, e) -> {
+                    if (e != null) {
+                        throw new IllegalStateException("Could not query document-index");
+                    }
+
+                    // No result expected when latestVersion is null
+                    if (latestVersion == null) {
+                        if (o.hasBody()) {
+                            this.host.failIteration(new IllegalStateException("Document not expected"));
+                            return;
+                        }
+
+                        this.host.completeIteration();
+                        return;
+                    }
+
+                    MinimalTestServiceState result = o.getBody(MinimalTestServiceState.class);
+                    Long expectedVersion = version;
+
+                    if (version == null) {
+                        expectedVersion = latestVersion;
+                    }
+
+                    if (result.documentVersion != expectedVersion.intValue()) {
+                        this.host.failIteration(new IllegalStateException("Invalid document version returned"));
+                        return;
+                    }
+
+                    this.host.completeIteration();
+                });
+
+        this.host.send(remoteGet);
+        this.host.testWait();
+    }
+
+    @Test
     public void throughputPatch() throws Throwable {
         doDurableServiceUpdate(Action.PATCH, this.serviceCount, this.updateCount, null);
     }

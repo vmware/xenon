@@ -546,12 +546,18 @@ public class LuceneDocumentIndexService extends StatelessService {
         String cap = params.get(UriUtils.URI_PARAM_CAPABILITY);
         EnumSet<QueryOption> options = EnumSet.noneOf(QueryOption.class);
         ServiceOption targetIndex = ServiceOption.NONE;
+        Long version = null;
+
         if (cap != null) {
             targetIndex = ServiceOption.valueOf(cap);
         }
 
         if (params.containsKey(UriUtils.URI_PARAM_INCLUDE_DELETED)) {
             options.add(QueryOption.INCLUDE_DELETED);
+        }
+
+        if (params.containsKey(ServiceDocument.FIELD_NAME_VERSION)) {
+            version = Long.parseLong(params.get(ServiceDocument.FIELD_NAME_VERSION));
         }
 
         String selfLink = params.get(ServiceDocument.FIELD_NAME_SELF_LINK);
@@ -568,7 +574,7 @@ public class LuceneDocumentIndexService extends StatelessService {
 
         if (!selfLink.endsWith(UriUtils.URI_WILDCARD_CHAR)) {
             // Most basic query is retrieving latest document at latest version for a specific link
-            queryIndexSingle(selfLink.intern(), options, get);
+            queryIndexSingle(selfLink.intern(), options, get, version);
             return;
         }
 
@@ -660,7 +666,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         return false;
     }
 
-    private void queryIndexSingle(String selfLink, EnumSet<QueryOption> options, Operation op)
+    private void queryIndexSingle(String selfLink, EnumSet<QueryOption> options, Operation op, Long version)
             throws Throwable {
         IndexWriter w = this.writer;
         if (w == null) {
@@ -670,7 +676,7 @@ public class LuceneDocumentIndexService extends StatelessService {
 
         IndexSearcher s = updateSearcher(selfLink, 1, w);
         long start = Utils.getNowMicrosUtc();
-        TopDocs hits = searchLatestVersion(selfLink, s);
+        TopDocs hits = searchByVersion(selfLink, s, version);
         long end = Utils.getNowMicrosUtc();
         if (hits.totalHits == 0) {
             op.complete();
@@ -703,11 +709,11 @@ public class LuceneDocumentIndexService extends StatelessService {
     }
 
     /**
-     * Find the latest version of a document given a self link.
+     * Find the document given a self link and version number.
      *
-     * This function is used for two purposes; find latest version to...
+     * This function is used for two purposes; find given version to...
      * 1) load state if the service state is not yet cached
-     * 2) filter query results to only include the latest version
+     * 2) filter query results to only include the given version
      *
      * In case (1), authorization is applied in the service host (either against
      * the cached state or freshly loaded state).
@@ -717,10 +723,26 @@ public class LuceneDocumentIndexService extends StatelessService {
      * version subject to the resource group query. This means older versions of
      * a document will NOT appear in the query result if the user is not authorized
      * to see the newer version.
+     *
+     * If given version is null then function returns the latest version.
+     * And if given version is not found then no document is returned.
      */
-    private TopDocs searchLatestVersion(String selfLink, IndexSearcher s) throws IOException {
-        Query tq = new TermQuery(new Term(ServiceDocument.FIELD_NAME_SELF_LINK, selfLink));
-        TopDocs hits = s.search(tq, 1, this.versionSort, false, false);
+    private TopDocs searchByVersion(String selfLink, IndexSearcher s, Long version) throws IOException {
+        Query tqSelfLink = new TermQuery(new Term(ServiceDocument.FIELD_NAME_SELF_LINK, selfLink));
+
+        BooleanQuery bq = new BooleanQuery();
+        bq.add(tqSelfLink, Occur.MUST);
+
+        if (version != null) {
+            NumericRangeQuery<Long> versionQuery = NumericRangeQuery.newLongRange(
+                    ServiceDocument.FIELD_NAME_VERSION, version, version,
+                    true,
+                    true);
+
+            bq.add(versionQuery, Occur.MUST);
+        }
+
+        TopDocs hits = s.search(bq, 1, this.versionSort, false, false);
         return hits;
     }
 
@@ -1091,7 +1113,7 @@ public class LuceneDocumentIndexService extends StatelessService {
     private long getLatestVersion(IndexSearcher s, String link) throws IOException {
         IndexableField versionField;
         long latestVersion;
-        TopDocs td = searchLatestVersion(link, s);
+        TopDocs td = searchByVersion(link, s, null);
         Document latestVersionDoc = s.getIndexReader().document(td.scoreDocs[0].doc,
                 this.fieldsToLoadNoExpand);
         versionField = latestVersionDoc.getField(ServiceDocument.FIELD_NAME_VERSION);
