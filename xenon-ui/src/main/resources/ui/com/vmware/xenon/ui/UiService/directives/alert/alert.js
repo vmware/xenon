@@ -1,7 +1,7 @@
 dcpDefault.directive("alert", function(){
     return{
         restrict: 'EA',
-        templateUrl: "/user-interface/resources/com/vmware/dcp/ui/UiService/directives/alert/alert.html",
+        templateUrl: "/user-interface/resources/com/vmware/xenon/ui/UiService/directives/alert/alert.html",
         replace: false,
         transclude: false,
         scope: {

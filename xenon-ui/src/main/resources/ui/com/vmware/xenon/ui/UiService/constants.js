@@ -46,6 +46,6 @@ var CONSTANTS = {
     'SERVICE': {
         'PATH': '/core/ui'
     },
-    'UI_RESOURCES': '/user-interface/resources/com/vmware/dcp/ui/UiService/',
+    'UI_RESOURCES': '/user-interface/resources/com/vmware/xenon/ui/UiService/',
     'UI_BASE': '/core/ui/default#'
 };

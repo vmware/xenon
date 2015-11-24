@@ -39,7 +39,6 @@ import org.junit.After;
 import org.junit.AfterClass;
 import org.junit.Before;
 import org.junit.BeforeClass;
-import org.junit.Ignore;
 import org.junit.Test;
 
 import com.vmware.xenon.common.CommandLineArgumentParser;
@@ -47,7 +46,6 @@ import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Service;
 import com.vmware.xenon.common.ServiceClient;
 import com.vmware.xenon.common.ServiceDocument;
-import com.vmware.xenon.common.ServiceHost;
 import com.vmware.xenon.common.StatefulService;
 import com.vmware.xenon.common.StatelessService;
 import com.vmware.xenon.common.UriUtils;
@@ -60,6 +58,8 @@ import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
 import com.vmware.xenon.services.common.MinimalTestService;
 
 public class NettyHttpServiceClientTest {
+
+    private static final long DEFAULT_OP_TIMEOUT_SECONDS = 5;
 
     private static VerificationHost HOST;
 
@@ -103,15 +103,6 @@ public class NettyHttpServiceClientTest {
         }
     }
 
-    @After
-    public void cleanUp() {
-        this.host.setOperationTimeOutMicros(
-                TimeUnit.SECONDS
-                        .toMicros(ServiceHost.ServiceHostState.DEFAULT_OPERATION_TIMEOUT_MICROS));
-        ((NettyHttpServiceClient) this.host.getClient()).setConnectionLimitPerHost(
-                NettyHttpServiceClient.DEFAULT_CONNECTIONS_PER_HOST);
-    }
-
     @AfterClass
     public static void tearDown() {
         HOST.tearDown();
@@ -121,6 +112,13 @@ public class NettyHttpServiceClientTest {
     public void setUp() {
         CommandLineArgumentParser.parseFromProperties(this);
         this.host = HOST;
+        this.host.setOperationTimeOutMicros(TimeUnit.SECONDS.toMicros(DEFAULT_OP_TIMEOUT_SECONDS));
+    }
+
+    @After
+    public void cleanUp() {
+        ((NettyHttpServiceClient) this.host.getClient()).setConnectionLimitPerHost(
+                NettyHttpServiceClient.DEFAULT_CONNECTIONS_PER_HOST);
     }
 
     @Test
@@ -508,15 +506,15 @@ public class NettyHttpServiceClientTest {
                 services);
     }
 
-    @Ignore("https://www.pivotaltracker.com/story/show/108641312")
     @Test
     public void putOverMaxRequestLimit() throws Throwable {
+        this.host.setOperationTimeOutMicros(TimeUnit.SECONDS.toMicros(1));
         List<Service> services = this.host.doThroughputServiceStart(
-                1, MinimalTestService.class, this.host.buildMinimalTestState(), null,
+                8, MinimalTestService.class, this.host.buildMinimalTestState(), null,
                 null);
         // force failure by using a payload higher than max size
-        this.host.doPutPerService(EnumSet.of(TestProperty.FORCE_REMOTE,
-                TestProperty.SINGLE_ITERATION, TestProperty.LARGE_PAYLOAD,
+        this.host.doPutPerService(1,
+                EnumSet.of(TestProperty.FORCE_REMOTE, TestProperty.LARGE_PAYLOAD,
                 TestProperty.BINARY_PAYLOAD, TestProperty.FORCE_FAILURE),
                 services);
     }

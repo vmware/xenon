@@ -398,9 +398,7 @@ public class NettyHttpServiceClient implements ServiceClient {
             }
 
             request.headers().set(HttpHeaderNames.USER_AGENT, this.userAgent);
-
             request.headers().set(HttpHeaderNames.ACCEPT, Operation.MEDIA_TYPE_APPLICATION_JSON);
-
             request.headers().set(
                     HttpHeaderNames.HOST,
                     op.getUri().getHost()
