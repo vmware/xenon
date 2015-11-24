@@ -7,10 +7,10 @@
 angular.module('dcpDefault').service('UtilService', ['$http', '$location',
     function ($http, $location) {
 
-        this.getServiceTemplate = function (path, service) {
+        this.getServiceTemplate = function (service) {
             var req = {
                 method: 'GET',
-                url: this.getBaseUrl() + '/' + path + '/' + service + '/template',
+                url: this.getBaseUrl() + '/' + service + '/template',
                 headers: {
                     'Content-Type': CONSTANTS.CONTENT_TYPE.JSON
                 }
@@ -56,6 +56,10 @@ angular.module('dcpDefault').service('UtilService', ['$http', '$location',
 
         this.convertDateToEpoch = function (dateString) {
             return Date.parse(dateString)*1000;
+        };
+
+        this.getFactorySelfLink =  function (instance) {
+            return instance.slice(0,-36)
         };
 
     }]);

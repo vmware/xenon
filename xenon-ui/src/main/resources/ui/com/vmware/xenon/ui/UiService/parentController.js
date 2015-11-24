@@ -9,7 +9,7 @@ angular.module('dcpDefault').controller('ParentController', ['$scope', '$routePa
         function ($scope, $routeParams, UtilService) {
             $scope.$on('$routeChangeSuccess', function () {
                 $scope.path= $routeParams.path;
-                $scope.service = $routeParams.serviceName;
+                $scope.service = $routeParams.selfLink;
                 $scope.instance = $routeParams.instanceId;
                 $scope.baseUrl = UtilService.getBaseUrl();
                 $scope.uiBase = CONSTANTS.UI_BASE;

@@ -14,7 +14,7 @@ angular.module('dcpDefault').controller('ManageInstanceController', ['$scope', '
         vm.patchDoc = {};
         vm.documentKeys = [];
 
-        UtilService.getServiceTemplate($routeParams.path, $routeParams.serviceName).
+        UtilService.getServiceTemplate(UtilService.getFactorySelfLink($routeParams.selfLink)).
             then(function (response) {
                 var templateDesc = response.data.documents;
 
@@ -71,7 +71,7 @@ angular.module('dcpDefault').controller('ManageInstanceController', ['$scope', '
                     if (response.status === 200) {
                         $scope.notification.type = "success";
                         $scope.notification.text = "Instance deleted successfully.";
-                        $location.path('/' + $routeParams.path + '/' + $routeParams.serviceName
+                        $location.path('/' + $routeParams.selfLink
                         + "/home");
                     }
                 }, function (error) {

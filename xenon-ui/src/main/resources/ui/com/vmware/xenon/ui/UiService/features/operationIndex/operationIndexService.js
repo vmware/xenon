@@ -10,8 +10,7 @@ angular.module('dcpDefault').service('OperationIndexService', ['$http', 'UtilSer
         this.checkServiceIsStarted = function(){
             var req = {
                 method: CONSTANTS.ACTIONS.GET,
-                url: UtilService.getBaseUrl() + '/' + $routeParams.path + '/'
-                     + CONSTANTS.OPERATION_INDEX_SVC + '?documentSelfLink=*',
+                url: UtilService.getBaseUrl() + '/' + CONSTANTS.URI.OPERATION_INDEX_SVC + '?documentSelfLink=*',
                 headers: {
                     'Content-Type': CONSTANTS.CONTENT_TYPE.JSON
                 }
@@ -26,7 +25,7 @@ angular.module('dcpDefault').service('OperationIndexService', ['$http', 'UtilSer
                     'enable': "START",
                     'kind': "com:vmware:dcp:services:common:ServiceHostManagementService:ConfigureOperationTracingRequest"
                 },
-                url: UtilService.getBaseUrl() + '/' + $routeParams.path + '/' + CONSTANTS.MANAGEMENT_SVC,
+                url: UtilService.getBaseUrl() + '/' + CONSTANTS.URI.MANAGEMENT_SVC,
                 headers: {
                     'Content-Type': CONSTANTS.CONTENT_TYPE.JSON
                 }
@@ -41,7 +40,7 @@ angular.module('dcpDefault').service('OperationIndexService', ['$http', 'UtilSer
                     'enable': "STOP",
                     'kind': "com:vmware:dcp:services:common:ServiceHostManagementService:ConfigureOperationTracingRequest"
                 },
-                url: UtilService.getBaseUrl() + '/' + $routeParams.path + '/' + CONSTANTS.MANAGEMENT_SVC,
+                url: UtilService.getBaseUrl() + '/' + CONSTANTS.URI.MANAGEMENT_SVC,
                 headers: {
                     'Content-Type': CONSTANTS.CONTENT_TYPE.JSON
                 }
@@ -52,7 +51,7 @@ angular.module('dcpDefault').service('OperationIndexService', ['$http', 'UtilSer
         this.postQuery = function (querySpec) {
             var req = {
                 method: CONSTANTS.ACTIONS.POST,
-                url: UtilService.getBaseUrl() + '/' + $routeParams.path + '/' + CONSTANTS.QUERY_SRVC,
+                url: UtilService.getBaseUrl() + '/' + CONSTANTS.URI.QUERY_SRVC,
                 headers: {
                     'Content-Type': CONSTANTS.CONTENT_TYPE.JSON
                 },
@@ -64,7 +63,7 @@ angular.module('dcpDefault').service('OperationIndexService', ['$http', 'UtilSer
         this.getOperationsIndex = function (querySpec) {
             var req = {
                 method: CONSTANTS.ACTIONS.POST,
-                url: UtilService.getBaseUrl() + '/' + $routeParams.path + '/' + CONSTANTS.QUERY_SRVC,
+                url: UtilService.getBaseUrl() + '/' + CONSTANTS.URI.QUERY_SRVC,
                 headers: {
                     'Content-Type': CONSTANTS.CONTENT_TYPE.JSON
                 },

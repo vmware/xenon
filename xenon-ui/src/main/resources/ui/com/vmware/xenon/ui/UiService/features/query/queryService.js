@@ -7,10 +7,10 @@
 angular.module('dcpDefault').service('QueryService', ['$http', 'UtilService',
     function ($http, UtilService) {
 
-        this.postQuery = function (path, querySpec) {
+        this.postQuery = function (querySpec) {
             var req = {
                 method: 'POST',
-                url: UtilService.getBaseUrl() + '/' + path + '/' + CONSTANTS.QUERY_SRVC,
+                url: UtilService.getBaseUrl() + '/' + CONSTANTS.URI.QUERY_SRVC,
                 headers: {
                     'Content-Type': CONSTANTS.CONTENT_TYPE.JSON
                 },
