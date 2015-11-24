@@ -13,7 +13,7 @@ angular.module('dcpDefault').controller('ManageServiceController', ['$scope', 'M
             vm.documentTemplate = {};
             vm.newDocument = {};
 
-            UtilService.getServiceTemplate($routeParams.path, $routeParams.serviceName).
+            UtilService.getServiceTemplate($routeParams.selfLink).
                 then(function (response) {
                     var templateDesc = response.data.documents;
 
@@ -55,7 +55,7 @@ angular.module('dcpDefault').controller('ManageServiceController', ['$scope', 'M
             };
 
             function getServiceList() {
-                HomeService.getServiceDocuments($routeParams.path, $routeParams.serviceName).
+                HomeService.getServiceDocuments($routeParams.selfLink).
                     then(function (response) {
                         vm.documents = response.data.documentLinks;
                     }, function (error) {

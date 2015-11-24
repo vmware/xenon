@@ -7,12 +7,12 @@
 angular.module('dcpDefault').service('StatsService', ['$http', 'UtilService',
     function ($http, UtilService) {
 
-        this.getServiceStats = function (path, service, instance) {
+        this.getServiceStats = function (service, instance) {
             var url;
             if (instance) {
-                url = UtilService.getBaseUrl() + '/' + path + '/' + service + '/' + instance + '/stats';
+                url = UtilService.getBaseUrl() + '/' + service + '/' + instance + '/stats';
             } else {
-                url = UtilService.getBaseUrl() + '/' + path + '/' + service + '/stats';
+                url = UtilService.getBaseUrl() + '/' + service + '/stats';
             }
 
             var req = {

@@ -48,21 +48,21 @@ angular.module('dcpDefault').controller('DashboardController', ['$scope', 'Dashb
                     $scope.$apply(getSystemInfo());
                 }, vm.maintenanceInterval);
 
-            DashboardService.getServicesInstances($routeParams.path).then(function (response) {
+            DashboardService.getServicesInstances().then(function (response) {
                 vm.singletonServices = response.data.documentLinks;
             }, function (error) {
                 $scope.notification.type = "danger";
                 $scope.notification.text = error.data.message;
             });
 
-            DashboardService.getFactoryServices($routeParams.path).then(function (response) {
+            DashboardService.getFactoryServices().then(function (response) {
                 vm.factoryServices = response.data.documentLinks;
             }, function (error) {
                 $scope.notification.type = "danger";
                 $scope.notification.text = error.data.message;
             });
 
-            DashboardService.getNodeGroups($routeParams.path).then(function (response) {
+            DashboardService.getNodeGroups().then(function (response) {
                 vm.nodeGroups = response.data.documentLinks;
             }, function (error) {
                 $scope.notification.type = "danger";
@@ -70,7 +70,7 @@ angular.module('dcpDefault').controller('DashboardController', ['$scope', 'Dashb
             });
 
             function getSystemInfo() {
-                DashboardService.getSystemInfo($routeParams.path).then(function (response) {
+                DashboardService.getSystemInfo().then(function (response) {
                     vm.system = response.data;
                     vm.maintenanceInterval = vm.system.maintenanceIntervalMicros / 1000;
                     vm.disk = [

@@ -43,8 +43,7 @@ angular.module('dcpDefault').controller('StatsController', ['$scope', 'StatsServ
                 }
             };
 
-            StatsService.getServiceStats($routeParams.path, $routeParams.serviceName,
-                $routeParams.instanceId).then(function (response) {
+            StatsService.getServiceStats($routeParams.selfLink, $routeParams.instanceId).then(function (response) {
                     var results = response.data.entries,
                         k = 0;
                     for (var prop in results) {
