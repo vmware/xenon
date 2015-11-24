@@ -13,11 +13,15 @@
 
 package com.vmware.xenon.common;
 
+import static com.vmware.xenon.common.TransactionServiceHelper.abortTransactions;
+import static com.vmware.xenon.common.TransactionServiceHelper.handleGetWithinTransaction;
+import static com.vmware.xenon.common.TransactionServiceHelper.handleOperationInTransaction;
+import static com.vmware.xenon.common.TransactionServiceHelper.notifyTransactionCoordinator;
+
 import java.net.URI;
 import java.util.Collection;
 import java.util.EnumSet;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CancellationException;
 import java.util.logging.Level;
@@ -25,17 +29,12 @@ import java.util.logging.Logger;
 
 import com.vmware.xenon.common.Operation.AuthorizationContext;
 import com.vmware.xenon.common.Operation.InstrumentationContext;
-import com.vmware.xenon.common.Operation.TransactionContext;
 import com.vmware.xenon.common.ServiceDocumentDescription.PropertyDescription;
 import com.vmware.xenon.common.ServiceErrorResponse.ErrorDetail;
 import com.vmware.xenon.common.ServiceStats.ServiceStat;
 import com.vmware.xenon.common.ServiceStats.ServiceStatLogHistogram;
 import com.vmware.xenon.common.jwt.Signer;
-import com.vmware.xenon.services.common.QueryTask;
-import com.vmware.xenon.services.common.QueryTask.QuerySpecification.QueryOption;
 import com.vmware.xenon.services.common.ServiceUriPaths;
-import com.vmware.xenon.services.common.TransactionService.ResolutionKind;
-import com.vmware.xenon.services.common.TransactionService.ResolutionRequest;
 
 /**
  * Service implementation class supporting a range of options. Supports lock free serialized
@@ -184,7 +183,7 @@ public class StatefulService implements Service {
             }
         }
 
-        abortTransactions(txCoordinators);
+        abortTransactions(this, txCoordinators);
 
         for (Operation o : opsToCancel) {
             if (o.isFromReplication() && o.getAction() == Action.DELETE) {
@@ -269,7 +268,8 @@ public class StatefulService implements Service {
                 request.nestCompletion((o, e) -> handleRequestCompletion(o, e));
                 isCompletionNested = true;
 
-                if (handleOperationInTransaction(request)) {
+                if (handleOperationInTransaction(this, this.context.stateType,
+                        this.context.txCoordinatorLinks, request)) {
                     return;
                 }
 
@@ -595,7 +595,7 @@ public class StatefulService implements Service {
             handleGetSimple(get);
             return;
         }
-        handleGetWithinTransaction(get);
+        handleGetWithinTransaction(this, get, this::handleGetSimple, this::failRequest);
     }
 
     /**
@@ -620,71 +620,6 @@ public class StatefulService implements Service {
         get.setBodyNoCloning(d).complete();
     }
 
-    /**
-     * Transaction-enabled path
-     */
-    private void handleGetWithinTransaction(Operation get) {
-        QueryTask.Query selfLinkClause = new QueryTask.Query()
-                .setTermPropertyName(ServiceDocument.FIELD_NAME_SELF_LINK)
-                .setTermMatchValue(getSelfLink());
-
-        QueryTask.Query txClause = new QueryTask.Query();
-
-        if (get.isWithinTransaction()) {
-            // latest that has txid -- TODO: incorporate caching (DCP-1160)
-            txClause.setTermPropertyName(ServiceDocument.FIELD_NAME_TRANSACTION_ID);
-            txClause.setTermMatchValue(get.getTransactionId());
-        } else {
-            // latest that does not have txid -- TODO: incorporate caching (DCP-1160)
-            txClause.setTermPropertyName(ServiceDocument.FIELD_NAME_TRANSACTION_ID);
-            txClause.setTermMatchValue("");
-        }
-        QueryTask.QuerySpecification q = new QueryTask.QuerySpecification();
-        q.options = EnumSet.of(QueryOption.EXPAND_CONTENT, QueryOption.INCLUDE_ALL_VERSIONS);
-        q.query.addBooleanClause(selfLinkClause);
-        q.query.addBooleanClause(txClause);
-
-        QueryTask task = QueryTask.create(q).setDirect(true);
-        URI uri = UriUtils.buildUri(getHost(), ServiceUriPaths.CORE_QUERY_TASKS);
-        Operation startPost = Operation
-                .createPost(uri)
-                .setBody(task)
-                .setCompletion((o, f) -> handleTransactionQueryCompletion(o, f, get));
-        sendRequest(startPost);
-    }
-
-    /**
-     * Process the latest version recovered
-     */
-    private void handleTransactionQueryCompletion(Operation o, Throwable f, Operation original) {
-        if (f != null) {
-            logInfo(f.toString());
-            original.fail(f);
-            return;
-        }
-
-        QueryTask response = o.getBody(QueryTask.class);
-
-        // If we are within a transaction, empty state means there are no shadowed versions, so return previous visible
-        // If we are not, however, this means a 404 -- there is no prior visible state!
-        if (response.results.documentLinks.isEmpty()) {
-            if (original.isWithinTransaction()) {
-                // TODO: This has the possibility of returning a version that has a different transaction, if there are
-                // more than one transaction pending -- depends on DCP 1160.
-                handleGetSimple(original);
-            } else {
-                original.setStatusCode(Operation.STATUS_CODE_NOT_FOUND);
-                failRequest(original, new IllegalStateException("Latest state not found"));
-            }
-            return;
-        }
-
-        List<String> dl = response.results.documentLinks;
-        String latest = dl.get(0);
-        Object obj = response.results.documents.get(latest);
-        original.setBodyNoCloning(obj).complete();
-        original.complete();
-    }
 
     /**
      * Performs a series of actions, based on service options, after the service code has called
@@ -747,7 +682,12 @@ public class StatefulService implements Service {
         }
 
         if (op.isWithinTransaction() && this.getHost().getTransactionServiceUri() != null) {
-            notifyTransactionCoordinator(op, e);
+            synchronized (this.context) {
+                if (this.context.txCoordinatorLinks == null) {
+                    this.context.txCoordinatorLinks = new HashSet<>();
+                }
+            }
+            notifyTransactionCoordinator(this, this.context.txCoordinatorLinks, op, e);
         }
 
         if (e != null) {
@@ -796,26 +736,7 @@ public class StatefulService implements Service {
         }
     }
 
-    /**
-     * Notify the transaction coordinator asynchronously (taking no action upon response)
-     */
-    protected void notifyTransactionCoordinator(Operation op, Throwable e) {
-        TransactionContext operationsLogRecord = new TransactionContext();
-        operationsLogRecord.action = op.getAction();
-        operationsLogRecord.coordinatorLinks = this.context.txCoordinatorLinks;
-        operationsLogRecord.isSuccessful = e == null;
 
-        URI transactionCoordinator = UriUtils.buildTransactionUri(getHost(), op.getTransactionId());
-
-        synchronized (this.context) {
-            if (this.context.txCoordinatorLinks == null) {
-                this.context.txCoordinatorLinks = new HashSet<>();
-            }
-            this.context.txCoordinatorLinks.add(transactionCoordinator.toString());
-        }
-
-        sendRequest(Operation.createPut(transactionCoordinator).setBody(operationsLogRecord));
-    }
 
     private void failRequest(Operation op, Throwable e) {
         if (op.getStatusCode() == Operation.STATUS_CODE_CONFLICT) {
@@ -1660,18 +1581,6 @@ public class StatefulService implements Service {
         return;
     }
 
-    private void abortTransactions(Set<String> coordinators) {
-        if (coordinators == null || coordinators.isEmpty()) {
-            return;
-        }
-        ResolutionRequest resolution = new ResolutionRequest();
-        resolution.kind = ResolutionKind.ABORT;
-        for (String coordinator : coordinators) {
-            sendRequest(Operation.createPatch(UriUtils.buildUri(coordinator))
-                    .setBodyNoCloning(resolution));
-        }
-    }
-
     /**
     * Set authorization context on operation.
     */
@@ -1714,69 +1623,4 @@ public class StatefulService implements Service {
                 && !this.context.txCoordinatorLinks.isEmpty();
     }
 
-    /**
-     * Check whether it's a transactional control operation (i.e., expose shadowed state, abort
-     * etc.), and take appropriate action
-     */
-    private boolean handleOperationInTransaction(Operation request) {
-        if (request.getRequestHeader(Operation.VMWARE_DCP_TRANSACTION_HEADER) == null) {
-            return false;
-        }
-
-        if (request.getRequestHeader(Operation.VMWARE_DCP_TRANSACTION_HEADER).equals(
-                Operation.TX_COMMIT)) {
-            // commit should expose latest state, i.e., remove shadow and bump the version
-            // and remove transaction from pending
-            this.context.txCoordinatorLinks.remove(request.getReferer().toString());
-
-            QueryTask.QuerySpecification q = new QueryTask.QuerySpecification();
-            q.query.setTermPropertyName(ServiceDocument.FIELD_NAME_TRANSACTION_ID);
-            q.query.setTermMatchValue(UriUtils.getLastPathSegment(request.getReferer()));
-            q.options = EnumSet.of(QueryOption.EXPAND_CONTENT, QueryOption.INCLUDE_ALL_VERSIONS);
-            QueryTask task = QueryTask.create(q).setDirect(true);
-            URI uri = UriUtils.buildUri(getHost(), ServiceUriPaths.CORE_QUERY_TASKS);
-            Operation startPost = Operation
-                    .createPost(uri)
-                    .setBody(task)
-                    .setCompletion((o, f) -> handleUnshadowQueryCompletion(o, f, request));
-            sendRequest(startPost);
-
-        } else if (request.getRequestHeader(Operation.VMWARE_DCP_TRANSACTION_HEADER).equals(
-                Operation.TX_ABORT)) {
-            // abort should just remove transaction from pending
-            this.context.txCoordinatorLinks.remove(request.getReferer().toString());
-            request.complete();
-        } else {
-            request.fail(new IllegalArgumentException(
-                    "Transaction control message, but none of {commit, abort}"));
-        }
-        return true;
-    }
-
-    private void handleUnshadowQueryCompletion(Operation o, Throwable f, Operation original) {
-        if (f != null) {
-            logInfo(f.toString());
-            original.fail(f);
-            return;
-        }
-
-        QueryTask response = o.getBody(QueryTask.class);
-        if (response.results.documentLinks.isEmpty()) {
-            // TODO: When implement 2PC, abort entire transaction
-            original.fail(new IllegalStateException(
-                    "There should be at least one shadowed, but none was found"));
-            return;
-        }
-
-        // Whereas, if more than a single version, get the latest..
-        List<String> dl = response.results.documentLinks;
-        String latest = dl.get(0);
-        Object obj = response.results.documents.get(latest);
-        // ..unshadow..
-        ServiceDocument sd = Utils.fromJson((String) obj, this.context.stateType);
-        sd.documentTransactionId = "";
-        // ..and stick back in.
-        setState(original, sd);
-        original.complete();
-    }
 }
