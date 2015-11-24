@@ -18,6 +18,7 @@ import java.util.logging.Level;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.ServiceHost;
 import com.vmware.xenon.common.UriUtils;
+import com.vmware.xenon.services.common.RootNamespaceService;
 import com.vmware.xenon.services.samples.SampleFactoryServiceWithCustomUi;
 import com.vmware.xenon.services.samples.SamplePreviousEchoFactoryService;
 import com.vmware.xenon.services.samples.SampleServiceWithSharedCustomUi;
@@ -49,10 +50,17 @@ public class SampleHost extends ServiceHost {
         // Start core services (logging, gossiping)-- must be done once
         startDefaultCoreServicesSynchronously();
 
+        // Start the root namespace service: this will list all available factory services for
+        // queries to the root (/)
+        super.startService(
+                Operation.createPost(UriUtils.buildUri(this, RootNamespaceService.class)),
+                new RootNamespaceService());
+
         // start the custom ui factory
         super.startService(
-                Operation.createPost(UriUtils.buildUri(this, SampleServiceWithSharedCustomUi
-                        .class)), new SampleServiceWithSharedCustomUi());
+                Operation
+                        .createPost(UriUtils.buildUri(this, SampleServiceWithSharedCustomUi.class)),
+                new SampleServiceWithSharedCustomUi());
 
         // start the shared UI resources service
         super.startService(
