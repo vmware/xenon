@@ -6,10 +6,10 @@
 
 angular.module('dcpDefault').service('HomeService', ['$http', 'UtilService',
     function ($http, UtilService) {
-        this.getServiceDocuments = function (path, service) {
+        this.getServiceDocuments = function (service) {
             var req = {
                 method: 'GET',
-                url: UtilService.getBaseUrl() + '/' + path + '/' + service,
+                url: UtilService.getBaseUrl() + '/' + service,
                 headers: {
                     'Content-Type': CONSTANTS.CONTENT_TYPE.JSON
                 }
@@ -17,10 +17,10 @@ angular.module('dcpDefault').service('HomeService', ['$http', 'UtilService',
             return $http(req);
         };
 
-        this.getServiceInstance = function (path, service, instance) {
+        this.getServiceInstance = function (service) {
             var req = {
                 method: 'GET',
-                url: UtilService.getBaseUrl() + '/' + path + '/' + service + '/' + instance,
+                url: UtilService.getBaseUrl() + '/' + service,
                 headers: {
                     'Content-Type': CONSTANTS.CONTENT_TYPE.JSON
                 }

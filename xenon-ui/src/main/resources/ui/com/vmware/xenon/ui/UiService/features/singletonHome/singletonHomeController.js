@@ -11,8 +11,7 @@ angular.module('dcpDefault').controller('SingletonHomeController', ['$scope', 'H
             var vm = this;
             vm.serviceInstance = {};
 
-            HomeService.getServiceInstance($routeParams.path, $routeParams.serviceName,
-                $routeParams.instanceId).
+            HomeService.getServiceInstance($routeParams.selfLink).
                 then(function (response) {
                     vm.serviceInstance = response.data;
                 }, function (error) {

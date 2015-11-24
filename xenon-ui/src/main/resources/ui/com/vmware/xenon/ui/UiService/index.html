@@ -101,7 +101,7 @@
     <div class="head-title">
         <div class="row">
             <div class="profile">
-                <div class="logo"><a href="#">
+                <div class="logo"><a href="#/">
                     <img alt=""
                          src="/user-interface/resources/com/vmware/xenon/ui/UiService/images/logo.png"
                          width="50px">
@@ -116,7 +116,7 @@
                 <i class="glyphicon glyphicon-transfer"></i>
                 <span>Tracing</span>
             </a>
-            <a ng-if="instance" href="#/{{path}}/{{service}}/home">
+            <a ng-if="instance" href="#/{{service}}/home">
                 <i class="glyphicon glyphicon-chevron-up"></i>
                 <span>/{{service}}</span>
             </a>
@@ -126,34 +126,34 @@
     <div id="main">
         <div id="nav" ng-if="instance || service">
             <ul class="navigation" ng-if="service && !instance">
-                <li><a href="#/{{path}}/{{service}}/home"><i class="glyphicon glyphicon-home"></i>
+                <li><a href="#/{{service}}/home"><i class="glyphicon glyphicon-home"></i>
                     <span>Home</span></a></li>
                 <li><a
-                        href="#/{{path}}/{{service}}/query"><i class="glyphicon glyphicon-search"></i>
+                        href="#/{{service}}/query"><i class="glyphicon glyphicon-search"></i>
                     <span>Query</span></a></li>
-                <li><a href="#/{{path}}/{{service}}/stats"><i class="glyphicon glyphicon-stats"></i>
+                <li><a href="#/{{service}}/stats"><i class="glyphicon glyphicon-stats"></i>
                     <span>Stats</span></a></li>
-                <li><a href="#/{{path}}/{{service}}/manage"><i class="glyphicon glyphicon-cog"></i>
+                <li><a href="#/{{service}}/manage"><i class="glyphicon glyphicon-cog"></i>
                     <span>Manage</span></a></li>
             </ul>
             <ul class="navigation" ng-if="instance">
-                <li><a href="#/{{path}}/{{service}}/{{instance}}/home"><i
+                <li><a href="#/{{instance}}/instanceHome"><i
                         class="glyphicon glyphicon-home"></i>
                     <span>Home</span></a></li>
                 <li><a
-                        href="#/{{path}}/{{service}}/{{instance}}/query"><i
+                        href="#/{{instance}}/instanceQuery"><i
                         class="glyphicon glyphicon-search"></i>
                     <span>Query</span></a></li>
-                <li><a href="#/{{path}}/{{service}}/{{instance}}/stats"><i
+                <li><a href="#/{{instance}}/instanceStats"><i
                         class="glyphicon glyphicon-stats"></i>
                     <span>Stats</span></a></li>
-                <li><a href="#/{{path}}/{{service}}/{{instance}}/patch"><i
+                <li><a href="#/{{instance}}/instancePatch"><i
                         class="glyphicon glyphicon-import"></i>
                     <span>Patch</span></a></li>
-                <li><a href="#/{{path}}/{{service}}/{{instance}}/put"><i
+                <li><a href="#/{{instance}}/instancePut"><i
                         class="glyphicon glyphicon-edit"></i>
                     <span>Put</span></a></li>
-                <li><a href="#/{{path}}/{{service}}/{{instance}}/delete"><i
+                <li><a href="#/{{instance}}/instanceDelete"><i
                         class="glyphicon glyphicon-trash"></i>
                     <span>Delete</span></a></li>
             </ul>

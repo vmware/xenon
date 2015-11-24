@@ -7,7 +7,7 @@
 angular.module('dcpDefault').service('DashboardService', ['$http', 'UtilService',
     function ($http, UtilService) {
 
-        this.getSystemInfo = function (path) {
+        this.getSystemInfo = function () {
             var req = {
                 method: 'GET',
                 url: UtilService.getBaseUrl() + '/core/management',
@@ -18,7 +18,7 @@ angular.module('dcpDefault').service('DashboardService', ['$http', 'UtilService'
             return $http(req);
         };
 
-        this.getServicesInstances = function (path) {
+        this.getServicesInstances = function () {
             var req = {
                 method: 'GET',
                 url: UtilService.getBaseUrl() + '/core/document-index?documentSelfLink=*',
@@ -29,7 +29,7 @@ angular.module('dcpDefault').service('DashboardService', ['$http', 'UtilService'
             return $http(req);
         };
 
-        this.getNodeGroups = function (path) {
+        this.getNodeGroups = function () {
             var req = {
                 method: 'GET',
                 url: UtilService.getBaseUrl() + '/core/node-groups',
@@ -40,7 +40,7 @@ angular.module('dcpDefault').service('DashboardService', ['$http', 'UtilService'
             return $http(req);
         };
 
-        this.getFactoryServices = function (path) {
+        this.getFactoryServices = function () {
             var req = {
                 method: 'GET',
                 url: UtilService.getBaseUrl() + '/',

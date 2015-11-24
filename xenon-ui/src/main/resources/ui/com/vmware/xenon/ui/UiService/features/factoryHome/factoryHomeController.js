@@ -11,7 +11,7 @@ angular.module('dcpDefault').controller('FactoryHomeController', ['$scope', 'Hom
             var vm = this;
             vm.documents = [];
 
-            HomeService.getServiceDocuments($routeParams.path, $routeParams.serviceName).
+            HomeService.getServiceDocuments($routeParams.selfLink).
                 then(function (response) {
                     vm.documents = response.data.documentLinks;
                 }, function (error) {

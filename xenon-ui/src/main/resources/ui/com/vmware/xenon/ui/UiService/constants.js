@@ -46,6 +46,11 @@ var CONSTANTS = {
     'SERVICE': {
         'PATH': '/core/ui'
     },
+    'URI': {
+        'QUERY_SRVC': "core/query-tasks",
+        'OPERATION_INDEX_SVC': "core/operation-index",
+        'MANAGEMENT_SVC': "core/management"
+    },
     'UI_RESOURCES': '/user-interface/resources/com/vmware/xenon/ui/UiService/',
     'UI_BASE': '/core/ui/default#'
 };

@@ -15,7 +15,7 @@
     <div ng-if="ctrl.documents.length > 0">
         <table class="table table-striped">
             <tr ng-repeat="result in ctrl.documents">
-                <td><a ng-href="{{baseUrl + uiBase + ctrl.documents[$index]}}/home">
+                <td><a ng-href="{{baseUrl + uiBase + ctrl.documents[$index]}}/instanceHome">
                     {{ctrl.documents[$index]}}</a>
                 </td>
             </tr>
