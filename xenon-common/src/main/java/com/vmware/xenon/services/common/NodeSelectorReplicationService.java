@@ -27,6 +27,7 @@ import com.vmware.xenon.common.StatelessService;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
 import com.vmware.xenon.services.common.NodeGroupService.NodeGroupState;
+import com.vmware.xenon.services.common.NodeState.NodeOption;
 
 public class NodeSelectorReplicationService extends StatelessService {
 
@@ -68,13 +69,14 @@ public class NodeSelectorReplicationService extends StatelessService {
         NodeState localNode = localState.nodes.get(getHost().getId());
         AtomicInteger successCount = new AtomicInteger(0);
 
+        if (options.contains(ServiceOption.ENFORCE_QUORUM)
+                && localNode.membershipQuorum > members.size()) {
+            outboundOp.fail(new IllegalStateException("Not enough peers: " + members.size()));
+            return;
+        }
+
         if (members.size() == 1) {
-            if (options.contains(ServiceOption.ENFORCE_QUORUM)
-                    && localNode.membershipQuorum > 1) {
-                outboundOp.fail(new IllegalStateException("No available peers: " + members.size()));
-            } else {
-                outboundOp.complete();
-            }
+            outboundOp.complete();
             return;
         }
 
@@ -134,8 +136,12 @@ public class NodeSelectorReplicationService extends StatelessService {
         }
 
         for (NodeState m : rsp.selectedNodes) {
-            if (NodeState.isUnAvailable(m) || m.id.equals(getHost().getId())) {
+            if (m.id.equals(getHost().getId())) {
                 c.handle(null, null);
+                continue;
+            }
+
+            if (m.options.contains(NodeOption.OBSERVER)) {
                 continue;
             }
 
@@ -143,8 +149,12 @@ public class NodeSelectorReplicationService extends StatelessService {
                     m.groupReference.getHost(), m.groupReference.getPort(), getSelfLink(),
                     outboundOp.getUri().getQuery());
             update.setUri(remoteGroupReplicationService);
-            requestsSent.incrementAndGet();
 
+            if (NodeState.isUnAvailable(m)) {
+                c.handle(update, new IllegalStateException("node is not available"));
+                continue;
+            }
+            requestsSent.incrementAndGet();
             getHost().getClient().send(update);
         }
     }
