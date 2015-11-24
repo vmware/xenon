@@ -57,6 +57,8 @@ import com.vmware.xenon.services.common.authn.AuthenticationConstants;
  */
 public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<Object> {
 
+    private static final String ERROR_MSG_DECODING_FAILURE = "Failure decoding HTTP request";
+
     private final ServiceHost host;
 
     public NettyHttpClientRequestHandler(ServiceHost host) {
@@ -83,9 +85,9 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
             ctx.channel().attr(NettyChannelContext.OPERATION_KEY).set(request);
 
             if (nettyRequest.decoderResult().isFailure()) {
-                request.setStatusCode(Operation.STATUS_CODE_BAD_REQUEST);
-                request.setBody(ServiceErrorResponse.create(nettyRequest.decoderResult()
-                        .cause(),
+                request.setStatusCode(Operation.STATUS_CODE_BAD_REQUEST).setKeepAlive(false);
+                request.setBody(ServiceErrorResponse.create(
+                        new IllegalArgumentException(ERROR_MSG_DECODING_FAILURE),
                         request.getStatusCode()));
                 sendResponse(ctx, request);
                 return;
@@ -101,7 +103,8 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
             if (e instanceof URISyntaxException) {
                 request.setUri(this.host.getUri());
             }
-            request.setStatusCode(sc).setBodyNoCloning(ServiceErrorResponse.create(e, sc));
+            request.setKeepAlive(false).setStatusCode(sc)
+                    .setBodyNoCloning(ServiceErrorResponse.create(e, sc));
             sendResponse(ctx, request);
         }
     }
@@ -283,7 +286,7 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
             response = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1,
                     HttpResponseStatus.INTERNAL_SERVER_ERROR,
                     Unpooled.wrappedBuffer(data), false, false);
-            response.headers().set(HttpHeaderNames.CONTENT_TYPE, request.getContentType());
+            response.headers().set(HttpHeaderNames.CONTENT_TYPE, Operation.MEDIA_TYPE_TEXT_HTML);
             response.headers().setInt(HttpHeaderNames.CONTENT_LENGTH,
                     response.content().readableBytes());
             writeResponse(ctx, request, response);
