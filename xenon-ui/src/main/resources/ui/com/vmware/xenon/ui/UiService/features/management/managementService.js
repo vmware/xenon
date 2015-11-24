@@ -29,8 +29,7 @@ angular.module('dcpDefault').service('ManageService', ['$http', 'UtilService', '
         this.createService = function (newService) {
             var req = {
                 method: 'POST',
-                url: UtilService.getBaseUrl() + '/' + $routeParams.path + '/'
-                + $routeParams.serviceName,
+                url: UtilService.getBaseUrl() + '/' + $routeParams.selfLink,
                 data: newService,
                 headers: {
                     'Content-Type': CONSTANTS.CONTENT_TYPE.JSON
@@ -42,8 +41,7 @@ angular.module('dcpDefault').service('ManageService', ['$http', 'UtilService', '
         this.putService = function (service) {
             var req = {
                 method: 'PUT',
-                url: UtilService.getBaseUrl() + '/' + $routeParams.path + '/'
-                + $routeParams.serviceName + '/' + $routeParams.instanceId,
+                url: UtilService.getBaseUrl() + '/' + $routeParams.selfLink + '/' + $routeParams.instanceId,
                 data: service,
                 headers: {
                     'Content-Type': CONSTANTS.CONTENT_TYPE.JSON
@@ -55,8 +53,7 @@ angular.module('dcpDefault').service('ManageService', ['$http', 'UtilService', '
         this.patchService = function (service) {
             var req = {
                 method: 'PATCH',
-                url: UtilService.getBaseUrl() + '/' + $routeParams.path + '/'
-                + $routeParams.serviceName + '/' + $routeParams.instanceId,
+                url: UtilService.getBaseUrl() + $routeParams.selfLink + '/' + $routeParams.instanceId,
                 data: service,
                 headers: {
                     'Content-Type': CONSTANTS.CONTENT_TYPE.JSON
@@ -68,8 +65,7 @@ angular.module('dcpDefault').service('ManageService', ['$http', 'UtilService', '
         this.deleteService = function (callBody) {
             var req = {
                 method: 'DELETE',
-                url: UtilService.getBaseUrl() + '/' + $routeParams.path + '/'
-                + $routeParams.serviceName + '/' + $routeParams.instanceId
+                url: UtilService.getBaseUrl() + $routeParams.serviceName + '/' + $routeParams.instanceId
             };
 
             if (callBody) {

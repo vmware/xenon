@@ -12,37 +12,37 @@ dcpDefault.config(['$routeProvider', function ($routeProvider) {
         when("/", {
             templateUrl: CONSTANTS.UI_RESOURCES + 'features/dashboard/dashboardView.html'
         }).
-        when("/:path/:serviceName/home", {
+        when("/:selfLink*/home", {
             templateUrl: CONSTANTS.UI_RESOURCES + 'features/factoryHome/factoryView.html'
         }).
-        when("/:path/:serviceName/:instanceId/home", {
+        when("/:selfLink*/instanceHome", {
             templateUrl: CONSTANTS.UI_RESOURCES + 'features/singletonHome/singletonView.html'
         }).
-        when("/:path/:serviceName/query", {
+        when("/:selfLink*/query", {
             templateUrl: CONSTANTS.UI_RESOURCES + "features/query/queryView.html"
         }).
-        when("/:path/:serviceName/:instanceId/query", {
+        when("/:selfLink*/instanceQuery", {
             templateUrl: CONSTANTS.UI_RESOURCES + "features/query/queryView.html"
         }).
-        when("/:path/:serviceName/stats", {
+        when("/:selfLink*/stats", {
             templateUrl: CONSTANTS.UI_RESOURCES + "features/stats/statsView.html"
         }).
-        when("/:path/:serviceName/:instanceId/stats", {
+        when("/:selfLink*/instanceStats", {
             templateUrl: CONSTANTS.UI_RESOURCES + "features/stats/statsView.html"
         }).
-        when("/:path/:serviceName/manage", {
+        when("/:selfLink*/manage", {
             templateUrl: CONSTANTS.UI_RESOURCES + 'features/management/manageServiceView.html'
         }).
-        when("/:path/:serviceName/:instanceId/put", {
+        when("/:selfLink*/instancePut", {
             templateUrl: CONSTANTS.UI_RESOURCES + 'features/management/putInstanceView.html'
         }).
-        when("/:path/:serviceName/:instanceId/patch", {
+        when("/:selfLink*/instancePatch", {
             templateUrl: CONSTANTS.UI_RESOURCES + 'features/management/patchInstanceView.html'
         }).
-        when("/:path/:serviceName/:instanceId/delete", {
+        when("/:selfLink*/instanceDelete", {
             templateUrl: CONSTANTS.UI_RESOURCES + 'features/management/deleteInstanceView.html'
         }).
-        when("/:path/operationIndex", {
+        when("/core/operationIndex", {
             templateUrl: CONSTANTS.UI_RESOURCES + 'features/operationIndex/operationIndex.html'
         }).
         when("/404", {

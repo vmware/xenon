@@ -68,7 +68,7 @@ angular.module('dcpDefault').controller('QueryController', ['$scope', 'QueryServ
                 {id: CONSTANTS.TERM, name: "(text) is"}
             ];
 
-            UtilService.getServiceTemplate($routeParams.path, $routeParams.serviceName).
+            UtilService.getServiceTemplate($routeParams.selfLink).
                 then(function (response) {
                     var docLink = response.data.documentLinks[0];
                     var properties = response.data.documents[docLink].documentDescription.
@@ -134,8 +134,7 @@ angular.module('dcpDefault').controller('QueryController', ['$scope', 'QueryServ
 
             vm.submitQuery = function () {
                 clearResults();
-                QueryService.postQuery($routeParams.path,
-                    vm.constructQueryObject(vm.queryType === 'simple' ? vm.simpleQuery
+                QueryService.postQuery(vm.constructQueryObject(vm.queryType === 'simple' ? vm.simpleQuery
                         : $scope.booleanClauses)).
                     then(function (response) {
                         vm.queryingResults = true;
