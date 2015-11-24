@@ -337,8 +337,16 @@ public class Utils {
             nestingLevel = 2;
         }
         Level l = lg.getLevel();
-        if (l == null) {
-            l = lg.getParent().getLevel();
+        Logger parent = lg.getParent();
+        while (l == null && parent != null) {
+            l = parent.getLevel();
+            if (l == null) {
+                parent = parent.getParent();
+            }
+        }
+
+        if (l == null) { //Set default level
+            l = level;
         }
         if (l.intValue() > level.intValue()) {
             return;
