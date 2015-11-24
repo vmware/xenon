@@ -231,8 +231,17 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
 
     private void corruptLuceneIndexFiles() throws IOException {
         // Corrupt lucene sandbox (delete one of the index files).
-        File luceneDir = new File(new File(this.host.getStorageSandbox()),
-                LuceneDocumentIndexService.FILE_PATH_LUCENE);
+        File baseDir = new File(this.host.getStorageSandbox());
+        File luceneDir = new File(baseDir, LuceneDocumentIndexService.FILE_PATH_LUCENE);
+
+        // Delete writer lock file so new host can acquire it without having to wait for
+        // the old host to clean it up asynchronously...
+        try {
+            Files.delete(new File(luceneDir, "write.lock").toPath());
+        } catch (IOException e) {
+            this.host.log(Level.WARNING, "Unable to delete writer.lock: %s", e.toString());
+            return;
+        }
 
         Files.list(luceneDir.toPath()).forEach((Path fileP) -> {
             String name = fileP.toString();
