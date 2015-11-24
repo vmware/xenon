@@ -687,11 +687,6 @@ public class TestNodeGroupService {
             throws Throwable {
         this.postCreationServiceOptions.add(ServiceOption.ENFORCE_QUORUM);
         this.expectFailure = true;
-        doNodeReplicationWithNodeStopStart(true, true);
-    }
-
-    private void doNodeReplicationWithNodeStopStart(boolean doStop,
-            boolean doReplicationPostStart) throws Throwable {
 
         long opTimeoutMicros = TimeUnit.SECONDS.toMicros(3);
         int hostRestartCount = 2;
@@ -703,33 +698,30 @@ public class TestNodeGroupService {
 
         setOperationTimeoutMicros(opTimeoutMicros);
 
-        this.nodeGroupConfig.nodeRemovalDelayMicros = TimeUnit.SECONDS.toMicros(10);
         this.host.setNodeGroupConfig(this.nodeGroupConfig);
         if (this.postCreationServiceOptions.contains(ServiceOption.ENFORCE_QUORUM)) {
             this.host.setNodeGroupQuorum((this.nodeCount + 1) / 2);
         }
 
-        if (doStop) {
-            int i = 0;
-            for (URI h : this.host.getInProcessHostMap().keySet()) {
-                this.expectedFailedHosts.add(h);
-                if (++i >= hostRestartCount) {
-                    break;
-                }
+        int i = 0;
+        for (URI h : this.host.getInProcessHostMap().keySet()) {
+            this.expectedFailedHosts.add(h);
+            if (++i >= hostRestartCount) {
+                break;
             }
-
-            // stop one host right away
-            stopHostsToSimulateFailure(1);
-
-            // concurrently with the PATCH requests below, stop some of the hosts
-            this.host.schedule(() -> {
-                stopHostsToSimulateFailure(hostRestartCount - 1);
-                // add a small bit of time slop since its feasible a host completed a operation *after* we stopped it,
-                // the netty handlers are stopped in async (not forced) mode
-                this.expectedFailureStartTimeMicros = Utils.getNowMicrosUtc()
-                        + TimeUnit.MILLISECONDS.toMicros(250);
-            }, 1, TimeUnit.MILLISECONDS);
         }
+
+        // stop one host right away
+        stopHostsToSimulateFailure(1);
+
+        // concurrently with the PATCH requests below, stop another host
+        this.host.schedule(() -> {
+            stopHostsToSimulateFailure(hostRestartCount - 1);
+            // add a small bit of time slop since its feasible a host completed a operation *after* we stopped it,
+            // the netty handlers are stopped in async (not forced) mode
+            this.expectedFailureStartTimeMicros = Utils.getNowMicrosUtc()
+                    + TimeUnit.MILLISECONDS.toMicros(250);
+        } , 1, TimeUnit.MILLISECONDS);
 
         childStates = doStateUpdateReplicationTest(Action.PATCH, this.serviceCount,
                 this.updateCount,
@@ -738,11 +730,18 @@ public class TestNodeGroupService {
                 this.exampleStateConvergenceChecker,
                 childStates);
 
-        if (!doReplicationPostStart) {
-            return;
-        }
-
         doStateUpdateReplicationTest(Action.PATCH, childStates.size(), this.updateCount,
+                this.updateCount * 2,
+                this.exampleStateUpdateBodySetter,
+                this.exampleStateConvergenceChecker,
+                childStates);
+
+        // send another set of patches, after node groups have converged, ensuring that
+        // replication operates properly, in the case of host failure after the host
+        // has been marked un-available.
+        this.host.waitForNodeGroupConvergence(this.nodeCount - 2);
+
+        doStateUpdateReplicationTest(Action.PATCH, childStates.size(), 1,
                 this.updateCount * 2,
                 this.exampleStateUpdateBodySetter,
                 this.exampleStateConvergenceChecker,
