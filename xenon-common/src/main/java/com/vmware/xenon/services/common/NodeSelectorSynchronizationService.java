@@ -394,8 +394,7 @@ public class NodeSelectorSynchronizationService extends StatelessService {
                         clonedState.documentVersion);
 
                 // Mark it as replicated so the remote factories do not try to replicate it again
-                peerOp.addRequestHeader(Operation.REPLICATION_TARGET_HEADER,
-                        peerOp.getUri().toString());
+                peerOp.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_REPLICATED);
                 sendRequest(peerOp);
             }
         } catch (Throwable e) {
