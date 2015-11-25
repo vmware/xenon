@@ -2470,7 +2470,7 @@ public class ServiceHost {
             }
         }
 
-        if (inboundOp.getRequestHeader(Operation.REPLICATION_TARGET_HEADER) != null) {
+        if (inboundOp.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_REPLICATED)) {
             inboundOp.setFromReplication(true).setTargetReplicated(true);
         }
 
@@ -2729,6 +2729,11 @@ public class ServiceHost {
 
             if (op.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_FORWARDED)) {
                 // this was forwarded from another node, but we do not think we own the service
+                failRequestOwnerMismatch(op, op.getUri().getPath(), null);
+                return;
+            }
+
+            if (op.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_REPLICATED)) {
                 failRequestOwnerMismatch(op, op.getUri().getPath(), null);
                 return;
             }
