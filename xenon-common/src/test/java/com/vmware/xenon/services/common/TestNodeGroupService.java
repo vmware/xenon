@@ -1043,9 +1043,12 @@ public class TestNodeGroupService {
                     + TimeUnit.SECONDS.toMillis(this.testDurationSeconds));
         }
 
+        long totalOperations = 0;
         do {
             Map<String, ExampleServiceState> childStates = doExampleFactoryPostReplicationTest(
                     this.serviceCount);
+
+            totalOperations += this.serviceCount;
 
             if (expiration == null) {
                 expiration = this.host.getTestExpiration();
@@ -1069,12 +1072,16 @@ public class TestNodeGroupService {
                     childStates);
             expectedVersion += this.updateCount;
 
+            totalOperations += this.serviceCount * this.updateCount;
+
             childStates = doStateUpdateReplicationTest(Action.PUT, this.serviceCount,
                     this.updateCount,
                     expectedVersion,
                     this.exampleStateUpdateBodySetter,
                     this.exampleStateConvergenceChecker,
                     childStates);
+
+            totalOperations += this.serviceCount * this.updateCount;
 
             Date queryExp = this.host.getTestExpiration();
             if (expiration.after(queryExp)) {
@@ -1090,6 +1097,8 @@ public class TestNodeGroupService {
                 break;
             }
 
+            totalOperations += this.serviceCount;
+
             if (queryExp.before(new Date())) {
                 throw new TimeoutException();
             }
@@ -1101,6 +1110,10 @@ public class TestNodeGroupService {
                     this.exampleStateUpdateBodySetter,
                     this.exampleStateConvergenceChecker,
                     childStates);
+
+            totalOperations += this.serviceCount * this.updateCount;
+
+            this.host.log("Total operations: %d", totalOperations);
 
         } while (new Date().before(expiration));
 
