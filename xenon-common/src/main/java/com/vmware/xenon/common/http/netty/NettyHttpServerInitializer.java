@@ -28,8 +28,8 @@ import com.vmware.xenon.services.common.ServiceUriPaths;
 
 public class NettyHttpServerInitializer extends ChannelInitializer<SocketChannel> {
     public static final String AGGREGATOR_HANDLER = "aggregator";
-    public static final String DCP_HANDLER = "dcp";
-    public static final String DCP_WEBSOCKET_HANDLER = "dcp_ws";
+    public static final String HTTP_REQUEST_HANDLER = "http-request-handler";
+    public static final String WEBSOCKET_HANDLER = "websocket-request-handler";
     public static final String DECODER_HANDLER = "decoder";
     public static final String ENCODER_HANDLER = "encoder";
     public static final String SSL_HANDLER = "ssl";
@@ -48,22 +48,24 @@ public class NettyHttpServerInitializer extends ChannelInitializer<SocketChannel
         ch.config().setAllocator(NettyChannelContext.ALLOCATOR);
         ch.config().setSendBufferSize(NettyChannelContext.BUFFER_SIZE);
         ch.config().setReceiveBufferSize(NettyChannelContext.BUFFER_SIZE);
+
+        SslHandler sslHandler = null;
         if (this.sslContext != null) {
-            SslHandler handler = this.sslContext.newHandler(ch.alloc());
+            sslHandler = this.sslContext.newHandler(ch.alloc());
             SslClientAuthMode mode = this.host.getState().sslClientAuthMode;
             if (mode != null) {
                 switch (mode) {
                 case NEED:
-                    handler.engine().setNeedClientAuth(true);
+                    sslHandler.engine().setNeedClientAuth(true);
                     break;
                 case WANT:
-                    handler.engine().setWantClientAuth(true);
+                    sslHandler.engine().setWantClientAuth(true);
                     break;
                 default:
                     break;
                 }
             }
-            p.addLast(SSL_HANDLER, handler);
+            p.addLast(SSL_HANDLER, sslHandler);
         }
 
         p.addLast(DECODER_HANDLER, new HttpRequestDecoder(
@@ -73,9 +75,9 @@ public class NettyHttpServerInitializer extends ChannelInitializer<SocketChannel
         p.addLast(ENCODER_HANDLER, new HttpResponseEncoder());
         p.addLast(AGGREGATOR_HANDLER,
                 new HttpObjectAggregator(NettyChannelContext.getMaxRequestSize()));
-        p.addLast(DCP_WEBSOCKET_HANDLER, new NettyWebSocketRequestHandler(this.host,
+        p.addLast(WEBSOCKET_HANDLER, new NettyWebSocketRequestHandler(this.host,
                 ServiceUriPaths.CORE_WEB_SOCKET_ENDPOINT,
                 ServiceUriPaths.WEB_SOCKET_SERVICE_PREFIX));
-        p.addLast(DCP_HANDLER, new NettyHttpClientRequestHandler(this.host));
+        p.addLast(HTTP_REQUEST_HANDLER, new NettyHttpClientRequestHandler(this.host, sslHandler));
     }
 }

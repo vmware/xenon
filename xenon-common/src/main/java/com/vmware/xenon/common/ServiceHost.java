@@ -216,7 +216,6 @@ public class ServiceHost {
         public boolean isAuthorizationEnabled = false;
     }
 
-    private static final CharSequence PACKAGE_NAME = ServiceHost.class.getPackage().getName();
     private static final LogFormatter LOG_FORMATTER = new LogFormatter();
     private static final LogFormatter COLOR_LOG_FORMATTER = new ColorLogFormatter();
 
@@ -986,7 +985,7 @@ public class ServiceHost {
             throw new IllegalStateException("CommitID code property not found!");
         }
         commitID = commitID.substring(0, 8);
-        String userAgent = ServiceHost.class.getCanonicalName() + "/" + commitID;
+        String userAgent = ServiceHost.class.getSimpleName() + "/" + commitID;
 
         if (this.client == null) {
             this.client = NettyHttpServiceClient.create(userAgent, this.executor,
@@ -2470,7 +2469,7 @@ public class ServiceHost {
             }
         }
 
-        if (inboundOp.getRequestHeader(Operation.REPLICATION_TARGET_HEADER) != null) {
+        if (inboundOp.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_REPLICATED)) {
             inboundOp.setFromReplication(true).setTargetReplicated(true);
         }
 
@@ -2733,6 +2732,11 @@ public class ServiceHost {
                 return;
             }
 
+            if (op.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_REPLICATED)) {
+                failRequestOwnerMismatch(op, op.getUri().getPath(), null);
+                return;
+            }
+
             forwardOp.setUri(SelectOwnerResponse.buildUriToOwner(rsp, op));
             forwardOp.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_FORWARDED);
             forwardOp.removeRequestCallbackLocation();
@@ -2766,7 +2770,7 @@ public class ServiceHost {
             userAgent = op.getRequestHeader(Operation.USER_AGENT_HEADER.toLowerCase());
         }
 
-        if (userAgent != null && !userAgent.contains(PACKAGE_NAME)) {
+        if (userAgent != null && !userAgent.contains(ServiceHost.class.getSimpleName())) {
             // do not implicitly queue requests from other request sources
             doNotQueue = true;
         }

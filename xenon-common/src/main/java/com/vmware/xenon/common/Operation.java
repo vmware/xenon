@@ -345,14 +345,13 @@ public class Operation implements Cloneable {
             + "rsp-status";
     public static final String REQUEST_AUTH_TOKEN_HEADER = HEADER_NAME_PREFIX
             + "auth-token";
-    public static final String REPLICATION_TARGET_HEADER = HEADER_NAME_PREFIX
-            + "rpl-target";
     public static final String REPLICATION_PHASE_HEADER = HEADER_NAME_PREFIX
             + "rpl-phase";
     public static final String VMWARE_DCP_TRANSACTION_HEADER = HEADER_NAME_PREFIX
             + "tx-phase";
 
     public static final String PRAGMA_DIRECTIVE_FORWARDED = "xn-fwd";
+    public static final String PRAGMA_DIRECTIVE_REPLICATED = "xn-rpl";
     public static final String PRAGMA_DIRECTIVE_NO_QUEUING = "xn-no-queuing";
     public static final String PRAGMA_DIRECTIVE_QUEUE_FOR_SERVICE_AVAILABILITY = "xn-queue";
     public static final String PRAGMA_DIRECTIVE_NO_FORWARDING = "xn-no-fwd";

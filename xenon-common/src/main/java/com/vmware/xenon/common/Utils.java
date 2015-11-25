@@ -674,10 +674,14 @@ public class Utils {
         Object body = op.getBodyRaw();
         if (body instanceof String) {
             data = ((String) body).getBytes(Utils.CHARSET);
+            op.setContentLength(data.length);
         } else if (body instanceof byte[]) {
             data = (byte[]) body;
             if (contentType == null) {
                 op.setContentType(Operation.MEDIA_TYPE_APPLICATION_OCTET_STREAM);
+            }
+            if (op.getContentLength() == 0 || op.getContentLength() > data.length) {
+                op.setContentLength(data.length);
             }
         }
 
@@ -693,12 +697,13 @@ public class Utils {
                     }
                 }
                 data = encodedBody.getBytes(Utils.CHARSET);
+                op.setContentLength(data.length);
             } else {
                 throw new IllegalArgumentException("Unrecognized content type: " + contentType);
             }
         }
 
-        op.setContentLength(data.length);
+
         return data;
     }
 
