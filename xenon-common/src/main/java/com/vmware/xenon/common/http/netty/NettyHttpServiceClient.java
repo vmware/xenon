@@ -132,7 +132,7 @@ public class NettyHttpServiceClient implements ServiceClient {
         if (this.sslContext != null) {
             this.sslChannelPool = new NettyChannelPool(this.executor);
             this.sslChannelPool.setThreadTag(buildThreadTag());
-            this.sslChannelPool.setThreadCount(2);
+            this.sslChannelPool.setThreadCount(DEFAULT_EVENT_LOOP_THREAD_COUNT);
             this.sslChannelPool.setSSLContext(this.sslContext);
             this.sslChannelPool.start();
         }
@@ -327,6 +327,18 @@ public class NettyHttpServiceClient implements ServiceClient {
                 port = UriUtils.HTTPS_DEFAULT_PORT;
             }
             pool = this.sslChannelPool;
+
+            if (this.getSSLContext() == null || pool == null) {
+                fail(new IllegalArgumentException(
+                        "HTTPS not enabled, set SSL context before starting client:"
+                                + op.getUri().getScheme()),
+                        op);
+                return;
+            }
+        } else {
+            fail(new IllegalArgumentException(
+                    "Scheme is not supported: " + op.getUri().getScheme()), op);
+            return;
         }
 
         pool.connectOrReuse(uri.getHost(), port,
@@ -335,10 +347,6 @@ public class NettyHttpServiceClient implements ServiceClient {
     }
 
     private void sendRequest(Operation op) {
-        if (!checkScheme(op)) {
-            return;
-        }
-
         try {
             byte[] body = Utils.encodeBody(op);
             String pathAndQuery;
@@ -389,7 +397,7 @@ public class NettyHttpServiceClient implements ServiceClient {
             }
 
             request.headers().set(HttpHeaderNames.USER_AGENT, this.userAgent);
-            request.headers().set(HttpHeaderNames.ACCEPT, Operation.MEDIA_TYPE_APPLICATION_JSON);
+            request.headers().set(HttpHeaderNames.ACCEPT, "*");
             request.headers().set(
                     HttpHeaderNames.HOST,
                     op.getUri().getHost()
@@ -412,28 +420,6 @@ public class NettyHttpServiceClient implements ServiceClient {
                     EnumSet.of(ErrorDetail.SHOULD_RETRY)));
             fail(e, op);
         }
-    }
-
-    private boolean checkScheme(Operation op) {
-        String scheme = op.getUri().getScheme();
-        if (scheme.equals(UriUtils.HTTP_SCHEME)) {
-            return true;
-        }
-
-        if (scheme.equals(UriUtils.HTTPS_SCHEME)) {
-            if (this.getSSLContext() == null) {
-                fail(new IllegalArgumentException(
-                        "HTTPS not enabled, set SSL context before starting client:"
-                                + op.getUri().getScheme()),
-                        op);
-                return false;
-            } else {
-                return true;
-            }
-        }
-
-        fail(new IllegalArgumentException("scheme not supported:" + op.getUri().getScheme()), op);
-        return false;
     }
 
     private void fail(Throwable e, Operation op) {

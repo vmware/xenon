@@ -61,17 +61,24 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
 
     private final ServiceHost host;
 
-    public NettyHttpClientRequestHandler(ServiceHost host) {
+    private final SslHandler sslHandler;
+
+    public NettyHttpClientRequestHandler(ServiceHost host, SslHandler sslHandler) {
         this.host = host;
+        this.sslHandler = sslHandler;
+    }
+
+    public boolean acceptInboundMessage(Object msg) throws Exception {
+        if (msg instanceof FullHttpRequest) {
+            return true;
+        }
+        return false;
     }
 
     @Override
     protected void messageReceived(ChannelHandlerContext ctx, Object msg) {
         Operation request = null;
         try {
-            if (!(msg instanceof FullHttpRequest)) {
-                return;
-            }
             // Start of request processing, initialize in-bound operation
             FullHttpRequest nettyRequest = (FullHttpRequest) msg;
             long expMicros = Utils.getNowMicrosUtc() + this.host.getOperationTimeoutMicros();
@@ -92,6 +99,7 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
                 sendResponse(ctx, request);
                 return;
             }
+
             parseRequestHeaders(ctx, request, nettyRequest);
             decodeRequestBody(ctx, request, nettyRequest.content());
         } catch (Throwable e) {
@@ -172,21 +180,18 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
             request.addRequestHeader(key, value);
         }
 
-        // Add peer Principal and CertificateChain to operation in case if client was successfully authenticated
-        // by Netty using client certificate
-        SslHandler sslHandler = (SslHandler) ctx.channel().pipeline()
-                .get(NettyHttpServerInitializer.SSL_HANDLER);
-        if (sslHandler != null) {
-            try {
-                if (sslHandler.engine().getWantClientAuth()
-                        || sslHandler.engine().getNeedClientAuth()) {
-                    SSLSession session = sslHandler.engine().getSession();
-                    request.setPeerCertificates(session.getPeerPrincipal(),
-                            session.getPeerCertificateChain());
-                }
-            } catch (Exception e) {
-                this.host.log(Level.FINE, "Failed to get peer principal " + Utils.toString(e));
+        if (this.sslHandler == null) {
+            return;
+        }
+        try {
+            if (this.sslHandler.engine().getWantClientAuth()
+                    || this.sslHandler.engine().getNeedClientAuth()) {
+                SSLSession session = this.sslHandler.engine().getSession();
+                request.setPeerCertificates(session.getPeerPrincipal(),
+                        session.getPeerCertificateChain());
             }
+        } catch (Exception e) {
+            this.host.log(Level.FINE, "Failed to get peer principal " + Utils.toString(e));
         }
     }
 
