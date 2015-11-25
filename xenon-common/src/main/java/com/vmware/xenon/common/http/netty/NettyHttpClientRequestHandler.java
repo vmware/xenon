@@ -92,6 +92,7 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
                 sendResponse(ctx, request);
                 return;
             }
+
             parseRequestHeaders(ctx, request, nettyRequest);
             decodeRequestBody(ctx, request, nettyRequest.content());
         } catch (Throwable e) {
