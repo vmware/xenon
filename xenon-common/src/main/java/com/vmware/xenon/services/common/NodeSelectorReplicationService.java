@@ -25,7 +25,6 @@ import com.vmware.xenon.common.Service;
 import com.vmware.xenon.common.ServiceHost;
 import com.vmware.xenon.common.StatelessService;
 import com.vmware.xenon.common.UriUtils;
-import com.vmware.xenon.common.Utils;
 import com.vmware.xenon.services.common.NodeGroupService.NodeGroupState;
 import com.vmware.xenon.services.common.NodeState.NodeOption;
 
@@ -39,19 +38,6 @@ public class NodeSelectorReplicationService extends StatelessService {
         super.setSelfLink(UriUtils.buildUriPath(parent.getSelfLink(),
                 ServiceHost.SERVICE_URI_SUFFIX_REPLICATION));
         super.setProcessingStage(ProcessingStage.AVAILABLE);
-    }
-
-    @Override
-    public void handleRequest(Operation op) {
-        final String header = Operation.REPLICATION_TARGET_HEADER;
-        String path = op.getRequestHeader(header);
-        if (path == null) {
-            op.fail(new IllegalArgumentException(header + " is required"));
-            return;
-        }
-
-        handleRemoteUpdate(op.setUri(UriUtils.buildUri(getHost(), path,
-                op.getUri().getQuery())));
     }
 
     /**
@@ -80,7 +66,7 @@ public class NodeSelectorReplicationService extends StatelessService {
             return;
         }
 
-        AtomicInteger requestsSent = new AtomicInteger();
+        AtomicInteger sentCount = new AtomicInteger();
         AtomicInteger failureCount = new AtomicInteger();
 
         // When quorum is not required, succeed when we replicate to at least one remote node,
@@ -119,31 +105,28 @@ public class NodeSelectorReplicationService extends StatelessService {
                         "request %d failed. Fail count: %d,  sent count: %d, quorum: %d",
                         outboundOp.getId(),
                         failureCount.get(),
-                        requestsSent.get(),
+                        sentCount.get(),
                         localNode.membershipQuorum);
                 logWarning("%s", error);
-                if (failureCount.get() >= failureThresholdFinal) {
+                if (failureCount.get() >= failureThresholdFinal || failureCount.get() >= sentCount.get()) {
                     outboundOp.fail(new IllegalStateException(error));
                 }
             }
         };
 
-        String body = Utils.toJson(req.linkedState);
-        String phase = outboundOp.getRequestHeaders().get(Operation.REPLICATION_PHASE_HEADER);
-        Operation update = Operation
-                .createPost(null)
+        Operation update = Operation.createPost(null)
                 .setAction(outboundOp.getAction())
-                .setBodyNoCloning(body)
+                .setBodyNoCloning(req.linkedState)
                 .setCompletion(c)
                 .setRetryCount(1)
                 .setExpiration(outboundOp.getExpirationMicrosUtc())
-                .addRequestHeader(Operation.REPLICATION_TARGET_HEADER,
-                        outboundOp.getUri().getPath())
                 .transferRequestHeadersFrom(outboundOp)
+                .removePragmaDirective(Operation.PRAGMA_DIRECTIVE_FORWARDED)
+                .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_REPLICATED)
                 .setReferer(outboundOp.getReferer());
 
-        if (phase != null) {
-            update.addRequestHeader(Operation.REPLICATION_PHASE_HEADER, phase);
+        if (update.getCookies() != null && !update.getCookies().isEmpty()) {
+            update.getCookies().clear();
         }
 
         for (NodeState m : rsp.selectedNodes) {
@@ -156,34 +139,21 @@ public class NodeSelectorReplicationService extends StatelessService {
                 continue;
             }
 
-            URI remoteGroupReplicationService = UriUtils.buildUri(m.groupReference.getScheme(),
-                    m.groupReference.getHost(), m.groupReference.getPort(), getSelfLink(),
-                    outboundOp.getUri().getQuery());
-            update.setUri(remoteGroupReplicationService);
+            try {
+                URI remotePeerService = new URI(m.groupReference.getScheme(),
+                        null, m.groupReference.getHost(), m.groupReference.getPort(),
+                        outboundOp.getUri().getPath(), outboundOp.getUri().getQuery(), null);
+                update.setUri(remotePeerService);
+            } catch (Throwable e1) {
+            }
 
             if (NodeState.isUnAvailable(m)) {
                 c.handle(update, new IllegalStateException("node is not available"));
                 continue;
             }
-            requestsSent.incrementAndGet();
+            sentCount.incrementAndGet();
             getHost().getClient().send(update);
         }
-    }
-
-    private void handleRemoteUpdate(Operation op) {
-        CompletionHandler c = (o, e) -> {
-            if (e != null) {
-                op.setStatusCode(o.getStatusCode()).fail(e);
-                return;
-            }
-
-            op.setBody(null).complete();
-        };
-
-        op.nestCompletion(c);
-        // Use the client directly so the referrer is not overwritten by the
-        // super.sendRequest() method
-        getHost().getClient().send(op);
     }
 
     @Override
