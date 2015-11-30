@@ -16,8 +16,6 @@ package com.vmware.xenon.common.http.netty;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.EnumSet;
-import java.util.HashMap;
-import java.util.Map;
 import java.util.Map.Entry;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.ExecutorService;
@@ -50,7 +48,6 @@ import com.vmware.xenon.common.ServiceHost;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
 import com.vmware.xenon.services.common.ServiceUriPaths;
-import com.vmware.xenon.services.common.authn.AuthenticationConstants;
 
 /**
  * Asynchronous request / response client with concurrent connection management
@@ -193,12 +190,12 @@ public class NettyHttpServiceClient implements ServiceClient {
             }
         }
 
-        addAuthorizationContextCookie(clone);
+        addAuthorizationContextHeader(clone);
 
         sendRemote(clone);
     }
 
-    private void addAuthorizationContextCookie(Operation op) {
+    private void addAuthorizationContextHeader(Operation op) {
         AuthorizationContext ctx = op.getAuthorizationContext();
         if (ctx == null) {
             return;
@@ -209,13 +206,7 @@ public class NettyHttpServiceClient implements ServiceClient {
             return;
         }
 
-        Map<String, String> cookies = op.getCookies();
-        if (cookies == null) {
-            cookies = new HashMap<>();
-        }
-
-        cookies.put(AuthenticationConstants.DCP_JWT_COOKIE, ctx.getToken());
-        op.setCookies(cookies);
+        op.addRequestHeader(Operation.REQUEST_AUTH_TOKEN_HEADER, token);
     }
 
     private void sendRemote(Operation op) {
