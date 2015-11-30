@@ -52,6 +52,7 @@ import com.vmware.xenon.services.common.ServiceUriPaths;
 public class TestWebSocketService extends BasicReusableHostTestCase {
     public static final String WS_TEST_JS_PATH = "/ws-test/ws-test.js";
     public static final String HOST = "host";
+    public static final String PROTOCOL = "protocol";
     public static final String LOCATION = "location";
     public static final String DOCUMENT = "document";
     public static final String WS_TEST_JS = "ws-test.js";
@@ -100,6 +101,7 @@ public class TestWebSocketService extends BasicReusableHostTestCase {
                     location.defineProperty(HOST, host.getPublicUri().getHost() + ":"
                             + host.getPublicUri().getPort(),
                             NativeObject.READONLY);
+                    location.defineProperty(PROTOCOL, host.getPublicUri().getScheme() + ":", NativeObject.READONLY);
                     ScriptableObject.putProperty(scope, LOCATION, location);
                     ScriptableObject.putProperty(scope, DOCUMENT,
                             context.newObject(scope, JsDocument.CLASS_NAME));

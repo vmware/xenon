@@ -65,7 +65,7 @@ var WSL = (function () {
     function WebSocketConnection(endpoint) {
         var me = this;
         this.ready = false;
-        this.webSocket = new WebSocket("ws://" + location.host + endpoint);
+        this.webSocket = new WebSocket(getWebsocketUri(location, endpoint));
         this.services = {};
         this.doneHandlers = {};
         this.requestCounter = 0;
@@ -233,6 +233,11 @@ var WSL = (function () {
         var l = document.createElement("a");
         l.href = href;
         return l.pathname;
+    }
+
+    function getWebsocketUri(location, endpoint) {
+        var proto = location.protocol.toLowerCase().indexOf("https") >= 0 ? "wss:" : "ws:";
+        return proto + "//" + location.host + endpoint;
     }
 
     return {
