@@ -21,7 +21,6 @@ import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
 import com.vmware.xenon.common.Claims;
 import com.vmware.xenon.common.Operation;
@@ -91,9 +90,6 @@ public class AuthorizationContextService extends StatelessService {
     private Map<String, Collection<Operation>> pendingOperationsBySubject =
             new HashMap<>();
 
-    private Map<String, AuthorizationContext> authorizationContextCache =
-            new ConcurrentHashMap<>();
-
     /**
      * The service host will invoke this method to allow a service to handle
      * the request in-line or indicate it should be scheduled by service host.
@@ -105,10 +101,7 @@ public class AuthorizationContextService extends StatelessService {
     public boolean queueRequest(Operation op) {
         AuthorizationContext ctx = op.getAuthorizationContext();
         if (ctx == null) {
-            // No authorization context; allow operation.
-            // We allow all operations without context while we're transitioning
-            // from not authorizing requests at all to authorizing all requests.
-            op.complete();
+            op.fail(new IllegalArgumentException("no authorization context"));
             return true;
         }
 
@@ -132,14 +125,6 @@ public class AuthorizationContextService extends StatelessService {
 
         // Check whether or not the operation already has a processed context.
         if (ctx.getResourceQueryFilter() != null) {
-            op.complete();
-            return true;
-        }
-
-        // Load cached context by looking up the incoming context's token.
-        AuthorizationContext newCtx = this.authorizationContextCache.get(ctx.getToken());
-        if (newCtx != null) {
-            setAuthorizationContext(op, newCtx);
             op.complete();
             return true;
         }
@@ -410,7 +395,7 @@ public class AuthorizationContextService extends StatelessService {
         }
 
         AuthorizationContext newContext = builder.getResult();
-        this.authorizationContextCache.put(ctx.getToken(), newContext);
+        getHost().cacheAuthorizationContext(this, ctx.getToken(), newContext);
         completePendingOperations(claims.getSubject(), newContext);
     }
 

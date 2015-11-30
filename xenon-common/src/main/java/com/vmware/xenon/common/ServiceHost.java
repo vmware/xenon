@@ -49,6 +49,7 @@ import java.util.SortedSet;
 import java.util.TreeSet;
 import java.util.UUID;
 import java.util.concurrent.CancellationException;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.CountDownLatch;
@@ -408,6 +409,8 @@ public class ServiceHost {
 
     private Logger logger = Logger.getLogger(getClass().getName());
     private FileHandler handler;
+
+    private Map<String, AuthorizationContext> authorizationContextCache = new ConcurrentHashMap<>();
 
     private final Map<String, ServiceDocumentDescription> descriptionCache = new HashMap<>();
     private final ServiceDocumentDescription.Builder descriptionBuilder = Builder.create();
@@ -2534,16 +2537,6 @@ public class ServiceHost {
         return true;
     }
 
-    private void populateAuthorizationContext(Operation op) {
-        AuthorizationContext ctx = getAuthorizationContext(op);
-        if (ctx == null) {
-            // No (valid) authorization context, fall back to guest context
-            ctx = getGuestAuthorizationContext();
-        }
-
-        op.setAuthorizationContext(ctx);
-    }
-
     private AuthorizationContext getAuthorizationContext(Operation op) {
         String token = op.getRequestHeader(Operation.REQUEST_AUTH_TOKEN_HEADER);
         if (token == null) {
@@ -2558,17 +2551,39 @@ public class ServiceHost {
             return null;
         }
 
+        AuthorizationContext ctx = this.authorizationContextCache.get(token);
+
+
         try {
-            AuthorizationContext.Builder b = AuthorizationContext.Builder.create();
-            Claims claims = this.getTokenVerifier().verify(token, Claims.class);
-            Long expirationTime = claims.getExpirationTime();
-            if (expirationTime != null && expirationTime <= Utils.getNowMicrosUtc()) {
+            Claims claims = null;
+            if (ctx == null) {
+                claims = this.getTokenVerifier().verify(token, Claims.class);
+            } else {
+                claims = ctx.getClaims();
+            }
+
+            if (claims == null) {
+                log(Level.INFO, "Request to %s has no claims found with token: %s",
+                        op.getUri().getPath(), token);
                 return null;
             }
 
+            Long expirationTime = claims.getExpirationTime();
+            if (expirationTime != null && expirationTime <= Utils.getNowMicrosUtc()) {
+                this.authorizationContextCache.remove(token);
+                return null;
+            }
+
+            if (ctx != null) {
+                return ctx;
+            }
+
+            AuthorizationContext.Builder b = AuthorizationContext.Builder.create();
             b.setClaims(claims);
             b.setToken(token);
-            return b.getResult();
+            ctx = b.getResult();
+            this.authorizationContextCache.put(token, ctx);
+            return ctx;
         } catch (TokenException | GeneralSecurityException e) {
             log(Level.INFO, "Error verifying token: %s", e);
         }
@@ -4529,6 +4544,36 @@ public class ServiceHost {
      */
     protected Verifier getTokenVerifier() {
         return this.tokenVerifier;
+    }
+
+    /**
+     * Infrastructure use only. Only services added as privileged can use this method.
+     */
+    public void cacheAuthorizationContext(Service s, String token, AuthorizationContext ctx) {
+        if (!this.isPrivilegedService(s)) {
+            throw new RuntimeException("Service not allowed to cache authorization token");
+        }
+        this.authorizationContextCache.put(token, ctx);
+    }
+
+    /**
+     * Infrastructure use only. Only services added as privileged can use this method.
+     */
+    public AuthorizationContext getAuthorizationContext(Service s, String token) {
+        if (!this.isPrivilegedService(s)) {
+            throw new RuntimeException("Service not allowed to retrieve authorization token");
+        }
+        return this.authorizationContextCache.get(token);
+    }
+
+    private void populateAuthorizationContext(Operation op) {
+        AuthorizationContext ctx = getAuthorizationContext(op);
+        if (ctx == null) {
+            // No (valid) authorization context, fall back to guest context
+            ctx = getGuestAuthorizationContext();
+        }
+
+        op.setAuthorizationContext(ctx);
     }
 
     /**

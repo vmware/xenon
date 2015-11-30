@@ -320,11 +320,34 @@ public class TestServiceHost {
             assertEquals(bindAddress, h.getState().bindAddress);
             assertEquals(hostId, h.getState().id);
 
+            verifyAuthorizedServiceMethods(h);
         } finally {
             h.stop();
             VerificationHost.cleanupStorage(h.getStorageSandbox());
         }
 
+    }
+
+    private void verifyAuthorizedServiceMethods(ServiceHost h) {
+        MinimalTestService s = new MinimalTestService();
+        try {
+            h.getAuthorizationContext(s, UUID.randomUUID().toString());
+            throw new IllegalStateException("call should have failed");
+        } catch (IllegalStateException e) {
+            throw e;
+        } catch (RuntimeException e) {
+
+        }
+
+        try {
+            h.cacheAuthorizationContext(s, UUID.randomUUID().toString(),
+                    this.host.getGuestAuthorizationContext());
+            throw new IllegalStateException("call should have failed");
+        } catch (IllegalStateException e) {
+            throw e;
+        } catch (RuntimeException e) {
+
+        }
     }
 
     @Test
