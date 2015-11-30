@@ -21,7 +21,6 @@ import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
 import com.vmware.xenon.common.Claims;
 import com.vmware.xenon.common.Operation;
@@ -91,9 +90,6 @@ public class AuthorizationContextService extends StatelessService {
     private Map<String, Collection<Operation>> pendingOperationsBySubject =
             new HashMap<>();
 
-    private Map<String, AuthorizationContext> authorizationContextCache =
-            new ConcurrentHashMap<>();
-
     /**
      * The service host will invoke this method to allow a service to handle
      * the request in-line or indicate it should be scheduled by service host.
@@ -137,7 +133,7 @@ public class AuthorizationContextService extends StatelessService {
         }
 
         // Load cached context by looking up the incoming context's token.
-        AuthorizationContext newCtx = this.authorizationContextCache.get(ctx.getToken());
+        AuthorizationContext newCtx = getHost().getAuthorizationContext(this, ctx.getToken());
         if (newCtx != null) {
             setAuthorizationContext(op, newCtx);
             op.complete();
@@ -410,7 +406,7 @@ public class AuthorizationContextService extends StatelessService {
         }
 
         AuthorizationContext newContext = builder.getResult();
-        this.authorizationContextCache.put(ctx.getToken(), newContext);
+        getHost().cacheAuthorizationContext(this, ctx.getToken(), newContext);
         completePendingOperations(claims.getSubject(), newContext);
     }
 
