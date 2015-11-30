@@ -360,6 +360,8 @@ public class Operation implements Cloneable {
     public static final String PRAGMA_DIRECTIVE_INDEX_CHECK = "xn-check-index";
     public static final String PRAGMA_DIRECTIVE_VERSION_CHECK = "xn-check-version";
 
+    public static final String REQUEST_AUTH_TOKEN_COOKIE = "xenon-auth-cookie";
+
     /**
      * Infrastructure use only. Instructs a persisted service to complete the operation but skip any index
      * updates.

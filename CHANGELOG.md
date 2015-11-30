@@ -2,6 +2,8 @@
 
 ## 0.3.1-SNAPSHOT
 
+* Use random authorization context token secret if none is specified.
+
 ## 0.3.0
 
 * Renamed ServiceOption.EAGER_CONSISTENCY to ServiceOption.ENFORCE_QUORUM
