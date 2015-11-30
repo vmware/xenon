@@ -49,6 +49,7 @@ import java.util.SortedSet;
 import java.util.TreeSet;
 import java.util.UUID;
 import java.util.concurrent.CancellationException;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.CountDownLatch;
@@ -408,6 +409,8 @@ public class ServiceHost {
 
     private Logger logger = Logger.getLogger(getClass().getName());
     private FileHandler handler;
+
+    private Map<String, AuthorizationContext> authorizationContextCache = new ConcurrentHashMap<>();
 
     private final Map<String, ServiceDocumentDescription> descriptionCache = new HashMap<>();
     private final ServiceDocumentDescription.Builder descriptionBuilder = Builder.create();
@@ -2534,48 +2537,6 @@ public class ServiceHost {
         return true;
     }
 
-    private void populateAuthorizationContext(Operation op) {
-        AuthorizationContext ctx = getAuthorizationContext(op);
-        if (ctx == null) {
-            // No (valid) authorization context, fall back to guest context
-            ctx = getGuestAuthorizationContext();
-        }
-
-        op.setAuthorizationContext(ctx);
-    }
-
-    private AuthorizationContext getAuthorizationContext(Operation op) {
-        String token = op.getRequestHeader(Operation.REQUEST_AUTH_TOKEN_HEADER);
-        if (token == null) {
-            Map<String, String> cookies = op.getCookies();
-            if (cookies == null) {
-                return null;
-            }
-            token = cookies.get(AuthenticationConstants.DCP_JWT_COOKIE);
-        }
-
-        if (token == null) {
-            return null;
-        }
-
-        try {
-            AuthorizationContext.Builder b = AuthorizationContext.Builder.create();
-            Claims claims = this.getTokenVerifier().verify(token, Claims.class);
-            Long expirationTime = claims.getExpirationTime();
-            if (expirationTime != null && expirationTime <= Utils.getNowMicrosUtc()) {
-                return null;
-            }
-
-            b.setClaims(claims);
-            b.setToken(token);
-            return b.getResult();
-        } catch (TokenException | GeneralSecurityException e) {
-            log(Level.INFO, "Error verifying token: %s", e);
-        }
-
-        return null;
-    }
-
     private void failRequestServiceNotFound(Operation inboundOp) {
         failRequest(inboundOp, Operation.STATUS_CODE_NOT_FOUND, new ServiceNotFoundException());
     }
@@ -4532,6 +4493,36 @@ public class ServiceHost {
     }
 
     /**
+     * Infrastructure use only. Only services added as privileged can use this method.
+     */
+    public void cacheAuthorizationContext(Service s, String token, AuthorizationContext ctx) {
+        if (!this.isPrivilegedService(s)) {
+            throw new RuntimeException("Service not allowed to cache authorization token");
+        }
+        this.authorizationContextCache.put(token, ctx);
+    }
+
+    /**
+     * Infrastructure use only. Only services added as privileged can use this method.
+     */
+    public AuthorizationContext getAuthorizationContext(Service s, String token) {
+        if (!this.isPrivilegedService(s)) {
+            throw new RuntimeException("Service not allowed to retrieve authorization token");
+        }
+        return this.authorizationContextCache.get(token);
+    }
+
+    private void populateAuthorizationContext(Operation op) {
+        AuthorizationContext ctx = getAuthorizationContext(op);
+        if (ctx == null) {
+            // No (valid) authorization context, fall back to guest context
+            ctx = getGuestAuthorizationContext();
+        }
+
+        op.setAuthorizationContext(ctx);
+    }
+
+    /**
      * Generate new authorization context for a system user.
      *
      * @return fresh authorization context
@@ -4563,6 +4554,45 @@ public class ServiceHost {
         ab.setToken(token);
         ab.setPropagateToClient(false);
         return ab.getResult();
+    }
+
+    private AuthorizationContext getAuthorizationContext(Operation op) {
+        String token = op.getRequestHeader(Operation.REQUEST_AUTH_TOKEN_HEADER);
+        if (token == null) {
+            Map<String, String> cookies = op.getCookies();
+            if (cookies == null) {
+                return null;
+            }
+            token = cookies.get(AuthenticationConstants.DCP_JWT_COOKIE);
+        }
+
+        if (token == null) {
+            return null;
+        }
+
+        AuthorizationContext ctx = this.authorizationContextCache.get(token);
+        if (ctx != null) {
+            return ctx;
+        }
+
+        try {
+            AuthorizationContext.Builder b = AuthorizationContext.Builder.create();
+            Claims claims = this.getTokenVerifier().verify(token, Claims.class);
+            Long expirationTime = claims.getExpirationTime();
+            if (expirationTime != null && expirationTime <= Utils.getNowMicrosUtc()) {
+                return null;
+            }
+
+            b.setClaims(claims);
+            b.setToken(token);
+            ctx = b.getResult();
+            this.authorizationContextCache.put(token, ctx);
+            return ctx;
+        } catch (TokenException | GeneralSecurityException e) {
+            log(Level.INFO, "Error verifying token: %s", e);
+        }
+
+        return null;
     }
 
     /**
