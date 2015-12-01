@@ -8,6 +8,9 @@ increase the service load throughput and decrease overal time
 for factory child services becoming available. Large limits
 can impact memory and network utilization however.
 
+* Add keyPassphrase command line argument for providing SSL private key
+passphrase.
+
 ## 0.3.0
 
 * Renamed ServiceOption.EAGER_CONSISTENCY to ServiceOption.ENFORCE_QUORUM

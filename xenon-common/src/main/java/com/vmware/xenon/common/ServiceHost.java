@@ -174,6 +174,11 @@ public class ServiceHost {
         /**
          * Command line argument
          */
+        public String keyPassphrase;
+
+        /**
+         * Command line argument
+         */
         public Path certificateFile;
 
         /**
@@ -321,6 +326,7 @@ public class ServiceHost {
 
         public URI storageSandboxFileReference;
         public URI privateKeyFileReference;
+        public String privateKeyPassphrase;
         public URI certificateFileReference;
 
         public URI documentIndexReference;
@@ -544,6 +550,7 @@ public class ServiceHost {
 
         if (args.keyFile != null) {
             this.state.privateKeyFileReference = args.keyFile.toUri();
+            this.state.privateKeyPassphrase = args.keyPassphrase;
         }
 
         if (args.certificateFile != null) {
@@ -734,11 +741,27 @@ public class ServiceHost {
         return this;
     }
 
+    /**
+     * URI to a PKCS#8 private key file in PEM format.
+     */
     public ServiceHost setPrivateKeyFileReference(URI fileReference) {
         this.state.privateKeyFileReference = fileReference;
         return this;
     }
 
+    /**
+     * Passphrase for private key file.
+     *
+     * @param privateKeyPassphrase {@code null} if it's not password-protected.
+     */
+    public ServiceHost setPrivateKeyPassphrase(String privateKeyPassphrase) {
+        this.state.privateKeyPassphrase = privateKeyPassphrase;
+        return this;
+    }
+
+    /**
+     * URI to an X.509 certificate chain file in PEM format.
+     */
     public ServiceHost setCertificateFileReference(URI fileReference) {
         this.state.certificateFileReference = fileReference;
         return this;
@@ -955,7 +978,7 @@ public class ServiceHost {
         if (this.httpsListener != null) {
             if (!this.httpsListener.isSSLConfigured()) {
                 this.httpsListener.setSSLContextFiles(this.state.certificateFileReference,
-                        this.state.privateKeyFileReference);
+                        this.state.privateKeyFileReference, this.state.privateKeyPassphrase);
             }
             this.httpsListener.start(getSecurePort(), this.state.bindAddress);
         }
