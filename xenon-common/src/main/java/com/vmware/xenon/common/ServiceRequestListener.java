@@ -23,6 +23,8 @@ public interface ServiceRequestListener {
 
     void setSSLContextFiles(URI certFile, URI keyFile) throws Throwable;
 
+    void setSSLContextFiles(URI certFile, URI keyFile, String keyPassphrase) throws Throwable;
+
     void start(int port, String bindAddress) throws Throwable;
 
     void handleMaintenance(Operation op);
