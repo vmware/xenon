@@ -37,9 +37,10 @@ import com.vmware.xenon.services.common.ServiceUriPaths;
  */
 public abstract class FactoryService extends StatelessService {
 
-    public static final int SELF_QUERY_RESULT_LIMIT = 50;
+    public static final int SELF_QUERY_RESULT_LIMIT = 1000;
     private EnumSet<ServiceOption> childOptions;
     private String nodeSelectorLink = ServiceUriPaths.DEFAULT_NODE_SELECTOR;
+    private int selfQueryResultLimit = SELF_QUERY_RESULT_LIMIT;
 
     public FactoryService(Class<? extends ServiceDocument> childServiceDocumentType) {
         super(childServiceDocumentType);
@@ -52,6 +53,23 @@ public abstract class FactoryService extends StatelessService {
         }
         setSelfLink(null);
         this.childOptions = s.getOptions();
+    }
+
+    /**
+     * Sets the result limit for child services queries used on service start, synchronization. The
+     * result limit throttles the amount of services we load from the index, and also control the
+     * overlapping synchronization requests. Higher limits results in faster service restart, but
+     * can cause network and memory issues.
+     */
+    public void setSelfQueryResultLimit(int limit) {
+        this.selfQueryResultLimit = limit;
+    }
+
+    /**
+     * Returns the self query result limit
+     */
+    public int getSelfQueryResultLimit() {
+        return this.selfQueryResultLimit;
     }
 
     @Override
@@ -169,7 +187,7 @@ public abstract class FactoryService extends StatelessService {
         queryTask.querySpec.query.addBooleanClause(kindClause);
 
         // process child services in limited numbers, set query result limit
-        queryTask.querySpec.resultLimit = SELF_QUERY_RESULT_LIMIT;
+        queryTask.querySpec.resultLimit = this.selfQueryResultLimit;
         return queryTask;
     }
 

@@ -149,6 +149,9 @@ public class TestFactoryService extends BasicReusableHostTestCase {
 
         long count = this.host.isStressTest() ? 1000 : 10;
         MinimalFactoryTestService f = new MinimalFactoryTestService();
+        // set a custom load query limit
+        f.setSelfQueryResultLimit(FactoryService.SELF_QUERY_RESULT_LIMIT / 10);
+        assertEquals(FactoryService.SELF_QUERY_RESULT_LIMIT / 10, f.getSelfQueryResultLimit());
         f.toggleOption(ServiceOption.PERSISTENCE, true);
 
         MinimalFactoryTestService factoryService = (MinimalFactoryTestService) this.host
