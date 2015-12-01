@@ -414,9 +414,10 @@ public class TestOperationSequence extends BasicReusableHostTestCase {
     }
 
     private Operation createServicePatch(Operation op) {
+        MinimalTestServiceState body = (MinimalTestServiceState) this.host.buildMinimalTestState();
         return Operation.createPatch(op.getUri())
                 .setReferer(host.getUri())
                 .forceRemote()
-                .setBody(op.getBody(MinimalTestServiceState.class));
+                .setBody(body);
     }
 }

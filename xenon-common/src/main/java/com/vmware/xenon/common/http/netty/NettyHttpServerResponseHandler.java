@@ -22,7 +22,6 @@ import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.handler.codec.http.FullHttpResponse;
-import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpHeaderUtil;
 import io.netty.handler.codec.http.HttpHeaders;
 import io.netty.handler.codec.http.HttpObject;
@@ -71,7 +70,7 @@ public class NettyHttpServerResponseHandler extends SimpleChannelInboundHandler<
             String key = h.getKey();
             String value = h.getValue();
 
-            if (key.equalsIgnoreCase(HttpHeaderNames.CONTENT_TYPE.toString())) {
+            if (key.equalsIgnoreCase(Operation.CONTENT_TYPE_HEADER)) {
                 request.setContentType(value);
                 continue;
             }
@@ -90,10 +89,12 @@ public class NettyHttpServerResponseHandler extends SimpleChannelInboundHandler<
             if (checkResponseForError(request)) {
                 return;
             }
-            // skip body decode, request had no body
+
+            // skip body decode, response has no body
             request.setContentLength(0)
-                    .setContentType(Operation.MEDIA_TYPE_APPLICATION_JSON);
-            request.complete();
+                    .setBodyNoCloning(null)
+                    .setContentType(Operation.MEDIA_TYPE_APPLICATION_JSON)
+                    .complete();
             return;
         }
 
