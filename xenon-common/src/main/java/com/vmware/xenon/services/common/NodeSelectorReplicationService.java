@@ -13,6 +13,7 @@
 
 package com.vmware.xenon.services.common;
 
+import java.io.UnsupportedEncodingException;
 import java.net.URI;
 import java.util.Collection;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -120,10 +121,16 @@ public class NodeSelectorReplicationService extends StatelessService {
         };
 
         String jsonBody = Utils.toJson(req.linkedState);
+        byte[] body;
+        try {
+            body = jsonBody.getBytes(Utils.CHARSET);
+        } catch (UnsupportedEncodingException e2) {
+            return;
+        }
 
         Operation update = Operation.createPost(null)
                 .setAction(outboundOp.getAction())
-                .setBodyNoCloning(jsonBody)
+                .setBodyNoCloning(body)
                 .setCompletion(c)
                 .setRetryCount(1)
                 .setExpiration(outboundOp.getExpirationMicrosUtc())
