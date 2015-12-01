@@ -211,15 +211,25 @@ public class NodeSelectorSynchronizationService extends StatelessService {
             }
         }
 
-        EnumSet<DocumentRelationship> results = ServiceDocument.compare(request.state,
-                bestPeerRsp, request.stateDescription, Utils.getTimeComparisonEpsilonMicros());
+        EnumSet<DocumentRelationship> results = EnumSet.noneOf(DocumentRelationship.class);
+        if (bestPeerRsp == null) {
+            results.add(DocumentRelationship.PREFERRED);
+        } else if (request.state.documentEpoch == null || bestPeerRsp.documentEpoch == null
+                || request.state.documentEpoch.compareTo(bestPeerRsp.documentEpoch) > 0) {
+            // Local state is of higher epoch than all peers
+            results.add(DocumentRelationship.PREFERRED);
+        } else if (request.state.documentEpoch != null
+                && request.state.documentEpoch.equals(bestPeerRsp.documentEpoch)) {
+            // compare local state against peers only if they are in the same epoch
+            results = ServiceDocument.compare(request.state,
+                    bestPeerRsp, request.stateDescription, Utils.getTimeComparisonEpsilonMicros());
+        }
 
         if (results.contains(DocumentRelationship.IN_CONFLICT)) {
             markServiceInConflict(request.state);
             // if we detect conflict, we will synchronize local service with selected peer state
         } else if (results.contains(DocumentRelationship.PREFERRED)) {
-            // the local state is preferred, return empty response so client know peers did not have
-            // anything better
+            // the local state is preferred
             bestPeerRsp = null;
         }
 
