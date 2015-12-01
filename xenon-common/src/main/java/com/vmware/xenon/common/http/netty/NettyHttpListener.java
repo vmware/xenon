@@ -111,8 +111,8 @@ public class NettyHttpListener implements ServiceRequestListener {
     }
 
     @Override
-    public void setSSLContextFiles(URI certFile, URI keyFile) throws Throwable {
-        this.sslContext = SslContext.newServerContext(new File(certFile), new File(keyFile));
+    public void setSSLContextFiles(URI certFile, URI keyFile, String keyPassword) throws Throwable {
+        this.sslContext = SslContext.newServerContext(new File(certFile), new File(keyFile), keyPassword);
     }
 
     @Override

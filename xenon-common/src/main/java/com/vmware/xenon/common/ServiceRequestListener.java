@@ -21,7 +21,7 @@ public interface ServiceRequestListener {
 
     int getPort();
 
-    void setSSLContextFiles(URI certFile, URI keyFile) throws Throwable;
+    void setSSLContextFiles(URI certFile, URI keyFile, String keyPassword) throws Throwable;
 
     void start(int port, String bindAddress) throws Throwable;
 
