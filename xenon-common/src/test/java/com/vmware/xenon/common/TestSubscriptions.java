@@ -49,6 +49,7 @@ public class TestSubscriptions extends BasicReportTestCase {
 
     @After
     public void tearDown() {
+        this.host.tearDown();
         this.host.tearDownInProcessPeers();
     }
 

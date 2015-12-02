@@ -86,7 +86,10 @@ public class TestQueryTaskService {
     private VerificationHost host;
 
     private void setUpHost() throws Throwable {
-        this.host = VerificationHost.create(0, null);
+        if (this.host != null) {
+            return;
+        }
+        this.host = VerificationHost.create(0);
         CommandLineArgumentParser.parseFromProperties(this.host);
         CommandLineArgumentParser.parseFromProperties(this);
         try {
@@ -1181,9 +1184,13 @@ public class TestQueryTaskService {
     }
 
     @Test
-    public void sortTestOnExampleStatesWithTopResults() throws Throwable {
+    public void sortTestOnExampleStates() throws Throwable {
         doSortTestOnExampleStates(false, Integer.MAX_VALUE);
         doSortTestOnExampleStates(true, Integer.MAX_VALUE);
+    }
+
+    @Test
+    public void topResultsWithSort() throws Throwable {
         doSortTestOnExampleStates(true, 10);
     }
 
@@ -1544,8 +1551,12 @@ public class TestQueryTaskService {
     }
 
     @Test
-    public void numericRangeQueries() throws Throwable {
+    public void numericRangeQuery() throws Throwable {
         doNumericRangeQueries("longValue", "doubleValue");
+    }
+
+    @Test
+    public void numericRangeQueryOnCollection() throws Throwable {
         doNumericRangeQueries(QuerySpecification.buildCompositeFieldName("mapOfLongs", "long"),
                 QuerySpecification.buildCompositeFieldName("mapOfDoubles", "double"));
     }

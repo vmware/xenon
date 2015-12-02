@@ -24,20 +24,22 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.TimeoutException;
 
-import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 
 import com.vmware.xenon.common.LoaderService.LoaderServiceState;
 import com.vmware.xenon.common.Operation.CompletionHandler;
-import com.vmware.xenon.common.test.VerificationHost;
 
-public class LoaderServiceTest {
-    private VerificationHost host;
+public class LoaderServiceTest extends BasicReusableHostTestCase {
 
     @Before
     public void setUp() throws Exception {
         try {
+
+            if (this.host.getServiceStage(LoaderFactoryService.SELF_LINK) != null) {
+                return;
+            }
+
             // Make sure a local tmp dir exists to work around the issue with
             // maven test pointing "java.io.tmpdir" system property to a relative "./tmp" path.
             File directory = new File("tmp");
@@ -45,8 +47,6 @@ public class LoaderServiceTest {
                 directory.mkdir();
             }
 
-            this.host = VerificationHost.create(0, null);
-            this.host.start();
             // start the factory
             CompletionHandler completionHandler = (o, e) -> {
                 if (e != null) {
@@ -69,10 +69,6 @@ public class LoaderServiceTest {
         }
     }
 
-    @After
-    public void tearDown() throws Exception {
-        this.host.tearDown();
-    }
 
     @Test
     public void factoryPost() throws Throwable {
@@ -86,7 +82,7 @@ public class LoaderServiceTest {
         URI[] childURIs = new URI[childCount];
         for (int i = 0; i < childCount; i++) {
             LoaderServiceState initialState = new LoaderServiceState();
-            initialState.path = initialState.documentSelfLink = prefix + i;
+            initialState.path = initialState.documentSelfLink = prefix + Utils.getNowMicrosUtc();
             final int finalI = i;
             // create a service instance
             Operation createPost = Operation
@@ -220,7 +216,7 @@ public class LoaderServiceTest {
             } else {
                 this.host.log("Waiting for service packages to be loaded");
             }
-            Thread.sleep(1000L);
+            Thread.sleep(250);
         }
 
         if (new Date().after(expiration)) {

@@ -20,7 +20,6 @@ import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Rule;
 import org.junit.rules.RuleChain;
-import org.junit.rules.TemporaryFolder;
 import org.junit.rules.TestRule;
 import org.junit.rules.TestWatcher;
 import org.junit.runner.Description;
@@ -34,8 +33,6 @@ public class BasicReusableHostTestCase {
 
     private static VerificationHost HOST;
 
-    protected static TemporaryFolder TMP_FOLDER = new TemporaryFolder();
-
     protected VerificationHost host;
 
     public int requestCount = 1000;
@@ -46,8 +43,7 @@ public class BasicReusableHostTestCase {
 
     @BeforeClass
     public static void setUpOnce() throws Exception {
-        TMP_FOLDER.create();
-        HOST = VerificationHost.create(0, TMP_FOLDER.getRoot().toURI());
+        HOST = VerificationHost.create(0);
         HOST.setMaintenanceIntervalMicros(TimeUnit.MILLISECONDS
                 .toMicros(MAINTENANCE_INTERVAL_MILLIS));
         CommandLineArgumentParser.parseFromProperties(HOST);
@@ -76,7 +72,6 @@ public class BasicReusableHostTestCase {
     @AfterClass
     public static void tearDownOnce() {
         HOST.tearDown();
-        TMP_FOLDER.delete();
     }
 
 }

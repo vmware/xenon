@@ -18,28 +18,23 @@ import static org.junit.Assert.assertEquals;
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
-import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 
-import com.vmware.xenon.common.BasicReportTestCase;
+import com.vmware.xenon.common.BasicReusableHostTestCase;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.ServiceErrorResponse;
 import com.vmware.xenon.common.UriUtils;
-import com.vmware.xenon.common.test.VerificationHost;
 
-public class TestTransactionService extends BasicReportTestCase {
+public class TestTransactionService extends BasicReusableHostTestCase {
 
     @Before
     public void prepare() throws Throwable {
-        this.host = VerificationHost.create(0, null);
-        this.host.setMaintenanceIntervalMicros(TimeUnit.SECONDS.toMicros(1000));
-        this.host.start();
         this.host.waitForServiceAvailable(ExampleFactoryService.SELF_LINK);
         this.host.waitForServiceAvailable(TransactionFactoryService.SELF_LINK);
-        this.host.setTimeoutSeconds(1000);
         this.host.setOperationTimeOutMicros(TimeUnit.SECONDS.toMicros(1000));
     }
 
@@ -56,7 +51,8 @@ public class TestTransactionService extends BasicReportTestCase {
         this.host.createExampleServices(this.host, 1, exampleURIs, null);
 
         TransactionService.TransactionServiceState tx1 = new TransactionService.TransactionServiceState();
-        tx1.documentSelfLink = "tx1";
+        String txId = UUID.randomUUID().toString();
+        tx1.documentSelfLink = txId;
         Operation operation = Operation
                 .createPost(UriUtils.buildUri(this.host, TransactionFactoryService.class))
                 .setBody(tx1)
@@ -79,7 +75,7 @@ public class TestTransactionService extends BasicReportTestCase {
         initialState.counter = 0L;
         operation = Operation
                 .createPut(exampleURIs.get(0))
-                .setTransactionId("tx1")
+                .setTransactionId(txId)
                 .setBody(initialState)
                 .setCompletion((o, e) -> {
                     if (e != null) {
@@ -100,7 +96,7 @@ public class TestTransactionService extends BasicReportTestCase {
         commmit.kind = TransactionService.ResolutionKind.COMMIT;
         commmit.pendingOperations = 1;
         operation = Operation
-                .createPatch(UriUtils.buildTransactionResolutionUri(this.host, "tx1"))
+                .createPatch(UriUtils.buildTransactionResolutionUri(this.host, txId))
                 .setBody(commmit)
                 .setCompletion((o, e) -> {
                     if (e != null) {
@@ -164,7 +160,7 @@ public class TestTransactionService extends BasicReportTestCase {
         // 1 -- tx1
 
         TransactionService.TransactionServiceState tx1 = new TransactionService.TransactionServiceState();
-        tx1.documentSelfLink = "tx1";
+        tx1.documentSelfLink = UUID.randomUUID().toString();
         operation = Operation
                 .createPost(UriUtils.buildUri(this.host, TransactionFactoryService.class))
                 .setBody(tx1)
@@ -190,7 +186,7 @@ public class TestTransactionService extends BasicReportTestCase {
         operation = Operation
                 .createPut(exampleURIs.get(0))
                 .setBody(newState)
-                .setTransactionId("tx1")
+                .setTransactionId(tx1.documentSelfLink)
                 .setCompletion((o, e) -> {
                     if (e != null) {
                         ServiceErrorResponse rsp = o.getBody(ServiceErrorResponse.class);
@@ -215,7 +211,7 @@ public class TestTransactionService extends BasicReportTestCase {
         operation = Operation
                 .createGet(exampleURIs.get(0))
                 .setBody(initialState)
-                .setTransactionId("tx1")
+                .setTransactionId(tx1.documentSelfLink)
                 .setCompletion((o, e) -> {
                     if (e != null) {
                         ServiceErrorResponse rsp = o.getBody(ServiceErrorResponse.class);
@@ -238,7 +234,8 @@ public class TestTransactionService extends BasicReportTestCase {
         commit.kind = TransactionService.ResolutionKind.COMMIT;
         commit.pendingOperations = 1;
         operation = Operation
-                .createPatch(UriUtils.buildTransactionResolutionUri(this.host, "tx1"))
+                .createPatch(
+                        UriUtils.buildTransactionResolutionUri(this.host, tx1.documentSelfLink))
                 .setBody(commit)
                 .setCompletion((o, e) -> {
                     if (e != null) {
@@ -261,7 +258,7 @@ public class TestTransactionService extends BasicReportTestCase {
         // 2 -- tx2
 
         TransactionService.TransactionServiceState tx2 = new TransactionService.TransactionServiceState();
-        tx2.documentSelfLink = "tx2";
+        tx2.documentSelfLink = UUID.randomUUID().toString();
         operation = Operation
                 .createPost(UriUtils.buildUri(this.host, TransactionFactoryService.class))
                 .setBody(tx2)
@@ -286,7 +283,7 @@ public class TestTransactionService extends BasicReportTestCase {
         operation = Operation
                 .createPut(exampleURIs.get(0))
                 .setBody(abortState)
-                .setTransactionId("tx2")
+                .setTransactionId(tx2.documentSelfLink)
                 .setCompletion((o, e) -> {
                     if (e != null) {
                         ServiceErrorResponse rsp = o.getBody(ServiceErrorResponse.class);
@@ -309,7 +306,7 @@ public class TestTransactionService extends BasicReportTestCase {
         abort.kind = TransactionService.ResolutionKind.ABORT;
         abort.pendingOperations = 1;
         operation = Operation
-                .createPatch(UriUtils.buildTransactionUri(this.host, "tx2"))
+                .createPatch(UriUtils.buildTransactionUri(this.host, tx2.documentSelfLink))
                 .setBody(abort)
                 .setCompletion((o, e) -> {
                     if (e != null) {
@@ -330,12 +327,4 @@ public class TestTransactionService extends BasicReportTestCase {
         // TODO re-enable when abort logic is debugged
         //assertEquals(verifyState.name, newState.name);
     }
-
-    // TODO: singleUpdateWithFailure
-
-    @After
-    public void tearDown() throws Exception {
-        this.host.tearDown();
-    }
-
 }

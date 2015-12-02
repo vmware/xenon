@@ -17,7 +17,6 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
 import java.net.URI;
-import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -42,6 +41,7 @@ import java.util.function.Function;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
+import org.junit.rules.TemporaryFolder;
 
 import com.vmware.xenon.common.CommandLineArgumentParser;
 import com.vmware.xenon.common.FactoryService;
@@ -185,7 +185,7 @@ public class TestNodeGroupService {
             return;
         }
         CommandLineArgumentParser.parseFromProperties(this);
-        this.host = VerificationHost.create(0, null);
+        this.host = VerificationHost.create(0);
         this.host.start();
         CommandLineArgumentParser.parseFromProperties(this.host);
         this.host.setStressTest(this.host.isStressTest);
@@ -452,6 +452,9 @@ public class TestNodeGroupService {
             this.updateCount = 1;
         }
 
+        TemporaryFolder tmpFolder = new TemporaryFolder();
+        tmpFolder.create();
+
         try {
             setUpPeers(this.nodeCount);
 
@@ -540,7 +543,7 @@ public class TestNodeGroupService {
                     "--id=" + mainHostId,
                     "--bindAddress=127.0.0.1",
                     "--sandbox="
-                            + Files.createTempDirectory(VerificationHost.TMP_PATH_PREFIX).toUri(),
+                            + tmpFolder.getRoot().getAbsolutePath(),
                     "--peerNodes=" + peerNodes.toString()
             };
 
@@ -622,7 +625,7 @@ public class TestNodeGroupService {
             this.host.log("test finished");
             if (h != null) {
                 h.stop();
-                VerificationHost.cleanupStorage(h.getStorageSandbox());
+                tmpFolder.delete();
             }
         }
     }

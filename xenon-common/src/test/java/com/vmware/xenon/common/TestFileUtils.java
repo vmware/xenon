@@ -21,31 +21,12 @@ import java.util.Random;
 import java.util.UUID;
 import java.util.logging.Level;
 
-import org.junit.After;
-import org.junit.Before;
 import org.junit.Test;
 
 import com.vmware.xenon.common.FileUtils;
 import com.vmware.xenon.common.Operation;
-import com.vmware.xenon.common.test.VerificationHost;
 
-public class TestFileUtils {
-    private VerificationHost host;
-
-    @Before
-    public void setUp() {
-        try {
-            this.host = VerificationHost.create(0, null);
-            this.host.start();
-        } catch (Throwable e) {
-            throw new RuntimeException(e);
-        }
-    }
-
-    @After
-    public void tearDown() {
-        this.host.tearDown();
-    }
+public class TestFileUtils extends BasicReusableHostTestCase {
 
     @Test
     public void testFileUpload() throws Throwable {

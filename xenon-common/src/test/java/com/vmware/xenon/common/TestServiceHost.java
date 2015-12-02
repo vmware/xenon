@@ -19,7 +19,6 @@ import static org.junit.Assert.assertTrue;
 
 import java.io.File;
 import java.net.URI;
-import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Date;
@@ -41,6 +40,7 @@ import java.util.function.Consumer;
 
 import org.junit.After;
 import org.junit.Test;
+import org.junit.rules.TemporaryFolder;
 
 import com.vmware.xenon.common.Operation.CompletionHandler;
 import com.vmware.xenon.common.Service.ServiceOption;
@@ -77,7 +77,6 @@ public class TestServiceHost {
 
     public long testDurationSeconds = 0;
 
-
     public void beforeHostStart(VerificationHost host) {
         host.setMaintenanceIntervalMicros(TimeUnit.MILLISECONDS
                 .toMicros(MAINTENANCE_INTERVAL_MILLIS));
@@ -85,7 +84,7 @@ public class TestServiceHost {
 
     private void setUp(boolean initOnly) throws Exception {
         CommandLineArgumentParser.parseFromProperties(this);
-        this.host = VerificationHost.create(0, null);
+        this.host = VerificationHost.create(0);
         CommandLineArgumentParser.parseFromProperties(this.host);
         if (initOnly) {
             return;
@@ -192,14 +191,15 @@ public class TestServiceHost {
     public void startUpWithArgumentsAndHostConfigValidation() throws Throwable {
         setUp(false);
         ExampleServiceHost h = new ExampleServiceHost();
-
+        TemporaryFolder tmpFolder = new TemporaryFolder();
+        tmpFolder.create();
         try {
             String bindAddress = "127.0.0.1";
             String hostId = UUID.randomUUID().toString();
 
             String[] args = {
                     "--sandbox="
-                            + Files.createTempDirectory(VerificationHost.TMP_PATH_PREFIX).toUri(),
+                            + tmpFolder.getRoot().toURI(),
                     "--port=0",
                     "--bindAddress=" + bindAddress,
                     "--id=" + hostId
@@ -323,7 +323,7 @@ public class TestServiceHost {
             verifyAuthorizedServiceMethods(h);
         } finally {
             h.stop();
-            VerificationHost.cleanupStorage(h.getStorageSandbox());
+            tmpFolder.delete();
         }
 
     }
@@ -354,7 +354,8 @@ public class TestServiceHost {
     public void setPublicUri() throws Throwable {
         setUp(false);
         ExampleServiceHost h = new ExampleServiceHost();
-
+        TemporaryFolder tmpFolder = new TemporaryFolder();
+        tmpFolder.create();
         try {
             String bindAddress = "127.0.0.1";
             String publicAddress = "10.1.1.19";
@@ -363,7 +364,7 @@ public class TestServiceHost {
 
             String[] args = {
                     "--sandbox="
-                            + Files.createTempDirectory(VerificationHost.TMP_PATH_PREFIX).toUri(),
+                            + tmpFolder.getRoot().getAbsolutePath(),
                     "--port=0",
                     "--bindAddress=" + bindAddress,
                     "--publicUri=" + new URI("http://" + publicAddress + ":" + publicPort),
@@ -391,7 +392,7 @@ public class TestServiceHost {
             assertEquals(publicPort, selfEntry.groupReference.getPort());
         } finally {
             h.stop();
-            VerificationHost.cleanupStorage(h.getStorageSandbox());
+            tmpFolder.delete();
         }
 
     }
@@ -400,13 +401,15 @@ public class TestServiceHost {
     public void setAuthEnforcement() throws Throwable {
         setUp(false);
         ExampleServiceHost h = new ExampleServiceHost();
+        TemporaryFolder tmpFolder = new TemporaryFolder();
+        tmpFolder.create();
         try {
             String bindAddress = "127.0.0.1";
             String hostId = UUID.randomUUID().toString();
 
             String[] args = {
                     "--sandbox="
-                            + Files.createTempDirectory(VerificationHost.TMP_PATH_PREFIX).toUri(),
+                            + tmpFolder.getRoot().getAbsolutePath(),
                     "--port=0",
                     "--bindAddress=" + bindAddress,
                     "--isAuthorizationEnabled=" + Boolean.TRUE.toString(),
@@ -435,7 +438,7 @@ public class TestServiceHost {
             this.host.testWait();
         } finally {
             h.stop();
-            VerificationHost.cleanupStorage(h.getStorageSandbox());
+            tmpFolder.delete();
         }
 
     }

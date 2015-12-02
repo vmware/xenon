@@ -18,8 +18,8 @@ import static org.junit.Assert.assertEquals;
 import java.util.UUID;
 
 import org.junit.Test;
+import org.junit.rules.TemporaryFolder;
 
-import com.vmware.xenon.common.test.VerificationHost;
 import com.vmware.xenon.host.DecentralizedControlPlaneHost;
 
 public class TestDecentralizedControlPlaneHost {
@@ -27,12 +27,15 @@ public class TestDecentralizedControlPlaneHost {
     @Test
     public void startUpWithArguments() throws Throwable {
         DecentralizedControlPlaneHost h = new DecentralizedControlPlaneHost();
+        TemporaryFolder tmpFolder = new TemporaryFolder();
+        tmpFolder.create();
         try {
             String bindAddress = "127.0.0.1";
             String hostId = UUID.randomUUID().toString();
 
             String[] args = {
                     "--port=0",
+                    "--sandbox=" + tmpFolder.getRoot().getAbsolutePath(),
                     "--bindAddress=" + bindAddress,
                     "--id=" + hostId
             };
@@ -48,7 +51,7 @@ public class TestDecentralizedControlPlaneHost {
 
         } finally {
             h.stop();
-            VerificationHost.cleanupStorage(h.getStorageSandbox());
+            tmpFolder.delete();
         }
 
     }
