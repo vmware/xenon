@@ -50,8 +50,8 @@ public class NettyChannelPool {
         public List<Operation> pendingRequests = new ArrayList<>();
     }
 
-    private static final long CHANNEL_EXPIRATION_MICROS =
-            ServiceHostState.DEFAULT_OPERATION_TIMEOUT_MICROS * 2;
+    private static final long CHANNEL_EXPIRATION_MICROS = ServiceHostState.DEFAULT_OPERATION_TIMEOUT_MICROS
+            * 2;
 
     public static String toConnectionKey(String host, int port) {
         return host + port;
@@ -61,6 +61,7 @@ public class NettyChannelPool {
     private EventLoopGroup eventGroup;
     private String threadTag = NettyChannelPool.class.getSimpleName();
     private int threadCount;
+    private boolean forceHttp2 = false;
 
     private Bootstrap bootStrap;
 
@@ -68,7 +69,6 @@ public class NettyChannelPool {
     private int connectionLimit = 1;
 
     private SSLContext sslContext;
-
 
     public NettyChannelPool(ExecutorService executor) {
         this.executor = executor;
@@ -84,6 +84,11 @@ public class NettyChannelPool {
         return this;
     }
 
+    public NettyChannelPool forceHttp2() {
+        this.forceHttp2 = true;
+        return this;
+    }
+
     public void start() {
         if (this.bootStrap != null) {
             return;
@@ -96,7 +101,7 @@ public class NettyChannelPool {
         this.bootStrap = new Bootstrap();
         this.bootStrap.group(this.eventGroup)
                 .channel(NioSocketChannel.class)
-                .handler(new NettyHttpClientRequestInitializer(this));
+                .handler(new NettyHttpClientRequestInitializer(this, this.forceHttp2));
     }
 
     public boolean isStarted() {

@@ -17,8 +17,7 @@ import io.netty.channel.ChannelInitializer;
 import io.netty.channel.ChannelPipeline;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.handler.codec.http.HttpObjectAggregator;
-import io.netty.handler.codec.http.HttpRequestDecoder;
-import io.netty.handler.codec.http.HttpResponseEncoder;
+import io.netty.handler.codec.http.HttpServerCodec;
 import io.netty.handler.ssl.SslContext;
 import io.netty.handler.ssl.SslHandler;
 
@@ -30,8 +29,7 @@ public class NettyHttpServerInitializer extends ChannelInitializer<SocketChannel
     public static final String AGGREGATOR_HANDLER = "aggregator";
     public static final String HTTP_REQUEST_HANDLER = "http-request-handler";
     public static final String WEBSOCKET_HANDLER = "websocket-request-handler";
-    public static final String DECODER_HANDLER = "decoder";
-    public static final String ENCODER_HANDLER = "encoder";
+    public static final String HTTP1_CODEC = "http1-codec";
     public static final String SSL_HANDLER = "ssl";
 
     private final SslContext sslContext;
@@ -68,11 +66,14 @@ public class NettyHttpServerInitializer extends ChannelInitializer<SocketChannel
             p.addLast(SSL_HANDLER, sslHandler);
         }
 
-        p.addLast(DECODER_HANDLER, new HttpRequestDecoder(
+        // The HttpServerCodec combines the HttpRequestDecoder and the HttpResponseEncoder, and it
+        // also provides a method for upgrading the protocol, which we use to support HTTP/2. It
+        // also supports a couple other minor features (support for HEAD and CONNECT), which
+        // probably don't matter to us.
+        p.addLast(HTTP1_CODEC, new HttpServerCodec(
                 NettyChannelContext.MAX_INITIAL_LINE_LENGTH,
                 NettyChannelContext.MAX_HEADER_SIZE,
                 NettyChannelContext.MAX_CHUNK_SIZE, false));
-        p.addLast(ENCODER_HANDLER, new HttpResponseEncoder());
         p.addLast(AGGREGATOR_HANDLER,
                 new HttpObjectAggregator(NettyChannelContext.getMaxRequestSize()));
         p.addLast(WEBSOCKET_HANDLER, new NettyWebSocketRequestHandler(this.host,

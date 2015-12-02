@@ -99,7 +99,6 @@ public class Operation implements Cloneable {
         public long operationCompletionTimeMicrosUtc;
     }
 
-
     /**
      * Operation metadata being sent to the transaction coordinator.
      */
@@ -129,6 +128,7 @@ public class Operation implements Cloneable {
         public X509Certificate[] peerCertificateChain;
         public boolean isKeepAlive;
         public int headerByteCount;
+        public boolean forceHttp2;
     }
 
     /**
@@ -279,8 +279,7 @@ public class Operation implements Cloneable {
         public static final ServiceDocumentDescription DESCRIPTION = Operation.SerializedOperation
                 .buildDescription();
 
-        public static final String KIND = Utils.buildKind(Operation.SerializedOperation
-                .class);
+        public static final String KIND = Utils.buildKind(Operation.SerializedOperation.class);
 
         public static SerializedOperation create(Operation op) {
             SerializedOperation ctx = new SerializedOperation();
@@ -403,8 +402,8 @@ public class Operation implements Cloneable {
     public static final String CR_LF = "\r\n";
 
     private static AtomicLong idCounter = new AtomicLong();
-    private static AtomicReferenceFieldUpdater<Operation, CompletionHandler> completionUpdater =
-            AtomicReferenceFieldUpdater.newUpdater(Operation.class, CompletionHandler.class,
+    private static AtomicReferenceFieldUpdater<Operation, CompletionHandler> completionUpdater = AtomicReferenceFieldUpdater
+            .newUpdater(Operation.class, CompletionHandler.class,
                     "completion");
 
     private URI uri;
@@ -548,10 +547,11 @@ public class Operation implements Cloneable {
             }
             clone.remoteCtx.peerPrincipal = this.remoteCtx.peerPrincipal;
             if (this.remoteCtx.peerCertificateChain != null) {
-                clone.remoteCtx.peerCertificateChain =
-                        Arrays.copyOf(this.remoteCtx.peerCertificateChain,
-                                this.remoteCtx.peerCertificateChain.length);
+                clone.remoteCtx.peerCertificateChain = Arrays.copyOf(
+                        this.remoteCtx.peerCertificateChain,
+                        this.remoteCtx.peerCertificateChain.length);
             }
+            clone.remoteCtx.forceHttp2 = this.remoteCtx.forceHttp2;
         }
 
         // Direct copy of authorization context; it is immutable
@@ -578,6 +578,16 @@ public class Operation implements Cloneable {
     public Operation forceRemote() {
         allocateRemoteContext();
         this.remoteCtx.socketCtx = new SocketContext();
+        return this;
+    }
+
+    public boolean isForceHttp2() {
+        return this.remoteCtx.forceHttp2;
+    }
+
+    public Operation forceHttp2() {
+        forceRemote();
+        this.remoteCtx.forceHttp2 = true;
         return this;
     }
 
@@ -677,7 +687,8 @@ public class Operation implements Cloneable {
                 this.serializedBody = this.body;
             }
             // Request must specify a Content-Type we understand
-            if (this.contentType != null && this.contentType.contains(MEDIA_TYPE_APPLICATION_JSON)) {
+            if (this.contentType != null
+                    && this.contentType.contains(MEDIA_TYPE_APPLICATION_JSON)) {
                 try {
                     this.body = Utils.fromJson(this.body, type);
                 } catch (com.google.gson.JsonSyntaxException e) {
@@ -763,7 +774,8 @@ public class Operation implements Cloneable {
     }
 
     Operation linkState(ServiceDocument serviceDoc) {
-        if (serviceDoc != null && this.linkedState != null && this.linkedState.documentKind != null) {
+        if (serviceDoc != null && this.linkedState != null
+                && this.linkedState.documentKind != null) {
             serviceDoc.documentKind = this.linkedState.documentKind;
         }
         // we do not clone here because the service will clone before the next
