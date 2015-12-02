@@ -13,10 +13,12 @@
 
 package com.vmware.xenon.common;
 
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
 import java.util.EnumSet;
 import java.util.List;
+import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 
@@ -66,6 +68,26 @@ public class TestOperation extends BasicReusableHostTestCase {
         } catch (IllegalArgumentException e) {
             return;
         }
+    }
+
+    @Test
+    public void addRemoveHeaders() {
+        Operation op = Operation.createGet(this.host.getUri());
+        String ctMixed = "Content-Type";
+        String ctLower = "content-type";
+        String ctValue = UUID.randomUUID().toString() + "AAAAbbbb";
+        op.addRequestHeader(ctMixed, ctValue);
+        String ctV = op.getRequestHeader(ctLower);
+        assertEquals(ctValue, ctV);
+        op.addRequestHeader(ctLower, ctValue);
+        ctV = op.getRequestHeader(ctLower);
+        assertEquals(ctValue, ctV);
+        op.addResponseHeader(ctMixed, ctValue);
+        ctV = op.getResponseHeader(ctLower);
+        assertEquals(ctValue, ctV);
+        op.addResponseHeader(ctLower, ctValue);
+        ctV = op.getResponseHeader(ctLower);
+        assertEquals(ctValue, ctV);
     }
 
     @Test
