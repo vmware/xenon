@@ -4445,6 +4445,31 @@ public class ServiceHost {
     }
 
     /**
+     * Query all services which are {@linkplain ProcessingStage#AVAILABLE available} and contain a SELF_LINK field.
+     * @param get The get operation to complete.
+     */
+    public void getStatelessServiceUris(Operation get) {
+        ServiceDocumentQueryResult r = new ServiceDocumentQueryResult();
+
+        for (Service s : this.attachedServices.values()) {
+            if (s.getProcessingStage() != ProcessingStage.AVAILABLE) {
+                continue;
+            }
+            if (s.hasOption(ServiceOption.UTILITY)) {
+                continue;
+            }
+
+            try {
+                s.getClass().getField(UriUtils.FIELD_NAME_SELF_LINK);
+                r.documentLinks.add(s.getSelfLink());
+            } catch (NoSuchFieldException ignored) {
+            }
+        }
+        r.documentOwner = getId();
+        get.setBodyNoCloning(r).complete();
+    }
+
+    /**
      * Infrastructure use only. Create service document description.
      */
     ServiceDocumentDescription buildDocumentDescription(String servicePath) {
