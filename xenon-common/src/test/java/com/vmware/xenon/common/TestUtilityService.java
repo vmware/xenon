@@ -198,10 +198,10 @@ public class TestUtilityService extends BasicReusableHostTestCase {
                 this.host, exampleServiceState.documentSelfLink)).setBody(stat)
                 .setCompletion(this.host.getCompletion()));
         this.host.testWait();
-        ServiceStats retStat = this.host.getServiceState(null, ServiceStats.class,
+        ServiceStats allStats = this.host.getServiceState(null, ServiceStats.class,
                 UriUtils.buildStatsUri(
                         this.host, exampleServiceState.documentSelfLink));
-        ServiceStat retStatEntry = retStat.entries.get("key1");
+        ServiceStat retStatEntry = allStats.entries.get("key1");
         assertTrue(retStatEntry.accumulatedValue == 100);
         assertTrue(retStatEntry.latestValue == 100);
         assertTrue(retStatEntry.version == 1);
@@ -213,9 +213,9 @@ public class TestUtilityService extends BasicReusableHostTestCase {
                 this.host, exampleServiceState.documentSelfLink)).setBody(stat)
                 .setCompletion(this.host.getCompletion()));
         this.host.testWait();
-        retStat = this.host.getServiceState(null, ServiceStats.class, UriUtils.buildStatsUri(
+        allStats = this.host.getServiceState(null, ServiceStats.class, UriUtils.buildStatsUri(
                 this.host, exampleServiceState.documentSelfLink));
-        retStatEntry = retStat.entries.get("key1");
+        retStatEntry = allStats.entries.get("key1");
         assertTrue(retStatEntry.accumulatedValue == 150);
         assertTrue(retStatEntry.latestValue == 50);
         assertTrue(retStatEntry.version == 2);
@@ -228,13 +228,13 @@ public class TestUtilityService extends BasicReusableHostTestCase {
                 this.host, exampleServiceState.documentSelfLink)).setBody(stat)
                 .setCompletion(this.host.getCompletion()));
         this.host.testWait();
-        retStat = this.host.getServiceState(null, ServiceStats.class, UriUtils.buildStatsUri(
+        allStats = this.host.getServiceState(null, ServiceStats.class, UriUtils.buildStatsUri(
                 this.host, exampleServiceState.documentSelfLink));
-        retStatEntry = retStat.entries.get("key1");
+        retStatEntry = allStats.entries.get("key1");
         assertTrue(retStatEntry.accumulatedValue == 150);
         assertTrue(retStatEntry.latestValue == 50);
         assertTrue(retStatEntry.version == 2);
-        retStatEntry = retStat.entries.get("key2");
+        retStatEntry = allStats.entries.get("key2");
         assertTrue(retStatEntry.accumulatedValue == 50);
         assertTrue(retStatEntry.latestValue == 50);
         assertTrue(retStatEntry.version == 1);
@@ -247,9 +247,9 @@ public class TestUtilityService extends BasicReusableHostTestCase {
                 this.host, exampleServiceState.documentSelfLink)).setBody(stat)
                 .setCompletion(this.host.getCompletion()));
         this.host.testWait();
-        retStat = this.host.getServiceState(null, ServiceStats.class, UriUtils.buildStatsUri(
+        allStats = this.host.getServiceState(null, ServiceStats.class, UriUtils.buildStatsUri(
                 this.host, exampleServiceState.documentSelfLink));
-        retStatEntry = retStat.entries.get("key1");
+        retStatEntry = allStats.entries.get("key1");
         assertTrue(retStatEntry.accumulatedValue == 75);
         assertTrue(retStatEntry.latestValue == 75);
         assertTrue(retStatEntry.version == 1);
@@ -263,10 +263,13 @@ public class TestUtilityService extends BasicReusableHostTestCase {
                 this.host, exampleServiceState.documentSelfLink)).setBody(stats)
                 .setCompletion(this.host.getCompletion()));
         this.host.testWait();
-        retStat = this.host.getServiceState(null, ServiceStats.class, UriUtils.buildStatsUri(
+        allStats = this.host.getServiceState(null, ServiceStats.class, UriUtils.buildStatsUri(
                 this.host, exampleServiceState.documentSelfLink));
-        assertTrue(retStat.entries.size() == 1);
-        retStatEntry = retStat.entries.get("key3");
+        if (allStats.entries.size() != 1) {
+            throw new IllegalStateException(
+                    "Expected single stat, got: " + Utils.toJsonHtml(allStats));
+        }
+        retStatEntry = allStats.entries.get("key3");
         assertTrue(retStatEntry.accumulatedValue == 200);
         assertTrue(retStatEntry.latestValue == 200);
         assertTrue(retStatEntry.version == 1);
@@ -277,9 +280,9 @@ public class TestUtilityService extends BasicReusableHostTestCase {
                 this.host, exampleServiceState.documentSelfLink)).setBody(stat)
                 .setCompletion(this.host.getCompletion()));
         this.host.testWait();
-        retStat = this.host.getServiceState(null, ServiceStats.class, UriUtils.buildStatsUri(
+        allStats = this.host.getServiceState(null, ServiceStats.class, UriUtils.buildStatsUri(
                 this.host, exampleServiceState.documentSelfLink));
-        retStatEntry = retStat.entries.get("key3");
+        retStatEntry = allStats.entries.get("key3");
         assertTrue(retStatEntry.latestValue == 225);
         assertTrue(retStatEntry.version == 2);
     }

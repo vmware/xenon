@@ -332,14 +332,14 @@ public class UtilityService implements Service {
                     op.fail(new IllegalArgumentException("stat name is required"));
                     return;
                 }
-                this.replaceSingleStat(stat);
+                replaceSingleStat(stat);
             } else if (stat.kind.equals(ServiceStats.KIND)) {
                 ServiceStats stats = op.getBody(ServiceStats.class);
                 if (stats.entries == null || stats.entries.isEmpty()) {
                     op.fail(new IllegalArgumentException("stats entries need to be defined"));
                     return;
                 }
-                this.replaceAllStats(stats);
+                replaceAllStats(stats);
             } else {
                 op.fail(new IllegalArgumentException("operation not supported for kind"));
                 return;
@@ -391,7 +391,7 @@ public class UtilityService implements Service {
                     rsp = populateDocumentProperties(this.stats);
                     rsp = Utils.clone(rsp);
                 }
-                op.setBody(rsp);
+                op.setBodyNoCloning(rsp);
                 op.complete();
             }
             break;
@@ -537,14 +537,14 @@ public class UtilityService implements Service {
         }
     }
 
-    private void replaceAllStats(ServiceStats stats) {
+    private void replaceAllStats(ServiceStats newStats) {
         if (!allocateStats(true)) {
             return;
         }
         synchronized (this.stats) {
             // reset the current set of stats
-            this.stats.entries = null;
-            for (ServiceStats.ServiceStat currentStat : stats.entries.values()) {
+            this.stats.entries.clear();
+            for (ServiceStats.ServiceStat currentStat : newStats.entries.values()) {
                 replaceSingleStat(currentStat);
             }
 
