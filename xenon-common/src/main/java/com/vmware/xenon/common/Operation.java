@@ -324,19 +324,17 @@ public class Operation implements Cloneable {
     }
 
     // HTTP Header definitions
-
-    public static final String REFERER_HEADER = "Referer";
-    public static final String CONTENT_TYPE_HEADER = "Content-Type";
-    public static final String CONTENT_RANGE_HEADER = "Content-Range";
-    public static final String RANGE_HEADER = "Range";
-    public static final String RETRY_AFTER_HEADER = "Retry-After";
-    public static final String PRAGMA_HEADER = "Pragma";
-    public static final String SET_COOKIE_HEADER = "Set-Cookie";
-    public static final String LOCATION_HEADER = "Location";
-    public static final String USER_AGENT_HEADER = "User-Agent";
+    public static final String REFERER_HEADER = "referer";
+    public static final String CONTENT_TYPE_HEADER = "content-type";
+    public static final String CONTENT_RANGE_HEADER = "content-range";
+    public static final String RANGE_HEADER = "range";
+    public static final String RETRY_AFTER_HEADER = "retry-after";
+    public static final String PRAGMA_HEADER = "pragma";
+    public static final String SET_COOKIE_HEADER = "set-cookie";
+    public static final String LOCATION_HEADER = "location";
+    public static final String USER_AGENT_HEADER = "user-agent";
 
     // Proprietary header definitions
-
     public static final String HEADER_NAME_PREFIX = "x-xenon-";
     public static final String CONTEXT_ID_HEADER = HEADER_NAME_PREFIX + "ctx-id";
     public static final String REQUEST_CALLBACK_LOCATION_HEADER = HEADER_NAME_PREFIX
@@ -956,6 +954,8 @@ public class Operation implements Cloneable {
         if (idx == -1 || idx < 3) {
             throw new IllegalArgumentException("headerLine does not appear valid");
         }
+
+        headerLine = headerLine.toLowerCase();
         String name = headerLine.substring(0, idx);
         String value = headerLine.substring(idx + 1);
         if (isResponse) {
@@ -969,14 +969,14 @@ public class Operation implements Cloneable {
     public Operation addRequestHeader(String name, String value) {
         allocateRemoteContext();
         value = value.replace(CR_LF, "").trim();
-        this.remoteCtx.requestHeaders.put(name, value);
+        this.remoteCtx.requestHeaders.put(name.toLowerCase(), value.toLowerCase());
         return this;
     }
 
     public Operation addResponseHeader(String name, String value) {
         allocateRemoteContext();
         value = value.replace(CR_LF, "");
-        this.remoteCtx.responseHeaders.put(name, value);
+        this.remoteCtx.responseHeaders.put(name.toLowerCase(), value.toLowerCase());
         return this;
     }
 
@@ -991,6 +991,7 @@ public class Operation implements Cloneable {
 
     public Operation addPragmaDirective(String directive) {
         allocateRemoteContext();
+        directive = directive.toLowerCase();
         String existingDirectives = getRequestHeader(PRAGMA_HEADER);
         if (existingDirectives != null && !existingDirectives.contains(directive)) {
             directive = existingDirectives + ";" + directive;
@@ -999,6 +1000,9 @@ public class Operation implements Cloneable {
         return this;
     }
 
+    /**
+     * Checks if a directive is present. Lower case strings must be used.
+     */
     public boolean hasPragmaDirective(String directive) {
         String existingDirectives = getRequestHeader(PRAGMA_HEADER);
         if (existingDirectives != null
@@ -1008,6 +1012,9 @@ public class Operation implements Cloneable {
         return false;
     }
 
+    /**
+     * Removes a directive. Lower case strings must be used
+     */
     public Operation removePragmaDirective(String directive) {
         allocateRemoteContext();
         String existingDirectives = getRequestHeader(PRAGMA_HEADER);
