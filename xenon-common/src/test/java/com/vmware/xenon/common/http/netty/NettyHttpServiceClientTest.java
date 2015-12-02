@@ -82,7 +82,7 @@ public class NettyHttpServiceClientTest {
         HOST.setMaintenanceIntervalMicros(
                 TimeUnit.MILLISECONDS.toMicros(VerificationHost.FAST_MAINT_INTERVAL_MILLIS));
 
-        ServiceClient client = (NettyHttpServiceClient) NettyHttpServiceClient.create(
+        ServiceClient client = NettyHttpServiceClient.create(
                 NettyHttpServiceClientTest.class.getCanonicalName(),
                 Executors.newFixedThreadPool(4),
                 Executors.newScheduledThreadPool(1), HOST);
@@ -458,8 +458,10 @@ public class NettyHttpServiceClientTest {
                     Operation.MEDIA_TYPE_APPLICATION_JSON,
                     Utils.toJson(new ExampleServiceState()));
 
-            // try a DCP client but with user agent saying its NOT DCP. Notice that there is no pragma directive
-            // so unless the service this.host detects the user agent, it will try to queue and wait for service
+            // try a DCP client but with user agent saying its NOT DCP. Notice that there is no
+            // pragma directive
+            // so unless the service this.host detects the user agent, it will try to queue and wait
+            // for service
             this.host.testStart(1);
             put = Operation
                     .createPut(
@@ -515,7 +517,7 @@ public class NettyHttpServiceClientTest {
         // force failure by using a payload higher than max size
         this.host.doPutPerService(1,
                 EnumSet.of(TestProperty.FORCE_REMOTE, TestProperty.LARGE_PAYLOAD,
-                TestProperty.BINARY_PAYLOAD, TestProperty.FORCE_FAILURE),
+                        TestProperty.BINARY_PAYLOAD, TestProperty.FORCE_FAILURE),
                 services);
     }
 
@@ -750,8 +752,7 @@ public class NettyHttpServiceClientTest {
     }
 
     public enum CookieAction {
-        SET,
-        DELETE,
+        SET, DELETE,
     }
 
     public static class CookieServiceState extends ServiceDocument {
@@ -795,4 +796,54 @@ public class NettyHttpServiceClientTest {
             op.complete();
         }
     }
+
+    @Test
+    public void basicHttp2() throws Throwable {
+        int numGets = 10;
+
+        MinimalTestServiceState body = (MinimalTestServiceState) this.host.buildMinimalTestState();
+        // produce a JSON PODO that serialized is about 2048 bytes
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < 53; i++) {
+            sb.append(UUID.randomUUID().toString());
+        }
+        body.stringValue = sb.toString();
+
+        List<Service> services = this.host.doThroughputServiceStart(
+                1,
+                MinimalTestService.class,
+                body,
+                EnumSet.noneOf(Service.ServiceOption.class), null);
+        Service service = services.get(0);
+        URI u = service.getUri();
+
+        this.host.testStart(numGets);
+
+        Operation get = Operation.createGet(u)
+                .forceHttp2()
+                .setCompletion((o, e) -> {
+                    if (e != null) {
+                        this.host.failIteration(e);
+                        return;
+                    }
+
+                    MinimalTestServiceState st = o.getBody(MinimalTestServiceState.class);
+                    try {
+                        assertTrue(st.id != null);
+                        assertTrue(st.documentSelfLink != null);
+                        assertTrue(st.documentUpdateTimeMicros > 0);
+                        assertTrue(st.stringValue != null);
+                    } catch (Throwable ex) {
+                        this.host.failIteration(ex);
+                    }
+                    this.host.completeIteration();
+                });
+
+        for (int i = 0; i < numGets; i++) {
+            this.host.send(get);
+        }
+        this.host.testWait();
+        this.host.logThroughput();
+    }
+
 }
