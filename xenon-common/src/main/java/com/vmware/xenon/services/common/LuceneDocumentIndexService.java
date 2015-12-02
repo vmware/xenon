@@ -1828,9 +1828,6 @@ public class LuceneDocumentIndexService extends StatelessService {
             this.writerAvailable.acquire(acquireReleaseCount);
 
             IndexWriter w = this.writer;
-            if (w == null) {
-                return;
-            }
 
             long now = Utils.getNowMicrosUtc();
             if (now - this.indexWriterCreationTimeMicros < getHost()
@@ -1843,8 +1840,10 @@ public class LuceneDocumentIndexService extends StatelessService {
             String[] list = directory.list();
             int count = list == null ? 0 : list.length;
             try {
-                logInfo("Before: File count: %d, document count: %d", count, w.maxDoc());
-                w.close();
+                if (w != null) {
+                    logInfo("Before: File count: %d, document count: %d", count, w.maxDoc());
+                    w.close();
+                }
             } catch (Throwable e) {
             }
 

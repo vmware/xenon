@@ -188,11 +188,10 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
 
         // close the writer!
         this.indexService.closeWriter();
-        // issue some updates, which at least some failing and expect recovery
+        // issue some updates, which at least some failing and expect the host to stay alive. There
+        // is no guarantee at this point that future writes will succeed since the writer re-open
+        // is asynchronous and happens on maintenance intervals
         updateServices(exampleServices, true);
-
-        // second batch should not fail
-        updateServices(exampleServices, false);
 
         // now induce a failure we can NOT recover from
         corruptLuceneIndexFiles();
@@ -206,7 +205,7 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
             if (new Date().after(exp)) {
                 this.host
                         .log("Host never stopped after index corruption, but appears healthy, verifiying");
-                updateServices(exampleServices, false);
+                updateServices(exampleServices, true);
                 break;
             }
             Thread.sleep(TimeUnit.MICROSECONDS.toMillis(this.host.getMaintenanceIntervalMicros()));
