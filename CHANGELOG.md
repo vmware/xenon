@@ -2,6 +2,9 @@
 
 ## 0.3.1-SNAPSHOT
 
+* All Operation request and response headers are converted
+to lower case before being added to request/response maps
+
 * Tunable query limit for service load during factory service
 restart and during synchronization. A large result limit will
 increase the service load throughput and decrease overal time
