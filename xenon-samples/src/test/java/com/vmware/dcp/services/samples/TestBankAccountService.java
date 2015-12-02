@@ -19,30 +19,28 @@ import java.net.URI;
 import java.util.List;
 import java.util.UUID;
 
-import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 
+import com.vmware.xenon.common.BasicReusableHostTestCase;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.RequestRouter.Route;
 import com.vmware.xenon.common.Service.Action;
 import com.vmware.xenon.common.ServiceDocumentDescription;
 import com.vmware.xenon.common.ServiceHost;
 import com.vmware.xenon.common.UriUtils;
-import com.vmware.xenon.common.test.VerificationHost;
 import com.vmware.xenon.services.samples.BankAccountFactoryService;
 import com.vmware.xenon.services.samples.BankAccountService.BankAccountServiceRequest;
 import com.vmware.xenon.services.samples.BankAccountService.BankAccountServiceState;
 
-public class TestBankAccountService {
-
-    private VerificationHost host;
+public class TestBankAccountService extends BasicReusableHostTestCase {
 
     @Before
     public void setUp() throws Exception {
         try {
-            this.host = VerificationHost.create(0, null);
-            this.host.start();
+            if (this.host.getServiceStage(BankAccountFactoryService.SELF_LINK) != null) {
+                return;
+            }
             // Start a factory for bank account service
             this.host.startServiceAndWait(BankAccountFactoryService.class,
                     BankAccountFactoryService.SELF_LINK);
@@ -51,10 +49,6 @@ public class TestBankAccountService {
         }
     }
 
-    @After
-    public void tearDown() throws Exception {
-        this.host.tearDown();
-    }
 
     @Test
     public void testCRUD() throws Throwable {
