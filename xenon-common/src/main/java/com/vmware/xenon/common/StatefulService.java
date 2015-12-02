@@ -843,6 +843,11 @@ public class StatefulService implements Service {
 
         publish(op);
 
+        if (op.isFromReplication()) {
+            // remove body on replication response, not needed
+            op.setBodyNoCloning(null);
+        }
+
         op.complete();
     }
 

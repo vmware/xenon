@@ -24,8 +24,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-import org.junit.After;
-import org.junit.Before;
 import org.junit.Test;
 
 import com.vmware.xenon.common.Service.Action;
@@ -33,7 +31,6 @@ import com.vmware.xenon.common.Service.ServiceOption;
 import com.vmware.xenon.common.ServiceStats.ServiceStat;
 import com.vmware.xenon.common.test.MinimalTestServiceState;
 import com.vmware.xenon.common.test.TestProperty;
-import com.vmware.xenon.common.test.VerificationHost;
 import com.vmware.xenon.services.common.MinimalFactoryTestService;
 import com.vmware.xenon.services.common.MinimalTestService;
 import com.vmware.xenon.services.common.ServiceUriPaths;
@@ -52,7 +49,7 @@ class GetIllegalDocumentService extends StatefulService {
     }
 }
 
-public class TestServiceModel {
+public class TestServiceModel extends BasicTestCase {
 
     /**
      * Parameter that specifies if this run should be a stress test.
@@ -69,22 +66,6 @@ public class TestServiceModel {
      * Parameter that specifies the service instance count
      */
     public long serviceCount = 0;
-
-    public VerificationHost host;
-
-
-    @Before
-    public void setUp() throws Exception {
-        CommandLineArgumentParser.parseFromProperties(this);
-        this.host = VerificationHost.create(0, null);
-        this.host.setStressTest(this.isStressTest);
-
-        try {
-            this.host.start();
-        } catch (Throwable e) {
-            throw new Exception(e);
-        }
-    }
 
     public static class ArgumentParsingTestTarget {
         public int intField = Integer.MIN_VALUE;
@@ -401,10 +382,4 @@ public class TestServiceModel {
                 .setCompletion((o, e) -> this.host.completeIteration()));
         this.host.testWait();
     }
-
-    @After
-    public void tearDown() {
-        this.host.tearDown();
-    }
-
 }
