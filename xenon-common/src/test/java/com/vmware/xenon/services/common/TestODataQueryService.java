@@ -22,47 +22,33 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
-import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 
-import com.vmware.xenon.common.CommandLineArgumentParser;
+import com.vmware.xenon.common.BasicTestCase;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.ServiceDocumentQueryResult;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
-import com.vmware.xenon.common.test.VerificationHost;
 import com.vmware.xenon.services.common.ExampleFactoryService;
 import com.vmware.xenon.services.common.ExampleService;
 import com.vmware.xenon.services.common.QueryTask;
 import com.vmware.xenon.services.common.ServiceUriPaths;
 
-public class TestODataQueryService {
-    public VerificationHost host;
-
+public class TestODataQueryService extends BasicTestCase {
     public long min = 10;
     public long max = 30;
     public List<String> selfLinks;
 
     @Before
     public void setUp() throws Exception {
-        CommandLineArgumentParser.parseFromProperties(this);
-
-        this.host = VerificationHost.create(0, null);
-        CommandLineArgumentParser.parseFromProperties(this.host);
 
         try {
-            this.host.start();
             this.selfLinks = postExample(this.min, this.max);
         } catch (Throwable e) {
             throw new Exception(e);
         }
-    }
-
-    @After
-    public void tearDown() throws Exception {
-        this.host.tearDown();
     }
 
     private List<String> postExample(long min, long max) throws Throwable {

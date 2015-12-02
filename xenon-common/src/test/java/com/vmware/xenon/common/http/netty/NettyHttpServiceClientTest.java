@@ -77,7 +77,7 @@ public class NettyHttpServiceClientTest {
     public static void setUpOnce() throws Exception {
 
         NettyChannelContext.setMaxRequestSize(1024 * 512);
-        HOST = VerificationHost.create(0, null);
+        HOST = VerificationHost.create(0);
         CommandLineArgumentParser.parseFromProperties(HOST);
         HOST.setMaintenanceIntervalMicros(
                 TimeUnit.MILLISECONDS.toMicros(VerificationHost.FAST_MAINT_INTERVAL_MILLIS));

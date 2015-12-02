@@ -20,12 +20,12 @@ import java.net.URI;
 import java.util.UUID;
 
 import org.junit.Test;
+import org.junit.rules.TemporaryFolder;
 
 import com.vmware.xenon.common.BasicReportTestCase;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.ServiceDocumentQueryResult;
 import com.vmware.xenon.common.UriUtils;
-import com.vmware.xenon.common.test.VerificationHost;
 import com.vmware.xenon.samples.SampleHost;
 import com.vmware.xenon.services.common.RootNamespaceService;
 
@@ -40,16 +40,18 @@ import com.vmware.xenon.services.common.RootNamespaceService;
  */
 public class TestSampleHost extends BasicReportTestCase {
 
+    private TemporaryFolder tmpFolder = new TemporaryFolder();
     private SampleHost sampleHost;
 
     @Test
     public void testState() throws Throwable {
-
         try {
+            this.tmpFolder.create();
             startSampleHost();
             verifySampleHost();
         } finally {
             stopSampleHost();
+            this.tmpFolder.delete();
         }
     }
 
@@ -67,6 +69,7 @@ public class TestSampleHost extends BasicReportTestCase {
         String[] args = {
                 "--port=0",
                 "--bindAddress=" + bindAddress,
+                "--sandbox=" + this.tmpFolder.getRoot().getAbsolutePath(),
                 "--id=" + hostId
         };
 
@@ -125,6 +128,5 @@ public class TestSampleHost extends BasicReportTestCase {
      */
     private void stopSampleHost() {
         this.sampleHost.stop();
-        VerificationHost.cleanupStorage(this.sampleHost.getStorageSandbox());
     }
 }

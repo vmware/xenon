@@ -16,7 +16,6 @@ package com.vmware.xenon.common;
 import org.junit.Rule;
 import org.junit.rules.ExternalResource;
 import org.junit.rules.RuleChain;
-import org.junit.rules.TemporaryFolder;
 import org.junit.rules.TestRule;
 import org.junit.rules.TestWatcher;
 import org.junit.runner.Description;
@@ -41,14 +40,11 @@ import com.vmware.xenon.common.test.VerificationHost;
 public class BasicTestCase {
     public VerificationHost host;
     public boolean isStressTest;
-    protected TemporaryFolder temporaryFolder = new TemporaryFolder();
-
     protected ExternalResource verificationHostRule = new ExternalResource() {
         @Override
         protected void before() throws Throwable {
             CommandLineArgumentParser.parseFromProperties(BasicTestCase.this);
-            BasicTestCase.this.host = VerificationHost.create(0, BasicTestCase.this.temporaryFolder
-                    .getRoot().toURI());
+            BasicTestCase.this.host = VerificationHost.create(0);
             CommandLineArgumentParser.parseFromProperties(BasicTestCase.this.host);
             BasicTestCase.this.host.setStressTest(BasicTestCase.this.isStressTest);
             beforeHostStart(BasicTestCase.this.host);
@@ -58,9 +54,7 @@ public class BasicTestCase {
         @Override
         protected void after() {
             beforeHostTearDown(BasicTestCase.this.host);
-            // we use a TemporaryFolder instance which will auto delete on exit
-            boolean cleanupStorage = false;
-            BasicTestCase.this.host.tearDown(cleanupStorage);
+            BasicTestCase.this.host.tearDown();
         }
     };
 
@@ -77,6 +71,5 @@ public class BasicTestCase {
     }
 
     @Rule
-    public TestRule chain = RuleChain.outerRule(this.temporaryFolder).around(
-            this.verificationHostRule).around(this.watcher);
+    public TestRule chain = RuleChain.outerRule(this.verificationHostRule).around(this.watcher);
 }

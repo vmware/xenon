@@ -44,6 +44,7 @@ import java.util.function.Consumer;
 import java.util.logging.Level;
 
 import org.junit.Test;
+import org.junit.rules.TemporaryFolder;
 
 import com.vmware.xenon.common.BasicReportTestCase;
 import com.vmware.xenon.common.FileUtils;
@@ -267,10 +268,12 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
     @Test
     public void serviceHostRestartWithDurableServices() throws Throwable {
         ExampleServiceHost h = new ExampleServiceHost();
+        TemporaryFolder tmpFolder = new TemporaryFolder();
+        tmpFolder.create();
         try {
             ServiceHost.Arguments args = new ServiceHost.Arguments();
             args.port = 0;
-            args.sandbox = Files.createTempDirectory(null).toAbsolutePath();
+            args.sandbox = tmpFolder.getRoot().toPath();
             h.initialize(args);
             h.start();
 
@@ -415,7 +418,7 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
 
         } finally {
             h.stop();
-            VerificationHost.cleanupStorage(h.getStorageSandbox());
+            tmpFolder.delete();
         }
     }
 

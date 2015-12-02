@@ -18,7 +18,6 @@ import static javax.xml.bind.DatatypeConverter.printBase64Binary;
 import static org.junit.Assert.assertTrue;
 
 import java.io.BufferedReader;
-import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -26,7 +25,6 @@ import java.net.HttpURLConnection;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URL;
-import java.nio.file.Files;
 import java.security.GeneralSecurityException;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -48,6 +46,8 @@ import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import java.util.logging.Level;
+
+import org.junit.rules.TemporaryFolder;
 
 import com.vmware.xenon.common.Claims;
 import com.vmware.xenon.common.CommandLineArgumentParser;
@@ -101,8 +101,6 @@ import com.vmware.xenon.services.common.UserService.UserState;
 
 public class VerificationHost extends ExampleServiceHost {
 
-    public static final String TMP_PATH_PREFIX = VerificationHost.class.getCanonicalName() + ".";
-
     public static final int FAST_MAINT_INTERVAL_MILLIS = 100;
 
     private CountDownLatch completionLatch;
@@ -141,6 +139,8 @@ public class VerificationHost extends ExampleServiceHost {
     public long maintenanceIntervalMillis = FAST_MAINT_INTERVAL_MILLIS;
 
     private String lastTestName;
+
+    private TemporaryFolder temporaryFolder;
 
     public static class ProcessInfo {
         public Long parentPid;
@@ -214,21 +214,26 @@ public class VerificationHost extends ExampleServiceHost {
 
     public static AtomicInteger hostNumber = new AtomicInteger();
 
-    public static VerificationHost create(Integer port, URI storageSandbox) throws Exception {
-        if (storageSandbox == null) {
-            storageSandbox = Files.createTempDirectory(TMP_PATH_PREFIX).toUri();
-        }
+    public static VerificationHost create(Integer port) throws Exception {
         ServiceHost.Arguments args = new ServiceHost.Arguments();
         args.id = "host-" + hostNumber.incrementAndGet();
         args.port = port;
-        args.sandbox = new File(storageSandbox).toPath();
+        args.sandbox = null;
         args.bindAddress = ServiceHost.LOOPBACK_ADDRESS;
         return create(args);
     }
 
     public static VerificationHost create(ServiceHost.Arguments args)
             throws Exception {
+
         VerificationHost h = new VerificationHost();
+
+        if (args.sandbox == null) {
+            h.temporaryFolder = new TemporaryFolder();
+            h.temporaryFolder.create();
+            args.sandbox = h.temporaryFolder.getRoot().toPath();
+        }
+
         try {
             h.initialize(args);
             h.referer = UriUtils.buildUri(h, "test-client-send");
@@ -239,14 +244,8 @@ public class VerificationHost extends ExampleServiceHost {
     }
 
     public void tearDown() {
-        tearDown(true);
-    }
-
-    public void tearDown(boolean cleanSandbox) {
         stop();
-        if (cleanSandbox) {
-            VerificationHost.cleanupStorage(getStorageSandbox());
-        }
+        this.temporaryFolder.delete();
     }
 
     public Operation createServiceStartPost() {
@@ -1511,7 +1510,7 @@ public class VerificationHost extends ExampleServiceHost {
             Collection<ServiceHost> hosts)
             throws Throwable {
 
-        VerificationHost h = VerificationHost.create(port, null);
+        VerificationHost h = VerificationHost.create(port);
 
         h.setPeerSynchronizationEnabled(this.isPeerSynchronizationEnabled());
         h.setAuthorizationEnabled(this.isAuthorizationEnabled());
@@ -2245,17 +2244,7 @@ public class VerificationHost extends ExampleServiceHost {
             if (h == null) {
                 continue;
             }
-            h.stop();
-            VerificationHost.cleanupStorage(h.getStorageSandbox());
-        }
-    }
-
-    public static void cleanupStorage(URI s) {
-        String sandbox = new File(s).getAbsolutePath();
-        try {
-            Runtime.getRuntime().exec("rm -rf " + sandbox);
-        } catch (Throwable e) {
-
+            h.tearDown();
         }
     }
 
@@ -2264,7 +2253,7 @@ public class VerificationHost extends ExampleServiceHost {
     }
 
     public void stopHost(VerificationHost host) {
-        host.stop();
+        host.tearDown();
         this.peerHostIdToNodeState.remove(host.getId());
         this.peerNodeGroups.remove(host.getUri());
         this.localPeerHosts.remove(host.getUri());

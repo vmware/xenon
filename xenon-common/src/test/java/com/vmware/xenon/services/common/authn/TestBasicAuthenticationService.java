@@ -17,10 +17,10 @@ import java.net.URI;
 import java.util.Base64;
 import java.util.Map;
 
-import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 
+import com.vmware.xenon.common.BasicTestCase;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.http.netty.CookieJar;
@@ -31,9 +31,7 @@ import com.vmware.xenon.services.common.UserFactoryService;
 import com.vmware.xenon.services.common.UserService.UserState;
 import com.vmware.xenon.services.common.authn.AuthenticationRequest.AuthenticationRequestType;
 
-public class TestBasicAuthenticationService {
-
-    private VerificationHost host;
+public class TestBasicAuthenticationService extends BasicTestCase {
     private static final String USER = "jane@doe.com";
     private static final String INVALID_USER = "janedoe@doe.com";
     private static final String PASSWORD = "password-for-jane";
@@ -42,12 +40,14 @@ public class TestBasicAuthenticationService {
     private static final String BASIC_AUTH_USER_SEPERATOR = ":";
     private static final String SET_COOKIE_HEADER = "Set-Cookie";
 
+    @Override
+    public void beforeHostStart(VerificationHost h) {
+        h.setAuthorizationEnabled(true);
+    }
+
     @Before
     public void setUp() throws Exception {
-        this.host = VerificationHost.create(0, null);
         try {
-            this.host.setAuthorizationEnabled(true);
-            this.host.start();
             this.host.setSystemAuthorizationContext();
             this.host.waitForServiceAvailable(AuthCredentialsFactoryService.SELF_LINK);
             this.host.waitForServiceAvailable(BasicAuthenticationService.SELF_LINK);
@@ -88,11 +88,6 @@ public class TestBasicAuthenticationService {
         } catch (Throwable e) {
             throw new Exception(e);
         }
-    }
-
-    @After
-    public void tearDown() throws InterruptedException {
-        this.host.tearDown();
     }
 
     @Test

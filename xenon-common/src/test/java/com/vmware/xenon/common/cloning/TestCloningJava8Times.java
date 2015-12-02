@@ -23,40 +23,36 @@ import java.time.ZonedDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.UUID;
 
-import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 
+import com.vmware.xenon.common.BasicReusableHostTestCase;
 import com.vmware.xenon.common.FactoryService;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Service;
 import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.StatefulService;
 import com.vmware.xenon.common.UriUtils;
-import com.vmware.xenon.common.test.VerificationHost;
 
-public class TestCloningJava8Times {
+public class TestCloningJava8Times extends BasicReusableHostTestCase {
 
-    private VerificationHost host;
     private URI factoryUri;
     private URI tmpUri;
 
     @Before
     public void setup() throws Throwable {
-        this.host = VerificationHost.create(0, null);
-        this.host.start();
-
         this.factoryUri = UriUtils.buildUri(this.host, FactoryServiceWithJava8Times.class);
+
+        if (this.host.getServiceStage(this.factoryUri.getPath()) != null) {
+            // service is already created. Since we are re-using a host between test methods
+            // we avoid creating twice (it will lead to already started exception thrown)
+            return;
+        }
 
         this.host.startService(
                 Operation.createPost(this.factoryUri),
                 new FactoryServiceWithJava8Times());
         this.host.waitForServiceAvailable(FactoryServiceWithJava8Times.SELF_LINK);
-    }
-
-    @After
-    public void tearDown() throws Throwable {
-        this.host.stop();
     }
 
     @Test

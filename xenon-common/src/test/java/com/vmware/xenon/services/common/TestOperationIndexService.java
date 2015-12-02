@@ -24,19 +24,16 @@ import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 
-import com.vmware.xenon.common.CommandLineArgumentParser;
+import com.vmware.xenon.common.BasicReusableHostTestCase;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
-import com.vmware.xenon.common.test.VerificationHost;
 import com.vmware.xenon.services.common.ExampleFactoryService;
 import com.vmware.xenon.services.common.ExampleService;
 import com.vmware.xenon.services.common.QueryTask;
 import com.vmware.xenon.services.common.ServiceUriPaths;
 
-public class TestOperationIndexService {
-
-    public VerificationHost host;
+public class TestOperationIndexService extends BasicReusableHostTestCase {
 
     /**
      * Command line argument specifying request count
@@ -45,13 +42,7 @@ public class TestOperationIndexService {
 
     @Before
     public void setUp() throws Exception {
-        CommandLineArgumentParser.parseFromProperties(this);
-
-        this.host = VerificationHost.create(0, null);
-        CommandLineArgumentParser.parseFromProperties(this.host);
-
         try {
-            this.host.start();
             // Start the tracing service
             this.host.toggleOperationTracing(this.host.getUri(), true);
         } catch (Throwable e) {
@@ -60,13 +51,8 @@ public class TestOperationIndexService {
     }
 
     @After
-    public void tearDown() throws Exception {
-        try {
-            this.host.toggleOperationTracing(this.host.getUri(), false);
-        } catch (Throwable e) {
-            throw new Exception(e);
-        }
-        this.host.tearDown();
+    public void tearDown() throws Throwable {
+        this.host.toggleOperationTracing(this.host.getUri(), false);
     }
 
     @Test

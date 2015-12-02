@@ -26,10 +26,9 @@ import java.util.Map.Entry;
 import java.util.UUID;
 import java.util.concurrent.TimeoutException;
 
-import org.junit.After;
-import org.junit.Before;
 import org.junit.Test;
 
+import com.vmware.xenon.common.BasicTestCase;
 import com.vmware.xenon.common.FileUtils;
 import com.vmware.xenon.common.MinimalFileStore;
 import com.vmware.xenon.common.Operation;
@@ -42,23 +41,7 @@ import com.vmware.xenon.common.test.TestProperty;
 import com.vmware.xenon.common.test.VerificationHost;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
 
-public class TestServiceHostManagementService {
-    private VerificationHost host;
-
-    @Before
-    public void setUp() {
-        try {
-            this.host = VerificationHost.create(0, null);
-            this.host.start();
-        } catch (Throwable e) {
-            throw new RuntimeException(e);
-        }
-    }
-
-    @After
-    public void tearDown() {
-        this.host.tearDown();
-    }
+public class TestServiceHostManagementService extends BasicTestCase {
 
     @Test
     public void getStateAndDelete() throws Throwable {
@@ -127,7 +110,6 @@ public class TestServiceHostManagementService {
                 throw new TimeoutException();
             }
         }
-
     }
 
     @Test
@@ -176,7 +158,7 @@ public class TestServiceHostManagementService {
         this.host.log("MFS file %s (bytes:%d md5:%s)", tmpFile.toString(), tmpFile.length(),
                 FileUtils.md5sum(tmpFile));
 
-        this.host = VerificationHost.create(0, null);
+        this.host = VerificationHost.create(0);
         this.host.start();
 
         mfs = new MinimalFileStore();
