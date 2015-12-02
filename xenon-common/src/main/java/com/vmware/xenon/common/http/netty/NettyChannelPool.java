@@ -30,6 +30,7 @@ import io.netty.bootstrap.Bootstrap;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelFutureListener;
+import io.netty.channel.ChannelPromise;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioSocketChannel;
@@ -61,6 +62,7 @@ public class NettyChannelPool {
     private EventLoopGroup eventGroup;
     private String threadTag = NettyChannelPool.class.getSimpleName();
     private int threadCount;
+    private boolean isHttp2Only = false;
 
     private Bootstrap bootStrap;
 
@@ -68,7 +70,6 @@ public class NettyChannelPool {
     private int connectionLimit = 1;
 
     private SSLContext sslContext;
-
 
     public NettyChannelPool(ExecutorService executor) {
         this.executor = executor;
@@ -84,6 +85,21 @@ public class NettyChannelPool {
         return this;
     }
 
+    /**
+     * Force the channel pool to be HTTP/2.
+     */
+    public NettyChannelPool setHttp2Only() {
+        this.isHttp2Only = true;
+        return this;
+    }
+
+    /**
+     * Returns true if the channel pool is for HTTP/2
+     */
+    public boolean isHttp2Only() {
+        return this.isHttp2Only;
+    }
+
     public void start() {
         if (this.bootStrap != null) {
             return;
@@ -96,7 +112,7 @@ public class NettyChannelPool {
         this.bootStrap = new Bootstrap();
         this.bootStrap.group(this.eventGroup)
                 .channel(NioSocketChannel.class)
-                .handler(new NettyHttpClientRequestInitializer(this));
+                .handler(new NettyHttpClientRequestInitializer(this, this.isHttp2Only));
     }
 
     public boolean isStarted() {
@@ -180,6 +196,8 @@ public class NettyChannelPool {
                 return;
             }
 
+            // Connect, then wait for the connection to complete before either
+            // sending data (HTTP/1.1) or negotiating settings (HTTP/2)
             ChannelFuture connectFuture = this.bootStrap.connect(context.host, context.port);
             connectFuture.addListener(new ChannelFutureListener() {
 
@@ -188,9 +206,11 @@ public class NettyChannelPool {
                         throws Exception {
 
                     if (future.isSuccess()) {
-                        Channel ch = future.channel();
-                        contextFinal.setChannel(ch).setOperation(request);
-                        request.complete();
+                        if (NettyChannelPool.this.isHttp2Only) {
+                            waitForSettings(future.channel(), contextFinal, request);
+                        } else {
+                            sendAfterConnect(future.channel(), contextFinal, request);
+                        }
                     } else {
                         returnOrClose(contextFinal, true);
                         fail(request, future.cause());
@@ -202,6 +222,36 @@ public class NettyChannelPool {
         } catch (Throwable e) {
             fail(request, e);
         }
+    }
+
+    /**
+     * When using HTTP/2, we have to wait for the settings to be negotiated before we can send
+     * data. We wait for a promise that comes from the HTTP client channel pipeline
+     */
+    private void waitForSettings(Channel ch, NettyChannelContext contextFinal, Operation request) {
+        ChannelPromise settingsPromise = ch.attr(NettyChannelContext.SETTINGS_PROMISE_KEY).get();
+        settingsPromise.addListener(new ChannelFutureListener() {
+            @Override
+            public void operationComplete(ChannelFuture future)
+                    throws Exception {
+
+                if (future.isSuccess()) {
+                    sendAfterConnect(future.channel(), contextFinal, request);
+                } else {
+                    returnOrClose(contextFinal, true);
+                    fail(request, future.cause());
+                }
+            }
+        });
+    }
+
+    /**
+     * Now that the connection is open (and if using HTTP/2, settings have been negotiated), send
+     * the request.
+     */
+    private void sendAfterConnect(Channel ch, NettyChannelContext contextFinal, Operation request) {
+        contextFinal.setChannel(ch).setOperation(request);
+        request.complete();
     }
 
     private void fail(Operation request, Throwable e) {

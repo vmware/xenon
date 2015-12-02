@@ -15,6 +15,7 @@
     <kryo.version>3.0.2</kryo.version>
     <lucene.version>5.2.1</lucene.version>
     <netty.version>5.0.0.Alpha2</netty.version>
+    <hpack.version>v1.0.1</hpack.version>
   </properties>
 
   <dependencies>
@@ -52,6 +53,11 @@
       <groupId>org.apache.lucene</groupId>
       <artifactId>lucene-queries</artifactId>
       <version>${lucene.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>com.twitter</groupId>
+      <artifactId>hpack</artifactId>
+      <version>${hpack.version}</version>
     </dependency>
   </dependencies>
   <build>

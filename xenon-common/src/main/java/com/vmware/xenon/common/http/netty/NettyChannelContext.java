@@ -15,6 +15,7 @@ package com.vmware.xenon.common.http.netty;
 
 import io.netty.buffer.PooledByteBufAllocator;
 import io.netty.channel.Channel;
+import io.netty.channel.ChannelPromise;
 import io.netty.util.AttributeKey;
 
 import com.vmware.xenon.common.Operation;
@@ -23,11 +24,14 @@ import com.vmware.xenon.common.Operation.SocketContext;
 public class NettyChannelContext extends SocketContext {
     static final AttributeKey<Operation> OPERATION_KEY = AttributeKey
             .<Operation> valueOf("operation");
+    static final AttributeKey<ChannelPromise> SETTINGS_PROMISE_KEY = AttributeKey
+            .<ChannelPromise> valueOf("settings-promise");
     public static final int BUFFER_SIZE = 4096 * 16;
 
     public static final int MAX_INITIAL_LINE_LENGTH = 4096;
     public static final int MAX_HEADER_SIZE = 65536;
     public static final int MAX_CHUNK_SIZE = 65536;
+    public static final int MAX_HTTP2_FRAME_SIZE = 65536;
 
     public static final PooledByteBufAllocator ALLOCATOR = NettyChannelContext.createAllocator();
 
