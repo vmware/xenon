@@ -13,35 +13,51 @@
 
 package com.vmware.xenon.common.http.netty;
 
+import java.util.Collections;
+
 import io.netty.channel.ChannelInitializer;
 import io.netty.channel.ChannelPipeline;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.handler.codec.http.HttpObjectAggregator;
-import io.netty.handler.codec.http.HttpRequestDecoder;
-import io.netty.handler.codec.http.HttpResponseEncoder;
+import io.netty.handler.codec.http.HttpServerCodec;
+import io.netty.handler.codec.http.HttpServerUpgradeHandler;
+import io.netty.handler.codec.http2.DefaultHttp2Connection;
+import io.netty.handler.codec.http2.DelegatingDecompressorFrameListener;
+import io.netty.handler.codec.http2.Http2Connection;
+import io.netty.handler.codec.http2.Http2FrameReader;
+import io.netty.handler.codec.http2.Http2FrameWriter;
+import io.netty.handler.codec.http2.Http2ServerUpgradeCodec;
+import io.netty.handler.codec.http2.HttpToHttp2ConnectionHandler;
+import io.netty.handler.codec.http2.InboundHttp2ToHttpAdapter;
 import io.netty.handler.ssl.SslContext;
 import io.netty.handler.ssl.SslHandler;
 
+import com.vmware.xenon.common.Operation.SocketContext;
 import com.vmware.xenon.common.ServiceHost;
 import com.vmware.xenon.common.ServiceHost.ServiceHostState.SslClientAuthMode;
 import com.vmware.xenon.services.common.ServiceUriPaths;
 
 public class NettyHttpServerInitializer extends ChannelInitializer<SocketChannel> {
-    public static final String AGGREGATOR_HANDLER = "aggregator";
-    public static final String HTTP_REQUEST_HANDLER = "http-request-handler";
-    public static final String WEBSOCKET_HANDLER = "websocket-request-handler";
-    public static final String DECODER_HANDLER = "decoder";
-    public static final String ENCODER_HANDLER = "encoder";
-    public static final String SSL_HANDLER = "ssl";
+    private static final String AGGREGATOR_HANDLER = "aggregator";
+    private static final String HTTP_REQUEST_HANDLER = "http-request-handler";
+    private static final String WEBSOCKET_HANDLER = "websocket-request-handler";
+    private static final String HTTP1_CODEC = "http1-codec";
+    private static final String HTTP2_UPGRADE_HANDLER = "http2-upgrade-handler";
+    private static final String SSL_HANDLER = "ssl";
 
     private final SslContext sslContext;
     private ServiceHost host;
+    private boolean debugLogging = false;
 
     public NettyHttpServerInitializer(ServiceHost host, SslContext sslContext) {
         this.sslContext = sslContext;
         this.host = host;
+        NettyLoggingUtil.setupNettyLogging();
     }
 
+    /**
+     * initChannel is called by Netty when a channel is first used.
+     */
     @Override
     public void initChannel(SocketChannel ch) {
         ChannelPipeline p = ch.pipeline();
@@ -68,16 +84,66 @@ public class NettyHttpServerInitializer extends ChannelInitializer<SocketChannel
             p.addLast(SSL_HANDLER, sslHandler);
         }
 
-        p.addLast(DECODER_HANDLER, new HttpRequestDecoder(
+        // The HttpServerCodec combines the HttpRequestDecoder and the HttpResponseEncoder, and it
+        // also provides a method for upgrading the protocol, which we use to support HTTP/2. It
+        // also supports a couple other minor features (support for HEAD and CONNECT), which
+        // probably don't matter to us.
+        HttpServerCodec http1_codec = new HttpServerCodec(
                 NettyChannelContext.MAX_INITIAL_LINE_LENGTH,
                 NettyChannelContext.MAX_HEADER_SIZE,
-                NettyChannelContext.MAX_CHUNK_SIZE, false));
-        p.addLast(ENCODER_HANDLER, new HttpResponseEncoder());
+                NettyChannelContext.MAX_CHUNK_SIZE, false);
+        p.addLast(HTTP1_CODEC, http1_codec);
+        if (this.sslContext == null) {
+            // Today we only use HTTP/2 when SSL is disabled
+            HttpToHttp2ConnectionHandler connectionHandler = makeHttp2ConnectionHandler();
+            HttpServerUpgradeHandler.UpgradeCodec upgradeCodec = new Http2ServerUpgradeCodec(
+                    connectionHandler);
+            // On upgrade, the upgradeHandler will remove the http1_codec and replace it
+            // with the connectionHandler. Ideally we'd remove the aggregator (chunked transfer
+            // isn't allowed in HTTP/2) and the WebSocket handler (we don't support it over HTTP/2 yet)
+            // but we're not doing that yet.
+
+            HttpServerUpgradeHandler upgradeHandler = new HttpServerUpgradeHandler(
+                    http1_codec,
+                    Collections.singletonList(upgradeCodec),
+                    SocketContext.getMaxClientRequestSize());
+
+            p.addLast(HTTP2_UPGRADE_HANDLER, upgradeHandler);
+        }
+
         p.addLast(AGGREGATOR_HANDLER,
                 new HttpObjectAggregator(NettyChannelContext.getMaxRequestSize()));
         p.addLast(WEBSOCKET_HANDLER, new NettyWebSocketRequestHandler(this.host,
                 ServiceUriPaths.CORE_WEB_SOCKET_ENDPOINT,
                 ServiceUriPaths.WEB_SOCKET_SERVICE_PREFIX));
         p.addLast(HTTP_REQUEST_HANDLER, new NettyHttpClientRequestHandler(this.host, sslHandler));
+    }
+
+    /**
+     * For HTTP/2 we don't have anything as simple as the HttpServerCodec (at least, not in Netty
+     * 5.0alpha 2), so we create the equivalent.
+     *
+     * @return
+     */
+    private HttpToHttp2ConnectionHandler makeHttp2ConnectionHandler() {
+        // DefaultHttp2Connection is for client or server. True means "server".
+        Http2Connection connection = new DefaultHttp2Connection(true);
+        InboundHttp2ToHttpAdapter inboundAdapter = new InboundHttp2ToHttpAdapter.Builder(connection)
+                .maxContentLength(NettyChannelContext.MAX_CHUNK_SIZE)
+                .propagateSettings(false)
+                .build();
+        DelegatingDecompressorFrameListener frameListener = new DelegatingDecompressorFrameListener(
+                connection, inboundAdapter);
+        Http2FrameReader frameReader = NettyHttpClientRequestInitializer
+                .makeFrameReader(this.debugLogging);
+        Http2FrameWriter frameWriter = NettyHttpClientRequestInitializer
+                .makeFrameWriter(this.debugLogging);
+
+        HttpToHttp2ConnectionHandler connectionHandler = new HttpToHttp2ConnectionHandler(
+                connection,
+                frameReader,
+                frameWriter,
+                frameListener);
+        return connectionHandler;
     }
 }

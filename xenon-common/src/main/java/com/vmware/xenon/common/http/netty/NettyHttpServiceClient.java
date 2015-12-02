@@ -71,6 +71,7 @@ public class NettyHttpServiceClient implements ServiceClient {
 
     private NettyChannelPool sslChannelPool;
     private NettyChannelPool channelPool;
+    private NettyChannelPool http2ChannelPool;
 
     private ScheduledExecutorService scheduledExecutor;
     private ExecutorService executor;
@@ -101,6 +102,7 @@ public class NettyHttpServiceClient implements ServiceClient {
         sc.scheduledExecutor = scheduledExecutor;
         sc.host = host;
         sc.channelPool = new NettyChannelPool(executor);
+        sc.http2ChannelPool = new NettyChannelPool(executor);
         String proxy = System.getenv(ENV_VAR_NAME_HTTP_PROXY);
         if (proxy != null) {
             sc.setHttpProxy(new URI(proxy));
@@ -128,6 +130,14 @@ public class NettyHttpServiceClient implements ServiceClient {
         this.channelPool.setThreadTag(buildThreadTag());
         this.channelPool.setThreadCount(DEFAULT_EVENT_LOOP_THREAD_COUNT);
         this.channelPool.start();
+
+        // We make a separate pool for HTTP/2. We want to have only one connection per host
+        // when using HTTP/2 since HTTP/2 multiplexes streams on a single connection.
+        this.http2ChannelPool.setThreadTag(buildThreadTag());
+        this.http2ChannelPool.setThreadCount(DEFAULT_EVENT_LOOP_THREAD_COUNT);
+        this.http2ChannelPool.setConnectionLimitPerHost(1);
+        this.http2ChannelPool.setHttp2Only();
+        this.http2ChannelPool.start();
 
         if (this.sslContext != null) {
             this.sslChannelPool = new NettyChannelPool(this.executor);
@@ -157,6 +167,9 @@ public class NettyHttpServiceClient implements ServiceClient {
         this.channelPool.stop();
         if (this.sslChannelPool != null) {
             this.sslChannelPool.stop();
+        }
+        if (this.http2ChannelPool != null) {
+            this.http2ChannelPool.stop();
         }
         this.isStarted = false;
 
@@ -248,14 +261,16 @@ public class NettyHttpServiceClient implements ServiceClient {
             return;
         }
 
-        // Queue operation, then send it to remote target. At some point later the remote host will send a PATCH
+        // Queue operation, then send it to remote target. At some point later the remote host will
+        // send a PATCH
         // to the callback service to complete this pending operation
         URI u = this.callbackService.queueUntilCallback(op);
         Operation remoteOp = op.clone();
         remoteOp.setRequestCallbackLocation(u);
         remoteOp.setCompletion((o, e) -> {
             if (e != null) {
-                // we do not remove the operation from the callback service, it will be removed on next maintenance
+                // we do not remove the operation from the callback service, it will be removed on
+                // next maintenance
                 op.setExpiration(0).fail(e);
                 return;
             }
@@ -266,7 +281,8 @@ public class NettyHttpServiceClient implements ServiceClient {
     }
 
     private void setCookies(Operation clone) {
-        // Extract cookies into cookie jar, regardless of where this operation ends up being handled.
+        // Extract cookies into cookie jar, regardless of where this operation ends up being
+        // handled.
         clone.nestCompletion((o, e) -> {
             if (e != null) {
                 clone.fail(e);
@@ -318,6 +334,10 @@ public class NettyHttpServiceClient implements ServiceClient {
         int port = uri.getPort();
         NettyChannelPool pool = this.channelPool;
 
+        if (op.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_USE_HTTP2)) {
+            pool = this.http2ChannelPool;
+        }
+
         if (uri.getScheme().equals(UriUtils.HTTP_SCHEME)) {
             if (port == -1) {
                 port = UriUtils.HTTP_DEFAULT_PORT;
@@ -365,6 +385,14 @@ public class NettyHttpServiceClient implements ServiceClient {
 
             HttpRequest request = null;
             HttpMethod method = HttpMethod.valueOf(op.getAction().toString());
+            boolean useHttp2 = op.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_USE_HTTP2);
+
+            if (useHttp2) {
+                // The fact that we use HTTP2 is an internal detail, not to share on the wire.
+                // We use a pragma instead of exposing an API (e.g. setHttp2()) on the Operation
+                // because it's an implementation detail not normally needed by clients.
+                op.removePragmaDirective(Operation.PRAGMA_DIRECTIVE_USE_HTTP2);
+            }
 
             if (body == null || body.length == 0) {
                 request = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, method, pathAndQuery);
@@ -398,9 +426,14 @@ public class NettyHttpServiceClient implements ServiceClient {
 
             request.headers().set(HttpHeaderNames.USER_AGENT, this.userAgent);
             request.headers().set(HttpHeaderNames.ACCEPT, "*/*");
+            // The Netty HTTP/2 code in 5.0-alpha that converts the Host header assumes
+            // that the Host is a URI (unlike HTTP1.1, when it is just a hostname) so that it
+            // can create the :scheme pseudo-header. If it's not a URI, it throws an exception
+            // we we put "http://" in front.
             request.headers().set(
                     HttpHeaderNames.HOST,
-                    op.getUri().getHost()
+                    (useHttp2 ? op.getUri().getScheme() + "://" : "")
+                            + op.getUri().getHost()
                             + ((op.getUri().getPort() != -1) ? (":" + op.getUri().getPort()) : ""));
 
             op.nestCompletion((o, e) -> {
@@ -462,7 +495,7 @@ public class NettyHttpServiceClient implements ServiceClient {
         op.setStatusCode(Operation.STATUS_CODE_OK);
         this.scheduledExecutor.schedule(() -> {
             connect(op);
-        }, delaySeconds, TimeUnit.SECONDS);
+        } , delaySeconds, TimeUnit.SECONDS);
     }
 
     private static Operation clone(Operation op) {
@@ -513,6 +546,17 @@ public class NettyHttpServiceClient implements ServiceClient {
         this.channelPool.handleMaintenance(op);
     }
 
+    /**
+     * Set the maximum number of connections per host
+     *
+     * Note that you could have up to 2x+1 connections per host:
+     * - max-connections for HTTP
+     * - max-connections for HTTPS
+     * - 1 for HTTP/2 (this can't be changed)
+     *
+     * In practice, it's likely to only use one channel pool per host, so this probably won't happen
+     * in the wild.
+     */
     @Override
     public ServiceClient setConnectionLimitPerHost(int limit) {
         this.channelPool.setConnectionLimitPerHost(limit);
