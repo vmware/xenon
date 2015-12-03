@@ -53,6 +53,7 @@ import com.vmware.xenon.common.Service;
 import com.vmware.xenon.common.Service.Action;
 import com.vmware.xenon.common.Service.ProcessingStage;
 import com.vmware.xenon.common.Service.ServiceOption;
+import com.vmware.xenon.common.ServiceConfigUpdateRequest;
 import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.ServiceDocumentDescription;
 import com.vmware.xenon.common.ServiceDocumentQueryResult;
@@ -61,6 +62,7 @@ import com.vmware.xenon.common.ServiceHost;
 import com.vmware.xenon.common.ServiceHost.ServiceHostState;
 import com.vmware.xenon.common.ServiceStats;
 import com.vmware.xenon.common.ServiceStats.ServiceStat;
+import com.vmware.xenon.common.StatefulService;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
 import com.vmware.xenon.common.test.MinimalTestServiceState;
@@ -110,6 +112,7 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
     public void beforeHostStart(VerificationHost host) {
         host.setMaintenanceIntervalMicros(TimeUnit.MILLISECONDS.toMicros(100));
         this.indexService = new FaultInjectionLuceneDocumentIndexService();
+        this.indexService.toggleOption(ServiceOption.INSTRUMENTATION, true);
         host.setDocumentIndexingService(this.indexService);
     }
 
@@ -276,6 +279,10 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
             h.initialize(args);
             h.start();
 
+            this.host.toggleServiceOptions(h.getDocumentIndexServiceUri(),
+                    EnumSet.of(ServiceOption.INSTRUMENTATION),
+                    null);
+
             this.host.testStart(1);
             h.registerForServiceAvailability((o, e) -> {
                 this.host.completeIteration();
@@ -331,6 +338,10 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
             h.setMaintenanceIntervalMicros(TimeUnit.MILLISECONDS.toMicros(100));
 
             h.start();
+
+            this.host.toggleServiceOptions(h.getDocumentIndexServiceUri(),
+                    EnumSet.of(ServiceOption.INSTRUMENTATION),
+                    null);
 
             beforeState = updateUriMapWithNewPort(h.getPort(), beforeState);
             List<URI> updatedExampleUris = new ArrayList<>();
@@ -1131,15 +1142,22 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
         }
     }
 
+    public static class MinimalTestServiceWithDefaultRetention extends StatefulService {
+        public MinimalTestServiceWithDefaultRetention() {
+            super(MinimalTestServiceState.class);
+        }
+    }
+
     private void doServiceVersionGroomingValidation(EnumSet<ServiceOption> caps) throws Throwable {
         int serviceCount = 2;
         List<Service> services = this.host.doThroughputServiceStart(
-                serviceCount, MinimalTestService.class, this.host.buildMinimalTestState(), caps,
+                serviceCount, MinimalTestServiceWithDefaultRetention.class,
+                this.host.buildMinimalTestState(), caps,
                 null);
 
-        Collection<URI> serviceUrisWithMaxRetention = new ArrayList<>();
+        Collection<URI> serviceUrisWithDefaultRetention = new ArrayList<>();
         for (Service s : services) {
-            serviceUrisWithMaxRetention.add(s.getUri());
+            serviceUrisWithDefaultRetention.add(s.getUri());
         }
 
         URI factoryUri = UriUtils.buildUri(this.host,
@@ -1158,7 +1176,7 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
         long count = ServiceDocumentDescription.DEFAULT_VERSION_RETENTION_LIMIT * 2;
         this.host.testStart(serviceCount * count);
         for (int i = 0; i < count; i++) {
-            for (URI u : serviceUrisWithMaxRetention) {
+            for (URI u : serviceUrisWithDefaultRetention) {
                 this.host.send(Operation.createPut(u)
                         .setBody(this.host.buildMinimalTestState())
                         .setCompletion(this.host.getCompletion()));
@@ -1179,7 +1197,7 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
         }
         this.host.testWait();
 
-        Collection<URI> serviceUris = serviceUrisWithMaxRetention;
+        Collection<URI> serviceUris = serviceUrisWithDefaultRetention;
         long limit = ServiceDocumentDescription.DEFAULT_VERSION_RETENTION_LIMIT
                 * serviceUris.size();
         verifyVersionRetention(count, serviceUris, limit);
@@ -1250,6 +1268,8 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
             EnumSet<ServiceOption> caps) throws Throwable {
         EnumSet<TestProperty> props = EnumSet.noneOf(TestProperty.class);
 
+        this.indexService.toggleOption(ServiceOption.INSTRUMENTATION, false);
+
         if (caps == null) {
             caps = EnumSet.of(ServiceOption.PERSISTENCE);
             props.add(TestProperty.PERSISTED);
@@ -1271,6 +1291,17 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
         if (putCount != null) {
             count = putCount;
         }
+
+        // increase queue limit so each service instance does not apply back pressure
+        this.host.testStart(services.size());
+        for (Service s : services) {
+            ServiceConfigUpdateRequest body = ServiceConfigUpdateRequest.create();
+            body.operationQueueLimit = (int) count;
+            URI configUri = UriUtils.buildConfigUri(s.getUri());
+            this.host.send(Operation.createPatch(configUri).setBody(body)
+                    .setCompletion(this.host.getCompletion()));
+        }
+        this.host.testWait();
 
         this.host.doServiceUpdates(action, count, props, services);
 
