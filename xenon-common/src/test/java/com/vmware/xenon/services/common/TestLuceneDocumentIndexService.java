@@ -53,6 +53,7 @@ import com.vmware.xenon.common.Service;
 import com.vmware.xenon.common.Service.Action;
 import com.vmware.xenon.common.Service.ProcessingStage;
 import com.vmware.xenon.common.Service.ServiceOption;
+import com.vmware.xenon.common.ServiceConfigUpdateRequest;
 import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.ServiceDocumentDescription;
 import com.vmware.xenon.common.ServiceDocumentQueryResult;
@@ -1271,6 +1272,17 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
         if (putCount != null) {
             count = putCount;
         }
+
+        // increase queue limit so each service instance does not apply back pressure
+        this.host.testStart(services.size());
+        for (Service s : services) {
+            ServiceConfigUpdateRequest body = ServiceConfigUpdateRequest.create();
+            body.operationQueueLimit = (int) count;
+            URI configUri = UriUtils.buildConfigUri(s.getUri());
+            this.host.send(Operation.createPatch(configUri).setBody(body)
+                    .setCompletion(this.host.getCompletion()));
+        }
+        this.host.testWait();
 
         this.host.doServiceUpdates(action, count, props, services);
 

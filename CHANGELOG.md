@@ -2,6 +2,8 @@
 
 ## 0.3.1-SNAPSHOT
 
+* Referer is no longer indexed with every document update
+
 * All Operation request and response headers are converted
 to lower case before being added to request/response maps
 

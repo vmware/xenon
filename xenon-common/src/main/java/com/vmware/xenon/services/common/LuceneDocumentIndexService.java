@@ -121,8 +121,6 @@ public class LuceneDocumentIndexService extends StatelessService {
 
     private static final String LUCENE_FIELD_NAME_JSON_SERIALIZED_STATE = "jsonSerializedState";
 
-    private static final String LUCENE_FIELD_NAME_REFERER = "referer";
-
     public static final String STAT_NAME_ACTIVE_QUERY_FILTERS = "activeQueryFilters";
 
     public static final String STAT_NAME_COMMIT_COUNT = "commitCount";
@@ -213,6 +211,8 @@ public class LuceneDocumentIndexService extends StatelessService {
     private Set<String> fieldsToLoadNoExpand;
     private Set<String> fieldsToLoadWithExpand;
 
+    private URI uri;
+
     public static class BackupRequest extends ServiceDocument {
         URI backupFile;
         static final String KIND = Utils.buildKind(BackupRequest.class);
@@ -237,6 +237,9 @@ public class LuceneDocumentIndexService extends StatelessService {
     @Override
     public void handleStart(final Operation post) {
         super.setMaintenanceIntervalMicros(getHost().getMaintenanceIntervalMicros() * 5);
+        // index service getUri() will be invoked on every load and save call for every operation,
+        // so its worth caching (plus we only have a very small number of index services
+        this.uri = super.getUri();
 
         File directory = new File(new File(getHost().getStorageSandbox()), this.indexDirectory);
         this.privateQueryExecutor = Executors.newFixedThreadPool(QUERY_THREAD_COUNT,
@@ -574,7 +577,7 @@ public class LuceneDocumentIndexService extends StatelessService {
 
         if (!selfLink.endsWith(UriUtils.URI_WILDCARD_CHAR)) {
             // Most basic query is retrieving latest document at latest version for a specific link
-            queryIndexSingle(selfLink.intern(), options, get, version);
+            queryIndexSingle(selfLink, options, get, version);
             return;
         }
 
@@ -1029,7 +1032,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         Map<String, Long> latestVersions = new HashMap<>();
         for (ScoreDoc sd : hits) {
             Document d = s.getIndexReader().document(sd.doc, fieldsToLoad);
-            String link = d.get(ServiceDocument.FIELD_NAME_SELF_LINK).intern();
+            String link = d.get(ServiceDocument.FIELD_NAME_SELF_LINK);
             IndexableField versionField = d.getField(ServiceDocument.FIELD_NAME_VERSION);
             Long documentVersion = versionField.numericValue().longValue();
 
@@ -1231,12 +1234,6 @@ public class LuceneDocumentIndexService extends StatelessService {
 
         Document doc = new Document();
 
-        Field refererField = new StringField(LUCENE_FIELD_NAME_REFERER, postOrDelete
-                .getReferer()
-                .toString(),
-                Field.Store.NO);
-        doc.add(refererField);
-
         Field updateActionField = new StoredField(ServiceDocument.FIELD_NAME_UPDATE_ACTION,
                 s.documentUpdateAction);
         doc.add(updateActionField);
@@ -1244,13 +1241,12 @@ public class LuceneDocumentIndexService extends StatelessService {
         addBinaryStateFieldToDocument(s, desc, doc);
 
         Field selfLinkField = new StringField(ServiceDocument.FIELD_NAME_SELF_LINK,
-                link.intern(),
+                link,
                 Field.Store.YES);
         doc.add(selfLinkField);
-        Field sortedSelfLinkField = new SortedDocValuesField(ServiceDocument.FIELD_NAME_SELF_LINK,
-                new BytesRef(
-                        link.intern().toString()));
-        doc.add(sortedSelfLinkField);
+      //  Field sortedSelfLinkField = new SortedDocValuesField(ServiceDocument.FIELD_NAME_SELF_LINK,
+       //         new BytesRef(link));
+       // doc.add(sortedSelfLinkField);
 
         if (s.documentKind != null) {
             Field kindField = new StringField(ServiceDocument.FIELD_NAME_KIND,
@@ -1762,6 +1758,11 @@ public class LuceneDocumentIndexService extends StatelessService {
     }
 
     @Override
+    public URI getUri() {
+        return this.uri;
+    }
+
+    @Override
     public void handleMaintenance(final Operation post) {
         this.privateIndexingExecutor.execute(() -> {
             try {
@@ -1923,7 +1924,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         long now = Utils.getNowMicrosUtc();
         for (ScoreDoc sd : results.scoreDocs) {
             Document d = s.getIndexReader().document(sd.doc, this.fieldsToLoadNoExpand);
-            String link = d.get(ServiceDocument.FIELD_NAME_SELF_LINK).intern();
+            String link = d.get(ServiceDocument.FIELD_NAME_SELF_LINK);
             IndexableField versionField = d.getField(ServiceDocument.FIELD_NAME_VERSION);
             long versionExpired = versionField.numericValue().longValue();
             long latestVersion = this.getLatestVersion(s, link);
