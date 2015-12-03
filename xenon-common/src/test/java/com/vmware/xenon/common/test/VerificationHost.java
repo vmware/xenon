@@ -954,8 +954,8 @@ public class VerificationHost extends ExampleServiceHost {
         }
 
         logMemoryInfo();
-        log("starting service update test with properties %s, service caps: %s",
-                properties.toString(), services.get(0).getOptions());
+        log("starting %s test with properties %s, service caps: %s",
+                action, properties.toString(), services.get(0).getOptions());
 
         Map<URI, MinimalTestServiceState> statesBeforeUpdate = getServiceState(properties,
                 MinimalTestServiceState.class, services);
@@ -2178,6 +2178,20 @@ public class VerificationHost extends ExampleServiceHost {
             this.timeoutSeconds = (int) TimeUnit.MICROSECONDS.toSeconds(
                     ServiceHostState.DEFAULT_OPERATION_TIMEOUT_MICROS);
         }
+    }
+
+    public void toggleServiceOptions(URI serviceUri, EnumSet<ServiceOption> optionsToEnable,
+            EnumSet<ServiceOption> optionsToDisable) throws Throwable {
+
+        ServiceConfigUpdateRequest updateBody = ServiceConfigUpdateRequest.create();
+        updateBody.removeOptions = optionsToDisable;
+        updateBody.addOptions = optionsToEnable;
+
+        testStart(1);
+        URI configUri = UriUtils.buildConfigUri(serviceUri);
+        send(Operation.createPatch(configUri).setBody(updateBody)
+                .setCompletion(getCompletion()));
+        testWait();
     }
 
     public void setOperationQueueLimit(URI serviceUri, int limit) throws Throwable {
