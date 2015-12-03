@@ -17,6 +17,7 @@ import java.util.Objects;
 import java.util.Random;
 
 import com.vmware.xenon.common.Operation;
+import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.ServiceErrorResponse;
 import com.vmware.xenon.common.ServiceMaintenanceRequest;
 import com.vmware.xenon.common.ServiceMaintenanceRequest.MaintenanceReason;
@@ -222,5 +223,15 @@ public class MinimalTestService extends StatefulService {
         }
         adjustStat(STAT_NAME_MAINTENANCE_SUCCESS_COUNT, 1);
         op.complete();
+    }
+
+    @Override
+    public ServiceDocument getDocumentTemplate() {
+        ServiceDocument template = super.getDocumentTemplate();
+        // this service is a target of throughput tests so we set the limit high to avoid grooming
+        // during the tests. Tests can use the example service to verify throughput while grooming
+        // is active
+        template.documentDescription.versionRetentionLimit = 1000 * 1000;
+        return template;
     }
 }

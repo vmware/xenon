@@ -96,6 +96,9 @@ public class TestQueryTaskService {
             this.host.setMaintenanceIntervalMicros(TimeUnit.MILLISECONDS
                     .toMicros(VerificationHost.FAST_MAINT_INTERVAL_MILLIS));
             this.host.start();
+            this.host.toggleServiceOptions(this.host.getDocumentIndexServiceUri(),
+                    EnumSet.of(ServiceOption.INSTRUMENTATION),
+                    null);
         } catch (Throwable e) {
             throw new Exception(e);
         }

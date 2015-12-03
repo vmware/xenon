@@ -121,8 +121,6 @@ public class LuceneDocumentIndexService extends StatelessService {
 
     private static final String LUCENE_FIELD_NAME_JSON_SERIALIZED_STATE = "jsonSerializedState";
 
-    private static final String LUCENE_FIELD_NAME_REFERER = "referer";
-
     public static final String STAT_NAME_ACTIVE_QUERY_FILTERS = "activeQueryFilters";
 
     public static final String STAT_NAME_COMMIT_COUNT = "commitCount";
@@ -213,6 +211,8 @@ public class LuceneDocumentIndexService extends StatelessService {
     private Set<String> fieldsToLoadNoExpand;
     private Set<String> fieldsToLoadWithExpand;
 
+    private URI uri;
+
     public static class BackupRequest extends ServiceDocument {
         URI backupFile;
         static final String KIND = Utils.buildKind(BackupRequest.class);
@@ -230,13 +230,15 @@ public class LuceneDocumentIndexService extends StatelessService {
     public LuceneDocumentIndexService(String indexDirectory) {
         super(ServiceDocument.class);
         super.toggleOption(ServiceOption.PERIODIC_MAINTENANCE, true);
-        super.toggleOption(ServiceOption.INSTRUMENTATION, true);
         this.indexDirectory = indexDirectory;
     }
 
     @Override
     public void handleStart(final Operation post) {
         super.setMaintenanceIntervalMicros(getHost().getMaintenanceIntervalMicros() * 5);
+        // index service getUri() will be invoked on every load and save call for every operation,
+        // so its worth caching (plus we only have a very small number of index services
+        this.uri = super.getUri();
 
         File directory = new File(new File(getHost().getStorageSandbox()), this.indexDirectory);
         this.privateQueryExecutor = Executors.newFixedThreadPool(QUERY_THREAD_COUNT,
@@ -477,7 +479,7 @@ public class LuceneDocumentIndexService extends StatelessService {
                     getHost().failRequestActionNotSupported(op);
                     break;
                 case POST:
-                    handleDocumentPostOrDelete(op);
+                    updateIndex(op);
                     break;
                 default:
                     getHost().failRequestActionNotSupported(op);
@@ -574,7 +576,7 @@ public class LuceneDocumentIndexService extends StatelessService {
 
         if (!selfLink.endsWith(UriUtils.URI_WILDCARD_CHAR)) {
             // Most basic query is retrieving latest document at latest version for a specific link
-            queryIndexSingle(selfLink.intern(), options, get, version);
+            queryIndexSingle(selfLink, options, get, version);
             return;
         }
 
@@ -1029,7 +1031,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         Map<String, Long> latestVersions = new HashMap<>();
         for (ScoreDoc sd : hits) {
             Document d = s.getIndexReader().document(sd.doc, fieldsToLoad);
-            String link = d.get(ServiceDocument.FIELD_NAME_SELF_LINK).intern();
+            String link = d.get(ServiceDocument.FIELD_NAME_SELF_LINK);
             IndexableField versionField = d.getField(ServiceDocument.FIELD_NAME_VERSION);
             Long documentVersion = versionField.numericValue().longValue();
 
@@ -1194,48 +1196,42 @@ public class LuceneDocumentIndexService extends StatelessService {
         return t;
     }
 
-    protected void handleDocumentPostOrDelete(Operation postOrDelete) throws Throwable {
-        UpdateIndexRequest r = postOrDelete.getBody(UpdateIndexRequest.class);
+    protected void updateIndex(Operation updateOp) throws Throwable {
+        UpdateIndexRequest r = updateOp.getBody(UpdateIndexRequest.class);
         ServiceDocument s = r.document;
         ServiceDocumentDescription desc = r.description;
 
-        if (postOrDelete.isRemote()) {
-            postOrDelete.fail(new IllegalStateException("Remote requests not allowed"));
+        if (updateOp.isRemote()) {
+            updateOp.fail(new IllegalStateException("Remote requests not allowed"));
             return;
         }
 
         if (s == null) {
-            postOrDelete.fail(new IllegalArgumentException("document is required"));
+            updateOp.fail(new IllegalArgumentException("document is required"));
             return;
         }
 
         String link = s.documentSelfLink;
         if (link == null) {
-            postOrDelete.fail(new IllegalArgumentException(
+            updateOp.fail(new IllegalArgumentException(
                     "documentSelfLink is required"));
             return;
         }
 
         if (s.documentUpdateAction == null) {
-            postOrDelete.fail(new IllegalArgumentException(
+            updateOp.fail(new IllegalArgumentException(
                     "documentUpdateAction is required"));
             return;
         }
 
         if (desc == null) {
-            postOrDelete.fail(new IllegalArgumentException("description is required"));
+            updateOp.fail(new IllegalArgumentException("description is required"));
             return;
         }
 
         s.documentDescription = null;
 
         Document doc = new Document();
-
-        Field refererField = new StringField(LUCENE_FIELD_NAME_REFERER, postOrDelete
-                .getReferer()
-                .toString(),
-                Field.Store.NO);
-        doc.add(refererField);
 
         Field updateActionField = new StoredField(ServiceDocument.FIELD_NAME_UPDATE_ACTION,
                 s.documentUpdateAction);
@@ -1244,12 +1240,11 @@ public class LuceneDocumentIndexService extends StatelessService {
         addBinaryStateFieldToDocument(s, desc, doc);
 
         Field selfLinkField = new StringField(ServiceDocument.FIELD_NAME_SELF_LINK,
-                link.intern(),
+                link,
                 Field.Store.YES);
         doc.add(selfLinkField);
         Field sortedSelfLinkField = new SortedDocValuesField(ServiceDocument.FIELD_NAME_SELF_LINK,
-                new BytesRef(
-                        link.intern().toString()));
+                new BytesRef(link));
         doc.add(sortedSelfLinkField);
 
         if (s.documentKind != null) {
@@ -1293,12 +1288,12 @@ public class LuceneDocumentIndexService extends StatelessService {
                 || desc.propertyDescriptions.isEmpty()) {
             // no additional property type information, so we will add the
             // document with common fields indexed plus the full body
-            addDocumentToIndex(postOrDelete, doc, s, desc);
+            addDocumentToIndex(updateOp, doc, s, desc);
             return;
         }
 
         addIndexableFieldsToDocument(doc, s, desc);
-        addDocumentToIndex(postOrDelete, doc, s, desc);
+        addDocumentToIndex(updateOp, doc, s, desc);
 
         if (hasOption(ServiceOption.INSTRUMENTATION)) {
             int fieldCount = doc.getFields().size();
@@ -1704,8 +1699,8 @@ public class LuceneDocumentIndexService extends StatelessService {
         }
 
         op.setBody(null).complete();
-        checkDocumentRetentionLimit(sd, desc);
 
+        checkDocumentRetentionLimit(sd, desc);
         applyActiveQueries(sd, desc);
     }
 
@@ -1759,6 +1754,11 @@ public class LuceneDocumentIndexService extends StatelessService {
             }
             return this.searcher;
         }
+    }
+
+    @Override
+    public URI getUri() {
+        return this.uri;
     }
 
     @Override
@@ -1923,7 +1923,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         long now = Utils.getNowMicrosUtc();
         for (ScoreDoc sd : results.scoreDocs) {
             Document d = s.getIndexReader().document(sd.doc, this.fieldsToLoadNoExpand);
-            String link = d.get(ServiceDocument.FIELD_NAME_SELF_LINK).intern();
+            String link = d.get(ServiceDocument.FIELD_NAME_SELF_LINK);
             IndexableField versionField = d.getField(ServiceDocument.FIELD_NAME_VERSION);
             long versionExpired = versionField.numericValue().longValue();
             long latestVersion = this.getLatestVersion(s, link);

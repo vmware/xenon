@@ -1,6 +1,12 @@
 # CHANGELOG
 
 ## 0.3.1-SNAPSHOT
+* Indexing I/O path optimizations producing 20% throughput
+increase. Removed ServiceOption.INSTRUMENTATION from
+LuceneDocumentIndexService. It can be toggled through /config
+at runtime.
+
+* Referer is no longer indexed with every document update
 
 * All Operation request and response headers are converted
 to lower case before being added to request/response maps
