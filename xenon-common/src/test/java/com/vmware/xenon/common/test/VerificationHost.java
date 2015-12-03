@@ -2180,6 +2180,20 @@ public class VerificationHost extends ExampleServiceHost {
         }
     }
 
+    public void toggleServiceOptions(URI serviceUri, EnumSet<ServiceOption> optionsToEnable,
+            EnumSet<ServiceOption> optionsToDisable) throws Throwable {
+
+        ServiceConfigUpdateRequest updateBody = ServiceConfigUpdateRequest.create();
+        updateBody.removeOptions = optionsToDisable;
+        updateBody.addOptions = optionsToEnable;
+
+        testStart(1);
+        URI configUri = UriUtils.buildConfigUri(serviceUri);
+        send(Operation.createPatch(configUri).setBody(updateBody)
+                .setCompletion(getCompletion()));
+        testWait();
+    }
+
     public void setOperationQueueLimit(URI serviceUri, int limit) throws Throwable {
         // send a set limit configuration request
         ServiceConfigUpdateRequest body = ServiceConfigUpdateRequest.create();
