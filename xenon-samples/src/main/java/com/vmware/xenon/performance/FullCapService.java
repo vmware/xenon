@@ -15,8 +15,10 @@ package com.vmware.xenon.performance;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 import com.vmware.xenon.common.FactoryService;
+import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Service;
 import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.StatefulService;
@@ -31,8 +33,7 @@ public class FullCapService extends StatefulService {
         }
 
         public static FullCapFactoryService create(Class<? extends ServiceDocument> stateClass) {
-            FullCapFactoryService gfs = new FullCapFactoryService(stateClass);
-            return gfs;
+            return new FullCapFactoryService(stateClass);
         }
 
         @Override
@@ -49,5 +50,16 @@ public class FullCapService extends StatefulService {
         toggleOption(ServiceOption.ENFORCE_QUORUM, true);
         toggleOption(ServiceOption.INSTRUMENTATION, true);
         toggleOption(ServiceOption.PERIODIC_MAINTENANCE, true);
+        setMaintenanceIntervalMicros(TimeUnit.MINUTES.toMicros(1));
+    }
+
+    /**
+     * Get a memory report once a minute -- todo get the whole stats object
+     */
+    @Override
+    public void handleMaintenance(Operation post) {
+        logWarning("Memory free:%d, available:%s, total:%s", Runtime.getRuntime().freeMemory(),
+                Runtime.getRuntime().totalMemory(), Runtime.getRuntime().maxMemory());
+        super.handleMaintenance(post);
     }
 }

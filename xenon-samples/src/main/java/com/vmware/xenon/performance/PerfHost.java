@@ -13,6 +13,7 @@
 
 package com.vmware.xenon.performance;
 
+import java.lang.management.ManagementFactory;
 import java.util.logging.Level;
 
 import com.vmware.xenon.common.Operation;
@@ -30,6 +31,8 @@ public class PerfHost extends ServiceHost {
         PerfHost h = new PerfHost();
         h.initialize(args);
         h.start();
+        // making it easy to hook external tools/profile/introspect
+        h.log(Level.WARNING, "PID: " + ManagementFactory.getRuntimeMXBean().getName());
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             h.log(Level.WARNING, "Host stopping ...");
             h.stop();
