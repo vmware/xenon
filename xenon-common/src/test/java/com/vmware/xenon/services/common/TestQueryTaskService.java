@@ -80,9 +80,10 @@ public class TestQueryTaskService {
     private static final String TEXT_VALUE = "the decentralized control plane is a nice framework for queries";
     private static final String SERVICE_LINK_VALUE = "provisioning/dhcp-subnets/192.4.0.0/16";
     private static final double DOUBLE_MIN_OFFSET = 123.0;
-    public static int DCP_SERVICE_COUNT = 100;
 
-    public int serviceCount = DCP_SERVICE_COUNT;
+    public int serviceCount = 50;
+    public int queryCount = 10;
+
     private VerificationHost host;
 
     private void setUpHost() throws Throwable {
@@ -410,8 +411,40 @@ public class TestQueryTaskService {
         return newState;
     }
 
+    /**
+     * Measure
+     * @throws Throwable
+     */
     @Test
-    public void simpleDocumentIndexingThroughput() throws Throwable {
+    public void throughputSimpleQuery() throws Throwable {
+        setUpHost();
+        List<URI> services = startQueryTargetServices(this.serviceCount);
+        QueryValidationServiceState newState = new QueryValidationServiceState();
+        newState.stringValue = Utils.getNowMicrosUtc() + "";
+        newState = putSimpleStateOnQueryTargetServices(services, newState);
+        Query q = Query.Builder.create().addFieldClause("stringValue", newState.stringValue)
+                .build();
+        for (int i = 0; i < 3; i++) {
+            doThroughputQuery(q);
+        }
+    }
+
+    public void doThroughputQuery(Query q) throws Throwable {
+        QueryTask qt = QueryTask.Builder.createDirectTask().setQuery(q).build();
+        this.host.testStart(this.queryCount);
+        for (int i = 0; i < this.queryCount; i++) {
+            Operation post = Operation.createPost(
+                    UriUtils.buildUri(this.host, ServiceUriPaths.CORE_LOCAL_QUERY_TASKS))
+                    .setBody(qt)
+                    .setCompletion(this.host.getCompletion());
+            this.host.send(post);
+        }
+        this.host.testWait();
+        this.host.logThroughput();
+    }
+
+    @Test
+    public void throughputSimpleQueryDocumentSearch() throws Throwable {
         setUpHost();
 
         List<URI> services = startQueryTargetServices(this.serviceCount);
@@ -449,7 +482,7 @@ public class TestQueryTaskService {
     }
 
     @Test
-    public void complexDocumentIndexingAndQueryThroughput() throws Throwable {
+    public void throughputComplexQueryDocumentSearch() throws Throwable {
         setUpHost();
 
         int serviceCount = this.host.isStressTest() ? 100000 : 100;
@@ -582,7 +615,7 @@ public class TestQueryTaskService {
     @Test
     public void kindMatch() throws Throwable {
         setUpHost();
-        long sc = this.host.isStressTest ? 100000 : DCP_SERVICE_COUNT;
+        long sc = this.serviceCount;
         long vc = 10;
         doKindMatchTest(sc, vc, false);
     }
@@ -590,7 +623,7 @@ public class TestQueryTaskService {
     @Test
     public void kindMatchRemote() throws Throwable {
         setUpHost();
-        doKindMatchTest(DCP_SERVICE_COUNT, 2, true);
+        doKindMatchTest(this.serviceCount, 2, true);
     }
 
     public void doKindMatchTest(long serviceCount, long versionCount, boolean forceRemote)
@@ -1052,7 +1085,6 @@ public class TestQueryTaskService {
 
         VerificationHost targetHost = this.host.getPeerHost();
 
-        int serviceCount = 100;
         int resultLimit = 30;
 
         QuerySpecification q = new QuerySpecification();
@@ -1125,9 +1157,9 @@ public class TestQueryTaskService {
             nextPageLink = pageLinks.isEmpty() ? null : pageLinks.get(0);
         }
 
-        assertEquals(serviceCount, documentLinks.size());
+        assertEquals(this.serviceCount, documentLinks.size());
 
-        for (int i = 0; i < serviceCount; i++) {
+        for (int i = 0; i < this.serviceCount; i++) {
             assertTrue(documentLinks.contains(ExampleFactoryService.SELF_LINK + "/document" + i));
         }
     }
@@ -1567,7 +1599,7 @@ public class TestQueryTaskService {
     private void doNumericRangeQueries(String longFieldName, String doubleFieldName)
             throws Throwable {
         setUpHost();
-        int sc = DCP_SERVICE_COUNT;
+        int sc = this.serviceCount;
         int versionCount = 2;
         List<URI> services = startQueryTargetServices(sc);
         // the PUT will increment the long field, so we will do queries over its
@@ -1671,7 +1703,7 @@ public class TestQueryTaskService {
 
     public void doTextMatchTest(boolean forceRemote, boolean isDirect) throws Throwable {
         setUpHost();
-        int sc = DCP_SERVICE_COUNT;
+        int sc = this.serviceCount;
         int versionCount = 2;
         List<URI> services = startQueryTargetServices(sc);
 
@@ -1717,7 +1749,7 @@ public class TestQueryTaskService {
     @Test
     public void booleanQueries() throws Throwable {
         int versionCount = 2;
-        int serviceCount = DCP_SERVICE_COUNT;
+        int serviceCount = this.serviceCount;
         setUpHost();
 
         // Create pre-canned query terms
@@ -1842,7 +1874,7 @@ public class TestQueryTaskService {
     @Test
     public void taskStateFieldQueries() throws Throwable {
         setUpHost();
-        int sc = DCP_SERVICE_COUNT;
+        int sc = this.serviceCount;
         int versionCount = 1;
         boolean includeAllVersions = false;
         List<URI> services = startQueryTargetServices(sc);
@@ -1910,7 +1942,7 @@ public class TestQueryTaskService {
     @Test
     public void expectedResultCountQuery() throws Throwable {
         setUpHost();
-        int expectedCount = DCP_SERVICE_COUNT;
+        int expectedCount = this.serviceCount;
         int batches = 2;
         int versions = 2;
         int sc = expectedCount / batches;
