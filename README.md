@@ -31,6 +31,11 @@ The lightweight runtime enables the creation of highly available and scalable ap
 weight services. The operation model for a cluster of Xenon nodes is the same for both on
 premise, and service deployments.
 
+The [photon controller](https://github.io/photon-controller) project makes heavy use of Xenon to build a scalable
+and highly available Infrastructure-as-a-Service fabric, composed of stateful services, responsible for configuration (desired state),
+work flows (finite state machine tasks), grooming and scheduling logic. Xenon is also used by several teams building
+new products, services and features, within VMware.
+
 ## Getting started
 
 For detailed information please refer to the [wiki](https://github.com/vmware/xenon/wiki). Tutorials for each
