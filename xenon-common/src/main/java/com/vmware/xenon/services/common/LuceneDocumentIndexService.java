@@ -926,7 +926,7 @@ public class LuceneDocumentIndexService extends StatelessService {
                     bottom = hits[hits.length - 1];
                 }
 
-                if (!hasPage || rsp.documentLinks.size() >= resultLimit
+                if (!hasPage || rsp.documentLinks.size() >= count
                         || hits.length < resultLimit) {
                     // query had less results then per page limit or page is full of results
                     expiration += queryTime;
@@ -1024,7 +1024,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         }
 
         // Keep duplicates out
-        Set<String> uniques = new LinkedHashSet<>();
+        Set<String> uniques = new LinkedHashSet<>(rsp.documentLinks);
         final boolean hasCountOption = options.contains(QueryOption.COUNT);
 
         Map<String, Long> latestVersions = new HashMap<>();
@@ -1098,6 +1098,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         if (hasCountOption) {
             rsp.documentCount = Long.valueOf(uniques.size());
         } else {
+            rsp.documentLinks.clear();
             rsp.documentLinks.addAll(uniques);
             rsp.documentCount = Long.valueOf(rsp.documentLinks.size());
         }

@@ -1316,6 +1316,13 @@ public class TestQueryTaskService {
                         QueryTask rsp = o.getBody(QueryTask.class);
                         documentLinksList.add(rsp.results.documentLinks);
 
+                        if (rsp.results.documentCount != resultLimit) {
+                            targetHost.failIteration(new IllegalStateException("Incorrect number of documents " +
+                                    "returned: " + resultLimit + " was expected, but " + rsp.results.documentCount +
+                                    " was returned."));
+                            return;
+                        }
+
                         targetHost.completeIteration();
                     });
 
