@@ -45,9 +45,9 @@ import com.vmware.xenon.services.common.TestSimpleTransactionService.BankAccount
 
 public class TestSimpleTransactionService extends BasicReusableHostTestCase {
 
-    static final int RETRIES_IN_CASE_OF_CONFLICTS = 3;
+    static final int RETRIES_IN_CASE_OF_CONFLICTS = 5;
     // upper bound on random sleep between retries
-    static final int SLEEP_BETWEEN_RETRIES_MILLIS = 1000;
+    static final int SLEEP_BETWEEN_RETRIES_MILLIS = 2000;
 
     /**
      * Parameter that specifies the number of accounts to create
@@ -474,7 +474,13 @@ public class TestSimpleTransactionService extends BasicReusableHostTestCase {
                     sum += account.balance;
                     break;
                 } catch (IllegalStateException ex) {
+                    this.host.log("Could not read account %s probably due to a transactional conflict", accountId);
                     Thread.sleep(new Random().nextInt(SLEEP_BETWEEN_RETRIES_MILLIS));
+                    if (i == RETRIES_IN_CASE_OF_CONFLICTS - 1) {
+                        this.host.log("Giving up reading account %s", accountId);
+                    } else {
+                        this.host.log("Retrying reading account %s", accountId);
+                    }
                 }
             }
         }
