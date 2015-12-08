@@ -2554,7 +2554,7 @@ public class ServiceHost {
         return true;
     }
 
-    private AuthorizationContext getAuthorizationContext(Operation op) {
+    AuthorizationContext getAuthorizationContext(Operation op) {
         String token = op.getRequestHeader(Operation.REQUEST_AUTH_TOKEN_HEADER);
         if (token == null) {
             Map<String, String> cookies = op.getCookies();

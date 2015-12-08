@@ -46,8 +46,18 @@ public class OperationContext {
 
     private static final ThreadLocal<AuthorizationContext> threadAuthContext = new ThreadLocal<>();
 
-    static void setAuthorizationContext(AuthorizationContext ctx) {
+    public static void setAuthorizationContext(AuthorizationContext ctx) {
         threadAuthContext.set(ctx);
+    }
+
+    /**
+     * Sets current thread's authorization context based on {@code op} headers and/or cookies.
+     *
+     * @param host Service host.
+     * @param op   Operation containing authorization headers / cookies.
+     */
+    public static void setAuthorizationContext(ServiceHost host, Operation op) {
+        setAuthorizationContext(host.getAuthorizationContext(op));
     }
 
     public static AuthorizationContext getAuthorizationContext() {
