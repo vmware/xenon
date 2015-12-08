@@ -1,13 +1,25 @@
+/*
+ * Copyright (c) 2014-2015 VMware, Inc. All Rights Reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not
+ * use this file except in compliance with the License.  You may obtain a copy of
+ * the License at http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed
+ * under the License is distributed on an "AS IS" BASIS, without warranties or
+ * conditions of any kind, EITHER EXPRESS OR IMPLIED.  See the License for the
+ * specific language governing permissions and limitations under the License.
+ */
+
 package com.vmware.xenon.samples.bankaccount.services;
 
 import com.vmware.xenon.common.Operation;
+import com.vmware.xenon.common.OperationProcessingChain;
 import com.vmware.xenon.common.RequestRouter;
 import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.StatefulService;
 
-/**
- * Created by icarrero on 10/4/15.
- */
+
 public class BankAccountService extends StatefulService {
 
     public static class BankAccountState extends ServiceDocument {
@@ -41,9 +53,9 @@ public class BankAccountService extends StatefulService {
     }
 
     @Override
-    public RequestRouter getRequestRouter() {
-        if (super.getRequestRouter() != null) {
-            return super.getRequestRouter();
+    public OperationProcessingChain getOperationProcessingChain() {
+        if (super.getOperationProcessingChain() != null) {
+            return super.getOperationProcessingChain();
         }
 
         RequestRouter myRouter = new RequestRouter();
@@ -59,9 +71,11 @@ public class BankAccountService extends StatefulService {
                 this::withdrawMoney,
                 "Withdraw money from account");
 
-        setRequestRouter(myRouter);
+        OperationProcessingChain opProcessingChain = new OperationProcessingChain(this);
+        opProcessingChain.add(myRouter);
+        setOperationProcessingChain(opProcessingChain);
 
-        return myRouter;
+        return opProcessingChain;
     }
 
     void depositMoney(Operation patch) {

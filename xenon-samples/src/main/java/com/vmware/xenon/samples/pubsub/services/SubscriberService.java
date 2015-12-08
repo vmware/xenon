@@ -1,10 +1,23 @@
+/*
+ * Copyright (c) 2014-2015 VMware, Inc. All Rights Reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not
+ * use this file except in compliance with the License.  You may obtain a copy of
+ * the License at http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed
+ * under the License is distributed on an "AS IS" BASIS, without warranties or
+ * conditions of any kind, EITHER EXPRESS OR IMPLIED.  See the License for the
+ * specific language governing permissions and limitations under the License.
+ */
+
 package com.vmware.xenon.samples.pubsub.services;
+
+import java.util.function.Consumer;
 
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.StatelessService;
 import com.vmware.xenon.common.UriUtils;
-
-import java.util.function.Consumer;
 
 public class SubscriberService extends StatelessService {
 
@@ -14,7 +27,7 @@ public class SubscriberService extends StatelessService {
     public void handleStart(Operation startPost) {
         // creating a topic to monitor for this run
         createTopic(startPost, this::subscribeToTopicUpdates);
-   }
+    }
 
     private void createTopic(Operation op, TopicSubscriptionListener subscription) {
         TopicService.TopicState topic = new TopicService.TopicState();
@@ -30,7 +43,7 @@ public class SubscriberService extends StatelessService {
                 return;
             }
 
-           TopicService.TopicState createdTopic = o.getBody(TopicService.TopicState.class);
+            TopicService.TopicState createdTopic = o.getBody(TopicService.TopicState.class);
             subscription.apply(op, createdTopic);
         });
 
