@@ -36,6 +36,7 @@ public class NettyHttpServerInitializer extends ChannelInitializer<SocketChannel
 
     private final SslContext sslContext;
     private ServiceHost host;
+    private SslHandler sslHandler;
 
     public NettyHttpServerInitializer(ServiceHost host, SslContext sslContext) {
         this.sslContext = sslContext;
@@ -49,23 +50,22 @@ public class NettyHttpServerInitializer extends ChannelInitializer<SocketChannel
         ch.config().setSendBufferSize(NettyChannelContext.BUFFER_SIZE);
         ch.config().setReceiveBufferSize(NettyChannelContext.BUFFER_SIZE);
 
-        SslHandler sslHandler = null;
         if (this.sslContext != null) {
-            sslHandler = this.sslContext.newHandler(ch.alloc());
+            this.sslHandler = this.sslContext.newHandler(ch.alloc());
             SslClientAuthMode mode = this.host.getState().sslClientAuthMode;
             if (mode != null) {
                 switch (mode) {
                 case NEED:
-                    sslHandler.engine().setNeedClientAuth(true);
+                    this.sslHandler.engine().setNeedClientAuth(true);
                     break;
                 case WANT:
-                    sslHandler.engine().setWantClientAuth(true);
+                    this.sslHandler.engine().setWantClientAuth(true);
                     break;
                 default:
                     break;
                 }
             }
-            p.addLast(SSL_HANDLER, sslHandler);
+            p.addLast(SSL_HANDLER, this.sslHandler);
         }
 
         p.addLast(DECODER_HANDLER, new HttpRequestDecoder(
@@ -78,6 +78,10 @@ public class NettyHttpServerInitializer extends ChannelInitializer<SocketChannel
         p.addLast(WEBSOCKET_HANDLER, new NettyWebSocketRequestHandler(this.host,
                 ServiceUriPaths.CORE_WEB_SOCKET_ENDPOINT,
                 ServiceUriPaths.WEB_SOCKET_SERVICE_PREFIX));
-        p.addLast(HTTP_REQUEST_HANDLER, new NettyHttpClientRequestHandler(this.host, sslHandler));
+        p.addLast(HTTP_REQUEST_HANDLER, new NettyHttpClientRequestHandler(this.host, this.sslHandler));
+    }
+
+    protected SslHandler getSslHandler() {
+        return this.sslHandler;
     }
 }
