@@ -53,6 +53,8 @@ import org.mozilla.javascript.annotations.JSFunction;
 import org.mozilla.javascript.annotations.JSGetter;
 import org.mozilla.javascript.annotations.JSSetter;
 
+import com.vmware.xenon.common.Operation;
+import com.vmware.xenon.common.OperationContext;
 import com.vmware.xenon.common.ServiceHost;
 
 /**
@@ -187,10 +189,14 @@ public class JsWebSocket extends ScriptableObject {
         // Connect with V13 (RFC 6455 aka HyBi-17). You can change it to V08 or V00.
         // If you change it to V00, ping is not supported and remember to change
         // HttpResponseDecoder to WebSocketHttpResponseDecoder in the pipeline.
+        DefaultHttpHeaders headers = new DefaultHttpHeaders();
+        if (OperationContext.getAuthorizationContext() != null
+                && OperationContext.getAuthorizationContext().getToken() != null) {
+            headers.add(Operation.REQUEST_AUTH_TOKEN_HEADER, OperationContext.getAuthorizationContext().getToken());
+        }
         final WebSocketClientHandler handler = new WebSocketClientHandler(
                 WebSocketClientHandshakerFactory.newHandshaker(
-                        uri, WebSocketVersion.V13, null, false, new DefaultHttpHeaders()));
-
+                        uri, WebSocketVersion.V13, null, false, headers));
         Bootstrap b = new Bootstrap();
         b.group(this.group)
                 .channel(NioSocketChannel.class)

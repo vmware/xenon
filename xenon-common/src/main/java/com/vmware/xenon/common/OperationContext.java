@@ -50,6 +50,16 @@ public class OperationContext {
         threadAuthContext.set(ctx);
     }
 
+    /**
+     * Sets current thread's authorization context based on {@code op} headers and/or cookies.
+     *
+     * @param host Service host.
+     * @param op   Operation containing authorization headers / cookies.
+     */
+    public static void setAuthorizationContext(ServiceHost host, Operation op) {
+        setAuthorizationContext(host.getAuthorizationContext(op));
+    }
+
     public static AuthorizationContext getAuthorizationContext() {
         return threadAuthContext.get();
     }
