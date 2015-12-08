@@ -19,6 +19,10 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicReference;
 
+import com.vmware.xenon.common.Operation.AuthorizationContext;
+import com.vmware.xenon.common.OperationContext;
+import com.vmware.xenon.common.test.VerificationHost;
+
 /**
  * Common thread for all JS ops. Since Rhino relies on context bound to a thread and in browser JavaScript always
  * work in a single thread - all test JS operations should be executed using this single thread executor.
@@ -28,6 +32,8 @@ public class JsExecutor {
 
     private JsExecutor() {
     }
+
+    public static VerificationHost host;
 
     public static final ExecutorService executor = Executors.newSingleThreadExecutor(
             r -> {
@@ -49,8 +55,12 @@ public class JsExecutor {
             final AtomicReference<V> result = new AtomicReference<>();
             final AtomicReference<Exception> err = new AtomicReference<>();
             final CountDownLatch doneLatch = new CountDownLatch(1);
+            final AuthorizationContext context = OperationContext.getAuthorizationContext();
             executor.execute(() -> {
                 try {
+                    if (host != null) {
+                        host.setAuthorizationContext(context);
+                    }
                     result.set(c.call());
                 } catch (Exception e) {
                     err.set(e);
