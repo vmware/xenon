@@ -24,7 +24,6 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
 import java.util.TreeMap;
-import java.util.TreeSet;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import com.vmware.xenon.common.Operation;
@@ -264,10 +263,12 @@ public class NodeSelectorSynchronizationService extends StatelessService {
             incrementEpoch = true;
         }
 
-        broadcastBestState(peerStates, post, request, bestPeerRsp, incrementEpoch);
+        broadcastBestState(rsp.selectedNodes, peerStates, post, request, bestPeerRsp,
+                incrementEpoch);
     }
 
-    private void broadcastBestState(Map<URI, ServiceDocument> peerStates,
+    private void broadcastBestState(Map<String, URI> selectedNodes,
+            Map<URI, ServiceDocument> peerStates,
             Operation post, SynchronizePeersRequest request,
             ServiceDocument bestPeerRsp,
             boolean incrementEpoch) {
@@ -282,9 +283,17 @@ public class NodeSelectorSynchronizationService extends StatelessService {
 
             final ServiceDocument bestState = bestPeerRsp;
             Iterator<Entry<URI, ServiceDocument>> peerStateIt = peerStates.entrySet().iterator();
-            TreeSet<URI> peersWithService = new TreeSet<>();
-            peersWithService.add(getHost().getPublicUri());
+
+            TreeMap<String, URI> peersWithService = new TreeMap<>();
+
+            peersWithService.put(getHost().getId(), getHost().getPublicUri());
             boolean isMissingFromOwner = false;
+
+            // build a map that lets us lookup a node id, given its URI
+            Map<URI, String> uriToNodeId = new HashMap<>();
+            for (Entry<String, URI> en : selectedNodes.entrySet()) {
+                uriToNodeId.put(UriUtils.buildUri(en.getValue(), ""), en.getKey());
+            }
 
             // we need to determine if a node, other than us, that became the owner for the
             // service we are trying to synchronize, does NOT have the service.
@@ -307,7 +316,15 @@ public class NodeSelectorSynchronizationService extends StatelessService {
                         }
                     }
                 } else {
-                    peersWithService.add(UriUtils.buildUri(e.getKey(), ""));
+                    // the peer has this service. Added to a sorted map so we can select the one
+                    // responsible for broadcasting the state
+                    URI baseUri = UriUtils.buildUri(e.getKey(), "");
+                    String id = uriToNodeId.get(baseUri);
+                    if (id == null) {
+                        logWarning("Failure finding id for %s", baseUri);
+                    } else {
+                        peersWithService.put(id, e.getKey());
+                    }
                 }
 
                 if (incrementEpoch || !request.isOwner) {
@@ -328,11 +345,15 @@ public class NodeSelectorSynchronizationService extends StatelessService {
             }
 
             if (isMissingFromOwner) {
-                URI peerThatShouldAssumeOwnership = peersWithService.first();
+                // we sort the peers by node id, to create a deterministic way to select which
+                // node is responsible for broadcasting service state to peers, if the selected
+                // owner (a new node with no state) does not yet have the service.
+                URI peerThatShouldAssumeOwnership = peersWithService.firstEntry().getValue();
                 if (UriUtils.isHostEqual(getHost(), peerThatShouldAssumeOwnership)) {
                     request.isOwner = true;
-                    logInfo("New owner %s does not have service %s, will broadcast",
-                            request.ownerNodeReference, bestPeerRsp.documentSelfLink);
+                    logInfo("New owner %s does not have service %s, will broadcast."
+                            + "Others with service:%s", request.ownerNodeReference,
+                            bestPeerRsp.documentSelfLink, peersWithService);
                 }
             }
 
@@ -380,16 +401,31 @@ public class NodeSelectorSynchronizationService extends StatelessService {
                         .setReferer(post.getReferer()).setExpiration(post.getExpirationMicrosUtc())
                         .setCompletion(c);
 
+                // Mark it as replicated so the remote factories do not try to replicate it again
+                peerOp.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_REPLICATED);
+                // Request a version check to prevent restarting/recreating a service that might
+                // have been deleted
                 peerOp.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_VERSION_CHECK);
+
                 if (entry.getValue().documentSelfLink != null) {
+                    // service exists on peer node, push latest state as a PUT
+                    if (isMissingFromOwner) {
+                        // skip nodes that already have the service, if we are acting as "owner"
+                        c.handle(null, null);
+                        continue;
+                    }
+
                     peerOp.setAction(Action.PUT);
                     peerOp.setUri(UriUtils.buildUri(peer, bestState.documentSelfLink));
                     clonedState.documentSelfLink = bestState.documentSelfLink;
                 } else {
+                    // service does not exist, issue a POST to factory
                     clonedState.documentSelfLink = bestState.documentSelfLink.replace(
                             request.factoryLink, "");
                 }
 
+                // clone body again, since for some nodes we need to post to factory, vs
+                // a PUT to the service itself.
                 peerOp.setBody(clonedState);
 
                 logFine("(isOwner: %s)(remaining: %d) Sending %s with best state for %s to %s (e:%d, v:%d)",
@@ -401,8 +437,7 @@ public class NodeSelectorSynchronizationService extends StatelessService {
                         clonedState.documentEpoch,
                         clonedState.documentVersion);
 
-                // Mark it as replicated so the remote factories do not try to replicate it again
-                peerOp.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_REPLICATED);
+
                 sendRequest(peerOp);
             }
         } catch (Throwable e) {

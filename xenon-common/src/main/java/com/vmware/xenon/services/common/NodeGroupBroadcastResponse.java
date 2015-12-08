@@ -26,6 +26,7 @@ import com.vmware.xenon.common.ServiceErrorResponse;
  */
 public class NodeGroupBroadcastResponse {
     public Set<URI> receivers = new HashSet<>();
+    public Map<String, URI> selectedNodes = new HashMap<>();
     public Map<URI, String> jsonResponses = new HashMap<>();
     public Map<URI, ServiceErrorResponse> failures = new HashMap<>();
     public long availableNodeCount;
