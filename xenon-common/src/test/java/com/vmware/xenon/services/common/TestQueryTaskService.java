@@ -435,9 +435,7 @@ public class TestQueryTaskService {
         // now update the index, once for every N queries. This will have a significant
         // impact on performance
         interleaveWrites = true;
-        for (int i = 0; i < 3; i++) {
-            doThroughputQuery(q, 1, newState, interleaveWrites);
-        }
+        doThroughputQuery(q, 1, newState, interleaveWrites);
     }
 
     public void doThroughputQuery(Query q, int expectedResults,
