@@ -11,13 +11,15 @@
  * specific language governing permissions and limitations under the License.
  */
 
-package com.vmware.xenon.common.test.websockets;
+package com.vmware.xenon.common;
 
 import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicReference;
+
+import com.vmware.xenon.common.Operation.AuthorizationContext;
 
 /**
  * Common thread for all JS ops. Since Rhino relies on context bound to a thread and in browser JavaScript always
@@ -49,8 +51,10 @@ public class JsExecutor {
             final AtomicReference<V> result = new AtomicReference<>();
             final AtomicReference<Exception> err = new AtomicReference<>();
             final CountDownLatch doneLatch = new CountDownLatch(1);
+            final AuthorizationContext context = OperationContext.getAuthorizationContext();
             executor.execute(() -> {
                 try {
+                    OperationContext.setAuthorizationContext(context);
                     result.set(c.call());
                 } catch (Exception e) {
                     err.set(e);

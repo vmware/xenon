@@ -46,7 +46,7 @@ public class OperationContext {
 
     private static final ThreadLocal<AuthorizationContext> threadAuthContext = new ThreadLocal<>();
 
-    static void setAuthorizationContext(AuthorizationContext ctx) {
+    public static void setAuthorizationContext(AuthorizationContext ctx) {
         threadAuthContext.set(ctx);
     }
 
