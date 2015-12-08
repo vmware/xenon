@@ -153,8 +153,6 @@ public class LuceneDocumentIndexService extends StatelessService {
 
     public static final String STAT_NAME_DOCUMENT_EXPIRATION_COUNT = "expiredDocumentCount";
 
-    public static final String STAT_NAME_SERVICE_LINK_INFO_CLEAR_COUNT = "serviceInfoLinkClearCount";
-
     protected static final int UPDATE_THREAD_COUNT = 4;
 
     protected static final int QUERY_THREAD_COUNT = 2;
@@ -183,18 +181,14 @@ public class LuceneDocumentIndexService extends StatelessService {
         public long updateMicros;
     }
 
-    /**
-     * Contains all self links marked as deleted. Lazily populated during queries
-     */
-    private final ConcurrentSkipListMap<String, SelfLinkInfo> selfLinks = new ConcurrentSkipListMap<>();
-
     private long searcherUpdateTimeMicros;
 
     private long indexUpdateTimeMicros;
 
     private long indexWriterCreationTimeMicros;
 
-    private final ConcurrentSkipListMap<String, Long> selfLinksRequiringRetentionLimit = new ConcurrentSkipListMap<>();
+    private final ConcurrentSkipListMap<String, Long> linkAccessTimes = new ConcurrentSkipListMap<>();
+    private final ConcurrentSkipListMap<String, Long> linkDocumentRetentionEstimates = new ConcurrentSkipListMap<>();
 
     private Sort versionSort;
 
@@ -303,6 +297,7 @@ public class LuceneDocumentIndexService extends StatelessService {
 
         this.writer = new IndexWriter(dir, iwc);
         this.writer.commit();
+        this.linkAccessTimes.clear();
         this.indexUpdateTimeMicros = Utils.getNowMicrosUtc();
         this.indexWriterCreationTimeMicros = this.indexUpdateTimeMicros;
         return this.writer;
@@ -648,9 +643,8 @@ public class LuceneDocumentIndexService extends StatelessService {
 
         if (s == null) {
             // If DO_NOT_REFRESH is set use the existing searcher.
-            if (options.contains(QueryOption.DO_NOT_REFRESH) && this.searcher != null) {
-                s = this.searcher;
-            } else {
+            s = this.searcher;
+            if (!options.contains(QueryOption.DO_NOT_REFRESH) || s == null) {
                 s = updateSearcher(selfLinkPrefix, count, w);
             }
         }
@@ -1360,12 +1354,15 @@ public class LuceneDocumentIndexService extends StatelessService {
         if (v == null) {
             return;
         }
-        if (pd.indexingOptions.contains(PropertyIndexingOption.SORT)) {
-            isSorted = true;
-        }
+
         EnumSet<PropertyIndexingOption> opts = pd.indexingOptions;
+
         if (opts != null && opts.contains(PropertyIndexingOption.STORE_ONLY)) {
             return;
+        }
+
+        if (opts != null && opts.contains(PropertyIndexingOption.SORT)) {
+            isSorted = true;
         }
 
         boolean expandField = opts != null && opts.contains(PropertyIndexingOption.EXPAND);
@@ -1510,25 +1507,6 @@ public class LuceneDocumentIndexService extends StatelessService {
         }
     }
 
-    private boolean updateSelfLinkInfo(ServiceDocument serviceDoc) {
-        long now = Utils.getNowMicrosUtc();
-        synchronized (this.searchSync) {
-            this.indexUpdateTimeMicros = now;
-            SelfLinkInfo info = this.selfLinks.get(serviceDoc.documentSelfLink);
-            if (info == null) {
-                info = new SelfLinkInfo();
-                this.selfLinks.put(serviceDoc.documentSelfLink, info);
-            }
-
-            if (serviceDoc.documentVersion < info.version) {
-                return false;
-            }
-            info.updateMicros = now;
-            info.version = serviceDoc.documentVersion;
-        }
-        return true;
-    }
-
     private boolean checkAndDeleteExpiratedDocuments(String link, IndexSearcher searcher,
             Integer docId,
             Document doc, long now)
@@ -1564,7 +1542,7 @@ public class LuceneDocumentIndexService extends StatelessService {
 
     private void checkDocumentRetentionLimit(ServiceDocument state,
             ServiceDocumentDescription desc) {
-        if (this.selfLinksRequiringRetentionLimit.containsKey(state.documentSelfLink)) {
+        if (this.linkDocumentRetentionEstimates.containsKey(state.documentSelfLink)) {
             return;
         }
 
@@ -1574,7 +1552,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         }
 
         // schedule this self link for retention policy: it might have exceeded the version limit
-        this.selfLinksRequiringRetentionLimit.put(state.documentSelfLink, limit);
+        this.linkDocumentRetentionEstimates.put(state.documentSelfLink, limit);
     }
 
     /**
@@ -1596,7 +1574,7 @@ public class LuceneDocumentIndexService extends StatelessService {
     private void deleteAllDocumentsForSelfLink(Operation postOrDelete, String link,
             ServiceDocument state)
                     throws Throwable {
-        deleteDocumentsFromIndex(postOrDelete, link, null, 0);
+        deleteDocumentsFromIndex(postOrDelete, link, 0);
         ServiceStat st = getStat(STAT_NAME_SERVICE_DELETE_COUNT);
         adjustStat(st, 1);
         logFine("%s expired", link);
@@ -1616,7 +1594,7 @@ public class LuceneDocumentIndexService extends StatelessService {
      *
      * @throws Throwable
      */
-    private void deleteDocumentsFromIndex(Operation delete, String link, SelfLinkInfo info,
+    private void deleteDocumentsFromIndex(Operation delete, String link,
             long versionsToKeep) throws Throwable {
         IndexWriter wr = this.writer;
         if (wr == null) {
@@ -1650,7 +1628,6 @@ public class LuceneDocumentIndexService extends StatelessService {
 
         if (versionsToKeep == 0) {
             // we are asked to delete everything, no need to sort or query
-            this.selfLinks.remove(link);
             wr.deleteDocuments(linkQuery);
             this.indexUpdateTimeMicros = Utils.getNowMicrosUtc();
             delete.complete();
@@ -1683,10 +1660,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         logInfo("trimming index for %s from %d to %d, query returned %d", link, hits.length,
                 versionsToKeep, results.totalHits);
         wr.deleteDocuments(bq);
-        if (info != null) {
-            info.updateMicros = now;
-        }
-        this.indexUpdateTimeMicros = now;
+        updateLinkAccessTime(now, link);
         delete.complete();
     }
 
@@ -1698,10 +1672,10 @@ public class LuceneDocumentIndexService extends StatelessService {
             return;
         }
 
+        String link = sd.documentSelfLink;
         long start = Utils.getNowMicrosUtc();
         wr.addDocument(doc);
-        updateSelfLinkInfo(sd);
-
+        updateLinkAccessTime(start, link);
         long end = Utils.getNowMicrosUtc();
         if (hasOption(ServiceOption.INSTRUMENTATION)) {
             ServiceStat s = getHistogramStat(STAT_NAME_INDEXING_DURATION_MICROS);
@@ -1709,9 +1683,13 @@ public class LuceneDocumentIndexService extends StatelessService {
         }
 
         op.setBody(null).complete();
-
         checkDocumentRetentionLimit(sd, desc);
         applyActiveQueries(sd, desc);
+    }
+
+    private void updateLinkAccessTime(long start, String link) {
+        this.linkAccessTimes.put(link, start);
+        this.indexUpdateTimeMicros = start;
     }
 
     private IndexSearcher updateSearcher(String selfLink, int resultLimit, IndexWriter w)
@@ -1730,17 +1708,16 @@ public class LuceneDocumentIndexService extends StatelessService {
         long now = Utils.getNowMicrosUtc();
         synchronized (this.searchSync) {
             s = this.searcher;
-
             if (s == null) {
                 needNewSearcher = true;
-            } else if (resultLimit > 1
-                    && this.searcherUpdateTimeMicros < this.indexUpdateTimeMicros) {
-                needNewSearcher = true;
-            } else if (selfLink != null) {
-                SelfLinkInfo sli = this.selfLinks.get(selfLink);
-                if (sli != null) {
-                    needNewSearcher = sli.updateMicros > this.searcherUpdateTimeMicros;
+            } else if (selfLink != null && resultLimit == 1) {
+                Long latestUpdate = this.linkAccessTimes.get(selfLink);
+                if (latestUpdate != null
+                        && latestUpdate.compareTo(this.searcherUpdateTimeMicros) >= 0) {
+                    needNewSearcher = true;
                 }
+            } else if (this.searcherUpdateTimeMicros < this.indexUpdateTimeMicros) {
+                needNewSearcher = true;
             }
 
             if (!needNewSearcher) {
@@ -1807,6 +1784,8 @@ public class LuceneDocumentIndexService extends StatelessService {
             applyDocumentExpirationPolicy(w);
             applyDocumentVersionRetentionPolicy(w);
             w.commit();
+
+            applyMemoryLimit();
 
             File directory = new File(new File(getHost().getStorageSandbox()), this.indexDirectory);
             String[] list = directory.list();
@@ -1881,17 +1860,20 @@ public class LuceneDocumentIndexService extends StatelessService {
             return;
         }
 
-        applyMemoryLimit();
+        IndexSearcher s = this.searcher;
+        if (s == null) {
+            return;
+        }
 
         Operation dummyDelete = Operation.createDelete(null);
         int count = 0;
-        Iterator<Entry<String, Long>> it = this.selfLinksRequiringRetentionLimit.entrySet()
+        Iterator<Entry<String, Long>> it = this.linkDocumentRetentionEstimates.entrySet()
                 .iterator();
         while (it.hasNext()) {
             Entry<String, Long> e = it.next();
             Query linkQuery = new TermQuery(new Term(ServiceDocument.FIELD_NAME_SELF_LINK,
                     e.getKey()));
-            int documentCount = this.searcher.count(linkQuery);
+            int documentCount = s.count(linkQuery);
             int pastRetentionLimitVersions = (int) (documentCount - e.getValue());
             if (pastRetentionLimitVersions <= 0) {
                 continue;
@@ -1899,15 +1881,28 @@ public class LuceneDocumentIndexService extends StatelessService {
 
             it.remove();
             // trim durable index for this link
-            deleteDocumentsFromIndex(dummyDelete, e.getKey(), this.selfLinks.get(e.getKey()),
-                    e.getValue());
-
+            deleteDocumentsFromIndex(dummyDelete, e.getKey(), e.getValue());
             count++;
         }
 
-        if (!this.selfLinksRequiringRetentionLimit.isEmpty()) {
+        if (!this.linkDocumentRetentionEstimates.isEmpty()) {
             logInfo("Applied retention policy to %d links", count);
         }
+    }
+
+    private void applyMemoryLimit() throws InterruptedException, IOException {
+        if (getHost().isStopping()) {
+            return;
+        }
+
+        if (this.linkAccessTimes.isEmpty()) {
+            return;
+        }
+
+        this.linkAccessTimes.clear();
+        // refresh the searcher, since we cleared the link access map
+        this.searcher = null;
+        updateSearcher(null, Integer.MAX_VALUE, this.writer);
     }
 
     private void applyDocumentExpirationPolicy(IndexWriter w) throws Throwable {
@@ -1944,46 +1939,6 @@ public class LuceneDocumentIndexService extends StatelessService {
                 continue;
             }
             checkAndDeleteExpiratedDocuments(link, s, sd.doc, d, now);
-        }
-    }
-
-    private void applyMemoryLimit() {
-        long numberOfSelfLinks = this.selfLinks.size();
-        long selfLinkInfoCostMB = numberOfSelfLinks * SelfLinkInfo.BYTES_PER_INSTANCE;
-        selfLinkInfoCostMB /= 1024 * 1024;
-        Long limitMBs = getHost().getServiceMemoryLimitMB(getSelfLink(),
-                MemoryLimitType.LOW_WATERMARK);
-
-        if (limitMBs == null || selfLinkInfoCostMB < limitMBs) {
-            return;
-        }
-
-        if (this.selfLinks.isEmpty()) {
-            return;
-        }
-
-        // prune the self link list by eliminating the oldest items. In the next maintenance interval
-        // if we are still over limit, we will repeat
-        ConcurrentSkipListMap<Long, String> itemsByLastUpdateTime = new ConcurrentSkipListMap<>();
-        for (Entry<String, SelfLinkInfo> e : this.selfLinks.entrySet()) {
-            itemsByLastUpdateTime.put(e.getValue().updateMicros, e.getKey());
-        }
-
-        if (itemsByLastUpdateTime.isEmpty()) {
-            return;
-        }
-
-        long linksToClear = Math.min(10000, numberOfSelfLinks);
-        logInfo("Removing %d self link info entries", linksToClear);
-        this.adjustStat(STAT_NAME_SERVICE_LINK_INFO_CLEAR_COUNT, linksToClear);
-
-        for (long i = 0; i < linksToClear; i++) {
-            String link = itemsByLastUpdateTime.remove(itemsByLastUpdateTime.firstKey());
-            this.selfLinks.remove(link);
-
-            if (itemsByLastUpdateTime.isEmpty()) {
-                break;
-            }
         }
     }
 
