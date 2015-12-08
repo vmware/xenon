@@ -2151,7 +2151,14 @@ public class VerificationHost extends ExampleServiceHost {
             initialState.name = initialState.documentSelfLink = UUID.randomUUID().toString();
             Operation createPost = Operation
                     .createPost(exampleFactoryUri)
-                    .setBody(initialState).setCompletion(getCompletion());
+                    .setBody(initialState).setCompletion((o, e) -> {
+                        if (e != null) {
+                            failIteration(e);
+                            return;
+                        }
+                        log("started %s", o.getUri().getPath());
+                        completeIteration();
+                    });
             send(createPost);
             exampleURIs.add(UriUtils.extendUri(exampleFactoryUri, initialState.documentSelfLink));
         }

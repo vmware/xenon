@@ -106,7 +106,7 @@ public class TestFactoryService extends BasicReusableHostTestCase {
     @Test
     public void factoryDurableServicePostWithDeleteRestart() throws Throwable {
         // first create the factory service
-        long count = this.host.isStressTest() ? 10000 : 10;
+        long count = this.serviceCount;
         MinimalFactoryTestService f = new MinimalFactoryTestService();
         f.setChildServiceCaps(EnumSet.of(ServiceOption.PERSISTENCE));
         MinimalFactoryTestService factoryService = (MinimalFactoryTestService) this.host

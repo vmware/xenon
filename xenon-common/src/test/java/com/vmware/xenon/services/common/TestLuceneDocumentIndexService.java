@@ -274,10 +274,16 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
         TemporaryFolder tmpFolder = new TemporaryFolder();
         tmpFolder.create();
         try {
+
+            if (this.host.isStressTest()) {
+                this.host.setOperationTimeOutMicros(TimeUnit.MINUTES.toMicros(5));
+            }
+
             ServiceHost.Arguments args = new ServiceHost.Arguments();
             args.port = 0;
             args.sandbox = tmpFolder.getRoot().toPath();
             h.initialize(args);
+            h.setOperationTimeOutMicros(this.host.getOperationTimeoutMicros());
             h.start();
 
             this.host.toggleServiceOptions(h.getDocumentIndexServiceUri(),
@@ -287,7 +293,7 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
             this.host.testStart(1);
             h.registerForServiceAvailability((o, e) -> {
                 this.host.completeIteration();
-            }, ExampleFactoryService.SELF_LINK);
+            } , ExampleFactoryService.SELF_LINK);
             this.host.testWait();
 
             ServiceHostState initialState = h.getState();
@@ -332,11 +338,13 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
             h = new ExampleServiceHost();
             args.port = 0;
             h.initialize(args);
-            h.setServiceStateCaching(false);
 
-            // set the index service memory use to be very low to cause pruning of any cached entries
-            h.setServiceMemoryLimit(ServiceUriPaths.CORE_DOCUMENT_INDEX, 0.0001);
-            h.setMaintenanceIntervalMicros(TimeUnit.MILLISECONDS.toMicros(100));
+            if (!this.host.isStressTest()) {
+                h.setServiceStateCaching(false);
+                // set the index service memory use to be very low to cause pruning of any cached entries
+                h.setServiceMemoryLimit(ServiceUriPaths.CORE_DOCUMENT_INDEX, 0.0001);
+                h.setMaintenanceIntervalMicros(TimeUnit.MILLISECONDS.toMicros(100));
+            }
 
             h.start();
 
@@ -358,15 +366,8 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
             this.host.testStart(1);
             h.registerForServiceAvailability((o, e) -> {
                 this.host.completeIteration();
-            }, ExampleFactoryService.SELF_LINK);
+            } , ExampleFactoryService.SELF_LINK);
             this.host.testWait();
-            // let a couple of maintenance intervals pass
-            Thread.sleep(TimeUnit.MICROSECONDS.toMillis(h.getMaintenanceIntervalMicros()) * 2);
-
-            long expectedClearCount = exampleURIs.size();
-            String stName = LuceneDocumentIndexService.STAT_NAME_SERVICE_LINK_INFO_CLEAR_COUNT;
-            long clearCount = 0;
-            clearCount = getLuceneServiceStat(h, stName, expectedClearCount);
 
             // make sure all services are there
             Map<URI, ExampleServiceState> afterState = this.host.getServiceState(null,
@@ -389,8 +390,12 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
                     ExampleFactoryService.SELF_LINK));
             assertEquals(beforeState.size(), rsp.documentLinks.size());
 
+            if (this.host.isStressTest()) {
+                return;
+            }
+
             this.host.testStart(beforeState.size());
-            // issue some updates to force creation of self link info entries
+            // issue some updates to force creation of link update time entries
             for (URI u : beforeState.keySet()) {
                 Operation put = Operation.createPut(u)
                         .setCompletion(this.host.getCompletion())
@@ -398,14 +403,6 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
                 this.host.send(put);
             }
             this.host.testWait();
-
-            expectedClearCount += exampleURIs.size();
-            // again verify that the self link info entries are cleared
-            clearCount = getLuceneServiceStat(h, stName, expectedClearCount);
-
-            if (clearCount == 0) {
-                throw new TimeoutException();
-            }
 
             verifyChildServiceCountByOptionQuery(h, afterState);
 
@@ -418,14 +415,6 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
                 }
             }
             this.host.testWait();
-
-            expectedClearCount += exampleURIs.size();
-            // again verify that the self link info entries are cleared
-            clearCount = getLuceneServiceStat(h, stName, expectedClearCount);
-
-            if (clearCount == 0) {
-                throw new TimeoutException();
-            }
 
         } finally {
             h.stop();
@@ -443,34 +432,6 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
         }
         beforeState = updatedExampleMap;
         return beforeState;
-    }
-
-    private long getLuceneServiceStat(ExampleServiceHost h, String stName, long expectedValue)
-            throws Throwable, InterruptedException {
-        long statValue = 0;
-        Date exp = this.host.getTestExpiration();
-        while (new Date().before(exp)) {
-            ServiceStats stats = this.host.getServiceState(null, ServiceStats.class,
-                    UriUtils.buildStatsUri(h, ServiceUriPaths.CORE_DOCUMENT_INDEX));
-            if (stats.entries == null) {
-                Thread.sleep(250);
-                continue;
-            }
-
-            ServiceStat clearCountSt = stats.entries.get(stName);
-            if (clearCountSt == null) {
-                Thread.sleep(250);
-                continue;
-            }
-            statValue = (long) clearCountSt.latestValue;
-
-            if (statValue < expectedValue) {
-                Thread.sleep(250);
-                continue;
-            }
-            break;
-        }
-        return statValue;
     }
 
     private void verifyChildServiceCountByOptionQuery(
