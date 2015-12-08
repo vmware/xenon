@@ -387,7 +387,6 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
         };
 
         for (NodeState m : members) {
-
             boolean skipNode = false;
             if (req.options.contains(ForwardingOption.EXCLUDE_ENTRY_NODE)
                     && m.id.equals(getHost().getId())) {
@@ -418,6 +417,7 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
                     .setBody(op.getBodyRaw());
 
             rsp.receivers.add(remoteService);
+            rsp.selectedNodes.put(m.id, m.groupReference);
             availableNodeCount.incrementAndGet();
             getHost().sendRequest(remoteOp);
         }

@@ -1267,7 +1267,6 @@ public class TestQueryTaskService {
 
         VerificationHost targetHost = this.host.getPeerHost();
 
-        int serviceCount = 100;
         int resultLimit = 30;
 
         QuerySpecification q = new QuerySpecification();
