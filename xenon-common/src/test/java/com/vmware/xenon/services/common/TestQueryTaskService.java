@@ -411,10 +411,6 @@ public class TestQueryTaskService {
         return newState;
     }
 
-    /**
-     * Measure
-     * @throws Throwable
-     */
     @Test
     public void throughputSimpleQuery() throws Throwable {
         setUpHost();
@@ -435,9 +431,7 @@ public class TestQueryTaskService {
         // now update the index, once for every N queries. This will have a significant
         // impact on performance
         interleaveWrites = true;
-        for (int i = 0; i < 3; i++) {
-            doThroughputQuery(q, 1, newState, interleaveWrites);
-        }
+        doThroughputQuery(q, 1, newState, interleaveWrites);
     }
 
     public void doThroughputQuery(Query q, int expectedResults,
@@ -529,9 +523,7 @@ public class TestQueryTaskService {
     public void throughputComplexQueryDocumentSearch() throws Throwable {
         setUpHost();
 
-        int serviceCount = this.host.isStressTest() ? 100000 : 100;
-
-        List<URI> services = startQueryTargetServices(serviceCount);
+        List<URI> services = startQueryTargetServices(this.serviceCount);
 
         // start two different types of services, creating two sets of documents
         // first start the query validation service instances, setting the id
