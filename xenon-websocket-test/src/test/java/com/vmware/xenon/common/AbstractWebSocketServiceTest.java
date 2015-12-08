@@ -11,7 +11,7 @@
  * specific language governing permissions and limitations under the License.
  */
 
-package com.vmware.xenon.common.test.websockets;
+package com.vmware.xenon.common;
 
 import java.io.File;
 import java.io.InputStreamReader;
@@ -24,19 +24,12 @@ import java.util.concurrent.TimeoutException;
 
 import org.junit.Assert;
 import org.junit.Before;
-import org.junit.Test;
 import org.mozilla.javascript.Context;
 import org.mozilla.javascript.NativeObject;
 import org.mozilla.javascript.Scriptable;
 import org.mozilla.javascript.ScriptableObject;
 import org.mozilla.javascript.Undefined;
 
-import com.vmware.xenon.common.BasicReusableHostTestCase;
-import com.vmware.xenon.common.Operation;
-import com.vmware.xenon.common.Service;
-import com.vmware.xenon.common.ServiceHost;
-import com.vmware.xenon.common.ServiceSubscriptionState;
-import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.services.common.ExampleFactoryService;
 import com.vmware.xenon.services.common.ExampleService;
 import com.vmware.xenon.services.common.FileContentService;
@@ -49,8 +42,9 @@ import com.vmware.xenon.services.common.ServiceUriPaths;
  * <p/>
  * ToDo: migrate to PhantomJS whenever 2.* is available in Maven Central for all platforms
  */
-public class TestWebSocketService extends BasicReusableHostTestCase {
+public abstract class AbstractWebSocketServiceTest extends BasicTestCase {
     public static final String WS_TEST_JS_PATH = "/ws-test/ws-test.js";
+    public static final String WS_TEST_HTML_PATH = "/ws-test/ws-test.html";
     public static final String HOST = "host";
     public static final String PROTOCOL = "protocol";
     public static final String LOCATION = "location";
@@ -88,6 +82,9 @@ public class TestWebSocketService extends BasicReusableHostTestCase {
         Service fs = new FileContentService(new File(getClass().getResource(WS_TEST_JS_PATH)
                 .toURI()));
         this.host.startServiceAndWait(fs, WS_TEST_JS_PATH, null);
+        Service fs2 = new FileContentService(new File(getClass().getResource(WS_TEST_HTML_PATH)
+                .toURI()));
+        this.host.startServiceAndWait(fs2, WS_TEST_HTML_PATH, null);
 
         // Prepare JavaScript context with WebSocket API emulation
         JsExecutor
@@ -124,20 +121,11 @@ public class TestWebSocketService extends BasicReusableHostTestCase {
         observerServiceUriForUnsubscribe = waitAndGetValue("observerServiceUriForUnsubscribe");
     }
 
-    @Test
-    public void actions() throws Throwable {
-        testGet();
-        testPost();
-        testPatch();
-        testPut();
-        testDelete();
-    }
-
     /**
      * Tests that GET method is correctly forwarded to JS and response is correctly forwarded back
      * @throws Throwable
      */
-    private void testGet() throws Throwable {
+    protected void testGet() throws Throwable {
         Operation op = Operation.createGet(URI.create(echoServiceUri));
         testEchoOperation(op);
     }
@@ -146,7 +134,7 @@ public class TestWebSocketService extends BasicReusableHostTestCase {
      * Tests that POST method is correctly forwarded to JS and response is correctly forwarded back
      * @throws Throwable
      */
-    private void testPost() throws Throwable {
+    protected void testPost() throws Throwable {
         Operation op = Operation.createPost(URI.create(echoServiceUri));
         testEchoOperation(op);
     }
@@ -155,7 +143,7 @@ public class TestWebSocketService extends BasicReusableHostTestCase {
      * Tests that PUT method is correctly forwarded to JS and response is correctly forwarded back
      * @throws Throwable
      */
-    private void testPut() throws Throwable {
+    protected void testPut() throws Throwable {
         Operation op = Operation.createPut(URI.create(echoServiceUri));
         testEchoOperation(op);
     }
@@ -164,7 +152,7 @@ public class TestWebSocketService extends BasicReusableHostTestCase {
      * Tests that PATCH method is correctly forwarded to JS and response is correctly forwarded back
      * @throws Throwable
      */
-    private void testPatch() throws Throwable {
+    protected void testPatch() throws Throwable {
         Operation op = Operation.createPatch(URI.create(echoServiceUri));
         testEchoOperation(op);
     }
@@ -173,30 +161,24 @@ public class TestWebSocketService extends BasicReusableHostTestCase {
      * Tests that DELETE method is correctly forwarded to JS and response is correctly forwarded back
      * @throws Throwable
      */
-    private void testDelete() throws Throwable {
+    protected void testDelete() throws Throwable {
         Operation op = Operation.createDelete(URI.create(echoServiceUri));
         testEchoOperation(op);
     }
 
-    @Test
-    public void subscriptionLifecycle() throws Throwable {
-        subscribeUnsubscribe();
-        subscribeStop();
-        subscribeClose();
-    }
-
     /**
      * Tests that JS service can subscribe and receive notifications and then that it can gracefully unsubscribe
+     *
+     * @param nameValue Value for example service name.
      * @throws Throwable
      */
-    private void subscribeUnsubscribe() throws Throwable {
+    protected void subscribeUnsubscribe(String nameValue) throws Throwable {
         // Validate that observer service is subscribed to example factory
-        String someValue = UUID.randomUUID().toString();
         URI observerUri = URI.create(observerServiceUriForUnsubscribe);
         waitForSubscriptionToAppear(observerUri, EXAMPLES_SUBSCRIPTIONS);
 
         // Validate that observer receives notifications
-        verifyNotification(someValue, observerUri);
+        verifyNotification(nameValue, observerUri);
 
         JsExecutor.executeSynchronously(() -> {
             context.evaluateString(
@@ -211,14 +193,14 @@ public class TestWebSocketService extends BasicReusableHostTestCase {
     /**
      * Tests that JS service can subscribe and receive notifications and that subscription is removed when service is
      * stopped
+     *
+     * @param nameValue Value for example service name.
      * @throws Throwable
      */
-    private void subscribeStop() throws Throwable {
-        // Validate that observer service is subscribed to example factory
-        String someValue = UUID.randomUUID().toString();
+    protected void subscribeStop(String nameValue) throws Throwable {
         URI observerUri = URI.create(observerServiceUriForStop);
         waitForSubscriptionToAppear(observerUri, EXAMPLES_SUBSCRIPTIONS);
-        verifyNotification(someValue, observerUri);
+        verifyNotification(nameValue, observerUri);
 
         // Invoke stop() method and verify that subscription is unregistered
         JsExecutor.executeSynchronously(() -> context.evaluateString(scope,
@@ -227,16 +209,16 @@ public class TestWebSocketService extends BasicReusableHostTestCase {
     }
 
     /**
-     * Tests that JS service can subscribe and receive notifications and that subscription is removed when connection
-     * is closed ungracefully (i.e. browser tab is closed).
+     * Tests that JS service can subscribe and receive notifications and that subscription is removed when connection is
+     * closed ungracefully (i.e. browser tab is closed).
+     *
+     * @param nameValue Value for example service name.
      * @throws Throwable
      */
-    public void subscribeClose() throws Throwable {
-        // Validate that observer service is subscribed to example factory
-        String someValue = UUID.randomUUID().toString();
+    protected void subscribeClose(String nameValue) throws Throwable {
         URI observerUri = URI.create(observerServiceUriForClose);
         waitForSubscriptionToAppear(observerUri, EXAMPLES_SUBSCRIPTIONS);
-        verifyNotification(someValue, observerUri);
+        verifyNotification(nameValue, observerUri);
         ((JsWebSocket) JsExecutor.executeSynchronously(() -> context.evaluateString(
                 scope,
                 "connection.webSocket",
