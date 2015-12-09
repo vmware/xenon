@@ -28,6 +28,7 @@ import io.netty.channel.DefaultChannelPromise;
 import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.handler.codec.http.DefaultHttpHeaders;
 import io.netty.handler.codec.http.FullHttpRequest;
+import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.websocketx.CloseWebSocketFrame;
 import io.netty.handler.codec.http.websocketx.PingWebSocketFrame;
 import io.netty.handler.codec.http.websocketx.PongWebSocketFrame;
@@ -43,6 +44,8 @@ import com.vmware.xenon.common.ServiceSubscriptionState;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
 import com.vmware.xenon.common.WebSocketService;
+import com.vmware.xenon.services.common.ServiceUriPaths;
+import com.vmware.xenon.services.common.authn.AuthenticationConstants;
 
 
 public class NettyWebSocketRequestHandler extends SimpleChannelInboundHandler<Object> {
@@ -57,6 +60,7 @@ public class NettyWebSocketRequestHandler extends SimpleChannelInboundHandler<Ob
 
     private String handshakePath;
     private String servicePrefix;
+    private String authToken;
 
     public NettyWebSocketRequestHandler(ServiceHost host, String socketHandshakePath,
             String servicePrefix) {
@@ -86,7 +90,8 @@ public class NettyWebSocketRequestHandler extends SimpleChannelInboundHandler<Ob
         }
 
         if (msg instanceof WebSocketFrame) {
-            processWebSocketFrame(ctx, (WebSocketFrame) msg);
+            this.host.runInAuthorizedContext(this.authToken, URI.create(ServiceUriPaths.CORE_WEB_SOCKET_ENDPOINT),
+                    () -> processWebSocketFrame(ctx, (WebSocketFrame) msg));
             return;
         }
     }
@@ -123,6 +128,15 @@ public class NettyWebSocketRequestHandler extends SimpleChannelInboundHandler<Ob
                 }
             });
             DefaultHttpHeaders responseHeaders = new DefaultHttpHeaders();
+            CharSequence token = nettyRequest.headers().get(Operation.REQUEST_AUTH_TOKEN_HEADER, null);
+            if (token == null) {
+                String cookie = responseHeaders .getAndRemoveAndConvert(HttpHeaderNames.COOKIE);
+                if (cookie != null) {
+                    token = CookieJar.decodeCookies(cookie).get(AuthenticationConstants.DCP_JWT_COOKIE);
+                }
+
+            }
+            this.authToken = token == null ? null : token.toString();
             this.handshaker.handshake(ctx.channel(), nettyRequest, responseHeaders, promise);
         }
     }
@@ -142,12 +156,9 @@ public class NettyWebSocketRequestHandler extends SimpleChannelInboundHandler<Ob
     /**
      * Processes incoming web socket frame. {@link PingWebSocketFrame} and {@link CloseWebSocketFrame} frames are
      * processed in a usual way. {@link io.netty.handler.codec.http.websocketx.BinaryWebSocketFrame} frames are not
-     * supported. {@link TextWebSocketFrame} frames are processed as described below.
-     * <p/>
-     * Whenever invalid frame is encountered - the underlying connection is closed.
-     * <p/>
-     * <h3>Incoming frame format</h3>
-     * Incoming frame format is the same for all frames:
+     * supported. {@link TextWebSocketFrame} frames are processed as described below. <p/> Whenever invalid frame is
+     * encountered - the underlying connection is closed. <p/> <h3>Incoming frame format</h3> Incoming frame format is
+     * the same for all frames:
      * <pre>
      * REQUEST_ID
      * METHOD URI

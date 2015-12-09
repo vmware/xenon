@@ -2499,6 +2499,34 @@ public class ServiceHost {
         return handleAuthorizedRequest(service, inboundOp);
     }
 
+    /**
+     * Executes a runnable in an authorized context.
+     *
+     * @param token      Security token.
+     * @param requestUri Request URI for logging purposes.
+     * @param r          Runnable to run.
+     */
+    public void runInAuthorizedContext(String token, URI requestUri, Runnable r) {
+        AuthorizationContext authorizationContext = getAuthorizationContext(token, requestUri);
+        runInAuthorizedContext(authorizationContext, r);
+    }
+
+    /**
+     * Executes a runnable in an authorized context.
+     *
+     * @param authorizationContext Authorization context.
+     * @param r                    Runnable to run.
+     */
+    public void runInAuthorizedContext(AuthorizationContext authorizationContext, Runnable r) {
+        AuthorizationContext origContext = OperationContext.getAuthorizationContext();
+        try {
+            OperationContext.setAuthorizationContext(authorizationContext);
+            r.run();
+        } finally {
+            OperationContext.setAuthorizationContext(origContext);
+        }
+    }
+
     private boolean handleAuthorizedRequest(Service service, Operation inboundOp) {
         String path;
         if (service == null) {
@@ -2538,24 +2566,27 @@ public class ServiceHost {
     }
 
     private AuthorizationContext getAuthorizationContext(Operation op) {
-        String token = op.getRequestHeader(Operation.REQUEST_AUTH_TOKEN_HEADER);
-        if (token == null) {
-            Map<String, String> cookies = op.getCookies();
-            if (cookies == null) {
-                return null;
-            }
-            token = cookies.get(AuthenticationConstants.DCP_JWT_COOKIE);
-        }
+        String token = extractSecurityToken(op);
+        URI requestUri = op.getUri();
+        return getAuthorizationContext(token, requestUri);
+    }
 
+    /**
+     * Returns {@link AuthorizationContext} instance for a security token provided.
+     *
+     * @param token      Security token.
+     * @param requestUri Request URI for logging purposes.
+     * @return Authorization context or {@code null} if token verification has failed.
+     */
+    private AuthorizationContext getAuthorizationContext(String token, URI requestUri) {
         if (token == null) {
             return null;
         }
 
         AuthorizationContext ctx = this.authorizationContextCache.get(token);
 
-
         try {
-            Claims claims = null;
+            Claims claims;
             if (ctx == null) {
                 claims = this.getTokenVerifier().verify(token, Claims.class);
             } else {
@@ -2564,7 +2595,7 @@ public class ServiceHost {
 
             if (claims == null) {
                 log(Level.INFO, "Request to %s has no claims found with token: %s",
-                        op.getUri().getPath(), token);
+                        requestUri.getPath(), token);
                 return null;
             }
 
@@ -2589,6 +2620,24 @@ public class ServiceHost {
         }
 
         return null;
+    }
+
+    /**
+     * Extracts security token from operation header or cookie.
+     *
+     * @param op Operation to extract security token from.
+     * @return Security token or {@code null} if token is not found.
+     */
+    private String extractSecurityToken(Operation op) {
+        String token = op.getRequestHeader(Operation.REQUEST_AUTH_TOKEN_HEADER);
+        if (token == null) {
+            Map<String, String> cookies = op.getCookies();
+            if (cookies == null) {
+                return null;
+            }
+            token = cookies.get(AuthenticationConstants.DCP_JWT_COOKIE);
+        }
+        return token;
     }
 
     private void failRequestServiceNotFound(Operation inboundOp) {
