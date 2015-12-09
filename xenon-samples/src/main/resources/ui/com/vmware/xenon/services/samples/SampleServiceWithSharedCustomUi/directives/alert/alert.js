@@ -1,7 +1,7 @@
 customUiApp.directive("alert", function(){
     return{
         restrict: 'EA',
-        templateUrl: "/user-interface/resources/com/vmware/dcp/services/samples/SampleServiceWithSharedCustomUi/directives/alert/alert.html",
+        templateUrl: "/user-interface/resources/com/vmware/xenon/services/samples/SampleServiceWithSharedCustomUi/directives/alert/alert.html",
         replace: false,
         transclude: false,
         scope: {
