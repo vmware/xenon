@@ -570,7 +570,8 @@ public class LuceneDocumentIndexService extends StatelessService {
         }
 
         if (selfLink == null) {
-            get.fail(new IllegalArgumentException("selfLink query parameter is required"));
+            get.fail(new IllegalArgumentException(
+                    ServiceDocument.FIELD_NAME_SELF_LINK + " query parameter is required"));
             return;
         }
 
