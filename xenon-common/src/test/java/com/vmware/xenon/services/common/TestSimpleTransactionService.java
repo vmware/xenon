@@ -233,7 +233,7 @@ public class TestSimpleTransactionService extends BasicReusableHostTestCase {
     }
 
     @Test
-    public void testAtomicVisibilityNonTransactional() throws Throwable {
+    public void testAtomicVisibilityTransactional() throws Throwable {
         String txid = newTransaction();
         createAccounts(txid, this.accountCount, 100.0);
         commit(txid);
@@ -460,7 +460,13 @@ public class TestSimpleTransactionService extends BasicReusableHostTestCase {
                 .addFieldClause(ServiceDocument.FIELD_NAME_SELF_LINK,
                         BankAccountFactoryService.SELF_LINK + UriUtils.URI_PATH_CHAR + this.baseAccountId + UriUtils.URI_WILDCARD_CHAR,
                         MatchType.WILDCARD);
-        if (transactionId != null) {
+        // we need to sum up the account balances in a logical 'snapshot'. rigt now the only way to do it
+        // is using a transaction, so if transactionId is null we're creating a new transaction
+        boolean createNewTransaction = transactionId == null;
+        if (createNewTransaction) {
+            transactionId = newTransaction();
+            this.host.log("Created new transaction %s for snapshot read", transactionId);
+        } else {
             queryBuilder.addFieldClause(ServiceDocument.FIELD_NAME_TRANSACTION_ID, transactionId);
         }
         QueryTask task = QueryTask.Builder.createDirectTask().setQuery(queryBuilder.build()).build();
@@ -485,6 +491,9 @@ public class TestSimpleTransactionService extends BasicReusableHostTestCase {
                     }
                 }
             }
+        }
+        if (createNewTransaction) {
+            commit(transactionId);
         }
         assertEquals(expected, sum, 0);
     }
