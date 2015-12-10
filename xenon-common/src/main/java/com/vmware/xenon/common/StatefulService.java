@@ -651,7 +651,7 @@ public class StatefulService implements Service {
 
         ServiceDocument linkedState = null;
         boolean isUpdate = op.getAction() != Action.GET;
-        boolean isStateUpdated = isUpdate;
+        boolean isStateUpdated = isUpdate || (op.isWithinTransaction() && this.getHost().getTransactionServiceUri() == null);
 
         if (op.isFromReplication()) {
             isStateUpdated = true;
