@@ -346,6 +346,7 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
                 h.setMaintenanceIntervalMicros(TimeUnit.MILLISECONDS.toMicros(100));
             }
 
+            long start = Utils.getNowMicrosUtc();
             h.start();
 
             this.host.toggleServiceOptions(h.getDocumentIndexServiceUri(),
@@ -368,6 +369,10 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
                 this.host.completeIteration();
             } , ExampleFactoryService.SELF_LINK);
             this.host.testWait();
+
+            long end = Utils.getNowMicrosUtc();
+
+            this.host.log("Factory available %d micros after host start", end - start);
 
             // make sure all services are there
             Map<URI, ExampleServiceState> afterState = this.host.getServiceState(null,

@@ -2156,7 +2156,6 @@ public class VerificationHost extends ExampleServiceHost {
                             failIteration(e);
                             return;
                         }
-                        log("started %s", o.getUri().getPath());
                         completeIteration();
                     });
             send(createPost);
