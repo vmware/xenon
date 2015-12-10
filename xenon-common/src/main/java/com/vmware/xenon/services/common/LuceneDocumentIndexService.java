@@ -1707,7 +1707,7 @@ public class LuceneDocumentIndexService extends StatelessService {
             }
 
             if (!needNewSearcher) {
-                return this.searcher;
+                return s;
             }
         }
 
@@ -1881,13 +1881,14 @@ public class LuceneDocumentIndexService extends StatelessService {
             return;
         }
 
-        if (this.linkAccessTimes.isEmpty()) {
-            return;
+        synchronized (this.searchSync) {
+            if (this.linkAccessTimes.isEmpty()) {
+                return;
+            }
+            this.linkAccessTimes.clear();
+            // refresh the searcher, since we cleared the link access map
+            this.searcher = null;
         }
-
-        this.linkAccessTimes.clear();
-        // refresh the searcher, since we cleared the link access map
-        this.searcher = null;
         updateSearcher(null, Integer.MAX_VALUE, this.writer);
     }
 
