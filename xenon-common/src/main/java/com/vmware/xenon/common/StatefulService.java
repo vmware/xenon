@@ -74,6 +74,10 @@ public class StatefulService implements Service {
         return Operation.REPLICATION_PHASE_SYNCHRONIZE.equals(phase);
     }
 
+    private boolean isNonFrameworkTransactionRequest(Operation op) {
+        return op.isWithinTransaction() && this.getHost().getTransactionServiceUri() == null;
+    }
+
     private RuntimeContext context = new RuntimeContext();
 
     /**
@@ -651,7 +655,7 @@ public class StatefulService implements Service {
 
         ServiceDocument linkedState = null;
         boolean isUpdate = op.getAction() != Action.GET;
-        boolean isStateUpdated = isUpdate;
+        boolean isStateUpdated = isUpdate || isNonFrameworkTransactionRequest(op);
 
         if (op.isFromReplication()) {
             isStateUpdated = true;
