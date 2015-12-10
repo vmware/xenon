@@ -110,7 +110,19 @@ public abstract class FactoryService extends StatelessService {
             return;
         }
 
-        startOrSynchronizeChildServices(startPost);
+        // complete factory start POST immediately. Asynchronously query the index and start
+        // child services. Requests to a child not yet loaded will be queued by the framework.
+        Operation clonedOp = startPost.clone();
+        startPost.complete();
+
+        clonedOp.setCompletion((o, e) -> {
+            if (e != null) {
+                logWarning("Failure querying index for all child services: %s", e.getMessage());
+                return;
+            }
+            logFine("Finished self query for child services");
+        });
+        startOrSynchronizeChildServices(clonedOp);
     }
 
     private void startOrSynchronizeChildServices(Operation op) {
