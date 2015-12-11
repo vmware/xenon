@@ -361,9 +361,7 @@ public class NettyHttpServiceClient implements ServiceClient {
             return;
         }
 
-        pool.connectOrReuse(uri.getHost(), port,
-                false,
-                op);
+        pool.connectOrReuse(uri.getHost(), port, op);
     }
 
     private void sendRequest(Operation op) {
@@ -383,23 +381,28 @@ public class NettyHttpServiceClient implements ServiceClient {
                 pathAndQuery = op.getUri().toString();
             }
 
-            HttpRequest request = null;
+            NettyFullHttpRequest request = null;
             HttpMethod method = HttpMethod.valueOf(op.getAction().toString());
             boolean useHttp2 = op.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_USE_HTTP2);
+
+            if (body == null || body.length == 0) {
+                request = new NettyFullHttpRequest(HttpVersion.HTTP_1_1, method, pathAndQuery);
+            } else {
+                ByteBuf content = Unpooled.wrappedBuffer(body);
+                request = new NettyFullHttpRequest(HttpVersion.HTTP_1_1, method, pathAndQuery,
+                        content, false);
+            }
 
             if (useHttp2) {
                 // The fact that we use HTTP2 is an internal detail, not to share on the wire.
                 // We use a pragma instead of exposing an API (e.g. setHttp2()) on the Operation
                 // because it's an implementation detail not normally needed by clients.
                 op.removePragmaDirective(Operation.PRAGMA_DIRECTIVE_USE_HTTP2);
-            }
 
-            if (body == null || body.length == 0) {
-                request = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, method, pathAndQuery);
-            } else {
-                ByteBuf content = Unpooled.wrappedBuffer(body);
-                request = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, method, pathAndQuery,
-                        content, false);
+                // We set the operation so that once a streamId is assigned, we can record
+                // the correspondence between the streamId and operation: this will let us
+                // handle responses properly later.
+                request.setOperation(op);
             }
 
             for (Entry<String, String> nameValue : op.getRequestHeaders().entrySet()) {
@@ -542,6 +545,9 @@ public class NettyHttpServiceClient implements ServiceClient {
     public void handleMaintenance(Operation op) {
         if (this.sslChannelPool != null) {
             this.sslChannelPool.handleMaintenance(Operation.createPost(op.getUri()));
+        }
+        if (this.http2ChannelPool != null) {
+            this.http2ChannelPool.handleMaintenance(Operation.createPost(op.getUri()));
         }
         this.channelPool.handleMaintenance(op);
     }
