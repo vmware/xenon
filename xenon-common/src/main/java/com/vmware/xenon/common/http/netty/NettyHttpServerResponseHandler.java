@@ -27,6 +27,7 @@ import io.netty.handler.codec.http.HttpHeaderUtil;
 import io.netty.handler.codec.http.HttpHeaders;
 import io.netty.handler.codec.http.HttpObject;
 import io.netty.handler.codec.http.HttpResponse;
+import io.netty.handler.codec.http2.HttpUtil;
 
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.ServiceErrorResponse;
@@ -40,6 +41,7 @@ import com.vmware.xenon.common.Utils;
 public class NettyHttpServerResponseHandler extends SimpleChannelInboundHandler<HttpObject> {
 
     private NettyChannelPool pool;
+    private Logger logger = Logger.getLogger(getClass().getName());
 
     public NettyHttpServerResponseHandler(NettyChannelPool pool) {
         this.pool = pool;
@@ -47,13 +49,60 @@ public class NettyHttpServerResponseHandler extends SimpleChannelInboundHandler<
 
     @Override
     public void messageReceived(ChannelHandlerContext ctx, HttpObject msg) {
-        Operation request = ctx.channel().attr(NettyChannelContext.OPERATION_KEY).get();
+
         if (msg instanceof FullHttpResponse) {
             FullHttpResponse response = (FullHttpResponse) msg;
+
+            Operation request = findOperation(ctx, response);
+            if (request == null) {
+                return;
+            }
             request.setStatusCode(response.status().code());
             parseResponseHeaders(request, response);
             completeRequest(ctx, request, response.content());
         }
+    }
+
+    /**
+     * We find the operation differently for HTTP/1.1 and HTTP/2
+     *
+     * For HTTP/1.1, there is only one request per channel, and it's stored as an attribute
+     * on the channel
+     *
+     * For HTTP/2, we have multiple requests and have to check a map in the associated
+     * NettyChannelContext
+     */
+    private Operation findOperation(ChannelHandlerContext ctx, FullHttpResponse response) {
+        Operation request;
+
+        if (ctx.channel().hasAttr(NettyChannelContext.HTTP2_KEY)) {
+            Integer streamId = response.headers().getInt(HttpUtil.ExtensionHeaderNames.STREAM_ID.text());
+            if (streamId == null) {
+                this.logger.warning("HTTP/2 message has no stream ID: ignoring.");
+                return null;
+            }
+            NettyChannelContext channelContext = ctx.channel().attr(NettyChannelContext.CHANNEL_CONTEXT_KEY).get();
+            if (channelContext == null) {
+                this.logger.warning(
+                        "HTTP/2 channel is missing associated channel context: ignoring response on stream "
+                                + streamId);
+                return null;
+            }
+            request = channelContext.getOperationForStream(streamId);
+            if (request == null) {
+                this.logger.warning("Can't find operation for stream " + streamId);
+                return null;
+            }
+            // We only have one request/response per stream, so remove the association.
+            channelContext.removeOperationForStream(streamId);
+        } else {
+            request = ctx.channel().attr(NettyChannelContext.OPERATION_KEY).get();
+            if (request == null) {
+                this.logger.warning("Can't find operation for channel");
+                return null;
+            }
+        }
+        return request;
     }
 
     private void parseResponseHeaders(Operation request, HttpResponse nettyResponse) {
@@ -116,11 +165,16 @@ public class NettyHttpServerResponseHandler extends SimpleChannelInboundHandler<
 
     @Override
     public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
-        Logger.getAnonymousLogger().warning(Utils.toString(cause));
+        this.logger.warning(Utils.toString(cause));
         Operation request = ctx.channel().attr(NettyChannelContext.OPERATION_KEY).get();
 
         if (request == null) {
-            Logger.getAnonymousLogger().info("no request associated with channel");
+            // This will happen when using HTTP/2 because we have multiple requests
+            // associated with the channel. For now, we're just logging, but we could
+            // find all the requests and fail all of them. That's slightly risky because
+            // we don't understand why we failed, and we may get responses for them later.
+            Logger.getAnonymousLogger().info(
+                    "Channel exception but no HTTP/1.1 request to fail" + cause.getMessage());
             return;
         }
 
@@ -147,4 +201,5 @@ public class NettyHttpServerResponseHandler extends SimpleChannelInboundHandler<
         op.fail(new ProtocolException(errorMsg));
         return true;
     }
+
 }

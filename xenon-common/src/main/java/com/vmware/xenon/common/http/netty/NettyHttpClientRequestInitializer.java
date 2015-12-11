@@ -177,11 +177,24 @@ public class NettyHttpClientRequestInitializer extends ChannelInitializer<Socket
         Http2FrameReader frameReader = makeFrameReader(this.debugLogging);
         Http2FrameWriter frameWriter = makeFrameWriter(this.debugLogging);
 
-        HttpToHttp2ConnectionHandler connectionHandler = new HttpToHttp2ConnectionHandler(
+        HttpToHttp2ConnectionHandler connectionHandler = new NettyHttpToHttp2Handler(
                 connection,
                 frameReader,
                 frameWriter,
                 frameListener);
+
+        // We set the the maximum concurrent HTTP/2 streams. It defaults to Integer.MAX_VALUE
+        // so we set it to something a bit smaller, but still with lots of concurrency.
+        Http2Settings settings = connectionHandler.decoder().localSettings();
+        settings.maxConcurrentStreams(this.pool.getConnectionLimitPerHost());
+        try {
+            connectionHandler.decoder().localSettings(settings);
+        } catch (Http2Exception ex) {
+            Utils.log(NettyHttpClientRequestInitializer.class,
+                    NettyHttpClientRequestInitializer.class.getSimpleName(),
+                    Level.WARNING, "Failed to set maximum HTTP/2 concurrent streams: %s",
+                    ex.getMessage());
+        }
         return connectionHandler;
     }
 
@@ -197,8 +210,9 @@ public class NettyHttpClientRequestInitializer extends ChannelInitializer<Socket
         } catch (Http2Exception ex) {
             Utils.log(NettyHttpClientRequestInitializer.class,
                     NettyHttpClientRequestInitializer.class.getSimpleName(),
-                    Level.WARNING, "Failed to set HTTP/2 maximum frame size to %s",
-                    NettyChannelContext.MAX_HTTP2_FRAME_SIZE);
+                    Level.WARNING, "Failed to set HTTP/2 maximum frame size to %s: %s",
+                    NettyChannelContext.MAX_HTTP2_FRAME_SIZE,
+                    ex.getMessage());
         }
 
         if (debugLogging) {
