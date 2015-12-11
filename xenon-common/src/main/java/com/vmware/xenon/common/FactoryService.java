@@ -122,6 +122,10 @@ public abstract class FactoryService extends StatelessService {
             }
             logFine("Finished self query for child services");
         });
+
+        if (this.childOptions.contains(ServiceOption.ON_DEMAND_LOAD)) {
+            return;
+        }
         startOrSynchronizeChildServices(clonedOp);
     }
 
@@ -583,6 +587,12 @@ public abstract class FactoryService extends StatelessService {
             } else if (!ServiceUriPaths.DEFAULT_NODE_SELECTOR.equals(this.nodeSelectorLink)) {
                 childService.setPeerNodeSelectorPath(this.nodeSelectorLink);
             }
+        }
+
+        // apply on demand load to factory so service host can decide to start a service
+        // if it receives a request and the service is not started
+        if (childService.hasOption(ServiceOption.ON_DEMAND_LOAD)) {
+            toggleOption(ServiceOption.ON_DEMAND_LOAD, true);
         }
 
         // apply custom UI option to factory if child service has it to ensure ui consistency

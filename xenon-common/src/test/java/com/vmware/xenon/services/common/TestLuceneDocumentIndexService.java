@@ -47,6 +47,7 @@ import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 
 import com.vmware.xenon.common.BasicReportTestCase;
+import com.vmware.xenon.common.FactoryService;
 import com.vmware.xenon.common.FileUtils;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Service;
@@ -93,6 +94,36 @@ class FaultInjectionLuceneDocumentIndexService extends LuceneDocumentIndexServic
 }
 
 public class TestLuceneDocumentIndexService extends BasicReportTestCase {
+
+    public static class OnDemandLoadFactoryService extends FactoryService {
+        public static final String SELF_LINK = "test/on-demand-load-services";
+
+        public OnDemandLoadFactoryService() {
+            super(MinimalTestServiceState.class);
+        }
+
+        private EnumSet<ServiceOption> childServiceCaps;
+
+        /**
+         * Test use only.
+         */
+        public void setChildServiceCaps(EnumSet<ServiceOption> caps) {
+            this.childServiceCaps = caps;
+        }
+
+        @Override
+        public Service createServiceInstance() throws Throwable {
+            Service s = new MinimalTestService();
+            if (this.childServiceCaps != null) {
+                for (ServiceOption c : this.childServiceCaps) {
+                    s.toggleOption(c, true);
+                }
+            }
+            s.toggleOption(ServiceOption.ON_DEMAND_LOAD, true);
+            return s;
+        }
+    }
+
     /**
      * Parameter that specifies number of durable service instances to create
      */
@@ -290,6 +321,10 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
                     EnumSet.of(ServiceOption.INSTRUMENTATION),
                     null);
 
+            // create on demand load services
+            String factoryLink = createOnDemandLoadFactoryService(h);
+            createOnDemandLoadServices(h, factoryLink);
+
             this.host.testStart(1);
             h.registerForServiceAvailability((o, e) -> {
                 this.host.completeIteration();
@@ -301,6 +336,8 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
             ExampleServiceState body = new ExampleServiceState();
             body.name = UUID.randomUUID().toString();
             List<URI> exampleURIs = new ArrayList<>();
+
+            // create example services
             this.host.createExampleServices(h, this.serviceCount, exampleURIs, null);
             int vc = 2;
             this.host.testStart(exampleURIs.size() * vc);
@@ -364,6 +401,8 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
 
             assertTrue(initialState.id.equals(stateAfterRestart.id));
 
+            createOnDemandLoadFactoryService(h);
+
             this.host.testStart(1);
             h.registerForServiceAvailability((o, e) -> {
                 this.host.completeIteration();
@@ -372,7 +411,7 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
 
             long end = Utils.getNowMicrosUtc();
 
-            this.host.log("Factory available %d micros after host start", end - start);
+            this.host.log("Example Factory available %d micros after host start", end - start);
 
             // make sure all services are there
             Map<URI, ExampleServiceState> afterState = this.host.getServiceState(null,
@@ -425,6 +464,39 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
             h.stop();
             tmpFolder.delete();
         }
+    }
+
+    private void createOnDemandLoadServices(ExampleServiceHost h, String factoryLink)
+            throws Throwable {
+        this.host.testStart(this.serviceCount);
+        for (int i = 0; i < this.serviceCount; i++) {
+            MinimalTestServiceState body = new MinimalTestServiceState();
+            body.id = UUID.randomUUID().toString();
+            body.stringValue = body.id;
+            Operation post = Operation.createPost(UriUtils.buildUri(h, factoryLink))
+                    .setCompletion(this.host.getCompletion())
+                    .setBody(body);
+            this.host.send(post);
+
+        }
+        this.host.testWait();
+    }
+
+    private String createOnDemandLoadFactoryService(ExampleServiceHost h) throws Throwable {
+        // create an on demand load factory and services
+        this.host.testStart(1);
+        OnDemandLoadFactoryService s = new OnDemandLoadFactoryService();
+        s.setChildServiceCaps(EnumSet.of(ServiceOption.PERSISTENCE,
+                ServiceOption.REPLICATION, ServiceOption.OWNER_SELECTION,
+                ServiceOption.ON_DEMAND_LOAD, ServiceOption.INSTRUMENTATION));
+        Operation factoryPost = Operation.createPost(
+                UriUtils.buildUri(h, s.getClass()))
+                .setCompletion(this.host.getCompletion());
+        h.startService(factoryPost, s);
+        this.host.testWait();
+        String factoryLink = s.getSelfLink();
+        this.host.log("Started on demand load factory at %s", factoryLink);
+        return factoryLink;
     }
 
     private Map<URI, ExampleServiceState> updateUriMapWithNewPort(int port,
