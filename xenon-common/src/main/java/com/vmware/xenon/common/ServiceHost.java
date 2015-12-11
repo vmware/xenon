@@ -335,7 +335,6 @@ public class ServiceHost {
         public String id;
         public boolean isPeerSynchronizationEnabled;
         public boolean isAuthorizationEnabled;
-
         public transient boolean isStarted;
         public transient boolean isStopping;
         public SystemHostInfo systemInfo;
@@ -708,6 +707,10 @@ public class ServiceHost {
         return this.state.isAuthorizationEnabled;
     }
 
+    public void toggleAuthorization(boolean isAuthorizationEnabled) {
+        setAuthorizationEnabled(isAuthorizationEnabled);
+    }
+
     public void setAuthorizationEnabled(boolean isAuthorizationEnabled) {
         if (isStarted()) {
             throw new IllegalStateException("Already started");
@@ -720,6 +723,10 @@ public class ServiceHost {
     }
 
     public void setPeerSynchronizationEnabled(boolean enabled) {
+        this.state.isPeerSynchronizationEnabled = enabled;
+    }
+
+    public void togglePeerSynchronization(boolean enabled) {
         this.state.isPeerSynchronizationEnabled = enabled;
     }
 
@@ -2751,7 +2758,7 @@ public class ServiceHost {
             Operation forwardOp = op.clone().setCompletion(fc);
             if (rsp.isLocalHostOwner) {
                 if (s == null) {
-                    queueOrFailRequestForServiceNotFoundOnOwner(servicePath, op);
+                    queueOrFailRequestForServiceNotFoundOnOwner(servicePath, op, true);
                     return;
                 }
                 queueOrScheduleRequest(s, forwardOp);
@@ -2785,7 +2792,8 @@ public class ServiceHost {
         return true;
     }
 
-    private void queueOrFailRequestForServiceNotFoundOnOwner(String path, Operation op) {
+    private void queueOrFailRequestForServiceNotFoundOnOwner(String path, Operation op,
+            boolean attemptOnDemandStart) {
         if (op.getAction() == Action.DELETE) {
             // do not queue DELETE actions for services not present, complete with success
             op.complete();
@@ -3971,10 +3979,13 @@ public class ServiceHost {
         String factoryPath = UriUtils.getParentPath(key);
         if (factoryPath != null
                 && !this.serviceFactoriesUnderMemoryPressure.contains(factoryPath)) {
-            // minor optimization: if the service factory has never experienced a pause for one of the child
-            // services, do not bother querying the blob index. A node might never come under memory
-            // pressure so this lookup avoids the index query.
-            return false;
+            Service factoryService = this.findService(factoryPath);
+            if (factoryService != null && !factoryService.hasOption(ServiceOption.ON_DEMAND_LOAD)) {
+                // minor optimization: if the service factory has never experienced a pause for one of the child
+                // services, do not bother querying the blob index. A node might never come under memory
+                // pressure so this lookup avoids the index query.
+                return false;
+            }
         }
 
         String path = key;
@@ -4004,8 +4015,9 @@ public class ServiceHost {
 
             long pendingPauseCount = this.pendingPauseServices.size();
             if (pendingPauseCount == 0) {
-                // there is nothing pending and the service index did not have a paused service
-                return false;
+                // there is nothing pending and the service index did not have a paused service.
+                // check if the service is in the index, and start it on demand
+                return checkAndOnDemandStartService(inboundOp);
             }
 
             // there is a small window between pausing a service, and the service being indexed in the
@@ -4047,6 +4059,57 @@ public class ServiceHost {
                         });
 
         sendRequest(query.setReferer(getUri()));
+        return true;
+    }
+
+    private boolean checkAndOnDemandStartService(Operation inboundOp) {
+        String link = inboundOp.getUri().getPath();
+        String parentLink = UriUtils.getParentPath(link);
+        Service parentService = this.findService(parentLink);
+        if (parentService == null || parentService.hasOption(ServiceOption.FACTORY)) {
+            failRequestServiceNotFound(inboundOp);
+            return true;
+        }
+
+        FactoryService factoryService = (FactoryService) parentService;
+
+        // create a POST to the factory and request it to start the service.
+        Operation onDemandPost = Operation.createPost(inboundOp.getUri());
+        onDemandPost.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_INDEX_CHECK)
+                .setReferer(inboundOp.getReferer())
+                .setExpiration(inboundOp.getExpirationMicrosUtc())
+                .setReplicationDisabled(true);
+
+        onDemandPost.setCompletion((o, e) -> {
+            if (e != null) {
+                inboundOp.fail(e);
+                return;
+            }
+            // proceed with handling original client request, service now started
+            handleRequest(null, inboundOp);
+        });
+
+        log(Level.INFO, "On demand service start for %s through factory %s",
+                link,
+                parentLink);
+
+        Service childService = null;
+        try {
+            childService = factoryService.createServiceInstance();
+        } catch (Throwable e1) {
+            inboundOp.fail(e1);
+            return true;
+        }
+
+        if (!childService.hasOption(ServiceOption.ON_DEMAND_LOAD)) {
+            failRequestServiceNotFound(inboundOp);
+            return true;
+        }
+
+        // bypass the factory, directly start service on host. This avoids adding a new
+        // version to the index and various factory processes that are invoked on new
+        // service creation
+        this.startService(onDemandPost, childService);
         return true;
     }
 

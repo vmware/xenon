@@ -42,7 +42,7 @@ public class TestBasicAuthenticationService extends BasicTestCase {
 
     @Override
     public void beforeHostStart(VerificationHost h) {
-        h.setAuthorizationEnabled(true);
+        h.toggleAuthorization(true);
     }
 
     @Before

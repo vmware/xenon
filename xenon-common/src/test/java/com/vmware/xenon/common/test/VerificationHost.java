@@ -1512,8 +1512,8 @@ public class VerificationHost extends ExampleServiceHost {
 
         VerificationHost h = VerificationHost.create(port);
 
-        h.setPeerSynchronizationEnabled(this.isPeerSynchronizationEnabled());
-        h.setAuthorizationEnabled(this.isAuthorizationEnabled());
+        h.togglePeerSynchronization(this.isPeerSynchronizationEnabled());
+        h.toggleAuthorization(this.isAuthorizationEnabled());
 
         if (this.isAuthorizationEnabled()) {
             h.setAuthorizationService(new AuthorizationContextService());
