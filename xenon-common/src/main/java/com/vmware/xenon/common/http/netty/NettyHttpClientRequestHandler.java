@@ -40,6 +40,7 @@ import io.netty.handler.codec.http.HttpHeaders;
 import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpVersion;
+import io.netty.handler.codec.http2.HttpUtil;
 import io.netty.handler.ssl.SslHandler;
 
 import com.vmware.xenon.common.Operation;
@@ -68,6 +69,7 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
         this.sslHandler = sslHandler;
     }
 
+    @Override
     public boolean acceptInboundMessage(Object msg) throws Exception {
         if (msg instanceof FullHttpRequest) {
             return true;
@@ -78,6 +80,7 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
     @Override
     protected void messageReceived(ChannelHandlerContext ctx, Object msg) {
         Operation request = null;
+        Integer streamId = null;
         try {
             // Start of request processing, initialize in-bound operation
             FullHttpRequest nettyRequest = (FullHttpRequest) msg;
@@ -89,19 +92,25 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
             URI uri = new URI(UriUtils.HTTP_SCHEME, null, ServiceHost.LOCAL_HOST,
                     this.host.getPort(), targetUri.getPath(), targetUri.getQuery(), null);
             request.setUri(uri);
-            ctx.channel().attr(NettyChannelContext.OPERATION_KEY).set(request);
+
+            // The streamId will be null for HTTP/1.1 connections, and valid for HTTP/2 connections
+            streamId = nettyRequest.headers().getInt(
+                    HttpUtil.ExtensionHeaderNames.STREAM_ID.text());
+            if (streamId == null) {
+                ctx.channel().attr(NettyChannelContext.OPERATION_KEY).set(request);
+            }
 
             if (nettyRequest.decoderResult().isFailure()) {
                 request.setStatusCode(Operation.STATUS_CODE_BAD_REQUEST).setKeepAlive(false);
                 request.setBody(ServiceErrorResponse.create(
                         new IllegalArgumentException(ERROR_MSG_DECODING_FAILURE),
                         request.getStatusCode()));
-                sendResponse(ctx, request);
+                sendResponse(ctx, request, streamId);
                 return;
             }
 
             parseRequestHeaders(ctx, request, nettyRequest);
-            decodeRequestBody(ctx, request, nettyRequest.content());
+            decodeRequestBody(ctx, request, nettyRequest.content(), streamId);
         } catch (Throwable e) {
             this.host.log(Level.SEVERE, "Uncaught exception: %s", Utils.toString(e));
             if (request == null) {
@@ -113,15 +122,15 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
             }
             request.setKeepAlive(false).setStatusCode(sc)
                     .setBodyNoCloning(ServiceErrorResponse.create(e, sc));
-            sendResponse(ctx, request);
+            sendResponse(ctx, request, streamId);
         }
     }
 
-    private void decodeRequestBody(ChannelHandlerContext ctx, Operation request, ByteBuf content) {
+    private void decodeRequestBody(ChannelHandlerContext ctx, Operation request, ByteBuf content, Integer streamId) {
         if (!content.isReadable()) {
             // skip body decode, request had no body
             request.setContentLength(0);
-            submitRequest(ctx, request);
+            submitRequest(ctx, request, streamId);
             return;
         }
 
@@ -129,10 +138,10 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
             if (e != null) {
                 request.setStatusCode(Operation.STATUS_CODE_BAD_REQUEST);
                 request.setBody(ServiceErrorResponse.create(e, request.getStatusCode()));
-                sendResponse(ctx, request);
+                sendResponse(ctx, request, streamId);
                 return;
             }
-            submitRequest(ctx, request);
+            submitRequest(ctx, request, streamId);
         });
 
         Utils.decodeBody(request, content.nioBuffer());
@@ -195,10 +204,10 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
         }
     }
 
-    private void submitRequest(ChannelHandlerContext ctx, Operation request) {
+    private void submitRequest(ChannelHandlerContext ctx, Operation request, Integer streamId) {
         request.nestCompletion((o, e) -> {
             request.setBodyNoCloning(o.getBodyRaw());
-            sendResponse(ctx, request);
+            sendResponse(ctx, request, streamId);
         });
 
         request.setCloningDisabled(true);
@@ -262,15 +271,15 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
         return localOp;
     }
 
-    private void sendResponse(ChannelHandlerContext ctx, Operation request) {
+    private void sendResponse(ChannelHandlerContext ctx, Operation request, Integer streamId) {
         try {
-            writeResponseUnsafe(ctx, request);
+            writeResponseUnsafe(ctx, request, streamId);
         } catch (Throwable e1) {
             this.host.log(Level.SEVERE, "%s", Utils.toString(e1));
         }
     }
 
-    private void writeResponseUnsafe(ChannelHandlerContext ctx, Operation request) {
+    private void writeResponseUnsafe(ChannelHandlerContext ctx, Operation request, Integer streamId) {
         ByteBuf bodyBuffer = null;
         FullHttpResponse response;
         try {
@@ -291,6 +300,9 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
             response = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1,
                     HttpResponseStatus.INTERNAL_SERVER_ERROR,
                     Unpooled.wrappedBuffer(data), false, false);
+            if (streamId != null) {
+                response.headers().setInt(HttpUtil.ExtensionHeaderNames.STREAM_ID.text(), streamId);
+            }
             response.headers().set(HttpHeaderNames.CONTENT_TYPE, Operation.MEDIA_TYPE_TEXT_HTML);
             response.headers().setInt(HttpHeaderNames.CONTENT_LENGTH,
                     response.content().readableBytes());
@@ -306,6 +318,12 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
                     HttpResponseStatus.valueOf(request.getStatusCode()), bodyBuffer, false, false);
         }
 
+        if (streamId != null) {
+            // This is the stream ID from the incoming request: we need to use it for our
+            // response so the client knows this is the response. If we don't set the stream
+            // ID, Netty assigns a new, unused stream, which would be bad.
+            response.headers().setInt(HttpUtil.ExtensionHeaderNames.STREAM_ID.text(), streamId);
+        }
         response.headers().set(HttpHeaderNames.CONTENT_TYPE,
                 request.getContentType());
         response.headers().setInt(HttpHeaderNames.CONTENT_LENGTH,
@@ -342,8 +360,14 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
     public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
         Operation op = ctx.attr(NettyChannelContext.OPERATION_KEY).get();
         if (op != null) {
-            this.host.log(Level.SEVERE, "Listener channel exception: %s, in progress op: %s",
+            this.host.log(Level.SEVERE,
+                    "HTTP/1.1 listener channel exception: %s, in progress op: %s",
                     cause.getMessage(), op.toString());
+        } else {
+            // This case may be hit for HTTP/2 connections, which do not have
+            // a single set of operations associated with them.
+            this.host.log(Level.SEVERE, "Listener channel exception: %s",
+                    cause.getMessage());
         }
         ctx.channel().attr(NettyChannelContext.OPERATION_KEY).remove();
         ctx.close();

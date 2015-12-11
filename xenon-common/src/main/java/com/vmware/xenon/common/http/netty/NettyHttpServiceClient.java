@@ -30,11 +30,9 @@ import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.handler.codec.http.ClientCookieDecoder;
 import io.netty.handler.codec.http.Cookie;
-import io.netty.handler.codec.http.DefaultFullHttpRequest;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpHeaderValues;
 import io.netty.handler.codec.http.HttpMethod;
-import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpVersion;
 
 import com.vmware.xenon.common.Operation;
@@ -59,6 +57,13 @@ public class NettyHttpServiceClient implements ServiceClient {
      * the process file descriptor limit
      */
     public static final int DEFAULT_CONNECTIONS_PER_HOST = 128;
+
+    /**
+     * Netty defaults to allowing 2^32 concurrent streams, which feels likea  bit much.
+     * We set it to a smaller amount: we'll tune it as we get experience with it. It may
+     * be reasonable to make it much larger than 1024.
+     */
+    public static final int DEFAULT_HTTP2_STREAMS_PER_HOST = 1024;
 
     public static final Logger LOGGER = Logger.getLogger(ServiceClient.class
             .getName());
@@ -135,7 +140,7 @@ public class NettyHttpServiceClient implements ServiceClient {
         // when using HTTP/2 since HTTP/2 multiplexes streams on a single connection.
         this.http2ChannelPool.setThreadTag(buildThreadTag());
         this.http2ChannelPool.setThreadCount(DEFAULT_EVENT_LOOP_THREAD_COUNT);
-        this.http2ChannelPool.setConnectionLimitPerHost(1);
+        this.http2ChannelPool.setConnectionLimitPerHost(DEFAULT_HTTP2_STREAMS_PER_HOST);
         this.http2ChannelPool.setHttp2Only();
         this.http2ChannelPool.start();
 
@@ -361,9 +366,7 @@ public class NettyHttpServiceClient implements ServiceClient {
             return;
         }
 
-        pool.connectOrReuse(uri.getHost(), port,
-                false,
-                op);
+        pool.connectOrReuse(uri.getHost(), port, op);
     }
 
     private void sendRequest(Operation op) {
@@ -383,23 +386,28 @@ public class NettyHttpServiceClient implements ServiceClient {
                 pathAndQuery = op.getUri().toString();
             }
 
-            HttpRequest request = null;
+            NettyFullHttpRequest request = null;
             HttpMethod method = HttpMethod.valueOf(op.getAction().toString());
             boolean useHttp2 = op.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_USE_HTTP2);
+
+            if (body == null || body.length == 0) {
+                request = new NettyFullHttpRequest(HttpVersion.HTTP_1_1, method, pathAndQuery);
+            } else {
+                ByteBuf content = Unpooled.wrappedBuffer(body);
+                request = new NettyFullHttpRequest(HttpVersion.HTTP_1_1, method, pathAndQuery,
+                        content, false);
+            }
 
             if (useHttp2) {
                 // The fact that we use HTTP2 is an internal detail, not to share on the wire.
                 // We use a pragma instead of exposing an API (e.g. setHttp2()) on the Operation
                 // because it's an implementation detail not normally needed by clients.
                 op.removePragmaDirective(Operation.PRAGMA_DIRECTIVE_USE_HTTP2);
-            }
 
-            if (body == null || body.length == 0) {
-                request = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, method, pathAndQuery);
-            } else {
-                ByteBuf content = Unpooled.wrappedBuffer(body);
-                request = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, method, pathAndQuery,
-                        content, false);
+                // We set the operation so that once a streamId is assigned, we can record
+                // the correspondence between the streamId and operation: this will let us
+                // handle responses properly later.
+                request.setOperation(op);
             }
 
             for (Entry<String, String> nameValue : op.getRequestHeaders().entrySet()) {
@@ -542,6 +550,9 @@ public class NettyHttpServiceClient implements ServiceClient {
     public void handleMaintenance(Operation op) {
         if (this.sslChannelPool != null) {
             this.sslChannelPool.handleMaintenance(Operation.createPost(op.getUri()));
+        }
+        if (this.http2ChannelPool != null) {
+            this.http2ChannelPool.handleMaintenance(Operation.createPost(op.getUri()));
         }
         this.channelPool.handleMaintenance(op);
     }
