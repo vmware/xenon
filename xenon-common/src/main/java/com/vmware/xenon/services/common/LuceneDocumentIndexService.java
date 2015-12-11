@@ -39,7 +39,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import com.esotericsoftware.kryo.KryoException;
 import com.google.gson.JsonParser;
-
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.core.SimpleAnalyzer;
 import org.apache.lucene.document.Document;
@@ -1625,10 +1624,10 @@ public class LuceneDocumentIndexService extends StatelessService {
         }
 
         BooleanQuery bq = new BooleanQuery();
+
         // grab the document at the tail of the results, and use it to form a new query
         // that will delete all documents from that document up to the version at the
-        // retention
-        // limit
+        // retention limit
         hitDoc = s.doc(hits[hits.length - 1].doc);
         long versionLowerBound = Long.parseLong(hitDoc.get(ServiceDocument.FIELD_NAME_VERSION));
         hitDoc = s.doc(hits[(int) versionsToKeep - 1].doc);
@@ -1642,11 +1641,20 @@ public class LuceneDocumentIndexService extends StatelessService {
         bq.add(versionQuery, Occur.MUST);
         bq.add(linkQuery, Occur.MUST);
         results = s.search(bq, Integer.MAX_VALUE);
-        long now = Utils.getNowMicrosUtc();
+
         logInfo("trimming index for %s from %d to %d, query returned %d", link, hits.length,
                 versionsToKeep, results.totalHits);
+
         wr.deleteDocuments(bq);
+        long now = Utils.getNowMicrosUtc();
+
+        // Use time AFTER index was updated to be sure that it can be compared
+        // against the time the searcher was updated and have this change
+        // be reflected in the new searcher. If the start time would be used,
+        // it is possible to race with updating the searcher and NOT have this
+        // change be reflected in the searcher.
         updateLinkAccessTime(now, link);
+
         delete.complete();
     }
 
@@ -1658,11 +1666,17 @@ public class LuceneDocumentIndexService extends StatelessService {
             return;
         }
 
-        String link = sd.documentSelfLink;
         long start = Utils.getNowMicrosUtc();
         wr.addDocument(doc);
-        updateLinkAccessTime(start, link);
         long end = Utils.getNowMicrosUtc();
+
+        // Use time AFTER index was updated to be sure that it can be compared
+        // against the time the searcher was updated and have this change
+        // be reflected in the new searcher. If the start time would be used,
+        // it is possible to race with updating the searcher and NOT have this
+        // change be reflected in the searcher.
+        updateLinkAccessTime(end, sd.documentSelfLink);
+
         if (hasOption(ServiceOption.INSTRUMENTATION)) {
             ServiceStat s = getHistogramStat(STAT_NAME_INDEXING_DURATION_MICROS);
             setStat(s, end - start);
@@ -1673,25 +1687,45 @@ public class LuceneDocumentIndexService extends StatelessService {
         applyActiveQueries(sd, desc);
     }
 
-    private void updateLinkAccessTime(long start, String link) {
-        this.linkAccessTimes.put(link, start);
-        this.indexUpdateTimeMicros = start;
+    private void updateLinkAccessTime(long t, String link) {
+        synchronized (this.searchSync) {
+            // This map is cleared in applyMemoryLimit while holding this lock,
+            // so it is added to here while also holding the lock for symmetry.
+            this.linkAccessTimes.put(link, t);
+
+            // The index update time may only be increased.
+            if (this.indexUpdateTimeMicros < t) {
+                this.indexUpdateTimeMicros = t;
+            }
+        }
     }
 
-    private IndexSearcher updateSearcher(String selfLink, int resultLimit, IndexWriter w)
-            throws IOException {
-
-        // We want avoid creating a new IndexSearcher, per query. So we create one in one of
-        // following conditions:
-        // 1) no searcher for this index exists
-        // 2) the query is across many links or multiple version, not a specific one and index was
-        // changed
-        // 3) the query is for a specific self link AND the self link has seen an update after the
-        // last query executed
-
-        IndexSearcher s = null;
+    /**
+     * Returns an updated {@link IndexSearcher} to query {@code selfLink}.
+     *
+     * If the index has been updated since the last {@link IndexSearcher} was created, those
+     * changes will not be reflected by that {@link IndexSearcher}. However, for performance
+     * reasons, we do not want to create a new one for every query either.
+     *
+     * We create one in one of following conditions:
+     *
+     *   1) No searcher for this index exists.
+     *   2) The query is across many links or multiple version, not a specific one,
+     *      and the index was changed.
+     *   3) The query is for a specific self link AND the self link has seen an update
+     *      after the searcher was last updated.
+     *
+     * @param selfLink
+     * @param resultLimit
+     * @param w
+     * @return an {@link IndexSearcher} that is fresh enough to execute the specified query
+     * @throws IOException
+     */
+    private IndexSearcher updateSearcher(String selfLink, int resultLimit, IndexWriter w) throws IOException {
+        IndexSearcher s;
         boolean needNewSearcher = false;
         long now = Utils.getNowMicrosUtc();
+
         synchronized (this.searchSync) {
             s = this.searcher;
             if (s == null) {
@@ -1711,8 +1745,8 @@ public class LuceneDocumentIndexService extends StatelessService {
             }
         }
 
-        // outside the lock create a new searcher. Another thread might race us and also create a
-        // searcher, but that is OK, we will use the most recent one
+        // Create a new searcher outside the lock. Another thread might race us and
+        // also create a searcher, but that is OK: the most recent one will be used.
         s = new IndexSearcher(DirectoryReader.open(w, true));
 
         if (hasOption(ServiceOption.INSTRUMENTATION)) {
