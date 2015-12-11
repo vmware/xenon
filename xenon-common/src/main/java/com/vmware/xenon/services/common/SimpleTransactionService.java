@@ -220,6 +220,7 @@ public class SimpleTransactionService extends StatefulService {
                     }
                 } else { // transactional read
                     if (currentStateTransactionId == null) {
+                        logTransactionUpdate(request, currentState);
                         currentState.documentTransactionId = requestTransactionId;
                         return false;
                     } else {
@@ -242,6 +243,7 @@ public class SimpleTransactionService extends StatefulService {
                     }
                 } else { // transactional write
                     if (currentStateTransactionId == null) {
+                        logTransactionUpdate(request, currentState);
                         currentState.documentTransactionId = requestTransactionId;
                         return false;
                     } else {
@@ -338,6 +340,16 @@ public class SimpleTransactionService extends StatefulService {
                     .getHost()
                     .log(Level.INFO,
                             "Transaction %s conflicts on service %s: operation: %s, current state transaction: %s",
+                            request.getTransactionId(), this.service.getSelfLink(),
+                            request.getAction(),
+                            currentState.documentTransactionId);
+        }
+
+        private void logTransactionUpdate(Operation request, ServiceDocument currentState) {
+            this.service
+                    .getHost()
+                    .log(Level.INFO,
+                            "Transaction %s set on service %s: operation: %s, previous transaction: %s",
                             request.getTransactionId(), this.service.getSelfLink(),
                             request.getAction(),
                             currentState.documentTransactionId);

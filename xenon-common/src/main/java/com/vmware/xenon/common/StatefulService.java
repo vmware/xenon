@@ -74,10 +74,6 @@ public class StatefulService implements Service {
         return Operation.REPLICATION_PHASE_SYNCHRONIZE.equals(phase);
     }
 
-    private boolean isNonFrameworkTransactionRequest(Operation op) {
-        return op.isWithinTransaction() && this.getHost().getTransactionServiceUri() == null;
-    }
-
     private RuntimeContext context = new RuntimeContext();
 
     /**
@@ -653,9 +649,9 @@ public class StatefulService implements Service {
             op.setHandlerCompletionTime(Utils.getNowMicrosUtc());
         }
 
-        ServiceDocument linkedState = null;
+        ServiceDocument linkedState = op.getLinkedState();
         boolean isUpdate = op.getAction() != Action.GET;
-        boolean isStateUpdated = isUpdate || isNonFrameworkTransactionRequest(op);
+        boolean isStateUpdated = isUpdate;
 
         if (op.isFromReplication()) {
             isStateUpdated = true;
@@ -663,6 +659,9 @@ public class StatefulService implements Service {
 
         if (op.getStatusCode() == Operation.STATUS_CODE_NOT_MODIFIED) {
             isStateUpdated = false;
+        } else if (op.getTransactionId() != null && linkedState != null &&
+                op.getTransactionId().equals(linkedState.documentTransactionId)) {
+            isStateUpdated = true;
         }
 
         // evolve the common properties such as version
@@ -671,7 +670,7 @@ public class StatefulService implements Service {
                 // Clone latest state, before replication or indexing to isolate state changes
                 // from service code (which can continue mutating the linked state after it
                 // completes an operation)
-                if (op.getLinkedState() != null
+                if (linkedState != null
                         && !op.isFromReplication()
                         && !hasOption(ServiceOption.CONCURRENT_UPDATE_HANDLING)) {
                     op.linkState(Utils.clone(op.getLinkedState()));
