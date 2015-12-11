@@ -58,7 +58,7 @@ public class TestAuthorization extends BasicTestCase {
     public void beforeHostStart(VerificationHost host) {
         // Enable authorization service; this is an end to end test
         host.setAuthorizationService(new AuthorizationContextService());
-        host.setAuthorizationEnabled(true);
+        host.toggleAuthorization(true);
     }
 
     @Before

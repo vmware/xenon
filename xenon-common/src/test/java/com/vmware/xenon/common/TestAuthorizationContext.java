@@ -45,7 +45,7 @@ public class TestAuthorizationContext extends BasicTestCase {
 
     @Override
     public void beforeHostStart(VerificationHost host) {
-        host.setAuthorizationEnabled(true);
+        host.toggleAuthorization(true);
     }
 
     public static class ClaimsVerificationService extends StatelessService {

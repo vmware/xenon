@@ -74,7 +74,9 @@ public interface Service {
          * enforce strict quorum and avoid value divergence see the {@code EAGER_CONSISTENCY}
          * option
          *
-         * Requires: REPLICATION Not compatible with: CONCURRENT_UPDATE_HANDLING
+         * Requires: REPLICATION
+         *
+         * Not compatible with: CONCURRENT_UPDATE_HANDLING
          */
         OWNER_SELECTION,
 
@@ -86,7 +88,9 @@ public interface Service {
          * provides strong consistency guarantees for service updates. It also affects availability,
          * since the service will fail all updates unless quorum or more nodes are available.
          *
-         * Requires: REPLICATION, OWNER_SELECTION Not compatible with: CONCURRENT_UPDATE_HANDLING
+         * Requires: REPLICATION, OWNER_SELECTION
+         *
+         * Not compatible with: CONCURRENT_UPDATE_HANDLING
          */
         ENFORCE_QUORUM,
 
@@ -100,7 +104,9 @@ public interface Service {
          * If there is no signature in the current state, then the version from the current state
          * must match the version in the request body.
          *
-         * Requires: REPLICATION Not compatible with: CONCURRENT_UPDATE_HANDLING
+         * Requires: REPLICATION
+         *
+         * Not compatible with: CONCURRENT_UPDATE_HANDLING
          */
         STRICT_UPDATE_CHECKING,
 
@@ -136,6 +142,22 @@ public interface Service {
         IDEMPOTENT_POST,
 
         /**
+         * Runtime will load factory child services the first time a client attempts to access
+         * them. Replication services might load due to synchronization, when joining node groups.
+         *
+         * Requires: FACTORY_ITEM (services created through factories)
+         *
+         */
+        ON_DEMAND_LOAD,
+
+        /**
+         * Service will queue operation in last in first out order. If limit on operation queue is
+         * exceeded, oldest operation in the queue will be cancelled to make room for the most
+         * recent one
+         */
+        LIFO_QUEUE,
+
+        /**
          * Set by runtime. Service is associated with another service providing functionality for
          * one of the utility REST APIs.
          */
@@ -152,17 +174,12 @@ public interface Service {
          */
         FACTORY_ITEM,
 
+
         /**
          * Set by runtime. Service is currently assigned ownership of the replicated document. Any
          * work initiated through an update should only happen on this instance
          */
         DOCUMENT_OWNER,
-
-        /**
-         * Service will queue operation in last in first out order. If limit on operation queue is exceeded,
-         * oldest operation in the queue will be cancelled to make room for the most recent one
-         */
-        LIFO_QUEUE,
 
         NONE
     }
