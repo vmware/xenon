@@ -335,7 +335,6 @@ public class ServiceHost {
         public String id;
         public boolean isPeerSynchronizationEnabled;
         public boolean isAuthorizationEnabled;
-
         public transient boolean isStarted;
         public transient boolean isStopping;
         public SystemHostInfo systemInfo;
@@ -3969,17 +3968,28 @@ public class ServiceHost {
         }
 
         String factoryPath = UriUtils.getParentPath(key);
-        if (factoryPath != null
+        Service factoryService = null;
+        if (factoryPath != null) {
+            factoryService = this.findService(factoryPath);
+        }
+        if (factoryService != null
                 && !this.serviceFactoriesUnderMemoryPressure.contains(factoryPath)) {
-            // minor optimization: if the service factory has never experienced a pause for one of the child
-            // services, do not bother querying the blob index. A node might never come under memory
-            // pressure so this lookup avoids the index query.
-            return false;
+            if (!factoryService.hasOption(ServiceOption.ON_DEMAND_LOAD)) {
+                // minor optimization: if the service factory has never experienced a pause for one of the child
+                // services, do not bother querying the blob index. A node might never come under memory
+                // pressure so this lookup avoids the index query.
+                return false;
+            }
         }
 
         String path = key;
         if (inboundOp.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_NO_QUEUING)) {
             return false;
+        }
+
+        if (factoryService == null) {
+            failRequestServiceNotFound(inboundOp);
+            return true;
         }
 
         if (inboundOp.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_INDEX_CHECK)) {
@@ -4004,8 +4014,7 @@ public class ServiceHost {
 
             long pendingPauseCount = this.pendingPauseServices.size();
             if (pendingPauseCount == 0) {
-                // there is nothing pending and the service index did not have a paused service
-                return false;
+                return checkAndOnDemandStartService(inboundOp, factoryService);
             }
 
             // there is a small window between pausing a service, and the service being indexed in the
@@ -4035,7 +4044,6 @@ public class ServiceHost {
                             }
 
                             if (!o.hasBody()) {
-                                log(Level.INFO, "%s not paused", path);
                                 // service is not paused
                                 handleRequest(null, inboundOp);
                                 return;
@@ -4047,6 +4055,52 @@ public class ServiceHost {
                         });
 
         sendRequest(query.setReferer(getUri()));
+        return true;
+    }
+
+    private boolean checkAndOnDemandStartService(Operation inboundOp, Service parentService) {
+        String link = inboundOp.getUri().getPath();
+        if (!parentService.hasOption(ServiceOption.FACTORY)) {
+            failRequestServiceNotFound(inboundOp);
+            return true;
+        }
+
+        if (!parentService.hasOption(ServiceOption.ON_DEMAND_LOAD)) {
+            return false;
+        }
+
+        FactoryService factoryService = (FactoryService) parentService;
+
+        // create a POST to the factory and request it to start the service.
+        Operation onDemandPost = Operation.createPost(inboundOp.getUri());
+        onDemandPost.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_INDEX_CHECK)
+                .setReferer(inboundOp.getReferer())
+                .setExpiration(inboundOp.getExpirationMicrosUtc())
+                .setReplicationDisabled(true);
+
+        onDemandPost.setCompletion((o, e) -> {
+            if (e != null) {
+                inboundOp.fail(e);
+                return;
+            }
+            // proceed with handling original client request, service now started
+            handleRequest(null, inboundOp);
+        });
+
+        log(Level.INFO, "On demand service start of %s", link);
+
+        Service childService = null;
+        try {
+            childService = factoryService.createServiceInstance();
+        } catch (Throwable e1) {
+            inboundOp.fail(e1);
+            return true;
+        }
+
+        // bypass the factory, directly start service on host. This avoids adding a new
+        // version to the index and various factory processes that are invoked on new
+        // service creation
+        this.startService(onDemandPost, childService);
         return true;
     }
 

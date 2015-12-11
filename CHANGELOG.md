@@ -2,8 +2,11 @@
 
 ## 0.3.2-SNAPSHOT
 
+* Add on demand service load, enabled with
+ServiceOption.ON_DEMAND_LOAD
+
 * Upgrade to Lucene 5.3.1 from 5.2.1. The Lucene file format is
-  backwards compatible, so this is a transparent update. 
+backwards compatible, so this is a transparent update.
 
 ## 0.3.1
 
