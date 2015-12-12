@@ -358,14 +358,14 @@ public class LuceneBlobIndexService extends StatelessService {
             return;
         }
 
-        BooleanQuery bq = new BooleanQuery();
-        bq.add(linkQuery, Occur.MUST);
         NumericRangeQuery<Long> timeQuery = NumericRangeQuery.newLongRange(
                 URI_PARAM_NAME_UPDATE_TIME, null, updateTime,
                 false,
                 true);
-        bq.add(timeQuery, Occur.MUST);
-        wr.deleteDocuments(linkQuery);
+        BooleanQuery.Builder builder = new BooleanQuery.Builder()
+                .add(linkQuery, Occur.MUST)
+                .add(timeQuery, Occur.MUST);
+        wr.deleteDocuments(builder.build());
         this.indexUpdateTimeMicros = Utils.getNowMicrosUtc();
     }
 

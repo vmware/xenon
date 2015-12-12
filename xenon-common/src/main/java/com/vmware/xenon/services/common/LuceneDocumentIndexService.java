@@ -712,8 +712,8 @@ public class LuceneDocumentIndexService extends StatelessService {
     private TopDocs searchByVersion(String selfLink, IndexSearcher s, Long version) throws IOException {
         Query tqSelfLink = new TermQuery(new Term(ServiceDocument.FIELD_NAME_SELF_LINK, selfLink));
 
-        BooleanQuery bq = new BooleanQuery();
-        bq.add(tqSelfLink, Occur.MUST);
+        BooleanQuery.Builder builder = new BooleanQuery.Builder();
+        builder.add(tqSelfLink, Occur.MUST);
 
         if (version != null) {
             NumericRangeQuery<Long> versionQuery = NumericRangeQuery.newLongRange(
@@ -721,10 +721,10 @@ public class LuceneDocumentIndexService extends StatelessService {
                     true,
                     true);
 
-            bq.add(versionQuery, Occur.MUST);
+            builder.add(versionQuery, Occur.MUST);
         }
 
-        TopDocs hits = s.search(bq, 1, this.versionSort, false, false);
+        TopDocs hits = s.search(builder.build(), 1, this.versionSort, false, false);
         return hits;
     }
 
@@ -813,10 +813,10 @@ public class LuceneDocumentIndexService extends StatelessService {
             rq = LuceneQueryConverter.convertToLuceneQuery(ctx.getResourceQuery());
         }
 
-        BooleanQuery bq = new BooleanQuery();
-        bq.add(rq, Occur.FILTER);
-        bq.add(tq, Occur.FILTER);
-        return bq;
+        BooleanQuery.Builder builder = new BooleanQuery.Builder()
+                .add(rq, Occur.FILTER)
+                .add(tq, Occur.FILTER);
+        return builder.build();
     }
 
     private Object queryIndex(Operation op, ServiceOption targetIndex,
@@ -1623,7 +1623,7 @@ public class LuceneDocumentIndexService extends StatelessService {
             return;
         }
 
-        BooleanQuery bq = new BooleanQuery();
+        BooleanQuery.Builder builder = new BooleanQuery.Builder();
 
         // grab the document at the tail of the results, and use it to form a new query
         // that will delete all documents from that document up to the version at the
@@ -1638,8 +1638,10 @@ public class LuceneDocumentIndexService extends StatelessService {
                 true,
                 true);
 
-        bq.add(versionQuery, Occur.MUST);
-        bq.add(linkQuery, Occur.MUST);
+        builder.add(versionQuery, Occur.MUST);
+        builder.add(linkQuery, Occur.MUST);
+        BooleanQuery bq = builder.build();
+
         results = s.search(bq, Integer.MAX_VALUE);
 
         logInfo("trimming index for %s from %d to %d, query returned %d", link, hits.length,

@@ -2,6 +2,9 @@
 
 ## 0.3.2-SNAPSHOT
 
+* Upgrade to Lucene 5.3.1 from 5.2.1. The Lucene file format is
+  backwards compatible, so this is a transparent update. 
+
 ## 0.3.1
 
 * Indexing I/O path optimizations producing 20% throughput

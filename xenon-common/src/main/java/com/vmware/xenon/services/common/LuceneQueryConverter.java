@@ -78,11 +78,11 @@ class LuceneQueryConverter {
     // Currently phrase queries are considered a rare, special case.
     static Query convertToLucenePhraseQuery(QueryTask.Query query) {
         String[] tokens = query.term.matchValue.split("\\W");
-        PhraseQuery pq = new PhraseQuery();
+        PhraseQuery.Builder builder = new PhraseQuery.Builder();
         for (String token : tokens) {
-            pq.add(new Term(query.term.propertyName, token));
+            builder.add(new Term(query.term.propertyName, token));
         }
-        return pq;
+        return builder.build();
     }
 
     static Query convertToLuceneWildcardTermQuery(QueryTask.Query query) {
@@ -120,16 +120,16 @@ class LuceneQueryConverter {
     }
 
     static Query convertToLuceneBooleanQuery(QueryTask.Query query) {
-        BooleanQuery parentQuery = new BooleanQuery();
+        BooleanQuery.Builder parentQuery = new BooleanQuery.Builder();
 
         // Recursively build the boolean query. We allow arbitrary nesting and grouping.
         for (QueryTask.Query q : query.booleanClauses) {
             buildBooleanQuery(parentQuery, q);
         }
-        return parentQuery;
+        return parentQuery.build();
     }
 
-    static void buildBooleanQuery(BooleanQuery parent, QueryTask.Query clause) {
+    static void buildBooleanQuery(BooleanQuery.Builder parent, QueryTask.Query clause) {
         Query lq = convertToLuceneQuery(clause);
         BooleanClause bc = new BooleanClause(lq, convertToLuceneOccur(clause.occurance));
         parent.add(bc);
