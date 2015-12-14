@@ -2276,7 +2276,7 @@ public class ServiceHost {
         }
 
         ServiceDocumentDescription documentDescription = buildDocumentDescription(service);
-        QueryFilter queryFilter = ctx.getResourceQueryFilter();
+        QueryFilter queryFilter = ctx.getResourceQueryFilter(op.getAction());
         if (queryFilter == null || !queryFilter.evaluate(document, documentDescription)) {
             return false;
         }

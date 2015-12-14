@@ -811,10 +811,10 @@ public class LuceneDocumentIndexService extends StatelessService {
         // If the resource query in the authorization context is unspecified,
         // use a Lucene query that doesn't return any documents so that every
         // result will be empty.
-        if (ctx.getResourceQuery() == null) {
+        if (ctx.getResourceQuery(Action.GET) == null) {
             rq = new MatchNoDocsQuery();
         } else {
-            rq = LuceneQueryConverter.convertToLuceneQuery(ctx.getResourceQuery());
+            rq = LuceneQueryConverter.convertToLuceneQuery(ctx.getResourceQuery(Action.GET));
         }
 
         BooleanQuery.Builder builder = new BooleanQuery.Builder()

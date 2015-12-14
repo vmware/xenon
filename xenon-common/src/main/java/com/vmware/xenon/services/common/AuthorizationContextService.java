@@ -124,7 +124,7 @@ public class AuthorizationContextService extends StatelessService {
         }
 
         // Check whether or not the operation already has a processed context.
-        if (ctx.getResourceQueryFilter() != null) {
+        if (ctx.getResourceQueryFilter(op.getAction()) != null) {
             op.complete();
             return true;
         }
@@ -372,26 +372,42 @@ public class AuthorizationContextService extends StatelessService {
         builder.setToken(ctx.getToken());
 
         if (!roles.isEmpty()) {
-            Query q = new Query();
-            q.occurance = Occurance.MUST_OCCUR;
+            Map<Action, Collection<Role>> roleListByAction = new HashMap<>(Action.values().length);
             for (Role role : roles) {
-                Query resourceGroupQuery = role.resourceGroupState.query;
-                resourceGroupQuery.occurance = Occurance.SHOULD_OCCUR;
-                q.addBooleanClause(resourceGroupQuery);
+                for (Action action : role.roleState.verbs) {
+                    Collection<Role> roleList = roleListByAction.get(action);
+                    if (roleList == null) {
+                        roleList = new LinkedList<>();
+                        roleListByAction.put(action, roleList);
+                    }
+
+                    roleList.add(role);
+                }
             }
 
-            builder.setResourceQuery(q);
+            Map<Action, QueryFilter> queryFilterByAction = new HashMap<>(Action.values().length);
+            Map<Action, Query> queryByAction = new HashMap<>(Action.values().length);
+            for (Action action : roleListByAction.keySet()) {
+                Query q = new Query();
+                q.occurance = Occurance.MUST_OCCUR;
+                for (Role role : roleListByAction.get(action)) {
+                    Query resourceGroupQuery = role.resourceGroupState.query;
+                    resourceGroupQuery.occurance = Occurance.SHOULD_OCCUR;
+                    q.addBooleanClause(resourceGroupQuery);
+                }
 
-            try {
-                builder.setResourceQueryFilter(QueryFilter.create(q));
-            } catch (QueryFilterException qfe) {
-                logWarning("Error creating query filter: %s", qfe.toString());
-                failThrowable(claims.getSubject(), qfe);
-                return;
+                try {
+                    queryFilterByAction.put(action, QueryFilter.create(q));
+                    queryByAction.put(action, q);
+                } catch (QueryFilterException qfe) {
+                    logWarning("Error creating query filter: %s", qfe.toString());
+                    failThrowable(claims.getSubject(), qfe);
+                    return;
+                }
             }
-        } else {
-            // No applicable roles; don't allow access
-            builder.setResourceQueryFilter(QueryFilter.FALSE);
+
+            builder.setResourceQueryMap(queryByAction);
+            builder.setResourceQueryFilterMap(queryFilterByAction);
         }
 
         AuthorizationContext newContext = builder.getResult();
