@@ -19,6 +19,7 @@ import static org.junit.Assert.assertTrue;
 
 import java.net.URI;
 import java.security.GeneralSecurityException;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -136,7 +137,8 @@ public class TestAuthorization extends BasicTestCase {
                         .build());
 
         // Create roles tying these together
-        createRole(userGroupLink, exampleServiceResourceGroupLink);
+        createRole(userGroupLink, exampleServiceResourceGroupLink,
+                new HashSet<>(Arrays.asList(Action.GET, Action.POST)));
 
         this.host.testWait();
 
@@ -166,6 +168,76 @@ public class TestAuthorization extends BasicTestCase {
 
         // Make sure only the authorized services were returned
         assertAuthorizedServicesInResult("guest", exampleServices, factoryGetResult[0]);
+
+    }
+
+    @Test
+    public void honorVerbsInRoles() throws Throwable {
+
+        // Assume Jane's identity
+        this.host.assumeIdentity(this.userServicePath, null);
+
+        // add docs accessible by jane
+        Map<URI, ExampleServiceState> exampleServices = createExampleServices("jane");
+
+        // Execute get on factory trying to get all example services
+        final ServiceDocumentQueryResult[] factoryGetResult = new ServiceDocumentQueryResult[1];
+        Operation getFactory = Operation.createGet(UriUtils.buildUri(this.host, ExampleFactoryService.SELF_LINK))
+                .setCompletion((o, e) -> {
+                    if (e != null) {
+                        this.host.failIteration(e);
+                        return;
+                    }
+
+                    factoryGetResult[0] = o.getBody(ServiceDocumentQueryResult.class);
+                    this.host.completeIteration();
+                });
+
+        this.host.testStart(1);
+        this.host.send(getFactory);
+        this.host.testWait();
+
+        //DELETE operation should be denied
+        Set<String> selfLinks = new HashSet<>(factoryGetResult[0].documentLinks);
+        for (String selfLink : selfLinks) {
+            Operation deleteOperation =
+                    Operation.createDelete(UriUtils.buildUri(this.host, selfLink))
+                            .setCompletion((o, e) -> {
+                                if (o.getStatusCode() != Operation.STATUS_CODE_FORBIDDEN) {
+                                    String message = String.format("Expected %d, got %s",
+                                            Operation.STATUS_CODE_FORBIDDEN,
+                                            o.getStatusCode());
+                                    this.host.failIteration(new IllegalStateException(message));
+                                    return;
+                                }
+
+                                this.host.completeIteration();
+                            });
+            this.host.testStart(1);
+            this.host.send(deleteOperation);
+            this.host.testWait();
+        }
+
+        //PATCH operation should be allowed
+        for (String selfLink : selfLinks) {
+            Operation patchOperation =
+                    Operation.createPatch(UriUtils.buildUri(this.host, selfLink))
+                        .setBody(exampleServices.get(selfLink))
+                        .setCompletion((o, e) -> {
+                            if (o.getStatusCode() != Operation.STATUS_CODE_OK) {
+                                String message = String.format("Expected %d, got %s",
+                                        Operation.STATUS_CODE_OK,
+                                        o.getStatusCode());
+                                this.host.failIteration(new IllegalStateException(message));
+                                return;
+                            }
+
+                            this.host.completeIteration();
+                        });
+            this.host.testStart(1);
+            this.host.send(patchOperation);
+            this.host.testWait();
+        }
     }
 
     @Test
@@ -327,7 +399,7 @@ public class TestAuthorization extends BasicTestCase {
     }
 
     private void createRoles() throws Throwable {
-        this.host.testStart(5);
+        this.host.testStart(6);
 
         // Create user group for jane@doe.com
         String userGroupLink =
@@ -357,8 +429,19 @@ public class TestAuthorization extends BasicTestCase {
                         .build());
 
         // Create roles tying these together
-        createRole(userGroupLink, exampleServiceResourceGroupLink);
-        createRole(userGroupLink, queryTaskResourceGroupLink);
+        createRole(userGroupLink, exampleServiceResourceGroupLink,
+                new HashSet<>(Arrays.asList(Action.GET, Action.POST)));
+
+        // Create another role with PATCH permission to test if we calculate overall permissions
+        // correctly across roles.
+        createRole(userGroupLink, exampleServiceResourceGroupLink,
+                new HashSet<>(Arrays.asList(Action.PATCH)));
+
+        //TODO(pankaj): Query task service itself should be a system service not requiring permissions to execute.
+        //Only the resources it queries should have GET permission.
+        //https://www.pivotaltracker.com/story/show/110120572
+        createRole(userGroupLink, queryTaskResourceGroupLink,
+                new HashSet<>(Arrays.asList(Action.GET, Action.POST, Action.PATCH, Action.DELETE)));
 
         this.host.testWait();
     }
@@ -398,13 +481,11 @@ public class TestAuthorization extends BasicTestCase {
         return selfLink;
     }
 
-    private void createRole(String userGroupLink, String resourceGroupLink) {
+    private void createRole(String userGroupLink, String resourceGroupLink, Set<Action> verbs) {
         RoleState roleState = new RoleState();
         roleState.userGroupLink = userGroupLink;
         roleState.resourceGroupLink = resourceGroupLink;
-        roleState.verbs = new HashSet<>();
-        roleState.verbs.add(Action.GET);
-        roleState.verbs.add(Action.POST);
+        roleState.verbs = verbs;
         roleState.policy = Policy.ALLOW;
 
         this.host.send(Operation

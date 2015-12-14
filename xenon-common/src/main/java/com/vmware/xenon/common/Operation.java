@@ -165,14 +165,14 @@ public class Operation implements Cloneable {
          * The resource query is a composite query constructed by grouping all
          * resource group queries that apply to this user's authorization context.
          */
-        private Query resourceQuery = null;
+        private Map<Action, Query> resourceQueryMap = null;
 
         /**
          * The resource query filter is a query filter of the composite query
          * constructed by grouping all resource group queries that apply to
          * this user's authorization context.
          */
-        private QueryFilter resourceQueryFilter = null;
+        private Map<Action, QueryFilter> resourceQueryFiltersMap = null;
 
         public Claims getClaims() {
             return this.claims;
@@ -186,12 +186,18 @@ public class Operation implements Cloneable {
             return this.propagateToClient;
         }
 
-        public Query getResourceQuery() {
-            return Utils.clone(this.resourceQuery);
+        public Query getResourceQuery(Action action) {
+            if (this.resourceQueryMap == null) {
+                return null;
+            }
+            return Utils.clone(this.resourceQueryMap.get(action));
         }
 
-        public QueryFilter getResourceQueryFilter() {
-            return this.resourceQueryFilter;
+        public QueryFilter getResourceQueryFilter(Action action) {
+            if (this.resourceQueryFiltersMap == null) {
+                return null;
+            }
+            return this.resourceQueryFiltersMap.get(action);
         }
 
         public boolean isSystemUser() {
@@ -244,13 +250,13 @@ public class Operation implements Cloneable {
                 return this;
             }
 
-            public Builder setResourceQuery(Query resourceQuery) {
-                this.authorizationContext.resourceQuery = resourceQuery;
+            public Builder setResourceQueryMap(Map<Action, Query> resourceQueryMap) {
+                this.authorizationContext.resourceQueryMap = resourceQueryMap;
                 return this;
             }
 
-            public Builder setResourceQueryFilter(QueryFilter resourceQueryFilter) {
-                this.authorizationContext.resourceQueryFilter = resourceQueryFilter;
+            public Builder setResourceQueryFilterMap(Map<Action, QueryFilter> resourceQueryFiltersMap) {
+                this.authorizationContext.resourceQueryFiltersMap = resourceQueryFiltersMap;
                 return this;
             }
         }
