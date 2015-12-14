@@ -309,8 +309,9 @@ public class LuceneBlobIndexService extends StatelessService {
         }
 
         setProcessingStage(ProcessingStage.STOPPED);
-        close(this.writer);
+        IndexWriter w = this.writer;
         this.writer = null;
+        close(w);
         this.executor.shutdownNow();
         delete.complete();
     }
