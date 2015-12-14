@@ -231,7 +231,7 @@ public class NodeSelectorSynchronizationService extends StatelessService {
         }
 
         if (results.contains(DocumentRelationship.IN_CONFLICT)) {
-            markServiceInConflict(request.state);
+            markServiceInConflict(request.state, bestPeerRsp);
             // if we detect conflict, we will synchronize local service with selected peer state
         } else if (results.contains(DocumentRelationship.PREFERRED)) {
             // the local state is preferred
@@ -446,9 +446,9 @@ public class NodeSelectorSynchronizationService extends StatelessService {
         }
     }
 
-    private void markServiceInConflict(ServiceDocument state) {
-        logWarning("State in conflict among peers: %s", Utils.toJsonHtml(state));
-        // TODO Add a statistic on the service marking it in conflict
+    private void markServiceInConflict(ServiceDocument state, ServiceDocument bestPeerRsp) {
+        logWarning("State in conflict. Local: %s, Among peers: %s",
+                Utils.toJsonHtml(state), Utils.toJsonHtml(bestPeerRsp));
     }
 
 }
