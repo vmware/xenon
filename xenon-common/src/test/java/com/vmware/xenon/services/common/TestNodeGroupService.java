@@ -2076,6 +2076,8 @@ public class TestNodeGroupService {
                         || factoryRsp.documents.size() != childStates.size()) {
                     isConverged = false;
                     // services not all started in new nodes yet;
+                    this.host.log("Node %s does not have all services: %s", baseNodeUri,
+                            Utils.toJsonHtml(factoryRsp));
                     break;
                 }
 
