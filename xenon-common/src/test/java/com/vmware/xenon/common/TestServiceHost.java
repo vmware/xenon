@@ -24,11 +24,9 @@ import java.util.Collections;
 import java.util.Date;
 import java.util.EnumSet;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
-import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -501,14 +499,11 @@ public class TestServiceHost {
         this.host.doPutPerService(opCount, EnumSet.of(TestProperty.FORCE_REMOTE),
                 services);
 
-        long count = 0;
         long cacheMissCount = 0;
-        Set<URI> servicesWithMaintenance = new HashSet<>();
+        Map<URI, ServiceStats> servicesWithMaintenance = new HashMap<>();
 
         Date exp = this.host.getTestExpiration();
         while (new Date().before(exp)) {
-            count = 0;
-
             // issue GET to actually make the cache miss occur (if the cache has been cleared)
             this.host.getServiceState(null, MinimalTestServiceState.class, uris);
 
@@ -522,16 +517,13 @@ public class TestServiceHost {
                 ServiceStats s = e.getValue();
 
                 for (ServiceStat st : s.entries.values()) {
-                    if (st.name.equals(Service.STAT_NAME_MAINTENANCE_COUNT)) {
-                        count += (long) st.latestValue;
-                        continue;
-                    }
+
                     if (st.name.equals(Service.STAT_NAME_CACHE_MISS_COUNT)) {
                         cacheMissCount += (long) st.latestValue;
                         continue;
                     }
                     if (st.name.equals(MinimalTestService.STAT_NAME_MAINTENANCE_SUCCESS_COUNT)) {
-                        servicesWithMaintenance.add(e.getKey());
+                        servicesWithMaintenance.put(e.getKey(), e.getValue());
                         continue;
                     }
                     if (st.name.equals(MinimalTestService.STAT_NAME_MAINTENANCE_FAILURE_COUNT)) {
@@ -563,17 +555,20 @@ public class TestServiceHost {
 
         double expectedMaintIntervals = Math.max(1,
                 (end - start) / this.host.getMaintenanceIntervalMicros());
-        expectedMaintIntervals *= services.size();
 
-        if (count < services.size()) {
-            throw new IllegalStateException(
-                    "Maintenance not observed through stats for all services");
+        for (Entry<URI, ServiceStats> e : servicesWithMaintenance.entrySet()) {
+
+            ServiceStat maintStat = e.getValue().entries.get(Service.STAT_NAME_MAINTENANCE_COUNT);
+            if (maintStat.latestValue > expectedMaintIntervals + 2) {
+                String error = String.format("Expected %f, got %f. Too many stats for service %s",
+                        expectedMaintIntervals + 2,
+                        maintStat.latestValue,
+                        e.getKey());
+                throw new IllegalStateException(error);
+            }
+
         }
 
-        if (count > 2 * expectedMaintIntervals) {
-            throw new IllegalStateException(
-                    "Too many maintenance attempts");
-        }
 
         if (cacheMissCount < 1) {
             throw new IllegalStateException(
