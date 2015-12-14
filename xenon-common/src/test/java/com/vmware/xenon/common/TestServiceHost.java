@@ -477,7 +477,6 @@ public class TestServiceHost {
 
         verifyMaintenanceDelayStat(maintenanceIntervalMicros);
 
-        long start = Utils.getNowMicrosUtc();
         long serviceCount = 100;
         long opCount = 2;
         EnumSet<ServiceOption> caps = EnumSet.of(ServiceOption.PERSISTENCE,
@@ -487,6 +486,7 @@ public class TestServiceHost {
                 serviceCount, MinimalTestService.class, this.host.buildMinimalTestState(), caps,
                 null);
 
+        long start = Utils.getNowMicrosUtc();
         List<Service> slowMaintServices = this.host.doThroughputServiceStart(null,
                 serviceCount, MinimalTestService.class, this.host.buildMinimalTestState(), caps,
                 null, maintenanceIntervalMicros * 10);
@@ -555,6 +555,11 @@ public class TestServiceHost {
 
         double expectedMaintIntervals = Math.max(1,
                 (end - start) / this.host.getMaintenanceIntervalMicros());
+
+        // allow variance up to 50% of expected intervals. We have the interval set to 100ms
+        // and we are running tests on VMs, in over subscribed CI. So we expect significant
+        // scheduling variance. This test is extremely consistent on a local machine
+        expectedMaintIntervals += expectedMaintIntervals / 2;
 
         for (Entry<URI, ServiceStats> e : servicesWithMaintenance.entrySet()) {
 
