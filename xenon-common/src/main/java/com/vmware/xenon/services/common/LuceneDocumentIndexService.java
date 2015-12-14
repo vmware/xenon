@@ -243,15 +243,19 @@ public class LuceneDocumentIndexService extends StatelessService {
                 createWriter(directory, true);
                 // we do not actually know if the index is OK, until we try to query
                 doSelfValidationQuery();
+                if (retryCount == 1) {
+                    logInfo("Retry to create index writer was successful");
+                }
                 break;
             } catch (Throwable e) {
                 adjustStat(STAT_NAME_INDEX_LOAD_RETRY_COUNT, 1);
-                logWarning("failure creating index writer: %s", Utils.toString(e));
                 if (retryCount < 1) {
+                    logWarning("Failure creating index writer, will retry");
                     close(this.writer);
                     archiveCorruptIndexFiles(directory);
                     continue;
                 }
+                logWarning("Failure creating index writer: %s", Utils.toString(e));
                 post.fail(e);
                 return;
             }
