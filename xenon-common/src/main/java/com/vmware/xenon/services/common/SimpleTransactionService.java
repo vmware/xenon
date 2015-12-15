@@ -149,9 +149,11 @@ public class SimpleTransactionService extends StatefulService {
 
     public static class TransactionalRequestFilter implements Predicate<Operation> {
         private Service service;
+        private String inprogressTransactionId;
 
         public TransactionalRequestFilter(Service service) {
             this.service = service;
+            this.inprogressTransactionId = null;
         }
 
         @Override
@@ -206,54 +208,83 @@ public class SimpleTransactionService extends StatefulService {
 
             String requestTransactionId = request.getTransactionId();
             String currentStateTransactionId = currentState.documentTransactionId;
+            boolean logConflict = false;
+            boolean logRWConflict = false;
+            String logUpdateMsg = null;
+            String inProgressTxid = null;
 
-            // TODO: support 'multi-versioned' states: allow reading a previous state revision in case requestTransactionId is null or < currentStateTransactionId
-
-            if (request.getAction() == Action.GET) {
-                if (requestTransactionId == null) { // non-transactional read
-                    if (currentStateTransactionId == null) {
-                        return false;
-                    } else {
-                        // TODO: in the future we might want to allow reading the state before the pending transaction
-                        logTransactionConflict(request, currentState);
-                        return true;
-                    }
-                } else { // transactional read
-                    if (currentStateTransactionId == null) {
-                        logTransactionUpdate(request, currentState);
-                        currentState.documentTransactionId = requestTransactionId;
-                        return false;
-                    } else {
-                        if (requestTransactionId.equals(currentStateTransactionId)) {
-                            return false;
-                        } else {
-                            // TODO: in the future we might want to allow reading a previous state if requestTransactionId < currentStateTransactionId
-                            logTransactionConflict(request, currentState);
+            try {
+                synchronized (this) {
+                    // we need to detect if currentStateTransactionId does not reflect the most
+                    // up-to-date transactional 'lock' due to concurrent R/W processing
+                    if (this.inprogressTransactionId != null && !this.inprogressTransactionId.equals(currentStateTransactionId)) {
+                        if (!request.hasPragmaDirective(PRAGMA_DIRECTIVE_DELETE_ON_TRANSACTION_END)) {
+                            logRWConflict = true;
+                            inProgressTxid = this.inprogressTransactionId;
                             return true;
+                        }
+                    }
+
+                    if (request.getAction() == Action.GET) {
+                        if (requestTransactionId == null) {
+                            // non-transactional read
+                            if (currentStateTransactionId == null) {
+                                return false;
+                            } else {
+                                logConflict = true;
+                                return true;
+                            }
+                        } else {
+                            // transactional read
+                            if (currentStateTransactionId == null) {
+                                logUpdateMsg = buildLogTransactionUpdateMsg(request, currentState);
+                                currentState.documentTransactionId = requestTransactionId;
+                                this.inprogressTransactionId = requestTransactionId;
+                                return false;
+                            } else {
+                                if (requestTransactionId.equals(currentStateTransactionId)) {
+                                    return false;
+                                } else {
+                                    logConflict = true;
+                                    return true;
+                                }
+                            }
+                        }
+                    } else {
+                        if (requestTransactionId == null) {
+                            // non-transactional write
+                            if (currentStateTransactionId == null ||
+                                    request.hasPragmaDirective(PRAGMA_DIRECTIVE_DELETE_ON_TRANSACTION_END)) {
+                                return false;
+                            } else {
+                                logConflict = true;
+                                return true;
+                            }
+                        } else {
+                            // transactional write
+                            if (currentStateTransactionId == null) {
+                                logUpdateMsg = buildLogTransactionUpdateMsg(request, currentState);
+                                currentState.documentTransactionId = requestTransactionId;
+                                this.inprogressTransactionId = requestTransactionId;
+                                return false;
+                            } else {
+                                if (requestTransactionId.equals(currentStateTransactionId)) {
+                                    return false;
+                                } else {
+                                    logConflict = true;
+                                    return true;
+                                }
+                            }
                         }
                     }
                 }
-            } else {
-                if (requestTransactionId == null) { // non-transactional write
-                    if (currentStateTransactionId == null || request.hasPragmaDirective(PRAGMA_DIRECTIVE_DELETE_ON_TRANSACTION_END)) {
-                        return false;
-                    } else {
-                        logTransactionConflict(request, currentState);
-                        return true;
-                    }
-                } else { // transactional write
-                    if (currentStateTransactionId == null) {
-                        logTransactionUpdate(request, currentState);
-                        currentState.documentTransactionId = requestTransactionId;
-                        return false;
-                    } else {
-                        if (requestTransactionId.equals(currentStateTransactionId)) {
-                            return false;
-                        } else {
-                            logTransactionConflict(request, currentState);
-                            return true;
-                        }
-                    }
+            } finally {
+                if (logRWConflict) {
+                    logTransactionRWConflict(request, currentState, inProgressTxid);
+                } else if (logConflict) {
+                    logTransactionConflict(request, currentState);
+                } else if (logUpdateMsg != null) {
+                    logTransactionUpdate(logUpdateMsg);
                 }
             }
         }
@@ -271,7 +302,7 @@ public class SimpleTransactionService extends StatefulService {
                         "Request to clear transaction %s from service %s but current transaction is: %s",
                         request.getTransactionId(), this.service.getSelfLink(),
                         currentState.documentTransactionId);
-                this.service.getHost().log(Level.WARNING, error);
+                this.service.getHost().log(Level.INFO, error);
                 request.fail(new IllegalStateException(error));
                 return;
             }
@@ -296,6 +327,9 @@ public class SimpleTransactionService extends StatefulService {
                             "Aborting transaction %s on service %s, current version %d, restoring version %d",
                             request.getTransactionId(), this.service.getSelfLink(), currentState.documentVersion, clearTransactionRequest.originalVersion);
                     previousState.documentTransactionId = null;
+                    synchronized (this) {
+                        this.inprogressTransactionId = null;
+                    }
                     this.service.setState(request, previousState);
                     request.complete();
                 });
@@ -304,6 +338,9 @@ public class SimpleTransactionService extends StatefulService {
             }
 
             currentState.documentTransactionId = null;
+            synchronized (this) {
+                this.inprogressTransactionId = null;
+            }
             request.complete();
         }
 
@@ -313,6 +350,7 @@ public class SimpleTransactionService extends StatefulService {
                 ServiceDocument body = request.getBody(ServiceDocument.class);
                 if (body.documentSelfLink == null) {
                     body.documentSelfLink = UUID.randomUUID().toString();
+                    request.setBody(body);
                 }
                 serviceSelfLink = UriUtils.buildUriPath(serviceSelfLink, body.documentSelfLink);
             }
@@ -345,14 +383,29 @@ public class SimpleTransactionService extends StatefulService {
                             currentState.documentTransactionId);
         }
 
-        private void logTransactionUpdate(Operation request, ServiceDocument currentState) {
+        private void logTransactionRWConflict(Operation request, ServiceDocument currentState, String inProgressTxid) {
             this.service
                     .getHost()
                     .log(Level.INFO,
-                            "Transaction %s set on service %s: operation: %s, previous transaction: %s",
+                            "Transactional read concurrent with write conflict: " +
+                            "Transaction %s conflicts on service %s: operation: %s, in-progress transaction: %s",
                             request.getTransactionId(), this.service.getSelfLink(),
                             request.getAction(),
-                            currentState.documentTransactionId);
+                            inProgressTxid);
+        }
+
+        private String buildLogTransactionUpdateMsg(Operation request, ServiceDocument currentState) {
+            return String.format("Transaction %s set on service %s: operation: %s, previous transaction: %s",
+                    request.getTransactionId(),
+                    this.service.getSelfLink(),
+                    request.getAction(),
+                    currentState.documentTransactionId);
+        }
+
+        private void logTransactionUpdate(String msg) {
+            this.service
+                    .getHost()
+                    .log(Level.INFO, msg);
         }
 
     }
