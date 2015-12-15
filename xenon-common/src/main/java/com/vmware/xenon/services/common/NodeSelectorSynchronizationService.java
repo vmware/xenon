@@ -32,6 +32,7 @@ import com.vmware.xenon.common.Service;
 import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.ServiceDocument.DocumentRelationship;
 import com.vmware.xenon.common.ServiceDocumentDescription;
+import com.vmware.xenon.common.ServiceHost;
 import com.vmware.xenon.common.StatelessService;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
@@ -451,4 +452,36 @@ public class NodeSelectorSynchronizationService extends StatelessService {
                 Utils.toJsonHtml(state), Utils.toJsonHtml(bestPeerRsp));
     }
 
+    public static QueryTask buildVersionAndOwnerQueryTask(ServiceHost host,
+                                              long documentVersion,
+                                              String documentOwner,
+                                              String documentSelfLink) {
+        QueryTask.Query selfLinkClause = new QueryTask.Query()
+                .setTermPropertyName(ServiceDocument.FIELD_NAME_SELF_LINK)
+                .setTermMatchValue(documentSelfLink)
+                .setTermMatchType(QueryTask.QueryTerm.MatchType.TERM);
+
+        QueryTask.Query ownerClause = new QueryTask.Query()
+                .setTermPropertyName(ServiceDocument.FIELD_NAME_OWNER)
+                .setTermMatchValue(documentOwner)
+                .setTermMatchType(QueryTask.QueryTerm.MatchType.TERM);
+
+        QueryTask.QuerySpecification querySpecification = new QueryTask.QuerySpecification();
+        querySpecification.resultLimit = 5;
+        querySpecification.options = EnumSet.of(QueryTask.QuerySpecification.QueryOption.INCLUDE_ALL_VERSIONS,
+                QueryTask.QuerySpecification.QueryOption.TOP_RESULTS,
+                QueryTask.QuerySpecification.QueryOption.EXPAND_CONTENT);
+
+        QueryTask.NumericRange<?> versionRange = QueryTask.NumericRange.createEqualRange((Long)documentVersion);
+        versionRange.precisionStep = Integer.MAX_VALUE;
+        QueryTask.Query versionClause = new QueryTask.Query()
+                .setTermPropertyName(ServiceDocument.FIELD_NAME_VERSION)
+                .setNumericRange(versionRange);
+
+        querySpecification.query.addBooleanClause(selfLinkClause);
+        querySpecification.query.addBooleanClause(versionClause);
+        querySpecification.query.addBooleanClause(ownerClause);
+
+        return QueryTask.create(querySpecification).setDirect(true);
+    }
 }

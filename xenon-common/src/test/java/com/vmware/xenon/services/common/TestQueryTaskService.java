@@ -137,9 +137,6 @@ public class TestQueryTaskService {
         pd = sdd.propertyDescriptions.get(ServiceDocument.FIELD_NAME_SOURCE_LINK);
         assertTrue(pd.exampleValue == null);
 
-        pd = sdd.propertyDescriptions.get(ServiceDocument.FIELD_NAME_OWNER);
-        assertTrue(pd.exampleValue == null);
-
         pd = sdd.propertyDescriptions.get(ServiceDocument.FIELD_NAME_AUTH_PRINCIPAL_LINK);
         assertTrue(pd.exampleValue == null);
 

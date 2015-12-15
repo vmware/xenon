@@ -1261,6 +1261,13 @@ public class LuceneDocumentIndexService extends StatelessService {
             doc.add(transactionField);
         }
 
+        if (s.documentOwner != null) {
+            Field ownerField = new StringField(ServiceDocument.FIELD_NAME_OWNER,
+                    s.documentOwner,
+                    Field.Store.NO);
+            doc.add(ownerField);
+        }
+
         Field timestampField = new LongField(ServiceDocument.FIELD_NAME_UPDATE_TIME_MICROS,
                 s.documentUpdateTimeMicros, this.longStoredField);
         doc.add(timestampField);
