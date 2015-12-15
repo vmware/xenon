@@ -58,6 +58,7 @@ public abstract class AbstractWebSocketServiceTest extends BasicTestCase {
     public static final String OBJECTS_CREATED = "objectsCreated";
     public static final String EXAMPLES_SUBSCRIPTIONS = ExampleFactoryService.SELF_LINK
             + ServiceHost.SERVICE_URI_SUFFIX_SUBSCRIPTIONS;
+    public static final String ERROR_VARIABLE = "errorOccurred";
 
     private static String echoServiceUri;
     private static String observerServiceUriForStop;
@@ -253,11 +254,20 @@ public abstract class AbstractWebSocketServiceTest extends BasicTestCase {
             if (value != null && !value.isEmpty() && !(v instanceof Undefined)) {
                 return value;
             }
-
+            checkError();
             Thread.sleep(100);
         }
 
         throw new TimeoutException();
+    }
+
+    private void checkError() {
+        Object e = JsExecutor.executeSynchronously(() -> ScriptableObject.getProperty(
+                scope, ERROR_VARIABLE));
+        String ev = e == null ? null : e.toString();
+        if (ev != null) {
+            Assert.fail("JavaScript error: " + ev);
+        }
     }
 
     private Operation completeOperationSynchronously(Operation op) throws Throwable {
@@ -298,7 +308,7 @@ public abstract class AbstractWebSocketServiceTest extends BasicTestCase {
             if (state.subscribers.containsKey(observerUri)) {
                 return;
             }
-
+            checkError();
             Thread.sleep(100);
         }
 
@@ -316,6 +326,7 @@ public abstract class AbstractWebSocketServiceTest extends BasicTestCase {
             if (!state.subscribers.containsKey(observerUri)) {
                 return;
             }
+            checkError();
             Thread.sleep(100);
         }
         throw new TimeoutException();
@@ -337,6 +348,7 @@ public abstract class AbstractWebSocketServiceTest extends BasicTestCase {
                     return;
                 }
             }
+            checkError();
             Thread.sleep(100);
         }
         throw new TimeoutException();

@@ -70,6 +70,19 @@ var WSL = (function () {
         this.doneHandlers = {};
         this.requestCounter = 0;
         this.requestQueue = [];
+        this.failure = null;
+
+        this.webSocket.onerror = function (event) {
+            me.failure = "Failed to establish a websocket connection to " + endpoint;
+            if (!me.ready) {
+                me.ready = true;
+                for (var i = 0; i < me.requestQueue.length; i++) {
+                    var req = me.requestQueue[i];
+                    doRequest(me, req.method, req.path, req.body, req.doneHandler);
+                }
+                me.requestQueue = [];
+            }
+        };
 
         this.webSocket.onopen = function (event) {
             me.webSocket.onmessage = function (ev) {
@@ -215,6 +228,10 @@ var WSL = (function () {
                 body: body,
                 doneHandler: doneHandler
             });
+            return;
+        }
+        if (wsc.failure !== null) {
+            doneHandler(500, wsc.failure);
             return;
         }
         var requestId = wsc.requestCounter++;

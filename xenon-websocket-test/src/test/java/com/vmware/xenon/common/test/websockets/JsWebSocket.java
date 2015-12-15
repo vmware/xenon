@@ -66,10 +66,13 @@ public class JsWebSocket extends ScriptableObject {
     public static final String WS_SCHEME = "ws";
     public static final String WSS_SCHEME = "wss";
     public static final String CLASS_NAME = "WebSocket";
+    public static final String TYPE = "type";
+    public static final String ERROR = "error";
 
     private EventLoopGroup group;
     private Channel channel;
     private Function onopen;
+    private Function onerror;
     private Function onmessage;
     private Function onclose;
 
@@ -84,8 +87,20 @@ public class JsWebSocket extends ScriptableObject {
         @Override
         protected void messageReceived(ChannelHandlerContext ctx, Object msg) throws Exception {
             if (!this.handshaker.isHandshakeComplete()) {
-                this.handshaker.finishHandshake(ctx.channel(), (FullHttpResponse) msg);
-                this.handshakeFuture.setSuccess();
+                try {
+                    this.handshaker.finishHandshake(ctx.channel(), (FullHttpResponse) msg);
+                    this.handshakeFuture.setSuccess();
+                } catch (Exception e) {
+                    if (JsWebSocket.this.onerror != null) {
+                        NativeObject event = new NativeObject();
+                        event.defineProperty(TYPE, ERROR, 0);
+                        JsExecutor.executeSynchronously(() ->
+                                JsWebSocket.this.onerror.call(Context.getCurrentContext(),
+                                        getParentScope(),
+                                        JsWebSocket.this,
+                                        new Object[] { event }));
+                    }
+                }
                 return;
             }
             if (msg instanceof WebSocketFrame) {
@@ -285,6 +300,16 @@ public class JsWebSocket extends ScriptableObject {
     @JSSetter
     public void setOnopen(Function onopen) {
         this.onopen = onopen;
+    }
+
+    @JSGetter
+    public Function getOnerror() {
+        return this.onerror;
+    }
+
+    @JSSetter
+    public void setOnerror(Function onerror) {
+        this.onerror = onerror;
     }
 
     @Override
