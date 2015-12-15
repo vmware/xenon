@@ -321,6 +321,7 @@ public class NettyHttpServiceClient implements ServiceClient {
     }
 
     private void connect(Operation op) {
+        final Object originalBody = op.getBodyRaw();
         URI uri = this.httpProxy == null ? op.getUri() : this.httpProxy;
         if (op.getUri().getHost().equals(ServiceHost.LOCAL_HOST)) {
             uri = op.getUri();
@@ -330,7 +331,7 @@ public class NettyHttpServiceClient implements ServiceClient {
             if (e != null) {
                 op.setBody(ServiceErrorResponse.create(e, Operation.STATUS_CODE_BAD_REQUEST,
                         EnumSet.of(ErrorDetail.SHOULD_RETRY)));
-                fail(e, op);
+                fail(e, op, originalBody);
                 return;
             }
             sendRequest(op);
@@ -354,15 +355,17 @@ public class NettyHttpServiceClient implements ServiceClient {
             pool = this.sslChannelPool;
 
             if (this.getSSLContext() == null || pool == null) {
+                op.setRetryCount(0);
                 fail(new IllegalArgumentException(
                         "HTTPS not enabled, set SSL context before starting client:"
                                 + op.getUri().getScheme()),
-                        op);
+                        op, originalBody);
                 return;
             }
         } else {
+            op.setRetryCount(0);
             fail(new IllegalArgumentException(
-                    "Scheme is not supported: " + op.getUri().getScheme()), op);
+                    "Scheme is not supported: " + op.getUri().getScheme()), op, originalBody);
             return;
         }
 
@@ -370,6 +373,7 @@ public class NettyHttpServiceClient implements ServiceClient {
     }
 
     private void sendRequest(Operation op) {
+        final Object originalBody = op.getBodyRaw();
         try {
             byte[] body = Utils.encodeBody(op);
             String pathAndQuery;
@@ -446,7 +450,7 @@ public class NettyHttpServiceClient implements ServiceClient {
 
             op.nestCompletion((o, e) -> {
                 if (e != null) {
-                    fail(e, op);
+                    fail(e, op, originalBody);
                     return;
                 }
                 // After request is sent control is transferred to the
@@ -459,12 +463,11 @@ public class NettyHttpServiceClient implements ServiceClient {
         } catch (Throwable e) {
             op.setBody(ServiceErrorResponse.create(e, Operation.STATUS_CODE_BAD_REQUEST,
                     EnumSet.of(ErrorDetail.SHOULD_RETRY)));
-            fail(e, op);
+            fail(e, op, originalBody);
         }
     }
 
-    private void fail(Throwable e, Operation op) {
-        boolean isRetryRequested = op.getRetryCount() > 0 && op.decrementRetriesRemaining() >= 0;
+    private void fail(Throwable e, Operation op, Object originalBody) {
 
         NettyChannelContext ctx = (NettyChannelContext) op.getSocketContext();
         NettyChannelPool pool = this.channelPool;
@@ -481,8 +484,24 @@ public class NettyHttpServiceClient implements ServiceClient {
             return;
         }
 
-        if (op.getStatusCode() >= Operation.STATUS_CODE_SERVER_FAILURE_THRESHOLD) {
-            isRetryRequested = false;
+        boolean isRetryRequested = op.getRetryCount() > 0 && op.decrementRetriesRemaining() >= 0;
+
+        if (isRetryRequested) {
+            if (op.getStatusCode() >= Operation.STATUS_CODE_SERVER_FAILURE_THRESHOLD) {
+                isRetryRequested = false;
+            }
+
+            if (op.getStatusCode() == Operation.STATUS_CODE_CONFLICT) {
+                isRetryRequested = false;
+            }
+
+            if (op.getStatusCode() == Operation.STATUS_CODE_UNAUTHORIZED) {
+                isRetryRequested = false;
+            }
+
+            if (op.getStatusCode() == Operation.STATUS_CODE_NOT_FOUND) {
+                isRetryRequested = false;
+            }
         }
 
         if (!isRetryRequested) {
@@ -500,7 +519,10 @@ public class NettyHttpServiceClient implements ServiceClient {
 
         int delaySeconds = op.getRetryCount() - op.getRetriesRemaining();
 
-        op.setStatusCode(Operation.STATUS_CODE_OK);
+        // restore status code and body, then restart send state machine
+        // (connect, encode, write to channel)
+        op.setStatusCode(Operation.STATUS_CODE_OK).setBodyNoCloning(originalBody);
+
         this.scheduledExecutor.schedule(() -> {
             connect(op);
         } , delaySeconds, TimeUnit.SECONDS);

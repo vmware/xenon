@@ -1141,7 +1141,7 @@ public class Operation implements Cloneable {
     }
 
     public int decrementRetriesRemaining() {
-        return this.retriesRemaining--;
+        return --this.retriesRemaining;
     }
 
     /**

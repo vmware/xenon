@@ -27,6 +27,7 @@ import com.vmware.xenon.common.test.MinimalTestServiceState;
 
 public class MinimalTestService extends StatefulService {
 
+    public static final String STRING_MARKER_RETRY_REQUEST = "fail request with error that causes retry";
     public static final String STRING_MARKER_TIMEOUT_REQUEST = "do not complete this request";
     public static final String STRING_MARKER_HAS_CONTEXT_ID = "check context id";
     public static final String STRING_MARKER_USE_DIFFERENT_CONTENT_TYPE = "change content type on response";
@@ -86,6 +87,8 @@ public class MinimalTestService extends StatefulService {
         post.complete();
     }
 
+    private String retryRequestContextId;
+
     @Override
     public void handlePatch(Operation patch) {
         MinimalTestServiceState patchBody = patch
@@ -95,6 +98,27 @@ public class MinimalTestService extends StatefulService {
         if (patchBody.id == null) {
             patch.fail(new IllegalArgumentException(ERROR_MESSAGE_ID_IS_REQUIRED),
                     MinimalTestServiceErrorResponse.create(ERROR_MESSAGE_ID_IS_REQUIRED));
+            return;
+        }
+
+        if (patchBody.id.equals(STRING_MARKER_RETRY_REQUEST)) {
+            if (this.retryRequestContextId != null) {
+                if (this.retryRequestContextId.equals(patch.getContextId())) {
+                    // the request was retried, and the body is correct since the ID is still set to
+                    // retry marker
+                    this.retryRequestContextId = null;
+                    patch.complete();
+                    return;
+                } else {
+                    patch.fail(new IllegalStateException("Expected retry context id to match"));
+                    return;
+                }
+            }
+
+            this.retryRequestContextId = patch.getContextId();
+            // fail request with a status code that should induce a retry
+            patch.setStatusCode(Operation.STATUS_CODE_BAD_REQUEST)
+                    .fail(new IllegalStateException("failing intentionally"));
             return;
         }
 

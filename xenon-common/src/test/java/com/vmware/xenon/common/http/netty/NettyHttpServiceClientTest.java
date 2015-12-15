@@ -530,6 +530,10 @@ public class NettyHttpServiceClientTest {
                 MinimalTestService.class,
                 this.host.buildMinimalTestState(),
                 null, null);
+
+        // induce a failure that does warrant a retry. Verify we do get proper retries
+        verifyRequestRetry(services);
+
         this.host.doPutPerService(
                 EnumSet.of(TestProperty.FORCE_FAILURE,
                         TestProperty.SINGLE_ITERATION),
@@ -552,6 +556,23 @@ public class NettyHttpServiceClientTest {
         this.host.testStart(1);
         this.host.send(Operation.createPatch(services.get(0).getUri())
                 .setCompletion(this.host.getExpectedFailureCompletion()));
+        this.host.testWait();
+    }
+
+    private void verifyRequestRetry(List<Service> services) throws Throwable {
+        MinimalTestServiceState body = new MinimalTestServiceState();
+        body.id = MinimalTestService.STRING_MARKER_RETRY_REQUEST;
+        body.stringValue = MinimalTestService.STRING_MARKER_RETRY_REQUEST;
+        Operation patchWithRetry = Operation.createPatch(services.get(0).getUri())
+                .setCompletion(this.host.getCompletion())
+                .setBody(body)
+                .forceRemote()
+                .setRetryCount(1)
+                .setContextId(UUID.randomUUID().toString());
+        this.host.testStart(1);
+        // the service should fail the request, the client should then retry, the service will then
+        // succeed it. We use the context id to track and correlate the retried requests
+        this.host.send(patchWithRetry);
         this.host.testWait();
     }
 
