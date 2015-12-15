@@ -14,6 +14,7 @@
 package com.vmware.xenon.services.common;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertTrue;
 
 import java.net.URI;
@@ -65,6 +66,7 @@ import com.vmware.xenon.common.ServiceHost.ServiceHostState;
 import com.vmware.xenon.common.ServiceStats;
 import com.vmware.xenon.common.ServiceStats.ServiceStat;
 import com.vmware.xenon.common.StatefulService;
+import com.vmware.xenon.common.TaskState;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
 import com.vmware.xenon.common.test.MinimalTestServiceState;
@@ -916,6 +918,88 @@ public class TestNodeGroupService {
                     + Utils.toJsonHtml(perServiceStats));
 
         }
+    }
+
+    @Test
+    public void testQueryDocumentByVersion() throws Throwable {
+
+        int versions = 2;
+        int nodeCount = this.nodeCount;
+        setUpPeers(nodeCount);
+        this.host.joinNodesAndVerifyConvergence(nodeCount);
+        int serviceCount = this.serviceCount;
+        URI exampleFactoryURI = UriUtils.buildUri(this.host, ExampleFactoryService.SELF_LINK);
+
+        Map<String, URI> exampleServices = new HashMap<>();
+
+        this.host.testStart(serviceCount);
+        // Create test services
+        for (int i = 0; i < serviceCount; i++) {
+            ExampleServiceState s = new ExampleServiceState();
+            s.name = UUID.randomUUID().toString();
+            s.documentSelfLink = s.name;
+
+            exampleServices.put(s.documentSelfLink, UriUtils.buildUri(this.host.getUri(),
+                            ExampleFactoryService.SELF_LINK, s.documentSelfLink));
+            this.host.send(Operation.createPost(exampleFactoryURI)
+                    .setBody(s)
+                    .setCompletion(this.host.getCompletion()));
+
+        }
+        this.host.testWait();
+
+        // increment version of each service by patching it.
+        for (int i = 0; i < versions; i++) {
+            this.host.testStart(serviceCount);
+            for (String exampleService : exampleServices.keySet()) {
+
+                ExampleServiceState newState = new ExampleServiceState();
+                URI uri = UriUtils.buildUri(this.host.getUri(), ExampleFactoryService.SELF_LINK, exampleService);
+                newState.name = TaskState.TaskStage.STARTED.toString();
+                this.host.send(Operation.createPatch(uri).setBody(newState)
+                        .setCompletion(this.host.getCompletion()));
+            }
+
+            this.host.testWait();
+        }
+
+        Map<URI, ExampleServiceState> exampleStates = this.host.getServiceState(null,
+                ExampleServiceState.class, exampleServices.values());
+
+        this.host.testStart(serviceCount * versions);
+
+        // Verify query by version works
+        for (ExampleServiceState serviceDocument : exampleStates.values()) {
+            for (long version = 0; version < versions; version++) {
+                final long finalVersion = version;
+                QueryTask task = NodeSelectorSynchronizationService.buildVersionQueryTask(
+                        finalVersion, serviceDocument.documentSelfLink);
+
+                Operation startPost = Operation
+                        .createPost(UriUtils.buildUri(this.host, ServiceUriPaths.CORE_LOCAL_QUERY_TASKS))
+                        .setBody(task)
+                        .setReferer(this.host.getReferer())
+                        .setCompletion((o, f) -> {
+                            if (f != null) {
+                                this.host.failIteration(f);
+                            } else {
+                                QueryTask result = o.getBody(QueryTask.class);
+                                assertNotEquals(result.results, null);
+                                assertNotEquals(result.results.documents, null);
+                                assertEquals(result.results.documents.size(), 1);
+                                ExampleServiceState r = Utils.fromJson(result.results.documents
+                                        .values().iterator()
+                                        .next(), ExampleServiceState.class);
+                                assertEquals(finalVersion, r.documentVersion);
+                                this.host.completeIteration();
+                            }
+                        });
+
+                this.host.sendRequest(startPost);
+            }
+        }
+
+        this.host.testWait();
     }
 
     private Map<URI, ReplicationTestServiceState> doReplicatedServiceFactoryPost(int serviceCount,
