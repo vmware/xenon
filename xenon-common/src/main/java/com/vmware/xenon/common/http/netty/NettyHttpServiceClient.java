@@ -433,7 +433,10 @@ public class NettyHttpServiceClient implements ServiceClient {
             }
 
             request.headers().set(HttpHeaderNames.USER_AGENT, this.userAgent);
-            request.headers().set(HttpHeaderNames.ACCEPT, "*/*");
+            if (!op.getRequestHeaders().containsKey(HttpHeaderNames.ACCEPT.toString())) {
+                request.headers().set(HttpHeaderNames.ACCEPT, "*/*");
+            }
+
             // The Netty HTTP/2 code in 5.0-alpha that converts the Host header assumes
             // that the Host is a URI (unlike HTTP1.1, when it is just a hostname) so that it
             // can create the :scheme pseudo-header. If it's not a URI, it throws an exception
