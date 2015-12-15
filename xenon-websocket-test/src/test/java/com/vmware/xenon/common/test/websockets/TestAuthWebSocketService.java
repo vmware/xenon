@@ -13,25 +13,11 @@
 
 package com.vmware.xenon.common.test.websockets;
 
-import java.net.URI;
-import java.util.HashSet;
-
 import org.junit.Test;
 
-import com.vmware.xenon.common.Operation;
-import com.vmware.xenon.common.Service.Action;
-import com.vmware.xenon.common.UriUtils;
-import com.vmware.xenon.common.Utils;
+import com.vmware.xenon.common.test.AuthorizationHelper;
 import com.vmware.xenon.common.test.VerificationHost;
 import com.vmware.xenon.services.common.AuthorizationContextService;
-import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
-import com.vmware.xenon.services.common.QueryTask.Query;
-import com.vmware.xenon.services.common.QueryTask.Query.Builder;
-import com.vmware.xenon.services.common.ResourceGroupService.ResourceGroupState;
-import com.vmware.xenon.services.common.RoleService.Policy;
-import com.vmware.xenon.services.common.RoleService.RoleState;
-import com.vmware.xenon.services.common.ServiceUriPaths;
-import com.vmware.xenon.services.common.UserGroupService.UserGroupState;
 
 /**
  * Tests websocket service with authentication on.
@@ -48,11 +34,12 @@ public class TestAuthWebSocketService extends AbstractWebSocketServiceTest {
 
     @Override
     public void setUp() throws Throwable {
-        host.setSystemAuthorizationContext();
-        this.userServicePath = this.host.createUserService("jane@doe.com");
-        createRoles();
+        this.host.setSystemAuthorizationContext();
+        AuthorizationHelper authHelper = new AuthorizationHelper(this.host);
+        this.userServicePath = authHelper.createUserService(this.host, "jane@doe.com");
+        authHelper.createRoles(this.host);
         super.setUp();
-        host.resetAuthorizationContext();
+        this.host.resetSystemAuthorizationContext();
         this.host.assumeIdentity(this.userServicePath, null);
     }
 
@@ -70,83 +57,5 @@ public class TestAuthWebSocketService extends AbstractWebSocketServiceTest {
         subscribeUnsubscribe("jane");
         subscribeStop("jane");
         subscribeClose("jane");
-    }
-
-    private void createRoles() throws Throwable {
-        this.host.testStart(3);
-
-        // Create user group for jane@doe.com
-        String userGroupLink =
-                createUserGroup("janes-user-group", Builder.create()
-                        .addFieldClause(
-                                "email",
-                                "jane@doe.com")
-                        .build());
-
-        // Create resource group for example service state
-        String exampleServiceResourceGroupLink =
-                createResourceGroup("janes-resource-group", Builder.create()
-                        .addFieldClause(
-                                ExampleServiceState.FIELD_NAME_KIND,
-                                Utils.buildKind(ExampleServiceState.class))
-                        .addFieldClause(
-                                ExampleServiceState.FIELD_NAME_NAME,
-                                "jane")
-                        .build());
-
-        // Create roles tying these together
-        createRole(userGroupLink, exampleServiceResourceGroupLink);
-
-        this.host.testWait();
-    }
-
-    private String createUserGroup(String name, Query q) {
-        URI postUserGroupsUri =
-                UriUtils.buildUri(this.host, ServiceUriPaths.CORE_AUTHZ_USER_GROUPS);
-        String selfLink =
-                UriUtils.extendUri(postUserGroupsUri, name).getPath();
-
-        // Create user group
-        UserGroupState userGroupState = new UserGroupState();
-        userGroupState.documentSelfLink = selfLink;
-        userGroupState.query = q;
-
-        this.host.send(Operation
-                .createPost(postUserGroupsUri)
-                .setBody(userGroupState)
-                .setCompletion(this.host.getCompletion()));
-        return selfLink;
-    }
-
-    private String createResourceGroup(String name, Query q) {
-        URI postResourceGroupsUri =
-                UriUtils.buildUri(this.host, ServiceUriPaths.CORE_AUTHZ_RESOURCE_GROUPS);
-        String selfLink =
-                UriUtils.extendUri(postResourceGroupsUri, name).getPath();
-
-        ResourceGroupState resourceGroupState = new ResourceGroupState();
-        resourceGroupState.documentSelfLink = selfLink;
-        resourceGroupState.query = q;
-
-        this.host.send(Operation
-                .createPost(postResourceGroupsUri)
-                .setBody(resourceGroupState)
-                .setCompletion(this.host.getCompletion()));
-        return selfLink;
-    }
-
-    private void createRole(String userGroupLink, String resourceGroupLink) {
-        RoleState roleState = new RoleState();
-        roleState.userGroupLink = userGroupLink;
-        roleState.resourceGroupLink = resourceGroupLink;
-        roleState.verbs = new HashSet<>();
-        roleState.verbs.add(Action.GET);
-        roleState.verbs.add(Action.POST);
-        roleState.policy = Policy.ALLOW;
-
-        this.host.send(Operation
-                .createPost(UriUtils.buildUri(this.host, ServiceUriPaths.CORE_AUTHZ_ROLES))
-                .setBody(roleState)
-                .setCompletion(this.host.getCompletion()));
     }
 }

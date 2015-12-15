@@ -37,23 +37,19 @@ import org.junit.Test;
 
 import com.vmware.xenon.common.Operation.AuthorizationContext;
 import com.vmware.xenon.common.Service.Action;
+import com.vmware.xenon.common.test.AuthorizationHelper;
 import com.vmware.xenon.common.test.VerificationHost;
 import com.vmware.xenon.services.common.AuthorizationContextService;
 import com.vmware.xenon.services.common.ExampleFactoryService;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
 import com.vmware.xenon.services.common.GuestUserService;
 import com.vmware.xenon.services.common.QueryTask;
-import com.vmware.xenon.services.common.QueryTask.Query;
 import com.vmware.xenon.services.common.QueryTask.Query.Builder;
-import com.vmware.xenon.services.common.ResourceGroupService.ResourceGroupState;
-import com.vmware.xenon.services.common.RoleService.Policy;
-import com.vmware.xenon.services.common.RoleService.RoleState;
-import com.vmware.xenon.services.common.ServiceUriPaths;
-import com.vmware.xenon.services.common.UserGroupService.UserGroupState;
 
 public class TestAuthorization extends BasicTestCase {
 
     String userServicePath;
+    AuthorizationHelper authHelper;
 
     @Override
     public void beforeHostStart(VerificationHost host) {
@@ -75,10 +71,11 @@ public class TestAuthorization extends BasicTestCase {
 
     @Before
     public void setupRoles() throws Throwable {
-        OperationContext.setAuthorizationContext(this.host.getSystemAuthorizationContext());
-        this.userServicePath = this.host.createUserService("jane@doe.com");
-        createRoles();
-        OperationContext.setAuthorizationContext(null);
+        this.host.setSystemAuthorizationContext();
+        this.authHelper = new AuthorizationHelper(this.host);
+        this.userServicePath = this.authHelper.createUserService(this.host, "jane@doe.com");
+        this.authHelper.createRoles(this.host);
+        this.host.resetAuthorizationContext();
     }
 
     @Test
@@ -119,7 +116,7 @@ public class TestAuthorization extends BasicTestCase {
 
         // Create user group for guest user
         String userGroupLink =
-                createUserGroup("guest-user-group", Builder.create()
+                this.authHelper.createUserGroup(this.host, "guest-user-group", Builder.create()
                         .addFieldClause(
                                 ServiceDocument.FIELD_NAME_SELF_LINK,
                                 GuestUserService.SELF_LINK)
@@ -127,7 +124,7 @@ public class TestAuthorization extends BasicTestCase {
 
         // Create resource group for example service state
         String exampleServiceResourceGroupLink =
-                createResourceGroup("guest-resource-group", Builder.create()
+                this.authHelper.createResourceGroup(this.host, "guest-resource-group", Builder.create()
                         .addFieldClause(
                                 ExampleServiceState.FIELD_NAME_KIND,
                                 Utils.buildKind(ExampleServiceState.class))
@@ -137,7 +134,7 @@ public class TestAuthorization extends BasicTestCase {
                         .build());
 
         // Create roles tying these together
-        createRole(userGroupLink, exampleServiceResourceGroupLink,
+        this.authHelper.createRole(this.host, userGroupLink, exampleServiceResourceGroupLink,
                 new HashSet<>(Arrays.asList(Action.GET, Action.POST)));
 
         this.host.testWait();
@@ -396,104 +393,6 @@ public class TestAuthorization extends BasicTestCase {
                 assertFalse(selfLinks.contains(selfLink));
             }
         }
-    }
-
-    private void createRoles() throws Throwable {
-        final Integer concurrentTasks = 6;
-        this.host.testStart(concurrentTasks);
-
-        // Create user group for jane@doe.com
-        String userGroupLink =
-                createUserGroup("janes-user-group", Builder.create()
-                        .addFieldClause(
-                                "email",
-                                "jane@doe.com")
-                        .build());
-
-        // Create resource group for example service state
-        String exampleServiceResourceGroupLink =
-                createResourceGroup("janes-resource-group", Builder.create()
-                        .addFieldClause(
-                                ExampleServiceState.FIELD_NAME_KIND,
-                                Utils.buildKind(ExampleServiceState.class))
-                        .addFieldClause(
-                                ExampleServiceState.FIELD_NAME_NAME,
-                                "jane")
-                        .build());
-
-        // Create resource group to allow access on ALL query tasks created by user
-        String queryTaskResourceGroupLink =
-                createResourceGroup("any-query-task-resource-group", Builder.create()
-                        .addFieldClause(
-                                QueryTask.FIELD_NAME_KIND,
-                                Utils.buildKind(QueryTask.class))
-                        .addFieldClause(
-                                QueryTask.FIELD_NAME_AUTH_PRINCIPAL_LINK,
-                                this.userServicePath
-                        )
-                        .build());
-
-        // Create roles tying these together
-        createRole(userGroupLink, exampleServiceResourceGroupLink,
-                new HashSet<>(Arrays.asList(Action.GET, Action.POST)));
-
-        // Create another role with PATCH permission to test if we calculate overall permissions
-        // correctly across roles.
-        createRole(userGroupLink, exampleServiceResourceGroupLink,
-                new HashSet<>(Arrays.asList(Action.PATCH)));
-
-        createRole(userGroupLink, queryTaskResourceGroupLink,
-                new HashSet<>(Arrays.asList(Action.GET, Action.POST, Action.PATCH, Action.DELETE)));
-
-        this.host.testWait();
-    }
-
-    private String createUserGroup(String name, Query q) {
-        URI postUserGroupsUri =
-                UriUtils.buildUri(this.host, ServiceUriPaths.CORE_AUTHZ_USER_GROUPS);
-        String selfLink =
-                UriUtils.extendUri(postUserGroupsUri, name).getPath();
-
-        // Create user group
-        UserGroupState userGroupState = new UserGroupState();
-        userGroupState.documentSelfLink = selfLink;
-        userGroupState.query = q;
-
-        this.host.send(Operation
-                .createPost(postUserGroupsUri)
-                .setBody(userGroupState)
-                .setCompletion(this.host.getCompletion()));
-        return selfLink;
-    }
-
-    private String createResourceGroup(String name, Query q) {
-        URI postResourceGroupsUri =
-                UriUtils.buildUri(this.host, ServiceUriPaths.CORE_AUTHZ_RESOURCE_GROUPS);
-        String selfLink =
-                UriUtils.extendUri(postResourceGroupsUri, name).getPath();
-
-        ResourceGroupState resourceGroupState = new ResourceGroupState();
-        resourceGroupState.documentSelfLink = selfLink;
-        resourceGroupState.query = q;
-
-        this.host.send(Operation
-                .createPost(postResourceGroupsUri)
-                .setBody(resourceGroupState)
-                .setCompletion(this.host.getCompletion()));
-        return selfLink;
-    }
-
-    private void createRole(String userGroupLink, String resourceGroupLink, Set<Action> verbs) {
-        RoleState roleState = new RoleState();
-        roleState.userGroupLink = userGroupLink;
-        roleState.resourceGroupLink = resourceGroupLink;
-        roleState.verbs = verbs;
-        roleState.policy = Policy.ALLOW;
-
-        this.host.send(Operation
-                .createPost(UriUtils.buildUri(this.host, ServiceUriPaths.CORE_AUTHZ_ROLES))
-                .setBody(roleState)
-                .setCompletion(this.host.getCompletion()));
     }
 
     private String generateAuthToken(String userServicePath) throws GeneralSecurityException {

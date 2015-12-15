@@ -67,7 +67,9 @@ import com.vmware.xenon.common.ServiceStats.ServiceStat;
 import com.vmware.xenon.common.StatefulService;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
+import com.vmware.xenon.common.test.AuthorizationHelper;
 import com.vmware.xenon.common.test.MinimalTestServiceState;
+import com.vmware.xenon.common.test.RoundRobinIterator;
 import com.vmware.xenon.common.test.TestProperty;
 import com.vmware.xenon.common.test.VerificationHost;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
@@ -80,6 +82,7 @@ import com.vmware.xenon.services.common.QueryTask.Query;
 import com.vmware.xenon.services.common.QueryTask.QueryTerm.MatchType;
 import com.vmware.xenon.services.common.ReplicationTestService.ReplicationTestServiceErrorResponse;
 import com.vmware.xenon.services.common.ReplicationTestService.ReplicationTestServiceState;
+import com.vmware.xenon.services.common.RoleService.RoleState;
 import com.vmware.xenon.services.common.ServiceHostManagementService.SynchronizeWithPeersRequest;
 
 public class TestNodeGroupService {
@@ -179,6 +182,7 @@ public class TestNodeGroupService {
     };
 
     private boolean isPeerSynchronizationEnabled = true;
+    private boolean isAuthorizationEnabled = false;
 
     private void setUpPeers(int localHostCount) throws Throwable {
         if (this.host != null) {
@@ -186,11 +190,16 @@ public class TestNodeGroupService {
         }
         CommandLineArgumentParser.parseFromProperties(this);
         this.host = VerificationHost.create(0);
+        this.host.setAuthorizationEnabled(this.isAuthorizationEnabled);
         this.host.start();
+
+        if (this.host.isAuthorizationEnabled()) {
+            this.host.setSystemAuthorizationContext();
+        }
+
         CommandLineArgumentParser.parseFromProperties(this.host);
         this.host.setStressTest(this.host.isStressTest);
         this.host.setPeerSynchronizationEnabled(this.isPeerSynchronizationEnabled);
-
         this.host.setUpPeerHosts(localHostCount);
 
         for (VerificationHost h1 : this.host.getInProcessHostMap().values()) {
@@ -1861,6 +1870,139 @@ public class TestNodeGroupService {
         this.host.logNodeGroupStats();
     }
 
+    @Test
+    public void testAuthorizationReplication() throws Throwable {
+        AuthorizationHelper authHelper;
+
+        this.isAuthorizationEnabled = true;
+        setUpPeers(this.nodeCount);
+
+        authHelper = new AuthorizationHelper(this.host);
+
+        // Create the same users and roles on every peer independently
+        Map<ServiceHost, Collection<String>> roleLinksByHost = new HashMap<>();
+        for (VerificationHost h : this.host.getInProcessHostMap().values()) {
+            authHelper.createUserService(h, "jane@doe.com");
+            authHelper.createRoles(h);
+        }
+
+        // Get roles from all nodes
+        Map<ServiceHost, Map<URI, RoleState>> roleStateByHost = getRolesByHost(roleLinksByHost);
+
+        // Join nodes to force synchronization and convergence
+        this.host.joinNodesAndVerifyConvergence(this.host.getPeerCount());
+
+        // Get roles from all nodes
+        Map<ServiceHost, Map<URI, RoleState>> newRoleStateByHost = getRolesByHost(roleLinksByHost);
+
+        // Verify that every host independently advances their version & epoch
+        for (ServiceHost h : roleStateByHost.keySet()) {
+            Map<URI, RoleState> roleState = roleStateByHost.get(h);
+            for (URI u : roleState.keySet()) {
+                RoleState oldRole = roleState.get(u);
+                RoleState newRole = newRoleStateByHost.get(h).get(u);
+                assertTrue("version should have advanced", newRole.documentVersion > oldRole.documentVersion);
+                assertTrue("epoch should have advanced", newRole.documentEpoch > oldRole.documentEpoch);
+            }
+        }
+
+        // Verify that every host converged to the same version, epoch, and owner
+        Map<String, Long> versions = new HashMap<>();
+        Map<String, Long> epochs = new HashMap<>();
+        Map<String, String> owners = new HashMap<>();
+        for (ServiceHost h : newRoleStateByHost.keySet()) {
+            Map<URI, RoleState> roleState = newRoleStateByHost.get(h);
+            for (URI u : roleState.keySet()) {
+                RoleState newRole = roleState.get(u);
+
+                if (versions.containsKey(newRole.documentSelfLink)) {
+                    assertTrue(versions.get(newRole.documentSelfLink) == newRole.documentVersion);
+                } else {
+                    versions.put(newRole.documentSelfLink, newRole.documentVersion);
+                }
+
+                if (epochs.containsKey(newRole.documentSelfLink)) {
+                    assertTrue(epochs.get(newRole.documentSelfLink) == newRole.documentEpoch);
+                } else {
+                    epochs.put(newRole.documentSelfLink, newRole.documentEpoch);
+                }
+
+                if (owners.containsKey(newRole.documentSelfLink)) {
+                    assertEquals(owners.get(newRole.documentSelfLink), newRole.documentOwner);
+                } else {
+                    owners.put(newRole.documentSelfLink, newRole.documentOwner);
+                }
+            }
+        }
+
+        Collection<VerificationHost> hosts = this.host.getInProcessHostMap().values();
+        RoundRobinIterator<VerificationHost> it = new RoundRobinIterator<>(hosts);
+        int exampleServiceCount = 10;
+
+        // Verify we can assert identity and make a request to every host
+        this.host.assumeIdentity(AuthorizationHelper.USER_SERVICE_PATH, null);
+
+        // Sample body that this user is authorized to create
+        ExampleServiceState exampleServiceState = new ExampleServiceState();
+        exampleServiceState.name = "jane";
+
+        this.host.testStart(exampleServiceCount);
+        for (int i = 0; i < exampleServiceCount; i++) {
+            this.host.send(Operation
+                    .createPost(UriUtils.buildUri(it.next(), ExampleFactoryService.SELF_LINK))
+                    .setBody(exampleServiceState)
+                    .setCompletion((o, e) -> {
+                        if (e != null) {
+                            this.host.failIteration(e);
+                            return;
+                        }
+
+                        // Verify the user is set as principal
+                        ExampleServiceState state = o.getBody(ExampleServiceState.class);
+                        assertEquals(state.documentAuthPrincipalLink, AuthorizationHelper.USER_SERVICE_PATH);
+                        this.host.completeIteration();
+                    }));
+        }
+        this.host.testWait();
+
+        // Sample body that this user is NOT authorized to create
+        ExampleServiceState invalidExampleServiceState = new ExampleServiceState();
+        invalidExampleServiceState.name = "somebody other than jane";
+
+        this.host.testStart(exampleServiceCount);
+        for (int i = 0; i < exampleServiceCount; i++) {
+            this.host.send(Operation
+                    .createPost(UriUtils.buildUri(it.next(), ExampleFactoryService.SELF_LINK))
+                    .setBody(invalidExampleServiceState)
+                    .setCompletion((o, e) -> {
+                        if (e != null) {
+                            assertEquals(Operation.STATUS_CODE_FORBIDDEN, o.getStatusCode());
+                            this.host.completeIteration();
+                            return;
+                        }
+
+                        this.host.failIteration(new IllegalStateException("expected failure"));
+                    }));
+        }
+        this.host.testWait();
+    }
+
+    private Map<ServiceHost, Map<URI, RoleState>> getRolesByHost(
+            Map<ServiceHost, Collection<String>> roleLinksByHost) throws Throwable {
+        Map<ServiceHost, Map<URI, RoleState>> roleStateByHost = new HashMap<>();
+        for (ServiceHost h : roleLinksByHost.keySet()) {
+            Collection<String> roleLinks = roleLinksByHost.get(h);
+            Collection<URI> roleURIs = new ArrayList<>();
+            for (String link : roleLinks) {
+                roleURIs.add(UriUtils.buildUri(h, link));
+            }
+
+            Map<URI, RoleState> serviceState = this.host.getServiceState(null, RoleState.class, roleURIs);
+            roleStateByHost.put(h, serviceState);
+        }
+        return roleStateByHost;
+    }
+
     private int computeOwnershipChangeCount(Map<String, String> linkToOwnerAfterNodeJoin,
             Map<String, String> linkToOwnerAfterNodeStop) {
         int expectedOwnerChanges = 0;
@@ -2567,7 +2709,7 @@ public class TestNodeGroupService {
                     T stateOnNode = (T) Utils.fromJson(jsonState, stateType);
                     if (!stateChecker.test(initialState, stateOnNode)) {
                         this.host
-                                .log("State for %s not converged on node %s. Current state:%s, Initial: %s",
+                                .log("State for %s not converged on node %s. Current state: %s, Initial: %s",
                                         selfLink, nodeUri, Utils.toJsonHtml(stateOnNode),
                                         Utils.toJsonHtml(initialState));
                         break;

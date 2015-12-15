@@ -97,7 +97,6 @@ import com.vmware.xenon.services.common.QueryValidationTestService.QueryValidati
 import com.vmware.xenon.services.common.ServiceHostLogService.LogServiceState;
 import com.vmware.xenon.services.common.ServiceHostManagementService;
 import com.vmware.xenon.services.common.ServiceUriPaths;
-import com.vmware.xenon.services.common.UserService.UserState;
 
 public class VerificationHost extends ExampleServiceHost {
 
@@ -2548,30 +2547,6 @@ public class VerificationHost extends ExampleServiceHost {
 
         // Associate resulting authorization context with this thread
         setAuthorizationContext(ab.getResult());
-    }
-
-    public String createUserService(String email) throws Throwable {
-        final String[] userUriPath = new String[1];
-
-        UserState userState = new UserState();
-        userState.email = email;
-
-        URI postUserUri = UriUtils.buildUri(this, ServiceUriPaths.CORE_AUTHZ_USERS);
-        testStart(1);
-        send(Operation
-                .createPost(postUserUri)
-                .setBody(userState)
-                .setCompletion((o, e) -> {
-                    if (e != null) {
-                        failIteration(e);
-                        return;
-                    }
-                    UserState state = o.getBody(UserState.class);
-                    userUriPath[0] = state.documentSelfLink;
-                    completeIteration();
-                }));
-        testWait();
-        return userUriPath[0];
     }
 
     public void deleteAllChildServices(URI factoryURI) throws Throwable {

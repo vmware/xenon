@@ -46,6 +46,7 @@ import com.vmware.xenon.common.ServiceHost.ServiceAlreadyStartedException;
 import com.vmware.xenon.common.ServiceHost.ServiceHostState;
 import com.vmware.xenon.common.ServiceHost.ServiceHostState.MemoryLimitType;
 import com.vmware.xenon.common.ServiceStats.ServiceStat;
+import com.vmware.xenon.common.test.AuthorizationHelper;
 import com.vmware.xenon.common.test.MinimalTestServiceState;
 import com.vmware.xenon.common.test.TestProperty;
 import com.vmware.xenon.common.test.VerificationHost;
@@ -118,7 +119,7 @@ public class TestServiceHost {
 
         this.host.setSystemAuthorizationContext();
         Service s = this.host.startServiceAndWait(MinimalTestService.class, UUID.randomUUID().toString());
-        String userPath = this.host.createUserService("someone@example.org");
+        String userPath = AuthorizationHelper.createUserService(this.host, this.host, "someone@example.org");
         this.host.resetAuthorizationContext();
 
         this.host.assumeIdentity(userPath, null);
