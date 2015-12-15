@@ -53,9 +53,7 @@ public class NettyChannelContext extends SocketContext {
     // before we have to close and reopen the connection
     public static final int DEFAULT_MAX_STREAM_ID = Integer.MAX_VALUE - 1;
 
-    // This is exposed for testing purposes, to validate we do the right thing
-    // when running out of streams.
-    public static int maxStreamId = DEFAULT_MAX_STREAM_ID;
+    private static int maxStreamId = DEFAULT_MAX_STREAM_ID;
 
     // Indicates if this is being used for HTTP/1.2 or HTTP/2
     public enum Protocol {
@@ -103,6 +101,13 @@ public class NettyChannelContext extends SocketContext {
     public NettyChannelContext setChannel(Channel c) {
         this.channel = c;
         return this;
+    }
+
+    /**
+     * Infrastructure use only: for testing purposes
+     */
+    public static void setMaxStreamId(int max) {
+        maxStreamId = max;
     }
 
     public NettyChannelContext setOperation(Operation request) {

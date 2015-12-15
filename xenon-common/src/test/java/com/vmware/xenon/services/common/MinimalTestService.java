@@ -13,6 +13,7 @@
 
 package com.vmware.xenon.services.common;
 
+import java.util.Map;
 import java.util.Objects;
 import java.util.Random;
 
@@ -22,6 +23,7 @@ import com.vmware.xenon.common.ServiceErrorResponse;
 import com.vmware.xenon.common.ServiceMaintenanceRequest;
 import com.vmware.xenon.common.ServiceMaintenanceRequest.MaintenanceReason;
 import com.vmware.xenon.common.StatefulService;
+import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
 import com.vmware.xenon.common.test.MinimalTestServiceState;
 
@@ -33,6 +35,7 @@ public class MinimalTestService extends StatefulService {
     public static final String STRING_MARKER_USE_DIFFERENT_CONTENT_TYPE = "change content type on response";
     public static final String STRING_MARKER_DELAY_COMPLETION = "do a tight loop";
     public static final String TEST_HEADER_NAME = "TestServiceHeader";
+    public static final String QUERY_HEADERS = "headers";
 
     public static final String PLAIN_TEXT_RESPONSE = createPlainTextResponse();
     public static final String ERROR_MESSAGE_ID_IS_REQUIRED = "id is required";
@@ -177,8 +180,35 @@ public class MinimalTestService extends StatefulService {
             get.setBodyNoCloning(PLAIN_TEXT_RESPONSE).complete();
             return;
         }
+
+        Map<String, String> params = UriUtils.parseUriQueryParams(get.getUri());
+        if (params.containsKey(QUERY_HEADERS)) {
+            respondWithHeaders(get);
+            return;
+        }
+
         MinimalTestServiceState state = getState(get);
         get.setBody(state).complete();
+    }
+
+    /**
+    * If we receive a get with the "headers" query, we serialize the incoming
+    * headers and return this. This allows us to test that the right headers
+    * were sent.
+    */
+    private void respondWithHeaders(Operation get) {
+        StringBuilder sb = new StringBuilder();
+        Map<String, String> headers = get.getRequestHeaders();
+        for (Map.Entry<String, String> header : headers.entrySet()) {
+            sb.append(header.getKey());
+            sb.append(":");
+            sb.append(header.getValue());
+            sb.append("\n");
+        }
+        MinimalTestServiceState state = new MinimalTestServiceState();
+        state.stringValue = sb.toString();
+        get.setBody(state).complete();
+        return;
     }
 
     @Override

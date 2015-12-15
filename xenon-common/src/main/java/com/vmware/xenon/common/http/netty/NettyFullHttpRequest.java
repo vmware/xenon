@@ -94,4 +94,17 @@ public class NettyFullHttpRequest extends DefaultFullHttpRequest {
         return duplicate;
     }
 
+    /**
+     * We override to avoid a Findbugs warning. We ignore the operation field on purpose.
+     */
+
+    @Override
+    public boolean equals(Object other) {
+        if (!(other instanceof NettyFullHttpRequest)) {
+            return false;
+        }
+
+        return super.equals(other);
+    }
+
 }

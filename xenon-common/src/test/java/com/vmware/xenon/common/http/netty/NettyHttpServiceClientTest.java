@@ -32,6 +32,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import javax.net.ssl.SSLContext;
 
+import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.ssl.util.InsecureTrustManagerFactory;
 import io.netty.handler.ssl.util.SelfSignedCertificate;
 
@@ -681,13 +682,15 @@ public class NettyHttpServiceClientTest {
                         return;
                     }
 
-                    MinimalTestServiceState st = o.getBody(MinimalTestServiceState.class);
-                    try {
-                        assertTrue(st.id != null);
-                        assertTrue(st.documentSelfLink != null);
-                        assertTrue(st.documentUpdateTimeMicros > 0);
-                    } catch (Throwable ex) {
-                        this.host.failIteration(ex);
+                    if (!props.contains(TestProperty.TEXT_RESPONSE)) {
+                        MinimalTestServiceState st = o.getBody(MinimalTestServiceState.class);
+                        try {
+                            assertTrue(st.id != null);
+                            assertTrue(st.documentSelfLink != null);
+                            assertTrue(st.documentUpdateTimeMicros > 0);
+                        } catch (Throwable ex) {
+                            this.host.failIteration(ex);
+                        }
                     }
                     this.host.completeIteration();
                 });
@@ -868,6 +871,71 @@ public class NettyHttpServiceClientTest {
         }
         this.host.testWait();
         this.host.logThroughput();
+    }
+
+    /**
+     * Here we can test that headers sent by the client are sent correctly. The MinimalTestService
+     * can return the headers it receives. Currently we are only testing the Accept header.
+     */
+    @Test
+    public void validateHeaders() throws Throwable {
+        MinimalTestService service = new MinimalTestService();
+        MinimalTestServiceState initialState = new MinimalTestServiceState();
+        initialState.id = "";
+        initialState.stringValue = "";
+        this.host.startServiceAndWait(service, UUID.randomUUID().toString(), initialState);
+
+        Map<String, String> headers;
+
+        headers = getHeaders(service.getUri(), false);
+        assertTrue(headers.containsKey(HttpHeaderNames.ACCEPT.toString()));
+        assertTrue(headers.get(HttpHeaderNames.ACCEPT.toString()).equals("*/*"));
+
+        headers = getHeaders(service.getUri(), true);
+        assertTrue(headers.containsKey(HttpHeaderNames.ACCEPT.toString()));
+        assertTrue(headers.get(HttpHeaderNames.ACCEPT.toString())
+                .equals(Operation.MEDIA_TYPE_APPLICATION_JSON));
+
+        this.host.log("Headers validated");
+    }
+
+    /**
+     * GET the headers the client sent by querying the MinimalTestService
+     */
+    Map<String, String> getHeaders(URI serviceUri, boolean setAccept) throws Throwable {
+        final String[] headersRaw = new String[1];
+        URI queryUri = UriUtils.extendUriWithQuery(
+                serviceUri, MinimalTestService.QUERY_HEADERS, "true");
+        Operation get = Operation.createGet(queryUri)
+                .forceRemote()
+                .setCompletion((op, ex) -> {
+                    if (ex != null) {
+                        this.host.failIteration(ex);
+                        return;
+                    }
+                    MinimalTestServiceState s = op.getBody(MinimalTestServiceState.class);
+                    headersRaw[0] = s.stringValue;
+                    this.host.completeIteration();
+                });
+
+        if (setAccept) {
+            get.addRequestHeader(HttpHeaderNames.ACCEPT.toString(),
+                    Operation.MEDIA_TYPE_APPLICATION_JSON);
+        }
+
+        this.host.testStart(1);
+        this.host.send(get);
+        this.host.testWait();
+
+        String[] headerLines = headersRaw[0].split("\\n");
+        Map <String, String> headers = new HashMap<>();
+        for (String headerLine : headerLines) {
+            String[] splitHeader = headerLine.split(":", 2);
+            if (splitHeader.length == 2) {
+                headers.put(splitHeader[0], splitHeader[1]);
+            }
+        }
+        return headers;
     }
 
 }
