@@ -266,8 +266,16 @@ public class TestUtilityService extends BasicReusableHostTestCase {
         allStats = this.host.getServiceState(null, ServiceStats.class, UriUtils.buildStatsUri(
                 this.host, exampleServiceState.documentSelfLink));
         if (allStats.entries.size() != 1) {
-            throw new IllegalStateException(
-                    "Expected single stat, got: " + Utils.toJsonHtml(allStats));
+            // there is a possibility of node group maintenance kicking in and adding a stat
+            ServiceStat nodeGroupStat = allStats.entries.get(
+                    Service.STAT_NAME_NODE_GROUP_CHANGE_MAINTENANCE_COUNT);
+            ServiceStat nodeGroupPendStat = allStats.entries.get(
+                    Service.STAT_NAME_NODE_GROUP_CHANGE_PENDING_MAINTENANCE_COUNT);
+
+            if (nodeGroupStat == null && nodeGroupPendStat == null) {
+                throw new IllegalStateException(
+                        "Expected single stat, got: " + Utils.toJsonHtml(allStats));
+            }
         }
         retStatEntry = allStats.entries.get("key3");
         assertTrue(retStatEntry.accumulatedValue == 200);
