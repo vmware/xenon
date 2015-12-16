@@ -486,7 +486,8 @@ public abstract class FactoryService extends StatelessService {
                 o.fail(ex);
             } else {
                 o.transferResponseHeadersFrom(op)
-                        .setBodyNoCloning(op.getBodyRaw()).complete();
+                        .setBodyNoCloning(op.getBodyRaw())
+                        .setStatusCode(op.getStatusCode()).complete();
             }
         });
         sendRequest(put);
