@@ -54,6 +54,51 @@ public class TestUserService extends BasicTestCase {
     }
 
     @Test
+    public void testFactoryPostDuplicate() throws Throwable {
+        UserState state = new UserState();
+        state.email = "jane@doe.com";
+        state.documentSelfLink = state.email;
+
+        final UserState[] outState = new UserState[1];
+
+        URI uri = UriUtils.buildUri(this.host, ServiceUriPaths.CORE_AUTHZ_USERS);
+        Operation op = Operation.createPost(uri)
+                .setBody(state)
+                .setCompletion((o, e) -> {
+                    if (e != null) {
+                        this.host.failIteration(e);
+                        return;
+                    }
+
+                    outState[0] = o.getBody(UserState.class);
+                    this.host.completeIteration();
+                });
+
+        this.host.testStart(1);
+        this.host.send(op);
+        this.host.testWait();
+
+        op = Operation.createPost(uri)
+                .setBody(state)
+                .setCompletion((o, e) -> {
+                    if (e != null) {
+                        this.host.failIteration(e);
+                        return;
+                    }
+                    if (o.getStatusCode() == Operation.STATUS_CODE_NOT_MODIFIED) {
+                        this.host.completeIteration();
+                        return;
+                    }
+                    this.host.failIteration(new IllegalStateException("Status code 304 expected"));
+                });
+
+        this.host.testStart(1);
+        this.host.send(op);
+        this.host.testWait();
+        assertEquals(state.email, outState[0].email);
+    }
+
+    @Test
     public void testFactoryPostFailure() throws Throwable {
         UserState state = new UserState();
         state.email = "not an email";

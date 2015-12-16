@@ -48,6 +48,27 @@ public class UserService extends StatefulService {
         op.complete();
     }
 
+    @Override
+    public void handlePut(Operation op) {
+        if (!op.hasBody()) {
+            op.fail(new IllegalArgumentException("body is required"));
+            return;
+        }
+
+        UserState state = op.getBody(UserState.class);
+        if (!validate(op, state)) {
+            return;
+        }
+        UserState currentState = getState(op);
+        if (currentState.email.equals(state.email)) {
+            op.setStatusCode(Operation.STATUS_CODE_NOT_MODIFIED);
+        } else {
+            currentState.email = state.email;
+        }
+        op.setBody(currentState);
+        op.complete();
+    }
+
     private boolean validate(Operation op, UserState state) {
         if (state.email == null) {
             op.fail(new IllegalArgumentException("email is required"));
