@@ -177,15 +177,20 @@ public class Utils {
 
             Object fieldValue = ReflectionUtils.getPropertyValue(pd, s);
             if (pd.typeName == TypeName.COLLECTION || pd.typeName == TypeName.MAP
-                    || pd.typeName == TypeName.PODO || pd.typeName == TypeName.ARRAY
-                    || pd.typeName == TypeName.BYTES) {
-                position = Utils.toBytes(fieldValue, buffer, position);
+                    || pd.typeName == TypeName.PODO || pd.typeName == TypeName.ARRAY) {
+                String content = Utils.toJson(fieldValue);
+                position = Utils.toBytes(content, buffer, position);
             } else if (fieldValue != null) {
                 position = Utils.toBytes(fieldValue, buffer, position);
             }
         }
 
         return computeHash(buffer, 0, position);
+    }
+
+    private static void appendJson(Object obj, Appendable buf) {
+        JsonMapper mapper = getJsonMapperFor(obj);
+        mapper.toJson(obj, buf);
     }
 
     public static byte[] getBuffer(int capacity) {
@@ -249,11 +254,6 @@ public class Utils {
         digest.update(content, offset, length);
         byte[] hash = digest.digest();
         return Utils.toHexString(hash);
-    }
-
-    private static void appendJson(Object obj, Appendable buf) {
-        JsonMapper mapper = getJsonMapperFor(obj);
-        mapper.toJson(obj, buf);
     }
 
     public static String toJson(Object body) {
