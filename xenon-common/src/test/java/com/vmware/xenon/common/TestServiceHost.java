@@ -36,6 +36,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 
+import io.netty.handler.ssl.util.SelfSignedCertificate;
 import org.junit.After;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
@@ -1096,6 +1097,42 @@ public class TestServiceHost {
                 Operation.MEDIA_TYPE_TEXT_HTML, null);
 
         assertEquals("<html>customHtml</html>", htmlResponse);
+    }
+
+    @Test
+    public void httpScheme() throws Throwable {
+        setUp(true);
+
+        // SSL config for https
+        SelfSignedCertificate ssc = new SelfSignedCertificate();
+        this.host.setCertificateFileReference(ssc.certificate().toURI());
+        this.host.setPrivateKeyFileReference(ssc.privateKey().toURI());
+
+        assertEquals("before starting, scheme is NONE", ServiceHost.HttpScheme.NONE, this.host.getCurrentHttpScheme());
+
+        this.host.start();
+
+        ServiceRequestListener httpListener = this.host.getListener();
+        ServiceRequestListener httpsListener = this.host.getSecureListener();
+
+        assertTrue("http listener is on", httpListener.isListening());
+        assertTrue("https listener is on", httpsListener.isListening());
+        assertEquals(ServiceHost.HttpScheme.HTTP_AND_HTTPS, this.host.getCurrentHttpScheme());
+
+        httpsListener.stop();
+        assertTrue("http listener is on ", httpListener.isListening());
+        assertFalse("https listener is off", httpsListener.isListening());
+        assertEquals(ServiceHost.HttpScheme.HTTP_ONLY, this.host.getCurrentHttpScheme());
+
+        httpListener.stop();
+        assertFalse("http listener is off", httpListener.isListening());
+        assertFalse("https listener is off", httpsListener.isListening());
+        assertEquals(ServiceHost.HttpScheme.NONE, this.host.getCurrentHttpScheme());
+
+        httpsListener.start(0, ServiceHost.LOOPBACK_ADDRESS);
+        assertFalse("http listener is off", httpListener.isListening());
+        assertTrue("https listener is on", httpsListener.isListening());
+        assertEquals(ServiceHost.HttpScheme.HTTPS_ONLY, this.host.getCurrentHttpScheme());
     }
 
     @After

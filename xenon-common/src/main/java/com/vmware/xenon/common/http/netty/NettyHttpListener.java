@@ -46,6 +46,7 @@ public class NettyHttpListener implements ServiceRequestListener {
     private NioEventLoopGroup eventLoopGroup;
     private SslContext sslContext;
     private ChannelHandler childChannelHandler;
+    private boolean isListening = false;
 
     public NettyHttpListener(ServiceHost host) {
         this.host = host;
@@ -93,6 +94,7 @@ public class NettyHttpListener implements ServiceRequestListener {
         this.serverChannel = b.bind(addr).sync().channel();
         this.serverChannel.config().setOption(ChannelOption.SO_LINGER, 0);
         this.port = ((InetSocketAddress) this.serverChannel.localAddress()).getPort();
+        this.isListening = true;
     }
 
     @Override
@@ -108,6 +110,9 @@ public class NettyHttpListener implements ServiceRequestListener {
         this.serverChannel.close();
         this.eventLoopGroup.shutdownGracefully();
         this.serverChannel = null;
+        this.isListening = false;
+
+        this.host.setPublicUri(null);
     }
 
     @Override
@@ -125,4 +130,8 @@ public class NettyHttpListener implements ServiceRequestListener {
         return this.sslContext != null;
     }
 
+    @Override
+    public boolean isListening() {
+        return this.isListening;
+    }
 }
