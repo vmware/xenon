@@ -32,4 +32,6 @@ public interface ServiceRequestListener {
     void stop() throws IOException;
 
     boolean isSSLConfigured();
+
+    boolean isListening();
 }

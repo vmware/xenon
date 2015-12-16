@@ -412,6 +412,10 @@ public class ServiceHost {
         return port;
     }
 
+    protected enum HttpScheme {
+        HTTP_ONLY, HTTPS_ONLY, HTTP_AND_HTTPS, NONE;
+    }
+
     private Logger logger = Logger.getLogger(getClass().getName());
     private FileHandler handler;
 
@@ -790,6 +794,7 @@ public class ServiceHost {
     public ServiceHost setPublicUri(URI publicUri) {
         this.state.publicUri = publicUri;
         this.cachedUri = null;
+        this.logPrefix = null;
         return this;
     }
 
@@ -4588,7 +4593,10 @@ public class ServiceHost {
 
     public URI getUri() {
         if (this.cachedUri == null) {
-            this.cachedUri = UriUtils.buildUri(getPreferredAddress(), getPort(), "", null);
+            boolean isSecureConnectionOnly = getCurrentHttpScheme() == HttpScheme.HTTPS_ONLY;
+            String scheme = isSecureConnectionOnly ? UriUtils.HTTPS_SCHEME : UriUtils.HTTP_SCHEME;
+            int port = isSecureConnectionOnly ? getSecurePort() : getPort();
+            this.cachedUri = UriUtils.buildUri(scheme, getPreferredAddress(), port, "", null);
         }
         return this.cachedUri;
     }
@@ -4768,4 +4776,16 @@ public class ServiceHost {
         });
     }
 
+    protected HttpScheme getCurrentHttpScheme() {
+        boolean isListeningHttp = this.httpListener != null && this.httpListener.isListening();
+        boolean isListeningHttps = this.httpsListener != null && this.httpsListener.isListening();
+
+        if (!isListeningHttp && !isListeningHttps) {
+            return HttpScheme.NONE;
+        } else if (isListeningHttp && isListeningHttps) {
+            return HttpScheme.HTTP_AND_HTTPS;
+        } else {
+            return isListeningHttp ? HttpScheme.HTTP_ONLY : HttpScheme.HTTPS_ONLY;
+        }
+    }
 }
