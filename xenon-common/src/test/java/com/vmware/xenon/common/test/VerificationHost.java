@@ -885,6 +885,9 @@ public class VerificationHost extends ExampleServiceHost {
             if (props != null && props.contains(TestProperty.FORCE_REMOTE)) {
                 get.forceRemote();
             }
+            if (props != null && props.contains(TestProperty.HTTP2)) {
+                get.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_USE_HTTP2);
+            }
 
             if (props != null && props.contains(TestProperty.DISABLE_CONTEXT_ID_VALIDATION)) {
                 get.setContextId(TestProperty.DISABLE_CONTEXT_ID_VALIDATION.toString());
@@ -2520,6 +2523,7 @@ public class VerificationHost extends ExampleServiceHost {
         super.addPrivilegedService(serviceType);
     }
 
+    @Override
     public void setAuthorizationContext(AuthorizationContext context) {
         super.setAuthorizationContext(context);
     }

@@ -28,5 +28,6 @@ public enum TestProperty {
     DISABLE_CONTEXT_ID_VALIDATION,
     SET_CONTEXT_ID,
     CALLBACK_SEND,
-    PERSISTED
+    PERSISTED,
+    HTTP2
 }
