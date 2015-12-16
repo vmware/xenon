@@ -470,7 +470,7 @@ public class TestServiceHost {
 
         // induce host to clear service state cache by setting mem limit low
         this.host.setServiceMemoryLimit(ServiceHost.ROOT_PATH, 0.0001);
-        long maintIntervalMillis = 100;
+        long maintIntervalMillis = 500;
         long maintenanceIntervalMicros = TimeUnit.MILLISECONDS.toMicros(maintIntervalMillis);
         this.host.setMaintenanceIntervalMicros(maintenanceIntervalMicros);
         this.host.start();
