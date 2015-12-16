@@ -16,6 +16,7 @@ package com.vmware.xenon.services.common;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Random;
+import java.util.concurrent.TimeUnit;
 
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.ServiceDocument;
@@ -36,12 +37,14 @@ public class MinimalTestService extends StatefulService {
     public static final String STRING_MARKER_DELAY_COMPLETION = "do a tight loop";
     public static final String TEST_HEADER_NAME = "TestServiceHeader";
     public static final String QUERY_HEADERS = "headers";
+    public static final String QUERY_DELAY_COMPLETION = "delay";
 
     public static final String PLAIN_TEXT_RESPONSE = createPlainTextResponse();
     public static final String ERROR_MESSAGE_ID_IS_REQUIRED = "id is required";
 
     public static final String STAT_NAME_MAINTENANCE_SUCCESS_COUNT = "maintSuccessCount";
     public static final String STAT_NAME_MAINTENANCE_FAILURE_COUNT = "maintFailureCount";
+
 
 
     public static class MinimalTestServiceErrorResponse extends ServiceErrorResponse {
@@ -127,7 +130,11 @@ public class MinimalTestService extends StatefulService {
 
         if (patchBody.id.equals(STRING_MARKER_DELAY_COMPLETION)) {
             try {
-                Thread.sleep(25);
+                if (patchBody.responseDelay != null) {
+                    Thread.sleep(patchBody.responseDelay);
+                } else {
+                    Thread.sleep(25);
+                }
             } catch (InterruptedException e) {
             }
             patch.complete();
@@ -187,7 +194,18 @@ public class MinimalTestService extends StatefulService {
             return;
         }
 
-        MinimalTestServiceState state = getState(get);
+
+        final MinimalTestServiceState state = getState(get);
+        if (params.containsKey(MinimalTestService.QUERY_DELAY_COMPLETION)) {
+            long delay = Integer.parseInt(params.get(MinimalTestService.QUERY_DELAY_COMPLETION));
+            getHost().schedule(
+                    () -> {
+                        get.setBody(state).complete();
+                    } ,
+                    delay, TimeUnit.SECONDS);
+            return;
+        }
+
         get.setBody(state).complete();
     }
 
@@ -247,6 +265,7 @@ public class MinimalTestService extends StatefulService {
         }
     }
 
+    @Override
     public void handleMaintenance(Operation op) {
         if (this.delayMaintenance) {
             try {

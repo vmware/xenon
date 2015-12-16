@@ -287,7 +287,7 @@ public class NettyHttpServiceClientTest {
         doRemotePatchWithTimeout(true);
     }
 
-    private void doRemotePatchWithTimeout(boolean useCallback) throws Throwable {
+    public void doRemotePatchWithTimeout(boolean useCallback) throws Throwable {
         List<Service> services = this.host.doThroughputServiceStart(1,
                 MinimalTestService.class,
                 this.host.buildMinimalTestState(),

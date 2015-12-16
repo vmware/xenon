@@ -75,7 +75,7 @@ public class NettyChannelContext extends SocketContext {
     String host;
     private Channel channel;
     private final String key;
-    Protocol protocol;
+    private Protocol protocol;
 
     // An HTTP/2 connection may have multiple simultaneous operations. This map
     // Will associate each stream with the operation happening on the stream
@@ -178,6 +178,10 @@ public class NettyChannelContext extends SocketContext {
         this.openInProgress.set(inProgress);
     }
 
+    public Protocol getProtocol() {
+        return this.protocol;
+    }
+
     /**
      * Returns true if we can't allocate any more streams. Used by NettyChannelPool
      * to decide when it's time to close the connection and open a new one.
@@ -189,10 +193,14 @@ public class NettyChannelContext extends SocketContext {
         } else {
             boolean isExhausted;
             synchronized (this.streamIdMap) {
-                isExhausted = this.largestStreamId > NettyChannelContext.maxStreamId;
+                isExhausted = this.largestStreamId >= NettyChannelContext.maxStreamId;
             }
             return !isExhausted;
         }
+    }
+
+    public int getLargestStreamId() {
+        return this.largestStreamId;
     }
 
     @Override

@@ -18,4 +18,5 @@ import com.vmware.xenon.common.ServiceDocument;
 public class MinimalTestServiceState extends ServiceDocument {
     public String id;
     public String stringValue;
+    public Integer responseDelay;
 }
