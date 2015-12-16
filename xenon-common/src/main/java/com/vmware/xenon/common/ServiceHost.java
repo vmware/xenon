@@ -2976,6 +2976,11 @@ public class ServiceHost {
                     processRequest = false;
                     return;
                 }
+                // update stage since we might have aborted PAUSE
+                stage = s.getProcessingStage();
+                if (stage == ProcessingStage.AVAILABLE) {
+                    return;
+                }
             }
 
             op.fail(new CancellationException("Service not available, in stage:" + stage));
