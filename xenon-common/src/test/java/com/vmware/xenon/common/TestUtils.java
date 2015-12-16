@@ -28,6 +28,7 @@ import java.util.Arrays;
 import java.util.Calendar;
 import java.util.EnumSet;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -222,6 +223,8 @@ public class TestUtils {
         document.documentUpdateTimeMicros = Utils.getNowMicrosUtc();
         document.documentAuthPrincipalLink = UUID.randomUUID().toString();
         document.documentUpdateAction = UUID.randomUUID().toString();
+        document.mapOfStrings = new LinkedHashMap<String, String>();
+        document.mapOfStrings.put("key1", "value1");
 
         QueryValidationServiceState original = Utils.clone(document);
 
