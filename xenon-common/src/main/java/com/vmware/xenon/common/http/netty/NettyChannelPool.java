@@ -236,6 +236,44 @@ public class NettyChannelPool {
         }
     }
 
+    /**
+     * Count how many HTTP/2 contexts we have. There may be more than one if we have
+     * an exhausted connection that hasn't been cleaned up yet.
+     * This is intended for infrastructure test purposes.
+     */
+    public int getHttp2ActiveContextCount(String host, int port) {
+        if (!this.isHttp2Only) {
+            throw new IllegalStateException(
+                    "Internal error: can't get HTTP/2 information about HTTP/1 context");
+        }
+
+        String key = toConnectionKey(host, port);
+        NettyChannelGroup group = getChannelGroup(key);
+        if (group == null) {
+            return 0;
+        }
+        return group.http2Channels.size();
+    }
+
+    /**
+     * Find the first valid HTTP/2 context that is being used to talk to a given host.
+     * This is intended for infrastructure test purposes.
+     */
+    public NettyChannelContext getFirstValidHttp2Context(String host, int port) {
+        if (!this.isHttp2Only) {
+            throw new IllegalStateException(
+                    "Internal error: can't get HTTP/2 information about HTTP/1 context");
+        }
+
+        String key = toConnectionKey(host, port);
+        NettyChannelGroup group = getChannelGroup(key);
+        if (group == null) {
+            return null;
+        }
+        NettyChannelContext context = selectHttp2Context(group, host, port, key);
+        return context;
+    }
+
     private NettyChannelContext selectContext(NettyChannelGroup group, String host, int port, String key) {
         if (this.isHttp2Only) {
             return selectHttp2Context(group, host, port, key);
@@ -489,14 +527,14 @@ public class NettyChannelPool {
             connectOrReuse(context.host, context.port, pendingOp);
         } else {
             int i = 0;
-            while (havePending && i < this.connectionLimit) {
-                synchronized (group) {
-                    pendingOp = group.pendingRequests.remove(group.pendingRequests.size() - 1);
+            synchronized (group) {
+                while (havePending && i < this.connectionLimit) {
+                    pendingOp = group.pendingRequests.remove(0);
                     havePending = !group.pendingRequests.isEmpty();
+                    pendingOp.setSocketContext(context);
+                    pendingOp.complete();
+                    i++;
                 }
-                pendingOp.setSocketContext(context);
-                pendingOp.complete();
-                i++;
             }
         }
     }
@@ -605,7 +643,7 @@ public class NettyChannelPool {
                     .iterator(); it.hasNext();) {
                 Map.Entry<Integer, Operation> entry = it.next();
 
-                Operation activeOp = entry.getValue();
+                final Operation activeOp = entry.getValue();
                 if (activeOp == null || activeOp.getExpirationMicrosUtc() > now) {
                     continue;
                 }
@@ -620,28 +658,30 @@ public class NettyChannelPool {
     }
 
     /**
-     * Close the HTTP/2 context if it's been idle too long
+     * Close the HTTP/2 context if it's been idle too long or if we've exhausted
+     * the maximum number of streams that can be sent on the connection.
      * @param group
      */
     private void closeHttp2Context(NettyChannelGroup group) {
         long now = Utils.getNowMicrosUtc();
         List<NettyChannelContext> items = new ArrayList<>();
         for (NettyChannelContext http2Channel : group.http2Channels) {
+
             // We close a channel for two reasons:
             // First, if it hasn't been used for a while
             // Second, if we've exhausted the number of streams
             Channel channel = http2Channel.getChannel();
             if (channel == null || !channel.isOpen()) {
-                return;
+                continue;
             }
 
             if (http2Channel.haveStreamsInUse()) {
-                return;
+                continue;
             }
 
             long delta = now - http2Channel.getLastUseTimeMicros();
-            if (delta < CHANNEL_EXPIRATION_MICROS || !http2Channel.isValid()) {
-                return;
+            if (delta < CHANNEL_EXPIRATION_MICROS && http2Channel.isValid()) {
+                continue;
             }
             channel.close();
             items.add(http2Channel);

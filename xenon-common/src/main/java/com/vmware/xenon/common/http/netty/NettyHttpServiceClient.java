@@ -444,8 +444,8 @@ public class NettyHttpServiceClient implements ServiceClient {
 
             // The Netty HTTP/2 code in 5.0-alpha that converts the Host header assumes
             // that the Host is a URI (unlike HTTP1.1, when it is just a hostname) so that it
-            // can create the :scheme pseudo-header. If it's not a URI, it throws an exception
-            // we we put "http://" in front.
+            // can create the :scheme pseudo-header. If it's not a URI, it throws an exception.
+            // That's why we we put "http://" in front.
             request.headers().set(
                     HttpHeaderNames.HOST,
                     (useHttp2 ? op.getUri().getScheme() + "://" : "")
@@ -480,8 +480,15 @@ public class NettyHttpServiceClient implements ServiceClient {
             pool = this.sslChannelPool;
         }
 
-        op.setSocketContext(null);
-        pool.returnOrClose(ctx, !op.isKeepAlive());
+        if (ctx != null && ctx.getProtocol() == NettyChannelContext.Protocol.HTTP2) {
+            // For HTTP/2, we multiple streams so we don't close the connection.
+            pool = this.http2ChannelPool;
+            pool.returnOrClose(ctx, false);
+        } else {
+            // for HTTP/1.1, we close the stream to ensure we don't use a bad connection
+            op.setSocketContext(null);
+            pool.returnOrClose(ctx, !op.isKeepAlive());
+        }
 
         if (this.scheduledExecutor.isShutdown()) {
             op.fail(new CancellationException());
@@ -617,6 +624,29 @@ public class NettyHttpServiceClient implements ServiceClient {
     @Override
     public SSLContext getSSLContext() {
         return this.sslContext;
+    }
+
+    /**
+     * Find the HTTP/2 context that is currently being used to talk to a given host.
+     * This is intended for infrastructure test purposes.
+     */
+    public NettyChannelContext getCurrentHttp2Context(String host, int port) {
+        if (this.http2ChannelPool == null) {
+            throw new IllegalStateException("Internal error: no HTTP/2 channel pool");
+        }
+        return this.http2ChannelPool.getFirstValidHttp2Context(host, port);
+    }
+
+    /**
+     * Count how many HTTP/2 contexts we have. There may be more than one if we have
+     * an exhausted connection that hasn't been cleaned up yet.
+     * This is intended for infrastructure test purposes.
+     */
+    public int countHttp2Contexts(String host, int port) {
+        if (this.http2ChannelPool == null) {
+            throw new IllegalStateException("Internal error: no HTTP/2 channel pool");
+        }
+        return this.http2ChannelPool.getHttp2ActiveContextCount(host, port);
     }
 
 }
