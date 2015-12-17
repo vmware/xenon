@@ -503,6 +503,9 @@ public class TestServiceHost {
         long cacheMissCount = 0;
         Map<URI, ServiceStats> servicesWithMaintenance = new HashMap<>();
 
+        // guarantee at least a few intervals have passed. Other we risk false negatives.
+        Thread.sleep(maintIntervalMillis * 5);
+
         Date exp = this.host.getTestExpiration();
         while (new Date().before(exp)) {
             // issue GET to actually make the cache miss occur (if the cache has been cleared)
@@ -565,6 +568,7 @@ public class TestServiceHost {
         for (Entry<URI, ServiceStats> e : servicesWithMaintenance.entrySet()) {
 
             ServiceStat maintStat = e.getValue().entries.get(Service.STAT_NAME_MAINTENANCE_COUNT);
+            this.host.log("%s has %f intervals", e.getKey(), maintStat.latestValue);
             if (maintStat.latestValue > expectedMaintIntervals + 2) {
                 String error = String.format("Expected %f, got %f. Too many stats for service %s",
                         expectedMaintIntervals + 2,
