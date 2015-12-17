@@ -1902,10 +1902,10 @@ public class LuceneDocumentIndexService extends StatelessService {
             int documentCount = s.count(linkQuery);
             int pastRetentionLimitVersions = (int) (documentCount - e.getValue());
             if (pastRetentionLimitVersions <= 0) {
+                it.remove();
                 continue;
             }
 
-            it.remove();
             // trim durable index for this link
             deleteDocumentsFromIndex(dummyDelete, e.getKey(), e.getValue());
             count++;
