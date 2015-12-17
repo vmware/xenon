@@ -322,6 +322,15 @@ public class NettyHttpServiceClient implements ServiceClient {
 
     private void connect(Operation op) {
         final Object originalBody = op.getBodyRaw();
+
+        // We know the URI is not null, because it was checked in clone()
+        if (op.getUri().getHost() == null) {
+            op.setRetryCount(0);
+            fail(new IllegalArgumentException("Missing host in URI"),
+                    op, originalBody);
+            return;
+        }
+
         URI uri = this.httpProxy == null ? op.getUri() : this.httpProxy;
         if (op.getUri().getHost().equals(ServiceHost.LOCAL_HOST)) {
             uri = op.getUri();

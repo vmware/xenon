@@ -938,4 +938,47 @@ public class NettyHttpServiceClientTest {
         return headers;
     }
 
+    /**
+     * Validate that we throw reasonable exceptions when the URI is null, or the URI's host is null.
+     */
+    @Test
+    public void validateOperationChecks() throws Throwable {
+        URI noUri = null;
+        URI noHostUri = new URI("/foo/bar/baz");
+
+        Operation noUriOp = Operation.createGet(noUri).setReferer(noHostUri);
+        Operation noHostOp = Operation.createGet(noHostUri).setReferer(noHostUri);
+
+        this.host.testStart(2);
+        noUriOp.setCompletion((op, ex) -> {
+            if (ex == null) {
+                this.host.failIteration(ex);;
+                return;
+            }
+            if (!ex.getMessage().contains("Uri is required")) {
+                this.host.failIteration(new IllegalStateException("Unexpected exception"));
+                return;
+            }
+            this.host.completeIteration();
+        });
+
+        noHostOp.setCompletion((op, ex) -> {
+            if (ex == null) {
+                this.host.failIteration(ex);
+                return;
+            }
+            if (!ex.getMessage().contains("Missing host")) {
+                this.host.failIteration(new IllegalStateException("Unexpected exception"));
+                return;
+            }
+            this.host.completeIteration();
+        });
+
+        this.host.toggleNegativeTestMode(true);
+        this.host.getClient().send(noUriOp);
+        this.host.getClient().send(noHostOp);
+        this.host.testWait();
+        this.host.toggleNegativeTestMode(false);
+    }
+
 }
