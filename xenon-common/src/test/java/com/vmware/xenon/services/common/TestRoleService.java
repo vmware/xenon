@@ -18,6 +18,7 @@ import static org.junit.Assert.assertTrue;
 
 import java.net.URI;
 import java.util.HashSet;
+import java.util.UUID;
 import java.util.function.Supplier;
 
 import org.junit.Test;
@@ -66,6 +67,53 @@ public class TestRoleService extends BasicTestCase {
 
         assertEquals(outState[0].userGroupLink, state.userGroupLink);
         assertEquals(outState[0].resourceGroupLink, state.resourceGroupLink);
+    }
+
+    @Test
+    public void testFactoryPostDuplicate() throws Throwable {
+        RoleState state = validRoleState();
+        state.documentSelfLink = UUID.randomUUID().toString();
+        final RoleState[] outState = new RoleState[1];
+
+        URI uri = UriUtils.buildUri(this.host, ServiceUriPaths.CORE_AUTHZ_ROLES);
+        Operation op = Operation.createPost(uri)
+                .setBody(state)
+                .setCompletion((o, e) -> {
+                    if (e != null) {
+                        this.host.failIteration(e);
+                        return;
+                    }
+
+                    outState[0] = o.getBody(RoleState.class);
+                    this.host.completeIteration();
+                });
+
+        this.host.testStart(1);
+        this.host.send(op);
+        this.host.testWait();
+
+        op = Operation.createPost(uri)
+            .setBody(state)
+            .setCompletion((o, e) -> {
+                if (e != null) {
+                    this.host.failIteration(e);
+                    return;
+                }
+                if (o.getStatusCode() == Operation.STATUS_CODE_NOT_MODIFIED) {
+                    this.host.completeIteration();
+                    return;
+                }
+                this.host.failIteration(new IllegalStateException("Status code 304 expected"));
+            });
+
+        this.host.testStart(1);
+        this.host.send(op);
+        this.host.testWait();
+        assertEquals(state.userGroupLink, outState[0].userGroupLink);
+        assertEquals(state.resourceGroupLink, outState[0].resourceGroupLink);
+        assertEquals(state.verbs, outState[0].verbs);
+        assertEquals(state.priority, outState[0].priority);
+        assertEquals(state.policy, outState[0].policy);
     }
 
     void testFactoryPostFailure(Supplier<RoleState> sup) throws Throwable {

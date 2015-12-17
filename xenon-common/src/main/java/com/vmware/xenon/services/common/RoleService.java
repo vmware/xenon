@@ -17,6 +17,7 @@ import java.util.Set;
 
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.ServiceDocument;
+import com.vmware.xenon.common.ServiceDocumentDescription;
 import com.vmware.xenon.common.StatefulService;
 import com.vmware.xenon.common.Utils;
 
@@ -60,6 +61,34 @@ public class RoleService extends StatefulService {
         if (!validate(op, state)) {
             return;
         }
+
+        op.complete();
+    }
+
+    @Override
+    public void handlePut(Operation op) {
+        if (!op.hasBody()) {
+            op.fail(new IllegalArgumentException("body is required"));
+            return;
+        }
+
+        RoleState newState = op.getBody(RoleState.class);
+        if (!validate(op, newState)) {
+            return;
+        }
+
+        RoleState currentState = getState(op);
+        ServiceDocumentDescription documentDescription = this.getDocumentTemplate().documentDescription;
+        if (ServiceDocument.equals(documentDescription, currentState, newState)) {
+            op.setStatusCode(Operation.STATUS_CODE_NOT_MODIFIED);
+        } else {
+            currentState.userGroupLink = newState.userGroupLink;
+            currentState.resourceGroupLink = newState.resourceGroupLink;
+            currentState.verbs = newState.verbs;
+            currentState.priority = newState.priority;
+            currentState.policy = newState.policy;
+        }
+        op.setBody(currentState);
 
         op.complete();
     }

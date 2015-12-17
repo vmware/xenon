@@ -15,6 +15,7 @@ package com.vmware.xenon.services.common;
 
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.ServiceDocument;
+import com.vmware.xenon.common.ServiceDocumentDescription;
 import com.vmware.xenon.common.StatefulService;
 import com.vmware.xenon.services.common.QueryTask.Query;
 
@@ -35,15 +36,6 @@ public class ResourceGroupService extends StatefulService {
 
     @Override
     public void handleStart(Operation op) {
-        handleOp(op);
-    }
-
-    @Override
-    public void handlePut(Operation put) {
-        handleOp(put);
-    }
-
-    private void handleOp(Operation op) {
         if (!op.hasBody()) {
             op.fail(new IllegalArgumentException("body is required"));
             return;
@@ -53,6 +45,30 @@ public class ResourceGroupService extends StatefulService {
         if (!validate(op, state)) {
             return;
         }
+
+        op.complete();
+    }
+
+    @Override
+    public void handlePut(Operation op) {
+        if (!op.hasBody()) {
+            op.fail(new IllegalArgumentException("body is required"));
+            return;
+        }
+
+        ResourceGroupState newState = op.getBody(ResourceGroupState.class);
+        if (!validate(op, newState)) {
+            return;
+        }
+
+        ResourceGroupState currentState = getState(op);
+        ServiceDocumentDescription documentDescription = this.getDocumentTemplate().documentDescription;
+        if (ServiceDocument.equals(documentDescription, currentState, newState)) {
+            op.setStatusCode(Operation.STATUS_CODE_NOT_MODIFIED);
+        } else {
+            currentState.query = newState.query;
+        }
+        op.setBody(currentState);
 
         op.complete();
     }

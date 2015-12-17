@@ -79,6 +79,54 @@ public class TestTenantService extends BasicReusableHostTestCase {
     }
 
     @Test
+    public void testFactoryPostDuplicate() throws Throwable {
+        TenantService.TenantState state = new TenantService.TenantState();
+        state.documentSelfLink = UUID.randomUUID().toString();
+        state.id = UUID.randomUUID().toString();
+        state.name = UUID.randomUUID().toString();
+        state.parentLink = UUID.randomUUID().toString();
+        final TenantService.TenantState[] outState = new TenantService.TenantState[1];
+
+
+        Operation op = Operation.createPost(this.factoryURI)
+                .setBody(state)
+                .setCompletion((o, e) -> {
+                    if (e != null) {
+                        this.host.failIteration(e);
+                        return;
+                    }
+
+                    outState[0] = o.getBody(TenantService.TenantState.class);
+                    this.host.completeIteration();
+                });
+
+        this.host.testStart(1);
+        this.host.send(op);
+        this.host.testWait();
+
+        op = Operation.createPost(this.factoryURI)
+            .setBody(state)
+            .setCompletion((o, e) -> {
+                if (e != null) {
+                    this.host.failIteration(e);
+                    return;
+                }
+                if (o.getStatusCode() == Operation.STATUS_CODE_NOT_MODIFIED) {
+                    this.host.completeIteration();
+                    return;
+                }
+                this.host.failIteration(new IllegalStateException("Status code 304 expected"));
+            });
+
+        this.host.testStart(1);
+        this.host.send(op);
+        this.host.testWait();
+        assertEquals(state.id, outState[0].id);
+        assertEquals(state.name, outState[0].name);
+        assertEquals(state.parentLink, outState[0].parentLink);
+    }
+
+    @Test
     public void testPatch() throws Throwable {
         ServiceDocumentQueryResult initialStates = createInstances(SERVICE_COUNT, false);
 

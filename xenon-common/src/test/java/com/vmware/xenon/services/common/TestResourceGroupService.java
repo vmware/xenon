@@ -16,6 +16,7 @@ package com.vmware.xenon.services.common;
 import static org.junit.Assert.assertEquals;
 
 import java.net.URI;
+import java.util.UUID;
 
 import org.junit.Test;
 
@@ -49,6 +50,54 @@ public class TestResourceGroupService extends BasicTestCase {
         state.query.setTermPropertyName("new-name");
         state.query.setTermMatchValue("new-value");
         postHelper(state);
+    }
+
+    @Test
+    public void testFactoryPostDuplicate() throws Throwable {
+        ResourceGroupState state = new ResourceGroupState();
+        state.documentSelfLink = UUID.randomUUID().toString();
+        state.query = new Query();
+        state.query.setTermPropertyName("name");
+        state.query.setTermMatchValue("value");
+
+        final ResourceGroupState[] outState = new ResourceGroupState[1];
+
+        URI uri = UriUtils.buildUri(this.host, ServiceUriPaths.CORE_AUTHZ_RESOURCE_GROUPS);
+        Operation op = Operation.createPost(uri)
+                .setBody(state)
+                .setCompletion((o, e) -> {
+                    if (e != null) {
+                        this.host.failIteration(e);
+                        return;
+                    }
+
+                    outState[0] = o.getBody(ResourceGroupState.class);
+                    this.host.completeIteration();
+                });
+
+        this.host.testStart(1);
+        this.host.send(op);
+        this.host.testWait();
+
+        op = Operation.createPost(uri)
+            .setBody(state)
+            .setCompletion((o, e) -> {
+                if (e != null) {
+                    this.host.failIteration(e);
+                    return;
+                }
+                if (o.getStatusCode() == Operation.STATUS_CODE_NOT_MODIFIED) {
+                    this.host.completeIteration();
+                    return;
+                }
+                this.host.failIteration(new IllegalStateException("Status code 304 expected"));
+            });
+
+        this.host.testStart(1);
+        this.host.send(op);
+        this.host.testWait();
+        assertEquals(state.query.term.propertyName, outState[0].query.term.propertyName);
+        assertEquals(state.query.term.matchValue, outState[0].query.term.matchValue);
     }
 
     @Test
