@@ -355,7 +355,37 @@ public class TestServiceHost {
         ExampleServiceHost h = new ExampleServiceHost();
         TemporaryFolder tmpFolder = new TemporaryFolder();
         tmpFolder.create();
+
         try {
+
+            // try invalid arguments
+            ServiceHost.Arguments hostArgs = new ServiceHost.Arguments();
+            hostArgs.publicUri = "";
+            try {
+                h.initialize(hostArgs);
+                throw new IllegalStateException("should have failed");
+            } catch (IllegalArgumentException e) {
+
+            }
+
+            hostArgs = new ServiceHost.Arguments();
+            hostArgs.bindAddress = "";
+            try {
+                h.initialize(hostArgs);
+                throw new IllegalStateException("should have failed");
+            } catch (IllegalArgumentException e) {
+
+            }
+
+            hostArgs = new ServiceHost.Arguments();
+            hostArgs.port = -2;
+            try {
+                h.initialize(hostArgs);
+                throw new IllegalStateException("should have failed");
+            } catch (IllegalArgumentException e) {
+
+            }
+
             String bindAddress = "127.0.0.1";
             String publicAddress = "10.1.1.19";
             int publicPort = 1634;
