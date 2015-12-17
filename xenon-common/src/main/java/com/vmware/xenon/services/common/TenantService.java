@@ -15,6 +15,7 @@ package com.vmware.xenon.services.common;
 
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.ServiceDocument;
+import com.vmware.xenon.common.ServiceDocumentDescription;
 import com.vmware.xenon.common.ServiceDocumentDescription.PropertyUsageOption;
 import com.vmware.xenon.common.StatefulService;
 
@@ -51,6 +52,25 @@ public class TenantService extends StatefulService {
         super.toggleOption(ServiceOption.PERSISTENCE, true);
         super.toggleOption(ServiceOption.REPLICATION, true);
         super.toggleOption(ServiceOption.OWNER_SELECTION, true);
+    }
+
+    @Override
+    public void handlePut(Operation op) {
+        if (!op.hasBody()) {
+            op.fail(new IllegalArgumentException("body is required"));
+            return;
+        }
+
+        TenantState newState = op.getBody(TenantState.class);
+        TenantState currentState = getState(op);
+        ServiceDocumentDescription documentDescription = this.getDocumentTemplate().documentDescription;
+        if (ServiceDocument.equals(documentDescription, currentState, newState)) {
+            op.setStatusCode(Operation.STATUS_CODE_NOT_MODIFIED);
+        } else {
+            setState(op, newState);
+        }
+
+        op.complete();
     }
 
     @Override

@@ -55,17 +55,18 @@ public class UserService extends StatefulService {
             return;
         }
 
-        UserState state = op.getBody(UserState.class);
-        if (!validate(op, state)) {
+        UserState newState = op.getBody(UserState.class);
+        if (!validate(op, newState)) {
             return;
         }
+
         UserState currentState = getState(op);
-        if (currentState.email.equals(state.email)) {
+        if (currentState.email.equals(newState.email)) {
             op.setStatusCode(Operation.STATUS_CODE_NOT_MODIFIED);
         } else {
-            currentState.email = state.email;
+            setState(op, newState);
         }
-        op.setBody(currentState);
+
         op.complete();
     }
 

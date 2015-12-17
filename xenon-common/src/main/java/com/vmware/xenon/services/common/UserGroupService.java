@@ -15,6 +15,7 @@ package com.vmware.xenon.services.common;
 
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.ServiceDocument;
+import com.vmware.xenon.common.ServiceDocumentDescription;
 import com.vmware.xenon.common.StatefulService;
 import com.vmware.xenon.services.common.QueryTask.Query;
 
@@ -40,9 +41,32 @@ public class UserGroupService extends StatefulService {
             return;
         }
 
-        UserGroupState state = op.getBody(UserGroupState.class);
-        if (!validate(op, state)) {
+        UserGroupState newState = op.getBody(UserGroupState.class);
+        if (!validate(op, newState)) {
             return;
+        }
+
+        op.complete();
+    }
+
+    @Override
+    public void handlePut(Operation op) {
+        if (!op.hasBody()) {
+            op.fail(new IllegalArgumentException("body is required"));
+            return;
+        }
+
+        UserGroupState newState = op.getBody(UserGroupState.class);
+        if (!validate(op, newState)) {
+            return;
+        }
+
+        UserGroupState currentState = getState(op);
+        ServiceDocumentDescription documentDescription = this.getDocumentTemplate().documentDescription;
+        if (ServiceDocument.equals(documentDescription, currentState, newState)) {
+            op.setStatusCode(Operation.STATUS_CODE_NOT_MODIFIED);
+        } else {
+            setState(op, newState);
         }
 
         op.complete();

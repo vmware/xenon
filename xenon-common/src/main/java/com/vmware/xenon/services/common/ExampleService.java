@@ -68,6 +68,7 @@ public class ExampleService extends StatefulService {
             startPost.fail(new IllegalArgumentException("name is required"));
             return;
         }
+
         logFine("Initial state is %s", Utils.toJsonHtml(s));
 
         startPost.complete();
