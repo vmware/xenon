@@ -17,7 +17,6 @@ import static org.junit.Assert.assertTrue;
 
 import java.net.URI;
 import java.util.EnumSet;
-import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -30,7 +29,6 @@ import org.junit.Test;
 
 import com.vmware.xenon.common.CommandLineArgumentParser;
 import com.vmware.xenon.common.Operation;
-import com.vmware.xenon.common.Service;
 import com.vmware.xenon.common.ServiceClient;
 import com.vmware.xenon.common.ServiceHost;
 import com.vmware.xenon.common.UriUtils;
@@ -92,29 +90,63 @@ public class NettyHttp2Test {
     }
 
     /**
-     * A very basic verification that HTTP/2 appears to work: Just do 10 GETs and check the response
-     * @throws Throwable
+     * A very basic verification that HTTP/2 appears to work: Do a PUT of a large body and then
+     * GET it and validate it's correct.
+     *
+     * Note that this test fails with Netty 5.0alpha2 due to a bug when the HTTP/2 window
+     * gets full:
+     * https://github.com/netty/netty/commit/44ee2cac433a6f8640d01a70e8b90b70852aeeae
+     *
+     * The bug is triggered by the fact that we do enough GETs on the large body that we'll
+     * fill up the window and one of the responses is broken into two frames, but (in alpha 2)
+     * the second frame is never sent.
      */
     @Test
     public void basicHttp2() throws Throwable {
-        int numGets = 10;
+        this.host.setTimeoutSeconds(240);
+        MinimalTestService service = new MinimalTestService();
+        MinimalTestServiceState initialState = new MinimalTestServiceState();
+        initialState.id = "";
+        initialState.stringValue = UUID.randomUUID().toString();
+        this.host.startServiceAndWait(service, UUID.randomUUID().toString(), initialState);
 
-        MinimalTestServiceState body = (MinimalTestServiceState) this.host.buildMinimalTestState();
-        // produce a JSON PODO that serialized is about 2048 bytes
-        StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < 53; i++) {
-            sb.append(UUID.randomUUID().toString());
-        }
-        body.stringValue = sb.toString();
+        MinimalTestServiceState largeState = new MinimalTestServiceState();
+        final String largeBody = createLargeBody();
+        largeState.id = "";
+        largeState.stringValue = largeBody;
 
-        List<Service> services = this.host.doThroughputServiceStart(
-                1,
-                MinimalTestService.class,
-                body,
-                null, null);
-        Service service = services.get(0);
         URI u = service.getUri();
 
+        // Part 1: Verify we can PUT a large body
+        this.host.testStart(1);
+        Operation put = Operation.createPut(u)
+                .forceRemote()
+                .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_USE_HTTP2)
+                .setBody(largeState)
+                .setCompletion((o, e) -> {
+                    if (e != null) {
+                        this.host.failIteration(e);
+                        return;
+                    }
+
+                    MinimalTestServiceState st = o.getBody(MinimalTestServiceState.class);
+                    try {
+                        assertTrue(st.id != null);
+                        assertTrue(st.documentSelfLink != null);
+                        assertTrue(st.documentUpdateTimeMicros > 0);
+                        assertTrue(st.stringValue.equals(largeBody));
+                    } catch (Throwable ex) {
+                        this.host.failIteration(ex);
+                    }
+                    this.host.completeIteration();
+                });
+
+        this.host.send(put);
+        this.host.testWait();
+
+
+        // Part 2: GET the large state and ensure it is correct.
+        int numGets = 10;
         this.host.testStart(numGets);
 
         Operation get = Operation.createGet(u)
@@ -131,7 +163,7 @@ public class NettyHttp2Test {
                         assertTrue(st.id != null);
                         assertTrue(st.documentSelfLink != null);
                         assertTrue(st.documentUpdateTimeMicros > 0);
-                        assertTrue(st.stringValue != null);
+                        assertTrue(st.stringValue.equals(largeBody));
                     } catch (Throwable ex) {
                         this.host.failIteration(ex);
                     }
@@ -302,6 +334,18 @@ public class NettyHttp2Test {
                 }));
         assertTrue(client.countHttp2Contexts(ServiceHost.LOCAL_HOST, this.host.getPort()) == 1);
         NettyChannelContext.setMaxStreamId(NettyChannelContext.DEFAULT_MAX_STREAM_ID);
+    }
+
+    /**
+     * Create a string that is larger than the HTTP/2 frame size.
+     */
+    String createLargeBody() {
+        StringBuilder sb = new StringBuilder();
+        //while (sb.length() <= NettyChannelContext.MAX_HTTP2_FRAME_SIZE) {
+        while (sb.length() <= 10000) {
+            sb.append(UUID.randomUUID().toString());
+        }
+        return sb.toString();
     }
 
 }

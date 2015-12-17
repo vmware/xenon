@@ -23,11 +23,11 @@ import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.handler.codec.http.FullHttpResponse;
 import io.netty.handler.codec.http.HttpHeaderNames;
-import io.netty.handler.codec.http.HttpHeaderUtil;
 import io.netty.handler.codec.http.HttpHeaders;
 import io.netty.handler.codec.http.HttpObject;
 import io.netty.handler.codec.http.HttpResponse;
-import io.netty.handler.codec.http2.HttpUtil;
+import io.netty.handler.codec.http.HttpUtil;
+import io.netty.handler.codec.http2.HttpConversionUtil;
 
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.ServiceErrorResponse;
@@ -76,7 +76,8 @@ public class NettyHttpServerResponseHandler extends SimpleChannelInboundHandler<
         Operation request;
 
         if (ctx.channel().hasAttr(NettyChannelContext.HTTP2_KEY)) {
-            Integer streamId = response.headers().getInt(HttpUtil.ExtensionHeaderNames.STREAM_ID.text());
+            Integer streamId = response.headers()
+                    .getInt(HttpConversionUtil.ExtensionHeaderNames.STREAM_ID.text());
             if (streamId == null) {
                 this.logger.warning("HTTP/2 message has no stream ID: ignoring.");
                 return null;
@@ -111,20 +112,20 @@ public class NettyHttpServerResponseHandler extends SimpleChannelInboundHandler<
             return;
         }
 
-        request.setKeepAlive(HttpHeaderUtil.isKeepAlive(nettyResponse));
-        if (HttpHeaderUtil.isContentLengthSet(nettyResponse)) {
-            request.setContentLength(HttpHeaderUtil.getContentLength(nettyResponse));
+        request.setKeepAlive(HttpUtil.isKeepAlive(nettyResponse));
+        if (HttpUtil.isContentLengthSet(nettyResponse)) {
+            request.setContentLength(HttpUtil.getContentLength(nettyResponse));
             headers.remove(HttpHeaderNames.CONTENT_LENGTH);
         }
 
-        String contentType = headers.getAndRemoveAndConvert(HttpHeaderNames.CONTENT_TYPE);
+        CharSequence contentType = headers.getAndRemove(HttpHeaderNames.CONTENT_TYPE);
         if (contentType != null) {
-            request.setContentType(contentType);
+            request.setContentType(contentType.toString());
         }
 
-        for (Entry<String, String> h : headers.entriesConverted()) {
-            String key = h.getKey();
-            String value = h.getValue();
+        for (Entry<CharSequence, CharSequence> h : headers) {
+            String key = h.getKey().toString();
+            String value = h.getValue().toString();
             request.addResponseHeader(key, value);
         }
     }

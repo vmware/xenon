@@ -70,6 +70,7 @@ public class NettyWebSocketRequestHandler extends SimpleChannelInboundHandler<Ob
         this.servicePrefix = servicePrefix;
     }
 
+    @Override
     public boolean acceptInboundMessage(Object msg) throws Exception {
         if (msg instanceof FullHttpRequest) {
             FullHttpRequest nettyRequest = (FullHttpRequest) msg;
@@ -154,9 +155,10 @@ public class NettyWebSocketRequestHandler extends SimpleChannelInboundHandler<Ob
             DefaultHttpHeaders responseHeaders = new DefaultHttpHeaders();
             CharSequence token = nettyRequest.headers().get(Operation.REQUEST_AUTH_TOKEN_HEADER, null);
             if (token == null) {
-                String cookie = responseHeaders .getAndRemoveAndConvert(HttpHeaderNames.COOKIE);
+                CharSequence cookie = responseHeaders.getAndRemove(HttpHeaderNames.COOKIE);
                 if (cookie != null) {
-                    token = CookieJar.decodeCookies(cookie).get(AuthenticationConstants.DCP_JWT_COOKIE);
+                    token = CookieJar.decodeCookies(cookie.toString())
+                            .get(AuthenticationConstants.DCP_JWT_COOKIE);
                 }
 
             }
