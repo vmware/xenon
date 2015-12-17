@@ -29,19 +29,19 @@ import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelFutureListener;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
-import io.netty.handler.codec.AsciiString;
 import io.netty.handler.codec.http.DefaultFullHttpResponse;
 import io.netty.handler.codec.http.FullHttpRequest;
 import io.netty.handler.codec.http.FullHttpResponse;
 import io.netty.handler.codec.http.HttpHeaderNames;
-import io.netty.handler.codec.http.HttpHeaderUtil;
 import io.netty.handler.codec.http.HttpHeaderValues;
 import io.netty.handler.codec.http.HttpHeaders;
 import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpResponseStatus;
+import io.netty.handler.codec.http.HttpUtil;
 import io.netty.handler.codec.http.HttpVersion;
-import io.netty.handler.codec.http2.HttpUtil;
+import io.netty.handler.codec.http2.HttpConversionUtil;
 import io.netty.handler.ssl.SslHandler;
+import io.netty.util.AsciiString;
 
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Operation.AuthorizationContext;
@@ -95,7 +95,7 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
 
             // The streamId will be null for HTTP/1.1 connections, and valid for HTTP/2 connections
             streamId = nettyRequest.headers().getInt(
-                    HttpUtil.ExtensionHeaderNames.STREAM_ID.text());
+                    HttpConversionUtil.ExtensionHeaderNames.STREAM_ID.text());
             if (streamId == null) {
                 ctx.channel().attr(NettyChannelContext.OPERATION_KEY).set(request);
             }
@@ -151,10 +151,10 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
             HttpRequest nettyRequest) {
         HttpHeaders headers = nettyRequest.headers();
 
-        String referer = headers.getAndRemoveAndConvert(HttpHeaderNames.REFERER);
+        CharSequence referer = headers.getAndRemove(HttpHeaderNames.REFERER);
         if (referer != null) {
             try {
-                request.setReferer(new URI(referer));
+                request.setReferer(new URI(referer.toString()));
             } catch (URISyntaxException e) {
                 setRefererFromSocketContext(ctx, request);
             }
@@ -166,26 +166,29 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
             return;
         }
 
-        request.setKeepAlive(HttpHeaderUtil.isKeepAlive(nettyRequest));
-        if (HttpHeaderUtil.isContentLengthSet(nettyRequest)) {
-            request.setContentLength(HttpHeaderUtil.getContentLength(nettyRequest));
+        request.setKeepAlive(HttpUtil.isKeepAlive(nettyRequest));
+        if (HttpUtil.isContentLengthSet(nettyRequest)) {
+            request.setContentLength(HttpUtil.getContentLength(nettyRequest));
         }
 
-        request.setContextId(headers.getAndRemoveAndConvert(Operation.CONTEXT_ID_HEADER));
+        CharSequence contextId = headers.getAndRemove(Operation.CONTEXT_ID_HEADER);
+        if (contextId != null) {
+            request.setContextId(contextId.toString());
+        }
 
-        String contentType = headers.getAndRemoveAndConvert(HttpHeaderNames.CONTENT_TYPE);
+        CharSequence contentType = headers.getAndRemove(HttpHeaderNames.CONTENT_TYPE);
         if (contentType != null) {
-            request.setContentType(contentType);
+            request.setContentType(contentType.toString());
         }
 
-        String cookie = headers.getAndRemoveAndConvert(HttpHeaderNames.COOKIE);
+        CharSequence cookie = headers.getAndRemove(HttpHeaderNames.COOKIE);
         if (cookie != null) {
-            request.setCookies(CookieJar.decodeCookies(cookie));
+            request.setCookies(CookieJar.decodeCookies(cookie.toString()));
         }
 
-        for (Entry<String, String> h : headers.entriesConverted()) {
-            String key = h.getKey();
-            String value = h.getValue();
+        for (Entry<CharSequence, CharSequence> h : headers) {
+            String key = h.getKey().toString();
+            String value = h.getValue().toString();
             request.addRequestHeader(key, value);
         }
 
@@ -301,7 +304,8 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
                     HttpResponseStatus.INTERNAL_SERVER_ERROR,
                     Unpooled.wrappedBuffer(data), false, false);
             if (streamId != null) {
-                response.headers().setInt(HttpUtil.ExtensionHeaderNames.STREAM_ID.text(), streamId);
+                response.headers().setInt(HttpConversionUtil.ExtensionHeaderNames.STREAM_ID.text(),
+                        streamId);
             }
             response.headers().set(HttpHeaderNames.CONTENT_TYPE, Operation.MEDIA_TYPE_TEXT_HTML);
             response.headers().setInt(HttpHeaderNames.CONTENT_LENGTH,
@@ -322,7 +326,8 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
             // This is the stream ID from the incoming request: we need to use it for our
             // response so the client knows this is the response. If we don't set the stream
             // ID, Netty assigns a new, unused stream, which would be bad.
-            response.headers().setInt(HttpUtil.ExtensionHeaderNames.STREAM_ID.text(), streamId);
+            response.headers().setInt(HttpConversionUtil.ExtensionHeaderNames.STREAM_ID.text(),
+                    streamId);
         }
         response.headers().set(HttpHeaderNames.CONTENT_TYPE,
                 request.getContentType());

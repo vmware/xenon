@@ -22,7 +22,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.ConcurrentSkipListSet;
 
-import io.netty.handler.codec.http.Cookie;
+import io.netty.handler.codec.http.cookie.Cookie;
 
 /**
  * The cookie jar keeps all cookies for a client. Upon receiving a Set-Cookie response header, the cookie jar may store
