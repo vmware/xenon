@@ -277,8 +277,6 @@ public class NettyHttp2Test {
         initialState.id = "";
         initialState.stringValue = UUID.randomUUID().toString();
         this.host.startServiceAndWait(service, UUID.randomUUID().toString(), initialState);
-        this.host.toggleNegativeTestMode(true);
-        this.host.setOperationTimeOutMicros(TimeUnit.MILLISECONDS.toMicros(250));
 
         int count = 9;
         URI serviceUri = service.getUri();
