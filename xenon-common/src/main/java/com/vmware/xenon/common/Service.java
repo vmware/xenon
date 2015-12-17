@@ -56,7 +56,7 @@ public interface Service {
          * Service state updates are replicated among peer instances on other nodes. The default
          * replication group is used if no group is specified. Updates are replicated into phases
          * and use the appropriate protocol depending on other options.  See
-         * OWNER_SELECTION and EAGER_CONSISTENCY options on how they affect replication.
+         * OWNER_SELECTION and ENFORCE_QUORUM options on how they affect replication.
          *
          */
         REPLICATION,
@@ -71,7 +71,7 @@ public interface Service {
          * and waits for quorum number of peers to accept the replicated state, before completing
          * the operation to the client. If less than quorum peers accept the update, the owner will
          * still proceed with committing the update and completion the operation successfully. To
-         * enforce strict quorum and avoid value divergence see the {@code EAGER_CONSISTENCY}
+         * enforce strict quorum and avoid value divergence see the {@code ENFORCE_QUORUM}
          * option
          *
          * Requires: REPLICATION
@@ -129,7 +129,7 @@ public interface Service {
          * allowed to execute concurrently with updates, using the latest committed version of the
          * service state
          *
-         * Not compatible with: STRICT_UPDATE_CHECKING, PERSISTENCE, REPLICATION, EAGER_CONSISTENCY
+         * Not compatible with: STRICT_UPDATE_CHECKING, PERSISTENCE, REPLICATION, ENFORCE_QUORUM
          */
         CONCURRENT_UPDATE_HANDLING,
 
