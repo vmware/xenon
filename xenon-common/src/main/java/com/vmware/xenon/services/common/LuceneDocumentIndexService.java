@@ -1900,12 +1900,16 @@ public class LuceneDocumentIndexService extends StatelessService {
             Query linkQuery = new TermQuery(new Term(ServiceDocument.FIELD_NAME_SELF_LINK,
                     e.getKey()));
             int documentCount = s.count(linkQuery);
+
+            // remove this link from the tracking list. If it has less versions than limit, it
+            // will be added back. If its over limit, we will delete the versions over limit.
+            it.remove();
+
             int pastRetentionLimitVersions = (int) (documentCount - e.getValue());
             if (pastRetentionLimitVersions <= 0) {
                 continue;
             }
 
-            it.remove();
             // trim durable index for this link
             deleteDocumentsFromIndex(dummyDelete, e.getKey(), e.getValue());
             count++;
