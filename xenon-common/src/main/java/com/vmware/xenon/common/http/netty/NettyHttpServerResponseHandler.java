@@ -23,11 +23,11 @@ import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.handler.codec.http.FullHttpResponse;
 import io.netty.handler.codec.http.HttpHeaderNames;
-import io.netty.handler.codec.http.HttpHeaderUtil;
 import io.netty.handler.codec.http.HttpHeaders;
 import io.netty.handler.codec.http.HttpObject;
 import io.netty.handler.codec.http.HttpResponse;
-import io.netty.handler.codec.http2.HttpUtil;
+import io.netty.handler.codec.http.HttpUtil;
+import io.netty.handler.codec.http2.HttpConversionUtil;
 
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.ServiceErrorResponse;
@@ -48,7 +48,7 @@ public class NettyHttpServerResponseHandler extends SimpleChannelInboundHandler<
     }
 
     @Override
-    public void messageReceived(ChannelHandlerContext ctx, HttpObject msg) {
+    public void channelRead0(ChannelHandlerContext ctx, HttpObject msg) {
 
         if (msg instanceof FullHttpResponse) {
             FullHttpResponse response = (FullHttpResponse) msg;
@@ -76,7 +76,8 @@ public class NettyHttpServerResponseHandler extends SimpleChannelInboundHandler<
         Operation request;
 
         if (ctx.channel().hasAttr(NettyChannelContext.HTTP2_KEY)) {
-            Integer streamId = response.headers().getInt(HttpUtil.ExtensionHeaderNames.STREAM_ID.text());
+            Integer streamId = response.headers()
+                    .getInt(HttpConversionUtil.ExtensionHeaderNames.STREAM_ID.text());
             if (streamId == null) {
                 this.logger.warning("HTTP/2 message has no stream ID: ignoring.");
                 return null;
@@ -111,18 +112,19 @@ public class NettyHttpServerResponseHandler extends SimpleChannelInboundHandler<
             return;
         }
 
-        request.setKeepAlive(HttpHeaderUtil.isKeepAlive(nettyResponse));
-        if (HttpHeaderUtil.isContentLengthSet(nettyResponse)) {
-            request.setContentLength(HttpHeaderUtil.getContentLength(nettyResponse));
+        request.setKeepAlive(HttpUtil.isKeepAlive(nettyResponse));
+        if (HttpUtil.isContentLengthSet(nettyResponse)) {
+            request.setContentLength(HttpUtil.getContentLength(nettyResponse));
             headers.remove(HttpHeaderNames.CONTENT_LENGTH);
         }
 
-        String contentType = headers.getAndRemoveAndConvert(HttpHeaderNames.CONTENT_TYPE);
+        String contentType = headers.get(HttpHeaderNames.CONTENT_TYPE);
+        headers.remove(HttpHeaderNames.CONTENT_TYPE);
         if (contentType != null) {
             request.setContentType(contentType);
         }
 
-        for (Entry<String, String> h : headers.entriesConverted()) {
+        for (Entry<String, String> h : headers) {
             String key = h.getKey();
             String value = h.getValue();
             request.addResponseHeader(key, value);
