@@ -22,6 +22,7 @@ public class ServiceConfiguration extends ServiceDocument {
     public long maintenanceIntervalMicros;
     public int operationQueueLimit;
     public long epoch;
+    public long latestCommitVersion;
     public EnumSet<ServiceOption> options;
 
     public ServiceConfiguration() {

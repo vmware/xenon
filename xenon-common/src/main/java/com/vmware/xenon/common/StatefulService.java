@@ -46,6 +46,7 @@ public class StatefulService implements Service {
         public ProcessingStage processingStage = ProcessingStage.CREATED;
         public String selfLink;
         public long version;
+        public long latestCommitVersion;
         public long epoch;
 
         public EnumSet<ServiceOption> options = EnumSet.noneOf(ServiceOption.class);
@@ -261,7 +262,7 @@ public class StatefulService implements Service {
             }
 
             if (opProcessingStage == OperationProcessingStage.PROCESSING_FILTERS) {
-                if (request.getAction() != Action.GET && validateReplicatedUpdate(request)) {
+                if (request.getAction() != Action.GET && validateUpdateWithReplication(request)) {
                     return;
                 }
 
@@ -378,25 +379,30 @@ public class StatefulService implements Service {
         return true;
     }
 
-    private boolean validateReplicatedUpdate(Operation request) {
+    /**
+     * Validates update request for a replicated service instance
+     * @return true if the request was completed/failed by this method, false otherwise
+     */
+    private boolean validateUpdateWithReplication(Operation request) {
         if (hasOption(ServiceOption.CONCURRENT_UPDATE_HANDLING)) {
             return false;
         }
 
-        // do basic version checking, regardless of service options
+        if (!hasOption(ServiceOption.REPLICATION)) {
+            return false;
+        }
+
         ServiceDocument stateFromOwner = request.getLinkedState();
-        if (request.isFromReplication()) {
-            if (stateFromOwner == null) {
-                failRequest(request, new IllegalArgumentException("missing state in replicated op:"
-                        + request.toString()));
+
+        if (hasOption(ServiceOption.OWNER_SELECTION)) {
+            if (stateFromOwner.documentOwner == null) {
+                failRequest(request, new IllegalArgumentException("documentOwner is required"));
                 return true;
-            }
-            if (stateFromOwner.documentVersion == this.context.version) {
-                return resolvePossibleVersionConflict(request);
             }
         }
 
         if (!request.isFromReplication()) {
+            // request came from client directly.
             if (isSynchronizeRequest(request)) {
                 request.setFromReplication(true);
                 // we want to index state on synch completion, so nest completion
@@ -406,6 +412,8 @@ public class StatefulService implements Service {
             }
             if (hasOption(ServiceOption.OWNER_SELECTION)) {
                 if (!hasOption(ServiceOption.DOCUMENT_OWNER)) {
+                    // local node is not owner, yet client request ended up here, we need to
+                    // synchronize
                     synchronizeWithPeers(request, new IllegalStateException("not marked as owner"));
                     return true;
                 } else {
@@ -413,14 +421,18 @@ public class StatefulService implements Service {
                     return false;
                 }
             }
-        }
 
-        if (!hasOption(ServiceOption.OWNER_SELECTION)) {
+            // proceed with calling local service handler
             return false;
         }
 
-        if (stateFromOwner.documentOwner == null) {
-            failRequest(request, new IllegalArgumentException("documentOwner is required"));
+        // request is marked replicated. It came from a remote node after the service instance on that
+        // node executed the service handler. Its either a proposal, or a commit.
+
+
+        if (stateFromOwner == null) {
+            failRequest(request, new IllegalArgumentException("missing state in replicated op:"
+                    + request.toString()));
             return true;
         }
 
@@ -452,7 +464,10 @@ public class StatefulService implements Service {
             // request if we disagreed with the sender, on who the owner is. Here we simply
             // toggle the owner option off
             toggleOption(ServiceOption.DOCUMENT_OWNER, false);
-            return false;
+        }
+
+        if (stateFromOwner.documentVersion == this.context.version) {
+            return resolvePossibleVersionConflict(request);
         }
 
         return false;
@@ -962,9 +977,7 @@ public class StatefulService implements Service {
                     linkedState.documentOwner = getHost().getId();
                 }
 
-                if (hasOption(ServiceOption.OWNER_SELECTION)) {
-                    linkedState.documentEpoch = this.context.epoch;
-                }
+                linkedState.documentEpoch = this.context.epoch;
             }
 
             // state has already been linked with the operation
@@ -1020,9 +1033,7 @@ public class StatefulService implements Service {
         }
 
         if (!op.isFromReplication()) {
-            if (hasOption(ServiceOption.OWNER_SELECTION)) {
-                cachedState.documentEpoch = this.context.epoch;
-            }
+            cachedState.documentEpoch = this.context.epoch;
 
             // Update version only if request came directly from client (which also means local
             // node is owner for OWNER_SELECTION enabled services
@@ -1041,12 +1052,15 @@ public class StatefulService implements Service {
         cachedState.documentUpdateTimeMicros = Math.max(
                 cachedState.documentUpdateTimeMicros, time);
 
-        if (hasOption(ServiceOption.OWNER_SELECTION)) {
-            long prevEpoch = this.context.epoch;
-            this.context.epoch = Math.max(cachedState.documentEpoch, this.context.epoch);
-            if (prevEpoch != this.context.epoch) {
-                logFine("Epoch updated from %d to %d", prevEpoch, this.context.epoch);
-            }
+        if (isCommitRequest(op)) {
+            this.context.latestCommitVersion = Math.max(cachedState.documentVersion,
+                    this.context.latestCommitVersion);
+        }
+
+        long prevEpoch = this.context.epoch;
+        this.context.epoch = Math.max(cachedState.documentEpoch, this.context.epoch);
+        if (prevEpoch != this.context.epoch) {
+            logFine("Epoch updated from %d to %d", prevEpoch, this.context.epoch);
         }
 
         // if this update version is less than the highest version we have seen, it will still get
@@ -1465,7 +1479,7 @@ public class StatefulService implements Service {
             this.context.version = s.documentVersion;
         }
 
-        if (hasOption(ServiceOption.OWNER_SELECTION) && s.documentEpoch == null) {
+        if (s.documentEpoch == null) {
             s.documentEpoch = 0L;
         }
 
@@ -1582,8 +1596,11 @@ public class StatefulService implements Service {
             ServiceConfiguration cfg = new ServiceConfiguration();
             cfg.options = getOptions();
             cfg.maintenanceIntervalMicros = getMaintenanceIntervalMicros();
-            cfg.epoch = this.context.epoch;
             cfg.operationQueueLimit = this.context.operationQueue.getLimit();
+            cfg.documentEpoch = this.context.epoch;
+            cfg.documentOwner = getHost().getId();
+            cfg.documentVersion = this.context.version;
+            cfg.latestCommitVersion = this.context.latestCommitVersion;
             request.setBody(cfg).complete();
             return;
         }
