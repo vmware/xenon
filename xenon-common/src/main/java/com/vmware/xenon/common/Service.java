@@ -390,6 +390,8 @@ public interface Service {
 
     <T extends ServiceDocument> T getState(Operation op);
 
+    <T extends ServiceDocument> T resolveConflict(final T stateA, final T stateB);
+
     Service getUtilityService(String uriPath);
 
     Class<? extends ServiceDocument> getStateType();

@@ -34,6 +34,7 @@ import com.vmware.xenon.common.ServiceErrorResponse.ErrorDetail;
 import com.vmware.xenon.common.ServiceStats.ServiceStat;
 import com.vmware.xenon.common.ServiceStats.ServiceStatLogHistogram;
 import com.vmware.xenon.common.jwt.Signer;
+import com.vmware.xenon.services.common.ExampleService;
 import com.vmware.xenon.services.common.ServiceUriPaths;
 
 /**
@@ -1517,6 +1518,16 @@ public class StatefulService implements Service {
     @Override
     public <T extends ServiceDocument> T getState(Operation op) {
         return (T) op.getLinkedState();
+    }
+
+    @Override
+    public <T extends ServiceDocument> T resolveConflict(final T stateA, final T stateB) {
+
+        if (stateA.documentUpdateTimeMicros > stateB.documentUpdateTimeMicros) {
+            return stateA;
+        }
+
+        return stateB;
     }
 
     @Override
