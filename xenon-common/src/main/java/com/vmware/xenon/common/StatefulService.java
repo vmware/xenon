@@ -1570,6 +1570,16 @@ public class StatefulService implements Service {
     }
 
     @Override
+    public <T extends ServiceDocument> T resolveConflict(final T stateA, final T stateB) {
+
+        if (stateA.documentUpdateTimeMicros > stateB.documentUpdateTimeMicros) {
+            return stateA;
+        }
+
+        return stateB;
+    }
+
+    @Override
     public void setMaintenanceIntervalMicros(long micros) {
         if (micros < 0) {
             throw new IllegalArgumentException("micros must be positive");
