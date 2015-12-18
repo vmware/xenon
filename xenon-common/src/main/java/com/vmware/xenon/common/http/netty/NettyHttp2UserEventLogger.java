@@ -15,8 +15,8 @@ package com.vmware.xenon.common.http.netty;
 
 import java.util.logging.Level;
 
-import io.netty.channel.ChannelHandlerAdapter;
 import io.netty.channel.ChannelHandlerContext;
+import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.handler.codec.http.HttpClientUpgradeHandler;
 
 import com.vmware.xenon.common.Utils;
@@ -27,7 +27,7 @@ import com.vmware.xenon.common.Utils;
  * attempts (that's interesting) unless debugLogging is enabled, in which case
  * we log all events.
  */
-public class NettyHttp2UserEventLogger extends ChannelHandlerAdapter {
+public class NettyHttp2UserEventLogger extends ChannelInboundHandlerAdapter {
 
     private boolean debugLogging = false;
 

@@ -651,8 +651,9 @@ public class LuceneDocumentIndexService extends StatelessService {
         return false;
     }
 
-    private void queryIndexSingle(String selfLink, EnumSet<QueryOption> options, Operation op, Long version)
-            throws Throwable {
+    private void queryIndexSingle(String selfLink, EnumSet<QueryOption> options, Operation op,
+            Long version)
+                    throws Throwable {
         IndexWriter w = this.writer;
         if (w == null) {
             op.fail(new CancellationException());
@@ -712,7 +713,8 @@ public class LuceneDocumentIndexService extends StatelessService {
      * If given version is null then function returns the latest version.
      * And if given version is not found then no document is returned.
      */
-    private TopDocs searchByVersion(String selfLink, IndexSearcher s, Long version) throws IOException {
+    private TopDocs searchByVersion(String selfLink, IndexSearcher s, Long version)
+            throws IOException {
         Query tqSelfLink = new TermQuery(new Term(ServiceDocument.FIELD_NAME_SELF_LINK, selfLink));
 
         BooleanQuery.Builder builder = new BooleanQuery.Builder();
@@ -1728,7 +1730,8 @@ public class LuceneDocumentIndexService extends StatelessService {
      * @return an {@link IndexSearcher} that is fresh enough to execute the specified query
      * @throws IOException
      */
-    private IndexSearcher updateSearcher(String selfLink, int resultLimit, IndexWriter w) throws IOException {
+    private IndexSearcher updateSearcher(String selfLink, int resultLimit, IndexWriter w)
+            throws IOException {
         IndexSearcher s;
         boolean needNewSearcher = false;
         long now = Utils.getNowMicrosUtc();
