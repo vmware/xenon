@@ -823,56 +823,6 @@ public class NettyHttpServiceClientTest {
         }
     }
 
-    @Test
-    public void basicHttp2() throws Throwable {
-        int numGets = 10;
-
-        MinimalTestServiceState body = (MinimalTestServiceState) this.host.buildMinimalTestState();
-        // produce a JSON PODO that serialized is about 2048 bytes
-        StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < 53; i++) {
-            sb.append(UUID.randomUUID().toString());
-        }
-        body.stringValue = sb.toString();
-
-        List<Service> services = this.host.doThroughputServiceStart(
-                1,
-                MinimalTestService.class,
-                body,
-                EnumSet.noneOf(Service.ServiceOption.class), null);
-        Service service = services.get(0);
-        URI u = service.getUri();
-
-        this.host.testStart(numGets);
-
-        Operation get = Operation.createGet(u)
-                .forceRemote()
-                .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_USE_HTTP2)
-                .setCompletion((o, e) -> {
-                    if (e != null) {
-                        this.host.failIteration(e);
-                        return;
-                    }
-
-                    MinimalTestServiceState st = o.getBody(MinimalTestServiceState.class);
-                    try {
-                        assertTrue(st.id != null);
-                        assertTrue(st.documentSelfLink != null);
-                        assertTrue(st.documentUpdateTimeMicros > 0);
-                        assertTrue(st.stringValue != null);
-                    } catch (Throwable ex) {
-                        this.host.failIteration(ex);
-                    }
-                    this.host.completeIteration();
-                });
-
-        for (int i = 0; i < numGets; i++) {
-            this.host.send(get);
-        }
-        this.host.testWait();
-        this.host.logThroughput();
-    }
-
     /**
      * Here we can test that headers sent by the client are sent correctly. The MinimalTestService
      * can return the headers it receives. Currently we are only testing the Accept header.

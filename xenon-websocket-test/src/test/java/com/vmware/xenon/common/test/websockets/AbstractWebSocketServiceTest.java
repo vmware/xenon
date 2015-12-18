@@ -99,21 +99,21 @@ public abstract class AbstractWebSocketServiceTest extends BasicTestCase {
                     ScriptableObject.defineClass(scope, JsDocument.class);
                     ScriptableObject.defineClass(scope, JsA.class);
                     NativeObject location = new NativeObject();
-                    location.defineProperty(HOST, host.getPublicUri().getHost() + ":"
-                            + host.getPublicUri().getPort(),
+                    location.defineProperty(HOST, this.host.getPublicUri().getHost() + ":"
+                            + this.host.getPublicUri().getPort(),
                             NativeObject.READONLY);
-                    location.defineProperty(PROTOCOL, host.getPublicUri().getScheme() + ":", NativeObject.READONLY);
+                    location.defineProperty(PROTOCOL, this.host.getPublicUri().getScheme() + ":", NativeObject.READONLY);
                     ScriptableObject.putProperty(scope, LOCATION, location);
                     ScriptableObject.putProperty(scope, DOCUMENT,
                             context.newObject(scope, JsDocument.CLASS_NAME));
                     context.evaluateReader(
                             scope,
                             new InputStreamReader(
-                                    UriUtils.buildUri(host, ServiceUriPaths.WS_SERVICE_LIB_JS_PATH)
+                                    UriUtils.buildUri(this.host, ServiceUriPaths.WS_SERVICE_LIB_JS_PATH)
                                             .toURL().openStream()),
                             ServiceUriPaths.WS_SERVICE_LIB_JS, 1, null);
                     context.evaluateReader(scope, new InputStreamReader(UriUtils
-                            .buildUri(host,
+                            .buildUri(this.host,
                                     WS_TEST_JS_PATH)
                             .toURL().openStream()), WS_TEST_JS, 1, null);
                     return null;
@@ -233,7 +233,7 @@ public abstract class AbstractWebSocketServiceTest extends BasicTestCase {
     }
 
     private void verifyNotification(String someValue, URI observerUri) throws Throwable {
-        Operation postExample = Operation.createPost(UriUtils.buildUri(host,
+        Operation postExample = Operation.createPost(UriUtils.buildUri(this.host,
                 ExampleFactoryService.SELF_LINK));
         ExampleService.ExampleServiceState body = new ExampleService.ExampleServiceState();
         body.name = someValue;
@@ -273,7 +273,7 @@ public abstract class AbstractWebSocketServiceTest extends BasicTestCase {
     private Operation completeOperationSynchronously(Operation op) throws Throwable {
         Operation[] res = new Operation[1];
         this.host.testStart(1);
-        host.send(op.setCompletion((o, e) -> {
+        this.host.send(op.setCompletion((o, e) -> {
             if (e != null) {
                 this.host.failIteration(e);
             } else {
@@ -299,7 +299,7 @@ public abstract class AbstractWebSocketServiceTest extends BasicTestCase {
 
     private void waitForSubscriptionToAppear(URI observerUri, String subscriptionPath)
             throws Throwable {
-        Operation getSubscriptions = Operation.createGet(UriUtils.buildUri(host, subscriptionPath));
+        Operation getSubscriptions = Operation.createGet(UriUtils.buildUri(this.host, subscriptionPath));
         getSubscriptions.setReferer(observerUri);
         Date exp = this.host.getTestExpiration();
         while (new Date().before(exp)) {
@@ -317,7 +317,7 @@ public abstract class AbstractWebSocketServiceTest extends BasicTestCase {
 
     private void waitForSubscriptionToDisappear(URI observerUri, String subscriptionPath)
             throws Throwable {
-        Operation getSubscriptions = Operation.createGet(UriUtils.buildUri(host, subscriptionPath));
+        Operation getSubscriptions = Operation.createGet(UriUtils.buildUri(this.host, subscriptionPath));
         getSubscriptions.setReferer(observerUri);
         Date exp = this.host.getTestExpiration();
         while (new Date().before(exp)) {

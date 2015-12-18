@@ -28,12 +28,12 @@ import javax.net.ssl.SSLContext;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
-import io.netty.handler.codec.http.ClientCookieDecoder;
-import io.netty.handler.codec.http.Cookie;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpHeaderValues;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpVersion;
+import io.netty.handler.codec.http.cookie.ClientCookieDecoder;
+import io.netty.handler.codec.http.cookie.Cookie;
 
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Operation.AuthorizationContext;
@@ -312,7 +312,7 @@ public class NettyHttpServiceClient implements ServiceClient {
             return;
         }
 
-        Cookie cookie = ClientCookieDecoder.decode(value);
+        Cookie cookie = ClientCookieDecoder.LAX.decode(value);
         if (cookie == null) {
             return;
         }
@@ -451,15 +451,12 @@ public class NettyHttpServiceClient implements ServiceClient {
                         Operation.MEDIA_TYPE_EVERYTHING_WILDCARDS);
             }
 
-            // The Netty HTTP/2 code in 5.0-alpha that converts the Host header assumes
-            // that the Host is a URI (unlike HTTP1.1, when it is just a hostname) so that it
-            // can create the :scheme pseudo-header. If it's not a URI, it throws an exception.
-            // That's why we we put "http://" in front.
-            request.headers().set(
-                    HttpHeaderNames.HOST,
-                    (useHttp2 ? op.getUri().getScheme() + "://" : "")
-                            + op.getUri().getHost()
-                            + ((op.getUri().getPort() != -1) ? (":" + op.getUri().getPort()) : ""));
+            request.headers().set(HttpHeaderNames.HOST, op.getUri().getHost());
+
+            // The Netty HTTP/2 code uses the URI to create the :scheme pseudo-header.
+            if (useHttp2) {
+                request.setUri(op.getUri().toString());
+            }
 
             op.nestCompletion((o, e) -> {
                 if (e != null) {
