@@ -209,6 +209,8 @@ public class TestServiceHost {
 
             // set memory limits for some services
             double queryTasksRelativeLimit = 0.1;
+            double hostLimit = 0.29;
+            h.setServiceMemoryLimit(ServiceHost.ROOT_PATH, hostLimit);
             h.setServiceMemoryLimit(ServiceUriPaths.CORE_QUERY_TASKS, queryTasksRelativeLimit);
 
             // attempt to set limit that brings total > 1.0
@@ -238,7 +240,7 @@ public class TestServiceHost {
 
             // validate memory limits per service
             long maxMemory = Runtime.getRuntime().maxMemory() / (1024 * 1024);
-            double hostRelativeLimit = ServiceHost.DEFAULT_PCT_MEMORY_LIMIT;
+            double hostRelativeLimit = hostLimit;
             double indexRelativeLimit = ServiceHost.DEFAULT_PCT_MEMORY_LIMIT_DOCUMENT_INDEX;
 
             long expectedHostLimitMB = (long) (maxMemory * hostRelativeLimit);
@@ -311,6 +313,8 @@ public class TestServiceHost {
             String [] args2 = {
                     "--port=" + 0,
                     "--bindAddress=" + bindAddress,
+                    "--sandbox="
+                            + tmpFolder.getRoot().toURI(),
                     "--id=" + hostId
             };
 

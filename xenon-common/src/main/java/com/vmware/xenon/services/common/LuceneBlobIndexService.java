@@ -147,7 +147,9 @@ public class LuceneBlobIndexService extends StatelessService {
                 SortField.Type.LONG, true));
         try {
             this.writer = createWriter(directory);
-        } catch (IOException e) {
+        } catch (Throwable e) {
+            logSevere("Failure creating index writer on directory %s: %s", directory,
+                    Utils.toString(e));
             post.fail(e);
             return;
         }

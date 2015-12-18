@@ -227,9 +227,10 @@ public class ServiceHost {
 
     public static final String SERVICE_HOST_STATE_FILE = "serviceHostState.json";
 
-    public static final Double DEFAULT_PCT_MEMORY_LIMIT = 0.5;
+    public static final Double DEFAULT_PCT_MEMORY_LIMIT = 0.49;
     public static final Double DEFAULT_PCT_MEMORY_LIMIT_DOCUMENT_INDEX = 0.3;
-    public static final Double DEFAULT_PCT_MEMORY_LIMIT_BLOB_INDEX = 0.01;
+    public static final Double DEFAULT_PCT_MEMORY_LIMIT_BLOB_INDEX = 0.1;
+    public static final Double DEFAULT_PCT_MEMORY_LIMIT_SERVICE_CONTEXT_INDEX = 0.1;
 
     public static final String LOCAL_HOST = "127.0.0.1";
     public static final String LOOPBACK_ADDRESS = "127.0.0.1";
@@ -541,13 +542,24 @@ public class ServiceHost {
                 AuthenticationConstants.JWT_SECRET.getBytes(Utils.CHARSET));
 
         // Set default limits for memory utilization on core services and the host
-        setServiceMemoryLimit(ROOT_PATH, DEFAULT_PCT_MEMORY_LIMIT);
-        setServiceMemoryLimit(ServiceUriPaths.CORE_DOCUMENT_INDEX,
-                DEFAULT_PCT_MEMORY_LIMIT_DOCUMENT_INDEX);
-        setServiceMemoryLimit(ServiceUriPaths.CORE_BLOB_INDEX,
-                DEFAULT_PCT_MEMORY_LIMIT_BLOB_INDEX);
-        setServiceMemoryLimit(ServiceUriPaths.CORE_SERVICE_CONTEXT_INDEX,
-                DEFAULT_PCT_MEMORY_LIMIT_BLOB_INDEX);
+        if (getServiceMemoryLimitMB(ROOT_PATH, MemoryLimitType.EXACT) == null) {
+            setServiceMemoryLimit(ROOT_PATH, DEFAULT_PCT_MEMORY_LIMIT);
+        }
+        if (getServiceMemoryLimitMB(ServiceUriPaths.CORE_DOCUMENT_INDEX,
+                MemoryLimitType.EXACT) == null) {
+            setServiceMemoryLimit(ServiceUriPaths.CORE_DOCUMENT_INDEX,
+                    DEFAULT_PCT_MEMORY_LIMIT_DOCUMENT_INDEX);
+        }
+        if (getServiceMemoryLimitMB(ServiceUriPaths.CORE_BLOB_INDEX,
+                MemoryLimitType.EXACT) == null) {
+            setServiceMemoryLimit(ServiceUriPaths.CORE_BLOB_INDEX,
+                    DEFAULT_PCT_MEMORY_LIMIT_BLOB_INDEX);
+        }
+        if (getServiceMemoryLimitMB(ServiceUriPaths.CORE_SERVICE_CONTEXT_INDEX,
+                MemoryLimitType.EXACT) == null) {
+            setServiceMemoryLimit(ServiceUriPaths.CORE_SERVICE_CONTEXT_INDEX,
+                    DEFAULT_PCT_MEMORY_LIMIT_SERVICE_CONTEXT_INDEX);
+        }
         return this;
     }
 
