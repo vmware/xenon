@@ -41,8 +41,8 @@ import io.netty.handler.codec.http.websocketx.WebSocketClientHandshaker;
 import io.netty.handler.codec.http.websocketx.WebSocketClientHandshakerFactory;
 import io.netty.handler.codec.http.websocketx.WebSocketFrame;
 import io.netty.handler.codec.http.websocketx.WebSocketVersion;
-import io.netty.handler.codec.http.websocketx.extensions.compression.WebSocketClientCompressionHandler;
 import io.netty.handler.ssl.SslContext;
+import io.netty.handler.ssl.SslContextBuilder;
 import io.netty.handler.ssl.util.InsecureTrustManagerFactory;
 
 import org.mozilla.javascript.Context;
@@ -85,7 +85,7 @@ public class JsWebSocket extends ScriptableObject {
         }
 
         @Override
-        protected void messageReceived(ChannelHandlerContext ctx, Object msg) throws Exception {
+        protected void channelRead0(ChannelHandlerContext ctx, Object msg) throws Exception {
             if (!this.handshaker.isHandshakeComplete()) {
                 try {
                     this.handshaker.finishHandshake(ctx.channel(), (FullHttpResponse) msg);
@@ -194,7 +194,9 @@ public class JsWebSocket extends ScriptableObject {
         final boolean ssl = WSS_SCHEME.equalsIgnoreCase(scheme);
         final SslContext sslCtx;
         if (ssl) {
-            sslCtx = SslContext.newClientContext(InsecureTrustManagerFactory.INSTANCE);
+            sslCtx = SslContextBuilder.forClient()
+                    .trustManager(InsecureTrustManagerFactory.INSTANCE)
+                    .build();
         } else {
             sslCtx = null;
         }
@@ -225,7 +227,6 @@ public class JsWebSocket extends ScriptableObject {
                         p.addLast(
                                 new HttpClientCodec(),
                                 new HttpObjectAggregator(8192),
-                                new WebSocketClientCompressionHandler(),
                                 handler);
                     }
                 });
