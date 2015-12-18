@@ -24,7 +24,6 @@ import java.util.Date;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.Iterator;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -173,7 +172,7 @@ public class LuceneDocumentIndexService extends StatelessService {
     private long indexWriterCreationTimeMicros;
 
     private final ConcurrentSkipListMap<String, Long> linkAccessTimes = new ConcurrentSkipListMap<>();
-    private final ConcurrentSkipListMap<String, Long> linkDocumentRetentionEstimates = new ConcurrentSkipListMap<>();
+    private final Map<String, Long> linkDocumentRetentionEstimates = new HashMap<>();
 
     private Sort versionSort;
 
@@ -1893,18 +1892,16 @@ public class LuceneDocumentIndexService extends StatelessService {
 
         Operation dummyDelete = Operation.createDelete(null);
         int count = 0;
-        Iterator<Entry<String, Long>> it = this.linkDocumentRetentionEstimates.entrySet()
-                .iterator();
-        while (it.hasNext()) {
-            Entry<String, Long> e = it.next();
+        Map<String, Long> links = new HashMap<>();
+        synchronized (this.linkDocumentRetentionEstimates) {
+            links.putAll(this.linkDocumentRetentionEstimates);
+            this.linkDocumentRetentionEstimates.clear();
+        }
+
+        for (Entry<String, Long> e : links.entrySet()) {
             Query linkQuery = new TermQuery(new Term(ServiceDocument.FIELD_NAME_SELF_LINK,
                     e.getKey()));
             int documentCount = s.count(linkQuery);
-
-            // Remove this link from the tracking list. The link will be added back on the list
-            // on the next update. If it is over the limit, the code below will execute a query
-            // to find the versions that should be deleted
-            it.remove();
 
             int pastRetentionLimitVersions = (int) (documentCount - e.getValue());
             if (pastRetentionLimitVersions <= 0) {

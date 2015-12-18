@@ -127,7 +127,7 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
     /**
      * Parameter that specifies number of durable service instances to create
      */
-    public long serviceCount = 50;
+    public long serviceCount = 10;
 
     /**
      * Parameter that specifies number of concurrent update requests
@@ -1209,9 +1209,8 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
     }
 
     private void doServiceVersionGroomingValidation(EnumSet<ServiceOption> caps) throws Throwable {
-        int serviceCount = 2;
         List<Service> services = this.host.doThroughputServiceStart(
-                serviceCount, MinimalTestServiceWithDefaultRetention.class,
+                this.serviceCount, MinimalTestServiceWithDefaultRetention.class,
                 this.host.buildMinimalTestState(), caps,
                 null);
 
@@ -1223,7 +1222,7 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
         URI factoryUri = UriUtils.buildUri(this.host,
                 ExampleFactoryService.SELF_LINK);
         Map<URI, ExampleServiceState> exampleStates = this.host.doFactoryChildServiceStart(null,
-                serviceCount,
+                this.serviceCount,
                 ExampleServiceState.class,
                 (o) -> {
                     ExampleServiceState s = new ExampleServiceState();
@@ -1234,7 +1233,7 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
         Collection<URI> serviceUrisWithCustomRetention = exampleStates.keySet();
 
         long count = ServiceDocumentDescription.DEFAULT_VERSION_RETENTION_LIMIT * 2;
-        this.host.testStart(serviceCount * count);
+        this.host.testStart(this.serviceCount * count);
         for (int i = 0; i < count; i++) {
             for (URI u : serviceUrisWithDefaultRetention) {
                 this.host.send(Operation.createPut(u)
