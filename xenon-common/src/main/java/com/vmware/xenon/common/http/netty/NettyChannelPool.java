@@ -71,6 +71,7 @@ public class NettyChannelPool {
     }
 
     private final ExecutorService executor;
+    private ExecutorService nettyExecutorService;
     private EventLoopGroup eventGroup;
     private String threadTag = NettyChannelPool.class.getSimpleName();
     private int threadCount;
@@ -117,10 +118,9 @@ public class NettyChannelPool {
             return;
         }
 
-        this.eventGroup = new NioEventLoopGroup(this.threadCount, (t) -> {
-            return Executors.newFixedThreadPool(t,
-                    r -> new Thread(r, this.threadTag));
-        });
+        this.nettyExecutorService = Executors.newFixedThreadPool(this.threadCount, r -> new Thread(r, this.threadTag));
+        this.eventGroup = new NioEventLoopGroup(this.threadCount, this.nettyExecutorService);
+
         this.bootStrap = new Bootstrap();
         this.bootStrap.group(this.eventGroup)
                 .channel(NioSocketChannel.class)
@@ -198,6 +198,23 @@ public class NettyChannelPool {
                 context.setOperation(request);
                 request.complete();
                 return;
+            }
+
+            // Sometimes when an HTTP/2 connection is exhausted and we open
+            // a new connection, the connection fails: it appears that the client
+            // believes it has sent the HTTP/2 settings frame, but the server has
+            // not received it. After hours of debugging, I don't believe the cause
+            // is our fault, but haven't isolated an underlying bug in Netty either.
+            //
+            // The workaround is that retry the connection. I haven't yet seen a failure
+            // when we retry.
+            //
+            // This doesn't make me completely comfortable. Is it really the case that
+            // we just occasionally lose the SETTINGS frame on a new connection, or can
+            // other frames be lost? Until we are sure, HTTP/2 support should be considered
+            // experimental.
+            if (this.isHttp2Only && request.getRetryCount() == 0) {
+                request.setRetryCount(2);
             }
 
             // Connect, then wait for the connection to complete before either
@@ -516,26 +533,18 @@ public class NettyChannelPool {
             return;
         }
 
-        // If we're closing the connection, we only send one request in the new connection
-        // If we're not closing it, we queue up multiple pending requests, because
-        // HTTP/2 allows us to multiplex requests.
         Operation pendingOp = null;
-        if (isClose) {
+        if (isClose || !context.isValid()) {
             synchronized (group) {
                 pendingOp = group.pendingRequests.remove(group.pendingRequests.size() - 1);
             }
             connectOrReuse(context.host, context.port, pendingOp);
         } else {
-            int i = 0;
             synchronized (group) {
-                while (havePending && i < this.connectionLimit) {
-                    pendingOp = group.pendingRequests.remove(0);
-                    havePending = !group.pendingRequests.isEmpty();
-                    pendingOp.setSocketContext(context);
-                    pendingOp.complete();
-                    i++;
-                }
+                pendingOp = group.pendingRequests.remove(0);
             }
+            pendingOp.setSocketContext(context);
+            pendingOp.complete();
         }
     }
 
@@ -558,6 +567,7 @@ public class NettyChannelPool {
                 }
             }
             this.eventGroup.shutdownGracefully();
+            this.nettyExecutorService.shutdown();
         } catch (Throwable e) {
             // ignore exception
         }
