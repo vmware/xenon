@@ -17,6 +17,7 @@ import java.io.File;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.URI;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.logging.Level;
 
@@ -27,7 +28,7 @@ import io.netty.channel.ChannelOption;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.netty.handler.ssl.SslContext;
-import io.netty.util.concurrent.ExecutorServiceFactory;
+import io.netty.handler.ssl.SslContextBuilder;
 
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.ServiceHost;
@@ -52,12 +53,14 @@ public class NettyHttpListener implements ServiceRequestListener {
         this.host = host;
     }
 
+    @Override
     public long getActiveClientCount() {
         // TODO Add tracking of client connections by exposing a counter the
         // NettyHttpRequestHandler instance can increment/decrement
         return 0;
     }
 
+    @Override
     public int getPort() {
         return this.port;
     }
@@ -66,12 +69,11 @@ public class NettyHttpListener implements ServiceRequestListener {
         this.childChannelHandler = handler;
     }
 
+    @Override
     public void start(int port, String bindAddress) throws Throwable {
-        ExecutorServiceFactory f = (tc) -> {
-            return Executors.newFixedThreadPool(EVENT_LOOP_THREAD_COUNT,
-                    r -> new Thread(r, this.host.getUri().toString() + "/netty-listener/"
-                            + this.host.getId()));
-        };
+        ExecutorService f = Executors.newFixedThreadPool(EVENT_LOOP_THREAD_COUNT,
+                r -> new Thread(r, this.host.getUri().toString() + "/netty-listener/"
+                        + this.host.getId()));
 
         this.eventLoopGroup = new NioEventLoopGroup(EVENT_LOOP_THREAD_COUNT, f);
         if (this.childChannelHandler == null) {
@@ -102,6 +104,7 @@ public class NettyHttpListener implements ServiceRequestListener {
         op.complete();
     }
 
+    @Override
     public void stop() throws IOException {
         if (this.serverChannel == null) {
             return;
@@ -122,7 +125,9 @@ public class NettyHttpListener implements ServiceRequestListener {
 
     @Override
     public void setSSLContextFiles(URI certFile, URI keyFile, String keyPassphrase) throws Throwable {
-        this.sslContext = SslContext.newServerContext(new File(certFile), new File(keyFile), keyPassphrase);
+        this.sslContext = SslContextBuilder.forServer(
+                new File(certFile), new File(keyFile), keyPassphrase)
+                .build();
     }
 
     @Override
