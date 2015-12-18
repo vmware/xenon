@@ -17,18 +17,8 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
 import java.net.URI;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.Date;
-import java.util.EnumSet;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.Map.Entry;
-import java.util.Set;
-import java.util.UUID;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -494,7 +484,6 @@ public class TestNodeGroupService {
 
             // add the *same* service instance, all *all* peers, so we force synchronization and epoch
             // change on an instance that exists everywhere
-
             int dupServiceCount = Math.min(10, this.serviceCount / 2);
             AtomicInteger counter = new AtomicInteger();
             for (VerificationHost v : this.host.getInProcessHostMap().values()) {
@@ -511,10 +500,65 @@ public class TestNodeGroupService {
                                     + counter.incrementAndGet();
                             s.name = s.documentSelfLink;
                             o.setBody(s);
-                        } , factoryUri);
+                        }, factoryUri);
             }
 
-            // increment to account for link found on all nodes
+            // add the *same* service instance with different versions,
+            // in *all* peers, so we force conflict detection and resolution,
+            // no node sharing any history of service instances
+            Map<URI, ExampleServiceState> exampleStatesConflicted = new HashMap<>();
+            dupServiceCount = 1;
+            for (VerificationHost v : this.host.getInProcessHostMap().values()) {
+                counter.set(0);
+                factoryUri = UriUtils.buildUri(v,
+                        ExampleFactoryService.SELF_LINK);
+                exampleStatesConflicted.putAll(this.host.doFactoryChildServiceStart(
+                        null,
+                        dupServiceCount,
+                        ExampleServiceState.class,
+                        (o) -> {
+                            ExampleServiceState s = new ExampleServiceState();
+                            s.documentSelfLink = "conflictedExampleInstance-"
+                                    + counter.incrementAndGet();
+                            s.documentVersion = counter.get();
+                            s.name = s.documentSelfLink;
+                            o.setBody(s);
+                        }, factoryUri));
+            }
+
+            for (ExampleServiceState s : exampleStatesConflicted.values()) {
+                exampleStatesPerSelfLink.put(s.documentSelfLink, s);
+            }
+
+            // add the *same* service instance with different updates,
+            // in *all* peers, so we force conflict detection and resolution,
+            // nodes sharing history of service instances but top version is different.
+            Map<URI, ExampleServiceState> exampleStatesSharedHistory = new HashMap<>();
+            dupServiceCount = 1;
+            for (VerificationHost v : this.host.getInProcessHostMap().values()) {
+                counter.set(0);
+                factoryUri = UriUtils.buildUri(v,
+                        ExampleFactoryService.SELF_LINK);
+                exampleStatesSharedHistory.putAll(this.host.doFactoryChildServiceStart(
+                        null,
+                        dupServiceCount,
+                        ExampleServiceState.class,
+                        (o) -> {
+                            ExampleServiceState s = new ExampleServiceState();
+                            s.documentSelfLink = "exampleStatesSharedHistory-"
+                                    + counter.incrementAndGet();
+                            s.name = s.documentSelfLink;
+                            o.setBody(s);
+                        }, factoryUri));
+            }
+
+
+
+            for (ExampleServiceState s : exampleStatesSharedHistory.values()) {
+                exampleStatesPerSelfLink.put(s.documentSelfLink, s);
+            }
+
+             // increment to account for link found on all nodes
             this.serviceCount = exampleStatesPerSelfLink.size();
 
             // create peer argument list. Include all but one node, which we will add after
@@ -541,6 +585,7 @@ public class TestNodeGroupService {
                             notifications.countDown();
                         });
             }
+
 
             // now start a new Host and supply the already created peer, then observe the automatic
             // join
@@ -594,6 +639,21 @@ public class TestNodeGroupService {
             }
 
             this.host.scheduleSynchronizationIfAutoSyncDisabled();
+
+            // now verify all nodes synchronize and see the example service instances that existed on the single
+            // host
+            waitForReplicatedFactoryChildServiceConvergence(
+                    exampleStatesPerSelfLink,
+                    this.exampleStateConvergenceChecker,
+                    this.serviceCount, 0);
+
+            h.stop();
+
+            this.host.doUpdateServices((o) -> {
+                ExampleServiceState s = new ExampleServiceState();
+                s.counter = 1111L;
+                o.setBody(s);
+            }, new ArrayList<>(exampleStatesSharedHistory.keySet()).subList(0 , 1));
 
             // now verify all nodes synchronize and see the example service instances that existed on the single
             // host
@@ -2723,6 +2783,26 @@ public class TestNodeGroupService {
                                         Utils.toJsonHtml(stateOnNode));
                         break;
                     }
+
+                    if (stateOnNode.documentUpdateTimeMicros < initialState.documentUpdateTimeMicros) {
+                        this.host
+                                .log(" (documentUpdateTimeMicros %d, expected %d) not converged, state: %s",
+                                        stateOnNode.documentUpdateTimeMicros,
+                                        initialState.documentUpdateTimeMicros,
+                                        Utils.toJsonHtml(stateOnNode));
+                        break;
+                    }
+
+                    // if (!stateOnNode.documentOwner.equals(initialState.documentOwner)) {
+                    //     this.host
+                    //             .log(" Owner (%s, expected %s) not converged, state: %s \n %s",
+                    //                     stateOnNode.documentOwner,
+                    //                     initialState.documentOwner,
+                    //                     Utils.toJsonHtml(stateOnNode),
+                    //                     Utils.toJsonHtml(initialState));
+                    //     break;
+                    // }
+
 
                     if (stateOnNode.documentEpoch == null) {
                         this.host.log("Epoch is missing, state: %s",

@@ -1255,6 +1255,37 @@ public class VerificationHost extends ExampleServiceHost {
         return initialStates;
     }
 
+    public <T> void doUpdateServices(
+            Consumer<Operation> setInitialStateConsumer,
+            List<URI> uris) throws Throwable {
+
+        testStart(uris.size());
+        for (URI uri : uris) {
+            Operation createPatch = Operation.createPatch(uri);
+            // call callback to set the body
+            setInitialStateConsumer.accept(createPatch);
+
+            // create a start service POST with an initial state
+            createPatch.setCompletion(
+                    (o, e) -> {
+                        if (e != null) {
+                            failIteration(e);
+                            return;
+                        }
+                        try {
+                            completeIteration();
+                        } catch (Throwable e1) {
+                            failIteration(e1);
+                        }
+                    });
+
+            createPatch.forceRemote();
+            send(createPatch);
+        }
+
+        testWait();
+    }
+
     public List<Service> doThroughputServiceStart(long c, Class<? extends Service> type,
             ServiceDocument initialState,
             EnumSet<Service.ServiceOption> options,
