@@ -117,10 +117,10 @@ public class NettyChannelPool {
             return;
         }
 
-        this.eventGroup = new NioEventLoopGroup(this.threadCount, (t) -> {
-            return Executors.newFixedThreadPool(t,
-                    r -> new Thread(r, this.threadTag));
-        });
+        this.eventGroup = new NioEventLoopGroup(
+                this.threadCount,
+                Executors.newFixedThreadPool(this.threadCount, r -> new Thread(r, this.threadTag)));
+
         this.bootStrap = new Bootstrap();
         this.bootStrap.group(this.eventGroup)
                 .channel(NioSocketChannel.class)
