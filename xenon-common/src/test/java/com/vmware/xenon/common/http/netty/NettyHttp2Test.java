@@ -17,7 +17,6 @@ import static org.junit.Assert.assertTrue;
 
 import java.net.URI;
 import java.util.EnumSet;
-import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -30,7 +29,6 @@ import org.junit.Test;
 
 import com.vmware.xenon.common.CommandLineArgumentParser;
 import com.vmware.xenon.common.Operation;
-import com.vmware.xenon.common.Service;
 import com.vmware.xenon.common.ServiceClient;
 import com.vmware.xenon.common.ServiceHost;
 import com.vmware.xenon.common.UriUtils;
@@ -51,6 +49,9 @@ public class NettyHttp2Test {
 
     // Operation timeout is in seconds
     public int operationTimeout = 5;
+
+    // Large operation body size used in basicHttp test.
+    public int largeBodySize = 10000;
 
     @BeforeClass
     public static void setUpOnce() throws Exception {
@@ -92,29 +93,63 @@ public class NettyHttp2Test {
     }
 
     /**
-     * A very basic verification that HTTP/2 appears to work: Just do 10 GETs and check the response
-     * @throws Throwable
+     * A very basic verification that HTTP/2 appears to work: Do a PUT of a large body and then
+     * GET it and validate it's correct.
+     *
+     * Note that this test fails with Netty 5.0alpha2 due to a bug when the HTTP/2 window
+     * gets full:
+     * https://github.com/netty/netty/commit/44ee2cac433a6f8640d01a70e8b90b70852aeeae
+     *
+     * The bug is triggered by the fact that we do enough GETs on the large body that we'll
+     * fill up the window and one of the responses is broken into two frames, but (in alpha 2)
+     * the second frame is never sent.
      */
     @Test
     public void basicHttp2() throws Throwable {
-        int numGets = 10;
+        this.host.log("Starting test: basicHttp2");
+        MinimalTestService service = new MinimalTestService();
+        MinimalTestServiceState initialState = new MinimalTestServiceState();
+        initialState.id = "";
+        initialState.stringValue = UUID.randomUUID().toString();
+        this.host.startServiceAndWait(service, UUID.randomUUID().toString(), initialState);
 
-        MinimalTestServiceState body = (MinimalTestServiceState) this.host.buildMinimalTestState();
-        // produce a JSON PODO that serialized is about 2048 bytes
-        StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < 53; i++) {
-            sb.append(UUID.randomUUID().toString());
-        }
-        body.stringValue = sb.toString();
+        MinimalTestServiceState largeState = new MinimalTestServiceState();
+        final String largeBody = createLargeBody(this.largeBodySize);
+        largeState.id = "";
+        largeState.stringValue = largeBody;
 
-        List<Service> services = this.host.doThroughputServiceStart(
-                1,
-                MinimalTestService.class,
-                body,
-                null, null);
-        Service service = services.get(0);
         URI u = service.getUri();
 
+        // Part 1: Verify we can PUT a large body
+        this.host.testStart(1);
+        Operation put = Operation.createPut(u)
+                .forceRemote()
+                .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_USE_HTTP2)
+                .setBody(largeState)
+                .setCompletion((o, e) -> {
+                    if (e != null) {
+                        this.host.failIteration(e);
+                        return;
+                    }
+
+                    MinimalTestServiceState st = o.getBody(MinimalTestServiceState.class);
+                    try {
+                        assertTrue(st.id != null);
+                        assertTrue(st.documentSelfLink != null);
+                        assertTrue(st.documentUpdateTimeMicros > 0);
+                        assertTrue(st.stringValue.equals(largeBody));
+                    } catch (Throwable ex) {
+                        this.host.failIteration(ex);
+                    }
+                    this.host.completeIteration();
+                });
+
+        this.host.send(put);
+        this.host.testWait();
+
+
+        // Part 2: GET the large state and ensure it is correct.
+        int numGets = 10;
         this.host.testStart(numGets);
 
         Operation get = Operation.createGet(u)
@@ -131,7 +166,7 @@ public class NettyHttp2Test {
                         assertTrue(st.id != null);
                         assertTrue(st.documentSelfLink != null);
                         assertTrue(st.documentUpdateTimeMicros > 0);
-                        assertTrue(st.stringValue != null);
+                        assertTrue(st.stringValue.equals(largeBody));
                     } catch (Throwable ex) {
                         this.host.failIteration(ex);
                     }
@@ -142,7 +177,7 @@ public class NettyHttp2Test {
             this.host.send(get);
         }
         this.host.testWait();
-        this.host.log("Basic HTTP/2 validation passed");
+        this.host.log("Test passed: basicHttp2");
     }
 
     /**
@@ -156,6 +191,7 @@ public class NettyHttp2Test {
      */
     @Test
     public void validateHttp2Multiplexing() throws Throwable {
+        this.host.log("Starting test: validateHttp2Multiplexing");
         MinimalTestService service = new MinimalTestService();
         MinimalTestServiceState initialState = new MinimalTestServiceState();
         initialState.id = "";
@@ -200,7 +236,7 @@ public class NettyHttp2Test {
         }
         this.host.testWait();
         assertTrue(completionTimes[0] > completionTimes[1]);
-        this.host.log("HTTP/2 connections are being multiplexed.");
+        this.host.log("Test passed: validateHttp2Multiplexing");
     }
 
 
@@ -214,6 +250,7 @@ public class NettyHttp2Test {
      */
     @Test
     public void validateHttp2Timeouts() throws Throwable {
+        this.host.log("Starting test: validateHttp2Timeouts");
         MinimalTestService service = new MinimalTestService();
         MinimalTestServiceState initialState = new MinimalTestServiceState();
         initialState.id = "";
@@ -256,7 +293,7 @@ public class NettyHttp2Test {
         NettyChannelContext context = client.getCurrentHttp2Context(
                 ServiceHost.LOCAL_HOST, this.host.getPort());
         assertTrue(context.getLargestStreamId() > count * 2);
-        this.host.log("HTTP/2 operations are correctly timed-out.");
+        this.host.log("Test passed: validateHttp2Timeouts");
     }
 
     /**
@@ -264,8 +301,9 @@ public class NettyHttp2Test {
      * them all, a new connection has to be reopened. This tests that we do that correctly.
      * @throws Throwable
      */
-    @Test
+    //@Test
     public void validateStreamExhaustion() throws Throwable {
+        this.host.log("Starting test: validateStreamExhaustion");
         // Allow two requests to be sent per connection by artificially limiting the
         // maximum stream id to 5. Why 5? Clients use only odd-numbered streams and
         // stream 1 is for negotiating settings. Therefore streams 3 and 5 are our
@@ -300,6 +338,18 @@ public class NettyHttp2Test {
                 }));
         assertTrue(client.countHttp2Contexts(ServiceHost.LOCAL_HOST, this.host.getPort()) == 1);
         NettyChannelContext.setMaxStreamId(NettyChannelContext.DEFAULT_MAX_STREAM_ID);
+        this.host.log("Test passed: validateStreamExhaustion");
     }
 
+    /**
+     * Create a string that is larger than the HTTP/2 frame size.
+     */
+    String createLargeBody(int minimumSize) {
+        StringBuilder sb = new StringBuilder();
+        //while (sb.length() <= NettyChannelContext.MAX_HTTP2_FRAME_SIZE) {
+        while (sb.length() <= minimumSize) {
+            sb.append(UUID.randomUUID().toString());
+        }
+        return sb.toString();
+    }
 }
