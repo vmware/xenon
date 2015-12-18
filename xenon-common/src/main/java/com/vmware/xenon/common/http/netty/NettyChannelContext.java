@@ -46,6 +46,7 @@ public class NettyChannelContext extends SocketContext {
     public static final int MAX_HEADER_SIZE = 65536;
     public static final int MAX_CHUNK_SIZE = 65536;
     public static final int MAX_HTTP2_FRAME_SIZE = 65536;
+    public static final int INITIAL_HTTP2_WINDOW_SIZE = 65536;
 
     // An HTTP/2 connection uses a unique stream for each request/response
     // The stream ID is 31 bits longs and the client can only use odd-numbered
