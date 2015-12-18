@@ -101,6 +101,7 @@ import com.vmware.xenon.services.common.LuceneLocalQueryTaskFactoryService;
 import com.vmware.xenon.services.common.LuceneQueryTaskFactoryService;
 import com.vmware.xenon.services.common.NodeGroupFactoryService;
 import com.vmware.xenon.services.common.NodeGroupService.JoinPeerRequest;
+import com.vmware.xenon.services.common.NodeSelectorSynchronizationService;
 import com.vmware.xenon.services.common.NodeSelectorSynchronizationService.SynchronizePeersRequest;
 import com.vmware.xenon.services.common.ODataQueryService;
 import com.vmware.xenon.services.common.OperationIndexService;
@@ -2112,6 +2113,13 @@ public class ServiceHost {
         s.toggleOption(ServiceOption.DOCUMENT_OWNER, t.isOwner);
         t.options = s.getOptions();
         t.state = op.hasBody() ? op.getBody(s.getStateType()) : null;
+        t.resolveConflictHandler = new NodeSelectorSynchronizationService.ResolveConflictHandler() {
+            @Override
+            public <T extends ServiceDocument> T handle(T stateA, T stateB) {
+                return s.resolveConflict(stateA, stateB);
+            }
+        };
+
         t.factoryLink = UriUtils.getParentPath(s.getSelfLink());
         if (t.factoryLink == null || t.factoryLink.isEmpty()) {
             String error = String.format("Factory not found for %s."
