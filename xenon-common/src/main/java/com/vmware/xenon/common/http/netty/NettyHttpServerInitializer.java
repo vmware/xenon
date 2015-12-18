@@ -13,26 +13,28 @@
 
 package com.vmware.xenon.common.http.netty;
 
-import java.util.Collections;
-
 import io.netty.channel.ChannelInitializer;
 import io.netty.channel.ChannelPipeline;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.handler.codec.http.HttpObjectAggregator;
 import io.netty.handler.codec.http.HttpServerCodec;
 import io.netty.handler.codec.http.HttpServerUpgradeHandler;
+import io.netty.handler.codec.http.HttpServerUpgradeHandler.UpgradeCodec;
+import io.netty.handler.codec.http.HttpServerUpgradeHandler.UpgradeCodecFactory;
 import io.netty.handler.codec.http2.DefaultHttp2Connection;
 import io.netty.handler.codec.http2.DelegatingDecompressorFrameListener;
+import io.netty.handler.codec.http2.Http2CodecUtil;
 import io.netty.handler.codec.http2.Http2Connection;
-import io.netty.handler.codec.http2.Http2FrameReader;
-import io.netty.handler.codec.http2.Http2FrameWriter;
+import io.netty.handler.codec.http2.Http2FrameLogger;
 import io.netty.handler.codec.http2.Http2ServerUpgradeCodec;
+import io.netty.handler.codec.http2.Http2Settings;
 import io.netty.handler.codec.http2.HttpToHttp2ConnectionHandler;
 import io.netty.handler.codec.http2.InboundHttp2ToHttpAdapter;
+import io.netty.handler.logging.LogLevel;
 import io.netty.handler.ssl.SslContext;
 import io.netty.handler.ssl.SslHandler;
+import io.netty.util.AsciiString;
 
-import com.vmware.xenon.common.Operation.SocketContext;
 import com.vmware.xenon.common.ServiceHost;
 import com.vmware.xenon.common.ServiceHost.ServiceHostState.SslClientAuthMode;
 import com.vmware.xenon.services.common.ServiceUriPaths;
@@ -95,18 +97,25 @@ public class NettyHttpServerInitializer extends ChannelInitializer<SocketChannel
         p.addLast(HTTP1_CODEC, http1_codec);
         if (this.sslContext == null) {
             // Today we only use HTTP/2 when SSL is disabled
-            HttpToHttp2ConnectionHandler connectionHandler = makeHttp2ConnectionHandler();
-            HttpServerUpgradeHandler.UpgradeCodec upgradeCodec = new Http2ServerUpgradeCodec(
-                    connectionHandler);
+            final HttpToHttp2ConnectionHandler connectionHandler = makeHttp2ConnectionHandler();
+            UpgradeCodecFactory upgradeCodecFactory = new UpgradeCodecFactory() {
+                @Override
+                public UpgradeCodec newUpgradeCodec(CharSequence protocol) {
+                    if (AsciiString.contentEquals(Http2CodecUtil.HTTP_UPGRADE_PROTOCOL_NAME,
+                            protocol)) {
+                        return new Http2ServerUpgradeCodec(connectionHandler);
+                    } else {
+                        return null;
+                    }
+                }
+            };
             // On upgrade, the upgradeHandler will remove the http1_codec and replace it
             // with the connectionHandler. Ideally we'd remove the aggregator (chunked transfer
             // isn't allowed in HTTP/2) and the WebSocket handler (we don't support it over HTTP/2 yet)
             // but we're not doing that yet.
 
             HttpServerUpgradeHandler upgradeHandler = new HttpServerUpgradeHandler(
-                    http1_codec,
-                    Collections.singletonList(upgradeCodec),
-                    SocketContext.getMaxClientRequestSize());
+                    http1_codec, upgradeCodecFactory);
 
             p.addLast(HTTP2_UPGRADE_HANDLER, upgradeHandler);
         }
@@ -134,16 +143,23 @@ public class NettyHttpServerInitializer extends ChannelInitializer<SocketChannel
                 .build();
         DelegatingDecompressorFrameListener frameListener = new DelegatingDecompressorFrameListener(
                 connection, inboundAdapter);
-        Http2FrameReader frameReader = NettyHttpClientRequestInitializer
-                .makeFrameReader(this.debugLogging);
-        Http2FrameWriter frameWriter = NettyHttpClientRequestInitializer
-                .makeFrameWriter(this.debugLogging);
+        Http2FrameLogger frameLogger = null;
+        if (this.debugLogging) {
+            frameLogger = new Http2FrameLogger(LogLevel.INFO,
+                    NettyHttpClientRequestInitializer.class);
 
-        HttpToHttp2ConnectionHandler connectionHandler = new HttpToHttp2ConnectionHandler(
-                connection,
-                frameReader,
-                frameWriter,
-                frameListener);
+        }
+
+        Http2Settings settings = new Http2Settings();
+        settings.maxConcurrentStreams(NettyHttpServiceClient.DEFAULT_HTTP2_STREAMS_PER_HOST);
+        settings.initialWindowSize(NettyChannelContext.INITIAL_HTTP2_WINDOW_SIZE);
+
+        HttpToHttp2ConnectionHandler connectionHandler = new HttpToHttp2ConnectionHandler.Builder()
+                .frameListener(frameListener)
+                .frameLogger(frameLogger)
+                .initialSettings(settings)
+                .build(connection);
+
         return connectionHandler;
     }
 }

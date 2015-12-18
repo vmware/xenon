@@ -17,8 +17,8 @@ import java.util.logging.Level;
 
 import javax.net.ssl.SSLEngine;
 
-import io.netty.channel.ChannelHandlerAdapter;
 import io.netty.channel.ChannelHandlerContext;
+import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.channel.ChannelInitializer;
 import io.netty.channel.ChannelPipeline;
 import io.netty.channel.ChannelPromise;
@@ -31,23 +31,14 @@ import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpObjectAggregator;
 import io.netty.handler.codec.http.HttpVersion;
 import io.netty.handler.codec.http2.DefaultHttp2Connection;
-import io.netty.handler.codec.http2.DefaultHttp2FrameReader;
-import io.netty.handler.codec.http2.DefaultHttp2FrameWriter;
 import io.netty.handler.codec.http2.DelegatingDecompressorFrameListener;
 import io.netty.handler.codec.http2.Http2ClientUpgradeCodec;
 import io.netty.handler.codec.http2.Http2Connection;
-import io.netty.handler.codec.http2.Http2Exception;
 import io.netty.handler.codec.http2.Http2FrameLogger;
-import io.netty.handler.codec.http2.Http2FrameReader;
-import io.netty.handler.codec.http2.Http2FrameWriter;
-import io.netty.handler.codec.http2.Http2InboundFrameLogger;
-import io.netty.handler.codec.http2.Http2OutboundFrameLogger;
 import io.netty.handler.codec.http2.Http2Settings;
-import io.netty.handler.codec.http2.HttpToHttp2ConnectionHandler;
 import io.netty.handler.codec.http2.InboundHttp2ToHttpAdapter;
+import io.netty.handler.logging.LogLevel;
 import io.netty.handler.ssl.SslHandler;
-import io.netty.util.internal.logging.InternalLogLevel;
-import io.netty.util.internal.logging.InternalLoggerFactory;
 
 import com.vmware.xenon.common.Operation.SocketContext;
 import com.vmware.xenon.common.Utils;
@@ -110,7 +101,7 @@ public class NettyHttpClientRequestInitializer extends ChannelInitializer<Socket
 
         if (this.isHttp2Only) {
             try {
-                HttpToHttp2ConnectionHandler connectionHandler = makeHttp2ConnectionHandler();
+                NettyHttpToHttp2Handler connectionHandler = makeHttp2ConnectionHandler();
                 Http2ClientUpgradeCodec upgradeCodec = new Http2ClientUpgradeCodec(
                         connectionHandler);
                 HttpClientUpgradeHandler upgradeHandler = new HttpClientUpgradeHandler(
@@ -145,9 +136,9 @@ public class NettyHttpClientRequestInitializer extends ChannelInitializer<Socket
     /**
      * This special handler will send a GET to the HTTP/2 server. This will trigger
      * the HTTP/2 settings negotiation, which needs to be done before we send user data.
-     * Once we've triggered it, we remove it fro the pipeline.
+     * Once we've triggered it, we remove it from the pipeline.
      */
-    private static final class UpgradeRequestHandler extends ChannelHandlerAdapter {
+    private static final class UpgradeRequestHandler extends ChannelInboundHandlerAdapter {
         @Override
         public void channelActive(ChannelHandlerContext context) throws Exception {
             DefaultFullHttpRequest upgradeRequest = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1,
@@ -164,7 +155,7 @@ public class NettyHttpClientRequestInitializer extends ChannelInitializer<Socket
      *
      * @return
      */
-    private HttpToHttp2ConnectionHandler makeHttp2ConnectionHandler() {
+    private NettyHttpToHttp2Handler makeHttp2ConnectionHandler() {
         // DefaultHttp2Connection is for client or server. False means "client".
         Http2Connection connection = new DefaultHttp2Connection(false);
         InboundHttp2ToHttpAdapter inboundAdapter = new InboundHttp2ToHttpAdapter.Builder(connection)
@@ -174,90 +165,32 @@ public class NettyHttpClientRequestInitializer extends ChannelInitializer<Socket
         DelegatingDecompressorFrameListener frameListener = new DelegatingDecompressorFrameListener(
                 connection, inboundAdapter);
 
-        Http2FrameReader frameReader = makeFrameReader(this.debugLogging);
-        Http2FrameWriter frameWriter = makeFrameWriter(this.debugLogging);
-
-        HttpToHttp2ConnectionHandler connectionHandler = new NettyHttpToHttp2Handler(
-                connection,
-                frameReader,
-                frameWriter,
-                frameListener);
-
-        // We set the the maximum concurrent HTTP/2 streams. It defaults to Integer.MAX_VALUE
-        // so we set it to something a bit smaller, but still with lots of concurrency.
-        Http2Settings settings = connectionHandler.decoder().localSettings();
-        settings.maxConcurrentStreams(this.pool.getConnectionLimitPerHost());
-        try {
-            connectionHandler.decoder().localSettings(settings);
-        } catch (Http2Exception ex) {
-            Utils.log(NettyHttpClientRequestInitializer.class,
-                    NettyHttpClientRequestInitializer.class.getSimpleName(),
-                    Level.WARNING, "Failed to set maximum HTTP/2 concurrent streams: %s",
-                    ex.getMessage());
+        Http2FrameLogger frameLogger = null;
+        if (this.debugLogging) {
+            frameLogger = new Http2FrameLogger(LogLevel.INFO,
+                    NettyHttpClientRequestInitializer.class);
         }
+
+        Http2Settings settings = new Http2Settings();
+        settings.maxConcurrentStreams(this.pool.getConnectionLimitPerHost());
+        settings.initialWindowSize(NettyChannelContext.INITIAL_HTTP2_WINDOW_SIZE);
+
+        NettyHttpToHttp2Handler connectionHandler = new NettyHttpToHttp2Handler.Builder()
+                .frameListener(frameListener)
+                .frameLogger(frameLogger)
+                .initialSettings(settings)
+                .build(connection);
+
         return connectionHandler;
     }
 
     /**
-     * Create a frame reader. We set the maximum frame size and optionally add some logging.
-     * It's public because it's also used by NettyHttpServerInitializer
-     */
-    public static Http2FrameReader makeFrameReader(boolean debugLogging) {
-        DefaultHttp2FrameReader frameReader = new DefaultHttp2FrameReader();
-
-        try {
-            frameReader.maxFrameSize(NettyChannelContext.MAX_HTTP2_FRAME_SIZE);
-        } catch (Http2Exception ex) {
-            Utils.log(NettyHttpClientRequestInitializer.class,
-                    NettyHttpClientRequestInitializer.class.getSimpleName(),
-                    Level.WARNING, "Failed to set HTTP/2 maximum frame size to %s: %s",
-                    NettyChannelContext.MAX_HTTP2_FRAME_SIZE,
-                    ex.getMessage());
-        }
-
-        if (debugLogging) {
-            Http2FrameLogger logger = new Http2FrameLogger(
-                    InternalLogLevel.INFO,
-                    InternalLoggerFactory.getInstance(NettyHttpClientRequestInitializer.class));
-            return new Http2InboundFrameLogger(frameReader, logger);
-
-        }
-        return frameReader;
-    }
-
-    /**
-     * Create a frame writer. We set the maximum frame size and optionally add some logging.
-     * It's public because it's also used by NettyHttpServerInitializer
-     */
-    public static Http2FrameWriter makeFrameWriter(boolean debugLogging) {
-        DefaultHttp2FrameWriter frameWriter = new DefaultHttp2FrameWriter();
-
-        try {
-            frameWriter.maxFrameSize(NettyChannelContext.MAX_HTTP2_FRAME_SIZE);
-        } catch (Http2Exception ex) {
-            Utils.log(NettyHttpClientRequestInitializer.class,
-                    NettyHttpClientRequestInitializer.class.getSimpleName(),
-                    Level.WARNING, "Failed to set HTTP/2 maximum frame size to %s",
-                    NettyChannelContext.MAX_HTTP2_FRAME_SIZE);
-        }
-
-        if (debugLogging) {
-            Http2FrameLogger logger = new Http2FrameLogger(
-                    InternalLogLevel.INFO,
-                    InternalLoggerFactory.getInstance(NettyHttpClientRequestInitializer.class));
-            return new Http2OutboundFrameLogger(frameWriter, logger);
-
-        }
-        return frameWriter;
-    }
-
-    /**
-     * This handler does just one thing: it informs us (via a promise) that we've received
-     * an HTTP/2 settings frame. We do this because when we connect to the HTTP/2 server,
-     * we have to wait until the settings have been negotiated before we send data.
-     * NettyChannelPool uses this promise.
-     *
-     */
+    * This handler does just one thing: it informs us (via a promise) that we've received
+    * an HTTP/2 settings frame. We do this because when we connect to the HTTP/2 server,
+    * we have to wait until the settings have been negotiated before we send data.
+    * NettyChannelPool uses this promise.
+    *
+    */
     private static class Http2SettingsHandler extends SimpleChannelInboundHandler<Http2Settings> {
         private ChannelPromise promise;
 
@@ -266,10 +199,10 @@ public class NettyHttpClientRequestInitializer extends ChannelInitializer<Socket
         }
 
         @Override
-        protected void messageReceived(ChannelHandlerContext ctx, Http2Settings msg)
+        protected void channelRead0(ChannelHandlerContext ctx, Http2Settings msg)
                 throws Exception {
-            this.promise.setSuccess();
             ctx.pipeline().remove(this);
+            this.promise.setSuccess();
         }
     }
 
