@@ -71,6 +71,7 @@ public class NettyChannelPool {
     }
 
     private final ExecutorService executor;
+    private ExecutorService nettyExecutorService;
     private EventLoopGroup eventGroup;
     private String threadTag = NettyChannelPool.class.getSimpleName();
     private int threadCount;
@@ -117,10 +118,9 @@ public class NettyChannelPool {
             return;
         }
 
-        this.eventGroup = new NioEventLoopGroup(this.threadCount, (t) -> {
-            return Executors.newFixedThreadPool(t,
-                    r -> new Thread(r, this.threadTag));
-        });
+        this.nettyExecutorService = Executors.newFixedThreadPool(this.threadCount, r -> new Thread(r, this.threadTag));
+        this.eventGroup = new NioEventLoopGroup(this.threadCount, this.nettyExecutorService);
+
         this.bootStrap = new Bootstrap();
         this.bootStrap.group(this.eventGroup)
                 .channel(NioSocketChannel.class)
@@ -376,6 +376,8 @@ public class NettyChannelPool {
      */
     private void waitForSettings(Channel ch, NettyChannelContext contextFinal, Operation request,
             NettyChannelGroup group) {
+        Utils.logWarning("Temporary debug message: Waiting for settings");
+
         ChannelPromise settingsPromise = ch.attr(NettyChannelContext.SETTINGS_PROMISE_KEY).get();
         settingsPromise.addListener(new ChannelFutureListener() {
             @Override
@@ -383,6 +385,7 @@ public class NettyChannelPool {
                     throws Exception {
 
                 if (future.isSuccess()) {
+                    Utils.logWarning("Temporary debug message: Received settings, will start sending");
                     sendAfterConnect(future.channel(), contextFinal, request, group);
                 } else {
                     returnOrClose(contextFinal, true);
@@ -516,26 +519,18 @@ public class NettyChannelPool {
             return;
         }
 
-        // If we're closing the connection, we only send one request in the new connection
-        // If we're not closing it, we queue up multiple pending requests, because
-        // HTTP/2 allows us to multiplex requests.
         Operation pendingOp = null;
-        if (isClose) {
+        if (isClose || !context.isValid()) {
             synchronized (group) {
                 pendingOp = group.pendingRequests.remove(group.pendingRequests.size() - 1);
             }
             connectOrReuse(context.host, context.port, pendingOp);
         } else {
-            int i = 0;
             synchronized (group) {
-                while (havePending && i < this.connectionLimit) {
-                    pendingOp = group.pendingRequests.remove(0);
-                    havePending = !group.pendingRequests.isEmpty();
-                    pendingOp.setSocketContext(context);
-                    pendingOp.complete();
-                    i++;
-                }
+                pendingOp = group.pendingRequests.remove(0);
             }
+            pendingOp.setSocketContext(context);
+            pendingOp.complete();
         }
     }
 
@@ -558,6 +553,7 @@ public class NettyChannelPool {
                 }
             }
             this.eventGroup.shutdownGracefully();
+            this.nettyExecutorService.shutdown();
         } catch (Throwable e) {
             // ignore exception
         }
