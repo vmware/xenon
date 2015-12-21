@@ -18,6 +18,7 @@ import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.UUID;
 import java.util.concurrent.CancellationException;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import com.vmware.xenon.common.NodeSelectorService.SelectOwnerResponse;
@@ -38,6 +39,7 @@ import com.vmware.xenon.services.common.ServiceUriPaths;
 public abstract class FactoryService extends StatelessService {
 
     public static final int SELF_QUERY_RESULT_LIMIT = 1000;
+    private static final long SELF_QUERY_TIMEOUT_MINUTES = 60;
     private EnumSet<ServiceOption> childOptions;
     private String nodeSelectorLink = ServiceUriPaths.DEFAULT_NODE_SELECTOR;
     private int selfQueryResultLimit = SELF_QUERY_RESULT_LIMIT;
@@ -201,6 +203,13 @@ public abstract class FactoryService extends StatelessService {
                 .setTermMatchValue(Utils.buildKind(this.getStateType()));
 
         queryTask.querySpec.query.addBooleanClause(kindClause);
+
+        // the self query task might take a long time if we are loading millions of services. The
+        // the user can set either rely on ServiceOption.ON_DEMAND_LOAD, or use an even
+        // longer operation timeout, during host start.
+        long timeoutMicros = TimeUnit.MINUTES.toMicros(SELF_QUERY_TIMEOUT_MINUTES);
+        timeoutMicros = Math.max(timeoutMicros, getHost().getOperationTimeoutMicros());
+        queryTask.documentExpirationTimeMicros = Utils.getNowMicrosUtc() + timeoutMicros;
 
         // process child services in limited numbers, set query result limit
         queryTask.querySpec.resultLimit = this.selfQueryResultLimit;
