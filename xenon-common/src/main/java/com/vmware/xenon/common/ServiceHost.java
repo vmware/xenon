@@ -2526,9 +2526,7 @@ public class ServiceHost {
             return true;
         }
 
-        if (inboundOp.getAuthorizationContext() == null) {
-            populateAuthorizationContext(inboundOp);
-        }
+        populateAuthorizationContext(inboundOp);
 
         if (this.isAuthorizationEnabled()) {
             if (this.authorizationService != null) {
@@ -2586,13 +2584,13 @@ public class ServiceHost {
         if (token == null) {
             Map<String, String> cookies = op.getCookies();
             if (cookies == null) {
-                return null;
+                return op.getAuthorizationContext();
             }
             token = cookies.get(AuthenticationConstants.DCP_JWT_COOKIE);
         }
 
         if (token == null) {
-            return null;
+            return op.getAuthorizationContext();
         }
 
         AuthorizationContext ctx = this.authorizationContextCache.get(token);
@@ -2609,7 +2607,7 @@ public class ServiceHost {
             if (claims == null) {
                 log(Level.INFO, "Request to %s has no claims found with token: %s",
                         op.getUri().getPath(), token);
-                return null;
+                return op.getAuthorizationContext();
             }
 
             Long expirationTime = claims.getExpirationTime();
@@ -2632,7 +2630,7 @@ public class ServiceHost {
             log(Level.INFO, "Error verifying token: %s", e);
         }
 
-        return null;
+        return op.getAuthorizationContext();
     }
 
     private void failRequestServiceNotFound(Operation inboundOp) {
