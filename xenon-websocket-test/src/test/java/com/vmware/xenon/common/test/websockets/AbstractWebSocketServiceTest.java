@@ -60,7 +60,7 @@ public abstract class AbstractWebSocketServiceTest extends BasicTestCase {
             + ServiceHost.SERVICE_URI_SUFFIX_SUBSCRIPTIONS;
     public static final String ERROR_VARIABLE = "errorOccurred";
 
-    private static String echoServiceUri;
+    protected static String echoServiceUri;
     private static String observerServiceUriForStop;
     private static String observerServiceUriForClose;
     private static String observerServiceUriForUnsubscribe;
