@@ -106,6 +106,7 @@
       <modules>
         <module>xenon-host</module>
         <module>xenon-samples</module>
+        <module>xenon-dns</module>
         <module>xenon-loader-test</module>
         <module>xenon-websocket-test</module>
       </modules>
@@ -119,6 +120,7 @@
       <modules>
         <module>xenon-host</module>
         <module>xenon-samples</module>
+        <module>xenon-dns</module>
         <module>xenon-loader-test</module>
         <module>xenon-websocket-test</module>
       </modules>
