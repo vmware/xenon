@@ -134,10 +134,16 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
      */
     public int updateCount = 10;
 
+    /**
+     * Parameter that specifies long running test duration in seconds
+     */
+    public long testDurationSeconds;
+
     private final String EXAMPLES_BODIES_FILE = "example_bodies.json";
     private final String INDEX_DIR_NAME = "lucene510";
 
     private FaultInjectionLuceneDocumentIndexService indexService;
+
 
     @Override
     public void beforeHostStart(VerificationHost host) {
@@ -1209,61 +1215,80 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
     }
 
     private void doServiceVersionGroomingValidation(EnumSet<ServiceOption> caps) throws Throwable {
-        List<Service> services = this.host.doThroughputServiceStart(
-                this.serviceCount, MinimalTestServiceWithDefaultRetention.class,
-                this.host.buildMinimalTestState(), caps,
-                null);
+        long end = Utils.getNowMicrosUtc() + TimeUnit.SECONDS.toMicros(this.testDurationSeconds);
 
-        Collection<URI> serviceUrisWithDefaultRetention = new ArrayList<>();
-        for (Service s : services) {
-            serviceUrisWithDefaultRetention.add(s.getUri());
-        }
+        do {
+            List<Service> services = this.host.doThroughputServiceStart(
+                    this.serviceCount, MinimalTestServiceWithDefaultRetention.class,
+                    this.host.buildMinimalTestState(), caps,
+                    null);
 
-        URI factoryUri = UriUtils.buildUri(this.host,
-                ExampleFactoryService.SELF_LINK);
-        Map<URI, ExampleServiceState> exampleStates = this.host.doFactoryChildServiceStart(null,
-                this.serviceCount,
-                ExampleServiceState.class,
-                (o) -> {
-                    ExampleServiceState s = new ExampleServiceState();
-                    s.name = UUID.randomUUID().toString();
-                    o.setBody(s);
-                }, factoryUri);
+            Collection<URI> serviceUrisWithDefaultRetention = new ArrayList<>();
+            for (Service s : services) {
+                serviceUrisWithDefaultRetention.add(s.getUri());
+            }
 
-        Collection<URI> serviceUrisWithCustomRetention = exampleStates.keySet();
+            URI factoryUri = UriUtils.buildUri(this.host,
+                    ExampleFactoryService.SELF_LINK);
+            Map<URI, ExampleServiceState> exampleStates = this.host.doFactoryChildServiceStart(
+                    null,
+                    this.serviceCount,
+                    ExampleServiceState.class,
+                    (o) -> {
+                        ExampleServiceState s = new ExampleServiceState();
+                        s.name = UUID.randomUUID().toString();
+                        o.setBody(s);
+                    }, factoryUri);
 
-        long count = ServiceDocumentDescription.DEFAULT_VERSION_RETENTION_LIMIT * 2;
-        this.host.testStart(this.serviceCount * count);
-        for (int i = 0; i < count; i++) {
+            Collection<URI> serviceUrisWithCustomRetention = exampleStates.keySet();
+
+            long count = ServiceDocumentDescription.DEFAULT_VERSION_RETENTION_LIMIT * 2;
+            this.host.testStart(this.serviceCount * count);
+            for (int i = 0; i < count; i++) {
+                for (URI u : serviceUrisWithDefaultRetention) {
+                    this.host.send(Operation.createPut(u)
+                            .setBody(this.host.buildMinimalTestState())
+                            .setCompletion(this.host.getCompletion()));
+                }
+            }
+            this.host.testWait();
+
+            count = ExampleServiceState.VERSION_RETENTION_LIMIT + 100;
+            this.host.testStart(serviceUrisWithCustomRetention.size() * count);
+            for (int i = 0; i < count; i++) {
+                for (URI u : serviceUrisWithCustomRetention) {
+                    ExampleServiceState st = new ExampleServiceState();
+                    st.name = Utils.getNowMicrosUtc() + "";
+                    this.host.send(Operation.createPut(u)
+                            .setBody(st)
+                            .setCompletion(this.host.getCompletion()));
+                }
+            }
+            this.host.testWait();
+
+            Collection<URI> serviceUris = serviceUrisWithDefaultRetention;
+            long limit = ServiceDocumentDescription.DEFAULT_VERSION_RETENTION_LIMIT
+                    * serviceUris.size();
+            verifyVersionRetention(count, serviceUris, limit);
+
+            serviceUris = serviceUrisWithCustomRetention;
+            limit = ExampleServiceState.VERSION_RETENTION_LIMIT * serviceUris.size();
+            verifyVersionRetention(count, serviceUris, limit);
+
+            this.host.testStart(this.serviceCount);
             for (URI u : serviceUrisWithDefaultRetention) {
-                this.host.send(Operation.createPut(u)
-                        .setBody(this.host.buildMinimalTestState())
+                this.host.send(Operation.createDelete(u)
                         .setCompletion(this.host.getCompletion()));
             }
-        }
-        this.host.testWait();
+            this.host.testWait();
 
-        count = ExampleServiceState.VERSION_RETENTION_LIMIT + 100;
-        this.host.testStart(serviceUrisWithCustomRetention.size() * count);
-        for (int i = 0; i < count; i++) {
+            this.host.testStart(this.serviceCount);
             for (URI u : serviceUrisWithCustomRetention) {
-                ExampleServiceState st = new ExampleServiceState();
-                st.name = Utils.getNowMicrosUtc() + "";
-                this.host.send(Operation.createPut(u)
-                        .setBody(st)
+                this.host.send(Operation.createDelete(u)
                         .setCompletion(this.host.getCompletion()));
             }
-        }
-        this.host.testWait();
-
-        Collection<URI> serviceUris = serviceUrisWithDefaultRetention;
-        long limit = ServiceDocumentDescription.DEFAULT_VERSION_RETENTION_LIMIT
-                * serviceUris.size();
-        verifyVersionRetention(count, serviceUris, limit);
-
-        serviceUris = serviceUrisWithCustomRetention;
-        limit = ExampleServiceState.VERSION_RETENTION_LIMIT * serviceUris.size();
-        verifyVersionRetention(count, serviceUris, limit);
+            this.host.testWait();
+        } while (Utils.getNowMicrosUtc() < end);
     }
 
     private void verifyVersionRetention(long count,

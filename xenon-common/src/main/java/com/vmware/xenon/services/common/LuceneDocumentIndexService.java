@@ -1887,17 +1887,17 @@ public class LuceneDocumentIndexService extends StatelessService {
             return;
         }
 
-        IndexSearcher s = this.searcher;
-        if (s == null) {
-            return;
-        }
-
         Operation dummyDelete = Operation.createDelete(null);
         int count = 0;
         Map<String, Long> links = new HashMap<>();
         synchronized (this.linkDocumentRetentionEstimates) {
             links.putAll(this.linkDocumentRetentionEstimates);
             this.linkDocumentRetentionEstimates.clear();
+        }
+
+        IndexSearcher s = updateSearcher(null, Integer.MAX_VALUE, wr);
+        if (s == null) {
+            return;
         }
 
         for (Entry<String, Long> e : links.entrySet()) {
@@ -1915,7 +1915,7 @@ public class LuceneDocumentIndexService extends StatelessService {
             count++;
         }
 
-        if (!this.linkDocumentRetentionEstimates.isEmpty()) {
+        if (!links.isEmpty()) {
             logInfo("Applied retention policy to %d links", count);
         }
     }
