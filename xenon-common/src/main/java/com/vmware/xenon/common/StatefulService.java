@@ -298,6 +298,8 @@ public class StatefulService implements Service {
                     isCompletionNested = true;
                 }
 
+                preHandleOperation(request);
+
                 switch (request.getAction()) {
                 case DELETE:
                     handleDelete(request);
@@ -561,6 +563,14 @@ public class StatefulService implements Service {
 
         getHost().loadServiceState(this, request);
         return true;
+    }
+
+    /**
+     * Allow subclass to pre-handle operation before {@linkplain #handleDelete}, {@linkplain #handleGet},
+     * {@linkplain #handlePatch}, {@linkplain #handlePost}, {@linkplain #handlePut}, {@linkplain #handleOptions}
+     */
+    protected void preHandleOperation(Operation op) {
+        // no-op. subclass can override the behavior
     }
 
     public void handlePost(Operation post) {
