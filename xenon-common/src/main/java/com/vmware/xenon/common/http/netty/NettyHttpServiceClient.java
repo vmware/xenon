@@ -567,7 +567,7 @@ public class NettyHttpServiceClient implements ServiceClient {
         }
 
         boolean needsBody = op.getAction() != Action.GET && op.getAction() != Action.DELETE &&
-                op.getAction() != Action.POST;
+                op.getAction() != Action.POST && op.getAction() != Action.OPTIONS;
 
         if (!op.hasBody() && needsBody) {
             e = new IllegalArgumentException(

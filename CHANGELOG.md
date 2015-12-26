@@ -2,6 +2,11 @@
 
 ## 0.4.0-SNAPSHOT
 
+* Added default support for HTTP Options. StafulService and
+StatelessService now return the same content as GET on
+*/template suffix, providing a default self documentation
+capability.
+
 * Added honoring of verbs (POST, PATCH, etc) in roles
 
 ## 0.3.2

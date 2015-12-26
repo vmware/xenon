@@ -77,39 +77,51 @@ public class StatelessService implements Service {
 
     @Override
     public void handleRequest(Operation op, OperationProcessingStage opProcessingStage) {
-        if (opProcessingStage == OperationProcessingStage.PROCESSING_FILTERS) {
-            OperationProcessingChain opProcessingChain = getOperationProcessingChain();
-            if (opProcessingChain != null && !opProcessingChain.processRequest(op)) {
-                return;
+        try {
+            if (opProcessingStage == OperationProcessingStage.PROCESSING_FILTERS) {
+                OperationProcessingChain opProcessingChain = getOperationProcessingChain();
+                if (opProcessingChain != null && !opProcessingChain.processRequest(op)) {
+                    return;
+                }
+                opProcessingStage = OperationProcessingStage.EXECUTING_SERVICE_HANDLER;
             }
-            opProcessingStage = OperationProcessingStage.EXECUTING_SERVICE_HANDLER;
-        }
 
-        if (opProcessingStage == OperationProcessingStage.EXECUTING_SERVICE_HANDLER) {
-            if (op.getAction() == Action.GET) {
-                op.nestCompletion(o -> {
-                    handleGetCompletion(op);
-                });
-                try {
+            if (opProcessingStage == OperationProcessingStage.EXECUTING_SERVICE_HANDLER) {
+                if (op.getAction() == Action.GET) {
+                    op.nestCompletion(o -> {
+                        handleGetCompletion(op);
+                    });
                     handleGet(op);
-                } catch (Throwable e) {
-                    op.fail(e);
-                }
-                return;
-            } else if (op.getAction() == Action.DELETE) {
-                op.nestCompletion(o -> {
-                    handleDeleteCompletion(op);
-                });
-                try {
-                    handleDelete(op);
-                } catch (Throwable e) {
-                    op.fail(e);
-                }
-                return;
-            }
-        }
+                } else if (op.getAction() == Action.DELETE) {
+                    op.nestCompletion(o -> {
+                        handleDeleteCompletion(op);
+                    });
 
-        getHost().failRequestActionNotSupported(op);
+                    handleDelete(op);
+                } else if (op.getAction() == Action.OPTIONS) {
+                    op.nestCompletion(o -> {
+                        handleOptionsCompletion(op);
+                    });
+
+                    handleOptions(op);
+                } else {
+                    getHost().failRequestActionNotSupported(op);
+                }
+            }
+        } catch (Throwable e) {
+            op.fail(e);
+        }
+    }
+
+    public void handleOptions(Operation options) {
+        options.setBody(null).complete();
+    }
+
+    protected void handleOptionsCompletion(Operation options) {
+        if (!options.hasBody()) {
+            options.setBodyNoCloning(getDocumentTemplate());
+        }
+        options.complete();
     }
 
     public void handleGet(Operation get) {

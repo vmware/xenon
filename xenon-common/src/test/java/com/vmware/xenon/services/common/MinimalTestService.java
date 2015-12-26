@@ -252,11 +252,6 @@ public class MinimalTestService extends StatefulService {
         put.setBody(replacementState).complete();
     }
 
-    @Override
-    public void handleOptions(Operation options) {
-        options.complete();
-    }
-
     private void addResponseHeader(Operation op) {
         // if the test client has added a request header, add a response header before completion
         if (op.getRequestHeader(TEST_HEADER_NAME) != null) {

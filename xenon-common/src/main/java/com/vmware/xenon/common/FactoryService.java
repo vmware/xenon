@@ -336,6 +336,9 @@ public abstract class FactoryService extends StatelessService {
         } else if (op.getAction() == Action.DELETE) {
             op.nestCompletion(o -> handleDeleteCompletion(o));
             handleDelete(op);
+        } else if (op.getAction() == Action.OPTIONS) {
+            op.nestCompletion(o -> handleOptionsCompletion(o));
+            handleOptions(op);
         } else {
             op.fail(new IllegalArgumentException("Action not supported"));
         }
@@ -568,6 +571,10 @@ public abstract class FactoryService extends StatelessService {
                 });
 
         s.sendRequest(query);
+    }
+
+    public void handleOptions(Operation op) {
+        op.complete();
     }
 
     public void handlePost(Operation op) {

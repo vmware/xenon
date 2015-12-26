@@ -202,7 +202,7 @@ public class StatefulService implements Service {
      */
     private boolean queueSynchronizedRequest(final Operation op) {
 
-        if (op.getAction() != Action.GET) {
+        if (op.getAction() != Action.GET && op.getAction() != Action.OPTIONS) {
             // serialize updates
             synchronized (this.context) {
                 if (this.context.processingStage == ProcessingStage.STOPPED) {
@@ -217,6 +217,10 @@ public class StatefulService implements Service {
                 this.context.isUpdateActive = true;
             }
         } else {
+            if (op.getAction() == Action.OPTIONS) {
+                return false;
+            }
+
             // Indexed services serve GET directly from document store so they
             // can run in parallel with updates and each other
             if (isIndexed()) {
@@ -578,7 +582,7 @@ public class StatefulService implements Service {
     }
 
     public void handleOptions(Operation options) {
-        getHost().failRequestActionNotSupported(options);
+        options.setBody(null).complete();
     }
 
     /**
@@ -650,7 +654,7 @@ public class StatefulService implements Service {
         }
 
         ServiceDocument linkedState = op.getLinkedState();
-        boolean isUpdate = op.getAction() != Action.GET;
+        boolean isUpdate = op.getAction() != Action.GET && op.getAction() != Action.OPTIONS;
         boolean isStateUpdated = isUpdate;
 
         if (op.isFromReplication()) {
@@ -710,6 +714,11 @@ public class StatefulService implements Service {
                 return;
             }
 
+            if (op.getAction() == Action.OPTIONS) {
+                handleOptionsCompletion(op);
+                return;
+            }
+
             if (isStateUpdated && linkedState != null) {
                 // defense in depth: conform state so core fields are properly set
                 if (linkedState.documentDescription != null) {
@@ -739,7 +748,12 @@ public class StatefulService implements Service {
         }
     }
 
-
+    protected void handleOptionsCompletion(Operation options) {
+        if (!options.hasBody()) {
+            options.setBodyNoCloning(getDocumentTemplate());
+        }
+        completeRequest(options);
+    }
 
     private void failRequest(Operation op, Throwable e) {
         if (op.getStatusCode() == Operation.STATUS_CODE_CONFLICT) {
@@ -895,7 +909,7 @@ public class StatefulService implements Service {
     }
 
     private void publish(Operation op) {
-        if (op.getAction() == Action.GET) {
+        if (op.getAction() == Action.GET || op.getAction() == Action.OPTIONS) {
             return;
         }
         if (op.isNotificationDisabled()) {

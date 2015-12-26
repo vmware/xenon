@@ -26,11 +26,13 @@ import java.util.UUID;
 
 import org.junit.Test;
 
+import com.vmware.xenon.common.Operation.CompletionHandler;
 import com.vmware.xenon.common.Service.Action;
 import com.vmware.xenon.common.Service.ServiceOption;
 import com.vmware.xenon.common.ServiceStats.ServiceStat;
 import com.vmware.xenon.common.test.MinimalTestServiceState;
 import com.vmware.xenon.common.test.TestProperty;
+import com.vmware.xenon.services.common.ExampleFactoryService;
 import com.vmware.xenon.services.common.MinimalFactoryTestService;
 import com.vmware.xenon.services.common.MinimalTestService;
 import com.vmware.xenon.services.common.ServiceUriPaths;
@@ -376,10 +378,38 @@ public class TestServiceModel extends BasicTestCase {
         URI serviceUri = UriUtils.buildUri(this.host, UriUtils.buildUriPath(ServiceUriPaths.CORE, "test-service"));
         MinimalTestServiceState state = new MinimalTestServiceState();
         state.id = UUID.randomUUID().toString();
+
+        CompletionHandler c = (o, e) -> {
+            if (e != null) {
+                this.host.failIteration(e);
+                return;
+            }
+
+            ServiceDocumentQueryResult res = o.getBody(ServiceDocumentQueryResult.class);
+            if (res.documents != null) {
+                this.host.completeIteration();
+                return;
+            }
+            ServiceDocument doc = o.getBody(ServiceDocument.class);
+            if (doc.documentDescription != null) {
+                this.host.completeIteration();
+                return;
+            }
+
+            this.host.failIteration(new IllegalStateException("expected description"));
+        };
+
         this.host.startServiceAndWait(new MinimalTestService(), serviceUri.getPath(), state);
         this.host.testStart(1);
-        this.host.sendRequest(Operation.createOperation(Action.OPTIONS, serviceUri)
-                .setCompletion((o, e) -> this.host.completeIteration()));
+        this.host.send(Operation.createOperation(Action.OPTIONS, serviceUri)
+                .setCompletion(c));
+        this.host.testWait();
+
+        // try also on a stateless service like the example factory
+        serviceUri = UriUtils.buildUri(this.host, ExampleFactoryService.SELF_LINK);
+        this.host.testStart(1);
+        this.host.send(Operation.createOperation(Action.OPTIONS, serviceUri)
+                .setCompletion(c));
         this.host.testWait();
     }
 }
