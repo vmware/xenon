@@ -877,11 +877,19 @@ public class TestQueryTaskService {
         // induce synchronization during the query to verify it does not interfere (due to state updates)
         this.host.scheduleSynchronizationIfAutoSyncDisabled();
 
+        // Add delay so synchronization is complete before we proceed.
+        // We need to verify it did not modify example service state.
+        // Unfortunately there is no way to know when a factory is done synchronizing, its 100%
+        // asynchronous and concurrent (each child service synchronizes independently) but since we
+        // trigger explicitly, and we have a small number of children, a few seconds, even on a loaded
+        // system, is enough 99.9% of the time.
+        Thread.sleep(2000);
+
         exp = this.host.getTestExpiration();
         while (new Date().before(exp)) {
             boolean isConverged = true;
             // verify no query tasks exist on any host
-            // pick one host to send the POSTs through, DCP will forward to peers
+            // pick one host to send the factory GETs through, runtime will forward to peers
             for (VerificationHost host : this.host.getInProcessHostMap().values()) {
                 URI queryFactoryUri = UriUtils.buildExpandLinksQueryUri(UriUtils.buildUri(
                         targetHost,
@@ -902,7 +910,7 @@ public class TestQueryTaskService {
         exp = this.host.getTestExpiration();
 
         while (new Date().before(exp)) {
-            // issue a paginated task query on one of the nodes. Then use the next page links verifying th elinks
+            // issue a paginated task query on one of the nodes. Then use the next page links verifying the links
             // are forwarded to the node that executed the query
             QueryTask remoteTask = QueryTask.Builder.create().setQuery(query).build();
             remoteTask.documentExpirationTimeMicros = Utils.getNowMicrosUtc()
