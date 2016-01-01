@@ -21,9 +21,20 @@ import com.vmware.xenon.services.common.QueryTask.Query;
 
 public class ResourceGroupService extends StatefulService {
     /**
-     * The {@link ResourceGroupState} holds the query that is used to represent a group of users.
+     * The {@link ResourceGroupState} holds a query that is used to represent a group of
+     * resources (services). {@link ResourceGroupState} and {@link UserGroupState) are used
+     * together in a {@link RoleState} to specify what resources a set of users has access to
      */
     public static class ResourceGroupState extends ServiceDocument {
+        /**
+         * A standard query to the index service.
+         *
+         * The result of this query will be the set of resources (services) that a user has
+         * access to. Typical queries might be "all services with a documentAuthPrincipalLink
+         * field that matches the user's" or "all services with documentKind with a particular
+         * kind". These may be typical queries, but you can use any query that matches the set
+         * of documents you want a user to have access to.
+         */
         public Query query;
     }
 

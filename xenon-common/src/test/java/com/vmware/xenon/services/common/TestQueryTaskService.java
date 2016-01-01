@@ -442,6 +442,7 @@ public class TestQueryTaskService {
                 "Starting QPS test, service count: %d, query count: %d, interleave writes: %s",
                 this.serviceCount, this.queryCount, interleaveWrites);
         QueryTask qt = QueryTask.Builder.createDirectTask().setQuery(q).build();
+
         this.host.testStart(this.queryCount);
         for (int i = 0; i < this.queryCount; i++) {
             final int index = i;
