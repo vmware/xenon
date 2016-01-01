@@ -476,11 +476,20 @@ public class ServiceHost {
 
     public ServiceHost initialize(String[] args) throws Throwable {
         Arguments hostArgs = new Arguments();
+        initialize(args, hostArgs);
+        return this;
+    }
+
+    /**
+     * This method is intended for subclasses that extend the Arguments class
+     */
+    protected ServiceHost initialize(String[] args, Arguments hostArgs) throws Throwable {
         CommandLineArgumentParser.parse(hostArgs, args);
         CommandLineArgumentParser.parse(COLOR_LOG_FORMATTER, args);
         initialize(hostArgs);
         setProcessOwner(true);
         return this;
+
     }
 
     public ServiceHost initialize(Arguments args) throws Throwable {

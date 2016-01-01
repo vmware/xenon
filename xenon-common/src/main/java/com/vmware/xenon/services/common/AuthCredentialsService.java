@@ -35,13 +35,28 @@ public class AuthCredentialsService extends StatefulService {
         /** Client email. */
         public String userEmail;
 
-        /** Service Account private key */
+        /**
+         * Service Account private key.
+         *
+         * When using the BasicAuthenticationService, this is the user password. Other
+         * authentication services may use it differently.
+         */
         public String privateKey;
 
-        /** Service Account private key id */
+        /**
+         * Service Account private key id
+         *
+         * When using the BasicAuthenticationService, this is not used. Other authentication services
+         * may use it.
+         */
         public String privateKeyId;
 
-        /** Service Account public key */
+        /**
+         * Service Account public key
+         *
+         * When using the BasicAuthenticationService, this is
+         * not used. Other authentication services may use it.
+         */
         public String publicKey;
 
         /** Token server URI. */
