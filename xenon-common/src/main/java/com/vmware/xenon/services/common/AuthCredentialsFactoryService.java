@@ -20,7 +20,7 @@ import com.vmware.xenon.common.Service;
  * User credentials service.
  */
 public class AuthCredentialsFactoryService extends FactoryService {
-    public static final String SELF_LINK = ServiceUriPaths.CORE_AUTH + "/credentials";
+    public static final String SELF_LINK = ServiceUriPaths.CORE_CREDENTIALS;
 
     public AuthCredentialsFactoryService() {
         super(AuthCredentialsService.AuthCredentialsServiceState.class);
