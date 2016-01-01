@@ -422,6 +422,8 @@ public class TestQueryTaskService {
                 .addFieldClause("id", newState.id, MatchType.PHRASE, Occurance.MUST_OCCUR)
                 .addKindFieldClause(QueryValidationServiceState.class).build();
 
+        this.host.log("Query: %s", Utils.toJsonHtml(q));
+
         // first do the test with no concurrent updates to the index, while we query
         boolean interleaveWrites = false;
         for (int i = 0; i < 3; i++) {
@@ -442,6 +444,8 @@ public class TestQueryTaskService {
                 "Starting QPS test, service count: %d, query count: %d, interleave writes: %s",
                 this.serviceCount, this.queryCount, interleaveWrites);
         QueryTask qt = QueryTask.Builder.createDirectTask().setQuery(q).build();
+        this.host.log("Query Task: %s", Utils.toJsonHtml(qt));
+
         this.host.testStart(this.queryCount);
         for (int i = 0; i < this.queryCount; i++) {
             final int index = i;
