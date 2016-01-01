@@ -52,6 +52,7 @@ public class ServiceUriPaths {
             + SHA1_NODE_SELECTOR_NAME + "-3x";
 
     public static final String CORE_AUTH = CORE + "/auth";
+    public static final String CORE_CREDENTIALS = CORE_AUTH + "/credentials";
 
     public static final String CORE_DOCUMENT_INDEX = ServiceUriPaths.CORE + "/document-index";
     public static final String CORE_OPERATION_INDEX = ServiceUriPaths.CORE + "/operation-index";

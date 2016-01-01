@@ -20,6 +20,7 @@ import static org.junit.Assert.assertTrue;
 import java.net.URI;
 import java.security.GeneralSecurityException;
 import java.util.Arrays;
+import java.util.Base64;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -28,6 +29,7 @@ import java.util.LinkedList;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
@@ -37,6 +39,7 @@ import org.junit.Test;
 
 import com.vmware.xenon.common.Operation.AuthorizationContext;
 import com.vmware.xenon.common.Service.Action;
+import com.vmware.xenon.common.http.netty.NettyHttpServiceClient;
 import com.vmware.xenon.common.test.AuthorizationHelper;
 import com.vmware.xenon.common.test.VerificationHost;
 import com.vmware.xenon.services.common.AuthorizationContextService;
@@ -45,6 +48,9 @@ import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
 import com.vmware.xenon.services.common.GuestUserService;
 import com.vmware.xenon.services.common.QueryTask;
 import com.vmware.xenon.services.common.QueryTask.Query.Builder;
+import com.vmware.xenon.services.common.ServiceUriPaths;
+import com.vmware.xenon.services.common.authn.AuthenticationRequest;
+import com.vmware.xenon.services.common.authn.BasicAuthenticationService;
 
 public class TestAuthorization extends BasicTestCase {
 
@@ -428,5 +434,180 @@ public class TestAuthorization extends BasicTestCase {
                 UriUtils.buildUri(this.host, ExampleFactoryService.SELF_LINK));
 
         return states;
+    }
+
+    private String adminUser = "admim@localhost";
+    private String exampleUser = "example@localhost";
+
+    /**
+     * Validate the AuthorizationSetupHelper
+     */
+    @Test
+    public void testAuthSetupHelper() throws Throwable {
+        // Step 1: Set up two users, one admin, one not.
+        OperationContext.setAuthorizationContext(this.host.getSystemAuthorizationContext());
+        makeUsersWithAuthSetupHelper();
+        OperationContext.setAuthorizationContext(null);
+
+        // Step 2: Have each user login and get a token
+        Map<String, String> adminCookies = loginUser(this.adminUser, this.adminUser);
+        Map<String, String> exampleCookies = loginUser(this.exampleUser, this.exampleUser);
+
+        // Step 3: Have each user create an example document
+        createExampleDocument(adminCookies);
+        createExampleDocument(exampleCookies);
+
+        // Step 4: Verify that the admin can see both documents, but the non-admin
+        // can only see the one it created
+        assertTrue(numberExampleDocuments(adminCookies) == 2);
+        assertTrue(numberExampleDocuments(exampleCookies) == 1);
+
+        this.host.log("AuthorizationSetupHelper is working");
+    }
+
+    /**
+     * Supports testAuthSetupHelper() by invoking the AuthorizationSetupHelper to
+     * create two users with associated user groups, resource groups, and roles
+     */
+    private void makeUsersWithAuthSetupHelper() throws Throwable {
+        AuthorizationSetupHelper.AuthSetupCompletion authCompletion = (ex) -> {
+            if (ex == null) {
+                this.host.completeIteration();
+            } else {
+                this.host.failIteration(ex);
+            }
+        };
+
+        this.host.testStart(2);
+        AuthorizationSetupHelper.create()
+                .setHost(this.host)
+                .setUserEmail(this.adminUser)
+                .setUserPassword(this.adminUser)
+                .setIsAdmin(true)
+                .setCompletion(authCompletion)
+                .start();
+
+        AuthorizationSetupHelper.create()
+                .setHost(this.host)
+                .setUserEmail(this.exampleUser)
+                .setUserPassword(this.exampleUser)
+                .setIsAdmin(false)
+                .setDocumentKind(Utils.buildKind(ExampleServiceState.class))
+                .setCompletion(authCompletion)
+                .start();
+        this.host.testWait();
+    }
+
+    /**
+     * Supports testAuthSetupHelper() by logging in a single user and returning the cookies
+     * they get upon login
+     */
+    private Map<String, String> loginUser(String user, String password) throws Throwable {
+        String basicAuth = constructBasicAuth(user, password);
+        URI loginUri = UriUtils.buildUri(this.host, ServiceUriPaths.CORE_AUTHN_BASIC);
+        AuthenticationRequest login = new AuthenticationRequest();
+        login.requestType = AuthenticationRequest.AuthenticationRequestType.LOGIN;
+
+        Operation[] loginResponse = new Operation[1];
+
+        Operation loginPost = Operation.createPost(loginUri)
+                .setBody(login)
+                .addRequestHeader(BasicAuthenticationService.AUTHORIZATION_HEADER_NAME,
+                        basicAuth)
+                .forceRemote()
+                .setCompletion((op, ex) -> {
+                    if (ex != null) {
+                        this.host.failIteration(ex);
+                        return;
+                    }
+                    loginResponse[0] = op;
+                    this.host.completeIteration();
+                });
+
+        this.host.testStart(1);
+        this.host.send(loginPost);
+        this.host.testWait();
+
+        // We extract the cookies here instead of in the completion
+        // because it's awkward to make an array of hash tables
+        Map<String, String> cookies = loginResponse[0].getCookies();
+        assertTrue(cookies.size() > 0);
+
+        return cookies;
+    }
+
+    /**
+     * Supports testAuthSetupHelper() by creating an example document. The document
+     * is created with a set of cookies as returned by the login above, so it is
+     * created with a specific user.
+     */
+    private void createExampleDocument(Map<String, String> cookies) throws Throwable {
+        ExampleServiceState example = new ExampleServiceState();
+        example.name = UUID.randomUUID().toString();
+        URI exampleUri = UriUtils.buildUri(this.host, ExampleFactoryService.SELF_LINK);
+
+        Operation examplePost = Operation.createPost(exampleUri)
+                .setBody(example)
+                .forceRemote()
+                .setCompletion(this.host.getCompletion());
+        examplePost.setCookies(cookies);
+        clearClientCookieJar();
+
+        this.host.testStart(1);
+        this.host.send(examplePost);
+        this.host.testWait();
+    }
+
+    /**
+     * Supports testAuthSetupHelper() by counting how many example documents we can
+     * see with the given set of cookies (which correspond to a given user)
+     */
+    private int numberExampleDocuments(Map<String, String> cookies) throws Throwable {
+        URI exampleUri = UriUtils.buildUri(this.host, ExampleFactoryService.SELF_LINK);
+
+        // It would be nice to use getFactoryState, but we need to set the cookies so we can't
+        Integer[] numberDocuments = new Integer[1];
+        Operation get = Operation.createGet(exampleUri)
+                .forceRemote()
+                .setCompletion((op, ex) -> {
+                    if (ex != null) {
+                        this.host.failIteration(ex);
+                        return;
+                    }
+                    ServiceDocumentQueryResult response = op.getBody(ServiceDocumentQueryResult.class);
+                    assertTrue(response != null && response.documentLinks != null);
+                    numberDocuments[0] = response.documentLinks.size();
+                    this.host.completeIteration();
+                });
+        get.setCookies(cookies);
+        clearClientCookieJar();
+
+        this.host.testStart(1);
+        this.host.send(get);
+        this.host.testWait();
+        return numberDocuments[0];
+    }
+
+    /**
+     * Supports testAuthSetupHelper() by creating a Basic Auth header
+     */
+    private String constructBasicAuth(String name, String password) {
+        String userPass = String.format("%s:%s", name, password);
+        String encodedUserPass = new String(Base64.getEncoder().encode(userPass.getBytes()));
+        String basicAuth = "Basic " + encodedUserPass;
+        return basicAuth;
+
+    }
+
+    /**
+     * Clear NettyHttpServiceClient's cookie jar
+     *
+     * The NettyHttpServiceClient is nice: it tracks what cookies we receive and sets them
+     * on the outgoing connection. However, for some of our tests here, we want to control
+     * the cookies. Therefore we clear the cookie jar.
+     */
+    private void clearClientCookieJar() {
+        NettyHttpServiceClient client = (NettyHttpServiceClient) this.host.getClient();
+        client.clearCookieJar();
     }
 }

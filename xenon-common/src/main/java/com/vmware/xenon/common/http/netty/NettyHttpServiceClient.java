@@ -655,4 +655,10 @@ public class NettyHttpServiceClient implements ServiceClient {
         return this.http2ChannelPool.getHttp2ActiveContextCount(host, port);
     }
 
+    /**
+     * Infrastructure testing use only: do not use this in production
+     */
+    public void clearCookieJar() {
+        this.cookieJar = new CookieJar();
+    }
 }

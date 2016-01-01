@@ -124,6 +124,12 @@ public class NettyHttpServerResponseHandler extends SimpleChannelInboundHandler<
             request.setContentType(contentType);
         }
 
+        String cookie = headers.get(HttpHeaderNames.SET_COOKIE);
+        headers.remove(HttpHeaderNames.COOKIE);
+        if (cookie != null) {
+            request.setCookies(CookieJar.decodeCookies(cookie));
+        }
+
         for (Entry<String, String> h : headers) {
             String key = h.getKey();
             String value = h.getValue();
