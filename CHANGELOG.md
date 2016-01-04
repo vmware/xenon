@@ -18,6 +18,16 @@ capability.
   the x-xenon-auth-token header in its response, in addition to the
   cookie. 
 
+* ExampleServiceHost now takes arguments to create users (one admin,
+  one non-admin that can access example services). This enables you to
+  use the ExampleServiceHost when authorization is enabled with the
+  isAuthorizationEnabled flag. The new arguments are:
+
+  - adminUser
+  - adminUserPassword
+  - exampleUser
+  - exampleUserPassword
+
 ## 0.3.2
 
 * Add on demand service load, enabled with
