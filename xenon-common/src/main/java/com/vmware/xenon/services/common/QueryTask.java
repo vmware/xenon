@@ -359,7 +359,7 @@ public class QueryTask extends ServiceDocument {
         }
 
         /**
-         * Builder class for constructing {@linkplain Query DCP queries}.
+         * Builder class for constructing {@linkplain Query Xenon queries}.
          */
         public static final class Builder {
             private final Query query;
@@ -590,6 +590,42 @@ public class QueryTask extends ServiceDocument {
                         .setTermMatchType(matchType);
                 clause.occurance = occurance;
                 this.query.addBooleanClause(clause);
+                return this;
+            }
+
+            /**
+             * Set the term.
+             *
+             * This is only appropriate if you need to query on exactly a single clause and
+             * it is not compatible with the using multiple boolean clauses, as addFieldClause does.
+             *
+             * This assumes you are matching with MatchType.TERM
+             *
+             * @param fieldName the top level field name
+             * @param fieldValue the field value to match
+             * @return
+             */
+            public Builder setTerm(String fieldName, String fieldValue) {
+                return setTerm(fieldName, fieldValue, MatchType.TERM);
+            }
+
+            /**
+             * Set the term.
+             *
+             * This is only appropriate if you need to query on exactly a single clause and
+             * it is not compatible with the using multiple boolean clauses, as addFieldClause does.
+             *
+             * This assumes you are matching with MatchType.TERM
+             *
+             * @param fieldName the top level field name
+             * @param fieldValue the field value to match
+             * @return
+             */
+            public Builder setTerm(String fieldName, String fieldValue, MatchType matchType) {
+                this.query.term = new QueryTerm();
+                this.query.term.propertyName = fieldName;
+                this.query.term.matchValue = fieldValue;
+                this.query.term.matchType = matchType;
                 return this;
             }
 
