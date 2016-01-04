@@ -35,6 +35,7 @@ public class MinimalTestService extends StatefulService {
     public static final String STRING_MARKER_HAS_CONTEXT_ID = "check context id";
     public static final String STRING_MARKER_USE_DIFFERENT_CONTENT_TYPE = "change content type on response";
     public static final String STRING_MARKER_DELAY_COMPLETION = "do a tight loop";
+    public static final String STRING_MARKER_FAIL_WITH_PLAIN_TEXT_RESPONSE = "fail with plain text content type";
     public static final String TEST_HEADER_NAME = "TestServiceHeader";
     public static final String QUERY_HEADERS = "headers";
     public static final String QUERY_DELAY_COMPLETION = "delay";
@@ -107,6 +108,12 @@ public class MinimalTestService extends StatefulService {
             return;
         }
 
+        if (patchBody.id.equals(STRING_MARKER_FAIL_WITH_PLAIN_TEXT_RESPONSE)) {
+            patch.setBody("test induced failure in plain text")
+                    .setContentType(Operation.MEDIA_TYPE_TEXT_PLAIN)
+                    .fail(Operation.STATUS_CODE_BAD_REQUEST);
+            return;
+        }
         if (patchBody.id.equals(STRING_MARKER_RETRY_REQUEST)) {
             if (this.retryRequestContextId != null) {
                 if (this.retryRequestContextId.equals(patch.getContextId())) {

@@ -580,6 +580,10 @@ public abstract class FactoryService extends StatelessService {
     public void handlePost(Operation op) {
         if (op.hasBody()) {
             ServiceDocument body = op.getBody(ServiceDocument.class);
+            if (body == null) {
+                op.fail(new IllegalArgumentException("structured body is required"));
+                return;
+            }
             if (body.documentSourceLink != null) {
                 op.fail(new IllegalArgumentException("clone request not supported"));
                 return;

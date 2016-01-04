@@ -558,6 +558,31 @@ public class NettyHttpServiceClientTest {
         this.host.send(Operation.createPatch(services.get(0).getUri())
                 .setCompletion(this.host.getExpectedFailureCompletion()));
         this.host.testWait();
+
+        // send a body with instructions to the test service to fail the
+        // request, but set the error body as plain text. This verifies the runtime
+        // preserves the plain text error response
+        MinimalTestServiceState body = new MinimalTestServiceState();
+        body.id = MinimalTestService.STRING_MARKER_FAIL_WITH_PLAIN_TEXT_RESPONSE;
+        this.host.testStart(1);
+        this.host.send(Operation.createPatch(services.get(0).getUri())
+                .setBody(body)
+                .setCompletion((o, e) -> {
+                    if (e == null) {
+                        this.host.failIteration(new IllegalStateException("expected failure"));
+                        return;
+                    }
+
+                    Object rsp = o.getBodyRaw();
+                    if (!(rsp instanceof String)
+                            || !o.getContentType().equals(Operation.MEDIA_TYPE_TEXT_PLAIN)) {
+                        this.host.failIteration(new IllegalStateException(
+                                "expected text plain content type and response"));
+                        return;
+                    }
+                    this.host.completeIteration();
+                }));
+        this.host.testWait();
     }
 
     private void verifyRequestRetry(List<Service> services) throws Throwable {

@@ -863,13 +863,19 @@ public class Operation implements Cloneable {
 
         boolean hasErrorResponseBody = false;
         if (this.body != null && this.body instanceof String) {
-            try {
-                ServiceErrorResponse rsp = Utils.fromJson(this.body, ServiceErrorResponse.class);
-                if (rsp.message != null) {
-                    hasErrorResponseBody = true;
+            if (Operation.MEDIA_TYPE_APPLICATION_JSON.equals(this.contentType)) {
+                try {
+                    ServiceErrorResponse rsp = Utils.fromJson(this.body,
+                            ServiceErrorResponse.class);
+                    if (rsp.message != null) {
+                        hasErrorResponseBody = true;
+                    }
+                } catch (Throwable ex) {
+                    // the body is not JSON, ignore
                 }
-            } catch (Throwable ex) {
-                // the body is not JSON, ignore
+            } else {
+                // the response body is text but not JSON, we will leave as is
+                hasErrorResponseBody = true;
             }
         }
 

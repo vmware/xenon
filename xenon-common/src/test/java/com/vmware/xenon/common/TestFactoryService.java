@@ -486,21 +486,44 @@ public class TestFactoryService extends BasicReusableHostTestCase {
 
     @Test
     public void sendWrongContentType() throws Throwable {
+        startFactoryService();
+
+        this.host.toggleNegativeTestMode(true);
+        // attempt to create service with unrecognized content type and non JSON body
         this.host.testStart(1);
-        // attempt to create service with unrecognized content type
         Operation post = Operation
                 .createPost(this.factoryUri)
                 .setBody("")
-                .setContentType("text/plain")
+                .setContentType(Operation.MEDIA_TYPE_TEXT_PLAIN)
                 .setCompletion(
                         (o, e) -> {
-                            if (e == null || !e.getMessage().contains("Unrecognized Content-Type")) {
+                            if (e == null
+                                    || !e.getMessage().contains("Unrecognized Content-Type")) {
+                                this.host.failIteration(new IllegalStateException(
+                                        "Should have rejected request"));
+                            } else {
+                                this.host.completeIteration();
+                            }
+                        });
+        this.host.send(post);
+        this.host.testWait();
+
+        // attempt to create service with proper content type but garbage body
+        this.host.testStart(1);
+        post = Operation
+                .createPost(this.factoryUri)
+                .setBody("")
+                .setContentType(Operation.MEDIA_TYPE_APPLICATION_JSON)
+                .setCompletion(
+                        (o, e) -> {
+                            if (e == null) {
                                 this.host.failIteration(new IllegalStateException(
                                         "Should have rejected request"));
                             } else {
                                 ServiceErrorResponse rsp = o.getBody(ServiceErrorResponse.class);
                                 if (rsp.message == null
-                                        || rsp.message.toLowerCase().contains("exception")) {
+                                        || !rsp.message.toLowerCase()
+                                                .contains("body is required")) {
                                     this.host.failIteration(new IllegalStateException(
                                             "Invalid error response"));
                                     return;
@@ -511,10 +534,12 @@ public class TestFactoryService extends BasicReusableHostTestCase {
                         });
         this.host.send(post);
         this.host.testWait();
+        this.host.toggleNegativeTestMode(false);
     }
 
     @Test
     public void sendBadJson() throws Throwable {
+        startFactoryService();
         this.host.testStart(1);
         // attempt to create service with bad content type
         Operation post = Operation
@@ -680,10 +705,7 @@ public class TestFactoryService extends BasicReusableHostTestCase {
 
     @Test
     public void testFactoryPostHandling() throws Throwable {
-        this.host.startService(
-                Operation.createPost(this.factoryUri),
-                new SomeFactoryService());
-        this.host.waitForServiceAvailable(SomeFactoryService.SELF_LINK);
+        startFactoryService();
 
         this.host.testStart(4);
         idempotentPostReturnsUpdatedOpBody();
@@ -691,6 +713,16 @@ public class TestFactoryService extends BasicReusableHostTestCase {
         checkDerivedSelfLinkWhenProvidedSelfLinkAlreadyContainsAPath();
         checkDerivedSelfLinkWhenProvidedSelfLinkLooksLikeItContainsAPathButDoesnt();
         this.host.testWait();
+    }
+
+    private void startFactoryService() throws Throwable {
+        if (this.host.getServiceStage(this.factoryUri.getPath()) != null) {
+            return;
+        }
+        this.host.startService(
+                Operation.createPost(this.factoryUri),
+                new SomeFactoryService());
+        this.host.waitForServiceAvailable(SomeFactoryService.SELF_LINK);
     }
 
     @Test
