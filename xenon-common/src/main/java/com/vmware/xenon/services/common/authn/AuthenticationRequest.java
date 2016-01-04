@@ -19,5 +19,5 @@ public class AuthenticationRequest {
         LOGIN, LOGOUT
     }
 
-    AuthenticationRequestType requestType;
+    public AuthenticationRequestType requestType;
 }

@@ -348,13 +348,19 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
             response.headers().set(nameValue.getKey(), nameValue.getValue());
         }
 
-        // Add Set-Cookie header to response if authorization context is marked as internal.
+        // Add auth token to response if authorization context
         AuthorizationContext authorizationContext = request.getAuthorizationContext();
         if (authorizationContext != null && authorizationContext.shouldPropagateToClient()) {
+            String token = authorizationContext.getToken();
+
+            // The x-xenon-auth-token header is our preferred style
+            response.headers().add(Operation.REQUEST_AUTH_TOKEN_HEADER, token);
+
+            // Client can also use the cookie if they prefer
             StringBuilder buf = new StringBuilder()
-                    .append(AuthenticationConstants.DCP_JWT_COOKIE)
+                    .append(AuthenticationConstants.XENON_JWT_COOKIE)
                     .append('=')
-                    .append(authorizationContext.getToken());
+                    .append(token);
 
             // Add Path qualifier, cookie applies everywhere
             buf.append("; Path=/");

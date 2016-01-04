@@ -2588,7 +2588,7 @@ public class ServiceHost {
             if (cookies == null) {
                 return null;
             }
-            token = cookies.get(AuthenticationConstants.DCP_JWT_COOKIE);
+            token = cookies.get(AuthenticationConstants.XENON_JWT_COOKIE);
         }
 
         if (token == null) {
