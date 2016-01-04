@@ -99,6 +99,14 @@ public class TestQueryTaskService {
             this.host.toggleServiceOptions(this.host.getDocumentIndexServiceUri(),
                     EnumSet.of(ServiceOption.INSTRUMENTATION),
                     null);
+            // disable synchronization so it does not interfere with the factory POSTs.
+            // This test does not test nodes coming and going, it just relies on replication.
+            // In theory, POSTs while the node group is changing should succeed (any failures
+            // should be transparently retried) but its a best effort process.
+            // Disabling it on the core verification host also disables it on all peer in process
+            // hosts since VerificationHost.setupPeerHosts uses the setting of the parent host
+            this.host.setPeerSynchronizationEnabled(false);
+
         } catch (Throwable e) {
             throw new Exception(e);
         }
@@ -728,6 +736,7 @@ public class TestQueryTaskService {
         setUpHost();
 
         int nodeCount = 3;
+
         this.host.setUpPeerHosts(nodeCount);
         this.host.joinNodesAndVerifyConvergence(nodeCount);
 
@@ -752,7 +761,7 @@ public class TestQueryTaskService {
         this.host.testWait();
 
         nonpaginatedBroadcastQueryTasksOnExampleStates(targetHost);
-        paginatedbroadcastQueryTasksOnExampleStates();
+        paginatedBroadcastQueryTasksOnExampleStates();
         paginatedBroadcastQueryTasksWithoutMatching();
         paginatedBroadcastQueryTasksRepeatSamePage();
     }
@@ -863,7 +872,7 @@ public class TestQueryTaskService {
         targetHost.testWait();
     }
 
-    private void paginatedbroadcastQueryTasksOnExampleStates () throws Throwable {
+    private void paginatedBroadcastQueryTasksOnExampleStates() throws Throwable {
 
         VerificationHost targetHost = this.host.getPeerHost();
 
