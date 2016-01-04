@@ -170,6 +170,7 @@
               <effort>Max</effort>
               <failOnError>false</failOnError>
               <xmlOutput>true</xmlOutput>
+              <excludeFilterFile>findbugs-exclude.xml</excludeFilterFile>
             </configuration>
             <executions>
               <execution>

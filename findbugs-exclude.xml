@@ -1,0 +1,15 @@
+<FindBugsFilter>
+<!-- Findbugs mistakenly reports that the arguments to the
+     ExampleServiceHost are never written. So we tell it to
+     ignore the arguments -->
+     <Match>
+       <Class name="com.vmware.xenon.services.common.ExampleServiceHost$ExampleHostArguments"/>
+       <Bug pattern="UWF_UNWRITTEN_PUBLIC_OR_PROTECTED_FIELD"/>
+       <Or>
+         <Field name="adminUser"/>
+         <Field name="adminUserPassword"/>
+         <Field name="exampleUser"/>
+         <Field name="exampleUserPassword"/>
+       </Or>
+     </Match>
+</FindBugsFilter>

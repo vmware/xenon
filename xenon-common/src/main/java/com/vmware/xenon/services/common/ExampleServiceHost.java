@@ -15,11 +15,39 @@ package com.vmware.xenon.services.common;
 
 import java.util.logging.Level;
 
+import com.vmware.xenon.common.AuthorizationSetupHelper;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.ServiceHost;
 import com.vmware.xenon.common.UriUtils;
+import com.vmware.xenon.common.Utils;
+import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
 
 public class ExampleServiceHost extends ServiceHost {
+
+    public static class ExampleHostArguments extends Arguments {
+        /**
+         * The email address of a user that should be granted "admin" privileges to all services
+         */
+        public String adminUser;
+
+        /**
+         * The password of the adminUser
+         */
+        public String adminUserPassword;
+
+        /**
+         * The email address of a user that should be granted privileges just to example services
+         * that they own
+         */
+        public String exampleUser;
+
+        /**
+         * The password of the exampleUser
+         */
+        public String exampleUserPassword;
+    }
+
+    private ExampleHostArguments args;
 
     public static void main(String[] args) throws Throwable {
         ExampleServiceHost h = new ExampleServiceHost();
@@ -33,24 +61,62 @@ public class ExampleServiceHost extends ServiceHost {
     }
 
     @Override
+    public ServiceHost initialize(String[] args) throws Throwable {
+        this.args = new ExampleHostArguments();
+        super.initialize(args, this.args);
+        if (this.args.adminUser != null && this.args.adminUserPassword == null) {
+            throw new IllegalStateException("adminUser specified, but not adminUserPassword");
+        }
+        if (this.args.exampleUser != null && this.args.exampleUserPassword == null) {
+            throw new IllegalStateException("exampleUser specified, but not exampleUserPassword");
+        }
+        return this;
+    }
+
+    @Override
     public ServiceHost start() throws Throwable {
         super.start();
 
         startDefaultCoreServicesSynchronously();
 
-        // start the example factory
         setAuthorizationContext(this.getSystemAuthorizationContext());
 
-        super.startService(
-                Operation.createPost(UriUtils.buildUri(this, RootNamespaceService.class)),
-                new RootNamespaceService()
-        );
-
+        // start the example factory
         super.startService(
                 Operation.createPost(UriUtils.buildUri(this, ExampleFactoryService.class)),
                 new ExampleFactoryService());
+
+        // Start the root namespace factory: this will respond to the root URI (/) and list all
+        // the factory services.
+        super.startService(
+                Operation.createPost(UriUtils.buildUri(this, RootNamespaceService.class)),
+                new RootNamespaceService());
+
+        // The args are null because many of the tests use this class (via VerificationHost)
+        // without providing arguments.
+        if (this.args != null) {
+            if (this.args.adminUser != null) {
+                AuthorizationSetupHelper.create()
+                        .setHost(this)
+                        .setUserEmail(this.args.adminUser)
+                        .setUserPassword(this.args.adminUserPassword)
+                        .setIsAdmin(true)
+                        .start();
+            }
+            if (this.args.exampleUser != null) {
+                AuthorizationSetupHelper.create()
+                        .setHost(this)
+                        .setUserEmail(this.args.exampleUser)
+                        .setUserPassword(this.args.exampleUserPassword)
+                        .setIsAdmin(false)
+                        .setDocumentKind(Utils.buildKind(ExampleServiceState.class))
+                        .start();
+            }
+        }
+
         setAuthorizationContext(null);
 
         return this;
     }
+
 }
