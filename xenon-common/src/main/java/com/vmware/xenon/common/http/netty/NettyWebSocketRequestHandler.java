@@ -109,14 +109,19 @@ public class NettyWebSocketRequestHandler extends SimpleChannelInboundHandler<Ob
                                         .getName())));
                 return;
             }
-            if (this.authToken != null) {
-                Operation dummyOp = new Operation();
-                dummyOp.addRequestHeader(Operation.REQUEST_AUTH_TOKEN_HEADER, this.authToken);
-                dummyOp.setUri(UriUtils.buildUri(this.host, ServiceUriPaths.CORE_WEB_SOCKET_ENDPOINT));
-                OperationContext.setAuthorizationContext(this.host, dummyOp);
-            }
+
             String frameText = ((TextWebSocketFrame) frame).text();
-            this.host.run(() -> processWebSocketFrame(ctx, frameText));
+            this.host.run(() -> {
+                if (this.authToken != null) {
+                    Operation dummyOp = new Operation();
+                    dummyOp.addRequestHeader(Operation.REQUEST_AUTH_TOKEN_HEADER, this.authToken);
+                    dummyOp.setUri(
+                            UriUtils.buildUri(this.host, ServiceUriPaths.CORE_WEB_SOCKET_ENDPOINT));
+                    OperationContext.setAuthorizationContext(this.host, dummyOp);
+                }
+
+                processWebSocketFrame(ctx, frameText);
+            });
             return;
         }
     }
