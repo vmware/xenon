@@ -20,5 +20,5 @@ public class AuthenticationConstants {
     //jwt issuer name
     public static final String JWT_ISSUER = "dcp";
     // jwt cookie name
-    public static final String DCP_JWT_COOKIE = "dcp-auth-cookie";
+    public static final String XENON_JWT_COOKIE = "xenon-auth-cookie";
 }

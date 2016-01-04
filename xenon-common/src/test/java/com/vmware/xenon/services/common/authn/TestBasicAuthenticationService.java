@@ -203,7 +203,7 @@ public class TestBasicAuthenticationService extends BasicTestCase {
                         }));
         this.host.testWait();
 
-        // finally send a valid request
+        // Next send a valid request
         userPassStr = new String(Base64.getEncoder().encode(
                 new StringBuffer(USER).append(BASIC_AUTH_USER_SEPERATOR).append(PASSWORD)
                         .toString().getBytes()));
@@ -264,6 +264,59 @@ public class TestBasicAuthenticationService extends BasicTestCase {
                         this.host.send(logoutOp);
                     }));
         this.host.testWait();
+
+        // Finally, send a valid remote request, and validate the cookie & auth token
+        this.host.testStart(1);
+        this.host.send(Operation
+                .createPost(authServiceUri)
+                .setBody(new Object())
+                .forceRemote()
+                .addRequestHeader(BasicAuthenticationService.AUTHORIZATION_HEADER_NAME, headerVal)
+                .setCompletion(
+                        (o, e) -> {
+                            if (e != null) {
+                                this.host.failIteration(e);
+                                return;
+                            }
+                            if (o.getStatusCode() != Operation.STATUS_CODE_OK) {
+                                this.host.failIteration(new IllegalStateException(
+                                        "Invalid status code returned"));
+                                return;
+                            }
+                            if (!validateAuthToken(o)) {
+                                return;
+                            }
+                            this.host.completeIteration();
+                        }));
+        this.host.testWait();
+
     }
 
+    private boolean validateAuthToken(Operation op) {
+        String cookieHeader = op.getResponseHeader(SET_COOKIE_HEADER);
+        if (cookieHeader == null) {
+            this.host.failIteration(new IllegalStateException("Missing cookie header"));
+            return false;
+        }
+
+        Map<String, String> cookieElements = CookieJar.decodeCookies(cookieHeader);
+        if (!cookieElements.containsKey(AuthenticationConstants.XENON_JWT_COOKIE)) {
+            this.host.failIteration(new IllegalStateException("Missing auth cookie"));
+            return false;
+        }
+
+        if (op.getResponseHeader(Operation.REQUEST_AUTH_TOKEN_HEADER) == null) {
+            this.host.failIteration(new IllegalStateException("Missing auth token"));
+            return false;
+        }
+
+        String authCookie = cookieElements.get(AuthenticationConstants.XENON_JWT_COOKIE);
+        String authToken = op.getResponseHeader(Operation.REQUEST_AUTH_TOKEN_HEADER);
+
+        if (!authCookie.equals(authToken)) {
+            this.host.failIteration(new IllegalStateException("Auth token and auth cookie don't match"));
+            return false;
+        }
+        return true;
+    }
 }
