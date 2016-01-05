@@ -14,6 +14,7 @@
 package com.vmware.xenon.common.test.websockets;
 
 import java.net.URI;
+import java.util.Collections;
 
 import io.netty.bootstrap.Bootstrap;
 import io.netty.channel.Channel;
@@ -31,6 +32,7 @@ import io.netty.channel.socket.nio.NioSocketChannel;
 import io.netty.handler.codec.http.DefaultHttpHeaders;
 import io.netty.handler.codec.http.FullHttpResponse;
 import io.netty.handler.codec.http.HttpClientCodec;
+import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpObjectAggregator;
 import io.netty.handler.codec.http.websocketx.BinaryWebSocketFrame;
 import io.netty.handler.codec.http.websocketx.CloseWebSocketFrame;
@@ -53,9 +55,10 @@ import org.mozilla.javascript.annotations.JSFunction;
 import org.mozilla.javascript.annotations.JSGetter;
 import org.mozilla.javascript.annotations.JSSetter;
 
-import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.OperationContext;
 import com.vmware.xenon.common.ServiceHost;
+import com.vmware.xenon.common.http.netty.CookieJar;
+import com.vmware.xenon.services.common.authn.AuthenticationConstants;
 
 /**
  * Lightweight partial implementation of JS Websocket API
@@ -209,7 +212,8 @@ public class JsWebSocket extends ScriptableObject {
         DefaultHttpHeaders headers = new DefaultHttpHeaders();
         if (OperationContext.getAuthorizationContext() != null
                 && OperationContext.getAuthorizationContext().getToken() != null) {
-            headers.add(Operation.REQUEST_AUTH_TOKEN_HEADER, OperationContext.getAuthorizationContext().getToken());
+            headers.add(HttpHeaderNames.COOKIE, CookieJar.encodeCookies(Collections.singletonMap(
+                    AuthenticationConstants.XENON_JWT_COOKIE, OperationContext.getAuthorizationContext().getToken())));
         }
         final WebSocketClientHandler handler = new WebSocketClientHandler(
                 WebSocketClientHandshakerFactory.newHandshaker(
