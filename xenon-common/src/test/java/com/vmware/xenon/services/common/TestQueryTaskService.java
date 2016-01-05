@@ -39,6 +39,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.logging.Level;
 
 import org.junit.After;
 import org.junit.Test;
@@ -1076,6 +1077,152 @@ public class TestQueryTaskService {
         }
 
         assertTrue(documentLinksList.get(0).equals(documentLinksList.get(1)));
+    }
+
+    @Test
+    public void broadcastQueryStressTest() throws Throwable {
+        setUpHost();
+
+        final int nodeCount = 3;
+        this.host.setUpPeerHosts(nodeCount);
+        this.host.joinNodesAndVerifyConvergence(nodeCount);
+
+        VerificationHost targetHost = this.host.getPeerHost();
+        URI exampleFactoryURI = UriUtils.buildUri(targetHost, ExampleFactoryService.SELF_LINK);
+
+        final int documentsCount = 1000;
+        this.host.testStart(documentsCount);
+        List<URI> exampleServices = new ArrayList<>();
+        for (int i = 0; i < documentsCount; i++) {
+            ExampleServiceState s = new ExampleServiceState();
+            s.name = "document" + i;
+            s.documentSelfLink = s.name;
+            exampleServices.add(UriUtils.buildUri(this.host.getUri(),
+                    ExampleFactoryService.SELF_LINK, s.documentSelfLink));
+            this.host.send(Operation.createPost(exampleFactoryURI)
+                    .setBody(s)
+                    .setCompletion(this.host.getCompletion()));
+        }
+        this.host.testWait();
+
+        // Simulate the scenario that multiple users query documents page by page
+        // in broadcast way.
+        final int usersCount = 10;
+        targetHost.testStart(usersCount);
+        for (int i = 0; i < usersCount; i++) {
+            startPagedBroadCastQuery(targetHost);
+        }
+        targetHost.testWait(300);
+    }
+
+    private void startPagedBroadCastQuery(VerificationHost targetHost) {
+
+        // Need to do the work in a thread here. The reason is that this procedure goes through
+        // several steps:
+        // 1. Issue a query to get the link of the first page
+        // 2. Fetch the documents of each page one by one
+        // Without using a thread, when we try to call this procedure multiple times, it will
+        // become sequential due to the synchronization points in the middle.
+        Thread t = new Thread() {
+            @Override
+            public void run() {
+                try {
+                    final int resultLimit = 100;
+
+                    QuerySpecification q = new QuerySpecification();
+                    Query kindClause = new Query();
+                    kindClause.setTermPropertyName(ServiceDocument.FIELD_NAME_KIND)
+                            .setTermMatchValue(Utils.buildKind(ExampleServiceState.class));
+                    q.query = kindClause;
+                    q.options = EnumSet.of(QueryOption.EXPAND_CONTENT, QueryOption.BROADCAST);
+                    q.resultLimit = resultLimit;
+
+                    QueryTask task = QueryTask.create(q);
+                    if (task.documentExpirationTimeMicros == 0) {
+                        task.documentExpirationTimeMicros = Utils.getNowMicrosUtc() + targetHost
+                                .getOperationTimeoutMicros();
+                    }
+                    task.documentSelfLink = UUID.randomUUID().toString();
+
+                    URI factoryUri = UriUtils.buildUri(targetHost, ServiceUriPaths.CORE_QUERY_TASKS);
+                    Operation post = Operation
+                            .createPost(factoryUri)
+                            .setBody(task);
+                    targetHost.send(post);
+
+                    URI taskUri = UriUtils.extendUri(factoryUri, task.documentSelfLink);
+                    List<String> pageLinks = new ArrayList<>();
+                    do {
+                        CountDownLatch waitForCompletion = new CountDownLatch(1);
+                        Operation get = Operation
+                                .createGet(taskUri)
+                                .setCompletion((o, e) -> {
+                                    if (e != null) {
+                                        targetHost.log(Level.SEVERE, "test failed: %s", e.toString());
+                                        targetHost.failIteration(e);
+
+                                        return;
+                                    }
+
+                                    QueryTask rsp = o.getBody(QueryTask.class);
+                                    if (rsp.taskInfo.stage == TaskStage.FINISHED
+                                            || rsp.taskInfo.stage == TaskStage.FAILED
+                                            || rsp.taskInfo.stage == TaskStage.CANCELLED) {
+
+                                        pageLinks.add(rsp.results.nextPageLink);
+                                    }
+
+                                    waitForCompletion.countDown();
+                                });
+                        targetHost.send(get);
+
+                        waitForCompletion.await();
+
+                        if (!pageLinks.isEmpty()) {
+                            break;
+                        }
+
+                        Thread.sleep(100);
+                    } while (true);
+
+                    String nextPageLink = pageLinks.get(0);
+                    while (nextPageLink != null) {
+                        pageLinks.clear();
+                        URI u = UriUtils.buildUri(targetHost, nextPageLink);
+
+                        CountDownLatch waitForCompletion = new CountDownLatch(1);
+                        Operation get = Operation
+                                .createGet(u)
+                                .setCompletion((o, e) -> {
+                                    if (e != null) {
+                                        targetHost.log(Level.SEVERE, "test failed: %s", e.toString());
+                                        targetHost.failIteration(e);
+
+                                        return;
+                                    }
+
+                                    QueryTask rsp = o.getBody(QueryTask.class);
+                                    pageLinks.add(rsp.results.nextPageLink);
+
+                                    waitForCompletion.countDown();
+                                });
+
+                        targetHost.send(get);
+                        waitForCompletion.await();
+
+                        nextPageLink = pageLinks.isEmpty() ? null : pageLinks.get(0);
+                    }
+                } catch (Throwable e) {
+                    targetHost.log(Level.SEVERE, "test failed: %s", e.toString());
+                    targetHost.failIteration(e);
+
+                    return;
+                }
+
+                targetHost.completeIteration();
+            }
+        };
+        t.start();
     }
 
     @Test

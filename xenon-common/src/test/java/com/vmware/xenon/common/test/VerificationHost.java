@@ -381,6 +381,10 @@ public class VerificationHost extends ExampleServiceHost {
                 this.timeoutSeconds);
     }
 
+    public void testWait(int timeoutSeconds) throws Throwable {
+        testWait(new Exception().getStackTrace()[1].getMethodName(), timeoutSeconds);
+    }
+
     public void testWait(String testName, int timeoutSeconds) throws Throwable {
 
         if (this.completionLatch == null) {
