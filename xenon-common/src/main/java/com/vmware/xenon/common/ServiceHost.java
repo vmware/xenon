@@ -3667,6 +3667,23 @@ public class ServiceHost {
         });
     }
 
+    /**
+     * Executes the task using provided executor
+     */
+    public static void run(ExecutorService executor, Runnable task) {
+        if (executor == null || task == null) {
+            throw new IllegalStateException("Valid executor/task must be provided");
+        }
+        if (executor.isShutdown()) {
+            throw new IllegalStateException("Stopped");
+        }
+        AuthorizationContext origContext = OperationContext.getAuthorizationContext();
+        executor.execute(() -> {
+            OperationContext.setAuthorizationContext(origContext);
+            task.run();
+        });
+    }
+
     public ScheduledFuture<?> schedule(Runnable task, long delay, TimeUnit unit) {
         if (this.isStopping()) {
             throw new IllegalStateException("Stopped");
