@@ -30,12 +30,17 @@ import com.vmware.xenon.common.test.MinimalTestServiceState;
 
 public class MinimalTestService extends StatefulService {
 
+    public static final String CUSTOM_CONTENT_TYPE = "application/vnd.vmware.horizon.manager.error+json;charset=UTF-8";
+
     public static final String STRING_MARKER_RETRY_REQUEST = "fail request with error that causes retry";
     public static final String STRING_MARKER_TIMEOUT_REQUEST = "do not complete this request";
     public static final String STRING_MARKER_HAS_CONTEXT_ID = "check context id";
     public static final String STRING_MARKER_USE_DIFFERENT_CONTENT_TYPE = "change content type on response";
     public static final String STRING_MARKER_DELAY_COMPLETION = "do a tight loop";
     public static final String STRING_MARKER_FAIL_WITH_PLAIN_TEXT_RESPONSE = "fail with plain text content type";
+    public static final String STRING_MARKER_FAIL_WITH_CUSTOM_CONTENT_TYPE_RESPONSE = "fail with "
+            + CUSTOM_CONTENT_TYPE;
+
     public static final String TEST_HEADER_NAME = "TestServiceHeader";
     public static final String QUERY_HEADERS = "headers";
     public static final String QUERY_DELAY_COMPLETION = "delay";
@@ -45,6 +50,7 @@ public class MinimalTestService extends StatefulService {
 
     public static final String STAT_NAME_MAINTENANCE_SUCCESS_COUNT = "maintSuccessCount";
     public static final String STAT_NAME_MAINTENANCE_FAILURE_COUNT = "maintFailureCount";
+
 
 
 
@@ -109,11 +115,19 @@ public class MinimalTestService extends StatefulService {
         }
 
         if (patchBody.id.equals(STRING_MARKER_FAIL_WITH_PLAIN_TEXT_RESPONSE)) {
-            patch.setBody("test induced failure in plain text")
+            patch.setBody("test induced failure in custom text")
                     .setContentType(Operation.MEDIA_TYPE_TEXT_PLAIN)
                     .fail(Operation.STATUS_CODE_BAD_REQUEST);
             return;
         }
+
+        if (patchBody.id.equals(STRING_MARKER_FAIL_WITH_CUSTOM_CONTENT_TYPE_RESPONSE)) {
+            patch.setBody("test induced failure in custom text")
+                    .setContentType(CUSTOM_CONTENT_TYPE)
+                    .fail(Operation.STATUS_CODE_BAD_REQUEST);
+            return;
+        }
+
         if (patchBody.id.equals(STRING_MARKER_RETRY_REQUEST)) {
             if (this.retryRequestContextId != null) {
                 if (this.retryRequestContextId.equals(patch.getContextId())) {
