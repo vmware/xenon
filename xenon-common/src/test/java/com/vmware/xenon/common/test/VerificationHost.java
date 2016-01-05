@@ -1038,10 +1038,17 @@ public class VerificationHost extends ExampleServiceHost {
         boolean isFailureExpected = false;
         if (properties.contains(TestProperty.FORCE_FAILURE)
                 || properties.contains(TestProperty.EXPECT_FAILURE)) {
+            toggleNegativeTestMode(true);
             isFailureExpected = true;
 
             if (properties.contains(TestProperty.LARGE_PAYLOAD)) {
-                updateOp.setCompletion(getExpectedFailureCompletion());
+                updateOp.setCompletion((o, ex) -> {
+                    if (ex == null) {
+                        failIteration(new IllegalStateException("expected failure"));
+                    } else {
+                        completeIteration();
+                    }
+                });
             } else {
                 updateOp.setCompletion((o, ex) -> {
                     if (ex == null) {
@@ -1138,6 +1145,7 @@ public class VerificationHost extends ExampleServiceHost {
         testWait();
 
         if (isFailureExpected) {
+            this.toggleNegativeTestMode(false);
             return;
         }
 

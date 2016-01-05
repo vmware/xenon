@@ -533,6 +533,8 @@ public class NettyHttpServiceClientTest {
                 this.host.buildMinimalTestState(),
                 null, null);
 
+        verifyErrorResponseBodyHandling(services);
+
         // induce a failure that does warrant a retry. Verify we do get proper retries
         verifyRequestRetry(services);
 
@@ -572,7 +574,9 @@ public class NettyHttpServiceClientTest {
                 .forceRemote()
                 .setCompletion(this.host.getExpectedFailureCompletion()));
         this.host.testWait();
+    }
 
+    private void verifyErrorResponseBodyHandling(List<Service> services) throws Throwable {
         // send a body with instructions to the test service to fail the
         // request, but set the error body as plain text. This verifies the runtime
         // preserves the plain text error response
@@ -583,8 +587,8 @@ public class NettyHttpServiceClientTest {
             }
 
             Object rsp = o.getBodyRaw();
-            if (!(rsp instanceof String)
-                    || !o.getContentType().equals(Operation.MEDIA_TYPE_TEXT_PLAIN)) {
+            if (!o.getContentType().equals(Operation.MEDIA_TYPE_TEXT_PLAIN)
+                    || !(rsp instanceof String)) {
                 this.host.failIteration(new IllegalStateException(
                         "expected text plain content type and response"));
                 return;
@@ -599,6 +603,56 @@ public class NettyHttpServiceClientTest {
                 .setBody(body)
                 .setCompletion(ch));
         this.host.testWait();
+
+        this.host.testStart(1);
+        this.host.send(Operation.createPatch(services.get(0).getUri())
+                .setBody(body)
+                .forceRemote()
+                .setCompletion(ch));
+        this.host.testWait();
+
+        // now verify we leave binary or custom content type error responses alone
+        // in process response will stay as string
+        ch = (o, e) -> {
+            if (e == null) {
+                this.host.failIteration(new IllegalStateException("expected failure"));
+                return;
+            }
+
+            Object rsp = o.getBodyRaw();
+            if (!o.getContentType().equals(MinimalTestService.CUSTOM_CONTENT_TYPE)
+                    || !(rsp instanceof String)) {
+                this.host.failIteration(new IllegalStateException(
+                        "expected custom content type and binary response"));
+                return;
+            }
+            this.host.completeIteration();
+        };
+
+        body = new MinimalTestServiceState();
+        body.id = MinimalTestService.STRING_MARKER_FAIL_WITH_CUSTOM_CONTENT_TYPE_RESPONSE;
+        this.host.testStart(1);
+        this.host.send(Operation.createPatch(services.get(0).getUri())
+                .setBody(body)
+                .setCompletion(ch));
+        this.host.testWait();
+
+        // cross node response will stay as binary
+        ch = (o, e) -> {
+            if (e == null) {
+                this.host.failIteration(new IllegalStateException("expected failure"));
+                return;
+            }
+
+            Object rsp = o.getBodyRaw();
+            if (!o.getContentType().equals(MinimalTestService.CUSTOM_CONTENT_TYPE)
+                    || !(rsp instanceof byte[])) {
+                this.host.failIteration(new IllegalStateException(
+                        "expected custom content type and binary response"));
+                return;
+            }
+            this.host.completeIteration();
+        };
 
         this.host.testStart(1);
         this.host.send(Operation.createPatch(services.get(0).getUri())
