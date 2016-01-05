@@ -21,6 +21,8 @@ import java.security.GeneralSecurityException;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 import org.junit.Test;
@@ -534,5 +536,23 @@ public class TestAuthorizationContext extends BasicTestCase {
         joinOpWithHandler.sendWith(this.host);
         this.host.testWait();
         this.host.resetSystemAuthorizationContext();
+    }
+
+    @Test
+    public void testAuthPropForThreadPool() throws Throwable {
+        ExecutorService threadPool = Executors.newFixedThreadPool(2);
+        String user1 = "user1@test.com";
+        AuthorizationContext context = createAuthorizationContext(user1, this.host);
+        OperationContext.setAuthorizationContext(context);
+        this.host.testStart(1);
+        this.host.run(threadPool, () -> {
+            String subject = OperationContext.getAuthorizationContext().getClaims().getSubject();
+            if (subject.endsWith(user1)) {
+                this.host.completeIteration();
+            } else {
+                this.host.failIteration(new Exception("expected subject for " + user1 + ", received " + subject));
+            }
+        });
+        this.host.testWait();
     }
 }
