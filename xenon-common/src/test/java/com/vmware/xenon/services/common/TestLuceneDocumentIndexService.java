@@ -905,12 +905,13 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
                 // observe any expired documents
                 patchExpiration(factoryUri, services, expTime, expectedCount);
 
-                // now set expiration to 1, which is definately in the past, observe all documents expired
+                // now set expiration to 1, which is definitely in the past, observe all documents expired
                 expTime = 1;
                 expectedCount = 0;
                 patchExpiration(factoryUri, services, expTime, expectedCount);
                 this.host.log("All example services expired");
 
+                ServiceStat expiredCountAfterExpiration = null;
                 Date exp = this.host.getTestExpiration();
                 while (exp.after(new Date())) {
                     boolean isConverged = true;
@@ -921,27 +922,39 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
                             isConverged = false;
                         }
                     }
-                    if (isConverged) {
-                        break;
+
+                    if (!isConverged) {
+                        Thread.sleep(250);
+                        continue;
                     }
+
+                    stats = this.host.getServiceState(null, ServiceStats.class,
+                            luceneStatsUri);
+                    ServiceStat deletedCountAfterExpiration = stats.entries
+                            .get(LuceneDocumentIndexService.STAT_NAME_SERVICE_DELETE_COUNT);
+
+                    if (deletedCountBeforeExpiration.latestValue >= deletedCountAfterExpiration.latestValue) {
+                        this.host.log("No service deletions seen");
+                        Thread.sleep(250);
+                        continue;
+                    }
+
+                    stats = this.host.getServiceState(null, ServiceStats.class, luceneStatsUri);
+                    expiredCountAfterExpiration = stats.entries
+                            .get(LuceneDocumentIndexService.STAT_NAME_DOCUMENT_EXPIRATION_COUNT);
+
+                    if (expiredCountBeforeExpiration.latestValue >= expiredCountAfterExpiration.latestValue) {
+                        this.host.log("No service expirations seen");
+                        Thread.sleep(250);
+                        continue;
+                    }
+
+                    break;
                 }
 
                 if (exp.before(new Date())) {
                     throw new TimeoutException();
                 }
-
-                stats = this.host.getServiceState(null, ServiceStats.class,
-                        luceneStatsUri);
-                ServiceStat deletedCountAfterExpiration = stats.entries
-                        .get(LuceneDocumentIndexService.STAT_NAME_SERVICE_DELETE_COUNT);
-
-                assertTrue(deletedCountBeforeExpiration.latestValue < deletedCountAfterExpiration.latestValue);
-
-                stats = this.host.getServiceState(null, ServiceStats.class, luceneStatsUri);
-                ServiceStat expiredCountAfterExpiration = stats.entries
-                        .get(LuceneDocumentIndexService.STAT_NAME_DOCUMENT_EXPIRATION_COUNT);
-
-                assertTrue(expiredCountBeforeExpiration.latestValue < expiredCountAfterExpiration.latestValue);
 
                 // do a more thorough check to ensure the services were removed from the index
                 this.host.validatePermanentServiceDocumentDeletion(ExampleFactoryService.SELF_LINK,
