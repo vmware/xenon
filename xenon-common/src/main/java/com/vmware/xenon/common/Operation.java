@@ -879,6 +879,11 @@ public class Operation implements Cloneable {
             }
         }
 
+        if (this.body != null && this.body instanceof byte[]) {
+            // the response body is binary or unknown text encoding, leave as is
+            hasErrorResponseBody = true;
+        }
+
         if (this.body == null
                 || ((!hasErrorResponseBody) && !(this.body instanceof ServiceErrorResponse))) {
             ServiceErrorResponse rsp;
