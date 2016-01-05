@@ -123,13 +123,30 @@ public class NettyHttpListener implements ServiceRequestListener {
         this.host.setPublicUri(null);
     }
 
+    /**
+     * Sets a caller configured Netty SSL context
+     */
+    public void setSSLContext(SslContext context) {
+        if (isListening()) {
+            throw new IllegalStateException("listener already started");
+        }
+        this.sslContext = context;
+    }
+
+    public SslContext getSSLContext() {
+        return this.sslContext;
+    }
+
     @Override
     public void setSSLContextFiles(URI certFile, URI keyFile) throws Throwable {
-        this.setSSLContextFiles(certFile, keyFile, null);
+        setSSLContextFiles(certFile, keyFile, null);
     }
 
     @Override
     public void setSSLContextFiles(URI certFile, URI keyFile, String keyPassphrase) throws Throwable {
+        if (isListening()) {
+            throw new IllegalStateException("listener already started");
+        }
         this.sslContext = SslContextBuilder.forServer(
                 new File(certFile), new File(keyFile), keyPassphrase)
                 .build();

@@ -13,11 +13,14 @@
 
 package com.vmware.xenon.common.http.netty;
 
+import static org.junit.Assert.assertEquals;
+
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.nio.file.Path;
 import java.security.KeyStore;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicReference;
@@ -26,6 +29,9 @@ import java.util.logging.Level;
 import javax.net.ssl.KeyManagerFactory;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManagerFactory;
+
+import io.netty.handler.ssl.SslContext;
+import io.netty.handler.ssl.SslContextBuilder;
 
 import org.junit.After;
 import org.junit.AfterClass;
@@ -44,6 +50,7 @@ import com.vmware.xenon.common.StatelessService;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
 import com.vmware.xenon.common.test.VerificationHost;
+
 
 /**
  * DCP Host with 2-way SSL certificate authentication test.
@@ -107,6 +114,37 @@ public class Netty2WaySslAuthTest {
     public void tearDown() {
         this.host.stop();
         this.temporaryFolder.delete();
+    }
+
+    @Test
+    public void testCustomSslContext() throws Throwable {
+        Path keyFile = getCanonicalFileForResource("/ssl/server.pem").toPath();
+        Path certificateFile = getCanonicalFileForResource("/ssl/server.crt").toPath();
+        SslContext customContext = SslContextBuilder.forServer(
+                certificateFile.toFile(), keyFile.toFile(), null)
+                .build();
+        NettyHttpListener l = new NettyHttpListener(this.host);
+        l.setSSLContext(customContext);
+
+        // verify that we can not set context after host is started
+        NettyHttpListener hostListener = (NettyHttpListener) this.host.getListener();
+        try {
+            hostListener.setSSLContext(customContext);
+            throw new RuntimeException("call should have thrown an exception");
+        } catch (IllegalStateException e) {
+
+        }
+
+        // now stop the host, replace the listener, and restart
+        this.host.stop();
+        this.host.setPort(0);
+        this.host.setListener(l);
+        this.host.start();
+        assertEquals(l.hashCode(), this.host.getListener().hashCode());
+        hostListener = (NettyHttpListener) this.host.getListener();
+        assertEquals(hostListener.getSSLContext(), customContext);
+
+        test2WaySsl();
     }
 
     @Test
