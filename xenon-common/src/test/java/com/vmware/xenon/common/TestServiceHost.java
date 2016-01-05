@@ -835,6 +835,10 @@ public class TestServiceHost {
     public void servicePauseDueToMemoryPressure() throws Throwable {
         setUp(true);
 
+        if (this.serviceCount >= 1000) {
+            this.host.setStressTest(true);
+        }
+
         // set memory limit low to force service pause
         this.host.setServiceMemoryLimit(ServiceHost.ROOT_PATH, 0.00001);
         beforeHostStart(this.host);

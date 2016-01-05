@@ -129,6 +129,13 @@ public class StatefulService implements Service {
 
         if (op.getAction() != Action.DELETE
                 && this.context.processingStage != ProcessingStage.AVAILABLE) {
+
+            if (this.context.processingStage == ProcessingStage.PAUSED) {
+                logWarning("Service in stage %s, retrying request", this.context.processingStage);
+                getHost().handleRequest(this, op);
+                return true;
+            }
+
             // this should never happen since the host will not forward requests if we are not
             // available
             logWarning("Service in %s stage, cancelling operation",
@@ -201,42 +208,52 @@ public class StatefulService implements Service {
      * Returns true if a request was handled (caller should not attempt to dispatch it)
      */
     private boolean queueSynchronizedRequest(final Operation op) {
-
+        boolean isPaused = false;
         if (op.getAction() != Action.GET && op.getAction() != Action.OPTIONS) {
             // serialize updates
             synchronized (this.context) {
-                if (this.context.processingStage == ProcessingStage.STOPPED) {
-                    // skip queuing
+                if (this.context.processingStage == ProcessingStage.PAUSED) {
+                    isPaused = true;
+                } else if (this.context.processingStage == ProcessingStage.STOPPED) {
+                    // fall through, request will be cancelled
                 } else if ((this.context.isUpdateActive || this.context.getActiveCount != 0)) {
                     if (!this.context.operationQueue.offer(op)) {
                         getHost().failRequestLimitExceeded(op);
                         return true;
                     }
                     return true;
+                } else {
+                    this.context.isUpdateActive = true;
                 }
-                this.context.isUpdateActive = true;
             }
         } else {
             if (op.getAction() == Action.OPTIONS) {
                 return false;
-            }
-
-            // Indexed services serve GET directly from document store so they
-            // can run in parallel with updates and each other
-            if (isIndexed()) {
+            } else if (isIndexed()) {
+                // Indexed services serve GET directly from document store so they
+                // can run in parallel with updates and each other
                 return false;
-            }
-
-            // queue GETs, if updates are pending
-            synchronized (this.context) {
-                if (this.context.processingStage == ProcessingStage.STOPPED) {
-                    // skip queuing
-                } else if (this.context.isUpdateActive) {
-                    this.context.operationQueue.offer(op);
-                    return true;
+            } else {
+                // queue GETs, if updates are pending
+                synchronized (this.context) {
+                    if (this.context.processingStage == ProcessingStage.PAUSED) {
+                        isPaused = true;
+                    } else if (this.context.processingStage == ProcessingStage.STOPPED) {
+                        // fall through, request will be cancelled
+                    } else if (this.context.isUpdateActive) {
+                        this.context.operationQueue.offer(op);
+                        return true;
+                    } else {
+                        this.context.getActiveCount++;
+                    }
                 }
-                this.context.getActiveCount++;
             }
+        }
+
+        if (isPaused) {
+            logWarning("Service in stage %s, retrying request", this.context.processingStage);
+            getHost().handleRequest(this, op);
+            return true;
         }
 
         // ask to stop service, even if it might be stopped, so we can drain any pending queues
