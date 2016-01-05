@@ -20,11 +20,14 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Properties;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.logging.ConsoleHandler;
 import java.util.logging.Logger;
 
 public class CommandLineArgumentParser {
     private static final Logger LOGGER = Logger.getLogger(CommandLineArgumentParser.class
             .getSimpleName());
+    private static AtomicBoolean configuredLogging = new AtomicBoolean(false);
 
     public static final String PROPERTY_PREFIX = "xenon.";
 
@@ -51,6 +54,8 @@ public class CommandLineArgumentParser {
     }
 
     public static void bindPairs(Object objectToBind, Map<String, String> pairs) {
+        configureLogging();
+
         Class<?> type = objectToBind.getClass();
         // match parsed arguments with annotated fields and set field values
         for (Entry<String, String> parsedArgument : pairs.entrySet()) {
@@ -59,9 +64,6 @@ public class CommandLineArgumentParser {
                 if (field == null) {
                     continue;
                 }
-
-                LOGGER.info(String.format("Found field for argument %s:%s",
-                        parsedArgument.getKey(), parsedArgument.getValue()));
 
                 String v = parsedArgument.getValue();
                 if (field.getType().equals(boolean.class) || field.getType().equals(Boolean.class)) {
@@ -195,5 +197,17 @@ public class CommandLineArgumentParser {
 
     private static Path safeConvertToPath(String v) {
         return Paths.get(v);
+    }
+
+    private static void configureLogging() {
+        if (configuredLogging.getAndSet(true) == false) {
+            for (java.util.logging.Handler h : LOGGER.getParent().getHandlers()) {
+                if (h instanceof ConsoleHandler) {
+                    h.setFormatter(new ColorLogFormatter());
+                } else {
+                    h.setFormatter(new LogFormatter());
+                }
+            }
+        }
     }
 }
