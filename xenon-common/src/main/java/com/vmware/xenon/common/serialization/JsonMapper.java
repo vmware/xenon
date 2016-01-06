@@ -65,7 +65,21 @@ public class JsonMapper {
         if (body instanceof String) {
             return (String) body;
         }
-        return this.compact.toJson(body);
+
+        for (;;) {
+            try {
+                return this.compact.toJson(body);
+            } catch (IllegalStateException e) {
+                if (e.getMessage() == null) {
+                    // This error may happen when two threads try to serialize a recursive
+                    // type for the very first time concurrently. Type caching logic in GSON
+                    // doesn't deal well with recursive types being generated concurrently.
+                    // Also see: https://github.com/google/gson/issues/764
+                    continue;
+                }
+                throw e;
+            }
+        }
     }
 
     public void toJson(Object body, Appendable appendable) {
@@ -74,15 +88,44 @@ public class JsonMapper {
                 appendable.append(body.toString());
             } catch (IOException ignore) {
             }
+            return;
         }
-        this.compact.toJson(body, appendable);
+
+        for (;;) {
+            try {
+                this.compact.toJson(body, appendable);
+                return;
+            } catch (IllegalStateException e) {
+                if (e.getMessage() == null) {
+                    // This error may happen when two threads try to serialize a recursive
+                    // type for the very first time concurrently. Type caching logic in GSON
+                    // doesn't deal well with recursive types being generated concurrently.
+                    // Also see: https://github.com/google/gson/issues/764
+                    continue;
+                }
+                throw e;
+            }
+        }
     }
 
     /**
      * Outputs a JSON representation of the given object in pretty-printed, HTML-friendly JSON.
      */
     public String toJsonHtml(Object body) {
-        return this.pretty.toJson(body);
+        for (;;) {
+            try {
+                return this.pretty.toJson(body);
+            } catch (IllegalStateException e) {
+                if (e.getMessage() == null) {
+                    // This error may happen when two threads try to serialize a recursive
+                    // type for the very first time concurrently. Type caching logic in GSON
+                    // doesn't deal well with recursive types being generated concurrently.
+                    // Also see: https://github.com/google/gson/issues/764
+                    continue;
+                }
+                throw e;
+            }
+        }
     }
 
     /**
