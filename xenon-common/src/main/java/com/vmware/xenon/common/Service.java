@@ -134,6 +134,19 @@ public interface Service {
         CONCURRENT_UPDATE_HANDLING,
 
         /**
+         * Service runtime serializes all operations on a service.
+         *
+         * Unlike the default service behavior which allows a GET to execute concurrently with
+         * updates, this option serializes gets with updates. This helps in situations where,
+         * for example, an operation processing filter reads the current state and then
+         * conditionally updates it, relying on the state not being updated by some other
+         * operation in the meantime.
+         *
+         * Not compatible with: CONCURRENT_UPDATE_HANDLING
+         */
+        RW_NOT_CONCURRENT,
+
+        /**
          * Service factory will convert a POST to a PUT if a child service is already present, and
          * forward it to the service. The service must handle PUT requests and should perform
          * validation on the request body. The child service can enable STRICT_UPDATE_CHECKING to
