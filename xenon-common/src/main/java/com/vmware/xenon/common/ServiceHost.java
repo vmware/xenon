@@ -626,14 +626,19 @@ public class ServiceHost {
             ServiceHostLogService.setProcessLogFile(path);
         }
 
-        for (java.util.logging.Handler h : this.logger.getParent().getHandlers()) {
+        configureLoggerFormatter(this.logger);
+
+        this.logPrefix = getClass().getSimpleName() + ":" + getPort();
+    }
+
+    protected void configureLoggerFormatter(Logger logger) {
+        for (java.util.logging.Handler h : logger.getParent().getHandlers()) {
             if (h instanceof ConsoleHandler) {
                 h.setFormatter(COLOR_LOG_FORMATTER);
             } else {
                 h.setFormatter(LOG_FORMATTER);
             }
         }
-        this.logPrefix = getClass().getSimpleName() + ":" + getPort();
     }
 
     private void removeLogging() {
