@@ -28,8 +28,10 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.CancellationException;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -113,7 +115,20 @@ public class LuceneDocumentIndexService extends StatelessService {
 
     private String indexDirectory;
 
-    public static final int INDEX_FILE_COUNT_THRESHOLD_FOR_REOPEN = 1000;
+    private static final int DEFAULT_INDEX_FILE_COUNT_THRESHOLD_FOR_WRITER_REFRESH = 1000;
+
+    private static int INDEX_FILE_COUNT_THRESHOLD_FOR_WRITER_REFRESH = DEFAULT_INDEX_FILE_COUNT_THRESHOLD_FOR_WRITER_REFRESH;
+
+    /**
+     * Test use only
+     */
+    public static void setIndexFileCountThresholdForWriterRefresh(int count) {
+        INDEX_FILE_COUNT_THRESHOLD_FOR_WRITER_REFRESH = count;
+    }
+
+    public static int getIndexFileCountThresholdForWriterRefresh() {
+        return INDEX_FILE_COUNT_THRESHOLD_FOR_WRITER_REFRESH;
+    }
 
     private static final String LUCENE_FIELD_NAME_BINARY_SERIALIZED_STATE = "binarySerializedState";
 
@@ -158,6 +173,7 @@ public class LuceneDocumentIndexService extends StatelessService {
     private static final String DELETE_ACTION = Action.DELETE.toString().intern();
 
     protected final Object searchSync = new Object();
+    protected Queue<IndexSearcher> searchersPendingClose = new ConcurrentLinkedQueue<>();
     protected IndexSearcher searcher = null;
     protected IndexWriter writer = null;
     protected final Semaphore writerAvailable = new Semaphore(
@@ -1763,6 +1779,9 @@ public class LuceneDocumentIndexService extends StatelessService {
 
         synchronized (this.searchSync) {
             if (this.searcherUpdateTimeMicros < now) {
+                if (this.searcher != null) {
+                    this.searchersPendingClose.add(this.searcher);
+                }
                 this.searcher = s;
                 this.searcherUpdateTimeMicros = now;
             }
@@ -1792,8 +1811,6 @@ public class LuceneDocumentIndexService extends StatelessService {
     }
 
     private void handleMaintenanceImpl(boolean forceMerge) throws Throwable {
-
-        int count = 0;
         try {
             long start = Utils.getNowMicrosUtc();
 
@@ -1814,11 +1831,9 @@ public class LuceneDocumentIndexService extends StatelessService {
 
             applyMemoryLimit();
 
-            File directory = new File(new File(getHost().getStorageSandbox()), this.indexDirectory);
-            String[] list = directory.list();
-            count = list == null ? 0 : list.length;
+            boolean reOpenWriter = applyIndexFileLimit();
 
-            if (!forceMerge && count < INDEX_FILE_COUNT_THRESHOLD_FOR_REOPEN) {
+            if (!forceMerge && !reOpenWriter) {
                 return;
             }
             reOpenWriterSynchronously();
@@ -1827,6 +1842,61 @@ public class LuceneDocumentIndexService extends StatelessService {
             reOpenWriterSynchronously();
             throw e;
         }
+    }
+
+    private boolean applyIndexFileLimit() {
+        if (this.searchersPendingClose.isEmpty()) {
+            return false;
+        }
+        File directory = new File(new File(getHost().getStorageSandbox()), this.indexDirectory);
+        String[] list = directory.list();
+        int count = list == null ? 0 : list.length;
+
+        if (count < INDEX_FILE_COUNT_THRESHOLD_FOR_WRITER_REFRESH) {
+            return false;
+        }
+
+        final int acquireReleaseCount = QUERY_THREAD_COUNT + UPDATE_THREAD_COUNT;
+        try {
+            if (getHost().isStopping()) {
+                return false;
+            }
+
+            this.writerAvailable.release();
+            this.writerAvailable.acquire(acquireReleaseCount);
+
+            if (this.searcher != null) {
+                this.searchersPendingClose.add(this.searcher);
+                this.searcher = null;
+            }
+
+            for (IndexSearcher s : this.searchersPendingClose) {
+                try {
+                    s.getIndexReader().close();
+                } catch (Throwable e) {
+                }
+            }
+            this.searchersPendingClose.clear();
+            IndexWriter w = this.writer;
+            if (w != null) {
+                try {
+                    w.deleteUnusedFiles();
+                } catch (Throwable e) {
+                }
+            }
+
+            list = directory.list();
+            count = list == null ? 0 : list.length;
+            logInfo("Deleted unused files, current count: %d", count);
+        } catch (InterruptedException e1) {
+            logSevere(e1);
+        } finally {
+            // release all but one, so we stay owning one reference to the semaphore
+            this.writerAvailable.release(acquireReleaseCount - 1);
+        }
+
+        list = directory.list();
+        return count > INDEX_FILE_COUNT_THRESHOLD_FOR_WRITER_REFRESH;
     }
 
     private void reOpenWriterSynchronously() {
@@ -1853,20 +1923,15 @@ public class LuceneDocumentIndexService extends StatelessService {
             }
 
             File directory = new File(new File(getHost().getStorageSandbox()), this.indexDirectory);
-            String[] list = directory.list();
-            int count = list == null ? 0 : list.length;
             try {
                 if (w != null) {
-                    logInfo("Before: File count: %d, document count: %d", count, w.maxDoc());
                     w.close();
                 }
             } catch (Throwable e) {
             }
 
             w = createWriter(directory, false);
-            list = directory.list();
-            count = list == null ? 0 : list.length;
-            logInfo("After: File count: %d, document count: %d", count, w.maxDoc());
+            logInfo("Reopened writer, document count: %d", w.maxDoc());
         } catch (Throwable e) {
             // If we fail to re-open we should stop the host, since we can not recover.
             logSevere(e);

@@ -55,6 +55,7 @@ import com.vmware.xenon.services.common.AuthorizationContextService;
 import com.vmware.xenon.services.common.ExampleFactoryService;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
 import com.vmware.xenon.services.common.ExampleServiceHost;
+import com.vmware.xenon.services.common.LuceneDocumentIndexService;
 import com.vmware.xenon.services.common.MinimalTestService;
 import com.vmware.xenon.services.common.NodeGroupService.NodeGroupState;
 import com.vmware.xenon.services.common.NodeState;
@@ -839,6 +840,10 @@ public class TestServiceHost {
             this.host.setStressTest(true);
         }
 
+        // Set the threshold low to induce it during this test, several times. This will
+        // verify that refreshing the index writer does not break the index semantics
+        LuceneDocumentIndexService.setIndexFileCountThresholdForWriterRefresh(20);
+
         // set memory limit low to force service pause
         this.host.setServiceMemoryLimit(ServiceHost.ROOT_PATH, 0.00001);
         beforeHostStart(this.host);
@@ -863,7 +868,11 @@ public class TestServiceHost {
 
         // while pausing, issue updates to verify behavior under load. Services should either abort pause,
         // or be ignored due to recent update
-        patchExampleServices(states, 100);
+        int updateCount = 20;
+        if (this.testDurationSeconds > 0) {
+            updateCount = 1;
+        }
+        patchExampleServices(states, updateCount);
 
         long expectedPauseTime = Utils.getNowMicrosUtc() + this.host.getMaintenanceIntervalMicros()
                 * 5;
@@ -920,18 +929,18 @@ public class TestServiceHost {
 
         this.host.testWait();
 
-        for (ServiceStats statsPerInstance : stats.values()) {
-            ServiceStat pauseStat = statsPerInstance.entries.get(Service.STAT_NAME_PAUSE_COUNT);
-            ServiceStat resumeStat = statsPerInstance.entries.get(Service.STAT_NAME_RESUME_COUNT);
-            if (pauseStat == null) {
-                throw new IllegalStateException("No pauses observed");
-            }
-            if (resumeStat == null) {
-                throw new IllegalStateException("No resumes observed");
-            }
-        }
-
         if (this.testDurationSeconds == 0) {
+            for (ServiceStats statsPerInstance : stats.values()) {
+                ServiceStat pauseStat = statsPerInstance.entries.get(Service.STAT_NAME_PAUSE_COUNT);
+                ServiceStat resumeStat = statsPerInstance.entries
+                        .get(Service.STAT_NAME_RESUME_COUNT);
+                if (pauseStat == null) {
+                    throw new IllegalStateException("No pauses observed");
+                }
+                if (resumeStat == null) {
+                    throw new IllegalStateException("No resumes observed");
+                }
+            }
             return;
         }
 

@@ -108,8 +108,6 @@ public class LuceneBlobIndexService extends StatelessService {
     private IndexSearcher searcher = null;
     private IndexWriter writer = null;
 
-    private Object searchSync = new Object();
-
     private long searcherUpdateTimeMicros;
 
     private long indexUpdateTimeMicros;
@@ -123,7 +121,7 @@ public class LuceneBlobIndexService extends StatelessService {
 
     private int maxBinaryContextSizeBytes = 1024 * 1024;
 
-    private ExecutorService executor;
+    private ExecutorService singleThreadedExecutor;
 
     public LuceneBlobIndexService() {
         this.indexDirectory = FILE_PATH;
@@ -140,7 +138,11 @@ public class LuceneBlobIndexService extends StatelessService {
 
     @Override
     public void handleStart(final Operation post) {
-        this.executor = getHost().allocateExecutor(this, 1);
+        // The service index searcher and maintenance semantics rely on a single thread
+        // making all updates. If the executor ever is changed to use multiple threads, this
+        // service should mirror the logic in LuceneDocumentIndexService
+        this.singleThreadedExecutor = getHost().allocateExecutor(this, 1);
+
         super.setMaintenanceIntervalMicros(getHost().getMaintenanceIntervalMicros() * 5);
         File directory = new File(new File(getHost().getStorageSandbox()), this.indexDirectory);
         this.timeSort = new Sort(new SortField(URI_PARAM_NAME_UPDATE_TIME,
@@ -183,7 +185,7 @@ public class LuceneBlobIndexService extends StatelessService {
             return;
         }
 
-        this.executor.execute(() -> {
+        this.singleThreadedExecutor.execute(() -> {
             try {
                 switch (a) {
                 case DELETE:
@@ -230,7 +232,7 @@ public class LuceneBlobIndexService extends StatelessService {
             return;
         }
 
-        IndexSearcher s = updateSearcher(key, w);
+        IndexSearcher s = updateSearcher(w);
         Query linkQuery = new TermQuery(new Term(URI_PARAM_NAME_KEY, key));
         TopDocs hits = s.search(linkQuery, 1, this.timeSort, false, false);
         if (hits.totalHits == 0) {
@@ -314,7 +316,7 @@ public class LuceneBlobIndexService extends StatelessService {
         IndexWriter w = this.writer;
         this.writer = null;
         close(w);
-        this.executor.shutdownNow();
+        this.singleThreadedExecutor.shutdownNow();
         delete.complete();
     }
 
@@ -330,24 +332,29 @@ public class LuceneBlobIndexService extends StatelessService {
         }
     }
 
-    private IndexSearcher updateSearcher(String selfLink, IndexWriter w)
+
+    private IndexSearcher updateSearcher(IndexWriter w)
             throws IOException {
         IndexSearcher s = null;
         long now = Utils.getNowMicrosUtc();
-        synchronized (this.searchSync) {
-            s = this.searcher;
-            if (s != null && this.searcherUpdateTimeMicros > this.indexUpdateTimeMicros) {
-                return s;
-            }
+
+        // we do not synchronize the searcher update since this service uses a single thread
+        // to schedule all queries, updates and maintenance. If this changes, the code below
+        // must become synchronized similar to LuceneDocumentIndexService.updateSearcher
+
+        s = this.searcher;
+        if (s != null && this.searcherUpdateTimeMicros > this.indexUpdateTimeMicros) {
+            return s;
         }
+
         s = new IndexSearcher(DirectoryReader.open(w, true));
-        synchronized (this.searchSync) {
-            if (this.searcherUpdateTimeMicros < now) {
-                this.searcher = s;
-                this.searcherUpdateTimeMicros = now;
-            }
-            return this.searcher;
+
+        if (this.searcherUpdateTimeMicros < now) {
+            closeSearcherSafe();
+            this.searcher = s;
+            this.searcherUpdateTimeMicros = now;
         }
+        return this.searcher;
     }
 
     private void applyBlobRetentionPolicy(Query linkQuery, long updateTime)
@@ -374,7 +381,7 @@ public class LuceneBlobIndexService extends StatelessService {
 
     @Override
     public void handleMaintenance(Operation post) {
-        this.executor.execute(() -> {
+        this.singleThreadedExecutor.execute(() -> {
             handleMaintenanceSafe(post);
         });
     }
@@ -387,13 +394,15 @@ public class LuceneBlobIndexService extends StatelessService {
                 return;
             }
             w.commit();
+
             setStat(LuceneDocumentIndexService.STAT_NAME_INDEXED_DOCUMENT_COUNT, w.maxDoc());
             File directory = new File(new File(getHost().getStorageSandbox()), this.indexDirectory);
             String[] list = directory.list();
             int count = list == null ? 0 : list.length;
-            // for debugging use only: we need to verify that the number of index files stays bounded
-            if (count > LuceneDocumentIndexService.INDEX_FILE_COUNT_THRESHOLD_FOR_REOPEN) {
-                consolidateIndexFiles();
+            if (count > LuceneDocumentIndexService.getIndexFileCountThresholdForWriterRefresh()) {
+                logInfo("Index file count: %d, document count: %d", count, w.maxDoc());
+                closeSearcherSafe();
+                w.deleteUnusedFiles();
             }
             post.complete();
         } catch (Throwable e) {
@@ -402,24 +411,14 @@ public class LuceneBlobIndexService extends StatelessService {
         }
     }
 
-    private void consolidateIndexFiles() throws IOException {
-        IndexWriter w = this.writer;
-        if (w == null) {
+    private void closeSearcherSafe() {
+        if (this.searcher == null) {
             return;
         }
-        File directory = new File(new File(getHost().getStorageSandbox()), this.indexDirectory);
-        String[] list = directory.list();
-        int count = list == null ? 0 : list.length;
         try {
-            logInfo("Before: File count: %d, document count: %d", count, w.maxDoc());
-            w.close();
+            this.searcher.getIndexReader().close();
+            this.searcher = null;
         } catch (Throwable e) {
         }
-
-        this.writer = createWriter(directory);
-        list = directory.list();
-        count = list == null ? 0 : list.length;
-        logInfo("After: File count: %d, document count: %d", count, w.maxDoc());
-
     }
 }
