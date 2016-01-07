@@ -81,10 +81,16 @@ public class ExampleServiceHost extends ServiceHost {
 
         setAuthorizationContext(this.getSystemAuthorizationContext());
 
-        // start the example factory
+        // Start the example service factory
         super.startService(
                 Operation.createPost(UriUtils.buildUri(this, ExampleFactoryService.class)),
                 new ExampleFactoryService());
+
+        // Start the example task service factory: when it receives a task, it will delete
+        // all example services
+        super.startService(
+                Operation.createPost(UriUtils.buildUri(this, ExampleTaskFactoryService.class)),
+                new ExampleTaskFactoryService());
 
         // Start the root namespace factory: this will respond to the root URI (/) and list all
         // the factory services.
