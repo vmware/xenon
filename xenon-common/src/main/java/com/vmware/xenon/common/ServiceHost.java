@@ -1335,9 +1335,13 @@ public class ServiceHost {
         try {
             for (URI peerNodeBaseUri : peers) {
                 URI localNodeGroupUri = UriUtils.buildUri(this, nodeGroupUriPath);
+                // when nodes join through command line argument require all nodes to
+                // become available before the node group is considered stable. We add
+                // 1 to the total since peer list does not include self
+                int syncQuorum = peers.size() + 1;
                 JoinPeerRequest joinBody = JoinPeerRequest
                         .create(UriUtils.extendUri(peerNodeBaseUri,
-                                nodeGroupUriPath), peers.size());
+                                nodeGroupUriPath), syncQuorum);
                 boolean doRetry = true;
                 sendJoinPeerRequest(joinBody, localNodeGroupUri, doRetry);
             }

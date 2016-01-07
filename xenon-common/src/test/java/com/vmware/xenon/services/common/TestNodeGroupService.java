@@ -558,9 +558,20 @@ public class TestNodeGroupService {
                     .toMicros(VerificationHost.FAST_MAINT_INTERVAL_MILLIS));
             h.start();
 
-            peerNodeGroupUris.add(UriUtils.buildUri(h, ServiceUriPaths.DEFAULT_NODE_GROUP));
+            URI mainHostNodeGroupUri = UriUtils.buildUri(h, ServiceUriPaths.DEFAULT_NODE_GROUP);
+            peerNodeGroupUris.add(mainHostNodeGroupUri);
             this.host.waitForNodeGroupConvergence(peerNodeGroupUris, this.nodeCount,
                     this.nodeCount, true);
+            // verify synchronization quorum is total number of nodes
+            NodeGroupState ngs = this.host.getServiceState(null, NodeGroupState.class,
+                    mainHostNodeGroupUri);
+            for (NodeState ns : ngs.nodes.values()) {
+                if (!ns.id.equals(mainHostId)) {
+                    continue;
+                }
+                assertEquals(ns.synchQuorum, ngs.nodes.size());
+            }
+
             this.host.scheduleSynchronizationIfAutoSyncDisabled();
 
             int peerNodeCount = h.getInitialPeerHosts().size();
@@ -601,7 +612,7 @@ public class TestNodeGroupService {
             int quorum = (totalNodeCount / 2) + 1;
             this.host.setNodeGroupQuorum(quorum);
 
-            NodeGroupState ngs = this.host.getServiceState(null, NodeGroupState.class,
+            ngs = this.host.getServiceState(null, NodeGroupState.class,
                     UriUtils.buildUri(h, ServiceUriPaths.DEFAULT_NODE_GROUP));
             for (NodeState s : ngs.nodes.values()) {
                 if (!s.id.equals(h.getId())) {
