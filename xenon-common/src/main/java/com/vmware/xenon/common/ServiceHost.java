@@ -2258,7 +2258,8 @@ public class ServiceHost {
                     }
 
                     if (!o.hasBody()) {
-                        op.fail(new IllegalStateException("Unable to locate service state in index"));
+                        op.fail(new IllegalStateException(
+                                "Unable to locate service state in index for " + u.getPath()));
                         return;
                     }
 
@@ -4051,6 +4052,13 @@ public class ServiceHost {
             return true;
         }
 
+        if (isStopping() && inboundOp.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_NO_INDEX_UPDATE)
+                && inboundOp.getAction() == Action.DELETE) {
+            // do not attempt to resume services if they are paused or in the process of being paused
+            inboundOp.complete();
+            return true;
+        }
+
         if (inboundOp.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_INDEX_CHECK)) {
             Service service = this.pendingPauseServices.remove(key);
             if (service != null) {
@@ -4125,6 +4133,8 @@ public class ServiceHost {
         }
 
         if (!parentService.hasOption(ServiceOption.ON_DEMAND_LOAD)) {
+            // skip service pause check next time around
+            inboundOp.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_NO_QUEUING);
             return false;
         }
 
@@ -4210,7 +4220,7 @@ public class ServiceHost {
                         }
 
                         Service serviceEntry = this.pendingPauseServices.remove(path);
-                        if (serviceEntry == null) {
+                        if (serviceEntry == null && !isStopping()) {
                             log(Level.INFO, "aborting pause for %s", path);
                             resumeService(path, s);
                             // this means service received a request and is active. Its OK, the index will have

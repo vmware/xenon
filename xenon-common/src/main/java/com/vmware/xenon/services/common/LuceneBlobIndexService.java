@@ -230,7 +230,7 @@ public class LuceneBlobIndexService extends StatelessService {
             return;
         }
 
-        IndexSearcher s = updateSearcher(key, w);
+        IndexSearcher s = updateSearcher(w);
         Query linkQuery = new TermQuery(new Term(URI_PARAM_NAME_KEY, key));
         TopDocs hits = s.search(linkQuery, 1, this.timeSort, false, false);
         if (hits.totalHits == 0) {
@@ -330,7 +330,7 @@ public class LuceneBlobIndexService extends StatelessService {
         }
     }
 
-    private IndexSearcher updateSearcher(String selfLink, IndexWriter w)
+    private IndexSearcher updateSearcher(IndexWriter w)
             throws IOException {
         IndexSearcher s = null;
         long now = Utils.getNowMicrosUtc();
@@ -343,6 +343,12 @@ public class LuceneBlobIndexService extends StatelessService {
         s = new IndexSearcher(DirectoryReader.open(w, true));
         synchronized (this.searchSync) {
             if (this.searcherUpdateTimeMicros < now) {
+                if (this.searcher != null) {
+                    try {
+                        this.searcher.getIndexReader().close();
+                    } catch (Throwable e) {
+                    }
+                }
                 this.searcher = s;
                 this.searcherUpdateTimeMicros = now;
             }
@@ -387,39 +393,23 @@ public class LuceneBlobIndexService extends StatelessService {
                 return;
             }
             w.commit();
+
             setStat(LuceneDocumentIndexService.STAT_NAME_INDEXED_DOCUMENT_COUNT, w.maxDoc());
             File directory = new File(new File(getHost().getStorageSandbox()), this.indexDirectory);
             String[] list = directory.list();
             int count = list == null ? 0 : list.length;
-            // for debugging use only: we need to verify that the number of index files stays bounded
-            if (count > LuceneDocumentIndexService.INDEX_FILE_COUNT_THRESHOLD_FOR_REOPEN) {
-                consolidateIndexFiles();
+            if (count > LuceneDocumentIndexService.getIndexFileCountThresholdForWriterRefresh()) {
+                logInfo("Index file count: %d, document count: %d", count, w.maxDoc());
+                if (this.searcher != null) {
+                    this.searcher.getIndexReader().close();
+                    this.searcher = null;
+                }
+                w.deleteUnusedFiles();
             }
             post.complete();
         } catch (Throwable e) {
             logSevere(e);
             post.fail(e);
         }
-    }
-
-    private void consolidateIndexFiles() throws IOException {
-        IndexWriter w = this.writer;
-        if (w == null) {
-            return;
-        }
-        File directory = new File(new File(getHost().getStorageSandbox()), this.indexDirectory);
-        String[] list = directory.list();
-        int count = list == null ? 0 : list.length;
-        try {
-            logInfo("Before: File count: %d, document count: %d", count, w.maxDoc());
-            w.close();
-        } catch (Throwable e) {
-        }
-
-        this.writer = createWriter(directory);
-        list = directory.list();
-        count = list == null ? 0 : list.length;
-        logInfo("After: File count: %d, document count: %d", count, w.maxDoc());
-
     }
 }
