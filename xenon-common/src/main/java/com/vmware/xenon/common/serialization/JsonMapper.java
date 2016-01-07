@@ -21,6 +21,8 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonElement;
 
+import com.vmware.xenon.common.Utils;
+
 /**
  * A helper that serializes/deserializes service documents to/from JSON. The implementation uses a
  * pair of {@link Gson} instances: one for compact printing; the other for pretty-printed,
@@ -28,7 +30,7 @@ import com.google.gson.JsonElement;
  */
 public class JsonMapper {
 
-    private static final int MAX_SERIALIZATION_ATTEMPTS = 5;
+    private static final int MAX_SERIALIZATION_ATTEMPTS = 100;
 
     private final Gson compact;
     private final Gson pretty;
@@ -72,20 +74,7 @@ public class JsonMapper {
             try {
                 return this.compact.toJson(body);
             } catch (IllegalStateException e) {
-                if (e.getMessage() == null) {
-                    if (i >= MAX_SERIALIZATION_ATTEMPTS) {
-                        throw e;
-                    }
-
-                    // This error may happen when two threads try to serialize a recursive
-                    // type for the very first time concurrently. Type caching logic in GSON
-                    // doesn't deal well with recursive types being generated concurrently.
-                    // Also see: https://github.com/google/gson/issues/764
-                    Thread.yield();
-                    continue;
-                }
-
-                throw e;
+                handleIllegalStateException(e, i);
             }
         }
     }
@@ -104,19 +93,7 @@ public class JsonMapper {
                 this.compact.toJson(body, appendable);
                 return;
             } catch (IllegalStateException e) {
-                if (e.getMessage() == null) {
-                    if (i >= MAX_SERIALIZATION_ATTEMPTS) {
-                        throw e;
-                    }
-
-                    // This error may happen when two threads try to serialize a recursive
-                    // type for the very first time concurrently. Type caching logic in GSON
-                    // doesn't deal well with recursive types being generated concurrently.
-                    // Also see: https://github.com/google/gson/issues/764
-                    Thread.yield();
-                    continue;
-                }
-                throw e;
+                handleIllegalStateException(e, i);
             }
         }
     }
@@ -129,20 +106,30 @@ public class JsonMapper {
             try {
                 return this.pretty.toJson(body);
             } catch (IllegalStateException e) {
-                if (e.getMessage() == null) {
-                    if (i >= MAX_SERIALIZATION_ATTEMPTS) {
-                        throw e;
-                    }
-                    // This error may happen when two threads try to serialize a recursive
-                    // type for the very first time concurrently. Type caching logic in GSON
-                    // doesn't deal well with recursive types being generated concurrently.
-                    // Also see: https://github.com/google/gson/issues/764
-                    Thread.yield();
-                    continue;
-                }
-                throw e;
+                handleIllegalStateException(e, i);
             }
         }
+    }
+
+    private void handleIllegalStateException(IllegalStateException e, int i) {
+        if (e.getMessage() == null) {
+            if (i >= MAX_SERIALIZATION_ATTEMPTS) {
+                Utils.logWarning("Unable to serialize body after %d attempts", i);
+                throw e;
+            }
+
+            // This error may happen when two threads try to serialize a recursive
+            // type for the very first time concurrently. Type caching logic in GSON
+            // doesn't deal well with recursive types being generated concurrently.
+            // Also see: https://github.com/google/gson/issues/764
+            try {
+                Thread.sleep(0, 1000 * i);
+            } catch (InterruptedException ignored) {
+            }
+            return;
+        }
+
+        throw e;
     }
 
     /**
