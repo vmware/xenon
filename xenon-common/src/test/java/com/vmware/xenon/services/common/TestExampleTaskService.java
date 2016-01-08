@@ -18,6 +18,8 @@ import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 
 import java.net.URI;
+import java.util.function.Consumer;
+import java.util.logging.Level;
 
 import org.junit.Before;
 import org.junit.Test;
@@ -30,6 +32,10 @@ import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
 import com.vmware.xenon.services.common.ExampleTaskService.ExampleTaskServiceState;
 
+/**
+ * Validate that the ExampleTaskService works.
+ * Demonstrate how to use subscriptions with a task service
+ */
 public class TestExampleTaskService extends BasicReusableHostTestCase {
 
     public int numServices = 10;
@@ -46,8 +52,10 @@ public class TestExampleTaskService extends BasicReusableHostTestCase {
     public void testExampleTestServices() throws Throwable {
 
         createExampleServices();
-        String taskUri = createExampleTask();
-        waitForTask(taskUri);
+        Consumer<Operation> notificationTarget = createNotificationTarget();
+        String taskPath = createExampleTask();
+        subscribeTask(taskPath, notificationTarget);
+        waitForTask(taskPath);
         validateNoServices();
     }
 
@@ -67,6 +75,41 @@ public class TestExampleTaskService extends BasicReusableHostTestCase {
             this.host.send(createPost);
         }
         this.host.testWait();
+    }
+
+    /**
+     * This creates a lambda to receive notifications. It's meant as a demonstration of how
+     * to receive notifications. We don't validate that we receive notifications because
+     * our task runs very quickly: there's no guarantee that we'll subscribe for notifications
+     * before it completes. That said, this normally does receive notifications, and
+     * the log output of the test will show them.
+     */
+    private Consumer<Operation> createNotificationTarget() {
+
+        Consumer<Operation> notificationTarget = (update) -> {
+            update.complete();
+
+            if (!update.hasBody()) {
+                // This is probably a DELETE
+                this.host.log(Level.INFO, "Got notification: %s", update.getAction());
+                return;
+            }
+
+            ExampleTaskServiceState taskState = update.getBody(ExampleTaskServiceState.class);
+            this.host.log(Level.INFO, "Got notification: %s", taskState);
+            String stage = "Unknown";
+            String substage = "Unknown";
+            if (taskState.taskInfo != null && taskState.taskInfo.stage != null) {
+                stage = taskState.taskInfo.stage.toString();
+            }
+            if (taskState.subStage != null) {
+                substage = taskState.subStage.toString();
+            }
+            this.host.log(Level.INFO,
+                    "Received task notification: %s, stage = %s, substage = %s",
+                    update.getAction(), stage, substage);
+        };
+        return notificationTarget;
     }
 
     /**
@@ -96,6 +139,26 @@ public class TestExampleTaskService extends BasicReusableHostTestCase {
 
         assertNotNull(taskUri[0]);
         return taskUri[0];
+    }
+
+    /**
+     * Subscribe to notifications from the task.
+     *
+     * Note that in this short-running test, we are not guaranteed to get all notifications:
+     * we may subscribe after the task has completed some or all of its steps. However, we
+     * usually get all notifications.
+     *
+     */
+    private void subscribeTask(String taskPath, Consumer<Operation> notificationTarget)
+            throws Throwable {
+        URI taskUri = UriUtils.buildUri(this.host, taskPath);
+        Operation subscribe = Operation.createPost(taskUri)
+                .setCompletion(this.host.getCompletion())
+                .setReferer(this.host.getReferer());
+
+        this.host.testStart(1);
+        this.host.startSubscriptionService(subscribe, notificationTarget);
+        this.host.testWait();
     }
 
     /**
