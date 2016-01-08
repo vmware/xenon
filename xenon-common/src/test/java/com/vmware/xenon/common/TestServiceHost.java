@@ -842,7 +842,7 @@ public class TestServiceHost {
 
         // Set the threshold low to induce it during this test, several times. This will
         // verify that refreshing the index writer does not break the index semantics
-        LuceneDocumentIndexService.setIndexFileCountThresholdForWriterRefresh(20);
+        LuceneDocumentIndexService.setIndexFileCountThresholdForWriterRefresh(50);
 
         // set memory limit low to force service pause
         this.host.setServiceMemoryLimit(ServiceHost.ROOT_PATH, 0.00001);
