@@ -57,6 +57,7 @@
   <modules>
     <module>xenon-common</module>
     <module>xenon-loader</module>
+    <module>xenon-slf4j</module>
     <module>xenon-ui</module>
   </modules>
 
