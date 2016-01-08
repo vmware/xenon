@@ -425,27 +425,6 @@ public class TestNodeGroupService {
                 restartCount);
     }
 
-    @Test
-    public void factorySynchronizationNoChildren() throws Throwable {
-        int factoryCount = Math.max(this.serviceCount, 25);
-        setUpPeers(this.nodeCount);
-
-        // start many factories, in each host, so when the nodes join there will be a storm
-        // of synchronization requests between the nodes + factory instances
-        this.host.testStart(this.nodeCount * factoryCount);
-        for (VerificationHost h : this.host.getInProcessHostMap().values()) {
-            for (int i = 0; i < factoryCount; i++) {
-                Operation startPost = Operation.createPost(
-                        UriUtils.buildUri(h,
-                                UriUtils.buildUriPath(ExampleFactoryService.SELF_LINK, UUID
-                                        .randomUUID().toString())))
-                        .setCompletion(this.host.getCompletion());
-                h.startService(startPost, new ExampleFactoryService());
-            }
-        }
-        this.host.testWait();
-        this.host.joinNodesAndVerifyConvergence(this.host.getPeerCount());
-    }
 
     @Test
     public void synchronizationWithDifferentNodeInitialStateManual() throws Throwable {
@@ -1275,7 +1254,88 @@ public class TestNodeGroupService {
     }
 
     @Test
-    public void broadcast() throws Throwable {
+    public void factorySynchronization() throws Throwable {
+        setUpPeers(this.nodeCount);
+        this.host.joinNodesAndVerifyConvergence(this.nodeCount);
+
+        factorySynchronizationNoChildren();
+
+        factoryDuplicatePost();
+    }
+
+    private void factoryDuplicatePost() throws Throwable, InterruptedException, TimeoutException {
+        // pick one host to post to
+        VerificationHost serviceHost = this.host.getPeerHost();
+        Consumer<Operation> setBodyCallback = (o) -> {
+            ReplicationTestServiceState s = new ReplicationTestServiceState();
+            s.stringField = UUID.randomUUID().toString();
+            o.setBody(s);
+        };
+
+        URI factoryUri = this.host
+                .getPeerServiceUri(ReplicationFactoryTestService.OWNER_SELECTION_SELF_LINK);
+        Map<URI, ReplicationTestServiceState> states = doReplicatedServiceFactoryPost(
+                this.serviceCount, setBodyCallback, factoryUri);
+
+        serviceHost.testStart(states.size());
+        ReplicationTestServiceState initialState = new ReplicationTestServiceState();
+
+        for (URI uri : states.keySet()) {
+            initialState.documentSelfLink = uri.toString().substring(uri.toString()
+                    .lastIndexOf(UriUtils.URI_PATH_CHAR) + 1);
+            Operation createPost = Operation
+                    .createPost(factoryUri)
+                    .setBody(initialState)
+                    .setCompletion(
+                            (o, e) -> {
+                                if (o.getStatusCode() != Operation.STATUS_CODE_CONFLICT) {
+                                    serviceHost.failIteration(
+                                            new IllegalStateException(
+                                                    "Incorrect response code received"));
+                                    return;
+                                }
+                                serviceHost.completeIteration();
+                            });
+            serviceHost.send(createPost);
+        }
+        serviceHost.testWait();
+    }
+
+    private void factorySynchronizationNoChildren() throws Throwable {
+        int factoryCount = Math.max(this.serviceCount, 25);
+        setUpPeers(this.nodeCount);
+
+        // start many factories, in each host, so when the nodes join there will be a storm
+        // of synchronization requests between the nodes + factory instances
+        this.host.testStart(this.nodeCount * factoryCount);
+        for (VerificationHost h : this.host.getInProcessHostMap().values()) {
+            for (int i = 0; i < factoryCount; i++) {
+                Operation startPost = Operation.createPost(
+                        UriUtils.buildUri(h,
+                                UriUtils.buildUriPath(ExampleFactoryService.SELF_LINK, UUID
+                                        .randomUUID().toString())))
+                        .setCompletion(this.host.getCompletion());
+                h.startService(startPost, new ExampleFactoryService());
+            }
+        }
+        this.host.testWait();
+        this.host.joinNodesAndVerifyConvergence(this.host.getPeerCount());
+    }
+
+    @Test
+    public void forwardingAndSelection() throws Throwable {
+        setUpPeers(this.nodeCount);
+        this.host.joinNodesAndVerifyConvergence(this.nodeCount);
+        forwardingToPeerId();
+
+        directOwnerSelection();
+
+        forwardingToKeyHashNode();
+
+        broadcast();
+    }
+
+    private void broadcast() throws Throwable {
         setUpPeers(this.nodeCount);
         this.host.joinNodesAndVerifyConvergence(this.nodeCount);
 
@@ -1339,10 +1399,8 @@ public class TestNodeGroupService {
         }
     }
 
-    @Test
-    public void forwardingToKeyHashNode() throws Throwable {
-        setUpPeers(this.nodeCount);
-        this.host.joinNodesAndVerifyConvergence(this.nodeCount);
+
+    private void forwardingToKeyHashNode() throws Throwable {
         long c = this.updateCount * this.nodeCount;
         Map<String, List<String>> ownersPerServiceLink = new HashMap<>();
 
@@ -1450,51 +1508,9 @@ public class TestNodeGroupService {
         }
     }
 
-    @Test
-    public void duplicatePostToFactory() throws Throwable {
-        setUpPeers(this.nodeCount);
-        this.host.joinNodesAndVerifyConvergence(this.nodeCount);
-        // pick one host to post to
-        VerificationHost serviceHost = this.host.getPeerHost();
-        Consumer<Operation> setBodyCallback = (o) -> {
-            ReplicationTestServiceState s = new ReplicationTestServiceState();
-            s.stringField = UUID.randomUUID().toString();
-            o.setBody(s);
-        };
 
-        URI factoryUri = this.host
-                .getPeerServiceUri(ReplicationFactoryTestService.OWNER_SELECTION_SELF_LINK);
-        Map<URI, ReplicationTestServiceState> states = doReplicatedServiceFactoryPost(
-                this.serviceCount, setBodyCallback, factoryUri);
+    private void forwardingToPeerId() throws Throwable {
 
-        serviceHost.testStart(states.size());
-        ReplicationTestServiceState initialState = new ReplicationTestServiceState();
-
-        for (URI uri : states.keySet()) {
-            initialState.documentSelfLink = uri.toString().substring(uri.toString()
-                    .lastIndexOf(UriUtils.URI_PATH_CHAR) + 1);
-            Operation createPost = Operation
-                    .createPost(factoryUri)
-                    .setBody(initialState)
-                    .setCompletion(
-                            (o, e) -> {
-                                if (o.getStatusCode() != Operation.STATUS_CODE_CONFLICT) {
-                                    serviceHost.failIteration(
-                                            new IllegalStateException(
-                                                    "Incorrect response code received"));
-                                    return;
-                                }
-                                serviceHost.completeIteration();
-                            });
-            serviceHost.send(createPost);
-        }
-        serviceHost.testWait();
-    }
-
-    @Test
-    public void forwardingToPeerId() throws Throwable {
-        setUpPeers(this.nodeCount);
-        this.host.joinNodesAndVerifyConvergence(this.nodeCount);
         long c = this.updateCount * this.nodeCount;
         Map<String, URI> nodeIdToServiceURI = new HashMap<>();
 
@@ -1628,10 +1644,7 @@ public class TestNodeGroupService {
         this.host.toggleDebuggingMode(false);
     }
 
-    @Test
-    public void directOwnerSelection() throws Throwable {
-        setUpPeers(this.nodeCount);
-        this.host.joinNodesAndVerifyConvergence(this.nodeCount);
+    private void directOwnerSelection() throws Throwable {
         Map<URI, Map<String, Long>> keyToNodeAssignmentsPerNode = new HashMap<>();
         Set<String> keys = new HashSet<>();
 
