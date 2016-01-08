@@ -28,10 +28,8 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
-import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.CancellationException;
-import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -173,7 +171,6 @@ public class LuceneDocumentIndexService extends StatelessService {
     private static final String DELETE_ACTION = Action.DELETE.toString().intern();
 
     protected final Object searchSync = new Object();
-    protected Queue<IndexSearcher> searchersPendingClose = new ConcurrentLinkedQueue<>();
     protected IndexSearcher searcher = null;
     protected IndexWriter writer = null;
     protected final Semaphore writerAvailable = new Semaphore(
@@ -290,6 +287,7 @@ public class LuceneDocumentIndexService extends StatelessService {
 
         IndexWriterConfig iwc = new IndexWriterConfig(analyzer);
         iwc.setOpenMode(OpenMode.CREATE_OR_APPEND);
+        iwc.setCommitOnClose(true);
         iwc.setIndexDeletionPolicy(new SnapshotDeletionPolicy(
                 new KeepOnlyLastCommitDeletionPolicy()));
         Long totalMBs = getHost().getServiceMemoryLimitMB(getSelfLink(), MemoryLimitType.EXACT);
@@ -1779,9 +1777,6 @@ public class LuceneDocumentIndexService extends StatelessService {
 
         synchronized (this.searchSync) {
             if (this.searcherUpdateTimeMicros < now) {
-                if (this.searcher != null) {
-                    this.searchersPendingClose.add(this.searcher);
-                }
                 this.searcher = s;
                 this.searcherUpdateTimeMicros = now;
             }
@@ -1845,58 +1840,15 @@ public class LuceneDocumentIndexService extends StatelessService {
     }
 
     private boolean applyIndexFileLimit() {
-        if (this.searchersPendingClose.isEmpty()) {
-            return false;
-        }
         File directory = new File(new File(getHost().getStorageSandbox()), this.indexDirectory);
         String[] list = directory.list();
         int count = list == null ? 0 : list.length;
-
-        if (count < INDEX_FILE_COUNT_THRESHOLD_FOR_WRITER_REFRESH) {
-            return false;
+        boolean reOpenWriter = count >= INDEX_FILE_COUNT_THRESHOLD_FOR_WRITER_REFRESH;
+        if (reOpenWriter) {
+            logInfo("Index file count: %d, threshold %d, re-opening index writer to force merge",
+                    count, INDEX_FILE_COUNT_THRESHOLD_FOR_WRITER_REFRESH);
         }
-
-        final int acquireReleaseCount = QUERY_THREAD_COUNT + UPDATE_THREAD_COUNT;
-        try {
-            if (getHost().isStopping()) {
-                return false;
-            }
-
-            this.writerAvailable.release();
-            this.writerAvailable.acquire(acquireReleaseCount);
-
-            if (this.searcher != null) {
-                this.searchersPendingClose.add(this.searcher);
-                this.searcher = null;
-            }
-
-            for (IndexSearcher s : this.searchersPendingClose) {
-                try {
-                    s.getIndexReader().close();
-                } catch (Throwable e) {
-                }
-            }
-            this.searchersPendingClose.clear();
-            IndexWriter w = this.writer;
-            if (w != null) {
-                try {
-                    w.deleteUnusedFiles();
-                } catch (Throwable e) {
-                }
-            }
-
-            list = directory.list();
-            count = list == null ? 0 : list.length;
-            logInfo("Deleted unused files, current count: %d", count);
-        } catch (InterruptedException e1) {
-            logSevere(e1);
-        } finally {
-            // release all but one, so we stay owning one reference to the semaphore
-            this.writerAvailable.release(acquireReleaseCount - 1);
-        }
-
-        list = directory.list();
-        return count > INDEX_FILE_COUNT_THRESHOLD_FOR_WRITER_REFRESH;
+        return reOpenWriter;
     }
 
     private void reOpenWriterSynchronously() {
