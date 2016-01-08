@@ -69,7 +69,7 @@ public class NodeGroupUtils {
         OperationJoin.create(ops).setCompletion(joinedCompletion).sendWith(host);
     }
 
-    static boolean isMembershipSettled(ServiceHost host, long maintIntervalMicros,
+    public static boolean isMembershipSettled(ServiceHost host, long maintIntervalMicros,
             NodeGroupState localState) {
         NodeState selfNode = localState.nodes.get(host.getId());
         if (selfNode == null) {
@@ -85,4 +85,26 @@ public class NodeGroupUtils {
         }
         return true;
     }
+
+    public static boolean hasSynchronizationQuorum(ServiceHost host, NodeGroupState ngs) {
+        NodeState selfNode = ngs.nodes.get(host.getId());
+        if (selfNode == null) {
+            return false;
+        }
+
+        int availableNodeCount = 0;
+        for (NodeState ns : ngs.nodes.values()) {
+            if (!NodeState.isAvailable(ns, selfNode.id, false)) {
+                continue;
+            }
+            availableNodeCount++;
+        }
+
+        if (availableNodeCount < selfNode.synchQuorum) {
+            return false;
+        }
+        return true;
+
+    }
+
 }

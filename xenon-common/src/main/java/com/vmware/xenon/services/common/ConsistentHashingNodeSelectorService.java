@@ -514,6 +514,7 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
     }
 
     private void checkConvergence() {
+
         CompletionHandler c = (o, e) -> {
             if (e != null) {
                 logSevere(e);
@@ -526,16 +527,27 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
             Operation op = Operation.createPost(null)
                     .setReferer(getUri())
                     .setExpiration(Utils.getNowMicrosUtc() + getHost().getOperationTimeoutMicros());
-            NodeGroupUtils.checkConvergence(getHost(), ngs, op.setCompletion((o1, e1) -> {
-                if (e1 != null) {
-                    logWarning("Failed convergence check, will retry: %s", e1.getMessage());
-                    return;
-                }
+            NodeGroupUtils
+                    .checkConvergence(
+                            getHost(),
+                            ngs,
+                            op.setCompletion((o1, e1) -> {
+                                if (e1 != null) {
+                                    logWarning("Failed convergence check, will retry: %s",
+                                            e1.getMessage());
+                                    return;
+                                }
 
-                // if node group changed since we kicked of this check, we need to wait for
-                // newer convergence completions
-                this.isNodeGroupConverged = membershipUpdate == this.cachedGroupState.membershipUpdateTimeMicros;
-            }));
+                                if (!NodeGroupUtils.hasSynchronizationQuorum(getHost(),
+                                        this.cachedGroupState)) {
+                                    logInfo("Synchronization quorum not met");
+                                    return;
+                                }
+
+                                // if node group changed since we kicked of this check, we need to wait for
+                                // newer convergence completions
+                                this.isNodeGroupConverged = membershipUpdate == this.cachedGroupState.membershipUpdateTimeMicros;
+                            }));
         };
 
         sendRequest(Operation.createGet(this, this.cachedState.nodeGroupLink).setCompletion(c));

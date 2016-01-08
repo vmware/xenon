@@ -81,7 +81,7 @@ public class NodeState extends ServiceDocument {
     public int membershipQuorum = 1;
 
     /**
-     * Minimum number of available nodes, including self, before synchronization with other nodes starts
+     * Minimum number of healthy nodes, including self, before synchronization with other nodes starts
      */
     public int synchQuorum = 1;
 
