@@ -1868,9 +1868,13 @@ public class TestNodeGroupService {
         this.host.log("Starting another set of new nodes");
         existingHostNodeGroup = this.host.getPeerNodeGroupUri();
 
+        // we must start an equal amount of new nodes to the ones we stopped. The new nodes we added
+        // expect a synch quorum of nodeCount+additionalHostCount. If we start anything less, synchronization
+        // will never kick in, since sync quorum is not satisfied
+
         newHosts.clear();
-        this.host.testStart(additionalHostCount);
-        for (int i = 0; i < additionalHostCount; i++) {
+        this.host.testStart(this.nodeCount);
+        for (int i = 0; i < this.nodeCount; i++) {
             this.host.run(() -> {
                 try {
                     this.host.setUpLocalPeerHost(newHosts, DEFAULT_MAINT_INTERVAL_MICROS);
