@@ -162,10 +162,14 @@
               </execution>
             </executions>
           </plugin>
+
+          <!-- Note that there is also a findbugs report that duplicates the Findbugs config -->
+          <!-- Unfortunately, we couldn't find a way to state the config only once, since -->
+          <!-- the reporting isn't part of the build lifecycle -->
           <plugin>
             <groupId>org.codehaus.mojo</groupId>
             <artifactId>findbugs-maven-plugin</artifactId>
-            <version>3.0.0</version>
+            <version>3.0.3</version>
             <configuration>
               <effort>Max</effort>
               <failOnError>false</failOnError>
@@ -365,6 +369,54 @@
           </excludeProperties>
         </configuration>
       </plugin>
+
+      <!-- The "mvn site" command fails due to a BCEL bug -->
+      <!-- Using the findbugs version of BCEL fixes it --> 
+      <!-- BUG: https://issues.apache.org/jira/browse/BCEL-173 -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-project-info-reports-plugin</artifactId>
+        <version>2.8</version>
+        <dependencies>
+          <dependency>
+            <groupId>org.apache.maven.shared</groupId>
+            <artifactId>maven-shared-jar</artifactId>
+            <version>1.1</version>
+            <exclusions>
+              <exclusion>
+                <groupId>org.apache.bcel</groupId>
+                <artifactId>bcel</artifactId>
+              </exclusion>
+            </exclusions>
+          </dependency>
+          <dependency>
+            <groupId>com.google.code.findbugs</groupId>
+            <artifactId>bcel-findbugs</artifactId>
+            <version>6.0</version>
+          </dependency>
+        </dependencies>
+      </plugin>
+
     </plugins>
   </build>
+
+  <reporting>
+    <plugins>
+      <!-- Create a findbugs report -->
+      <!-- Unfortunately, we have to duplicate the configuration from -->
+      <!-- the build lifecycle -->
+      <plugin>
+        <groupId>org.codehaus.mojo</groupId>
+        <artifactId>findbugs-maven-plugin</artifactId>
+        <version>3.0.3</version>
+        <configuration>
+          <effort>Max</effort>
+          <failOnError>false</failOnError>
+          <xmlOutput>true</xmlOutput>
+          <excludeFilterFile>findbugs-exclude.xml</excludeFilterFile>
+        </configuration>
+      </plugin>
+    </plugins>
+  </reporting>
+
 </project>

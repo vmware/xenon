@@ -19,7 +19,6 @@ import java.util.Collection;
 import java.util.EnumSet;
 import java.util.List;
 
-import com.vmware.xenon.common.Service.ServiceOption;
 import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.ServiceDocumentDescription.TypeName;
 import com.vmware.xenon.common.ServiceDocumentQueryResult;
@@ -148,7 +147,6 @@ public class QueryTask extends ServiceDocument {
          */
         public Long expectedResultCount;
         public EnumSet<QueryOption> options = EnumSet.noneOf(QueryOption.class);
-        public ServiceOption targetIndex;
 
         /**
          * Infrastructure use only
