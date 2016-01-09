@@ -176,7 +176,10 @@ public class NettyHttpServiceClient implements ServiceClient {
         if (this.http2ChannelPool != null) {
             this.http2ChannelPool.stop();
         }
-        this.isStarted = false;
+        // In practice, it's safe not to synchornize here, but this make Findbugs happy.
+        synchronized (this) {
+            this.isStarted = false;
+        }
 
         if (this.host != null) {
             this.host.stopService(this.callbackService);

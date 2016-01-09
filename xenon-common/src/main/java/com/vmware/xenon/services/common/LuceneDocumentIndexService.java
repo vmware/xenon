@@ -407,9 +407,14 @@ public class LuceneDocumentIndexService extends StatelessService {
 
             File directory = new File(new File(getHost().getStorageSandbox()), this.indexDirectory);
             // Copy whatever was there out just in case.
-            if (directory.exists() && directory.listFiles().length > 0) {
-                this.logInfo("archiving existing index %s", directory);
-                archiveCorruptIndexFiles(directory);
+            if (directory.exists()) {
+                // We know the file list won't be null because directory.exists() returned true,
+                // but Findbugs doesn't know that, so we make it happy.
+                File[] files = directory.listFiles();
+                if (files != null && files.length > 0) {
+                    this.logInfo("archiving existing index %s", directory);
+                    archiveCorruptIndexFiles(directory);
+                }
             }
 
             this.logInfo("restoring index %s from %s md5sum(%s)", directory, req.backupFile,
