@@ -54,6 +54,7 @@ public class TaskFSMTracker extends FSMTracker<TaskStage, TaskStage> implements 
 
             default:
                 // note that FINISHED, FAILED and CANCELLED are terminal states
+                break;
             }
 
             config.put(e.getKey(), transitions);

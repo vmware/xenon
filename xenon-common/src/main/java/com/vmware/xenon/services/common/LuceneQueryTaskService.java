@@ -479,10 +479,6 @@ public class LuceneQueryTaskService extends StatefulService {
 
         try {
             task.querySpec.context.nativeQuery = null;
-            if (task.postProcessingSpec != null) {
-                e = new IllegalArgumentException(
-                        "Post processing is not currently supported");
-            }
 
             if (e != null) {
                 failTask(e, directOp, null);

@@ -19,7 +19,6 @@ import java.util.Collection;
 import java.util.EnumSet;
 import java.util.List;
 
-import com.vmware.xenon.common.Service.ServiceOption;
 import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.ServiceDocumentDescription.TypeName;
 import com.vmware.xenon.common.ServiceDocumentQueryResult;
@@ -148,7 +147,6 @@ public class QueryTask extends ServiceDocument {
          */
         public Long expectedResultCount;
         public EnumSet<QueryOption> options = EnumSet.noneOf(QueryOption.class);
-        public ServiceOption targetIndex;
 
         /**
          * Infrastructure use only
@@ -235,17 +233,6 @@ public class QueryTask extends ServiceDocument {
                     .of(QueryTask.QuerySpecification.QueryOption.EXPAND_CONTENT);
             return queryTask;
         }
-    }
-
-    public static class PostProcessingSpecification {
-        public enum GroupOperation {
-            SUM, AVG, MIN
-        }
-
-        /**
-         * Query term that picks the property that the group operation will run over its values
-         */
-        public QueryTerm selectionTerm;
     }
 
     public static class NumericRange<T extends Number & Comparable<? super T>> {
@@ -759,12 +746,6 @@ public class QueryTask extends ServiceDocument {
      */
     public QuerySpecification querySpec;
 
-    /**
-     * Describes any post processing on the query results (such summations, averages) The generation
-     * of a time series is also a post processing
-     */
-    public PostProcessingSpecification postProcessingSpec;
-
     public ServiceDocumentQueryResult results;
 
     /**
@@ -902,16 +883,6 @@ public class QueryTask extends ServiceDocument {
          */
         public Builder setIndexLink(String indexLink) {
             this.queryTask.indexLink = indexLink;
-            return this;
-        }
-
-        /**
-         * Set the {@link com.vmware.xenon.services.common.QueryTask.PostProcessingSpecification} which will be executed on the query results.
-         * @param spec the post processing specification.
-         * @return a reference to this object.
-         */
-        public Builder setPostProcessingSpec(PostProcessingSpecification spec) {
-            this.queryTask.postProcessingSpec = spec;
             return this;
         }
 

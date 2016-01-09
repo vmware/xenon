@@ -75,7 +75,7 @@ public class ServiceHostManagementService extends StatefulService {
         public static final String KIND = Utils.buildKind(BackupRequest.class);
 
         /** Auth token for upload, if any **/
-        public String Bearer;
+        public String bearer;
 
         /** Where the file should go **/
         public URI destination;
@@ -92,7 +92,7 @@ public class ServiceHostManagementService extends StatefulService {
         public static final String KIND = Utils.buildKind(RestoreRequest.class);
 
         /** Auth token for upload, if any **/
-        public String Bearer;
+        public String bearer;
 
         /** Where the file to download exists **/
         public URI destination;

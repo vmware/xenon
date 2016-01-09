@@ -276,7 +276,11 @@ public class LoaderService extends StatefulService {
         Map<String, LoaderServiceInfo> discoveredPackages = new HashMap<String, LoaderService.LoaderServiceInfo>();
 
         boolean updated = false;
-        for (File file : libDir.listFiles()) {
+        File[] files = libDir.listFiles();
+        if (files == null) {
+            return null;
+        }
+        for (File file : files) {
             if (!file.getName().endsWith(".jar")) {
                 continue;
             }
