@@ -750,7 +750,6 @@ public class TestQueryTaskService {
         }
 
         verifyOnlySupportSortOnSelfLinkInBroadcast(targetHost);
-        verifyNotAllowDirectQueryInBroadcast(targetHost);
 
         this.host.testStart(this.serviceCount);
         List<URI> exampleServices = new ArrayList<>();
@@ -766,6 +765,7 @@ public class TestQueryTaskService {
         }
         this.host.testWait();
 
+        verifyDirectQueryAllowedInBroadcast(targetHost);
         nonpaginatedBroadcastQueryTasksOnExampleStates(targetHost);
         paginatedBroadcastQueryTasksOnExampleStates(targetHost);
         paginatedBroadcastQueryTasksWithoutMatching(targetHost);
@@ -799,7 +799,22 @@ public class TestQueryTaskService {
         targetHost.testWait();
     }
 
-    private void verifyNotAllowDirectQueryInBroadcast(VerificationHost targetHost) throws Throwable {
+    private void validateBroadcastQueryPostFailure(VerificationHost targetHost, Operation o,
+                                                   Throwable e) {
+        if (e != null) {
+            ServiceErrorResponse rsp = o.getBody(ServiceErrorResponse.class);
+            if (rsp.message == null
+                    || !rsp.message.contains(QueryOption.BROADCAST.toString())) {
+                targetHost.failIteration(new IllegalStateException("Expected failure"));
+                return;
+            }
+            targetHost.completeIteration();
+        } else {
+            targetHost.failIteration(new IllegalStateException("expected failure"));
+        }
+    }
+
+    private void verifyDirectQueryAllowedInBroadcast(VerificationHost targetHost) throws Throwable {
         QuerySpecification q = new QuerySpecification();
         Query kindClause = new Query();
         kindClause.setTermPropertyName(ServiceDocument.FIELD_NAME_KIND)
@@ -817,26 +832,22 @@ public class TestQueryTaskService {
                 .createPost(factoryUri)
                 .setBody(task)
                 .setCompletion((o, e) -> {
-                    validateBroadcastQueryPostFailure(targetHost, o, e);
+                    if (e != null) {
+                        targetHost.failIteration(e);
+                        return;
+                    }
+
+                    QueryTask rsp = o.getBody(QueryTask.class);
+                    if (this.serviceCount != rsp.results.documentCount) {
+                        targetHost.failIteration(new IllegalStateException("Incorrect number of documents returned: "
+                                + this.serviceCount + " expected, but " + rsp.results.documentCount + " returned"));
+                        return;
+                    }
+                    targetHost.completeIteration();
                 });
         targetHost.send(startPost);
 
         targetHost.testWait();
-    }
-
-    private void validateBroadcastQueryPostFailure(VerificationHost targetHost, Operation o,
-            Throwable e) {
-        if (e != null) {
-            ServiceErrorResponse rsp = o.getBody(ServiceErrorResponse.class);
-            if (rsp.message == null
-                    || !rsp.message.contains(QueryOption.BROADCAST.toString())) {
-                targetHost.failIteration(new IllegalStateException("Expected failure"));
-                return;
-            }
-            targetHost.completeIteration();
-        } else {
-            targetHost.failIteration(new IllegalStateException("expected failure"));
-        }
     }
 
     private void nonpaginatedBroadcastQueryTasksOnExampleStates(VerificationHost targetHost)

@@ -120,13 +120,6 @@ public class LuceneQueryTaskService extends StatefulService {
             return false;
         }
 
-        if (initState.querySpec.options != null
-                && initState.querySpec.options.contains(QueryOption.BROADCAST)
-                && initState.taskInfo.isDirect) {
-            startPost.fail(new IllegalArgumentException("Direct query is not supported with option "
-                    + QueryOption.BROADCAST));
-        }
-
         return true;
     }
 
