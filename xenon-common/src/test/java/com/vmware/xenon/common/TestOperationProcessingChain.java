@@ -42,10 +42,15 @@ public class TestOperationProcessingChain extends BasicTestCase {
         }
     }
 
-    public static class OperationSilentPatchDropper implements Predicate<Operation> {
+    public static class OperationPatchDropper implements Predicate<Operation> {
         @Override
         public boolean test(Operation op) {
-            return Action.PATCH != op.getAction();
+            if (Action.PATCH == op.getAction()) {
+                op.fail(new IllegalArgumentException());
+                return false;
+            }
+
+            return true;
         }
     }
 
@@ -136,7 +141,7 @@ public class TestOperationProcessingChain extends BasicTestCase {
         assertEquals(COUNT, counter);
 
         this.host.setOperationTimeOutMicros(TimeUnit.MILLISECONDS.toMicros(250));
-        opProcessingChain.add(new OperationSilentPatchDropper());
+        opProcessingChain.add(new OperationPatchDropper());
         incrementCounter(true);
 
         counter = getCounter();
@@ -149,7 +154,7 @@ public class TestOperationProcessingChain extends BasicTestCase {
         OperationProcessingChain opProcessingChain = new OperationProcessingChain(counterService);
         opProcessingChain.add(new OperationLogger());
         opProcessingChain.add(new OperationNextFiltersBypasser(counterService));
-        opProcessingChain.add(new OperationSilentPatchDropper());
+        opProcessingChain.add(new OperationPatchDropper());
         counterService.setOperationProcessingChain(opProcessingChain);
 
         for (int i = 0; i < COUNT; i++) {

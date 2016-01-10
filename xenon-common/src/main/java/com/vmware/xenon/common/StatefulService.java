@@ -95,6 +95,10 @@ public class StatefulService implements Service {
             this.context.operationQueue = OperationQueue
                     .createFifo(Service.OPERATION_QUEUE_DEFAULT_LIMIT);
         }
+
+        if (isIndexed()) {
+            this.context.options.add(ServiceOption.CONCURRENT_GET_HANDLING);
+        }
     }
 
     @Override
@@ -219,7 +223,6 @@ public class StatefulService implements Service {
                 } else if ((this.context.isUpdateActive || this.context.getActiveCount != 0)) {
                     if (!this.context.operationQueue.offer(op)) {
                         getHost().failRequestLimitExceeded(op);
-                        return true;
                     }
                     return true;
                 } else {
@@ -229,7 +232,7 @@ public class StatefulService implements Service {
         } else {
             if (op.getAction() == Action.OPTIONS) {
                 return false;
-            } else if (isIndexed()) {
+            } else if (hasOption(ServiceOption.CONCURRENT_GET_HANDLING)) {
                 // Indexed services serve GET directly from document store so they
                 // can run in parallel with updates and each other
                 return false;
@@ -241,7 +244,9 @@ public class StatefulService implements Service {
                     } else if (this.context.processingStage == ProcessingStage.STOPPED) {
                         // fall through, request will be cancelled
                     } else if (this.context.isUpdateActive) {
-                        this.context.operationQueue.offer(op);
+                        if (!this.context.operationQueue.offer(op)) {
+                            getHost().failRequestLimitExceeded(op);
+                        }
                         return true;
                     } else {
                         this.context.getActiveCount++;
@@ -1009,6 +1014,10 @@ public class StatefulService implements Service {
             return;
         }
 
+        if (op.getAction() == Action.OPTIONS) {
+            return;
+        }
+
         if (op.getAction() != Action.GET) {
             synchronized (this.context) {
                 this.context.isUpdateActive = false;
@@ -1017,7 +1026,7 @@ public class StatefulService implements Service {
         }
 
         if (op.getAction() == Action.GET) {
-            if (isIndexed()) {
+            if (hasOption(ServiceOption.CONCURRENT_GET_HANDLING)) {
                 // GETs to indexed services are not synchronized
                 return;
             }

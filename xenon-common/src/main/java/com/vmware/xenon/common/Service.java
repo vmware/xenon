@@ -134,6 +134,16 @@ public interface Service {
         CONCURRENT_UPDATE_HANDLING,
 
         /**
+         * Service runtime allows a GET to execute concurrently with updates.
+         *
+         * This option is enabled by default. Disabling this option helps in situations where,
+         * for example, an operation processing filter reads the current state and then
+         * conditionally updates it, relying on the state not being updated by some other
+         * operation in the meantime.
+         */
+        CONCURRENT_GET_HANDLING,
+
+        /**
          * Service factory will convert a POST to a PUT if a child service is already present, and
          * forward it to the service. The service must handle PUT requests and should perform
          * validation on the request body. The child service can enable STRICT_UPDATE_CHECKING to
