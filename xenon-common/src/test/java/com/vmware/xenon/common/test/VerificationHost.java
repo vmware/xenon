@@ -222,15 +222,19 @@ public class VerificationHost extends ExampleServiceHost {
         return create(args);
     }
 
+
     public static VerificationHost create(ServiceHost.Arguments args)
             throws Exception {
+        return create(new VerificationHost(), args);
+    }
 
-        VerificationHost h = new VerificationHost();
+    public static VerificationHost create(VerificationHost h, ServiceHost.Arguments args)
+            throws Exception {
 
         if (args.sandbox == null) {
-            h.temporaryFolder = new TemporaryFolder();
-            h.temporaryFolder.create();
-            args.sandbox = h.temporaryFolder.getRoot().toPath();
+            h.setTemporaryFolder(new TemporaryFolder());
+            h.getTemporaryFolder().create();
+            args.sandbox = h.getTemporaryFolder().getRoot().toPath();
         }
 
         try {
@@ -244,7 +248,7 @@ public class VerificationHost extends ExampleServiceHost {
 
     public void tearDown() {
         stop();
-        this.temporaryFolder.delete();
+        this.getTemporaryFolder().delete();
     }
 
     public Operation createServiceStartPost() {
@@ -2607,5 +2611,13 @@ public class VerificationHost extends ExampleServiceHost {
         testWait();
 
         return outState[0];
+    }
+
+    protected TemporaryFolder getTemporaryFolder() {
+        return this.temporaryFolder;
+    }
+
+    protected void setTemporaryFolder(TemporaryFolder temporaryFolder) {
+        this.temporaryFolder = temporaryFolder;
     }
 }

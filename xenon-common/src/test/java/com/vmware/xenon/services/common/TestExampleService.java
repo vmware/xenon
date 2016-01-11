@@ -33,12 +33,16 @@ import com.vmware.xenon.common.ServiceDocumentQueryResult;
 import com.vmware.xenon.common.ServiceHost;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
+import com.vmware.xenon.common.test.VerificationHost;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
 
 public class TestExampleService extends BasicReportTestCase {
 
     @Before
     public void prepare() throws Throwable {
+        VerificationHost h = new VerificationHost();
+        h.initialize(args);
+
         // make sure example factory is started. the host does not wait for it
         // to start since its not a core service. Note that in production code
         // this is all asynchronous, you should not block and wait, just pass a
