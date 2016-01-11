@@ -940,10 +940,12 @@ public class NettyHttpServiceClientTest {
         Map<String, String> headers;
 
         headers = getHeaders(service.getUri(), false);
+        assertTrue(headers != null);
         assertTrue(headers.containsKey(HttpHeaderNames.ACCEPT.toString()));
         assertTrue(headers.get(HttpHeaderNames.ACCEPT.toString()).equals("*/*"));
 
         headers = getHeaders(service.getUri(), true);
+        assertTrue(headers != null);
         assertTrue(headers.containsKey(HttpHeaderNames.ACCEPT.toString()));
         assertTrue(headers.get(HttpHeaderNames.ACCEPT.toString())
                 .equals(Operation.MEDIA_TYPE_APPLICATION_JSON));
@@ -979,6 +981,9 @@ public class NettyHttpServiceClientTest {
         this.host.send(get);
         this.host.testWait();
 
+        if (headersRaw[0] == null) {
+            return null;
+        }
         String[] headerLines = headersRaw[0].split("\\n");
         Map <String, String> headers = new HashMap<>();
         for (String headerLine : headerLines) {
