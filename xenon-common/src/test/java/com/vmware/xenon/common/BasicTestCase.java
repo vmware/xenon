@@ -44,9 +44,10 @@ public class BasicTestCase {
         @Override
         protected void before() throws Throwable {
             CommandLineArgumentParser.parseFromProperties(BasicTestCase.this);
-            BasicTestCase.this.host = VerificationHost.create(0);
+            BasicTestCase.this.host = createHost();
             CommandLineArgumentParser.parseFromProperties(BasicTestCase.this.host);
             BasicTestCase.this.host.setStressTest(BasicTestCase.this.isStressTest);
+            initializeHost(BasicTestCase.this.host);
             beforeHostStart(BasicTestCase.this.host);
             BasicTestCase.this.host.start();
         }
@@ -64,7 +65,17 @@ public class BasicTestCase {
         }
     };
 
-    public void beforeHostStart(VerificationHost host) {
+    public VerificationHost createHost() throws Exception {
+        return VerificationHost.create();
+    }
+
+    public void initializeHost(VerificationHost host) throws Exception {
+        ServiceHost.Arguments args = VerificationHost.buildDefaultServiceHostArguments(0);
+        VerificationHost.initialize(host, args);
+    }
+
+    public void beforeHostStart(VerificationHost host) throws Exception {
+
     }
 
     public void beforeHostTearDown(VerificationHost host) {

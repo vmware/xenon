@@ -213,24 +213,36 @@ public class VerificationHost extends ExampleServiceHost {
 
     public static AtomicInteger hostNumber = new AtomicInteger();
 
+    public static VerificationHost create() {
+        return new VerificationHost();
+    }
+
     public static VerificationHost create(Integer port) throws Exception {
+        ServiceHost.Arguments args = buildDefaultServiceHostArguments(port);
+        return initialize(new VerificationHost(), args);
+    }
+
+    public static ServiceHost.Arguments buildDefaultServiceHostArguments(Integer port) {
         ServiceHost.Arguments args = new ServiceHost.Arguments();
         args.id = "host-" + hostNumber.incrementAndGet();
         args.port = port;
         args.sandbox = null;
         args.bindAddress = ServiceHost.LOOPBACK_ADDRESS;
-        return create(args);
+        return args;
     }
 
     public static VerificationHost create(ServiceHost.Arguments args)
             throws Exception {
+        return initialize(new VerificationHost(), args);
+    }
 
-        VerificationHost h = new VerificationHost();
+    public static VerificationHost initialize(VerificationHost h, ServiceHost.Arguments args)
+            throws Exception {
 
         if (args.sandbox == null) {
-            h.temporaryFolder = new TemporaryFolder();
-            h.temporaryFolder.create();
-            args.sandbox = h.temporaryFolder.getRoot().toPath();
+            h.setTemporaryFolder(new TemporaryFolder());
+            h.getTemporaryFolder().create();
+            args.sandbox = h.getTemporaryFolder().getRoot().toPath();
         }
 
         try {
@@ -244,7 +256,7 @@ public class VerificationHost extends ExampleServiceHost {
 
     public void tearDown() {
         stop();
-        this.temporaryFolder.delete();
+        this.getTemporaryFolder().delete();
     }
 
     public Operation createServiceStartPost() {
@@ -2607,5 +2619,13 @@ public class VerificationHost extends ExampleServiceHost {
         testWait();
 
         return outState[0];
+    }
+
+    protected TemporaryFolder getTemporaryFolder() {
+        return this.temporaryFolder;
+    }
+
+    protected void setTemporaryFolder(TemporaryFolder temporaryFolder) {
+        this.temporaryFolder = temporaryFolder;
     }
 }
