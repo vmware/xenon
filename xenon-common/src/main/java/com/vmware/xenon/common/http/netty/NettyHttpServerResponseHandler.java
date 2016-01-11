@@ -54,9 +54,6 @@ public class NettyHttpServerResponseHandler extends SimpleChannelInboundHandler<
             FullHttpResponse response = (FullHttpResponse) msg;
 
             Operation request = findOperation(ctx, response);
-            if (request == null) {
-                return;
-            }
             request.setStatusCode(response.status().code());
             parseResponseHeaders(request, response);
             completeRequest(ctx, request, response.content());
@@ -175,7 +172,7 @@ public class NettyHttpServerResponseHandler extends SimpleChannelInboundHandler<
             // associated with the channel. For now, we're just logging, but we could
             // find all the requests and fail all of them. That's slightly risky because
             // we don't understand why we failed, and we may get responses for them later.
-            Logger.getAnonymousLogger().info(
+            this.logger.info(
                     "Channel exception but no HTTP/1.1 request to fail" + cause.getMessage());
             return;
         }

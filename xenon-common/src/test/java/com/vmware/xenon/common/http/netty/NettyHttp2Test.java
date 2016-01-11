@@ -55,6 +55,9 @@ public class NettyHttp2Test {
     // Large operation body size used in basicHttp test.
     public int largeBodySize = 10000;
 
+    // Number of GETs done in basicHttp2()
+    public int requestCount = 10;
+
     @BeforeClass
     public static void setUpOnce() throws Exception {
 
@@ -105,6 +108,8 @@ public class NettyHttp2Test {
      * The bug is triggered by the fact that we do enough GETs on the large body that we'll
      * fill up the window and one of the responses is broken into two frames, but (in alpha 2)
      * the second frame is never sent.
+     *
+     * It works with Netty 4.1.
      */
     @Test
     public void basicHttp2() throws Throwable {
@@ -151,9 +156,6 @@ public class NettyHttp2Test {
 
 
         // Part 2: GET the large state and ensure it is correct.
-        int numGets = 10;
-        this.host.testStart(numGets);
-
         Operation get = Operation.createGet(u)
                 .forceRemote()
                 .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_USE_HTTP2)
@@ -175,7 +177,8 @@ public class NettyHttp2Test {
                     this.host.completeIteration();
                 });
 
-        for (int i = 0; i < numGets; i++) {
+        this.host.testStart(this.requestCount);
+        for (int i = 0; i < this.requestCount; i++) {
             this.host.send(get);
         }
         this.host.testWait();
@@ -302,9 +305,7 @@ public class NettyHttp2Test {
      * them all, a new connection has to be reopened. This tests that we do that correctly.
      * @throws Throwable
      */
-    // Test disabled while under investigation
-    // See: https://www.pivotaltracker.com/projects/1471320/stories/110535602
-    // @Test
+    @Test
     public void validateStreamExhaustion() throws Throwable {
         this.host.log("Starting test: validateStreamExhaustion");
         int maxStreams = 5;
@@ -320,7 +321,15 @@ public class NettyHttp2Test {
         initialState.stringValue = UUID.randomUUID().toString();
         this.host.startServiceAndWait(service, UUID.randomUUID().toString(), initialState);
 
-        int count = 9;
+        // While it's sufficient to test with a much smaller number (this used to be 9)
+        // this helps us verify that we're not hitting an old Netty bug (found in Netty 4.1b8)
+        // in which we'd sometimes fail to open a connection. Netty would incorrectly claim
+        // that we had sent data before the SETTINGS frame, which was not true. This tests runs
+        // in about a third of a second on a Macbook Pro, so it's not too intense for daily tests
+        //
+        // NOTE: Increasing this number (e.g. 9999) still exhibits failures that need to be
+        // solved
+        int count = 99;
         URI serviceUri = service.getUri();
         for (int i = 0; i < count; i++) {
             MinimalTestServiceState getResult = this.host.getServiceState(

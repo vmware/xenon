@@ -60,7 +60,7 @@ public class NettyHttpServiceClient implements ServiceClient {
     public static final int DEFAULT_CONNECTIONS_PER_HOST = 128;
 
     /**
-     * Netty defaults to allowing 2^32 concurrent streams, which feels likea  bit much.
+     * Netty defaults to allowing 2^32 concurrent streams, which feels like a  bit much.
      * We set it to a smaller amount: we'll tune it as we get experience with it. It may
      * be reasonable to make it much larger than 1024.
      */

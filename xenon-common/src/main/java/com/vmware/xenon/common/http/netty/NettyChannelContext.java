@@ -26,6 +26,7 @@ import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Operation.SocketContext;
 
 public class NettyChannelContext extends SocketContext {
+
     // For HTTP/1.1 channels, this stores the operation associated with the channel
     static final AttributeKey<Operation> OPERATION_KEY = AttributeKey
             .<Operation> valueOf("operation");
@@ -93,9 +94,9 @@ public class NettyChannelContext extends SocketContext {
         this.host = host;
         this.port = port;
         this.key = key;
+        this.protocol = protocol;
         if (protocol == Protocol.HTTP2) {
             this.streamIdMap = new HashMap<Integer, Operation>();
-            this.protocol = protocol;
         } else {
             this.streamIdMap = null;
         }
@@ -159,9 +160,15 @@ public class NettyChannelContext extends SocketContext {
         }
     }
 
-    public boolean haveStreamsInUse() {
+    public boolean hasActiveStreams() {
         synchronized (this.streamIdMap) {
             return !this.streamIdMap.isEmpty();
+        }
+    }
+
+    public int getActiveStreamCount() {
+        synchronized (this.streamIdMap) {
+            return this.streamIdMap.size();
         }
     }
 

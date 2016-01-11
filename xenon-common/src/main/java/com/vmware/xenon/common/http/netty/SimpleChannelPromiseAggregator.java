@@ -62,7 +62,7 @@ public class SimpleChannelPromiseAggregator extends DefaultChannelPromise {
             this.doneAllocating = true;
             if (this.successfulCount == this.expectedCount) {
                 this.promise.setSuccess();
-                return super.setSuccess();
+                return super.setSuccess(null);
             }
         }
         return this;
@@ -70,7 +70,7 @@ public class SimpleChannelPromiseAggregator extends DefaultChannelPromise {
 
     @Override
     public boolean tryFailure(Throwable cause) {
-        if (allowNotificationEvent()) {
+        if (allowFailure()) {
             ++this.failureCount;
             if (this.failureCount == 1) {
                 this.promise.tryFailure(cause);
@@ -91,7 +91,7 @@ public class SimpleChannelPromiseAggregator extends DefaultChannelPromise {
      */
     @Override
     public ChannelPromise setFailure(Throwable cause) {
-        if (allowNotificationEvent()) {
+        if (allowFailure()) {
             ++this.failureCount;
             if (this.failureCount == 1) {
                 this.promise.setFailure(cause);
@@ -101,13 +101,17 @@ public class SimpleChannelPromiseAggregator extends DefaultChannelPromise {
         return this;
     }
 
-    private boolean allowNotificationEvent() {
+    private boolean allowFailure() {
+        return awaitingPromises() || this.expectedCount == 0;
+    }
+
+    private boolean awaitingPromises() {
         return this.successfulCount + this.failureCount < this.expectedCount;
     }
 
     @Override
     public ChannelPromise setSuccess(Void result) {
-        if (allowNotificationEvent()) {
+        if (awaitingPromises()) {
             ++this.successfulCount;
             if (this.successfulCount == this.expectedCount && this.doneAllocating) {
                 this.promise.setSuccess(result);
@@ -119,7 +123,7 @@ public class SimpleChannelPromiseAggregator extends DefaultChannelPromise {
 
     @Override
     public boolean trySuccess(Void result) {
-        if (allowNotificationEvent()) {
+        if (awaitingPromises()) {
             ++this.successfulCount;
             if (this.successfulCount == this.expectedCount && this.doneAllocating) {
                 this.promise.trySuccess(result);
