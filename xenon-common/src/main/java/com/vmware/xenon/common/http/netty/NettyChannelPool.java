@@ -675,7 +675,7 @@ public class NettyChannelPool {
             // First, if it hasn't been used for a while
             // Second, if we've exhausted the number of streams
             Channel channel = http2Channel.getChannel();
-            if (channel == null || !channel.isOpen()) {
+            if (channel == null) {
                 continue;
             }
 
@@ -687,7 +687,9 @@ public class NettyChannelPool {
             if (delta < CHANNEL_EXPIRATION_MICROS && http2Channel.isValid()) {
                 continue;
             }
-            channel.close();
+            if (channel.isOpen()) {
+                channel.close();
+            }
             items.add(http2Channel);
         }
         for (NettyChannelContext c : items) {
