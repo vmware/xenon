@@ -105,6 +105,9 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
                     HttpConversionUtil.ExtensionHeaderNames.STREAM_ID.text());
             if (streamId == null) {
                 ctx.channel().attr(NettyChannelContext.OPERATION_KEY).set(request);
+            } else {
+                InetSocketAddress localAddress = (InetSocketAddress) ctx.channel().localAddress();
+                int port = localAddress.getPort();
             }
 
             if (nettyRequest.decoderResult().isFailure()) {
