@@ -85,7 +85,7 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
             // Start of request processing, initialize in-bound operation
             FullHttpRequest nettyRequest = (FullHttpRequest) msg;
             long expMicros = Utils.getNowMicrosUtc() + this.host.getOperationTimeoutMicros();
-            URI targetUri = new URI(nettyRequest.uri());
+            URI targetUri = new URI(nettyRequest.uri()).normalize();
             request = Operation.createGet(null);
             request.setAction(Action.valueOf(nettyRequest.method().toString()))
                     .setExpiration(expMicros);
