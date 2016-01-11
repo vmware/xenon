@@ -1740,7 +1740,8 @@ public class ServiceHost {
 
         service.setHost(this);
 
-        String servicePath = UriUtils.normalizeUriPath(post.getUri().getPath()).intern();
+        URI serviceUri = post.getUri().normalize();
+        String servicePath = UriUtils.normalizeUriPath(serviceUri.getPath()).intern();
         if (service.getSelfLink() == null) {
             service.setSelfLink(servicePath);
         }

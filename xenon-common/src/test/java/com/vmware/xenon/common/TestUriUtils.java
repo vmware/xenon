@@ -28,6 +28,16 @@ import com.vmware.xenon.common.UriUtils;
 public class TestUriUtils {
 
     @Test
+    public void normalizePath() throws Throwable {
+        String nr = UriUtils.normalizeUriPath("/foo/");
+        assertEquals("/foo", nr);
+        nr = UriUtils.normalizeUriPath("/foo");
+        assertEquals("/foo", nr);
+        nr = UriUtils.normalizeUriPath("");
+        assertEquals("", nr);
+    }
+
+    @Test
     public void updateUriPort() {
         int port = 8000;
         int newPort = 10000;
@@ -99,6 +109,14 @@ public class TestUriUtils {
         u = UriUtils.buildUri(baseUri, pathWithQuery, pathWithQuery2);
         assertEquals("/" + pathSegment + "/" + pathSegment2, u.getPath());
         assertEquals(combinedQuery, u.getQuery());
+
+        URI abNormalUri = new URI("http://localhost:8000/foo/./../bar");
+        u = UriUtils.buildUri(abNormalUri, abNormalUri.getPath());
+        assertEquals("/bar", u.getPath());
+
+        abNormalUri = new URI("http://localhost:8000/foo/./bar");
+        u = UriUtils.buildUri(abNormalUri, abNormalUri.getPath());
+        assertEquals("/foo/bar", u.getPath());
     }
 
     @Test
@@ -126,6 +144,12 @@ public class TestUriUtils {
         u = UriUtils.extendUri(httpBase, pathWithQuery);
         assertEquals(basePath + "/" + path, u.getPath());
         assertEquals(query, u.getQuery());
+
+        u = UriUtils.extendUri(httpBase, "/bar/./../foo");
+        assertEquals(httpBase.getPath() + "/foo", u.getPath());
+
+        u = UriUtils.extendUri(httpBase, "/bar/./foo");
+        assertEquals(httpBase.getPath() + "/bar/foo", u.getPath());
     }
 
     @Test

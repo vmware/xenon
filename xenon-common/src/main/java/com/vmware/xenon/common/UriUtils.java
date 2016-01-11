@@ -188,7 +188,7 @@ public class UriUtils {
                 query = pathAndQuery[1];
             }
             path = normalizeUriPath(path);
-            return new URI(scheme, null, host, port, path, query, null);
+            return new URI(scheme, null, host, port, path, query, null).normalize();
         } catch (URISyntaxException e) {
             Utils.log(UriUtils.class, Utils.class.getSimpleName(), Level.SEVERE, "%s",
                     Utils.toString(e));
@@ -204,7 +204,6 @@ public class UriUtils {
         if (path.isEmpty()) {
             return path;
         }
-
         if (path.endsWith(URI_PATH_CHAR)) {
             path = path.substring(0, path.length() - 1);
         }
@@ -273,7 +272,7 @@ public class UriUtils {
 
         try {
             return new URI(baseUri.getScheme(), baseUri.getUserInfo(), baseUri.getHost(),
-                    baseUri.getPort(), buildPath, query, null);
+                    baseUri.getPort(), buildPath, query, null).normalize();
         } catch (Throwable e) {
             Utils.log(Utils.class, Utils.class.getSimpleName(), Level.SEVERE,
                     "Failure building uri %s, %s: %s", baseUri, path,
