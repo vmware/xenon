@@ -322,6 +322,11 @@ public class NettyChannelPool {
                 // queue the operation to be delivered later.
                 return null;
             }
+            if (http2Channel != null && !group.pendingRequests.isEmpty()) {
+                // Queue behind pending requests
+                // AJR: Not sure if we should keep or remove, decide
+                return null;
+            }
 
             if (http2Channel == null) {
                 // If there was no channel, open one
@@ -452,7 +457,16 @@ public class NettyChannelPool {
      */
     private void returnOrCloseDirect(NettyChannelContext context, boolean isClose) {
         Channel ch = context.getChannel();
-        isClose = isClose || !ch.isWritable() || !ch.isOpen();
+        // For HTTP/2, we'll be pumping lots of data on a connection, so it's
+        // okay if it's not writable: that's not an indication of a problem.
+        // For HTTP/1, we're doing serial requests. At this point in the code,
+        // if the connection isn't writable, it's an indication of a problem,
+        // so we'll close the connection.
+        if (this.isHttp2Only) {
+            isClose = isClose || !ch.isOpen();
+        } else {
+            isClose = isClose || !ch.isWritable() || !ch.isOpen();
+        }
         NettyChannelGroup group = this.channelGroups.get(context.getKey());
         if (group == null) {
             context.close();
@@ -643,20 +657,22 @@ public class NettyChannelPool {
         long now = Utils.getNowMicrosUtc();
         for (NettyChannelContext c : group.http2Channels) {
 
-            for (Iterator<Map.Entry<Integer, Operation>> it = c.streamIdMap.entrySet()
-                    .iterator(); it.hasNext();) {
-                Map.Entry<Integer, Operation> entry = it.next();
+            synchronized (c.streamIdMap) {
+                for (Iterator<Map.Entry<Integer, Operation>> it = c.streamIdMap.entrySet()
+                        .iterator(); it.hasNext();) {
+                    Map.Entry<Integer, Operation> entry = it.next();
 
-                final Operation activeOp = entry.getValue();
-                if (activeOp == null || activeOp.getExpirationMicrosUtc() > now) {
+                    final Operation activeOp = entry.getValue();
+                    if (activeOp == null || activeOp.getExpirationMicrosUtc() > now) {
+                        continue;
+                    }
+                    it.remove();
+                    this.executor.execute(() -> {
+                        // client has nested completion on failure, and will close context
+                        activeOp.fail(new TimeoutException(activeOp.toString()));
+                    });
                     continue;
                 }
-                it.remove();
-                this.executor.execute(() -> {
-                    // client has nested completion on failure, and will close context
-                    activeOp.fail(new TimeoutException(activeOp.toString()));
-                });
-                continue;
             }
         }
     }
@@ -675,7 +691,7 @@ public class NettyChannelPool {
             // First, if it hasn't been used for a while
             // Second, if we've exhausted the number of streams
             Channel channel = http2Channel.getChannel();
-            if (channel == null || !channel.isOpen()) {
+            if (channel == null) {
                 continue;
             }
 
@@ -687,7 +703,9 @@ public class NettyChannelPool {
             if (delta < CHANNEL_EXPIRATION_MICROS && http2Channel.isValid()) {
                 continue;
             }
-            channel.close();
+            if (channel.isOpen()) {
+                channel.close();
+            }
             items.add(http2Channel);
         }
         for (NettyChannelContext c : items) {
