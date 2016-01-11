@@ -29,7 +29,9 @@ import io.netty.handler.codec.http2.Http2FrameLogger;
 import io.netty.handler.codec.http2.Http2ServerUpgradeCodec;
 import io.netty.handler.codec.http2.Http2Settings;
 import io.netty.handler.codec.http2.HttpToHttp2ConnectionHandler;
+import io.netty.handler.codec.http2.HttpToHttp2ConnectionHandlerBuilder;
 import io.netty.handler.codec.http2.InboundHttp2ToHttpAdapter;
+import io.netty.handler.codec.http2.InboundHttp2ToHttpAdapterBuilder;
 import io.netty.handler.logging.LogLevel;
 import io.netty.handler.ssl.SslContext;
 import io.netty.handler.ssl.SslHandler;
@@ -137,27 +139,29 @@ public class NettyHttpServerInitializer extends ChannelInitializer<SocketChannel
     private HttpToHttp2ConnectionHandler makeHttp2ConnectionHandler() {
         // DefaultHttp2Connection is for client or server. True means "server".
         Http2Connection connection = new DefaultHttp2Connection(true);
-        InboundHttp2ToHttpAdapter inboundAdapter = new InboundHttp2ToHttpAdapter.Builder(connection)
+        InboundHttp2ToHttpAdapter inboundAdapter = new InboundHttp2ToHttpAdapterBuilder(connection)
                 .maxContentLength(NettyChannelContext.MAX_CHUNK_SIZE)
                 .propagateSettings(false)
                 .build();
         DelegatingDecompressorFrameListener frameListener = new DelegatingDecompressorFrameListener(
                 connection, inboundAdapter);
-        Http2FrameLogger frameLogger = null;
-        if (NettyHttpServerInitializer.debugLogging) {
-            frameLogger = new Http2FrameLogger(LogLevel.INFO,
-                    NettyHttpClientRequestInitializer.class);
-        }
 
         Http2Settings settings = new Http2Settings();
-        settings.maxConcurrentStreams(NettyHttpServiceClient.DEFAULT_HTTP2_STREAMS_PER_HOST);
+        //settings.maxConcurrentStreams(NettyHttpServiceClient.DEFAULT_HTTP2_STREAMS_PER_HOST);
         settings.initialWindowSize(NettyChannelContext.INITIAL_HTTP2_WINDOW_SIZE);
 
-        HttpToHttp2ConnectionHandler connectionHandler = new HttpToHttp2ConnectionHandler.Builder()
+        HttpToHttp2ConnectionHandlerBuilder builder = new HttpToHttp2ConnectionHandlerBuilder()
                 .frameListener(frameListener)
-                .frameLogger(frameLogger)
                 .initialSettings(settings)
-                .build(connection);
+                .connection(connection);
+
+        if (debugLogging) {
+            Http2FrameLogger frameLogger = new Http2FrameLogger(LogLevel.INFO,
+                    NettyHttpClientRequestInitializer.class);
+            builder.frameLogger(frameLogger);
+        }
+
+        HttpToHttp2ConnectionHandler connectionHandler = builder.build();
 
         return connectionHandler;
     }

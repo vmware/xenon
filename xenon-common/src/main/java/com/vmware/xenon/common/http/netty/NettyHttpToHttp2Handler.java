@@ -31,27 +31,18 @@ import io.netty.handler.codec.http2.HttpConversionUtil;
 import io.netty.util.ReferenceCountUtil;
 
 import com.vmware.xenon.common.Operation;
+import com.vmware.xenon.common.Utils;
 
 /**
  * Translates HTTP/1.x object writes into HTTP/2 frames. It was copied from the Netty source
  * and has been updated to record the association between an HTTP/2 stream ID and our
  * operation, so we can properly handle responses.
  */
+
 public class NettyHttpToHttp2Handler extends Http2ConnectionHandler {
+
     private final boolean validateHeaders;
     private int currentStreamId;
-
-    /**
-     * Builder which builds {@link NettyHttpToHttp2Handler} objects.
-     */
-    public static final class Builder extends BuilderBase<NettyHttpToHttp2Handler, Builder> {
-        @Override
-        public NettyHttpToHttp2Handler build0(Http2ConnectionDecoder decoder,
-                Http2ConnectionEncoder encoder) {
-            return new NettyHttpToHttp2Handler(decoder, encoder, initialSettings(),
-                    isValidateHeaders());
-        }
-    }
 
     protected NettyHttpToHttp2Handler(Http2ConnectionDecoder decoder,
             Http2ConnectionEncoder encoder,
@@ -69,7 +60,7 @@ public class NettyHttpToHttp2Handler extends Http2ConnectionHandler {
      */
     private int getStreamId(HttpHeaders httpHeaders) throws Exception {
         return httpHeaders.getInt(HttpConversionUtil.ExtensionHeaderNames.STREAM_ID.text(),
-                connection().local().nextStreamId());
+                connection().local().incrementAndGetNextStreamId());
     }
 
     /**
@@ -102,7 +93,15 @@ public class NettyHttpToHttp2Handler extends Http2ConnectionHandler {
                     Operation operation = request.getOperation();
                     if (operation != null) {
                         NettyChannelContext socketContext = (NettyChannelContext) operation.getSocketContext();
+
                         if (socketContext != null) {
+                            Operation oldOperation = socketContext
+                                    .getOperationForStream(this.currentStreamId);
+                            if (oldOperation != null && oldOperation != operation) {
+                                Utils.logWarning("===== ajr Reusing stream %d",
+                                        this.currentStreamId);
+                            }
+
                             socketContext.setOperationForStream(this.currentStreamId, operation);
                         }
                     }
@@ -152,5 +151,5 @@ public class NettyHttpToHttp2Handler extends Http2ConnectionHandler {
             }
         }
     }
-
 }
+

@@ -25,7 +25,6 @@ import org.junit.After;
 import org.junit.AfterClass;
 import org.junit.Before;
 import org.junit.BeforeClass;
-import org.junit.Ignore;
 import org.junit.Test;
 
 import com.vmware.xenon.common.CommandLineArgumentParser;
@@ -42,7 +41,7 @@ import com.vmware.xenon.services.common.MinimalTestService;
 /**
  * Tests for our Netty-based HTTP/2 implementation
  */
-@Ignore("https://www.pivotaltracker.com/story/show/110535602")
+//@Ignore("https://www.pivotaltracker.com/story/show/110535602")
 public class NettyHttp2Test {
 
     private static VerificationHost HOST;
@@ -54,6 +53,9 @@ public class NettyHttp2Test {
 
     // Large operation body size used in basicHttp test.
     public int largeBodySize = 10000;
+
+    public static final int BASIC_TEST_NUM_GETS = 10;
+    public static final int BASIC_TEST_NUM_GETS_STRESS = 10000;
 
     @BeforeClass
     public static void setUpOnce() throws Exception {
@@ -105,6 +107,8 @@ public class NettyHttp2Test {
      * The bug is triggered by the fact that we do enough GETs on the large body that we'll
      * fill up the window and one of the responses is broken into two frames, but (in alpha 2)
      * the second frame is never sent.
+     *
+     * It works with Netty 4.1.
      */
     @Test
     public void basicHttp2() throws Throwable {
@@ -151,8 +155,10 @@ public class NettyHttp2Test {
 
 
         // Part 2: GET the large state and ensure it is correct.
-        int numGets = 10;
-        this.host.testStart(numGets);
+        int numGets = BASIC_TEST_NUM_GETS;
+        if (this.host.isStressTest()) {
+            numGets = BASIC_TEST_NUM_GETS_STRESS;
+        }
 
         Operation get = Operation.createGet(u)
                 .forceRemote()
@@ -175,6 +181,7 @@ public class NettyHttp2Test {
                     this.host.completeIteration();
                 });
 
+        this.host.testStart(numGets);
         for (int i = 0; i < numGets; i++) {
             this.host.send(get);
         }
@@ -302,9 +309,7 @@ public class NettyHttp2Test {
      * them all, a new connection has to be reopened. This tests that we do that correctly.
      * @throws Throwable
      */
-    // Test disabled while under investigation
-    // See: https://www.pivotaltracker.com/projects/1471320/stories/110535602
-    // @Test
+    @Test
     public void validateStreamExhaustion() throws Throwable {
         this.host.log("Starting test: validateStreamExhaustion");
         int maxStreams = 5;
@@ -320,7 +325,12 @@ public class NettyHttp2Test {
         initialState.stringValue = UUID.randomUUID().toString();
         this.host.startServiceAndWait(service, UUID.randomUUID().toString(), initialState);
 
-        int count = 9;
+        // While it's sufficient to test with a much smaller number (this used to be 9)
+        // this helps us verify that we're not hitting an old Netty bug (found in Netty 4.1b8)
+        // in which we'd sometimes fail to open a connection. Netty would incorrectly claim
+        // that we had sent data before the SETTINGS frame, which was not true. This tests runs
+        // in about a third of a second on a Macbook Pro, so it's not too intense for daily tests
+        int count = 99;
         URI serviceUri = service.getUri();
         for (int i = 0; i < count; i++) {
             MinimalTestServiceState getResult = this.host.getServiceState(
