@@ -38,24 +38,12 @@ import com.vmware.xenon.common.Operation;
  * operation, so we can properly handle responses.
  */
 public class NettyHttpToHttp2Handler extends Http2ConnectionHandler {
+
     private final boolean validateHeaders;
     private int currentStreamId;
 
-    /**
-     * Builder which builds {@link NettyHttpToHttp2Handler} objects.
-     */
-    public static final class Builder extends BuilderBase<NettyHttpToHttp2Handler, Builder> {
-        @Override
-        public NettyHttpToHttp2Handler build0(Http2ConnectionDecoder decoder,
-                Http2ConnectionEncoder encoder) {
-            return new NettyHttpToHttp2Handler(decoder, encoder, initialSettings(),
-                    isValidateHeaders());
-        }
-    }
-
-    protected NettyHttpToHttp2Handler(Http2ConnectionDecoder decoder,
-            Http2ConnectionEncoder encoder,
-            Http2Settings initialSettings, boolean validateHeaders) {
+    public NettyHttpToHttp2Handler(Http2ConnectionDecoder decoder, Http2ConnectionEncoder encoder,
+                                           Http2Settings initialSettings, boolean validateHeaders) {
         super(decoder, encoder, initialSettings);
         this.validateHeaders = validateHeaders;
     }
@@ -69,7 +57,7 @@ public class NettyHttpToHttp2Handler extends Http2ConnectionHandler {
      */
     private int getStreamId(HttpHeaders httpHeaders) throws Exception {
         return httpHeaders.getInt(HttpConversionUtil.ExtensionHeaderNames.STREAM_ID.text(),
-                connection().local().nextStreamId());
+                                  connection().local().nextStreamId());
     }
 
     /**
@@ -84,8 +72,8 @@ public class NettyHttpToHttp2Handler extends Http2ConnectionHandler {
         }
 
         boolean release = true;
-        SimpleChannelPromiseAggregator promiseAggregator = new SimpleChannelPromiseAggregator(
-                promise, ctx.channel(), ctx.executor());
+        SimpleChannelPromiseAggregator promiseAggregator =
+                new SimpleChannelPromiseAggregator(promise, ctx.channel(), ctx.executor());
         try {
             Http2ConnectionEncoder encoder = encoder();
             boolean endStream = false;
@@ -152,5 +140,4 @@ public class NettyHttpToHttp2Handler extends Http2ConnectionHandler {
             }
         }
     }
-
 }
