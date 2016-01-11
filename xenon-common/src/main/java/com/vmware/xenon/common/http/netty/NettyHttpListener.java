@@ -102,6 +102,13 @@ public class NettyHttpListener implements ServiceRequestListener {
 
     @Override
     public void handleMaintenance(Operation op) {
+        synchronized (NettyHttpClientRequestHandler.debugNumReceived) {
+            for (Integer port : NettyHttpClientRequestHandler.debugNumReceived.keySet()) {
+                this.host.log(Level.WARNING, "===== AJR: On port %d, received %d",
+                        port, NettyHttpClientRequestHandler.debugNumReceived.get((port)));
+
+            }
+        }
         op.complete();
     }
 

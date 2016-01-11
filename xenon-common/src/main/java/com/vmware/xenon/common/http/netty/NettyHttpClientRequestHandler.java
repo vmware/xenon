@@ -17,6 +17,8 @@ import java.io.UnsupportedEncodingException;
 import java.net.InetSocketAddress;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Map.Entry;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
@@ -64,6 +66,8 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
 
     private final SslHandler sslHandler;
 
+    public static final Map<Integer, Integer> debugNumReceived = new HashMap<>();
+
     public NettyHttpClientRequestHandler(ServiceHost host, SslHandler sslHandler) {
         this.host = host;
         this.sslHandler = sslHandler;
@@ -98,6 +102,17 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
                     HttpConversionUtil.ExtensionHeaderNames.STREAM_ID.text());
             if (streamId == null) {
                 ctx.channel().attr(NettyChannelContext.OPERATION_KEY).set(request);
+            } else {
+                InetSocketAddress localAddress = (InetSocketAddress) ctx.channel().localAddress();
+                int port = localAddress.getPort();
+                synchronized (debugNumReceived) {
+                    if (debugNumReceived.containsKey(port)) {
+                        int old = debugNumReceived.get(port);
+                        debugNumReceived.put(port, old + 1);
+                    } else {
+                        debugNumReceived.put(port, 1);
+                    }
+                }
             }
 
             if (nettyRequest.decoderResult().isFailure()) {

@@ -16,6 +16,7 @@ package com.vmware.xenon.common.http.netty;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import io.netty.buffer.PooledByteBufAllocator;
 import io.netty.channel.Channel;
@@ -26,6 +27,12 @@ import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Operation.SocketContext;
 
 public class NettyChannelContext extends SocketContext {
+
+    public AtomicInteger debugNumWritten = new AtomicInteger(0);
+    public AtomicInteger debugNumInPipeline = new AtomicInteger(0);
+    public AtomicInteger debugNumSucessfullyWritten = new AtomicInteger(0);
+    public AtomicInteger debugNumResponses = new AtomicInteger(0);
+
     // For HTTP/1.1 channels, this stores the operation associated with the channel
     static final AttributeKey<Operation> OPERATION_KEY = AttributeKey
             .<Operation> valueOf("operation");
@@ -163,6 +170,12 @@ public class NettyChannelContext extends SocketContext {
         }
     }
 
+    public int numStreamsInUse() {
+        synchronized (this.streamIdMap) {
+            return this.streamIdMap.size();
+        }
+    }
+
     public String getKey() {
         return this.key;
     }
@@ -206,6 +219,7 @@ public class NettyChannelContext extends SocketContext {
 
     @Override
     public void writeHttpRequest(Object request) {
+        this.debugNumWritten.incrementAndGet();
         this.channel.writeAndFlush(request);
         updateLastUseTime();
     }

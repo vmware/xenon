@@ -14,6 +14,8 @@
 package com.vmware.xenon.common.http.netty;
 
 import io.netty.buffer.ByteBuf;
+import io.netty.channel.ChannelFuture;
+import io.netty.channel.ChannelFutureListener;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelPromise;
 import io.netty.handler.codec.http.FullHttpMessage;
@@ -31,6 +33,7 @@ import io.netty.handler.codec.http2.HttpConversionUtil;
 import io.netty.util.ReferenceCountUtil;
 
 import com.vmware.xenon.common.Operation;
+import com.vmware.xenon.common.Utils;
 
 /**
  * Translates HTTP/1.x object writes into HTTP/2 frames. It was copied from the Netty source
@@ -38,24 +41,12 @@ import com.vmware.xenon.common.Operation;
  * operation, so we can properly handle responses.
  */
 public class NettyHttpToHttp2Handler extends Http2ConnectionHandler {
+
     private final boolean validateHeaders;
     private int currentStreamId;
 
-    /**
-     * Builder which builds {@link NettyHttpToHttp2Handler} objects.
-     */
-    public static final class Builder extends BuilderBase<NettyHttpToHttp2Handler, Builder> {
-        @Override
-        public NettyHttpToHttp2Handler build0(Http2ConnectionDecoder decoder,
-                Http2ConnectionEncoder encoder) {
-            return new NettyHttpToHttp2Handler(decoder, encoder, initialSettings(),
-                    isValidateHeaders());
-        }
-    }
-
-    protected NettyHttpToHttp2Handler(Http2ConnectionDecoder decoder,
-            Http2ConnectionEncoder encoder,
-            Http2Settings initialSettings, boolean validateHeaders) {
+    public NettyHttpToHttp2Handler(Http2ConnectionDecoder decoder, Http2ConnectionEncoder encoder,
+                                           Http2Settings initialSettings, boolean validateHeaders) {
         super(decoder, encoder, initialSettings);
         this.validateHeaders = validateHeaders;
     }
@@ -69,7 +60,7 @@ public class NettyHttpToHttp2Handler extends Http2ConnectionHandler {
      */
     private int getStreamId(HttpHeaders httpHeaders) throws Exception {
         return httpHeaders.getInt(HttpConversionUtil.ExtensionHeaderNames.STREAM_ID.text(),
-                connection().local().nextStreamId());
+                                  connection().local().nextStreamId());
     }
 
     /**
@@ -84,11 +75,12 @@ public class NettyHttpToHttp2Handler extends Http2ConnectionHandler {
         }
 
         boolean release = true;
-        SimpleChannelPromiseAggregator promiseAggregator = new SimpleChannelPromiseAggregator(
-                promise, ctx.channel(), ctx.executor());
+        SimpleChannelPromiseAggregator promiseAggregator =
+                new SimpleChannelPromiseAggregator(promise, ctx.channel(), ctx.executor());
         try {
             Http2ConnectionEncoder encoder = encoder();
             boolean endStream = false;
+
             if (msg instanceof HttpMessage) {
                 final HttpMessage httpMsg = (HttpMessage) msg;
 
@@ -102,9 +94,32 @@ public class NettyHttpToHttp2Handler extends Http2ConnectionHandler {
                     Operation operation = request.getOperation();
                     if (operation != null) {
                         NettyChannelContext socketContext = (NettyChannelContext) operation.getSocketContext();
+                        socketContext.debugNumInPipeline.incrementAndGet();
+
+                        promiseAggregator.addListener(new ChannelFutureListener() {
+
+                            @Override
+                            public void operationComplete(ChannelFuture future) throws Exception {
+                                if (future.isSuccess()) {
+                                    socketContext.debugNumSucessfullyWritten.incrementAndGet();
+                                } else {
+                                    Utils.logWarning("===== ajr GOT FUTURE FAILURE");
+                                }
+                            }
+                        });
+
                         if (socketContext != null) {
+                            Operation oldOperation = socketContext
+                                    .getOperationForStream(this.currentStreamId);
+                            if (oldOperation != null && oldOperation != operation) {
+                                Utils.logWarning("===== ajr Reusing stream %d",
+                                        this.currentStreamId);
+                            }
+
                             socketContext.setOperationForStream(this.currentStreamId, operation);
                         }
+                    } else {
+                        Utils.logWarning("===== ajr Missing operation!!!");
                     }
                 }
 
@@ -145,6 +160,7 @@ public class NettyHttpToHttp2Handler extends Http2ConnectionHandler {
 
             promiseAggregator.doneAllocatingPromises();
         } catch (Throwable t) {
+            Utils.logWarning("===== ajr Caught exception in client pipeline: %s", t.toString());
             promiseAggregator.setFailure(t);
         } finally {
             if (release) {
@@ -152,5 +168,4 @@ public class NettyHttpToHttp2Handler extends Http2ConnectionHandler {
             }
         }
     }
-
 }
