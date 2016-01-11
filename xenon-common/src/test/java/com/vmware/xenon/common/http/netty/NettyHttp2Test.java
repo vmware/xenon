@@ -301,9 +301,7 @@ public class NettyHttp2Test {
      * them all, a new connection has to be reopened. This tests that we do that correctly.
      * @throws Throwable
      */
-    // Test disabled while under investigation
-    // See: https://www.pivotaltracker.com/projects/1471320/stories/110535602
-    // @Test
+    @Test
     public void validateStreamExhaustion() throws Throwable {
         this.host.log("Starting test: validateStreamExhaustion");
         int maxStreams = 5;
@@ -319,7 +317,12 @@ public class NettyHttp2Test {
         initialState.stringValue = UUID.randomUUID().toString();
         this.host.startServiceAndWait(service, UUID.randomUUID().toString(), initialState);
 
-        int count = 9;
+        // While it's sufficient to test with a much smaller number (this used to be 9)
+        // this helps us verify that we're not hitting an old Netty bug (found in Netty 4.1b8)
+        // in which we'd sometimes fail to open a connection. Netty would incorrectly claim
+        // that we had sent data before the SETTINGS frame, which was not true. This tests runs
+        // in about a third of a second on a Macbook Pro, so it's not too intense for daily tests
+        int count = 99;
         URI serviceUri = service.getUri();
         for (int i = 0; i < count; i++) {
             MinimalTestServiceState getResult = this.host.getServiceState(
