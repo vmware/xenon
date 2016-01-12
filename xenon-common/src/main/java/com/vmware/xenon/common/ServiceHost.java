@@ -1939,6 +1939,9 @@ public class ServiceHost {
 
                     if (post.hasBody()) {
                         document = post.getBody(s.getStateType());
+                    } else {
+                        document = new ServiceDocument();
+                        document.documentSelfLink = s.getSelfLink();
                     }
                     if (!authorizeServiceState(s, document, post)) {
                         post.fail(Operation.STATUS_CODE_FORBIDDEN);
@@ -2291,7 +2294,7 @@ public class ServiceHost {
         this.documentIndexService.handleRequest(loadGet);
     }
 
-    private boolean authorizeServiceState(Service service, ServiceDocument document, Operation op) {
+    boolean authorizeServiceState(Service service, ServiceDocument document, Operation op) {
         // Authorization not enabled, so there is nothing to check
         if (!this.isAuthorizationEnabled()) {
             return true;
@@ -2324,6 +2327,7 @@ public class ServiceHost {
 
         ServiceDocumentDescription documentDescription = buildDocumentDescription(service);
         QueryFilter queryFilter = ctx.getResourceQueryFilter(op.getAction());
+
         if (queryFilter == null || !queryFilter.evaluate(document, documentDescription)) {
             return false;
         }
@@ -3145,6 +3149,8 @@ public class ServiceHost {
             return;
         }
 
+        // all tracing should happen in context of system user
+        setAuthorizationContext(getSystemAuthorizationContext());
         Operation.SerializedOperation tracingOp = Operation.SerializedOperation.create(op);
         sendRequest(Operation.createPost(UriUtils.buildUri(this, OperationIndexService.class))
                 .setReferer(getUri())
@@ -3191,7 +3197,6 @@ public class ServiceHost {
      * and a brief expiration window is set allowing it to complete any shutdown tasks
      */
     public void stop() {
-
         Set<Service> servicesToClose = null;
         synchronized (this.state) {
             if (!this.state.isStarted || this.state.isStopping) {
@@ -3212,6 +3217,7 @@ public class ServiceHost {
             this.maintenanceTask = null;
         }
 
+        setAuthorizationContext(getSystemAuthorizationContext());
         int servicesToCloseCount = servicesToClose.size()
                 - this.coreServices.size();
         final CountDownLatch latch = new CountDownLatch(servicesToCloseCount);
@@ -4650,10 +4656,14 @@ public class ServiceHost {
             // 2) Call the service's getDocumentTemplate() to allow the service author to modify it
             // We are calling a function inside a lock, which is bad practice. This is however
             // by contract a synchronous function that should be O(1). We also only call it once.
-            desc = s.getDocumentTemplate().documentDescription;
+            ServiceDocumentDescription augmentedDesc = s.getDocumentTemplate().documentDescription;
+            if (augmentedDesc != null) {
+                desc = augmentedDesc;
+            }
 
             // 3) Update the cached entry
             this.descriptionCache.put(serviceTypeName, desc);
+
             return desc;
         }
     }

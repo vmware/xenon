@@ -433,6 +433,11 @@ public class LuceneDocumentIndexService extends StatelessService {
     }
 
     @Override
+    public boolean queueRequest(Operation op) {
+        return false;
+    }
+
+    @Override
     public void handleRequest(Operation op) {
         Action a = op.getAction();
         if (a == Action.PUT) {

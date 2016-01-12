@@ -302,6 +302,11 @@ public abstract class FactoryService extends StatelessService {
     }
 
     @Override
+    public boolean queueRequest(Operation op) {
+        return false;
+    }
+
+    @Override
     public void handleRequest(Operation op) {
         handleRequest(op, OperationProcessingStage.PROCESSING_FILTERS);
     }

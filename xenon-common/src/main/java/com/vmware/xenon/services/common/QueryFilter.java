@@ -590,6 +590,9 @@ public class QueryFilter {
 
         @Override
         public boolean evaluate(ServiceDocument document, ServiceDocumentDescription description) {
+            if (description == null) {
+                throw new IllegalStateException();
+            }
             PropertyDescription pd = description.propertyDescriptions.get(this.propertyName);
             if (pd == null) {
                 return false;
