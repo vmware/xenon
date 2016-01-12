@@ -21,13 +21,18 @@ import java.util.Set;
 
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Service.Action;
+import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.ServiceHost;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
+import com.vmware.xenon.services.common.OperationIndexService;
 import com.vmware.xenon.services.common.QueryTask;
+import com.vmware.xenon.services.common.ServiceHostManagementService;
 import com.vmware.xenon.services.common.QueryTask.Query;
 import com.vmware.xenon.services.common.QueryTask.Query.Builder;
+import com.vmware.xenon.services.common.QueryTask.Query.Occurance;
+import com.vmware.xenon.services.common.QueryTask.QueryTerm.MatchType;
 import com.vmware.xenon.services.common.ResourceGroupService.ResourceGroupState;
 import com.vmware.xenon.services.common.RoleService.Policy;
 import com.vmware.xenon.services.common.RoleService.RoleState;
@@ -76,7 +81,7 @@ public class AuthorizationHelper {
     }
 
     public Collection<String> createRoles(ServiceHost target) throws Throwable {
-        final Integer concurrentTasks = 6;
+        final Integer concurrentTasks = 8;
         this.host.testStart(concurrentTasks);
 
         // Create user group for jane@doe.com
@@ -109,6 +114,18 @@ public class AuthorizationHelper {
                                 USER_SERVICE_PATH)
                         .build());
 
+        // Create resource group to allow access on stateless service 
+        String statelessServiceResourceGroupLink = createResourceGroup(target,
+                "stateless-service-resource-group", Builder.create()
+                        .addFieldClause(
+                                ServiceDocument.FIELD_NAME_SELF_LINK,
+                                ServiceHostManagementService.SELF_LINK)
+                        .addFieldClause(
+                                ServiceDocument.FIELD_NAME_SELF_LINK,
+                                OperationIndexService.SELF_LINK, MatchType.TERM,
+                                Occurance.SHOULD_OCCUR)
+                        .build());
+
         Collection<String> paths = new HashSet<>();
 
         // Create roles tying these together
@@ -122,6 +139,11 @@ public class AuthorizationHelper {
         // Create role authorizing access to the user's own query tasks
         paths.add(createRole(target, userGroupLink, queryTaskResourceGroupLink,
                 new HashSet<>(Arrays.asList(Action.GET, Action.POST, Action.PATCH, Action.DELETE))));
+
+        // Create role authorizing access to stateless service host management service
+        paths.add(createRole(target, userGroupLink, statelessServiceResourceGroupLink,
+                new HashSet<>(
+                        Arrays.asList(Action.GET, Action.POST, Action.PATCH, Action.DELETE))));
 
         this.host.testWait();
 

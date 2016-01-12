@@ -1939,6 +1939,9 @@ public class ServiceHost {
 
                     if (post.hasBody()) {
                         document = post.getBody(s.getStateType());
+                    } else {
+                        document = new ServiceDocument();
+                        document.documentSelfLink = s.getSelfLink();
                     }
                     if (!authorizeServiceState(s, document, post)) {
                         post.fail(Operation.STATUS_CODE_FORBIDDEN);
