@@ -41,6 +41,7 @@ public class AuthorizationHelper {
             UriUtils.buildUriPath(ServiceUriPaths.CORE_AUTHZ_USERS, USER_EMAIL);
 
     VerificationHost host;
+    private String userGroupLink;
 
     public AuthorizationHelper(VerificationHost host) {
         this.host = host;
@@ -86,6 +87,7 @@ public class AuthorizationHelper {
                                 "email",
                                 USER_EMAIL)
                         .build());
+        setUserGroupLink(userGroupLink);
 
         // Create resource group for example service state
         String exampleServiceResourceGroupLink =
@@ -126,6 +128,14 @@ public class AuthorizationHelper {
         this.host.testWait();
 
         return paths;
+    }
+
+    public void setUserGroupLink(String userGroupLink) {
+        this.userGroupLink = userGroupLink;
+    }
+
+    public String getUserGroupLink() {
+        return this.userGroupLink;
     }
 
     public String createUserGroup(ServiceHost target, String name, Query q) {
