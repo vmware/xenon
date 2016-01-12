@@ -41,6 +41,12 @@ public class BasicAuthenticationService extends StatelessService {
     private static final String BASIC_AUTH_USER_SEPERATOR = ":";
 
     @Override
+    public boolean queueRequest(Operation op) {
+        // bypass authorization check applied in default implementation
+        return false;
+    }
+
+    @Override
     public void handleRequest(Operation op) {
         switch (op.getAction()) {
         case POST:
