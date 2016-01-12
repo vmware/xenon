@@ -45,6 +45,7 @@ import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
 import com.vmware.xenon.services.common.GuestUserService;
 import com.vmware.xenon.services.common.QueryTask;
 import com.vmware.xenon.services.common.QueryTask.Query.Builder;
+import com.vmware.xenon.services.common.ServiceHostManagementService;
 
 public class TestAuthorization extends BasicTestCase {
 
@@ -79,7 +80,52 @@ public class TestAuthorization extends BasicTestCase {
     }
 
     @Test
-    public void testAuthPrincipalQuery() throws Throwable {
+    public void statelessService() throws Throwable {
+        ServiceHostManagementService.ConfigureOperationTracingRequest r = new ServiceHostManagementService.ConfigureOperationTracingRequest();
+        r.enable = ServiceHostManagementService.OperationTracingEnable.STOP;
+        r.kind = ServiceHostManagementService.ConfigureOperationTracingRequest.KIND;
+
+        this.host.assumeIdentity(this.userServicePath, null);
+        // GET
+        Operation get = Operation
+                .createGet(UriUtils.buildUri(this.host, ServiceHostManagementService.SELF_LINK))
+                .setCompletion(this.host.getCompletion());
+        this.host.testStart(1);
+        this.host.send(get);
+        this.host.testWait();
+
+        // PATCH
+        this.host.testStart(1);
+        this.host.send(Operation
+                .createPatch(UriUtils.extendUri(this.host.getUri(),
+                        ServiceHostManagementService.SELF_LINK))
+                .setBody(r)
+                .setCompletion(this.host.getCompletion()));
+        this.host.testWait();
+
+        // negative test, confirm guest user has no access to service host management
+        // GET
+        this.host.resetAuthorizationContext();
+        get = Operation
+                .createGet(UriUtils.buildUri(this.host, ServiceHostManagementService.SELF_LINK))
+                .setCompletion(this.host.getExpectedFailureCompletion());
+        this.host.testStart(1);
+        this.host.send(get);
+        this.host.testWait();
+
+        // PATCH
+        r.enable = ServiceHostManagementService.OperationTracingEnable.START;
+        this.host.testStart(1);
+        this.host.send(Operation
+                .createPatch(UriUtils.extendUri(this.host.getUri(),
+                        ServiceHostManagementService.SELF_LINK))
+                .setBody(r)
+                .setCompletion(this.host.getExpectedFailureCompletion()));
+        this.host.testWait();
+    }
+
+    @Test
+    public void authPrincipalQuery() throws Throwable {
         this.host.assumeIdentity(this.userServicePath, null);
         createExampleServices("jane");
         this.host.createAndWaitSimpleDirectQuery(ServiceDocument.FIELD_NAME_AUTH_PRINCIPAL_LINK,
@@ -87,7 +133,7 @@ public class TestAuthorization extends BasicTestCase {
     }
 
     @Test
-    public void testScheduleAndRunContext() throws Throwable {
+    public void scheduleAndRunContext() throws Throwable {
         this.host.assumeIdentity(this.userServicePath, null);
 
         AuthorizationContext callerAuthContext = OperationContext.getAuthorizationContext();
@@ -109,7 +155,7 @@ public class TestAuthorization extends BasicTestCase {
     }
 
     @Test
-    public void testGuestAuthorization() throws Throwable {
+    public void guestAuthorization() throws Throwable {
         OperationContext.setAuthorizationContext(this.host.getSystemAuthorizationContext());
 
         this.host.testStart(3);
