@@ -74,6 +74,7 @@ import com.vmware.xenon.services.common.QueryTask.QuerySpecification.QueryOption
 import com.vmware.xenon.services.common.QueryTask.QueryTerm.MatchType;
 import com.vmware.xenon.services.common.QueryValidationTestService.QueryValidationServiceState;
 import com.vmware.xenon.services.common.TenantService.TenantState;
+import com.vmware.xenon.services.common.UserService.UserState;
 
 public class TestQueryTaskService {
     private static final String TEXT_VALUE = "the decentralized control plane is a nice framework for queries";
@@ -2003,6 +2004,9 @@ public class TestQueryTaskService {
     @Test
     public void paginatedQueries() throws Throwable {
         setUpHost();
+
+        verifyDirectPaginatedQueryOnUsers(this.host);
+
         int sc = this.serviceCount;
         int numberOfPages = 2;
         int resultLimit = sc / numberOfPages;
@@ -2049,6 +2053,64 @@ public class TestQueryTaskService {
         pageServiceURIs = new ArrayList<>();
         targetServiceURIs = new ArrayList<>();
         doPaginatedQueryTest(task, sc, resultLimit, pageServiceURIs, targetServiceURIs);
+    }
+
+    private void verifyDirectPaginatedQueryOnUsers(VerificationHost targetHost) throws Throwable {
+        int resultLimit = 10;
+        URI factoryUri = UriUtils.buildUri(targetHost, ServiceUriPaths.CORE_AUTHZ_USERS);
+        targetHost.testStart(resultLimit + 1);
+        for (int i = 0; i < resultLimit + 1; i++) {
+            UserState st = new UserState();
+            st.email = UUID.randomUUID().toString() + "@example.com";
+            Operation post = Operation.createPost(factoryUri).setBody(st)
+                    .setCompletion(targetHost.getCompletion());
+            targetHost.send(post);
+        }
+        targetHost.testWait();
+
+        QuerySpecification q = new QuerySpecification();
+        Query kindClause = new Query();
+        kindClause.setTermPropertyName(ServiceDocument.FIELD_NAME_KIND)
+                .setTermMatchValue(Utils.buildKind(UserService.UserState.class));
+        q.query = kindClause;
+        q.options = EnumSet.of(QueryOption.EXPAND_CONTENT);
+        q.resultLimit = resultLimit;
+
+        QueryTask task = QueryTask.create(q);
+        task.setDirect(true);
+
+        targetHost.testStart(1);
+
+        factoryUri = UriUtils.buildUri(targetHost, ServiceUriPaths.CORE_QUERY_TASKS);
+        Operation startPost = Operation
+                .createPost(factoryUri)
+                .setBody(task)
+                .setCompletion((o, e) -> {
+                    if (e != null) {
+                        targetHost.failIteration(e);
+                        return;
+                    }
+
+                    QueryTask rsp = o.getBody(QueryTask.class);
+                    getPageResults(targetHost, rsp.results.nextPageLink);
+                    targetHost.completeIteration();
+                });
+        targetHost.send(startPost);
+
+        targetHost.testWait();
+    }
+
+    private void getPageResults(VerificationHost h, String pageLink) {
+        if (pageLink == null) {
+            return;
+        }
+        URI u = UriUtils.buildUri(h, pageLink);
+        Operation get = Operation.createGet(u).setCompletion((o, e) -> {
+            QueryTask rsp = o.getBody(QueryTask.class);
+            this.host.log("page: %s", Utils.toJsonHtml(rsp));
+            getPageResults(h, rsp.results.nextPageLink);
+        });
+        h.send(get);
     }
 
     @Test
