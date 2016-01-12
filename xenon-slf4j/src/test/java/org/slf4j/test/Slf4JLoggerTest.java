@@ -14,6 +14,8 @@
 package org.slf4j.test;
 
 import java.util.List;
+import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.logging.Level;
 import java.util.logging.LogManager;
@@ -25,6 +27,7 @@ import org.slf4j.LoggerFactory;
 
 import com.vmware.xenon.common.BasicTestCase;
 import com.vmware.xenon.common.Operation;
+import com.vmware.xenon.common.Operation.CompletionHandler;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.services.common.ServiceHostLogService.LogServiceState;
 import com.vmware.xenon.services.common.ServiceUriPaths;
@@ -34,7 +37,8 @@ import com.vmware.xenon.services.common.ServiceUriPaths;
  */
 public class Slf4JLoggerTest extends BasicTestCase {
     private static final Logger logger = LoggerFactory.getLogger(Slf4JLoggerTest.class);
-    public static final long SHORT_TIMEOUT_SEC = 1;
+
+    public static final int RETRY_DELAY = 100;
 
     @Test
     public void testLogger() throws Throwable {
@@ -90,20 +94,39 @@ public class Slf4JLoggerTest extends BasicTestCase {
         logger.warn("This message should not present");
         logger.error("This message should not present");
 
+        host.setLoggingLevel(Level.SEVERE);
+        LogManager.getLogManager().getLogger("").setLevel(Level.SEVERE);
+
+        final String endOfLogMarker = UUID.randomUUID().toString();
+        logger.error(endOfLogMarker);
+
         host.testStart(1);
         AtomicReference<LogServiceState> stateRef = new AtomicReference<>();
         Operation.createGet(UriUtils.buildUri(host, ServiceUriPaths.PROCESS_LOG))
                 .setReferer(host.getPublicUri())
-                .setCompletion((op, ex) -> {
-                    if (ex == null) {
-                        stateRef.set(op.getBody(LogServiceState.class));
-                        host.completeIteration();
-                    } else {
-                        host.failIteration(ex);
+                .setCompletion(new CompletionHandler() {
+                    @Override
+                    public void handle(Operation op, Throwable ex) {
+                        if (ex == null) {
+                            LogServiceState log = op.getBody(LogServiceState.class);
+                            if (log.items.stream().filter(s -> s.contains(endOfLogMarker)).count() > 0) {
+                                stateRef.set(log);
+                                host.completeIteration();
+                            } else {
+                                // The log may be incomplete. In that case schedule a retry attempt.
+                                host.schedule(() ->
+                                        Operation.createGet(UriUtils.buildUri(host, ServiceUriPaths.PROCESS_LOG))
+                                                .setReferer(host.getPublicUri())
+                                                .setCompletion(this)
+                                                .sendWith(host), RETRY_DELAY, TimeUnit.MILLISECONDS);
+                            }
+                        } else {
+                            host.failIteration(ex);
+                        }
                     }
                 })
                 .sendWith(host);
-        host.testWait(1);
+        host.testWait();
         LogServiceState state = stateRef.get();
         checkLogLine(state.items, "This is a trace test with no args");
         checkLogLine(state.items, "This is a trace test with 1 arg: argument");

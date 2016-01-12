@@ -11,7 +11,7 @@
   <artifactId>xenon-slf4j</artifactId>
 
   <properties>
-    <slf4j.api.version>[1.5,)</slf4j.api.version>
+    <slf4j.api.version>[1.6,)</slf4j.api.version>
   </properties>
 
   <dependencies>
