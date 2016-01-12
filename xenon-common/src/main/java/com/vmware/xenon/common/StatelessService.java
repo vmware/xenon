@@ -58,6 +58,15 @@ public class StatelessService implements Service {
 
     @Override
     public boolean queueRequest(Operation op) {
+        // Authorization is applied here since we do not load state.
+        // We create a document with just the self link, so any resource filters
+        // that use the self link can be applied
+        ServiceDocument stateUsedForAuth = new ServiceDocument();
+        stateUsedForAuth.documentSelfLink = this.selfLink;
+        if (!getHost().authorizeServiceState(this, stateUsedForAuth, op)) {
+            op.fail(Operation.STATUS_CODE_FORBIDDEN);
+            return true;
+        }
         return false;
     }
 
