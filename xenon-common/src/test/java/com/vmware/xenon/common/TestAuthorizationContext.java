@@ -158,6 +158,11 @@ public class TestAuthorizationContext extends BasicTestCase {
         public static final String EXPECT_USER_CONTEXT = "expectUserContext";
 
         @Override
+        public boolean queueRequest(Operation op) {
+            return false;
+        }
+
+        @Override
         public void handleRequest(Operation op) {
             if (op.getAction() == Action.POST) {
                 handleSetAuthorizationContext(op);
@@ -313,6 +318,11 @@ public class TestAuthorizationContext extends BasicTestCase {
 
     public static class WhitelistAuthorizationContextTestService extends StatelessService {
         public static final String SELF_LINK = "/whitelist-authorization-context-test";
+
+        @Override
+        public boolean queueRequest(Operation op) {
+            return false;
+        }
 
         @Override
         public void handleGet(Operation op) {

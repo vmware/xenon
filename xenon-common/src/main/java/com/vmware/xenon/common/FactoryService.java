@@ -302,6 +302,14 @@ public abstract class FactoryService extends StatelessService {
     }
 
     @Override
+    public boolean queueRequest(Operation op) {
+        // Factory services apply authorization on the body of the POST request, and
+        // on the response of a GET. A derived factory class that needs stricter
+        // enforcement should override this method and invoke authorization
+        return false;
+    }
+
+    @Override
     public void handleRequest(Operation op) {
         handleRequest(op, OperationProcessingStage.PROCESSING_FILTERS);
     }

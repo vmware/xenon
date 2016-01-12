@@ -29,7 +29,17 @@ import com.vmware.xenon.common.StatelessService;
 public class GuestUserService extends StatelessService {
     public static final String SELF_LINK = ServiceUriPaths.CORE_AUTHZ_GUEST_USER;
 
-    public void handleGet(Operation op) {
+    @Override
+    public boolean queueRequest(Operation op) {
+        return false;
+    }
+
+    @Override
+    public void handleRequest(Operation op) {
+        if (op.getAction() != Action.GET) {
+            getHost().failRequestActionNotSupported(op);
+            return;
+        }
         ServiceDocument state = new ServiceDocument();
         state.documentSelfLink = SELF_LINK;
         op.setBody(state).complete();

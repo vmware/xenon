@@ -1525,6 +1525,11 @@ public class ServiceHost {
 
         Service notificationTarget = new StatelessService() {
             @Override
+            public boolean queueRequest(Operation op) {
+                return false;
+            }
+
+            @Override
             public void handleRequest(Operation op) {
                 if (!op.isNotification()) {
                     super.handleRequest(op);
@@ -1939,6 +1944,9 @@ public class ServiceHost {
 
                     if (post.hasBody()) {
                         document = post.getBody(s.getStateType());
+                    } else {
+                        document = new ServiceDocument();
+                        document.documentSelfLink = s.getSelfLink();
                     }
                     if (!authorizeServiceState(s, document, post)) {
                         post.fail(Operation.STATUS_CODE_FORBIDDEN);
@@ -2291,13 +2299,16 @@ public class ServiceHost {
         this.documentIndexService.handleRequest(loadGet);
     }
 
-    private boolean authorizeServiceState(Service service, ServiceDocument document, Operation op) {
+    /**
+     * Infrastructure use. Applies authorization policy to state associated with service
+     */
+    public boolean authorizeServiceState(Service service, ServiceDocument state, Operation request) {
         // Authorization not enabled, so there is nothing to check
         if (!this.isAuthorizationEnabled()) {
             return true;
         }
 
-        AuthorizationContext ctx = op.getAuthorizationContext();
+        AuthorizationContext ctx = request.getAuthorizationContext();
         if (ctx == null) {
             return false;
         }
@@ -2309,22 +2320,23 @@ public class ServiceHost {
 
         // No service state specified; build artificial state for service so it can be subjected
         // to this authorization check (e.g. stateful without initial state, stateless services).
-        if (document == null) {
+        if (state == null) {
             Class<? extends ServiceDocument> clazz = service.getStateType();
             try {
-                document = clazz.newInstance();
+                state = clazz.newInstance();
             } catch (InstantiationException | IllegalAccessException e) {
                 log(Level.SEVERE, "Unable to instantiate %s: %s", clazz.toString(), e.toString());
                 return false;
             }
 
-            document.documentSelfLink = service.getSelfLink();
-            document.documentKind = Utils.buildKind(clazz);
+            state.documentSelfLink = service.getSelfLink();
+            state.documentKind = Utils.buildKind(clazz);
         }
 
         ServiceDocumentDescription documentDescription = buildDocumentDescription(service);
-        QueryFilter queryFilter = ctx.getResourceQueryFilter(op.getAction());
-        if (queryFilter == null || !queryFilter.evaluate(document, documentDescription)) {
+        QueryFilter queryFilter = ctx.getResourceQueryFilter(request.getAction());
+
+        if (queryFilter == null || !queryFilter.evaluate(state, documentDescription)) {
             return false;
         }
 
@@ -3191,7 +3203,6 @@ public class ServiceHost {
      * and a brief expiration window is set allowing it to complete any shutdown tasks
      */
     public void stop() {
-
         Set<Service> servicesToClose = null;
         synchronized (this.state) {
             if (!this.state.isStarted || this.state.isStopping) {
@@ -3212,6 +3223,7 @@ public class ServiceHost {
             this.maintenanceTask = null;
         }
 
+        setAuthorizationContext(getSystemAuthorizationContext());
         int servicesToCloseCount = servicesToClose.size()
                 - this.coreServices.size();
         final CountDownLatch latch = new CountDownLatch(servicesToCloseCount);
@@ -4650,10 +4662,14 @@ public class ServiceHost {
             // 2) Call the service's getDocumentTemplate() to allow the service author to modify it
             // We are calling a function inside a lock, which is bad practice. This is however
             // by contract a synchronous function that should be O(1). We also only call it once.
-            desc = s.getDocumentTemplate().documentDescription;
+            ServiceDocumentDescription augmentedDesc = s.getDocumentTemplate().documentDescription;
+            if (augmentedDesc != null) {
+                desc = augmentedDesc;
+            }
 
             // 3) Update the cached entry
             this.descriptionCache.put(serviceTypeName, desc);
+
             return desc;
         }
     }
