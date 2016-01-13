@@ -313,7 +313,7 @@ public class SimpleTransactionService extends StatefulService {
         private void handleEnrollInTransaction(Operation request) {
             String serviceSelfLink = this.service.getSelfLink();
             if (Action.POST == request.getAction()) {
-                ServiceDocument body = request.getBody(ServiceDocument.class);
+                ServiceDocument body = request.getBody(this.service.getStateType());
                 if (body.documentSelfLink == null) {
                     body.documentSelfLink = UUID.randomUUID().toString();
                     request.setBody(body);
