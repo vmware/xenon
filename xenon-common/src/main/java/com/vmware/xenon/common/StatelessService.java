@@ -93,11 +93,12 @@ public class StatelessService implements Service {
                         handleGetCompletion(op);
                     });
                     handleGet(op);
+                } else if (op.getAction() == Action.POST) {
+                    handlePost(op);
                 } else if (op.getAction() == Action.DELETE) {
                     op.nestCompletion(o -> {
                         handleDeleteCompletion(op);
                     });
-
                     handleDelete(op);
                 } else if (op.getAction() == Action.OPTIONS) {
                     op.nestCompletion(o -> {
@@ -123,6 +124,10 @@ public class StatelessService implements Service {
             options.setBodyNoCloning(getDocumentTemplate());
         }
         options.complete();
+    }
+
+    public void handlePost(Operation post) {
+        getHost().failRequestActionNotSupported(post);
     }
 
     public void handleGet(Operation get) {
