@@ -63,6 +63,12 @@ public class NettyWebSocketRequestHandler extends SimpleChannelInboundHandler<Ob
     private String servicePrefix;
     private String authToken;
 
+    /**
+     * {@code true} means that handshake is at least started and we can process any subsequent {@link WebSocketFrame}
+     * request objects. Otherwise if we see a {@link WebSocketFrame} object - it belongs to some other handler.
+     */
+    private volatile boolean handshakeAccepted;
+
     public NettyWebSocketRequestHandler(ServiceHost host, String socketHandshakePath,
             String servicePrefix) {
         this.host = host;
@@ -77,7 +83,7 @@ public class NettyWebSocketRequestHandler extends SimpleChannelInboundHandler<Ob
             return nettyRequest.uri().contentEquals(this.handshakePath);
         }
         if (msg instanceof WebSocketFrame) {
-            return true;
+            return this.handshakeAccepted;
         }
         return false;
     }
@@ -87,6 +93,7 @@ public class NettyWebSocketRequestHandler extends SimpleChannelInboundHandler<Ob
             throws Exception {
         if (msg instanceof FullHttpRequest) {
             FullHttpRequest nettyRequest = (FullHttpRequest) msg;
+            this.handshakeAccepted = true;
             performWebsocketHandshake(ctx, nettyRequest);
             return;
         }
