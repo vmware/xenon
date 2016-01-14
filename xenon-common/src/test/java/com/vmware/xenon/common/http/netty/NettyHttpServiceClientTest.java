@@ -516,7 +516,7 @@ public class NettyHttpServiceClientTest {
     public void putOverMaxRequestLimit() throws Throwable {
         this.host.setOperationTimeOutMicros(TimeUnit.SECONDS.toMicros(1));
         List<Service> services = this.host.doThroughputServiceStart(
-                8, MinimalTestService.class, this.host.buildMinimalTestState(), null,
+                2, MinimalTestService.class, this.host.buildMinimalTestState(), null,
                 null);
         // force failure by using a payload higher than max size
         this.host.doPutPerService(1,

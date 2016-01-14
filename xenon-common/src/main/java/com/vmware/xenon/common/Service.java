@@ -298,6 +298,16 @@ public interface Service {
     void handleStart(Operation startPost);
 
     /**
+     * Infrastructure use. Invoked by host to let the service decide if the request is authorized.
+     * Services can defer authorization for a later stage, during handleRequest(), or do it as
+     * part of this method.
+     * @return True if the request needs further processing or it failed to authorize. The service
+     * host will abort further processing and its the responsibility of the service author to re-submit
+     * the request if it was authorized.
+     */
+    boolean authorizeRequest(Operation op);
+
+    /**
      * Infrastructure use. Invoked by host to determine if a request can be scheduled for processing
      * immediately, or if it was queued by the service.
      *

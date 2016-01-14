@@ -56,6 +56,25 @@ public class StatelessService implements Service {
         startPost.complete();
     }
 
+    /**
+     * Authorizes the operation against the service.
+     * Returns true if the caller should stop any further processing of this operation.
+     */
+    @Override
+    public boolean authorizeRequest(Operation op) {
+        // A stateless service has no service state to apply policy to, but it does have a
+        // self link. Create a document with the service link so we can apply roles with resource
+        // specifications targeting the self link field
+        ServiceDocument doc = new ServiceDocument();
+        doc.documentSelfLink = this.selfLink;
+        if (getHost().isAuthorized(this, doc, op)) {
+            return false;
+        }
+
+        // authorization failed, tell caller to abort processing
+        return true;
+    }
+
     @Override
     public boolean queueRequest(Operation op) {
         return false;
