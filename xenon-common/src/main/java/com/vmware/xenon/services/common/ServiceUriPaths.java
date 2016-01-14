@@ -100,6 +100,7 @@ public class ServiceUriPaths {
     public static final String UI_SERVICE_HOME = "/home";
     public static final String CUSTOM_UI_BASE_URL = ServiceUriPaths.CORE + "/ui/custom";
     public static final String SAMPLES = "/samples";
+    public static final String DNS = CORE + "/dns";
 
     public static final String WS_SERVICE_LIB_JS = "/ws-service-lib.js";
     public static final String WS_SERVICE_LIB_JS_PATH =
