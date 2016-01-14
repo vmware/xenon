@@ -14,6 +14,7 @@
 package com.vmware.xenon.services.common;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
 
 import java.net.URI;
 import java.util.ArrayList;
@@ -26,8 +27,10 @@ import org.junit.Test;
 
 import com.vmware.xenon.common.BasicReusableHostTestCase;
 import com.vmware.xenon.common.Operation;
-import com.vmware.xenon.common.ServiceErrorResponse;
 import com.vmware.xenon.common.UriUtils;
+import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
+import com.vmware.xenon.services.common.TransactionService.ResolutionRequest;
+import com.vmware.xenon.services.common.TransactionService.TransactionServiceState;
 
 public class TestTransactionService extends BasicReusableHostTestCase {
 
@@ -47,73 +50,19 @@ public class TestTransactionService extends BasicReusableHostTestCase {
     public void transactionResolution() throws Throwable {
         ExampleService.ExampleServiceState verifyState;
         List<URI> exampleURIs = new ArrayList<>();
-        // create example service documents across all nodes
         this.host.createExampleServices(this.host, 1, exampleURIs, null);
 
-        TransactionService.TransactionServiceState tx1 = new TransactionService.TransactionServiceState();
-        String txId = UUID.randomUUID().toString();
-        tx1.documentSelfLink = txId;
-        Operation operation = Operation
-                .createPost(UriUtils.buildUri(this.host, TransactionFactoryService.class))
-                .setBody(tx1)
-                .setCompletion((o, e) -> {
-                    if (e != null) {
-                        ServiceErrorResponse rsp = o.getBody(ServiceErrorResponse.class);
-                        if (rsp.message == null || rsp.message.isEmpty()) {
-                            this.host.failIteration(new IllegalStateException("Missing error response"));
-                            return;
-                        }
-                    }
-                    this.host.completeIteration();
-                });
-        host.testStart(1);
-        this.host.send(operation);
-        host.testWait();
+        String txid = newTransaction();
 
-        ExampleService.ExampleServiceState initialState = new ExampleService.ExampleServiceState();
+        ExampleServiceState initialState = new ExampleServiceState();
         initialState.name = "zero";
         initialState.counter = 0L;
-        operation = Operation
-                .createPut(exampleURIs.get(0))
-                .setTransactionId(txId)
-                .setBody(initialState)
-                .setCompletion((o, e) -> {
-                    if (e != null) {
-                        ServiceErrorResponse rsp = o.getBody(ServiceErrorResponse.class);
-                        if (rsp.message == null || rsp.message.isEmpty()) {
-                            this.host.failIteration(new IllegalStateException(
-                                    "Missing error response"));
-                            return;
-                        }
-                    }
-                    this.host.completeIteration();
-                });
-        host.testStart(1);
-        this.host.send(operation);
-        host.testWait();
+        updateExampleService(txid, exampleURIs.get(0), initialState);
 
-        TransactionService.ResolutionRequest commmit = new TransactionService.ResolutionRequest();
-        commmit.kind = TransactionService.ResolutionKind.COMMIT;
-        commmit.pendingOperations = 1;
-        operation = Operation
-                .createPatch(UriUtils.buildTransactionResolutionUri(this.host, txId))
-                .setBody(commmit)
-                .setCompletion((o, e) -> {
-                    if (e != null) {
-                        ServiceErrorResponse rsp = o.getBody(ServiceErrorResponse.class);
-                        if (rsp.message == null || rsp.message.isEmpty()) {
-                            this.host.failIteration(new IllegalStateException(
-                                    "Missing error response"));
-                            return;
-                        }
-                    }
-                    this.host.completeIteration();
-                });
-        host.testStart(1);
-        this.host.send(operation);
-        host.testWait();
-        // This should be equal to the newest state -- since the transaction committed
-        verifyState = this.host.getServiceState(null, ExampleService.ExampleServiceState.class, exampleURIs.get(0));
+        boolean committed = commit(txid, 1);
+        assertTrue(committed);
+
+        verifyState = this.host.getServiceState(null, ExampleServiceState.class, exampleURIs.get(0));
         assertEquals(initialState.name, verifyState.name);
         assertEquals(null, verifyState.documentTransactionId);
 
@@ -127,204 +76,158 @@ public class TestTransactionService extends BasicReusableHostTestCase {
     @Test
     public void singleUpdate() throws Throwable {
         // used to verify current state
-        ExampleService.ExampleServiceState verifyState;
+        ExampleServiceState verifyState;
         List<URI> exampleURIs = new ArrayList<>();
         // create example service documents across all nodes
         this.host.createExampleServices(this.host, 1, exampleURIs, null);
 
         // 0 -- no transaction
-        ExampleService.ExampleServiceState initialState = new ExampleService.ExampleServiceState();
+        ExampleServiceState initialState = new ExampleServiceState();
         initialState.name = "zero";
         initialState.counter = 0L;
-        Operation operation = Operation
-                .createPut(exampleURIs.get(0))
-                .setBody(initialState)
-                .setCompletion((o, e) -> {
-                    if (e != null) {
-                        ServiceErrorResponse rsp = o.getBody(ServiceErrorResponse.class);
-                        if (rsp.message == null || rsp.message.isEmpty()) {
-                            this.host.failIteration(new IllegalStateException(
-                                    "Missing error response"));
-                            return;
-                        }
-                    }
-                    this.host.completeIteration();
-                });
-        host.testStart(1);
-        this.host.send(operation);
-        host.testWait();
+        updateExampleService(null, exampleURIs.get(0), initialState);
         // This should be equal to the current state -- since we did not use transactions
-        verifyState = this.host.getServiceState(null, ExampleService.ExampleServiceState.class, exampleURIs.get(0));
+        verifyState = this.host.getServiceState(null, ExampleServiceState.class, exampleURIs.get(0));
         assertEquals(verifyState.name, initialState.name);
 
         // 1 -- tx1
-
-        TransactionService.TransactionServiceState tx1 = new TransactionService.TransactionServiceState();
-        tx1.documentSelfLink = UUID.randomUUID().toString();
-        operation = Operation
-                .createPost(UriUtils.buildUri(this.host, TransactionFactoryService.class))
-                .setBody(tx1)
-                .setCompletion((o, e) -> {
-                    if (e != null) {
-                        ServiceErrorResponse rsp = o.getBody(ServiceErrorResponse.class);
-                        if (rsp.message == null || rsp.message.isEmpty()) {
-                            this.host.failIteration(new IllegalStateException("Missing error response"));
-                            return;
-                        }
-                    }
-                    this.host.completeIteration();
-                });
-
-        host.testStart(1);
-        this.host.send(operation);
-        host.testWait();
-
-
-        ExampleService.ExampleServiceState newState = new ExampleService.ExampleServiceState();
+        String txid1 = newTransaction();
+        ExampleServiceState newState = new ExampleServiceState();
         newState.name = "one";
         newState.counter = 1L;
-        operation = Operation
-                .createPut(exampleURIs.get(0))
-                .setBody(newState)
-                .setTransactionId(tx1.documentSelfLink)
-                .setCompletion((o, e) -> {
-                    if (e != null) {
-                        ServiceErrorResponse rsp = o.getBody(ServiceErrorResponse.class);
-                        if (rsp.message == null || rsp.message.isEmpty()) {
-                            this.host.failIteration(new IllegalStateException("Missing error response"));
-                            return;
-                        }
-                    }
-                    this.host.completeIteration();
-                });
-
-        host.testStart(1);
-        this.host.send(operation);
-        host.testWait();
+        updateExampleService(txid1, exampleURIs.get(0), newState);
 
         // get outside a transaction -- ideally should get old version -- for now, it should fail
         host.toggleNegativeTestMode(true);
-        this.host.getServiceState(null, ExampleService.ExampleServiceState.class, exampleURIs.get(0));
+        this.host.getServiceState(null, ExampleServiceState.class, exampleURIs.get(0));
         host.toggleNegativeTestMode(false);
 
         // get within a transaction -- the callback should bring latest
-        operation = Operation
-                .createGet(exampleURIs.get(0))
-                .setBody(initialState)
-                .setTransactionId(tx1.documentSelfLink)
-                .setCompletion((o, e) -> {
-                    if (e != null) {
-                        ServiceErrorResponse rsp = o.getBody(ServiceErrorResponse.class);
-                        if (rsp.message == null || rsp.message.isEmpty()) {
-                            this.host.failIteration(new IllegalStateException("Missing error response"));
-                            return;
-                        }
-                    } else {
-                        ExampleService.ExampleServiceState rsp = o.getBody(ExampleService.ExampleServiceState.class);
-                        assertEquals(rsp.name, newState.name);
-                    }
-                    this.host.completeIteration();
-                });
-        host.testStart(1);
-        this.host.send(operation);
-        host.testWait();
+        verifyExampleServiceState(txid1, exampleURIs.get(0), newState);
 
         // now commit
-        TransactionService.ResolutionRequest commit = new TransactionService.ResolutionRequest();
-        commit.kind = TransactionService.ResolutionKind.COMMIT;
-        commit.pendingOperations = 1;
-        operation = Operation
-                .createPatch(
-                        UriUtils.buildTransactionResolutionUri(this.host, tx1.documentSelfLink))
-                .setBody(commit)
-                .setCompletion((o, e) -> {
-                    if (e != null) {
-                        ServiceErrorResponse rsp = o.getBody(ServiceErrorResponse.class);
-                        if (rsp.message == null || rsp.message.isEmpty()) {
-                            this.host.failIteration(new IllegalStateException(
-                                    "Missing error response"));
-                            return;
-                        }
-                    }
-                    this.host.completeIteration();
-                });
-        host.testStart(1);
-        this.host.send(operation);
-        host.testWait();
+        boolean committed = commit(txid1, 1);
+        assertTrue(committed);
         // This should be equal to the newest state -- since the transaction committed
-        verifyState = this.host.getServiceState(null, ExampleService.ExampleServiceState.class, exampleURIs.get(0));
+        verifyState = this.host.getServiceState(null, ExampleServiceState.class, exampleURIs.get(0));
         assertEquals(verifyState.name, newState.name);
 
         // 2 -- tx2
-
-        TransactionService.TransactionServiceState tx2 = new TransactionService.TransactionServiceState();
-        tx2.documentSelfLink = UUID.randomUUID().toString();
-        operation = Operation
-                .createPost(UriUtils.buildUri(this.host, TransactionFactoryService.class))
-                .setBody(tx2)
-                .setCompletion((o, e) -> {
-                    if (e != null) {
-                        ServiceErrorResponse rsp = o.getBody(ServiceErrorResponse.class);
-                        if (rsp.message == null || rsp.message.isEmpty()) {
-                            this.host.failIteration(new IllegalStateException("Missing error response"));
-                            return;
-                        }
-                    }
-                    this.host.completeIteration();
-                });
-
-        host.testStart(1);
-        this.host.send(operation);
-        host.testWait();
-
-        ExampleService.ExampleServiceState abortState = new ExampleService.ExampleServiceState();
+        String txid2 = newTransaction();
+        ExampleServiceState abortState = new ExampleServiceState();
         abortState.name = "two";
         abortState.counter = 2L;
-        operation = Operation
-                .createPut(exampleURIs.get(0))
-                .setBody(abortState)
-                .setTransactionId(tx2.documentSelfLink)
-                .setCompletion((o, e) -> {
-                    if (e != null) {
-                        ServiceErrorResponse rsp = o.getBody(ServiceErrorResponse.class);
-                        if (rsp.message == null || rsp.message.isEmpty()) {
-                            this.host.failIteration(new IllegalStateException("Missing error response"));
-                            return;
-                        }
-                    }
-                    this.host.completeIteration();
-                });
-        host.testStart(1);
-        this.host.send(operation);
-        host.testWait();
-        // This should be equal to the newest state -- since the transaction committed
-        verifyState = this.host.getServiceState(null, ExampleService.ExampleServiceState.class, exampleURIs.get(0));
+        updateExampleService(txid2, exampleURIs.get(0), abortState);
+        // This should be equal to the latest committed state -- since the txid2 is still in-progress
+        verifyState = this.host.getServiceState(null, ExampleServiceState.class, exampleURIs.get(0));
         assertEquals(verifyState.name, newState.name);
 
         // now abort
-        TransactionService.ResolutionRequest abort = new TransactionService.ResolutionRequest();
-        abort.kind = TransactionService.ResolutionKind.ABORT;
-        abort.pendingOperations = 1;
-        operation = Operation
-                .createPatch(UriUtils.buildTransactionUri(this.host, tx2.documentSelfLink))
-                .setBody(abort)
-                .setCompletion((o, e) -> {
-                    if (e != null) {
-                        ServiceErrorResponse rsp = o.getBody(ServiceErrorResponse.class);
-                        if (rsp.message == null || rsp.message.isEmpty()) {
-                            this.host.failIteration(new IllegalStateException(
-                                    "Missing error response"));
-                            return;
-                        }
-                    }
-                    this.host.completeIteration();
-                });
-        host.testStart(1);
-        this.host.send(operation);
-        host.testWait();
+        boolean aborted = abort(txid2, 1);
+        assertTrue(aborted);
         // This should be equal to the previous state -- since the transaction committed
-        verifyState = this.host.getServiceState(null, ExampleService.ExampleServiceState.class, exampleURIs.get(0));
+        verifyState = this.host.getServiceState(null, ExampleServiceState.class, exampleURIs.get(0));
         // TODO re-enable when abort logic is debugged
         //assertEquals(verifyState.name, newState.name);
     }
+
+    private String newTransaction() throws Throwable {
+        String txid = UUID.randomUUID().toString();
+
+        this.host.testStart(1);
+        TransactionServiceState initialState = new TransactionServiceState();
+        initialState.documentSelfLink = txid;
+        Operation post = Operation
+                .createPost(getTransactionFactoryUri())
+                .setBody(initialState).setCompletion((o, e) -> {
+                    if (e != null) {
+                        this.host.failIteration(e);
+                        return;
+                    }
+                    this.host.completeIteration();
+                });
+        this.host.send(post);
+        this.host.testWait();
+
+        return txid;
+    }
+
+    private boolean commit(String txid, int pendingOperations) throws Throwable {
+        this.host.testStart(1);
+        ResolutionRequest body = new ResolutionRequest();
+        body.kind = TransactionService.ResolutionKind.COMMIT;
+        body.pendingOperations = pendingOperations;
+        boolean[] succeeded = new boolean[1];
+        Operation commit = Operation
+                .createPatch(UriUtils.buildTransactionResolutionUri(this.host, txid))
+                .setBody(body)
+                .setCompletion((o, e) -> {
+                    succeeded[0] = e == null;
+                    this.host.completeIteration();
+                });
+        this.host.send(commit);
+        this.host.testWait();
+
+        return succeeded[0];
+    }
+
+    private boolean abort(String txid, int pendingOperations) throws Throwable {
+        this.host.testStart(1);
+        ResolutionRequest body = new ResolutionRequest();
+        body.kind = TransactionService.ResolutionKind.ABORT;
+        body.pendingOperations = pendingOperations;
+        boolean[] succeeded = new boolean[1];
+        Operation abort = Operation
+                .createPatch(UriUtils.buildTransactionUri(this.host, txid))
+                .setBody(body)
+                .setCompletion((o, e) -> {
+                    succeeded[0] = e == null;
+                    this.host.completeIteration();
+                });
+        this.host.send(abort);
+        this.host.testWait();
+
+        return succeeded[0];
+    }
+
+    private URI getTransactionFactoryUri() {
+        return UriUtils.buildUri(this.host, TransactionFactoryService.class);
+    }
+
+    private void updateExampleService(String txid, URI exampleServiceUri, ExampleServiceState exampleServiceState) throws Throwable {
+        this.host.testStart(1);
+        Operation put = Operation
+                .createPut(exampleServiceUri)
+                .setTransactionId(txid)
+                .setBody(exampleServiceState)
+                .setCompletion((o, e) -> {
+                    if (e != null) {
+                        this.host.failIteration(e);
+                        return;
+                    }
+                    this.host.completeIteration();
+                });
+        this.host.send(put);
+        this.host.testWait();
+    }
+
+    private void verifyExampleServiceState(String txid, URI exampleServiceUri, ExampleServiceState exampleServiceState) throws Throwable {
+        Operation operation = Operation
+                .createGet(exampleServiceUri)
+                .setTransactionId(txid)
+                .setCompletion((o, e) -> {
+                    if (e != null) {
+                        this.host.failIteration(e);
+                        return;
+                    }
+
+                    ExampleServiceState rsp = o.getBody(ExampleServiceState.class);
+                    assertEquals(exampleServiceState.name, rsp.name);
+                    this.host.completeIteration();
+                });
+        this.host.testStart(1);
+        this.host.send(operation);
+        this.host.testWait();
+    }
+
 }
