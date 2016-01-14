@@ -2,6 +2,12 @@
 
 ## 0.5.0-SNAPSHOT
 
+* Implement authorization on stateless services. This is a breaking
+  change for xenon deployments that use authorization and have 
+  non factory service implementations of StatelessService class.
+  Stateless services must now be included in roles, using a resource
+  specification over the document self link.
+
 ## 0.4.1
 
 * Updated the API for backing up or restoring the index. The Bearer

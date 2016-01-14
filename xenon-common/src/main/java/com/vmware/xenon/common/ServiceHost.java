@@ -1940,7 +1940,7 @@ public class ServiceHost {
                     if (post.hasBody()) {
                         document = post.getBody(s.getStateType());
                     }
-                    if (!authorizeServiceState(s, document, post)) {
+                    if (!isAuthorized(s, document, post)) {
                         post.fail(Operation.STATUS_CODE_FORBIDDEN);
                         return;
                     }
@@ -2240,7 +2240,7 @@ public class ServiceHost {
         // If either there is cached state, or the service is not indexed (meaning nothing
         // will be found in the index), subject this state to authorization.
         if (state != null || !isServiceIndexed(s)) {
-            if (!authorizeServiceState(s, state, op)) {
+            if (!isAuthorized(s, state, op)) {
                 op.fail(Operation.STATUS_CODE_FORBIDDEN);
                 return;
             }
@@ -2274,7 +2274,7 @@ public class ServiceHost {
                     }
 
                     ServiceDocument st = o.getBody(s.getStateType());
-                    if (!authorizeServiceState(s, st, op)) {
+                    if (!isAuthorized(s, st, op)) {
                         op.fail(Operation.STATUS_CODE_FORBIDDEN);
                         return;
                     }
@@ -2291,7 +2291,12 @@ public class ServiceHost {
         this.documentIndexService.handleRequest(loadGet);
     }
 
-    private boolean authorizeServiceState(Service service, ServiceDocument document, Operation op) {
+    /**
+     * Infrastructure use. Applies authorization policy on the supplied document and fails the
+     * operation if authorization fails
+     * @return True if request was authorized, false otherwise
+     */
+    public boolean isAuthorized(Service service, ServiceDocument document, Operation op) {
         // Authorization not enabled, so there is nothing to check
         if (!this.isAuthorizationEnabled()) {
             return true;
@@ -2553,23 +2558,24 @@ public class ServiceHost {
         if (this.isAuthorizationEnabled()) {
             if (this.authorizationService != null) {
                 inboundOp.nestCompletion(op -> {
-                    handleAuthorizedRequest(service, op);
+                    handleRequestWithAuthContext(service, op);
                 });
                 queueOrScheduleRequest(this.authorizationService, inboundOp);
                 return true;
             }
         }
 
-        return handleAuthorizedRequest(service, inboundOp);
+        handleRequestWithAuthContext(service, inboundOp);
+        return true;
     }
 
-    private boolean handleAuthorizedRequest(Service service, Operation inboundOp) {
+    private void handleRequestWithAuthContext(Service service, Operation inboundOp) {
         String path;
         if (service == null) {
             path = inboundOp.getUri().getPath();
             if (path == null) {
                 failRequestServiceNotFound(inboundOp);
-                return true;
+                return;
             }
             service = findService(path);
         } else {
@@ -2583,22 +2589,27 @@ public class ServiceHost {
         }
 
         if (queueRequestUntilServiceAvailable(inboundOp, service, path)) {
-            return true;
+            return;
         }
 
         if (queueOrForwardRequest(service, path, inboundOp)) {
-            return true;
+            return;
         }
 
         if (service == null) {
             failRequestServiceNotFound(inboundOp);
-            return true;
+            return;
         }
 
         traceOperation(inboundOp);
 
+        if (service.authorizeRequest(inboundOp)) {
+            // stop further processing, service owns the operation and will re-submit or failed it
+            return;
+        }
+
         queueOrScheduleRequest(service, inboundOp);
-        return true;
+        return;
     }
 
     AuthorizationContext getAuthorizationContext(Operation op) {

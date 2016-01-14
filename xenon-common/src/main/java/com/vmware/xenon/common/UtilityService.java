@@ -51,6 +51,11 @@ public class UtilityService implements Service {
     }
 
     @Override
+    public boolean authorizeRequest(Operation op) {
+        return false;
+    }
+
+    @Override
     public void handleRequest(Operation op) {
         if (op.getUri().getPath()
                 .endsWith(ServiceHost.SERVICE_URI_SUFFIX_STATS)) {
