@@ -33,6 +33,11 @@ public class FileContentService extends StatelessService {
     }
 
     @Override
+    public void authorizeRequest(Operation op) {
+        op.complete();
+    }
+
+    @Override
     public void handleGet(Operation get) {
         try {
             FileUtils.readFileAndComplete(get, this.file);
