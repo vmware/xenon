@@ -163,28 +163,6 @@
               </execution>
             </executions>
           </plugin>
-
-          <!-- Note that there is also a findbugs report that duplicates the Findbugs config -->
-          <!-- Unfortunately, we couldn't find a way to state the config only once, since -->
-          <!-- the reporting isn't part of the build lifecycle -->
-          <plugin>
-            <groupId>org.codehaus.mojo</groupId>
-            <artifactId>findbugs-maven-plugin</artifactId>
-            <version>3.0.3</version>
-            <configuration>
-              <effort>Max</effort>
-              <failOnError>false</failOnError>
-              <xmlOutput>true</xmlOutput>
-              <excludeFilterFile>findbugs-exclude.xml</excludeFilterFile>
-            </configuration>
-            <executions>
-              <execution>
-                <goals>
-                  <goal>check</goal>
-                </goals>
-              </execution>
-            </executions>
-          </plugin>
         </plugins>
       </build>
     </profile>
@@ -371,6 +349,41 @@
         </configuration>
       </plugin>
 
+      <!-- To easily browse the Findbugs problems, do something like this: -->
+      <!-- mvn --projects xenon-common findbugs:gui -->
+      <plugin>
+        <groupId>org.codehaus.mojo</groupId>
+        <artifactId>findbugs-maven-plugin</artifactId>
+        <version>3.0.3</version>
+        <configuration>
+          <effort>Max</effort>
+          <xmlOutput>true</xmlOutput>
+          <!-- <excludeFilterFile>findbugs-exclude.xml</excludeFilterFile> -->
+        </configuration>
+        <executions>
+          <execution>
+            <id>analyze-compile</id>
+            <phase>compile</phase>
+            <goals>
+              <goal>check</goal>
+            </goals>
+            <configuration>
+              <failOnError>true</failOnError>
+            </configuration>
+          </execution>
+          <execution>
+            <id>analyze-site</id>
+            <phase>site</phase>
+            <goals>
+              <goal>findbugs</goal>
+            </goals>
+            <configuration>
+              <failOnError>false</failOnError>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+
       <!-- The "mvn site" command fails due to a BCEL bug -->
       <!-- Using the findbugs version of BCEL fixes it --> 
       <!-- BUG: https://issues.apache.org/jira/browse/BCEL-173 -->
@@ -399,25 +412,36 @@
       </plugin>
 
     </plugins>
+    <pluginManagement>
+      <plugins>
+        <plugin>
+          <!-- Tell Eclipse not to use the Findbugs plugin during compilation -->
+          <!-- This speeds up Eclipse development, but "mvn compile" will still run Findbugs -->
+          <groupId>org.eclipse.m2e</groupId>
+          <artifactId>lifecycle-mapping</artifactId>
+          <version>1.0.0</version>
+          <configuration>
+            <lifecycleMappingMetadata>
+              <pluginExecutions>
+                <pluginExecution>
+                  <pluginExecutionFilter>
+                    <groupId>org.codehaus.mojo</groupId>
+                    <artifactId>findbugs-maven-plugin</artifactId>
+                    <versionRange>[3.0.3,)</versionRange>
+                    <goals>
+                      <goal>check</goal>
+                    </goals>
+                  </pluginExecutionFilter>
+                  <action>
+                    <ignore></ignore>
+                  </action>
+                </pluginExecution>
+              </pluginExecutions>
+            </lifecycleMappingMetadata>
+          </configuration>
+        </plugin>
+      </plugins>
+    </pluginManagement>
   </build>
-
-  <reporting>
-    <plugins>
-      <!-- Create a findbugs report -->
-      <!-- Unfortunately, we have to duplicate the configuration from -->
-      <!-- the build lifecycle -->
-      <plugin>
-        <groupId>org.codehaus.mojo</groupId>
-        <artifactId>findbugs-maven-plugin</artifactId>
-        <version>3.0.3</version>
-        <configuration>
-          <effort>Max</effort>
-          <failOnError>false</failOnError>
-          <xmlOutput>true</xmlOutput>
-          <excludeFilterFile>findbugs-exclude.xml</excludeFilterFile>
-        </configuration>
-      </plugin>
-    </plugins>
-  </reporting>
 
 </project>
