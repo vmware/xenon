@@ -57,6 +57,21 @@ public class StatelessService implements Service {
     }
 
     @Override
+    public void authorizeRequest(Operation op) {
+        // A state-less service has no service state to apply policy to, but it does have a
+        // self link. Create a document with the service link so we can apply roles with resource
+        // specifications targeting the self link field
+        ServiceDocument doc = new ServiceDocument();
+        doc.documentSelfLink = this.selfLink;
+        if (getHost().isAuthorized(this, doc, op)) {
+            op.complete();
+            return;
+        }
+
+        op.fail(Operation.STATUS_CODE_FORBIDDEN);
+    }
+
+    @Override
     public boolean queueRequest(Operation op) {
         return false;
     }

@@ -301,6 +301,18 @@ public abstract class FactoryService extends StatelessService {
         return;
     }
 
+    /**
+     * Always returns false immediately, skipping authorization checks. Default factory
+     * implementation applies authorization on the child state during POST (child creation)
+     * and during GET result processing (the runtime applies filters on query results).
+     * If a service author needs to apply authorization on the factory link, it should override
+     * this method and call {@code ServiceHost.isAuthorized()}
+     */
+    @Override
+    public void authorizeRequest(Operation op) {
+        op.complete();
+    }
+
     @Override
     public void handleRequest(Operation op) {
         handleRequest(op, OperationProcessingStage.PROCESSING_FILTERS);

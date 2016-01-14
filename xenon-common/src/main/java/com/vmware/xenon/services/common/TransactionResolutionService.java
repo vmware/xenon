@@ -34,6 +34,12 @@ public class TransactionResolutionService extends StatelessService {
         this.parent = parent;
     }
 
+    @Override
+    public void authorizeRequest(Operation op) {
+        op.complete();
+    }
+
+    @Override
     public void handleRequest(Operation op) {
         if (op.getUri().getPath().endsWith(RESOLUTION_SUFFIX)) {
             handleResolutionRequest(op);

@@ -40,6 +40,8 @@ public class AuthorizationHelper {
     public static final String USER_SERVICE_PATH =
             UriUtils.buildUriPath(ServiceUriPaths.CORE_AUTHZ_USERS, USER_EMAIL);
 
+    private String userGroupLink;
+
     VerificationHost host;
 
     public AuthorizationHelper(VerificationHost host) {
@@ -71,6 +73,14 @@ public class AuthorizationHelper {
         return userUriPath[0];
     }
 
+    public void setUserGroupLink(String userGroupLink) {
+        this.userGroupLink = userGroupLink;
+    }
+
+    public String getUserGroupLink() {
+        return this.userGroupLink;
+    }
+
     public String createUserService(ServiceHost target, String email) throws Throwable {
         return createUserService(this.host, target, email);
     }
@@ -86,6 +96,8 @@ public class AuthorizationHelper {
                                 "email",
                                 USER_EMAIL)
                         .build());
+
+        setUserGroupLink(userGroupLink);
 
         // Create resource group for example service state
         String exampleServiceResourceGroupLink =

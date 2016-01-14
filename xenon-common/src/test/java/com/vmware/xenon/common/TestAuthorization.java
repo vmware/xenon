@@ -28,6 +28,7 @@ import java.util.LinkedList;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
@@ -36,6 +37,7 @@ import org.junit.Before;
 import org.junit.Test;
 
 import com.vmware.xenon.common.Operation.AuthorizationContext;
+import com.vmware.xenon.common.Operation.CompletionHandler;
 import com.vmware.xenon.common.Service.Action;
 import com.vmware.xenon.common.test.AuthorizationHelper;
 import com.vmware.xenon.common.test.VerificationHost;
@@ -47,6 +49,16 @@ import com.vmware.xenon.services.common.QueryTask;
 import com.vmware.xenon.services.common.QueryTask.Query.Builder;
 
 public class TestAuthorization extends BasicTestCase {
+
+    public static class AuthzStatelessService extends StatelessService {
+        public void handleRequest(Operation op) {
+            if (op.getAction() == Action.PATCH) {
+                op.complete();
+                return;
+            }
+            super.handleRequest(op);
+        }
+    }
 
     String userServicePath;
     AuthorizationHelper authHelper;
@@ -79,7 +91,94 @@ public class TestAuthorization extends BasicTestCase {
     }
 
     @Test
-    public void testAuthPrincipalQuery() throws Throwable {
+    public void statelessServiceAuthorization() throws Throwable {
+        // assume system identity so we can create roles
+        this.host.setSystemAuthorizationContext();
+
+        String serviceLink = UUID.randomUUID().toString();
+        // the helper uses the verification host's latch, so we need to
+        // start a test, with count 2 to create the resource group and role
+        this.host.testStart(2);
+
+        // create a specific role for a stateless service
+        String resourceGroupLink = this.authHelper.createResourceGroup(this.host,
+                "stateless-service-group", Builder.create()
+                        .addFieldClause(
+                                ServiceDocument.FIELD_NAME_SELF_LINK,
+                                UriUtils.URI_PATH_CHAR + serviceLink)
+                        .build());
+        this.authHelper.createRole(this.host, this.authHelper.getUserGroupLink(),
+                resourceGroupLink,
+                new HashSet<>(Arrays.asList(Action.GET, Action.POST, Action.PATCH, Action.DELETE)));
+        this.host.testWait();
+        this.host.resetAuthorizationContext();
+
+        CompletionHandler ch = (o, e) -> {
+            if (e == null || o.getStatusCode() != Operation.STATUS_CODE_FORBIDDEN) {
+                this.host.failIteration(new IllegalStateException(
+                        "Operation did not fail with proper status code"));
+                return;
+            }
+            this.host.completeIteration();
+        };
+
+        // assume authorized user identity
+        this.host.assumeIdentity(this.userServicePath, null);
+
+        // Verify startService
+        Operation post = Operation.createPost(UriUtils.buildUri(this.host, serviceLink));
+        // do not supply a body, authorization should still be applied
+        this.host.testStart(1);
+        post.setCompletion(this.host.getCompletion());
+        this.host.startService(post, new AuthzStatelessService());
+        this.host.testWait();
+
+        // stop service so we can attempt restart
+        this.host.testStart(1);
+        Operation delete = Operation.createDelete(post.getUri())
+                .setCompletion(this.host.getCompletion());
+        this.host.send(delete);
+        this.host.testWait();
+
+        // Verify DENY startService
+        this.host.resetAuthorizationContext();
+        this.host.testStart(1);
+        post = Operation.createPost(UriUtils.buildUri(this.host, serviceLink));
+        post.setCompletion(ch);
+        this.host.startService(post, new AuthzStatelessService());
+        this.host.testWait();
+
+        // assume authorized user identity
+        this.host.assumeIdentity(this.userServicePath, null);
+
+        // restart service
+        post = Operation.createPost(UriUtils.buildUri(this.host, serviceLink));
+        // do not supply a body, authorization should still be applied
+        this.host.testStart(1);
+        post.setCompletion(this.host.getCompletion());
+        this.host.startService(post, new AuthzStatelessService());
+        this.host.testWait();
+
+        // Verify PATCH
+        Operation patch = Operation.createPatch(UriUtils.buildUri(this.host, serviceLink));
+        patch.setBody(new ServiceDocument());
+        this.host.testStart(1);
+        patch.setCompletion(this.host.getCompletion());
+        this.host.send(patch);
+        this.host.testWait();
+
+        // Verify DENY PATCH
+        this.host.resetAuthorizationContext();
+        patch = Operation.createPatch(UriUtils.buildUri(this.host, serviceLink));
+        patch.setBody(new ServiceDocument());
+        this.host.testStart(1);
+        patch.setCompletion(ch);
+        this.host.send(patch);
+        this.host.testWait();
+    }
+
+    @Test
+    public void queryWithDocumentAuthPrincipal() throws Throwable {
         this.host.assumeIdentity(this.userServicePath, null);
         createExampleServices("jane");
         this.host.createAndWaitSimpleDirectQuery(ServiceDocument.FIELD_NAME_AUTH_PRINCIPAL_LINK,
@@ -87,7 +186,7 @@ public class TestAuthorization extends BasicTestCase {
     }
 
     @Test
-    public void testScheduleAndRunContext() throws Throwable {
+    public void contextPropagationOnScheduleAndRunContext() throws Throwable {
         this.host.assumeIdentity(this.userServicePath, null);
 
         AuthorizationContext callerAuthContext = OperationContext.getAuthorizationContext();
@@ -109,7 +208,7 @@ public class TestAuthorization extends BasicTestCase {
     }
 
     @Test
-    public void testGuestAuthorization() throws Throwable {
+    public void guestAuthorization() throws Throwable {
         OperationContext.setAuthorizationContext(this.host.getSystemAuthorizationContext());
 
         this.host.testStart(3);
@@ -169,7 +268,7 @@ public class TestAuthorization extends BasicTestCase {
     }
 
     @Test
-    public void honorVerbsInRoles() throws Throwable {
+    public void actionBasedAuthorization() throws Throwable {
 
         // Assume Jane's identity
         this.host.assumeIdentity(this.userServicePath, null);
@@ -238,7 +337,7 @@ public class TestAuthorization extends BasicTestCase {
     }
 
     @Test
-    public void exampleAuthorization() throws Throwable {
+    public void statefulServiceAuthorization() throws Throwable {
         // Create example services not accessible by jane (as the system user)
         OperationContext.setAuthorizationContext(this.host.getSystemAuthorizationContext());
         Map<URI, ExampleServiceState> exampleServices = createExampleServices("john");

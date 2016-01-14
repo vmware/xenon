@@ -54,6 +54,11 @@ public class TestAuthorizationContext extends BasicTestCase {
         public static final String SELF_LINK = "/claims-verification";
 
         @Override
+        public void authorizeRequest(Operation op) {
+            op.complete();
+        }
+
+        @Override
         public void handleStart(Operation op) {
             if (!verifyNewOperationHasSubject(op)) {
                 return;
@@ -156,6 +161,11 @@ public class TestAuthorizationContext extends BasicTestCase {
     public static class SetAuthorizationContextTestService extends StatelessService {
         public static final String SELF_LINK = "/set-authorization-context-test";
         public static final String EXPECT_USER_CONTEXT = "expectUserContext";
+
+        @Override
+        public void authorizeRequest(Operation op) {
+            op.complete();
+        }
 
         @Override
         public void handleRequest(Operation op) {
@@ -313,6 +323,11 @@ public class TestAuthorizationContext extends BasicTestCase {
 
     public static class WhitelistAuthorizationContextTestService extends StatelessService {
         public static final String SELF_LINK = "/whitelist-authorization-context-test";
+
+        @Override
+        public void authorizeRequest(Operation op) {
+            op.complete();
+        }
 
         @Override
         public void handleGet(Operation op) {

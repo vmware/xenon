@@ -113,6 +113,15 @@ public class StatefulService implements Service {
     }
 
     /**
+     * Authorization processing happens during the state loading phase of request handling.
+     * This method always immediately completes the operation
+     */
+    @Override
+    public void authorizeRequest(Operation op) {
+        op.complete();
+    }
+
+    /**
      * Infrastructure use only. The service host will invoke this method to allow a service to
      * either queue a request or, if it returns true, indicate it is ready to process it
      *
