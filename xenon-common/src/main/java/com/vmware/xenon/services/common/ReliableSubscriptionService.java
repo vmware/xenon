@@ -99,6 +99,11 @@ public class ReliableSubscriptionService extends StatelessService {
     }
 
     @Override
+    public boolean authorizeRequest(Operation op) {
+        return false;
+    }
+
+    @Override
     public void handleRequest(Operation op) {
         if (!op.isNotification()) {
             super.handleRequest(op);

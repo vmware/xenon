@@ -76,6 +76,11 @@ public final class WebSocketService extends StatelessService {
     }
 
     @Override
+    public boolean authorizeRequest(Operation op) {
+        return false;
+    }
+
+    @Override
     public void handleRequest(Operation op) {
         prepareRequest(op);
         Operation.SerializedOperation serializedOperation = Operation.SerializedOperation
