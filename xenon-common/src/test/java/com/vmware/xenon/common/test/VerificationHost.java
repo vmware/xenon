@@ -382,8 +382,8 @@ public class VerificationHost extends ExampleServiceHost {
         log("test failed: %s", e.toString());
         CountDownLatch l = this.completionLatch;
         if (l == null) {
-            throw new IllegalStateException("testStart() and testWait() not paired properly" +
-                    "or testStart(N) was called with N being less than actual completions");
+            log("test has already finished, ignoring completion");
+            return;
         }
         l.countDown();
     }
@@ -436,6 +436,7 @@ public class VerificationHost extends ExampleServiceHost {
             }
         } finally {
             this.completionLatch = null;
+            this.failure = null;
             this.lastTestName = testName;
         }
         return;
