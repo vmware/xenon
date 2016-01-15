@@ -158,10 +158,12 @@ public class Netty2WaySslAuthTest {
         this.host.testWait();
 
         // Create ServiceClient with client SSL auth support
-        ServiceClient client = NettyHttpServiceClient.create(
-                getClass().getCanonicalName(),
-                Executors.newFixedThreadPool(4),
-                Executors.newScheduledThreadPool(1));
+        NettyHttpServiceClient client = NettyHttpServiceClient.create(
+                getClass().getCanonicalName());
+
+        client.setExecutor(Executors.newFixedThreadPool(1));
+        client.setIoExecutor(Executors.newFixedThreadPool(2)).setIoThreadCount(2);
+        client.setScheduledExecutor(Executors.newScheduledThreadPool(1));
 
         SSLContext clientContext = SSLContext.getInstance(ServiceClient.TLS_PROTOCOL_NAME);
         TrustManagerFactory trustManagerFactory = TrustManagerFactory

@@ -29,7 +29,6 @@ import org.junit.Test;
 
 import com.vmware.xenon.common.CommandLineArgumentParser;
 import com.vmware.xenon.common.Operation;
-import com.vmware.xenon.common.ServiceClient;
 import com.vmware.xenon.common.ServiceHost;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
@@ -62,10 +61,12 @@ public class NettyHttp2Test {
         HOST.setMaintenanceIntervalMicros(
                 TimeUnit.MILLISECONDS.toMicros(VerificationHost.FAST_MAINT_INTERVAL_MILLIS));
 
-        ServiceClient client = NettyHttpServiceClient.create(
-                NettyHttpServiceClientTest.class.getCanonicalName(),
-                Executors.newFixedThreadPool(4),
-                Executors.newScheduledThreadPool(1), HOST);
+        NettyHttpServiceClient client = NettyHttpServiceClient.create(
+                NettyHttpServiceClientTest.class.getCanonicalName(), HOST);
+
+        client.setExecutor(Executors.newFixedThreadPool(1));
+        client.setIoExecutor(Executors.newFixedThreadPool(2)).setIoThreadCount(2);
+        client.setScheduledExecutor(Executors.newScheduledThreadPool(1));
 
         HOST.setClient(client);
 

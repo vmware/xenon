@@ -69,8 +69,6 @@ public class NettyHttpServiceClient implements ServiceClient {
             .getName());
     private static final String ENV_VAR_NAME_HTTP_PROXY = "http_proxy";
 
-    private static final int DEFAULT_EVENT_LOOP_THREAD_COUNT = 2;
-
     private URI httpProxy;
     private String userAgent;
 
@@ -80,6 +78,7 @@ public class NettyHttpServiceClient implements ServiceClient {
 
     private ScheduledExecutorService scheduledExecutor;
     private ExecutorService executor;
+    private ExecutorService ioExecutor;
 
     private SSLContext sslContext;
 
@@ -91,36 +90,53 @@ public class NettyHttpServiceClient implements ServiceClient {
 
     private boolean isStarted;
 
-    public static ServiceClient create(String userAgent,
-            ExecutorService executor,
-            ScheduledExecutorService scheduledExecutor) throws URISyntaxException {
-        return create(userAgent, executor, scheduledExecutor, null);
+    private int threadCount;
+
+    public static NettyHttpServiceClient create(String userAgent) throws URISyntaxException {
+        return create(userAgent, null);
     }
 
-    public static ServiceClient create(String userAgent,
-            ExecutorService executor,
-            ScheduledExecutorService scheduledExecutor,
+    public static NettyHttpServiceClient create(String userAgent,
             ServiceHost host) throws URISyntaxException {
         NettyHttpServiceClient sc = new NettyHttpServiceClient();
-        sc.userAgent = userAgent;
-        sc.executor = executor;
-        sc.scheduledExecutor = scheduledExecutor;
-        sc.host = host;
-        sc.channelPool = new NettyChannelPool(executor);
-        sc.http2ChannelPool = new NettyChannelPool(executor);
-        String proxy = System.getenv(ENV_VAR_NAME_HTTP_PROXY);
-        if (proxy != null) {
-            sc.setHttpProxy(new URI(proxy));
-        }
-
-        return sc.setConnectionLimitPerHost(DEFAULT_CONNECTIONS_PER_HOST);
+        sc.setUserAgent(userAgent);
+        sc.setHost(host);
+        return sc;
     }
 
-    private String buildThreadTag() {
-        if (this.host != null) {
-            return UriUtils.extendUri(this.host.getUri(), "netty-client").toString();
-        }
-        return getClass().getSimpleName() + ":" + Utils.getNowMicrosUtc();
+    public NettyHttpServiceClient() {
+        this.channelPool = new NettyChannelPool();
+        this.http2ChannelPool = new NettyChannelPool();
+    }
+
+    public NettyHttpServiceClient setUserAgent(String agentDescription) {
+        this.userAgent = agentDescription;
+        return this;
+    }
+
+    public NettyHttpServiceClient setHost(ServiceHost host) {
+        this.host = host;
+        return this;
+    }
+
+    public NettyHttpServiceClient setIoExecutor(ExecutorService executor) {
+        this.ioExecutor = executor;
+        return this;
+    }
+
+    public NettyHttpServiceClient setExecutor(ExecutorService executor) {
+        this.executor = executor;
+        return this;
+    }
+
+    public NettyHttpServiceClient setScheduledExecutor(ScheduledExecutorService executor) {
+        this.scheduledExecutor = executor;
+        return this;
+    }
+
+    public NettyHttpServiceClient setIoThreadCount(int count) {
+        this.threadCount = count;
+        return this;
     }
 
     @Override
@@ -132,23 +148,40 @@ public class NettyHttpServiceClient implements ServiceClient {
             this.isStarted = true;
         }
 
-        this.channelPool.setThreadTag(buildThreadTag());
-        this.channelPool.setThreadCount(DEFAULT_EVENT_LOOP_THREAD_COUNT);
+        String proxy = System.getenv(ENV_VAR_NAME_HTTP_PROXY);
+        if (proxy != null) {
+            try {
+                setHttpProxy(new URI(proxy));
+            } catch (URISyntaxException e) {
+                throw new RuntimeException(e);
+            }
+        }
+
+        if (this.channelPool.getConnectionLimitPerHost() == 0) {
+            setConnectionLimitPerHost(DEFAULT_CONNECTIONS_PER_HOST);
+        }
+
+        if (this.executor == null || this.scheduledExecutor == null || this.ioExecutor == null) {
+            throw new IllegalStateException("Executors must be set before start");
+        }
+
+        this.channelPool.setThreadCount(this.threadCount);
+        this.channelPool.setExecutor(this.executor).setIoExecutor(this.ioExecutor);
         this.channelPool.start();
 
         // We make a separate pool for HTTP/2. We want to have only one connection per host
         // when using HTTP/2 since HTTP/2 multiplexes streams on a single connection.
-        this.http2ChannelPool.setThreadTag(buildThreadTag());
-        this.http2ChannelPool.setThreadCount(DEFAULT_EVENT_LOOP_THREAD_COUNT);
+        this.http2ChannelPool.setThreadCount(this.threadCount);
         this.http2ChannelPool.setConnectionLimitPerHost(DEFAULT_HTTP2_STREAMS_PER_HOST);
         this.http2ChannelPool.setHttp2Only();
+        this.http2ChannelPool.setExecutor(this.executor).setIoExecutor(this.ioExecutor);
         this.http2ChannelPool.start();
 
         if (this.sslContext != null) {
-            this.sslChannelPool = new NettyChannelPool(this.executor);
-            this.sslChannelPool.setThreadTag(buildThreadTag());
-            this.sslChannelPool.setThreadCount(DEFAULT_EVENT_LOOP_THREAD_COUNT);
+            this.sslChannelPool = new NettyChannelPool();
+            this.sslChannelPool.setThreadCount(this.threadCount);
             this.sslChannelPool.setSSLContext(this.sslContext);
+            this.sslChannelPool.setExecutor(this.executor).setIoExecutor(this.ioExecutor);
             this.sslChannelPool.start();
         }
 

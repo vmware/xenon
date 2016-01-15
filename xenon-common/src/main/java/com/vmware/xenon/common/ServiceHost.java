@@ -135,6 +135,8 @@ import com.vmware.xenon.services.common.authn.BasicAuthenticationService;
 public class ServiceHost {
     public static final String UI_DIRECTORY_NAME = "ui";
 
+    private static final int DEFAULT_IO_THREAD_COUNT = 2;
+
     public static class ServiceAlreadyStartedException extends IllegalStateException {
         private static final long serialVersionUID = -1444810129515584386L;
 
@@ -426,6 +428,7 @@ public class ServiceHost {
     private final ServiceDocumentDescription.Builder descriptionBuilder = Builder.create();
 
     private ExecutorService executor;
+    private ExecutorService ioExecutor;
     protected ScheduledExecutorService scheduledExecutor;
 
     private final ConcurrentSkipListMap<String, Service> attachedServices = new ConcurrentSkipListMap<>();
@@ -951,6 +954,10 @@ public class ServiceHost {
         return this.executor;
     }
 
+    ExecutorService getIoExecutor() {
+        return this.ioExecutor;
+    }
+
     public ExecutorService allocateExecutor(Service s) {
         return allocateExecutor(s, Utils.DEFAULT_THREAD_COUNT);
     }
@@ -995,6 +1002,8 @@ public class ServiceHost {
         }
 
         this.executor = Executors.newWorkStealingPool(Utils.DEFAULT_THREAD_COUNT);
+        this.ioExecutor = Executors.newFixedThreadPool(DEFAULT_IO_THREAD_COUNT,
+                r -> new Thread(r, getUri().toString() + "/io/" + this.state.id));
         this.scheduledExecutor = Executors.newScheduledThreadPool(Utils.DEFAULT_THREAD_COUNT,
                 r -> new Thread(r, getUri().toString() + "/scheduled/" + this.state.id));
 
@@ -1049,16 +1058,18 @@ public class ServiceHost {
         String userAgent = ServiceHost.class.getSimpleName() + "/" + commitID;
 
         if (this.client == null) {
-            this.client = NettyHttpServiceClient.create(userAgent, this.executor,
-                    this.scheduledExecutor,
-                    this);
+            NettyHttpServiceClient c = NettyHttpServiceClient.create(userAgent, this);
+            c.setExecutor(this.executor).setScheduledExecutor(this.scheduledExecutor)
+                    .setIoExecutor(this.ioExecutor).setIoThreadCount(DEFAULT_IO_THREAD_COUNT);
             SSLContext clientContext = SSLContext.getInstance(ServiceClient.TLS_PROTOCOL_NAME);
             TrustManagerFactory trustManagerFactory = TrustManagerFactory
                     .getInstance(TrustManagerFactory.getDefaultAlgorithm());
             trustManagerFactory.init((KeyStore) null);
             clientContext.init(null, trustManagerFactory.getTrustManagers(), null);
+            this.client = c;
             this.client.setSSLContext(clientContext);
         }
+
 
         // Start client as system user; it starts a callback service
         AuthorizationContext ctx = OperationContext.getAuthorizationContext();
@@ -3307,6 +3318,7 @@ public class ServiceHost {
         }
 
         this.executor.shutdownNow();
+        this.ioExecutor.shutdownNow();
         this.scheduledExecutor.shutdownNow();
     }
 

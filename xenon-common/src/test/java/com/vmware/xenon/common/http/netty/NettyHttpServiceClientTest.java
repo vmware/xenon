@@ -85,10 +85,12 @@ public class NettyHttpServiceClientTest {
         HOST.setMaintenanceIntervalMicros(
                 TimeUnit.MILLISECONDS.toMicros(VerificationHost.FAST_MAINT_INTERVAL_MILLIS));
 
-        ServiceClient client = NettyHttpServiceClient.create(
-                NettyHttpServiceClientTest.class.getCanonicalName(),
-                Executors.newFixedThreadPool(4),
-                Executors.newScheduledThreadPool(1), HOST);
+        NettyHttpServiceClient client = NettyHttpServiceClient.create(
+                NettyHttpServiceClientTest.class.getCanonicalName(), HOST);
+
+        client.setExecutor(Executors.newFixedThreadPool(1));
+        client.setIoExecutor(Executors.newFixedThreadPool(2)).setIoThreadCount(2);
+        client.setScheduledExecutor(Executors.newScheduledThreadPool(1));
 
         SSLContext clientContext = SSLContext.getInstance(ServiceClient.TLS_PROTOCOL_NAME);
         clientContext.init(null, InsecureTrustManagerFactory.INSTANCE.getTrustManagers(), null);
@@ -452,10 +454,14 @@ public class NettyHttpServiceClientTest {
         uriToMissingService = UriUtils.buildUri(this.host, ExampleFactoryService.SELF_LINK + "/"
                 + UUID.randomUUID().toString());
 
-        ServiceClient nonXenonLookingClient = null;
+        NettyHttpServiceClient nonXenonLookingClient = null;
         try {
-            nonXenonLookingClient = NettyHttpServiceClient.create(UUID.randomUUID().toString(),
-                    Executors.newFixedThreadPool(1), Executors.newScheduledThreadPool(1));
+            nonXenonLookingClient = NettyHttpServiceClient.create(UUID.randomUUID().toString());
+
+            nonXenonLookingClient.setExecutor(Executors.newFixedThreadPool(1));
+            nonXenonLookingClient.setIoExecutor(Executors.newFixedThreadPool(2))
+                    .setIoThreadCount(2);
+            nonXenonLookingClient.setScheduledExecutor(Executors.newScheduledThreadPool(1));
             nonXenonLookingClient.start();
             s = Utils.getNowMicrosUtc();
             // try a JAVA HTTP client and verify we do not queue.

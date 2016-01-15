@@ -22,7 +22,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.TimeoutException;
 
 import javax.net.ssl.SSLContext;
@@ -70,31 +69,36 @@ public class NettyChannelPool {
         return host + port;
     }
 
-    private final ExecutorService executor;
-    private ExecutorService nettyExecutorService;
-    private EventLoopGroup eventGroup;
-    private String threadTag = NettyChannelPool.class.getSimpleName();
+    private ExecutorService executor;
+    private ExecutorService ioExecutor;
     private int threadCount;
+    private EventLoopGroup eventGroup;
+
     private boolean isHttp2Only = false;
 
     private Bootstrap bootStrap;
 
     private final Map<String, NettyChannelGroup> channelGroups = new ConcurrentSkipListMap<>();
-    private int connectionLimit = 1;
+    private int connectionLimit = 0;
 
     private SSLContext sslContext;
 
-    public NettyChannelPool(ExecutorService executor) {
-        this.executor = executor;
-    }
 
-    public NettyChannelPool setThreadTag(String tag) {
-        this.threadTag = tag;
-        return this;
+    public NettyChannelPool() {
     }
 
     public NettyChannelPool setThreadCount(int count) {
         this.threadCount = count;
+        return this;
+    }
+
+    public NettyChannelPool setIoExecutor(ExecutorService ioExecutor) {
+        this.ioExecutor = ioExecutor;
+        return this;
+    }
+
+    public NettyChannelPool setExecutor(ExecutorService executor) {
+        this.executor = executor;
         return this;
     }
 
@@ -118,8 +122,11 @@ public class NettyChannelPool {
             return;
         }
 
-        this.nettyExecutorService = Executors.newFixedThreadPool(this.threadCount, r -> new Thread(r, this.threadTag));
-        this.eventGroup = new NioEventLoopGroup(this.threadCount, this.nettyExecutorService);
+        if (this.executor == null || this.ioExecutor == null) {
+            throw new IllegalStateException("Executors must be set before start");
+        }
+
+        this.eventGroup = new NioEventLoopGroup(this.threadCount, this.ioExecutor);
 
         this.bootStrap = new Bootstrap();
         this.bootStrap.group(this.eventGroup)
@@ -147,14 +154,12 @@ public class NettyChannelPool {
         return this.connectionLimit;
     }
 
-    private NettyChannelGroup getChannelGroup(String key) {
+    private synchronized NettyChannelGroup getChannelGroup(String key) {
         NettyChannelGroup group;
-        synchronized (this.channelGroups) {
-            group = this.channelGroups.get(key);
-            if (group == null) {
-                group = new NettyChannelGroup();
-                this.channelGroups.put(key, group);
-            }
+        group = this.channelGroups.get(key);
+        if (group == null) {
+            group = new NettyChannelGroup();
+            this.channelGroups.put(key, group);
         }
         return group;
     }
@@ -561,7 +566,6 @@ public class NettyChannelPool {
                 }
             }
             this.eventGroup.shutdownGracefully();
-            this.nettyExecutorService.shutdown();
         } catch (Throwable e) {
             // ignore exception
         }
