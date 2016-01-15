@@ -1779,6 +1779,8 @@ public class ServiceHost {
         post.nestCompletion((o, e) -> {
             this.pendingStartOperations.remove(post);
             if (e != null) {
+                log(Level.WARNING, "Service %s failed start: %s", service.getSelfLink(),
+                        Utils.toString(e));
                 stopService(service);
                 post.fail(e);
                 return;
