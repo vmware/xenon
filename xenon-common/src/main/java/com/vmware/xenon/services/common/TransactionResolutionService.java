@@ -13,8 +13,6 @@
 
 package com.vmware.xenon.services.common;
 
-import java.net.UnknownHostException;
-
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.StatefulService;
 import com.vmware.xenon.common.StatelessService;
@@ -40,12 +38,8 @@ public class TransactionResolutionService extends StatelessService {
     }
 
     @Override
-    public void handleRequest(Operation op) {
-        if (op.getUri().getPath().endsWith(RESOLUTION_SUFFIX)) {
-            handleResolutionRequest(op);
-        } else {
-            op.fail(new UnknownHostException());
-        }
+    public void handlePost(Operation op) {
+        handleResolutionRequest(op);
     }
 
     /**
