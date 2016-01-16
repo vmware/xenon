@@ -125,6 +125,16 @@ public class TransactionService extends StatefulService {
         public Set<String> modifiedLinks;
 
         /**
+         * Set of services that have been created in the context of this transaction
+         */
+        public Set<String> createdLinks;
+
+        /**
+         * Set of services that have been deleted in the context of this transaction
+         */
+        public Set<String> deletedLinks;
+
+        /**
          * A mapping from services to coordinators responsible for pending operations on these services
          */
         public LinkedHashMap<String, Set<String>> servicesToCoordinators;
@@ -150,9 +160,19 @@ public class TransactionService extends StatefulService {
         public Options options;
 
         /**
-         * Keeps track of a services that have failed.
+         * Keeps track of services that have failed.
          */
         public Set<String> failedLinks;
+
+        /**
+         * Number of received transactional operations sent by services participating in the transaction
+         */
+        public int pendingOperationCount;
+
+        /**
+         * Number of expected transactional operations to be sent by services participating in the transaction
+         */
+        public int expectedOperationCount;
     }
 
     /**
@@ -181,6 +201,8 @@ public class TransactionService extends StatefulService {
                 : s.servicesToCoordinators;
         s.readLinks = s.readLinks == null ? new HashSet<>() : s.readLinks;
         s.modifiedLinks = s.modifiedLinks == null ? new HashSet<>() : s.modifiedLinks;
+        s.createdLinks = s.createdLinks == null ? new HashSet<>() : s.createdLinks;
+        s.deletedLinks = s.deletedLinks == null ? new HashSet<>() : s.deletedLinks;
         s.dependentLinks = s.dependentLinks == null ? new HashSet<>() : s.dependentLinks;
         s.failedLinks = new HashSet<>();
 
@@ -224,6 +246,13 @@ public class TransactionService extends StatefulService {
         } else {
             existing.modifiedLinks.add(put.getReferer().toString());
         }
+        if (record.action == Action.POST) {
+            existing.createdLinks.add(put.getReferer().toString());
+        }
+        if (record.action == Action.DELETE) {
+            existing.deletedLinks.add(put.getReferer().toString());
+        }
+
         // This has the possibility of overwriting existing pending, but that's OK, because it means the service
         // evolved, either by (being asked to) commit/abort or having seen more operations -- in any case, this
         // "pending" is the most recent one, so we're good.
@@ -237,8 +266,20 @@ public class TransactionService extends StatefulService {
             }
             existing.failedLinks.add(put.getReferer().toString());
         }
+        ++existing.pendingOperationCount;
         setState(put, existing);
         put.complete();
+
+        if (existing.taskSubStage == SubStage.RESOLVING && existing.pendingOperationCount == existing.expectedOperationCount) {
+            // handle the case of pending operations received after transaction commit request
+            ResolutionRequest body = new ResolutionRequest();
+            body.kind = TransactionService.ResolutionKind.COMMIT;
+            body.pendingOperations = existing.expectedOperationCount;
+            Operation commit = Operation
+                    .createPatch(this.getUri())
+                    .setBody(body);
+            sendRequest(commit);
+        }
     }
 
     /**
@@ -275,7 +316,7 @@ public class TransactionService extends StatefulService {
             } else if (resolution.kind == ResolutionKind.COMMIT) {
                 updateStage(patch, SubStage.RESOLVING);
                 patch.complete();
-                handleCommit(patch);
+                handleCommitIfAllPendingOperationsReceived(patch);
             } else if (resolution.kind == ResolutionKind.COMMITTED) {
                 updateStage(patch, SubStage.COMMITTED);
                 patch.complete();
@@ -283,11 +324,35 @@ public class TransactionService extends StatefulService {
                 updateStage(patch, SubStage.ABORTED);
                 patch.complete();
             } else {
-                getHost().failRequestActionNotSupported(patch);
                 patch.fail(new IllegalArgumentException(
                         "Unrecognized resolution kind: " + resolution.kind));
             }
         }
+    }
+
+    /**
+     * Checks if all pending operations sent by participating services have
+     * been received by this coordinator, and if so proceeds with commit
+     */
+    private void handleCommitIfAllPendingOperationsReceived(Operation op) {
+        TransactionServiceState currentState = getState(op);
+        ResolutionRequest commitRequest = op.getBody(ResolutionRequest.class);
+        currentState.expectedOperationCount = commitRequest.pendingOperations;
+
+        if (currentState.pendingOperationCount == currentState.expectedOperationCount) {
+            handleCommit(op);
+            return;
+        }
+
+        if (currentState.pendingOperationCount > currentState.expectedOperationCount) {
+            String errorMsg = String.format("Illegal commit request: client provided pending operations %d is less than already received %d",
+                    currentState.expectedOperationCount, currentState.pendingOperationCount);
+            logWarning(errorMsg);
+            op.fail(new IllegalStateException(errorMsg));
+            return;
+        }
+
+        // re-enter when the rest of the pending operations are received
     }
 
     /**
@@ -489,6 +554,11 @@ public class TransactionService extends StatefulService {
      */
     private Collection<Operation> createNotifyServicesToAbort(TransactionServiceState state) {
         Collection<Operation> operations = new HashSet<>();
+        for (String service : state.createdLinks) {
+            operations.add(createDeleteOp(UriUtils.buildUri(service)));
+            state.readLinks.remove(service);
+            state.modifiedLinks.remove(service);
+        }
         for (String service : state.readLinks) {
             operations.add(createNotifyOp(UriUtils.buildUri(service), Operation.TX_ABORT));
         }
@@ -502,12 +572,18 @@ public class TransactionService extends StatefulService {
      * Send a tiny metadata request to all services to commit
      */
     private Collection<Operation> createNotifyServicesToCommit(TransactionServiceState state) {
-        Collection<Operation> operations = state.readLinks.stream()
+        Collection<Operation> operations = new HashSet<>();
+        for (String service : state.deletedLinks) {
+            operations.add(createDeleteOp(UriUtils.buildUri(service)));
+            state.readLinks.remove(service);
+            state.modifiedLinks.remove(service);
+        }
+        operations.addAll(state.readLinks.stream()
                 .map(service -> createNotifyOp(UriUtils.buildUri(service), Operation.TX_COMMIT))
-                .collect(Collectors.toSet());
+                .collect(Collectors.toSet()));
         operations.addAll(state.modifiedLinks.stream()
                 .map(service -> createNotifyOp(UriUtils.buildUri(service), Operation.TX_COMMIT))
-                .collect(Collectors.toList()));
+                .collect(Collectors.toSet()));
         return operations;
     }
 
@@ -523,6 +599,16 @@ public class TransactionService extends StatefulService {
                 .addRequestHeader(Operation.VMWARE_DCP_TRANSACTION_HEADER, header)
                 // just an empty body
                 .setBody(new TransactionServiceState())
+                .setReferer(getUri());
+    }
+
+    /**
+     * Prepare a delete request to a service
+     */
+    private Operation createDeleteOp(URI service) {
+        // no completion handler. we'll handle in a transaction GC service
+        return Operation
+                .createDelete(service)
                 .setReferer(getUri());
     }
 

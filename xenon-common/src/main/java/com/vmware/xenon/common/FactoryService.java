@@ -486,6 +486,10 @@ public abstract class FactoryService extends StatelessService {
                 o.setReplicationDisabled(false);
                 replicateRequest(o);
             });
+
+            if (o.isWithinTransaction() && this.getHost().getTransactionServiceUri() != null) {
+                TransactionServiceHelper.notifyTransactionCoordinatorOfNewService(this, childService, o);
+            }
         }
 
         o.setReplicationDisabled(true);
