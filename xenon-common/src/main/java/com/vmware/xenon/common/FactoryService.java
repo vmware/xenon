@@ -16,6 +16,7 @@ package com.vmware.xenon.common;
 import java.net.URI;
 import java.util.EnumSet;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.UUID;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.TimeUnit;
@@ -486,6 +487,14 @@ public abstract class FactoryService extends StatelessService {
                 o.setReplicationDisabled(false);
                 replicateRequest(o);
             });
+
+            if (o.isWithinTransaction() && this.getHost().getTransactionServiceUri() != null) {
+                childService.setHost(this.getHost());
+                URI serviceUri = o.getUri().normalize();
+                String servicePath = UriUtils.normalizeUriPath(serviceUri.getPath()).intern();
+                childService.setSelfLink(servicePath);
+                TransactionServiceHelper.notifyTransactionCoordinator(childService, new HashSet<>(), o, null);
+            }
         }
 
         o.setReplicationDisabled(true);

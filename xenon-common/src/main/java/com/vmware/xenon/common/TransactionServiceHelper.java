@@ -111,9 +111,9 @@ public class TransactionServiceHelper {
     }
 
     /**
-     * Notify the transaction coordinator asynchronously (taking no action upon response)
+     * Notify the transaction coordinator
      */
-    static void notifyTransactionCoordinator(StatefulService s, Set<String> txCoordinatorLinks,
+    static void notifyTransactionCoordinator(Service s, Set<String> txCoordinatorLinks,
                                              Operation op, Throwable e) {
         Operation.TransactionContext operationsLogRecord = new Operation.TransactionContext();
         operationsLogRecord.action = op.getAction();
@@ -154,7 +154,9 @@ public class TransactionServiceHelper {
                 Operation.TX_COMMIT)) {
             // commit should expose latest state, i.e., remove shadow and bump the version
             // and remove transaction from pending
-            txCoordinatorLinks.remove(request.getReferer().toString());
+            if (txCoordinatorLinks != null) {
+                txCoordinatorLinks.remove(request.getReferer().toString());
+            }
 
             QueryTask.QuerySpecification q = new QueryTask.QuerySpecification();
             q.query.setTermPropertyName(ServiceDocument.FIELD_NAME_TRANSACTION_ID);
@@ -172,7 +174,9 @@ public class TransactionServiceHelper {
         } else if (request.getRequestHeader(Operation.VMWARE_DCP_TRANSACTION_HEADER).equals(
                 Operation.TX_ABORT)) {
             // abort should just remove transaction from pending
-            txCoordinatorLinks.remove(request.getReferer().toString());
+            if (txCoordinatorLinks != null) {
+                txCoordinatorLinks.remove(request.getReferer().toString());
+            }
             request.complete();
         } else {
             request.fail(new IllegalArgumentException(
@@ -205,7 +209,7 @@ public class TransactionServiceHelper {
         Object obj = response.results.documents.get(latest);
         // ..unshadow..
         ServiceDocument sd = Utils.fromJson((String) obj, st);
-        sd.documentTransactionId = "";
+        sd.documentTransactionId = null;
         // ..and stick back in.
         s.setState(original, sd);
         original.complete();
