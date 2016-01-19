@@ -16,29 +16,39 @@ package com.vmware.xenon.services.common;
 import java.net.URI;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import com.vmware.xenon.common.CommandLineArgumentParser;
 import com.vmware.xenon.common.NodeSelectorService.SelectAndForwardRequest;
 import com.vmware.xenon.common.NodeSelectorService.SelectOwnerResponse;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Operation.CompletionHandler;
 import com.vmware.xenon.common.Service;
 import com.vmware.xenon.common.ServiceClient;
+import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.ServiceHost;
 import com.vmware.xenon.common.StatelessService;
-import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
 import com.vmware.xenon.services.common.NodeGroupService.NodeGroupState;
 import com.vmware.xenon.services.common.NodeState.NodeOption;
 
 public class NodeSelectorReplicationService extends StatelessService {
 
+    /**
+     * Default number of concurrent connections per peer host. This can be
+     * changed through a JVM property
+     */
+    public int replicationClientConnectionsPerHost = 64;
+
     private Service parent;
 
-    public NodeSelectorReplicationService(Service parent) {
+    private ServiceClient replicationClient;
+
+    public NodeSelectorReplicationService(Service parent, ServiceClient client) {
+        super(ServiceDocument.class);
+        super.toggleOption(ServiceOption.UTILITY, true);
+        CommandLineArgumentParser.parseFromProperties(this);
+        client.setConnectionLimitPerHost(this.replicationClientConnectionsPerHost);
         this.parent = parent;
-        super.setHost(parent.getHost());
-        super.setSelfLink(UriUtils.buildUriPath(parent.getSelfLink(),
-                ServiceHost.SERVICE_URI_SUFFIX_REPLICATION));
-        super.setProcessingStage(ProcessingStage.AVAILABLE);
+        this.replicationClient = client;
     }
 
     /**
@@ -135,7 +145,7 @@ public class NodeSelectorReplicationService extends StatelessService {
             update.getCookies().clear();
         }
 
-        ServiceClient cl = getHost().getClient();
+        ServiceClient cl = this.replicationClient;
         String selfId = getHost().getId();
 
         rsp.selectedNodes.forEach((m) -> {
@@ -173,5 +183,4 @@ public class NodeSelectorReplicationService extends StatelessService {
     public ServiceHost getHost() {
         return this.parent.getHost();
     }
-
 }

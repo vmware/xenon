@@ -943,11 +943,11 @@ public class ServiceHost {
         return this;
     }
 
-    ScheduledExecutorService getScheduledExecutor() {
+    public ScheduledExecutorService getScheduledExecutor() {
         return this.scheduledExecutor;
     }
 
-    ExecutorService getExecutor() {
+    public ExecutorService getExecutor() {
         return this.executor;
     }
 

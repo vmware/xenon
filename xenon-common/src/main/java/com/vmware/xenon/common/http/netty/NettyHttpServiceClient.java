@@ -56,7 +56,7 @@ public class NettyHttpServiceClient implements ServiceClient {
      * this limit is set too high, and we are talking to many remote hosts, we can possibly exceed
      * the process file descriptor limit
      */
-    public static final int DEFAULT_CONNECTIONS_PER_HOST = 128;
+    public static final int DEFAULT_CONNECTIONS_PER_HOST = 16;
 
     /**
      * Netty defaults to allowing 2^32 concurrent streams, which feels likea  bit much.
@@ -68,8 +68,6 @@ public class NettyHttpServiceClient implements ServiceClient {
     public static final Logger LOGGER = Logger.getLogger(ServiceClient.class
             .getName());
     private static final String ENV_VAR_NAME_HTTP_PROXY = "http_proxy";
-
-    private static final int DEFAULT_EVENT_LOOP_THREAD_COUNT = 2;
 
     private URI httpProxy;
     private String userAgent;
@@ -116,13 +114,6 @@ public class NettyHttpServiceClient implements ServiceClient {
         return sc.setConnectionLimitPerHost(DEFAULT_CONNECTIONS_PER_HOST);
     }
 
-    private String buildThreadTag() {
-        if (this.host != null) {
-            return UriUtils.extendUri(this.host.getUri(), "netty-client").toString();
-        }
-        return getClass().getSimpleName() + ":" + Utils.getNowMicrosUtc();
-    }
-
     @Override
     public void start() {
         synchronized (this) {
@@ -132,39 +123,35 @@ public class NettyHttpServiceClient implements ServiceClient {
             this.isStarted = true;
         }
 
-        this.channelPool.setThreadTag(buildThreadTag());
-        this.channelPool.setThreadCount(DEFAULT_EVENT_LOOP_THREAD_COUNT);
         this.channelPool.start();
 
         // We make a separate pool for HTTP/2. We want to have only one connection per host
         // when using HTTP/2 since HTTP/2 multiplexes streams on a single connection.
-        this.http2ChannelPool.setThreadTag(buildThreadTag());
-        this.http2ChannelPool.setThreadCount(DEFAULT_EVENT_LOOP_THREAD_COUNT);
         this.http2ChannelPool.setConnectionLimitPerHost(DEFAULT_HTTP2_STREAMS_PER_HOST);
         this.http2ChannelPool.setHttp2Only();
         this.http2ChannelPool.start();
 
         if (this.sslContext != null) {
             this.sslChannelPool = new NettyChannelPool(this.executor);
-            this.sslChannelPool.setThreadTag(buildThreadTag());
-            this.sslChannelPool.setThreadCount(DEFAULT_EVENT_LOOP_THREAD_COUNT);
             this.sslChannelPool.setSSLContext(this.sslContext);
             this.sslChannelPool.start();
         }
 
-        if (this.host != null) {
-            Operation startCallbackPost = Operation
-                    .createPost(UriUtils.buildUri(this.host, ServiceUriPaths.CORE_CALLBACKS))
-                    .setCompletion((o, e) -> {
-                        if (e != null) {
-                            this.host.log(Level.WARNING, "Failed to start %s: %s",
-                                    ServiceUriPaths.CORE_CALLBACKS,
-                                    e.toString());
-                        }
-                    });
-            this.callbackService = new HttpRequestCallbackService();
-            this.host.startService(startCallbackPost, this.callbackService);
+        if (this.host == null
+                || this.host.getServiceStage(ServiceUriPaths.CORE_CALLBACKS) != null) {
+            return;
         }
+        Operation startCallbackPost = Operation
+                .createPost(UriUtils.buildUri(this.host, ServiceUriPaths.CORE_CALLBACKS))
+                .setCompletion((o, e) -> {
+                    if (e != null) {
+                        this.host.log(Level.WARNING, "Failed to start %s: %s",
+                                ServiceUriPaths.CORE_CALLBACKS,
+                                e.toString());
+                    }
+                });
+        this.callbackService = new HttpRequestCallbackService();
+        this.host.startService(startCallbackPost, this.callbackService);
     }
 
     @Override
@@ -181,7 +168,7 @@ public class NettyHttpServiceClient implements ServiceClient {
             this.isStarted = false;
         }
 
-        if (this.host != null) {
+        if (this.host != null && this.callbackService != null) {
             this.host.stopService(this.callbackService);
         }
     }

@@ -34,8 +34,6 @@ public class NodeSelectorForwardingService extends StatelessService {
         super(ServiceDocument.class);
         super.toggleOption(ServiceOption.UTILITY, true);
         this.parent = parent;
-        super.setSelfLink(UriUtils.buildUriPath(this.parent.getSelfLink(),
-                ServiceUriPaths.SERVICE_URI_SUFFIX_FORWARDING));
     }
 
     @Override

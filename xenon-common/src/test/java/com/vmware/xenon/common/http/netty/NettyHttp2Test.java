@@ -86,6 +86,7 @@ public class NettyHttp2Test {
     @AfterClass
     public static void tearDown() {
         HOST.tearDown();
+        assertTrue(NettyChannelPool.getNioEventLoopContext() == null);
     }
 
     @After

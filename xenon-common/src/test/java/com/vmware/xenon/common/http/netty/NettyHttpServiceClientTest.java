@@ -109,6 +109,7 @@ public class NettyHttpServiceClientTest {
     @AfterClass
     public static void tearDown() {
         HOST.tearDown();
+        assertTrue(NettyChannelPool.getNioEventLoopContext() == null);
     }
 
     @Before

@@ -14,6 +14,7 @@
 package com.vmware.xenon.common.http.netty;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
 
 import java.io.File;
 import java.io.IOException;
@@ -114,6 +115,7 @@ public class Netty2WaySslAuthTest {
     public void tearDown() {
         this.host.stop();
         this.temporaryFolder.delete();
+        assertTrue(NettyChannelPool.getNioEventLoopContext() == null);
     }
 
     @Test
