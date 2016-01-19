@@ -28,6 +28,12 @@ import com.vmware.xenon.common.Operation;
 
 public class TestFileUtils extends BasicReusableHostTestCase {
 
+    /**
+     * Command line argument
+     */
+    public long fileSize = ((2 * FileUtils.ContentRange.MAX_IN_FLIGHT_CHUNKS) + 1)
+            * FileUtils.ContentRange.CHUNK_SIZE;
+
     @Test
     public void testFileUpload() throws Throwable {
         File inFile = randomFile();
@@ -57,7 +63,8 @@ public class TestFileUtils extends BasicReusableHostTestCase {
     @Test
     public void testFileDownload() throws Throwable {
         MinimalFileStore mfs = new MinimalFileStore();
-        File inFile = randomFile();
+
+        File inFile = randomFile(this.fileSize);
         inFile.deleteOnExit();
 
         MinimalFileStore.MinimalFileState mfsState = new MinimalFileStore.MinimalFileState();
@@ -72,7 +79,18 @@ public class TestFileUtils extends BasicReusableHostTestCase {
 
         Operation get = Operation.createGet(mfs.getUri())
                 .setReferer(this.host.getUri())
-                .setCompletion(this.host.getCompletion());
+                .setCompletion((o, e) -> {
+                    if (e != null) {
+                        this.host.failIteration(e);
+                        return;
+                    }
+                    if (downloadFile.length() == 0) {
+                        this.host.failIteration(new IllegalStateException(
+                                "File is still zero length after completion"));
+                        return;
+                    }
+                    this.host.completeIteration();
+                });
         this.host.testStart(1);
         FileUtils.getFile(this.host.getClient(), get, downloadFile);
         this.host.testWait();
@@ -125,13 +143,18 @@ public class TestFileUtils extends BasicReusableHostTestCase {
     }
 
     private File randomFile() throws Throwable {
+        return randomFile(FileUtils.ContentRange.CHUNK_SIZE * 3);
+    }
+
+    private File randomFile(long length) throws Throwable {
         File f = File.createTempFile("randomInput", ".bin", null);
 
         RandomAccessFile w = new RandomAccessFile(f, "rw");
 
         byte[] buf = new byte[FileUtils.ContentRange.CHUNK_SIZE];
+        long chunkCount = (long) Math.ceil(length / FileUtils.ContentRange.CHUNK_SIZE);
         Random r = new Random();
-        for (int i = 0; i <= 2 * FileUtils.ContentRange.MAX_IN_FLIGHT_CHUNKS + 1; i++) {
+        for (int i = 0; i <= chunkCount; i++) {
             r.nextBytes(buf);
             w.write(buf);
         }

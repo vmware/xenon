@@ -495,8 +495,7 @@ public class FileUtils {
 
             String contentRangeHeader = o.getResponseHeader(Operation.CONTENT_RANGE_HEADER);
             if (contentRangeHeader == null) {
-                // done
-                get.complete();
+                // done, get operation will be completed by writeBody() above
                 return;
             }
 
@@ -556,7 +555,8 @@ public class FileUtils {
 
         byte[] b = (byte[]) o.getBodyRaw();
         if (b == null || b.length == 0) {
-            throw new IllegalStateException("no data");
+            parentOp.fail(new IllegalStateException("no data"));
+            return;
         }
 
         final ByteBuffer buf = ByteBuffer.wrap(b);
