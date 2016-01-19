@@ -56,7 +56,7 @@ public class NettyHttpServiceClient implements ServiceClient {
      * this limit is set too high, and we are talking to many remote hosts, we can possibly exceed
      * the process file descriptor limit
      */
-    public static final int DEFAULT_CONNECTIONS_PER_HOST = 128;
+    public static final int DEFAULT_CONNECTIONS_PER_HOST = 16;
 
     /**
      * Netty defaults to allowing 2^32 concurrent streams, which feels likea  bit much.
@@ -152,19 +152,21 @@ public class NettyHttpServiceClient implements ServiceClient {
             this.sslChannelPool.start();
         }
 
-        if (this.host != null) {
-            Operation startCallbackPost = Operation
-                    .createPost(UriUtils.buildUri(this.host, ServiceUriPaths.CORE_CALLBACKS))
-                    .setCompletion((o, e) -> {
-                        if (e != null) {
-                            this.host.log(Level.WARNING, "Failed to start %s: %s",
-                                    ServiceUriPaths.CORE_CALLBACKS,
-                                    e.toString());
-                        }
-                    });
-            this.callbackService = new HttpRequestCallbackService();
-            this.host.startService(startCallbackPost, this.callbackService);
+        if (this.host == null
+                || this.host.getServiceStage(ServiceUriPaths.CORE_CALLBACKS) != null) {
+            return;
         }
+        Operation startCallbackPost = Operation
+                .createPost(UriUtils.buildUri(this.host, ServiceUriPaths.CORE_CALLBACKS))
+                .setCompletion((o, e) -> {
+                    if (e != null) {
+                        this.host.log(Level.WARNING, "Failed to start %s: %s",
+                                ServiceUriPaths.CORE_CALLBACKS,
+                                e.toString());
+                    }
+                });
+        this.callbackService = new HttpRequestCallbackService();
+        this.host.startService(startCallbackPost, this.callbackService);
     }
 
     @Override
@@ -181,7 +183,7 @@ public class NettyHttpServiceClient implements ServiceClient {
             this.isStarted = false;
         }
 
-        if (this.host != null) {
+        if (this.host != null && this.callbackService != null) {
             this.host.stopService(this.callbackService);
         }
     }

@@ -16,12 +16,14 @@ package com.vmware.xenon.services.common;
 import java.io.UnsupportedEncodingException;
 import java.math.BigInteger;
 import java.net.URI;
+import java.net.URISyntaxException;
 import java.security.MessageDigest;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.SortedMap;
 import java.util.TreeMap;
+
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ConcurrentSkipListMap;
@@ -35,11 +37,13 @@ import com.vmware.xenon.common.NodeSelectorState;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Operation.CompletionHandler;
 import com.vmware.xenon.common.Service;
+import com.vmware.xenon.common.ServiceClient;
 import com.vmware.xenon.common.ServiceErrorResponse;
 import com.vmware.xenon.common.ServiceHost;
 import com.vmware.xenon.common.StatelessService;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
+import com.vmware.xenon.common.http.netty.NettyHttpServiceClient;
 import com.vmware.xenon.services.common.NodeGroupService.NodeGroupState;
 
 /**
@@ -67,6 +71,7 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
 
     private volatile boolean isSynchronizationRequired;
     private boolean isNodeGroupConverged;
+    private ServiceClient replicationClient;
 
     public ConsistentHashingNodeSelectorService() {
         super(NodeSelectorState.class);
@@ -88,12 +93,11 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
         state.documentKind = Utils.buildKind(NodeSelectorState.class);
         state.documentOwner = getHost().getId();
         this.cachedState = state;
-        this.replicationUtility = new NodeSelectorReplicationService(this);
         startHelperServices(start);
     }
 
     private void startHelperServices(Operation op) {
-        AtomicInteger remaining = new AtomicInteger(4);
+        AtomicInteger remaining = new AtomicInteger(5);
         CompletionHandler h = (o, e) -> {
             if (e != null) {
                 op.fail(e);
@@ -123,6 +127,9 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
                     h.handle(o, e);
                 }));
 
+        Operation startReplPost = Operation.createPost(
+                UriUtils.extendUri(getUri(), ServiceUriPaths.SERVICE_URI_SUFFIX_REPLICATION))
+                .setCompletion(h);
         Operation startSynchPost = Operation.createPost(
                 UriUtils.extendUri(getUri(), ServiceUriPaths.SERVICE_URI_SUFFIX_SYNCHRONIZATION))
                 .setCompletion(h);
@@ -130,6 +137,21 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
                 UriUtils.extendUri(getUri(), ServiceUriPaths.SERVICE_URI_SUFFIX_FORWARDING))
                 .setCompletion(h);
 
+        // Create a dedicated client, which will maintain its own independent connection pool,
+        // for replication. Since replication requests are never forwarded, this avoids potential
+        // deadlocks with client requests that are forwarded.
+        try {
+            this.replicationClient = NettyHttpServiceClient.create(this.getClass().getSimpleName(),
+                    getHost().getExecutor(), getHost().getScheduledExecutor(),
+                    getHost());
+            this.replicationClient.start();
+        } catch (URISyntaxException e1) {
+            op.fail(e1);
+            return;
+        }
+
+        this.replicationUtility = new NodeSelectorReplicationService(this, this.replicationClient);
+        getHost().startService(startReplPost, this.replicationUtility);
         getHost().startService(startSynchPost, new NodeSelectorSynchronizationService(this));
         getHost().startService(startForwardingPost, new NodeSelectorForwardingService(this));
     }
@@ -193,6 +215,12 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
         }
 
         selectAndForward(op, body);
+    }
+
+    @Override
+    public void handleDelete(Operation delete) {
+        this.replicationClient.stop();
+        super.handleDelete(delete);
     }
 
     /**
