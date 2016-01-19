@@ -32,7 +32,7 @@ import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelFutureListener;
 import io.netty.channel.ChannelPromise;
-import io.netty.channel.EventLoopGroup;
+
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioSocketChannel;
 
@@ -45,6 +45,18 @@ import com.vmware.xenon.common.Utils;
  * Asynchronous connection management pool
  */
 public class NettyChannelPool {
+
+    private static final int DEFAULT_EVENT_LOOP_THREAD_COUNT = 2;
+
+    public static class NettyNioEventLoopContext {
+        ExecutorService executor;
+        NioEventLoopGroup eventLoopGroup;
+        int useCount;
+
+        public int getUseCount() {
+            return this.useCount;
+        }
+    }
 
     public static class NettyChannelGroup {
         // available and inUse channels are for when we have an HTTP/1.1 connection
@@ -63,6 +75,46 @@ public class NettyChannelPool {
         public List<Operation> pendingRequests = new ArrayList<>();
     }
 
+    public static NettyNioEventLoopContext allocateNioEventLoopContext() {
+        synchronized (NettyNioEventLoopContext.class) {
+            if (SHARED_NIO_EVENT_CONTEXT != null) {
+                SHARED_NIO_EVENT_CONTEXT.useCount++;
+                return SHARED_NIO_EVENT_CONTEXT;
+            }
+
+            int tc = DEFAULT_EVENT_LOOP_THREAD_COUNT;
+            NettyNioEventLoopContext ctx = new NettyNioEventLoopContext();
+            ExecutorService s = Executors.newFixedThreadPool(tc,
+                    r -> new Thread(r, NettyNioEventLoopContext.class.getSimpleName()));
+            NioEventLoopGroup eventGroup = new NioEventLoopGroup(tc, s);
+            ctx.executor = s;
+            ctx.eventLoopGroup = eventGroup;
+            ctx.useCount = 1;
+            SHARED_NIO_EVENT_CONTEXT = ctx;
+            return ctx;
+        }
+    }
+
+    public static NettyNioEventLoopContext getNioEventLoopContext() {
+        return SHARED_NIO_EVENT_CONTEXT;
+    }
+
+    public static void releaseNioEventLoopContext() {
+        synchronized (NettyNioEventLoopContext.class) {
+            if (SHARED_NIO_EVENT_CONTEXT == null) {
+                return;
+            }
+            SHARED_NIO_EVENT_CONTEXT.useCount--;
+            if (SHARED_NIO_EVENT_CONTEXT.useCount <= 0) {
+                SHARED_NIO_EVENT_CONTEXT.eventLoopGroup.shutdownGracefully();
+                SHARED_NIO_EVENT_CONTEXT.executor.shutdownNow();
+                SHARED_NIO_EVENT_CONTEXT = null;
+            }
+        }
+    }
+
+    private static NettyNioEventLoopContext SHARED_NIO_EVENT_CONTEXT;
+
     private static final long CHANNEL_EXPIRATION_MICROS =
             ServiceHostState.DEFAULT_OPERATION_TIMEOUT_MICROS * 2;
 
@@ -71,10 +123,6 @@ public class NettyChannelPool {
     }
 
     private final ExecutorService executor;
-    private ExecutorService nettyExecutorService;
-    private EventLoopGroup eventGroup;
-    private String threadTag = NettyChannelPool.class.getSimpleName();
-    private int threadCount;
     private boolean isHttp2Only = false;
 
     private Bootstrap bootStrap;
@@ -86,16 +134,6 @@ public class NettyChannelPool {
 
     public NettyChannelPool(ExecutorService executor) {
         this.executor = executor;
-    }
-
-    public NettyChannelPool setThreadTag(String tag) {
-        this.threadTag = tag;
-        return this;
-    }
-
-    public NettyChannelPool setThreadCount(int count) {
-        this.threadCount = count;
-        return this;
     }
 
     /**
@@ -118,11 +156,9 @@ public class NettyChannelPool {
             return;
         }
 
-        this.nettyExecutorService = Executors.newFixedThreadPool(this.threadCount, r -> new Thread(r, this.threadTag));
-        this.eventGroup = new NioEventLoopGroup(this.threadCount, this.nettyExecutorService);
-
+        NettyNioEventLoopContext ctx = allocateNioEventLoopContext();
         this.bootStrap = new Bootstrap();
-        this.bootStrap.group(this.eventGroup)
+        this.bootStrap.group(ctx.eventLoopGroup)
                 .channel(NioSocketChannel.class)
                 .handler(new NettyHttpClientRequestInitializer(this, this.isHttp2Only));
     }
@@ -147,14 +183,12 @@ public class NettyChannelPool {
         return this.connectionLimit;
     }
 
-    private NettyChannelGroup getChannelGroup(String key) {
+    private synchronized NettyChannelGroup getChannelGroup(String key) {
         NettyChannelGroup group;
-        synchronized (this.channelGroups) {
-            group = this.channelGroups.get(key);
-            if (group == null) {
-                group = new NettyChannelGroup();
-                this.channelGroups.put(key, group);
-            }
+        group = this.channelGroups.get(key);
+        if (group == null) {
+            group = new NettyChannelGroup();
+            this.channelGroups.put(key, group);
         }
         return group;
     }
@@ -560,8 +594,7 @@ public class NettyChannelPool {
                     g.http2Channels.clear();
                 }
             }
-            this.eventGroup.shutdownGracefully();
-            this.nettyExecutorService.shutdown();
+            releaseNioEventLoopContext();
         } catch (Throwable e) {
             // ignore exception
         }
