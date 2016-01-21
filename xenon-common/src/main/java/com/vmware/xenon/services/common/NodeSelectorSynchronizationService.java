@@ -38,6 +38,16 @@ import com.vmware.xenon.common.Utils;
 
 public class NodeSelectorSynchronizationService extends StatelessService {
 
+    // Currently we are not marking the target child service in conflict, after that capability is added then
+    // each service should also have STAT_NAME_STATE_IN_CONFLICT stat in it.
+    // Even after we add this stat to child service, we should keep this counter here as well for
+    // overall conflict count of the host.
+    public static final String STAT_NAME_CONFLICTED_SERVICE_COUNT = "conflictedServiceCount";
+
+    public static final String STAT_NAME_CONFLICTED_VERSION_VECTOR_COUNT = "conflictedVersionVectorCount";
+
+    public static final String STAT_NAME_NON_CONFLICTED_VERSION_VECTOR_COUNT = "nonConflictedVersionVectorCount";
+
     public static final String PROPERTY_NAME_SYNCHRONIZATION_LOGGING = Utils.PROPERTY_NAME_PREFIX
             + "NodeSelectorSynchronizationService.isDetailedLoggingEnabled";
     public static final String STAT_NAME_EPOCH_INCREMENT_RETRY_COUNT = "epochIncrementRetryCount";
@@ -74,6 +84,7 @@ public class NodeSelectorSynchronizationService extends StatelessService {
     public NodeSelectorSynchronizationService(Service parent) {
         super(NodeGroupSynchronizationState.class);
         super.toggleOption(ServiceOption.UTILITY, true);
+        super.toggleOption(ServiceOption.INSTRUMENTATION, true);
         this.parent = parent;
     }
 
@@ -158,6 +169,16 @@ public class NodeSelectorSynchronizationService extends StatelessService {
                 remoteGet);
     }
 
+    public static class ResourceEntry {
+        public URI uri;
+        public ServiceDocument state;
+
+        public ResourceEntry(URI uri, ServiceDocument state) {
+            this.uri = uri;
+            this.state = state;
+        }
+    }
+
     private void handleBroadcastGetCompletion(NodeGroupBroadcastResponse rsp, Operation post,
             SynchronizePeersRequest request) {
 
@@ -166,10 +187,10 @@ public class NodeSelectorSynchronizationService extends StatelessService {
             return;
         }
 
-        ServiceDocument bestPeerRsp = null;
+        ResourceEntry bestPeerRspEntry = new ResourceEntry(null, null);
 
-        TreeMap<Long, List<ServiceDocument>> syncRspsPerEpoch = new TreeMap<>();
-        Map<URI, ServiceDocument> peerStates = new HashMap<>();
+        TreeMap<Long, List<ResourceEntry>> syncRspsPerEpoch = new TreeMap<>();
+        Map<URI, ResourceEntry> peerStates = new HashMap<>();
 
         for (Entry<URI, String> e : rsp.jsonResponses.entrySet()) {
             ServiceDocument peerState = Utils.fromJson(e.getValue(),
@@ -178,21 +199,23 @@ public class NodeSelectorSynchronizationService extends StatelessService {
             if (peerState.documentSelfLink == null
                     || !peerState.documentSelfLink.equals(request.state.documentSelfLink)) {
                 logWarning("Invalid state from peer %s: %s", e.getKey(), e.getValue());
-                peerStates.put(e.getKey(), new ServiceDocument());
+                URI uri = e.getKey();
+                peerStates.put(uri, new ResourceEntry(uri, new ServiceDocument()));
                 continue;
             }
 
-            peerStates.put(e.getKey(), peerState);
+            URI uri = e.getKey();
+            peerStates.put(uri, new ResourceEntry(uri, peerState));
 
             if (peerState.documentEpoch == null) {
                 peerState.documentEpoch = 0L;
             }
-            List<ServiceDocument> statesForEpoch = syncRspsPerEpoch.get(peerState.documentEpoch);
+            List<ResourceEntry> statesForEpoch = syncRspsPerEpoch.get(peerState.documentEpoch);
             if (statesForEpoch == null) {
                 statesForEpoch = new ArrayList<>();
                 syncRspsPerEpoch.put(peerState.documentEpoch, statesForEpoch);
             }
-            statesForEpoch.add(peerState);
+            statesForEpoch.add(new ResourceEntry(uri, peerState));
         }
 
         // As part of synchronization we need to detect what peer services do not have the best state.
@@ -203,27 +226,31 @@ public class NodeSelectorSynchronizationService extends StatelessService {
             if (peerStates.containsKey(remotePeerService)) {
                 continue;
             }
+
             if (this.isDetailedLoggingEnabled) {
                 logInfo("No peer response for %s from %s", request.state.documentSelfLink,
                         remotePeerService);
             }
-            peerStates.put(remotePeerService, new ServiceDocument());
+
+            peerStates.put(remotePeerService, new ResourceEntry(remotePeerService, new ServiceDocument()));
+
         }
 
         if (!syncRspsPerEpoch.isEmpty()) {
-            List<ServiceDocument> statesForHighestEpoch = syncRspsPerEpoch.get(syncRspsPerEpoch
+            List<ResourceEntry> statesForHighestEpoch = syncRspsPerEpoch.get(syncRspsPerEpoch
                     .lastKey());
             long maxVersion = Long.MIN_VALUE;
-            for (ServiceDocument peerState : statesForHighestEpoch) {
-                if (peerState.documentVersion > maxVersion) {
-                    bestPeerRsp = peerState;
-                    maxVersion = peerState.documentVersion;
+            for (ResourceEntry entry : statesForHighestEpoch) {
+                if (entry.state.documentVersion > maxVersion) {
+                    bestPeerRspEntry.state = entry.state;
+                    bestPeerRspEntry.uri = entry.uri;
+                    maxVersion = entry.state.documentVersion;
                 }
             }
         }
 
-        if (bestPeerRsp != null && bestPeerRsp.documentEpoch == null) {
-            bestPeerRsp.documentEpoch = 0L;
+        if (bestPeerRspEntry.state != null && bestPeerRspEntry.state.documentEpoch == null) {
+            bestPeerRspEntry.state.documentEpoch = 0L;
         }
 
         if (request.state.documentEpoch == null) {
@@ -231,62 +258,197 @@ public class NodeSelectorSynchronizationService extends StatelessService {
         }
 
         EnumSet<DocumentRelationship> results = EnumSet.noneOf(DocumentRelationship.class);
-        if (bestPeerRsp == null) {
+        if (bestPeerRspEntry.state == null) {
             results.add(DocumentRelationship.PREFERRED);
-        } else if (request.state.documentEpoch.compareTo(bestPeerRsp.documentEpoch) > 0) {
+        } else if (request.state.documentEpoch.compareTo(bestPeerRspEntry.state.documentEpoch) > 0) {
             // Local state is of higher epoch than all peers
             results.add(DocumentRelationship.PREFERRED);
-        } else if (request.state.documentEpoch.equals(bestPeerRsp.documentEpoch)) {
+        } else if (request.state.documentEpoch.equals(bestPeerRspEntry.state.documentEpoch)) {
             // compare local state against peers only if they are in the same epoch
             results = ServiceDocument.compare(request.state,
-                    bestPeerRsp, request.stateDescription, Utils.getTimeComparisonEpsilonMicros());
+                    bestPeerRspEntry.state, request.stateDescription, Utils.getTimeComparisonEpsilonMicros());
         }
 
+        findConflictInHistoryAndBroadcastBestState(rsp, post, request, bestPeerRspEntry, peerStates, results);
+    }
+
+    private void selectBestStateAndBroadcast(NodeGroupBroadcastResponse rsp, Operation post,
+                                             SynchronizePeersRequest request,
+                                             ResourceEntry bestPeerRspEntry,
+                                             Map<URI, ResourceEntry> peerStates,
+                                             EnumSet<DocumentRelationship> results) {
         if (results.contains(DocumentRelationship.IN_CONFLICT)) {
-            markServiceInConflict(request.state, bestPeerRsp);
+            markServiceInConflict(request.state, bestPeerRspEntry.state);
+            bestPeerRspEntry.state = resolveConflict(request.state, bestPeerRspEntry.state);
             // if we detect conflict, we will synchronize local service with selected peer state
         } else if (results.contains(DocumentRelationship.PREFERRED)) {
             // the local state is preferred
-            bestPeerRsp = null;
+            bestPeerRspEntry.state = null;
         }
 
-        if (bestPeerRsp != null && request.isOwner) {
-            bestPeerRsp.documentOwner = getHost().getId();
+        if (bestPeerRspEntry.state != null && request.isOwner) {
+            bestPeerRspEntry.state.documentOwner = getHost().getId();
         }
 
-        if (bestPeerRsp != null && this.isDetailedLoggingEnabled) {
-            logInfo("Using best peer state for %s (e:%d, v:%d)", bestPeerRsp.documentSelfLink,
-                    bestPeerRsp.documentEpoch,
-                    bestPeerRsp.documentVersion);
+        if (bestPeerRspEntry.state != null && this.isDetailedLoggingEnabled) {
+            logFine("Using best peer state for %s (e:%d, v:%d)", bestPeerRspEntry.state.documentSelfLink,
+                    bestPeerRspEntry.state.documentEpoch,
+                    bestPeerRspEntry.state.documentVersion);
         }
 
         boolean incrementEpoch = false;
 
-        if (bestPeerRsp == null) {
+        if (bestPeerRspEntry.state == null) {
             // if the local state is preferred, there is no need to increment epoch.
-            bestPeerRsp = request.state;
+            bestPeerRspEntry.state = request.state;
             if (this.isDetailedLoggingEnabled) {
-                logInfo("Local is best peer state for %s (e:%d, v:%d)",
-                        bestPeerRsp.documentSelfLink,
-                        bestPeerRsp.documentEpoch,
-                        bestPeerRsp.documentVersion);
+                logFine("Local is best peer state for %s (e:%d, v:%d)",
+                        bestPeerRspEntry.state.documentSelfLink,
+                        bestPeerRspEntry.state.documentEpoch,
+                        bestPeerRspEntry.state.documentVersion);
             }
         }
 
         // we increment epoch only when we assume the role of owner
         if (!request.wasOwner && request.isOwner) {
-            if (bestPeerRsp.documentVersion > 0) {
+            if (bestPeerRspEntry.state.documentVersion > 0) {
                 // only increment epoch if this is not a document being created, on this host
                 incrementEpoch = true;
             }
         }
 
-        broadcastBestState(rsp.selectedNodes, peerStates, post, request, bestPeerRsp,
+        broadcastBestState(rsp.selectedNodes, peerStates, post, request, bestPeerRspEntry.state,
                 incrementEpoch);
     }
 
+    /**
+     * This method is called once per synchronization event of a service. It takes current state, and compares
+     * it with best state among peers and try to decides if it can keep current state as winner, or
+     * use state from peer as a winner. After deciding the winner it will broadcast the winner state to all
+     * the peers.
+     * Comparison between two states is done by looking at the version vector
+     * of the two states in question. If one state was NOT found in other state's past and vise versa
+     * then we mark it as a conflict, otherwise there is no conflict.
+     *
+     * @param rsp               Original response of the broadcast that got states from all peers
+     * @param post              Post operation that started all this synchronization process
+     * @param request           Contains state of the target service in this host
+     * @param bestPeerRspEntry  Contains one best state in peers that we want to sync against
+     * @param peerStates        Contains states of all peers
+     * @param results           Object that hints about which state is preferred or if we have found a conflict so far
+     */
+    private void findConflictInHistoryAndBroadcastBestState(
+            NodeGroupBroadcastResponse rsp, Operation post, SynchronizePeersRequest request,
+            ResourceEntry bestPeerRspEntry, Map<URI, ResourceEntry> peerStates,
+            EnumSet<DocumentRelationship> results) {
+
+        URI targetUri = null;
+        Long targetVersion = null;
+        String targetOwner = null;
+
+        if (bestPeerRspEntry.state == null) {
+            selectBestStateAndBroadcast(rsp, post, request, bestPeerRspEntry, peerStates, results);
+            return;
+        }
+
+        if (request.state.documentVersion > bestPeerRspEntry.state.documentVersion) {
+
+            targetUri = UriUtils.buildUri(
+                    request.ownerNodeReference.getScheme(),
+                    request.ownerNodeReference.getHost(),
+                    request.ownerNodeReference.getPort(),
+                    null,
+                    null);
+            targetVersion = bestPeerRspEntry.state.documentVersion;
+            targetOwner = bestPeerRspEntry.state.documentOwner;
+
+        } else if (request.state.documentVersion < bestPeerRspEntry.state.documentVersion) {
+
+            targetUri = UriUtils.buildUri(
+                    bestPeerRspEntry.uri.getScheme(),
+                    bestPeerRspEntry.uri.getHost(),
+                    bestPeerRspEntry.uri.getPort(),
+                    null,
+                    null);
+            targetVersion = request.state.documentVersion;
+            targetOwner = request.state.documentOwner;
+        }
+
+        // finalize to pass into lambda
+        final String finalTargetOwner = targetOwner;
+
+
+        if (request.state.documentOwner.equals(bestPeerRspEntry.state.documentOwner)) {
+            selectBestStateAndBroadcast(rsp, post, request, bestPeerRspEntry, peerStates, results);
+            return;
+        }
+
+        if (request.state.documentVersion == bestPeerRspEntry.state.documentVersion) {
+
+            results.add(DocumentRelationship.IN_CONFLICT);
+        }
+
+        if (results.contains(DocumentRelationship.IN_CONFLICT)) {
+            selectBestStateAndBroadcast(rsp, post, request, bestPeerRspEntry, peerStates, results);
+            return;
+        }
+
+        // No conflict detected so far. Lets find if the two peers have seen each other's latest version-owner
+        // combo in past. If any peer has seen others' latest version-owner combo in past then
+        // that peer has latest version and there is no conflict, otherwise mark the state in conflict.
+        QueryTask task = NodeSelectorSynchronizationService.buildVersionQueryTask(
+                targetVersion, request.state.documentSelfLink);
+
+        Operation startPost = Operation
+                .createPost(UriUtils.buildUri(targetUri, ServiceUriPaths.CORE_LOCAL_QUERY_TASKS))
+                .setBody(task)
+                .forceRemote()
+                .setReferer(getUri())
+                .setCompletion((o, f) -> {
+                    if (f != null) {
+                        // Fail and try synchronization again next time
+                        post.fail(f);
+                        return;
+                    }
+
+                    QueryTask result = o.getBody(QueryTask.class);
+                    boolean conflicted = true;
+
+                    if ((result.results != null) && result.results.documents != null) {
+                        for (Object document : result.results.documents.values()) {
+                            ServiceDocument sd = Utils.fromJson((String) document, ServiceDocument.class);
+                            if (sd.documentOwner.equals(finalTargetOwner)) {
+
+                                // Smaller document version is present in the peer node, that means,
+                                // both peers had seen this state in past at some time. When one peer's
+                                // top level version-owner combo is seen by other peer than that peer
+                                // incremented on that state which we should accept as latest state.
+                                conflicted = false;
+                                adjustStat(STAT_NAME_NON_CONFLICTED_VERSION_VECTOR_COUNT, 1);
+                                logInfo("Versions and owners are different for the state, " +
+                                        "but version vector does not have conflict for service: %s",
+                                        request.state.documentSelfLink);
+                                break;
+                            }
+                        }
+                    }
+
+                    if (conflicted) {
+                        adjustStat(STAT_NAME_CONFLICTED_VERSION_VECTOR_COUNT, 1);
+                        logWarning("Conflict found in version vector for service: %s", request.state.documentSelfLink);
+                        results.add(DocumentRelationship.IN_CONFLICT);
+                    }
+
+                    selectBestStateAndBroadcast(rsp, post, request, bestPeerRspEntry, peerStates, results);
+
+                });
+
+        sendRequest(startPost);
+    }
+
+
     private void broadcastBestState(Map<String, URI> selectedNodes,
-            Map<URI, ServiceDocument> peerStates,
+            Map<URI, ResourceEntry> peerStates,
             Operation post, SynchronizePeersRequest request,
             ServiceDocument bestPeerRsp,
             boolean incrementEpoch) {
@@ -302,7 +464,7 @@ public class NodeSelectorSynchronizationService extends StatelessService {
             }
 
             final ServiceDocument bestState = bestPeerRsp;
-            Iterator<Entry<URI, ServiceDocument>> peerStateIt = peerStates.entrySet().iterator();
+            Iterator<Entry<URI, ResourceEntry>> peerStateIt = peerStates.entrySet().iterator();
 
             TreeMap<String, URI> peersWithService = new TreeMap<>();
 
@@ -320,8 +482,8 @@ public class NodeSelectorSynchronizationService extends StatelessService {
             // If it does not have the service, it can't synchronize it. If the current
             // node was the previous owner, it will assume the role of synchronizing
             while (peerStateIt.hasNext()) {
-                Entry<URI, ServiceDocument> e = peerStateIt.next();
-                ServiceDocument peerState = e.getValue();
+                Entry<URI, ResourceEntry> e = peerStateIt.next();
+                ServiceDocument peerState = e.getValue().state;
 
                 if (peerState.documentSelfLink == null) {
                     if (!request.isOwner) {
@@ -441,7 +603,7 @@ public class NodeSelectorSynchronizationService extends StatelessService {
             }
 
             ServiceDocument clonedState = Utils.clone(bestPeerRsp);
-            for (Entry<URI, ServiceDocument> entry : peerStates.entrySet()) {
+            for (Entry<URI, ResourceEntry> entry : peerStates.entrySet()) {
 
                 URI peer = entry.getKey();
 
@@ -455,11 +617,11 @@ public class NodeSelectorSynchronizationService extends StatelessService {
                 // Request a version check to prevent restarting/recreating a service that might
                 // have been deleted
                 peerOp.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_VERSION_CHECK);
-
                 peerOp.addRequestHeader(Operation.REPLICATION_PHASE_HEADER,
                         Operation.REPLICATION_PHASE_COMMIT);
 
-                if (entry.getValue().documentSelfLink != null) {
+                if (entry.getValue().state.documentSelfLink != null) {
+
                     // service exists on peer node, push latest state as a PUT
                     if (isMissingFromOwner) {
                         // skip nodes that already have the service, if we are acting as "owner"
@@ -503,9 +665,50 @@ public class NodeSelectorSynchronizationService extends StatelessService {
         }
     }
 
+    public <T extends ServiceDocument> T resolveConflict(final T stateA, final T stateB) {
+        if (stateA.documentUpdateTimeMicros > stateB.documentUpdateTimeMicros) {
+            return stateA;
+        }
+
+        return stateB;
+    }
+
     private void markServiceInConflict(ServiceDocument state, ServiceDocument bestPeerRsp) {
+        adjustStat(STAT_NAME_CONFLICTED_SERVICE_COUNT, 1);
         logWarning("State in conflict. Local: %s, Among peers: %s",
                 Utils.toJsonHtml(state), Utils.toJsonHtml(bestPeerRsp));
     }
 
+    /**
+     * Builds a query to get a document with a specific version. To reduce the queries we want the documents to
+     * be included in the response, for that reason we are using TOP_RESULTS option and that needs resultLimit.
+     * In most conflict situations we only expect one document to be returned but we could have very rare
+     * situation in which there are documents with same version but different owners, for that reason we have
+     * resultLimit set to arbitrary small number.
+     */
+    public static QueryTask buildVersionQueryTask(long documentVersion, String documentSelfLink) {
+        QueryTask.Query selfLinkClause = new QueryTask.Query()
+                .setTermPropertyName(ServiceDocument.FIELD_NAME_SELF_LINK)
+                .setTermMatchValue(documentSelfLink)
+                .setTermMatchType(QueryTask.QueryTerm.MatchType.TERM);
+
+        QueryTask.QuerySpecification querySpecification = new QueryTask.QuerySpecification();
+        querySpecification.resultLimit = 10;
+        querySpecification.options = EnumSet.of(
+                QueryTask.QuerySpecification.QueryOption.INCLUDE_ALL_VERSIONS,
+                QueryTask.QuerySpecification.QueryOption.INCLUDE_DELETED,
+                QueryTask.QuerySpecification.QueryOption.TOP_RESULTS,
+                QueryTask.QuerySpecification.QueryOption.EXPAND_CONTENT);
+
+        QueryTask.NumericRange<?> versionRange = QueryTask.NumericRange.createEqualRange((Long)documentVersion);
+        versionRange.precisionStep = Integer.MAX_VALUE;
+        QueryTask.Query versionClause = new QueryTask.Query()
+                .setTermPropertyName(ServiceDocument.FIELD_NAME_VERSION)
+                .setNumericRange(versionRange);
+
+        querySpecification.query.addBooleanClause(selfLinkClause);
+        querySpecification.query.addBooleanClause(versionClause);
+
+        return QueryTask.create(querySpecification).setDirect(true);
+    }
 }

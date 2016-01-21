@@ -17,20 +17,8 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
 import java.net.URI;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.Date;
-import java.util.EnumSet;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.Map.Entry;
-import java.util.Objects;
-import java.util.Set;
-import java.util.UUID;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -726,6 +714,7 @@ public class TestNodeGroupService {
             }
             this.host.testWait();
 
+
             if (!modifiedExampleStates.isEmpty()) {
                 this.waitForReplicatedFactoryChildServiceConvergence(modifiedExampleStates,
                         this.exampleStateConvergenceChecker,
@@ -781,6 +770,78 @@ public class TestNodeGroupService {
             }
         }
     }
+
+    private void verifyStatCount(List<URI> statUris, double expectedStat, String stat) throws Throwable {
+        Map<URI, ServiceStats> stats = this.host.getServiceState(null, ServiceStats.class, statUris);
+
+        stats.entrySet().forEach(
+                (sts) -> {
+                    ServiceStat st = sts.getValue().entries.get(stat);
+
+                    if (st == null) {
+                        this.host.log(sts.getKey() + " Expected " + stat +
+                                ", but ignoring when other host had already resolved the conflict for this host");
+                    } else if (st.latestValue != expectedStat) {
+                        throw new IllegalStateException("Expected stat count: "
+                                + expectedStat + " Found: " + (st == null ? "Null" : st.latestValue));
+                    }
+                });
+    }
+
+    @Test
+    public void synchronizationWithManualConflictedState() throws Throwable {
+        this.isPeerSynchronizationEnabled = false;
+
+        try {
+            this.setUp(this.nodeCount);
+
+            int version = 0;
+            for (VerificationHost v : this.host.getInProcessHostMap().values()) {
+                v.startService(Operation.createPost(
+                        UriUtils.buildUri(v, ExampleService.FACTORY_LINK)),new ExampleService());
+            }
+
+            // Create document with same selfLink but different version in each host that will simulate
+            // a conflict in this document service.
+            for (VerificationHost v : this.host.getInProcessHostMap().values()) {
+                int finalVersion = version;
+                URI factoryUri = UriUtils.buildUri(v, ExampleService.FACTORY_LINK);
+                this.host.doFactoryChildServiceStart(
+                        null,
+                        1,
+                        ExampleServiceState.class,
+                        (o) -> {
+                            ExampleServiceState s = new ExampleServiceState();
+                            s.documentSelfLink = "conflictedExampleInstance";
+                            s.documentVersion = finalVersion;
+                            s.name = s.documentSelfLink;
+                            s.counter = 10L;
+                            o.setBody(s);
+                        }, factoryUri);
+
+                version++;
+            }
+
+            this.host.scheduleSynchronizationIfAutoSyncDisabled();
+            this.host.joinNodesAndVerifyConvergence(this.nodeCount);
+
+            // For each host get stat uri of its synchronization service
+            List<URI> statUris = new ArrayList<>();
+            this.host.getInProcessHostMap().keySet().forEach((u) ->
+                    statUris.add(UriUtils.buildUri(u,
+                            ServiceUriPaths.DEFAULT_NODE_SELECTOR,
+                            ServiceUriPaths.SERVICE_URI_SUFFIX_SYNCHRONIZATION,
+                            ServiceHost.SERVICE_URI_SUFFIX_STATS)));
+
+            // Verify that conflict was detected by synchronization services.
+            verifyStatCount(new ArrayList<>(statUris), 1,
+                    NodeSelectorSynchronizationService.STAT_NAME_CONFLICTED_VERSION_VECTOR_COUNT);
+
+        } finally {
+            this.host.log("test finished");
+        }
+    }
+
 
     /**
      * This test validates that if a host, joined in a peer node group, stops/fails and another
@@ -2627,8 +2688,7 @@ public class TestNodeGroupService {
 
         if (!this.expectFailure) {
             // Before we do the replication test, wait for factory availability.
-            for (URI fu : this.host.getNodeGroupToFactoryMap(this.replicationTargetFactoryLink)
-                    .values()) {
+            for (URI fu : this.host.getNodeGroupToFactoryMap(this.replicationTargetFactoryLink).values()) {
                 // confirm that /factory/available returns 200 across all nodes
                 this.host.waitForServiceAvailable(fu);
             }
