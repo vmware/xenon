@@ -696,7 +696,8 @@ public class ServiceHost {
         File hostStateFile = new File(sandboxDir, SERVICE_HOST_STATE_FILE);
         this.state.documentUpdateTimeMicros = Utils.getNowMicrosUtc();
         byte[] serializedState = Utils.toJsonHtml(this.state).getBytes(Utils.CHARSET);
-        Files.write(hostStateFile.toPath(), serializedState, StandardOpenOption.CREATE);
+        Files.write(hostStateFile.toPath(), serializedState, StandardOpenOption.CREATE,
+                StandardOpenOption.TRUNCATE_EXISTING);
     }
 
     @Override
