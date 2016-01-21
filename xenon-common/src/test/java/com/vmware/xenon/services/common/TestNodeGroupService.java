@@ -112,6 +112,42 @@ public class TestNodeGroupService {
 
     }
 
+    // Services to verify that resolveConflict is called if overridden by the child service.
+
+    public class ConflictedFactoryService extends FactoryService {
+        public static final String SELF_LINK = ServiceUriPaths.CORE + "/conflicted-examples";
+
+        public ConflictedFactoryService() {
+            super(ExampleServiceState.class);
+            super.toggleOption(ServiceOption.IDEMPOTENT_POST, true);
+            super.toggleOption(ServiceOption.INSTRUMENTATION, true);
+        }
+
+        @Override
+        public Service createServiceInstance() throws Throwable {
+            return new ConflictedExampleService();
+        }
+    }
+
+    public static class ConflictedExampleService extends ExampleService {
+        @SuppressWarnings("unchecked")
+        @Override
+        public <T extends ServiceDocument> T resolveConflict(final T stateA, final T stateB) {
+
+            ExampleServiceState state;
+
+            state = (ExampleServiceState)stateB;
+
+            if (stateA.documentUpdateTimeMicros > stateB.documentUpdateTimeMicros) {
+                state = (ExampleServiceState)stateA;
+            }
+
+            state.counter = RESOLVED_COUNTER;
+            return (T) state;
+        }
+    }
+
+    private static final Long RESOLVED_COUNTER = 0xfaceL;
     private static final String CUSTOM_NODE_GROUP_NAME = "custom";
     private static final String CUSTOM_NODE_GROUP = UriUtils.buildUriPath(
             ServiceUriPaths.NODE_GROUP_FACTORY,
@@ -485,7 +521,7 @@ public class TestNodeGroupService {
                                     + counter.incrementAndGet();
                             s.name = s.documentSelfLink;
                             o.setBody(s);
-                        } , factoryUri);
+                        }, factoryUri);
             }
 
             // increment to account for link found on all nodes
@@ -515,6 +551,7 @@ public class TestNodeGroupService {
                             notifications.countDown();
                         });
             }
+
 
             // now start a new Host and supply the already created peer, then observe the automatic
             // join
@@ -624,6 +661,155 @@ public class TestNodeGroupService {
         }
     }
 
+    @Test
+    public void synchronizationWithManualConflictedState() throws Throwable {
+        this.isPeerSynchronizationEnabled = false;
+
+        try {
+            setUpPeers(this.nodeCount);
+
+            // add the *same* service instance with different versions,
+            // in *all* peers, so we force conflict detection and resolution,
+            // no node sharing any history of service instances
+
+            int version = 0;
+            for (VerificationHost v : this.host.getInProcessHostMap().values()) {
+                v.startService(Operation.createPost(UriUtils.buildUri(v, ConflictedFactoryService.SELF_LINK)),
+                        new ConflictedFactoryService());
+            }
+
+            Map<URI, ExampleServiceState> exampleStatesConflicted = new HashMap<>();
+
+            for (VerificationHost v : this.host.getInProcessHostMap().values()) {
+
+                int finalVersion = version;
+                URI factoryUri = UriUtils.buildUri(v,
+                        ConflictedFactoryService.SELF_LINK);
+                exampleStatesConflicted.putAll(this.host.doFactoryChildServiceStart(
+                        null,
+                        1,
+                        ExampleServiceState.class,
+                        (o) -> {
+                            ExampleServiceState s = new ExampleServiceState();
+                            s.documentSelfLink = "conflictedExampleInstance";
+                            s.documentVersion = finalVersion;
+                            s.name = s.documentSelfLink;
+                            s.counter = 10L;
+                            o.setBody(s);
+                        }, factoryUri));
+
+                version++;
+            }
+
+            this.host.scheduleSynchronizationIfAutoSyncDisabled();
+            this.host.joinNodesAndVerifyConvergence(this.nodeCount);
+
+            exampleStatesConflicted = this.host.getServiceState(
+                    null, ExampleServiceState.class, exampleStatesConflicted.keySet());
+
+            // Verify that our resolveConflict was called
+            for (ExampleServiceState state : exampleStatesConflicted.values()) {
+                assertEquals(state.counter, RESOLVED_COUNTER);
+            }
+
+        } finally {
+            this.host.log("test finished");
+        }
+    }
+
+    @Test
+    public void synchronizationWithManualSharedHistoryState() throws Throwable {
+        // Test the case when one state's history is subset of other state's history, which is not a conflict
+        try {
+            this.isPeerSynchronizationEnabled = false;
+            setUpPeers(this.nodeCount);
+
+            // add the *same* service instance to all peers
+            // sync the peers, then disconnect and update one peer
+
+            Map<URI, ExampleServiceState> exampleStatesSharedHistory = new HashMap<>();
+            VerificationHost host = this.host.getInProcessHostMap().values().iterator().next();
+
+            for (VerificationHost v : this.host.getInProcessHostMap().values()) {
+                URI factoryUri = UriUtils.buildUri(v,
+                        ExampleFactoryService.SELF_LINK);
+                exampleStatesSharedHistory.putAll(this.host.doFactoryChildServiceStart(
+                        null,
+                        1,
+                        ExampleServiceState.class,
+                        (o) -> {
+                            ExampleServiceState s = new ExampleServiceState();
+                            s.documentSelfLink = "exampleStatesSharedHistory";
+                            s.name = s.documentSelfLink;
+                            s.counter = 10L;
+                            o.setBody(s);
+                        }, factoryUri));
+
+            }
+
+            this.host.scheduleSynchronizationIfAutoSyncDisabled();
+            this.host.joinNodesAndVerifyConvergence(this.nodeCount);
+
+            Map<String, ExampleServiceState> exampleStatesPerSelfLink = new HashMap<>();
+
+            for (ExampleServiceState s : exampleStatesSharedHistory.values()) {
+                exampleStatesPerSelfLink.put(s.documentSelfLink, s);
+            }
+
+            // restart all hosts to disconnect the peers to update individually
+            for (VerificationHost peer : this.host.getInProcessHostMap().values()) {
+                peer.stop();
+            }
+
+            for (VerificationHost peer : this.host.getInProcessHostMap().values()) {
+                peer.start();
+            }
+
+            for (VerificationHost v : this.host.getInProcessHostMap().values()) {
+                v.waitForServiceAvailable(ExampleFactoryService.SELF_LINK);
+            }
+
+            // For shared history scenario,
+            // manually update the service on each host except on current owner
+            // to increment the version and change owner
+
+            VerificationHost peerToStop = null;
+
+            List<URI> list = new ArrayList<>(exampleStatesSharedHistory.keySet());
+            ExampleServiceState serviceState = exampleStatesSharedHistory.values().iterator().next();
+
+            // Find a host that we want to stop
+            for (VerificationHost peer : this.host.getInProcessHostMap().values()) {
+                if (peer.getId().equals(serviceState.documentOwner)) {
+                    peerToStop = peer;
+                    break;
+                }
+            }
+
+            // Find service associated with stopped host and remove it from update list
+            for (URI serviceUri : list) {
+                if (serviceUri.getPort() == peerToStop.getPort()) {
+                    list.remove(serviceUri);
+                    break;
+                }
+            }
+
+            // update all services except the one with stopped host
+            this.host.doServiceUpdate(2, (o) -> {
+                ExampleServiceState s = new ExampleServiceState();
+                s.counter = 10L;
+                o.setBody(s);
+            }, list);
+
+            this.host.scheduleSynchronizationIfAutoSyncDisabled();
+            this.host.joinNodesAndVerifyConvergence(this.nodeCount);
+
+        } finally {
+            this.host.log("test finished");
+        }
+    }
+
+
     /**
      * This test validates that if a host, joined in a peer node group, stops/fails and another
      * host, listening on the same address:port, rejoins, the existing peer members will mark the
@@ -718,7 +904,7 @@ public class TestNodeGroupService {
             // the netty handlers are stopped in async (not forced) mode
             this.expectedFailureStartTimeMicros = Utils.getNowMicrosUtc()
                     + TimeUnit.MILLISECONDS.toMicros(250);
-        } , 1, TimeUnit.MILLISECONDS);
+        }, 1, TimeUnit.MILLISECONDS);
 
         childStates = doStateUpdateReplicationTest(Action.PATCH, this.serviceCount,
                 this.updateCount,
@@ -2540,7 +2726,7 @@ public class TestNodeGroupService {
     }
 
     private Map<String, ExampleServiceState> doExampleFactoryPostReplicationTest(int childCount,
-            EnumSet<TestProperty> props) throws Throwable {
+                                                                                 EnumSet<TestProperty> props) throws Throwable {
 
         if (props == null) {
             props = EnumSet.noneOf(TestProperty.class);

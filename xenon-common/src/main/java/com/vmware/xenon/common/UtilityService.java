@@ -713,6 +713,11 @@ public class UtilityService implements Service {
     }
 
     @Override
+    public <T extends ServiceDocument> T resolveConflict(final T stateA, final T stateB) {
+        throw new RuntimeException("not implemented");
+    }
+
+    @Override
     public void setMaintenanceIntervalMicros(long micros) {
         throw new RuntimeException("not implemented");
     }
