@@ -29,6 +29,7 @@ import com.vmware.xenon.common.BasicTestCase;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Operation.CompletionHandler;
 import com.vmware.xenon.common.UriUtils;
+import com.vmware.xenon.common.Utils;
 import com.vmware.xenon.services.common.ServiceHostLogService.LogServiceState;
 import com.vmware.xenon.services.common.ServiceUriPaths;
 
@@ -128,6 +129,9 @@ public class Slf4JLoggerTest extends BasicTestCase {
                 .sendWith(host);
         host.testWait();
         LogServiceState state = stateRef.get();
+        host.setLoggingLevel(Level.INFO);
+        this.host.log("Log state: %s", Utils.toJsonHtml(state));
+
         checkLogLine(state.items, "This is a trace test with no args");
         checkLogLine(state.items, "This is a trace test with 1 arg: argument");
         checkLogLine(state.items, "This is a trace test with 2 args: argument1, argument2");
@@ -172,6 +176,7 @@ public class Slf4JLoggerTest extends BasicTestCase {
                 return;
             }
         }
+
         Assert.fail("There is no log line with the following substring: " + line);
     }
 
