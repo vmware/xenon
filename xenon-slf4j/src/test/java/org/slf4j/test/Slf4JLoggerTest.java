@@ -13,6 +13,8 @@
 
 package org.slf4j.test;
 
+import static org.junit.Assert.assertEquals;
+
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
@@ -46,45 +48,53 @@ public class Slf4JLoggerTest extends BasicTestCase {
         host.setLoggingLevel(Level.FINEST);
         LogManager.getLogManager().getLogger("").setLevel(Level.FINEST);
 
+        final String exceptionMsgSegment = "exception";
+        final int expectedCountForExceptionSegment = 5;
+
         logger.trace("This is a trace test with no args");
         logger.trace("This is a trace test with no args");
         logger.trace("This is a trace test with 1 arg: {}", "argument");
         logger.trace("This is a trace test with 2 args: {}, {}", "argument1", "argument2");
         logger.trace("This is a trace test with 3 args: {}, {}, {}", "argument1", "argument2", "argument3");
-        logger.trace("This is a trace test with 3 args: {}, {}, {} and and exception",
-                "argument1", "argument2", "argument3", new IllegalStateException("Some cause"));
+        logger.trace("This is a trace test with 3 args: {}, {}, {} {} {}",
+                "argument1", "argument2", "argument3", exceptionMsgSegment,
+                new IllegalStateException("Some cause"));
 
         logger.debug("This is a debug test with no args");
         logger.debug("This is a debug test with no args");
         logger.debug("This is a debug test with 1 arg: {}", "argument");
         logger.debug("This is a debug test with 2 args: {}, {}", "argument1", "argument2");
         logger.debug("This is a debug test with 3 args: {}, {}, {}", "argument1", "argument2", "argument3");
-        logger.debug("This is a debug test with 3 args: {}, {}, {} and and exception",
-                "argument1", "argument2", "argument3", new IllegalStateException("Some cause"));
+        logger.debug("This is a debug test with 3 args: {}, {}, {} {} {}",
+                "argument1", "argument2", "argument3", exceptionMsgSegment,
+                new IllegalStateException("Some cause"));
 
         logger.info("This is a info test with no args");
         logger.info("This is a info test with no args");
         logger.info("This is a info test with 1 arg: {}", "argument");
         logger.info("This is a info test with 2 args: {}, {}", "argument1", "argument2");
         logger.info("This is a info test with 3 args: {}, {}, {}", "argument1", "argument2", "argument3");
-        logger.info("This is a info test with 3 args: {}, {}, {} and and exception",
-                "argument1", "argument2", "argument3", new IllegalStateException("Some cause"));
+        logger.info("This is a info test with 3 args: {}, {}, {} {} {}",
+                "argument1", "argument2", "argument3", exceptionMsgSegment,
+                new IllegalStateException("Some cause"));
 
         logger.warn("This is a warn test with no args");
         logger.warn("This is a warn test with no args");
         logger.warn("This is a warn test with 1 arg: {}", "argument");
         logger.warn("This is a warn test with 2 args: {}, {}", "argument1", "argument2");
         logger.warn("This is a warn test with 3 args: {}, {}, {}", "argument1", "argument2", "argument3");
-        logger.warn("This is a warn test with 3 args: {}, {}, {} and and exception",
-                "argument1", "argument2", "argument3", new IllegalStateException("Some cause"));
+        logger.warn("This is a warn test with 3 args: {}, {}, {} {} {}",
+                "argument1", "argument2", "argument3", exceptionMsgSegment,
+                new IllegalStateException("Some cause"));
 
         logger.error("This is a error test with no args");
         logger.error("This is a error test with no args");
         logger.error("This is a error test with 1 arg: {}", "argument");
         logger.error("This is a error test with 2 args: {}, {}", "argument1", "argument2");
         logger.error("This is a error test with 3 args: {}, {}, {}", "argument1", "argument2", "argument3");
-        logger.error("This is a error test with 3 args: {}, {}, {} and and exception",
-                "argument1", "argument2", "argument3", new IllegalStateException("Some cause"));
+        logger.error("This is a error test with 3 args: {}, {}, {} {} {}",
+                "argument1", "argument2", "argument3", exceptionMsgSegment,
+                new IllegalStateException("Some cause"));
 
         host.setLoggingLevel(Level.OFF);
         LogManager.getLogManager().getLogger("").setLevel(Level.OFF);
@@ -136,38 +146,41 @@ public class Slf4JLoggerTest extends BasicTestCase {
         checkLogLine(state.items, "This is a trace test with 1 arg: argument");
         checkLogLine(state.items, "This is a trace test with 2 args: argument1, argument2");
         checkLogLine(state.items, "This is a trace test with 3 args: argument1, argument2, argument3");
-        checkLogLine(state.items, "This is a trace test with 3 args: argument1, argument2, argument3 and and " +
-                "exception: java.lang.IllegalStateException: Some cause");
+
 
         checkLogLine(state.items, "This is a debug test with no args");
         checkLogLine(state.items, "This is a debug test with 1 arg: argument");
         checkLogLine(state.items, "This is a debug test with 2 args: argument1, argument2");
         checkLogLine(state.items, "This is a debug test with 3 args: argument1, argument2, argument3");
-        checkLogLine(state.items, "This is a debug test with 3 args: argument1, argument2, argument3 and and " +
-                "exception: java.lang.IllegalStateException: Some cause");
 
         checkLogLine(state.items, "This is a info test with no args");
         checkLogLine(state.items, "This is a info test with 1 arg: argument");
         checkLogLine(state.items, "This is a info test with 2 args: argument1, argument2");
         checkLogLine(state.items, "This is a info test with 3 args: argument1, argument2, argument3");
-        checkLogLine(state.items, "This is a info test with 3 args: argument1, argument2, argument3 and and " +
-                "exception: java.lang.IllegalStateException: Some cause");
 
         checkLogLine(state.items, "This is a warn test with no args");
         checkLogLine(state.items, "This is a warn test with 1 arg: argument");
         checkLogLine(state.items, "This is a warn test with 2 args: argument1, argument2");
         checkLogLine(state.items, "This is a warn test with 3 args: argument1, argument2, argument3");
-        checkLogLine(state.items, "This is a warn test with 3 args: argument1, argument2, argument3 and and " +
-                "exception: java.lang.IllegalStateException: Some cause");
 
         checkLogLine(state.items, "This is a error test with no args");
         checkLogLine(state.items, "This is a error test with 1 arg: argument");
         checkLogLine(state.items, "This is a error test with 2 args: argument1, argument2");
         checkLogLine(state.items, "This is a error test with 3 args: argument1, argument2, argument3");
-        checkLogLine(state.items, "This is a error test with 3 args: argument1, argument2, argument3 and and " +
-                "exception: java.lang.IllegalStateException: Some cause");
 
         checkLogLineNegative(state.items, "This message should not present");
+
+        int count = 0;
+        // multi line log statements can be pre empted by xenon logs so we can rely on exact match.
+        // Instead just verify the beginning is present
+        for (String line : state.items) {
+            if (line.contains(exceptionMsgSegment)) {
+                count++;
+            }
+        }
+
+        assertEquals(expectedCountForExceptionSegment, count);
+
     }
 
     private void checkLogLine(List<String> items, String line) {
