@@ -21,6 +21,7 @@ import java.net.URI;
 import java.security.GeneralSecurityException;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -30,6 +31,7 @@ import java.util.Map.Entry;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.function.Consumer;
 
 import org.junit.After;
@@ -196,8 +198,23 @@ public class TestAuthorization extends BasicTestCase {
                         this.userServicePath)
                 .build();
 
-        URI taskUri = this.host.createQueryTaskService(qt);
-        qt = this.host.getServiceState(null, QueryTask.class, taskUri);
+        Date exp = this.host.getTestExpiration();
+        while (new Date().before(exp)) {
+            URI taskUri = this.host.createQueryTaskService(qt);
+            qt = this.host.getServiceState(null, QueryTask.class, taskUri);
+            if (TaskState.isFailed(qt.taskInfo)) {
+                throw new IllegalStateException("task failed");
+            }
+            if (TaskState.isFinished(qt.taskInfo)) {
+                break;
+            }
+            this.host.log("Task not finished");
+            Thread.sleep(100);
+        }
+
+        if (new Date().after(exp)) {
+            throw new TimeoutException();
+        }
 
         this.host.testStart(1);
         Operation get = Operation.createGet(UriUtils.buildUri(this.host, qt.results.nextPageLink))
