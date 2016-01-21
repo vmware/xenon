@@ -672,6 +672,7 @@ public class TestNodeGroupService {
 
             this.host.scheduleSynchronizationIfAutoSyncDisabled();
 
+            Thread.sleep(1000);
             // now verify all nodes synchronize and see the example service instances that existed on the single
             // host
             waitForReplicatedFactoryChildServiceConvergence(
@@ -680,11 +681,14 @@ public class TestNodeGroupService {
                     this.serviceCount, 0);
 
             // Send some updates after the full group has formed  and verify the updates are seen by services on all nodes
+            Thread.sleep(1000);
 
             doStateUpdateReplicationTest(Action.PATCH, this.serviceCount, this.updateCount, 0,
                     this.exampleStateUpdateBodySetter,
                     this.exampleStateConvergenceChecker,
                     exampleStatesPerSelfLink);
+
+            Thread.sleep(2000);
 
             for (VerificationHost peer : this.host.getInProcessHostMap().values()) {
                 verifyFactoryAvailable(UriUtils.buildFactoryUri(peer, ExampleService.class));
@@ -726,19 +730,22 @@ public class TestNodeGroupService {
             }
             this.host.testWait();
 
+            Thread.sleep(2000);
+
             if (!modifiedExampleStates.isEmpty()) {
                 this.waitForReplicatedFactoryChildServiceConvergence(modifiedExampleStates,
                         this.exampleStateConvergenceChecker,
                         modifiedExampleStates.size(),
                         version);
             }
+            Thread.sleep(2000);
 
             // now, we restart the host we stopped, and rejoin it. We then verify the service we
             // deleted from the live hosts, also gets deleted from the host that rejoined
             h.setPort(0);
             h.setSecurePort(0);
             try {
-                Thread.sleep(1000);
+                Thread.sleep(2000);
                 h.start();
             } catch (LockObtainFailedException e) {
                 // on occasion the file system / lucene do not release the index dir lock on time.
@@ -767,6 +774,7 @@ public class TestNodeGroupService {
             this.host.scheduleSynchronizationIfAutoSyncDisabled();
             h.scheduleNodeGroupChangeMaintenance(ServiceUriPaths.DEFAULT_NODE_SELECTOR);
 
+            Thread.sleep(2000);
             // verify service that was deleted while node group was partitioned, is now deleted
             // across all nodes
             this.waitForReplicatedFactoryChildServiceConvergence(modifiedExampleStates,
@@ -781,6 +789,53 @@ public class TestNodeGroupService {
             }
         }
     }
+
+    @Test
+    public void synchronizationWithManualConflictedState() throws Throwable {
+        this.isPeerSynchronizationEnabled = false;
+
+        try {
+            this.setUp(this.nodeCount);
+
+            // add the *same* service instance with different versions,
+            // in *all* peers, so we force conflict detection,
+            // no node sharing any history of service instances
+            int version = 0;
+            for (VerificationHost v : this.host.getInProcessHostMap().values()) {
+                v.startService(Operation.createPost(UriUtils.buildUri(v, ExampleService.FACTORY_LINK)),
+                        new ExampleService());
+            }
+
+            Map<URI, ExampleServiceState> exampleStatesConflicted = new HashMap<>();
+
+            for (VerificationHost v : this.host.getInProcessHostMap().values()) {
+
+                int finalVersion = version;
+                URI factoryUri = UriUtils.buildUri(v,
+                        ExampleService.FACTORY_LINK);
+                exampleStatesConflicted.putAll(this.host.doFactoryChildServiceStart(
+                        null,
+                        1,
+                        ExampleServiceState.class,
+                        (o) -> {
+                            ExampleServiceState s = new ExampleServiceState();
+                            s.documentSelfLink = "conflictedExampleInstance";
+                            s.documentVersion = finalVersion;
+                            s.name = s.documentSelfLink;
+                            s.counter = 10L;
+                            o.setBody(s);
+                        }, factoryUri));
+
+                version++;
+            }
+
+            this.host.scheduleSynchronizationIfAutoSyncDisabled();
+            this.host.joinNodesAndVerifyConvergence(this.nodeCount);
+        } finally {
+            this.host.log("test finished");
+        }
+    }
+
 
     /**
      * This test validates that if a host, joined in a peer node group, stops/fails and another
