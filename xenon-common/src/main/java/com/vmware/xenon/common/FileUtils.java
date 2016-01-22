@@ -256,11 +256,15 @@ public class FileUtils {
 
     private static List<File> findFiles(Path rootPath, Set<String> fileNames, List<File> files,
             boolean isExactMatch) {
-
         DirectoryStream.Filter<Path> filter = (file) -> {
             if (file.toFile().isDirectory()) {
                 return true;
             }
+
+            if (fileNames.isEmpty()) {
+                return true;
+            }
+
             String thisFileName = file.getFileName().toString();
             if (fileNames.contains(thisFileName)) {
                 return true;

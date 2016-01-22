@@ -152,74 +152,80 @@ public class ServiceHost {
 
     public static class Arguments {
         /**
-         * Command line argument
+         * HTTP port
          */
         public int port = DEFAULT_PORT;
 
         /**
-         * Command line argument
+         * HTTPS port
          */
         public int securePort;
 
         /**
-         * Command line argument
+         * SSL client authorization mode
          */
         public SslClientAuthMode sslClientAuthMode = SslClientAuthMode.NONE;
 
         /**
-         * Command line argument
+         * File path to key file
          */
         public Path keyFile;
 
         /**
-         * Command line argument
+         * Key passphrase
          */
         public String keyPassphrase;
 
         /**
-         * Command line argument
+         * File path to certificate file
          */
         public Path certificateFile;
 
         /**
-         * Command line argument
+         * File directory path used to store service state
          */
         public Path sandbox = DEFAULT_SANDBOX;
 
         /**
-         * Command line argument
+         * Network interface address to bind to
          */
         public String bindAddress = DEFAULT_BIND_ADDRESS;
 
         /**
-         * Command line argument. Optional public URI the host uses to advertise itself to peers. If its
+         * Optional public URI the host uses to advertise itself to peers. If its
          * not set, the bind address and port will be used to form the host URI
          */
         public String publicUri;
 
         /**
-         * Command line argument. Comma separated list of one or more peer nodes to join through Nodes
+         * Comma separated list of one or more peer nodes to join through Nodes
          * must be defined in URI form, e.g --peerNodes=http://192.168.1.59:8000,http://192.168.1.82
          */
         public String[] peerNodes;
 
         /**
-         * Command line argument. A stable identity associated with this host
+         * A stable identity associated with this host
          */
         public String id;
 
         /**
-         * Command line argument. Value indicating whether node group changes will automatically
+         * Value indicating whether node group changes will automatically
          * trigger replicated service state synchronization. If set to false, client can issue
          * synchronization requests through core management service
          */
         public boolean isPeerSynchronizationEnabled = true;
 
         /**
-         * Command line argument. Mandate an auth context for all requests
+         * Mandate an auth context for all requests
          * This option will be set to true and authn/authz enabled by default after a transition period
          */
         public boolean isAuthorizationEnabled = false;
+
+        /**
+         * File directory path to resource files. If specified resources will loaded from here instead of
+         * the JAR file of the host
+         */
+        public Path resourceSandbox;
     }
 
     private static final LogFormatter LOG_FORMATTER = new LogFormatter();
@@ -326,6 +332,7 @@ public class ServiceHost {
         public SslClientAuthMode sslClientAuthMode;
 
         public URI storageSandboxFileReference;
+        public URI resourceSandboxFileReference;
         public URI privateKeyFileReference;
         public String privateKeyPassphrase;
         public URI certificateFileReference;
@@ -573,6 +580,16 @@ public class ServiceHost {
     }
 
     private void initializeStateFromArguments(File s, Arguments args) throws URISyntaxException {
+
+        if (args.resourceSandbox != null) {
+            File resDir = args.resourceSandbox.toFile();
+            if (resDir.exists()) {
+                this.state.resourceSandboxFileReference = resDir.toURI();
+            } else {
+                log(Level.WARNING, "Resource sandbox does not exist: %s", args.resourceSandbox);
+            }
+        }
+
         this.state.httpPort = args.port;
         this.state.httpsPort = args.securePort;
         this.state.sslClientAuthMode = args.sslClientAuthMode;
@@ -591,7 +608,6 @@ public class ServiceHost {
         }
 
         this.state.isPeerSynchronizationEnabled = args.isPeerSynchronizationEnabled;
-
         this.state.isAuthorizationEnabled = args.isAuthorizationEnabled;
 
         File hostStateFile = new File(s, SERVICE_HOST_STATE_FILE);
@@ -1252,7 +1268,21 @@ public class ServiceHost {
             baseUriPath = Paths.get(ServiceUriPaths.UI_RESOURCES, path.toString());
         }
 
-        for (ResourceEntry entry : FileUtils.findResources(s.getClass(), path.toString())) {
+        String prefix = path.toString().replace('\\', '/');
+
+        if (this.state.resourceSandboxFileReference != null) {
+            discoverFileResources(s, pathToURIPath, baseUriPath, prefix);
+        }
+
+        if (pathToURIPath.isEmpty()) {
+            discoverJarResources(path, s, pathToURIPath, baseUriPath, prefix);
+        }
+        return pathToURIPath;
+    }
+
+    private void discoverJarResources(Path path, Service s, Map<Path, String> pathToURIPath,
+            Path baseUriPath, String prefix) throws URISyntaxException, IOException {
+        for (ResourceEntry entry : FileUtils.findResources(s.getClass(), prefix)) {
             Path resourcePath = path.resolve(entry.suffix);
             Path uriPath = baseUriPath.resolve(entry.suffix);
             Path outputPath = this.copyResourceToSandbox(entry.url, resourcePath);
@@ -1263,7 +1293,27 @@ public class ServiceHost {
                 pathToURIPath.put(outputPath, uriPath.toString().replace('\\', '/'));
             }
         }
-        return pathToURIPath;
+    }
+
+    private void discoverFileResources(Service s, Map<Path, String> pathToURIPath,
+            Path baseUriPath,
+            String prefix) {
+        File rootDir = new File(new File(this.state.resourceSandboxFileReference), prefix);
+        if (!rootDir.exists()) {
+            return;
+        }
+
+        String basePath = baseUriPath.toString();
+        String serviceName = s.getClass().getSimpleName();
+        List<File> resources = FileUtils.findFiles(rootDir.toPath(),
+                new HashSet<String>(), false);
+        for (File f : resources) {
+            String subPath = f.getAbsolutePath();
+            subPath = subPath.substring(subPath.indexOf(serviceName));
+            subPath = subPath.replace(serviceName, "");
+            Path uriPath = Paths.get(basePath, subPath);
+            pathToURIPath.put(f.toPath(), uriPath.toString().replace('\\', '/'));
+        }
     }
 
     private void startDefaultReplicationAndNodeGroupServices() throws Throwable {

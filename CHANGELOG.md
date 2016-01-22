@@ -2,6 +2,11 @@
 
 ## 0.5.1-SNAPSHOT
 
+* Add ServiceHost.Arguments.resourceSandbox to speed up UI
+  development experience. When specified, xenon will publish
+  the UI resource files directly from the file folder, allowing
+  for real time edits / refresh of UI content
+
 ## 0.5.0
 
 * Implement authorization on stateless services. This is a breaking
