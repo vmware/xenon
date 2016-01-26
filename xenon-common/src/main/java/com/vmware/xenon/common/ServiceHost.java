@@ -241,7 +241,16 @@ public class ServiceHost {
     public static final String LOCAL_HOST = "127.0.0.1";
     public static final String LOOPBACK_ADDRESS = "127.0.0.1";
     public static final String DEFAULT_BIND_ADDRESS = ServiceHost.LOCAL_HOST;
-    public static final int DEFAULT_PORT = 8000;
+
+    public static final int PORT_VALUE_HTTP_DEFAULT = 8000;
+
+    /**
+     * Indicates that the listener associated with this port field should not be started
+     */
+    public static final int PORT_VALUE_LISTENER_DISABLED = -1;
+
+    public static final int DEFAULT_PORT = PORT_VALUE_HTTP_DEFAULT;
+
     public static final String ALL_INTERFACES = "0.0.0.0";
 
     public static final String ROOT_PATH = "";
@@ -758,6 +767,13 @@ public class ServiceHost {
             throw new IllegalStateException("Already started");
         }
         this.state.httpPort = port;
+        if (this.httpListener != null) {
+            try {
+                this.httpListener.stop();
+            } catch (IOException e) {
+            }
+            this.httpListener = null;
+        }
         return this;
     }
 
@@ -789,6 +805,13 @@ public class ServiceHost {
             throw new IllegalStateException("Already started");
         }
         this.state.httpsPort = port;
+        if (this.httpsListener != null) {
+            try {
+                this.httpsListener.stop();
+            } catch (IOException e) {
+            }
+            this.httpsListener = null;
+        }
         return this;
     }
 
@@ -1015,11 +1038,13 @@ public class ServiceHost {
         this.scheduledExecutor = Executors.newScheduledThreadPool(Utils.DEFAULT_THREAD_COUNT,
                 r -> new Thread(r, getUri().toString() + "/scheduled/" + this.state.id));
 
-        if (this.httpListener == null) {
-            this.httpListener = new NettyHttpListener(this);
-        }
+        if (getPort() != PORT_VALUE_LISTENER_DISABLED) {
+            if (this.httpListener == null) {
+                this.httpListener = new NettyHttpListener(this);
+            }
 
-        this.httpListener.start(getPort(), this.state.bindAddress);
+            this.httpListener.start(getPort(), this.state.bindAddress);
+        }
 
         if ((this.state.certificateFileReference != null
                 || this.state.privateKeyFileReference != null)

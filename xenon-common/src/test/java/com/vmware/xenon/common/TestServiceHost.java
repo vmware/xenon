@@ -1167,24 +1167,47 @@ public class TestServiceHost {
         ServiceRequestListener httpListener = this.host.getListener();
         ServiceRequestListener httpsListener = this.host.getSecureListener();
 
-        assertTrue("http listener is on", httpListener.isListening());
-        assertTrue("https listener is on", httpsListener.isListening());
+        assertTrue("http listener should be on", httpListener.isListening());
+        assertTrue("https listener should be on", httpsListener.isListening());
         assertEquals(ServiceHost.HttpScheme.HTTP_AND_HTTPS, this.host.getCurrentHttpScheme());
+        assertTrue("public uri scheme should be HTTP",
+                this.host.getPublicUri().getScheme().equals("http"));
 
         httpsListener.stop();
-        assertTrue("http listener is on ", httpListener.isListening());
-        assertFalse("https listener is off", httpsListener.isListening());
+        assertTrue("http listener should be on ", httpListener.isListening());
+        assertFalse("https listener should be off", httpsListener.isListening());
         assertEquals(ServiceHost.HttpScheme.HTTP_ONLY, this.host.getCurrentHttpScheme());
+        assertTrue("public uri scheme should be HTTP",
+                this.host.getPublicUri().getScheme().equals("http"));
 
         httpListener.stop();
-        assertFalse("http listener is off", httpListener.isListening());
-        assertFalse("https listener is off", httpsListener.isListening());
+        assertFalse("http listener should be off", httpListener.isListening());
+        assertFalse("https listener should be off", httpsListener.isListening());
         assertEquals(ServiceHost.HttpScheme.NONE, this.host.getCurrentHttpScheme());
 
+        // re-start listener even host is stopped, verify getCurrentHttpScheme only
         httpsListener.start(0, ServiceHost.LOOPBACK_ADDRESS);
-        assertFalse("http listener is off", httpListener.isListening());
-        assertTrue("https listener is on", httpsListener.isListening());
+        assertFalse("http listener should be off", httpListener.isListening());
+        assertTrue("https listener should be on", httpsListener.isListening());
         assertEquals(ServiceHost.HttpScheme.HTTPS_ONLY, this.host.getCurrentHttpScheme());
+        httpsListener.stop();
+
+        this.host.stop();
+        // set HTTP port to disabled, restart host. Verify scheme is HTTPS only. We must
+        // set both HTTP and secure port, to null out the listeners from the host instance.
+        this.host.setPort(ServiceHost.PORT_VALUE_LISTENER_DISABLED);
+        this.host.setSecurePort(0);
+        this.host.start();
+
+        httpListener = this.host.getListener();
+        httpsListener = this.host.getSecureListener();
+
+        assertTrue("http listener should be null, default port value set to disabled",
+                httpListener == null);
+        assertTrue("https listener should be on", httpsListener.isListening());
+        assertEquals(ServiceHost.HttpScheme.HTTPS_ONLY, this.host.getCurrentHttpScheme());
+        assertTrue("public uri scheme should be HTTPS",
+                this.host.getPublicUri().getScheme().equals("https"));
     }
 
     @After
