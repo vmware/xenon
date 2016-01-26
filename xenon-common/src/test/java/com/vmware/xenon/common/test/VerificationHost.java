@@ -921,9 +921,8 @@ public class VerificationHost extends ExampleServiceHost {
                                         synchronized (state) {
                                             ServiceDocument d = (ServiceDocument) o.getBody(type);
                                             results.put(
-                                                    UriUtils.buildUri(o.getUri().getHost(),
-                                                            o.getUri().getPort(),
-                                                            d.documentSelfLink, null),
+                                                    UriUtils.buildUri(o.getUri(),
+                                                            d.documentSelfLink),
                                                     o.getBody(type));
                                         }
                                     }
@@ -1297,8 +1296,7 @@ public class VerificationHost extends ExampleServiceHost {
                         try {
                             T body = o.getBody(bodyType);
                             ServiceDocument rsp = (ServiceDocument) body;
-                            URI childURI = UriUtils.buildUri(factoryURI.getHost(),
-                                    factoryURI.getPort(), rsp.documentSelfLink, null);
+                            URI childURI = UriUtils.buildUri(factoryURI, rsp.documentSelfLink);
                             synchronized (initialStates) {
                                 initialStates.put(childURI, body);
                             }
@@ -1560,7 +1558,8 @@ public class VerificationHost extends ExampleServiceHost {
         Map<URI, URI> nodeGroupToFactoryMap = new HashMap<>();
         for (URI nodeGroup : this.peerNodeGroups.values()) {
             nodeGroupToFactoryMap.put(nodeGroup,
-                    UriUtils.buildUri(nodeGroup.getHost(), nodeGroup.getPort(), factoryLink, null));
+                    UriUtils.buildUri(nodeGroup.getScheme(), nodeGroup.getHost(),
+                            nodeGroup.getPort(), factoryLink, null));
         }
         return nodeGroupToFactoryMap;
     }
@@ -1578,6 +1577,11 @@ public class VerificationHost extends ExampleServiceHost {
 
         h.setPeerSynchronizationEnabled(this.isPeerSynchronizationEnabled());
         h.setAuthorizationEnabled(this.isAuthorizationEnabled());
+
+        if (this.getCurrentHttpScheme() == HttpScheme.HTTPS_ONLY) {
+            // disable HTTP on new peer host
+            h.setPort(ServiceHost.PORT_VALUE_LISTENER_DISABLED);
+        }
 
         if (this.isAuthorizationEnabled()) {
             h.setAuthorizationService(new AuthorizationContextService());
@@ -2533,9 +2537,8 @@ public class VerificationHost extends ExampleServiceHost {
     }
 
     public void addPeerNode(VerificationHost h) {
-        String address = h.getSystemInfo().ipAddresses.get(0);
-        URI localBaseURI = UriUtils.buildUri(address, h.getPort(), "", null);
-        URI nodeGroup = UriUtils.buildUri(localBaseURI, ServiceUriPaths.DEFAULT_NODE_GROUP);
+        URI localBaseURI = h.getPublicUri();
+        URI nodeGroup = UriUtils.buildUri(h.getPublicUri(), ServiceUriPaths.DEFAULT_NODE_GROUP);
         this.peerNodeGroups.put(localBaseURI, nodeGroup);
         this.localPeerHosts.put(localBaseURI, h);
     }
