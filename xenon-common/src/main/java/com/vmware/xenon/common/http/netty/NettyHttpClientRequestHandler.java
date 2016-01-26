@@ -398,6 +398,7 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
             InetSocketAddress remote = (InetSocketAddress) ctx.channel().remoteAddress();
             String path = NettyHttpListener.UNKNOWN_CLIENT_REFERER_PATH;
             request.setReferer(UriUtils.buildUri(
+                    this.sslHandler != null ? "https" : "http",
                     remote.getHostString(),
                     remote.getPort(),
                     path,

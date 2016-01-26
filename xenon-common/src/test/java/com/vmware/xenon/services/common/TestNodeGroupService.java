@@ -60,6 +60,7 @@ import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.ServiceDocumentDescription;
 import com.vmware.xenon.common.ServiceDocumentQueryResult;
 import com.vmware.xenon.common.ServiceHost;
+import com.vmware.xenon.common.ServiceHost.HttpScheme;
 import com.vmware.xenon.common.ServiceHost.ServiceHostState;
 import com.vmware.xenon.common.ServiceStats;
 import com.vmware.xenon.common.ServiceStats.ServiceStat;
@@ -183,6 +184,7 @@ public class TestNodeGroupService {
 
     private boolean isPeerSynchronizationEnabled = true;
     private boolean isAuthorizationEnabled = false;
+    private HttpScheme replicationUriScheme;
 
     private void setUp(int localHostCount) throws Throwable {
         if (this.host != null) {
@@ -192,8 +194,13 @@ public class TestNodeGroupService {
         this.host = VerificationHost.create(0);
         this.host.setAuthorizationEnabled(this.isAuthorizationEnabled);
 
-        ServiceHost h = this.host;
-        VerificationHost.createAndAttachSSLClient(h, null, null);
+        VerificationHost.createAndAttachSSLClient(this.host, null, null);
+
+        if (this.replicationUriScheme == HttpScheme.HTTPS_ONLY) {
+            // disable HTTP, forcing host.getPublicUri() to return a HTTPS schemed URI. This in
+            // turn forces the node group to use HTTPS for join, replication, etc
+            this.host.setPort(ServiceHost.PORT_VALUE_LISTENER_DISABLED);
+        }
 
         this.host.start();
 
@@ -1067,6 +1074,14 @@ public class TestNodeGroupService {
     @Test
     public void replication() throws Throwable {
         this.isPeerSynchronizationEnabled = false;
+        this.replicationTargetFactoryLink = ExampleFactoryService.SELF_LINK;
+        doReplication();
+    }
+
+    @Test
+    public void replicationSsl() throws Throwable {
+        this.isPeerSynchronizationEnabled = false;
+        this.replicationUriScheme = ServiceHost.HttpScheme.HTTPS_ONLY;
         this.replicationTargetFactoryLink = ExampleFactoryService.SELF_LINK;
         doReplication();
     }
@@ -2477,9 +2492,8 @@ public class TestNodeGroupService {
                         .getPeerServiceUri(this.replicationTargetFactoryLink);
 
                 this.host.send(Operation
-                        .createPatch(UriUtils.buildUri(factoryOnRandomPeerUri.getHost(),
-                                factoryOnRandomPeerUri.getPort(),
-                                initState.documentSelfLink, null))
+                        .createPatch(UriUtils.buildUri(factoryOnRandomPeerUri,
+                                initState.documentSelfLink))
                         .setAction(action)
                         .setContextId(contextId)
                         .forceRemote()

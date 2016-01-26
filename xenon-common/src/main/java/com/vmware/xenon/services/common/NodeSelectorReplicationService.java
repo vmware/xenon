@@ -160,6 +160,7 @@ public class NodeSelectorReplicationService extends StatelessService {
                 c.handle(update, new IllegalStateException("node is not available"));
                 return;
             }
+
             cl.send(update);
         });
     }
