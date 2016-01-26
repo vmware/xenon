@@ -90,12 +90,14 @@ public interface NodeSelectorService extends Service {
         public Collection<NodeState> selectedNodes;
 
         public static URI buildUriToOwner(SelectOwnerResponse rsp, String path, String query) {
-            return UriUtils.buildUri(rsp.ownerNodeReference.getHost(), rsp.ownerNodeReference.getPort(), path,
+            return UriUtils.buildUri(rsp.ownerNodeReference.getScheme(),
+                    rsp.ownerNodeReference.getHost(), rsp.ownerNodeReference.getPort(), path,
                     query);
         }
 
         public static URI buildUriToOwner(SelectOwnerResponse rsp, Operation op) {
-            return UriUtils.buildUri(rsp.ownerNodeReference.getHost(), rsp.ownerNodeReference.getPort(), op
+            return UriUtils.buildUri(rsp.ownerNodeReference.getScheme(),
+                    rsp.ownerNodeReference.getHost(), rsp.ownerNodeReference.getPort(), op
                     .getUri().getPath(), op.getUri().getQuery());
         }
     }

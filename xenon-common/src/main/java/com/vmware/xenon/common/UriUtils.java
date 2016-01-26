@@ -60,10 +60,6 @@ public class UriUtils {
     public static final String URI_PARAM_INCLUDE_DELETED = "includeDeleted";
     public static final String FIELD_NAME_SELF_LINK = "SELF_LINK";
 
-    public static URI buildUri(ServiceHost host, String path) {
-        return buildUri(ServiceHost.LOCAL_HOST, host.getPort(), path, null);
-    }
-
     /**
      * Computes the parent path of the specified path.
      *
@@ -123,40 +119,30 @@ public class UriUtils {
     }
 
     public static URI buildSubscriptionUri(ServiceHost host, String path) {
-        return buildUri(ServiceHost.LOCAL_HOST, host.getPort(),
-                UriUtils.buildUriPath(path, ServiceHost.SERVICE_URI_SUFFIX_SUBSCRIPTIONS),
-                null);
+        return extendUri(host.getUri(),
+                UriUtils.buildUriPath(path, ServiceHost.SERVICE_URI_SUFFIX_SUBSCRIPTIONS));
     }
 
     public static URI buildSubscriptionUri(URI serviceUri) {
-        return buildUri(serviceUri.getHost(), serviceUri.getPort(),
-                UriUtils.buildUriPath(serviceUri.getPath(),
-                        ServiceHost.SERVICE_URI_SUFFIX_SUBSCRIPTIONS),
-                null);
+        return extendUri(serviceUri, ServiceHost.SERVICE_URI_SUFFIX_SUBSCRIPTIONS);
     }
 
     public static URI buildStatsUri(ServiceHost host, String path) {
-        return buildUri(ServiceHost.LOCAL_HOST, host.getPort(),
-                UriUtils.buildUriPath(path, ServiceHost.SERVICE_URI_SUFFIX_STATS),
-                null);
+        return extendUri(host.getUri(),
+                UriUtils.buildUriPath(path, ServiceHost.SERVICE_URI_SUFFIX_STATS));
     }
 
     public static URI buildStatsUri(URI serviceUri) {
-        return buildUri(serviceUri.getHost(), serviceUri.getPort(),
-                UriUtils.buildUriPath(serviceUri.getPath(), ServiceHost.SERVICE_URI_SUFFIX_STATS),
-                null);
+        return extendUri(serviceUri, ServiceHost.SERVICE_URI_SUFFIX_STATS);
     }
 
     public static URI buildConfigUri(ServiceHost host, String path) {
-        return buildUri(ServiceHost.LOCAL_HOST, host.getPort(),
-                UriUtils.buildUriPath(path, ServiceHost.SERVICE_URI_SUFFIX_CONFIG),
-                null);
+        return extendUri(host.getUri(),
+                UriUtils.buildUriPath(path, ServiceHost.SERVICE_URI_SUFFIX_CONFIG));
     }
 
     public static URI buildConfigUri(URI serviceUri) {
-        return buildUri(serviceUri.getHost(), serviceUri.getPort(),
-                UriUtils.buildUriPath(serviceUri.getPath(), ServiceHost.SERVICE_URI_SUFFIX_CONFIG),
-                null);
+        return extendUri(serviceUri, ServiceHost.SERVICE_URI_SUFFIX_CONFIG);
     }
 
     public static URI extendUri(URI uri, String path) {
@@ -176,8 +162,13 @@ public class UriUtils {
         return buildUri(HTTP_SCHEME, host, port, path, query);
     }
 
+    public static URI buildUri(ServiceHost host, String path) {
+        return buildUri(host, path, null);
+    }
+
     public static URI buildUri(ServiceHost host, String path, String query) {
-        return UriUtils.buildUri("http", ServiceHost.LOCAL_HOST, host.getPort(), path, query);
+        URI base = host.getUri();
+        return UriUtils.buildUri(base.getScheme(), base.getHost(), base.getPort(), path, query);
     }
 
     public static URI buildUri(String scheme, String host, int port, String path, String query) {
@@ -252,7 +243,13 @@ public class UriUtils {
     public static URI buildUri(URI baseUri, String... path) {
         String query = null;
         String buildPath = null;
+        if (path == null || path.length == 0) {
+            return baseUri;
+        }
         for (String p : path) {
+            if (p == null) {
+                continue;
+            }
             if (p.contains(UriUtils.URI_QUERY_CHAR)) {
                 String[] pathAndQuery = p.split("\\" + UriUtils.URI_QUERY_CHAR);
                 p = pathAndQuery[0];
@@ -348,8 +345,7 @@ public class UriUtils {
             boolean includeDeleted,
             ServiceOption cap) {
 
-        URI hostURI = UriUtils.buildUri(ServiceHost.LOCAL_HOST, host.getPort(),
-                ServiceUriPaths.CORE_DOCUMENT_INDEX, null);
+        URI hostURI = UriUtils.extendUri(host.getUri(), ServiceUriPaths.CORE_DOCUMENT_INDEX);
         return buildIndexQueryUri(hostURI,
                 selfLink, doExpand, includeDeleted, cap);
     }
@@ -360,8 +356,7 @@ public class UriUtils {
             boolean includeDeleted,
             ServiceOption cap) {
 
-        URI hostURI = UriUtils.buildUri(ServiceHost.LOCAL_HOST, host.getPort(),
-                ServiceUriPaths.CORE_OPERATION_INDEX, null);
+        URI hostURI = UriUtils.extendUri(host.getUri(), ServiceUriPaths.CORE_OPERATION_INDEX);
         return buildIndexQueryUri(hostURI,
                 selfLink, doExpand, includeDeleted, cap);
     }

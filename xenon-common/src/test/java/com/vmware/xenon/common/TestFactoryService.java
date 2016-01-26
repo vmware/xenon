@@ -266,8 +266,9 @@ public class TestFactoryService extends BasicReusableHostTestCase {
             for (Object d : res.documents.values()) {
                 MinimalTestServiceState expandedState = Utils.fromJson(d,
                         MinimalTestServiceState.class);
-                childServiceStates.put(UriUtils.buildUri(factoryUri.getHost(),
-                        factoryUri.getPort(), expandedState.documentSelfLink, null), expandedState);
+                childServiceStates.put(
+                        UriUtils.buildUri(factoryUri, expandedState.documentSelfLink),
+                        expandedState);
             }
 
             validateBeforeAfterServiceStates(caps, count, factoryUri.getPath(),
@@ -432,8 +433,7 @@ public class TestFactoryService extends BasicReusableHostTestCase {
         for (MinimalTestServiceState s : childServiceStatesAfterRestart
                 .values()) {
             MinimalTestServiceState beforeRestart = childServiceStates
-                    .get(UriUtils.buildUri(factoryUri.getHost(), factoryUri.getPort(),
-                            s.documentSelfLink, null));
+                    .get(UriUtils.buildUri(factoryUri, s.documentSelfLink));
             // version should be two more than PATCH count:
             // +1 for the DELETE right before shutdown
             // +1 for the new initial state
@@ -728,7 +728,14 @@ public class TestFactoryService extends BasicReusableHostTestCase {
     @Test
     public void postFactoryQueueing() throws Throwable {
         SomeDocument doc = new SomeDocument();
-        doc.documentSelfLink = "/subpath";
+        doc.documentSelfLink = "/subpath-" + UUID.randomUUID().toString();
+
+        if (this.host.checkServiceAvailable(this.factoryUri.getPath())) {
+            this.host.testStart(1);
+            this.host.send(Operation.createDelete(this.factoryUri).setCompletion(
+                    this.host.getCompletion()));
+            this.host.testWait();
+        }
 
         this.host.testStart(1);
         Operation post = Operation

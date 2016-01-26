@@ -429,7 +429,7 @@ public class ServiceHost {
         return port;
     }
 
-    protected enum HttpScheme {
+    public enum HttpScheme {
         HTTP_ONLY, HTTPS_ONLY, HTTP_AND_HTTPS, NONE;
     }
 
@@ -856,8 +856,7 @@ public class ServiceHost {
             getSystemInfo();
         }
 
-        this.cachedUri = null;
-
+        clearUriAndLogPrefix();
         return this;
     }
 
@@ -870,8 +869,7 @@ public class ServiceHost {
      */
     public ServiceHost setPublicUri(URI publicUri) {
         this.state.publicUri = publicUri;
-        this.cachedUri = null;
-        this.logPrefix = null;
+        clearUriAndLogPrefix();
         return this;
     }
 
@@ -1110,9 +1108,9 @@ public class ServiceHost {
 
         scheduleMaintenance();
 
-        log(Level.INFO, "%s listening on %s:%d", userAgent, getPreferredAddress(), getPort());
+        clearUriAndLogPrefix();
+        log(Level.INFO, "%s listening on %s", userAgent, getPublicUri());
 
-        this.cachedUri = null;
         return this;
     }
 
@@ -3263,7 +3261,8 @@ public class ServiceHost {
             throw new IllegalArgumentException("URI is required");
         }
 
-        if (op.getUri().getPort() != this.state.httpPort) {
+        if (op.getUri().getPort() != this.state.httpPort
+                && op.getUri().getPort() != this.state.httpsPort) {
             // force communication between hosts in the same process to go
             // through sockets. It is less optimal but in production we do not
             // expect multiple hosts per process. In tests, we do expect
@@ -3503,7 +3502,7 @@ public class ServiceHost {
 
     protected void log(Level level, Integer nestingLevel, String fmt, Object... args) {
         if (this.logPrefix == null) {
-            this.logPrefix = getUri().toString();
+            this.logPrefix = getPublicUri().toString();
         }
         Utils.log(this.logger, nestingLevel, this.logPrefix, level, fmt, args);
     }
@@ -3770,11 +3769,16 @@ public class ServiceHost {
             ipAddresses.set(0, address);
             log(Level.INFO, "Swapped preferred address to %s from %s", address, oldPreferred);
             this.info.ipAddresses = ipAddresses;
-            this.cachedUri = null;
+            clearUriAndLogPrefix();
             return true;
         }
 
         return address.equals(ipAddresses.get(0));
+    }
+
+    private void clearUriAndLogPrefix() {
+        this.cachedUri = null;
+        this.logPrefix = null;
     }
 
     private String normalizeAddress(String address) {
