@@ -1163,7 +1163,6 @@ public class TestNodeGroupService {
                 throw new TimeoutException();
             }
 
-            this.host.scheduleSynchronizationIfAutoSyncDisabled();
             expectedVersion += 1;
             doStateUpdateReplicationTest(Action.DELETE, this.serviceCount, 1,
                     expectedVersion,

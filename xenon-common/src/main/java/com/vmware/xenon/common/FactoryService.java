@@ -122,7 +122,7 @@ public abstract class FactoryService extends StatelessService {
                 logWarning("Failure querying index for all child services: %s", e.getMessage());
                 return;
             }
-            logFine("Finished self query for child services");
+            logInfo("Finished self query for child services");
         });
 
         if (this.childOptions.contains(ServiceOption.ON_DEMAND_LOAD)) {
