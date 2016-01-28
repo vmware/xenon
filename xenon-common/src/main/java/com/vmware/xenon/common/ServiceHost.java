@@ -2100,7 +2100,7 @@ public class ServiceHost {
 
                 s.setProcessingStage(Service.ProcessingStage.AVAILABLE);
 
-                log(Level.FINE, "Started %s", s.getSelfLink());
+                log(Level.FINEST, "Started %s", s.getSelfLink());
                 post.complete();
 
                 if (s.hasOption(ServiceOption.DOCUMENT_OWNER)) {
