@@ -593,7 +593,7 @@ public abstract class FactoryService extends StatelessService {
 
     public void handlePost(Operation op) {
         if (op.hasBody()) {
-            ServiceDocument body = op.getBody(ServiceDocument.class);
+            ServiceDocument body = op.getBody(this.stateType);
             if (body == null) {
                 op.fail(new IllegalArgumentException("structured body is required"));
                 return;
