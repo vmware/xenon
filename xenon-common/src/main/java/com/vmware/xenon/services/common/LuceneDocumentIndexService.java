@@ -116,15 +116,19 @@ public class LuceneDocumentIndexService extends StatelessService {
 
     private String indexDirectory;
 
-    private static final int INDEX_SEARCHER_COUNT_THRESHOLD = 100;
 
     private static final int DEFAULT_INDEX_FILE_COUNT_THRESHOLD_FOR_WRITER_REFRESH = 1000;
 
+    private static final int DEFAULT_INDEX_SEARCHER_COUNT_THRESHOLD = 100;
+
+    private static int INDEX_SEARCHER_COUNT_THRESHOLD = DEFAULT_INDEX_SEARCHER_COUNT_THRESHOLD;
+
     private static int INDEX_FILE_COUNT_THRESHOLD_FOR_WRITER_REFRESH = DEFAULT_INDEX_FILE_COUNT_THRESHOLD_FOR_WRITER_REFRESH;
 
-    /**
-     * Test use only
-     */
+    public static void setSearcherCountThreshold(int count) {
+        INDEX_SEARCHER_COUNT_THRESHOLD = count;
+    }
+
     public static void setIndexFileCountThresholdForWriterRefresh(int count) {
         INDEX_FILE_COUNT_THRESHOLD_FOR_WRITER_REFRESH = count;
     }
