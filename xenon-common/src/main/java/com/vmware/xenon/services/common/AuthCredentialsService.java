@@ -15,6 +15,7 @@ package com.vmware.xenon.services.common;
 
 import java.net.URI;
 import java.util.List;
+import java.util.Map;
 
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.ServiceDocument;
@@ -70,6 +71,11 @@ public class AuthCredentialsService extends StatefulService {
          */
         public List<String> tenantLinks;
 
+        /**
+         * Custom properties.
+         */
+        public Map<String, String> customProperties;
+
     }
 
     public AuthCredentialsService() {
@@ -116,6 +122,16 @@ public class AuthCredentialsService extends StatefulService {
 
         if (newState.type != null) {
             currentState.type = newState.type;
+        }
+
+        if (newState.customProperties != null && !newState.customProperties.isEmpty()) {
+            if (currentState.customProperties == null || currentState.customProperties.isEmpty()) {
+                currentState.customProperties = newState.customProperties;
+            } else {
+                for (Map.Entry<String, String> e : newState.customProperties.entrySet()) {
+                    currentState.customProperties.put(e.getKey(), e.getValue());
+                }
+            }
         }
     }
 }
