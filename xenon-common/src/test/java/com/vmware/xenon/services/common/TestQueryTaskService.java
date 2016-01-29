@@ -1216,13 +1216,7 @@ public class TestQueryTaskService {
         List<String> documentLinks = task.results.documentLinks;
         validateSortedList(documentLinks);
 
-        this.host.testStart(exampleServices.size());
-        for (URI u : exampleServices) {
-            this.host.send(Operation.createDelete(u)
-                    .setBody(new ServiceDocument())
-                    .setCompletion(this.host.getCompletion()));
-        }
-        this.host.testWait();
+        deleteServices(exampleServices);
     }
 
     private void validateSortedList(List<String> documentLinks) {
@@ -1389,13 +1383,7 @@ public class TestQueryTaskService {
         assertEquals(serviceCount, numberOfDocumentLinks[0]);
         validateSortedResults(documents, ServiceDocument.FIELD_NAME_SELF_LINK);
 
-        this.host.testStart(toDelete.size());
-        for (URI u : toDelete) {
-            this.host.send(Operation.createDelete(u)
-                    .setBody(new ServiceDocument())
-                    .setCompletion(this.host.getCompletion()));
-        }
-        this.host.testWait();
+        deleteServices(toDelete);
     }
 
     private void validateSortedResults(List<ExampleServiceState> documents, String fieldName) {
@@ -2009,19 +1997,14 @@ public class TestQueryTaskService {
 
         // indirect query, many results expected
         QueryTask task = QueryTask.create(new QuerySpecification()).setDirect(false);
+        task.documentExpirationTimeMicros = Utils.getNowMicrosUtc() + TimeUnit.DAYS.toMicros(1);
 
         List<URI> pageServiceURIs = new ArrayList<>();
         List<URI> targetServiceURIs = new ArrayList<>();
-        doPaginatedQueryTest(task, sc, resultLimit, pageServiceURIs, targetServiceURIs);
+        verifyPaginatedQueryWithSearcherRefresh(sc, resultLimit, task, pageServiceURIs,
+                targetServiceURIs);
 
-        // delete target services before doing next query to verify deleted documents are excluded
-        this.host.testStart(targetServiceURIs.size());
-        for (URI u : targetServiceURIs) {
-            this.host.send(Operation.createDelete(u)
-                    .setBody(new ServiceDocument())
-                    .setCompletion(this.host.getCompletion()));
-        }
-        this.host.testWait();
+        deleteServices(targetServiceURIs);
 
         sc = 1;
         // direct query, single result expected, plus verify all previously deleted and created
@@ -2034,13 +2017,7 @@ public class TestQueryTaskService {
         assertNotNull(nextPageLink);
 
         // delete target services before doing next query to verify deleted documents are excluded
-        this.host.testStart(targetServiceURIs.size());
-        for (URI u : targetServiceURIs) {
-            this.host.send(Operation.createDelete(u)
-                    .setBody(new ServiceDocument())
-                    .setCompletion(this.host.getCompletion()));
-        }
-        this.host.testWait();
+        deleteServices(targetServiceURIs);
 
         sc = 0;
 
@@ -2049,6 +2026,35 @@ public class TestQueryTaskService {
         pageServiceURIs = new ArrayList<>();
         targetServiceURIs = new ArrayList<>();
         doPaginatedQueryTest(task, sc, resultLimit, pageServiceURIs, targetServiceURIs);
+    }
+
+    private void deleteServices(List<URI> targetServiceURIs) throws Throwable {
+        this.host.testStart(targetServiceURIs.size());
+        for (URI u : targetServiceURIs) {
+            this.host.send(Operation.createDelete(u)
+                    .setBody(new ServiceDocument())
+                    .setCompletion(this.host.getCompletion()));
+        }
+        this.host.testWait();
+    }
+
+    private void verifyPaginatedQueryWithSearcherRefresh(int sc, int resultLimit, QueryTask task,
+            List<URI> pageServiceURIs, List<URI> targetServiceURIs) throws Throwable {
+        LuceneDocumentIndexService.setSearcherCountThreshold(1);
+
+        doPaginatedQueryTest(task, sc, resultLimit, pageServiceURIs, targetServiceURIs);
+        // do some un related updates to force the index to create new index searchers
+        putStateOnQueryTargetServices(targetServiceURIs, 1);
+        // create some new index searchers by doing a query
+        this.throughputSimpleQuery();
+
+        // verify pages are still valid
+        this.host.testStart(pageServiceURIs.size());
+        for (URI u : pageServiceURIs) {
+            Operation get = Operation.createGet(u).setCompletion(this.host.getCompletion());
+            this.host.send(get);
+        }
+        this.host.testWait();
     }
 
     @Test
