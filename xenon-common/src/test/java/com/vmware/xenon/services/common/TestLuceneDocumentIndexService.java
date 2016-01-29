@@ -934,7 +934,7 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
                             .get(LuceneDocumentIndexService.STAT_NAME_SERVICE_DELETE_COUNT);
 
                     if (deletedCountBeforeExpiration.latestValue >= deletedCountAfterExpiration.latestValue) {
-                        this.host.log("No service deletions seen, currently at %d",
+                        this.host.log("No service deletions seen, currently at %f",
                                 deletedCountAfterExpiration.latestValue);
                         Thread.sleep(250);
                         continue;
@@ -945,7 +945,7 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
                             .get(LuceneDocumentIndexService.STAT_NAME_DOCUMENT_EXPIRATION_COUNT);
 
                     if (expiredCountBeforeExpiration.latestValue >= expiredCountAfterExpiration.latestValue) {
-                        this.host.log("No service expirations seen, currently at %d",
+                        this.host.log("No service expirations seen, currently at %f",
                                 expiredCountAfterExpiration.latestValue);
                         Thread.sleep(250);
                         continue;

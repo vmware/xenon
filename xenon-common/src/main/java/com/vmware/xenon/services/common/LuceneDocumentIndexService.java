@@ -116,15 +116,19 @@ public class LuceneDocumentIndexService extends StatelessService {
 
     private String indexDirectory;
 
-    private static final int INDEX_SEARCHER_COUNT_THRESHOLD = 100;
 
-    private static final int DEFAULT_INDEX_FILE_COUNT_THRESHOLD_FOR_WRITER_REFRESH = 1000;
+    private static final int DEFAULT_INDEX_FILE_COUNT_THRESHOLD_FOR_WRITER_REFRESH = 10000;
+
+    private static final int DEFAULT_INDEX_SEARCHER_COUNT_THRESHOLD = 200;
+
+    private static int INDEX_SEARCHER_COUNT_THRESHOLD = DEFAULT_INDEX_SEARCHER_COUNT_THRESHOLD;
 
     private static int INDEX_FILE_COUNT_THRESHOLD_FOR_WRITER_REFRESH = DEFAULT_INDEX_FILE_COUNT_THRESHOLD_FOR_WRITER_REFRESH;
 
-    /**
-     * Test use only
-     */
+    public static void setSearcherCountThreshold(int count) {
+        INDEX_SEARCHER_COUNT_THRESHOLD = count;
+    }
+
     public static void setIndexFileCountThresholdForWriterRefresh(int count) {
         INDEX_FILE_COUNT_THRESHOLD_FOR_WRITER_REFRESH = count;
     }
@@ -506,52 +510,47 @@ public class LuceneDocumentIndexService extends StatelessService {
         });
     }
 
-    private void handleQueryTaskPatch(Operation op, QueryTask task) {
-        try {
-            QueryTask.QuerySpecification qs = task.querySpec;
+    private void handleQueryTaskPatch(Operation op, QueryTask task) throws Throwable {
+        QueryTask.QuerySpecification qs = task.querySpec;
 
-            Query luceneQuery = (Query) qs.context.nativeQuery;
-            Sort luceneSort = (Sort) qs.context.nativeSort;
-            LuceneQueryPage lucenePage = (LuceneQueryPage) qs.context.nativePage;
-            IndexSearcher s = (IndexSearcher) qs.context.nativeSearcher;
-            ServiceDocumentQueryResult rsp = new ServiceDocumentQueryResult();
+        Query luceneQuery = (Query) qs.context.nativeQuery;
+        Sort luceneSort = (Sort) qs.context.nativeSort;
+        LuceneQueryPage lucenePage = (LuceneQueryPage) qs.context.nativePage;
+        IndexSearcher s = (IndexSearcher) qs.context.nativeSearcher;
+        ServiceDocumentQueryResult rsp = new ServiceDocumentQueryResult();
 
-            if (qs.options.contains(QueryOption.CONTINUOUS)) {
-                switch (task.taskInfo.stage) {
-                case CREATED:
-                    logWarning("Task %s is in invalid state: %s", task.taskInfo.stage);
-                    op.fail(new IllegalStateException("Stage not supported"));
-                    return;
-                case STARTED:
-                    QueryTask clonedTask = new QueryTask();
-                    clonedTask.documentSelfLink = task.documentSelfLink;
-                    clonedTask.querySpec = task.querySpec;
-                    clonedTask.querySpec.context.filter = QueryFilter.create(qs.query);
-                    this.activeQueries.put(task.documentSelfLink, clonedTask);
-                    this.setStat(STAT_NAME_ACTIVE_QUERY_FILTERS, this.activeQueries.size());
-                    logInfo("Activated continuous query task: %s", task.documentSelfLink);
-                    break;
-                case CANCELLED:
-                case FAILED:
-                case FINISHED:
-                    this.activeQueries.remove(task.documentSelfLink);
-                    this.setStat(STAT_NAME_ACTIVE_QUERY_FILTERS, this.activeQueries.size());
-                    op.complete();
-                    return;
-                default:
-                    break;
+        if (qs.options.contains(QueryOption.CONTINUOUS)) {
+            switch (task.taskInfo.stage) {
+            case CREATED:
+                logWarning("Task %s is in invalid state: %s", task.taskInfo.stage);
+                op.fail(new IllegalStateException("Stage not supported"));
+                return;
+            case STARTED:
+                QueryTask clonedTask = new QueryTask();
+                clonedTask.documentSelfLink = task.documentSelfLink;
+                clonedTask.querySpec = task.querySpec;
+                clonedTask.querySpec.context.filter = QueryFilter.create(qs.query);
+                this.activeQueries.put(task.documentSelfLink, clonedTask);
+                this.setStat(STAT_NAME_ACTIVE_QUERY_FILTERS, this.activeQueries.size());
+                logInfo("Activated continuous query task: %s", task.documentSelfLink);
+                break;
+            case CANCELLED:
+            case FAILED:
+            case FINISHED:
+                this.activeQueries.remove(task.documentSelfLink);
+                this.setStat(STAT_NAME_ACTIVE_QUERY_FILTERS, this.activeQueries.size());
+                op.complete();
+                return;
+            default:
+                break;
 
-                }
             }
+        }
 
-            if (!queryIndex(s, op, null, qs.options, luceneQuery, luceneSort, lucenePage,
-                    qs.resultLimit,
-                    task.documentExpirationTimeMicros, task.indexLink, rsp)) {
-                op.setBodyNoCloning(rsp).complete();
-            }
-        } catch (Throwable e) {
-            logSevere(e);
-            op.fail(e);
+        if (!queryIndex(s, op, null, qs.options, luceneQuery, luceneSort, lucenePage,
+                qs.resultLimit,
+                task.documentExpirationTimeMicros, task.indexLink, rsp)) {
+            op.setBodyNoCloning(rsp).complete();
         }
     }
 
@@ -872,7 +871,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         if (hasPage) {
             // For example, via GET of QueryTask.nextPageLink
             after = page.after;
-            rsp.prevPageLink = page.link;
+            rsp.prevPageLink = page.previousPageLink;
         } else if (isPaginatedQuery) {
             // QueryTask.resultLimit was set, but we don't have a page param yet,
             // which means this is the initial POST to create the QueryTask.
@@ -1579,10 +1578,10 @@ public class LuceneDocumentIndexService extends StatelessService {
      * assumes the caller has acquired the writer semaphore
      */
     private void checkFailureAndRecover(Throwable e) {
-        if (this.writer != null) {
-            logSevere(e);
-        }
         if (!(e instanceof AlreadyClosedException)) {
+            if (this.writer != null && !getHost().isStopping()) {
+                logSevere(e);
+            }
             return;
         }
 
