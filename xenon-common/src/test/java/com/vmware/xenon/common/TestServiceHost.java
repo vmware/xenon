@@ -624,6 +624,7 @@ public class TestServiceHost {
                 services);
 
         long cacheMissCount = 0;
+        long cacheClearCount = 0;
         Map<URI, ServiceStats> servicesWithMaintenance = new HashMap<>();
 
         // guarantee at least a few intervals have passed. Other we risk false negatives.
@@ -649,6 +650,11 @@ public class TestServiceHost {
                         cacheMissCount += (long) st.latestValue;
                         continue;
                     }
+
+                    if (st.name.equals(Service.STAT_NAME_CACHE_CLEAR_COUNT)) {
+                        cacheClearCount += (long) st.latestValue;
+                        continue;
+                    }
                     if (st.name.equals(MinimalTestService.STAT_NAME_MAINTENANCE_SUCCESS_COUNT)) {
                         servicesWithMaintenance.put(e.getKey(), e.getValue());
                         continue;
@@ -671,6 +677,12 @@ public class TestServiceHost {
             }
 
             if (cacheMissCount < 1) {
+                this.host.log("No cache misses seen");
+                Thread.sleep(maintIntervalMillis * 2);
+                continue;
+            }
+
+            if (cacheClearCount < 1) {
                 this.host.log("No cache clears seen");
                 Thread.sleep(maintIntervalMillis * 2);
                 continue;
@@ -679,6 +691,8 @@ public class TestServiceHost {
             break;
         }
         long end = Utils.getNowMicrosUtc();
+
+        this.host.log("State cache misses: %d, cache clears: %d", cacheMissCount, cacheClearCount);
 
         double expectedMaintIntervals = Math.max(1,
                 (end - start) / this.host.getMaintenanceIntervalMicros());
@@ -955,8 +969,8 @@ public class TestServiceHost {
 
         // while pausing, issue updates to verify behavior under load. Services should either abort pause,
         // or be ignored due to recent update
-        int updateCount = 20;
-        if (this.testDurationSeconds > 0) {
+        int updateCount = 100;
+        if (this.testDurationSeconds > 0 || this.host.isStressTest()) {
             updateCount = 1;
         }
         patchExampleServices(states, updateCount);

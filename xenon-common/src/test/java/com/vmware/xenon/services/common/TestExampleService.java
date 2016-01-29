@@ -23,7 +23,7 @@ import java.util.UUID;
 import org.junit.Before;
 import org.junit.Test;
 
-import com.vmware.xenon.common.BasicReportTestCase;
+import com.vmware.xenon.common.BasicReusableHostTestCase;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.ServiceDocumentDescription.PropertyDescription;
@@ -35,7 +35,9 @@ import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
 
-public class TestExampleService extends BasicReportTestCase {
+public class TestExampleService extends BasicReusableHostTestCase {
+
+    public int serviceCount = 100;
 
     @Before
     public void prepare() throws Throwable {
@@ -50,12 +52,12 @@ public class TestExampleService extends BasicReportTestCase {
     public void factoryPost() throws Throwable {
         URI factoryUri = UriUtils.buildUri(this.host,
                 ExampleFactoryService.class);
-        int childCount = 100;
-        this.host.testStart(childCount);
+
+        this.host.testStart(this.serviceCount);
         String prefix = "example-";
         Long counterValue = Long.MAX_VALUE;
-        URI[] childURIs = new URI[childCount];
-        for (int i = 0; i < childCount; i++) {
+        URI[] childURIs = new URI[this.serviceCount];
+        for (int i = 0; i < this.serviceCount; i++) {
             ExampleServiceState initialState = new ExampleServiceState();
             initialState.name = initialState.documentSelfLink = prefix + i;
             initialState.counter = counterValue;
@@ -111,7 +113,6 @@ public class TestExampleService extends BasicReportTestCase {
                 .get(ExampleServiceState.FIELD_NAME_KEY_VALUES);
         assertTrue(pdMap.usageOptions.contains(PropertyUsageOption.OPTIONAL));
         assertTrue(pdMap.indexingOptions.contains(PropertyIndexingOption.EXPAND));
-
     }
 
     @Test
