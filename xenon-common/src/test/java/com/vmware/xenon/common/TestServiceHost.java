@@ -28,7 +28,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.UUID;
-import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -78,6 +77,8 @@ public class TestServiceHost {
     public long serviceCount = 10;
 
     public long testDurationSeconds = 0;
+
+    public int indexFileThreshold = 100;
 
     public void beforeHostStart(VerificationHost host) {
         host.setMaintenanceIntervalMicros(TimeUnit.MILLISECONDS
@@ -943,7 +944,8 @@ public class TestServiceHost {
 
         // Set the threshold low to induce it during this test, several times. This will
         // verify that refreshing the index writer does not break the index semantics
-        LuceneDocumentIndexService.setIndexFileCountThresholdForWriterRefresh(50);
+        LuceneDocumentIndexService
+                .setIndexFileCountThresholdForWriterRefresh(this.indexFileThreshold);
 
         // set memory limit low to force service pause
         this.host.setServiceMemoryLimit(ServiceHost.ROOT_PATH, 0.00001);
@@ -1067,46 +1069,40 @@ public class TestServiceHost {
                     f.getUsableSpace(),
                     f.getTotalSpace());
 
-            if (selfLinkCounter.get() < this.serviceCount * 10) {
+            int count = 1000;
+            if (selfLinkCounter.get() < count) {
                 continue;
             }
 
-            // now that we have created a bunch of services, and a lot of them are paused, ping one randomly
-            // to make sure it resumes
-            URI instanceUri = UriUtils.buildUri(this.host, ExampleFactoryService.SELF_LINK);
-            instanceUri = UriUtils.extendUri(instanceUri, prefix
-                    + (selfLinkCounter.get() - (this.serviceCount / 2)));
-            // we use a private latch instead of the host testStart/testWait because the host test wait is used inside
-            // the completion for a synchronous query
-            CountDownLatch getLatch = new CountDownLatch(1);
-            Throwable[] failure = new Throwable[1];
-            Operation get = Operation.createGet(instanceUri).setCompletion((o, e) -> {
-                if (e == null) {
-                    getLatch.countDown();
-                    return;
-                }
-
-                if (o.getStatusCode() == Operation.STATUS_CODE_TIMEOUT) {
-                    // check the document index, if we ever created this service
-                    try {
-                        this.host.createAndWaitSimpleDirectQuery(
-                                ServiceDocument.FIELD_NAME_SELF_LINK, o.getUri().getPath(), 1, 1);
-                    } catch (Throwable e1) {
-                        this.host.failIteration(e1);
+            this.host.testStart(count);
+            for (int i = 0; i < count; i++) {
+                // now that we have created a bunch of services, and a lot of them are paused, ping one randomly
+                // to make sure it resumes
+                URI instanceUri = UriUtils.buildUri(this.host, ExampleFactoryService.SELF_LINK);
+                instanceUri = UriUtils.extendUri(instanceUri, prefix + (selfLinkCounter.get() - i));
+                Operation get = Operation.createGet(instanceUri).setCompletion((o, e) -> {
+                    if (e == null) {
+                        this.host.completeIteration();
                         return;
                     }
-                }
-                failure[0] = e;
-                getLatch.countDown();
-                this.host.failIteration(e);
-            });
-            this.host.send(get);
-            getLatch.await();
-            if (failure[0] != null) {
-                throw failure[0];
-            }
-        }
 
+                    if (o.getStatusCode() == Operation.STATUS_CODE_TIMEOUT) {
+                        // check the document index, if we ever created this service
+                        try {
+                            this.host.createAndWaitSimpleDirectQuery(
+                                    ServiceDocument.FIELD_NAME_SELF_LINK, o.getUri().getPath(), 1,
+                                    1);
+                        } catch (Throwable e1) {
+                            this.host.failIteration(e1);
+                            return;
+                        }
+                    }
+                    this.host.failIteration(e);
+                });
+                this.host.send(get);
+            }
+            this.host.testWait();
+        }
     }
 
     private void patchExampleServices(Map<URI, ExampleServiceState> states, int count)

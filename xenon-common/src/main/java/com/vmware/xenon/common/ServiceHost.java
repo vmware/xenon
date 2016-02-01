@@ -4121,8 +4121,6 @@ public class ServiceHost {
 
         int pauseServiceCount = 0;
         for (Service service : this.attachedServices.values()) {
-            ServiceDocument s = this.cachedServiceStates.get(service.getSelfLink());
-
             // skip factory services, they do not have state, and should not be paused
             if (service.hasOption(ServiceOption.FACTORY)) {
                 continue;
@@ -4133,12 +4131,14 @@ public class ServiceHost {
                 continue;
             }
 
+            ServiceDocument s = this.cachedServiceStates.get(service.getSelfLink());
+
             // TODO Optimize with a sorted set based on last update time.
             // Skip services and state documents that have been active within the last maintenance interval
             if (s != null
                     && this.state.lastMaintenanceTimeUtcMicros
                             - s.documentUpdateTimeMicros < service
-                                    .getMaintenanceIntervalMicros() * 2) {
+                            .getMaintenanceIntervalMicros() * 5) {
                 continue;
             }
 
@@ -4191,11 +4191,7 @@ public class ServiceHost {
             this.state.serviceCount = this.attachedServices.size();
         }
 
-        // schedule a task to actually stop the services. If a request arrives in the mean time,
-        // it will remove the service from the pendingStopService map (since its active).
-        schedule(() -> {
-            pauseServices();
-        } , getMaintenanceIntervalMicros(), TimeUnit.MICROSECONDS);
+        pauseServices();
     }
 
     boolean checkAndResumePausedService(Operation inboundOp) {
@@ -4220,9 +4216,6 @@ public class ServiceHost {
         }
 
         String path = key;
-        if (inboundOp.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_NO_QUEUING)) {
-            return false;
-        }
 
         if (factoryService == null) {
             failRequestServiceNotFound(inboundOp);
@@ -4240,7 +4233,7 @@ public class ServiceHost {
             Service service = this.pendingPauseServices.remove(key);
             if (service != null) {
                 // Abort pause
-                log(Level.INFO, "Service %s in the process of pausing", path);
+                log(Level.INFO, "Aborting service pause for %s", path);
                 resumeService(path, service);
                 return false;
             }
@@ -4250,6 +4243,7 @@ public class ServiceHost {
                 return false;
             }
 
+
             if (isStopping()) {
                 return false;
             }
@@ -4258,6 +4252,9 @@ public class ServiceHost {
 
             long pendingPauseCount = this.pendingPauseServices.size();
             if (pendingPauseCount == 0) {
+                if (inboundOp.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_NO_QUEUING)) {
+                    return false;
+                }
                 return checkAndOnDemandStartService(inboundOp, factoryService);
             }
 
