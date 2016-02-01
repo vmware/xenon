@@ -260,7 +260,7 @@ public class StatefulService implements Service {
             }
         }
 
-        if (isPaused) {
+        if (isPaused && !getHost().isStopping()) {
             logWarning("Service in stage %s, retrying request", this.context.processingStage);
             getHost().handleRequest(this, op);
             return true;

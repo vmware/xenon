@@ -2355,6 +2355,7 @@ public class ServiceHost {
         Operation loadGet = Operation
                 .createGet(u)
                 .setReferer(op.getReferer())
+                .setRetryCount(1)
                 .setCompletion((o, e) -> {
                     if (e != null) {
                         op.fail(e);
@@ -4119,10 +4120,9 @@ public class ServiceHost {
 
         boolean shouldPause = memoryLimitLowMB <= memoryInUseMB;
 
+        long st = Utils.getNowMicrosUtc();
         int pauseServiceCount = 0;
         for (Service service : this.attachedServices.values()) {
-            ServiceDocument s = this.cachedServiceStates.get(service.getSelfLink());
-
             // skip factory services, they do not have state, and should not be paused
             if (service.hasOption(ServiceOption.FACTORY)) {
                 continue;
@@ -4132,6 +4132,8 @@ public class ServiceHost {
                 // we do not clear cache or stop in memory services
                 continue;
             }
+
+            ServiceDocument s = this.cachedServiceStates.get(service.getSelfLink());
 
             // TODO Optimize with a sorted set based on last update time.
             // Skip services and state documents that have been active within the last maintenance interval
@@ -4185,17 +4187,17 @@ public class ServiceHost {
             return;
         }
 
+        long st1 = Utils.getNowMicrosUtc();
         // Make sure our service count matches the list contents, they could drift. Using size()
         // on a concurrent data structure is costly so we do this only when pausing services
         synchronized (this.state) {
             this.state.serviceCount = this.attachedServices.size();
         }
 
-        // schedule a task to actually stop the services. If a request arrives in the mean time,
-        // it will remove the service from the pendingStopService map (since its active).
-        schedule(() -> {
-            pauseServices();
-        } , getMaintenanceIntervalMicros(), TimeUnit.MICROSECONDS);
+        long st2 = Utils.getNowMicrosUtc();
+
+        log(Level.INFO, "%d, %d", st2 - st, st1 - st);
+        pauseServices();
     }
 
     boolean checkAndResumePausedService(Operation inboundOp) {
@@ -4220,9 +4222,6 @@ public class ServiceHost {
         }
 
         String path = key;
-        if (inboundOp.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_NO_QUEUING)) {
-            return false;
-        }
 
         if (factoryService == null) {
             failRequestServiceNotFound(inboundOp);
@@ -4250,6 +4249,7 @@ public class ServiceHost {
                 return false;
             }
 
+
             if (isStopping()) {
                 return false;
             }
@@ -4258,6 +4258,9 @@ public class ServiceHost {
 
             long pendingPauseCount = this.pendingPauseServices.size();
             if (pendingPauseCount == 0) {
+                if (inboundOp.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_NO_QUEUING)) {
+                    return false;
+                }
                 return checkAndOnDemandStartService(inboundOp, factoryService);
             }
 

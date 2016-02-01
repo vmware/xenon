@@ -692,7 +692,16 @@ public class LuceneDocumentIndexService extends StatelessService {
         TopDocs hits = searchByVersion(selfLink, s, version);
         long end = Utils.getNowMicrosUtc();
         if (hits.totalHits == 0) {
-            op.complete();
+            if (op.decrementRetriesRemaining() < 0) {
+                op.complete();
+            } else {
+                // Until we can explain this, retry failure to lookup a service. It appears that the
+                // occasional grooming of index files, and re-opening the index writer produces
+                // stale index searcher state. Its incredibly hard to reproduce, other than long
+                // running CI tests.
+                logWarning("retrying single link query for %s", selfLink);
+                queryIndexSingle(selfLink, options, op, version);
+            }
             return;
         }
 
