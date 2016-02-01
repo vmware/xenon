@@ -1776,6 +1776,11 @@ public class LuceneDocumentIndexService extends StatelessService {
                 needNewSearcher = true;
             }
 
+            if (!w.equals(this.writer)) {
+                // writer has been updated, force searcher update
+                needNewSearcher = true;
+            }
+
             if (!needNewSearcher) {
                 return s;
             }
@@ -1874,13 +1879,12 @@ public class LuceneDocumentIndexService extends StatelessService {
         // too many index files on disk, thus we need to re-open the writer to consolidate, or
         // when we have too many pending searchers
 
-        final int acquireReleaseCount = QUERY_THREAD_COUNT + UPDATE_THREAD_COUNT;
+        final int acquireReleaseCount = QUERY_THREAD_COUNT + UPDATE_THREAD_COUNT - 1;
         try {
             if (getHost().isStopping()) {
                 return false;
             }
 
-            this.writerAvailable.release();
             this.writerAvailable.acquire(acquireReleaseCount);
 
             if (this.searcher != null) {
@@ -1908,8 +1912,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         } catch (InterruptedException e1) {
             logSevere(e1);
         } finally {
-            // release all but one, so we stay owning one reference to the semaphore
-            this.writerAvailable.release(acquireReleaseCount - 1);
+            this.writerAvailable.release(acquireReleaseCount);
         }
 
         return reOpenWriter;
@@ -1917,16 +1920,14 @@ public class LuceneDocumentIndexService extends StatelessService {
 
     private void reOpenWriterSynchronously() {
 
-        final int acquireReleaseCount = QUERY_THREAD_COUNT + UPDATE_THREAD_COUNT;
+        // already have a count, acquire the rest
+        final int acquireReleaseCount = QUERY_THREAD_COUNT + UPDATE_THREAD_COUNT - 1;
         try {
 
             if (getHost().isStopping()) {
                 return;
             }
 
-            // Do not proceed unless we have blocked all reader+writer threads. We assume
-            // the semaphore is already acquired by the current thread
-            this.writerAvailable.release();
             this.writerAvailable.acquire(acquireReleaseCount);
 
             IndexWriter w = this.writer;
@@ -1956,8 +1957,7 @@ public class LuceneDocumentIndexService extends StatelessService {
             this.writer = null;
             sendRequest(Operation.createDelete(this, ServiceUriPaths.CORE_MANAGEMENT));
         } finally {
-            // release all but one, so we stay owning one reference to the semaphore
-            this.writerAvailable.release(acquireReleaseCount - 1);
+            this.writerAvailable.release(acquireReleaseCount);
         }
     }
 

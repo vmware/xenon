@@ -2363,7 +2363,7 @@ public class ServiceHost {
 
                     if (!o.hasBody()) {
                         op.fail(new IllegalStateException(
-                                "Unable to locate service state in index for " + u.getPath()));
+                                "Unable to locate service state in index for " + s.getSelfLink()));
                         return;
                     }
 
