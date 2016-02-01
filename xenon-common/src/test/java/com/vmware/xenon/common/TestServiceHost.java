@@ -79,6 +79,8 @@ public class TestServiceHost {
 
     public long testDurationSeconds = 0;
 
+    public int indexFileThreshold = 100;
+
     public void beforeHostStart(VerificationHost host) {
         host.setMaintenanceIntervalMicros(TimeUnit.MILLISECONDS
                 .toMicros(MAINTENANCE_INTERVAL_MILLIS));
@@ -943,7 +945,8 @@ public class TestServiceHost {
 
         // Set the threshold low to induce it during this test, several times. This will
         // verify that refreshing the index writer does not break the index semantics
-        LuceneDocumentIndexService.setIndexFileCountThresholdForWriterRefresh(50);
+        LuceneDocumentIndexService
+                .setIndexFileCountThresholdForWriterRefresh(this.indexFileThreshold);
 
         // set memory limit low to force service pause
         this.host.setServiceMemoryLimit(ServiceHost.ROOT_PATH, 0.00001);
