@@ -1776,6 +1776,12 @@ public class LuceneDocumentIndexService extends StatelessService {
                 needNewSearcher = true;
             }
 
+            if (!w.equals(this.writer)) {
+                logWarning("Index writer reopened while query was active");
+                // writer has been updated, force searcher update
+                needNewSearcher = true;
+            }
+
             if (!needNewSearcher) {
                 return s;
             }
