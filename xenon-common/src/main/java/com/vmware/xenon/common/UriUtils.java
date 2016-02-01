@@ -345,8 +345,8 @@ public class UriUtils {
             boolean includeDeleted,
             ServiceOption cap) {
 
-        URI hostURI = UriUtils.extendUri(host.getUri(), ServiceUriPaths.CORE_DOCUMENT_INDEX);
-        return buildIndexQueryUri(hostURI,
+        URI indexUri = host.getDocumentIndexServiceUri();
+        return buildIndexQueryUri(indexUri,
                 selfLink, doExpand, includeDeleted, cap);
     }
 

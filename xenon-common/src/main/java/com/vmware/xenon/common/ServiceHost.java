@@ -337,6 +337,7 @@ public class ServiceHost {
         public URI publicUri;
         public long maintenanceIntervalMicros = DEFAULT_MAINTENANCE_INTERVAL_MICROS;
         public long operationTimeoutMicros = DEFAULT_OPERATION_TIMEOUT_MICROS;
+        public long serviceCacheClearDelayMicros = DEFAULT_OPERATION_TIMEOUT_MICROS;
         public String operationTracingLevel;
         public SslClientAuthMode sslClientAuthMode;
 
@@ -2363,7 +2364,7 @@ public class ServiceHost {
 
                     if (!o.hasBody()) {
                         op.fail(new IllegalStateException(
-                                "Unable to locate service state in index for " + u.getPath()));
+                                "Unable to locate service state in index for " + s.getSelfLink()));
                         return;
                     }
 
@@ -4121,8 +4122,6 @@ public class ServiceHost {
 
         int pauseServiceCount = 0;
         for (Service service : this.attachedServices.values()) {
-            ServiceDocument s = this.cachedServiceStates.get(service.getSelfLink());
-
             // skip factory services, they do not have state, and should not be paused
             if (service.hasOption(ServiceOption.FACTORY)) {
                 continue;
@@ -4133,18 +4132,20 @@ public class ServiceHost {
                 continue;
             }
 
-            // TODO Optimize with a sorted set based on last update time.
-            // Skip services and state documents that have been active within the last maintenance interval
-            if (s != null
-                    && this.state.lastMaintenanceTimeUtcMicros
-                            - s.documentUpdateTimeMicros < service
-                                    .getMaintenanceIntervalMicros() * 2) {
-                continue;
-            }
+            ServiceDocument s = this.cachedServiceStates.get(service.getSelfLink());
 
-            // remove cached state
             if (s != null) {
-                clearCachedServiceState(service.getSelfLink());
+                if ((this.state.serviceCacheClearDelayMicros + s.documentUpdateTimeMicros) < Utils
+                        .getNowMicrosUtc()) {
+                    clearCachedServiceState(service.getSelfLink());
+                }
+
+                if (this.state.lastMaintenanceTimeUtcMicros
+                        - s.documentUpdateTimeMicros < service
+                        .getMaintenanceIntervalMicros() * 2) {
+                    // Skip pause for services that have been active within a maintenance interval
+                    continue;
+                }
             }
 
             // we still want to clear a cache for periodic services, so check here, after the cache clear
@@ -4191,11 +4192,7 @@ public class ServiceHost {
             this.state.serviceCount = this.attachedServices.size();
         }
 
-        // schedule a task to actually stop the services. If a request arrives in the mean time,
-        // it will remove the service from the pendingStopService map (since its active).
-        schedule(() -> {
-            pauseServices();
-        } , getMaintenanceIntervalMicros(), TimeUnit.MICROSECONDS);
+        pauseServices();
     }
 
     boolean checkAndResumePausedService(Operation inboundOp) {
@@ -4220,9 +4217,6 @@ public class ServiceHost {
         }
 
         String path = key;
-        if (inboundOp.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_NO_QUEUING)) {
-            return false;
-        }
 
         if (factoryService == null) {
             failRequestServiceNotFound(inboundOp);
@@ -4240,7 +4234,7 @@ public class ServiceHost {
             Service service = this.pendingPauseServices.remove(key);
             if (service != null) {
                 // Abort pause
-                log(Level.INFO, "Service %s in the process of pausing", path);
+                log(Level.INFO, "Aborting service pause for %s", path);
                 resumeService(path, service);
                 return false;
             }
@@ -4250,6 +4244,7 @@ public class ServiceHost {
                 return false;
             }
 
+
             if (isStopping()) {
                 return false;
             }
@@ -4258,6 +4253,9 @@ public class ServiceHost {
 
             long pendingPauseCount = this.pendingPauseServices.size();
             if (pendingPauseCount == 0) {
+                if (inboundOp.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_NO_QUEUING)) {
+                    return false;
+                }
                 return checkAndOnDemandStartService(inboundOp, factoryService);
             }
 
@@ -4445,6 +4443,15 @@ public class ServiceHost {
     public ServiceHost setOperationTimeOutMicros(long timeoutMicros) {
         this.state.operationTimeoutMicros = timeoutMicros;
         return this;
+    }
+
+    public ServiceHost setServiceCacheClearDelayMicros(long delayMicros) {
+        this.state.serviceCacheClearDelayMicros = delayMicros;
+        return this;
+    }
+
+    public long getServiceCacheClearDelayMicros() {
+        return this.state.serviceCacheClearDelayMicros;
     }
 
     public ServiceHost setProcessOwner(boolean isOwner) {
