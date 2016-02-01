@@ -2363,7 +2363,7 @@ public class ServiceHost {
 
                     if (!o.hasBody()) {
                         op.fail(new IllegalStateException(
-                                "Unable to locate service state in index for " + u.getPath()));
+                                "Unable to locate service state in index for " + s.getSelfLink()));
                         return;
                     }
 
@@ -4121,8 +4121,6 @@ public class ServiceHost {
 
         int pauseServiceCount = 0;
         for (Service service : this.attachedServices.values()) {
-            ServiceDocument s = this.cachedServiceStates.get(service.getSelfLink());
-
             // skip factory services, they do not have state, and should not be paused
             if (service.hasOption(ServiceOption.FACTORY)) {
                 continue;
@@ -4132,6 +4130,8 @@ public class ServiceHost {
                 // we do not clear cache or stop in memory services
                 continue;
             }
+
+            ServiceDocument s = this.cachedServiceStates.get(service.getSelfLink());
 
             // TODO Optimize with a sorted set based on last update time.
             // Skip services and state documents that have been active within the last maintenance interval
@@ -4191,11 +4191,7 @@ public class ServiceHost {
             this.state.serviceCount = this.attachedServices.size();
         }
 
-        // schedule a task to actually stop the services. If a request arrives in the mean time,
-        // it will remove the service from the pendingStopService map (since its active).
-        schedule(() -> {
-            pauseServices();
-        } , getMaintenanceIntervalMicros(), TimeUnit.MICROSECONDS);
+        pauseServices();
     }
 
     boolean checkAndResumePausedService(Operation inboundOp) {
@@ -4220,9 +4216,6 @@ public class ServiceHost {
         }
 
         String path = key;
-        if (inboundOp.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_NO_QUEUING)) {
-            return false;
-        }
 
         if (factoryService == null) {
             failRequestServiceNotFound(inboundOp);
@@ -4250,6 +4243,7 @@ public class ServiceHost {
                 return false;
             }
 
+
             if (isStopping()) {
                 return false;
             }
@@ -4258,6 +4252,9 @@ public class ServiceHost {
 
             long pendingPauseCount = this.pendingPauseServices.size();
             if (pendingPauseCount == 0) {
+                if (inboundOp.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_NO_QUEUING)) {
+                    return false;
+                }
                 return checkAndOnDemandStartService(inboundOp, factoryService);
             }
 

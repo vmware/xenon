@@ -287,24 +287,25 @@ public class LuceneDocumentIndexService extends StatelessService {
     }
 
     public IndexWriter createWriter(File directory, boolean doUpgrade) throws Exception {
-        Directory dir = MMapDirectory.open(directory.toPath());
         Analyzer analyzer = new SimpleAnalyzer();
+        IndexWriterConfig iwc = new IndexWriterConfig(analyzer);
+        Long totalMBs = getHost().getServiceMemoryLimitMB(getSelfLink(), MemoryLimitType.EXACT);
+        if (totalMBs != null) {
+            totalMBs = Math.max(1, totalMBs);
+            iwc.setRAMBufferSizeMB(totalMBs);
+        }
+
+        Directory dir = MMapDirectory.open(directory.toPath());
 
         // Upgrade the index in place if necessary.
         if (doUpgrade && DirectoryReader.indexExists(dir)) {
             upgradeIndex(dir);
         }
 
-        IndexWriterConfig iwc = new IndexWriterConfig(analyzer);
         iwc.setOpenMode(OpenMode.CREATE_OR_APPEND);
         iwc.setIndexDeletionPolicy(new SnapshotDeletionPolicy(
                 new KeepOnlyLastCommitDeletionPolicy()));
-        Long totalMBs = getHost().getServiceMemoryLimitMB(getSelfLink(), MemoryLimitType.EXACT);
-        if (totalMBs != null) {
-            // give half to the index, the other half we keep for service caching context
-            totalMBs = Math.max(1, totalMBs / 2);
-            iwc.setRAMBufferSizeMB(totalMBs);
-        }
+
 
         this.writer = new IndexWriter(dir, iwc);
         this.writer.commit();
@@ -2010,8 +2011,8 @@ public class LuceneDocumentIndexService extends StatelessService {
                 return;
             }
             this.linkAccessTimes.clear();
-            // refresh the searcher, since we cleared the link access map
-            this.searcher = null;
+            // force searcher update
+            this.searcherUpdateTimeMicros = 0;
         }
         updateSearcher(null, Integer.MAX_VALUE, this.writer);
     }
