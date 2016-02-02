@@ -13,6 +13,7 @@
 
 package com.vmware.xenon.services.common;
 
+import java.net.URI;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -40,6 +41,10 @@ public class NodeGroupUtils {
             return;
         }
 
+        checkConvergenceOfRemoteNodegroup(host, ngs, parentOp);
+    }
+
+    public static void checkConvergenceOfRemoteNodegroup(ServiceHost host, NodeGroupState ngs, Operation parentOp) {
         JoinedCompletionHandler joinedCompletion = (ops, failures) -> {
             if (failures != null) {
                 parentOp.fail(new IllegalStateException("At least one peer failed convergence"));
@@ -78,6 +83,20 @@ public class NodeGroupUtils {
         }
 
         OperationJoin.create(ops).setCompletion(joinedCompletion).sendWith(host);
+    }
+
+    public static void checkConvergenceOfRemoteNodegroup(ServiceHost host, URI nodegroupReference, Operation parentOp) {
+        Operation.createGet(nodegroupReference)
+            .setReferer(parentOp.getReferer())
+            .setCompletion((o, t) -> {
+                if (t != null) {
+                    parentOp.fail(t);
+                    return;
+                }
+                NodeGroupState ngs = o.getBody(NodeGroupState.class);
+                checkConvergenceOfRemoteNodegroup(host, ngs, parentOp);
+            })
+            .sendWith(host);
     }
 
     /**

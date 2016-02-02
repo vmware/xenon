@@ -36,6 +36,7 @@ public class ServiceUriPaths {
     public static final String PROCESS_LOG = CORE_MANAGEMENT + "/process-log";
     public static final String GO_PROCESS_LOG = CORE_MANAGEMENT + "/go-dcp-process-log";
     public static final String SYSTEM_LOG = CORE_MANAGEMENT + "/system-log";
+    public static final String MIGRATION_TASKS = MANAGEMENT + "/migration-tasks";
 
     public static final String CORE_PROCESSES = CORE + "/processes";
 
