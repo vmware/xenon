@@ -67,6 +67,36 @@ public class TaskState {
      */
     public Long durationMicros;
 
+    public static TaskState create() {
+        TaskState state = new TaskState();
+        state.stage = TaskStage.CREATED;
+        return state;
+    }
+
+    public static TaskState createAsStarted() {
+        TaskState state = new TaskState();
+        state.stage = TaskStage.STARTED;
+        return state;
+    }
+
+    public static TaskState createAsFinished() {
+        TaskState state = new TaskState();
+        state.stage = TaskStage.FINISHED;
+        return state;
+    }
+
+    public static TaskState createAsCancelled() {
+        TaskState state = new TaskState();
+        state.stage = TaskStage.CANCELLED;
+        return state;
+    }
+
+    public static TaskState createAsFailed() {
+        TaskState state = new TaskState();
+        state.stage = TaskStage.FAILED;
+        return state;
+    }
+
     public static boolean isFailed(TaskState taskInfo) {
         return taskInfo.stage == TaskStage.FAILED;
     }
