@@ -5019,12 +5019,18 @@ public class ServiceHost {
             return;
         }
         ServiceMaintenanceRequest body = ServiceMaintenanceRequest.create();
-        body.reasons.add(MaintenanceReason.NODE_GROUP_CHANGE);
         body.reasons.add(MaintenanceReason.SERVICE_OPTION_TOGGLE);
+        if (newOptions != null && newOptions.contains(ServiceOption.DOCUMENT_OWNER)) {
+            body.reasons.add(MaintenanceReason.NODE_GROUP_CHANGE);
+        }
+
+        if (removedOptions != null && removedOptions.contains(ServiceOption.DOCUMENT_OWNER)) {
+            body.reasons.add(MaintenanceReason.NODE_GROUP_CHANGE);
+        }
+
         body.configUpdate = new ServiceConfigUpdateRequest();
         body.configUpdate.addOptions = newOptions;
         body.configUpdate.removeOptions = removedOptions;
-        s.adjustStat(Service.STAT_NAME_NODE_GROUP_CHANGE_MAINTENANCE_COUNT, 1);
         run(() -> {
             OperationContext.setAuthorizationContext(getSystemAuthorizationContext());
             s.handleMaintenance(Operation.createPost(s.getUri()).setBody(body));
