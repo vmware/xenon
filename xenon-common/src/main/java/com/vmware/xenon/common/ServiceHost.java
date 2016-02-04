@@ -4075,7 +4075,7 @@ public class ServiceHost {
                             e.getMessage());
                 }
 
-                log(Level.FINE, "Node group change maintenance done for service %s, group %s",
+                log(Level.FINE, "Node group change maintenance done for group %s, service %s",
                         nodeSelectorPath, s.getSelfLink());
                 s.adjustStat(Service.STAT_NAME_NODE_GROUP_CHANGE_PENDING_MAINTENANCE_COUNT, -1);
 
