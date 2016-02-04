@@ -66,6 +66,8 @@ public class NodeSelectorSynchronizationService extends StatelessService {
 
     private Service parent;
 
+    private boolean isDetailedLoggingEnabled = false;
+
     public NodeSelectorSynchronizationService(Service parent) {
         super(NodeGroupSynchronizationState.class);
         super.toggleOption(ServiceOption.UTILITY, true);
@@ -242,7 +244,7 @@ public class NodeSelectorSynchronizationService extends StatelessService {
             bestPeerRsp.documentOwner = getHost().getId();
         }
 
-        if (bestPeerRsp != null) {
+        if (bestPeerRsp != null && this.isDetailedLoggingEnabled) {
             logFine("Using best peer state for %s (e:%d, v:%d)", bestPeerRsp.documentSelfLink,
                     bestPeerRsp.documentEpoch,
                     bestPeerRsp.documentVersion);
@@ -253,9 +255,12 @@ public class NodeSelectorSynchronizationService extends StatelessService {
         if (bestPeerRsp == null) {
             // if the local state is preferred, there is no need to increment epoch.
             bestPeerRsp = request.state;
-            logFine("Local is best peer state for %s (e:%d, v:%d)", bestPeerRsp.documentSelfLink,
-                    bestPeerRsp.documentEpoch,
-                    bestPeerRsp.documentVersion);
+            if (this.isDetailedLoggingEnabled) {
+                logFine("Local is best peer state for %s (e:%d, v:%d)",
+                        bestPeerRsp.documentSelfLink,
+                        bestPeerRsp.documentEpoch,
+                        bestPeerRsp.documentVersion);
+            }
         }
 
         // we increment epoch only when we assume the role of owner
@@ -336,9 +341,11 @@ public class NodeSelectorSynchronizationService extends StatelessService {
                         && bestPeerRsp.documentVersion == peerState.documentVersion) {
                     // this peer has latest state and agrees we are the owner, nothing to do
                     peerStateIt.remove();
-                    logFine("Peer %s has latest epoch, owner and version for %s skipping broadcast",
-                            e.getKey(),
-                            peerState.documentSelfLink);
+                    if (this.isDetailedLoggingEnabled) {
+                        logFine("Peer %s has latest epoch, owner and version for %s skipping broadcast",
+                                e.getKey(),
+                                peerState.documentSelfLink);
+                    }
                 } else {
                     incrementEpoch = true;
                 }
@@ -359,6 +366,18 @@ public class NodeSelectorSynchronizationService extends StatelessService {
                             request.ownerNodeReference,
                             peersWithService);
                 }
+            }
+
+            boolean isServiceDeleted = Action.DELETE.toString().equals(
+                    bestPeerRsp.documentUpdateAction);
+
+            if (isServiceDeleted) {
+                // The caller relies on the body being present to determine if a peer had a better
+                // state than local state. If the body is not present, it assumes all is OK, and proceeds
+                // with either service start, or completing pending requests. If we detect the state is
+                // deleted, we must set the body, so the caller aborts start, thus converging with peers
+                // that already have stopped this service
+                post.setBodyNoCloning(bestPeerRsp);
             }
 
             if (!request.isOwner) {
@@ -388,14 +407,15 @@ public class NodeSelectorSynchronizationService extends StatelessService {
 
             bestPeerRsp.documentOwner = request.ownerNodeId;
             if (incrementEpoch) {
-                logFine("Incrementing epoch from %d to %d for %s", bestPeerRsp.documentEpoch,
-                        bestPeerRsp.documentEpoch + 1, bestPeerRsp.documentSelfLink);
+                if (this.isDetailedLoggingEnabled) {
+                    logFine("Incrementing epoch from %d to %d for %s", bestPeerRsp.documentEpoch,
+                            bestPeerRsp.documentEpoch + 1, bestPeerRsp.documentSelfLink);
+                }
                 bestPeerRsp.documentEpoch += 1;
                 bestPeerRsp.documentVersion++;
                 // we set the body to indicate we have found a better state
                 post.setBody(bestPeerRsp);
             }
-
 
             ServiceDocument clonedState = Utils.clone(bestPeerRsp);
             for (Entry<URI, ServiceDocument> entry : peerStates.entrySet()) {
@@ -430,20 +450,26 @@ public class NodeSelectorSynchronizationService extends StatelessService {
                             request.factoryLink, "");
                 }
 
+                if (isServiceDeleted) {
+                    peerOp.setAction(Action.DELETE);
+                    logInfo("broadcasting DELETE for %s", clonedState.documentSelfLink);
+                }
+
                 // clone body again, since for some nodes we need to post to factory, vs
                 // a PUT to the service itself.
                 peerOp.setBody(clonedState);
 
-                logFine("(isOwner: %s)(remaining: %d) Sending %s with best state for %s to %s (e:%d, v:%d)",
-                        request.isOwner,
-                        remaining.get(),
-                        peerOp.getAction(),
-                        clonedState.documentSelfLink,
-                        peerOp.getUri(),
-                        clonedState.documentEpoch,
-                        clonedState.documentVersion);
-
-
+                if (this.isDetailedLoggingEnabled) {
+                    logFine("(isOwner: %s)(remaining: %d) (last action: %s) Sending %s with best state for %s to %s (e:%d, v:%d)",
+                            request.isOwner,
+                            remaining.get(),
+                            clonedState.documentUpdateAction,
+                            peerOp.getAction(),
+                            clonedState.documentSelfLink,
+                            peerOp.getUri(),
+                            clonedState.documentEpoch,
+                            clonedState.documentVersion);
+                }
                 sendRequest(peerOp);
             }
         } catch (Throwable e) {

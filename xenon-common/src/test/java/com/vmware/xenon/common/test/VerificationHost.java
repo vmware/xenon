@@ -2349,6 +2349,16 @@ public class VerificationHost extends ExampleServiceHost {
         this.localPeerHosts.remove(host.getUri());
     }
 
+    public void stopHostAndPreserveState(ServiceHost host) {
+        // Do not delete the temporary directory with the lucene index. Notice that
+        // we do not call host.tearDown(), which will delete disk state, we simply
+        // stop the host and remove it from the peer node tracking tables
+        host.stop();
+        this.peerHostIdToNodeState.remove(host.getId());
+        this.peerNodeGroups.remove(host.getUri());
+        this.localPeerHosts.remove(host.getUri());
+    }
+
     public boolean isLongDurationTest() {
         return this.testDurationSeconds > 0;
     }
@@ -2543,6 +2553,12 @@ public class VerificationHost extends ExampleServiceHost {
         this.localPeerHosts.put(localBaseURI, h);
     }
 
+    public void addPeerNode(URI ngUri) {
+        URI hostUri = UriUtils.buildUri(ngUri.getScheme(), ngUri.getHost(), ngUri.getPort(), null,
+                null);
+        this.peerNodeGroups.put(hostUri, ngUri);
+    }
+
     public ServiceDocumentDescription buildDescription(Class<? extends ServiceDocument> type) {
         EnumSet<ServiceOption> options = EnumSet.noneOf(ServiceOption.class);
         return Builder.create().buildDescription(type, options);
@@ -2679,4 +2695,5 @@ public class VerificationHost extends ExampleServiceHost {
         send(op);
         testWait();
     }
+
 }
