@@ -2349,6 +2349,13 @@ public class VerificationHost extends ExampleServiceHost {
         this.localPeerHosts.remove(host.getUri());
     }
 
+    public void stopHostAndPreserveState(ServiceHost host) {
+        host.stop();
+        this.peerHostIdToNodeState.remove(host.getId());
+        this.peerNodeGroups.remove(host.getUri());
+        this.localPeerHosts.remove(host.getUri());
+    }
+
     public boolean isLongDurationTest() {
         return this.testDurationSeconds > 0;
     }
@@ -2543,6 +2550,12 @@ public class VerificationHost extends ExampleServiceHost {
         this.localPeerHosts.put(localBaseURI, h);
     }
 
+    public void addPeerNode(URI ngUri) {
+        URI hostUri = UriUtils.buildUri(ngUri.getScheme(), ngUri.getHost(), ngUri.getPort(), null,
+                null);
+        this.peerNodeGroups.put(hostUri, ngUri);
+    }
+
     public ServiceDocumentDescription buildDescription(Class<? extends ServiceDocument> type) {
         EnumSet<ServiceOption> options = EnumSet.noneOf(ServiceOption.class);
         return Builder.create().buildDescription(type, options);
@@ -2671,4 +2684,5 @@ public class VerificationHost extends ExampleServiceHost {
     protected void setTemporaryFolder(TemporaryFolder temporaryFolder) {
         this.temporaryFolder = temporaryFolder;
     }
+
 }
