@@ -24,6 +24,7 @@ import java.util.Date;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -438,7 +439,8 @@ public class TestNodeGroupService {
 
 
     @Test
-    public void synchronizationWithDifferentNodeInitialStateManual() throws Throwable {
+    public void synchronizationManualWithDifferentNodeInitialStatePartitionAndRestart()
+            throws Throwable {
         this.isPeerSynchronizationEnabled = false;
         doSynchronizationWithDifferentNodeInitialState();
     }
@@ -482,11 +484,12 @@ public class TestNodeGroupService {
 
             int dupServiceCount = Math.min(10, this.serviceCount / 2);
             AtomicInteger counter = new AtomicInteger();
+            Map<URI, ExampleServiceState> dupStates = new HashMap<>();
             for (VerificationHost v : this.host.getInProcessHostMap().values()) {
                 counter.set(0);
                 factoryUri = UriUtils.buildUri(v,
                         ExampleFactoryService.SELF_LINK);
-                this.host.doFactoryChildServiceStart(
+                dupStates = this.host.doFactoryChildServiceStart(
                         null,
                         dupServiceCount,
                         ExampleServiceState.class,
@@ -497,6 +500,10 @@ public class TestNodeGroupService {
                             s.name = s.documentSelfLink;
                             o.setBody(s);
                         } , factoryUri);
+            }
+
+            for (ExampleServiceState s : dupStates.values()) {
+                exampleStatesPerSelfLink.put(s.documentSelfLink, s);
             }
 
             // increment to account for link found on all nodes
@@ -589,6 +596,10 @@ public class TestNodeGroupService {
                 throw new TimeoutException("Notifications on group convergence");
             }
 
+            // node member expiration can be set through PATCH on each node node group service
+            this.nodeGroupConfig.nodeRemovalDelayMicros = TimeUnit.SECONDS.toMicros(1);
+            this.host.setNodeGroupConfig(this.nodeGroupConfig);
+
             this.host.scheduleSynchronizationIfAutoSyncDisabled();
 
             // now verify all nodes synchronize and see the example service instances that existed on the single
@@ -597,19 +608,6 @@ public class TestNodeGroupService {
                     exampleStatesPerSelfLink,
                     this.exampleStateConvergenceChecker,
                     this.serviceCount, 0);
-
-            // update the quorum level on the group
-            int quorum = (totalNodeCount / 2) + 1;
-            this.host.setNodeGroupQuorum(quorum);
-
-            ngs = this.host.getServiceState(null, NodeGroupState.class,
-                    UriUtils.buildUri(h, ServiceUriPaths.DEFAULT_NODE_GROUP));
-            for (NodeState s : ngs.nodes.values()) {
-                if (!s.id.equals(h.getId())) {
-                    continue;
-                }
-                assertEquals(quorum, s.membershipQuorum);
-            }
 
             // Send some updates after the full group has formed  and verify the updates are seen by services on all nodes
 
@@ -626,12 +624,86 @@ public class TestNodeGroupService {
             this.verifyPendingChildServiceSynchStats(
                     UriUtils.buildUri(h, ExampleFactoryService.SELF_LINK), 0);
 
+            // stop one host.
+            this.host.stopHostAndPreserveState(h);
+
+            totalNodeCount--;
+            this.host.waitForNodeGroupConvergence(totalNodeCount);
+
+            int deleteCount = 1;
+            // issue DELETEs to the remaining hosts, while one host is stopped and disconnected
+            Iterator<String> linkIt = exampleStatesPerSelfLink.keySet().iterator();
+            Map<String, ExampleServiceState> modifiedExampleStates = new HashMap<>(
+                    exampleStatesPerSelfLink);
+            this.host.testStart(deleteCount);
+            long version = 0;
+            for (int i = 0; i < deleteCount; i++) {
+                String link = linkIt.next();
+                this.host.log("Deleting %s from remaining hosts", link);
+                // keep track of version, should be the same for all documents, we will use below
+                version = exampleStatesPerSelfLink.get(link).documentVersion;
+                modifiedExampleStates.remove(link);
+                URI u = this.host.getPeerServiceUri(link);
+                Operation delete = Operation.createDelete(u)
+                        .setCompletion(this.host.getCompletion());
+                this.host.send(delete);
+            }
+            this.host.testWait();
+
+            this.waitForReplicatedFactoryChildServiceConvergence(modifiedExampleStates,
+                    this.exampleStateConvergenceChecker,
+                    modifiedExampleStates.size(),
+                    version);
+
+            // now, we restart the host we stopped, and rejoin it. We then verify the service we
+            // deleted from the live hosts, also gets deleted from the host that rejoined
+            h.setPort(0);
+            h.setSecurePort(0);
+            h.start();
+
+            URI restartHostNodeGroupUri = UriUtils.buildUri(h.getUri(),
+                    ServiceUriPaths.DEFAULT_NODE_GROUP);
+            // explicitly add host, joinNodeGroup will not do it.
+            this.host.testStart(1);
+            this.host
+                    .joinNodeGroup(restartHostNodeGroupUri, existingMemberNodeGroup, this.nodeCount);
+            this.host.testWait();
+
+            this.host.addPeerNode(restartHostNodeGroupUri);
+
+            // wait for node group convergence
+            totalNodeCount = this.nodeCount + 1;
+            this.host.waitForNodeGroupConvergence(totalNodeCount);
+            // force synchronization
+            this.host.scheduleSynchronizationIfAutoSyncDisabled();
+
+            // verify service that was deleted while node group was partitioned, is now deleted
+            // across all nodes
+            this.waitForReplicatedFactoryChildServiceConvergence(modifiedExampleStates,
+                    this.exampleStateConvergenceChecker,
+                    modifiedExampleStates.size(),
+                    version);
+
+            int quorum = (totalNodeCount / 2) + 1;
+            setAndVerifyNodeGroupQuorum(quorum);
+
         } finally {
             this.host.log("test finished");
             if (h != null) {
                 h.stop();
                 tmpFolder.delete();
             }
+        }
+    }
+
+    private void setAndVerifyNodeGroupQuorum(int quorum) throws Throwable {
+        NodeGroupState ngs;
+        this.host.setNodeGroupQuorum(quorum);
+
+        URI nodeGroupUri = this.host.getPeerServiceUri(ServiceUriPaths.DEFAULT_NODE_GROUP);
+        ngs = this.host.getServiceState(null, NodeGroupState.class, nodeGroupUri);
+        for (NodeState s : ngs.nodes.values()) {
+            assertEquals(quorum, s.membershipQuorum);
         }
     }
 
@@ -2724,11 +2796,12 @@ public class TestNodeGroupService {
             // build a service link to node map so we can tell on which node each service instance landed
             Map<String, Set<URI>> linkToNodeMap = new HashMap<>();
 
+            boolean isConverged = true;
             for (Entry<URI, ServiceDocumentQueryResult> entry : childServicesPerNode.entrySet()) {
                 for (String link : entry.getValue().documentLinks) {
-
                     if (!serviceStates.containsKey(link)) {
-                        this.host.log("ignoring service %s, not part of this iteration", link);
+                        this.host.log("service %s not expected, node: %s", link, entry.getKey());
+                        isConverged = false;
                         continue;
                     }
 
@@ -2741,7 +2814,11 @@ public class TestNodeGroupService {
                 }
             }
 
-            boolean isConverged = true;
+            if (!isConverged) {
+                Thread.sleep(500);
+                continue;
+            }
+
             // each link must exist on N hosts, where N is either the replication factor, or, if not used, all nodes
             for (Entry<String, Set<URI>> e : linkToNodeMap.entrySet()) {
                 if (e.getValue() == null && this.replicationFactor == 0) {
