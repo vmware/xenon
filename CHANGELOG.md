@@ -3,7 +3,7 @@
 ## 0.6.0-SNAPSHOT
 
 * Add new per service utility suffix, /available. Provides a
-  consistent mechanism for a service to declare its available,
+  consistent mechanism for a service to declare it is available,
   re-using the underlying stats support. By default, all services
   that are started and in ProcessingState.AVAILABLE will return
   200 (OK) on GET /<service/available

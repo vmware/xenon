@@ -1959,6 +1959,13 @@ public class TestNodeGroupService {
 
         verifyDocumentOwnerAndEpoch(childStatesPerLink, newOwnerIds, 0,
                 childStatesPerLink.size() * 2, minOwnerChangeCount);
+
+        // verify factory marked itself available
+        factoryUri = this.host.getPeerServiceUri(factoryUri.getPath());
+        Operation getAvailable = Operation.createGet(UriUtils.buildAvailableUri(factoryUri))
+                .setCompletion(this.host.getCompletion());
+        this.host.sendAndWait(getAvailable);
+
         this.host.logNodeGroupStats();
     }
 

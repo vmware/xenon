@@ -1779,6 +1779,9 @@ public class VerificationHost extends ExampleServiceHost {
         // for local or remote tests, we still want to wait for convergence
         waitForNodeGroupConvergence(nodeGroupPerHost.values(), memberCount, null,
                 expectedOptionsPerNode, waitForTimeSync);
+
+        waitForNodeGroupIsAvailableConvergence(customGroupPath);
+
         doMemberEnumerationStress();
 
         //reset auth context
@@ -1863,6 +1866,41 @@ public class VerificationHost extends ExampleServiceHost {
             convergedCompletion.handle(op, null);
         });
         testWait();
+    }
+
+    public void waitForNodeGroupIsAvailableConvergence() throws Throwable {
+        waitForNodeGroupIsAvailableConvergence(ServiceUriPaths.DEFAULT_NODE_GROUP);
+    }
+
+    public void waitForNodeGroupIsAvailableConvergence(String nodeGroupPath) throws Throwable {
+        if (nodeGroupPath == null) {
+            nodeGroupPath = ServiceUriPaths.DEFAULT_NODE_GROUP;
+        }
+        Date expiration = getTestExpiration();
+        while (new Date().before(expiration)) {
+            boolean isConverged = true;
+            for (URI nodeGroupUri : this.peerNodeGroups.values()) {
+                URI u = UriUtils.buildUri(nodeGroupUri, nodeGroupPath);
+                URI statsUri = UriUtils.buildStatsUri(u);
+                ServiceStats stats = getServiceState(null, ServiceStats.class, statsUri);
+                ServiceStat availableStat = stats.entries.get(Service.STAT_NAME_AVAILABLE);
+                if (availableStat == null || availableStat.latestValue != 1.0) {
+                    log("Service stat available is missing or not 1.0");
+                    isConverged = false;
+                    break;
+                }
+            }
+
+            if (!isConverged) {
+                Thread.sleep(getMaintenanceIntervalMicros() / 1000);
+                continue;
+            }
+            break;
+        }
+
+        if (new Date().after(expiration)) {
+            throw new TimeoutException();
+        }
     }
 
     public void waitForNodeGroupConvergence(int memberCount)

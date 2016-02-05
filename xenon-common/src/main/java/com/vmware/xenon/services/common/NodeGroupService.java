@@ -210,14 +210,22 @@ public class NodeGroupService extends StatefulService {
 
         patch.setBody(localState).complete();
 
-        if (localState.nodes.size() < Math.max(localNodeState.membershipQuorum,
-                localNodeState.synchQuorum)) {
+        int healthyCountThreshold = Math.max(localNodeState.membershipQuorum,
+                localNodeState.synchQuorum);
+        if (localState.nodes.size() < healthyCountThreshold) {
+            setAvailable(false);
             return;
         }
 
         if (!NodeGroupUtils.isMembershipSettled(getHost(), getHost().getMaintenanceIntervalMicros(),
                 localState)) {
+            setAvailable(false);
             return;
+        }
+
+        if (!isAvailable()) {
+            boolean hasQuorum = NodeGroupUtils.hasSynchronizationQuorum(getHost(), localState);
+            setAvailable(hasQuorum);
         }
 
         if (localNodeState.status == NodeStatus.AVAILABLE) {
