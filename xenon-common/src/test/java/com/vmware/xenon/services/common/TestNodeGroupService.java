@@ -624,6 +624,12 @@ public class TestNodeGroupService {
             this.verifyPendingChildServiceSynchStats(
                     UriUtils.buildUri(h, ExampleFactoryService.SELF_LINK), 0);
 
+            // negative tests that abruptly stop nodes should set operation timeout smaller than the test
+            // timeout, so any node to node gossip I/O times out quickly and test can proceed
+            long testTimeoutMicros = TimeUnit.SECONDS.toMicros(this.host.getTimeoutSeconds());
+            setOperationTimeoutMicros(Math
+                    .max(testTimeoutMicros / 3, TimeUnit.SECONDS.toMicros(10)));
+
             // stop one host.
             this.host.stopHostAndPreserveState(h);
 
