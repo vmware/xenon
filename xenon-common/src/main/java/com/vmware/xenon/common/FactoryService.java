@@ -122,16 +122,19 @@ public abstract class FactoryService extends StatelessService {
                 logWarning("Failure querying index for all child services: %s", e.getMessage());
                 return;
             }
+            setAvailable(true);
             logFine("Finished self query for child services");
         });
 
         if (this.childOptions.contains(ServiceOption.ON_DEMAND_LOAD)) {
+            setAvailable(true);
             return;
         }
         startOrSynchronizeChildServices(clonedOp);
     }
 
     private void startOrSynchronizeChildServices(Operation op) {
+        setAvailable(false);
         QueryTask queryTask = buildChildQueryTask();
         queryForChildren(queryTask,
                 UriUtils.buildUri(this.getHost(), ServiceUriPaths.CORE_LOCAL_QUERY_TASKS),
@@ -726,6 +729,13 @@ public abstract class FactoryService extends StatelessService {
             maintOp.complete();
             return;
         }
+        maintOp.nestCompletion((o, e) -> {
+            if (e != null) {
+                logWarning("synch failed: %s", e.toString());
+            }
+            setAvailable(true);
+            maintOp.complete();
+        });
         startOrSynchronizeChildServices(maintOp);
     }
 
