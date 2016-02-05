@@ -2575,6 +2575,7 @@ public class ServiceHost {
 
         // we do not remove from maintenance tracker, service will
         // be ignored and never schedule for maintenance if its stopped
+        log(Level.INFO, "%s %s", path, Utils.toString(new Exception()));
     }
 
     protected Service findService(String uriPath) {
@@ -2796,6 +2797,7 @@ public class ServiceHost {
 
         if (s == null && op.isFromReplication()) {
             if (op.getAction() == Action.DELETE) {
+                log(Level.INFO, "%s", op.getUri());
                 op.complete();
             } else {
                 failRequestServiceNotFound(op);
@@ -3010,6 +3012,8 @@ public class ServiceHost {
     private void failForwardRequest(Operation op, Operation fo, Throwable fe) {
         op.setStatusCode(fo.getStatusCode());
         op.setBodyNoCloning(fo.getBodyRaw()).fail(fe);
+        log(Level.INFO, "%s %s %s", op.getRequestHeader(Operation.PRAGMA_HEADER), op.getAction(),
+                op.getUri());
     }
 
     private void retryOrFailRequest(Operation op, Operation fo, Throwable fe) {

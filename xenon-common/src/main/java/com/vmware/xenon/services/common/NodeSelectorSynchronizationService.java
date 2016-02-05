@@ -359,12 +359,14 @@ public class NodeSelectorSynchronizationService extends StatelessService {
                 if (UriUtils.isHostEqual(getHost(), peerThatShouldAssumeOwnership)) {
                     request.isOwner = true;
                     incrementEpoch = true;
-                    logInfo("Broadcasting %s (epoch %d) to new owner %s\n"
-                            + " Others with service:%s",
-                            bestPeerRsp.documentSelfLink,
-                            bestPeerRsp.documentEpoch + 1,
-                            request.ownerNodeReference,
-                            peersWithService);
+                    if (isDetailedLoggingEnabled) {
+                        logFine("Broadcasting %s (epoch %d) to new owner %s\n"
+                                + " Others with service:%s",
+                                bestPeerRsp.documentSelfLink,
+                                bestPeerRsp.documentEpoch + 1,
+                                request.ownerNodeReference,
+                                peersWithService);
+                    }
                 }
             }
 
