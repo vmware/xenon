@@ -432,9 +432,11 @@ public class StatefulService implements Service {
                 synchronizeWithPeers(request, null);
                 return true;
             }
+
             if (hasOption(ServiceOption.OWNER_SELECTION)) {
                 if (!hasOption(ServiceOption.DOCUMENT_OWNER)) {
-                    synchronizeWithPeers(request, new IllegalStateException("not marked as owner"));
+                    synchronizeWithPeers(request, new IllegalStateException(
+                            "not marked as owner"));
                     return true;
                 } else {
                     // local instance is already the owner no need for further validation
@@ -892,6 +894,9 @@ public class StatefulService implements Service {
     }
 
     private void scheduleCommitRequest(Operation op) {
+        if (op.getStatusCode() >= Operation.STATUS_CODE_FAILURE_THRESHOLD) {
+            return;
+        }
 
         if (op.isFromReplication() || op.getAction() == Action.GET) {
             return;
@@ -908,10 +913,21 @@ public class StatefulService implements Service {
         // will be behind. Here we re-issue the current state (committed) when we notice the
         // pending operation queue is empty
 
-        synchronized (this.context) {
-            if (!this.context.operationQueue.isEmpty()) {
+        if (op.getAction() != Action.DELETE) {
+            synchronized (this.context) {
+                if (!this.context.operationQueue.isEmpty()) {
+                    return;
+                }
+            }
+        } else {
+            if (op.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_NO_INDEX_UPDATE)) {
+                // local stop, do not send commit to peers
                 return;
             }
+        }
+
+        if (this.getHost().isStopping()) {
+            return;
         }
 
         ServiceDocument latestState = op.getLinkedState();
@@ -1053,7 +1069,7 @@ public class StatefulService implements Service {
         }
     }
 
-    private boolean applyUpdate(Operation op) throws Throwable {
+    private void applyUpdate(Operation op) throws Throwable {
         long time = Utils.getNowMicrosUtc();
 
         ServiceDocument cachedState = op.getLinkedState();
@@ -1073,8 +1089,16 @@ public class StatefulService implements Service {
                 cachedState.documentVersion = this.context.version;
                 cachedState.documentUpdateTimeMicros = time;
             }
+
             op.linkState(cachedState);
-            return true;
+            return;
+        }
+
+        if (isCommitRequest(op) && this.context.version == cachedState.documentVersion) {
+            logWarning("(%s) %s dup %s %d %d", isSynchronizeRequest(op),
+                    op.getRequestHeader(Operation.PRAGMA_HEADER),
+                    cachedState.documentUpdateAction,
+                    cachedState.documentVersion, this.context.version);
         }
 
         // a replica simply sets its version to the highest version it has seen. Agreement on
@@ -1095,7 +1119,6 @@ public class StatefulService implements Service {
         // indexed, but will not become the latest, authoritative version. Any caching logic
         // will ignore replicated updates with a smaller version than the max seen so far. The
         // index always serves the highest version seen.
-        return this.context.version == cachedState.documentVersion;
     }
 
     /**
@@ -1497,7 +1520,7 @@ public class StatefulService implements Service {
     protected void log(Level level, String fmt, Object... args) {
         String uri = getUri() != null ? getUri().toString() : this.getClass().getSimpleName();
         Logger lg = Logger.getLogger(this.getClass().getName());
-        Utils.log(lg, 4, uri, level, fmt, args);
+        Utils.log(lg, 3, uri, level, fmt, args);
     }
 
     @Override
