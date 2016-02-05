@@ -39,6 +39,7 @@ import java.util.function.BiPredicate;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
+import org.apache.lucene.store.LockObtainFailedException;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -624,6 +625,12 @@ public class TestNodeGroupService {
             this.verifyPendingChildServiceSynchStats(
                     UriUtils.buildUri(h, ExampleFactoryService.SELF_LINK), 0);
 
+            // negative tests that abruptly stop nodes should set operation timeout smaller than the test
+            // timeout, so any node to node gossip I/O times out quickly and test can proceed
+            long testTimeoutMicros = TimeUnit.SECONDS.toMicros(this.host.getTimeoutSeconds());
+            setOperationTimeoutMicros(Math
+                    .max(testTimeoutMicros / 3, TimeUnit.SECONDS.toMicros(10)));
+
             // stop one host.
             this.host.stopHostAndPreserveState(h);
 
@@ -659,7 +666,15 @@ public class TestNodeGroupService {
             // deleted from the live hosts, also gets deleted from the host that rejoined
             h.setPort(0);
             h.setSecurePort(0);
-            h.start();
+            try {
+                Thread.sleep(1000);
+                h.start();
+            } catch (LockObtainFailedException e) {
+                // on occasion the file system / lucene do not release the index dir lock on time.
+                // Nothing we can do, since we have to restart the host using the same index directory.
+                this.host.log("Aborting test since index lock is held");
+                return;
+            }
 
             URI restartHostNodeGroupUri = UriUtils.buildUri(h.getUri(),
                     ServiceUriPaths.DEFAULT_NODE_GROUP);
@@ -772,7 +787,6 @@ public class TestNodeGroupService {
     public void enforceQuorumWithNodeConcurrentStop()
             throws Throwable {
         this.postCreationServiceOptions.add(ServiceOption.ENFORCE_QUORUM);
-        this.expectFailure = true;
 
         long opTimeoutMicros = TimeUnit.SECONDS.toMicros(2);
         int hostRestartCount = 2;
@@ -788,6 +802,17 @@ public class TestNodeGroupService {
         if (this.postCreationServiceOptions.contains(ServiceOption.ENFORCE_QUORUM)) {
             this.host.setNodeGroupQuorum((this.nodeCount + 1) / 2);
         }
+
+        // do some replication with strong quorum enabled
+        childStates = doStateUpdateReplicationTest(Action.PATCH, this.serviceCount,
+                this.updateCount,
+                0,
+                this.exampleStateUpdateBodySetter,
+                this.exampleStateConvergenceChecker,
+                childStates);
+
+        // expect failure, since we will stop some hosts, break quorum
+        this.expectFailure = true;
 
         int i = 0;
         for (URI h : this.host.getInProcessHostMap().keySet()) {

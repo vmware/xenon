@@ -2293,8 +2293,7 @@ public class ServiceHost {
 
             if (ServiceDocument.isDeleted(selectedState)) {
                 // The peer nodes have this service but it has been marked as
-                // deleted.
-                // Fail start and delete local version from index
+                // deleted. Fail start and delete local version from index
 
                 log(Level.WARNING,
                         "Attempt to create document marked as deleted: %s",

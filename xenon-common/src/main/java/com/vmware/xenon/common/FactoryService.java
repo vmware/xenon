@@ -697,6 +697,12 @@ public abstract class FactoryService extends StatelessService {
             op.linkState(null).setBodyNoCloning(clonedInitState).complete();
         });
 
+        if (!hasOption(ServiceOption.ENFORCE_QUORUM)) {
+            // Every proposal is a commit, in eventual consistency mode
+            op.addRequestHeader(Operation.REPLICATION_PHASE_HEADER,
+                    Operation.REPLICATION_PHASE_COMMIT);
+        }
+
         // if limited replication is used for this service, supply a selection key, the fully qualified service link
         // so the same set of nodes get selected for the POST to create the service, as the nodes chosen
         // for subsequence updates to the child service

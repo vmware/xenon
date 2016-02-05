@@ -432,9 +432,11 @@ public class StatefulService implements Service {
                 synchronizeWithPeers(request, null);
                 return true;
             }
+
             if (hasOption(ServiceOption.OWNER_SELECTION)) {
                 if (!hasOption(ServiceOption.DOCUMENT_OWNER)) {
-                    synchronizeWithPeers(request, new IllegalStateException("not marked as owner"));
+                    synchronizeWithPeers(request, new IllegalStateException(
+                            "not marked as owner"));
                     return true;
                 } else {
                     // local instance is already the owner no need for further validation
@@ -850,6 +852,12 @@ public class StatefulService implements Service {
             }
         });
 
+        if (!hasOption(ServiceOption.ENFORCE_QUORUM)) {
+            // Every proposal is a commit, in eventual consistency mode
+            op.addRequestHeader(Operation.REPLICATION_PHASE_HEADER,
+                    Operation.REPLICATION_PHASE_COMMIT);
+        }
+
         getHost().replicateRequest(this.context.options, op.getLinkedState(),
                 getPeerNodeSelectorPath(), getSelfLink(), op);
         return true;
@@ -891,27 +899,51 @@ public class StatefulService implements Service {
         op.complete();
     }
 
-    private void scheduleCommitRequest(Operation op) {
-
-        if (op.isFromReplication() || op.getAction() == Action.GET) {
+    /**
+     * If the service is about to idle, advertise last request, as a commit, to all peers.
+     * Only applies to services with ServiceOption.ENFORCE_QUORUM
+     */
+    private void commitLastProposalIfIdle(Operation op) {
+        if (op.getStatusCode() >= Operation.STATUS_CODE_FAILURE_THRESHOLD) {
+            // we only commit updates that were accepted by the owner, so ignore this
+            // failed update
             return;
         }
 
-        if (!hasOption(ServiceOption.DOCUMENT_OWNER)) {
+        if (op.isFromReplication() || op.getAction() == Action.GET) {
+            // only owners advertise commits, on updates
+            return;
+        }
+
+        if (!hasOption(ServiceOption.ENFORCE_QUORUM)
+                && !hasOption(ServiceOption.DOCUMENT_OWNER)) {
+            // Explicit commit messages are only meaningful is quorum is enforce: they
+            // advertise that quorum worth of nodes accepted the proposal request
             return;
         }
 
         // The owner has the responsibility to advertise the most recent committed state
-        // to all the peers. If operations are flowing, operation at version N services to
-        // inform the replicas about commit N-1. However, if no new operations occur, the owner
+        // to all the peers. If operations are flowing, operation at version N, informs services to
+        // commit proposal at N-1. However, if no new operations occur, the owner
         // must still communicate the last commit in a timely fashion otherwise the replicas
         // will be behind. Here we re-issue the current state (committed) when we notice the
         // pending operation queue is empty
-
-        synchronized (this.context) {
-            if (!this.context.operationQueue.isEmpty()) {
+        if (op.getAction() != Action.DELETE) {
+            synchronized (this.context) {
+                if (!this.context.operationQueue.isEmpty()) {
+                    return;
+                }
+            }
+        } else {
+            if (op.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_NO_INDEX_UPDATE)) {
+                // Directive indicates this update should have no persistence side-effects. Do not
+                // forward to peers. This is often due to local stop from host shutting down.
                 return;
             }
+        }
+
+        if (this.getHost().isStopping()) {
+            return;
         }
 
         ServiceDocument latestState = op.getLinkedState();
@@ -1024,7 +1056,7 @@ public class StatefulService implements Service {
             synchronized (this.context) {
                 this.context.isUpdateActive = false;
             }
-            scheduleCommitRequest(op);
+            commitLastProposalIfIdle(op);
         }
 
         if (op.getAction() == Action.GET) {
@@ -1053,7 +1085,7 @@ public class StatefulService implements Service {
         }
     }
 
-    private boolean applyUpdate(Operation op) throws Throwable {
+    private void applyUpdate(Operation op) throws Throwable {
         long time = Utils.getNowMicrosUtc();
 
         ServiceDocument cachedState = op.getLinkedState();
@@ -1073,8 +1105,16 @@ public class StatefulService implements Service {
                 cachedState.documentVersion = this.context.version;
                 cachedState.documentUpdateTimeMicros = time;
             }
+
             op.linkState(cachedState);
-            return true;
+            return;
+        }
+
+        if (isCommitRequest(op) && this.context.version == cachedState.documentVersion) {
+            logWarning("(%s) %s dup %s %d %d", isSynchronizeRequest(op),
+                    op.getRequestHeader(Operation.PRAGMA_HEADER),
+                    cachedState.documentUpdateAction,
+                    cachedState.documentVersion, this.context.version);
         }
 
         // a replica simply sets its version to the highest version it has seen. Agreement on
@@ -1095,7 +1135,6 @@ public class StatefulService implements Service {
         // indexed, but will not become the latest, authoritative version. Any caching logic
         // will ignore replicated updates with a smaller version than the max seen so far. The
         // index always serves the highest version seen.
-        return this.context.version == cachedState.documentVersion;
     }
 
     /**
@@ -1497,7 +1536,7 @@ public class StatefulService implements Service {
     protected void log(Level level, String fmt, Object... args) {
         String uri = getUri() != null ? getUri().toString() : this.getClass().getSimpleName();
         Logger lg = Logger.getLogger(this.getClass().getName());
-        Utils.log(lg, 4, uri, level, fmt, args);
+        Utils.log(lg, 3, uri, level, fmt, args);
     }
 
     @Override
