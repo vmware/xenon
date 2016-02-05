@@ -432,9 +432,11 @@ public class StatefulService implements Service {
                 synchronizeWithPeers(request, null);
                 return true;
             }
+
             if (hasOption(ServiceOption.OWNER_SELECTION)) {
                 if (!hasOption(ServiceOption.DOCUMENT_OWNER)) {
-                    synchronizeWithPeers(request, new IllegalStateException("not marked as owner"));
+                    synchronizeWithPeers(request, new IllegalStateException(
+                            "not marked as owner"));
                     return true;
                 } else {
                     // local instance is already the owner no need for further validation
@@ -800,6 +802,7 @@ public class StatefulService implements Service {
             if (!isCommitRequest(op)) {
                 return false;
             }
+            logInfo("commit");
         }
 
         if (checkServiceStopped(op, true)) {
@@ -1024,7 +1027,9 @@ public class StatefulService implements Service {
             synchronized (this.context) {
                 this.context.isUpdateActive = false;
             }
-            scheduleCommitRequest(op);
+            if (this.context.operationQueue.isEmpty() || op.getAction() == Action.DELETE) {
+                scheduleCommitRequest(op);
+            }
         }
 
         if (op.getAction() == Action.GET) {

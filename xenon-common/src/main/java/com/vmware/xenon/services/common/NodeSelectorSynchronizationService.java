@@ -359,12 +359,14 @@ public class NodeSelectorSynchronizationService extends StatelessService {
                 if (UriUtils.isHostEqual(getHost(), peerThatShouldAssumeOwnership)) {
                     request.isOwner = true;
                     incrementEpoch = true;
-                    logInfo("Broadcasting %s (epoch %d) to new owner %s\n"
-                            + " Others with service:%s",
-                            bestPeerRsp.documentSelfLink,
-                            bestPeerRsp.documentEpoch + 1,
-                            request.ownerNodeReference,
-                            peersWithService);
+                    if (this.isDetailedLoggingEnabled) {
+                        logFine("Broadcasting %s (epoch %d) to new owner %s\n"
+                                + " Others with service:%s",
+                                bestPeerRsp.documentSelfLink,
+                                bestPeerRsp.documentEpoch + 1,
+                                request.ownerNodeReference,
+                                peersWithService);
+                    }
                 }
             }
 
@@ -452,7 +454,6 @@ public class NodeSelectorSynchronizationService extends StatelessService {
 
                 if (isServiceDeleted) {
                     peerOp.setAction(Action.DELETE);
-                    logInfo("broadcasting DELETE for %s", clonedState.documentSelfLink);
                 }
 
                 // clone body again, since for some nodes we need to post to factory, vs
