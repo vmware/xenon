@@ -39,6 +39,7 @@ import java.util.function.BiPredicate;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
+import org.apache.lucene.store.LockObtainFailedException;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -624,6 +625,12 @@ public class TestNodeGroupService {
             this.verifyPendingChildServiceSynchStats(
                     UriUtils.buildUri(h, ExampleFactoryService.SELF_LINK), 0);
 
+            // negative tests that abruptly stop nodes should set operation timeout smaller than the test
+            // timeout, so any node to node gossip I/O times out quickly and test can proceed
+            long testTimeoutMicros = TimeUnit.SECONDS.toMicros(this.host.getTimeoutSeconds());
+            setOperationTimeoutMicros(Math
+                    .max(testTimeoutMicros / 3, TimeUnit.SECONDS.toMicros(10)));
+
             // stop one host.
             this.host.stopHostAndPreserveState(h);
 
@@ -659,7 +666,15 @@ public class TestNodeGroupService {
             // deleted from the live hosts, also gets deleted from the host that rejoined
             h.setPort(0);
             h.setSecurePort(0);
-            h.start();
+            try {
+                Thread.sleep(1000);
+                h.start();
+            } catch (LockObtainFailedException e) {
+                // on occasion the file system / lucene do not release the index dir lock on time.
+                // Nothing we can do, since we have to restart the host using the same index directory.
+                this.host.log("Aborting test since index lock is held");
+                return;
+            }
 
             URI restartHostNodeGroupUri = UriUtils.buildUri(h.getUri(),
                     ServiceUriPaths.DEFAULT_NODE_GROUP);
