@@ -515,7 +515,7 @@ public class TestServiceHost {
             super(MinimalTestServiceState.class);
         }
 
-        public void handleDelete(Operation delete) {
+        public void handleStop(Operation delete) {
             this.stopOrder = this.globalStopOrder.incrementAndGet();
             delete.complete();
         }
@@ -532,7 +532,7 @@ public class TestServiceHost {
             super(MinimalTestServiceState.class);
         }
 
-        public void handleDelete(Operation delete) {
+        public void handleStop(Operation delete) {
             this.stopOrder = this.globalStopOrder.incrementAndGet();
             delete.complete();
         }

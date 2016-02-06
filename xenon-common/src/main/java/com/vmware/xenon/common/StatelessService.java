@@ -112,9 +112,13 @@ public class StatelessService implements Service {
                     handlePost(op);
                 } else if (op.getAction() == Action.DELETE) {
                     op.nestCompletion(o -> {
-                        handleDeleteCompletion(op);
+                        handleStopOrDeleteCompletion(op);
                     });
-                    handleDelete(op);
+                    if (ServiceHost.isServiceStop(op)) {
+                        handleStop(op);
+                    } else {
+                        handleDelete(op);
+                    }
                 } else if (op.getAction() == Action.OPTIONS) {
                     op.nestCompletion(o -> {
                         handleOptionsCompletion(op);
@@ -134,6 +138,11 @@ public class StatelessService implements Service {
         options.setBody(null).complete();
     }
 
+    protected void handleStopOrDeleteCompletion(Operation op) {
+        getHost().stopService(this);
+        op.complete();
+    }
+
     protected void handleOptionsCompletion(Operation options) {
         if (!options.hasBody()) {
             options.setBodyNoCloning(getDocumentTemplate());
@@ -150,11 +159,10 @@ public class StatelessService implements Service {
     }
 
     public void handleDelete(Operation delete) {
-        delete.complete();
+        handleStop(delete);
     }
 
-    protected void handleDeleteCompletion(Operation delete) {
-        getHost().stopService(this);
+    public void handleStop(Operation delete) {
         delete.complete();
     }
 

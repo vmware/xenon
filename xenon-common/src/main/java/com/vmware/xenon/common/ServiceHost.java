@@ -3500,6 +3500,11 @@ public class ServiceHost {
         }
     }
 
+    public static boolean isServiceStop(Operation op) {
+        return op.getAction() == Action.DELETE
+                && op.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_NO_INDEX_UPDATE);
+    }
+
     public static boolean isHelperServicePath(String serviceUriPath) {
         if (serviceUriPath.endsWith(SERVICE_URI_SUFFIX_REPLICATION)) {
             return true;
