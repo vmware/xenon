@@ -284,6 +284,18 @@ public class StatefulService implements Service {
         boolean isCompletionNested = false;
         try {
             if (opProcessingStage == OperationProcessingStage.LOADING_STATE) {
+                if (ServiceHost.isServiceStop(request)) {
+                    // local shutdown induced delete. By pass two stage operation processing
+                    request.nestCompletion((o, e) -> {
+                        processPending(request);
+                        if (e == null) {
+                            handleStopCompletion(request);
+                        }
+                    });
+                    handleStop(request);
+                    return;
+                }
+
                 if (handleRequestLoadingAndLinkingState(request)) {
                     return;
                 }
@@ -328,7 +340,16 @@ public class StatefulService implements Service {
 
                 switch (request.getAction()) {
                 case DELETE:
-                    handleDelete(request);
+                    if (ServiceHost.isServiceStop(request)) {
+                        handleStop(request);
+                    } else {
+                        // after handleDelete completes the operation with success, run handleStop. If that
+                        // succeeds, we proceed with normal processing
+                        request.nestCompletion((o) -> {
+                            handleStop(request);
+                        });
+                        handleDelete(request);
+                    }
                     break;
                 case GET:
                     handleGet(request);
@@ -380,17 +401,6 @@ public class StatefulService implements Service {
         }
 
         if (checkServiceStopped(request, false)) {
-            return true;
-        }
-
-        if (request.getAction() == Action.DELETE
-                && request.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_NO_INDEX_UPDATE)) {
-            // local shutdown induced delete. By pass two stage operation processing
-            request.nestCompletion((o, e) -> {
-                processPending(request);
-                handleDeleteCompletion(request);
-            });
-            handleDelete(request);
             return true;
         }
 
@@ -596,6 +606,10 @@ public class StatefulService implements Service {
     }
 
     public void handleDelete(Operation delete) {
+        delete.complete();
+    }
+
+    public void handleStop(Operation delete) {
         // nested completion from Service will take care of actually shutting
         // down the service
         delete.complete();
@@ -806,12 +820,21 @@ public class StatefulService implements Service {
             return true;
         }
 
+        // DELETE completion runs when a DELETE was issued by a client, not local host shutdown.
+        // It needs to stop the service now, since the handleDelete() and handleStop() handlers
+        // have already run.
+
         getHost().stopService(this);
-        if (op.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_NO_INDEX_UPDATE)) {
-            completeRequest(op);
-            return true;
-        }
         return false;
+    }
+
+    private void handleStopCompletion(Operation op) {
+        if (checkServiceStopped(op, true)) {
+            return;
+        }
+
+        getHost().stopService(this);
+        op.complete();
     }
 
     private boolean replicateRequest(Operation op) {

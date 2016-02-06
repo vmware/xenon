@@ -16,6 +16,7 @@ package com.vmware.xenon.services.common;
 import java.util.EnumSet;
 
 import com.vmware.xenon.common.FactoryService;
+import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Service;
 import com.vmware.xenon.common.test.MinimalTestServiceState;
 
@@ -36,6 +37,27 @@ public class MinimalFactoryTestService extends FactoryService {
      */
     public void setChildServiceCaps(EnumSet<ServiceOption> caps) {
         this.childServiceCaps = caps;
+    }
+
+    public boolean gotStopped;
+
+    public boolean gotDeleted;
+
+    @Override
+    public void handleStop(Operation op) {
+        this.gotStopped = true;
+        op.complete();
+    }
+
+    @Override
+    public void handleDelete(Operation op) {
+        if (op.hasBody()) {
+            // fail delete if it has body, to try out delete abort behavior
+            op.fail(new IllegalStateException("failing intentionally"));
+            return;
+        }
+        this.gotDeleted = true;
+        op.complete();
     }
 
     @Override

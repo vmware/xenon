@@ -111,10 +111,17 @@ public class StatelessService implements Service {
                 } else if (op.getAction() == Action.POST) {
                     handlePost(op);
                 } else if (op.getAction() == Action.DELETE) {
-                    op.nestCompletion(o -> {
-                        handleDeleteCompletion(op);
-                    });
-                    handleDelete(op);
+                    if (ServiceHost.isServiceStop(op)) {
+                        op.nestCompletion(o -> {
+                            handleStopCompletion(op);
+                        });
+                        handleStop(op);
+                    } else {
+                        op.nestCompletion(o -> {
+                            handleDeleteCompletion(op);
+                        });
+                        handleDelete(op);
+                    }
                 } else if (op.getAction() == Action.OPTIONS) {
                     op.nestCompletion(o -> {
                         handleOptionsCompletion(op);
@@ -132,6 +139,26 @@ public class StatelessService implements Service {
 
     public void handleOptions(Operation options) {
         options.setBody(null).complete();
+    }
+
+    /**
+     * Runs after a DELETE operation, that is not a service stop, completes.
+     * It guarantees that the handleStop handler will execute next, and the shared
+     * completion that stops the service will run after the stop operation is completed
+     */
+    protected void handleDeleteCompletion(Operation op) {
+        op.nestCompletion((o) -> {
+            handleStopCompletion(op);
+        });
+        handleStop(op);
+    }
+
+    /**
+     * Stops the service
+     */
+    protected void handleStopCompletion(Operation op) {
+        getHost().stopService(this);
+        op.complete();
     }
 
     protected void handleOptionsCompletion(Operation options) {
@@ -153,8 +180,7 @@ public class StatelessService implements Service {
         delete.complete();
     }
 
-    protected void handleDeleteCompletion(Operation delete) {
-        getHost().stopService(this);
+    public void handleStop(Operation delete) {
         delete.complete();
     }
 

@@ -50,7 +50,7 @@ class DeleteVerificationTestService extends StatefulService {
     }
 
     @Override
-    public void handleDelete(Operation delete) {
+    public void handleStop(Operation delete) {
         if (!delete.hasBody()) {
             delete.fail(new IllegalStateException("Expected service state in expiration DELETE"));
             return;

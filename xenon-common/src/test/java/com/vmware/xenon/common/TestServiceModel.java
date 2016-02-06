@@ -28,6 +28,7 @@ import org.junit.Test;
 
 import com.vmware.xenon.common.Operation.CompletionHandler;
 import com.vmware.xenon.common.Service.Action;
+import com.vmware.xenon.common.Service.ProcessingStage;
 import com.vmware.xenon.common.Service.ServiceOption;
 import com.vmware.xenon.common.ServiceStats.ServiceStat;
 import com.vmware.xenon.common.test.MinimalTestServiceState;
@@ -107,6 +108,50 @@ public class TestServiceModel extends BasicTestCase {
         for (int i = 0; i < t.stringArrayField.length; i++) {
             assertEquals(t.stringArrayField[i], splitStringArrayValue[i]);
         }
+    }
+
+    @Test
+    public void serviceStop() throws Throwable {
+        MinimalTestService serviceToBeDeleted = new MinimalTestService();
+        MinimalTestService serviceToBeStopped = new MinimalTestService();
+        MinimalFactoryTestService factoryService = new MinimalFactoryTestService();
+        MinimalTestServiceState body = new MinimalTestServiceState();
+        body.id = UUID.randomUUID().toString();
+        this.host.startServiceAndWait(serviceToBeDeleted, UUID.randomUUID().toString(), body);
+        this.host.startServiceAndWait(serviceToBeStopped, UUID.randomUUID().toString(), body);
+        this.host.startServiceAndWait(factoryService, UUID.randomUUID().toString(), null);
+
+        body.id = MinimalTestService.STRING_MARKER_FAIL_REQUEST;
+        // first issue a delete with a body (used as a hint to fail delete), and it should be aborted.
+        // Verify service is still running if it fails delete
+        Operation delete = Operation.createDelete(serviceToBeDeleted.getUri())
+                .setBody(body)
+                .setCompletion(this.host.getExpectedFailureCompletion());
+        this.host.sendAndWait(delete);
+
+        // try a delete that should be aborted with the factory service
+        delete = Operation.createDelete(factoryService.getUri())
+                .setBody(body)
+                .setCompletion(this.host.getExpectedFailureCompletion());
+        this.host.sendAndWait(delete);
+
+        // verify services are still running
+        assertEquals(ProcessingStage.AVAILABLE,
+                this.host.getServiceStage(factoryService.getSelfLink()));
+        assertEquals(ProcessingStage.AVAILABLE,
+                this.host.getServiceStage(serviceToBeDeleted.getSelfLink()));
+
+        delete = Operation.createDelete(serviceToBeDeleted.getUri())
+                .setCompletion(this.host.getCompletion());
+        this.host.sendAndWait(delete);
+        assertTrue(serviceToBeDeleted.gotDeleted);
+        assertTrue(serviceToBeDeleted.gotStopped);
+
+        // stop the host, observe stop only on remaining service
+        this.host.stop();
+        assertTrue(!serviceToBeStopped.gotDeleted);
+        assertTrue(serviceToBeStopped.gotStopped);
+        assertTrue(factoryService.gotStopped);
     }
 
     /**

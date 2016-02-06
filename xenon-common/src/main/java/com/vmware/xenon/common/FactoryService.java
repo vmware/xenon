@@ -356,8 +356,17 @@ public abstract class FactoryService extends StatelessService {
             op.nestCompletion(o -> handleGetCompletion(o));
             handleGet(op);
         } else if (op.getAction() == Action.DELETE) {
-            op.nestCompletion(o -> handleDeleteCompletion(o));
-            handleDelete(op);
+            if (ServiceHost.isServiceStop(op)) {
+                op.nestCompletion(o -> {
+                    handleStopCompletion(op);
+                });
+                handleStop(op);
+            } else {
+                op.nestCompletion(o -> {
+                    handleDeleteCompletion(op);
+                });
+                handleDelete(op);
+            }
         } else if (op.getAction() == Action.OPTIONS) {
             op.nestCompletion(o -> handleOptionsCompletion(o));
             handleOptions(op);
