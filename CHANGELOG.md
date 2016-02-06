@@ -2,6 +2,16 @@
 
 ## 0.6.1-SNAPSHOT
 
+* Split Service.handleDelete into Service.handleStop and
+  Service.handleDelete. If the service is being stopped, the
+  host has always added a special pragma, indicating this is
+  a DELETE with the intent to stop a service, and to avoid
+  any persistence or replication side effects.
+  This is now formalized through the new handleStop method,
+  invoked only when the service is being issued a DELETE, with the
+  pragma included. This is potentially a breaking change for
+  services that did special cleanup ONLY on stop, not delete+stop
+
 ## 0.6.0
 
 * Add new per service utility suffix, /available. Provides a

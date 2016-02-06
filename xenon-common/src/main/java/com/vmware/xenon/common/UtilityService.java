@@ -81,6 +81,11 @@ public class UtilityService implements Service {
     }
 
     @Override
+    public void handleStop(Operation op) {
+        op.complete();
+    }
+
+    @Override
     public void handleRequest(Operation op, OperationProcessingStage opProcessingStage) {
         handleRequest(op);
     }

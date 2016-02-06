@@ -171,7 +171,7 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
         }
 
         if (op.getAction() == Action.DELETE) {
-            op.nestCompletion(o -> handleDeleteCompletion(o));
+            op.nestCompletion(o -> handleStopOrDeleteCompletion(o));
             handleDelete(op);
             return;
         }

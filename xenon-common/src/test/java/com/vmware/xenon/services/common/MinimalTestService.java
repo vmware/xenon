@@ -32,6 +32,7 @@ public class MinimalTestService extends StatefulService {
 
     public static final String CUSTOM_CONTENT_TYPE = "application/vnd.vmware.horizon.manager.error+json;charset=UTF-8";
 
+    public static final String STRING_MARKER_FAIL_REQUEST = "fail request";
     public static final String STRING_MARKER_RETRY_REQUEST = "fail request with error that causes retry";
     public static final String STRING_MARKER_TIMEOUT_REQUEST = "do not complete this request";
     public static final String STRING_MARKER_HAS_CONTEXT_ID = "check context id";
@@ -95,6 +96,29 @@ public class MinimalTestService extends StatefulService {
             }
         }
         post.complete();
+    }
+
+    public boolean gotStopped;
+
+    public boolean gotDeleted;
+
+    @Override
+    public void handleStop(Operation delete) {
+        this.gotStopped = true;
+        delete.complete();
+    }
+
+    @Override
+    public void handleDelete(Operation delete) {
+        if (delete.hasBody()) {
+            MinimalTestServiceState s = delete.getBody(MinimalTestServiceState.class);
+            if (STRING_MARKER_FAIL_REQUEST.equals(s.id)) {
+                delete.fail(new IllegalStateException("failing intentionally"));
+                return;
+            }
+        }
+        this.gotDeleted = true;
+        delete.complete();
     }
 
     private String retryRequestContextId;
