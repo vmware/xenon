@@ -706,7 +706,7 @@ public class TestNodeGroupService {
                     version);
 
             int quorum = (totalNodeCount / 2) + 1;
-            setAndVerifyNodeGroupQuorum(quorum);
+            setAndVerifyNodeGroupQuorum(quorum, totalNodeCount);
 
         } finally {
             this.host.log("test finished");
@@ -717,14 +717,19 @@ public class TestNodeGroupService {
         }
     }
 
-    private void setAndVerifyNodeGroupQuorum(int quorum) throws Throwable {
+    private void setAndVerifyNodeGroupQuorum(Integer quorum, Integer syncQuorum) throws Throwable {
         NodeGroupState ngs;
-        this.host.setNodeGroupQuorum(quorum);
+        this.host.setNodeGroupQuorum(quorum, syncQuorum);
 
         URI nodeGroupUri = this.host.getPeerServiceUri(ServiceUriPaths.DEFAULT_NODE_GROUP);
         ngs = this.host.getServiceState(null, NodeGroupState.class, nodeGroupUri);
         for (NodeState s : ngs.nodes.values()) {
-            assertEquals(quorum, s.membershipQuorum);
+            if (quorum != null) {
+                assertTrue(Integer.compare(quorum, s.membershipQuorum) == 0);
+            }
+            if (syncQuorum != null) {
+                assertTrue(Integer.compare(syncQuorum, s.synchQuorum) == 0);
+            }
         }
     }
 
@@ -800,7 +805,7 @@ public class TestNodeGroupService {
 
         this.host.setNodeGroupConfig(this.nodeGroupConfig);
         if (this.postCreationServiceOptions.contains(ServiceOption.ENFORCE_QUORUM)) {
-            this.host.setNodeGroupQuorum((this.nodeCount + 1) / 2);
+            this.host.setNodeGroupQuorum((this.nodeCount + 1) / 2, null);
         }
 
         // do some replication with strong quorum enabled

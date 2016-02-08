@@ -2,6 +2,14 @@
 
 ## 0.6.1-SNAPSHOT
 
+* Enable update of synch quorum through PATCH to
+  node-groups/<group>/config. Membership quorum was already
+  supported, now synch quorum is included.
+
+* Fix consensus protocol commit behavior. Commit messages
+  are no longer sent if the request to owner service fails
+  or the service does not have ENFORCE_QUORUM.
+
 * Split Service.handleDelete into Service.handleStop and
   Service.handleDelete. If the service is being stopped, the
   host has always added a special pragma, indicating this is

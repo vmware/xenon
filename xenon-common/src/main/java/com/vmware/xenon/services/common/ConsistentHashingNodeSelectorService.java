@@ -434,6 +434,11 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
             SelectAndForwardRequest body) {
 
         Operation op = body.associatedOp;
+        if (getHost().isStopping()) {
+            op.fail(new CancellationException("host is stopping"));
+            return true;
+        }
+
         if (op.getExpirationMicrosUtc() < Utils.getNowMicrosUtc()) {
             // operation has expired
             op.fail(new TimeoutException(String.format(
@@ -447,8 +452,13 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
             return false;
         }
 
+        if (NodeGroupUtils.hasSynchronizationQuorum(getHost(), localState)) {
+            return false;
+        }
+
         adjustStat(STAT_NAME_OP_DELAY_MEMBERSHIP_UNSTABLE_COUNT, 1);
 
+        logInfo("%s %s", op.getUri(), op.getAction());
         this.pendingRequests.add(body);
         return true;
     }
