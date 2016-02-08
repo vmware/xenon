@@ -97,16 +97,26 @@ public class NodeGroupService extends StatefulService {
     public static class UpdateQuorumRequest {
         public static final String KIND = Utils.buildKind(UpdateQuorumRequest.class);
 
-        public static UpdateQuorumRequest create(boolean isGroupUpdate, int quorum) {
+        public static UpdateQuorumRequest create(boolean isGroupUpdate) {
             UpdateQuorumRequest r = new UpdateQuorumRequest();
             r.isGroupUpdate = isGroupUpdate;
-            r.membershipQuorum = quorum;
             r.kind = KIND;
             return r;
         }
 
+        public UpdateQuorumRequest setMembershipQuorum(int count) {
+            this.membershipQuorum = count;
+            return this;
+        }
+
+        public UpdateQuorumRequest setSynchQuorum(int count) {
+            this.synchQuorum = count;
+            return this;
+        }
+
         public boolean isGroupUpdate;
-        public int membershipQuorum;
+        public Integer membershipQuorum;
+        public Integer synchQuorum;
         public String kind;
     }
 
@@ -240,10 +250,15 @@ public class NodeGroupService extends StatefulService {
             NodeGroupState localState) {
         UpdateQuorumRequest bd = patch.getBody(UpdateQuorumRequest.class);
         NodeState self = localState.nodes.get(getHost().getId());
-        logInfo("Updating self quorum from %d to %d, isGroupUpdate:%s",
-                self.membershipQuorum, bd.membershipQuorum, bd.isGroupUpdate);
+        logInfo("Updating self quorum from %d. Body: %s",
+                self.membershipQuorum, Utils.toJsonHtml(bd));
 
-        self.membershipQuorum = bd.membershipQuorum;
+        if (bd.membershipQuorum != null) {
+            self.membershipQuorum = bd.membershipQuorum;
+        }
+        if (bd.synchQuorum != null) {
+            self.synchQuorum = bd.synchQuorum;
+        }
         self.documentVersion++;
         self.documentUpdateTimeMicros = Utils.getNowMicrosUtc();
         localState.membershipUpdateTimeMicros = self.documentUpdateTimeMicros;
@@ -290,7 +305,12 @@ public class NodeGroupService extends StatefulService {
                 c.handle(null, null);
                 continue;
             }
-            node.membershipQuorum = bd.membershipQuorum;
+            if (bd.membershipQuorum != null) {
+                node.membershipQuorum = bd.membershipQuorum;
+            }
+            if (bd.synchQuorum != null) {
+                node.synchQuorum = bd.synchQuorum;
+            }
             node.documentVersion++;
             node.documentUpdateTimeMicros = Utils.getNowMicrosUtc();
             Operation p = Operation

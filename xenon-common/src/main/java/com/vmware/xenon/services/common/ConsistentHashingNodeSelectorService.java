@@ -67,6 +67,7 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
 
     private volatile boolean isSynchronizationRequired;
     private boolean isNodeGroupConverged;
+    private int synchQuorumWarningCount;
 
     public ConsistentHashingNodeSelectorService() {
         super(NodeSelectorState.class);
@@ -434,6 +435,11 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
             SelectAndForwardRequest body) {
 
         Operation op = body.associatedOp;
+        if (getHost().isStopping()) {
+            op.fail(new CancellationException("host is stopping"));
+            return true;
+        }
+
         if (op.getExpirationMicrosUtc() < Utils.getNowMicrosUtc()) {
             // operation has expired
             op.fail(new TimeoutException(String.format(
@@ -447,8 +453,13 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
             return false;
         }
 
+        if (NodeGroupUtils.hasSynchronizationQuorum(getHost(), localState)) {
+            return false;
+        }
+
         adjustStat(STAT_NAME_OP_DELAY_MEMBERSHIP_UNSTABLE_COUNT, 1);
 
+        logInfo("%s %s", op.getUri(), op.getAction());
         this.pendingRequests.add(body);
         return true;
     }
@@ -520,6 +531,7 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
                 return;
             }
 
+            final int quorumWarningsBeforeQuiet = 10;
             NodeGroupState ngs = o.getBody(NodeGroupState.class);
             long membershipUpdate = ngs.membershipUpdateTimeMicros;
             this.cachedGroupState = ngs;
@@ -539,13 +551,21 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
 
                                 if (!NodeGroupUtils.hasSynchronizationQuorum(getHost(),
                                         this.cachedGroupState)) {
-                                    logInfo("Synchronization quorum not met");
+                                    if (this.synchQuorumWarningCount < quorumWarningsBeforeQuiet) {
+                                        logWarning("Synchronization quorum not met");
+                                    } else if (this.synchQuorumWarningCount == quorumWarningsBeforeQuiet) {
+                                        logWarning("Synchronization quorum not met, warning will be silenced");
+                                    }
+                                    this.synchQuorumWarningCount++;
                                     return;
                                 }
 
                                 // if node group changed since we kicked of this check, we need to wait for
                                 // newer convergence completions
                                 this.isNodeGroupConverged = membershipUpdate == this.cachedGroupState.membershipUpdateTimeMicros;
+                                if (this.isNodeGroupConverged) {
+                                    this.synchQuorumWarningCount = 0;
+                                }
                             }));
         };
 

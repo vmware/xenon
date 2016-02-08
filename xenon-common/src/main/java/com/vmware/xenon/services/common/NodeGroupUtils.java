@@ -100,7 +100,7 @@ public class NodeGroupUtils {
             availableNodeCount++;
         }
 
-        if (availableNodeCount < selfNode.synchQuorum) {
+        if (availableNodeCount < Math.max(selfNode.synchQuorum, selfNode.membershipQuorum)) {
             return false;
         }
         return true;

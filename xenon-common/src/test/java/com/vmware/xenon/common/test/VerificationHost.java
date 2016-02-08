@@ -2160,13 +2160,13 @@ public class VerificationHost extends ExampleServiceHost {
         testWait();
     }
 
-    public void setNodeGroupQuorum(int quorum)
+    public void setNodeGroupQuorum(Integer quorum, Integer synchQuorum)
             throws Throwable {
         // we can issue the update to any one node and it will update
         // everyone in the group
 
         for (URI nodeGroup : getNodeGroupMap().values()) {
-            setNodeGroupQuorum(quorum, nodeGroup);
+            setNodeGroupQuorum(quorum, synchQuorum, nodeGroup);
         }
 
         Date exp = getTestExpiration();
@@ -2189,9 +2189,19 @@ public class VerificationHost extends ExampleServiceHost {
         throw new TimeoutException();
     }
 
-    private void setNodeGroupQuorum(int quorum, URI nodeGroup) throws Throwable {
+
+    private void setNodeGroupQuorum(Integer quorum, Integer syncQuorum, URI nodeGroup)
+            throws Throwable {
         testStart(1);
-        UpdateQuorumRequest body = UpdateQuorumRequest.create(true, quorum);
+        UpdateQuorumRequest body = UpdateQuorumRequest.create(true);
+
+        if (quorum != null) {
+            body.setMembershipQuorum(quorum);
+        }
+        if (syncQuorum != null) {
+            body.setSynchQuorum(syncQuorum);
+        }
+
         send(Operation.createPatch(nodeGroup)
                 .setCompletion(getCompletion())
                 .setBody(body));

@@ -706,7 +706,7 @@ public class TestNodeGroupService {
                     version);
 
             int quorum = (totalNodeCount / 2) + 1;
-            setAndVerifyNodeGroupQuorum(quorum);
+            setAndVerifyNodeGroupQuorum(quorum, totalNodeCount);
 
         } finally {
             this.host.log("test finished");
@@ -717,14 +717,19 @@ public class TestNodeGroupService {
         }
     }
 
-    private void setAndVerifyNodeGroupQuorum(int quorum) throws Throwable {
+    private void setAndVerifyNodeGroupQuorum(Integer quorum, Integer syncQuorum) throws Throwable {
         NodeGroupState ngs;
-        this.host.setNodeGroupQuorum(quorum);
+        this.host.setNodeGroupQuorum(quorum, syncQuorum);
 
         URI nodeGroupUri = this.host.getPeerServiceUri(ServiceUriPaths.DEFAULT_NODE_GROUP);
         ngs = this.host.getServiceState(null, NodeGroupState.class, nodeGroupUri);
         for (NodeState s : ngs.nodes.values()) {
-            assertEquals(quorum, s.membershipQuorum);
+            if (quorum != null) {
+                assertTrue(Integer.compare(quorum, s.membershipQuorum) == 0);
+            }
+            if (syncQuorum != null) {
+                assertTrue(Integer.compare(syncQuorum, s.synchQuorum) == 0);
+            }
         }
     }
 
@@ -800,7 +805,7 @@ public class TestNodeGroupService {
 
         this.host.setNodeGroupConfig(this.nodeGroupConfig);
         if (this.postCreationServiceOptions.contains(ServiceOption.ENFORCE_QUORUM)) {
-            this.host.setNodeGroupQuorum((this.nodeCount + 1) / 2);
+            this.host.setNodeGroupQuorum((this.nodeCount + 1) / 2, null);
         }
 
         // do some replication with strong quorum enabled
@@ -1967,11 +1972,8 @@ public class TestNodeGroupService {
         this.nodeGroupConfig.nodeRemovalDelayMicros = TimeUnit.SECONDS.toMicros(1);
         this.host.setNodeGroupConfig(this.nodeGroupConfig);
 
-        // Do the inverse test. Remove all of the original hosts and this time, expect all the
-        // documents have owners assigned to the new hosts
-        for (VerificationHost h : originalHosts) {
-            this.host.stopHost(h);
-        }
+        stopHostsAndVerifyQueuing(originalHosts,
+                (VerificationHost) newHosts.iterator().next(), childStates.keySet());
 
         // verify nodes expire and removed entirely from the group state
         this.host.waitForNodeGroupConvergence(this.host.getNodeGroupMap().size(), this.host
@@ -2975,5 +2977,90 @@ public class TestNodeGroupService {
             }
         }
         return stoppedHosts;
+    }
+
+    public static class StopVerificationTestService extends StatefulService {
+
+        public Collection<URI> serviceTargets;
+
+        public AtomicInteger outboundRequestCompletion = new AtomicInteger();
+        public AtomicInteger outboundRequestFailureCompletion = new AtomicInteger();
+
+        public StopVerificationTestService() {
+            super(MinimalTestServiceState.class);
+            super.toggleOption(ServiceOption.REPLICATION, true);
+            super.toggleOption(ServiceOption.OWNER_SELECTION, true);
+        }
+
+        @Override
+        public void handleStop(Operation deleteForStop) {
+            // send requests to replicated services, during stop to verify that the
+            // runtime prevents any outbound requests from making it out
+            for (URI uri : this.serviceTargets) {
+                ReplicationTestServiceState body = new ReplicationTestServiceState();
+                body.stringField = ReplicationTestServiceState.CLIENT_PATCH_HINT;
+                for (int i = 0; i < 10; i++) {
+                    // send patch to self, so the select owner logic gets invoked and in theory
+                    // queues or cancels the request
+                    Operation op = Operation.createPatch(this, uri.getPath()).setBody(body)
+                            .setCompletion((o, e) -> {
+                                if (e != null) {
+                                    this.outboundRequestFailureCompletion.incrementAndGet();
+                                } else {
+                                    this.outboundRequestCompletion.incrementAndGet();
+                                }
+                            });
+                    sendRequest(op);
+                }
+            }
+        }
+
+    }
+
+    private void stopHostsAndVerifyQueuing(Collection<VerificationHost> hostsToStop,
+            VerificationHost remainingHost,
+            Collection<URI> serviceTargets) throws Throwable {
+
+        // start a special test service that will attempt to send messages when it sees
+        // handleStop(). This is not expected of production code, since service authors
+        // should never have to worry about handleStop(). We rely on the fact that handleStop
+        // will be called due to node shutdown, and issue requests to replicated targets,
+        // then check if anyone of them actually made it out (they should not have)
+
+        List<StopVerificationTestService> verificationServices = new ArrayList<>();
+
+        // Do the inverse test. Remove all of the original hosts and this time, expect all the
+        // documents have owners assigned to the new hosts
+        for (VerificationHost h : hostsToStop) {
+            StopVerificationTestService s = new StopVerificationTestService();
+            verificationServices.add(s);
+            s.serviceTargets = serviceTargets;
+            h.startServiceAndWait(s, UUID.randomUUID().toString(), null);
+            this.host.stopHost(h);
+        }
+
+        Date exp = this.host.getTestExpiration();
+        while (new Date().before(exp)) {
+            boolean isConverged = true;
+            for (StopVerificationTestService s : verificationServices) {
+                if (s.outboundRequestCompletion.get() > 0) {
+                    throw new IllegalStateException("Replicated request succeeded");
+                }
+                if (s.outboundRequestFailureCompletion.get() < serviceTargets.size()) {
+                    // We expect at least one failure per service target, if we have less
+                    // keep polling.
+                    isConverged = false;
+                    break;
+                }
+            }
+
+            if (isConverged) {
+                return;
+            }
+
+            Thread.sleep(250);
+        }
+        ;
+        throw new TimeoutException();
     }
 }
