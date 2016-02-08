@@ -601,23 +601,24 @@ public class TestServiceHost {
         long maintenanceIntervalMicros = TimeUnit.MILLISECONDS.toMicros(maintIntervalMillis);
         this.host.setMaintenanceIntervalMicros(maintenanceIntervalMicros);
         this.host.setServiceCacheClearDelayMicros(TimeUnit.MILLISECONDS
-                .toMicros(maintIntervalMillis));
+                .toMicros(maintIntervalMillis / 2));
         this.host.start();
 
         verifyMaintenanceDelayStat(maintenanceIntervalMicros);
 
-        long serviceCount = 100;
         long opCount = 2;
         EnumSet<ServiceOption> caps = EnumSet.of(ServiceOption.PERSISTENCE,
                 ServiceOption.INSTRUMENTATION, ServiceOption.PERIODIC_MAINTENANCE);
 
         List<Service> services = this.host.doThroughputServiceStart(
-                serviceCount, MinimalTestService.class, this.host.buildMinimalTestState(), caps,
+                this.serviceCount, MinimalTestService.class, this.host.buildMinimalTestState(),
+                caps,
                 null);
 
         long start = Utils.getNowMicrosUtc();
         List<Service> slowMaintServices = this.host.doThroughputServiceStart(null,
-                serviceCount, MinimalTestService.class, this.host.buildMinimalTestState(), caps,
+                this.serviceCount, MinimalTestService.class, this.host.buildMinimalTestState(),
+                caps,
                 null, maintenanceIntervalMicros * 10);
 
         List<URI> uris = new ArrayList<>();
@@ -641,7 +642,7 @@ public class TestServiceHost {
             this.host.getServiceState(null, MinimalTestServiceState.class, uris);
 
             // verify each service show at least a couple of maintenance requests
-            URI[] statUris = buildStatsUris(serviceCount, services);
+            URI[] statUris = buildStatsUris(this.serviceCount, services);
             Map<URI, ServiceStats> stats = this.host.getServiceState(null,
                     ServiceStats.class, statUris);
 
@@ -674,9 +675,9 @@ public class TestServiceHost {
             }
 
             // verify that every single service has seen at least one maintenance interval
-            if (servicesWithMaintenance.size() < serviceCount) {
+            if (servicesWithMaintenance.size() < this.serviceCount) {
                 this.host.log("Services with maintenance: %d, expected %d",
-                        servicesWithMaintenance.size(), serviceCount);
+                        servicesWithMaintenance.size(), this.serviceCount);
                 Thread.sleep(maintIntervalMillis * 2);
                 continue;
             }
@@ -732,7 +733,7 @@ public class TestServiceHost {
         expectedMaintIntervals = Math.max(1, (end - start) / slowMaintInterval);
 
         // verify that services with slow maintenance did not get more than one maint cycle
-        URI[] statUris = buildStatsUris(serviceCount, slowMaintServices);
+        URI[] statUris = buildStatsUris(this.serviceCount, slowMaintServices);
         Map<URI, ServiceStats> stats = this.host.getServiceState(null,
                 ServiceStats.class, statUris);
 
@@ -772,7 +773,7 @@ public class TestServiceHost {
         this.host.waitForServiceAvailable(ExampleFactoryService.SELF_LINK);
 
         List<URI> exampleURIs = new ArrayList<>();
-        this.host.createExampleServices(this.host, serviceCount, exampleURIs,
+        this.host.createExampleServices(this.host, this.serviceCount, exampleURIs,
                 Utils.getNowMicrosUtc());
 
         ServiceDocumentQueryResult rsp = new ServiceDocumentQueryResult();
@@ -811,13 +812,14 @@ public class TestServiceHost {
         Thread.sleep(ServiceHostState.DEFAULT_MAINTENANCE_INTERVAL_MICROS / 1000);
 
         slowMaintServices = this.host.doThroughputServiceStart(
-                serviceCount, MinimalTestService.class, this.host.buildMinimalTestState(), caps,
+                this.serviceCount, MinimalTestService.class, this.host.buildMinimalTestState(),
+                caps,
                 null);
 
         // sleep again and check no maintenance run right after start
         Thread.sleep(250);
 
-        statUris = buildStatsUris(serviceCount, slowMaintServices);
+        statUris = buildStatsUris(this.serviceCount, slowMaintServices);
         stats = this.host.getServiceState(null,
                 ServiceStats.class, statUris);
 

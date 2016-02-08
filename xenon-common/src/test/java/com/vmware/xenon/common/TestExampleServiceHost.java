@@ -18,6 +18,8 @@ import static org.junit.Assert.assertTrue;
 
 import java.net.URI;
 import java.util.Base64;
+import java.util.Date;
+import java.util.concurrent.TimeoutException;
 
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
@@ -86,7 +88,8 @@ public class TestExampleServiceHost extends BasicReusableHostTestCase {
         String[] authToken = new String[1];
         authToken[0] = null;
 
-        for (int i = 0; i < 20; i++) {
+        Date exp = this.host.getTestExpiration();
+        while (new Date().before(exp)) {
             Operation loginPost = Operation.createPost(loginUri)
                     .setBody(login)
                     .addRequestHeader(BasicAuthenticationService.AUTHORIZATION_HEADER_NAME,
@@ -109,6 +112,10 @@ public class TestExampleServiceHost extends BasicReusableHostTestCase {
                 break;
             }
             Thread.sleep(250);
+        }
+
+        if (new Date().after(exp)) {
+            throw new TimeoutException();
         }
 
         assertNotNull(authToken[0]);
