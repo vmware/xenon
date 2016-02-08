@@ -447,8 +447,13 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
             return false;
         }
 
+        if (NodeGroupUtils.hasSynchronizationQuorum(getHost(), localState)) {
+            return false;
+        }
+
         adjustStat(STAT_NAME_OP_DELAY_MEMBERSHIP_UNSTABLE_COUNT, 1);
 
+        logInfo("%s %s", op.getUri(), op.getAction());
         this.pendingRequests.add(body);
         return true;
     }
