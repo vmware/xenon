@@ -20,6 +20,7 @@ import java.util.concurrent.TimeUnit;
 import static org.junit.Assert.assertNotNull;
 
 import com.google.gson.Gson;
+
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -30,7 +31,7 @@ import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.ServiceDocumentQueryResult;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.test.VerificationHost;
-import com.vmware.xenon.services.common.ExampleFactoryService;
+import com.vmware.xenon.services.common.ExampleService;
 import com.vmware.xenon.services.common.ServiceUriPaths;
 
 /**
@@ -80,7 +81,7 @@ public class TestDNSService extends BasicTestCase {
 
     private void setUpPeerHostWithAdditionalServices(VerificationHost h1) throws Throwable {
         h1.setStressTest(this.host.isStressTest);
-        h1.waitForServiceAvailable(ExampleFactoryService.SELF_LINK);
+        h1.waitForServiceAvailable(ExampleService.FACTORY_LINK);
     }
 
     @Before
@@ -121,23 +122,23 @@ public class TestDNSService extends BasicTestCase {
             this.host.testStart(1);
             h1.sendRequest(DNSFactoryService.createPost(this.dnsHost.getPublicUri(),
                     h1,
-                    ExampleFactoryService.SELF_LINK,
-                    ExampleFactoryService.class.getSimpleName(),
+                    ExampleService.FACTORY_LINK,
+                    ExampleService.class.getSimpleName(),
                     null,
-                    ExampleFactoryService.SELF_LINK + "/stats",
+                    ExampleService.FACTORY_LINK + "/stats",
                     HEALTH_CHECK_INTERVAL).setCompletion(completionHandler));
             this.host.testWait();
         }
 
         /* Verify records exist at DNS service */
         Map<String, Object> out = doQuery(String.format("$filter=serviceName eq %s",
-                ExampleFactoryService.class.getSimpleName()));
+                ExampleService.class.getSimpleName()));
 
         assert (out != null);
         assert (out.keySet().size() == 1);
         DNSService.DNSServiceState serviceState =
                 new Gson().fromJson((String) out.get(DNSFactoryService.SELF_LINK + "/" +
-                                ExampleFactoryService.class.getSimpleName()),
+                        ExampleService.class.getSimpleName()),
                         DNSService.DNSServiceState.class);
         assert (serviceState.nodeReferences.size() == this.nodeCount);
 
@@ -169,13 +170,13 @@ public class TestDNSService extends BasicTestCase {
          /* Verify records exist at DNS service */
         Map<String, Object> out1 = doQuery(String.format(
                 "$filter=serviceName eq '%s' and serviceStatus eq AVAILABLE",
-                ExampleFactoryService.class.getSimpleName()));
+                ExampleService.class.getSimpleName()));
 
         assert (out1 != null);
         assert (out1.keySet().size() == 1);
         DNSService.DNSServiceState serviceState =
                 new Gson().fromJson((String) out1.get(DNSFactoryService.SELF_LINK + "/" +
-                                ExampleFactoryService.class.getSimpleName()),
+                        ExampleService.class.getSimpleName()),
                         DNSService.DNSServiceState.class);
         assert (serviceState.serviceStatus == DNSService.DNSServiceState.ServiceStatus.AVAILABLE);
 
@@ -191,7 +192,7 @@ public class TestDNSService extends BasicTestCase {
 
         Map<String, Object> out2 = doQuery(String.format(
                 "$filter=serviceName eq '%s' and serviceStatus eq AVAILABLE",
-                ExampleFactoryService.class.getSimpleName()));
+                ExampleService.class.getSimpleName()));
 
         assert (out2 != null);
         assert (out2.keySet().size() == 0);

@@ -26,7 +26,7 @@ import org.junit.Test;
 
 import com.vmware.xenon.common.Service.ServiceOption;
 import com.vmware.xenon.common.ServiceStats.ServiceStat;
-import com.vmware.xenon.services.common.ExampleFactoryService;
+import com.vmware.xenon.services.common.ExampleService;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
 import com.vmware.xenon.services.common.MinimalTestService;
 
@@ -44,13 +44,13 @@ public class TestUtilityService extends BasicReusableHostTestCase {
     public void patchConfiguration() throws Throwable {
         int count = 10;
 
-        host.waitForServiceAvailable(ExampleFactoryService.SELF_LINK);
+        host.waitForServiceAvailable(ExampleService.FACTORY_LINK);
         // try config patch on a factory
         ServiceConfigUpdateRequest updateBody = ServiceConfigUpdateRequest.create();
         updateBody.removeOptions = EnumSet.of(ServiceOption.IDEMPOTENT_POST);
         this.host.testStart(1);
 
-        URI configUri = UriUtils.buildConfigUri(host, ExampleFactoryService.SELF_LINK);
+        URI configUri = UriUtils.buildConfigUri(host, ExampleService.FACTORY_LINK);
         this.host.send(Operation.createPatch(configUri).setBody(updateBody)
                 .setCompletion(this.host.getCompletion()));
 
@@ -135,7 +135,7 @@ public class TestUtilityService extends BasicReusableHostTestCase {
 
         this.host.testStart(1);
         this.host.registerForServiceAvailability(this.host.getCompletion(),
-                ExampleFactoryService.SELF_LINK);
+                ExampleService.FACTORY_LINK);
         this.host.testWait();
 
         // create an example child service and also verify it has a default UI html page
@@ -144,7 +144,7 @@ public class TestUtilityService extends BasicReusableHostTestCase {
         s.documentSelfLink = s.name;
         this.host.testStart(1);
         Operation post = Operation
-                .createPost(UriUtils.buildUri(this.host, ExampleFactoryService.class))
+                .createPost(UriUtils.buildFactoryUri(this.host, ExampleService.class))
                 .setBody(s)
                 .setCompletion(this.host.getCompletion());
         this.host.send(post);
@@ -156,7 +156,7 @@ public class TestUtilityService extends BasicReusableHostTestCase {
             Operation htmlResponse = this.host.sendUIHttpRequest(
                     UriUtils.buildUri(
                             this.host,
-                            UriUtils.buildUriPath(ExampleFactoryService.SELF_LINK,
+                            UriUtils.buildUriPath(ExampleService.FACTORY_LINK,
                                     ServiceHost.SERVICE_URI_SUFFIX_UI))
                             .toString(), null, 1);
 
@@ -165,7 +165,7 @@ public class TestUtilityService extends BasicReusableHostTestCase {
             htmlResponse = this.host.sendUIHttpRequest(
                     UriUtils.buildUri(
                             this.host,
-                            UriUtils.buildUriPath(ExampleFactoryService.SELF_LINK, s.name,
+                            UriUtils.buildUriPath(ExampleService.FACTORY_LINK, s.name,
                                     ServiceHost.SERVICE_URI_SUFFIX_UI))
                             .toString(), null, 1);
 
@@ -177,14 +177,14 @@ public class TestUtilityService extends BasicReusableHostTestCase {
     public void testUtilityStats() throws Throwable {
 
         // Step 1: Create an ExampleService instance
-        this.host.waitForServiceAvailable(ExampleFactoryService.SELF_LINK);
+        this.host.waitForServiceAvailable(ExampleService.FACTORY_LINK);
         String name = UUID.randomUUID().toString();
         ExampleServiceState s = new ExampleServiceState();
         s.name = name;
         Consumer<Operation> bodySetter = (o) -> {
             o.setBody(s);
         };
-        URI factoryURI = UriUtils.buildUri(this.host, ExampleFactoryService.SELF_LINK);
+        URI factoryURI = UriUtils.buildFactoryUri(this.host, ExampleService.class);
         long c = 2;
         Map<URI, ExampleServiceState> states = this.host.doFactoryChildServiceStart(null, c,
                 ExampleServiceState.class, bodySetter, factoryURI);
@@ -322,7 +322,7 @@ public class TestUtilityService extends BasicReusableHostTestCase {
     @Test
     public void testIsAvailableStatAndSuffix() throws Throwable {
         long c = 1;
-        URI factoryURI = UriUtils.buildUri(this.host, ExampleFactoryService.SELF_LINK);
+        URI factoryURI = UriUtils.buildFactoryUri(this.host, ExampleService.class);
         String name = UUID.randomUUID().toString();
         ExampleServiceState s = new ExampleServiceState();
         s.name = name;

@@ -742,7 +742,7 @@ public class TestQueryTaskService {
         this.host.joinNodesAndVerifyConvergence(nodeCount);
 
         VerificationHost targetHost = this.host.getPeerHost();
-        URI exampleFactoryURI = UriUtils.buildUri(targetHost, ExampleFactoryService.SELF_LINK);
+        URI exampleFactoryURI = UriUtils.buildUri(targetHost, ExampleService.FACTORY_LINK);
 
         CommandLineArgumentParser.parseFromProperties(this);
         if (this.serviceCount > stressTestServiceCountThreshold) {
@@ -758,7 +758,7 @@ public class TestQueryTaskService {
             s.name = "document" + i;
             s.documentSelfLink = s.name;
             exampleServices.add(UriUtils.buildUri(this.host.getUri(),
-                    ExampleFactoryService.SELF_LINK, s.documentSelfLink));
+                    ExampleService.FACTORY_LINK, s.documentSelfLink));
             this.host.send(Operation.createPost(exampleFactoryURI)
                     .setBody(s)
                     .setCompletion(this.host.getCompletion()));
@@ -1139,7 +1139,8 @@ public class TestQueryTaskService {
                 assertEquals(documentCount, documentLinks.size());
 
                 for (int i = 0; i < documentCount; i++) {
-                    assertTrue(documentLinks.contains(ExampleFactoryService.SELF_LINK + "/document" + i));
+                    assertTrue(documentLinks
+                            .contains(ExampleService.FACTORY_LINK + "/document" + i));
                 }
             }
         };
@@ -1160,7 +1161,7 @@ public class TestQueryTaskService {
     public void doSortTestOnExampleStates(boolean isDirect, int resultLimit) throws Throwable {
         setUpHost();
         int serviceCount = 100;
-        URI exampleFactoryURI = UriUtils.buildUri(this.host, ExampleFactoryService.SELF_LINK);
+        URI exampleFactoryURI = UriUtils.buildFactoryUri(this.host, ExampleService.class);
         List<URI> exampleServices = new ArrayList<>();
         this.host.testStart(serviceCount);
         for (int i = 0; i < serviceCount; i++) {
@@ -1168,7 +1169,7 @@ public class TestQueryTaskService {
             s.name = UUID.randomUUID().toString();
             s.documentSelfLink = s.name;
             exampleServices.add(UriUtils.buildUri(this.host.getUri(),
-                    ExampleFactoryService.SELF_LINK, s.documentSelfLink));
+                    ExampleService.FACTORY_LINK, s.documentSelfLink));
             this.host.send(Operation.createPost(exampleFactoryURI)
                     .setBody(s)
                     .setCompletion(this.host.getCompletion()));
@@ -1283,7 +1284,7 @@ public class TestQueryTaskService {
         setUpHost();
         int serviceCount = 25;
         int resultLimit = 10;
-        URI exampleFactoryURI = UriUtils.buildUri(this.host, ExampleFactoryService.SELF_LINK);
+        URI exampleFactoryURI = UriUtils.buildFactoryUri(this.host, ExampleService.class);
         List<URI> exampleServices = new ArrayList<>();
         this.host.testStart(serviceCount);
         Random r = new Random();
@@ -1294,7 +1295,7 @@ public class TestQueryTaskService {
             s.documentSelfLink = s.name;
 
             exampleServices.add(UriUtils.buildUri(this.host.getUri(),
-                    ExampleFactoryService.SELF_LINK, s.documentSelfLink));
+                    ExampleService.FACTORY_LINK, s.documentSelfLink));
 
             this.host.send(Operation.createPost(exampleFactoryURI)
                     .setBody(s)
@@ -2478,7 +2479,7 @@ public class TestQueryTaskService {
     @Test
     public void testQueryBuilderShouldOccur() throws Throwable {
         setUpHost();
-        URI exampleFactoryUri = UriUtils.buildUri(this.host, ExampleFactoryService.SELF_LINK);
+        URI exampleFactoryUri = UriUtils.buildFactoryUri(this.host, ExampleService.class);
         URI tenantFactoryUri = UriUtils.buildUri(this.host, TenantFactoryService.SELF_LINK);
         this.host.testStart(2);
 

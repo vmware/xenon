@@ -38,12 +38,27 @@ import com.vmware.xenon.services.common.ServiceUriPaths;
  */
 public abstract class FactoryService extends StatelessService {
 
+    public static Service create(Class<? extends Service> childServiceType,
+            Class<? extends ServiceDocument> childServiceDocumentType) {
+        FactoryService fs = new FactoryService(childServiceDocumentType) {
+            @Override
+            public Service createServiceInstance() throws Throwable {
+                return childServiceType.newInstance();
+            }
+        };
+        return fs;
+    }
+
     public static final int SELF_QUERY_RESULT_LIMIT = 1000;
     private static final long SELF_QUERY_TIMEOUT_MINUTES = 60;
     private EnumSet<ServiceOption> childOptions;
     private String nodeSelectorLink = ServiceUriPaths.DEFAULT_NODE_SELECTOR;
     private int selfQueryResultLimit = SELF_QUERY_RESULT_LIMIT;
 
+    /**
+     * Creates a default instance of a factory service that can create and start instances
+     * of the supplied service type
+     */
     public FactoryService(Class<? extends ServiceDocument> childServiceDocumentType) {
         super(childServiceDocumentType);
         super.toggleOption(ServiceOption.FACTORY, true);

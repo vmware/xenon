@@ -2,6 +2,13 @@
 
 ## 0.6.1-SNAPSHOT
 
+* Add FactoryService.create(), update ExampleService.
+  Service authors no longer need to implement a factory service
+  and derive from FactoryService class. Instead, they can
+  just use FactoryService.create() to get a default, functional
+  factory service instance which can then be started with
+  ServiceHost.startService()
+
 * Split Service.handleDelete into Service.handleStop and
   Service.handleDelete. If the service is being stopped, the
   host has always added a special pragma, indicating this is

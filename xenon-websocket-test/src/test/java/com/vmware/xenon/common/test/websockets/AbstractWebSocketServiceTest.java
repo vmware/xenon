@@ -36,7 +36,6 @@ import com.vmware.xenon.common.Service;
 import com.vmware.xenon.common.ServiceHost;
 import com.vmware.xenon.common.ServiceSubscriptionState;
 import com.vmware.xenon.common.UriUtils;
-import com.vmware.xenon.services.common.ExampleFactoryService;
 import com.vmware.xenon.services.common.ExampleService;
 import com.vmware.xenon.services.common.FileContentService;
 import com.vmware.xenon.services.common.ServiceUriPaths;
@@ -56,7 +55,7 @@ public abstract class AbstractWebSocketServiceTest extends BasicTestCase {
     public static final String DOCUMENT = "document";
     public static final String WS_TEST_JS = "ws-test.js";
     public static final String OBJECTS_CREATED = "objectsCreated";
-    public static final String EXAMPLES_SUBSCRIPTIONS = ExampleFactoryService.SELF_LINK
+    public static final String EXAMPLES_SUBSCRIPTIONS = ExampleService.FACTORY_LINK
             + ServiceHost.SERVICE_URI_SUFFIX_SUBSCRIPTIONS;
     public static final String ERROR_VARIABLE = "errorOccurred";
 
@@ -233,8 +232,8 @@ public abstract class AbstractWebSocketServiceTest extends BasicTestCase {
     }
 
     private void verifyNotification(String someValue, URI observerUri) throws Throwable {
-        Operation postExample = Operation.createPost(UriUtils.buildUri(this.host,
-                ExampleFactoryService.SELF_LINK));
+        Operation postExample = Operation.createPost(UriUtils.buildFactoryUri(this.host,
+                ExampleService.class));
         ExampleService.ExampleServiceState body = new ExampleService.ExampleServiceState();
         body.name = someValue;
         postExample.setBody(body);

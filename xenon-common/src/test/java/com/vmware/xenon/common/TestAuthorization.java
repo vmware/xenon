@@ -44,7 +44,7 @@ import com.vmware.xenon.common.Service.Action;
 import com.vmware.xenon.common.test.AuthorizationHelper;
 import com.vmware.xenon.common.test.VerificationHost;
 import com.vmware.xenon.services.common.AuthorizationContextService;
-import com.vmware.xenon.services.common.ExampleFactoryService;
+import com.vmware.xenon.services.common.ExampleService;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
 import com.vmware.xenon.services.common.GuestUserService;
 import com.vmware.xenon.services.common.QueryTask;
@@ -286,7 +286,8 @@ public class TestAuthorization extends BasicTestCase {
 
         // Execute get on factory trying to get all example services
         final ServiceDocumentQueryResult[] factoryGetResult = new ServiceDocumentQueryResult[1];
-        Operation getFactory = Operation.createGet(UriUtils.buildUri(this.host, ExampleFactoryService.SELF_LINK))
+        Operation getFactory = Operation.createGet(
+                UriUtils.buildUri(this.host, ExampleService.FACTORY_LINK))
                 .setCompletion((o, e) -> {
                     if (e != null) {
                         this.host.failIteration(e);
@@ -317,7 +318,8 @@ public class TestAuthorization extends BasicTestCase {
 
         // Execute get on factory trying to get all example services
         final ServiceDocumentQueryResult[] factoryGetResult = new ServiceDocumentQueryResult[1];
-        Operation getFactory = Operation.createGet(UriUtils.buildUri(this.host, ExampleFactoryService.SELF_LINK))
+        Operation getFactory = Operation.createGet(
+                UriUtils.buildUri(this.host, ExampleService.FACTORY_LINK))
                 .setCompletion((o, e) -> {
                     if (e != null) {
                         this.host.failIteration(e);
@@ -386,7 +388,7 @@ public class TestAuthorization extends BasicTestCase {
         ExampleServiceState state = createExampleServiceState("jane", new Long("100"));
         this.host.testStart(1);
         this.host.send(
-                Operation.createPost(UriUtils.buildUri(this.host, ExampleFactoryService.SELF_LINK))
+                Operation.createPost(UriUtils.buildUri(this.host, ExampleService.FACTORY_LINK))
                         .setBody(state)
                         .setCompletion((o, e) -> {
                             if (o.getStatusCode() != Operation.STATUS_CODE_FORBIDDEN) {
@@ -404,7 +406,7 @@ public class TestAuthorization extends BasicTestCase {
         // issue a GET on a factory with no auth context, no documents should be returned
         this.host.testStart(1);
         this.host.send(
-                Operation.createGet(UriUtils.buildUri(this.host, ExampleFactoryService.SELF_LINK))
+                Operation.createGet(UriUtils.buildUri(this.host, ExampleService.FACTORY_LINK))
                 .setCompletion((o, e) -> {
                     if (e != null) {
                         this.host.failIteration(new IllegalStateException(e));
@@ -432,7 +434,8 @@ public class TestAuthorization extends BasicTestCase {
 
         // Execute get on factory trying to get all example services
         final ServiceDocumentQueryResult[] factoryGetResult = new ServiceDocumentQueryResult[1];
-        Operation getFactory = Operation.createGet(UriUtils.buildUri(this.host, ExampleFactoryService.SELF_LINK))
+        Operation getFactory = Operation.createGet(
+                UriUtils.buildUri(this.host, ExampleService.FACTORY_LINK))
                 .setCompletion((o, e) -> {
                     if (e != null) {
                         this.host.failIteration(e);
@@ -564,7 +567,7 @@ public class TestAuthorization extends BasicTestCase {
                 bodies.size(),
                 ExampleServiceState.class,
                 bodySetter,
-                UriUtils.buildUri(this.host, ExampleFactoryService.SELF_LINK));
+                UriUtils.buildFactoryUri(this.host, ExampleService.class));
 
         return states;
     }

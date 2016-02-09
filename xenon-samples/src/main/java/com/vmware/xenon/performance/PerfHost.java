@@ -18,7 +18,7 @@ import java.util.logging.Level;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.ServiceHost;
 import com.vmware.xenon.common.UriUtils;
-import com.vmware.xenon.services.common.ExampleFactoryService;
+import com.vmware.xenon.services.common.ExampleService;
 import com.vmware.xenon.services.common.RootNamespaceService;
 
 /**
@@ -88,8 +88,8 @@ public class PerfHost extends ServiceHost {
                 FullCapService.FullCapFactoryService.create(PerfUtils.SimpleState.class));
 
         super.startService(
-                Operation.createPost(UriUtils.buildUri(this, ExampleFactoryService.class)),
-                new ExampleFactoryService());
+                Operation.createPost(UriUtils.buildFactoryUri(this, ExampleService.class)),
+                ExampleService.createFactory());
 
         return this;
     }

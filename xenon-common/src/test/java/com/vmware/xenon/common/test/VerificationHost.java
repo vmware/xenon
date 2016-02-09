@@ -84,7 +84,7 @@ import com.vmware.xenon.common.Utils;
 import com.vmware.xenon.common.http.netty.NettyHttpServiceClient;
 import com.vmware.xenon.services.common.AuthorizationContextService;
 import com.vmware.xenon.services.common.ConsistentHashingNodeSelectorService;
-import com.vmware.xenon.services.common.ExampleFactoryService;
+import com.vmware.xenon.services.common.ExampleService;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
 import com.vmware.xenon.services.common.ExampleServiceHost;
 import com.vmware.xenon.services.common.MinimalTestService.MinimalTestServiceErrorResponse;
@@ -104,7 +104,6 @@ import com.vmware.xenon.services.common.QueryTask.QueryTerm.MatchType;
 import com.vmware.xenon.services.common.QueryValidationTestService.NestedType;
 import com.vmware.xenon.services.common.QueryValidationTestService.QueryValidationServiceState;
 import com.vmware.xenon.services.common.ServiceHostLogService.LogServiceState;
-
 import com.vmware.xenon.services.common.ServiceHostManagementService;
 import com.vmware.xenon.services.common.ServiceUriPaths;
 
@@ -2244,11 +2243,11 @@ public class VerificationHost extends ExampleServiceHost {
     public void createExampleServices(ServiceHost h, long serviceCount, List<URI> exampleURIs,
             Long expiration)
             throws Throwable {
-        waitForServiceAvailable(ExampleFactoryService.SELF_LINK);
+        waitForServiceAvailable(ExampleService.FACTORY_LINK);
         testStart(serviceCount);
         ExampleServiceState initialState = new ExampleServiceState();
-        URI exampleFactoryUri = UriUtils.buildUri(h,
-                ExampleFactoryService.class);
+        URI exampleFactoryUri = UriUtils.buildFactoryUri(h,
+                ExampleService.class);
 
         // create example services
         for (int i = 0; i < serviceCount; i++) {

@@ -25,7 +25,7 @@ import com.vmware.xenon.common.ServiceHost.ServiceHostState;
 import com.vmware.xenon.common.http.netty.NettyHttpServiceClient;
 import com.vmware.xenon.common.test.VerificationHost;
 import com.vmware.xenon.services.common.AuthorizationContextService;
-import com.vmware.xenon.services.common.ExampleFactoryService;
+import com.vmware.xenon.services.common.ExampleService;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
 import com.vmware.xenon.services.common.ServiceHostManagementService;
 import com.vmware.xenon.services.common.ServiceUriPaths;
@@ -180,7 +180,7 @@ public class TestAuthSetupHelper extends BasicTestCase {
     private void createExampleDocument(String authToken) throws Throwable {
         ExampleServiceState example = new ExampleServiceState();
         example.name = UUID.randomUUID().toString();
-        URI exampleUri = UriUtils.buildUri(this.host, ExampleFactoryService.SELF_LINK);
+        URI exampleUri = UriUtils.buildFactoryUri(this.host, ExampleService.class);
 
         Operation examplePost = Operation.createPost(exampleUri)
                 .setBody(example)
@@ -199,7 +199,7 @@ public class TestAuthSetupHelper extends BasicTestCase {
      * see with the given user (as indicated by the authToken)
      */
     private int numberExampleDocuments(String authToken) throws Throwable {
-        URI exampleUri = UriUtils.buildUri(this.host, ExampleFactoryService.SELF_LINK);
+        URI exampleUri = UriUtils.buildFactoryUri(this.host, ExampleService.class);
 
         Integer[] numberDocuments = new Integer[1];
         Operation get = Operation.createGet(exampleUri)
