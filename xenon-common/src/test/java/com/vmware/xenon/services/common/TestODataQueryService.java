@@ -31,7 +31,6 @@ import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.ServiceDocumentQueryResult;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
-import com.vmware.xenon.services.common.ExampleFactoryService;
 import com.vmware.xenon.services.common.ExampleService;
 import com.vmware.xenon.services.common.QueryTask;
 import com.vmware.xenon.services.common.ServiceUriPaths;
@@ -61,7 +60,7 @@ public class TestODataQueryService extends BasicTestCase {
             inState.counter = i;
 
             this.host.send(Operation.createPost(UriUtils.extendUri(this.host.getUri(),
-                    ExampleFactoryService.SELF_LINK)).setBody(inState)
+                    ExampleService.FACTORY_LINK)).setBody(inState)
                     .setCompletion((o, e) -> {
                         if (e != null) {
                             this.host.failIteration(e);
@@ -81,7 +80,7 @@ public class TestODataQueryService extends BasicTestCase {
     private void postExample(ExampleService.ExampleServiceState inState) throws Throwable {
         this.host.testStart(1);
         this.host.send(Operation
-                .createPost(UriUtils.buildUri(this.host.getUri(), ExampleFactoryService.SELF_LINK))
+                .createPost(UriUtils.buildFactoryUri(this.host, ExampleService.class))
                 .setBody(inState)
                 .setCompletion(
                         (o, e) -> {
@@ -232,7 +231,7 @@ public class TestODataQueryService extends BasicTestCase {
     }
 
     private Map<String, Object> doFactoryServiceQuery(String query) throws Throwable {
-        URI odataQuery = UriUtils.buildUri(this.host, ExampleFactoryService.SELF_LINK, query
+        URI odataQuery = UriUtils.buildUri(this.host, ExampleService.FACTORY_LINK, query
                 + "&" + UriUtils.URI_PARAM_ODATA_EXPAND + "=true");
 
         final ServiceDocumentQueryResult[] qr = { null };

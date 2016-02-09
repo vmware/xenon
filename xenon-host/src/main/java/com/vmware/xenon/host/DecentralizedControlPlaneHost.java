@@ -18,7 +18,7 @@ import java.util.logging.Level;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.ServiceHost;
 import com.vmware.xenon.common.UriUtils;
-import com.vmware.xenon.services.common.ExampleFactoryService;
+import com.vmware.xenon.services.common.ExampleService;
 import com.vmware.xenon.services.common.RootNamespaceService;
 import com.vmware.xenon.ui.UiService;
 
@@ -53,8 +53,8 @@ public class DecentralizedControlPlaneHost extends ServiceHost {
 
         // start an example factory for folks that want to experiment with service instances
         super.startService(
-                Operation.createPost(UriUtils.buildUri(this, ExampleFactoryService.class)),
-                new ExampleFactoryService());
+                Operation.createPost(UriUtils.buildFactoryUri(this, ExampleService.class)),
+                ExampleService.createFactory());
 
         // Start UI service
         super.startService(

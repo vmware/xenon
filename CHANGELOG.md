@@ -2,6 +2,10 @@
 
 ## 0.6.1-SNAPSHOT
 
+* Add DefaultFactoryService and remove ExampleFactoryService.
+  Service authors no longer need to implement a factory service
+  and derive from FactoryService class.
+
 * Split Service.handleDelete into Service.handleStop and
   Service.handleDelete. If the service is being stopped, the
   host has always added a special pragma, indicating this is

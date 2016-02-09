@@ -219,7 +219,7 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
                     ExampleServiceState b = new ExampleServiceState();
                     b.name = Utils.getNowMicrosUtc() + " before stop";
                     o.setBody(b);
-                }, UriUtils.buildUri(this.host, ExampleFactoryService.SELF_LINK));
+                }, UriUtils.buildUri(this.host, ExampleService.FACTORY_LINK));
 
         exampleServices = updateUriMapWithNewPort(this.host.getPort(), exampleServices);
         // make sure all services have started
@@ -332,7 +332,7 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
             this.host.testStart(1);
             h.registerForServiceAvailability((o, e) -> {
                 this.host.completeIteration();
-            }, ExampleFactoryService.SELF_LINK);
+            }, ExampleService.FACTORY_LINK);
             this.host.testWait();
 
             ServiceHostState initialState = h.getState();
@@ -410,7 +410,7 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
             this.host.testStart(1);
             h.registerForServiceAvailability((o, e) -> {
                 this.host.completeIteration();
-            }, ExampleFactoryService.SELF_LINK);
+            }, ExampleService.FACTORY_LINK);
             this.host.testWait();
 
             long end = Utils.getNowMicrosUtc();
@@ -437,7 +437,7 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
             }
 
             ServiceDocumentQueryResult rsp = this.host.getFactoryState(UriUtils.buildUri(h,
-                    ExampleFactoryService.SELF_LINK));
+                    ExampleService.FACTORY_LINK));
             assertEquals(beforeState.size(), rsp.documentLinks.size());
 
             if (this.host.isStressTest()) {
@@ -554,7 +554,7 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
                     ServiceDocumentQueryResult r = o.getBody(ServiceDocumentQueryResult.class);
                     int count = 0;
                     for (String u : r.documentLinks) {
-                        if (u.contains(ExampleFactoryService.SELF_LINK)) {
+                        if (u.contains(ExampleService.FACTORY_LINK)) {
                             count++;
                         }
                     }
@@ -571,9 +571,9 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
 
     @Test
     public void interleavedUpdatesWithQueries() throws Throwable {
-        this.host.waitForServiceAvailable(ExampleFactoryService.SELF_LINK);
+        this.host.waitForServiceAvailable(ExampleService.FACTORY_LINK);
         final String initialServiceNameValue = "initial-" + UUID.randomUUID().toString();
-        URI factoryUri = UriUtils.buildUri(this.host, ExampleFactoryService.SELF_LINK);
+        URI factoryUri = UriUtils.buildUri(this.host, ExampleService.FACTORY_LINK);
         Consumer<Operation> setInitialStateBody = (o) -> {
             ExampleServiceState body = new ExampleServiceState();
             body.name = initialServiceNameValue;
@@ -827,7 +827,7 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
 
     @Test
     public void serviceCreationAndDocumentExpirationLongRunning() throws Throwable {
-        this.host.waitForServiceAvailable(ExampleFactoryService.SELF_LINK);
+        this.host.waitForServiceAvailable(ExampleService.FACTORY_LINK);
         Date expiration = this.host.getTestExpiration();
 
         long opTimeoutMicros = this.host.testDurationSeconds != 0 ? this.host
@@ -836,7 +836,7 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
 
         this.host.setTimeoutSeconds((int) TimeUnit.MICROSECONDS.toSeconds(opTimeoutMicros));
 
-        URI factoryUri = UriUtils.buildUri(this.host, ExampleFactoryService.SELF_LINK);
+        URI factoryUri = UriUtils.buildFactoryUri(this.host, ExampleService.class);
         Consumer<Operation> setBody = (o) -> {
             ExampleServiceState body = new ExampleServiceState();
             body.name = UUID.randomUUID().toString();
@@ -961,7 +961,7 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
             }
 
             // do a more thorough check to ensure the services were removed from the index
-            this.host.validatePermanentServiceDocumentDeletion(ExampleFactoryService.SELF_LINK,
+            this.host.validatePermanentServiceDocumentDeletion(ExampleService.FACTORY_LINK,
                     0, this.host.testDurationSeconds == 0);
 
             // now create in memory, non indexed services
@@ -1148,7 +1148,7 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
 
         int count = 1000;
         URI factoryUri = UriUtils.buildUri(this.host,
-                ExampleFactoryService.SELF_LINK);
+                ExampleService.FACTORY_LINK);
 
         Map<URI, ExampleServiceState> exampleStates = this.host.doFactoryChildServiceStart(null,
                 count,
@@ -1205,7 +1205,7 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
         // Check our documents are still there
         ServiceDocumentQueryResult queryResult = this.host
                 .getFactoryState(UriUtils.buildExpandLinksQueryUri(UriUtils.buildUri(this.host,
-                        ExampleFactoryService.SELF_LINK)));
+                        ExampleService.FACTORY_LINK)));
         assertNotNull(queryResult);
         assertNotNull(queryResult.documents);
         assertEquals(queryResult.documents.size(), exampleStates.keySet().size());
@@ -1243,7 +1243,7 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
             }
 
             URI factoryUri = UriUtils.buildUri(this.host,
-                    ExampleFactoryService.SELF_LINK);
+                    ExampleService.FACTORY_LINK);
             Map<URI, ExampleServiceState> exampleStates = this.host.doFactoryChildServiceStart(
                     null,
                     this.serviceCount,
@@ -1449,8 +1449,9 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
 
         // do GET on all child URIs
         ServiceDocumentQueryResult queryResult = this.host
-                .getFactoryState(UriUtils.buildExpandLinksQueryUri(UriUtils.buildUri(this.host,
-                        ExampleFactoryService.SELF_LINK)));
+                .getFactoryState(UriUtils.buildExpandLinksQueryUri(UriUtils.buildFactoryUri(
+                        this.host,
+                        ExampleService.class)));
         assertNotNull(queryResult);
         assertNotNull(queryResult.documents);
         assertEquals(queryResult.documents.size(), reference.size());

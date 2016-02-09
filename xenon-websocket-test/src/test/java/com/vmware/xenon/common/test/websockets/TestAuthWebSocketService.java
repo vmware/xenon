@@ -21,7 +21,7 @@ import com.vmware.xenon.common.Utils;
 import com.vmware.xenon.common.test.AuthorizationHelper;
 import com.vmware.xenon.common.test.VerificationHost;
 import com.vmware.xenon.services.common.AuthorizationContextService;
-import com.vmware.xenon.services.common.ExampleFactoryService;
+import com.vmware.xenon.services.common.ExampleService;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
 
 /**
@@ -67,7 +67,7 @@ public class TestAuthWebSocketService extends AbstractWebSocketServiceTest {
         this.host.resetSystemAuthorizationContext();
         this.host.testStart(1);
         Operation post = Operation.createPost(
-                UriUtils.buildUri(this.host, ExampleFactoryService.SELF_LINK));
+                UriUtils.buildFactoryUri(this.host, ExampleService.class));
         ExampleServiceState st = new ExampleServiceState();
         st.documentKind = Utils.buildKind(ExampleServiceState.class);
         st.name = "jane";

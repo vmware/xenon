@@ -35,7 +35,7 @@ import com.vmware.xenon.common.Service.ServiceOption;
 import com.vmware.xenon.common.ServiceStats.ServiceStat;
 import com.vmware.xenon.common.test.MinimalTestServiceState;
 import com.vmware.xenon.common.test.TestProperty;
-import com.vmware.xenon.services.common.ExampleFactoryService;
+import com.vmware.xenon.services.common.ExampleService;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
 import com.vmware.xenon.services.common.MinimalTestService;
 import com.vmware.xenon.services.common.ServiceUriPaths;
@@ -127,14 +127,14 @@ public class TestStatefulService extends BasicReusableHostTestCase {
         body.name = UUID.randomUUID().toString();
         body.documentSelfLink = UUID.randomUUID().toString();
         Operation post = Operation
-                .createPost(UriUtils.buildUri(this.host, ExampleFactoryService.SELF_LINK))
+                .createPost(UriUtils.buildFactoryUri(this.host, ExampleService.class))
                 .setCompletion(this.host.getCompletion())
                 .setBody(body);
         this.host.testStart(1);
         this.host.send(post);
         this.host.testWait();
         URI childServiceUri = UriUtils.buildUri(this.host.getUri(),
-                ExampleFactoryService.SELF_LINK, body.documentSelfLink);
+                ExampleService.FACTORY_LINK, body.documentSelfLink);
         // get service options, verify they make sense
         URI configUri = UriUtils.buildConfigUri(childServiceUri);
         ServiceConfiguration cfg = this.host.getServiceState(null, ServiceConfiguration.class,
@@ -387,7 +387,7 @@ public class TestStatefulService extends BasicReusableHostTestCase {
     public void serviceStopWithInflightRequests() throws Throwable {
         long c = 100;
 
-        this.host.waitForServiceAvailable(ExampleFactoryService.SELF_LINK);
+        this.host.waitForServiceAvailable(ExampleService.FACTORY_LINK);
 
         List<Service> services = this.host.doThroughputServiceStart(c,
                 MinimalTestService.class,

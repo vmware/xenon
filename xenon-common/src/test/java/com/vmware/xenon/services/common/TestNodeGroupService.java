@@ -152,7 +152,7 @@ public class TestNodeGroupService {
     private boolean expectFailure;
     private long expectedFailureStartTimeMicros;
     private List<URI> expectedFailedHosts = new ArrayList<>();
-    private String replicationTargetFactoryLink = ExampleFactoryService.SELF_LINK;
+    private String replicationTargetFactoryLink = ExampleService.FACTORY_LINK;
     private String replicationNodeSelector = ServiceUriPaths.DEFAULT_NODE_SELECTOR;
     private long replicationFactor;
 
@@ -223,7 +223,7 @@ public class TestNodeGroupService {
     private void setUpPeerHostWithAdditionalServices(VerificationHost h1) throws Throwable {
         h1.setStressTest(this.host.isStressTest);
 
-        h1.waitForServiceAvailable(ExampleFactoryService.SELF_LINK);
+        h1.waitForServiceAvailable(ExampleService.FACTORY_LINK);
 
         LimitedReplicationExampleFactoryService limitedExampleFactory = new LimitedReplicationExampleFactoryService();
         h1.startServiceAndWait(limitedExampleFactory,
@@ -459,8 +459,8 @@ public class TestNodeGroupService {
             // across all hosts once this one joins with the group
             VerificationHost hostWithInitialState = this.host.getInProcessHostMap().values()
                     .iterator().next();
-            URI factoryUri = UriUtils.buildUri(hostWithInitialState,
-                    ExampleFactoryService.SELF_LINK);
+            URI factoryUri = UriUtils.buildFactoryUri(hostWithInitialState,
+                    ExampleService.class);
             this.host.log("Starting, auto synch: %s. Adding children to %s",
                     this.isPeerSynchronizationEnabled, factoryUri);
             // add some services on one of the peers, so we can verify the get synchronized after they all join
@@ -488,8 +488,8 @@ public class TestNodeGroupService {
             Map<URI, ExampleServiceState> dupStates = new HashMap<>();
             for (VerificationHost v : this.host.getInProcessHostMap().values()) {
                 counter.set(0);
-                factoryUri = UriUtils.buildUri(v,
-                        ExampleFactoryService.SELF_LINK);
+                factoryUri = UriUtils.buildFactoryUri(v,
+                        ExampleService.class);
                 dupStates = this.host.doFactoryChildServiceStart(
                         null,
                         dupServiceCount,
@@ -619,11 +619,11 @@ public class TestNodeGroupService {
 
             for (VerificationHost peer : this.host.getInProcessHostMap().values()) {
                 this.verifyPendingChildServiceSynchStats(
-                        UriUtils.buildUri(peer, ExampleFactoryService.SELF_LINK), 0);
+                        UriUtils.buildFactoryUri(peer, ExampleService.class), 0);
             }
 
             this.verifyPendingChildServiceSynchStats(
-                    UriUtils.buildUri(h, ExampleFactoryService.SELF_LINK), 0);
+                    UriUtils.buildFactoryUri(h, ExampleService.class), 0);
 
             // negative tests that abruptly stop nodes should set operation timeout smaller than the test
             // timeout, so any node to node gossip I/O times out quickly and test can proceed
@@ -1177,7 +1177,7 @@ public class TestNodeGroupService {
     @Test
     public void replication() throws Throwable {
         this.isPeerSynchronizationEnabled = false;
-        this.replicationTargetFactoryLink = ExampleFactoryService.SELF_LINK;
+        this.replicationTargetFactoryLink = ExampleService.FACTORY_LINK;
         doReplication();
     }
 
@@ -1185,7 +1185,7 @@ public class TestNodeGroupService {
     public void replicationSsl() throws Throwable {
         this.isPeerSynchronizationEnabled = false;
         this.replicationUriScheme = ServiceHost.HttpScheme.HTTPS_ONLY;
-        this.replicationTargetFactoryLink = ExampleFactoryService.SELF_LINK;
+        this.replicationTargetFactoryLink = ExampleService.FACTORY_LINK;
         doReplication();
     }
 
@@ -1360,7 +1360,7 @@ public class TestNodeGroupService {
         // so we get 404 right away
         this.host.testStart(this.serviceCount);
         for (int i = 0; i < this.serviceCount; i++) {
-            URI factoryURI = this.host.getNodeGroupToFactoryMap(ExampleFactoryService.SELF_LINK)
+            URI factoryURI = this.host.getNodeGroupToFactoryMap(ExampleService.FACTORY_LINK)
                     .values().iterator().next();
             URI bogusChild = UriUtils.extendUri(factoryURI, UUID.randomUUID().toString());
             Operation patch = Operation.createPatch(bogusChild)
@@ -1433,10 +1433,10 @@ public class TestNodeGroupService {
             for (int i = 0; i < factoryCount; i++) {
                 Operation startPost = Operation.createPost(
                         UriUtils.buildUri(h,
-                                UriUtils.buildUriPath(ExampleFactoryService.SELF_LINK, UUID
+                                UriUtils.buildUriPath(ExampleService.FACTORY_LINK, UUID
                                         .randomUUID().toString())))
                         .setCompletion(this.host.getCompletion());
-                h.startService(startPost, new ExampleFactoryService());
+                h.startService(startPost, ExampleService.createFactory());
             }
         }
         this.host.testWait();
@@ -2151,7 +2151,7 @@ public class TestNodeGroupService {
         this.host.testStart(exampleServiceCount);
         for (int i = 0; i < exampleServiceCount; i++) {
             this.host.send(Operation
-                    .createPost(UriUtils.buildUri(it.next(), ExampleFactoryService.SELF_LINK))
+                    .createPost(UriUtils.buildFactoryUri(it.next(), ExampleService.class))
                     .setBody(exampleServiceState)
                     .setCompletion((o, e) -> {
                         if (e != null) {
@@ -2174,7 +2174,7 @@ public class TestNodeGroupService {
         this.host.testStart(exampleServiceCount);
         for (int i = 0; i < exampleServiceCount; i++) {
             this.host.send(Operation
-                    .createPost(UriUtils.buildUri(it.next(), ExampleFactoryService.SELF_LINK))
+                    .createPost(UriUtils.buildFactoryUri(it.next(), ExampleService.class))
                     .setBody(invalidExampleServiceState)
                     .setCompletion((o, e) -> {
                         if (e != null) {
