@@ -107,6 +107,16 @@ public class StatefulService implements Service {
         return this.context.processingStage;
     }
 
+    /**
+     * Invoked by the factory before asking the service host to start the service.
+     * The operation passed to this method can have an arbitrary request body,
+     * it does not need to be of the service document type. Before completing the
+     * operation however, the body must be set to the suggested initial state.
+     */
+    public void handleCreate(Operation post) {
+        post.complete();
+    }
+
     @Override
     public void handleStart(Operation post) {
         post.complete();

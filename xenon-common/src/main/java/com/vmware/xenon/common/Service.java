@@ -298,8 +298,19 @@ public interface Service {
      */
     static final int OPERATION_QUEUE_DEFAULT_LIMIT = 10000;
 
+    /**
+     * Invoked when the service starts due to a POST to a factory or a call to
+     * {@code ServiceHost.startService}.
+     * The initial state (version 0) of a stateful service is supplied as the body.
+     */
     void handleStart(Operation startPost);
 
+    /**
+     * Invoked when a DELETE operation is sent to stop the service and detach it from the host
+     * dispatching map. The DELETE will not have any index side-effects. When a service host
+     * stops, it will issue DELETEs, with a special pragma directive, that cause this handler to
+     * execute.
+     */
     void handleStop(Operation stopDelete);
 
     /**
