@@ -14,11 +14,13 @@
 package com.vmware.xenon.services.common;
 
 import java.net.URI;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
 
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.ServiceDocument;
+import com.vmware.xenon.common.ServiceDocumentDescription;
 import com.vmware.xenon.common.StatefulService;
 
 /**
@@ -29,6 +31,7 @@ public class AuthCredentialsService extends StatefulService {
 
         public static final String FIELD_NAME_EMAIL = "userEmail";
         public static final String FIELD_NAME_PRIVATE_KEY = "privateKey";
+        public static final String FIELD_NAME_CUSTOM_PROPERTIES = "customProperties";
 
         /** Client ID. */
         public String userLink;
@@ -133,5 +136,21 @@ public class AuthCredentialsService extends StatefulService {
                 }
             }
         }
+    }
+
+    @Override
+    public ServiceDocument getDocumentTemplate() {
+        ServiceDocument td = super.getDocumentTemplate();
+
+        // enable indexing of custom properties map.
+        ServiceDocumentDescription.PropertyDescription pdCustomProperties = td.documentDescription.propertyDescriptions
+                .get(AuthCredentialsServiceState.FIELD_NAME_CUSTOM_PROPERTIES);
+        pdCustomProperties.indexingOptions = EnumSet
+                .of(ServiceDocumentDescription.PropertyIndexingOption.EXPAND);
+
+        ServiceDocumentDescription.expandTenantLinks(td.documentDescription);
+
+        AuthCredentialsServiceState template = (AuthCredentialsServiceState) td;
+        return template;
     }
 }
