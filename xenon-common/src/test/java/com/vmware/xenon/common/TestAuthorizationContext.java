@@ -41,7 +41,6 @@ import com.vmware.xenon.services.common.RoleService.RoleState;
 import com.vmware.xenon.services.common.ServiceUriPaths;
 import com.vmware.xenon.services.common.UserGroupService.UserGroupState;
 import com.vmware.xenon.services.common.UserService.UserState;
-import com.vmware.xenon.services.common.authn.AuthenticationConstants;
 
 public class TestAuthorizationContext extends BasicTestCase {
 
@@ -115,7 +114,7 @@ public class TestAuthorizationContext extends BasicTestCase {
         properties.put("hello", "world");
 
         Claims.Builder builder = new Claims.Builder();
-        builder.setIssuer(AuthenticationConstants.JWT_ISSUER);
+        builder.setIssuer(Claims.DEFAULT_ISSUER);
         builder.setSubject(UriUtils.buildUriPath(ServiceUriPaths.CORE_AUTHZ_USERS, subject));
         builder.setExpirationTime(Utils.getNowMicrosUtc() + TimeUnit.HOURS.toMicros(1));
         builder.setProperties(properties);

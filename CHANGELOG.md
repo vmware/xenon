@@ -2,6 +2,11 @@
 
 ## 0.8.0-SNAPSHOT
 
+* Use random authorization context token secret if none is specified.
+  As this secret is symmetric, it needs to be passed as argument to
+  every node in a deployment at start time. The argument to specify
+  it is "--tokenSecret".
+
 * Use HTTP/2 for replication and forwarding requests
 
 * Add logging methods that take lambda expression to construct

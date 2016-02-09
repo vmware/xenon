@@ -358,6 +358,8 @@ public class Operation implements Cloneable {
             + "tx-phase";
     public static final String TRANSACTION_ID_HEADER = HEADER_NAME_PREFIX + "tx-id";
 
+    public static final String REQUEST_AUTH_TOKEN_COOKIE = "xenon-auth-cookie";
+
     /**
      * Infrastructure use only. Set when a service is first created due to a client request. Since
      * service start can be invoked by the runtime during node synchronization, restart, this

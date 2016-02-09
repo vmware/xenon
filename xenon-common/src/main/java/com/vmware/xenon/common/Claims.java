@@ -26,6 +26,8 @@ import com.vmware.xenon.common.jwt.Rfc7519Claims;
  * Extends basic JWT claims to include runtime specific claims.
  */
 public class Claims extends Rfc7519Claims {
+    public static final String DEFAULT_ISSUER = "xn";
+
     @SerializedName("props")
     private Map<String, String> properties;
 
