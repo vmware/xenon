@@ -46,7 +46,6 @@ import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
 import com.vmware.xenon.common.WebSocketService;
 import com.vmware.xenon.services.common.ServiceUriPaths;
-import com.vmware.xenon.services.common.authn.AuthenticationConstants;
 
 
 public class NettyWebSocketRequestHandler extends SimpleChannelInboundHandler<Object> {
@@ -169,7 +168,7 @@ public class NettyWebSocketRequestHandler extends SimpleChannelInboundHandler<Ob
             if (token == null) {
                 String cookie = nettyRequest.headers().get(HttpHeaderNames.COOKIE);
                 if (cookie != null) {
-                    token = CookieJar.decodeCookies(cookie).get(AuthenticationConstants.XENON_JWT_COOKIE);
+                    token = CookieJar.decodeCookies(cookie).get(Operation.REQUEST_AUTH_TOKEN_COOKIE);
                 }
 
             }
