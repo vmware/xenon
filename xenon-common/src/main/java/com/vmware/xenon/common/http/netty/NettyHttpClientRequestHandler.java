@@ -50,7 +50,6 @@ import com.vmware.xenon.common.ServiceErrorResponse;
 import com.vmware.xenon.common.ServiceHost;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
-import com.vmware.xenon.services.common.authn.AuthenticationConstants;
 
 /**
  * Processes client requests on behalf of the HTTP listener and submits them to the service host or websocket client for
@@ -358,7 +357,7 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
 
             // Client can also use the cookie if they prefer
             StringBuilder buf = new StringBuilder()
-                    .append(AuthenticationConstants.XENON_JWT_COOKIE)
+                    .append(Operation.REQUEST_AUTH_TOKEN_COOKIE)
                     .append('=')
                     .append(token);
 

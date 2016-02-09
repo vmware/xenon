@@ -257,6 +257,7 @@ public class VerificationHost extends ExampleServiceHost {
         try {
             h.initialize(args);
             h.referer = UriUtils.buildUri(h, "test-client-send");
+            h.setTokenSecret(new String("verification-host-secret").getBytes());
         } catch (Throwable e) {
             throw new RuntimeException(e);
         }
