@@ -2,6 +2,11 @@
 
 ## 0.6.1-SNAPSHOT
 
+* Use random authorization context token secret if none is specified.
+  As this secret is symmetric, it needs to be passed as argument to
+  every node in a deployment at start time. The argument to specify
+  it is "--tokenSecret".
+
 * Add FactoryService.create(), update ExampleService.
   Service authors no longer need to implement a factory service
   and derive from FactoryService class. Instead, they can
