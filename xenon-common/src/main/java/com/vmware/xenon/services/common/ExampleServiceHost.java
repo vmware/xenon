@@ -83,8 +83,8 @@ public class ExampleServiceHost extends ServiceHost {
 
         // Start the example service factory
         super.startService(
-                Operation.createPost(UriUtils.buildUri(this, ExampleFactoryService.class)),
-                new ExampleFactoryService());
+                Operation.createPost(UriUtils.buildFactoryUri(this, ExampleService.class)),
+                ExampleService.createFactory());
 
         // Start the example task service factory: when it receives a task, it will delete
         // all example services

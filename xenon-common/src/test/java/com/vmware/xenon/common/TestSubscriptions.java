@@ -32,7 +32,7 @@ import com.vmware.xenon.common.Service.Action;
 import com.vmware.xenon.common.ServiceSubscriptionState.ServiceSubscriber;
 import com.vmware.xenon.common.http.netty.NettyHttpServiceClient;
 import com.vmware.xenon.common.test.VerificationHost;
-import com.vmware.xenon.services.common.ExampleFactoryService;
+import com.vmware.xenon.services.common.ExampleService;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
 import com.vmware.xenon.services.common.NodeGroupService.NodeGroupConfig;
 
@@ -206,9 +206,9 @@ public class TestSubscriptions extends BasicReportTestCase {
         this.host.setPort(0);
         this.host.start();
         this.host.setPublicUri(UriUtils.buildUri("localhost", this.host.getPort(), "", null));
-        this.host.waitForServiceAvailable(ExampleFactoryService.SELF_LINK);
+        this.host.waitForServiceAvailable(ExampleService.FACTORY_LINK);
 
-        URI factoryUri = UriUtils.buildUri(this.host, ExampleFactoryService.class);
+        URI factoryUri = UriUtils.buildFactoryUri(this.host, ExampleService.class);
 
         String prefix = "example-";
         Long counterValue = Long.MAX_VALUE;
@@ -250,7 +250,7 @@ public class TestSubscriptions extends BasicReportTestCase {
         for (int i = 0; i < this.serviceCount; i++) {
             ExampleServiceState state = new ExampleServiceState();
             state.documentSelfLink = UriUtils.buildUriPath(
-                    ExampleFactoryService.SELF_LINK,
+                    ExampleService.FACTORY_LINK,
                     UUID.randomUUID().toString());
             state.name = UUID.randomUUID().toString();
             states.add(state);
@@ -288,7 +288,7 @@ public class TestSubscriptions extends BasicReportTestCase {
         AtomicInteger postCount = new AtomicInteger();
         // Create example services, triggering subscriptions to complete
         for (ExampleServiceState state : states) {
-            URI uri = UriUtils.buildUri(serviceHost, ExampleFactoryService.SELF_LINK);
+            URI uri = UriUtils.buildFactoryUri(serviceHost, ExampleService.class);
             Operation op = Operation.createPost(uri)
                     .setBody(state)
                     .setCompletion((o, e) -> {

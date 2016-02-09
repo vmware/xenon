@@ -33,7 +33,7 @@ public class TestTransactionService extends BasicReusableHostTestCase {
 
     @Before
     public void prepare() throws Throwable {
-        this.host.waitForServiceAvailable(ExampleFactoryService.SELF_LINK);
+        this.host.waitForServiceAvailable(ExampleService.FACTORY_LINK);
         this.host.waitForServiceAvailable(TransactionFactoryService.SELF_LINK);
         this.host.setOperationTimeOutMicros(TimeUnit.SECONDS.toMicros(1000));
     }

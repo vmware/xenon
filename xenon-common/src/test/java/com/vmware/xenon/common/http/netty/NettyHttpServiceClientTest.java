@@ -55,7 +55,7 @@ import com.vmware.xenon.common.Utils;
 import com.vmware.xenon.common.test.MinimalTestServiceState;
 import com.vmware.xenon.common.test.TestProperty;
 import com.vmware.xenon.common.test.VerificationHost;
-import com.vmware.xenon.services.common.ExampleFactoryService;
+import com.vmware.xenon.services.common.ExampleService;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
 import com.vmware.xenon.services.common.MinimalTestService;
 
@@ -412,9 +412,9 @@ public class NettyHttpServiceClientTest {
     @Test
     public void putSingleNoQueueing() throws Throwable {
         long s = Utils.getNowMicrosUtc();
-        this.host.waitForServiceAvailable(ExampleFactoryService.SELF_LINK);
+        this.host.waitForServiceAvailable(ExampleService.FACTORY_LINK);
 
-        URI uriToMissingService = UriUtils.buildUri(this.host, ExampleFactoryService.SELF_LINK
+        URI uriToMissingService = UriUtils.buildUri(this.host, ExampleService.FACTORY_LINK
                 + "/"
                 + UUID.randomUUID().toString());
 
@@ -429,7 +429,7 @@ public class NettyHttpServiceClientTest {
         this.host.send(put);
         this.host.testWait();
 
-        uriToMissingService = UriUtils.buildUri(this.host, ExampleFactoryService.SELF_LINK + "/"
+        uriToMissingService = UriUtils.buildUri(this.host, ExampleService.FACTORY_LINK + "/"
                 + UUID.randomUUID().toString());
 
         this.host.testStart(1);
@@ -449,7 +449,7 @@ public class NettyHttpServiceClientTest {
             throw new TimeoutException("Request got queued, it should have bypassed queuing");
         }
 
-        uriToMissingService = UriUtils.buildUri(this.host, ExampleFactoryService.SELF_LINK + "/"
+        uriToMissingService = UriUtils.buildUri(this.host, ExampleService.FACTORY_LINK + "/"
                 + UUID.randomUUID().toString());
 
         ServiceClient nonXenonLookingClient = null;

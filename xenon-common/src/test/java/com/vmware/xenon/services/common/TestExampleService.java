@@ -45,13 +45,13 @@ public class TestExampleService extends BasicReusableHostTestCase {
         // to start since its not a core service. Note that in production code
         // this is all asynchronous, you should not block and wait, just pass a
         // completion
-        this.host.waitForServiceAvailable(ExampleFactoryService.SELF_LINK);
+        this.host.waitForServiceAvailable(ExampleService.FACTORY_LINK);
     }
 
     @Test
     public void factoryPost() throws Throwable {
-        URI factoryUri = UriUtils.buildUri(this.host,
-                ExampleFactoryService.class);
+        URI factoryUri = UriUtils.buildFactoryUri(this.host,
+                ExampleService.class);
 
         this.host.testStart(this.serviceCount);
         String prefix = "example-";
@@ -121,10 +121,10 @@ public class TestExampleService extends BasicReusableHostTestCase {
         // to start since its not a core service. Note that in production code
         // this is all asynchronous, you should not block and wait, just pass a
         // completion
-        this.host.waitForServiceAvailable(ExampleFactoryService.SELF_LINK);
+        this.host.waitForServiceAvailable(ExampleService.FACTORY_LINK);
 
-        URI factoryUri = UriUtils.buildUri(this.host,
-                ExampleFactoryService.class);
+        URI factoryUri = UriUtils.buildFactoryUri(this.host,
+                ExampleService.class);
         this.host.testStart(1);
         URI[] childURI = new URI[1];
         ExampleServiceState initialState = new ExampleServiceState();

@@ -59,6 +59,7 @@ public class UriUtils {
     public static final String URI_PARAM_CAPABILITY = "capability";
     public static final String URI_PARAM_INCLUDE_DELETED = "includeDeleted";
     public static final String FIELD_NAME_SELF_LINK = "SELF_LINK";
+    public static final String FIELD_NAME_FACTORY_LINK = "FACTORY_LINK";
 
     /**
      * Computes the parent path of the specified path.
@@ -231,7 +232,6 @@ public class UriUtils {
     }
 
     public static URI buildUri(ServiceHost host, Class<? extends Service> type) {
-
         try {
             Field f = type.getField(FIELD_NAME_SELF_LINK);
             String path = (String) f.get(null);
@@ -239,6 +239,20 @@ public class UriUtils {
         } catch (Exception e) {
             Utils.log(Utils.class, Utils.class.getSimpleName(), Level.SEVERE,
                     "%s field not found in class %s: %s", FIELD_NAME_SELF_LINK,
+                    type.getSimpleName(),
+                    Utils.toString(e));
+        }
+        return null;
+    }
+
+    public static URI buildFactoryUri(ServiceHost host, Class<? extends Service> type) {
+        try {
+            Field f = type.getField(FIELD_NAME_FACTORY_LINK);
+            String path = (String) f.get(null);
+            return buildUri(host, path);
+        } catch (Exception e) {
+            Utils.log(Utils.class, Utils.class.getSimpleName(), Level.SEVERE,
+                    "%s field not found in class %s: %s", FIELD_NAME_FACTORY_LINK,
                     type.getSimpleName(),
                     Utils.toString(e));
         }

@@ -132,7 +132,7 @@ public class TestServiceHostManagementService extends BasicTestCase {
                 mfsState);
 
         // Post some documents to populate the index.
-        URI factoryUri = UriUtils.buildUri(this.host, ExampleFactoryService.SELF_LINK);
+        URI factoryUri = UriUtils.buildFactoryUri(this.host, ExampleService.class);
         Map<URI, ExampleServiceState> exampleStates = this.host.doFactoryChildServiceStart(null,
                 serviceCount,
                 ExampleServiceState.class,
@@ -183,7 +183,7 @@ public class TestServiceHostManagementService extends BasicTestCase {
         // Check our documents are still there
         ServiceDocumentQueryResult queryResult = this.host
                 .getFactoryState(UriUtils.buildExpandLinksQueryUri(UriUtils.buildUri(this.host,
-                        ExampleFactoryService.SELF_LINK)));
+                        ExampleService.FACTORY_LINK)));
         assertNotNull(queryResult);
         assertNotNull(queryResult.documents);
         assertEquals(queryResult.documents.size(), expectedCount);

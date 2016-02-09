@@ -45,7 +45,7 @@ public class TestExampleTaskService extends BasicReusableHostTestCase {
         // Wait for the example and example task factories to start because the host does not
         // wait for them since since they are not core services. Note that production code
         // should be asynchronous and not wait like this
-        this.host.waitForServiceAvailable(ExampleFactoryService.SELF_LINK);
+        this.host.waitForServiceAvailable(ExampleService.FACTORY_LINK);
     }
 
     @Test
@@ -63,7 +63,7 @@ public class TestExampleTaskService extends BasicReusableHostTestCase {
      * Create a set of example services, so we can test that the ExampleTaskService clean them up
      */
     private void createExampleServices() throws Throwable {
-        URI exampleFactoryUri = UriUtils.buildUri(this.host, ExampleFactoryService.class);
+        URI exampleFactoryUri = UriUtils.buildFactoryUri(this.host, ExampleService.class);
 
         this.host.testStart(this.numServices);
         for (int i = 0; i < this.numServices; i++) {
@@ -186,7 +186,7 @@ public class TestExampleTaskService extends BasicReusableHostTestCase {
      * Verify that the task correctly cleaned up all the example services: none should be left.
      */
     private void validateNoServices() throws Throwable {
-        URI exampleFactoryUri = UriUtils.buildUri(this.host, ExampleFactoryService.class);
+        URI exampleFactoryUri = UriUtils.buildFactoryUri(this.host, ExampleService.class);
 
         ServiceDocumentQueryResult exampleServices = this.host.getServiceState(null,
                 ServiceDocumentQueryResult.class,

@@ -17,7 +17,9 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Map.Entry;
 
+import com.vmware.xenon.common.DefaultFactoryService;
 import com.vmware.xenon.common.Operation;
+import com.vmware.xenon.common.Service;
 import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.ServiceDocumentDescription.PropertyDescription;
 import com.vmware.xenon.common.ServiceDocumentDescription.PropertyIndexingOption;
@@ -29,6 +31,14 @@ import com.vmware.xenon.common.Utils;
  * Example service
  */
 public class ExampleService extends StatefulService {
+
+    public static final String FACTORY_LINK = ServiceUriPaths.CORE + "/examples";
+
+    public static Service createFactory() {
+        Service fs = DefaultFactoryService.create(ExampleService.class, ExampleServiceState.class);
+        fs.toggleOption(ServiceOption.IDEMPOTENT_POST, true);
+        return fs;
+    }
 
     public static class ExampleServiceState extends ServiceDocument {
         public static final String FIELD_NAME_KEY_VALUES = "keyValues";

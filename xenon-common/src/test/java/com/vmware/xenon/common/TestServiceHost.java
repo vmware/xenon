@@ -52,7 +52,7 @@ import com.vmware.xenon.common.test.MinimalTestServiceState;
 import com.vmware.xenon.common.test.TestProperty;
 import com.vmware.xenon.common.test.VerificationHost;
 import com.vmware.xenon.services.common.AuthorizationContextService;
-import com.vmware.xenon.services.common.ExampleFactoryService;
+import com.vmware.xenon.services.common.ExampleService;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
 import com.vmware.xenon.services.common.ExampleServiceHost;
 import com.vmware.xenon.services.common.LuceneDocumentIndexService;
@@ -771,7 +771,7 @@ public class TestServiceHost {
         this.host.testWait();
 
         // Test expiration: create N factory services, with expiration set in the initial state
-        this.host.waitForServiceAvailable(ExampleFactoryService.SELF_LINK);
+        this.host.waitForServiceAvailable(ExampleService.FACTORY_LINK);
 
         List<URI> exampleURIs = new ArrayList<>();
         this.host.createExampleServices(this.host, this.serviceCount, exampleURIs,
@@ -783,8 +783,8 @@ public class TestServiceHost {
 
             // let maintenance run
             Thread.sleep(maintIntervalMillis);
-            rsp = this.host.getFactoryState(UriUtils.buildUri(this.host,
-                    ExampleFactoryService.class));
+            rsp = this.host.getFactoryState(UriUtils.buildFactoryUri(this.host,
+                    ExampleService.class));
             if (rsp.documentLinks == null || rsp.documentLinks.size() == 0) {
                 break;
             }
@@ -798,7 +798,7 @@ public class TestServiceHost {
         // also verify expiration induced DELETE has resulted in permanent removal of all versions
         // of the document
 
-        this.host.validatePermanentServiceDocumentDeletion(ExampleFactoryService.SELF_LINK, 0,
+        this.host.validatePermanentServiceDocumentDeletion(ExampleService.FACTORY_LINK, 0,
                 true);
 
         // now validate that service handleMaintenance does not get called right after start, but at least
@@ -901,7 +901,7 @@ public class TestServiceHost {
             this.host.registerForServiceAvailability(this.host.getCompletion(),
                     u.getPath());
             this.host.startService(Operation.createPost(u),
-                    new ExampleFactoryService());
+                    ExampleService.createFactory());
             this.host.registerForServiceAvailability(this.host.getCompletion(),
                     u.getPath());
         }
@@ -975,7 +975,7 @@ public class TestServiceHost {
             o.setBody(s);
         };
 
-        URI factoryURI = UriUtils.buildUri(this.host, ExampleFactoryService.SELF_LINK);
+        URI factoryURI = UriUtils.buildFactoryUri(this.host, ExampleService.class);
 
         Map<URI, ExampleServiceState> states = this.host.doFactoryChildServiceStart(null,
                 this.serviceCount,
@@ -1092,7 +1092,7 @@ public class TestServiceHost {
             for (int i = 0; i < count; i += step) {
                 // now that we have created a bunch of services, and a lot of them are paused, ping one randomly
                 // to make sure it resumes
-                URI instanceUri = UriUtils.buildUri(this.host, ExampleFactoryService.SELF_LINK);
+                URI instanceUri = UriUtils.buildUri(this.host, ExampleService.class);
                 instanceUri = UriUtils.extendUri(instanceUri, prefix + (selfLinkCounter.get() - i));
                 Operation get = Operation.createGet(instanceUri).setCompletion((o, e) -> {
                     if (e == null) {
@@ -1138,7 +1138,7 @@ public class TestServiceHost {
     @Test
     public void thirdPartyClientPost() throws Throwable {
         setUp(false);
-        this.host.waitForServiceAvailable(ExampleFactoryService.SELF_LINK);
+        this.host.waitForServiceAvailable(ExampleService.FACTORY_LINK);
 
         String name = UUID.randomUUID().toString();
         ExampleServiceState s = new ExampleServiceState();
@@ -1147,7 +1147,7 @@ public class TestServiceHost {
             o.setBody(s);
         };
 
-        URI factoryURI = UriUtils.buildUri(this.host, ExampleFactoryService.SELF_LINK);
+        URI factoryURI = UriUtils.buildFactoryUri(this.host, ExampleService.class);
         long c = 1;
         Map<URI, ExampleServiceState> states = this.host.doFactoryChildServiceStart(null, c,
                 ExampleServiceState.class, bodySetter, factoryURI);

@@ -33,7 +33,7 @@ import com.vmware.xenon.common.Service.ServiceOption;
 import com.vmware.xenon.common.ServiceStats.ServiceStat;
 import com.vmware.xenon.common.test.MinimalTestServiceState;
 import com.vmware.xenon.common.test.TestProperty;
-import com.vmware.xenon.services.common.ExampleFactoryService;
+import com.vmware.xenon.services.common.ExampleService;
 import com.vmware.xenon.services.common.MinimalFactoryTestService;
 import com.vmware.xenon.services.common.MinimalTestService;
 import com.vmware.xenon.services.common.ServiceUriPaths;
@@ -451,7 +451,7 @@ public class TestServiceModel extends BasicTestCase {
         this.host.testWait();
 
         // try also on a stateless service like the example factory
-        serviceUri = UriUtils.buildUri(this.host, ExampleFactoryService.SELF_LINK);
+        serviceUri = UriUtils.buildFactoryUri(this.host, ExampleService.class);
         this.host.testStart(1);
         this.host.send(Operation.createOperation(Action.OPTIONS, serviceUri)
                 .setCompletion(c));
