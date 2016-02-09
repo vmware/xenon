@@ -25,6 +25,7 @@ import org.junit.After;
 import org.junit.AfterClass;
 import org.junit.Before;
 import org.junit.BeforeClass;
+import org.junit.Ignore;
 import org.junit.Test;
 
 import com.vmware.xenon.common.CommandLineArgumentParser;
@@ -41,6 +42,7 @@ import com.vmware.xenon.services.common.MinimalTestService;
 /**
  * Tests for our Netty-based HTTP/2 implementation
  */
+@Ignore("Not ready yet, waiting for Netty improvements, hopefully 4.1 release.")
 public class NettyHttp2Test {
 
     private static VerificationHost HOST;
