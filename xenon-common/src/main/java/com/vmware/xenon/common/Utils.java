@@ -40,7 +40,6 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.logging.Level;
-import java.util.logging.LogRecord;
 import java.util.logging.Logger;
 
 import com.esotericsoftware.kryo.Kryo;
@@ -58,6 +57,7 @@ import com.vmware.xenon.common.ServiceDocumentDescription.PropertyIndexingOption
 import com.vmware.xenon.common.ServiceDocumentDescription.PropertyUsageOption;
 import com.vmware.xenon.common.ServiceDocumentDescription.TypeName;
 import com.vmware.xenon.common.SystemHostInfo.OsFamily;
+import com.vmware.xenon.common.logging.StackAwareLogRecord;
 import com.vmware.xenon.common.serialization.BufferThreadLocal;
 import com.vmware.xenon.common.serialization.JsonMapper;
 import com.vmware.xenon.common.serialization.KryoSerializers.KryoForDocumentThreadLocal;
@@ -353,11 +353,13 @@ public class Utils {
             return;
         }
 
-        LogRecord lr = new LogRecord(level, String.format(fmt, args));
+        StackAwareLogRecord lr = new StackAwareLogRecord(level, String.format(fmt, args));
         Exception e = new Exception();
-        StackTraceElement[] stack = e.getStackTrace();
-        if (stack.length > nestingLevel) {
-            lr.setSourceMethodName(stack[nestingLevel].getMethodName());
+        StackTraceElement[] stacks = e.getStackTrace();
+        if (stacks.length > nestingLevel) {
+            StackTraceElement stack = stacks[nestingLevel];
+            lr.setStack(stack);
+            lr.setSourceMethodName(stack.getMethodName());
         }
         lr.setSourceClassName(classOrUri);
         lg.log(lr);
