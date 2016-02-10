@@ -473,8 +473,8 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
     }
 
     private void verifyOnDemandLoad(ServiceHost h, String onDemandFactoryLink) throws Throwable {
-        ServiceDocumentQueryResult rsp = this.host.getFactoryState(UriUtils.buildUri(h,
-                onDemandFactoryLink));
+        URI factoryUri = UriUtils.buildUri(h, onDemandFactoryLink);
+        ServiceDocumentQueryResult rsp = this.host.getFactoryState(factoryUri);
         // verify that for every factory child reported by the index, through the GET (query), the service is NOT
         // started
         assertEquals(this.serviceCount, rsp.documentLinks.size());
@@ -483,6 +483,21 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
             assertTrue(h.getServiceStage(childLink) == null);
             childUris.add(UriUtils.buildUri(h, childLink));
         }
+
+        // verify that attempting to start a service, through factory POST, that was previously created,
+        // but not yet loaded/started, fails, with ServiceAlreadyStarted exception
+        this.host.testStart(childUris.size());
+        for (URI u : childUris) {
+            MinimalTestServiceState body = new MinimalTestServiceState();
+            // use a link hint for a previously created service, guaranteeing a collision
+            body.documentSelfLink = u.getPath();
+            body.id = UUID.randomUUID().toString();
+            Operation post = Operation.createPost(factoryUri)
+                    .setCompletion(this.host.getExpectedFailureCompletion())
+                    .setBody(body);
+            this.host.send(post);
+        }
+        this.host.testWait();
 
         // issue a GET per child link, which should force the on-demand load to take place, implicitly
         Map<URI, MinimalTestServiceState> childStates = this.host.getServiceState(null,

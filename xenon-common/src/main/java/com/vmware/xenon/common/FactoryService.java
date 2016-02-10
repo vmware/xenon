@@ -476,6 +476,7 @@ public abstract class FactoryService extends StatelessService {
         }
 
         o.setReplicationDisabled(true);
+        o.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_VERSION_CHECK);
         getHost().startService(o, childService);
     }
 
