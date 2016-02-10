@@ -1476,7 +1476,7 @@ public class ServiceHost {
                         // the remote peer has likely not started, retry, once
                         se.schedule(() -> {
                             sendJoinPeerRequest(joinBody, localNodeGroupUri, false);
-                        } , 15, TimeUnit.SECONDS);
+                        }, 15, TimeUnit.SECONDS);
                         return;
                     }
 
@@ -1505,7 +1505,7 @@ public class ServiceHost {
 
     protected void startCoreServicesSynchronously(List<Operation> startPosts,
             List<Service> services)
-                    throws Throwable {
+            throws Throwable {
         CountDownLatch l = new CountDownLatch(services.size());
         Throwable[] failure = new Throwable[1];
         StringBuilder sb = new StringBuilder();
@@ -1687,7 +1687,7 @@ public class ServiceHost {
             schedule(() -> {
                 sendRequest(Operation.createDelete(UriUtils.buildUri(this,
                         notificationTarget.getSelfLink())));
-            } , delta, TimeUnit.MICROSECONDS);
+            }, delta, TimeUnit.MICROSECONDS);
         }
 
         request.reference = subscriptionUri;
@@ -2497,8 +2497,9 @@ public class ServiceHost {
             serviceStartPost.linkState(stateFromStore);
         }
 
-        if (!isServiceRestartAfterDeleteAllowed(stateFromStore, serviceStartPost)) {
-            serviceStartPost.fail(new IllegalStateException("Service has been previously deleted: "
+        if (!checkServiceExistsOrDeleted(stateFromStore, serviceStartPost)) {
+            serviceStartPost.setStatusCode(Operation.STATUS_CODE_CONFLICT).fail(
+                    new IllegalStateException("Service already exists: "
                     + Utils.toJson(stateFromStore)));
             return;
         }
@@ -2516,28 +2517,38 @@ public class ServiceHost {
                 serviceStartPost, hasClientSuppliedState);
     }
 
-    private static boolean isServiceRestartAfterDeleteAllowed(ServiceDocument stateFromStore,
+    private static boolean checkServiceExistsOrDeleted(ServiceDocument stateFromStore,
             Operation serviceStartPost) {
         if (!serviceStartPost.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_VERSION_CHECK)) {
             return true;
         }
 
-        if (!ServiceDocument.isDeleted(stateFromStore)) {
+        if (stateFromStore == null) {
             return true;
         }
 
-        // if the POST has no body, and is marked deleted, fail restart
+        boolean isDeleted = ServiceDocument.isDeleted(stateFromStore);
+
         if (!serviceStartPost.hasBody()) {
-            return false;
+            if (isDeleted) {
+                // if the POST has no body, and is marked deleted, fail restart
+                return false;
+            } else {
+                // this POST is due to a restart, which will never have a body
+                return true;
+            }
         }
 
         ServiceDocument initState = (ServiceDocument) serviceStartPost.getBodyRaw();
-        if (stateFromStore.documentVersion < initState.documentVersion) {
-            // new state is higher than previously indexed state, allow restart
-            return true;
+        if (initState != null && stateFromStore.documentVersion < initState.documentVersion) {
+            if (isDeleted) {
+                // new state is higher than previously indexed state, allow restart
+                return true;
+            }
         }
 
-        // new state has stale version, fail restart
+        // new state has stale version, or this is an attempt to start a service that already exists,
+        // fail restart
         return false;
     }
 
@@ -2702,7 +2713,6 @@ public class ServiceHost {
         if (isAuthorizationEnabled()) {
             final Service sFinal = service;
             inboundOp.nestCompletion((o) -> {
-                // only nest completion for success, failure will be forward to original completion
                 queueOrScheduleRequest(sFinal, inboundOp);
             });
             service.authorizeRequest(inboundOp);
@@ -2728,7 +2738,6 @@ public class ServiceHost {
         }
 
         AuthorizationContext ctx = this.authorizationContextCache.get(token);
-
 
         try {
             Claims claims = null;
@@ -3889,7 +3898,7 @@ public class ServiceHost {
         return this.scheduledExecutor.schedule(() -> {
             OperationContext.setAuthorizationContext(origContext);
             executeRunnableSafe(task);
-        } , delay, unit);
+        }, delay, unit);
     }
 
     private void executeRunnableSafe(Runnable task) {
@@ -3916,7 +3925,6 @@ public class ServiceHost {
 
         this.maintenanceTask = schedule(r, getMaintenanceIntervalMicros(), TimeUnit.MICROSECONDS);
     }
-
 
     /**
      * Performs maintenance tasks for the given stage. Only a single instance of this
@@ -4125,7 +4133,6 @@ public class ServiceHost {
         long memoryInUseMB = this.state.serviceCount * DEFAULT_SERVICE_INSTANCE_COST_BYTES;
         memoryInUseMB /= (1024 * 1024);
 
-
         boolean shouldPause = memoryLimitLowMB <= memoryInUseMB;
 
         int pauseServiceCount = 0;
@@ -4231,7 +4238,8 @@ public class ServiceHost {
             return true;
         }
 
-        if (isStopping() && inboundOp.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_NO_INDEX_UPDATE)
+        if (isStopping()
+                && inboundOp.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_NO_INDEX_UPDATE)
                 && inboundOp.getAction() == Action.DELETE) {
             // do not attempt to resume services if they are paused or in the process of being paused
             inboundOp.complete();
@@ -4251,7 +4259,6 @@ public class ServiceHost {
                 log(Level.WARNING, "Request to %s has expired", path);
                 return false;
             }
-
 
             if (isStopping()) {
                 return false;
@@ -4276,7 +4283,7 @@ public class ServiceHost {
                                 "Retrying index lookup for %s, pending pause: %d",
                                 path, pendingPauseCount);
                         checkAndResumePausedService(inboundOp);
-                    } , 1, TimeUnit.SECONDS);
+                    }, 1, TimeUnit.SECONDS);
             return true;
         }
 
@@ -4335,6 +4342,7 @@ public class ServiceHost {
                 inboundOp.fail(e);
                 return;
             }
+
             // proceed with handling original client request, service now started
             handleRequest(null, inboundOp);
         });

@@ -405,24 +405,16 @@ public class TestFactoryService extends BasicReusableHostTestCase {
         // associated with the same document history
         // create a start service POST with an initial state
         this.host.testStart(childServiceStates.size());
-        int i = 0;
         for (URI u : childServiceStates.keySet()) {
             MinimalTestServiceState newState = (MinimalTestServiceState) this.host
                     .buildMinimalTestState();
             String selfLink = u.getPath();
             newState.documentSelfLink = selfLink.substring(selfLink
                     .lastIndexOf(UriUtils.URI_PATH_CHAR));
-            // request version check on deleted document, on every other POST
-            boolean doVersionCheck = i++ % 2 == 0;
-            if (doVersionCheck) {
-                // if version check is requested version must be higher than previously deleted version
-                newState.documentVersion = patchCount * 2;
-            }
+            // version must be higher than previously deleted version
+            newState.documentVersion = patchCount * 2;
             Operation post = Operation.createPost(factoryUri).setBody(newState)
                     .setCompletion(this.host.getCompletion());
-            if (doVersionCheck) {
-                post.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_VERSION_CHECK);
-            }
             this.host.send(post);
         }
         this.host.testWait();
