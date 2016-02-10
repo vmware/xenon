@@ -1065,6 +1065,9 @@ public class TestServiceHost {
         Date exp = new Date(TimeUnit.MICROSECONDS.toMillis(
                 Utils.getNowMicrosUtc()) + TimeUnit.SECONDS.toMillis(this.testDurationSeconds));
 
+        this.host.setOperationTimeOutMicros(
+                TimeUnit.SECONDS.toSeconds(this.host.getTimeoutSeconds()));
+
         while (new Date().before(exp)) {
             this.host.doFactoryChildServiceStart(null,
                     this.serviceCount,
@@ -1081,7 +1084,7 @@ public class TestServiceHost {
                     f.getUsableSpace(),
                     f.getTotalSpace());
 
-            int limit = 2000;
+            int limit = (int) (this.serviceCount * 2);
             int step = 1;
             int count = limit / step;
             if (selfLinkCounter.get() < limit) {

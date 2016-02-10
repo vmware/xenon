@@ -3096,6 +3096,11 @@ public class ServiceHost {
                 return false;
             }
 
+            if (isStopping()) {
+                // host is stopping, request will fail downstream
+                return false;
+            }
+
             Level l = inboundOp.isFromReplication() ? Level.FINE : Level.INFO;
             log(l, "registering for %s (%s) to become available", path, factoryPath);
             // service is in the process of starting
@@ -4247,7 +4252,7 @@ public class ServiceHost {
         }
 
         if (inboundOp.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_INDEX_CHECK)) {
-            Service service = this.pendingPauseServices.remove(key);
+            Service service = this.pendingPauseServices.remove(path);
             if (service != null) {
                 // Abort pause
                 log(Level.INFO, "Aborting service pause for %s", path);
@@ -4261,6 +4266,13 @@ public class ServiceHost {
             }
 
             if (isStopping()) {
+                return false;
+            }
+
+            service = this.attachedServices.get(path);
+            if (service != null && service.getProcessingStage() == ProcessingStage.PAUSED) {
+                log(Level.INFO, "Service attached, but paused, aborting pause for %s", path);
+                resumeService(path, service);
                 return false;
             }
 
