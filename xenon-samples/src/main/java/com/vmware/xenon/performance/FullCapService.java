@@ -46,7 +46,6 @@ public class FullCapService extends StatefulService {
         toggleOption(ServiceOption.PERSISTENCE, true);
         toggleOption(ServiceOption.REPLICATION, true);
         toggleOption(ServiceOption.OWNER_SELECTION, true);
-        toggleOption(ServiceOption.ENFORCE_QUORUM, true);
         toggleOption(ServiceOption.INSTRUMENTATION, true);
         toggleOption(ServiceOption.PERIODIC_MAINTENANCE, true);
     }

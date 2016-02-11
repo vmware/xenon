@@ -77,6 +77,7 @@ class DigestThreadLocal extends ThreadLocal<MessageDigest> {
 public class Utils {
     private static final int BUFFER_INITIAL_CAPACITY = 1 * 1024;
     private static final String CHARSET_UTF_8 = "UTF-8";
+    public static final String PROPERTY_NAME_PREFIX = "xenon.";
     public static final String CHARSET = CHARSET_UTF_8;
     public static final String UI_DIRECTORY_NAME = "ui";
 
@@ -500,12 +501,8 @@ public class Utils {
         EnumSet<ServiceOption> antiReqs = null;
         switch (option) {
         case CONCURRENT_UPDATE_HANDLING:
-            antiReqs = EnumSet.of(ServiceOption.ENFORCE_QUORUM, ServiceOption.OWNER_SELECTION,
+            antiReqs = EnumSet.of(ServiceOption.OWNER_SELECTION,
                     ServiceOption.STRICT_UPDATE_CHECKING);
-            break;
-        case ENFORCE_QUORUM:
-            reqs = EnumSet.of(ServiceOption.REPLICATION, ServiceOption.OWNER_SELECTION);
-            antiReqs = EnumSet.of(ServiceOption.CONCURRENT_UPDATE_HANDLING);
             break;
         case OWNER_SELECTION:
             reqs = EnumSet.of(ServiceOption.REPLICATION);

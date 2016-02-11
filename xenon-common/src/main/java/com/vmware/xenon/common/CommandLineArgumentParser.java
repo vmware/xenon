@@ -29,7 +29,7 @@ public class CommandLineArgumentParser {
             .getSimpleName());
     private static final AtomicBoolean IS_LOGGING_CONFIGURED = new AtomicBoolean(false);
 
-    public static final String PROPERTY_PREFIX = "xenon.";
+    public static final String PROPERTY_PREFIX = Utils.PROPERTY_NAME_PREFIX;
 
     public static final String ARGUMENT_PREFIX = "--";
     public static final String ARGUMENT_ASSIGNMENT = "=";
