@@ -81,7 +81,7 @@ public class ReplicationTestService extends StatefulService {
         t.documentSelfLink = UUID.randomUUID().toString();
         initState.queryTaskLink = UriUtils.buildUriPath(ServiceUriPaths.CORE_QUERY_TASKS,
                 t.documentSelfLink);
-        sendRequest(Operation.createPost(this, LuceneQueryTaskFactoryService.SELF_LINK).setBody(t));
+        //FIX BEFORE CHECKIN sendRequest(Operation.createPost(this, LuceneQueryTaskFactoryService.SELF_LINK).setBody(t));
         startPost.complete();
 
         initState.stringField = UUID.randomUUID().toString();

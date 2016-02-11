@@ -66,7 +66,7 @@ public class NodeSelectorSynchronizationService extends StatelessService {
 
     private Service parent;
 
-    private boolean isDetailedLoggingEnabled = false;
+    private boolean isDetailedLoggingEnabled = true;
 
     public NodeSelectorSynchronizationService(Service parent) {
         super(NodeGroupSynchronizationState.class);
@@ -77,6 +77,11 @@ public class NodeSelectorSynchronizationService extends StatelessService {
     @Override
     public void handleStart(Operation startPost) {
         startPost.complete();
+    }
+
+    @Override
+    public void authorizeRequest(Operation op) {
+        op.complete();
     }
 
     @Override
@@ -245,7 +250,7 @@ public class NodeSelectorSynchronizationService extends StatelessService {
         }
 
         if (bestPeerRsp != null && this.isDetailedLoggingEnabled) {
-            logFine("Using best peer state for %s (e:%d, v:%d)", bestPeerRsp.documentSelfLink,
+            logInfo("Using best peer state for %s (e:%d, v:%d)", bestPeerRsp.documentSelfLink,
                     bestPeerRsp.documentEpoch,
                     bestPeerRsp.documentVersion);
         }
@@ -256,7 +261,7 @@ public class NodeSelectorSynchronizationService extends StatelessService {
             // if the local state is preferred, there is no need to increment epoch.
             bestPeerRsp = request.state;
             if (this.isDetailedLoggingEnabled) {
-                logFine("Local is best peer state for %s (e:%d, v:%d)",
+                logInfo("Local is best peer state for %s (e:%d, v:%d)",
                         bestPeerRsp.documentSelfLink,
                         bestPeerRsp.documentEpoch,
                         bestPeerRsp.documentVersion);
@@ -265,7 +270,10 @@ public class NodeSelectorSynchronizationService extends StatelessService {
 
         // we increment epoch only when we assume the role of owner
         if (!request.wasOwner && request.isOwner) {
-            incrementEpoch = true;
+            if (bestPeerRsp.documentVersion > 0) {
+                // only increment epoch if this is not a document being created, on this host
+                incrementEpoch = true;
+            }
         }
 
         broadcastBestState(rsp.selectedNodes, peerStates, post, request, bestPeerRsp,
@@ -280,7 +288,7 @@ public class NodeSelectorSynchronizationService extends StatelessService {
         try {
             post.setBodyNoCloning(null);
             if (peerStates.isEmpty()) {
-                logFine("(isOwner: %s) No peers available for %s", request.isOwner,
+                logInfo("(isOwner: %s) No peers available for %s", request.isOwner,
                         bestPeerRsp.documentSelfLink);
                 post.complete();
                 return;
@@ -319,6 +327,8 @@ public class NodeSelectorSynchronizationService extends StatelessService {
                             isMissingFromOwner = true;
                             continue;
                         }
+                    } else {
+                        continue;
                     }
                 } else {
                     // the peer has this service. Added to a sorted map so we can select the one
@@ -410,7 +420,7 @@ public class NodeSelectorSynchronizationService extends StatelessService {
             bestPeerRsp.documentOwner = request.ownerNodeId;
             if (incrementEpoch) {
                 if (this.isDetailedLoggingEnabled) {
-                    logFine("Incrementing epoch from %d to %d for %s", bestPeerRsp.documentEpoch,
+                    logInfo("Incrementing epoch from %d to %d for %s", bestPeerRsp.documentEpoch,
                             bestPeerRsp.documentEpoch + 1, bestPeerRsp.documentSelfLink);
                 }
                 bestPeerRsp.documentEpoch += 1;
@@ -434,6 +444,9 @@ public class NodeSelectorSynchronizationService extends StatelessService {
                 // Request a version check to prevent restarting/recreating a service that might
                 // have been deleted
                 peerOp.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_VERSION_CHECK);
+                
+                peerOp.addRequestHeader(Operation.REPLICATION_PHASE_HEADER,
+                        Operation.REPLICATION_PHASE_COMMIT);
 
                 if (entry.getValue().documentSelfLink != null) {
                     // service exists on peer node, push latest state as a PUT
@@ -461,7 +474,7 @@ public class NodeSelectorSynchronizationService extends StatelessService {
                 peerOp.setBody(clonedState);
 
                 if (this.isDetailedLoggingEnabled) {
-                    logFine("(isOwner: %s)(remaining: %d) (last action: %s) Sending %s with best state for %s to %s (e:%d, v:%d)",
+                    logInfo("(isOwner: %s)(remaining: %d) (last action: %s) Sending %s with best state for %s to %s (e:%d, v:%d)",
                             request.isOwner,
                             remaining.get(),
                             clonedState.documentUpdateAction,

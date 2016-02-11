@@ -64,12 +64,12 @@ public class StatefulService implements Service {
         public Set<String> txCoordinatorLinks;
     }
 
-    private static boolean isCommitRequest(Operation op) {
+    static boolean isCommitRequest(Operation op) {
         String phase = op.getRequestHeader(Operation.REPLICATION_PHASE_HEADER);
         return Operation.REPLICATION_PHASE_COMMIT.equals(phase);
     }
 
-    private static boolean isSynchronizeRequest(Operation op) {
+    static boolean isSynchronizeRequest(Operation op) {
         String phase = op.getRequestHeader(Operation.REPLICATION_PHASE_HEADER);
         return Operation.REPLICATION_PHASE_SYNCHRONIZE.equals(phase);
     }
@@ -435,10 +435,7 @@ public class StatefulService implements Service {
         }
 
         if (!request.isFromReplication()) {
-            if (isSynchronizeRequest(request)) {
-                request.setFromReplication(true);
-                // we want to index state on synch completion, so nest completion
-                request.nestCompletion((o, e) -> handleRequestCompletion(o, e));
+            if (isSynchronizeRequest(request)) {               
                 synchronizeWithPeers(request, null);
                 return true;
             }
@@ -874,12 +871,8 @@ public class StatefulService implements Service {
                 processPending(op);
             }
         });
-
-        if (!hasOption(ServiceOption.ENFORCE_QUORUM)) {
-            // Every proposal is a commit, in eventual consistency mode
-            op.addRequestHeader(Operation.REPLICATION_PHASE_HEADER,
-                    Operation.REPLICATION_PHASE_COMMIT);
-        }
+        
+        logInfo("%s", op.getLinkedState().documentVersion);
 
         getHost().replicateRequest(this.context.options, op.getLinkedState(),
                 getPeerNodeSelectorPath(), getSelfLink(), op);
@@ -938,10 +931,8 @@ public class StatefulService implements Service {
             return;
         }
 
-        if (!hasOption(ServiceOption.ENFORCE_QUORUM)
-                && !hasOption(ServiceOption.DOCUMENT_OWNER)) {
-            // Explicit commit messages are only meaningful if quorum is enforced: they
-            // advertise that quorum worth of nodes accepted the proposal request
+        if (!hasOption(ServiceOption.DOCUMENT_OWNER)) {
+            // Explicit commit messages are only sent from this instance on the owner node
             return;
         }
 
@@ -981,6 +972,8 @@ public class StatefulService implements Service {
         if (op.getAction() == Action.DELETE) {
             commitOp.setAction(op.getAction());
         }
+        
+        logInfo("%s", latestState.documentVersion);
 
         getHost().replicateRequest(this.context.options, latestState, getPeerNodeSelectorPath(),
                 getSelfLink(),
@@ -1136,6 +1129,9 @@ public class StatefulService implements Service {
         // a replica simply sets its version to the highest version it has seen. Agreement on
         // owner and epoch is done in validation methods upstream
         this.context.version = Math.max(cachedState.documentVersion, this.context.version);
+        if (this.context.version > cachedState.documentVersion) {
+            logInfo("v:%d %s %s", this.context.version, op.getAction(), op.getRequestHeader(Operation.PRAGMA_HEADER));
+        }
         cachedState.documentUpdateTimeMicros = Math.max(
                 cachedState.documentUpdateTimeMicros, time);
 
@@ -1171,6 +1167,8 @@ public class StatefulService implements Service {
 
         if (failure != null) {
             logWarning("synchronizing with peers due to %s", failure.getMessage());
+        } else {
+            logFine("synchronizing with peers e:%d v:%d", this.context.epoch, this.context.version);
         }
 
         // clone the request so we can update its body without affecting the client request
@@ -1196,7 +1194,7 @@ public class StatefulService implements Service {
         boolean isStateUpdated = false;
 
         if (!isOwner) {
-            completeSynchronizationRequest(request, failure);
+            completeSynchronizationRequest(request, failure, false);
             return;
         }
 
@@ -1221,7 +1219,7 @@ public class StatefulService implements Service {
             }
 
             // update synchronized linked state with the update operation, so it gets indexed
-            request.linkState(state);
+            request.linkState(state);        
         }
 
         if (!wasOwner) {
@@ -1230,9 +1228,9 @@ public class StatefulService implements Service {
 
         if (!isStateUpdated) {
             request.setStatusCode(Operation.STATUS_CODE_NOT_MODIFIED);
-        }
+        } 
 
-        completeSynchronizationRequest(request, failure);
+        completeSynchronizationRequest(request, failure, isStateUpdated);
 
         if (wasOwner) {
             return;
@@ -1242,15 +1240,26 @@ public class StatefulService implements Service {
                 EnumSet.of(ServiceOption.DOCUMENT_OWNER), null);
     }
 
-    private void completeSynchronizationRequest(Operation request, Throwable failure) {
+    private void completeSynchronizationRequest(Operation request, Throwable failure, boolean isStateUpdated) {
         if (failure != null) {
             request.setStatusCode(Operation.STATUS_CODE_CONFLICT);
             failRequest(request, new IllegalStateException(
                     "Synchronization complete, original failure: " + failure.toString()));
             return;
         }
-
-        // this is an explicit synchronization request
+    
+        if (!isStateUpdated) {
+            processPending(request);
+            request.complete();
+            return;
+        }
+            
+        // avoid replicating this synchronization request, on completion
+        request.setFromReplication(true);
+    
+        // proceed with normal completion pipeline, including indexing
+        logInfo("updating state");
+        request.nestCompletion((o, e) -> handleRequestCompletion(o, e));
         request.complete();
     }
 
@@ -1362,21 +1371,12 @@ public class StatefulService implements Service {
         }
 
         if (option != ServiceOption.HTML_USER_INTERFACE
-                && option != ServiceOption.ENFORCE_QUORUM
                 && option != ServiceOption.DOCUMENT_OWNER
                 && option != ServiceOption.PERIODIC_MAINTENANCE
                 && option != ServiceOption.INSTRUMENTATION) {
 
             if (getProcessingStage() != Service.ProcessingStage.CREATED) {
                 throw new IllegalStateException("Service already started");
-            }
-        }
-
-        if (option == ServiceOption.ENFORCE_QUORUM
-                && !this.context.options.contains(ServiceOption.OWNER_SELECTION)) {
-            if (getProcessingStage() != Service.ProcessingStage.CREATED) {
-                throw new IllegalStateException(
-                        "Service already started and OWNER_SELECTION is not set");
             }
         }
 

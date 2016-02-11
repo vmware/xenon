@@ -431,10 +431,7 @@ public class TestUtils {
     public void validateServiceOption() {
         // positive tests
         EnumSet<ServiceOption> options = EnumSet.of(ServiceOption.REPLICATION,
-                ServiceOption.ENFORCE_QUORUM, ServiceOption.OWNER_SELECTION);
-        checkOptions(options);
-
-        options = EnumSet.of(ServiceOption.REPLICATION, ServiceOption.OWNER_SELECTION);
+                ServiceOption.OWNER_SELECTION);
         checkOptions(options);
 
         options = EnumSet.of(ServiceOption.REPLICATION, ServiceOption.OWNER_SELECTION,
@@ -449,23 +446,14 @@ public class TestUtils {
                 ServiceOption.OWNER_SELECTION);
         checkOptions(options);
 
-        options = EnumSet.of(ServiceOption.REPLICATION, ServiceOption.STRICT_UPDATE_CHECKING,
-                ServiceOption.OWNER_SELECTION, ServiceOption.ENFORCE_QUORUM);
-        checkOptions(options);
-
         // negative tests
 
         options = EnumSet.of(ServiceOption.CONCURRENT_UPDATE_HANDLING,
                 ServiceOption.STRICT_UPDATE_CHECKING);
         checkOptions(options, true);
 
-        options = EnumSet.of(ServiceOption.ENFORCE_QUORUM);
-        checkOptions(options, true);
 
-        options = EnumSet.of(ServiceOption.ENFORCE_QUORUM, ServiceOption.REPLICATION);
-        checkOptions(options, true);
-
-        options = EnumSet.of(ServiceOption.ENFORCE_QUORUM, ServiceOption.REPLICATION,
+        options = EnumSet.of(ServiceOption.OWNER_SELECTION, ServiceOption.REPLICATION,
                 ServiceOption.CONCURRENT_UPDATE_HANDLING);
         checkOptions(options, true);
 
