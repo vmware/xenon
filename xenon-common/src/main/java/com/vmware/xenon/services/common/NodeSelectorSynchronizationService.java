@@ -80,6 +80,11 @@ public class NodeSelectorSynchronizationService extends StatelessService {
     }
 
     @Override
+    public void authorizeRequest(Operation op) {
+        op.complete();
+    }
+
+    @Override
     public void handleRequest(Operation post) {
         if (post.getAction() != Action.POST) {
             post.fail(new IllegalArgumentException("Action not supported"));

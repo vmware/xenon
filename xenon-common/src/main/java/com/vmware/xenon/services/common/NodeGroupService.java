@@ -67,10 +67,10 @@ public class NodeGroupService extends StatefulService {
     public static class JoinPeerRequest {
         public static final String KIND = Utils.buildKind(JoinPeerRequest.class);
 
-        public static JoinPeerRequest create(URI peerToJoin, Integer synchQuorum) {
+        public static JoinPeerRequest create(URI peerToJoin, Integer quorum) {
             JoinPeerRequest r = new JoinPeerRequest();
             r.memberGroupReference = peerToJoin;
-            r.synchQuorum = synchQuorum;
+            r.membershipQuorum = quorum;
             r.kind = KIND;
             return r;
         }
@@ -89,7 +89,7 @@ public class NodeGroupService extends StatefulService {
         /**
          * Minimum number of nodes to enumeration, after join, for synchronization to start
          */
-        public Integer synchQuorum;
+        public Integer membershipQuorum;
 
         public String kind;
     }
@@ -109,14 +109,8 @@ public class NodeGroupService extends StatefulService {
             return this;
         }
 
-        public UpdateQuorumRequest setSynchQuorum(int count) {
-            this.synchQuorum = count;
-            return this;
-        }
-
         public boolean isGroupUpdate;
         public Integer membershipQuorum;
-        public Integer synchQuorum;
         public String kind;
     }
 
@@ -220,22 +214,9 @@ public class NodeGroupService extends StatefulService {
 
         patch.setBody(localState).complete();
 
-        int healthyCountThreshold = Math.max(localNodeState.membershipQuorum,
-                localNodeState.synchQuorum);
-        if (localState.nodes.size() < healthyCountThreshold) {
-            setAvailable(false);
-            return;
-        }
-
-        if (!NodeGroupUtils.isMembershipSettled(getHost(), getHost().getMaintenanceIntervalMicros(),
-                localState)) {
-            setAvailable(false);
-            return;
-        }
-
         if (!isAvailable()) {
-            boolean hasQuorum = NodeGroupUtils.hasSynchronizationQuorum(getHost(), localState);
-            setAvailable(hasQuorum);
+            boolean isAvailable = NodeGroupUtils.isNodeGroupAvailable(getHost(), localState);
+            setAvailable(isAvailable);
         }
 
         if (localNodeState.status == NodeStatus.AVAILABLE) {
@@ -256,9 +237,7 @@ public class NodeGroupService extends StatefulService {
         if (bd.membershipQuorum != null) {
             self.membershipQuorum = bd.membershipQuorum;
         }
-        if (bd.synchQuorum != null) {
-            self.synchQuorum = bd.synchQuorum;
-        }
+
         self.documentVersion++;
         self.documentUpdateTimeMicros = Utils.getNowMicrosUtc();
         localState.membershipUpdateTimeMicros = self.documentUpdateTimeMicros;
@@ -308,9 +287,7 @@ public class NodeGroupService extends StatefulService {
             if (bd.membershipQuorum != null) {
                 node.membershipQuorum = bd.membershipQuorum;
             }
-            if (bd.synchQuorum != null) {
-                node.synchQuorum = bd.synchQuorum;
-            }
+
             node.documentVersion++;
             node.documentUpdateTimeMicros = Utils.getNowMicrosUtc();
             Operation p = Operation
@@ -401,11 +378,8 @@ public class NodeGroupService extends StatefulService {
             self.documentUpdateTimeMicros = Utils.getNowMicrosUtc();
             self.documentVersion++;
 
-            // at a minimum we need 2 nodes to synch: self plus the node we are joining
-            self.synchQuorum = 2;
-
-            if (joinBody.synchQuorum != null) {
-                self.synchQuorum = Math.max(self.synchQuorum, joinBody.synchQuorum);
+            if (joinBody.membershipQuorum != null) {
+                self.membershipQuorum = Math.max(self.membershipQuorum, joinBody.membershipQuorum);
             }
 
             if (joinBody.localNodeOptions != null) {
@@ -445,10 +419,8 @@ public class NodeGroupService extends StatefulService {
         // Pass 2, merge remote group state with ours, send self to peer
         sendRequest(Operation.createPatch(getUri()).setBody(remotePeerState));
 
-        logInfo("Synch quorum: %d. Sending POST to insert self (%s) to peer %s",
-                self.synchQuorum,
-                self.groupReference,
-                joinBody.memberGroupReference);
+        logInfo("Sending POST to %s to insert self: %s",
+                joinBody.memberGroupReference, Utils.toJson(self));
 
         Operation insertSelfToPeer = Operation
                 .createPost(joinBody.memberGroupReference)
