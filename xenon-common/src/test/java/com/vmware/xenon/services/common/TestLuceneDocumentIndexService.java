@@ -150,6 +150,7 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
         this.indexService = new FaultInjectionLuceneDocumentIndexService();
         this.indexService.toggleOption(ServiceOption.INSTRUMENTATION, true);
         host.setDocumentIndexingService(this.indexService);
+        host.setPeerSynchronizationEnabled(false);
     }
 
     @Test
@@ -227,6 +228,7 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
 
         // close the writer!
         this.indexService.closeWriter();
+
         // issue some updates, which at least some failing and expect the host to stay alive. There
         // is no guarantee at this point that future writes will succeed since the writer re-open
         // is asynchronous and happens on maintenance intervals
@@ -234,6 +236,7 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
 
         // now induce a failure we can NOT recover from
         corruptLuceneIndexFiles();
+
         // try to poke the services we created before we corrupted the index. Some if not all should
         // fail and we should also see the host self stop
         updateServices(exampleServices, true);
@@ -254,25 +257,53 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
 
     private void updateServices(Map<URI, ExampleServiceState> exampleServices, boolean expectFailure)
             throws Throwable {
-        this.host.testStart(exampleServices.size());
+        AtomicInteger g = new AtomicInteger();
+        Throwable[] failure = new Throwable[1];
         for (URI service : exampleServices.keySet()) {
             ExampleServiceState b = new ExampleServiceState();
             b.name = Utils.getNowMicrosUtc() + " after stop";
-            this.host.send(Operation.createPut(service).setBody(b).setCompletion((o, e) -> {
-                if (expectFailure) {
-                    this.host.completeIteration();
-                    return;
-                }
+            this.host.send(Operation.createPut(service)
+                    .forceRemote()
+                    .setBody(b).setCompletion((o, e) -> {
+                        if (expectFailure) {
+                            g.incrementAndGet();
+                            return;
+                        }
 
-                if (e != null && !expectFailure) {
-                    this.host.failIteration(e);
-                    return;
-                }
+                        if (e != null && !expectFailure) {
+                            g.incrementAndGet();
+                            failure[0] = e;
+                            return;
+                        }
 
-                this.host.completeIteration();
-            }));
+                        g.incrementAndGet();
+                    }));
         }
-        this.host.testWait();
+
+        // if host self stops some requests might not complete, so we use a counter and
+        // a polling loop. If the counter reaches expected count, or there is failure or host
+        // stops, we exit
+
+        Date exp = this.host.getTestExpiration();
+        while (new Date().before(exp)) {
+            if (failure[0] != null) {
+                throw failure[0];
+            }
+
+            if (!this.host.isStarted()) {
+                return;
+            }
+
+            if (g.get() == exampleServices.size()) {
+                return;
+            }
+            this.host.log("Remaining: %d", g.get());
+            Thread.sleep(250);
+        }
+
+        if (new Date().after(exp)) {
+            throw new TimeoutException();
+        }
     }
 
     private void corruptLuceneIndexFiles() throws IOException {
@@ -482,6 +513,13 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
         for (String childLink : rsp.documentLinks) {
             assertTrue(h.getServiceStage(childLink) == null);
             childUris.add(UriUtils.buildUri(h, childLink));
+        }
+
+        // explicitly trigger synchronization and verify on demand load services did NOT start
+        h.scheduleNodeGroupChangeMaintenance(ServiceUriPaths.DEFAULT_NODE_SELECTOR);
+        Thread.sleep(TimeUnit.MICROSECONDS.toMillis(h.getMaintenanceIntervalMicros()) * 2);
+        for (String childLink : rsp.documentLinks) {
+            assertTrue(h.getServiceStage(childLink) == null);
         }
 
         // verify that attempting to start a service, through factory POST, that was previously created,

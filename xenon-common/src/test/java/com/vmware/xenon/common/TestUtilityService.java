@@ -269,10 +269,8 @@ public class TestUtilityService extends BasicReusableHostTestCase {
             // there is a possibility of node group maintenance kicking in and adding a stat
             ServiceStat nodeGroupStat = allStats.entries.get(
                     Service.STAT_NAME_NODE_GROUP_CHANGE_MAINTENANCE_COUNT);
-            ServiceStat nodeGroupPendStat = allStats.entries.get(
-                    Service.STAT_NAME_NODE_GROUP_CHANGE_PENDING_MAINTENANCE_COUNT);
 
-            if (nodeGroupStat == null && nodeGroupPendStat == null) {
+            if (nodeGroupStat == null) {
                 throw new IllegalStateException(
                         "Expected single stat, got: " + Utils.toJsonHtml(allStats));
             }

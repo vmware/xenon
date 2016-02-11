@@ -76,6 +76,11 @@ public class NodeGroupUtils {
             return false;
         }
 
+        if (localState.nodes.size() == 1 && selfNode.membershipQuorum == 1) {
+            // single, stand-alone node, skip update time check
+            return true;
+        }
+
         long threshold = localState.membershipUpdateTimeMicros
                 + localState.config.stableGroupMaintenanceIntervalCount
                         * maintIntervalMicros;
@@ -93,18 +98,42 @@ public class NodeGroupUtils {
         }
 
         int availableNodeCount = 0;
-        for (NodeState ns : ngs.nodes.values()) {
-            if (!NodeState.isAvailable(ns, selfNode.id, false)) {
-                continue;
+        if (ngs.nodes.size() == 1) {
+            availableNodeCount = 1;
+        } else {
+            for (NodeState ns : ngs.nodes.values()) {
+                if (!NodeState.isAvailable(ns, selfNode.id, false)) {
+                    continue;
+                }
+                availableNodeCount++;
             }
-            availableNodeCount++;
         }
 
-        if (availableNodeCount < Math.max(selfNode.synchQuorum, selfNode.membershipQuorum)) {
+        if (availableNodeCount < selfNode.membershipQuorum) {
             return false;
         }
         return true;
+    }
 
+    /**
+     * Evaluates current node group state and returns true if requests should be process,
+     * forwarded, etc
+     * The conditions are:
+     *
+     * 1) The node group membership should have been stable (gossip did not produce
+     * changes) for a specific period
+     *
+     * 2) The number of node group members in available stage is >= max(membership,synch)
+     * quorum worth of nodes.
+     */
+    public static boolean isNodeGroupAvailable(ServiceHost host, NodeGroupState localState) {
+        if (NodeGroupUtils.isMembershipSettled(host, host
+                .getMaintenanceIntervalMicros(), localState)) {
+            if (NodeGroupUtils.hasSynchronizationQuorum(host, localState)) {
+                return true;
+            }
+        }
+        return false;
     }
 
 }
