@@ -49,9 +49,6 @@ import com.vmware.xenon.services.common.NodeGroupService.NodeGroupState;
 public class ConsistentHashingNodeSelectorService extends StatelessService implements
         NodeSelectorService {
 
-    public static final String STAT_NAME_OP_DELAY_MEMBERSHIP_UNSTABLE_COUNT = "opDelayDueToMembershipUnstableCount";
-    public static final String STAT_NAME_SYNCHRONIZATION_COUNT = "synchronizationCount";
-
     private ConcurrentSkipListMap<String, byte[]> hashedNodeIds = new ConcurrentSkipListMap<>();
     private ConcurrentLinkedQueue<SelectAndForwardRequest> pendingRequests = new ConcurrentLinkedQueue<>();
 
@@ -228,7 +225,7 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
         response.key = keyValue;
         body.associatedOp = op;
 
-        if (queueRequestIfMembershipInFlux(localState, body)) {
+        if (queueRequestIfNodeGroupIsUnavailable(localState, body)) {
             return;
         }
 
@@ -431,7 +428,11 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
         this.replicationUtility.replicateUpdate(this.cachedGroupState, op, body, response);
     }
 
-    private boolean queueRequestIfMembershipInFlux(NodeGroupState localState,
+    /**
+     * Returns a value indicating whether request was queued. True means request is queued
+     * and will be processed once the node group is available
+     */
+    private boolean queueRequestIfNodeGroupIsUnavailable(NodeGroupState localState,
             SelectAndForwardRequest body) {
 
         Operation op = body.associatedOp;
@@ -448,18 +449,12 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
             return true;
         }
 
-        if (NodeGroupUtils.isMembershipSettled(getHost(), getHost()
-                .getMaintenanceIntervalMicros(), localState)) {
+        if (NodeGroupUtils.isNodeGroupAvailable(getHost(), localState)) {
             return false;
         }
 
-        if (NodeGroupUtils.hasSynchronizationQuorum(getHost(), localState)) {
-            return false;
-        }
+        adjustStat(STAT_NAME_QUEUED_REQUEST_COUNT, 1);
 
-        adjustStat(STAT_NAME_OP_DELAY_MEMBERSHIP_UNSTABLE_COUNT, 1);
-
-        logInfo("%s %s", op.getUri(), op.getAction());
         this.pendingRequests.add(body);
         return true;
     }
@@ -478,6 +473,12 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
 
     private void performPendingRequestMaintenance() {
         if (this.pendingRequests.isEmpty()) {
+            return;
+        }
+
+        if (!NodeGroupUtils.isNodeGroupAvailable(getHost(), this.cachedGroupState)) {
+            // Optimization: if the node group is not ready do not evaluate each
+            // request. We check for availability in the selectAndForward method as well.
             return;
         }
 
@@ -502,18 +503,19 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
             return;
         }
 
-        if (!getHost().isPeerSynchronizationEnabled()
-                || !this.isSynchronizationRequired) {
-            return;
-        }
-
         if (!NodeGroupUtils.isMembershipSettled(getHost(), getHost().getMaintenanceIntervalMicros(),
                 this.cachedGroupState)) {
+            checkConvergence();
             return;
         }
 
         if (!this.isNodeGroupConverged) {
             checkConvergence();
+            return;
+        }
+
+        if (!getHost().isPeerSynchronizationEnabled()
+                || !this.isSynchronizationRequired) {
             return;
         }
 
@@ -549,7 +551,7 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
                                     return;
                                 }
 
-                                if (!NodeGroupUtils.hasSynchronizationQuorum(getHost(),
+                                if (!NodeGroupUtils.hasMembershipQuorum(getHost(),
                                         this.cachedGroupState)) {
                                     if (this.synchQuorumWarningCount < quorumWarningsBeforeQuiet) {
                                         logWarning("Synchronization quorum not met");

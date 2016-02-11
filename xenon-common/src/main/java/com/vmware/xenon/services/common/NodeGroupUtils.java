@@ -29,6 +29,17 @@ public class NodeGroupUtils {
 
     public static void checkConvergence(ServiceHost host, NodeGroupState ngs, Operation parentOp) {
 
+        NodeState self = ngs.nodes.get(host.getId());
+        if (self == null) {
+            parentOp.fail(new IllegalStateException("Self node is required"));
+            return;
+        }
+
+        if (self.membershipQuorum == 1 && ngs.nodes.size() == 1) {
+            parentOp.complete();
+            return;
+        }
+
         JoinedCompletionHandler joinedCompletion = (ops, failures) -> {
             if (failures != null) {
                 parentOp.fail(new IllegalStateException("At least one peer failed convergence"));
@@ -69,11 +80,24 @@ public class NodeGroupUtils {
         OperationJoin.create(ops).setCompletion(joinedCompletion).sendWith(host);
     }
 
+    /**
+     * Given a node group state, looks at the time the node group state changed. If
+     * the group was updated within a certain number of maintenance interval, we
+     * consider it unstable. The interval count can be set through a PATCH to
+     * core/node-groups/<group>/config.
+     *
+     * See {@code NodeGroupConfig}
+     */
     public static boolean isMembershipSettled(ServiceHost host, long maintIntervalMicros,
             NodeGroupState localState) {
         NodeState selfNode = localState.nodes.get(host.getId());
         if (selfNode == null) {
             return false;
+        }
+
+        if (localState.nodes.size() == 1 && selfNode.membershipQuorum == 1) {
+            // single, stand-alone node, skip update time check
+            return true;
         }
 
         long threshold = localState.membershipUpdateTimeMicros
@@ -86,25 +110,54 @@ public class NodeGroupUtils {
         return true;
     }
 
-    public static boolean hasSynchronizationQuorum(ServiceHost host, NodeGroupState ngs) {
+    /**
+     * Given a node group state, and the value of NodeState.membershipQuorum for the
+     * local host, it determines if enough nodes are available for the group as a whole,
+     * to be considered available
+     */
+    public static boolean hasMembershipQuorum(ServiceHost host, NodeGroupState ngs) {
         NodeState selfNode = ngs.nodes.get(host.getId());
         if (selfNode == null) {
             return false;
         }
 
         int availableNodeCount = 0;
-        for (NodeState ns : ngs.nodes.values()) {
-            if (!NodeState.isAvailable(ns, selfNode.id, false)) {
-                continue;
+        if (ngs.nodes.size() == 1) {
+            availableNodeCount = 1;
+        } else {
+            for (NodeState ns : ngs.nodes.values()) {
+                if (!NodeState.isAvailable(ns, selfNode.id, false)) {
+                    continue;
+                }
+                availableNodeCount++;
             }
-            availableNodeCount++;
         }
 
-        if (availableNodeCount < Math.max(selfNode.synchQuorum, selfNode.membershipQuorum)) {
+        if (availableNodeCount < selfNode.membershipQuorum) {
             return false;
         }
         return true;
+    }
 
+    /**
+     * Evaluates current node group state and returns true if requests should be process,
+     * forwarded, etc
+     * The conditions are:
+     *
+     * 1) The node group membership should have been stable (gossip did not produce
+     * changes) for a specific period
+     *
+     * 2) The number of node group members in available stage is >= membershipQuorum
+     */
+    public static boolean isNodeGroupAvailable(ServiceHost host, NodeGroupState localState) {
+        // we invoke the isMembershipSettled first because it has low overhead, does not walk all
+        // nodes in the group
+        if (NodeGroupUtils.isMembershipSettled(host, host
+                .getMaintenanceIntervalMicros(), localState)
+                && NodeGroupUtils.hasMembershipQuorum(host, localState)) {
+            return true;
+        }
+        return false;
     }
 
 }
