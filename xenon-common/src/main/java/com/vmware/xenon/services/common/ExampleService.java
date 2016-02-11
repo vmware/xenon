@@ -85,8 +85,6 @@ public class ExampleService extends StatefulService {
             return;
         }
 
-        logFine("Initial state is %s", Utils.toJsonHtml(s));
-
         startPost.complete();
     }
 
