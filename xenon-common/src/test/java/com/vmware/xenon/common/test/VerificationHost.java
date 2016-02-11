@@ -1536,6 +1536,12 @@ public class VerificationHost extends ExampleServiceHost {
 
     public void setUpLocalPeersHosts(int localHostCount, Long maintIntervalMillis)
             throws Throwable {
+        // set default quorum system property, so node group services in each host
+        // use the same value
+        int quorum = (localHostCount / 2) + 1;
+        System.setProperty(NodeState.PROPERTY_NAME_MEMBERSHIP_QUORUM,
+                Integer.toString(quorum));
+
         testStart(localHostCount);
         if (maintIntervalMillis == null) {
             maintIntervalMillis = this.maintenanceIntervalMillis;
@@ -1810,7 +1816,7 @@ public class VerificationHost extends ExampleServiceHost {
     }
 
     public void joinNodeGroup(URI newNodeGroupService,
-            URI nodeGroup, Integer synchQuorum) {
+            URI nodeGroup, Integer quorum) {
         if (nodeGroup.equals(newNodeGroupService)) {
             return;
         }
@@ -1818,7 +1824,7 @@ public class VerificationHost extends ExampleServiceHost {
         // to become member of a group of nodes, you send a POST to self
         // (the local node group service) with the URI of the remote node
         // group you wish to join
-        JoinPeerRequest joinBody = JoinPeerRequest.create(nodeGroup, synchQuorum);
+        JoinPeerRequest joinBody = JoinPeerRequest.create(nodeGroup, quorum);
 
         log("Joining %s through %s", newNodeGroupService, nodeGroup);
         // send the request to the node group instance we have picked as the
@@ -1826,7 +1832,9 @@ public class VerificationHost extends ExampleServiceHost {
         send(Operation.createPost(newNodeGroupService)
                 .setBody(joinBody)
                 .setCompletion(getCompletion()));
-
+        if (quorum != null) {
+            System.setProperty(NodeState.PROPERTY_NAME_MEMBERSHIP_QUORUM, quorum.toString());
+        }
     }
 
     public void joinNodeGroup(URI newNodeGroupService, URI nodeGroup) {
@@ -2093,6 +2101,7 @@ public class VerificationHost extends ExampleServiceHost {
 
         int healthyNodes = 0;
         NodeState localNode = null;
+        Set<Integer> quorums = new HashSet<>();
         for (NodeState ns : r.nodes.values()) {
             if (ns.status == NodeStatus.AVAILABLE) {
                 healthyNodes++;
@@ -2108,6 +2117,8 @@ public class VerificationHost extends ExampleServiceHost {
                 expectedOptions = NodeState.DEFAULT_OPTIONS;
             }
 
+            quorums.add(ns.membershipQuorum);
+
             for (NodeOption eo : expectedOptions) {
                 assertTrue(ns.options.contains(eo));
             }
@@ -2115,6 +2126,15 @@ public class VerificationHost extends ExampleServiceHost {
             assertTrue(ns.id != null);
             assertTrue(ns.groupReference != null);
             assertTrue(ns.documentSelfLink.startsWith(ns.groupReference.getPath()));
+        }
+
+        if (quorums.size() != 1) {
+            throw new IllegalStateException("Multiple quorums found: " + quorums);
+        }
+
+        int expectedQuorum = Integer.getInteger(NodeState.PROPERTY_NAME_MEMBERSHIP_QUORUM);
+        for (int q : quorums) {
+            assertTrue(expectedQuorum == q);
         }
 
         assertTrue(healthyNodes >= expectedNodesPerGroup);
@@ -2160,13 +2180,14 @@ public class VerificationHost extends ExampleServiceHost {
         testWait();
     }
 
-    public void setNodeGroupQuorum(Integer quorum, Integer synchQuorum)
+    public void setNodeGroupQuorum(Integer quorum)
             throws Throwable {
+        System.setProperty(NodeState.PROPERTY_NAME_MEMBERSHIP_QUORUM, quorum.toString());
         // we can issue the update to any one node and it will update
         // everyone in the group
 
         for (URI nodeGroup : getNodeGroupMap().values()) {
-            setNodeGroupQuorum(quorum, synchQuorum, nodeGroup);
+            setNodeGroupQuorum(quorum, nodeGroup);
         }
 
         Date exp = getTestExpiration();
@@ -2190,16 +2211,13 @@ public class VerificationHost extends ExampleServiceHost {
     }
 
 
-    private void setNodeGroupQuorum(Integer quorum, Integer syncQuorum, URI nodeGroup)
+    private void setNodeGroupQuorum(Integer quorum, URI nodeGroup)
             throws Throwable {
         testStart(1);
         UpdateQuorumRequest body = UpdateQuorumRequest.create(true);
 
         if (quorum != null) {
             body.setMembershipQuorum(quorum);
-        }
-        if (syncQuorum != null) {
-            body.setSynchQuorum(syncQuorum);
         }
 
         send(Operation.createPatch(nodeGroup)

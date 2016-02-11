@@ -175,6 +175,9 @@ public class TestNodeGroupService {
         if (currentState.stringField == null) {
             return false;
         }
+        if (currentState.stringField.equals(initialState.documentSelfLink)) {
+            return true;
+        }
         return currentState.stringField.equals(initialState.stringField);
     };
 
@@ -560,14 +563,15 @@ public class TestNodeGroupService {
             peerNodeGroupUris.add(mainHostNodeGroupUri);
             this.host.waitForNodeGroupConvergence(peerNodeGroupUris, this.nodeCount,
                     this.nodeCount, true);
-            // verify synchronization quorum is total number of nodes
+            // verify quorum is (node count / 2) + 1
             NodeGroupState ngs = this.host.getServiceState(null, NodeGroupState.class,
                     mainHostNodeGroupUri);
+            int expectedQuorum = (ngs.nodes.size() / 2) + 1;
             for (NodeState ns : ngs.nodes.values()) {
                 if (!ns.id.equals(mainHostId)) {
                     continue;
                 }
-                assertEquals(ns.synchQuorum, ngs.nodes.size());
+                assertEquals(expectedQuorum, ns.membershipQuorum);
             }
 
             this.host.scheduleSynchronizationIfAutoSyncDisabled();
@@ -706,7 +710,7 @@ public class TestNodeGroupService {
                     version);
 
             int quorum = (totalNodeCount / 2) + 1;
-            setAndVerifyNodeGroupQuorum(quorum, totalNodeCount);
+            setAndVerifyNodeGroupQuorum(quorum);
 
         } finally {
             this.host.log("test finished");
@@ -717,18 +721,15 @@ public class TestNodeGroupService {
         }
     }
 
-    private void setAndVerifyNodeGroupQuorum(Integer quorum, Integer syncQuorum) throws Throwable {
+    private void setAndVerifyNodeGroupQuorum(Integer quorum) throws Throwable {
         NodeGroupState ngs;
-        this.host.setNodeGroupQuorum(quorum, syncQuorum);
+        this.host.setNodeGroupQuorum(quorum);
 
         URI nodeGroupUri = this.host.getPeerServiceUri(ServiceUriPaths.DEFAULT_NODE_GROUP);
         ngs = this.host.getServiceState(null, NodeGroupState.class, nodeGroupUri);
         for (NodeState s : ngs.nodes.values()) {
             if (quorum != null) {
                 assertTrue(Integer.compare(quorum, s.membershipQuorum) == 0);
-            }
-            if (syncQuorum != null) {
-                assertTrue(Integer.compare(syncQuorum, s.synchQuorum) == 0);
             }
         }
     }
@@ -789,11 +790,8 @@ public class TestNodeGroupService {
     }
 
     @Test
-    public void enforceQuorumWithNodeConcurrentStop()
+    public void enforceHighQuorumWithNodeConcurrentStop()
             throws Throwable {
-        this.postCreationServiceOptions.add(ServiceOption.ENFORCE_QUORUM);
-
-        long opTimeoutMicros = TimeUnit.SECONDS.toMicros(2);
         int hostRestartCount = 2;
 
         Map<String, ExampleServiceState> childStates = doExampleFactoryPostReplicationTest(
@@ -801,12 +799,8 @@ public class TestNodeGroupService {
 
         updateExampleServiceOptions(childStates);
 
-        setOperationTimeoutMicros(opTimeoutMicros);
-
         this.host.setNodeGroupConfig(this.nodeGroupConfig);
-        if (this.postCreationServiceOptions.contains(ServiceOption.ENFORCE_QUORUM)) {
-            this.host.setNodeGroupQuorum((this.nodeCount + 1) / 2, null);
-        }
+        this.host.setNodeGroupQuorum((this.nodeCount + 1) / 2);
 
         // do some replication with strong quorum enabled
         childStates = doStateUpdateReplicationTest(Action.PATCH, this.serviceCount,
@@ -818,6 +812,12 @@ public class TestNodeGroupService {
 
         // expect failure, since we will stop some hosts, break quorum
         this.expectFailure = true;
+        
+        // when quorum is not met the runtime will just queue requests until expiration, so
+        // we set expiration to something quick. Some requests will make it past queuing
+        // and will fail because replication quorum is not met
+        long opTimeoutMicros = TimeUnit.MILLISECONDS.toMicros(500);
+        setOperationTimeoutMicros(opTimeoutMicros);
 
         int i = 0;
         for (URI h : this.host.getInProcessHostMap().keySet()) {
@@ -1109,7 +1109,7 @@ public class TestNodeGroupService {
                             r.documents.get(instanceUri.getPath()),
                             ReplicationTestServiceState.class);
                     if (newState.documentVersion == 0) {
-                        this.host.log("version mismatch, expected %d, got %d, from %s", 1,
+                        this.host.log("version mismatch, expected %d, got %d, from %s", 0,
                                 newState.documentVersion, instanceUri);
                         isConverged = false;
                         break;
@@ -1381,6 +1381,7 @@ public class TestNodeGroupService {
 
     @Test
     public void factorySynchronization() throws Throwable {
+
         setUp(this.nodeCount);
         this.host.joinNodesAndVerifyConvergence(this.nodeCount);
 
@@ -1865,7 +1866,6 @@ public class TestNodeGroupService {
     private void doSynchNodeStartStopStart() throws Throwable {
 
         int additionalHostCount = Math.min(this.nodeCount, 2);
-        this.serviceCount = Math.max((this.nodeCount + additionalHostCount) * 3, this.serviceCount);
 
         setUp(this.nodeCount);
         this.host.joinNodesAndVerifyConvergence(this.host.getPeerCount());
@@ -1902,8 +1902,6 @@ public class TestNodeGroupService {
 
         verifyOperationJoinAcrossPeers(childStates);
 
-        updateEpoch(childStates, 1L);
-
         Collection<VerificationHost> originalHosts = new ArrayList<>(this.host
                 .getInProcessHostMap().values());
         URI existingHostNodeGroup = this.host.getPeerNodeGroupUri();
@@ -1933,6 +1931,9 @@ public class TestNodeGroupService {
         }
 
         this.host.testWait();
+        
+        int quorum =  this.host.getPeerCount();
+        this.host.setNodeGroupQuorum(quorum);
 
         this.host.waitForNodeGroupConvergence(this.host.getNodeGroupMap().size());
 
@@ -1941,6 +1942,7 @@ public class TestNodeGroupService {
         waitForReplicatedFactoryChildServiceConvergence(childStatesPerLink,
                 this.replicationServiceStatePostUpdateConvergenceChecker,
                 this.serviceCount, 0);
+
 
         childStatesPerLink = doStateUpdateReplicationTest(Action.PATCH, this.serviceCount,
                 this.updateCount,
@@ -1972,9 +1974,12 @@ public class TestNodeGroupService {
         this.nodeGroupConfig.nodeRemovalDelayMicros = TimeUnit.SECONDS.toMicros(1);
         this.host.setNodeGroupConfig(this.nodeGroupConfig);
 
+        VerificationHost newHost = (VerificationHost) newHosts.iterator().next();
         stopHostsAndVerifyQueuing(originalHosts,
-                (VerificationHost) newHosts.iterator().next(), childStates.keySet());
+                newHost, childStates.keySet());
 
+        this.host.setNodeGroupQuorum(newHosts.size());
+        
         // verify nodes expire and removed entirely from the group state
         this.host.waitForNodeGroupConvergence(this.host.getNodeGroupMap().size(), this.host
                 .getNodeGroupMap().size());
@@ -1998,10 +2003,7 @@ public class TestNodeGroupService {
         this.host.log("Starting another set of new nodes");
         existingHostNodeGroup = this.host.getPeerNodeGroupUri();
 
-        // we must start an equal amount of new nodes to the ones we stopped. The new nodes we added
-        // expect a synch quorum of nodeCount+additionalHostCount. If we start anything less, synchronization
-        // will never kick in, since sync quorum is not satisfied
-
+        // start an equal amount of new nodes to the ones we stopped.
         newHosts.clear();
         this.host.testStart(this.nodeCount);
         for (int i = 0; i < this.nodeCount; i++) {
@@ -2015,15 +2017,18 @@ public class TestNodeGroupService {
         }
         this.host.testWait();
 
-        int synchQuorum = this.host.getPeerCount();
+        quorum = this.host.getPeerCount();
         this.host.testStart(newHosts.size());
         for (ServiceHost h : newHosts) {
             setUpPeerHostWithAdditionalServices((VerificationHost) h);
             newOwnerIds.add(h.getId());
             URI newNodeGroup = UriUtils.buildUri(h, ServiceUriPaths.DEFAULT_NODE_GROUP);
-            this.host.joinNodeGroup(newNodeGroup, existingHostNodeGroup, synchQuorum);
+            this.host.joinNodeGroup(newNodeGroup, existingHostNodeGroup, quorum);
         }
         this.host.testWait();
+        
+        this.host.setNodeGroupQuorum(quorum);
+        
         this.host.waitForNodeGroupConvergence(this.host.getNodeGroupMap().size());
 
         if (!this.isPeerSynchronizationEnabled) {
@@ -2282,45 +2287,6 @@ public class TestNodeGroupService {
                             }
                             this.host.completeIteration();
                         }).sendWith(this.host.getPeerHost());
-        this.host.testWait();
-    }
-
-    private void updateEpoch(Map<URI, ReplicationTestServiceState> childStates, long newEpoch)
-            throws Throwable {
-        this.host.testStart(childStates.size());
-        for (URI childUri : childStates.keySet()) {
-            URI childServiceConfigUri = UriUtils.buildConfigUri(childUri);
-            // increment epoch to 1, otherwise node synchronization will skip epoch update if all services
-            // on all peers, have zero or null documentEpoch
-            ServiceConfigUpdateRequest body = ServiceConfigUpdateRequest.create();
-            body.epoch = newEpoch;
-            URI broadcastUri = UriUtils.buildBroadcastRequestUri(childServiceConfigUri,
-                    ServiceUriPaths.DEFAULT_NODE_SELECTOR);
-            Operation epochUpdate = Operation
-                    .createPatch(broadcastUri)
-                    .setBody(body)
-                    .setCompletion(this.host.getCompletion());
-            this.host.send(epochUpdate);
-        }
-        this.host.testWait();
-        this.host.log("Sending PUT to force epoch indexing");
-        // Epoch updates do not cause re-indexing. So if we try add new nodes, they will broadcast GETs to the index
-        // and not see the new epoch.
-        // They normally happen as part of sync, which follows through with state update
-        // so here we do an additional update to persist the epoch in the index as part of the new state version
-        this.host.testStart(childStates.size());
-        for (Entry<URI, ReplicationTestServiceState> e : childStates.entrySet()) {
-            ReplicationTestServiceState body = e.getValue();
-            body.stringField = UUID.randomUUID().toString();
-            // increment epoch to 1, otherwise node synchronization will skip epoch update if all services
-            // on all peers, have zero or null documentEpoch
-            Operation put = Operation
-                    .createPut(e.getKey())
-                    .setBody(body)
-                    .setCompletion(this.host.getCompletion());
-            this.host.send(put);
-        }
-
         this.host.testWait();
     }
 
@@ -2988,8 +2954,6 @@ public class TestNodeGroupService {
 
         public StopVerificationTestService() {
             super(MinimalTestServiceState.class);
-            super.toggleOption(ServiceOption.REPLICATION, true);
-            super.toggleOption(ServiceOption.OWNER_SELECTION, true);
         }
 
         @Override
@@ -3003,6 +2967,7 @@ public class TestNodeGroupService {
                     // send patch to self, so the select owner logic gets invoked and in theory
                     // queues or cancels the request
                     Operation op = Operation.createPatch(this, uri.getPath()).setBody(body)
+                            .setTargetReplicated(true)
                             .setCompletion((o, e) -> {
                                 if (e != null) {
                                     this.outboundRequestFailureCompletion.incrementAndGet();
