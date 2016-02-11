@@ -875,12 +875,6 @@ public class StatefulService implements Service {
             }
         });
 
-        if (!hasOption(ServiceOption.ENFORCE_QUORUM)) {
-            // Every proposal is a commit, in eventual consistency mode
-            op.addRequestHeader(Operation.REPLICATION_PHASE_HEADER,
-                    Operation.REPLICATION_PHASE_COMMIT);
-        }
-
         getHost().replicateRequest(this.context.options, op.getLinkedState(),
                 getPeerNodeSelectorPath(), getSelfLink(), op);
         return true;
@@ -938,10 +932,8 @@ public class StatefulService implements Service {
             return;
         }
 
-        if (!hasOption(ServiceOption.ENFORCE_QUORUM)
-                && !hasOption(ServiceOption.DOCUMENT_OWNER)) {
-            // Explicit commit messages are only meaningful if quorum is enforced: they
-            // advertise that quorum worth of nodes accepted the proposal request
+        if (!hasOption(ServiceOption.DOCUMENT_OWNER)) {
+            // Explicit commit messages are only sent from this instance on the owner node
             return;
         }
 
@@ -1182,7 +1174,7 @@ public class StatefulService implements Service {
         });
 
         clonedRequest.setRetryCount(0);
-        getHost().selectServiceOwnerAndSynchState(this, clonedRequest, true);
+        getHost().selectServiceOwnerAndSynchState(this, clonedRequest);
     }
 
     private void handleSynchronizeWithPeersCompletion(Operation request, Throwable failure,
@@ -1362,21 +1354,12 @@ public class StatefulService implements Service {
         }
 
         if (option != ServiceOption.HTML_USER_INTERFACE
-                && option != ServiceOption.ENFORCE_QUORUM
                 && option != ServiceOption.DOCUMENT_OWNER
                 && option != ServiceOption.PERIODIC_MAINTENANCE
                 && option != ServiceOption.INSTRUMENTATION) {
 
             if (getProcessingStage() != Service.ProcessingStage.CREATED) {
                 throw new IllegalStateException("Service already started");
-            }
-        }
-
-        if (option == ServiceOption.ENFORCE_QUORUM
-                && !this.context.options.contains(ServiceOption.OWNER_SELECTION)) {
-            if (getProcessingStage() != Service.ProcessingStage.CREATED) {
-                throw new IllegalStateException(
-                        "Service already started and OWNER_SELECTION is not set");
             }
         }
 

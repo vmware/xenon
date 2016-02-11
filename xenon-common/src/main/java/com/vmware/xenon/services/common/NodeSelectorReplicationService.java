@@ -56,7 +56,7 @@ public class NodeSelectorReplicationService extends StatelessService {
         NodeState localNode = localState.nodes.get(getHost().getId());
         AtomicInteger successCount = new AtomicInteger(0);
 
-        if (options.contains(ServiceOption.ENFORCE_QUORUM)
+        if (options.contains(ServiceOption.OWNER_SELECTION)
                 && localNode.membershipQuorum > memberCount) {
             outboundOp.fail(new IllegalStateException("Not enough peers: " + memberCount));
             return;
@@ -74,7 +74,7 @@ public class NodeSelectorReplicationService extends StatelessService {
         int successThreshold = Math.min(2, memberCount - 1);
         int failureThreshold = memberCount;
 
-        if (options.contains(ServiceOption.ENFORCE_QUORUM)) {
+        if (options.contains(ServiceOption.OWNER_SELECTION)) {
             failureThreshold = memberCount - localNode.membershipQuorum;
             successThreshold = Math.max(2, localNode.membershipQuorum);
         }

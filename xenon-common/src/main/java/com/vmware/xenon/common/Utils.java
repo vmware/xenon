@@ -500,12 +500,8 @@ public class Utils {
         EnumSet<ServiceOption> antiReqs = null;
         switch (option) {
         case CONCURRENT_UPDATE_HANDLING:
-            antiReqs = EnumSet.of(ServiceOption.ENFORCE_QUORUM, ServiceOption.OWNER_SELECTION,
+            antiReqs = EnumSet.of(ServiceOption.OWNER_SELECTION,
                     ServiceOption.STRICT_UPDATE_CHECKING);
-            break;
-        case ENFORCE_QUORUM:
-            reqs = EnumSet.of(ServiceOption.REPLICATION, ServiceOption.OWNER_SELECTION);
-            antiReqs = EnumSet.of(ServiceOption.CONCURRENT_UPDATE_HANDLING);
             break;
         case OWNER_SELECTION:
             reqs = EnumSet.of(ServiceOption.REPLICATION);

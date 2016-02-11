@@ -75,15 +75,10 @@ public class NodeState extends ServiceDocument {
     public String id;
 
     /**
-     * Minimum number of available nodes required to accept a proposal for replicated updates to
-     * succeed
+     * Minimum number of available nodes required for consensus operations
+     * and synchronization
      */
     public int membershipQuorum = 1;
-
-    /**
-     * Minimum number of healthy nodes, including self, before synchronization with other nodes starts
-     */
-    public int synchQuorum = 1;
 
     public static boolean isUnAvailable(NodeState ns) {
         return ns.status == NodeStatus.UNAVAILABLE || ns.status == NodeStatus.REPLACED

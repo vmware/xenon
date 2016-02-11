@@ -2009,10 +2009,7 @@ public class ServiceHost {
                             hasInitialState);
                 });
 
-                // We never synchronize state with peers, on service start. Synchronization occurs
-                // due to a node group change event, through handleMaintenance on factories
-                boolean synchronizeState = false;
-                selectServiceOwnerAndSynchState(s, post, synchronizeState);
+                selectServiceOwnerAndSynchState(s, post);
                 break;
             case EXECUTING_START_HANDLER:
                 Long version = null;
@@ -2197,29 +2194,18 @@ public class ServiceHost {
         sendRequest(synchPut);
     }
 
-    void selectServiceOwnerAndSynchState(Service s, Operation op, boolean synchronizeState) {
+    void selectServiceOwnerAndSynchState(Service s, Operation op) {
         Operation selectOwnerOp = Operation.createPost(null)
                 .setExpiration(op.getExpirationMicrosUtc())
                 .setCompletion((o, e) -> {
                     if (e != null) {
                         log(Level.WARNING, "Failure partitioning %s: %s", op.getUri(),
                                 e.toString());
-                        if (s.hasOption(ServiceOption.ENFORCE_QUORUM)) {
-                            op.fail(e);
-                            return;
-                        }
-                        // proceed with starting service anyway
-                        s.toggleOption(ServiceOption.DOCUMENT_OWNER, true);
-                        op.complete();
+                        op.fail(e);
                         return;
                     }
 
                     SelectOwnerResponse rsp = o.getBody(SelectOwnerResponse.class);
-                    if (!synchronizeState) {
-                        s.toggleOption(ServiceOption.DOCUMENT_OWNER, rsp.isLocalHostOwner);
-                        op.complete();
-                        return;
-                    }
                     synchronizeWithPeers(s, op, rsp);
                 });
 

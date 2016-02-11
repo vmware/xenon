@@ -145,7 +145,12 @@ public abstract class FactoryService extends StatelessService {
             setAvailable(true);
             return;
         }
-        startOrSynchronizeChildServices(clonedOp);
+        if (!this.childOptions.contains(ServiceOption.REPLICATION)) {
+            startOrSynchronizeChildServices(clonedOp);
+            return;
+        }
+        // when the node group becomes available, the maintenance handler will initiate
+        // service start and synchronization
     }
 
     private void startOrSynchronizeChildServices(Operation op) {
@@ -721,12 +726,6 @@ public abstract class FactoryService extends StatelessService {
             clonedInitState.documentSelfLink = originalLink;
             op.linkState(null).setBodyNoCloning(clonedInitState).complete();
         });
-
-        if (!hasOption(ServiceOption.ENFORCE_QUORUM)) {
-            // Every proposal is a commit, in eventual consistency mode
-            op.addRequestHeader(Operation.REPLICATION_PHASE_HEADER,
-                    Operation.REPLICATION_PHASE_COMMIT);
-        }
 
         // if limited replication is used for this service, supply a selection key, the fully qualified service link
         // so the same set of nodes get selected for the POST to create the service, as the nodes chosen
