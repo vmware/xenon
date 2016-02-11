@@ -80,6 +80,11 @@ public class NodeSelectorSynchronizationService extends StatelessService {
     }
 
     @Override
+    public void authorizeRequest(Operation op) {
+        op.complete();
+    }
+
+    @Override
     public void handleRequest(Operation post) {
         if (post.getAction() != Action.POST) {
             post.fail(new IllegalArgumentException("Action not supported"));
@@ -265,7 +270,10 @@ public class NodeSelectorSynchronizationService extends StatelessService {
 
         // we increment epoch only when we assume the role of owner
         if (!request.wasOwner && request.isOwner) {
-            incrementEpoch = true;
+            if (bestPeerRsp.documentVersion > 0) {
+                // only increment epoch if this is not a document being created, on this host
+                incrementEpoch = true;
+            }
         }
 
         broadcastBestState(rsp.selectedNodes, peerStates, post, request, bestPeerRsp,
@@ -319,6 +327,8 @@ public class NodeSelectorSynchronizationService extends StatelessService {
                             isMissingFromOwner = true;
                             continue;
                         }
+                    } else {
+                        continue;
                     }
                 } else {
                     // the peer has this service. Added to a sorted map so we can select the one
