@@ -17,8 +17,12 @@ import java.net.URI;
 import java.util.EnumSet;
 
 import com.vmware.xenon.common.ServiceDocument;
+import com.vmware.xenon.common.Utils;
 
 public class NodeState extends ServiceDocument {
+    public static final String PROPERTY_NAME_MEMBERSHIP_QUORUM = Utils.PROPERTY_NAME_PREFIX
+            + "NodeState.membershipQuorum";
+
     public enum NodeStatus {
         /**
          * Node status is unknown
@@ -75,15 +79,10 @@ public class NodeState extends ServiceDocument {
     public String id;
 
     /**
-     * Minimum number of available nodes required to accept a proposal for replicated updates to
-     * succeed
+     * Minimum number of available nodes required for consensus operations
+     * and synchronization
      */
-    public int membershipQuorum = 1;
-
-    /**
-     * Minimum number of healthy nodes, including self, before synchronization with other nodes starts
-     */
-    public int synchQuorum = 1;
+    public int membershipQuorum;
 
     public static boolean isUnAvailable(NodeState ns) {
         return ns.status == NodeStatus.UNAVAILABLE || ns.status == NodeStatus.REPLACED

@@ -1417,13 +1417,8 @@ public class ServiceHost {
         try {
             for (URI peerNodeBaseUri : peers) {
                 URI localNodeGroupUri = UriUtils.buildUri(this, nodeGroupUriPath);
-                // when nodes join through command line argument require all nodes to
-                // become available before the node group is considered stable. We add
-                // 1 to the total since peer list does not include self
-                int syncQuorum = peers.size() + 1;
-                JoinPeerRequest joinBody = JoinPeerRequest
-                        .create(UriUtils.extendUri(peerNodeBaseUri,
-                                nodeGroupUriPath), syncQuorum);
+                JoinPeerRequest joinBody = JoinPeerRequest.create(
+                        UriUtils.extendUri(peerNodeBaseUri, nodeGroupUriPath), null);
                 boolean doRetry = true;
                 sendJoinPeerRequest(joinBody, localNodeGroupUri, doRetry);
             }
@@ -2009,10 +2004,8 @@ public class ServiceHost {
                             hasInitialState);
                 });
 
-                // We never synchronize state with peers, on service start. Synchronization occurs
-                // due to a node group change event, through handleMaintenance on factories
-                boolean synchronizeState = false;
-                selectServiceOwnerAndSynchState(s, post, synchronizeState);
+                boolean doSynch = false;
+                selectServiceOwnerAndSynchState(s, post, doSynch);
                 break;
             case EXECUTING_START_HANDLER:
                 Long version = null;
@@ -2197,31 +2190,42 @@ public class ServiceHost {
         sendRequest(synchPut);
     }
 
-    void selectServiceOwnerAndSynchState(Service s, Operation op, boolean synchronizeState) {
+    void selectServiceOwnerAndSynchState(Service s, Operation op, boolean doSynch) {
+        CompletionHandler c = (o, e) -> {
+            if (e != null) {
+                log(Level.WARNING, "Failure partitioning %s: %s", op.getUri(),
+                        e.toString());
+                op.fail(e);
+                return;
+            }
+
+            SelectOwnerResponse rsp = o.getBody(SelectOwnerResponse.class);
+            if (op.isFromReplication()) {
+                if (StatefulService.isCommitRequest(op)) {
+                    s.toggleOption(ServiceOption.DOCUMENT_OWNER, rsp.isLocalHostOwner);
+                }
+                op.complete();
+                return;
+            }
+
+            if (!doSynch) {
+                s.toggleOption(ServiceOption.DOCUMENT_OWNER, rsp.isLocalHostOwner);
+                op.complete();
+                return;
+            }
+
+            if (rsp.isLocalHostOwner || StatefulService.isSynchronizeRequest(op)) {
+                synchronizeWithPeers(s, op, rsp);
+                return;
+            }
+
+            // we are not owner, and yet we received a request from a client directly, fail it
+            failRequestOwnerMismatch(op, getId(), null);
+        };
+
         Operation selectOwnerOp = Operation.createPost(null)
                 .setExpiration(op.getExpirationMicrosUtc())
-                .setCompletion((o, e) -> {
-                    if (e != null) {
-                        log(Level.WARNING, "Failure partitioning %s: %s", op.getUri(),
-                                e.toString());
-                        if (s.hasOption(ServiceOption.ENFORCE_QUORUM)) {
-                            op.fail(e);
-                            return;
-                        }
-                        // proceed with starting service anyway
-                        s.toggleOption(ServiceOption.DOCUMENT_OWNER, true);
-                        op.complete();
-                        return;
-                    }
-
-                    SelectOwnerResponse rsp = o.getBody(SelectOwnerResponse.class);
-                    if (!synchronizeState) {
-                        s.toggleOption(ServiceOption.DOCUMENT_OWNER, rsp.isLocalHostOwner);
-                        op.complete();
-                        return;
-                    }
-                    synchronizeWithPeers(s, op, rsp);
-                });
+                .setCompletion(c);
 
         selectOwner(s.getPeerNodeSelectorPath(), s.getSelfLink(), selectOwnerOp);
     }
@@ -2499,8 +2503,9 @@ public class ServiceHost {
 
         if (!checkServiceExistsOrDeleted(stateFromStore, serviceStartPost)) {
             serviceStartPost.setStatusCode(Operation.STATUS_CODE_CONFLICT).fail(
-                    new IllegalStateException("Service already exists: "
-                    + Utils.toJson(stateFromStore)));
+                    new IllegalStateException("Service already exists or previously deleted: "
+                            + stateFromStore.documentSelfLink + ":"
+                            + stateFromStore.documentUpdateAction));
             return;
         }
 
@@ -3270,6 +3275,12 @@ public class ServiceHost {
 
         if (this.state.operationTracingLinkExclusionList.contains(op.getUri().getPath())) {
             return;
+        }
+
+        for (String excludedPath : this.state.operationTracingLinkExclusionList) {
+            if (op.getUri().getPath().startsWith(excludedPath)) {
+                return;
+            }
         }
 
         Operation.SerializedOperation tracingOp = Operation.SerializedOperation.create(op);
@@ -4094,15 +4105,11 @@ public class ServiceHost {
 
                 log(Level.FINE, "Node group change maintenance done for group %s, service %s",
                         nodeSelectorPath, s.getSelfLink());
-                s.adjustStat(Service.STAT_NAME_NODE_GROUP_CHANGE_PENDING_MAINTENANCE_COUNT, -1);
-
             });
 
             ServiceMaintenanceRequest body = ServiceMaintenanceRequest.create();
             body.reasons.add(MaintenanceReason.NODE_GROUP_CHANGE);
             maintOp.setBodyNoCloning(body);
-
-            s.adjustStat(Service.STAT_NAME_NODE_GROUP_CHANGE_PENDING_MAINTENANCE_COUNT, 1);
 
             // allow overlapping node group change maintenance requests
             this.run(() -> {
@@ -4344,12 +4351,8 @@ public class ServiceHost {
 
         // create a POST to the factory and request it to start the service.
         Operation onDemandPost = Operation.createPost(inboundOp.getUri());
-        onDemandPost.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_INDEX_CHECK)
-                .setReferer(inboundOp.getReferer())
-                .setExpiration(inboundOp.getExpirationMicrosUtc())
-                .setReplicationDisabled(true);
 
-        onDemandPost.setCompletion((o, e) -> {
+        CompletionHandler c = (o, e) -> {
             if (e != null) {
                 inboundOp.fail(e);
                 return;
@@ -4357,7 +4360,13 @@ public class ServiceHost {
 
             // proceed with handling original client request, service now started
             handleRequest(null, inboundOp);
-        });
+        };
+
+        onDemandPost.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_INDEX_CHECK)
+                .setReferer(inboundOp.getReferer())
+                .setExpiration(inboundOp.getExpirationMicrosUtc())
+                .setReplicationDisabled(true)
+                .setCompletion(c);
 
         log(Level.FINE, "On demand service start of %s", link);
 
