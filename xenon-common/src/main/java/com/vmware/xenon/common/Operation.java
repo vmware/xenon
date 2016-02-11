@@ -354,6 +354,7 @@ public class Operation implements Cloneable {
 
     public static final String PRAGMA_DIRECTIVE_FORWARDED = "xn-fwd";
     public static final String PRAGMA_DIRECTIVE_REPLICATED = "xn-rpl";
+    public static final String PRAGMA_DIRECTIVE_SYNCH = "xn-synch";
     public static final String PRAGMA_DIRECTIVE_NO_QUEUING = "xn-no-queuing";
     public static final String PRAGMA_DIRECTIVE_QUEUE_FOR_SERVICE_AVAILABILITY = "xn-queue";
     public static final String PRAGMA_DIRECTIVE_NO_FORWARDING = "xn-no-fwd";
@@ -374,7 +375,6 @@ public class Operation implements Cloneable {
     public static final String TX_COMMIT = "commit";
     public static final String TX_ABORT = "abort";
     public static final String REPLICATION_PHASE_COMMIT = "commit";
-    public static final String REPLICATION_PHASE_SYNCHRONIZE = "synchronize";
 
     public static final String MEDIA_TYPE_APPLICATION_JSON = "application/json";
     public static final String MEDIA_TYPE_APPLICATION_OCTET_STREAM = "application/octet-stream";
@@ -1355,5 +1355,14 @@ public class Operation implements Cloneable {
 
     boolean isForwardingDisabled() {
         return hasPragmaDirective(PRAGMA_DIRECTIVE_NO_FORWARDING);
+    }
+
+    boolean isCommit() {
+        String phase = getRequestHeader(Operation.REPLICATION_PHASE_HEADER);
+        return Operation.REPLICATION_PHASE_COMMIT.equals(phase);
+    }
+
+    boolean isSynchronize() {
+        return hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_SYNCH);
     }
 }

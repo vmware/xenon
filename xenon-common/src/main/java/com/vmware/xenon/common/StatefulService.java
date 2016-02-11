@@ -64,16 +64,6 @@ public class StatefulService implements Service {
         public Set<String> txCoordinatorLinks;
     }
 
-    private static boolean isCommitRequest(Operation op) {
-        String phase = op.getRequestHeader(Operation.REPLICATION_PHASE_HEADER);
-        return Operation.REPLICATION_PHASE_COMMIT.equals(phase);
-    }
-
-    private static boolean isSynchronizeRequest(Operation op) {
-        String phase = op.getRequestHeader(Operation.REPLICATION_PHASE_HEADER);
-        return Operation.REPLICATION_PHASE_SYNCHRONIZE.equals(phase);
-    }
-
     private RuntimeContext context = new RuntimeContext();
 
     /**
@@ -292,7 +282,14 @@ public class StatefulService implements Service {
                             handleStopCompletion(request);
                         }
                     });
-                    handleStop(request);
+
+                    if (hasOption(ServiceOption.OWNER_SELECTION)
+                            && !hasOption(ServiceOption.DOCUMENT_OWNER)) {
+                        // we only call handlers on the owner node
+                        request.complete();
+                    } else {
+                        handleStop(request);
+                    }
                     return;
                 }
 
@@ -435,10 +432,9 @@ public class StatefulService implements Service {
         }
 
         if (!request.isFromReplication()) {
-            if (isSynchronizeRequest(request)) {
-                request.setFromReplication(true);
-                // we want to index state on synch completion, so nest completion
-                request.nestCompletion((o, e) -> handleRequestCompletion(o, e));
+            // Direct request to synchronize with peers. We will resume processing of the request
+            // depending on the synchronization result
+            if (request.isSynchronize()) {
                 synchronizeWithPeers(request, null);
                 return true;
             }
@@ -559,7 +555,7 @@ public class StatefulService implements Service {
     private boolean resolvePossibleVersionConflict(Operation request) {
         ServiceDocument stateFromOwner = request.getLinkedState();
 
-        if (isCommitRequest(request)) {
+        if (request.isCommit()) {
             if (request.getAction() != Action.DELETE) {
                 // Update Commits are expected to have the same version as latest proposal
                 request.complete();
@@ -663,7 +659,6 @@ public class StatefulService implements Service {
         }
         get.setBodyNoCloning(d).complete();
     }
-
 
     /**
      * Performs a series of actions, based on service options, after the service code has called
@@ -813,7 +808,7 @@ public class StatefulService implements Service {
 
     private boolean handleDeleteCompletion(Operation op) {
         if (op.isFromReplication() && hasOption(ServiceOption.OWNER_SELECTION)) {
-            if (!isCommitRequest(op)) {
+            if (!op.isCommit()) {
                 return false;
             }
         }
@@ -875,12 +870,6 @@ public class StatefulService implements Service {
             }
         });
 
-        if (!hasOption(ServiceOption.ENFORCE_QUORUM)) {
-            // Every proposal is a commit, in eventual consistency mode
-            op.addRequestHeader(Operation.REPLICATION_PHASE_HEADER,
-                    Operation.REPLICATION_PHASE_COMMIT);
-        }
-
         getHost().replicateRequest(this.context.options, op.getLinkedState(),
                 getPeerNodeSelectorPath(), getSelfLink(), op);
         return true;
@@ -915,7 +904,7 @@ public class StatefulService implements Service {
 
         publish(op);
 
-        if (op.isFromReplication() && !isSynchronizeRequest(op)) {
+        if (op.isFromReplication() && !op.isSynchronize()) {
             // avoid cost of sending the request body as a response
             op.setBodyNoCloning(null);
         }
@@ -938,10 +927,8 @@ public class StatefulService implements Service {
             return;
         }
 
-        if (!hasOption(ServiceOption.ENFORCE_QUORUM)
-                && !hasOption(ServiceOption.DOCUMENT_OWNER)) {
-            // Explicit commit messages are only meaningful if quorum is enforced: they
-            // advertise that quorum worth of nodes accepted the proposal request
+        if (!hasOption(ServiceOption.DOCUMENT_OWNER)) {
+            // Explicit commit messages are only sent from this instance on the owner node
             return;
         }
 
@@ -1136,6 +1123,7 @@ public class StatefulService implements Service {
         // a replica simply sets its version to the highest version it has seen. Agreement on
         // owner and epoch is done in validation methods upstream
         this.context.version = Math.max(cachedState.documentVersion, this.context.version);
+
         cachedState.documentUpdateTimeMicros = Math.max(
                 cachedState.documentUpdateTimeMicros, time);
 
@@ -1171,6 +1159,8 @@ public class StatefulService implements Service {
 
         if (failure != null) {
             logWarning("synchronizing with peers due to %s", failure.getMessage());
+        } else {
+            logFine("synchronizing with peers e:%d v:%d", this.context.epoch, this.context.version);
         }
 
         // clone the request so we can update its body without affecting the client request
@@ -1182,7 +1172,8 @@ public class StatefulService implements Service {
         });
 
         clonedRequest.setRetryCount(0);
-        getHost().selectServiceOwnerAndSynchState(this, clonedRequest, true);
+        clonedRequest.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_SYNCH);
+        getHost().selectServiceOwnerAndSynchState(this, clonedRequest);
     }
 
     private void handleSynchronizeWithPeersCompletion(Operation request, Throwable failure,
@@ -1196,7 +1187,7 @@ public class StatefulService implements Service {
         boolean isStateUpdated = false;
 
         if (!isOwner) {
-            completeSynchronizationRequest(request, failure);
+            completeSynchronizationRequest(request, failure, false);
             return;
         }
 
@@ -1232,7 +1223,7 @@ public class StatefulService implements Service {
             request.setStatusCode(Operation.STATUS_CODE_NOT_MODIFIED);
         }
 
-        completeSynchronizationRequest(request, failure);
+        completeSynchronizationRequest(request, failure, isStateUpdated);
 
         if (wasOwner) {
             return;
@@ -1242,7 +1233,8 @@ public class StatefulService implements Service {
                 EnumSet.of(ServiceOption.DOCUMENT_OWNER), null);
     }
 
-    private void completeSynchronizationRequest(Operation request, Throwable failure) {
+    private void completeSynchronizationRequest(Operation request, Throwable failure,
+            boolean isStateUpdated) {
         if (failure != null) {
             request.setStatusCode(Operation.STATUS_CODE_CONFLICT);
             failRequest(request, new IllegalStateException(
@@ -1250,7 +1242,17 @@ public class StatefulService implements Service {
             return;
         }
 
-        // this is an explicit synchronization request
+        if (!isStateUpdated) {
+            processPending(request);
+            request.complete();
+            return;
+        }
+
+        // avoid replicating this synchronization request, on completion
+        request.setFromReplication(true);
+
+        // proceed with normal completion pipeline, including indexing
+        request.nestCompletion((o, e) -> handleRequestCompletion(o, e));
         request.complete();
     }
 
@@ -1362,21 +1364,12 @@ public class StatefulService implements Service {
         }
 
         if (option != ServiceOption.HTML_USER_INTERFACE
-                && option != ServiceOption.ENFORCE_QUORUM
                 && option != ServiceOption.DOCUMENT_OWNER
                 && option != ServiceOption.PERIODIC_MAINTENANCE
                 && option != ServiceOption.INSTRUMENTATION) {
 
             if (getProcessingStage() != Service.ProcessingStage.CREATED) {
                 throw new IllegalStateException("Service already started");
-            }
-        }
-
-        if (option == ServiceOption.ENFORCE_QUORUM
-                && !this.context.options.contains(ServiceOption.OWNER_SELECTION)) {
-            if (getProcessingStage() != Service.ProcessingStage.CREATED) {
-                throw new IllegalStateException(
-                        "Service already started and OWNER_SELECTION is not set");
             }
         }
 

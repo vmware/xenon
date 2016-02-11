@@ -141,14 +141,20 @@ public abstract class FactoryService extends StatelessService {
             logFine("Finished self query for child services");
         });
 
-        if (this.childOptions.contains(ServiceOption.ON_DEMAND_LOAD)) {
-            setAvailable(true);
+        if (!this.childOptions.contains(ServiceOption.REPLICATION)) {
+            startOrSynchronizeChildServices(clonedOp);
             return;
         }
-        startOrSynchronizeChildServices(clonedOp);
+        // when the node group becomes available, the maintenance handler will initiate
+        // service start and synchronization
     }
 
     private void startOrSynchronizeChildServices(Operation op) {
+        if (this.childOptions.contains(ServiceOption.ON_DEMAND_LOAD)) {
+            setAvailable(true);
+            op.complete();
+            return;
+        }
         // Update stat value to indicate service will be busy with synchronization / restart.
         // The runtime does not rely on GET /available so the factory is capable of
         // accepting requests while available is set to false. An external client or another
@@ -277,7 +283,7 @@ public abstract class FactoryService extends StatelessService {
     private void synchronizeChildrenInQueryPage(URI queryPage,
             QueryTask queryTask, Operation parentOp,
             ServiceDocumentQueryResult rsp) {
-
+        ServiceMaintenanceRequest smr = parentOp.getBody(ServiceMaintenanceRequest.class);
         AtomicInteger pendingStarts = new AtomicInteger(rsp.documentLinks.size());
         // track child service request in parallel, passing a single parent operation
         CompletionHandler c = (so, se) -> {
@@ -309,23 +315,23 @@ public abstract class FactoryService extends StatelessService {
             Operation post = Operation.createPost(this, link)
                     .setCompletion(c)
                     .setReferer(getUri());
-            startOrSynchChildService(link, post);
+            startOrSynchChildService(link, post, smr);
         }
     }
 
-    private void startOrSynchChildService(String link, Operation post) {
+    private void startOrSynchChildService(String link, Operation post, ServiceMaintenanceRequest smr) {
         try {
             Service child = createChildService();
-            post.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_VERSION_CHECK);
-            getHost().startOrSynchService(post, child);
+            getHost().startOrSynchService(post, child, smr.nodeGroupState);
         } catch (Throwable e1) {
+            logSevere(e1);
             post.fail(e1);
         }
         return;
     }
 
     /**
-     * Always returns false immediately, skipping authorization checks. Default factory
+     * Complete operation, skipping authorization checks. Default factory
      * implementation applies authorization on the child state during POST (child creation)
      * and during GET result processing (the runtime applies filters on query results).
      * If a service author needs to apply authorization on the factory link, it should override
@@ -448,8 +454,11 @@ public abstract class FactoryService extends StatelessService {
         initialState.documentTransactionId = o.getTransactionId();
         o.setBody(initialState);
 
-        if (this.childOptions.contains(ServiceOption.OWNER_SELECTION) && !o.isFromReplication()
+        if (this.childOptions.contains(ServiceOption.REPLICATION) && !o.isFromReplication()
                 && !o.isForwardingDisabled()) {
+            // We forward requests even if OWNER_SELECTION is not set: It has a minor perf
+            // impact and lets use reuse the synchronization algorithm to replicate the POST
+            // across peers. It also helps with convergence and eventual consistency.
             forwardRequest(o, childService);
             return;
         }
@@ -462,7 +471,6 @@ public abstract class FactoryService extends StatelessService {
             handleServiceExistsPostCompletion(o);
             return;
         }
-
         if (!o.isFromReplication() && !o.isReplicationDisabled()) {
             o.nestCompletion(startOp -> {
                 publish(o);
@@ -478,6 +486,33 @@ public abstract class FactoryService extends StatelessService {
         o.setReplicationDisabled(true);
         o.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_VERSION_CHECK);
         getHost().startService(o, childService);
+    }
+
+    private void replicateRequest(Operation op) {
+        // set the URI to be of this service, the factory since we want
+        // the POST going to the remote peer factory service, not the
+        // yet-to-be-created child service
+        op.setUri(getUri());
+
+        ServiceDocument initialState = op.getBody(this.stateType);
+        final ServiceDocument clonedInitState = Utils.clone(initialState);
+
+        // The factory services on the remote nodes must see the request body as it was before it
+        // was fixed up by this instance. Restore self link to be just the child suffix "hint", removing the
+        // factory prefix added upstream.
+        String originalLink = clonedInitState.documentSelfLink;
+        clonedInitState.documentSelfLink = clonedInitState.documentSelfLink.replace(getSelfLink(),
+                "");
+        op.nestCompletion((replicatedOp) -> {
+            clonedInitState.documentSelfLink = originalLink;
+            op.linkState(null).setBodyNoCloning(clonedInitState).complete();
+        });
+
+        // if limited replication is used for this service, supply a selection key, the fully qualified service link
+        // so the same set of nodes get selected for the POST to create the service, as the nodes chosen
+        // for subsequence updates to the child service
+        getHost().replicateRequest(this.options, clonedInitState, getPeerNodeSelectorPath(),
+                originalLink, op);
     }
 
     private void forwardRequest(Operation o, Service childService) {
@@ -521,11 +556,11 @@ public abstract class FactoryService extends StatelessService {
                                     .setCompletion(fc);
 
                             // fix up selfLink so it does not have factory prefix
-                            initialState.documentSelfLink = initialState.documentSelfLink
-                                    .replace(getSelfLink(), "");
+                        initialState.documentSelfLink = initialState.documentSelfLink
+                                .replace(getSelfLink(), "");
 
-                            getHost().sendRequest(forwardOp);
-                        });
+                        getHost().sendRequest(forwardOp);
+                    });
         getHost().selectOwner(getPeerNodeSelectorPath(),
                 o.getUri().getPath(), selectOp);
     }
@@ -702,39 +737,6 @@ public abstract class FactoryService extends StatelessService {
         this.nodeSelectorLink = link;
     }
 
-    private void replicateRequest(Operation op) {
-        // set the URI to be of this service, the factory since we want
-        // the POSt going to the remote peer factory service, not the
-        // yet-to-be-created child service
-        op.setUri(getUri());
-
-        ServiceDocument initialState = op.getBody(this.stateType);
-        final ServiceDocument clonedInitState = Utils.clone(initialState);
-
-        // The factory services on the remote nodes must see the request body as it was before it
-        // was fixed up by this instance. Restore self link to be just the child suffix "hint", removing the
-        // factory prefix added upstream.
-        String originalLink = clonedInitState.documentSelfLink;
-        clonedInitState.documentSelfLink = clonedInitState.documentSelfLink.replace(getSelfLink(),
-                "");
-        op.nestCompletion((replicatedOp) -> {
-            clonedInitState.documentSelfLink = originalLink;
-            op.linkState(null).setBodyNoCloning(clonedInitState).complete();
-        });
-
-        if (!hasOption(ServiceOption.ENFORCE_QUORUM)) {
-            // Every proposal is a commit, in eventual consistency mode
-            op.addRequestHeader(Operation.REPLICATION_PHASE_HEADER,
-                    Operation.REPLICATION_PHASE_COMMIT);
-        }
-
-        // if limited replication is used for this service, supply a selection key, the fully qualified service link
-        // so the same set of nodes get selected for the POST to create the service, as the nodes chosen
-        // for subsequence updates to the child service
-        getHost().replicateRequest(this.options, clonedInitState, getPeerNodeSelectorPath(),
-                originalLink, op);
-    }
-
     @Override
     public ServiceDocument getDocumentTemplate() {
         try {
@@ -765,6 +767,14 @@ public abstract class FactoryService extends StatelessService {
             maintOp.complete();
             return;
         }
+
+        if (hasOption(ServiceOption.ON_DEMAND_LOAD)) {
+            // on demand load service are synchronized on first use, or when an explicit migration
+            // task runs
+            maintOp.complete();
+            return;
+        }
+
         maintOp.nestCompletion((o, e) -> {
             if (e != null) {
                 logWarning("synch failed: %s", e.toString());
@@ -775,6 +785,7 @@ public abstract class FactoryService extends StatelessService {
             setAvailable(true);
             maintOp.complete();
         });
+
         startOrSynchronizeChildServices(maintOp);
     }
 

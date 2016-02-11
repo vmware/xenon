@@ -63,36 +63,32 @@ public interface Service {
 
         /**
          * Service runtime performs a node selection process, per service, and forwards all updates
-         * to the service instance on the selected node. Ownership is tracked in the indexed state
-         * versions and remains fixed as long as the current owner is healthy. To enable scale out
-         * only the service instance on the owner node performs work. All instances will receive the
-         * updated state but the service handler is only invoked on the instance in the owner node.
-         * This option causes replication to happen after the owner service has validated the update
-         * and waits for quorum number of peers to accept the replicated state, before completing
-         * the operation to the client. If less than quorum peers accept the update, the owner will
-         * still proceed with committing the update and completion the operation successfully. To
-         * enforce strict quorum and avoid value divergence see the {@code ENFORCE_QUORUM}
-         * option
+         * to the service instance on the selected node.
+         *
+         * This option enables the mechanism for strong consensus
+         * and leader election.
+         *
+         * Ownership is tracked in the indexed state versions and remains fixed given a stable node
+         * group. To enable scale out, only the service instance on the owner node performs work.
+         *
+         * The runtime will route requests to the owner, regardless to which node receives a client
+         * request.
+         *
+         * These service handlers are invoked only on the service instance on the owner node:
+         * handleStart, handleMaintenance, handleGet, handleDelete, handlePut, handlePatch
+         *
+         * Service instances (replicas) on the other nodes will see replicated updates, as part of the
+         * consensus protocol but there will be no service handler up-call.
+         * Updates are committed on the owner, and the client sees success on the operation only
+         * if quorum number of peers accept the updated state. If the node group has been partitioned
+         * or multiple peers have failed, this option makes the service unavailable, since no updates
+         * will be accepted.
          *
          * Requires: REPLICATION
          *
          * Not compatible with: CONCURRENT_UPDATE_HANDLING
          */
         OWNER_SELECTION,
-
-        /**
-         * Modifies the replication protocol in a single way: Updates are committed on the owner, and
-         * the client sees success on the operation only if quorum number of peers accept the updated
-         * state. If the node group has been partitioned or multiple peers have failed, this option
-         * makes the service unavailable, since no updates will be accepted. Enabling this option
-         * provides strong consistency guarantees for service updates. It also affects availability,
-         * since the service will fail all updates unless quorum or more nodes are available.
-         *
-         * Requires: REPLICATION, OWNER_SELECTION
-         *
-         * Not compatible with: CONCURRENT_UPDATE_HANDLING
-         */
-        ENFORCE_QUORUM,
 
         /**
          * Document update operations are conditional: the client must provide the expected
@@ -278,7 +274,6 @@ public interface Service {
     static final String STAT_NAME_OPERATION_DURATION = "operationDuration";
     static final String STAT_NAME_MAINTENANCE_COUNT = "maintenanceCount";
     static final String STAT_NAME_NODE_GROUP_CHANGE_MAINTENANCE_COUNT = "maintenanceForNodeGroupChangeCount";
-    static final String STAT_NAME_NODE_GROUP_CHANGE_PENDING_MAINTENANCE_COUNT = "pendingMaintenanceForNodeGroupChangeCount";
     static final String STAT_NAME_MAINTENANCE_COMPLETION_DELAYED_COUNT = "maintenanceCompletionDelayedCount";
     static final String STAT_NAME_CACHE_MISS_COUNT = "stateCacheMissCount";
     static final String STAT_NAME_CACHE_CLEAR_COUNT = "stateCacheClearCount";
