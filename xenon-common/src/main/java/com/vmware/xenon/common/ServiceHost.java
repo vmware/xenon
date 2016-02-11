@@ -1417,13 +1417,13 @@ public class ServiceHost {
         try {
             for (URI peerNodeBaseUri : peers) {
                 URI localNodeGroupUri = UriUtils.buildUri(this, nodeGroupUriPath);
-                // when nodes join through command line argument require all nodes to
+                // when nodes join through command line argument require majority of nodes to
                 // become available before the node group is considered stable. We add
                 // 1 to the total since peer list does not include self
-                int syncQuorum = peers.size() + 1;
-                JoinPeerRequest joinBody = JoinPeerRequest
-                        .create(UriUtils.extendUri(peerNodeBaseUri,
-                                nodeGroupUriPath), syncQuorum);
+                int total = peers.size() + 1;
+                int quorum = (total / 2) + 1;
+                JoinPeerRequest joinBody = JoinPeerRequest.create(
+                        UriUtils.extendUri(peerNodeBaseUri, nodeGroupUriPath), quorum);
                 boolean doRetry = true;
                 sendJoinPeerRequest(joinBody, localNodeGroupUri, doRetry);
             }
@@ -2009,10 +2009,7 @@ public class ServiceHost {
                             hasInitialState);
                 });
 
-                // We never synchronize state with peers, on service start. Synchronization occurs
-                // due to a node group change event, through handleMaintenance on factories
-                boolean synchronizeState = false;
-                selectServiceOwnerAndSynchState(s, post, synchronizeState);
+                selectServiceOwnerAndSynchState(s, post);
                 break;
             case EXECUTING_START_HANDLER:
                 Long version = null;
@@ -2197,30 +2194,30 @@ public class ServiceHost {
         sendRequest(synchPut);
     }
 
-    void selectServiceOwnerAndSynchState(Service s, Operation op, boolean synchronizeState) {
+    void selectServiceOwnerAndSynchState(Service s, Operation op) {
         Operation selectOwnerOp = Operation.createPost(null)
                 .setExpiration(op.getExpirationMicrosUtc())
                 .setCompletion((o, e) -> {
                     if (e != null) {
                         log(Level.WARNING, "Failure partitioning %s: %s", op.getUri(),
                                 e.toString());
-                        if (s.hasOption(ServiceOption.ENFORCE_QUORUM)) {
-                            op.fail(e);
-                            return;
-                        }
-                        // proceed with starting service anyway
-                        s.toggleOption(ServiceOption.DOCUMENT_OWNER, true);
-                        op.complete();
+                        op.fail(e);
                         return;
                     }
 
                     SelectOwnerResponse rsp = o.getBody(SelectOwnerResponse.class);
-                    if (!synchronizeState) {
-                        s.toggleOption(ServiceOption.DOCUMENT_OWNER, rsp.isLocalHostOwner);
-                        op.complete();
+                    if (rsp.isLocalHostOwner) {
+                        synchronizeWithPeers(s, op, rsp);
                         return;
                     }
-                    synchronizeWithPeers(s, op, rsp);
+
+                    if (op.isFromReplication()) {
+                        // we are not owner, its not our responsibility to synchronize
+                        op.complete();
+                    } else {
+                        // we are not owner, and yet we received a request from a client directly, fail it
+                        failRequestOwnerMismatch(op, getId(), null);
+                    }
                 });
 
         selectOwner(s.getPeerNodeSelectorPath(), s.getSelfLink(), selectOwnerOp);

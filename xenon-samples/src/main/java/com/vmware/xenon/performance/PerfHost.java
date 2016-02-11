@@ -79,11 +79,6 @@ public class PerfHost extends ServiceHost {
 
         super.startService(
                 Operation.createPost(UriUtils.buildUri(this,
-                        QuorumEnforcedService.QuorumEnforcedFactoryService.class)),
-                new QuorumEnforcedService.QuorumEnforcedFactoryService(PerfUtils.SimpleState.class));
-
-        super.startService(
-                Operation.createPost(UriUtils.buildUri(this,
                         FullCapService.FullCapFactoryService.class)),
                 FullCapService.FullCapFactoryService.create(PerfUtils.SimpleState.class));
 
