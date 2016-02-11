@@ -195,6 +195,9 @@ public class TestOperationIndexService extends BasicReusableHostTestCase {
                         // too many documents in the index (thereby verifying the blacklist is working as intended).
                         // Use 10% of updateCount as the fudge factor.  Anything greater than that just sounds unreasonable.
                         if (query.results.documentLinks.size() > (this.updateCount * 2 + (this.updateCount / 10))) {
+                            for (Object l : query.results.documents.values()) {
+                                this.host.log("%s", l);
+                            }
                             throw new IllegalStateException("too many operations found");
                         }
 

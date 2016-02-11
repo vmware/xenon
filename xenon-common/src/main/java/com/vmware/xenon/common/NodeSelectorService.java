@@ -29,6 +29,9 @@ import com.vmware.xenon.services.common.NodeState;
  */
 public interface NodeSelectorService extends Service {
 
+    public static final String STAT_NAME_QUEUED_REQUEST_COUNT = "queuedRequestCount";
+    public static final String STAT_NAME_SYNCHRONIZATION_COUNT = "synchronizationCount";
+
     /**
      * Request to select one or more nodes from the available nodes in the node group, and optionally
      * forward the request
