@@ -961,6 +961,9 @@ public class TestServiceHost {
         long delayMicros = TimeUnit.SECONDS
                 .toMicros(this.serviceCacheClearDelaySeconds);
         this.host.setServiceCacheClearDelayMicros(delayMicros);
+        // disable auto sync since it might cause a false negative (skipped pauses) when
+        // it kicks in within a few milliseconds from host start, during induced pause
+        this.host.setPeerSynchronizationEnabled(false);
         long delayMicrosAfter = this.host.getServiceCacheClearDelayMicros();
         assertTrue(delayMicros == delayMicrosAfter);
         this.host.start();

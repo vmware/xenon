@@ -170,6 +170,10 @@ public class TestSubscriptions extends BasicReportTestCase {
         NodeGroupConfig cfg = new NodeGroupConfig();
         cfg.nodeRemovalDelayMicros = TimeUnit.SECONDS.toMicros(5);
         this.host.setNodeGroupConfig(cfg);
+
+        // relax quorum
+        this.host.setNodeGroupQuorum(1);
+
         this.host.stopHost(ownerHost);
 
         this.host.waitForNodeGroupConvergence(1);

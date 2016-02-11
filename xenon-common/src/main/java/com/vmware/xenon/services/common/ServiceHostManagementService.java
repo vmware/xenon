@@ -182,9 +182,9 @@ public class ServiceHostManagementService extends StatefulService {
                     + " is not started on this host"));
             return;
         }
+
         getHost().scheduleNodeGroupChangeMaintenance(rr.nodeSelectorPath);
         patch.complete();
-
     }
 
     private void handleOperationTracingRequest(ConfigureOperationTracingRequest req, Operation op)
