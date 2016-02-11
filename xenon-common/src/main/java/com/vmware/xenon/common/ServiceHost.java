@@ -2220,6 +2220,7 @@ public class ServiceHost {
                         op.complete();
                         return;
                     }
+
                     synchronizeWithPeers(s, op, rsp);
                 });
 

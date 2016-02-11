@@ -227,15 +227,9 @@ public class NodeGroupService extends StatefulService {
             return;
         }
 
-        if (!NodeGroupUtils.isMembershipSettled(getHost(), getHost().getMaintenanceIntervalMicros(),
-                localState)) {
-            setAvailable(false);
-            return;
-        }
-
         if (!isAvailable()) {
-            boolean hasQuorum = NodeGroupUtils.hasSynchronizationQuorum(getHost(), localState);
-            setAvailable(hasQuorum);
+            boolean isAvailable = NodeGroupUtils.isNodeGroupAvailable(getHost(), localState);
+            setAvailable(isAvailable);
         }
 
         if (localNodeState.status == NodeStatus.AVAILABLE) {
