@@ -15,6 +15,8 @@ package com.vmware.xenon.common;
 
 import java.util.EnumSet;
 
+import com.vmware.xenon.services.common.NodeGroupService.NodeGroupState;
+
 /**
  * Maintenance request body used to specify maintenance type
  */
@@ -34,9 +36,14 @@ public class ServiceMaintenanceRequest {
     public EnumSet<MaintenanceReason> reasons = EnumSet.noneOf(MaintenanceReason.class);
 
     /**
-     * Changes to configuration associated with this maintenance request
+     * Changes to configuration associated with this request
      */
     public ServiceConfigUpdateRequest configUpdate;
+
+    /**
+     * Cached node group state associated with this request
+     */
+    public NodeGroupState nodeGroupState;
 
     public String kind;
 }
