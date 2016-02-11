@@ -245,7 +245,7 @@ public class StatelessService implements Service {
             if (option == ServiceOption.REPLICATION) {
                 throw new IllegalArgumentException("Option is not supported");
             }
-            if (option == ServiceOption.ENFORCE_QUORUM) {
+            if (option == ServiceOption.OWNER_SELECTION) {
                 throw new IllegalArgumentException("Option is not supported");
             }
             if (option == ServiceOption.IDEMPOTENT_POST) {

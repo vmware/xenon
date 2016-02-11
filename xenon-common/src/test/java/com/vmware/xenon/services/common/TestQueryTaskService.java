@@ -106,7 +106,6 @@ public class TestQueryTaskService {
             // Disabling it on the core verification host also disables it on all peer in process
             // hosts since VerificationHost.setupPeerHosts uses the setting of the parent host
             this.host.setPeerSynchronizationEnabled(false);
-
         } catch (Throwable e) {
             throw new Exception(e);
         }
