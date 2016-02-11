@@ -2,6 +2,28 @@
 
 ## 0.6.1-SNAPSHOT
 
+* Simplify constructs relating to consensus and availability.
+  ServiceOption.ENFORCE_QUORUM is removed. Its semantics are
+  rolled in with ServiceOption.OWNER_SELECTION. This implies
+  that a service enabling owner selection, will get strong
+  consensus and leader election, across the node group. The
+  membershipQuorum must be properly set to guarantee global
+  serializeability.
+  Eventual consistency is still supported and achieved by
+  relaxing the membership quorum (using the REST api on
+  node group /config suffix)
+  Services with just ServiceOption.REPLICATION are always
+  eventually consistent.
+  Xenon will make an attempt to converge state across peers
+  regardless of the options set.
+
+* Remove NodeState.synchQuorum - Its functionality is collapsed
+  into the existing membershipQuorum field. The quorum number
+  determines when requests are allowed to flow, given node group
+  health, and when resynchronization should occur. If the
+  host argument --peerNodes is used, membership quorum is
+  automatically set to the majority: (total / 2) + 1
+
 * Add FactoryService.create(), update ExampleService.
   Service authors no longer need to implement a factory service
   and derive from FactoryService class. Instead, they can
