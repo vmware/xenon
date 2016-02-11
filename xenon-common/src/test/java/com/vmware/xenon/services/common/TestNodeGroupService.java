@@ -47,6 +47,7 @@ import org.junit.rules.TemporaryFolder;
 
 import com.vmware.xenon.common.CommandLineArgumentParser;
 import com.vmware.xenon.common.FactoryService;
+import com.vmware.xenon.common.NodeSelectorService;
 import com.vmware.xenon.common.NodeSelectorService.SelectAndForwardRequest;
 import com.vmware.xenon.common.NodeSelectorService.SelectOwnerResponse;
 import com.vmware.xenon.common.NodeSelectorState;
@@ -79,6 +80,7 @@ import com.vmware.xenon.services.common.MinimalTestService.MinimalTestServiceErr
 import com.vmware.xenon.services.common.NodeGroupService.JoinPeerRequest;
 import com.vmware.xenon.services.common.NodeGroupService.NodeGroupConfig;
 import com.vmware.xenon.services.common.NodeGroupService.NodeGroupState;
+import com.vmware.xenon.services.common.NodeGroupService.UpdateQuorumRequest;
 import com.vmware.xenon.services.common.NodeState.NodeOption;
 import com.vmware.xenon.services.common.NodeState.NodeStatus;
 import com.vmware.xenon.services.common.QueryTask.Query;
@@ -714,6 +716,15 @@ public class TestNodeGroupService {
                 h.stop();
                 tmpFolder.delete();
             }
+        }
+    }
+
+    private void setNodeGroupSynchQuorumAsync(Integer syncQuorum) {
+        UpdateQuorumRequest body = UpdateQuorumRequest.create(true);
+        body.setSynchQuorum(syncQuorum);
+        for (URI nodeGroup : this.host.getNodeGroupMap().values()) {
+            this.host.send(Operation.createPatch(nodeGroup)
+                    .setBody(body));
         }
     }
 
@@ -1972,12 +1983,23 @@ public class TestNodeGroupService {
         this.nodeGroupConfig.nodeRemovalDelayMicros = TimeUnit.SECONDS.toMicros(1);
         this.host.setNodeGroupConfig(this.nodeGroupConfig);
 
+        VerificationHost newHost = (VerificationHost) newHosts.iterator().next();
         stopHostsAndVerifyQueuing(originalHosts,
-                (VerificationHost) newHosts.iterator().next(), childStates.keySet());
+                newHost, childStates.keySet());
 
         // verify nodes expire and removed entirely from the group state
         this.host.waitForNodeGroupConvergence(this.host.getNodeGroupMap().size(), this.host
                 .getNodeGroupMap().size());
+
+        this.host.schedule(() -> {
+            // In parallel with the PATCH updates below (delayed, to force queuing):
+            // the synch quorum must be relaxed for the next step succeed. While the quorum is
+            // high (should be originalHosts.size + newHosts.size(), the runtime will just queue
+            // requests, so clients do not see failures.
+            // We will validate this occured by looking at a specific stat in the node group
+            // selector
+            setNodeGroupSynchQuorumAsync(newHosts.size());
+        } , newHost.getMaintenanceIntervalMicros(), TimeUnit.MICROSECONDS);
 
         childStatesPerLink = doStateUpdateReplicationTest(Action.PATCH, this.serviceCount,
                 this.updateCount,
@@ -1985,6 +2007,7 @@ public class TestNodeGroupService {
                 this.replicationServiceStateUpdateBodySetter,
                 this.replicationServiceStatePostUpdateConvergenceChecker,
                 childStatesPerLink);
+        verifyNodeGroupSelectorQueuedRequestCount(newHosts);
 
         Map<String, String> linkToOwnerAfterNodeStop = verifyDocumentOwnerIdAssignment(
                 childStatesPerLink, newOwnerIds);
@@ -2072,6 +2095,25 @@ public class TestNodeGroupService {
         this.host.sendAndWait(getAvailable);
 
         this.host.logNodeGroupStats();
+    }
+
+    private void verifyNodeGroupSelectorQueuedRequestCount(List<ServiceHost> newHosts)
+            throws Throwable {
+        // the PATCHs succeeded which means quorum was updated and requests were allowed to
+        // flow. Verify that some queuing did occur
+
+        for (ServiceHost h : newHosts) {
+            URI nodeSelectorStats = UriUtils.buildUri(h, ServiceUriPaths.DEFAULT_NODE_SELECTOR);
+            nodeSelectorStats = UriUtils.buildStatsUri(nodeSelectorStats);
+            ServiceStats stats = this.host.getServiceState(null, ServiceStats.class,
+                    nodeSelectorStats);
+            ServiceStat reqCount = stats.entries
+                    .get(NodeSelectorService.STAT_NAME_QUEUED_REQUEST_COUNT);
+            if (reqCount == null || reqCount.latestValue < 1) {
+                throw new IllegalStateException(
+                        "No requests were queued due to node being unavailable");
+            }
+        }
     }
 
     @Test

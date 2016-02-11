@@ -107,4 +107,25 @@ public class NodeGroupUtils {
 
     }
 
+    /**
+     * Evaluates current node group state and returns true if requests should be process,
+     * forwarded, etc
+     * The conditions are:
+     *
+     * 1) The node group membership should have been stable (gossip did not produce
+     * changes) for a specific period
+     *
+     * 2) The number of node group members in available stage is >= max(membership,synch)
+     * quorum worth of nodes.
+     */
+    public static boolean isNodeGroupAvailable(ServiceHost host, NodeGroupState localState) {
+        if (NodeGroupUtils.isMembershipSettled(host, host
+                .getMaintenanceIntervalMicros(), localState)) {
+            if (NodeGroupUtils.hasSynchronizationQuorum(host, localState)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
 }
