@@ -4140,6 +4140,8 @@ public class ServiceHost {
 
         boolean shouldPause = memoryLimitLowMB <= memoryInUseMB;
 
+        cleanupAuthorizationContextCache();
+
         int pauseServiceCount = 0;
         for (Service service : this.attachedServices.values()) {
             // skip factory services, they do not have state, and should not be paused
@@ -4213,6 +4215,25 @@ public class ServiceHost {
         }
 
         pauseServices();
+    }
+
+    /**
+     * Clean up expired authorization context from cache.
+     */
+    private void cleanupAuthorizationContextCache() {
+        long now = Utils.getNowMicrosUtc();
+        for (Entry<String, AuthorizationContext> entry: this.authorizationContextCache.entrySet()) {
+            AuthorizationContext ctx = entry.getValue();
+            if (ctx != null) {
+                Claims claims = ctx.getClaims();
+                if (claims != null) {
+                    Long expirationTime = claims.getExpirationTime();
+                    if (expirationTime != null && expirationTime <= now) {
+                        this.authorizationContextCache.remove(entry.getKey());
+                    }
+                }
+            }
+        }
     }
 
     boolean checkAndResumePausedService(Operation inboundOp) {
