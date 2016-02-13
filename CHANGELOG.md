@@ -2,6 +2,10 @@
 
 ## 0.7.2-SNAPSHOT
 
+* Add ServiceDocument.PropertyOptions that supercedes
+  ServiceDocument.UsageOptions and can also specify indexing
+  options.
+
 ## 0.7.1
 
 * Added VerificationHost.waitFor() utility method
