@@ -48,6 +48,7 @@ import org.junit.Test;
 
 import com.vmware.xenon.common.Service.ServiceOption;
 import com.vmware.xenon.common.ServiceDocumentDescription.Builder;
+import com.vmware.xenon.common.ServiceDocumentDescription.PropertyDescription;
 import com.vmware.xenon.common.ServiceDocumentDescription.PropertyIndexingOption;
 import com.vmware.xenon.common.ServiceDocumentDescription.PropertyUsageOption;
 import com.vmware.xenon.common.SystemHostInfo.OsFamily;
@@ -772,6 +773,22 @@ public class TestUtils {
         public String ignore;
     }
 
+
+    @ServiceDocument.DocumentLimits(serializedStateSize = 8, versionRetention = 44)
+    private static class AnnotatedDoc extends ServiceDocument {
+        @UsageOption(option = PropertyUsageOption.AUTO_MERGE_IF_NOT_NULL)
+        @IndexingOption(option = PropertyIndexingOption.STORE_ONLY)
+        @Documentation(description = "desc", exampleString = "example")
+        public String opt;
+
+        @UsageOption(option = PropertyUsageOption.ID)
+        @UsageOption(option = PropertyUsageOption.OPTIONAL)
+        @IndexingOption(option = PropertyIndexingOption.SORT)
+        @IndexingOption(option = PropertyIndexingOption.EXCLUDE_FROM_SIGNATURE)
+        public String opts;
+
+    }
+
     private static class TestKeyObjectValueHolder {
         private final Map<String, Object> keyValues = new HashMap<>();
     }
@@ -805,6 +822,24 @@ public class TestUtils {
         ServiceDocumentQueryResult mergeResult = Utils.mergeQueryResults(resultsToMerge, true);
 
         assertTrue(verifyMergeResult(mergeResult, new int[] { 1, 10, 2, 3, 4, 5, 6, 7, 8, 9 }));
+    }
+
+    @Test
+    public void testAnnotationOnFields() {
+        Builder builder = ServiceDocumentDescription.Builder.create();
+        ServiceDocumentDescription desc = builder.buildDescription(AnnotatedDoc.class);
+        assertEquals(8, desc.serializedStateSizeLimit);
+        assertEquals(44, desc.versionRetentionLimit);
+
+        PropertyDescription optDesc = desc.propertyDescriptions.get("opt");
+        assertEquals(optDesc.usageOptions, EnumSet.of(PropertyUsageOption.AUTO_MERGE_IF_NOT_NULL));
+        assertEquals(optDesc.indexingOptions, EnumSet.of(PropertyIndexingOption.STORE_ONLY));
+        assertEquals(optDesc.exampleValue, "example");
+        assertEquals(optDesc.propertyDocumentation, "desc");
+
+        PropertyDescription optsDesc = desc.propertyDescriptions.get("opts");
+        assertEquals(optsDesc.usageOptions, EnumSet.of(PropertyUsageOption.ID, PropertyUsageOption.OPTIONAL));
+        assertEquals(optsDesc.indexingOptions, EnumSet.of(PropertyIndexingOption.SORT, PropertyIndexingOption.EXCLUDE_FROM_SIGNATURE));
     }
 
     @Test

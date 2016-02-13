@@ -32,7 +32,10 @@ import java.util.UUID;
 
 import com.vmware.xenon.common.RequestRouter.Route;
 import com.vmware.xenon.common.Service.Action;
+import com.vmware.xenon.common.ServiceDocument.DocumentLimits;
 import com.vmware.xenon.common.ServiceDocument.Documentation;
+import com.vmware.xenon.common.ServiceDocument.IndexingOption;
+import com.vmware.xenon.common.ServiceDocument.IndexingOptions;
 import com.vmware.xenon.common.ServiceDocument.UsageOption;
 import com.vmware.xenon.common.ServiceDocument.UsageOptions;
 
@@ -194,7 +197,7 @@ public class ServiceDocumentDescription {
     }
 
     /**
-     * Rfc7519Builder is a parameterized factory for ServiceDocumentDescription instances.
+     * Builder is a parameterized factory for ServiceDocumentDescription instances.
      */
     public static class Builder {
 
@@ -209,6 +212,13 @@ public class ServiceDocumentDescription {
                 Class<? extends ServiceDocument> type) {
             PropertyDescription root = buildPodoPropertyDescription(type, new HashSet<>(), 0);
             ServiceDocumentDescription desc = new ServiceDocumentDescription();
+
+            DocumentLimits documentLimits = type.getAnnotation(DocumentLimits.class);
+            if (documentLimits != null) {
+                desc.serializedStateSizeLimit = documentLimits.serializedStateSize();
+                desc.versionRetentionLimit = documentLimits.versionRetention();
+            }
+
             desc.propertyDescriptions = root.fieldDescriptions;
             return desc;
         }
@@ -348,15 +358,21 @@ public class ServiceDocumentDescription {
                         }
                     } else if (UsageOptions.class.equals(a.annotationType())) {
                         UsageOptions usageOptions = (UsageOptions) a;
-                        if (usageOptions.value() != null) {
-                            for (UsageOption usageOption : usageOptions.value()) {
-                                pd.usageOptions.add(usageOption.option());
-                            }
+                        for (UsageOption usageOption : usageOptions.value()) {
+                            pd.usageOptions.add(usageOption.option());
                         }
                     } else if (UsageOption.class.equals(a.annotationType())) {
                         // Parse single @UsageOption annotation
                         UsageOption usageOption = (UsageOption) a;
                         pd.usageOptions.add(usageOption.option());
+                    } else if (IndexingOption.class.equals(a.annotationType())) {
+                        IndexingOption indexingOption = (IndexingOption) a;
+                        pd.indexingOptions.add(indexingOption.option());
+                    } else if (IndexingOptions.class.equals(a.annotationType())) {
+                        IndexingOptions indexingOptions = (IndexingOptions) a;
+                        for (IndexingOption indexingOption : indexingOptions.value()) {
+                            pd.indexingOptions.add(indexingOption.option());
+                        }
                     }
                 }
 

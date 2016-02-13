@@ -44,7 +44,7 @@ public class ServiceDocument {
      * @see com.vmware.xenon.common.ServiceDocumentDescription.PropertyUsageOption
      */
     @Retention(RetentionPolicy.RUNTIME)
-    @Repeatable(value = UsageOptions.class)
+    @Repeatable(UsageOptions.class)
     @Target(ElementType.FIELD)
     public @interface UsageOption {
         /**
@@ -63,6 +63,56 @@ public class ServiceDocument {
          * Field usage options to apply.
          */
         UsageOption[] value();
+    }
+
+    /**
+     * Specifies {@link com.vmware.xenon.common.ServiceDocument} field indexing option. This annotation is repeatable.
+     *
+     * @see com.vmware.xenon.common.ServiceDocumentDescription.PropertyIndexingOption
+     */
+    @Retention(RetentionPolicy.RUNTIME)
+    @Repeatable(IndexingOptions.class)
+    @Target(ElementType.FIELD)
+    public @interface IndexingOption {
+        /**
+         * Field indexing option to apply.
+         */
+        ServiceDocumentDescription.PropertyIndexingOption option();
+    }
+
+    /**
+     * This annotation defines field usage options.
+     */
+    @Retention(RetentionPolicy.RUNTIME)
+    @Target(ElementType.FIELD)
+    public @interface IndexingOptions {
+        /**
+         * Field indexing options to apply.
+         */
+        IndexingOption[] value();
+    }
+
+    /**
+     * Limits about a {@link ServiceDocument}.
+     * In the rare case that the same ServiceDocument type is used to
+     * represent the state of different services and different limits are
+     * needed then {@link Service#getDocumentTemplate()} can still be used to
+     * override the values.
+     */
+    @Retention(RetentionPolicy.RUNTIME)
+    @Target(ElementType.TYPE)
+    public @interface DocumentLimits {
+        /**
+         * Max size of a serialized document
+         * @return
+         */
+        int serializedStateSize() default ServiceDocumentDescription.DEFAULT_SERIALIZED_STATE_LIMIT;
+
+        /**
+         * Max versions to keep for a document.
+         * @return
+         */
+        int versionRetention() default ServiceDocumentDescription.DEFAULT_VERSION_RETENTION_LIMIT;
     }
 
     /**
