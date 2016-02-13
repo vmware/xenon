@@ -21,7 +21,6 @@ import java.util.Map;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Service;
 import com.vmware.xenon.common.ServiceDocument;
-import com.vmware.xenon.common.ServiceDocument.UsageOption;
 import com.vmware.xenon.common.ServiceDocumentDescription.PropertyDescription;
 import com.vmware.xenon.common.ServiceDocumentDescription.PropertyIndexingOption;
 import com.vmware.xenon.common.ServiceDocumentDescription.PropertyUsageOption;
@@ -37,7 +36,7 @@ public class QueryValidationTestService extends StatefulService {
     public static class NestedType {
         public String id;
         public long longValue;
-        @UsageOption(option = PropertyUsageOption.LINK)
+        @ServiceDocument.PropertyOptions(usage = PropertyUsageOption.LINK)
         public String link;
     }
 
@@ -45,7 +44,7 @@ public class QueryValidationTestService extends StatefulService {
         public static final String FIELD_NAME_IGNORED_STRING_VALUE = "ignoredStringValue";
         public String id;
         @Documentation(description = "a Long value")
-        @UsageOption(option = PropertyUsageOption.OPTIONAL)
+        @PropertyOptions(usage = PropertyUsageOption.OPTIONAL)
         public Long longValue;
         public Double doubleValue;
         public Float floatValue;
@@ -56,7 +55,7 @@ public class QueryValidationTestService extends StatefulService {
         public byte bytePrimitive;
         public Date dateValue;
         public String stringValue;
-        @UsageOption(option = PropertyUsageOption.OPTIONAL)
+        @PropertyOptions(usage = PropertyUsageOption.OPTIONAL)
         public String serviceLink;
         public URI referenceValue;
         public Boolean booleanValue;
@@ -65,7 +64,7 @@ public class QueryValidationTestService extends StatefulService {
         public NestedType nestedComplexValue;
         public List<String> listOfStrings;
         public List<NestedType> listOfNestedValues;
-        @UsageOption(option = PropertyUsageOption.OPTIONAL)
+        @PropertyOptions(usage = PropertyUsageOption.OPTIONAL)
         public List<ExampleServiceState> listOfExampleValues;
         public String[] arrayOfStrings;
         public String[] ignoredArrayOfStrings;
