@@ -36,7 +36,7 @@ public class ServiceErrorResponse {
             EnumSet<ErrorDetail> details) {
         ServiceErrorResponse rsp = new ServiceErrorResponse();
         rsp.message = e.getLocalizedMessage();
-        rsp.stackTrace = new ArrayList<>();
+        rsp.stackTrace = new ArrayList<>(e.getStackTrace().length);
         for (StackTraceElement se : e.getStackTrace()) {
             rsp.stackTrace.add(se.toString());
         }
