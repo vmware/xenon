@@ -16,7 +16,7 @@ package com.vmware.xenon.common;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Deque;
-import java.util.concurrent.ConcurrentLinkedDeque;
+import java.util.LinkedList;
 
 /**
  * Queue implementation customized for the needs of a service. Depending on creation options
@@ -49,7 +49,7 @@ class OperationQueue {
      * Underlying storage for the operation queue. The choice of data structure is subject to
      * change but any changes will not be visible to the consumers of OperationQueue
      */
-    private Deque<Operation> store = new ConcurrentLinkedDeque<>();
+    private final Deque<Operation> store = new LinkedList<>();
 
     private OperationQueue() {
     }
@@ -121,15 +121,9 @@ class OperationQueue {
         return op;
     }
 
-    Collection<Operation> toCollection() {
-        ArrayList<Operation> clone = new ArrayList<>(this.elementCount);
-        for (Operation op : this.store) {
-            clone.add(op);
-        }
-        return clone;
-    }
-
-    public void clear() {
+    Collection<Operation> drain() {
+        ArrayList<Operation> clone = new ArrayList<>(this.store);
         this.store.clear();
+        return clone;
     }
 }
