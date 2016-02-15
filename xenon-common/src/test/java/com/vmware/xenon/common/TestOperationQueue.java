@@ -124,15 +124,11 @@ public class TestOperationQueue {
             q.offer(op);
         }
 
-        Collection<Operation> ops = q.toCollection();
+        Collection<Operation> ops = q.drain();
         assertTrue(ops.size() == this.count);
-        assertTrue(!q.isEmpty());
+        assertTrue(q.isEmpty());
         for (Operation op : ops) {
             assertEquals(pragma, op.getRequestHeader(Operation.PRAGMA_HEADER));
         }
-
-        q.clear();
-        assertTrue(q.isEmpty());
     }
-
 }

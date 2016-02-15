@@ -181,8 +181,7 @@ public class StatefulService implements Service {
         Collection<Operation> opsToCancel = null;
         Set<String> txCoordinators = null;
         synchronized (this.context) {
-            opsToCancel = this.context.operationQueue.toCollection();
-            this.context.operationQueue.clear();
+            opsToCancel = this.context.operationQueue.drain();
             if (hasPendingTransactions()) {
                 txCoordinators = new HashSet<>(this.context.txCoordinatorLinks);
                 txCoordinators.clear();
