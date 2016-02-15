@@ -126,7 +126,7 @@ public class TestServiceHostLogService extends BasicReusableHostTestCase {
 
     @Test
     public void testSystemLog() throws Throwable {
-        URI uri = UriUtils.buildUri(this.host, ServiceUriPaths.SYSTEM_LOG);
+        URI uri = UriUtils.buildUri(this.host, ServiceUriPaths.SYSTEM_LOG, "lineCount=100");
 
         if (!new File(ServiceHostLogService.DEFAULT_SYSTEM_LOG_NAME).canRead()) {
             Logger.getAnonymousLogger().info(ServiceUriPaths.SYSTEM_LOG + " is not readable");
