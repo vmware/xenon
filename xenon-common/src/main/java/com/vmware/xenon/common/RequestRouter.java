@@ -73,30 +73,44 @@ public class RequestRouter implements Predicate<Operation> {
 
     public static class RequestBodyMatcher<T> implements Predicate<Operation> {
 
-        private Class<T> typeParameterClass;
-        private String fieldName;
-        private Object fieldValue;
+        private final Class<T> typeParameterClass;
+        private final Object fieldValue;
+        private final Field field;
 
         public RequestBodyMatcher(Class<T> typeParameterClass, String fieldName, Object fieldValue) {
             this.typeParameterClass = typeParameterClass;
-            this.fieldName = fieldName;
+
+            Field f;
+            try {
+                f = typeParameterClass.getField(fieldName);
+                //PODO's fields are public, just in case
+                f.setAccessible(true);
+            } catch (ReflectiveOperationException e) {
+                f = null;
+            }
+            this.field = f;
+
             this.fieldValue = fieldValue;
         }
 
         @Override
         public boolean test(Operation op) {
+            if (this.field == null) {
+                return false;
+            }
+
             try {
-                Field field = this.typeParameterClass.getField(this.fieldName);
                 T body = op.getBody(this.typeParameterClass);
-                return body != null && Objects.equals(field.get(body), this.fieldValue);
-            } catch (NoSuchFieldException | IllegalAccessException ex) {
+                return body != null && Objects.equals(this.field.get(body), this.fieldValue);
+            } catch (IllegalAccessException ex) {
                 return false;
             }
         }
 
         @Override
         public String toString() {
-            return String.format("body.%s=%s", this.fieldName, this.fieldValue);
+            return String.format("body.%s=%s", this.field != null ? this.field.getName() : "<<bad field>>",
+                    this.fieldValue);
         }
     }
 
