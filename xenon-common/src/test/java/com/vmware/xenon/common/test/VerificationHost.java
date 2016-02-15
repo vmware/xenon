@@ -291,7 +291,9 @@ public class VerificationHost extends ExampleServiceHost {
 
     public void tearDown() {
         stop();
-        this.getTemporaryFolder().delete();
+        if (this.temporaryFolder != null) {
+            this.temporaryFolder.delete();
+        }
     }
 
     public Operation createServiceStartPost() {

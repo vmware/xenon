@@ -13,14 +13,16 @@
 
 package com.vmware.xenon.common;
 
+import java.io.File;
+
 import org.junit.Rule;
 import org.junit.rules.ExternalResource;
 import org.junit.rules.RuleChain;
 import org.junit.rules.TestRule;
 import org.junit.rules.TestWatcher;
 import org.junit.runner.Description;
+import org.junit.runners.model.Statement;
 
-import com.vmware.xenon.common.CommandLineArgumentParser;
 import com.vmware.xenon.common.test.VerificationHost;
 
 /**
@@ -41,13 +43,20 @@ public class BasicTestCase {
     public VerificationHost host;
     public boolean isStressTest;
     protected ExternalResource verificationHostRule = new ExternalResource() {
+        private Description description;
+
+        public Statement apply(Statement base, Description description) {
+            this.description = description;
+            return super.apply(base, description);
+        }
+
         @Override
         protected void before() throws Throwable {
             CommandLineArgumentParser.parseFromProperties(BasicTestCase.this);
             BasicTestCase.this.host = createHost();
             CommandLineArgumentParser.parseFromProperties(BasicTestCase.this.host);
             BasicTestCase.this.host.setStressTest(BasicTestCase.this.isStressTest);
-            initializeHost(BasicTestCase.this.host);
+            initializeHost(BasicTestCase.this.host, this.description);
             beforeHostStart(BasicTestCase.this.host);
             BasicTestCase.this.host.start();
         }
@@ -69,10 +78,19 @@ public class BasicTestCase {
         return VerificationHost.create();
     }
 
-    public void initializeHost(VerificationHost host) throws Exception {
+    public void initializeHost(VerificationHost host, Description description) throws Exception {
         ServiceHost.Arguments args = VerificationHost.buildDefaultServiceHostArguments(0);
+        File file = new File("target/sandbox");
+
+        String sandboxName = description.getClassName() + "-" + description.getMethodName() + "-"
+                + System.currentTimeMillis();
+        file = new File(file, sandboxName);
+
+        file.mkdirs();
+        args.sandbox = file.toPath();
         VerificationHost.initialize(host, args);
     }
+
 
     public void beforeHostStart(VerificationHost host) throws Exception {
 
