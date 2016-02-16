@@ -146,6 +146,7 @@ public class NettyHttpServiceClient implements ServiceClient {
 
         if (this.sslContext != null) {
             this.sslChannelPool = new NettyChannelPool(this.executor);
+            this.sslChannelPool.setConnectionLimitPerHost(getConnectionLimitPerHost());
             this.sslChannelPool.setThreadTag(buildThreadTag());
             this.sslChannelPool.setThreadCount(DEFAULT_EVENT_LOOP_THREAD_COUNT);
             this.sslChannelPool.setSSLContext(this.sslContext);
