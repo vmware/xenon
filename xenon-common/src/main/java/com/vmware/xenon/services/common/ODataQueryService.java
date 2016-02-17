@@ -47,7 +47,7 @@ public class ODataQueryService extends StatelessService {
                             return;
                         }
 
-                        op.setBody(o.getBodyRaw());
+                        op.setBody(o.getBody(QueryTask.class));
                         op.complete();
                     }));
         } catch (Exception e) {
