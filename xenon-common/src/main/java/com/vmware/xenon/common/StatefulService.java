@@ -1477,11 +1477,6 @@ public class StatefulService implements Service {
     }
 
     private void prepareRequest(Operation op) {
-        if (!this.hasOption(ServiceOption.CONCURRENT_UPDATE_HANDLING)
-                && op.getContextId() == null) {
-            op.setContextId(OperationContext.getContextId());
-        }
-
         if (this.hasOption(ServiceOption.REPLICATION)) {
             // assume target is also replicated. If they are not, there is only a tiny performance
             // hit due to the availability registration and instant completion

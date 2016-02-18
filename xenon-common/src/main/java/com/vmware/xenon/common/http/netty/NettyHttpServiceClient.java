@@ -38,6 +38,7 @@ import io.netty.handler.codec.http.cookie.Cookie;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Operation.AuthorizationContext;
 import com.vmware.xenon.common.Operation.CompletionHandler;
+import com.vmware.xenon.common.OperationContext;
 import com.vmware.xenon.common.Service.Action;
 import com.vmware.xenon.common.ServiceClient;
 import com.vmware.xenon.common.ServiceErrorResponse;
@@ -213,6 +214,14 @@ public class NettyHttpServiceClient implements ServiceClient {
 
         setCookies(clone);
 
+        // if operation has a context id, set it on the local thread, otherwise, set the
+        // context id from thread, on the operation
+        if (op.getContextId() != null) {
+            OperationContext.setContextId(op.getContextId());
+        } else {
+            clone.setContextId(OperationContext.getContextId());
+        }
+
         // Try to deliver operation to in-process service host
         if (!op.isRemote()) {
             if (this.host != null && this.host.handleRequest(clone)) {
@@ -220,6 +229,7 @@ public class NettyHttpServiceClient implements ServiceClient {
             }
         }
 
+        // flow auth context through header
         addAuthorizationContextHeader(clone);
 
         sendRemote(clone);
