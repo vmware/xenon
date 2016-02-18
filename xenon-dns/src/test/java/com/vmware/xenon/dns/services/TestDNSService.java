@@ -14,12 +14,12 @@
 package com.vmware.xenon.dns.services;
 
 import java.net.URI;
-import java.util.Map;
+import java.util.Date;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+
 
 import static org.junit.Assert.assertNotNull;
-
-import com.google.gson.Gson;
 
 import org.junit.After;
 import org.junit.Before;
@@ -30,6 +30,7 @@ import com.vmware.xenon.common.CommandLineArgumentParser;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.ServiceDocumentQueryResult;
 import com.vmware.xenon.common.UriUtils;
+import com.vmware.xenon.common.Utils;
 import com.vmware.xenon.common.test.VerificationHost;
 import com.vmware.xenon.services.common.ExampleService;
 import com.vmware.xenon.services.common.ServiceUriPaths;
@@ -125,22 +126,33 @@ public class TestDNSService extends BasicTestCase {
                     ExampleService.FACTORY_LINK,
                     ExampleService.class.getSimpleName(),
                     null,
-                    ExampleService.FACTORY_LINK + "/stats",
+                    ExampleService.FACTORY_LINK + "/available",
                     HEALTH_CHECK_INTERVAL).setCompletion(completionHandler));
             this.host.testWait();
         }
 
-        /* Verify records exist at DNS service */
-        Map<String, Object> out = doQuery(String.format("$filter=serviceName eq %s",
-                ExampleService.class.getSimpleName()));
+        while (new Date().before(this.host.getTestExpiration())) {
+            /* Verify records exist at DNS service */
 
-        assert (out != null);
-        assert (out.keySet().size() == 1);
-        DNSService.DNSServiceState serviceState =
-                new Gson().fromJson((String) out.get(DNSFactoryService.SELF_LINK + "/" +
-                        ExampleService.class.getSimpleName()),
-                        DNSService.DNSServiceState.class);
-        assert (serviceState.nodeReferences.size() == this.nodeCount);
+            Thread.sleep(TimeUnit.SECONDS.toMillis(HEALTH_CHECK_INTERVAL));
+
+            ServiceDocumentQueryResult res = doQuery(String.format("$filter=serviceName eq %s",
+                    ExampleService.class.getSimpleName()));
+
+            assert (res.documentLinks != null);
+            assert (res.documentLinks.size() == 1);
+
+            DNSService.DNSServiceState serviceState =
+                    Utils.fromJson((String) res.documents.get(res.documentLinks.get(0)),
+                            DNSService.DNSServiceState.class);
+            if (serviceState.nodeReferences.size() == this.nodeCount) {
+                break;
+            }
+        }
+
+        if (new Date().after(this.host.getTestExpiration())) {
+            new TimeoutException();
+        }
 
         doServiceFailureTest();
     }
@@ -162,23 +174,31 @@ public class TestDNSService extends BasicTestCase {
             }
 
         }
-        /*
-            Modify this to use a better sleep mechanism
-         */
-        Thread.sleep(TimeUnit.SECONDS.toMillis(2 * HEALTH_CHECK_INTERVAL));
 
-         /* Verify records exist at DNS service */
-        Map<String, Object> out1 = doQuery(String.format(
-                "$filter=serviceName eq '%s' and serviceStatus eq AVAILABLE",
-                ExampleService.class.getSimpleName()));
+        while (new Date().before(this.host.getTestExpiration())) {
+            /* Verify records exist at DNS service */
 
-        assert (out1 != null);
-        assert (out1.keySet().size() == 1);
-        DNSService.DNSServiceState serviceState =
-                new Gson().fromJson((String) out1.get(DNSFactoryService.SELF_LINK + "/" +
-                        ExampleService.class.getSimpleName()),
-                        DNSService.DNSServiceState.class);
-        assert (serviceState.serviceStatus == DNSService.DNSServiceState.ServiceStatus.AVAILABLE);
+            Thread.sleep(TimeUnit.SECONDS.toMillis(HEALTH_CHECK_INTERVAL));
+
+            ServiceDocumentQueryResult res = doQuery(String.format("$filter=serviceName eq %s",
+                    ExampleService.class.getSimpleName()));
+
+            assert (res.documentLinks != null);
+            assert (res.documentLinks.size() == 1);
+            DNSService.DNSServiceState serviceState =
+                    Utils.fromJson((String) res.documents.get(res.documentLinks.get(0)),
+                            DNSService.DNSServiceState.class);
+
+            if (serviceState.serviceStatus ==
+                    DNSService.DNSServiceState.ServiceStatus.AVAILABLE) {
+                break;
+            }
+
+        }
+
+        if (new Date().after(this.host.getTestExpiration())) {
+            new TimeoutException();
+        }
 
         /* Lets shutdown the remaining nodes as well. And verify the service status again */
         this.host.getInProcessHostMap().values().stream()
@@ -188,18 +208,28 @@ public class TestDNSService extends BasicTestCase {
                             this.host.stopHost(hostToStop);
                         });
 
-        Thread.sleep(TimeUnit.SECONDS.toMillis(this.nodeCount * HEALTH_CHECK_INTERVAL));
+        while (new Date().before(this.host.getTestExpiration())) {
 
-        Map<String, Object> out2 = doQuery(String.format(
-                "$filter=serviceName eq '%s' and serviceStatus eq AVAILABLE",
-                ExampleService.class.getSimpleName()));
+            Thread.sleep(TimeUnit.SECONDS.toMillis(HEALTH_CHECK_INTERVAL));
 
-        assert (out2 != null);
-        assert (out2.keySet().size() == 0);
+            ServiceDocumentQueryResult res2 = doQuery(String.format(
+                    "$filter=serviceName eq '%s' and serviceStatus eq AVAILABLE",
+                    ExampleService.class.getSimpleName()));
+
+            assert (res2.documentLinks != null);
+
+            if (res2.documentLinks.size() == 0) {
+                break;
+            }
+        }
+
+        if (new Date().after(this.host.getTestExpiration())) {
+            new TimeoutException();
+        }
 
     }
 
-    private Map<String, Object> doQuery(String query) throws Throwable {
+    private ServiceDocumentQueryResult doQuery(String query) throws Throwable {
         URI odataQuery = UriUtils.buildUri(this.dnsHost, ServiceUriPaths.DNS + "/query", query);
         final ServiceDocumentQueryResult[] qr = { null };
         Operation get = Operation.createGet(odataQuery)
@@ -221,6 +251,6 @@ public class TestDNSService extends BasicTestCase {
         assertNotNull(res);
         assertNotNull(res.documents);
 
-        return res.documents;
+        return res;
     }
 }
