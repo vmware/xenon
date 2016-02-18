@@ -14,8 +14,11 @@
 package com.vmware.xenon.dns.services;
 
 import java.net.URI;
+import java.util.Date;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+
 
 import static org.junit.Assert.assertNotNull;
 
@@ -125,22 +128,32 @@ public class TestDNSService extends BasicTestCase {
                     ExampleService.FACTORY_LINK,
                     ExampleService.class.getSimpleName(),
                     null,
-                    ExampleService.FACTORY_LINK + "/stats",
+                    ExampleService.FACTORY_LINK + "/available",
                     HEALTH_CHECK_INTERVAL).setCompletion(completionHandler));
             this.host.testWait();
         }
 
-        /* Verify records exist at DNS service */
-        Map<String, Object> out = doQuery(String.format("$filter=serviceName eq %s",
-                ExampleService.class.getSimpleName()));
+        while (new Date().before(this.host.getTestExpiration())) {
+            /* Verify records exist at DNS service */
 
-        assert (out != null);
-        assert (out.keySet().size() == 1);
-        DNSService.DNSServiceState serviceState =
-                new Gson().fromJson((String) out.get(DNSFactoryService.SELF_LINK + "/" +
-                        ExampleService.class.getSimpleName()),
-                        DNSService.DNSServiceState.class);
-        assert (serviceState.nodeReferences.size() == this.nodeCount);
+            Map<String, Object> out = doQuery(String.format("$filter=serviceName eq %s",
+                    ExampleService.class.getSimpleName()));
+
+            assert (out != null);
+            assert (out.keySet().size() == 1);
+            DNSService.DNSServiceState serviceState =
+                    new Gson().fromJson((String) out.get(DNSFactoryService.SELF_LINK + "/" +
+                                    ExampleService.class.getSimpleName()),
+                            DNSService.DNSServiceState.class);
+            if (serviceState.nodeReferences.size() == this.nodeCount) {
+                break;
+            }
+
+        }
+
+        if (new Date().after(this.host.getTestExpiration())) {
+            new TimeoutException();
+        }
 
         doServiceFailureTest();
     }
@@ -190,12 +203,20 @@ public class TestDNSService extends BasicTestCase {
 
         Thread.sleep(TimeUnit.SECONDS.toMillis(this.nodeCount * HEALTH_CHECK_INTERVAL));
 
-        Map<String, Object> out2 = doQuery(String.format(
-                "$filter=serviceName eq '%s' and serviceStatus eq AVAILABLE",
-                ExampleService.class.getSimpleName()));
+        while (new Date().before(this.host.getTestExpiration())) {
+            Map<String, Object> out2 = doQuery(String.format(
+                    "$filter=serviceName eq '%s' and serviceStatus eq AVAILABLE",
+                    ExampleService.class.getSimpleName()));
 
-        assert (out2 != null);
-        assert (out2.keySet().size() == 0);
+            assert (out2 != null);
+            if (out2.keySet().size() == 0) {
+                break;
+            }
+        }
+
+        if (new Date().after(this.host.getTestExpiration())) {
+            new TimeoutException();
+        }
 
     }
 
