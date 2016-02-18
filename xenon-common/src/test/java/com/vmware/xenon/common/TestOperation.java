@@ -26,6 +26,7 @@ import org.junit.Test;
 
 import com.vmware.xenon.common.Operation.CompletionHandler;
 import com.vmware.xenon.common.test.MinimalTestServiceState;
+import com.vmware.xenon.services.common.ExampleService;
 import com.vmware.xenon.services.common.MinimalTestService;
 
 public class TestOperation extends BasicReusableHostTestCase {
@@ -115,7 +116,6 @@ public class TestOperation extends BasicReusableHostTestCase {
         this.host.testWait();
         this.host.toggleNegativeTestMode(false);
         assertTrue(completionCount.get() == 1);
-
     }
 
     @Test
@@ -144,6 +144,60 @@ public class TestOperation extends BasicReusableHostTestCase {
                     }
                     this.host.completeIteration();
                 }));
+        this.host.testWait();
+    }
+
+    @Test
+    public void operationMultiStageFlowWithContextId() throws Throwable {
+        String contextId = UUID.randomUUID().toString();
+        int opCount = Utils.DEFAULT_THREAD_COUNT * 2;
+        AtomicInteger pending = new AtomicInteger(opCount);
+
+        CompletionHandler stageTwoCh = (o, e) -> {
+            if (e != null) {
+                this.host.failIteration(e);
+                return;
+            }
+            String contextIdActual = OperationContext.getContextId();
+            if (!contextId.equals(contextIdActual)) {
+                this.host.failIteration(new IllegalStateException("context id not set"));
+                return;
+            }
+            this.host.completeIteration();
+        };
+
+        CompletionHandler stageOneCh = (o, e) -> {
+            if (e != null) {
+                this.host.failIteration(e);
+                return;
+            }
+            String contextIdActual = OperationContext.getContextId();
+            if (!contextId.equals(contextIdActual)) {
+                this.host.failIteration(new IllegalStateException("context id not set"));
+                return;
+            }
+            int r = pending.decrementAndGet();
+            if (r != 0) {
+                return;
+            }
+
+            // now send some new "child" operations, and expect the ID to flow
+            Operation childOp = Operation.createGet(o.getUri())
+                    .setCompletion(stageTwoCh);
+            this.host.send(childOp);
+        };
+
+        // send N parallel requests, that will all complete in parallel, and should have the
+        // same context id. When they all complete (using a join like stageOne completion above)
+        // we will send another operation, and expect it to carry the proper contextId
+        this.host.testStart(1);
+        for (int i = 0; i < opCount; i++) {
+            Operation op = Operation
+                    .createGet(UriUtils.buildUri(this.host, ExampleService.FACTORY_LINK))
+                    .setCompletion(stageOneCh)
+                    .setContextId(contextId);
+            this.host.send(op);
+        }
         this.host.testWait();
     }
 

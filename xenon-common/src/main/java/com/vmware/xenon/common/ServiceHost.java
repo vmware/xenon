@@ -3167,10 +3167,7 @@ public class ServiceHost {
 
             if (!s.queueRequest(op)) {
                 this.executor.execute(() -> {
-                    if (!s.hasOption(ServiceOption.CONCURRENT_UPDATE_HANDLING)) {
-                        OperationContext.setContextId(op.getContextId());
-                    }
-
+                    OperationContext.setContextId(op.getContextId());
                     OperationContext.setAuthorizationContext(op.getAuthorizationContext());
 
                     try {
@@ -3180,11 +3177,7 @@ public class ServiceHost {
                     }
 
                     OperationContext.setAuthorizationContext(null);
-
-                    if (op.getContextId() != null
-                            && !s.hasOption(ServiceOption.CONCURRENT_UPDATE_HANDLING)) {
-                        OperationContext.setContextId(null);
-                    }
+                    OperationContext.setContextId(null);
                 });
             }
         }
