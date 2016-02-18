@@ -158,7 +158,7 @@ public class UtilityService implements Service {
                                 }
                                 Operation putOp = Operation
                                         .createPut(notificationURI)
-                                        .setBody(o.getBody(this.parent.getStateType()))
+                                        .setBodyNoCloning(o.getBody(this.parent.getStateType()))
                                         .addPragmaDirective(
                                                 Operation.PRAGMA_DIRECTIVE_NOTIFICATION)
                                         .setReferer(getUri());
@@ -466,6 +466,7 @@ public class UtilityService implements Service {
         op.setBody(serializedTemplate).complete();
     }
 
+    @Override
     public void handleConfigurationRequest(Operation op) {
         this.parent.handleConfigurationRequest(op);
     }

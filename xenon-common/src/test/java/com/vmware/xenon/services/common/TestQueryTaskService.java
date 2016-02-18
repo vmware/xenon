@@ -39,6 +39,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Consumer;
 
 import org.junit.After;
 import org.junit.Test;
@@ -59,6 +60,7 @@ import com.vmware.xenon.common.ServiceErrorResponse;
 import com.vmware.xenon.common.ServiceHost.ServiceNotFoundException;
 import com.vmware.xenon.common.ServiceStats;
 import com.vmware.xenon.common.ServiceStats.ServiceStat;
+import com.vmware.xenon.common.ServiceSubscriptionState.ServiceSubscriber;
 import com.vmware.xenon.common.TaskState;
 import com.vmware.xenon.common.TaskState.TaskStage;
 import com.vmware.xenon.common.UriUtils;
@@ -343,6 +345,79 @@ public class TestQueryTaskService {
         double thpt = totalCount / ((end - start) / 1000000.0);
         this.host.log("Update notification throughput (updates/sec): %f, update count: %d", thpt,
                 totalCount);
+    }
+
+    /**
+     * This tests a specific bug we encountered that a continuous query task with replay
+     * would fail when there was state to replay. We never got the notification for the
+     * replay because kryo through an exception: Class cannot be created (missing no-arg
+     * constructor)
+     */
+    @Test
+    public void continuousQueryTaskWithReplay() throws Throwable {
+
+        setUpHost();
+
+        // Create services before we create the query
+        QueryValidationServiceState newState = new QueryValidationServiceState();
+        newState.stringValue = UUID.randomUUID().toString();
+        List<URI> services = startQueryTargetServices(1, newState);
+
+        // Create query task
+        Query query = Query.Builder.create()
+                .addFieldClause("stringValue", "*", MatchType.WILDCARD)
+                .build();
+        QueryTask task = QueryTask.Builder.create()
+                .addOptions(EnumSet.of(QueryOption.CONTINUOUS, QueryOption.EXPAND_CONTENT))
+                .setQuery(query)
+                .build();
+        URI queryTaskUri = this.host.createQueryTaskService(
+                UriUtils.buildUri(this.host.getUri(), ServiceUriPaths.CORE_QUERY_TASKS),
+                task, false, false, task, null);
+
+        // Wait for query task to have data
+        QueryTask queryTaskResponse = null;
+        for (int i = 0; i < 20; i++) {
+            queryTaskResponse = this.host.getServiceState(
+                    null, QueryTask.class, queryTaskUri);
+            if (queryTaskResponse.results != null
+                    && queryTaskResponse.results.documentLinks != null
+                    && !queryTaskResponse.results.documentLinks.isEmpty()) {
+                break;
+            }
+            Thread.sleep(100);
+        }
+        assertTrue(queryTaskResponse != null);
+        assertTrue(queryTaskResponse.results != null);
+        assertTrue(queryTaskResponse.results.documentLinks != null);
+        assertTrue(!queryTaskResponse.results.documentLinks.isEmpty());
+
+        // Create notification target
+        QueryTask[] notification = new QueryTask[1];
+        Consumer<Operation> notificationTarget = (update) -> {
+            update.complete();
+
+            if (update.hasBody()) {
+                QueryTask taskState = update.getBody(QueryTask.class);
+                notification[0] = taskState;
+                this.host.completeIteration();
+            }
+        };
+
+        // Subscribe to the query with replay enabled
+        this.host.testStart(1);
+        Operation subscribe = Operation.createPost(queryTaskUri)
+                .setReferer(this.host.getReferer());
+        this.host.startSubscriptionService(subscribe, notificationTarget,
+                ServiceSubscriber.create(true));
+
+        // Wait for the notification of the current state
+        this.host.testWait();
+
+        assertTrue(notification[0] != null);
+        assertTrue(notification[0].results != null);
+        assertTrue(notification[0].results.documentLinks != null);
+        assertTrue(!notification[0].results.documentLinks.isEmpty());
     }
 
     private QueryValidationServiceState createContinuousQueryTasks(Throwable[] failure,
