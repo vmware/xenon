@@ -71,7 +71,8 @@ public class TestODataQueryService extends BasicTestCase {
                             selfLinks.add(d.documentSelfLink);
                         }
                         this.host.completeIteration();
-                    }));
+                    })
+                    .forceRemote());
         }
         this.host.testWait();
         return selfLinks;
@@ -91,7 +92,8 @@ public class TestODataQueryService extends BasicTestCase {
                                     .getBody(ExampleService.ExampleServiceState.class);
                             inState.documentSelfLink = s.documentSelfLink;
                             this.host.completeIteration();
-                        }));
+                        })
+                .forceRemote());
         this.host.testWait();
     }
 
@@ -220,7 +222,7 @@ public class TestODataQueryService extends BasicTestCase {
         });
 
         this.host.testStart(1);
-        this.host.send(get);
+        this.host.send(get.forceRemote());
         this.host.testWait();
         ServiceDocumentQueryResult res = qr[0];
 
@@ -247,7 +249,7 @@ public class TestODataQueryService extends BasicTestCase {
         });
 
         this.host.testStart(1);
-        this.host.send(get);
+        this.host.send(get.forceRemote());
         this.host.testWait();
         ServiceDocumentQueryResult res = qr[0];
 
