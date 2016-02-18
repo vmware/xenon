@@ -14,10 +14,10 @@
 package com.vmware.xenon.services.common;
 
 import java.net.URI;
-import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.concurrent.ConcurrentSkipListSet;
 
 import com.vmware.xenon.common.ServiceErrorResponse;
 
@@ -25,10 +25,10 @@ import com.vmware.xenon.common.ServiceErrorResponse;
  * Aggregated responses from a set of peer services
  */
 public class NodeGroupBroadcastResponse {
-    public Set<URI> receivers = new HashSet<>();
-    public Map<String, URI> selectedNodes = new HashMap<>();
-    public Map<URI, String> jsonResponses = new HashMap<>();
-    public Map<URI, ServiceErrorResponse> failures = new HashMap<>();
+    public Set<URI> receivers = new ConcurrentSkipListSet<>();
+    public Map<String, URI> selectedNodes = new ConcurrentSkipListMap<>();
+    public Map<URI, String> jsonResponses = new ConcurrentSkipListMap<>();
+    public Map<URI, ServiceErrorResponse> failures = new ConcurrentSkipListMap<>();
     public long availableNodeCount;
     public long nodeCount;
     public long membershipQuorum;

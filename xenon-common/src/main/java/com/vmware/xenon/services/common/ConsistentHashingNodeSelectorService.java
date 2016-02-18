@@ -371,6 +371,7 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
 
         AtomicInteger availableNodeCount = new AtomicInteger();
         CompletionHandler c = (o, e) -> {
+            // add failure or success response to the appropriate, concurrent map
             if (e != null) {
                 ServiceErrorResponse errorRsp = Utils.toServiceErrorResponse(e);
                 rsp.failures.put(o.getUri(), errorRsp);
