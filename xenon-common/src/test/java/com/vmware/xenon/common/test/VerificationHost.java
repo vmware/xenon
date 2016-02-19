@@ -2105,7 +2105,6 @@ public class VerificationHost extends ExampleServiceHost {
 
         int healthyNodes = 0;
         NodeState localNode = null;
-        Set<Integer> quorums = new HashSet<>();
         for (NodeState ns : r.nodes.values()) {
             if (ns.status == NodeStatus.AVAILABLE) {
                 healthyNodes++;
@@ -2121,8 +2120,6 @@ public class VerificationHost extends ExampleServiceHost {
                 expectedOptions = NodeState.DEFAULT_OPTIONS;
             }
 
-            quorums.add(ns.membershipQuorum);
-
             for (NodeOption eo : expectedOptions) {
                 assertTrue(ns.options.contains(eo));
             }
@@ -2130,10 +2127,6 @@ public class VerificationHost extends ExampleServiceHost {
             assertTrue(ns.id != null);
             assertTrue(ns.groupReference != null);
             assertTrue(ns.documentSelfLink.startsWith(ns.groupReference.getPath()));
-        }
-
-        if (quorums.size() != 1) {
-            throw new IllegalStateException("Multiple quorums found: " + quorums);
         }
 
         assertTrue(healthyNodes >= expectedNodesPerGroup);

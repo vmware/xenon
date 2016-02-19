@@ -18,8 +18,6 @@ import java.math.BigInteger;
 import java.net.URI;
 import java.security.MessageDigest;
 import java.util.Collection;
-import java.util.HashSet;
-import java.util.Set;
 import java.util.SortedMap;
 import java.util.TreeMap;
 import java.util.concurrent.CancellationException;
@@ -288,7 +286,7 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
             NodeGroupState localState, MessageDigest digest, int quorum,
             int availableNodes) {
         SortedMap<BigInteger, NodeState> closestNodes = new TreeMap<>();
-        Set<Integer> quorums = new HashSet<>();
+        int maxQuorum = 0;
         long neighbourCount = 1;
         if (this.cachedState.replicationFactor != null) {
             neighbourCount = this.cachedState.replicationFactor;
@@ -314,7 +312,7 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
             }
 
             quorum = Math.max(m.membershipQuorum, quorum);
-            quorums.add(quorum);
+            maxQuorum = Math.max(quorum, maxQuorum);
             byte[] hashedNodeId;
             try {
                 hashedNodeId = this.hashedNodeIds.get(m.id);
@@ -337,10 +335,9 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
             }
         }
 
-        if (quorums.size() > 1) {
-            op.fail(new IllegalStateException("Available nodes: "
-                    + availableNodes + ", different quorums: " + quorums));
-            return closestNodes;
+        if (maxQuorum != quorum) {
+            logWarning("Self quorum: %d, max quorum: %d. Using max", quorum, maxQuorum);
+            quorum = maxQuorum;
         }
 
         if (availableNodes < quorum) {
