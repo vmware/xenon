@@ -298,13 +298,16 @@ public class ServiceDocumentDescription {
                 pd.exampleValue = false;
             } else if (Short.class.equals(clazz) || short.class.equals(clazz)) {
                 pd.typeName = TypeName.LONG;
-                pd.exampleValue = 0;
+                pd.exampleValue = (short) 0;
             } else if (Integer.class.equals(clazz) || int.class.equals(clazz)) {
                 pd.typeName = TypeName.LONG;
                 pd.exampleValue = 0;
             } else if (Long.class.equals(clazz) || long.class.equals(clazz)) {
                 pd.typeName = TypeName.LONG;
                 pd.exampleValue = 0L;
+            } else if (Byte.class.equals(clazz) || byte.class.equals(clazz)) {
+                pd.typeName = TypeName.LONG;
+                pd.exampleValue = (byte) 0;
             } else if (byte[].class.equals(clazz)) {
                 pd.typeName = TypeName.BYTES;
             } else if (Double.class.equals(clazz) || double.class.equals(clazz)) {
@@ -312,7 +315,7 @@ public class ServiceDocumentDescription {
                 pd.exampleValue = 0.0;
             } else if (Float.class.equals(clazz) || float.class.equals(clazz)) {
                 pd.typeName = TypeName.DOUBLE;
-                pd.exampleValue = 0.0;
+                pd.exampleValue = 0.0F;
             } else if (String.class.equals(clazz) || char.class.equals(clazz)) {
                 pd.typeName = TypeName.STRING;
                 pd.exampleValue = "example string";

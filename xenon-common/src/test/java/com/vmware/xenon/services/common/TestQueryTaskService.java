@@ -136,11 +136,11 @@ public class TestQueryTaskService {
         ServiceDocumentDescription sdd = b.buildDescription(s.getClass(),
                 EnumSet.of(ServiceOption.PERSISTENCE));
 
-        final int expectedCustomFields = 28;
+        final int expectedCustomFields = 34;
         final int expectedBuiltInFields = 10;
         // Verify the reflection of the root document
         assertTrue(sdd.propertyDescriptions != null && !sdd.propertyDescriptions.isEmpty());
-        assertTrue(sdd.propertyDescriptions.size() == expectedCustomFields + expectedBuiltInFields);
+        assertEquals(sdd.propertyDescriptions.size(), expectedCustomFields + expectedBuiltInFields);
 
         pd = sdd.propertyDescriptions.get(ServiceDocument.FIELD_NAME_SOURCE_LINK);
         assertTrue(pd.exampleValue == null);
@@ -162,13 +162,13 @@ public class TestQueryTaskService {
                 sdd);
         assertTrue(descriptionsPerType.get(TypeName.BOOLEAN) == 1L);
         assertTrue(descriptionsPerType.get(TypeName.MAP) == 8L);
-        assertTrue(descriptionsPerType.get(TypeName.LONG) == 1L + 4L);
+        assertEquals(descriptionsPerType.get(TypeName.LONG), (Long)(1L + 4L + 3L));
         assertTrue(descriptionsPerType.get(TypeName.PODO) == 3L);
         assertTrue(descriptionsPerType.get(TypeName.COLLECTION) == 4L);
         assertTrue(descriptionsPerType.get(TypeName.ARRAY) == 3L);
         assertTrue(descriptionsPerType.get(TypeName.STRING) == 5L + 5L);
         assertTrue(descriptionsPerType.get(TypeName.DATE) == 1L);
-        assertTrue(descriptionsPerType.get(TypeName.DOUBLE) == 1L);
+        assertTrue(descriptionsPerType.get(TypeName.DOUBLE) == 4L);
         assertTrue(descriptionsPerType.get(TypeName.BYTES) == 1L);
 
         pd = sdd.propertyDescriptions.get("exampleValue");
