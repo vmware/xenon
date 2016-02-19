@@ -57,23 +57,20 @@ public class UtilityService implements Service {
 
     @Override
     public void handleRequest(Operation op) {
-        if (op.getUri().getPath()
-                .endsWith(ServiceHost.SERVICE_URI_SUFFIX_STATS)) {
-            handleStatsRequest(op);
-        } else if (op.getUri().getPath()
-                .endsWith(ServiceHost.SERVICE_URI_SUFFIX_SUBSCRIPTIONS)) {
-            handleSubscriptionsRequest(op);
-        } else if (op.getUri().getPath()
-                .endsWith(ServiceHost.SERVICE_URI_SUFFIX_TEMPLATE)) {
-            handleDocumentTemplateRequest(op);
-        } else if (op.getUri().getPath()
-                .endsWith(ServiceHost.SERVICE_URI_SUFFIX_CONFIG)) {
-            this.parent.handleConfigurationRequest(op);
-        } else if (op.getUri().getPath()
-                .endsWith(ServiceHost.SERVICE_URI_SUFFIX_UI)) {
+        String uriPrefix = this.parent.getSelfLink() + ServiceHost.SERVICE_URI_SUFFIX_UI;
+
+        if (op.getUri().getPath().startsWith(uriPrefix)) {
+            // startsWith catches all /factory/instance/ui/some-script.js
             handleUiRequest(op);
-        } else if (op.getUri().getPath()
-                .endsWith(ServiceHost.SERVICE_URI_SUFFIX_AVAILABLE)) {
+        } else if (op.getUri().getPath().endsWith(ServiceHost.SERVICE_URI_SUFFIX_STATS)) {
+            handleStatsRequest(op);
+        } else if (op.getUri().getPath().endsWith(ServiceHost.SERVICE_URI_SUFFIX_SUBSCRIPTIONS)) {
+            handleSubscriptionsRequest(op);
+        } else if (op.getUri().getPath().endsWith(ServiceHost.SERVICE_URI_SUFFIX_TEMPLATE)) {
+            handleDocumentTemplateRequest(op);
+        } else if (op.getUri().getPath().endsWith(ServiceHost.SERVICE_URI_SUFFIX_CONFIG)) {
+            this.parent.handleConfigurationRequest(op);
+        } else if (op.getUri().getPath().endsWith(ServiceHost.SERVICE_URI_SUFFIX_AVAILABLE)) {
             handleAvailableRequest(op);
         } else {
             op.fail(new UnknownHostException());
@@ -333,7 +330,28 @@ public class UtilityService implements Service {
         } else {
             serviceUiResourcePath = Utils.buildUiResourceUriPrefixPath(this.parent);
         }
-        serviceUiResourcePath += "/" + ServiceUriPaths.UI_RESOURCE_DEFAULT_FILE;
+
+        // find what's after the selfLink
+        String uriPath = op.getUri().getPath();
+        String selfLink = this.parent.getSelfLink();
+        uriPath = uriPath.substring(selfLink.length() + ServiceHost.SERVICE_URI_SUFFIX_UI.length());
+
+        if (uriPath.equals("")) {
+            try {
+                // redirect to /service/ui/ (trailing slash!)
+                redirectGetToTrailingSlash(op, selfLink + ServiceHost.SERVICE_URI_SUFFIX_UI);
+                return;
+            } catch (UnsupportedEncodingException e) {
+                op.fail(e);
+            }
+        } else if (uriPath.equals(UriUtils.URI_PATH_CHAR)) {
+            // serve index.html on /service/ui/
+            serviceUiResourcePath += UriUtils.URI_PATH_CHAR + ServiceUriPaths.UI_RESOURCE_DEFAULT_FILE;
+        } else {
+            // forward to /service/ui/some-resource.js
+            serviceUiResourcePath += uriPath;
+        }
+
         proxyGetToCustomHtmlUiResource(op, serviceUiResourcePath);
     }
 
@@ -342,6 +360,22 @@ public class UtilityService implements Service {
         op.addResponseHeader(Operation.LOCATION_HEADER,
                 URLDecoder.decode(UriUtils.buildUri(getHost(), htmlResourcePath).toString(),
                         Utils.CHARSET));
+        op.setStatusCode(Operation.STATUS_CODE_MOVED_TEMP);
+        op.setContentType(Operation.MEDIA_TYPE_TEXT_HTML);
+        op.complete();
+    }
+
+    /**
+     * 302 redirect to the provided folderPath with a '/' appended
+     * @param op
+     * @param folderPath
+     * @throws UnsupportedEncodingException
+     */
+    private void redirectGetToTrailingSlash(Operation op, String folderPath)
+            throws UnsupportedEncodingException {
+        op.addResponseHeader(Operation.LOCATION_HEADER,
+                URLDecoder.decode(UriUtils.buildUri(getHost(), folderPath).toString(),
+                        Utils.CHARSET) + UriUtils.URI_PATH_CHAR);
         op.setStatusCode(Operation.STATUS_CODE_MOVED_TEMP);
         op.setContentType(Operation.MEDIA_TYPE_TEXT_HTML);
         op.complete();
