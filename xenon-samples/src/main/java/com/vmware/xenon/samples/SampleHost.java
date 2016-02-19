@@ -23,6 +23,7 @@ import com.vmware.xenon.services.samples.SampleFactoryServiceWithCustomUi;
 import com.vmware.xenon.services.samples.SamplePreviousEchoFactoryService;
 import com.vmware.xenon.services.samples.SampleServiceWithSharedCustomUi;
 import com.vmware.xenon.services.samples.SampleSimpleEchoFactoryService;
+import com.vmware.xenon.ui.UiService;
 
 /**
  * Our entry point, spawning a host that run/showcase examples we can play with.
@@ -79,6 +80,10 @@ public class SampleHost extends ServiceHost {
                         .buildUri(this, SamplePreviousEchoFactoryService.class)),
                 new SamplePreviousEchoFactoryService());
 
+        // Start UI service
+        super.startService(
+                Operation.createPost(UriUtils.buildUri(this, UiService.class)),
+                new UiService());
         return this;
     }
 }
