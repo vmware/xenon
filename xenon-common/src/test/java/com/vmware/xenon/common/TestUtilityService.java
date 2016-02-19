@@ -132,12 +132,6 @@ public class TestUtilityService extends BasicReusableHostTestCase {
 
     @Test
     public void redirectToUiServiceIndex() throws Throwable {
-
-        this.host.testStart(1);
-        this.host.registerForServiceAvailability(this.host.getCompletion(),
-                ExampleService.FACTORY_LINK);
-        this.host.testWait();
-
         // create an example child service and also verify it has a default UI html page
         ExampleServiceState s = new ExampleServiceState();
         s.name = UUID.randomUUID().toString();
@@ -175,9 +169,6 @@ public class TestUtilityService extends BasicReusableHostTestCase {
 
     @Test
     public void testUtilityStats() throws Throwable {
-
-        // Step 1: Create an ExampleService instance
-        this.host.waitForServiceAvailable(ExampleService.FACTORY_LINK);
         String name = UUID.randomUUID().toString();
         ExampleServiceState s = new ExampleServiceState();
         s.name = name;
