@@ -546,7 +546,6 @@ public class TestNodeGroupService {
             h = new ExampleServiceHost();
             int quorum = this.host.getPeerCount();
 
-            System.setProperty(NodeState.PROPERTY_NAME_MEMBERSHIP_QUORUM, Integer.toString(quorum));
             String mainHostId = "main-" + VerificationHost.hostNumber.incrementAndGet();
             String[] args = {
                     "--port=0",
@@ -592,15 +591,12 @@ public class TestNodeGroupService {
             this.host.testStart(1);
             this.host.addPeerNode(hostWithInitialState);
             this.host
-                    .joinNodeGroup(hostWithStateNodeGroup, existingMemberNodeGroup, totalNodeCount);
+                    .joinNodeGroup(hostWithStateNodeGroup, existingMemberNodeGroup, quorum);
             this.host.testWait();
 
             this.host.waitForNodeGroupIsAvailableConvergence();
-            this.host.setNodeGroupQuorum(totalNodeCount);
             this.host.waitForNodeGroupConvergence(totalNodeCount);
             this.host.log("Wait for notifications on group convergence");
-
-            System.setProperty(NodeState.PROPERTY_NAME_MEMBERSHIP_QUORUM, Integer.toString(1));
 
             if (!notifications.await(this.host.getTimeoutSeconds(), TimeUnit.SECONDS)) {
                 throw new TimeoutException("Notifications on group convergence");
@@ -640,8 +636,6 @@ public class TestNodeGroupService {
             this.host.stopHostAndPreserveState(h);
 
             totalNodeCount--;
-            // relax quorum
-            this.host.setNodeGroupQuorum(totalNodeCount);
             this.host.waitForNodeGroupConvergence(totalNodeCount);
 
             int deleteCount = Math.max(1, this.serviceCount / 4);
@@ -717,8 +711,6 @@ public class TestNodeGroupService {
                     version);
         } finally {
             this.host.log("test finished");
-            // restore global property otherwise all tests will be affected
-            System.setProperty(NodeState.PROPERTY_NAME_MEMBERSHIP_QUORUM, Integer.toString(1));
             if (h != null) {
                 h.stop();
                 tmpFolder.delete();
@@ -1206,10 +1198,18 @@ public class TestNodeGroupService {
 
         long totalOperations = 0;
         do {
+            if (this.host == null) {
+                setUp(this.nodeCount);
+                this.host.joinNodesAndVerifyConvergence(this.host.getPeerCount());
+                // for limited replication factor, we will still set the quorum high, and expect
+                // the limited replication selector to use the minimum between majority of replication
+                // factor, versus node group membership quorum
+                this.host.setNodeGroupQuorum(this.nodeCount);
+            }
+
             Map<String, ExampleServiceState> childStates = doExampleFactoryPostReplicationTest(
                     this.serviceCount);
 
-            this.host.setNodeGroupQuorum(this.nodeCount);
             totalOperations += this.serviceCount;
 
             if (expiration == null) {
