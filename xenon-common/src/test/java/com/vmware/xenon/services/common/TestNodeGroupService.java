@@ -1206,10 +1206,18 @@ public class TestNodeGroupService {
 
         long totalOperations = 0;
         do {
+            if (this.host == null) {
+                setUp(this.nodeCount);
+                this.host.joinNodesAndVerifyConvergence(this.host.getPeerCount());
+                // for limited replication factor, we will still set the quorum high, and expect
+                // the limited replication selector to use the minimum between majority of replication
+                // factor, versus node group membership quorum
+                this.host.setNodeGroupQuorum(this.nodeCount);
+            }
+
             Map<String, ExampleServiceState> childStates = doExampleFactoryPostReplicationTest(
                     this.serviceCount);
 
-            this.host.setNodeGroupQuorum(this.nodeCount);
             totalOperations += this.serviceCount;
 
             if (expiration == null) {
