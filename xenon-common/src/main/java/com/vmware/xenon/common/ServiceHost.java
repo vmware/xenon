@@ -2606,11 +2606,18 @@ public class ServiceHost {
     }
 
     Service findHelperService(String uriPath) {
-        Service s;
-        String subPath = uriPath.substring(0,
-                uriPath.lastIndexOf(UriUtils.URI_PATH_CHAR));
+        String subPath;
+
+        int i = uriPath.indexOf(SERVICE_URI_SUFFIX_UI + "/");
+        if (i > 0) {
+            // catches the case of /service/ui/
+            // but is smart to ignore /ui/abc
+            subPath = uriPath.substring(0, i);
+        } else {
+            subPath = uriPath.substring(0, uriPath.lastIndexOf(UriUtils.URI_PATH_CHAR));
+        }
         // use the prefix to find the actual service
-        s = this.attachedServices.get(subPath);
+        Service s = this.attachedServices.get(subPath);
         if (s == null) {
             return null;
         }
@@ -3530,6 +3537,10 @@ public class ServiceHost {
         } else if (serviceUriPath.endsWith(SERVICE_URI_SUFFIX_TEMPLATE)) {
             return true;
         } else if (serviceUriPath.endsWith(SERVICE_URI_SUFFIX_UI)) {
+            //catches /service/ui
+            return true;
+        } else if (serviceUriPath.indexOf(SERVICE_URI_SUFFIX_UI + "/") > 0) {
+            //catches /service/ui/ and /service/ui/whatever
             return true;
         } else if (serviceUriPath.endsWith(SERVICE_URI_SUFFIX_AVAILABLE)) {
             return true;
