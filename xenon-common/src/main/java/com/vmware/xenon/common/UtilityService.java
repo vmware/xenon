@@ -92,6 +92,12 @@ public class UtilityService implements Service {
 
     private void handleAvailableRequest(Operation op) {
         if (op.getAction() == Action.GET) {
+            if (this.parent.getProcessingStage() != ProcessingStage.PAUSED
+                    && this.parent.getProcessingStage() != ProcessingStage.AVAILABLE) {
+                // processing stage takes precedence over isAvailable statistic
+                op.fail(Operation.STATUS_CODE_UNAVAILABLE);
+                return;
+            }
             if (this.stats == null) {
                 op.complete();
                 return;

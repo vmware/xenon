@@ -360,9 +360,30 @@ public class Operation implements Cloneable {
     public static final String PRAGMA_DIRECTIVE_NO_FORWARDING = "xn-no-fwd";
     public static final String PRAGMA_DIRECTIVE_NOTIFICATION = "xn-nt";
     public static final String PRAGMA_DIRECTIVE_SKIPPED_NOTIFICATIONS = "xn-nt-skipped";
-    public static final String PRAGMA_DIRECTIVE_INDEX_CHECK = "xn-check-index";
-    public static final String PRAGMA_DIRECTIVE_VERSION_CHECK = "xn-check-version";
+
     public static final String PRAGMA_DIRECTIVE_USE_HTTP2 = "xn-use-http2";
+
+    /**
+     *  Infrastructure use only. Does a strict update version check and if the service exists or
+     *  the service has been previously deleted the request will fail
+     *
+     *  Overridden by: PRAGMA_DIRECTIVE_FORCE_INDEX_UPDATE
+     */
+    public static final String PRAGMA_DIRECTIVE_VERSION_CHECK = "xn-check-version";
+
+    /**
+     * Infrastructure use only. Used for on demand load of services. Checks the index if a service
+     * exists
+     */
+    public static final String PRAGMA_DIRECTIVE_INDEX_CHECK = "xn-check-index";
+
+    /**
+     * Instructs a persisted service to force the update, overriding version checks. It should be used
+     * for conflict resolution only.
+     *
+     * Overrides: PRAGMA_DIRECTIVE_VERSION_CHECK
+     */
+    public static final String PRAGMA_DIRECTIVE_FORCE_INDEX_UPDATE = "xn-force-index-update";
 
     /**
      * Infrastructure use only. Instructs a persisted service to complete the operation but skip any index

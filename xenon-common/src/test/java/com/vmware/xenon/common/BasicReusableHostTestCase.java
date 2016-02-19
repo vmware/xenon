@@ -26,6 +26,7 @@ import org.junit.runner.Description;
 
 import com.vmware.xenon.common.CommandLineArgumentParser;
 import com.vmware.xenon.common.test.VerificationHost;
+import com.vmware.xenon.services.common.ExampleService;
 
 public class BasicReusableHostTestCase {
 
@@ -49,6 +50,7 @@ public class BasicReusableHostTestCase {
         CommandLineArgumentParser.parseFromProperties(HOST);
         try {
             HOST.start();
+            HOST.waitForServiceAvailable(ExampleService.FACTORY_LINK);
         } catch (Throwable e) {
             throw new Exception(e);
         }

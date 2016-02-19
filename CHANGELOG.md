@@ -2,6 +2,10 @@
 
 ## 0.6.1-SNAPSHOT
 
+* Add PRAGMA_FORCE_INDEX_UPDATE allowing for conflict
+  resolution or overriding version checks on restarting a
+  deleted service
+
 * Fix NodeGroupBroadcastResponse race, where the jsonResponse
   list was getting corrupted, thus removing results from some
   of the nodes. This affected broadcast request behavior.
