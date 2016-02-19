@@ -33,6 +33,7 @@ public class ReplicationTestService extends StatefulService {
     public static final String ERROR_MESSAGE_STRING_FIELD_IS_REQUIRED = "stringField is required";
     public static final String STAT_NAME_MISSING_SERVICE_OPTION_TOGGLE_COUNT = "missingDocumentOwnerToggleCount";
     public static final String STAT_NAME_SERVICE_OPTION_TOGGLE_COUNT = "documentOwnerToggleCount";
+    public static final String STAT_NAME_HANDLE_NODE_GROUP_MAINTENANCE_COUNT = "handleNodeGroupMaintenanceCount";
 
     public static class ReplicationTestServiceState extends ServiceDocument {
         public static final String CLIENT_PATCH_HINT = "client-";
@@ -190,7 +191,8 @@ public class ReplicationTestService extends StatefulService {
     @Override
     public void handleMaintenance(Operation maintOp) {
         ServiceMaintenanceRequest body = maintOp.getBody(ServiceMaintenanceRequest.class);
-        maintOp.complete();
+        // call super method to make sure handleNodeGroupMaintenance is called
+        super.handleMaintenance(maintOp);
 
         logInfo("%s", body.reasons);
         if (!body.reasons.contains(MaintenanceReason.SERVICE_OPTION_TOGGLE)) {
@@ -204,6 +206,18 @@ public class ReplicationTestService extends StatefulService {
             adjustStat(STAT_NAME_SERVICE_OPTION_TOGGLE_COUNT, 1);
         }
 
+    }
+
+    @Override
+    public void handleNodeGroupMaintenance(Operation post) {
+        ServiceMaintenanceRequest request = post.getBody(ServiceMaintenanceRequest.class);
+        if (!request.reasons.contains(MaintenanceReason.NODE_GROUP_CHANGE)) {
+            post.fail(new IllegalArgumentException("expected NODE_GROUP_CHANGE reason"));
+            return;
+        }
+
+        post.complete();
+        adjustStat(STAT_NAME_HANDLE_NODE_GROUP_MAINTENANCE_COUNT, 1);
     }
 
 }

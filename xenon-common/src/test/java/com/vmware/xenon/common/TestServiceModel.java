@@ -24,6 +24,8 @@ import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 import org.junit.Test;
 
@@ -55,6 +57,9 @@ class GetIllegalDocumentService extends StatefulService {
 }
 
 public class TestServiceModel extends BasicTestCase {
+
+    private static final String STAT_NAME_HANDLE_PERIODIC_MAINTENANCE = "handlePeriodicMaintenance";
+    private static final int PERIODIC_MAINTENANCE_MAX = 2;
 
     /**
      * Parameter that specifies if this run should be a stress test.
@@ -572,4 +577,79 @@ public class TestServiceModel extends BasicTestCase {
                 .setCompletion(c));
         this.host.testWait();
     }
+
+    public static class PeriodicMaintenanceTestStatelessService extends StatelessService {
+        public PeriodicMaintenanceTestStatelessService() {
+            this.setMaintenanceIntervalMicros(TimeUnit.MILLISECONDS.toMicros(1));
+            this.toggleOption(ServiceOption.INSTRUMENTATION, true);
+            this.toggleOption(ServiceOption.PERIODIC_MAINTENANCE, true);
+        }
+
+        @Override
+        public void handlePeriodicMaintenance(Operation post) {
+            doHandlePeriodicMaintenanceImpl(this, post);
+        }
+    }
+
+    public static class PeriodicMaintenanceTestStatefulService extends StatefulService {
+        public PeriodicMaintenanceTestStatefulService() {
+            super(ServiceDocument.class);
+            this.setMaintenanceIntervalMicros(TimeUnit.MILLISECONDS.toMicros(1));
+            this.toggleOption(ServiceOption.INSTRUMENTATION, true);
+            this.toggleOption(ServiceOption.PERIODIC_MAINTENANCE, true);
+        }
+
+        @Override
+        public void handlePeriodicMaintenance(Operation post) {
+            doHandlePeriodicMaintenanceImpl(this, post);
+        }
+    }
+
+    private static void doHandlePeriodicMaintenanceImpl(Service s, Operation post) {
+        ServiceMaintenanceRequest request = post.getBody(ServiceMaintenanceRequest.class);
+        if (!request.reasons.contains(
+                ServiceMaintenanceRequest.MaintenanceReason.PERIODIC_SCHEDULE)) {
+            post.fail(new IllegalArgumentException("expected PERIODIC_SCHEDULE reason"));
+            return;
+        }
+
+        post.complete();
+
+        ServiceStat stat = s.getStat(STAT_NAME_HANDLE_PERIODIC_MAINTENANCE);
+        s.adjustStat(stat, 1);
+        if (stat.latestValue >= PERIODIC_MAINTENANCE_MAX) {
+            s.toggleOption(ServiceOption.PERIODIC_MAINTENANCE, false);
+        }
+    }
+
+    @Test
+    public void handlePeriodicMaintenance() throws Throwable {
+        // Check StatelessService
+        doCheckPeriodicMaintenance(new PeriodicMaintenanceTestStatelessService());
+
+        // Check StatefulService
+        doCheckPeriodicMaintenance(new PeriodicMaintenanceTestStatefulService());
+    }
+
+    private void doCheckPeriodicMaintenance(Service s) throws Throwable {
+        // Start service
+        this.host.startServiceAndWait(s, UUID.randomUUID().toString(), null);
+
+        ServiceStat stat = s.getStat(STAT_NAME_HANDLE_PERIODIC_MAINTENANCE);
+
+        Date exp = this.host.getTestExpiration();
+        while (stat.latestValue < PERIODIC_MAINTENANCE_MAX) {
+            Thread.sleep(100);
+            this.host.log("Handled %d periodic maintenance events, expecting %d",
+                    (int)stat.latestValue, PERIODIC_MAINTENANCE_MAX);
+            if (new Date().after(exp)) {
+                throw new TimeoutException();
+            }
+        }
+
+        Thread.sleep(100);
+
+        assertEquals(PERIODIC_MAINTENANCE_MAX, (int)stat.latestValue);
+    }
+
 }

@@ -204,8 +204,59 @@ public class StatelessService implements Service {
         }));
     }
 
+    /**
+     * Infrastructure use. Invoked by host to execute a service handler for a maintenance request.
+     * ServiceMaintenanceRequest object is set in the operation body, with the reasons field
+     * indicating the maintenance reason. Its invoked when
+     *
+     * 1) Periodically, if ServiceOption.PERIODIC_MAINTENANCE is set.
+     *
+     * 2) Node group change.
+     *
+     * Services should override handlePeriodicMaintenance and handleNodeGroupMaintenance.
+     *
+     * An implementation of this method that needs to interact with the state of this service must
+     * do so as if it were a client of this service. That is: the state of the service should be
+     * retrieved by requesting a GET; and the state of the service should be mutated by submitting a
+     * PATCH, PUT or DELETE.
+     */
     @Override
     public void handleMaintenance(Operation post) {
+        ServiceMaintenanceRequest request = post.getBody(ServiceMaintenanceRequest.class);
+        if (request.reasons.contains(ServiceMaintenanceRequest.MaintenanceReason.PERIODIC_SCHEDULE)) {
+            this.handlePeriodicMaintenance(post);
+        } else if (request.reasons.contains(ServiceMaintenanceRequest.MaintenanceReason.NODE_GROUP_CHANGE)) {
+            this.handleNodeGroupMaintenance(post);
+        } else {
+            post.complete();
+        }
+    }
+
+    /**
+     * Invoked by the host periodically, if ServiceOption.PERIODIC_MAINTENANCE is set.
+     * ServiceMaintenanceRequest object is set in the operation body, with the reasons field
+     * indicating the maintenance reason.
+     *
+     * An implementation of this method that needs to interact with the state of this service must
+     * do so as if it were a client of this service. That is: the state of the service should be
+     * retrieved by requesting a GET; and the state of the service should be mutated by submitting a
+     * PATCH, PUT or DELETE.
+     */
+    public void handlePeriodicMaintenance(Operation post) {
+        post.complete();
+    }
+
+    /**
+     * Invoked by the host on node group change.
+     * ServiceMaintenanceRequest object is set in the operation body, with the reasons field
+     * indicating the maintenance reason.
+     *
+     * An implementation of this method that needs to interact with the state of this service must
+     * do so as if it were a client of this service. That is: the state of the service should be
+     * retrieved by requesting a GET; and the state of the service should be mutated by submitting a
+     * PATCH, PUT or DELETE.
+     */
+    public void handleNodeGroupMaintenance(Operation post) {
         post.complete();
     }
 

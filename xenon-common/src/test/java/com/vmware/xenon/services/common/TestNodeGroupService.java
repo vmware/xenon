@@ -2450,7 +2450,7 @@ public class TestNodeGroupService {
                         break;
                     }
                     ServiceStat maintStat = childStats.entries
-                            .get(Service.STAT_NAME_NODE_GROUP_CHANGE_MAINTENANCE_COUNT);
+                            .get(ReplicationTestService.STAT_NAME_HANDLE_NODE_GROUP_MAINTENANCE_COUNT);
                     if (maintStat != null) {
                         nodeGroupMaintCount++;
                     }

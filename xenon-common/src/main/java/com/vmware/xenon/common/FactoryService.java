@@ -24,7 +24,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 import com.vmware.xenon.common.NodeSelectorService.SelectOwnerResponse;
 import com.vmware.xenon.common.Operation.CompletionHandler;
 import com.vmware.xenon.common.ServiceHost.ServiceAlreadyStartedException;
-import com.vmware.xenon.common.ServiceMaintenanceRequest.MaintenanceReason;
 import com.vmware.xenon.services.common.QueryTask;
 import com.vmware.xenon.services.common.QueryTask.Query;
 import com.vmware.xenon.services.common.QueryTask.QuerySpecification.QueryOption;
@@ -756,13 +755,7 @@ public abstract class FactoryService extends StatelessService {
     }
 
     @Override
-    public void handleMaintenance(Operation maintOp) {
-        ServiceMaintenanceRequest body = maintOp.getBody(ServiceMaintenanceRequest.class);
-        if (!body.reasons.contains(MaintenanceReason.NODE_GROUP_CHANGE)) {
-            maintOp.complete();
-            return;
-        }
-
+    public void handleNodeGroupMaintenance(Operation maintOp) {
         if (!hasOption(ServiceOption.REPLICATION)) {
             maintOp.complete();
             return;
