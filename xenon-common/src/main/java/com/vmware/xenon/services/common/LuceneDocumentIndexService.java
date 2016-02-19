@@ -1412,11 +1412,7 @@ public class LuceneDocumentIndexService extends StatelessService {
                         v.toString()));
             }
         } else if (pd.typeName.equals(TypeName.LONG)) {
-            if (v instanceof Integer) {
-                int i = (int) v;
-                v = i * 1L;
-            }
-            luceneField = new LongField(fieldName, (long) v,
+            luceneField = new LongField(fieldName, ((Number) v).longValue(),
                     fsv == Store.NO ? this.longUnStoredField : this.longStoredField);
         } else if (pd.typeName.equals(TypeName.DATE)) {
             // Index as microseconds since UNIX epoch
@@ -1424,7 +1420,7 @@ public class LuceneDocumentIndexService extends StatelessService {
             luceneField = new LongField(fieldName, dt.getTime() * 1000,
                     fsv == Store.NO ? this.longUnStoredField : this.longStoredField);
         } else if (pd.typeName.equals(TypeName.DOUBLE)) {
-            luceneField = new DoubleField(fieldName, (double) v,
+            luceneField = new DoubleField(fieldName, ((Number) v).doubleValue(),
                     fsv == Store.NO ? this.doubleUnStoredField : this.doubleStoredField);
         } else if (pd.typeName.equals(TypeName.BOOLEAN)) {
             String booleanValue = QuerySpecification.toMatchValue((boolean) v);

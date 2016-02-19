@@ -48,6 +48,12 @@ public class QueryValidationTestService extends StatefulService {
         @UsageOption(option = PropertyUsageOption.OPTIONAL)
         public Long longValue;
         public Double doubleValue;
+        public Float floatValue;
+        public long longPrimitive;
+        public double doublePrimitive;
+        public float floatPrimitive;
+        public short shortPrimitive;
+        public byte bytePrimitive;
         public Date dateValue;
         public String stringValue;
         @UsageOption(option = PropertyUsageOption.OPTIONAL)
