@@ -18,6 +18,11 @@
     </dependency>
     <dependency>
       <groupId>${project.groupId}</groupId>
+      <artifactId>xenon-ui</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>${project.groupId}</groupId>
       <artifactId>xenon-common</artifactId>
       <version>${project.version}</version>
       <type>test-jar</type>
