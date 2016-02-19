@@ -349,7 +349,6 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
             args.port = 0;
             args.sandbox = tmpFolder.getRoot().toPath();
             h.initialize(args);
-            h.setPeerSynchronizationEnabled(false);
             h.setOperationTimeOutMicros(this.host.getOperationTimeoutMicros());
             h.start();
 
@@ -385,20 +384,7 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
             }
             this.host.testWait();
 
-            // delete one of the services (with no body)
-            URI deletedService = exampleURIs.remove(0);
-            this.host.testStart(1);
-            this.host.send(Operation.createDelete(deletedService)
-                    .setCompletion(this.host.getCompletion()));
-            this.host.testWait();
-
-            // delete another, with body, verifying that delete works either way
-            deletedService = exampleURIs.remove(0);
-            this.host.testStart(1);
-            this.host.send(Operation.createDelete(deletedService)
-                    .setBody(new ServiceDocument())
-                    .setCompletion(this.host.getCompletion()));
-            this.host.testWait();
+            verifyDeleteRePost(h, exampleURIs);
 
             Map<URI, ExampleServiceState> beforeState = this.host.getServiceState(null,
                     ExampleServiceState.class, exampleURIs);
@@ -410,7 +396,6 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
 
             h = new ExampleServiceHost();
             args.port = 0;
-            h.setPeerSynchronizationEnabled(false);
             h.initialize(args);
 
             if (!this.host.isStressTest()) {
@@ -440,11 +425,7 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
 
             String onDemandFactoryLink = createOnDemandLoadFactoryService(h);
 
-            this.host.testStart(1);
-            h.registerForServiceAvailability((o, e) -> {
-                this.host.completeIteration();
-            }, ExampleService.FACTORY_LINK);
-            this.host.testWait();
+            this.host.waitForServiceAvailable(UriUtils.buildUri(h, ExampleService.FACTORY_LINK));
 
             long end = Utils.getNowMicrosUtc();
 
@@ -503,6 +484,53 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
             h.stop();
             tmpFolder.delete();
         }
+    }
+
+    private void verifyDeleteRePost(ExampleServiceHost h, List<URI> exampleURIs)
+            throws Throwable {
+        ExampleServiceState body;
+        // delete one of the services (with no body)
+        URI deletedService = exampleURIs.remove(0);
+        this.host.testStart(1);
+        this.host.send(Operation.createDelete(deletedService)
+                .setCompletion(this.host.getCompletion()));
+        this.host.testWait();
+
+        // delete another, with body, verifying that delete works either way
+        deletedService = exampleURIs.remove(0);
+        this.host.testStart(1);
+        this.host.send(Operation.createDelete(deletedService)
+                .setBody(new ServiceDocument())
+                .setCompletion(this.host.getCompletion()));
+        this.host.testWait();
+
+        // recreate the service we just deleted, it should fail
+        this.host.testStart(1);
+        body = new ExampleServiceState();
+        body.name = UUID.randomUUID().toString();
+        body.documentSelfLink = deletedService.getPath().replace(ExampleService.FACTORY_LINK,
+                "");
+        URI factory = UriUtils.buildUri(h, ExampleService.FACTORY_LINK);
+        this.host.send(Operation.createPost(factory)
+                .setBody(body)
+                .setCompletion(this.host.getExpectedFailureCompletion()));
+        this.host.testWait();
+
+        // try again, but FORCE it
+        this.host.testStart(1);
+        this.host.send(Operation.createPost(factory)
+                .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_FORCE_INDEX_UPDATE)
+                .setBody(body)
+                .setCompletion(this.host.getCompletion()));
+        this.host.testWait();
+
+        // delete again
+        this.host.testStart(1);
+        this.host.send(Operation.createDelete(deletedService)
+                .setBody(new ServiceDocument())
+                .setCompletion(this.host.getCompletion()));
+        this.host.testWait();
+
     }
 
     private void verifyOnDemandLoad(ServiceHost h, String onDemandFactoryLink) throws Throwable {

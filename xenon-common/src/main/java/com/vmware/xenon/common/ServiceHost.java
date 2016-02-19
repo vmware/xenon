@@ -2553,6 +2553,10 @@ public class ServiceHost {
             return true;
         }
 
+        if (serviceStartPost.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_FORCE_INDEX_UPDATE)) {
+            return true;
+        }
+
         if (stateFromStore == null) {
             return true;
         }

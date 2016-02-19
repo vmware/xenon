@@ -1275,10 +1275,38 @@ public class VerificationHost extends ExampleServiceHost {
     }
 
     public void waitForServiceAvailable(String s) throws Throwable {
-        testStart(1);
-        registerForServiceAvailability(getCompletion(),
-                s);
-        testWait();
+        waitForServiceAvailable(UriUtils.buildUri(this, s));
+    }
+
+    public void waitForServiceAvailable(URI u) throws Throwable {
+        Date exp = getTestExpiration();
+        boolean[] isReady = new boolean[1];
+        while (new Date().before(exp)) {
+            this.testStart(1);
+            u = UriUtils.buildAvailableUri(u);
+            Operation get = Operation.createGet(u).setCompletion((o, e) -> {
+                if (e != null) {
+                    // not ready
+                    isReady[0] = false;
+                } else {
+                    isReady[0] = true;
+                }
+                this.completeIteration();
+            });
+            send(get);
+            this.testWait();
+
+            if (isReady[0]) {
+                return;
+            }
+
+            Thread.sleep(100);
+        }
+
+        if (new Date().after(exp)) {
+            throw new TimeoutException();
+        }
+
     }
 
     public <T> Map<URI, T> doFactoryChildServiceStart(
