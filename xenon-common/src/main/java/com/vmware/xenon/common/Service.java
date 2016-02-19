@@ -341,7 +341,10 @@ public interface Service {
     void handleConfigurationRequest(Operation request);
 
     /**
-     * Invoked by the host periodically, if ServiceOption.PERIODIC_MAINTENANCE is set.
+     * Infrastructure use. Invoked by host to execute a service handler for a maintenance request.
+     *
+     * Invoked periodically, if ServiceOption.PERIODIC_MAINTENANCE is set.
+     * Invoked on node group change.
      *
      * An implementation of this method that needs to interact with the state of this service must
      * do so as if it were a client of this service. That is: the state of the service should be

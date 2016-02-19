@@ -1545,6 +1545,27 @@ public class StatefulService implements Service {
 
     @Override
     public void handleMaintenance(Operation post) {
+        ServiceMaintenanceRequest request = post.getBody(ServiceMaintenanceRequest.class);
+        if (request.reasons.contains(ServiceMaintenanceRequest.MaintenanceReason.PERIODIC_SCHEDULE)) {
+            this.handlePeriodicMaintenance(post);
+        } else if (request.reasons.contains(ServiceMaintenanceRequest.MaintenanceReason.NODE_GROUP_CHANGE)) {
+            this.handleNodeGroupMaintenance(post);
+        } else {
+            post.complete();
+        }
+    }
+
+    /**
+     * Invoked by the host periodically, if ServiceOption.PERIODIC_MAINTENANCE is set.
+     */
+    public void handlePeriodicMaintenance(Operation post) {
+        post.complete();
+    }
+
+    /**
+     * Invoked by the host on node group change.
+     */
+    public void handleNodeGroupMaintenance(Operation post) {
         post.complete();
     }
 
