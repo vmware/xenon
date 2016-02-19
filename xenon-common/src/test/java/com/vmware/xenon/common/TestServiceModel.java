@@ -18,6 +18,7 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
 import java.net.URI;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.EnumSet;
 import java.util.List;
@@ -33,6 +34,7 @@ import com.vmware.xenon.common.Service.ServiceOption;
 import com.vmware.xenon.common.ServiceStats.ServiceStat;
 import com.vmware.xenon.common.test.MinimalTestServiceState;
 import com.vmware.xenon.common.test.TestProperty;
+import com.vmware.xenon.common.test.VerificationHost;
 import com.vmware.xenon.services.common.ExampleService;
 import com.vmware.xenon.services.common.MinimalFactoryTestService;
 import com.vmware.xenon.services.common.MinimalTestService;
@@ -218,6 +220,117 @@ public class TestServiceModel extends BasicTestCase {
                     ServiceHost.SERVICE_URI_SUFFIX_STATS);
         }
         return statUris;
+    }
+
+    public static class ParentContextIdTestService extends StatefulService {
+
+        public static final String SELF_LINK = "/parentTestService";
+        private List<Service> childServices;
+        private String expectedContextId;
+
+        public ParentContextIdTestService() {
+            super(ServiceDocument.class);
+            super.toggleOption(ServiceOption.REPLICATION, true);
+            super.toggleOption(ServiceOption.PERSISTENCE, true);
+            super.toggleOption(ServiceOption.OWNER_SELECTION, true);
+        }
+
+        public void setChildService(List<Service> services) {
+            this.childServices = services;
+        }
+
+        public void setExpectedContextId(String id) {
+            this.expectedContextId = id;
+        }
+
+        @Override
+        public void handleGet(final Operation get) {
+            VerificationHost h = (VerificationHost) getHost();
+            final String error = "context id not set in completion";
+            List<Operation> ops = new ArrayList<>();
+            for (Service s : this.childServices) {
+                Operation op = Operation.createGet(s.getUri())
+                        .setCompletion((completedOp, failure) -> {
+                            if (!this.expectedContextId.equals(get.getContextId())) {
+                                h.failIteration(new IllegalStateException(error));
+                            }
+                            h.completeIteration();
+                        });
+                ops.add(op);
+            }
+
+            if (!this.expectedContextId.equals(get.getContextId())) {
+                h.failIteration(new IllegalStateException(error));
+            }
+            final OperationJoin operationJoin = OperationJoin.create(ops)
+                    .setCompletion((s, failures) -> {
+                        super.handleGet(get);
+                    });
+            operationJoin.sendWith(this);
+        }
+    }
+
+    public static class ChildTestService extends StatefulService {
+
+        public static final String FACTORY_LINK = "/childTestService";
+        private String expectedContextId;
+
+        public ChildTestService() {
+            super(ChildTestServiceState.class);
+            super.toggleOption(ServiceOption.REPLICATION, true);
+            super.toggleOption(ServiceOption.PERSISTENCE, true);
+            super.toggleOption(ServiceOption.OWNER_SELECTION, true);
+        }
+
+        public static class ChildTestServiceState extends ServiceDocument {
+        }
+
+        public void setExpectedContextId(String id) {
+            this.expectedContextId = id;
+        }
+
+        @Override
+        public void handleGet(final Operation get) {
+            if (!this.expectedContextId.equals(get.getContextId())) {
+                get.fail(new IllegalStateException("incorrect context id in child service"));
+                return;
+            }
+            get.complete();
+        }
+    }
+
+    @Test
+    public void contextIdMultiServiceParallelFlow() throws Throwable {
+        int count = Utils.DEFAULT_THREAD_COUNT * 2;
+        final List<Service> childServices = this.host.doThroughputServiceStart(count,
+                ChildTestService.class,
+                new ServiceDocument(),
+                EnumSet.noneOf(Service.ServiceOption.class),
+                null);
+
+        String contextId = UUID.randomUUID().toString();
+        ParentContextIdTestService parent = new ParentContextIdTestService();
+        parent.setExpectedContextId(contextId);
+        for (Service c : childServices) {
+            ((ChildTestService) c).setExpectedContextId(contextId);
+        }
+        parent.setChildService(childServices);
+        this.host.startServiceAndWait(parent, UUID.randomUUID().toString(), new ServiceDocument());
+
+        // expect N completions, from the parent, when it receives completions to child
+        // operation
+        this.host.testStart(count);
+        Operation parentOp = Operation.createGet(parent.getUri())
+                .setContextId(contextId);
+        this.host.send(parentOp);
+        this.host.testWait();
+
+        // try again, force remote
+        this.host.testStart(count);
+        parentOp = Operation.createGet(parent.getUri())
+                .setContextId(contextId).forceRemote();
+        this.host.send(parentOp);
+        this.host.testWait();
     }
 
     @Test

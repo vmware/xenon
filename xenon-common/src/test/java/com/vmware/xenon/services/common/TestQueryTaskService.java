@@ -360,7 +360,7 @@ public class TestQueryTaskService {
         // Create services before we create the query
         QueryValidationServiceState newState = new QueryValidationServiceState();
         newState.stringValue = UUID.randomUUID().toString();
-        List<URI> services = startQueryTargetServices(1, newState);
+        startQueryTargetServices(1, newState);
 
         // Create query task
         Query query = Query.Builder.create()

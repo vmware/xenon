@@ -244,7 +244,6 @@ public class OperationJoin {
             if (this.batchSize > 0 && this.batchSizeGuard.incrementAndGet() > this.batchSize) {
                 throw new IllegalStateException((ERROR_MSG_BATCH_LIMIT_VIOLATED));
             }
-
             this.sendOperation.accept(op);
         }
     }

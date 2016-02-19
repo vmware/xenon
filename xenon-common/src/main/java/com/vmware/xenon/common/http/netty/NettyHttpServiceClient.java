@@ -222,17 +222,29 @@ public class NettyHttpServiceClient implements ServiceClient {
             clone.setContextId(OperationContext.getContextId());
         }
 
-        // Try to deliver operation to in-process service host
-        if (!op.isRemote()) {
-            if (this.host != null && this.host.handleRequest(clone)) {
-                return;
+        OperationContext ctx = OperationContext.getOperationContext();
+
+        try {
+            // First attempt in process delivery to co-located host
+            if (!op.isRemote()) {
+                if (this.host != null && this.host.handleRequest(clone)) {
+                    return;
+                }
             }
+            addAuthorizationContextHeader(clone);
+            addContextIdHeader(clone);
+            sendRemote(clone);
+        } finally {
+            // we must restore the operation context after each send, since
+            // it can be reset by the host, depending on queuing and dispatching behavior
+            OperationContext.restoreOperationContext(ctx);
         }
+    }
 
-        // flow auth context through header
-        addAuthorizationContextHeader(clone);
-
-        sendRemote(clone);
+    private void addContextIdHeader(Operation op) {
+        if (op.getContextId() != null) {
+            op.addRequestHeader(Operation.CONTEXT_ID_HEADER, op.getContextId());
+        }
     }
 
     private void addAuthorizationContextHeader(Operation op) {
@@ -453,10 +465,6 @@ public class NettyHttpServiceClient implements ServiceClient {
                     Long.toString(op.getContentLength()));
             request.headers().set(HttpHeaderNames.CONTENT_TYPE, op.getContentType());
             request.headers().set(HttpHeaderNames.CONNECTION, HttpHeaderValues.KEEP_ALIVE);
-
-            if (op.getContextId() != null) {
-                request.headers().set(Operation.CONTEXT_ID_HEADER, op.getContextId());
-            }
 
             if (op.getReferer() != null) {
                 request.headers().set(HttpHeaderNames.REFERER, op.getReferer().toString());
