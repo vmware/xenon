@@ -156,6 +156,39 @@ public class TestStatefulService extends BasicReusableHostTestCase {
     }
 
     @Test
+    public void testBaseHelperMethods() throws Throwable {
+        MinimalTestServiceState body = new MinimalTestServiceState();
+        body.id = UUID.randomUUID().toString();
+        MinimalTestService s = new MinimalTestService();
+        s = (MinimalTestService) this.host.startServiceAndWait(s,
+                "some/" + body.id, body);
+
+        assertEquals(body.id, s.getSelfId());
+        Operation op = Operation.createPatch(s.getUri()).setBody(body);
+        MinimalTestServiceState bodyFromHelper = s.getBody(op);
+        assertEquals(bodyFromHelper.id, body.id);
+
+        assertTrue(s.checkForBody(op));
+        op.setBody(null);
+        assertTrue(!s.checkForBody(op));
+        assertEquals(Operation.STATUS_CODE_BAD_REQUEST, op.getStatusCode());
+
+        s.sendSelfPatch(body);
+        Date exp = this.host.getTestExpiration();
+        while (new Date().before(exp)) {
+            MinimalTestServiceState st = this.host.getServiceState(null,
+                    MinimalTestServiceState.class, s.getUri());
+            if (st.id.equals(body.id)) {
+                break;
+            }
+        }
+
+        if (new Date().after(exp)) {
+            throw new TimeoutException();
+        }
+    }
+
+    @Test
     public void testDefaultPUT() throws Throwable {
         URI uri = UriUtils.buildUri(this.host, "testHandlersInstance");
         this.host.startService(Operation.createPost(uri), new DefaultHandlerTestService());

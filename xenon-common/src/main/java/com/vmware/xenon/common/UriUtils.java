@@ -80,6 +80,19 @@ public class UriUtils {
     }
 
     /**
+     * Returns the last path segment
+     */
+    public static String getLastSegment(String link) {
+        if (link == null) {
+            throw new IllegalArgumentException("link is required");
+        }
+        if (link.endsWith(UriUtils.URI_PATH_CHAR)) {
+            link = link.substring(0, link.length() - 1);
+        }
+        return link.substring(link.lastIndexOf(UriUtils.URI_PATH_CHAR) + 1);
+    }
+
+    /**
      * Determines whether the path represents a child path of the specified path.
      *
      * E.g.

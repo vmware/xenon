@@ -851,7 +851,9 @@ public class NodeGroupService extends StatefulService {
         return randomizedPeers;
     }
 
-    NodeGroupState getBody(Operation o) {
+    @SuppressWarnings("unchecked")
+    @Override
+    protected NodeGroupState getBody(Operation o) {
         if (!o.hasBody()) {
             return new NodeGroupState();
         }
