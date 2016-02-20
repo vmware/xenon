@@ -96,7 +96,7 @@ public class ServiceUriPaths {
 
     public static final String UI_RESOURCE_DEFAULT_FILE = "index.html";
     public static final String UI_SERVICE_CORE_PATH = ServiceUriPaths.CORE + "/ui/default";
-    public static final String UI_SERVICE_BASE_URL = UI_SERVICE_CORE_PATH + "#";
+    public static final String UI_SERVICE_BASE_URL = UI_SERVICE_CORE_PATH + "/#";
     public static final String UI_SERVICE_HOME = "/home";
     public static final String CUSTOM_UI_BASE_URL = ServiceUriPaths.CORE + "/ui/custom";
     public static final String SAMPLES = "/samples";
