@@ -349,6 +349,7 @@ public class UtilityService implements Service {
                 return;
             } catch (UnsupportedEncodingException e) {
                 op.fail(e);
+                return;
             }
         } else if (uriPath.equals(UriUtils.URI_PATH_CHAR)) {
             // serve index.html on /service/ui/
