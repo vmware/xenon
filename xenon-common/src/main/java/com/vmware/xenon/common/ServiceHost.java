@@ -2621,6 +2621,12 @@ public class ServiceHost {
     }
 
     protected Service findService(String uriPath) {
+        // special handling for UiService: it behaves like an Ui service but is not an utility
+        if (uriPath.startsWith(ServiceUriPaths.UI_SERVICE_CORE_PATH)) {
+            // let the service do the dispatch
+            uriPath = ServiceUriPaths.UI_SERVICE_CORE_PATH;
+        }
+
         Service s = this.attachedServices.get(uriPath);
         if (s != null) {
             return s;
