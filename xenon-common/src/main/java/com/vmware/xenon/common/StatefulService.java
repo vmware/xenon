@@ -1612,6 +1612,24 @@ public class StatefulService implements Service {
         return (T) op.getLinkedState();
     }
 
+    protected boolean checkForBody(Operation operation) {
+        if (!operation.hasBody()) {
+            operation.fail(new IllegalArgumentException("body is required"));
+            return false;
+        }
+        return true;
+    }
+
+    protected <T> T getBody(Operation op) {
+        @SuppressWarnings("unchecked")
+        T body = (T) op.getBody(getStateType());
+        return body;
+    }
+
+    protected String getSelfId() {
+        return UriUtils.getLastSegment(getSelfLink());
+    }
+
     /**
      * Value indicating whether GET on /available returns 200 or 503
      * The method is a convenience method since it relies on STAT_NAME_AVAILABLE to report
