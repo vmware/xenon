@@ -349,6 +349,7 @@ public class UtilityService implements Service {
                 return;
             } catch (UnsupportedEncodingException e) {
                 op.fail(e);
+                return;
             }
         } else if (uriPath.equals(UriUtils.URI_PATH_CHAR)) {
             // serve index.html on /service/ui/
@@ -363,9 +364,10 @@ public class UtilityService implements Service {
 
     public void redirectGetToHtmlUiResource(Operation op, String htmlResourcePath)
             throws UnsupportedEncodingException {
+        // redirect using relative url without host:port
+        // not so much optimization as handling the case of port forwarding/containers
         op.addResponseHeader(Operation.LOCATION_HEADER,
-                URLDecoder.decode(UriUtils.buildUri(getHost(), htmlResourcePath).toString(),
-                        Utils.CHARSET));
+                URLDecoder.decode(htmlResourcePath, Utils.CHARSET));
         op.setStatusCode(Operation.STATUS_CODE_MOVED_TEMP);
         op.setContentType(Operation.MEDIA_TYPE_TEXT_HTML);
         op.complete();
@@ -380,8 +382,7 @@ public class UtilityService implements Service {
     private void redirectGetToTrailingSlash(Operation op, String folderPath)
             throws UnsupportedEncodingException {
         op.addResponseHeader(Operation.LOCATION_HEADER,
-                URLDecoder.decode(UriUtils.buildUri(getHost(), folderPath).toString(),
-                        Utils.CHARSET) + UriUtils.URI_PATH_CHAR);
+                URLDecoder.decode(folderPath + UriUtils.URI_PATH_CHAR, Utils.CHARSET));
         op.setStatusCode(Operation.STATUS_CODE_MOVED_TEMP);
         op.setContentType(Operation.MEDIA_TYPE_TEXT_HTML);
         op.complete();

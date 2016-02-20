@@ -2654,6 +2654,11 @@ public class ServiceHost {
             return findHelperService(uriPath);
         }
 
+        // nothing found: maybe a full path in the /core/ui/* namespace?
+        if (uriPath.startsWith(ServiceUriPaths.UI_SERVICE_CORE_PATH)) {
+            return this.attachedServices.get(ServiceUriPaths.UI_SERVICE_CORE_PATH);
+        }
+
         return null;
     }
 
