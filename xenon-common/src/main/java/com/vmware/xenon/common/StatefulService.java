@@ -98,6 +98,11 @@ public class StatefulService implements Service {
     }
 
     @Override
+    public void handleCreate(Operation post) {
+        post.complete();
+    }
+
+    @Override
     public void handleStart(Operation post) {
         post.complete();
     }

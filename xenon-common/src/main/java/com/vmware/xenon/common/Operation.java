@@ -352,20 +352,68 @@ public class Operation implements Cloneable {
     public static final String VMWARE_DCP_TRANSACTION_HEADER = HEADER_NAME_PREFIX
             + "tx-phase";
 
+    /**
+     * Infrastructure use only. Set when a service is first created due to a client request. Since
+     * service start can be invoked by the runtime during node synchronization, restart, this
+     * directive is the only way to distinguish original creation of arbitrary services (without relying
+     * on state version heuristics)
+     */
+    public static final String PRAGMA_DIRECTIVE_CREATED = "xn-created";
+
+    /**
+     * Infrastructure use only. Set when the runtime, as part of its consensus protocol,
+     * forwards a client request from one node, to a node deemed as the owner of the service
+     */
     public static final String PRAGMA_DIRECTIVE_FORWARDED = "xn-fwd";
+
+    /**
+     * Infrastructure use only. Set when the consensus protocol replicates an update, on the owner
+     * node service instance, to the peer replica instances
+     */
     public static final String PRAGMA_DIRECTIVE_REPLICATED = "xn-rpl";
+
+    /**
+     * Infrastructure use only. Set when the consensus protocol determines that a service instance,
+     * on the owner node, must synchronize its state with peers. Associated with a PUT action.
+     */
     public static final String PRAGMA_DIRECTIVE_SYNCH = "xn-synch";
+
+    /**
+     * Advanced use. Prevents the request from getting queued, if a service is not yet available.
+     */
     public static final String PRAGMA_DIRECTIVE_NO_QUEUING = "xn-no-queuing";
+
+    /**
+     * Advanced use. Instructs the runtime to queue a request, for a service to become available
+     * independent of the service options.
+     */
     public static final String PRAGMA_DIRECTIVE_QUEUE_FOR_SERVICE_AVAILABILITY = "xn-queue";
+
+    /**
+     * Infrastructure use only. Instructs the runtime that this request should be processed on the node
+     * it arrived on. It should not be forwarded regardless of owner selection and load balancing decisions.
+     */
     public static final String PRAGMA_DIRECTIVE_NO_FORWARDING = "xn-no-fwd";
+
+    /**
+     * Infrastructure use only. Set on notifications only.
+     */
     public static final String PRAGMA_DIRECTIVE_NOTIFICATION = "xn-nt";
+
+    /**
+     * Infrastructure use only. Set by the runtime to inform a subscriber that they might have missed notifications
+     * due to state updates occurring when the subscriber was not available.
+     */
     public static final String PRAGMA_DIRECTIVE_SKIPPED_NOTIFICATIONS = "xn-nt-skipped";
 
+    /**
+     * Infrastructure use only. Experimental. Forces the use of HTTP2 streams.
+     */
     public static final String PRAGMA_DIRECTIVE_USE_HTTP2 = "xn-use-http2";
 
     /**
      *  Infrastructure use only. Does a strict update version check and if the service exists or
-     *  the service has been previously deleted the request will fail
+     *  the service has been previously deleted the request will fail.
      *
      *  Overridden by: PRAGMA_DIRECTIVE_FORCE_INDEX_UPDATE
      */
@@ -373,7 +421,7 @@ public class Operation implements Cloneable {
 
     /**
      * Infrastructure use only. Used for on demand load of services. Checks the index if a service
-     * exists
+     * exists.
      */
     public static final String PRAGMA_DIRECTIVE_INDEX_CHECK = "xn-check-index";
 

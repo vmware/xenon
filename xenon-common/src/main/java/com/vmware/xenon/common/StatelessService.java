@@ -52,6 +52,11 @@ public class StatelessService implements Service {
     }
 
     @Override
+    public void handleCreate(Operation post) {
+        post.complete();
+    }
+
+    @Override
     public void handleStart(Operation startPost) {
         startPost.complete();
     }
