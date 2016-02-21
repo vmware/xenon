@@ -213,9 +213,14 @@ public interface Service {
         SYNCHRONIZING,
 
         /**
-         * Service is visible to other services (its URI is registered) and can process self
-         * issued-operations and durable store has its state available for access. Operations issued
-         * by other services or clients are queued
+         * Service handleCreate is invoked. Runtime proceeds when the create Operation
+         * is completed
+         */
+        EXECUTING_CREATE_HANDLER,
+
+        /**
+         * Service handleStart is invoked. Runtime proceeds when the start Operation
+         * is completed
          */
         EXECUTING_START_HANDLER,
 
@@ -293,8 +298,36 @@ public interface Service {
      */
     static final int OPERATION_QUEUE_DEFAULT_LIMIT = 10000;
 
+    /**
+     * Invoked by host only when a client issues a POST operation to another service (a factory).
+     * The operation body is not alterered and passed directly from the client.
+     */
+    void handleCreate(Operation createPost);
+
+    /**
+     * Invoked by the host any time the service starts. This can happen due to
+     *
+     * 1) Client POST request to a factory
+     *
+     * 2) Host restart for a persisted service
+     *
+     * 3) On demand load and start of a persisted service
+     *
+     * 4) Node group synchronization
+     */
     void handleStart(Operation startPost);
 
+    /**
+     * Invoked by the host when the service needs to stop and detach from the host dispatching
+     * map. Its invoked when
+     *
+     * 1) Client DELETE to service
+     *
+     * 2) Host stop (clean shutdown)
+     *
+     * 3) DELETE request with PRAGMA_VALUE_NO_INDEX_UPDATE (same as service host stop
+     *     induced operations)
+     */
     void handleStop(Operation stopDelete);
 
     /**
