@@ -185,7 +185,13 @@ public class FileUtils {
         }
 
         // Find prefix in JAR that contains the specified service
-        String className = clazz.getName().replace('.', '/') + ".class";
+        String className = clazz.getName().replace('.', '/');
+        int i = className.lastIndexOf('$');
+        if (i > 0) {
+            className = className.substring(0, i);
+        }
+        className += ".class";
+
         URL classURL = clazz.getClassLoader().getResource(className);
         if (classURL == null) {
             throw new RuntimeException("Expected to find class resource for specified class");
