@@ -2,6 +2,17 @@
 
 ## 0.7.1-SNAPSHOT
 
+* Add handleCreate handler to Service interface.
+  Service lifecycle is now symmetric:
+  1) Client POST -> handleCreate
+  2) Client DELETE -> handleDelete
+  handleStart always follows handleCreate, on owner only.
+  handleStop always follows handleDelete, on owner only.
+  handleStart occurs on service start, due to host restart, 
+  synch, or create (on owner)
+  handleStop occurs on service stop, on service host stop,
+  or due to delete (on owner)
+
 ## 0.7.0
 
 * Add PRAGMA_FORCE_INDEX_UPDATE allowing for conflict

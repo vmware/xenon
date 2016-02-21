@@ -1991,8 +1991,12 @@ public class ServiceHost {
                 }
                 break;
             case SYNCHRONIZING:
+                boolean doCreate = post.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_CREATED);
+                ProcessingStage nxt = doCreate ? ProcessingStage.EXECUTING_CREATE_HANDLER
+                        : ProcessingStage.EXECUTING_START_HANDLER;
+
                 if (s.hasOption(ServiceOption.FACTORY) || !s.hasOption(ServiceOption.REPLICATION)) {
-                    processServiceStart(ProcessingStage.EXECUTING_START_HANDLER, s, post,
+                    processServiceStart(nxt, s, post,
                             hasClientSuppliedInitialState);
                     break;
                 }
@@ -2002,11 +2006,44 @@ public class ServiceHost {
                     if (o.getLinkedState() != null) {
                         hasInitialState = true;
                     }
-                    processServiceStart(ProcessingStage.EXECUTING_START_HANDLER, s, post,
+                    processServiceStart(nxt, s, post,
                             hasInitialState);
                 });
 
                 selectServiceOwnerAndSynchState(s, post);
+                break;
+
+            case EXECUTING_CREATE_HANDLER:
+                post.nestCompletion((o) -> {
+                    processServiceStart(ProcessingStage.EXECUTING_START_HANDLER, s, post,
+                            hasClientSuppliedInitialState);
+                });
+
+                if (!isDocumentOwner(s)) {
+                    // Bypass handleCreate on nodes that do not own the service. We still proceed
+                    // to EXECUTING_START_HANDLER since there is some state related logic
+                    // that needs to execute, regardless of owner
+                    post.complete();
+                    break;
+                }
+
+                if (post.isFromReplication()) {
+                    // Only direct request from clients are eligible for handleCreate
+                    post.complete();
+                    break;
+                }
+
+                OperationContext opCtx = extractAndApplyContext(post);
+                try {
+                    s.adjustStat(Service.STAT_NAME_CREATE_COUNT, 1);
+                    s.handleCreate(post);
+                } catch (Throwable e) {
+                    handleUncaughtException(s, post, e);
+                    return;
+                } finally {
+                    OperationContext.restoreOperationContext(opCtx);
+                }
+
                 break;
             case EXECUTING_START_HANDLER:
                 Long version = null;
@@ -2045,24 +2082,14 @@ public class ServiceHost {
                     break;
                 }
 
-                String contextId = post.getContextId();
-                if (contextId != null) {
-                    OperationContext.setContextId(contextId);
-                }
-
-                AuthorizationContext originalContext = OperationContext.getAuthorizationContext();
-                OperationContext.setAuthorizationContext(post.getAuthorizationContext());
-
+                opCtx = extractAndApplyContext(post);
                 try {
                     s.handleStart(post);
                 } catch (Throwable e) {
                     handleUncaughtException(s, post, e);
-                }
-
-                OperationContext.setAuthorizationContext(originalContext);
-
-                if (contextId != null) {
-                    OperationContext.setContextId(null);
+                    return;
+                } finally {
+                    OperationContext.restoreOperationContext(opCtx);
                 }
                 break;
             case INDEXING_INITIAL_STATE:
@@ -2114,6 +2141,18 @@ public class ServiceHost {
             log(Level.SEVERE, "Unhandled error: %s", Utils.toString(e));
             post.fail(e);
         }
+    }
+
+    private OperationContext extractAndApplyContext(Operation post) {
+        OperationContext opCtx;
+        String contextId;
+        opCtx = OperationContext.getOperationContext();
+        contextId = post.getContextId();
+        if (contextId != null) {
+            OperationContext.setContextId(contextId);
+        }
+        OperationContext.setAuthorizationContext(post.getAuthorizationContext());
+        return opCtx;
     }
 
     boolean isDocumentOwner(Service s) {
