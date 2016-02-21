@@ -552,11 +552,15 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
             assertTrue(h.getServiceStage(childLink) == null);
         }
 
+        int startCount = MinimalTestService.HANDLE_START_COUNT.get();
         // attempt to on demand load a service that *never* existed
-        Operation getToNowhere = Operation.createDelete(new URI(childUris.get(0) + "random"))
+        Operation getToNowhere = Operation.createGet(new URI(childUris.get(0) + "random"))
                 .setCompletion(
                         this.host.getExpectedFailureCompletion(Operation.STATUS_CODE_NOT_FOUND));
         this.host.sendAndWait(getToNowhere);
+
+        // verify that no attempts to start service occured
+        assertTrue(startCount == MinimalTestService.HANDLE_START_COUNT.get());
 
         // delete some of the services, not using a body, emulation DELETE through expiration
         URI serviceToDelete = childUris.remove(0);

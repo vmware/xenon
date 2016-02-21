@@ -17,6 +17,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Random;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.ServiceDocument;
@@ -29,6 +30,8 @@ import com.vmware.xenon.common.Utils;
 import com.vmware.xenon.common.test.MinimalTestServiceState;
 
 public class MinimalTestService extends StatefulService {
+
+    public static final AtomicInteger HANDLE_START_COUNT = new AtomicInteger();
 
     public static final String CUSTOM_CONTENT_TYPE = "application/vnd.vmware.horizon.manager.error+json;charset=UTF-8";
 
@@ -82,6 +85,8 @@ public class MinimalTestService extends StatefulService {
 
     @Override
     public void handleStart(Operation post) {
+        HANDLE_START_COUNT.incrementAndGet();
+
         if (post.hasBody()) {
             MinimalTestServiceState s = post.getBody(MinimalTestServiceState.class);
             if (s.id == null) {

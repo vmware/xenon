@@ -2534,6 +2534,16 @@ public class ServiceHost {
             return;
         }
 
+        if (s.hasOption(ServiceOption.ON_DEMAND_LOAD)
+                && !hasClientSuppliedState
+                && stateFromStore == null) {
+            // We converted a request to a POST, to load a on demand service. However, it does
+            // not exist in the index, nothing to load or start, so we must fail the request
+            serviceStartPost.setStatusCode(Operation.STATUS_CODE_NOT_FOUND)
+                    .fail(new IllegalStateException("Service not found: " + s.getSelfLink()));
+            return;
+        }
+
         if (hasClientSuppliedState && stateFromStore != null) {
             // initial state counts as new version
             stateFromStore.documentVersion++;
