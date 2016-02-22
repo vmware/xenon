@@ -1,6 +1,8 @@
 # CHANGELOG
 
 ## 0.7.1-SNAPSHOT
+* Preferred way to create uberjars is based on maven shade-
+  plugin
 
 ## 0.7.0
 
