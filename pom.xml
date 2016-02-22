@@ -413,10 +413,14 @@
           </dependency>
         </dependencies>
       </plugin>
-
     </plugins>
     <pluginManagement>
       <plugins>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-shade-plugin</artifactId>
+          <version>2.4.3</version>
+        </plugin>
         <plugin>
           <!-- Tell Eclipse not to use the Findbugs plugin during compilation -->
           <!-- This speeds up Eclipse development, but "mvn compile" will still run Findbugs -->
@@ -446,5 +450,4 @@
       </plugins>
     </pluginManagement>
   </build>
-
 </project>
