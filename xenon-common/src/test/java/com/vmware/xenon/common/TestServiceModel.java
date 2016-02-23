@@ -25,6 +25,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+import org.junit.Ignore;
 import org.junit.Test;
 
 import com.vmware.xenon.common.Operation.CompletionHandler;
@@ -54,7 +55,7 @@ class GetIllegalDocumentService extends StatefulService {
     }
 }
 
-public class TestServiceModel extends BasicTestCase {
+public class TestServiceModel extends BasicReusableHostTestCase {
 
     /**
      * Parameter that specifies if this run should be a stress test.
@@ -149,11 +150,16 @@ public class TestServiceModel extends BasicTestCase {
         assertTrue(serviceToBeDeleted.gotDeleted);
         assertTrue(serviceToBeDeleted.gotStopped);
 
-        // stop the host, observe stop only on remaining service
-        this.host.stop();
-        assertTrue(!serviceToBeStopped.gotDeleted);
-        assertTrue(serviceToBeStopped.gotStopped);
-        assertTrue(factoryService.gotStopped);
+        try {
+            // stop the host, observe stop only on remaining service
+            this.host.stop();
+            assertTrue(!serviceToBeStopped.gotDeleted);
+            assertTrue(serviceToBeStopped.gotStopped);
+            assertTrue(factoryService.gotStopped);
+        } finally {
+            this.host.setPort(0);
+            this.host.start();
+        }
     }
 
     /**
@@ -531,6 +537,121 @@ public class TestServiceModel extends BasicTestCase {
         this.host.startService(post, new GetIllegalDocumentService());
         assertEquals(500, post.getStatusCode());
         assertTrue(post.getBody(ServiceErrorResponse.class).message.contains("myLink"));
+    }
+
+    public static class PrefixDispatchService extends StatelessService {
+
+        public PrefixDispatchService() {
+            super.toggleOption(ServiceOption.URI_NAMESPACE_OWNER, true);
+        }
+
+        @Override
+        public void handleDelete(Operation delete) {
+            if (delete.getUri().getPath().equals(getSelfLink())) {
+                // meant for self
+                delete.complete();
+                return;
+            }
+
+            validateAndComplete(delete);
+        }
+
+        private void validateAndComplete(Operation op) {
+            if (!op.getUri().getPath().startsWith(getSelfLink())) {
+                op.fail(new IllegalArgumentException("request must start with self link"));
+                return;
+            }
+            op.complete();
+        }
+
+        @Override
+        public void handlePost(Operation post) {
+            validateAndComplete(post);
+        }
+
+        @Override
+        public void handleOptions(Operation op) {
+            validateAndComplete(op);
+        }
+
+        @Override
+        public void handleRequest(Operation op) {
+            if (op.getAction() == Action.PATCH) {
+                handlePatch(op);
+            } else if (op.getAction() == Action.PUT) {
+                handlePut(op);
+            } else {
+                super.handleRequest(op);
+            }
+        }
+
+        private void handlePut(Operation op) {
+            validateAndComplete(op);
+        }
+
+        private void handlePatch(Operation op) {
+            validateAndComplete(op);
+        }
+    }
+
+    @Ignore("not ready for checkin")
+    @Test
+    public void prefixDispatchingWithUriNamespaceOwner() throws Throwable {
+        String prefix = UUID.randomUUID().toString();
+        PrefixDispatchService s = new PrefixDispatchService();
+        this.host.startServiceAndWait(s, prefix, null);
+
+        List<URI> uris = new ArrayList<>();
+        // build some example child URIs. Do not include one with exact prefix, since
+        // that will be tested separately
+        uris.add(UriUtils.extendUri(s.getUri(), "/1"));
+        uris.add(UriUtils.extendUri(s.getUri(), "/1/"));
+        uris.add(UriUtils.extendUri(s.getUri(), "/1?k=v&k1=v1"));
+        uris.add(UriUtils.extendUri(s.getUri(), "/1/2/3"));
+        uris.add(UriUtils.extendUri(s.getUri(), "/1/2/3/?k=v&k1=v1"));
+        uris.add(UriUtils.extendUri(s.getUri(), "/1/2/3/?k=v&k1=v1"));
+
+        EnumSet<Action> actions = EnumSet.allOf(Action.class);
+        verifyAllActions(uris, actions, false);
+
+        // these should all fail, do not start with prefix
+        uris.clear();
+        uris.add(UriUtils.extendUri(this.host.getUri(), "/1"));
+        uris.add(UriUtils.extendUri(this.host.getUri(), "/1/"));
+        uris.add(UriUtils.extendUri(this.host.getUri(), "/1?k=v&k1=v1"));
+        uris.add(UriUtils.extendUri(this.host.getUri(), "/1/2/3"));
+        uris.add(UriUtils.extendUri(this.host.getUri(), "/1/2/3/?k=v&k1=v1"));
+        uris.add(UriUtils.extendUri(this.host.getUri(), "/1/2/3/?k=v&k1=v1"));
+        verifyAllActions(uris, actions, true);
+
+        // finally, verify we can actually target the service itself, using a DELETE
+        Operation delete = Operation.createDelete(s.getUri())
+                .setCompletion(this.host.getCompletion());
+        this.host.testStart(1);
+        this.host.send(delete);
+        this.host.testWait();
+
+        assertTrue(this.host.getServiceStage(prefix) == null);
+    }
+
+    private void verifyAllActions(List<URI> uris, EnumSet<Action> actions, boolean expectFailure)
+            throws Throwable {
+        CompletionHandler c = expectFailure ? this.host.getExpectedFailureCompletion()
+                : this.host.getCompletion();
+        this.host.testStart(actions.size() * uris.size());
+        for (Action a : actions) {
+            for (URI u : uris) {
+                Operation op = Operation.createGet(u)
+                        .setAction(a)
+                        .setCompletion(c);
+
+                if (a != Action.GET && a != Action.OPTIONS) {
+                    op.setBody(new ServiceDocument());
+                }
+                this.host.send(op);
+            }
+        }
+        this.host.testWait();
     }
 
     @Test
