@@ -2782,4 +2782,22 @@ public class VerificationHost extends ExampleServiceHost {
         testWait();
     }
 
+    /**
+     * Wraps a {@link CompletionHandler} in another handler that catches all errors
+     * and fails the current iteration. Allow for calling Assert.assert* directly
+     * directly in a handler.
+     *
+     * @param handler
+     * @return
+     */
+    public CompletionHandler guard(CompletionHandler handler) {
+        return (o, e) -> {
+            try {
+                handler.handle(o, e);
+                completeIteration();
+            } catch (Throwable t) {
+                failIteration(t);
+            }
+        };
+    }
 }
