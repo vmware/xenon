@@ -374,6 +374,9 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
 
             // create example services
             this.host.createExampleServices(h, this.serviceCount, exampleURIs, null);
+
+            verifyCreateStatCount(exampleURIs, 1.0);
+
             int vc = 2;
             this.host.testStart(exampleURIs.size() * vc);
             for (int i = 0; i < vc; i++) {
@@ -431,6 +434,8 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
 
             this.host.log("Example Factory available %d micros after host start", end - start);
 
+            verifyCreateStatCount(exampleURIs, 0.0);
+
             verifyOnDemandLoad(h, onDemandFactoryLink);
 
             // make sure all services are there
@@ -484,6 +489,28 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
             h.stop();
             tmpFolder.delete();
         }
+    }
+
+    private void verifyCreateStatCount(List<URI> exampleURIs, double expectedStat) throws Throwable {
+        // verify create method was called
+        List<URI> exampleStatUris = new ArrayList<>();
+        exampleURIs.forEach((u) -> {
+            exampleStatUris.add(UriUtils.buildStatsUri(u));
+        });
+
+        Map<URI, ServiceStats> stats = this.host.getServiceState(null, ServiceStats.class,
+                exampleStatUris);
+        stats.values().forEach(
+                (sts) -> {
+                    ServiceStat st = sts.entries.get(Service.STAT_NAME_CREATE_COUNT);
+                    if (st == null && expectedStat == 0.0) {
+                        return;
+                    }
+                    if (st == null || st.latestValue != expectedStat) {
+                        throw new IllegalStateException("Expected create stat count of "
+                                + expectedStat);
+                    }
+                });
     }
 
     private void verifyDeleteRePost(ExampleServiceHost h, List<URI> exampleURIs)

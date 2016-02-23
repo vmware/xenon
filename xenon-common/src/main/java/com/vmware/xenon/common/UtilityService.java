@@ -78,6 +78,16 @@ public class UtilityService implements Service {
     }
 
     @Override
+    public void handleCreate(Operation post) {
+        post.complete();
+    }
+
+    @Override
+    public void handleStart(Operation startPost) {
+        startPost.complete();
+    }
+
+    @Override
     public void handleStop(Operation op) {
         op.complete();
     }
@@ -663,11 +673,6 @@ public class UtilityService implements Service {
         }
         this.stats = new ServiceStats();
         return true;
-    }
-
-    @Override
-    public void handleStart(Operation startPost) {
-        startPost.complete();
     }
 
     @Override

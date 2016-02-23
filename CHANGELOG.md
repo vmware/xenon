@@ -2,6 +2,21 @@
 
 ## 0.7.1-SNAPSHOT
 
+* Add handleCreate handler to Service interface.
+  This is not a breaking change. The new handler is
+  opt-in, just like handleStop.
+  Service lifecycle is now symmetric:
+  1) Client POST -> handleCreate
+  2) Client DELETE -> handleDelete
+  handleStart always follows handleCreate, on owner only.
+  handleStop always follows handleDelete, on owner only.
+  handleStart occurs on service start, due to host restart, 
+  synch, or create (on owner)
+  handleStop occurs on service stop, on service host stop,
+  or due to delete (on owner)
+  Added ServiceHost.isServiceCreate(operation) to match
+  ServiceHost.isServiceStop(operation)
+
 * Add StatelessService & StatefulService handlePeriodicMaintenance
   method to get periodic maintenance notifications when enabling
   ServiceOption.PERIODIC_MAINTENANCE. Invoked by handleMaintenance

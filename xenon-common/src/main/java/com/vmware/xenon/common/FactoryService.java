@@ -404,6 +404,10 @@ public abstract class FactoryService extends StatelessService {
             return;
         }
 
+        // Request directly from clients must be marked with appropriate PRAGMA, so
+        // the runtime knows this is not a restart of a service, but an original, create request
+        o.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_CREATED);
+
         // create and start service instance. If service is durable, and a body
         // is attached to the POST, a document will be created
         Service childService;

@@ -214,9 +214,14 @@ public interface Service {
         SYNCHRONIZING,
 
         /**
-         * Service is visible to other services (its URI is registered) and can process self
-         * issued-operations and durable store has its state available for access. Operations issued
-         * by other services or clients are queued
+         * Service handleCreate is invoked. Runtime proceeds when the create Operation
+         * is completed
+         */
+        EXECUTING_CREATE_HANDLER,
+
+        /**
+         * Service handleStart is invoked. Runtime proceeds when the start Operation
+         * is completed
          */
         EXECUTING_START_HANDLER,
 
@@ -272,6 +277,7 @@ public interface Service {
     static final String STAT_NAME_STATE_PERSIST_LATENCY = "statePersistLatencyMicros";
     static final String STAT_NAME_OPERATION_QUEUEING_LATENCY = "operationQueueingLatencyMicros";
     static final String STAT_NAME_SERVICE_HANDLER_LATENCY = "operationHandlerProcessingLatencyMicros";
+    static final String STAT_NAME_CREATE_COUNT = "createCount";
     static final String STAT_NAME_OPERATION_DURATION = "operationDuration";
     static final String STAT_NAME_MAINTENANCE_COUNT = "maintenanceCount";
     static final String STAT_NAME_NODE_GROUP_CHANGE_MAINTENANCE_COUNT = "maintenanceForNodeGroupChangeCount";
@@ -306,8 +312,35 @@ public interface Service {
      */
     static final long MIN_MAINTENANCE_INTERVAL_MICROS = TimeUnit.MILLISECONDS.toMicros(1);
 
+    /**
+     * Invoked by host only when a client issues a POST operation to a factory service.
+     */
+    void handleCreate(Operation createPost);
+
+    /**
+     * Invoked by the host any time the service starts. This can happen due to
+     *
+     * 1) Client POST request to a factory
+     *
+     * 2) Host restart for a persisted service
+     *
+     * 3) On demand load and start of a persisted service
+     *
+     * 4) Node group synchronization
+     */
     void handleStart(Operation startPost);
 
+    /**
+     * Invoked by the host when the service needs to stop and detach from the host dispatching
+     * map. Its invoked when
+     *
+     * 1) Client DELETE to service
+     *
+     * 2) Host stop (clean shutdown)
+     *
+     * 3) DELETE request with PRAGMA_VALUE_NO_INDEX_UPDATE (same as service host stop
+     *     induced operations)
+     */
     void handleStop(Operation stopDelete);
 
     /**

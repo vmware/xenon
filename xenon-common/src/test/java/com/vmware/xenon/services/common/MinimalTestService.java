@@ -22,6 +22,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.ServiceErrorResponse;
+import com.vmware.xenon.common.ServiceHost;
 import com.vmware.xenon.common.ServiceMaintenanceRequest;
 import com.vmware.xenon.common.ServiceMaintenanceRequest.MaintenanceReason;
 import com.vmware.xenon.common.StatefulService;
@@ -81,6 +82,15 @@ public class MinimalTestService extends StatefulService {
         byte[] b = new byte[1500];
         r.nextBytes(b);
         return java.util.Base64.getMimeEncoder().encodeToString(b).intern();
+    }
+
+    @Override
+    public void handleCreate(Operation post) {
+        if (!ServiceHost.isServiceCreate(post)) {
+            post.fail(new IllegalStateException("not marked as create"));
+        } else {
+            post.complete();
+        }
     }
 
     @Override
