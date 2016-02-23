@@ -306,6 +306,8 @@ public class ServiceHost {
             / 2;
     private static final long ONE_MINUTE_IN_MICROS = TimeUnit.MINUTES.toMicros(1);
 
+    private static final long MIN_MAINTENANCE_DEADLINE_MICROS = TimeUnit.MILLISECONDS.toMicros(1);
+
     public static class RequestRateInfo {
         /**
          * Request limit (upper bound) in requests per second
@@ -3996,9 +3998,11 @@ public class ServiceHost {
     private void performMaintenanceStage(Operation post, MaintenanceStage stage) {
 
         try {
+            // Make sure the deadline time is not set too low when using a very low
+            // maintenance interval.
             long now = Utils.getNowMicrosUtc();
             long deadline = this.state.lastMaintenanceTimeUtcMicros
-                    + this.state.maintenanceIntervalMicros;
+                    + Math.max(this.state.maintenanceIntervalMicros, MIN_MAINTENANCE_DEADLINE_MICROS);
 
             switch (stage) {
             case UTILS:
