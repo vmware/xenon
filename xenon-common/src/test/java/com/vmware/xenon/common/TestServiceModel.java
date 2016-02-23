@@ -55,7 +55,7 @@ class GetIllegalDocumentService extends StatefulService {
     }
 }
 
-public class TestServiceModel extends BasicTestCase {
+public class TestServiceModel extends BasicReusableHostTestCase {
 
     private static final String STAT_NAME_HANDLE_PERIODIC_MAINTENANCE = "handlePeriodicMaintenance";
     private static final int PERIODIC_MAINTENANCE_MAX = 2;
@@ -153,11 +153,16 @@ public class TestServiceModel extends BasicTestCase {
         assertTrue(serviceToBeDeleted.gotDeleted);
         assertTrue(serviceToBeDeleted.gotStopped);
 
-        // stop the host, observe stop only on remaining service
-        this.host.stop();
-        assertTrue(!serviceToBeStopped.gotDeleted);
-        assertTrue(serviceToBeStopped.gotStopped);
-        assertTrue(factoryService.gotStopped);
+        try {
+            // stop the host, observe stop only on remaining service
+            this.host.stop();
+            assertTrue(!serviceToBeStopped.gotDeleted);
+            assertTrue(serviceToBeStopped.gotStopped);
+            assertTrue(factoryService.gotStopped);
+        } finally {
+            this.host.setPort(0);
+            this.host.start();
+        }
     }
 
     /**
@@ -535,6 +540,182 @@ public class TestServiceModel extends BasicTestCase {
         this.host.startService(post, new GetIllegalDocumentService());
         assertEquals(500, post.getStatusCode());
         assertTrue(post.getBody(ServiceErrorResponse.class).message.contains("myLink"));
+    }
+
+    public static class PrefixDispatchService extends StatelessService {
+
+        public PrefixDispatchService() {
+            super.toggleOption(ServiceOption.URI_NAMESPACE_OWNER, true);
+        }
+
+        @Override
+        public void handleDelete(Operation delete) {
+            if (delete.getUri().getPath().equals(getSelfLink())) {
+                // meant for self
+                delete.nestCompletion((o) -> {
+                    super.handleDeleteCompletion(delete);
+                });
+                delete.complete();
+                return;
+            }
+
+            validateAndComplete(delete);
+        }
+
+        private void validateAndComplete(Operation op) {
+            if (!op.getUri().getPath().startsWith(getSelfLink())) {
+                op.fail(new IllegalArgumentException("request must start with self link"));
+                return;
+            }
+            op.complete();
+        }
+
+        @Override
+        public void handlePost(Operation post) {
+            validateAndComplete(post);
+        }
+
+        @Override
+        public void handleOptions(Operation op) {
+            validateAndComplete(op);
+        }
+
+        @Override
+        public void handleRequest(Operation op) {
+            if (op.getAction() == Action.PATCH) {
+                handlePatch(op);
+            } else if (op.getAction() == Action.PUT) {
+                handlePut(op);
+            } else if (op.getAction() == Action.DELETE) {
+                handleDelete(op);
+            } else {
+                super.handleRequest(op);
+            }
+        }
+
+        private void handlePut(Operation op) {
+            ServiceDocument body = new ServiceDocument();
+            body.documentSelfLink = getSelfLink();
+            op.setBody(body);
+            validateAndComplete(op);
+        }
+
+        private void handlePatch(Operation op) {
+            validateAndComplete(op);
+        }
+    }
+
+    @Test
+    public void prefixDispatchingWithUriNamespaceOwner() throws Throwable {
+        String prefix = UUID.randomUUID().toString();
+        PrefixDispatchService s = new PrefixDispatchService();
+        this.host.startServiceAndWait(s, prefix, null);
+
+        PrefixDispatchService s1 = new PrefixDispatchService();
+        String longerMatchedPrefix = prefix + "/" + "child";
+        this.host.startServiceAndWait(s1, longerMatchedPrefix, null);
+
+        // start a service that is "under" the name space of the prefix.
+        MinimalTestService s2 = new MinimalTestService();
+        String prefixPlus = prefix + "/" + UUID.randomUUID();
+        this.host.startServiceAndWait(s2, prefixPlus, null);
+
+        this.host.log("Owner0 at %s, Owner1 at %s, regular at %s", s.getSelfLink(),
+                s1.getSelfLink(),
+                s2.getSelfLink());
+
+        // verify that a independent service (like a factory child) can register under the
+        // prefix name space, and still receive requests, since the runtime should do
+        // most specific match first
+        MinimalTestServiceState body = new MinimalTestServiceState();
+        body.id = UUID.randomUUID().toString();
+        Operation patch = Operation.createPatch(s2.getUri())
+                .setCompletion(this.host.getCompletion())
+                .setBody(body);
+        this.host.sendAndWait(patch);
+
+        // verify state updated
+        MinimalTestServiceState st = this.host.getServiceState(null, MinimalTestServiceState.class,
+                s2.getUri());
+        assertEquals(body.id, st.id);
+
+        CompletionHandler c = (o, e) -> {
+            if (e != null) {
+                this.host.failIteration(e);
+                return;
+            }
+
+            ServiceDocument d = o.getBody(ServiceDocument.class);
+            if (!s1.getSelfLink().equals(d.documentSelfLink)) {
+                this.host.failIteration(new IllegalStateException(
+                        "Wrong service replied: " + d.documentSelfLink));
+
+            } else {
+                this.host.completeIteration();
+            }
+        };
+
+        // verify that the uri namespace owner with the longest match takes priority (s1 service)
+        Operation put = Operation.createPut(s1.getUri())
+                .setBody(new ServiceDocument())
+                .setCompletion(c);
+
+        this.host.testStart(1);
+        this.host.send(put);
+        this.host.testWait();
+
+        List<URI> uris = new ArrayList<>();
+        // build some example child URIs. Do not include one with exact prefix, since
+        // that will be tested separately
+        uris.add(UriUtils.extendUri(s.getUri(), "/1"));
+        uris.add(UriUtils.extendUri(s.getUri(), "/1/"));
+        uris.add(UriUtils.extendUri(s.getUri(), "/1?k=v&k1=v1"));
+        uris.add(UriUtils.extendUri(s.getUri(), "/1/2/3"));
+        uris.add(UriUtils.extendUri(s.getUri(), "/1/2/3/?k=v&k1=v1"));
+        uris.add(UriUtils.extendUri(s.getUri(), "/1/2/3/?k=v&k1=v1"));
+
+        EnumSet<Action> actions = EnumSet.allOf(Action.class);
+        verifyAllActions(uris, actions, false);
+
+        // these should all fail, do not start with prefix
+        uris.clear();
+        uris.add(UriUtils.extendUri(this.host.getUri(), "/1"));
+        uris.add(UriUtils.extendUri(this.host.getUri(), "/1/"));
+        uris.add(UriUtils.extendUri(this.host.getUri(), "/1?k=v&k1=v1"));
+        uris.add(UriUtils.extendUri(this.host.getUri(), "/1/2/3"));
+        uris.add(UriUtils.extendUri(this.host.getUri(), "/1/2/3/?k=v&k1=v1"));
+        uris.add(UriUtils.extendUri(this.host.getUri(), "/1/2/3/?k=v&k1=v1"));
+        verifyAllActions(uris, actions, true);
+
+        // finally, verify we can actually target the service itself, using a DELETE
+        Operation delete = Operation.createDelete(s.getUri())
+                .setCompletion(this.host.getCompletion());
+        this.host.testStart(1);
+        this.host.send(delete);
+        this.host.testWait();
+
+        assertTrue(this.host.getServiceStage(prefix) == null);
+    }
+
+    private void verifyAllActions(List<URI> uris, EnumSet<Action> actions, boolean expectFailure)
+            throws Throwable {
+        CompletionHandler c = expectFailure ? this.host.getExpectedFailureCompletion()
+                : this.host.getCompletion();
+        this.host.testStart(actions.size() * uris.size());
+        for (Action a : actions) {
+            for (URI u : uris) {
+                this.host.log("Trying %s on %s", a, u);
+                Operation op = Operation.createGet(u)
+                        .setAction(a)
+                        .setCompletion(c);
+
+                if (a != Action.GET && a != Action.OPTIONS) {
+                    op.setBody(new ServiceDocument());
+                }
+                this.host.send(op);
+            }
+        }
+        this.host.testWait();
     }
 
     @Test

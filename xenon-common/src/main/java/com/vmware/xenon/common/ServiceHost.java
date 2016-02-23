@@ -450,6 +450,8 @@ public class ServiceHost {
     private ScheduledExecutorService scheduledExecutor;
 
     private final ConcurrentSkipListMap<String, Service> attachedServices = new ConcurrentSkipListMap<>();
+    private final ConcurrentSkipListMap<String, Service> attachedNamespaceServices = new ConcurrentSkipListMap<>();
+
     private final ConcurrentSkipListSet<String> coreServices = new ConcurrentSkipListSet<>();
     private ConcurrentSkipListMap<String, Class<? extends Service>> privilegedServiceTypes = new ConcurrentSkipListMap<>();
 
@@ -1857,6 +1859,10 @@ public class ServiceHost {
                     return this;
                 }
 
+                if (service.hasOption(ServiceOption.URI_NAMESPACE_OWNER)) {
+                    this.attachedNamespaceServices.put(servicePath, service);
+                }
+
                 this.state.serviceCount++;
             }
         }
@@ -2663,6 +2669,9 @@ public class ServiceHost {
 
         if (existing != null) {
             existing.setProcessingStage(ProcessingStage.STOPPED);
+            if (existing.hasOption(ServiceOption.URI_NAMESPACE_OWNER)) {
+                this.attachedNamespaceServices.remove(path);
+            }
         }
 
         this.pendingPauseServices.remove(path);
@@ -2689,6 +2698,26 @@ public class ServiceHost {
 
         if (isHelperServicePath(uriPath)) {
             return findHelperService(uriPath);
+        }
+
+        // TODO We do not expect a lot of name space owner services, but we should switch to
+        // radiix trees
+        int charsNotMatched = Integer.MAX_VALUE;
+        int uriPathLength = uriPath.length();
+        Service candidate = null;
+        // pick the service with the longest match
+        for (Entry<String, Service> e : this.attachedNamespaceServices.entrySet()) {
+            if (!uriPath.startsWith(e.getKey())) {
+                continue;
+            }
+            int notMatched = uriPathLength - e.getKey().length();
+            if (notMatched < charsNotMatched) {
+                candidate = e.getValue();
+            }
+        }
+
+        if (candidate != null) {
+            return candidate;
         }
 
         // nothing found: maybe a full path in the /core/ui/* namespace?
@@ -3447,6 +3476,7 @@ public class ServiceHost {
         stopCoreServices();
 
         this.attachedServices.clear();
+        this.attachedNamespaceServices.clear();
         this.maintenanceHelper.close();
         this.state.isStarted = false;
 
