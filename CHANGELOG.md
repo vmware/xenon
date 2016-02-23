@@ -2,6 +2,11 @@
 
 ## 0.7.1-SNAPSHOT
 
+* Introduce ServiceOption.URI_NAMESPACE_OWNER. Allow
+  for a service to handle all requests that start with
+  a given prefix, allowing for emulation of other REST
+  APIs, gateway style translation, etc.
+
 * Add handleCreate handler to Service interface.
   This is not a breaking change. The new handler is
   opt-in, just like handleStop.

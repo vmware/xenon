@@ -452,6 +452,13 @@ public class TestUtils {
                 ServiceOption.STRICT_UPDATE_CHECKING);
         checkOptions(options, true);
 
+        options = EnumSet.of(ServiceOption.REPLICATION,
+                ServiceOption.URI_NAMESPACE_OWNER);
+        checkOptions(options, true);
+
+        options = EnumSet.of(ServiceOption.PERSISTENCE,
+                ServiceOption.URI_NAMESPACE_OWNER);
+        checkOptions(options, true);
 
         options = EnumSet.of(ServiceOption.OWNER_SELECTION, ServiceOption.REPLICATION,
                 ServiceOption.CONCURRENT_UPDATE_HANDLING);

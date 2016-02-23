@@ -57,7 +57,7 @@ public interface Service {
          * Service state updates are replicated among peer instances on other nodes. The default
          * replication group is used if no group is specified. Updates are replicated into phases
          * and use the appropriate protocol depending on other options.  See
-         * OWNER_SELECTION and ENFORCE_QUORUM options on how they affect replication.
+         * OWNER_SELECTION on how it affects replication.
          *
          */
         REPLICATION,
@@ -126,7 +126,7 @@ public interface Service {
          * allowed to execute concurrently with updates, using the latest committed version of the
          * service state
          *
-         * Not compatible with: STRICT_UPDATE_CHECKING, PERSISTENCE, REPLICATION, ENFORCE_QUORUM
+         * Not compatible with: STRICT_UPDATE_CHECKING, PERSISTENCE, REPLICATION, OWNER_SELECTION
          */
         CONCURRENT_UPDATE_HANDLING,
 
@@ -163,6 +163,17 @@ public interface Service {
          * recent one
          */
         LIFO_QUEUE,
+
+        /**
+         * Service owns a portion of the URI name space for the service host. It can register for
+         * a single URI path prefix and all requests that start with the prefix will be routed to
+         * it. The service self link will be the prefix path, for the purpose of life cycle
+         * REST operations
+         *
+         * Not compatible with: PERSISTENCE, REPLICATION
+         *
+         */
+        URI_NAMESPACE_OWNER,
 
         /**
          * Set by runtime. Service is associated with another service providing functionality for

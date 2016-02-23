@@ -511,6 +511,9 @@ public class Utils {
         case STRICT_UPDATE_CHECKING:
             antiReqs = EnumSet.of(ServiceOption.CONCURRENT_UPDATE_HANDLING);
             break;
+        case URI_NAMESPACE_OWNER:
+            antiReqs = EnumSet.of(ServiceOption.PERSISTENCE, ServiceOption.REPLICATION);
+            break;
         case PERIODIC_MAINTENANCE:
             break;
         case PERSISTENCE:
