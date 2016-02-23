@@ -39,6 +39,7 @@ import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpUtil;
 import io.netty.handler.codec.http.HttpVersion;
+import io.netty.handler.codec.http.QueryStringDecoder;
 import io.netty.handler.codec.http2.HttpConversionUtil;
 import io.netty.handler.ssl.SslHandler;
 import io.netty.util.AsciiString;
@@ -90,7 +91,8 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
             request.setAction(Action.valueOf(nettyRequest.method().toString()))
                     .setExpiration(expMicros);
             URI uri = new URI(UriUtils.HTTP_SCHEME, null, ServiceHost.LOCAL_HOST,
-                    this.host.getPort(), targetUri.getPath(), targetUri.getQuery(), null);
+                    this.host.getPort(), targetUri.getPath(),
+                    QueryStringDecoder.decodeComponent(targetUri.getQuery()), null);
             request.setUri(uri);
 
             // The streamId will be null for HTTP/1.1 connections, and valid for HTTP/2 connections

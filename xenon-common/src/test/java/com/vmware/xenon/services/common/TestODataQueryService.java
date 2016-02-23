@@ -18,6 +18,8 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
 import java.net.URI;
+import java.net.URLEncoder;
+import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -103,6 +105,7 @@ public class TestODataQueryService extends BasicTestCase {
         testLTQuery();
         testLEQuery();
         testNumericEqQuery();
+        testOdataQueryWithUriEncoding();
     }
 
     private void testSimpleStringQuery() throws Throwable {
@@ -112,14 +115,14 @@ public class TestODataQueryService extends BasicTestCase {
 
         String queryString = "$filter=name eq 'TEST STRING'";
 
-        Map<String, Object> out = doQuery(queryString);
+        Map<String, Object> out = doQuery(queryString, false);
         assertNotNull(out);
 
         ExampleService.ExampleServiceState outState = Utils.fromJson(
                 out.get(inState.documentSelfLink), ExampleService.ExampleServiceState.class);
         assertTrue(outState.name.equals(inState.name));
 
-        out = doFactoryServiceQuery(queryString);
+        out = doFactoryServiceQuery(queryString, false);
         assertNotNull(out);
         outState = Utils.fromJson(
                 out.get(inState.documentSelfLink), ExampleService.ExampleServiceState.class);
@@ -130,12 +133,12 @@ public class TestODataQueryService extends BasicTestCase {
         // we should get 10 documents back
         String queryString = String.format("$filter=counter gt %d", this.min + 10);
 
-        Map<String, Object> out = doQuery(queryString);
+        Map<String, Object> out = doQuery(queryString, false);
         assertNotNull(out);
 
         assertEquals(10, out.size());
 
-        out = doFactoryServiceQuery(queryString);
+        out = doFactoryServiceQuery(queryString, false);
         assertNotNull(out);
         assertEquals(10, out.size());
     }
@@ -144,12 +147,12 @@ public class TestODataQueryService extends BasicTestCase {
         // we should get 10 documents back
         String queryString = String.format("$filter=counter ge %d", this.min + 10);
 
-        Map<String, Object> out = doQuery(queryString);
+        Map<String, Object> out = doQuery(queryString, false);
         assertNotNull(out);
 
         assertEquals(11, out.size());
 
-        out = doFactoryServiceQuery(queryString);
+        out = doFactoryServiceQuery(queryString, false);
         assertNotNull(out);
         assertEquals(11, out.size());
     }
@@ -158,12 +161,12 @@ public class TestODataQueryService extends BasicTestCase {
         // we should get 10 documents back
         String queryString = String.format("$filter=counter lt %d", this.min + 10);
 
-        Map<String, Object> out = doQuery(queryString);
+        Map<String, Object> out = doQuery(queryString, false);
         assertNotNull(out);
 
         assertEquals(10, out.size());
 
-        out = doFactoryServiceQuery(queryString);
+        out = doFactoryServiceQuery(queryString, false);
         assertNotNull(out);
         assertEquals(10, out.size());
     }
@@ -172,12 +175,12 @@ public class TestODataQueryService extends BasicTestCase {
         // we should get 10 documents back
         String queryString = String.format("$filter=counter le %d", this.min + 10);
 
-        Map<String, Object> out = doQuery(queryString);
+        Map<String, Object> out = doQuery(queryString, false);
         assertNotNull(out);
 
         assertEquals(11, out.size());
 
-        out = doFactoryServiceQuery(queryString);
+        out = doFactoryServiceQuery(queryString, false);
         assertNotNull(out);
         assertEquals(11, out.size());
     }
@@ -190,21 +193,48 @@ public class TestODataQueryService extends BasicTestCase {
 
         String queryString = String.format("$filter=counter eq %d", inState.counter);
 
-        Map<String, Object> out = doQuery(queryString);
+        Map<String, Object> out = doQuery(queryString, false);
         assertNotNull(out);
 
         ExampleService.ExampleServiceState outState = Utils.fromJson(
                 out.get(inState.documentSelfLink), ExampleService.ExampleServiceState.class);
         assertEquals(outState.counter, inState.counter);
 
-        out = doFactoryServiceQuery(queryString);
+        out = doFactoryServiceQuery(queryString, false);
         assertNotNull(out);
         outState = Utils.fromJson(
                 out.get(inState.documentSelfLink), ExampleService.ExampleServiceState.class);
         assertEquals(outState.counter, inState.counter);
     }
 
-    private Map<String, Object> doQuery(String query) throws Throwable {
+    private void testOdataQueryWithUriEncoding() throws Throwable {
+        ExampleService.ExampleServiceState inState = new ExampleService.ExampleServiceState();
+        inState.name = "TEST STRING";
+        postExample(inState);
+
+        /* Perform URL encoding on the query String */
+
+        String queryString = URLEncoder.encode("$filter=name eq 'TEST STRING'",
+                Charset.defaultCharset().toString());
+
+        assert (queryString.contains("+"));
+
+        Map<String, Object> out = doQuery(queryString, true);
+
+        assertNotNull(out);
+
+        ExampleService.ExampleServiceState outState = Utils.fromJson(
+                out.get(inState.documentSelfLink), ExampleService.ExampleServiceState.class);
+        assertTrue(outState.name.equals(inState.name));
+
+        out = doFactoryServiceQuery(queryString, true);
+        assertNotNull(out);
+        outState = Utils.fromJson(
+                out.get(inState.documentSelfLink), ExampleService.ExampleServiceState.class);
+        assertTrue(outState.name.equals(inState.name));
+    }
+
+    private Map<String, Object> doQuery(String query, boolean remote) throws Throwable {
         URI odataQuery = UriUtils.buildUri(this.host, ServiceUriPaths.ODATA_QUERIES, query);
 
         final ServiceDocumentQueryResult[] qr = { null };
@@ -220,6 +250,9 @@ public class TestODataQueryService extends BasicTestCase {
         });
 
         this.host.testStart(1);
+        if (remote) {
+            get.forceRemote();
+        }
         this.host.send(get);
         this.host.testWait();
         ServiceDocumentQueryResult res = qr[0];
@@ -230,7 +263,7 @@ public class TestODataQueryService extends BasicTestCase {
         return res.documents;
     }
 
-    private Map<String, Object> doFactoryServiceQuery(String query) throws Throwable {
+    private Map<String, Object> doFactoryServiceQuery(String query, boolean remote) throws Throwable {
         URI odataQuery = UriUtils.buildUri(this.host, ExampleService.FACTORY_LINK, query
                 + "&" + UriUtils.URI_PARAM_ODATA_EXPAND + "=true");
 
@@ -247,6 +280,9 @@ public class TestODataQueryService extends BasicTestCase {
         });
 
         this.host.testStart(1);
+        if (remote) {
+            get.forceRemote();
+        }
         this.host.send(get);
         this.host.testWait();
         ServiceDocumentQueryResult res = qr[0];
