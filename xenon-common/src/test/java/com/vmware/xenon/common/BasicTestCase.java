@@ -21,6 +21,7 @@ import org.junit.rules.TestWatcher;
 import org.junit.runner.Description;
 
 import com.vmware.xenon.common.CommandLineArgumentParser;
+import com.vmware.xenon.common.Operation.CompletionHandler;
 import com.vmware.xenon.common.test.VerificationHost;
 
 /**
@@ -79,6 +80,15 @@ public class BasicTestCase {
     }
 
     public void beforeHostTearDown(VerificationHost host) {
+    }
+
+    /**
+     * @see VerificationHost#getSafeHandler(CompletionHandler)
+     * @param handler
+     * @return
+     */
+    public CompletionHandler getSafeHandler(CompletionHandler handler) {
+        return this.host.getSafeHandler(handler);
     }
 
     @Rule

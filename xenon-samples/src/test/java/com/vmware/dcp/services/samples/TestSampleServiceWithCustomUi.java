@@ -13,6 +13,10 @@
 
 package com.vmware.dcp.services.samples;
 
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
+
 import java.net.URI;
 
 import org.junit.Before;
@@ -61,17 +65,11 @@ public class TestSampleServiceWithCustomUi extends BasicReusableHostTestCase {
     public void testGetUi() throws Throwable {
         Operation op = Operation
                 .createGet(UriUtils.buildUri(this.host, THE_SERVICE_URI + "/ui"))
-                .setCompletion((o, e) -> {
-                    if (e != null) {
-                        this.host.failIteration(e);
-                        return;
-                    }
-                    if (o.getStatusCode() != Operation.STATUS_CODE_MOVED_TEMP) {
-                        this.host.failIteration(new AssertionError("did not redirect to ui/"));
-                    } else {
-                        this.host.completeIteration();
-                    }
-                });
+                .setCompletion(getSafeHandler((o, e) -> {
+                    assertNull(e);
+                    assertEquals("Did not receive temporary redirect", Operation.STATUS_CODE_MOVED_TEMP, o.getStatusCode());
+                    assertTrue("Redirected url does not end with /", o.getResponseHeader("location").endsWith("/"));
+                }));
 
         this.host.testStart(1);
         this.host.send(op);
@@ -82,21 +80,11 @@ public class TestSampleServiceWithCustomUi extends BasicReusableHostTestCase {
     public void testGetUiWithSlash() throws Throwable {
         Operation op = Operation
                 .createGet(URI.create(UriUtils.buildUri(this.host, THE_SERVICE_URI + "/ui") + "/"))
-                .setCompletion((o, e) -> {
-                    if (e != null) {
-                        this.host.failIteration(e);
-                        return;
-                    }
-                    if (o.getStatusCode() != Operation.STATUS_CODE_OK) {
-                        this.host.failIteration(new AssertionError("Expected 200 OK"));
-                    } else {
-                        if (o.getBody(String.class).contains("DOCTYPE")) {
-                            this.host.completeIteration();
-                        } else {
-                            this.host.failIteration(new AssertionError("Did not GET the /ui/index.html"));
-                        }
-                    }
-                });
+                .setCompletion(getSafeHandler((o, e) -> {
+                    assertNull(e);
+                    assertEquals("Expected 200 OK", Operation.STATUS_CODE_OK, o.getStatusCode());
+                    assertTrue("Expected content of the index.html", o.getBody(String.class).contains("DOCTYPE"));
+                }));
 
         this.host.testStart(1);
         this.host.send(op);
@@ -107,21 +95,11 @@ public class TestSampleServiceWithCustomUi extends BasicReusableHostTestCase {
     public void testGetResource() throws Throwable {
         Operation op = Operation
                 .createGet(URI.create(UriUtils.buildUri(this.host, THE_SERVICE_URI + "/ui/README.txt") + "/"))
-                .setCompletion((o, e) -> {
-                    if (e != null) {
-                        this.host.failIteration(e);
-                        return;
-                    }
-                    if (o.getStatusCode() != Operation.STATUS_CODE_OK) {
-                        this.host.failIteration(new AssertionError("Expected 200 OK"));
-                    } else {
-                        if (o.getBody(String.class).contains("unit-test")) {
-                            this.host.completeIteration();
-                        } else {
-                            this.host.failIteration(new AssertionError("Did not GET the README.txt"));
-                        }
-                    }
-                });
+                .setCompletion(getSafeHandler((o, e) -> {
+                    assertNull(e);
+                    assertEquals("Expected 200 OK",Operation.STATUS_CODE_OK, o.getStatusCode());
+                    assertTrue("Expected the contents of the README.txt", o.getBody(String.class).contains("unit-test"));
+                }));
 
         this.host.testStart(1);
         this.host.send(op);
