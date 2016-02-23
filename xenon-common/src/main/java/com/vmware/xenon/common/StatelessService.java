@@ -532,6 +532,13 @@ public class StatelessService implements Service {
         if (micros < 0) {
             throw new IllegalArgumentException("micros must be positive");
         }
+
+        if (micros > 0 && micros < Service.MIN_MAINTENANCE_INTERVAL_MICROS) {
+            log(Level.WARNING, "Maintenance interval %d is less than the minimum interval %d"
+                    + ", reducing to min interval", micros, Service.MIN_MAINTENANCE_INTERVAL_MICROS);
+            micros = Service.MIN_MAINTENANCE_INTERVAL_MICROS;
+        }
+
         this.maintenanceIntervalMicros = micros;
     }
 

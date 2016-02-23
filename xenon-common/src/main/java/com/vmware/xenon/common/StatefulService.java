@@ -1538,7 +1538,7 @@ public class StatefulService implements Service {
     }
 
     protected void log(Level level, String fmt, Object... args) {
-        String uri = getUri() != null ? getUri().toString() : this.getClass().getSimpleName();
+        String uri = this.context.host != null && getUri() != null ? getUri().toString() : this.getClass().getSimpleName();
         Logger lg = Logger.getLogger(this.getClass().getName());
         Utils.log(lg, 3, uri, level, fmt, args);
     }
@@ -1710,6 +1710,13 @@ public class StatefulService implements Service {
         if (micros < 0) {
             throw new IllegalArgumentException("micros must be positive");
         }
+
+        if (micros > 0 && micros < Service.MIN_MAINTENANCE_INTERVAL_MICROS) {
+            log(Level.WARNING, "Maintenance interval %d is less than the minimum interval %d"
+                    + ", reducing to min interval", micros, Service.MIN_MAINTENANCE_INTERVAL_MICROS);
+            micros = Service.MIN_MAINTENANCE_INTERVAL_MICROS;
+        }
+
         this.context.maintenanceInterval = micros;
     }
 

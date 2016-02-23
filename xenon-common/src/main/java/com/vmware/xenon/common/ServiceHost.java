@@ -704,6 +704,9 @@ public class ServiceHost {
                                     }
                                     fileState.isStarted = this.state.isStarted;
                                     fileState.isStopping = this.state.isStopping;
+                                    if (fileState.maintenanceIntervalMicros < Service.MIN_MAINTENANCE_INTERVAL_MICROS) {
+                                        fileState.maintenanceIntervalMicros = Service.MIN_MAINTENANCE_INTERVAL_MICROS;
+                                    }
                                     this.state = fileState;
                                     l.countDown();
                                 } catch (Throwable ex) {
@@ -886,6 +889,12 @@ public class ServiceHost {
         if (micros <= 0) {
             throw new IllegalArgumentException(
                     "micros: zero or negative value not allowed");
+        }
+
+        if (micros < Service.MIN_MAINTENANCE_INTERVAL_MICROS) {
+            log(Level.WARNING, "Maintenance interval %d is less than the minimum interval %d"
+                    + ", reducing to min interval", micros, Service.MIN_MAINTENANCE_INTERVAL_MICROS);
+            micros = Service.MIN_MAINTENANCE_INTERVAL_MICROS;
         }
 
         // verify that attached services have intervals greater or equal to suggested value

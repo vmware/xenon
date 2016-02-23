@@ -15,6 +15,7 @@ package com.vmware.xenon.common;
 
 import java.net.URI;
 import java.util.EnumSet;
+import java.util.concurrent.TimeUnit;
 
 import com.vmware.xenon.common.ServiceStats.ServiceStat;
 
@@ -292,6 +293,11 @@ public interface Service {
      * Default operation queue limit
      */
     static final int OPERATION_QUEUE_DEFAULT_LIMIT = 10000;
+
+    /**
+     * Minimum maintenance interval value
+     */
+    static final long MIN_MAINTENANCE_INTERVAL_MICROS = TimeUnit.MILLISECONDS.toMicros(1);
 
     void handleStart(Operation startPost);
 
