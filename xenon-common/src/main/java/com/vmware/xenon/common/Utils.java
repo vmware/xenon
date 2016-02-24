@@ -17,10 +17,12 @@ import java.io.File;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringWriter;
+import java.io.UnsupportedEncodingException;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 import java.net.Inet6Address;
 import java.net.InetAddress;
+import java.net.URLDecoder;
 import java.nio.ByteBuffer;
 import java.nio.charset.CharacterCodingException;
 import java.nio.charset.Charset;
@@ -496,7 +498,8 @@ public class Utils {
         return timeComparisonEpsilonMicros;
     }
 
-    public static String validateServiceOption(EnumSet<ServiceOption> options, ServiceOption option) {
+    public static String validateServiceOption(EnumSet<ServiceOption> options,
+            ServiceOption option) {
         EnumSet<ServiceOption> reqs = null;
         EnumSet<ServiceOption> antiReqs = null;
         switch (option) {
@@ -623,7 +626,7 @@ public class Utils {
                     "-n", "1",
                     "-w", Long.toString(timeoutMs),
                     getNormalizedHostAddress(systemInfo, addr))
-                    .start();
+                            .start();
             boolean completed = process.waitFor(
                     PING_LAUNCH_TOLERANCE_MS + timeoutMs,
                     TimeUnit.MILLISECONDS);
@@ -688,7 +691,8 @@ public class Utils {
         }
 
         if (data == null) {
-            if (contentType == null || contentType.contains(Operation.MEDIA_TYPE_APPLICATION_JSON)) {
+            if (contentType == null
+                    || contentType.contains(Operation.MEDIA_TYPE_APPLICATION_JSON)) {
                 String encodedBody = null;
                 if (op.getAction() == Action.GET) {
                     encodedBody = Utils.toJsonHtml(body);
@@ -704,7 +708,6 @@ public class Utils {
                 throw new IllegalArgumentException("Unrecognized content type: " + contentType);
             }
         }
-
 
         return data;
     }
@@ -754,6 +757,13 @@ public class Utils {
                 || contentType.contains("html")
                 || contentType.contains("xml")) {
             body = Charset.forName(Utils.CHARSET).newDecoder().decode(buffer).toString();
+        } else if (contentType.contains(Operation.MEDIA_TYPE_APPLICATION_X_WWW_FORM_ENCODED)) {
+            body = Charset.forName(Utils.CHARSET).newDecoder().decode(buffer).toString();
+            try {
+                body = URLDecoder.decode(body, Utils.CHARSET);
+            } catch (UnsupportedEncodingException e) {
+                throw new RuntimeException(e);
+            }
         }
 
         return body;
@@ -862,8 +872,9 @@ public class Utils {
      * @param isAscOrder  Whether the document links are sorted in ascending order.
      * @return The merging result.
      */
-    public static ServiceDocumentQueryResult mergeQueryResults(List<ServiceDocumentQueryResult> dataSources,
-                                                               boolean isAscOrder) {
+    public static ServiceDocumentQueryResult mergeQueryResults(
+            List<ServiceDocumentQueryResult> dataSources,
+            boolean isAscOrder) {
 
         // To hold the merge result.
         ServiceDocumentQueryResult result = new ServiceDocumentQueryResult();
@@ -882,7 +893,7 @@ public class Utils {
 
             // Ties could happen among the lists. That is, multiple elements could be picked in one iteration,
             // and the lists where they locate need to be recorded so that their pointers could be adjusted accordingly.
-            List<Integer>sourcesPicked = new ArrayList<>();
+            List<Integer> sourcesPicked = new ArrayList<>();
 
             // In each iteration, the current elements in all lists need to be compared to pick the winners.
             for (int i = 0; i < dataSources.size(); i++) {

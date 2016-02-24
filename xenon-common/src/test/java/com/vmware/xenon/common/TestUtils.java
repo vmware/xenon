@@ -19,6 +19,8 @@ import static org.junit.Assert.assertTrue;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
+import java.net.URLEncoder;
+import java.nio.ByteBuffer;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Instant;
@@ -287,7 +289,7 @@ public class TestUtils {
 
     public void logThroughput(int count, boolean useBinary, ServiceDocumentDescription desc,
             ServiceDocument original)
-            throws Throwable {
+                    throws Throwable {
 
         long s = Utils.getNowMicrosUtc();
         long length = 0;
@@ -318,7 +320,7 @@ public class TestUtils {
 
     public QueryValidationServiceState serializedAndCompareDocuments(
             boolean useBinary, QueryValidationServiceState original)
-            throws Throwable {
+                    throws Throwable {
         QueryValidationServiceState originalDeserializedWithSig = null;
         if (useBinary) {
             byte[] serializedDocument = new byte[4096];
@@ -345,8 +347,8 @@ public class TestUtils {
 
         // exclude in indexing / signature
         if (excludeFieldName != null) {
-            desc.propertyDescriptions.get(excludeFieldName).indexingOptions =
-                    EnumSet.of(PropertyIndexingOption.EXCLUDE_FROM_SIGNATURE);
+            desc.propertyDescriptions.get(excludeFieldName).indexingOptions = EnumSet
+                    .of(PropertyIndexingOption.EXCLUDE_FROM_SIGNATURE);
         }
 
         return desc;
@@ -748,45 +750,50 @@ public class TestUtils {
     public void testMergeQueryResultsWithSameData() {
 
         ServiceDocumentQueryResult result1 = createServiceDocumentQueryResult(
-                new int[] {1, 10, 2, 3, 4, 5, 6, 7, 8, 9});
+                new int[] { 1, 10, 2, 3, 4, 5, 6, 7, 8, 9 });
         ServiceDocumentQueryResult result2 = createServiceDocumentQueryResult(
-                new int[] {1, 10, 2, 3, 4, 5, 6, 7, 8, 9});
+                new int[] { 1, 10, 2, 3, 4, 5, 6, 7, 8, 9 });
         ServiceDocumentQueryResult result3 = createServiceDocumentQueryResult(
-                new int[] {1, 10, 2, 3, 4, 5, 6, 7, 8, 9});
+                new int[] { 1, 10, 2, 3, 4, 5, 6, 7, 8, 9 });
 
         List<ServiceDocumentQueryResult> resultsToMerge = Arrays.asList(result1, result2, result3);
 
         ServiceDocumentQueryResult mergeResult = Utils.mergeQueryResults(resultsToMerge, true);
 
-        assertTrue(verifyMergeResult(mergeResult, new int[]{1, 10, 2, 3, 4, 5, 6, 7, 8, 9}));
+        assertTrue(verifyMergeResult(mergeResult, new int[] { 1, 10, 2, 3, 4, 5, 6, 7, 8, 9 }));
     }
 
     @Test
     public void testMergeQueryResultsWithDifferentData() {
 
-        ServiceDocumentQueryResult result1 = createServiceDocumentQueryResult(new int[] {1, 3, 4, 5, 7, 9});
-        ServiceDocumentQueryResult result2 = createServiceDocumentQueryResult(new int[] {10, 2, 3, 4, 5, 6, 9});
-        ServiceDocumentQueryResult result3 = createServiceDocumentQueryResult(new int[] {1, 10, 2, 3, 4, 8});
+        ServiceDocumentQueryResult result1 = createServiceDocumentQueryResult(
+                new int[] { 1, 3, 4, 5, 7, 9 });
+        ServiceDocumentQueryResult result2 = createServiceDocumentQueryResult(
+                new int[] { 10, 2, 3, 4, 5, 6, 9 });
+        ServiceDocumentQueryResult result3 = createServiceDocumentQueryResult(
+                new int[] { 1, 10, 2, 3, 4, 8 });
 
         List<ServiceDocumentQueryResult> resultsToMerge = Arrays.asList(result1, result2, result3);
 
         ServiceDocumentQueryResult mergeResult = Utils.mergeQueryResults(resultsToMerge, true);
 
-        assertTrue(verifyMergeResult(mergeResult, new int[] {1, 10, 2, 3, 4, 5, 6, 7, 8, 9}));
+        assertTrue(verifyMergeResult(mergeResult, new int[] { 1, 10, 2, 3, 4, 5, 6, 7, 8, 9 }));
     }
 
     @Test
     public void testMergeQueryResultsWithEmptySet() {
 
-        ServiceDocumentQueryResult result1 = createServiceDocumentQueryResult(new int[] {1, 3, 4, 5, 7, 8, 9});
-        ServiceDocumentQueryResult result2 = createServiceDocumentQueryResult(new int[] {10, 2, 3, 4, 5, 6, 9});
+        ServiceDocumentQueryResult result1 = createServiceDocumentQueryResult(
+                new int[] { 1, 3, 4, 5, 7, 8, 9 });
+        ServiceDocumentQueryResult result2 = createServiceDocumentQueryResult(
+                new int[] { 10, 2, 3, 4, 5, 6, 9 });
         ServiceDocumentQueryResult result3 = createServiceDocumentQueryResult(new int[] {});
 
         List<ServiceDocumentQueryResult> resultsToMerge = Arrays.asList(result1, result2, result3);
 
         ServiceDocumentQueryResult mergeResult = Utils.mergeQueryResults(resultsToMerge, true);
 
-        assertTrue(verifyMergeResult(mergeResult, new int[] {1, 10, 2, 3, 4, 5, 6, 7, 8, 9}));
+        assertTrue(verifyMergeResult(mergeResult, new int[] { 1, 10, 2, 3, 4, 5, 6, 7, 8, 9 }));
     }
 
     @Test
@@ -805,21 +812,24 @@ public class TestUtils {
 
     @Test
     public void testMergeQueryResultsInDescOrder() {
-        ServiceDocumentQueryResult result1 = createServiceDocumentQueryResult(new int[] {9, 7, 5, 4, 3, 1});
-        ServiceDocumentQueryResult result2 = createServiceDocumentQueryResult(new int[] {9, 6, 5, 4, 3, 2, 10});
-        ServiceDocumentQueryResult result3 = createServiceDocumentQueryResult(new int[] {8, 4, 3, 2, 10, 1});
+        ServiceDocumentQueryResult result1 = createServiceDocumentQueryResult(
+                new int[] { 9, 7, 5, 4, 3, 1 });
+        ServiceDocumentQueryResult result2 = createServiceDocumentQueryResult(
+                new int[] { 9, 6, 5, 4, 3, 2, 10 });
+        ServiceDocumentQueryResult result3 = createServiceDocumentQueryResult(
+                new int[] { 8, 4, 3, 2, 10, 1 });
 
         List<ServiceDocumentQueryResult> resultsToMerge = Arrays.asList(result1, result2, result3);
 
         ServiceDocumentQueryResult mergeResult = Utils.mergeQueryResults(resultsToMerge, false);
 
-        assertTrue(verifyMergeResult(mergeResult, new int[] {9, 8, 7, 6, 5, 4, 3, 2, 10, 1}));
+        assertTrue(verifyMergeResult(mergeResult, new int[] { 9, 8, 7, 6, 5, 4, 3, 2, 10, 1 }));
     }
 
     private ServiceDocumentQueryResult createServiceDocumentQueryResult(int[] documentIndices) {
 
         ServiceDocumentQueryResult result = new ServiceDocumentQueryResult();
-        result.documentCount = (long)documentIndices.length;
+        result.documentCount = (long) documentIndices.length;
         result.documents = new HashMap<>();
 
         for (int index : documentIndices) {
@@ -831,18 +841,32 @@ public class TestUtils {
         return result;
     }
 
-    private boolean verifyMergeResult(ServiceDocumentQueryResult mergeResult, int[] expectedSequence) {
+    private boolean verifyMergeResult(ServiceDocumentQueryResult mergeResult,
+            int[] expectedSequence) {
         if (mergeResult.documentCount != expectedSequence.length) {
             return false;
         }
 
         for (int i = 0; i < expectedSequence.length; i++) {
-            String expectedLink = ServiceUriPaths.CORE_LOCAL_QUERY_TASKS + "/document" + expectedSequence[i];
+            String expectedLink = ServiceUriPaths.CORE_LOCAL_QUERY_TASKS + "/document"
+                    + expectedSequence[i];
             if (!expectedLink.equals(mergeResult.documentLinks.get(i))) {
                 return false;
             }
         }
 
         return true;
+    }
+
+    @Test
+    public void testDecodeUrlEncodedText() throws Throwable {
+
+        String textPlain = "param1=value1&param2=value 2&param3=value три";
+        byte[] textEncoded = URLEncoder.encode(textPlain, Utils.CHARSET).getBytes(Utils.CHARSET);
+
+        String textDecoded = Utils.decodeIfText(ByteBuffer.wrap(textEncoded),
+                Operation.MEDIA_TYPE_APPLICATION_X_WWW_FORM_ENCODED);
+
+        Assert.assertEquals(textPlain, textDecoded);
     }
 }
