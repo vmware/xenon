@@ -257,8 +257,10 @@ public class ServiceDocumentDescription {
                 }
 
                 PropertyDescription fd = new PropertyDescription();
-                if (ServiceDocument.isBuiltInIndexedDocumentField(f.getName())) {
+                if (ServiceDocument.isBuiltInInfrastructureDocumentField(f.getName())) {
                     fd.usageOptions.add(PropertyUsageOption.INFRASTRUCTURE);
+                }
+                if (ServiceDocument.isBuiltInSignatureExcludedDocumentField(f.getName())) {
                     fd.indexingOptions.add(PropertyIndexingOption.EXCLUDE_FROM_SIGNATURE);
                 }
                 if (ServiceDocument.isLink(f.getName())) {

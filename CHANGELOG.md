@@ -10,7 +10,7 @@
   2) Client DELETE -> handleDelete
   handleStart always follows handleCreate, on owner only.
   handleStop always follows handleDelete, on owner only.
-  handleStart occurs on service start, due to host restart, 
+  handleStart occurs on service start, due to host restart,
   synch, or create (on owner)
   handleStop occurs on service stop, on service host stop,
   or due to delete (on owner)
@@ -25,6 +25,12 @@
 * Add StatelessService & StatefulService handleNodeGroupMaintenance
   method to get node group change notifications. Invoked by
   handleMaintenance on MaintenanceReason.NODE_GROUP_CHANGE reason.
+
+* Include ServiceDocument.documentExpirationTimeMicros in the
+  document signature computation done by Utils.computeSignature.
+  Effectively this means that comparisons of two service
+  documents using ServiceDocument.equals will return false if
+  their "documentExpirationTimeMicros" differ.
 
 ## 0.7.0
 
@@ -117,7 +123,7 @@
 ## 0.5.0
 
 * Implement authorization on stateless services. This is a breaking
-  change for xenon deployments that use authorization and have 
+  change for xenon deployments that use authorization and have
   non factory service implementations of StatelessService class.
   Stateless services must now be included in roles, using a resource
   specification over the document self link.
@@ -148,11 +154,11 @@ capability.
 * Renamed authentication cookie from dcp-auth-cookie to
   xenon-auth-cookie. This should be transparent for clients that use
   cookies, but clients that extract the cookie value in order to make
-  an x-xenon-auth-token header need to use this new cookie instead. 
+  an x-xenon-auth-token header need to use this new cookie instead.
 
 * The basic authentication service (/core/authn/basic) now includes
   the x-xenon-auth-token header in its response, in addition to the
-  cookie. 
+  cookie.
 
 * ExampleServiceHost now takes arguments to create users (one admin,
   one non-admin that can access example services). This enables you to

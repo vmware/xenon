@@ -325,7 +325,42 @@ public class ServiceDocument {
         }
     }
 
-    public static boolean isBuiltInIndexedDocumentField(String name) {
+    /**
+     * Returns whether or not the {@code name} is a built-in field that should be excluded from
+     * the service document signature computation.
+     *
+     * @see com.vmware.xenon.common.ServiceDocumentDescription.PropertyIndexingOption#EXCLUDE_FROM_SIGNATURE
+     *
+     * @param name Field name
+     * @return true/false
+     */
+    public static boolean isBuiltInSignatureExcludedDocumentField(String name) {
+        switch (name) {
+        case ServiceDocument.FIELD_NAME_KIND:
+        case ServiceDocument.FIELD_NAME_OWNER:
+        case ServiceDocument.FIELD_NAME_SOURCE_LINK:
+        case ServiceDocument.FIELD_NAME_VERSION:
+        case ServiceDocument.FIELD_NAME_EPOCH:
+        case ServiceDocument.FIELD_NAME_UPDATE_TIME_MICROS:
+        case ServiceDocument.FIELD_NAME_SELF_LINK:
+        case ServiceDocument.FIELD_NAME_AUTH_PRINCIPAL_LINK:
+        case ServiceDocument.FIELD_NAME_TRANSACTION_ID:
+            return true;
+        default:
+            return false;
+        }
+    }
+
+    /**
+     * Returns whether or not the {@code name} is a built-in field that should be
+     * for infrastructure use only.
+     *
+     * @see com.vmware.xenon.common.ServiceDocumentDescription.PropertyUsageOption#INFRASTRUCTURE
+     *
+     * @param name Field name
+     * @return true/false
+     */
+    public static boolean isBuiltInInfrastructureDocumentField(String name) {
         switch (name) {
         case ServiceDocument.FIELD_NAME_KIND:
         case ServiceDocument.FIELD_NAME_EXPIRATION_TIME_MICROS:
@@ -343,6 +378,12 @@ public class ServiceDocument {
         }
     }
 
+    /**
+     * Returns whether or not the {@code name} is a built-in field that should not be indexed.
+     *
+     * @param name Field name
+     * @return true/false
+     */
     public static boolean isBuiltInNonIndexedDocumentField(String name) {
         switch (name) {
         case ServiceDocument.FIELD_NAME_DESCRIPTION:
