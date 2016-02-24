@@ -325,7 +325,24 @@ public class ServiceDocument {
         }
     }
 
-    public static boolean isBuiltInIndexedDocumentField(String name) {
+    public static boolean isBuiltInSignatureExcludedDocumentField(String name) {
+        switch (name) {
+        case ServiceDocument.FIELD_NAME_KIND:
+        case ServiceDocument.FIELD_NAME_OWNER:
+        case ServiceDocument.FIELD_NAME_SOURCE_LINK:
+        case ServiceDocument.FIELD_NAME_VERSION:
+        case ServiceDocument.FIELD_NAME_EPOCH:
+        case ServiceDocument.FIELD_NAME_UPDATE_TIME_MICROS:
+        case ServiceDocument.FIELD_NAME_SELF_LINK:
+        case ServiceDocument.FIELD_NAME_AUTH_PRINCIPAL_LINK:
+        case ServiceDocument.FIELD_NAME_TRANSACTION_ID:
+            return true;
+        default:
+            return false;
+        }
+    }
+
+    public static boolean isBuiltInInfrastructureDocumentField(String name) {
         switch (name) {
         case ServiceDocument.FIELD_NAME_KIND:
         case ServiceDocument.FIELD_NAME_EXPIRATION_TIME_MICROS:

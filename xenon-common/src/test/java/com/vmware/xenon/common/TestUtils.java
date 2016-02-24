@@ -14,6 +14,7 @@
 package com.vmware.xenon.common;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
@@ -242,9 +243,6 @@ public class TestUtils {
         document.documentOwner = UUID.randomUUID().toString();
         assertTrue(ServiceDocument.equals(desc, original, document));
 
-        document.documentExpirationTimeMicros = Utils.getNowMicrosUtc();
-        assertTrue(ServiceDocument.equals(desc, original, document));
-
         document.documentUpdateTimeMicros = Utils.getNowMicrosUtc();
         assertTrue(ServiceDocument.equals(desc, original, document));
 
@@ -263,11 +261,17 @@ public class TestUtils {
         assertTrue(ServiceDocument.equals(desc, original, document));
 
         // now change derived fields and expect the signature to change
-        document.stringValue = UUID.randomUUID().toString();
-        assertTrue(false == ServiceDocument.equals(desc, original, document));
+        QueryValidationServiceState changed = Utils.clone(original);
+        changed.documentExpirationTimeMicros = Utils.getNowMicrosUtc();
+        assertTrue(false == ServiceDocument.equals(desc, original, changed));
 
-        document.mapOfStrings.put(UUID.randomUUID().toString(), UUID.randomUUID().toString());
-        assertTrue(false == ServiceDocument.equals(desc, original, document));
+        changed = Utils.clone(original);
+        changed.stringValue = UUID.randomUUID().toString();
+        assertTrue(false == ServiceDocument.equals(desc, original, changed));
+
+        changed = Utils.clone(original);
+        changed.mapOfStrings.put(UUID.randomUUID().toString(), UUID.randomUUID().toString());
+        assertTrue(false == ServiceDocument.equals(desc, original, changed));
 
         // finally do a simple throughput test
         logThroughput(this.iterationCount, useBinary, desc, original);
@@ -451,7 +455,6 @@ public class TestUtils {
         options = EnumSet.of(ServiceOption.CONCURRENT_UPDATE_HANDLING,
                 ServiceOption.STRICT_UPDATE_CHECKING);
         checkOptions(options, true);
-
 
         options = EnumSet.of(ServiceOption.OWNER_SELECTION, ServiceOption.REPLICATION,
                 ServiceOption.CONCURRENT_UPDATE_HANDLING);
@@ -705,6 +708,46 @@ public class TestUtils {
         Assert.assertEquals("Annotated s field", source.s, SOME_STRING_VALUE);
         Assert.assertEquals("Annotated x field", source.x, SOME_INT_VALUE);
         Assert.assertEquals("Non-annotated ignore field", source.ignore, SOME_IGNORE_VALUE);
+    }
+
+    @Test
+    public void testComputeSignatureChanged() {
+        ServiceDocumentDescription description = ServiceDocumentDescription.Builder.create()
+                .buildDescription(QueryValidationServiceState.class);
+
+        QueryValidationServiceState document = new QueryValidationServiceState();
+        document.documentSelfLink = "testComputeSignatureChange";
+        document.stringValue = "valueA";
+        document.documentExpirationTimeMicros = 1;
+        String initialSignature = Utils.computeSignature(document, description);
+
+        document.stringValue = "valueB";
+        String valueChangedSignature = Utils.computeSignature(document, description);
+
+        assertNotEquals(initialSignature, valueChangedSignature);
+
+        document.documentExpirationTimeMicros = 2;
+        String expirationChangedSignature = Utils.computeSignature(document, description);
+
+        assertNotEquals(initialSignature, expirationChangedSignature);
+        assertNotEquals(valueChangedSignature, expirationChangedSignature);
+    }
+
+    @Test
+    public void testComputeSignatureUnchanged() {
+        ServiceDocumentDescription description = ServiceDocumentDescription.Builder.create()
+                .buildDescription(QueryValidationServiceState.class);
+
+        QueryValidationServiceState document = new QueryValidationServiceState();
+        document.documentSelfLink = "testComputeSignatureChange";
+        document.stringValue = "valueA";
+        document.documentUpdateTimeMicros = 1;
+        String initialSignature = Utils.computeSignature(document, description);
+
+        document.documentUpdateTimeMicros = 2;
+        String updateChangedSignature = Utils.computeSignature(document, description);
+
+        assertEquals(initialSignature, updateChangedSignature);
     }
 
     /**
