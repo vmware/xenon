@@ -1071,6 +1071,9 @@ public class LuceneDocumentIndexService extends StatelessService {
                 // ignore a document if its marked deleted and it has the latest version
                 if (documentVersion >= latestVersion) {
                     uniques.remove(link);
+                    if (rsp.documents != null) {
+                        rsp.documents.remove(link);
+                    }
                 }
                 continue;
             }
