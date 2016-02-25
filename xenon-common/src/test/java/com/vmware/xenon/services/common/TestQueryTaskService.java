@@ -494,6 +494,70 @@ public class TestQueryTaskService {
     }
 
     @Test
+    public void expandContent() throws Throwable {
+        setUpHost();
+        Map<URI, ExampleServiceState> states = this.host.doFactoryChildServiceStart(null,
+                this.serviceCount,
+                ExampleServiceState.class, (o) -> {
+                    ExampleServiceState initialState = new ExampleServiceState();
+                    initialState.name = UUID.randomUUID().toString();
+                    o.setBody(initialState);
+                } ,
+                UriUtils.buildFactoryUri(this.host, ExampleService.class));
+
+        Query kindClause = Query.Builder.create()
+                .addKindFieldClause(ExampleServiceState.class)
+                .build();
+
+        QueryTask.Builder queryTaskBuilder = QueryTask.Builder.createDirectTask();
+        queryTaskBuilder
+                .setQuery(kindClause)
+                .addOption(QueryOption.EXPAND_CONTENT);
+
+        QueryTask task = queryTaskBuilder.build();
+
+        if (task.documentExpirationTimeMicros != 0) {
+            // the value was set as an interval by the calling test. Make absolute here so
+            // account for service creation above
+            task.documentExpirationTimeMicros = Utils.getNowMicrosUtc()
+                    + task.documentExpirationTimeMicros;
+        }
+
+        this.host.logThroughput();
+        this.host.createQueryTaskService(task, false,
+                task.taskInfo.isDirect, task, null);
+
+        String kind = Utils.buildKind(ExampleServiceState.class);
+        assertEquals(this.serviceCount, task.results.documentLinks.size());
+        assertEquals(task.results.documentLinks.size(), task.results.documents.size());
+        for (Entry<String, Object> e : task.results.documents.entrySet()) {
+            ExampleServiceState st = Utils.fromJson(e.getValue(), ExampleServiceState.class);
+            assertEquals(e.getKey(), st.documentSelfLink);
+            assertTrue(st.name != null);
+            assertEquals(kind, st.documentKind);
+            assertEquals(Action.POST.toString(), st.documentUpdateAction);
+        }
+
+        // delete a service, verify its filtered from the results
+        URI serviceToRemove = states.keySet().iterator().next();
+        ExampleServiceState removedState = states.remove(serviceToRemove);
+        Operation delete = Operation.createDelete(serviceToRemove)
+                .setCompletion(this.host.getCompletion());
+        this.host.sendAndWait(delete);
+
+        task.results = null;
+        this.host.createQueryTaskService(task, false,
+                task.taskInfo.isDirect, task, null);
+
+        assertEquals(states.size(), task.results.documentLinks.size());
+        assertEquals(task.results.documentLinks.size(), task.results.documents.size());
+        for (Entry<String, Object> e : task.results.documents.entrySet()) {
+            ExampleServiceState st = Utils.fromJson(e.getValue(), ExampleServiceState.class);
+            assertTrue(!st.name.equals(removedState.name));
+        }
+    }
+
+    @Test
     public void throughputSimpleQuery() throws Throwable {
         setUpHost();
         List<URI> services = startQueryTargetServices(this.serviceCount);
