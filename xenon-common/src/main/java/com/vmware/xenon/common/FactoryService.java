@@ -609,7 +609,8 @@ public abstract class FactoryService extends StatelessService {
     private void handleGetOdataCompletion(Operation op, String oDataFilter) {
         QueryTask task = new QueryTask().setDirect(true);
         task.querySpec = new QueryTask.QuerySpecification();
-        if (op.getUri().getQuery().contains(UriUtils.URI_PARAM_ODATA_EXPAND)) {
+        boolean doExpand = UriUtils.getODataExpandParamValue(op.getUri());
+        if (doExpand) {
             task.querySpec.options = EnumSet.of(QueryOption.EXPAND_CONTENT);
         }
 
@@ -637,7 +638,7 @@ public abstract class FactoryService extends StatelessService {
             EnumSet<ServiceOption> caps) {
         boolean doExpand = false;
         if (op.getUri().getQuery() != null) {
-            doExpand = op.getUri().getQuery().contains(UriUtils.URI_PARAM_ODATA_EXPAND);
+            doExpand = UriUtils.getODataExpandParamValue(op.getUri());
         }
 
         URI u = UriUtils.buildDocumentQueryUri(s.getHost(),

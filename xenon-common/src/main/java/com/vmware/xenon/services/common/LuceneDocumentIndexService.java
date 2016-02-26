@@ -579,6 +579,9 @@ public class LuceneDocumentIndexService extends StatelessService {
 
         String selfLink = params.get(ServiceDocument.FIELD_NAME_SELF_LINK);
         String fieldToExpand = params.get(UriUtils.URI_PARAM_ODATA_EXPAND);
+        if (fieldToExpand == null) {
+            fieldToExpand = params.get(UriUtils.URI_PARAM_ODATA_EXPAND_NO_DOLLAR_SIGN);
+        }
         if (fieldToExpand != null
                 && fieldToExpand.equals(ServiceDocumentQueryResult.FIELD_NAME_DOCUMENT_LINKS)) {
             options.add(QueryOption.EXPAND_CONTENT);
