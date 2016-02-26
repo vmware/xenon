@@ -13,13 +13,9 @@
 
 package com.vmware.xenon.services.common;
 
-import java.net.URI;
-import java.util.EnumSet;
-
-import com.vmware.xenon.common.ODataQueryVisitor;
+import com.vmware.xenon.common.ODataUtils;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.StatelessService;
-import com.vmware.xenon.common.UriUtils;
 
 /**
  * Parses the OData parameters of the URI and issues a direct Query.
@@ -31,14 +27,10 @@ public class ODataQueryService extends StatelessService {
     public void handleGet(Operation op) {
 
         try {
-            QueryTask.Query q = getQuery(op.getUri());
-
-            QueryTask task = new QueryTask();
-            task.setDirect(true);
-            task.querySpec = new QueryTask.QuerySpecification();
-            task.querySpec.query = q;
-            task.querySpec.options = EnumSet
-                    .of(QueryTask.QuerySpecification.QueryOption.EXPAND_CONTENT);
+            QueryTask task = ODataUtils.toQuery(op);
+            if (task == null) {
+                return;
+            }
 
             sendRequest(Operation.createPost(this, ServiceUriPaths.CORE_QUERY_TASKS).setBody(task)
                     .setCompletion((o, e) -> {
@@ -47,21 +39,12 @@ public class ODataQueryService extends StatelessService {
                             return;
                         }
 
-                        op.setBody(o.getBodyRaw());
+                        QueryTask result = o.getBody(QueryTask.class);
+                        op.setBodyNoCloning(result);
                         op.complete();
                     }));
         } catch (Exception e) {
             op.fail(e);
         }
     }
-
-    private QueryTask.Query getQuery(URI uri) throws Exception {
-        String oDataFilterParam = UriUtils.getODataFilterParamValue(uri);
-        if (oDataFilterParam == null) {
-            throw new IllegalArgumentException("$filter query not found");
-        }
-
-        return new ODataQueryVisitor().toQuery(oDataFilterParam);
-    }
-
 }

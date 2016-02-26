@@ -25,8 +25,6 @@ import com.vmware.xenon.common.NodeSelectorService.SelectOwnerResponse;
 import com.vmware.xenon.common.Operation.CompletionHandler;
 import com.vmware.xenon.common.ServiceHost.ServiceAlreadyStartedException;
 import com.vmware.xenon.services.common.QueryTask;
-import com.vmware.xenon.services.common.QueryTask.Query;
-import com.vmware.xenon.services.common.QueryTask.QuerySpecification.QueryOption;
 import com.vmware.xenon.services.common.ServiceUriPaths;
 
 /**
@@ -607,20 +605,17 @@ public abstract class FactoryService extends StatelessService {
     }
 
     private void handleGetOdataCompletion(Operation op, String oDataFilter) {
-        QueryTask task = new QueryTask().setDirect(true);
-        task.querySpec = new QueryTask.QuerySpecification();
-        if (op.getUri().getQuery().contains(UriUtils.URI_PARAM_ODATA_EXPAND)) {
-            task.querySpec.options = EnumSet.of(QueryOption.EXPAND_CONTENT);
+        QueryTask task = ODataUtils.toQuery(op);
+        if (task == null) {
+            return;
         }
+        task.setDirect(true);
 
         String kind = Utils.buildKind(getStateType());
         QueryTask.Query kindClause = new QueryTask.Query()
                 .setTermPropertyName(ServiceDocument.FIELD_NAME_KIND)
                 .setTermMatchValue(kind);
         task.querySpec.query.addBooleanClause(kindClause);
-
-        Query oDataFilterClause = new ODataQueryVisitor().toQuery(oDataFilter);
-        task.querySpec.query.addBooleanClause(oDataFilterClause);
 
         sendRequest(Operation.createPost(this, ServiceUriPaths.CORE_QUERY_TASKS).setBody(task)
                 .setCompletion((o, e) -> {
@@ -637,7 +632,7 @@ public abstract class FactoryService extends StatelessService {
             EnumSet<ServiceOption> caps) {
         boolean doExpand = false;
         if (op.getUri().getQuery() != null) {
-            doExpand = op.getUri().getQuery().contains(UriUtils.URI_PARAM_ODATA_EXPAND);
+            doExpand = UriUtils.hasODataExpandParamValue(op.getUri());
         }
 
         URI u = UriUtils.buildDocumentQueryUri(s.getHost(),

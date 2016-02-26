@@ -45,8 +45,14 @@ public class UriUtils {
     public static final String FORWARDING_URI_PARAM_NAME_KEY = "key";
     public static final String FORWARDING_URI_PARAM_NAME_PEER = "peer";
 
-    public static final String URI_PARAM_ODATA_EXPAND = "expand";
+    public static final String URI_PARAM_ODATA_EXPAND = "$expand";
+    public static final String URI_PARAM_ODATA_EXPAND_NO_DOLLAR_SIGN = "expand";
     public static final String URI_PARAM_ODATA_FILTER = "$filter";
+    public static final String URI_PARAM_ODATA_SKIP = "$skip";
+    public static final String URI_PARAM_ODATA_ORDER_BY = "$orderby";
+    public static final String URI_PARAM_ODATA_ORDER_BY_VALUE_ASC = "asc";
+    public static final String URI_PARAM_ODATA_ORDER_BY_VALUE_DESC = "desc";
+    public static final String URI_PARAM_ODATA_TOP = "$top";
     public static final String HTTP_SCHEME = "http";
     public static final String HTTPS_SCHEME = "https";
     public static final int HTTP_DEFAULT_PORT = 80;
@@ -585,6 +591,99 @@ public class UriUtils {
         }
 
         return filterParamValue;
+    }
+
+    public static Integer getODataSkipParamValue(URI uri) {
+        String query = uri.getQuery();
+        if (query == null || query.isEmpty()) {
+            return null;
+        }
+
+        if (!query.contains(URI_PARAM_ODATA_SKIP)) {
+            return null;
+        }
+
+        Map<String, String> queryParams = parseUriQueryParams(uri);
+
+        String paramValue = queryParams.get(URI_PARAM_ODATA_SKIP);
+        if (paramValue == null || paramValue.isEmpty()) {
+            return null;
+        }
+        return Integer.valueOf(paramValue);
+    }
+
+    public static Integer getODataTopParamValue(URI uri) {
+        String query = uri.getQuery();
+        if (query == null || query.isEmpty()) {
+            return null;
+        }
+
+        if (!query.contains(URI_PARAM_ODATA_TOP)) {
+            return null;
+        }
+
+        Map<String, String> queryParams = parseUriQueryParams(uri);
+
+        String paramValue = queryParams.get(URI_PARAM_ODATA_TOP);
+        if (paramValue == null || paramValue.isEmpty()) {
+            return null;
+        }
+        return Integer.valueOf(paramValue);
+    }
+
+    public enum ODataOrder {
+        ASC, DESC
+    }
+
+    public static class ODataOrderByTuple {
+        public ODataOrder order;
+        public String propertyName;
+    }
+
+    public static ODataOrderByTuple getODataOrderByParamValue(URI uri) {
+        String query = uri.getQuery();
+        if (query == null || query.isEmpty()) {
+            return null;
+        }
+
+        if (!query.contains(URI_PARAM_ODATA_ORDER_BY)) {
+            return null;
+        }
+
+        Map<String, String> queryParams = parseUriQueryParams(uri);
+
+        String paramValue = queryParams.get(URI_PARAM_ODATA_ORDER_BY);
+        if (paramValue == null || paramValue.isEmpty()) {
+            return null;
+        }
+
+        ODataOrderByTuple tuple = new ODataOrderByTuple();
+        if (paramValue.contains(URI_PARAM_ODATA_ORDER_BY_VALUE_DESC)) {
+            tuple.order = ODataOrder.DESC;
+            paramValue = paramValue.replace(URI_PARAM_ODATA_ORDER_BY_VALUE_DESC, "");
+        } else if (paramValue.contains(URI_PARAM_ODATA_ORDER_BY_VALUE_ASC)) {
+            // default is ascending
+            tuple.order = ODataOrder.ASC;
+            paramValue = paramValue.replace(URI_PARAM_ODATA_ORDER_BY_VALUE_ASC, "");
+        } else {
+            throw new IllegalArgumentException("invalid expression: " + paramValue);
+        }
+
+        paramValue = paramValue.trim();
+        paramValue = paramValue.replaceAll("\\+", "");
+        paramValue = paramValue.replaceAll(" ", "");
+        paramValue = paramValue.replaceAll("0x20", "");
+
+        tuple.propertyName = paramValue;
+        return tuple;
+    }
+
+    public static boolean hasODataExpandParamValue(URI uri) {
+        boolean doExpand = uri.getQuery().contains(UriUtils.URI_PARAM_ODATA_EXPAND);
+        if (!doExpand) {
+            doExpand = uri.getQuery().contains(UriUtils.URI_PARAM_ODATA_EXPAND_NO_DOLLAR_SIGN);
+        }
+        return doExpand;
     }
 
     /**
