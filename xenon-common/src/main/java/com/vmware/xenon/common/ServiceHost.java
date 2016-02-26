@@ -2253,6 +2253,7 @@ public class ServiceHost {
         }
 
         if (skipSynch) {
+            post.complete();
             return;
         }
 
@@ -4143,7 +4144,7 @@ public class ServiceHost {
             }
             performMaintenanceStage(post, stage);
         } catch (Throwable e) {
-            log(Level.SEVERE, "Uncaught exception: %s", Utils.toString(e));
+            log(Level.SEVERE, "Uncaught exception: %s", e.toString());
             post.fail(e);
         }
     }
