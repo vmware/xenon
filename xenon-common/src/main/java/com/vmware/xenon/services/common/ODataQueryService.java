@@ -14,12 +14,15 @@
 package com.vmware.xenon.services.common;
 
 import java.net.URI;
-import java.util.EnumSet;
 
 import com.vmware.xenon.common.ODataQueryVisitor;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.StatelessService;
 import com.vmware.xenon.common.UriUtils;
+import com.vmware.xenon.common.UriUtils.ODataOrder;
+import com.vmware.xenon.services.common.QueryTask.QuerySpecification.QueryOption;
+import com.vmware.xenon.services.common.QueryTask.QuerySpecification.SortOrder;
+import com.vmware.xenon.services.common.QueryTask.QueryTerm;
 
 /**
  * Parses the OData parameters of the URI and issues a direct Query.
@@ -31,14 +34,37 @@ public class ODataQueryService extends StatelessService {
     public void handleGet(Operation op) {
 
         try {
-            QueryTask.Query q = getQuery(op.getUri());
+            QueryTask.Query q = getFilterQuery(op.getUri());
+
+            Integer top = UriUtils.getODataTopParamValue(op.getUri());
+            Integer skip = UriUtils.getODataSkipParamValue(op.getUri());
+            UriUtils.ODataOrderByTuple orderBy = UriUtils.getODataOrderByParamValue(op.getUri());
 
             QueryTask task = new QueryTask();
             task.setDirect(true);
             task.querySpec = new QueryTask.QuerySpecification();
             task.querySpec.query = q;
-            task.querySpec.options = EnumSet
-                    .of(QueryTask.QuerySpecification.QueryOption.EXPAND_CONTENT);
+
+            // always expand
+            task.querySpec.options.add(QueryOption.EXPAND_CONTENT);
+
+            if (orderBy != null) {
+                task.querySpec.options.add(QueryOption.SORT);
+                task.querySpec.sortOrder = orderBy.order == ODataOrder.ASC ? SortOrder.ASC
+                        : SortOrder.DESC;
+                task.querySpec.sortTerm = new QueryTerm();
+                task.querySpec.sortTerm.propertyName = orderBy.propertyName;
+            }
+
+            if (top != null) {
+                task.querySpec.resultLimit = top;
+            }
+
+            if (skip != null) {
+                op.fail(new IllegalArgumentException(
+                        UriUtils.URI_PARAM_ODATA_SKIP + " is not supported"));
+                return;
+            }
 
             sendRequest(Operation.createPost(this, ServiceUriPaths.CORE_QUERY_TASKS).setBody(task)
                     .setCompletion((o, e) -> {
@@ -47,7 +73,8 @@ public class ODataQueryService extends StatelessService {
                             return;
                         }
 
-                        op.setBody(o.getBodyRaw());
+                        QueryTask result = o.getBody(QueryTask.class);
+                        op.setBodyNoCloning(result);
                         op.complete();
                     }));
         } catch (Exception e) {
@@ -55,7 +82,7 @@ public class ODataQueryService extends StatelessService {
         }
     }
 
-    private QueryTask.Query getQuery(URI uri) throws Exception {
+    private QueryTask.Query getFilterQuery(URI uri) throws Exception {
         String oDataFilterParam = UriUtils.getODataFilterParamValue(uri);
         if (oDataFilterParam == null) {
             throw new IllegalArgumentException("$filter query not found");

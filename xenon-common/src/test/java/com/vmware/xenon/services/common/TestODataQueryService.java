@@ -265,7 +265,7 @@ public class TestODataQueryService extends BasicTestCase {
 
     private Map<String, Object> doFactoryServiceQuery(String query, boolean remote) throws Throwable {
         URI odataQuery = UriUtils.buildUri(this.host, ExampleService.FACTORY_LINK, query
-                + "&" + UriUtils.URI_PARAM_ODATA_EXPAND + "=true");
+                + "&" + UriUtils.URI_PARAM_ODATA_EXPAND);
 
         final ServiceDocumentQueryResult[] qr = { null };
         Operation get = Operation.createGet(odataQuery).setCompletion((ox, ex) -> {
