@@ -21,35 +21,33 @@ import java.net.URI;
 import java.net.URLEncoder;
 import java.nio.charset.Charset;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
-import org.junit.Before;
+import org.junit.After;
 import org.junit.Test;
 
-import com.vmware.xenon.common.BasicTestCase;
+import com.vmware.xenon.common.BasicReusableHostTestCase;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.ServiceDocumentQueryResult;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
 import com.vmware.xenon.services.common.ExampleService;
+import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
 import com.vmware.xenon.services.common.QueryTask;
 import com.vmware.xenon.services.common.ServiceUriPaths;
 
-public class TestODataQueryService extends BasicTestCase {
+public class TestODataQueryService extends BasicReusableHostTestCase {
     public long min = 10;
     public long max = 30;
     public List<String> selfLinks;
+    private boolean isFailureExpected;
 
-    @Before
-    public void setUp() throws Exception {
-
-        try {
-            this.selfLinks = postExample(this.min, this.max);
-        } catch (Throwable e) {
-            throw new Exception(e);
-        }
+    @After
+    public void tearDown() throws Throwable {
+        this.host.deleteAllChildServices(UriUtils.buildFactoryUri(this.host, ExampleService.class));
     }
 
     private List<String> postExample(long min, long max) throws Throwable {
@@ -98,7 +96,118 @@ public class TestODataQueryService extends BasicTestCase {
     }
 
     @Test
-    public void uriEncodedQueries() throws Throwable {
+    public void orderBy() throws Throwable {
+        ExampleService.ExampleServiceState inState = new ExampleService.ExampleServiceState();
+        int c = 5;
+        List<String> expectedOrder = new ArrayList<>();
+        for (int i = 0; i < c; i++) {
+            inState.documentSelfLink = null;
+            inState.counter = 1L;
+            inState.name = i + "-abcd";
+            postExample(inState);
+            expectedOrder.add(inState.name);
+        }
+
+        // post an example that will not get past the filter
+        inState.documentSelfLink = null;
+        inState.counter = 10000L;
+        inState.name = 0 + "-abcd";
+        postExample(inState);
+
+        // ascending search first
+        String queryString = "$filter=counter eq 1";
+        queryString += "&" + "$orderby=name asc";
+
+        doOrderByQueryAndValidateResult(c, expectedOrder, queryString);
+
+        // descending search
+        queryString = "$filter=counter eq 1";
+        queryString += "&" + "$orderby=name desc";
+        Collections.reverse(expectedOrder);
+        doOrderByQueryAndValidateResult(c, expectedOrder, queryString);
+
+        // pass a bogus order specifier, expect failure.
+        this.isFailureExpected = true;
+        try {
+            queryString = "$filter=counter eq 1";
+            queryString += "&" + "$orderby=name something";
+            doOrderByQueryAndValidateResult(c, expectedOrder, queryString);
+        } finally {
+            this.isFailureExpected = false;
+        }
+    }
+
+    @Test
+    public void top() throws Throwable {
+        ExampleService.ExampleServiceState inState = new ExampleService.ExampleServiceState();
+        int c = 5;
+        List<String> expectedOrder = new ArrayList<>();
+        for (int i = 0; i < c; i++) {
+            inState.documentSelfLink = null;
+            inState.counter = 1L;
+            inState.name = i + "-abcd";
+            postExample(inState);
+            expectedOrder.add(inState.name);
+        }
+
+        // top + filter
+        int topCount = c - 2;
+        String queryString = "$filter=counter eq 1";
+        queryString += "&" + "$top=" + +topCount;
+        ServiceDocumentQueryResult res = doQuery(queryString, true);
+        assertTrue(res.documentCount == topCount);
+        assertTrue(res.documentLinks.size() == topCount);
+        assertTrue(res.documents.size() == topCount);
+
+        // do the same, but through a factory
+        URI u = UriUtils.buildFactoryUri(this.host, ExampleService.class);
+        u = UriUtils.extendUriWithQuery(u, "$filter", "counter eq 1", "$top", "" + topCount);
+        res = this.host.getFactoryState(u);
+        assertTrue(res.documentCount == topCount);
+        assertTrue(res.documentLinks.size() == topCount);
+        assertTrue(res.documents.size() == topCount);
+
+        // top + filter + orderBy
+        queryString = "$filter=counter eq 1";
+        queryString += "&" + "$orderby=name asc";
+        queryString += "&" + "$top=" + topCount;
+
+        doOrderByQueryAndValidateResult(topCount, expectedOrder, queryString);
+
+        // pass a bogus order specifier, expect failure.
+        this.isFailureExpected = true;
+        try {
+            queryString = "$filter=counter eq 1";
+            queryString = queryString + "&" + "$top=bogus";
+            doOrderByQueryAndValidateResult(c, expectedOrder, queryString);
+        } finally {
+            this.isFailureExpected = false;
+        }
+    }
+
+    private void doOrderByQueryAndValidateResult(int c, List<String> expectedOrder,
+            String queryString) throws Throwable {
+        ServiceDocumentQueryResult res = doQuery(queryString, true);
+        if (this.isFailureExpected) {
+            return;
+        }
+        assertEquals(c, res.documentLinks.size());
+        assertNotNull(res.documents);
+
+        int i = 0;
+        for (String link : res.documentLinks) {
+            Object document = res.documents.get(link);
+            ExampleServiceState st = Utils.fromJson(document, ExampleServiceState.class);
+            String expected = expectedOrder.get(i++);
+            if (!expected.equals(st.name)) {
+                throw new IllegalStateException("sort order not expected: " + Utils.toJsonHtml(res));
+            }
+        }
+    }
+
+    @Test
+    public void filterQueries() throws Throwable {
+        this.selfLinks = postExample(this.min, this.max);
         testSimpleStringQuery();
         testGTQuery();
         testGEQuery();
@@ -115,7 +224,7 @@ public class TestODataQueryService extends BasicTestCase {
 
         String queryString = "$filter=name eq 'TEST STRING'";
 
-        Map<String, Object> out = doQuery(queryString, false);
+        Map<String, Object> out = doQuery(queryString, false).documents;
         assertNotNull(out);
 
         ExampleService.ExampleServiceState outState = Utils.fromJson(
@@ -133,7 +242,7 @@ public class TestODataQueryService extends BasicTestCase {
         // we should get 10 documents back
         String queryString = String.format("$filter=counter gt %d", this.min + 10);
 
-        Map<String, Object> out = doQuery(queryString, false);
+        Map<String, Object> out = doQuery(queryString, false).documents;
         assertNotNull(out);
 
         assertEquals(10, out.size());
@@ -147,7 +256,7 @@ public class TestODataQueryService extends BasicTestCase {
         // we should get 10 documents back
         String queryString = String.format("$filter=counter ge %d", this.min + 10);
 
-        Map<String, Object> out = doQuery(queryString, false);
+        Map<String, Object> out = doQuery(queryString, false).documents;
         assertNotNull(out);
 
         assertEquals(11, out.size());
@@ -161,7 +270,7 @@ public class TestODataQueryService extends BasicTestCase {
         // we should get 10 documents back
         String queryString = String.format("$filter=counter lt %d", this.min + 10);
 
-        Map<String, Object> out = doQuery(queryString, false);
+        Map<String, Object> out = doQuery(queryString, false).documents;
         assertNotNull(out);
 
         assertEquals(10, out.size());
@@ -175,7 +284,7 @@ public class TestODataQueryService extends BasicTestCase {
         // we should get 10 documents back
         String queryString = String.format("$filter=counter le %d", this.min + 10);
 
-        Map<String, Object> out = doQuery(queryString, false);
+        Map<String, Object> out = doQuery(queryString, false).documents;
         assertNotNull(out);
 
         assertEquals(11, out.size());
@@ -193,7 +302,7 @@ public class TestODataQueryService extends BasicTestCase {
 
         String queryString = String.format("$filter=counter eq %d", inState.counter);
 
-        Map<String, Object> out = doQuery(queryString, false);
+        Map<String, Object> out = doQuery(queryString, false).documents;
         assertNotNull(out);
 
         ExampleService.ExampleServiceState outState = Utils.fromJson(
@@ -219,7 +328,7 @@ public class TestODataQueryService extends BasicTestCase {
 
         assert (queryString.contains("+"));
 
-        Map<String, Object> out = doQuery(queryString, true);
+        Map<String, Object> out = doQuery(queryString, true).documents;
 
         assertNotNull(out);
 
@@ -234,13 +343,23 @@ public class TestODataQueryService extends BasicTestCase {
         assertTrue(outState.name.equals(inState.name));
     }
 
-    private Map<String, Object> doQuery(String query, boolean remote) throws Throwable {
+    private ServiceDocumentQueryResult doQuery(String query, boolean remote) throws Throwable {
         URI odataQuery = UriUtils.buildUri(this.host, ServiceUriPaths.ODATA_QUERIES, query);
 
         final ServiceDocumentQueryResult[] qr = { null };
         Operation get = Operation.createGet(odataQuery).setCompletion((ox, ex) -> {
             if (ex != null) {
-                this.host.failIteration(ex);
+                if (this.isFailureExpected) {
+                    this.host.completeIteration();
+                } else {
+                    this.host.failIteration(ex);
+                }
+                return;
+            }
+
+            if (this.isFailureExpected) {
+                this.host.failIteration(new IllegalStateException("failure was expected"));
+                return;
             }
 
             QueryTask tq = ox.getBody(QueryTask.class);
@@ -255,17 +374,22 @@ public class TestODataQueryService extends BasicTestCase {
         }
         this.host.send(get);
         this.host.testWait();
-        ServiceDocumentQueryResult res = qr[0];
 
+        if (this.isFailureExpected) {
+            return null;
+        }
+
+        ServiceDocumentQueryResult res = qr[0];
         assertNotNull(res);
         assertNotNull(res.documents);
 
-        return res.documents;
+        return res;
     }
 
-    private Map<String, Object> doFactoryServiceQuery(String query, boolean remote) throws Throwable {
+    private Map<String, Object> doFactoryServiceQuery(String query, boolean remote)
+            throws Throwable {
         URI odataQuery = UriUtils.buildUri(this.host, ExampleService.FACTORY_LINK, query
-                + "&" + UriUtils.URI_PARAM_ODATA_EXPAND + "=true");
+                + "&" + UriUtils.URI_PARAM_ODATA_EXPAND);
 
         final ServiceDocumentQueryResult[] qr = { null };
         Operation get = Operation.createGet(odataQuery).setCompletion((ox, ex) -> {

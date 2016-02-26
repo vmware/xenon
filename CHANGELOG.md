@@ -2,6 +2,8 @@
 
 ## 0.7.1-SNAPSHOT
 
+* Support ODATA $orderby and $top
+
 * Introduce ServiceOption.URI_NAMESPACE_OWNER. Allow
   for a service to handle all requests that start with
   a given prefix, allowing for emulation of other REST
