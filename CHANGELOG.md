@@ -2,6 +2,9 @@
 
 ## 0.7.1-SNAPSHOT
 
+* Added VerificationHost.waitFor() utility method
+  useful for convergence loops in tests.
+
 * Introduce ServiceOption.URI_NAMESPACE_OWNER. Allow
   for a service to handle all requests that start with
   a given prefix, allowing for emulation of other REST

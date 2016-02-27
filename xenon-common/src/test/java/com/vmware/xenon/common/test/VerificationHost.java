@@ -2802,4 +2802,20 @@ public class VerificationHost extends ExampleServiceHost {
             }
         };
     }
+
+    @FunctionalInterface
+    public interface WaitHandler {
+        boolean isReady() throws Throwable;
+    }
+
+    public void waitFor(String timeoutMsg, WaitHandler wh) throws Throwable {
+        Date exp = getTestExpiration();
+        while (new Date().before(exp)) {
+            if (wh.isReady()) {
+                return;
+            }
+            Thread.sleep(getMaintenanceIntervalMicros() / 1000);
+        }
+        throw new TimeoutException(timeoutMsg);
+    }
 }

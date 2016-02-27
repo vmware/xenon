@@ -455,6 +455,8 @@ public class ServiceHost {
     private final ConcurrentSkipListSet<String> coreServices = new ConcurrentSkipListSet<>();
     private ConcurrentSkipListMap<String, Class<? extends Service>> privilegedServiceTypes = new ConcurrentSkipListMap<>();
 
+    private final ConcurrentSkipListMap<String, Long> synchronizationTimes = new ConcurrentSkipListMap<>();
+    private final ConcurrentSkipListMap<String, Long> synchronizationRequiredServices = new ConcurrentSkipListMap<>();
     private final ConcurrentSkipListMap<String, NodeGroupState> pendingNodeSelectorsForFactorySynch = new ConcurrentSkipListMap<>();
     private final SortedSet<Operation> pendingStartOperations = createOperationSet();
     private final Map<String, SortedSet<Operation>> pendingServiceAvailableCompletions = new ConcurrentSkipListMap<>();
@@ -1863,6 +1865,11 @@ public class ServiceHost {
                     this.attachedNamespaceServices.put(servicePath, service);
                 }
 
+                if (service.hasOption(ServiceOption.REPLICATION)
+                        && service.hasOption(ServiceOption.FACTORY)) {
+                    this.synchronizationRequiredServices.put(servicePath, 0L);
+                }
+
                 this.state.serviceCount++;
             }
         }
@@ -2209,6 +2216,13 @@ public class ServiceHost {
      * associated with the specified node selector path
      */
     public void scheduleNodeGroupChangeMaintenance(String nodeSelectorPath) {
+        long now = Utils.getNowMicrosUtc();
+        log(Level.INFO, "%s %d", nodeSelectorPath, now);
+        this.synchronizationTimes.put(nodeSelectorPath, now);
+        scheduleNodeGroupChangeMaintenance(nodeSelectorPath, null);
+    }
+
+    private void scheduleNodeGroupChangeMaintenance(String nodeSelectorPath, Operation op) {
         if (nodeSelectorPath == null) {
             throw new IllegalArgumentException("nodeGroupPath is required");
         }
@@ -2225,10 +2239,17 @@ public class ServiceHost {
                 .setCompletion((o, e) -> {
                     if (e != null) {
                         log(Level.WARNING, "Failure getting node group state: %s", e.toString());
+                        if (op != null) {
+                            op.fail(e);
+                        }
                         return;
                     }
+
                     NodeGroupState ngs = o.getBody(NodeGroupState.class);
                     this.pendingNodeSelectorsForFactorySynch.put(nodeSelectorPath, ngs);
+                    if (op != null) {
+                        op.complete();
+                    }
                 });
         sendRequest(get);
     }
@@ -2675,6 +2696,7 @@ public class ServiceHost {
             }
         }
 
+        this.synchronizationRequiredServices.remove(path);
         this.pendingPauseServices.remove(path);
         clearCachedServiceState(path);
 
@@ -3481,6 +3503,7 @@ public class ServiceHost {
                     this.attachedServices.values());
 
             this.pendingPauseServices.clear();
+            this.synchronizationRequiredServices.clear();
         }
 
         stopAndClearPendingQueues();
@@ -3497,6 +3520,7 @@ public class ServiceHost {
 
         stopCoreServices();
 
+        this.synchronizationTimes.clear();
         this.attachedServices.clear();
         this.attachedNamespaceServices.clear();
         this.maintenanceHelper.close();
@@ -4131,9 +4155,8 @@ public class ServiceHost {
                 performIOMaintenance(post, now, MaintenanceStage.NODE_SELECTORS);
                 return;
             case NODE_SELECTORS:
-                performNodeSelectorChangeMaintenance();
-                stage = MaintenanceStage.SERVICE;
-                break;
+                performNodeSelectorChangeMaintenance(post, now, MaintenanceStage.SERVICE, true);
+                return;
             case SERVICE:
                 this.maintenanceHelper.performMaintenance(post, deadline);
                 stage = null;
@@ -4231,24 +4254,111 @@ public class ServiceHost {
         }
     }
 
-    private void performNodeSelectorChangeMaintenance() {
+    private void performNodeSelectorChangeMaintenance(Operation post, long now,
+            MaintenanceStage nextStage, boolean isCheckRequired) {
 
-        Iterator<Entry<String, NodeGroupState>> it = this.pendingNodeSelectorsForFactorySynch
-                .entrySet()
-                .iterator();
-        while (it.hasNext()) {
-            Entry<String, NodeGroupState> e = it.next();
-            it.remove();
-            performNodeSelectorChangeMaintenance(e);
+        if (isCheckRequired && checkAndScheduleNodeSelectorSynch(post, nextStage)) {
+            return;
         }
+
+        try {
+            Iterator<Entry<String, NodeGroupState>> it = this.pendingNodeSelectorsForFactorySynch
+                    .entrySet()
+                    .iterator();
+            while (it.hasNext()) {
+                Entry<String, NodeGroupState> e = it.next();
+                it.remove();
+                performNodeSelectorChangeMaintenance(e);
+            }
+        } finally {
+            performMaintenanceStage(post, nextStage);
+        }
+    }
+
+    private boolean checkAndScheduleNodeSelectorSynch(Operation post, MaintenanceStage nextStage) {
+        boolean hasSynchOccuredAtLeastOnce = false;
+        for (Long synchTime : this.synchronizationTimes.values()) {
+            if (synchTime != null && synchTime > 0) {
+                hasSynchOccuredAtLeastOnce = true;
+            }
+        }
+
+        if (!hasSynchOccuredAtLeastOnce) {
+            return false;
+        }
+
+        Set<String> selectorPathsToSynch = new HashSet<>();
+        // we have done at least once synchronization. Check if any services that require synch
+        // started after the last node group change, and if so, schedule them
+        for (Entry<String, Long> en : this.synchronizationRequiredServices.entrySet()) {
+            Long lastSynchTime = en.getValue();
+            String link = en.getKey();
+            Service s = this.findService(link, true);
+            if (s == null || s.getProcessingStage() != ProcessingStage.AVAILABLE) {
+                continue;
+            }
+            String selectorPath = s.getPeerNodeSelectorPath();
+            Long selectorSynchTime = this.synchronizationTimes.get(selectorPath);
+            if (selectorSynchTime == null) {
+                continue;
+            }
+            if (lastSynchTime < selectorSynchTime) {
+                log(Level.INFO, "Service %s started at %d, last synch at %d", link,
+                        lastSynchTime, selectorSynchTime);
+                selectorPathsToSynch.add(s.getPeerNodeSelectorPath());
+            }
+        }
+
+        if (selectorPathsToSynch.isEmpty()) {
+            return false;
+        }
+
+        AtomicInteger pending = new AtomicInteger(selectorPathsToSynch.size());
+        CompletionHandler c = (o, e) -> {
+            if (e != null) {
+                log(Level.WARNING, "skipping synchronization, error: %s", Utils.toString(e));
+                performMaintenanceStage(post, nextStage);
+                return;
+            }
+            int r = pending.decrementAndGet();
+            if (r != 0) {
+                return;
+            }
+
+            // we refreshed the pending selector list, now ready to do kick of synchronization
+            performNodeSelectorChangeMaintenance(post, Utils.getNowMicrosUtc(), nextStage, false);
+        };
+
+        for (String path : selectorPathsToSynch) {
+            Operation synch = Operation.createPost(getUri()).setCompletion(c);
+            scheduleNodeGroupChangeMaintenance(path, synch);
+        }
+        return true;
     }
 
     private void performNodeSelectorChangeMaintenance(Entry<String, NodeGroupState> entry) {
         String nodeSelectorPath = entry.getKey();
+        Long selectorSynchTime = this.synchronizationTimes.get(nodeSelectorPath);
         NodeGroupState ngs = entry.getValue();
-        for (Service s : this.attachedServices.values()) {
+        Iterator<Entry<String, Long>> it = this.synchronizationRequiredServices.entrySet()
+                .iterator();
+        while (it.hasNext()) {
+            long now = Utils.getNowMicrosUtc();
             if (isStopping()) {
                 return;
+            }
+
+            Entry<String, Long> en = it.next();
+            String link = en.getKey();
+            Long lastSynchTime = en.getValue();
+
+            if (lastSynchTime >= selectorSynchTime) {
+                continue;
+            }
+
+            Service s = findService(link, true);
+            if (s == null) {
+                continue;
             }
 
             if (!s.hasOption(ServiceOption.FACTORY)) {
@@ -4275,6 +4385,9 @@ public class ServiceHost {
                         e, s.getSelfLink());
             });
 
+            // update service entry so we do not reschedule it
+            this.synchronizationRequiredServices.put(link, now);
+
             ServiceMaintenanceRequest body = ServiceMaintenanceRequest.create();
             body.reasons.add(MaintenanceReason.NODE_GROUP_CHANGE);
             body.nodeGroupState = ngs;
@@ -4283,6 +4396,8 @@ public class ServiceHost {
             // allow overlapping node group change maintenance requests
             this.run(() -> {
                 OperationContext.setAuthorizationContext(this.getSystemAuthorizationContext());
+                log(Level.INFO, " Synchronizing %s (last:%d, sl: %d now:%d)", link,
+                        lastSynchTime, selectorSynchTime, now);
                 s.adjustStat(Service.STAT_NAME_NODE_GROUP_CHANGE_MAINTENANCE_COUNT, 1);
                 s.handleMaintenance(maintOp);
             });
