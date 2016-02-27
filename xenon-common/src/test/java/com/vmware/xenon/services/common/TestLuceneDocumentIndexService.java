@@ -428,7 +428,20 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
 
             String onDemandFactoryLink = createOnDemandLoadFactoryService(h);
 
-            this.host.waitForServiceAvailable(UriUtils.buildUri(h, ExampleService.FACTORY_LINK));
+            URI exampleFactoryUri = UriUtils.buildUri(h, ExampleService.FACTORY_LINK);
+            URI exampleFactoryStatsUri = UriUtils.buildStatsUri(exampleFactoryUri);
+            this.host.waitForServiceAvailable(exampleFactoryUri);
+
+            String statName = Service.STAT_NAME_NODE_GROUP_CHANGE_MAINTENANCE_COUNT;
+            this.host.waitFor("node group change stat missing", () -> {
+                ServiceStats stats = this.host.getServiceState(null, ServiceStats.class,
+                        exampleFactoryStatsUri);
+                ServiceStat st = stats.entries.get(statName);
+                if (st != null && st.latestValue >= 1) {
+                    return true;
+                }
+                return false;
+            });
 
             long end = Utils.getNowMicrosUtc();
 
@@ -485,10 +498,41 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
             }
             this.host.testWait();
 
+            verifyFactoryStartedAndSynchronizedAfterNodeSynch(h, statName);
+
         } finally {
             h.stop();
             tmpFolder.delete();
         }
+    }
+
+    private void verifyFactoryStartedAndSynchronizedAfterNodeSynch(ExampleServiceHost h,
+            String statName) throws Throwable {
+        // start another instance of the example factory, verify that node synchronization maintenance
+        // happened, even if it was started after the initial synch occurred
+        Service factory = ExampleService.createFactory();
+        factory.toggleOption(ServiceOption.INSTRUMENTATION, true);
+        Operation post = Operation.createPost(
+                UriUtils.buildUri(h, UUID.randomUUID().toString()))
+                .setCompletion(this.host.getCompletion());
+        this.host.testStart(1);
+        h.startService(post, factory);
+        this.host.testWait();
+
+        URI newExampleFactoryStatsUri = UriUtils.buildStatsUri(factory.getUri());
+
+        this.host.waitFor("node group change stat missing", () -> {
+            ServiceStats stats = this.host.getServiceState(null, ServiceStats.class,
+                    newExampleFactoryStatsUri);
+            ServiceStat st = stats.entries.get(statName);
+            if (st != null && st.latestValue >= 1) {
+                return true;
+            }
+            return false;
+        });
+
+        this.host.waitForServiceAvailable(factory.getUri());
+
     }
 
     private void verifyCreateStatCount(List<URI> exampleURIs, double expectedStat) throws Throwable {
@@ -573,6 +617,7 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
         }
 
         // explicitly trigger synchronization and verify on demand load services did NOT start
+        this.host.log("Triggering synchronization to verify on demand load is not affected");
         h.scheduleNodeGroupChangeMaintenance(ServiceUriPaths.DEFAULT_NODE_SELECTOR);
         Thread.sleep(TimeUnit.MICROSECONDS.toMillis(h.getMaintenanceIntervalMicros()) * 2);
         for (String childLink : rsp.documentLinks) {
