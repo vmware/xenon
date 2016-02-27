@@ -370,6 +370,11 @@ public class TestQueryTaskService {
                 .addOptions(EnumSet.of(QueryOption.CONTINUOUS, QueryOption.EXPAND_CONTENT))
                 .setQuery(query)
                 .build();
+
+        // If the expiration time is not set, then the query will receive the default
+        // query expiration time of 1 minute.
+        task.documentExpirationTimeMicros = Utils.getNowMicrosUtc() + TimeUnit.DAYS.toMicros(1);
+
         URI queryTaskUri = this.host.createQueryTaskService(
                 UriUtils.buildUri(this.host.getUri(), ServiceUriPaths.CORE_QUERY_TASKS),
                 task, false, false, task, null);
@@ -434,6 +439,11 @@ public class TestQueryTaskService {
                 .addOptions(EnumSet.of(QueryOption.CONTINUOUS, QueryOption.EXPAND_CONTENT))
                 .setQuery(query)
                 .build();
+
+        // If the expiration time is not set, then the query will receive the default
+        // query expiration time of 1 minute.
+        task.documentExpirationTimeMicros = Utils.getNowMicrosUtc() + TimeUnit.DAYS.toMicros(1);
+
         URI updateQueryTask = this.host.createQueryTaskService(
                 UriUtils.buildUri(this.host.getUri(), ServiceUriPaths.CORE_QUERY_TASKS),
                 task, false, false, task, null);
