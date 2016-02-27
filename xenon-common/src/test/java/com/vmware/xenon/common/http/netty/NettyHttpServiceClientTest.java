@@ -58,6 +58,9 @@ import com.vmware.xenon.common.test.VerificationHost;
 import com.vmware.xenon.services.common.ExampleService;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
 import com.vmware.xenon.services.common.MinimalTestService;
+import com.vmware.xenon.services.common.ReplicationFactoryTestService;
+import com.vmware.xenon.services.common.ReplicationTestService;
+import com.vmware.xenon.services.common.ReplicationTestService.ReplicationTestServiceState;
 
 public class NettyHttpServiceClientTest {
 
@@ -536,7 +539,7 @@ public class NettyHttpServiceClientTest {
         verifyErrorResponseBodyHandling(services);
 
         // induce a failure that does warrant a retry. Verify we do get proper retries
-        verifyRequestRetry(services);
+        verifyRequestRetryPolicy(services);
 
         this.host.doPutPerService(
                 EnumSet.of(TestProperty.FORCE_FAILURE,
@@ -662,21 +665,53 @@ public class NettyHttpServiceClientTest {
         this.host.testWait();
     }
 
-    private void verifyRequestRetry(List<Service> services) throws Throwable {
+    private void verifyRequestRetryPolicy(List<Service> services) throws Throwable {
+        MinimalTestService targetService = (MinimalTestService) services.get(0);
         MinimalTestServiceState body = new MinimalTestServiceState();
         body.id = MinimalTestService.STRING_MARKER_RETRY_REQUEST;
         body.stringValue = MinimalTestService.STRING_MARKER_RETRY_REQUEST;
-        Operation patchWithRetry = Operation.createPatch(services.get(0).getUri())
+        Operation patchWithRetry = Operation.createPatch(targetService.getUri())
                 .setCompletion(this.host.getCompletion())
                 .setBody(body)
                 .forceRemote()
                 .setRetryCount(1)
                 .setContextId(UUID.randomUUID().toString());
-        this.host.testStart(1);
         // the service should fail the request, the client should then retry, the service will then
         // succeed it. We use the context id to track and correlate the retried requests
-        this.host.send(patchWithRetry);
-        this.host.testWait();
+        this.host.sendAndWait(patchWithRetry);
+
+        // create a replicated, owner selected Service, since its the replication code that
+        // does implicit retries, and we want to verify it does not do them unless its a replication
+        // conflict
+
+        ReplicationFactoryTestService replFactory = new ReplicationFactoryTestService();
+        this.host.startServiceAndWait(replFactory,
+                ReplicationFactoryTestService.OWNER_SELECTION_SELF_LINK, null);
+
+        // create a child service
+        ReplicationTestServiceState initState = new ReplicationTestServiceState();
+        initState.documentSelfLink = UUID.randomUUID().toString();
+        Operation post = Operation.createPost(replFactory.getUri())
+                .setBody(initState)
+                .setCompletion(this.host.getCompletion());
+        this.host.sendAndWait(post);
+        URI childURI = UriUtils.buildUri(this.host.getUri(),
+                ReplicationFactoryTestService.OWNER_SELECTION_SELF_LINK,
+                initState.documentSelfLink);
+
+        // verify that we do NOT retry, unless the service error response has SHOULD_RETRY
+        // enabled
+        initState.stringField = ReplicationTestService.STRING_MARKER_FAIL_WITH_CONFLICT_CODE;
+        Operation put = Operation.createPut(childURI)
+                .setCompletion(
+                        this.host.getExpectedFailureCompletion(Operation.STATUS_CODE_CONFLICT))
+                .setBody(initState)
+                .forceRemote()
+                .setRetryCount(1)
+                .setContextId(UUID.randomUUID().toString());
+        // if the replication code retries, the request will timeout, since it retries until expiration. We check
+        // for CONFLICT code explicitly so the test will fail if fail due to timeout
+        this.host.sendAndWait(put);
     }
 
     @Test

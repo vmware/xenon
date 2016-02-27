@@ -538,17 +538,11 @@ public class NettyHttpServiceClient implements ServiceClient {
         if (isRetryRequested) {
             if (op.getStatusCode() >= Operation.STATUS_CODE_SERVER_FAILURE_THRESHOLD) {
                 isRetryRequested = false;
-            }
-
-            if (op.getStatusCode() == Operation.STATUS_CODE_CONFLICT) {
+            } else if (op.getStatusCode() == Operation.STATUS_CODE_CONFLICT) {
                 isRetryRequested = false;
-            }
-
-            if (op.getStatusCode() == Operation.STATUS_CODE_UNAUTHORIZED) {
+            } else if (op.getStatusCode() == Operation.STATUS_CODE_UNAUTHORIZED) {
                 isRetryRequested = false;
-            }
-
-            if (op.getStatusCode() == Operation.STATUS_CODE_NOT_FOUND) {
+            } else if (op.getStatusCode() == Operation.STATUS_CODE_NOT_FOUND) {
                 isRetryRequested = false;
             }
         }

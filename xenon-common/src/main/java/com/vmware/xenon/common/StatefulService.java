@@ -428,7 +428,7 @@ public class StatefulService implements Service {
         if (request.isFromReplication()) {
             if (stateFromOwner == null) {
                 failRequest(request, new IllegalArgumentException("missing state in replicated op:"
-                        + request.toString()));
+                        + request.toString()), true);
                 return true;
             }
             if (stateFromOwner.documentVersion == this.context.version) {
@@ -461,7 +461,7 @@ public class StatefulService implements Service {
         }
 
         if (stateFromOwner.documentOwner == null) {
-            failRequest(request, new IllegalArgumentException("documentOwner is required"));
+            failRequest(request, new IllegalArgumentException("documentOwner is required"), false);
             return true;
         }
 
@@ -482,7 +482,7 @@ public class StatefulService implements Service {
                 synchronizeWithPeers(request, new IllegalStateException(error));
             } else {
                 failRequest(request.setStatusCode(Operation.STATUS_CODE_CONFLICT),
-                        new IllegalStateException(error));
+                        new IllegalStateException(error), true);
             }
             return true;
         }
@@ -597,7 +597,7 @@ public class StatefulService implements Service {
                             "%s latest version is %d, replicated request version: %d",
                             getSelfLink(), this.context.version,
                             stateFromOwner.documentVersion));
-            failRequest(request, ex);
+            failRequest(request, ex, true);
         });
 
         getHost().loadServiceState(this, request);
@@ -796,7 +796,11 @@ public class StatefulService implements Service {
     }
 
     private void failRequest(Operation op, Throwable e) {
-        if (op.getStatusCode() == Operation.STATUS_CODE_CONFLICT) {
+        failRequest(op, e, false);
+    }
+
+    private void failRequest(Operation op, Throwable e, boolean shouldRetry) {
+        if (shouldRetry) {
             // Request client side retries on state or consensus conflict
             ServiceErrorResponse rsp = ServiceErrorResponse.create(e, op.getStatusCode(),
                     EnumSet.of(ErrorDetail.SHOULD_RETRY));
@@ -1038,7 +1042,7 @@ public class StatefulService implements Service {
                 // the only way the document index will return null for state is if that state is
                 // permanently deleted from the index. We need to fail the request
                 failRequest(op, new IllegalStateException(
-                        "Service state permanently deleted from index"));
+                        "Service state permanently deleted from index"), false);
                 return;
             }
 
@@ -1184,7 +1188,7 @@ public class StatefulService implements Service {
     private void handleSynchronizeWithPeersCompletion(Operation request, Throwable failure,
             boolean wasOwner, Operation o, Throwable e) {
         if (e != null) {
-            failRequest(request, e);
+            failRequest(request, e, true);
             return;
         }
 
@@ -1243,7 +1247,7 @@ public class StatefulService implements Service {
         if (failure != null) {
             request.setStatusCode(Operation.STATUS_CODE_CONFLICT);
             failRequest(request, new IllegalStateException(
-                    "Synchronization complete, original failure: " + failure.toString()));
+                    "Synchronization complete, original failure: " + failure.toString()), true);
             return;
         }
 

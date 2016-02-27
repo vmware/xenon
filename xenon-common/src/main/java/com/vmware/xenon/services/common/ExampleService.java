@@ -90,7 +90,7 @@ public class ExampleService extends StatefulService {
 
     @Override
     public void handlePut(Operation put) {
-        ExampleServiceState newState = put.getBody(ExampleServiceState.class);
+        ExampleServiceState newState = getBody(put);
         ExampleServiceState currentState = getState(put);
 
         // example of structural validation: check if the new state is acceptable
@@ -117,7 +117,7 @@ public class ExampleService extends StatefulService {
         // A DCP service handler is state-less: Everything it needs is provided as part of the
         // of the operation. The body and latest state associated with the service are retrieved
         // below.
-        ExampleServiceState body = update.getBody(ExampleServiceState.class);
+        ExampleServiceState body = getBody(update);
         ExampleServiceState currentState = getState(update);
 
         // use helper that will merge automatically current state, with state supplied in body.
