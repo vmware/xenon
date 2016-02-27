@@ -34,7 +34,7 @@ public class TransactionServiceHelper {
     }
 
     interface FailRequest {
-        void failRequest(Operation op, Throwable e);
+        void failRequest(Operation op, Throwable e, boolean shouldRetry);
     }
 
     /**
@@ -98,7 +98,7 @@ public class TransactionServiceHelper {
                 h.handler(original);
             } else {
                 original.setStatusCode(Operation.STATUS_CODE_NOT_FOUND);
-                fr.failRequest(original, new IllegalStateException("Latest state not found"));
+                fr.failRequest(original, new IllegalStateException("Latest state not found"), false);
             }
             return;
         }

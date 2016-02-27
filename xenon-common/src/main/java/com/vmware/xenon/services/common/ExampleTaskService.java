@@ -160,7 +160,7 @@ public class ExampleTaskService extends StatefulService {
             return null;
         }
 
-        ExampleTaskServiceState task = taskOperation.getBody(ExampleTaskServiceState.class);
+        ExampleTaskServiceState task = getBody(taskOperation);
         if (task.taskInfo != null) {
             taskOperation.fail(
                     new IllegalArgumentException("Do not specify taskBody: internal use only"));
@@ -218,7 +218,7 @@ public class ExampleTaskService extends StatefulService {
     @Override
     public void handlePatch(Operation patch) {
         ExampleTaskServiceState currentTask = getState(patch);
-        ExampleTaskServiceState patchBody = patch.getBody(ExampleTaskServiceState.class);
+        ExampleTaskServiceState patchBody = getBody(patch);
 
         if (!validateTransition(patch, currentTask, patchBody)) {
             return;
