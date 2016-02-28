@@ -144,7 +144,7 @@ public class ServiceHost {
          * Constructs an instance of this class.
          */
         public ServiceAlreadyStartedException(String servicePath) {
-            super(servicePath);
+            super("Service already started: " + servicePath);
         }
     }
 
@@ -1842,6 +1842,7 @@ public class ServiceHost {
             service.setSelfLink(servicePath);
         }
 
+        Service existing = null;
         // if the service is a helper for one of the known URI suffixes, do not
         // add it to the map. We will special case dispatching to it
         if (isHelperServicePath(servicePath)) {
@@ -1854,11 +1855,21 @@ public class ServiceHost {
             // do not directly attach utility services
         } else {
             synchronized (this.state) {
-                Service previous = this.attachedServices.put(servicePath, service);
-                if (previous != null) {
-                    this.attachedServices.put(servicePath, previous);
-                    post.fail(new ServiceAlreadyStartedException(servicePath));
-                    return this;
+                existing = this.attachedServices.put(servicePath, service);
+                if (existing != null) {
+                    // restore existing entry and check for idempotent
+                    this.attachedServices.put(servicePath, existing);
+                    boolean isIdempotent = service.hasOption(ServiceOption.IDEMPOTENT_POST);
+                    if (!isIdempotent) {
+                        Service parent = findService(UriUtils.getParentPath(servicePath));
+                        isIdempotent = parent != null
+                                && parent.hasOption(ServiceOption.IDEMPOTENT_POST);
+                    }
+                    if (!isIdempotent) {
+                        post.setStatusCode(Operation.STATUS_CODE_CONFLICT)
+                                .fail(new ServiceAlreadyStartedException(servicePath));
+                        return this;
+                    }
                 }
 
                 if (service.hasOption(ServiceOption.URI_NAMESPACE_OWNER)) {
@@ -1870,12 +1881,22 @@ public class ServiceHost {
                     this.synchronizationRequiredServices.put(servicePath, 0L);
                 }
 
-                this.state.serviceCount++;
+                if (existing == null) {
+                    this.state.serviceCount++;
+                }
             }
         }
 
         if (post.getExpirationMicrosUtc() == 0) {
             post.setExpiration(this.state.operationTimeoutMicros + Utils.getNowMicrosUtc());
+        }
+
+        if (existing != null) {
+            // service exists, on IDEMPOTENT factory. Convert to a PUT
+            post.setAction(Action.PUT);
+            log(Level.INFO, "Converting POST to PUT for idempotent %s", servicePath);
+            handleRequest(null, post);
+            return this;
         }
 
         service.setProcessingStage(ProcessingStage.CREATED);
@@ -2600,7 +2621,7 @@ public class ServiceHost {
             serviceStartPost.linkState(stateFromStore);
         }
 
-        if (!checkServiceExistsOrDeleted(stateFromStore, serviceStartPost)) {
+        if (!checkServiceExistsOrDeleted(s, stateFromStore, serviceStartPost)) {
             serviceStartPost.setStatusCode(Operation.STATUS_CODE_CONFLICT).fail(
                     new IllegalStateException("Service already exists or previously deleted: "
                             + stateFromStore.documentSelfLink + ":"
@@ -2631,7 +2652,7 @@ public class ServiceHost {
                 serviceStartPost, hasClientSuppliedState);
     }
 
-    private static boolean checkServiceExistsOrDeleted(ServiceDocument stateFromStore,
+    private static boolean checkServiceExistsOrDeleted(Service s, ServiceDocument stateFromStore,
             Operation serviceStartPost) {
         if (!serviceStartPost.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_VERSION_CHECK)) {
             return true;
@@ -2664,6 +2685,10 @@ public class ServiceHost {
             }
         }
 
+        if (!s.hasOption(ServiceOption.IDEMPOTENT_POST)) {
+            return false;
+        }
+
         // new state has stale version, or this is an attempt to start a service that already exists,
         // fail restart
         return false;
@@ -2683,24 +2708,24 @@ public class ServiceHost {
     }
 
     private void stopService(String path) {
-        Service existing = this.attachedServices.remove(path);
-        if (existing == null) {
-            path = UriUtils.normalizeUriPath(path);
-            existing = this.attachedServices.remove(path);
-        }
-
-        if (existing != null) {
-            existing.setProcessingStage(ProcessingStage.STOPPED);
-            if (existing.hasOption(ServiceOption.URI_NAMESPACE_OWNER)) {
-                this.attachedNamespaceServices.remove(path);
-            }
-        }
-
-        this.synchronizationRequiredServices.remove(path);
-        this.pendingPauseServices.remove(path);
-        clearCachedServiceState(path);
-
         synchronized (this.state) {
+            Service existing = this.attachedServices.remove(path);
+            if (existing == null) {
+                path = UriUtils.normalizeUriPath(path);
+                existing = this.attachedServices.remove(path);
+            }
+
+            if (existing != null) {
+                existing.setProcessingStage(ProcessingStage.STOPPED);
+                if (existing.hasOption(ServiceOption.URI_NAMESPACE_OWNER)) {
+                    this.attachedNamespaceServices.remove(path);
+                }
+            }
+
+            this.synchronizationRequiredServices.remove(path);
+            this.pendingPauseServices.remove(path);
+            clearCachedServiceState(path);
+
             this.state.serviceCount--;
         }
 
@@ -3324,6 +3349,10 @@ public class ServiceHost {
                 if (stage == ProcessingStage.AVAILABLE) {
                     return;
                 }
+            }
+
+            if (stage == ProcessingStage.STOPPED) {
+                op.setStatusCode(Operation.STATUS_CODE_NOT_FOUND);
             }
 
             op.fail(new CancellationException("Service not available, in stage:" + stage));

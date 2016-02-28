@@ -23,7 +23,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import com.vmware.xenon.common.NodeSelectorService.SelectOwnerResponse;
 import com.vmware.xenon.common.Operation.CompletionHandler;
-import com.vmware.xenon.common.ServiceHost.ServiceAlreadyStartedException;
 import com.vmware.xenon.services.common.QueryTask;
 import com.vmware.xenon.services.common.QueryTask.Query;
 import com.vmware.xenon.services.common.QueryTask.QuerySpecification.QueryOption;
@@ -470,10 +469,6 @@ public abstract class FactoryService extends StatelessService {
     }
 
     private void completePostRequest(Operation o, Service childService) {
-        if (getHost().getServiceStage(o.getUri().getPath()) != null) {
-            handleServiceExistsPostCompletion(o);
-            return;
-        }
         if (!o.isFromReplication() && !o.isReplicationDisabled()) {
             o.nestCompletion(startOp -> {
                 publish(o);
@@ -566,29 +561,6 @@ public abstract class FactoryService extends StatelessService {
                     });
         getHost().selectOwner(getPeerNodeSelectorPath(),
                 o.getUri().getPath(), selectOp);
-    }
-
-    public void handleServiceExistsPostCompletion(Operation o) {
-        if (!hasOption(ServiceOption.IDEMPOTENT_POST)) {
-            o.setStatusCode(Operation.STATUS_CODE_CONFLICT)
-                    .fail(new ServiceAlreadyStartedException(o.getUri().toString()));
-            return;
-        }
-
-        logInfo("Converting POST to PUT, service already exists: %s", o.getUri());
-        // implement UPSERT semantics: If a service exists, convert the POST to a PUT and issue
-        // it to the service
-        Operation put = o.clone().setAction(Action.PUT).setCompletion((op, ex) -> {
-            if (ex != null) {
-                o.fail(ex);
-            } else {
-                o.transferResponseHeadersFrom(op)
-                        .setBodyNoCloning(op.getBodyRaw())
-                        .setStatusCode(op.getStatusCode()).complete();
-            }
-        });
-        sendRequest(put);
-        return;
     }
 
     @Override
