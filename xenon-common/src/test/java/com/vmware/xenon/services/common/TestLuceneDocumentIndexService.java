@@ -575,33 +575,41 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
                 .setCompletion(this.host.getCompletion()));
         this.host.testWait();
 
+        URI deletedUri = deletedService;
         // recreate the service we just deleted, it should fail
         this.host.testStart(1);
         body = new ExampleServiceState();
         body.name = UUID.randomUUID().toString();
-        body.documentSelfLink = deletedService.getPath().replace(ExampleService.FACTORY_LINK,
-                "");
+        body.documentSelfLink = deletedUri.getPath().replace(ExampleService.FACTORY_LINK, "");
         URI factory = UriUtils.buildUri(h, ExampleService.FACTORY_LINK);
         this.host.send(Operation.createPost(factory)
                 .setBody(body)
                 .setCompletion(this.host.getExpectedFailureCompletion()));
         this.host.testWait();
 
-        // try again, but FORCE it
-        this.host.testStart(1);
-        this.host.send(Operation.createPost(factory)
-                .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_FORCE_INDEX_UPDATE)
-                .setBody(body)
-                .setCompletion(this.host.getCompletion()));
-        this.host.testWait();
 
-        // delete again
-        this.host.testStart(1);
-        this.host.send(Operation.createDelete(deletedService)
-                .setBody(new ServiceDocument())
-                .setCompletion(this.host.getCompletion()));
-        this.host.testWait();
+        int count = Utils.DEFAULT_THREAD_COUNT;
 
+        for (int i = 0; i < count; i++) {
+            this.host.testStart(2);
+            ExampleServiceState clonedBody = Utils.clone(body);
+            this.host.send(Operation.createPost(factory)
+                    .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_FORCE_INDEX_UPDATE)
+                    .setBody(clonedBody)
+                    .setCompletion(this.host.getCompletion()));
+
+            // in parallel, attempt to POST it AGAIN, it should be converted to PUT
+            this.host.send(Operation.createPost(factory)
+                    .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_FORCE_INDEX_UPDATE)
+                    .setBody(clonedBody)
+                    .setCompletion(this.host.getCompletion()));
+            this.host.testWait();
+            // DELETE
+            this.host.testStart(1);
+            this.host.send(Operation.createDelete(deletedUri)
+                    .setCompletion(this.host.getCompletion()));
+            this.host.testWait();
+        }
     }
 
     private void verifyOnDemandLoad(ServiceHost h, String onDemandFactoryLink) throws Throwable {

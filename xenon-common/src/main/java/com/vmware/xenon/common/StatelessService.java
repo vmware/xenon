@@ -416,6 +416,9 @@ public class StatelessService implements Service {
         if (!hasOption(Service.ServiceOption.INSTRUMENTATION)) {
             return true;
         }
+        if (this.stage != ProcessingStage.AVAILABLE && this.stage != ProcessingStage.PAUSED) {
+            return false;
+        }
         ServiceStat st = this.getStat(STAT_NAME_AVAILABLE);
         if (st != null && st.latestValue == STAT_VALUE_TRUE) {
             return true;
