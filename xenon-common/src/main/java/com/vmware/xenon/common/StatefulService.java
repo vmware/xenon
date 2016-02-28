@@ -1703,6 +1703,11 @@ public class StatefulService implements Service {
         if (!hasOption(Service.ServiceOption.INSTRUMENTATION)) {
             return true;
         }
+        // processing stage must also indicate service is started
+        if (getProcessingStage() != ProcessingStage.PAUSED
+                && getProcessingStage() != ProcessingStage.AVAILABLE) {
+            return false;
+        }
         ServiceStat st = this.getStat(STAT_NAME_AVAILABLE);
         if (st != null && st.latestValue == STAT_VALUE_TRUE) {
             return true;
