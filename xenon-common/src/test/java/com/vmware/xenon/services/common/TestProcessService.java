@@ -16,13 +16,17 @@ package com.vmware.xenon.services.common;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
+import java.io.BufferedReader;
 import java.io.File;
+import java.io.InputStreamReader;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.Date;
+import java.util.Random;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 import org.junit.Test;
 
@@ -92,6 +96,95 @@ public class TestProcessService extends BasicReportTestCase {
     }
 
     @Test
+    public void testLongRunning() throws Throwable {
+        if (host.getSystemInfo().osFamily == OsFamily.WINDOWS) {
+            return;
+        }
+
+        final ProcessState[] state = { new ProcessState() };
+        // issue a sleep for a random number of seconds between 100 and 200
+        String processCommandLine = "sleep";
+        Random r = new Random();
+        String sleepTime = Integer.toString((r.nextInt(100) + 100));
+        state[0].arguments = new String[] { processCommandLine, sleepTime };
+        state[0].isRestartRequired = false;
+
+        // create the process
+        final URI[] processURI = { null };
+        this.host.testStart(1);
+        this.host.send(Operation.createPost(
+                    UriUtils.buildUri(this.host, ProcessFactoryService.SELF_LINK))
+                .setBody(state[0])
+                .setCompletion((o, e) -> {
+                    if (e != null) {
+                        this.host.failIteration(e);
+                        return;
+                    }
+                    ProcessState newState = o.getBody(ProcessState.class);
+                    processURI[0] = UriUtils.buildUri(this.host, newState.documentSelfLink);
+                    this.host.completeIteration();
+                }));
+        this.host.testWait();
+
+        // ensure process is up
+        String processCheck = "ps -ef | grep \"" + processCommandLine + " " + sleepTime + "\" | grep -v \"grep\" | wc -l";
+        waitForProcess(processCheck, true);
+
+        // issue a delete and ensure process has been stopped
+        this.host.testStart(1);
+        this.host.send(Operation.createDelete(processURI[0])
+                .setCompletion((o, e) -> {
+                    if (e != null) {
+                        this.host.failIteration(e);
+                        return;
+                    }
+                    this.host.completeIteration();
+                }));
+        this.host.testWait();
+        waitForProcess(processCheck, false);
+    }
+
+    private void waitForProcess(String commandToExecute, boolean exists) throws Throwable {
+        Date expiration = this.host.getTestExpiration();
+        while (new Date().before(expiration)) {
+            ProcessBuilder pb = new ProcessBuilder("bash", "-c", commandToExecute);
+            Process process = pb.start();
+            BufferedReader bReader = new BufferedReader(new InputStreamReader(process.getInputStream()));
+            Integer outputState = Integer.valueOf(bReader.readLine().trim());
+            if (outputState.equals(Integer.valueOf(exists ? 1 : 0))) {
+                return;
+            }
+        }
+        throw new TimeoutException("Process state did not change");
+    }
+
+    @Test
+    public void processThatCannotStart() throws Throwable {
+        ProcessState state = new ProcessState();
+        state.arguments = new String[1];
+        state.arguments[0] = "command-that-doesnt-exist";
+        state.logFile = null;
+
+        this.host.testStart(1);
+
+        URI uri = UriUtils.buildUri(this.host, ProcessFactoryService.SELF_LINK);
+        Operation op = Operation.createPost(uri)
+                .setBody(state)
+                .setCompletion((o, e) -> {
+                    if (!(e instanceof java.io.IOException)) {
+                        e = new Throwable("Expected java.io.IOException");
+                        this.host.failIteration(e);
+                        return;
+                    }
+
+                    this.host.completeIteration();
+                });
+
+        this.host.send(op);
+        this.host.testWait();
+    }
+
+    @Test
     public void testNoRestarts() throws Throwable {
         String FILE_CONTENTS = "processServiceTest";
         // This test cannot be run under windows (requires bash and I/O redirection)
@@ -138,32 +231,6 @@ public class TestProcessService extends BasicReportTestCase {
         }
 
         Files.delete(Paths.get(fileName));
-    }
-
-    @Test
-    public void processThatCannotStart() throws Throwable {
-        ProcessState state = new ProcessState();
-        state.arguments = new String[1];
-        state.arguments[0] = "command-that-doesnt-exist";
-        state.logFile = null;
-
-        this.host.testStart(1);
-
-        URI uri = UriUtils.buildUri(this.host, ProcessFactoryService.SELF_LINK);
-        Operation op = Operation.createPost(uri)
-                .setBody(state)
-                .setCompletion((o, e) -> {
-                    if (!(e instanceof java.io.IOException)) {
-                        e = new Throwable("Expected java.io.IOException");
-                        this.host.failIteration(e);
-                        return;
-                    }
-
-                    this.host.completeIteration();
-                });
-
-        this.host.send(op);
-        this.host.testWait();
     }
 
     public int getStat(URI uri, String name) throws Throwable {
