@@ -164,7 +164,7 @@ public class ProcessService extends StatefulService {
     }
 
     @Override
-    public void handleDelete(Operation op) {
+    public void handleStop(Operation op) {
         this.stopProcess();
         op.complete();
     }
