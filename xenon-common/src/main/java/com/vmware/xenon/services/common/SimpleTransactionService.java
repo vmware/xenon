@@ -19,6 +19,7 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Predicate;
@@ -188,7 +189,7 @@ public class SimpleTransactionService extends StatefulService {
             try {
                 ClearTransactionRequest op = request
                         .getBody(ClearTransactionRequest.class);
-                if (op == null || op.kind != ClearTransactionRequest.KIND) {
+                if (op == null || !Objects.equals(op.kind, ClearTransactionRequest.KIND)) {
                     return null;
                 }
 
@@ -297,7 +298,8 @@ public class SimpleTransactionService extends StatefulService {
                     ServiceDocument previousState = o.getBody(currentState.getClass());
                     this.service.getHost().log(Level.INFO,
                             "Aborting transaction %s on service %s, current version %d, restoring version %d",
-                            request.getTransactionId(), this.service.getSelfLink(), currentState.documentVersion, clearTransactionRequest.originalVersion);
+                            request.getTransactionId(), this.service.getSelfLink(),
+                            currentState.documentVersion, clearTransactionRequest.originalVersion);
                     previousState.documentTransactionId = null;
                     this.service.setState(request, previousState);
                     request.complete();
@@ -358,9 +360,7 @@ public class SimpleTransactionService extends StatefulService {
         }
 
         private void logTransactionUpdate(String msg) {
-            this.service
-                    .getHost()
-                    .log(Level.INFO, msg);
+            this.service.getHost().log(Level.INFO, msg);
         }
 
     }
@@ -387,13 +387,13 @@ public class SimpleTransactionService extends StatefulService {
         RequestRouter myRouter = new RequestRouter();
         myRouter.register(
                 Action.PATCH,
-                new RequestRouter.RequestBodyMatcher<EnrollRequest>(
+                new RequestRouter.RequestBodyMatcher<>(
                         EnrollRequest.class, "kind",
                         EnrollRequest.KIND),
                 this::handlePatchForEnroll, "Register service");
         myRouter.register(
                 Action.PATCH,
-                new RequestRouter.RequestBodyMatcher<EndTransactionRequest>(
+                new RequestRouter.RequestBodyMatcher<>(
                         EndTransactionRequest.class, "kind",
                         EndTransactionRequest.KIND),
                 this::handlePatchForEndTransaction, "Commit or abort transaction");
@@ -542,7 +542,7 @@ public class SimpleTransactionService extends StatefulService {
             return null;
         }
 
-        Collection<Operation> requests = new ArrayList<Operation>(
+        Collection<Operation> requests = new ArrayList<>(
                 currentState.enrolledServices.size());
         for (String serviceSelfLink : currentState.enrolledServices.keySet()) {
             EnrollmentInfo enrollmentInfo = currentState.enrolledServices.get(serviceSelfLink);
@@ -567,7 +567,7 @@ public class SimpleTransactionService extends StatefulService {
             return null;
         }
 
-        Collection<Operation> requests = new ArrayList<Operation>(servicesToBDeleted.size());
+        Collection<Operation> requests = new ArrayList<>(servicesToBDeleted.size());
         for (String serviceSelfLink : servicesToBDeleted) {
             Operation op = Operation.createDelete(UriUtils.buildUri(getHost(), serviceSelfLink));
             op.addPragmaDirective(PRAGMA_DIRECTIVE_DELETE_ON_TRANSACTION_END);

@@ -38,7 +38,7 @@ public class ServiceStats extends ServiceDocument {
         public double accumulatedValue;
         public long version;
         public long lastUpdateMicrosUtc;
-        public String kind = KIND.intern();
+        public String kind = KIND;
 
         /**
          * Source (provider) for this stat
@@ -48,7 +48,7 @@ public class ServiceStats extends ServiceDocument {
         public ServiceStatLogHistogram logHistogram;
     }
 
-    public String kind = KIND.intern();
+    public String kind = KIND;
 
     public Map<String, ServiceStat> entries = new HashMap<>();
 

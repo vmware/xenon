@@ -50,6 +50,5 @@ public class SampleServiceWithSharedCustomUi extends StatelessService {
                 });
 
         getHost().sendRequest(operation);
-        return;
     }
 }

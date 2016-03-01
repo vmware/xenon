@@ -16,6 +16,7 @@ package com.vmware.xenon.common.test;
 import java.net.URI;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.Set;
 
@@ -129,7 +130,7 @@ public class AuthorizationHelper {
 
         // Create another role with PATCH permission to test if we calculate overall permissions correctly across roles.
         paths.add(createRole(target, userGroupLink, exampleServiceResourceGroupLink,
-                new HashSet<>(Arrays.asList(Action.PATCH))));
+                new HashSet<>(Collections.singletonList(Action.PATCH))));
 
         // Create role authorizing access to the user's own query tasks
         paths.add(createRole(target, userGroupLink, queryTaskResourceGroupLink,

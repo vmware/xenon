@@ -123,8 +123,7 @@ public class NettyHttpServiceClientTest {
 
     @After
     public void cleanUp() {
-        ((NettyHttpServiceClient) this.host.getClient()).setConnectionLimitPerHost(
-                NettyHttpServiceClient.DEFAULT_CONNECTIONS_PER_HOST);
+        this.host.getClient().setConnectionLimitPerHost(NettyHttpServiceClient.DEFAULT_CONNECTIONS_PER_HOST);
     }
 
     @Test
@@ -723,7 +722,7 @@ public class NettyHttpServiceClientTest {
 
         if (!this.host.isStressTest()) {
             this.host.log("Single connection runs");
-            ((NettyHttpServiceClient) this.host.getClient()).setConnectionLimitPerHost(1);
+            this.host.getClient().setConnectionLimitPerHost(1);
             this.host.doPutPerService(
                     this.requestCount,
                     EnumSet.of(TestProperty.FORCE_REMOTE),
@@ -752,7 +751,7 @@ public class NettyHttpServiceClientTest {
     @Test
     public void throughputNonPersistedServiceGetSingleConnection() throws Throwable {
         long serviceCount = 256;
-        ((NettyHttpServiceClient) this.host.getClient()).setConnectionLimitPerHost(1);
+        this.host.getClient().setConnectionLimitPerHost(1);
         MinimalTestServiceState body = (MinimalTestServiceState) this.host.buildMinimalTestState();
 
         EnumSet<TestProperty> props = EnumSet.of(TestProperty.FORCE_REMOTE);

@@ -42,8 +42,6 @@ public class LoaderService extends StatefulService {
         public Map<String, String> serviceClasses = new HashMap<String, String>();
     }
 
-    private ClassLoader cl = null;
-
     public static class LoaderServiceState extends ServiceDocument {
         public LoaderType loaderType;
         public String path;
@@ -233,12 +231,12 @@ public class LoaderService extends StatefulService {
             }
         }
 
-        this.cl = new URLClassLoader(urls);
+        URLClassLoader cl = new URLClassLoader(urls);
 
         for (LoaderServiceInfo packageInfo : services.values()) {
             logFine("Processing package %s", packageInfo.name);
             for (String serviceClass : packageInfo.serviceClasses.keySet()) {
-                Class<?> clazz = this.cl.loadClass(serviceClass);
+                Class<?> clazz = cl.loadClass(serviceClass);
 
                 if (isValidDynamicService(clazz)) {
                     Service service = (Service) clazz.newInstance();
@@ -246,8 +244,7 @@ public class LoaderService extends StatefulService {
                             Operation.createPost(UriUtils.buildUri(getHost(),
                                     service.getClass())), service);
                     packageInfo.serviceClasses.put(serviceClass, service.getSelfLink());
-                    logInfo("Started service "
-                            + service.getSelfLink());
+                    logInfo("Started service " + service.getSelfLink());
                 }
             }
         }
@@ -273,7 +270,7 @@ public class LoaderService extends StatefulService {
     private Map<String, LoaderServiceInfo> discoverServices(File libDir,
             Map<String, LoaderServiceInfo> existingPackages) {
         logFine("Checking for updates in " + libDir.toURI());
-        Map<String, LoaderServiceInfo> discoveredPackages = new HashMap<String, LoaderService.LoaderServiceInfo>();
+        Map<String, LoaderServiceInfo> discoveredPackages = new HashMap<>();
 
         boolean updated = false;
         File[] files = libDir.listFiles();

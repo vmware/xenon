@@ -554,7 +554,7 @@ public class TestAuthorization extends BasicTestCase {
     private Map<URI, ExampleServiceState> createExampleServices(String userName) throws Throwable {
         Collection<ExampleServiceState> bodies = new LinkedList<>();
         for (int i = 0; i < this.serviceCount; i++) {
-            bodies.add(createExampleServiceState(userName, new Long(1)));
+            bodies.add(createExampleServiceState(userName, 1L));
         }
 
         Iterator<ExampleServiceState> it = bodies.iterator();

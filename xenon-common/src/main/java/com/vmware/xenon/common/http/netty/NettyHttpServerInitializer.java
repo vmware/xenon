@@ -49,7 +49,7 @@ public class NettyHttpServerInitializer extends ChannelInitializer<SocketChannel
 
     private final SslContext sslContext;
     private ServiceHost host;
-    private boolean debugLogging = false;
+    private static final boolean debugLogging = false;
 
     public NettyHttpServerInitializer(ServiceHost host, SslContext sslContext) {
         this.sslContext = sslContext;
@@ -144,10 +144,9 @@ public class NettyHttpServerInitializer extends ChannelInitializer<SocketChannel
         DelegatingDecompressorFrameListener frameListener = new DelegatingDecompressorFrameListener(
                 connection, inboundAdapter);
         Http2FrameLogger frameLogger = null;
-        if (this.debugLogging) {
+        if (NettyHttpServerInitializer.debugLogging) {
             frameLogger = new Http2FrameLogger(LogLevel.INFO,
                     NettyHttpClientRequestInitializer.class);
-
         }
 
         Http2Settings settings = new Http2Settings();
