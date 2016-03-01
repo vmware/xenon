@@ -41,13 +41,14 @@ public class NodeSelectorReplicationService extends StatelessService {
         super.setProcessingStage(ProcessingStage.AVAILABLE);
     }
 
+
     /**
      * Issues updates to peer nodes, after a local update has been accepted. If the service support
      * OWNER_SELECTION the replication message is the Propose message in the consensus work flow.
-     *
      * @param localState
-     * @param localNodeOptions
      * @param outboundOp
+     * @param req
+     * @param rsp
      */
     void replicateUpdate(NodeGroupState localState,
             Operation outboundOp, SelectAndForwardRequest req, SelectOwnerResponse rsp) {

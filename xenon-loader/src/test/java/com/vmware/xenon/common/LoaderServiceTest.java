@@ -184,7 +184,7 @@ public class LoaderServiceTest extends BasicReusableHostTestCase {
                                    .setBody(d).setReferer(UriUtils.buildUri(this.host, ""))
                                    .setCompletion((postOp, postEx) -> {
                                        if (postEx != null) {
-                                           this.host.failIteration(createEx);
+                                           this.host.failIteration(postEx);
                                            return;
                                        }
                                        this.host.completeIteration();

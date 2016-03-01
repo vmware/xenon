@@ -80,7 +80,7 @@ public class NettyChannelContext extends SocketContext {
 
     // An HTTP/2 connection may have multiple simultaneous operations. This map
     // Will associate each stream with the operation happening on the stream
-    public Map<Integer, Operation> streamIdMap;
+    public final Map<Integer, Operation> streamIdMap;
 
     // We need to know if an HTTP/2 connection is being opened so that we can queue
     // pending operations instead of adding a new HTTP/2 connection
@@ -96,6 +96,8 @@ public class NettyChannelContext extends SocketContext {
         if (protocol == Protocol.HTTP2) {
             this.streamIdMap = new HashMap<Integer, Operation>();
             this.protocol = protocol;
+        } else {
+            this.streamIdMap = null;
         }
     }
 

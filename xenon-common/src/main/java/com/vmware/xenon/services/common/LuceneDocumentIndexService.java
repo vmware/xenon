@@ -40,7 +40,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import com.esotericsoftware.kryo.KryoException;
 import com.google.gson.JsonParser;
-
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.core.SimpleAnalyzer;
 import org.apache.lucene.document.Document;
@@ -176,8 +175,6 @@ public class LuceneDocumentIndexService extends StatelessService {
     protected static final int UPDATE_THREAD_COUNT = 4;
 
     protected static final int QUERY_THREAD_COUNT = 2;
-
-    private static final String DELETE_ACTION = Action.DELETE.toString().intern();
 
     protected final Object searchSync = new Object();
     protected Queue<IndexSearcher> searchersPendingClose = new ConcurrentLinkedQueue<>();
@@ -909,7 +906,7 @@ public class LuceneDocumentIndexService extends StatelessService {
 
             long queryTime = end - start;
 
-            rsp.documentCount = Long.valueOf(0);
+            rsp.documentCount = 0L;
             rsp.queryTimeMicros += queryTime;
             ScoreDoc bottom = null;
             if (shouldProcessResults) {
@@ -1067,7 +1064,7 @@ public class LuceneDocumentIndexService extends StatelessService {
                 latestVersions.put(link, latestVersion);
             }
 
-            boolean isDeleted = DELETE_ACTION.equals(d
+            boolean isDeleted = Action.DELETE.toString().equals(d
                     .get(ServiceDocument.FIELD_NAME_UPDATE_ACTION));
 
             if (isDeleted && !options.contains(QueryOption.INCLUDE_DELETED)) {
@@ -1124,11 +1121,11 @@ public class LuceneDocumentIndexService extends StatelessService {
         }
 
         if (hasCountOption) {
-            rsp.documentCount = Long.valueOf(uniques.size());
+            rsp.documentCount = (long) uniques.size();
         } else {
             rsp.documentLinks.clear();
             rsp.documentLinks.addAll(uniques);
-            rsp.documentCount = Long.valueOf(rsp.documentLinks.size());
+            rsp.documentCount = (long) rsp.documentLinks.size();
         }
 
         return lastDocVisited;
@@ -2000,7 +1997,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         }
     }
 
-    private void applyMemoryLimit() throws InterruptedException, IOException {
+    private void applyMemoryLimit() {
         if (getHost().isStopping()) {
             return;
         }

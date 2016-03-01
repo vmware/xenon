@@ -39,7 +39,6 @@ public class ODataTokenList implements Iterator<ODataToken> {
             final String uriLiteral) {
         ODataToken token = new ODataToken(kind, position, uriLiteral);
         this.tokens.add(token);
-        return;
     }
 
     /**
@@ -52,7 +51,6 @@ public class ODataTokenList implements Iterator<ODataToken> {
             final char charValue) {
         ODataToken token = new ODataToken(kind, position, Character.toString(charValue));
         this.tokens.add(token);
-        return;
     }
 
     /**

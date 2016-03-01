@@ -441,7 +441,7 @@ public class ServiceHost {
     }
 
     public enum HttpScheme {
-        HTTP_ONLY, HTTPS_ONLY, HTTP_AND_HTTPS, NONE;
+        HTTP_ONLY, HTTPS_ONLY, HTTP_AND_HTTPS, NONE
     }
 
     private Logger logger = Logger.getLogger(getClass().getName());
@@ -555,7 +555,7 @@ public class ServiceHost {
 
         File s = new File(storageSandbox);
 
-        if (false == s.exists()) {
+        if (!s.exists()) {
             throw new IllegalArgumentException("storageSandbox directory does not exist: "
                     + storageSandbox);
         }
@@ -1454,7 +1454,7 @@ public class ServiceHost {
         }
 
         for (String peer : peers) {
-            URI peerNodeBaseUri = null;
+            URI peerNodeBaseUri;
             if (!peer.startsWith("http")) {
                 peerNodeBaseUri = UriUtils.buildUri(peer, ServiceHost.DEFAULT_PORT, "", null);
             } else {
@@ -1829,7 +1829,7 @@ public class ServiceHost {
         service.setHost(this);
 
         URI serviceUri = post.getUri().normalize();
-        String servicePath = UriUtils.normalizeUriPath(serviceUri.getPath()).intern();
+        String servicePath = UriUtils.normalizeUriPath(serviceUri.getPath());
         if (service.getSelfLink() == null) {
             service.setSelfLink(servicePath);
         }
@@ -2595,12 +2595,12 @@ public class ServiceHost {
             return;
         }
 
-        ServiceDocument p = null;
+
         synchronized (s.getSelfLink()) {
-            p = this.cachedServiceStates.put(s.getSelfLink(), st);
-            if (p != null && p.documentVersion > st.documentVersion) {
+            ServiceDocument cachedState = this.cachedServiceStates.put(s.getSelfLink(), st);
+            if (cachedState != null && cachedState.documentVersion > st.documentVersion) {
                 // restore cached state, discarding update, if the existing version is higher
-                this.cachedServiceStates.put(s.getSelfLink(), p);
+                this.cachedServiceStates.put(s.getSelfLink(), cachedState);
             }
         }
     }
@@ -4382,15 +4382,13 @@ public class ServiceHost {
         String nodeSelectorPath = entry.getKey();
         Long selectorSynchTime = this.synchronizationTimes.get(nodeSelectorPath);
         NodeGroupState ngs = entry.getValue();
-        Iterator<Entry<String, Long>> it = this.synchronizationRequiredServices.entrySet()
-                .iterator();
-        while (it.hasNext()) {
+        for (Entry<String, Long> en : this.synchronizationRequiredServices
+                .entrySet()) {
             long now = Utils.getNowMicrosUtc();
             if (isStopping()) {
                 return;
             }
 
-            Entry<String, Long> en = it.next();
             String link = en.getKey();
             Long lastSynchTime = en.getValue();
 
@@ -4697,7 +4695,7 @@ public class ServiceHost {
 
         log(Level.FINE, "On demand service start of %s", link);
 
-        Service childService = null;
+        Service childService;
         try {
             childService = factoryService.createServiceInstance();
         } catch (Throwable e1) {
@@ -4942,8 +4940,7 @@ public class ServiceHost {
             request.fail(new IllegalArgumentException(msg));
             return null;
         }
-        NodeSelectorService nss = (NodeSelectorService) s;
-        return nss;
+        return (NodeSelectorService) s;
     }
 
     public void broadcastRequest(String selectorPath, boolean excludeThisHost, Operation request) {

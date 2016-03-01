@@ -565,7 +565,7 @@ public class VerificationHost extends ExampleServiceHost {
         minState.id = Utils.getNowMicrosUtc() + "";
         StringBuilder sb = new StringBuilder();
         for (int i = 0; i < 25; i++) {
-            sb.append(Utils.getNowMicrosUtc() + "");
+            sb.append(Utils.getNowMicrosUtc());
         }
         minState.stringValue = sb.toString();
 
@@ -583,7 +583,7 @@ public class VerificationHost extends ExampleServiceHost {
 
         connection.addRequestProperty(Operation.CONTENT_TYPE_HEADER, contentType);
         if (body != null) {
-            connection.setDoOutput(body != null);
+            connection.setDoOutput(true);
             connection.getOutputStream().write(body.getBytes(Utils.CHARSET));
         }
 

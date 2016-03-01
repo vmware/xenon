@@ -28,6 +28,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentSkipListMap;
@@ -2182,7 +2183,8 @@ public class TestNodeGroupService {
                 }
 
                 if (epochs.containsKey(newRole.documentSelfLink)) {
-                    assertTrue(epochs.get(newRole.documentSelfLink) == newRole.documentEpoch);
+                    assertTrue(Objects.equals(epochs.get(newRole.documentSelfLink),
+                            newRole.documentEpoch));
                 } else {
                     epochs.put(newRole.documentSelfLink, newRole.documentEpoch);
                 }
@@ -2304,7 +2306,6 @@ public class TestNodeGroupService {
                     availableStat.latestValue);
 
             Thread.sleep(250);
-            continue;
         }
     }
 
@@ -2889,7 +2890,6 @@ public class TestNodeGroupService {
                     this.host.log("Service %s found on %d nodes, expected %d", e.getKey(), e
                             .getValue().size(), expectedNodeCountPerLink);
                     isConverged = false;
-                    continue;
                 }
             }
 

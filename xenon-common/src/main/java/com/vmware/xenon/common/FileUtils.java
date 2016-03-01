@@ -406,7 +406,7 @@ public class FileUtils {
     }
 
     public static String getContentType(URI uri) {
-        String mediaType = null;
+        String mediaType;
         String uriPathLower = uri.getPath().toLowerCase();
         if (uriPathLower.endsWith("css")) {
             mediaType = Operation.MEDIA_TYPE_TEXT_CSS;
@@ -436,7 +436,7 @@ public class FileUtils {
 
         final ByteBuffer bb = ByteBuffer.allocate((int) f.length());
 
-        ch.read(bb, 0L, (Void) null,
+        ch.read(bb, 0L, null,
                 new CompletionHandler<Integer, Void>() {
 
                     @Override
@@ -747,12 +747,16 @@ public class FileUtils {
                     // Copy bytes
                     out.write(buffer, 0, bytes_read);
                 }
-                in.close(); // Close input stream
+                try {
+                    in.close();
+                } catch (IOException ignore) {
+                }
             }
-        } catch (Exception e) {
-            throw e;
         } finally {
-            out.close();
+            try {
+                out.close();
+            } catch (IOException ignore) {
+            }
         }
 
         Logger.getAnonymousLogger().info(
@@ -806,7 +810,7 @@ public class FileUtils {
     public static String md5sum(File f) throws Exception {
         MessageDigest md = MessageDigest.getInstance("MD5");
         byte[] bytes = new byte[1 << 13];
-        int numBytes = 0;
+        int numBytes;
         try (InputStream is = Files.newInputStream(f.toPath())) {
             while ((numBytes = is.read(bytes)) != -1) {
                 md.update(bytes, 0, numBytes);

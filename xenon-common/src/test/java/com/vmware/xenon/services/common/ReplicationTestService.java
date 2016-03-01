@@ -141,7 +141,6 @@ public class ReplicationTestService extends StatefulService {
             // fail request with a status code that should induce a retry
             put.setStatusCode(Operation.STATUS_CODE_CONFLICT)
                     .fail(new IllegalStateException("failing intentionally with conflict error"));
-            return;
         } else {
             super.handlePut(put);
         }
