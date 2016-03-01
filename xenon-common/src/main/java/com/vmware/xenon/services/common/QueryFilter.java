@@ -729,7 +729,7 @@ public class QueryFilter {
         }
 
         // Convert values to array and sort by count
-        Elem[] elements = elemByProperty.values().toArray(new Elem[0]);
+        Elem[] elements = elemByProperty.values().toArray(new Elem[elemByProperty.size()]);
         Arrays.sort(elements, new ElemComparator());
         return elements[elements.length - 1].name;
     }

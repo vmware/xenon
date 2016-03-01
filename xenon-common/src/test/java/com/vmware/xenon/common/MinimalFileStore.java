@@ -20,11 +20,6 @@ import java.nio.channels.AsynchronousFileChannel;
 import java.nio.channels.CompletionHandler;
 import java.nio.file.StandardOpenOption;
 
-import com.vmware.xenon.common.FileUtils;
-import com.vmware.xenon.common.Operation;
-import com.vmware.xenon.common.ServiceDocument;
-import com.vmware.xenon.common.StatefulService;
-
 public class MinimalFileStore extends StatefulService {
 
     public File outFile = null;
@@ -76,13 +71,6 @@ public class MinimalFileStore extends StatefulService {
                 put.fail(new IllegalArgumentException("writing to closed file"));
                 return;
             }
-
-            try {
-
-            } catch (Exception e) {
-                put.fail(e);
-                return;
-            }
         }
 
         String rangeString = put.getRequestHeader(Operation.CONTENT_RANGE_HEADER);
@@ -123,7 +111,6 @@ public class MinimalFileStore extends StatefulService {
 
         } catch (Exception e) {
             put.fail(e);
-            return;
         }
     }
 
@@ -153,7 +140,7 @@ public class MinimalFileStore extends StatefulService {
 
         try {
             String requestHeader = get.getRequestHeader(Operation.RANGE_HEADER);
-            FileUtils.ContentRange r = null;
+            FileUtils.ContentRange r;
 
             // first xfer
             if (requestHeader == null) {
@@ -193,7 +180,6 @@ public class MinimalFileStore extends StatefulService {
             });
         } catch (Exception e) {
             get.fail(e);
-            return;
         }
     }
 }

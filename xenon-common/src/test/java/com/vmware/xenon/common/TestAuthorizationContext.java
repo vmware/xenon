@@ -291,7 +291,7 @@ public class TestAuthorizationContext extends BasicTestCase {
 
         Claims.Builder builder = new Claims.Builder();
         builder.setSubject("test-subject");
-        builder.setExpirationTime(new Long(0));
+        builder.setExpirationTime(0L);
         Claims expected = builder.getResult();
 
         // Post to create an expired auth context

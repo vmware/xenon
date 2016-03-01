@@ -14,6 +14,7 @@
 package com.vmware.xenon.common;
 
 import java.net.URI;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.logging.Level;
@@ -412,9 +413,8 @@ public class AuthorizationSetupHelper {
      */
     private void makeRole() {
         Set<Action> verbs = new HashSet<>();
-        for (Action action : Action.values()) {
-            verbs.add(action);
-        }
+        Collections.addAll(verbs, Action.values());
+
         RoleState role = new RoleState();
         role.userGroupLink = this.userGroupSelfLink;
         role.resourceGroupLink = this.resourceGroupSelfLink;

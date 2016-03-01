@@ -355,7 +355,6 @@ public class NodeGroupService extends StatefulService {
         CheckConvergenceResponse rsp = new CheckConvergenceResponse();
         rsp.isConverged = localState.membershipUpdateTimeMicros == body.membershipUpdateTimeMicros;
         post.setBody(rsp).complete();
-        return;
     }
 
     private void handleJoinPost(JoinPeerRequest joinBody,
@@ -427,7 +426,6 @@ public class NodeGroupService extends StatefulService {
                         (o, e) -> {
                             if (e != null) {
                                 logSevere("Insert POST to %s failed", o.getUri());
-                                return;
                             }
                             // we will restart services to synchronize with peers on the next
                             // maintenance interval with a stable group membership
@@ -456,8 +454,7 @@ public class NodeGroupService extends StatefulService {
         NodeGroupState body = new NodeGroupState();
         body.config = null;
         body.documentOwner = getHost().getId();
-        body.documentSelfLink = UriUtils.buildUriPath(
-                getSelfLink(), body.documentOwner);
+        body.documentSelfLink = UriUtils.buildUriPath(getSelfLink(), body.documentOwner);
         local.status = NodeStatus.AVAILABLE;
         body.nodes.put(local.id, local);
 

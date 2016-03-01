@@ -34,7 +34,7 @@ public class StatelessService implements Service {
     private ProcessingStage stage = ProcessingStage.CREATED;
     private ServiceHost host;
     private String selfLink;
-    protected EnumSet<ServiceOption> options = EnumSet.noneOf(ServiceOption.class);
+    protected final EnumSet<ServiceOption> options = EnumSet.noneOf(ServiceOption.class);
     private UtilityService utilityService;
     protected Class<? extends ServiceDocument> stateType;
 
@@ -427,13 +427,12 @@ public class StatelessService implements Service {
         return false;
     }
 
-    private boolean allocateUtilityService() {
+    private void allocateUtilityService() {
         synchronized (this.options) {
             if (this.utilityService == null) {
                 this.utilityService = new UtilityService().setParent(this);
             }
         }
-        return true;
     }
 
     @Override
@@ -443,11 +442,7 @@ public class StatelessService implements Service {
 
     @Override
     public void setSelfLink(String path) {
-        if (path != null) {
-            this.selfLink = path.intern();
-        } else {
-            this.selfLink = null;
-        }
+        this.selfLink = path;
     }
 
     @Override

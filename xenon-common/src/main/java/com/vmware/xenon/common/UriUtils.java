@@ -328,7 +328,7 @@ public class UriUtils {
         StringBuilder sb = new StringBuilder();
 
         boolean doKey = true;
-        boolean isFirst = u.getQuery() == null ? true : false;
+        boolean isFirst = u.getQuery() == null;
         for (String s : keyValues) {
             if (doKey) {
                 if (!isFirst) {
@@ -414,14 +414,14 @@ public class UriUtils {
             queryArgs.add(ServiceDocumentQueryResult.FIELD_NAME_DOCUMENT_LINKS);
         }
 
-        return extendUriWithQuery(indexURI, queryArgs.toArray(new String[0]));
+        return extendUriWithQuery(indexURI, queryArgs.toArray(new String[queryArgs.size()]));
     }
 
     public static URI appendQueryParam(URI uri, String param, String value) {
         List<String> queryArgs = new ArrayList<>();
         queryArgs.add(param);
         queryArgs.add(value);
-        return extendUriWithQuery(uri, queryArgs.toArray(new String[0]));
+        return extendUriWithQuery(uri, queryArgs.toArray(new String[queryArgs.size()]));
     }
 
     public static Map<String, String> parseUriQueryParams(URI uri) {
@@ -443,7 +443,8 @@ public class UriUtils {
                 StringBuilder sb = new StringBuilder();
                 sb.append(value);
                 for (int i = 2; i < kvSplit.length; i++) {
-                    sb.append(URI_QUERY_PARAM_KV_CHAR + kvSplit[i]);
+                    sb.append(URI_QUERY_PARAM_KV_CHAR);
+                    sb.append(kvSplit[i]);
                 }
                 value = sb.toString();
             }

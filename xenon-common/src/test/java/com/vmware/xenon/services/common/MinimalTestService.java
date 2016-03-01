@@ -81,7 +81,7 @@ public class MinimalTestService extends StatefulService {
         Random r = new Random();
         byte[] b = new byte[1500];
         r.nextBytes(b);
-        return java.util.Base64.getMimeEncoder().encodeToString(b).intern();
+        return java.util.Base64.getMimeEncoder().encodeToString(b);
     }
 
     @Override
@@ -283,7 +283,6 @@ public class MinimalTestService extends StatefulService {
         MinimalTestServiceState state = new MinimalTestServiceState();
         state.stringValue = sb.toString();
         get.setBody(state).complete();
-        return;
     }
 
     @Override

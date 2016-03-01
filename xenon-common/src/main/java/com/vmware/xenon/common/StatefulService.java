@@ -64,14 +64,7 @@ public class StatefulService implements Service {
         public Set<String> txCoordinatorLinks;
     }
 
-    private RuntimeContext context = new RuntimeContext();
-
-    /**
-     * Infrastructure use. Called by utility derived classes to reduce memory footprint
-     */
-    void clearContext() {
-        this.context = null;
-    }
+    private final RuntimeContext context = new RuntimeContext();
 
     public StatefulService(Class<? extends ServiceDocument> stateType) {
         if (stateType == null) {
@@ -310,7 +303,7 @@ public class StatefulService implements Service {
                     return;
                 }
 
-                request.nestCompletion((o, e) -> handleRequestCompletion(o, e));
+                request.nestCompletion(this::handleRequestCompletion);
                 isCompletionNested = true;
 
                 if (handleOperationInTransaction(this, this.context.stateType,
@@ -905,9 +898,7 @@ public class StatefulService implements Service {
         if (op.getAction() == Action.GET && !isIndexed()) {
             op.linkState(null);
             // run completions in parallel since non indexed GETs are serialized with updates
-            getHost().run(() -> {
-                op.complete();
-            });
+            getHost().run(op::complete);
             return;
         }
 
@@ -1261,7 +1252,7 @@ public class StatefulService implements Service {
         request.setFromReplication(true);
 
         // proceed with normal completion pipeline, including indexing
-        request.nestCompletion((o, e) -> handleRequestCompletion(o, e));
+        request.nestCompletion(this::handleRequestCompletion);
         request.complete();
     }
 
@@ -1402,7 +1393,7 @@ public class StatefulService implements Service {
                     "Self link can not change past initialization");
         }
 
-        this.context.selfLink = path.intern();
+        this.context.selfLink = path;
     }
 
     @Override
@@ -1796,7 +1787,6 @@ public class StatefulService implements Service {
         }
 
         getHost().failRequestActionNotSupported(request);
-        return;
     }
 
     /**

@@ -300,7 +300,7 @@ public class Utils {
 
     public static String toString(Throwable t) {
         StringWriter writer = new StringWriter();
-        try (PrintWriter printer = new PrintWriter(writer);) {
+        try (PrintWriter printer = new PrintWriter(writer)) {
             t.printStackTrace(printer);
         }
 
@@ -309,7 +309,7 @@ public class Utils {
 
     public static String toString(Map<?, Throwable> exceptions) {
         StringWriter writer = new StringWriter();
-        try (PrintWriter printer = new PrintWriter(writer);) {
+        try (PrintWriter printer = new PrintWriter(writer)) {
             for (Throwable t : exceptions.values()) {
                 t.printStackTrace(printer);
             }
@@ -476,7 +476,7 @@ public class Utils {
     }
 
     public static Object setJsonProperty(Object body, String fieldName, String fieldValue) {
-        JsonObject jo = null;
+        JsonObject jo;
         if (body instanceof JsonObject) {
             jo = (JsonObject) body;
         } else {
@@ -568,18 +568,16 @@ public class Utils {
             }
         }
 
-        if (antiReqs != null) {
-            EnumSet<ServiceOption> conflictReqs = EnumSet.noneOf(ServiceOption.class);
-            for (ServiceOption r : antiReqs) {
-                if (options.contains(r)) {
-                    conflictReqs.add(r);
-                }
+        EnumSet<ServiceOption> conflictReqs = EnumSet.noneOf(ServiceOption.class);
+        for (ServiceOption r : antiReqs) {
+            if (options.contains(r)) {
+                conflictReqs.add(r);
             }
+        }
 
-            if (!conflictReqs.isEmpty()) {
-                String error = String.format("%s conflicts with options: %s", option, conflictReqs);
-                return error;
-            }
+        if (!conflictReqs.isEmpty()) {
+            String error = String.format("%s conflicts with options: %s", option, conflictReqs);
+            return error;
         }
 
         return null;
@@ -693,7 +691,7 @@ public class Utils {
         if (data == null) {
             if (contentType == null
                     || contentType.contains(Operation.MEDIA_TYPE_APPLICATION_JSON)) {
-                String encodedBody = null;
+                String encodedBody;
                 if (op.getAction() == Action.GET) {
                     encodedBody = Utils.toJsonHtml(body);
                 } else {
@@ -713,8 +711,6 @@ public class Utils {
     }
 
     public static void decodeBody(Operation op, ByteBuffer buffer) {
-        Object body = null;
-
         if (op.getContentLength() == 0) {
             op.setContentType(Operation.MEDIA_TYPE_APPLICATION_JSON).complete();
             return;
@@ -722,7 +718,7 @@ public class Utils {
 
         try {
             String contentType = op.getContentType();
-            body = decodeIfText(buffer, contentType);
+            Object body = decodeIfText(buffer, contentType);
             if (body == null) {
                 // unrecognized or binary body, use the raw bytes
                 byte[] data = new byte[(int) op.getContentLength()];
