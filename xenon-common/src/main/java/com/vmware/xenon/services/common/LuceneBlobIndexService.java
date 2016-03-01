@@ -119,7 +119,7 @@ public class LuceneBlobIndexService extends StatelessService {
     private final FieldType longStoredField = LuceneDocumentIndexService.numericDocType(
             FieldType.NumericType.LONG, true);
 
-    private int maxBinaryContextSizeBytes = 1024 * 1024;
+    private final int maxBinaryContextSizeBytes = 1024 * 1024;
 
     private ExecutorService singleThreadedExecutor;
 
@@ -335,14 +335,13 @@ public class LuceneBlobIndexService extends StatelessService {
 
     private IndexSearcher updateSearcher(IndexWriter w)
             throws IOException {
-        IndexSearcher s = null;
         long now = Utils.getNowMicrosUtc();
 
         // we do not synchronize the searcher update since this service uses a single thread
         // to schedule all queries, updates and maintenance. If this changes, the code below
         // must become synchronized similar to LuceneDocumentIndexService.updateSearcher
 
-        s = this.searcher;
+        IndexSearcher s = this.searcher;
         if (s != null && this.searcherUpdateTimeMicros > this.indexUpdateTimeMicros) {
             return s;
         }

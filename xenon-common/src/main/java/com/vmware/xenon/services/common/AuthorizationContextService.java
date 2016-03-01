@@ -85,10 +85,9 @@ public class AuthorizationContextService extends StatelessService {
         }
     }
 
-    public static String SELF_LINK = ServiceUriPaths.CORE_AUTHZ_VERIFICATION;
+    public static final String SELF_LINK = ServiceUriPaths.CORE_AUTHZ_VERIFICATION;
 
-    private Map<String, Collection<Operation>> pendingOperationsBySubject =
-            new HashMap<>();
+    private final Map<String, Collection<Operation>> pendingOperationsBySubject = new HashMap<>();
 
     /**
      * The service host will invoke this method to allow a service to handle

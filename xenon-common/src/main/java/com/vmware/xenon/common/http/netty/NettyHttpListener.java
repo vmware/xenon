@@ -86,7 +86,7 @@ public class NettyHttpListener implements ServiceRequestListener {
                 .channel(NioServerSocketChannel.class)
                 .childHandler(this.childChannelHandler);
 
-        InetSocketAddress addr = null;
+        InetSocketAddress addr;
         if (bindAddress != null) {
             addr = new InetSocketAddress(bindAddress, port);
         } else {

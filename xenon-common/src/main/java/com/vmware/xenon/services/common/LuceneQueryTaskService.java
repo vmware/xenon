@@ -20,6 +20,7 @@ import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.stream.Collectors;
@@ -116,7 +117,7 @@ public class LuceneQueryTaskService extends StatefulService {
                 && initState.querySpec.options.contains(QueryOption.BROADCAST)
                 && initState.querySpec.options.contains(QueryOption.SORT)
                 && initState.querySpec.sortTerm != null
-                && initState.querySpec.sortTerm.propertyName != ServiceDocument.FIELD_NAME_SELF_LINK) {
+                && !Objects.equals(initState.querySpec.sortTerm.propertyName, ServiceDocument.FIELD_NAME_SELF_LINK)) {
             startPost.fail(new IllegalArgumentException(QueryOption.BROADCAST
                     + " only supports sorting on ["
                     + ServiceDocument.FIELD_NAME_SELF_LINK + "]"));
@@ -212,7 +213,6 @@ public class LuceneQueryTaskService extends StatefulService {
                     .setCompletion((o, e) -> {
                         if (e != null) {
                             failTask(e, o, null);
-                            return;
                         }
                     });
 

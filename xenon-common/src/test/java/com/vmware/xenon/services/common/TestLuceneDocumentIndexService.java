@@ -858,7 +858,6 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
                             inFlightRequests.decrementAndGet();
                             if (e != null) {
                                 failure[0] = e;
-                                return;
                             }
                         });
                 inFlightRequests.incrementAndGet();

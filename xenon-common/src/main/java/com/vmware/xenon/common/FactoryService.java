@@ -332,7 +332,6 @@ public abstract class FactoryService extends StatelessService {
             logSevere(e1);
             post.fail(e1);
         }
-        return;
     }
 
     /**
@@ -379,7 +378,7 @@ public abstract class FactoryService extends StatelessService {
                 op.setBody(new ServiceDocumentQueryResult()).complete();
                 return;
             }
-            op.nestCompletion(o -> handleGetCompletion(o));
+            op.nestCompletion(this::handleGetCompletion);
             handleGet(op);
         } else if (op.getAction() == Action.DELETE) {
             if (ServiceHost.isServiceStop(op)) {
@@ -394,7 +393,7 @@ public abstract class FactoryService extends StatelessService {
                 handleDelete(op);
             }
         } else if (op.getAction() == Action.OPTIONS) {
-            op.nestCompletion(o -> handleOptionsCompletion(o));
+            op.nestCompletion(this::handleOptionsCompletion);
             handleOptions(op);
         } else {
             op.fail(new IllegalArgumentException("Action not supported"));
@@ -429,7 +428,7 @@ public abstract class FactoryService extends StatelessService {
                 // the body is already in native form (not serialized)
                 initialState = Utils.clone(initialState);
             }
-            String suffix = null;
+            String suffix;
             if (initialState == null) {
                 // create a random URI that is prefixed by the URI of this service
                 suffix = UUID.randomUUID().toString();
@@ -703,10 +702,10 @@ public abstract class FactoryService extends StatelessService {
 
     @Override
     public void toggleOption(ServiceOption option, boolean enable) {
-        if (false == enable) {
-            this.options.remove(option);
-        } else {
+        if (enable) {
             this.options.add(option);
+        } else {
+            this.options.remove(option);
         }
     }
 

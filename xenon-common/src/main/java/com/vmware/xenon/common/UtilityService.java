@@ -186,7 +186,7 @@ public class UtilityService implements Service {
             }
             break;
         case GET:
-            ServiceDocument rsp = null;
+            ServiceDocument rsp;
             synchronized (this.subscriptions) {
                 rsp = Utils.clone(this.subscriptions);
             }
@@ -480,7 +480,7 @@ public class UtilityService implements Service {
                 populateDocumentProperties(s);
                 op.setBody(s).complete();
             } else {
-                ServiceDocument rsp = null;
+                ServiceDocument rsp;
                 synchronized (this.stats) {
                     rsp = populateDocumentProperties(this.stats);
                     rsp = Utils.clone(rsp);

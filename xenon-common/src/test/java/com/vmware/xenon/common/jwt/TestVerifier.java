@@ -34,7 +34,7 @@ public class TestVerifier extends TestCase {
     @Test
     public void testRfc7515A1() throws Throwable {
         Verifier verifier = new Verifier(rfc7515A1key);
-        Rfc7515A1Claims claims = verifier.verify(rfc7515A1jwt.toString(), Rfc7515A1Claims.class);
+        Rfc7515A1Claims claims = verifier.verify(rfc7515A1jwt, Rfc7515A1Claims.class);
         assertEquals("joe", claims.getIssuer());
         assertEquals(new Long(1300819380), claims.getExpirationTime());
         assertEquals(true, claims.getIsRoot());

@@ -58,7 +58,7 @@ public class Verifier {
         String encodedPayload = jwt.substring(headerIndex + 1, payloadIndex);
         String encodedSignature = jwt.substring(payloadIndex + 1);
 
-        Header header = null;
+        Header header;
         try {
             header = decode(encodedHeader, Header.class);
         } catch (JsonSyntaxException ex) {
