@@ -22,6 +22,7 @@ import org.junit.runner.Description;
 
 import com.vmware.xenon.common.CommandLineArgumentParser;
 import com.vmware.xenon.common.Operation.CompletionHandler;
+import com.vmware.xenon.common.test.TestContext;
 import com.vmware.xenon.common.test.VerificationHost;
 
 /**
@@ -80,6 +81,14 @@ public class BasicTestCase {
     }
 
     public void beforeHostTearDown(VerificationHost host) {
+    }
+
+    public TestContext testCreate(int c) {
+        return this.host.testCreate(c);
+    }
+
+    public void testWait(TestContext ctx) throws Throwable {
+        ctx.await();
     }
 
     /**

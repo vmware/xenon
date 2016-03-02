@@ -22,10 +22,12 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.function.Consumer;
 
+import org.junit.Before;
 import org.junit.Test;
 
 import com.vmware.xenon.common.Service.ServiceOption;
 import com.vmware.xenon.common.ServiceStats.ServiceStat;
+import com.vmware.xenon.common.test.TestContext;
 import com.vmware.xenon.services.common.ExampleService;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
 import com.vmware.xenon.services.common.MinimalTestService;
@@ -40,6 +42,11 @@ public class TestUtilityService extends BasicReusableHostTestCase {
         return services;
     }
 
+    @Before
+    public void setUp() {
+        this.host.setSingleton(true);
+    }
+
     @Test
     public void patchConfiguration() throws Throwable {
         int count = 10;
@@ -48,31 +55,32 @@ public class TestUtilityService extends BasicReusableHostTestCase {
         // try config patch on a factory
         ServiceConfigUpdateRequest updateBody = ServiceConfigUpdateRequest.create();
         updateBody.removeOptions = EnumSet.of(ServiceOption.IDEMPOTENT_POST);
-        this.host.testStart(1);
+        TestContext ctx = this.testCreate(1);
 
         URI configUri = UriUtils.buildConfigUri(host, ExampleService.FACTORY_LINK);
         this.host.send(Operation.createPatch(configUri).setBody(updateBody)
-                .setCompletion(this.host.getCompletion()));
+                .setCompletion(ctx.getCompletion()));
 
-        this.host.testWait();
-        this.host.testStart(1);
+        this.testWait(ctx);
+
+        TestContext ctx2 = this.testCreate(1);
         // verify option removed
-        host.send(Operation.createGet(configUri).setCompletion((o, e) -> {
+        this.host.send(Operation.createGet(configUri).setCompletion((o, e) -> {
             if (e != null) {
-                host.failIteration(e);
+                ctx2.failIteration(e);
                 return;
             }
 
             ServiceConfiguration cfg = o.getBody(ServiceConfiguration.class);
             if (!cfg.options.contains(ServiceOption.IDEMPOTENT_POST)) {
-                host.completeIteration();
+                ctx2.completeIteration();
             } else {
-                host.failIteration(new IllegalStateException(Utils.toJsonHtml(cfg)));
+                ctx2.failIteration(new IllegalStateException(Utils.toJsonHtml(cfg)));
             }
 
         }));
 
-        this.host.testWait();
+        this.testWait(ctx2);
 
         List<Service> services = createServices(count);
         // verify no stats exist before we enable that capability
@@ -84,43 +92,43 @@ public class TestUtilityService extends BasicReusableHostTestCase {
 
         updateBody = ServiceConfigUpdateRequest.create();
         updateBody.addOptions = EnumSet.of(ServiceOption.INSTRUMENTATION);
-        this.host.testStart(services.size());
+        ctx = this.testCreate(services.size());
         for (Service s : services) {
             configUri = UriUtils.buildConfigUri(s.getUri());
             this.host.send(Operation.createPatch(configUri).setBody(updateBody)
-                    .setCompletion(this.host.getCompletion()));
+                    .setCompletion(ctx.getCompletion()));
         }
-        this.host.testWait();
+        this.testWait(ctx);
 
         // get configuration and verify options
-        this.host.testStart(services.size());
+        TestContext ctx3 = testCreate(services.size());
         for (Service s : services) {
             URI u = UriUtils.buildConfigUri(s.getUri());
             host.send(Operation.createGet(u).setCompletion((o, e) -> {
                 if (e != null) {
-                    host.failIteration(e);
+                    ctx3.failIteration(e);
                     return;
                 }
 
                 ServiceConfiguration cfg = o.getBody(ServiceConfiguration.class);
                 if (cfg.options.contains(ServiceOption.INSTRUMENTATION)) {
-                    host.completeIteration();
+                    ctx3.completeIteration();
                 } else {
-                    host.failIteration(new IllegalStateException(Utils.toJsonHtml(cfg)));
+                    ctx3.failIteration(new IllegalStateException(Utils.toJsonHtml(cfg)));
                 }
 
             }));
         }
-        this.host.testWait();
+        testWait(ctx3);
 
-        this.host.testStart(services.size());
+        ctx = testCreate(services.size());
         // issue some updates so stats get updated
         for (Service s : services) {
             this.host.send(Operation.createPatch(s.getUri())
                     .setBody(this.host.buildMinimalTestState())
-                    .setCompletion(this.host.getCompletion()));
+                    .setCompletion(ctx.getCompletion()));
         }
-        this.host.testWait();
+        testWait(ctx);
 
         for (Service s : services) {
             ServiceStats stats = getStats(s.getUri());
@@ -136,13 +144,10 @@ public class TestUtilityService extends BasicReusableHostTestCase {
         ExampleServiceState s = new ExampleServiceState();
         s.name = UUID.randomUUID().toString();
         s.documentSelfLink = s.name;
-        this.host.testStart(1);
         Operation post = Operation
                 .createPost(UriUtils.buildFactoryUri(this.host, ExampleService.class))
-                .setBody(s)
-                .setCompletion(this.host.getCompletion());
-        this.host.send(post);
-        this.host.testWait();
+                .setBody(s);
+        this.host.sendAndWaitExpectSuccess(post);
 
         // do a get on examples/ui and examples/<uuid>/ui, twice to test the code path that caches
         // the resource file lookup
@@ -184,11 +189,8 @@ public class TestUtilityService extends BasicReusableHostTestCase {
         ServiceStats.ServiceStat stat = new ServiceStat();
         stat.name = "key1";
         stat.latestValue = 100;
-        this.host.testStart(1);
-        this.host.send(Operation.createPost(UriUtils.buildStatsUri(
-                this.host, exampleServiceState.documentSelfLink)).setBody(stat)
-                .setCompletion(this.host.getCompletion()));
-        this.host.testWait();
+        this.host.sendAndWaitExpectSuccess(Operation.createPost(UriUtils.buildStatsUri(
+                this.host, exampleServiceState.documentSelfLink)).setBody(stat));
         ServiceStats allStats = this.host.getServiceState(null, ServiceStats.class,
                 UriUtils.buildStatsUri(
                         this.host, exampleServiceState.documentSelfLink));
@@ -199,11 +201,8 @@ public class TestUtilityService extends BasicReusableHostTestCase {
         // Step 3 - POST a stat with the same key again and verify that the
         // version and accumulated value are updated
         stat.latestValue = 50;
-        this.host.testStart(1);
-        this.host.send(Operation.createPost(UriUtils.buildStatsUri(
-                this.host, exampleServiceState.documentSelfLink)).setBody(stat)
-                .setCompletion(this.host.getCompletion()));
-        this.host.testWait();
+        this.host.sendAndWaitExpectSuccess(Operation.createPost(UriUtils.buildStatsUri(
+                this.host, exampleServiceState.documentSelfLink)).setBody(stat));
         allStats = this.host.getServiceState(null, ServiceStats.class, UriUtils.buildStatsUri(
                 this.host, exampleServiceState.documentSelfLink));
         retStatEntry = allStats.entries.get("key1");
@@ -214,11 +213,8 @@ public class TestUtilityService extends BasicReusableHostTestCase {
         // previously posted stat is not updated
         stat.name = "key2";
         stat.latestValue = 50;
-        this.host.testStart(1);
-        this.host.send(Operation.createPost(UriUtils.buildStatsUri(
-                this.host, exampleServiceState.documentSelfLink)).setBody(stat)
-                .setCompletion(this.host.getCompletion()));
-        this.host.testWait();
+        this.host.sendAndWaitExpectSuccess(Operation.createPost(UriUtils.buildStatsUri(
+                this.host, exampleServiceState.documentSelfLink)).setBody(stat));
         allStats = this.host.getServiceState(null, ServiceStats.class, UriUtils.buildStatsUri(
                 this.host, exampleServiceState.documentSelfLink));
         retStatEntry = allStats.entries.get("key1");
@@ -233,11 +229,8 @@ public class TestUtilityService extends BasicReusableHostTestCase {
         // Step 5 - Issue a PUT for the first stat key and verify that the doc state is replaced
         stat.name = "key1";
         stat.latestValue = 75;
-        this.host.testStart(1);
-        this.host.send(Operation.createPut(UriUtils.buildStatsUri(
-                this.host, exampleServiceState.documentSelfLink)).setBody(stat)
-                .setCompletion(this.host.getCompletion()));
-        this.host.testWait();
+        this.host.sendAndWaitExpectSuccess(Operation.createPut(UriUtils.buildStatsUri(
+                this.host, exampleServiceState.documentSelfLink)).setBody(stat));
         allStats = this.host.getServiceState(null, ServiceStats.class, UriUtils.buildStatsUri(
                 this.host, exampleServiceState.documentSelfLink));
         retStatEntry = allStats.entries.get("key1");
@@ -249,11 +242,8 @@ public class TestUtilityService extends BasicReusableHostTestCase {
         stat.name = "key3";
         stat.latestValue = 200;
         stats.entries.put("key3", stat);
-        this.host.testStart(1);
-        this.host.send(Operation.createPut(UriUtils.buildStatsUri(
-                this.host, exampleServiceState.documentSelfLink)).setBody(stats)
-                .setCompletion(this.host.getCompletion()));
-        this.host.testWait();
+        this.host.sendAndWaitExpectSuccess(Operation.createPut(UriUtils.buildStatsUri(
+                this.host, exampleServiceState.documentSelfLink)).setBody(stats));
         allStats = this.host.getServiceState(null, ServiceStats.class, UriUtils.buildStatsUri(
                 this.host, exampleServiceState.documentSelfLink));
         if (allStats.entries.size() != 1) {
@@ -272,11 +262,8 @@ public class TestUtilityService extends BasicReusableHostTestCase {
         assertTrue(retStatEntry.version == 1);
         // Step 7 - Issue a PATCH and verify that the latestValue is updated
         stat.latestValue = 25;
-        this.host.testStart(1);
-        this.host.send(Operation.createPatch(UriUtils.buildStatsUri(
-                this.host, exampleServiceState.documentSelfLink)).setBody(stat)
-                .setCompletion(this.host.getCompletion()));
-        this.host.testWait();
+        this.host.sendAndWaitExpectSuccess(Operation.createPatch(UriUtils.buildStatsUri(
+                this.host, exampleServiceState.documentSelfLink)).setBody(stat));
         allStats = this.host.getServiceState(null, ServiceStats.class, UriUtils.buildStatsUri(
                 this.host, exampleServiceState.documentSelfLink));
         retStatEntry = allStats.entries.get("key3");
@@ -323,20 +310,19 @@ public class TestUtilityService extends BasicReusableHostTestCase {
 
         // first verify that service that do not explicitly use the setAvailable method,
         // appear available. Both a factory and a child service
-        Operation get = Operation.createGet(UriUtils.buildAvailableUri(factoryURI))
-                .setCompletion(this.host.getCompletion());
+        Operation get = Operation.createGet(UriUtils.buildAvailableUri(factoryURI));
 
         // expect 200 from /factory/available
-        this.host.sendAndWait(get);
+        this.host.sendAndWaitExpectSuccess(get);
 
         // expect 200 from /factory/<child>/available
-        this.host.testStart(states.size());
+        TestContext ctx = testCreate(states.size());
         for (URI u : states.keySet()) {
             get = get.clone().setUri(UriUtils.buildAvailableUri(u))
-                    .setCompletion(this.host.getCompletion());
+                    .setCompletion(ctx.getCompletion());
             this.host.send(get);
         }
-        this.host.testWait();
+        testWait(ctx);
 
         // verify that PUT on /available can make it switch to unavailable (503)
         ServiceStat body = new ServiceStat();
@@ -345,33 +331,31 @@ public class TestUtilityService extends BasicReusableHostTestCase {
 
         Operation put = Operation.createPut(
                 UriUtils.buildAvailableUri(this.host, factoryURI.getPath()))
-                .setCompletion(this.host.getCompletion())
                 .setBody(body);
-        this.host.sendAndWait(put);
+        this.host.sendAndWaitExpectSuccess(put);
 
         // verify factory now appears unavailable
-        get = Operation.createGet(UriUtils.buildAvailableUri(factoryURI))
-                .setCompletion(this.host.getExpectedFailureCompletion());
-        this.host.sendAndWait(get);
+        get = Operation.createGet(UriUtils.buildAvailableUri(factoryURI));
+        this.host.sendAndWaitExpectFailure(get);
 
         // verify PUT on child services makes them unavailable
-        this.host.testStart(states.size());
+        ctx = testCreate(states.size());
         for (URI u : states.keySet()) {
             put = put.clone().setUri(UriUtils.buildAvailableUri(u))
                     .setBody(body)
-                    .setCompletion(this.host.getCompletion());
+                    .setCompletion(ctx.getCompletion());
             this.host.send(put);
         }
-        this.host.testWait();
+        testWait(ctx);
 
         // expect 503 from /factory/<child>/available
-        this.host.testStart(states.size());
+        ctx = testCreate(states.size());
         for (URI u : states.keySet()) {
             get = get.clone().setUri(UriUtils.buildAvailableUri(u))
-                    .setCompletion(this.host.getExpectedFailureCompletion());
+                    .setCompletion(ctx.getExpectedFailureCompletion());
             this.host.send(get);
         }
-        this.host.testWait();
+        testWait(ctx);
 
         // now validate a stateful service that is in memory, and explicitly calls setAvailable
         // sometime after it starts
@@ -379,20 +363,17 @@ public class TestUtilityService extends BasicReusableHostTestCase {
                 UUID.randomUUID().toString(), new ExampleServiceState());
 
         // verify service is NOT available, since we have not yet poked it, to become available
-        get = Operation.createGet(UriUtils.buildAvailableUri(service.getUri()))
-                .setCompletion(this.host.getExpectedFailureCompletion());
-        this.host.sendAndWait(get);
+        get = Operation.createGet(UriUtils.buildAvailableUri(service.getUri()));
+        this.host.sendAndWaitExpectFailure(get);
 
         // send a PATCH to this special test service, to make it switch to available
         Operation patch = Operation.createPatch(service.getUri())
-                .setBody(new ExampleServiceState())
-                .setCompletion(this.host.getCompletion());
-        this.host.sendAndWait(patch);
+                .setBody(new ExampleServiceState());
+        this.host.sendAndWaitExpectSuccess(patch);
 
         // verify service now appears available
-        get = Operation.createGet(UriUtils.buildAvailableUri(service.getUri()))
-                .setCompletion(this.host.getCompletion());
-        this.host.sendAndWait(get);
+        get = Operation.createGet(UriUtils.buildAvailableUri(service.getUri()));
+        this.host.sendAndWaitExpectSuccess(get);
     }
 
     public void validateServiceUiHtmlResponse(Operation op) {
