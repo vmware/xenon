@@ -145,6 +145,13 @@ public class ServiceHost {
         public ServiceAlreadyStartedException(String servicePath) {
             super("Service already started: " + servicePath);
         }
+
+        /**
+         * Constructs an instance of this class.
+         */
+        public ServiceAlreadyStartedException(String servicePath, ProcessingStage stage) {
+            super("Service already started: " + servicePath + " stage: " + stage);
+        }
     }
 
     public static class ServiceNotFoundException extends IllegalStateException {
@@ -1841,7 +1848,7 @@ public class ServiceHost {
         } else {
             synchronized (this.state) {
                 existing = this.attachedServices.put(servicePath, service);
-                if (existing != null) {
+                if (existing != null && existing.getProcessingStage() != ProcessingStage.STOPPED) {
                     // restore existing entry and check for idempotent
                     this.attachedServices.put(servicePath, existing);
                     boolean isIdempotent = service.hasOption(ServiceOption.IDEMPOTENT_POST);
@@ -1852,7 +1859,8 @@ public class ServiceHost {
                     }
                     if (!isIdempotent) {
                         post.setStatusCode(Operation.STATUS_CODE_CONFLICT)
-                                .fail(new ServiceAlreadyStartedException(servicePath));
+                                .fail(new ServiceAlreadyStartedException(servicePath,
+                                        existing.getProcessingStage()));
                         return this;
                     }
                 }
@@ -1879,7 +1887,8 @@ public class ServiceHost {
         if (existing != null) {
             // service exists, on IDEMPOTENT factory. Convert to a PUT
             post.setAction(Action.PUT);
-            log(Level.INFO, "Converting POST to PUT for idempotent %s", servicePath);
+            log(Level.INFO, "Converting POST to PUT for idempotent %s in stage %s",
+                    servicePath, existing.getProcessingStage());
             handleRequest(null, post);
             return this;
         }
