@@ -26,6 +26,7 @@ import org.junit.runner.Description;
 
 import com.vmware.xenon.common.CommandLineArgumentParser;
 import com.vmware.xenon.common.Operation.CompletionHandler;
+import com.vmware.xenon.common.test.TestContext;
 import com.vmware.xenon.common.test.VerificationHost;
 import com.vmware.xenon.services.common.ExampleService;
 
@@ -62,6 +63,14 @@ public class BasicReusableHostTestCase {
     public void setUpPerMethod() {
         CommandLineArgumentParser.parseFromProperties(this);
         this.host = HOST;
+    }
+
+    public TestContext testCreate(int c) {
+        return this.host.testCreate(c);
+    }
+
+    public void testWait(TestContext ctx) throws Throwable {
+        ctx.await();
     }
 
     protected TestRule watcher = new TestWatcher() {
