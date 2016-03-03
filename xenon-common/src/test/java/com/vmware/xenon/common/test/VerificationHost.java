@@ -2775,7 +2775,7 @@ public class VerificationHost extends ExampleServiceHost {
         return this.temporaryFolder;
     }
 
-    protected void setTemporaryFolder(TemporaryFolder temporaryFolder) {
+    public void setTemporaryFolder(TemporaryFolder temporaryFolder) {
         this.temporaryFolder = temporaryFolder;
     }
 

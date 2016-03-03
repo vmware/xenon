@@ -33,12 +33,14 @@ import org.junit.rules.TemporaryFolder;
 
 import com.vmware.xenon.common.Service.ServiceOption;
 import com.vmware.xenon.common.test.MinimalTestServiceState;
+import com.vmware.xenon.common.test.TestContext;
 import com.vmware.xenon.common.test.TestProperty;
 import com.vmware.xenon.common.test.VerificationHost;
 import com.vmware.xenon.services.common.ExampleService;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
 import com.vmware.xenon.services.common.MinimalFactoryTestService;
 import com.vmware.xenon.services.common.MinimalTestService;
+import com.vmware.xenon.services.common.ServiceUriPaths;
 
 class TypeMismatchTestFactoryService extends FactoryService {
 
@@ -65,7 +67,9 @@ class SynchTestFactoryService extends FactoryService {
     private Runnable pendingTask;
 
     public void setTaskToRunOnNextMaintenance(Runnable r) {
-        this.pendingTask = r;
+        synchronized (this.options) {
+            this.pendingTask = r;
+        }
     }
 
     SynchTestFactoryService() {
@@ -82,10 +86,18 @@ class SynchTestFactoryService extends FactoryService {
 
     @Override
     public void handleNodeGroupMaintenance(Operation post) {
-        if (this.pendingTask != null) {
-            getHost().schedule(this.pendingTask, MAINTENANCE_DELAY_HANDLE_MILLIS,
+        Runnable task = null;
+        // use a local instance field to make sure the task is reset atomically
+        synchronized (this.options) {
+            if (this.pendingTask != null) {
+                task = this.pendingTask;
+                this.pendingTask = null;
+            }
+        }
+
+        if (task != null) {
+            getHost().schedule(task, MAINTENANCE_DELAY_HANDLE_MILLIS,
                     TimeUnit.MILLISECONDS);
-            this.pendingTask = null;
         }
         super.handleNodeGroupMaintenance(post);
     }
@@ -95,6 +107,8 @@ public class TestFactoryService extends BasicReusableHostTestCase {
 
     public static final String FAC_PATH = "/subpath/fff";
 
+    public int hostRestartCount = 10;
+
     private URI factoryUri;
 
     private SynchTestFactoryService factoryService;
@@ -102,6 +116,7 @@ public class TestFactoryService extends BasicReusableHostTestCase {
     @Before
     public void setup() throws Throwable {
         this.factoryUri = UriUtils.buildUri(this.host, SomeFactoryService.class);
+        CommandLineArgumentParser.parseFromProperties(this);
     }
 
     /**
@@ -113,7 +128,7 @@ public class TestFactoryService extends BasicReusableHostTestCase {
     */
     @Test
     public void synchronizationWithIdempotentPostAndDelete() throws Throwable {
-        for (int i = 0; i < 10; i++) {
+        for (int i = 0; i < this.hostRestartCount; i++) {
             this.host.log("iteration %s", i);
             createHostAndServicePostDeletePost();
         }
@@ -125,9 +140,13 @@ public class TestFactoryService extends BasicReusableHostTestCase {
         ServiceHost.Arguments args = new ServiceHost.Arguments();
         args.port = 0;
         args.sandbox = tmp.getRoot().toPath();
-        VerificationHost h = VerificationHost.create(0);
+        VerificationHost h = VerificationHost.create(args);
         try {
             h.setMaintenanceIntervalMicros(TimeUnit.MILLISECONDS.toMicros(50));
+            h.setTemporaryFolder(tmp);
+            // we will kick of synchronization to avoid a race: if maintenance handler is called
+            // before we set the task below, the test will timeout/hang
+            h.setPeerSynchronizationEnabled(false);
             h.start();
 
             this.factoryUri = UriUtils.buildUri(h, SynchTestFactoryService.class);
@@ -136,36 +155,36 @@ public class TestFactoryService extends BasicReusableHostTestCase {
             ExampleServiceState doc = new ExampleServiceState();
             doc.documentSelfLink = SynchTestFactoryService.TEST_SERVICE_PATH;
             doc.name = doc.documentSelfLink;
-            this.host.testStart(1);
+            TestContext ctx = testCreate(1);
             doPost(h, doc, (e) -> {
                 if (e != null) {
-                    this.host.failIteration(e);
+                    ctx.failIteration(e);
                     return;
                 }
-
                 this.factoryService.setTaskToRunOnNextMaintenance(() -> {
                     doDelete(h, doc.documentSelfLink, (e1) -> {
+
                         if (e1 != null) {
-                            this.host.failIteration(e1);
+                            ctx.failIteration(e1);
                             return;
                         }
 
                         doPost(h, doc, (e2) -> {
                             if (e2 != null) {
-                                this.host.failIteration(e2);
+                                ctx.failIteration(e2);
                                 return;
                             }
-                            this.host.completeIteration();
+                            ctx.completeIteration();
                         });
                     });
                 });
-
+                // trigger maintenance
+                h.scheduleNodeGroupChangeMaintenance(ServiceUriPaths.DEFAULT_NODE_SELECTOR);
             });
 
-            this.host.testWait();
+            testWait(ctx);
         } finally {
             h.tearDown();
-            tmp.delete();
         }
     }
 
