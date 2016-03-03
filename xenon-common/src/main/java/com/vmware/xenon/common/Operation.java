@@ -571,16 +571,8 @@ public class Operation implements Cloneable {
         return createOperation(Action.GET, uri);
     }
 
-    public void sendWith(ServiceHost host) {
-        host.sendRequest(this);
-    }
-
-    public void sendWith(Service service) {
-        service.sendRequest(this);
-    }
-
-    public void sendWith(ServiceClient client) {
-        client.send(this);
+    public void sendWith(ServiceRequestSender sender) {
+        sender.sendRequest(this);
     }
 
     @Override
@@ -1005,7 +997,7 @@ public class Operation implements Cloneable {
     }
 
     public Operation nestCompletion(CompletionHandler h) {
-        final CompletionHandler existing = this.completion;
+        CompletionHandler existing = this.completion;
 
         setCompletion((o, e) -> {
             setCompletion(existing);
@@ -1016,7 +1008,7 @@ public class Operation implements Cloneable {
     }
 
     public void nestCompletion(Consumer<Operation> successHandler) {
-        final CompletionHandler existing = this.completion;
+        CompletionHandler existing = this.completion;
 
         setCompletion((o, e) -> {
             setCompletion(existing);

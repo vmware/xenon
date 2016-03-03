@@ -195,7 +195,7 @@ public class NettyHttpServiceClient implements ServiceClient {
 
     @Override
     public void send(Operation op) {
-        sendSingleRequest(op);
+        this.sendRequest(op);
     }
 
     private void sendSingleRequest(Operation op) {
@@ -379,7 +379,7 @@ public class NettyHttpServiceClient implements ServiceClient {
                 fail(e, op, originalBody);
                 return;
             }
-            sendRequest(op);
+            doSendRequest(op);
         });
 
         int port = uri.getPort();
@@ -417,7 +417,12 @@ public class NettyHttpServiceClient implements ServiceClient {
         pool.connectOrReuse(uri.getHost(), port, op);
     }
 
-    private void sendRequest(Operation op) {
+    @Override
+    public void sendRequest(Operation op) {
+        sendSingleRequest(op);
+    }
+
+    private void doSendRequest(Operation op) {
         final Object originalBody = op.getBodyRaw();
         try {
             byte[] body = Utils.encodeBody(op);

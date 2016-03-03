@@ -19,15 +19,12 @@ import java.util.Iterator;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.function.Consumer;
 import java.util.stream.Stream;
-
-import com.vmware.xenon.common.Operation.CompletionHandler;
 
 /**
  * The {@link OperationJoin} construct is a handler for {@link OperationJoin#create(Operation...)}
  * functionality. After multiple parallel requests have
- * completed, only then will invoked all {@link CompletionHandler}s providing all operations and
+ * completed, only then will invoked all {@link com.vmware.xenon.common.Operation.CompletionHandler}s providing all operations and
  * failures as part of the execution context.
  */
 public class OperationJoin {
@@ -37,13 +34,14 @@ public class OperationJoin {
     public static final String ERROR_MSG_OPERATIONS_ALREADY_SET = "operations have already been set";
     private final ConcurrentHashMap<Long, Operation> operations;
     private ConcurrentHashMap<Long, Throwable> failures;
-    volatile JoinedCompletionHandler joinedCompletion;
+    JoinedCompletionHandler joinedCompletion;
     private OperationContext opContext;
-    private AtomicInteger pendingCount = new AtomicInteger();
-    private AtomicInteger batchSizeGuard = new AtomicInteger();
+    private final AtomicInteger pendingCount = new AtomicInteger();
+    private final AtomicInteger batchSizeGuard = new AtomicInteger();
     private int batchSize = 0;
     private Iterator<Operation> operationIterator;
-    private Consumer<Operation> sendOperation;
+    private ServiceRequestSender sender;
+    private final Object failuresLock = new Object();
 
     private OperationJoin() {
         this.operations = new ConcurrentHashMap<>(APPROXIMATE_EXPECTED_CAPACITY);
@@ -101,9 +99,8 @@ public class OperationJoin {
             throw new IllegalStateException(ERROR_MSG_OPERATIONS_ALREADY_SET);
         }
 
-        CompletionHandler nestedParentHandler = createParentCompletion();
         for (Operation op : ops) {
-            prepareOperation(nestedParentHandler, op);
+            prepareOperation(op);
         }
 
         this.operationIterator = this.operations.values().iterator();
@@ -123,14 +120,15 @@ public class OperationJoin {
             throw new IllegalStateException(ERROR_MSG_OPERATIONS_ALREADY_SET);
         }
 
-        CompletionHandler nestedParentHandler = createParentCompletion();
         for (Operation op : ops) {
-            prepareOperation(nestedParentHandler, op);
+            prepareOperation(op);
         }
 
         this.operationIterator = this.operations.values().iterator();
         return this;
     }
+
+
 
     /**
      * Set the {@link Operation}s for the current {@link OperationJoin}. This is a one-time
@@ -141,8 +139,7 @@ public class OperationJoin {
             throw new IllegalStateException(ERROR_MSG_OPERATIONS_ALREADY_SET);
         }
 
-        CompletionHandler nestedParentHandler = createParentCompletion();
-        ops.forEach((op) -> prepareOperation(nestedParentHandler, op));
+        ops.forEach(this::prepareOperation);
         this.operationIterator = this.operations.values().iterator();
 
         if (isEmpty()) {
@@ -152,54 +149,51 @@ public class OperationJoin {
         return this;
     }
 
-    private void prepareOperation(CompletionHandler nestedParentHandler, Operation op) {
+    private void prepareOperation(Operation op) {
         this.operations.put(op.getId(), op);
-        op.nestCompletion(nestedParentHandler);
+        op.nestCompletion(this::parentCompletion);
         this.pendingCount.incrementAndGet();
     }
 
-    private CompletionHandler createParentCompletion() {
-        CompletionHandler nestedParentHandler = (o, e) -> {
-            if (e != null) {
-                synchronized (this.pendingCount) {
-                    if (this.failures == null) {
-                        this.failures = new ConcurrentHashMap<>();
-                    }
-                }
-                this.failures.put(o.getId(), e);
-            }
-
-            Operation originalOp = this.operations.get(o.getId());
-            originalOp.setStatusCode(o.getStatusCode())
-                    .transferResponseHeadersFrom(o)
-                    .setBodyNoCloning(o.getBodyRaw());
-
-            this.batchSizeGuard.decrementAndGet();
-            sendNext();
-
-            if (this.pendingCount.decrementAndGet() != 0) {
-                return;
-            }
-
-            OperationContext.restoreOperationContext(this.opContext);
-            // call each operation completion individually
-            for (Operation op : this.operations.values()) {
-                Throwable t = null;
-                if (this.failures != null) {
-                    t = this.failures.get(op.getId());
-                }
-                if (t != null) {
-                    op.fail(t);
-                } else {
-                    op.complete();
+    private void parentCompletion(Operation o, Throwable e) {
+        if (e != null) {
+            synchronized (this.failuresLock) {
+                if (this.failures == null) {
+                    this.failures = new ConcurrentHashMap<>();
                 }
             }
+            this.failures.put(o.getId(), e);
+        }
 
-            if (this.joinedCompletion != null) {
-                this.joinedCompletion.handle(this.operations, this.failures);
+        Operation originalOp = getOperation(o.getId());
+        originalOp.setStatusCode(o.getStatusCode())
+                .transferResponseHeadersFrom(o)
+                .setBodyNoCloning(o.getBodyRaw());
+
+        this.batchSizeGuard.decrementAndGet();
+        sendNext();
+
+        if (this.pendingCount.decrementAndGet() != 0) {
+            return;
+        }
+
+        OperationContext.restoreOperationContext(this.opContext);
+        // call each operation completion individually
+        for (Operation op : this.operations.values()) {
+            Throwable t = null;
+            if (this.failures != null) {
+                t = this.failures.get(op.getId());
             }
-        };
-        return nestedParentHandler;
+            if (t != null) {
+                op.fail(t);
+            } else {
+                op.complete();
+            }
+        }
+
+        if (this.joinedCompletion != null) {
+            this.joinedCompletion.handle(this.operations, this.failures);
+        }
     }
 
     private void sendWithBatch() {
@@ -210,26 +204,30 @@ public class OperationJoin {
         // Move the operations to local list to avoid concurrency issues with iterator
         // when sendNext could be called from handler of returning operation
         // before we get out of this method.
-        ArrayList<Operation> localOperationList = new ArrayList<>();
+        ArrayList<Operation> batch = new ArrayList<>();
         int count = 0;
         while (this.operationIterator.hasNext()) {
-            localOperationList.add(this.operationIterator.next());
+            batch.add(this.operationIterator.next());
             count++;
             if (this.batchSize > 0 && count == this.batchSize) {
                 break;
             }
         }
 
-        for (Operation op : localOperationList) {
-            this.sendOperation.accept(op);
+        for (Operation op : batch) {
+            sendOperation(op);
             if (this.batchSize > 0 && this.batchSizeGuard.incrementAndGet() > this.batchSize) {
                 throw new IllegalStateException((ERROR_MSG_BATCH_LIMIT_VIOLATED));
             }
         }
     }
 
+    private void sendOperation(Operation op) {
+        this.sender.sendRequest(op);
+    }
+
     private void sendNext() {
-        if (this.sendOperation == null) {
+        if (this.sender == null) {
             return;
         }
 
@@ -244,81 +242,33 @@ public class OperationJoin {
             if (this.batchSize > 0 && this.batchSizeGuard.incrementAndGet() > this.batchSize) {
                 throw new IllegalStateException((ERROR_MSG_BATCH_LIMIT_VIOLATED));
             }
-            this.sendOperation.accept(op);
+            sendOperation(op);
         }
     }
 
     /**
-     * Send the join operations using the {@link ServiceHost}.
+     * Send the join operations using the {@link ServiceRequestSender}. A sender can be
+     * a ServiceHost, ServiceClient or a Service.
      * Caller can also provide batch size to control the rate at which operations are sent.
      */
-    public void sendWith(ServiceHost host, int batchSize) {
+    public void sendWith(ServiceRequestSender sender, int batchSize) {
         if (batchSize <= 0) {
             throw new IllegalArgumentException(ERROR_MSG_INVALID_BATCH_SIZE);
         }
 
         this.batchSize = batchSize;
-        this.sendWith(host);
+        this.sendWith(sender);
     }
 
     /**
      * Send the join operations using the {@link ServiceHost}.
      */
-    public void sendWith(ServiceHost host) {
-        if (host == null) {
+    public void sendWith(ServiceRequestSender sender) {
+        if (sender == null) {
             throw new IllegalArgumentException("host must not be null.");
         }
 
-        this.sendOperation = host::sendRequest;
-        sendWithBatch();
-    }
-
-    /**
-     * Send the join operations using the {@link Service}.
-     * Caller can also provide batch size to control the rate at which operations are sent.
-     */
-    public void sendWith(Service service, int batchSize) {
-        if (batchSize <= 0) {
-            throw new IllegalArgumentException(ERROR_MSG_INVALID_BATCH_SIZE);
-        }
-
-        this.batchSize = batchSize;
-        this.sendWith(service);
-    }
-
-    /**
-     * Send the join operations using the {@link Service}.
-     */
-    public void sendWith(Service service) {
-        if (service == null) {
-            throw new IllegalArgumentException("service must not be null.");
-        }
-
-        this.sendOperation = service::sendRequest;
-        sendWithBatch();
-    }
-
-    /**
-     * Send the join operations using the {@link ServiceClient}.
-     * Caller can also provide batch size to control the rate at which operations are sent.
-     */
-    public void sendWith(ServiceClient client, int batchSize) {
-        if (batchSize <= 0) {
-            throw new IllegalArgumentException(ERROR_MSG_INVALID_BATCH_SIZE);
-        }
-
-        this.batchSize = batchSize;
-        this.sendWith(client);
-    }
-
-    /**
-     * Send the join operations using the {@link ServiceClient}.
-     */
-    public void sendWith(ServiceClient client) {
-        if (client == null) {
-            throw new IllegalArgumentException("client must not be null.");
-        }
-        this.sendOperation = client::send;
+        this.sender = sender;
         sendWithBatch();
     }
 
@@ -361,12 +311,12 @@ public class OperationJoin {
     }
 
     @FunctionalInterface
-    public static interface JoinedCompletionHandler {
+    public interface JoinedCompletionHandler {
         void handle(Map<Long, Operation> ops, Map<Long, Throwable> failures);
     }
 
 
-    public void fail(Throwable t) {
+    void fail(Throwable t) {
         this.failures = new ConcurrentHashMap<>();
         this.failures.put(this.operations.keys().nextElement(), t);
         OperationContext origContext = OperationContext.getOperationContext();
