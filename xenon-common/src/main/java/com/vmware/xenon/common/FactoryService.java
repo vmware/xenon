@@ -46,7 +46,7 @@ public abstract class FactoryService extends StatelessService {
         return fs;
     }
 
-    public static final int SELF_QUERY_RESULT_LIMIT = 1000;
+    public static final int SELF_QUERY_RESULT_LIMIT = 100_000;
     private static final long SELF_QUERY_TIMEOUT_MINUTES = 60;
     private EnumSet<ServiceOption> childOptions;
     private String nodeSelectorLink = ServiceUriPaths.DEFAULT_NODE_SELECTOR;
@@ -204,6 +204,10 @@ public abstract class FactoryService extends StatelessService {
     }
 
     private QueryTask buildChildQueryTask() {
+        return buildChildQueryTask(this.selfQueryResultLimit);
+    }
+
+    private QueryTask buildChildQueryTask(int limit) {
         /*
         Use QueryTask to compute all the documents that match
         1) documentSelfLink to <FactorySelfLink>/*
@@ -214,17 +218,14 @@ public abstract class FactoryService extends StatelessService {
 
         queryTask.taskInfo.isDirect = true;
 
-        QueryTask.Query kindClause;
-        QueryTask.Query uriPrefixClause;
-
-        uriPrefixClause = new QueryTask.Query()
+        QueryTask.Query uriPrefixClause = new QueryTask.Query()
                 .setTermPropertyName(ServiceDocument.FIELD_NAME_SELF_LINK)
                 .setTermMatchType(QueryTask.QueryTerm.MatchType.WILDCARD)
                 .setTermMatchValue(
                         getSelfLink() + UriUtils.URI_PATH_CHAR + UriUtils.URI_WILDCARD_CHAR);
         queryTask.querySpec.query.addBooleanClause(uriPrefixClause);
 
-        kindClause = new QueryTask.Query()
+        QueryTask.Query kindClause = new QueryTask.Query()
                 .setTermPropertyName(ServiceDocument.FIELD_NAME_KIND)
                 .setTermMatchValue(Utils.buildKind(this.getStateType()));
 
@@ -237,8 +238,7 @@ public abstract class FactoryService extends StatelessService {
         timeoutMicros = Math.max(timeoutMicros, getHost().getOperationTimeoutMicros());
         queryTask.documentExpirationTimeMicros = Utils.getNowMicrosUtc() + timeoutMicros;
 
-        // process child services in limited numbers, set query result limit
-        queryTask.querySpec.resultLimit = this.selfQueryResultLimit;
+        queryTask.querySpec.resultLimit = limit;
         return queryTask;
     }
 
@@ -584,13 +584,13 @@ public abstract class FactoryService extends StatelessService {
     private void handleGetCompletion(Operation op) {
         String oDataFilter = UriUtils.getODataFilterParamValue(op.getUri());
         if (oDataFilter != null) {
-            handleGetOdataCompletion(op, oDataFilter);
+            handleGetOdataCompletion(op);
         } else {
-            completeGetWithQuery(this, op, this.childOptions);
+            handleGetQuery(op);
         }
     }
 
-    private void handleGetOdataCompletion(Operation op, String oDataFilter) {
+    private void handleGetOdataCompletion(Operation op) {
         QueryTask task = ODataUtils.toQuery(op);
         if (task == null) {
             return;
@@ -614,29 +614,37 @@ public abstract class FactoryService extends StatelessService {
                 }));
     }
 
-    public static void completeGetWithQuery(Service s, Operation op,
-            EnumSet<ServiceOption> caps) {
-        boolean doExpand = false;
-        if (op.getUri().getQuery() != null) {
-            doExpand = UriUtils.hasODataExpandParamValue(op.getUri());
+    private void handleGetQuery(Operation op) {
+        QueryTask queryTask = buildChildQueryTask();
+
+        if (op.getUri().getQuery() != null && UriUtils.hasODataExpandParamValue(op.getUri())) {
+            queryTask.querySpec.options.add(QueryTask.QuerySpecification.QueryOption.EXPAND_CONTENT);
         }
 
-        URI u = UriUtils.buildDocumentQueryUri(s.getHost(),
-                UriUtils.buildUriPath(s.getSelfLink(), UriUtils.URI_WILDCARD_CHAR),
-                doExpand,
-                false,
-                caps != null ? caps : EnumSet.of(ServiceOption.NONE));
-
-        Operation query = Operation.createGet(u)
+        sendRequest(Operation.createPost(this, ServiceUriPaths.CORE_QUERY_TASKS).setBody(queryTask)
                 .setCompletion((o, e) -> {
                     if (e != null) {
                         op.fail(e);
                         return;
                     }
-                    op.setBodyNoCloning(o.getBodyRaw()).complete();
-                });
+                    QueryTask resultQueryTask = o.getBody(QueryTask.class);
 
-        s.sendRequest(query);
+                    // Handle no results
+                    if (resultQueryTask.results.nextPageLink == null) {
+                        op.setBodyNoCloning(resultQueryTask.results).complete();
+                    } else {
+                        // Return the first page results as the response
+                        sendRequest(Operation.createGet(UriUtils.buildUri(getHost(), resultQueryTask.results.nextPageLink))
+                                .setCompletion((o2, e2) -> {
+                                    if (e != null) {
+                                        op.fail(e2);
+                                        return;
+                                    }
+                                    QueryTask pageQueryTask = o2.getBody(QueryTask.class);
+                                    op.setBodyNoCloning(pageQueryTask.results).complete();
+                                }));
+                    }
+                }));
     }
 
     public void handleOptions(Operation op) {
