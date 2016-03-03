@@ -6,6 +6,11 @@
   ServiceDocument.UsageOptions and can also specify indexing
   options.
 
+* Add ServiceRequestSender interface that captures the capability
+  to send Operation. Allows for ServiceHost, Service and ServiceClient
+  to be dealt with uniformly. Clients may need to recompile as a lot
+  of overloaded methods are removed.
+
 ## 0.7.1
 
 * Added VerificationHost.waitFor() utility method

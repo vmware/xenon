@@ -133,7 +133,7 @@ import com.vmware.xenon.services.common.authn.BasicAuthenticationService;
  * The HTTP service host listens on HTTP URIs but shares common functionality with hosts on other
  * protocols
  */
-public class ServiceHost {
+public class ServiceHost implements ServiceRequestSender {
     public static final String UI_DIRECTORY_NAME = "ui";
 
     public static class ServiceAlreadyStartedException extends IllegalStateException {

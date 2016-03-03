@@ -19,7 +19,7 @@ import java.util.concurrent.TimeUnit;
 
 import com.vmware.xenon.common.ServiceStats.ServiceStat;
 
-public interface Service {
+public interface Service extends ServiceRequestSender {
     enum Action {
         GET, POST, PATCH, PUT, DELETE, OPTIONS
     }

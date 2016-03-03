@@ -15,7 +15,7 @@ package com.vmware.xenon.common;
 
 import javax.net.ssl.SSLContext;
 
-public interface ServiceClient {
+public interface ServiceClient extends ServiceRequestSender {
     String SSL_PROTOCOL_NAME = "SSL";
     String TLS_PROTOCOL_NAME = "TLS";
 
@@ -29,6 +29,10 @@ public interface ServiceClient {
 
     void stop();
 
+    /**
+     * Alias for {@link ServiceRequestSender#sendRequest(Operation)}.
+     * @param op
+     */
     void send(Operation op);
 
     void sendWithCallback(Operation op);

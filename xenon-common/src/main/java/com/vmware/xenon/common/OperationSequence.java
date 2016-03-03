@@ -101,10 +101,10 @@ import com.vmware.xenon.common.OperationJoin.JoinedCompletionHandler;
  */
 public class OperationSequence {
     private final OperationJoin join;
-    private volatile OperationSequence child;
-    private volatile OperationSequence parent;
-    private volatile Object sender;
-    private volatile boolean cumulative = true;
+    private OperationSequence child;
+    private OperationSequence parent;
+    private ServiceRequestSender sender;
+    private boolean cumulative = true;
 
     private OperationSequence(OperationJoin join) {
         this.join = join;
@@ -119,17 +119,19 @@ public class OperationSequence {
             throw new IllegalArgumentException("At least one 'operationJoin' is required.");
         }
 
-        OperationSequence sequence = null;
+        return chainJoins(null, joins);
+    }
+
+    private static OperationSequence chainJoins(OperationSequence root, OperationJoin... joins) {
         for (OperationJoin join : joins) {
             OperationSequence current = new OperationSequence(join);
-            if (sequence != null) {
-                sequence.child = current;
-                current.parent = sequence;
+            if (root != null) {
+                root.child = current;
+                current.parent = root;
             }
-            sequence = current;
+            root = current;
         }
-
-        return sequence;
+        return root;
     }
 
     /**
@@ -145,15 +147,7 @@ public class OperationSequence {
      * sequence with the current {@link OperationSequence}s.
      */
     public OperationSequence next(OperationJoin... joins) {
-        OperationSequence sequence = this;
-        for (OperationJoin join : joins) {
-            OperationSequence current = new OperationSequence(join);
-            sequence.child = current;
-            current.parent = sequence;
-            sequence = current;
-        }
-
-        return sequence;
+        return chainJoins(this, joins);
     }
 
     public OperationSequence next(Operation... ops) {
@@ -171,49 +165,22 @@ public class OperationSequence {
     }
 
     /**
-     * Send using the {@link ServiceHost}.
+     * Send using the {@link ServiceRequestSender}.
+     * @see OperationJoin#sendWith(ServiceRequestSender)
      */
-    public void sendWith(ServiceHost host) {
+    public void sendWith(ServiceRequestSender sender) {
         if (this.parent != null) {
-            this.parent.sendWith(host);
+            this.parent.sendWith(sender);
         } else {
-            send(host);
+            send(sender);
         }
     }
 
-    /**
-     * Send using the {@link Service}.
-     */
-    public void sendWith(Service service) {
-        if (this.parent != null) {
-            this.parent.sendWith(service);
-        } else {
-            send(service);
-        }
-    }
-
-    /**
-     * Send using the {@link ServiceClient}.
-     */
-    public void sendWith(ServiceClient client) {
-        if (this.parent != null) {
-            this.parent.sendWith(client);
-        } else {
-            send(client);
-        }
-    }
-
-    private void send(Object sender) {
+    private void send(ServiceRequestSender sender) {
         validateSendRequest(sender);
         this.sender = sender;
         setProxyCompletion();
-        if (sender instanceof Service) {
-            this.join.sendWith((Service) sender);
-        } else if (sender instanceof ServiceHost) {
-            this.join.sendWith((ServiceHost) sender);
-        } else {
-            this.join.sendWith((ServiceClient) sender);
-        }
+        this.join.sendWith(sender);
     }
 
     private void setProxyCompletion() {
