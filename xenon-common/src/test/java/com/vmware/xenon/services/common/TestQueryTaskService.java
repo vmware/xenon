@@ -555,10 +555,10 @@ public class TestQueryTaskService {
 
         URI factoryURI = UriUtils.buildFactoryUri(this.host, ExampleService.class);
         factoryURI = UriUtils.buildExpandLinksQueryUri(factoryURI);
+
         // verify expand from both factory and a direct query task
-        ServiceDocumentQueryResult factoryGetResult = this.host
-                .getFactoryState(factoryURI);
-        validateExpandedResults(factoryGetResult, states.size(), count, Action.PATCH);
+        QueryTask factoryGetResultTask = this.host.getServiceState(null, QueryTask.class, factoryURI);
+        validateExpandedResults(factoryGetResultTask.results, states.size(), count, Action.PATCH);
 
         ServiceDocumentQueryResult taskResult = task.results;
         validateExpandedResults(taskResult, states.size(), count, Action.PATCH);
@@ -581,9 +581,8 @@ public class TestQueryTaskService {
             assertTrue(!st.name.equals(removedState.name));
         }
 
-        factoryGetResult = this.host
-                .getFactoryState(factoryURI);
-        validateExpandedResults(factoryGetResult, states.size(), count, Action.PATCH);
+        factoryGetResultTask = this.host.getServiceState(null, QueryTask.class, factoryURI);
+        validateExpandedResults(factoryGetResultTask.results, states.size(), count, Action.PATCH);
 
         taskResult = task.results;
         validateExpandedResults(taskResult, states.size(), count, Action.PATCH);
