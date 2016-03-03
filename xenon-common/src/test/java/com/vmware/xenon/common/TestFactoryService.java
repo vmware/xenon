@@ -23,14 +23,19 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Consumer;
 
 import org.junit.Before;
 import org.junit.Test;
+import org.junit.rules.TemporaryFolder;
 
 import com.vmware.xenon.common.Service.ServiceOption;
 import com.vmware.xenon.common.test.MinimalTestServiceState;
 import com.vmware.xenon.common.test.TestProperty;
+import com.vmware.xenon.common.test.VerificationHost;
+import com.vmware.xenon.services.common.ExampleService;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
 import com.vmware.xenon.services.common.MinimalFactoryTestService;
 import com.vmware.xenon.services.common.MinimalTestService;
@@ -50,15 +55,156 @@ class TypeMismatchTestFactoryService extends FactoryService {
     }
 }
 
+class SynchTestFactoryService extends FactoryService {
+    private static final int MAINTENANCE_DELAY_HANDLE_MILLIS = 1;
+    public static final String TEST_FACTORY_PATH = "/subpath/testfactory";
+    public static final String TEST_SERVICE_PATH = TEST_FACTORY_PATH + "/instanceX";
+
+    public static final String SELF_LINK = TEST_FACTORY_PATH;
+
+    private Runnable pendingTask;
+
+    public void setTaskToRunOnNextMaintenance(Runnable r) {
+        this.pendingTask = r;
+    }
+
+    SynchTestFactoryService() {
+        super(ExampleServiceState.class);
+        toggleOption(ServiceOption.IDEMPOTENT_POST, true);
+        toggleOption(ServiceOption.PERSISTENCE, true);
+        toggleOption(ServiceOption.REPLICATION, true);
+    }
+
+    @Override
+    public Service createServiceInstance() throws Throwable {
+        return new ExampleService();
+    }
+
+    @Override
+    public void handleNodeGroupMaintenance(Operation post) {
+        if (this.pendingTask != null) {
+            getHost().schedule(this.pendingTask, MAINTENANCE_DELAY_HANDLE_MILLIS,
+                    TimeUnit.MILLISECONDS);
+            this.pendingTask = null;
+        }
+        super.handleNodeGroupMaintenance(post);
+    }
+}
+
 public class TestFactoryService extends BasicReusableHostTestCase {
 
     public static final String FAC_PATH = "/subpath/fff";
 
     private URI factoryUri;
 
+    private SynchTestFactoryService factoryService;
+
     @Before
     public void setup() throws Throwable {
         this.factoryUri = UriUtils.buildUri(this.host, SomeFactoryService.class);
+    }
+
+    /**
+    * This tests a very tricky scenario:
+    * Running a node group maintenance of factory service with REPLICATION and PERSISTENCE.
+    * When running maintenance, and at the same time a child service was deleted and short after created with API's DELETE and POST,
+    * the maintenance will try to re-create the deleted (and stopped) child service.
+    * Test verifies that with such race condition no issues should happen.
+    */
+    @Test
+    public void synchronizationWithIdempotentPostAndDelete() throws Throwable {
+        for (int i = 0; i < 10; i++) {
+            this.host.log("iteration %s", i);
+            createHostAndServicePostDeletePost();
+        }
+    }
+
+    private void createHostAndServicePostDeletePost() throws Throwable {
+        TemporaryFolder tmp = new TemporaryFolder();
+        tmp.create();
+        ServiceHost.Arguments args = new ServiceHost.Arguments();
+        args.port = 0;
+        args.sandbox = tmp.getRoot().toPath();
+        VerificationHost h = VerificationHost.create(0);
+        try {
+            h.setMaintenanceIntervalMicros(TimeUnit.MILLISECONDS.toMicros(50));
+            h.start();
+
+            this.factoryUri = UriUtils.buildUri(h, SynchTestFactoryService.class);
+            this.factoryService = startSynchFactoryService(h);
+
+            ExampleServiceState doc = new ExampleServiceState();
+            doc.documentSelfLink = SynchTestFactoryService.TEST_SERVICE_PATH;
+            doc.name = doc.documentSelfLink;
+            this.host.testStart(1);
+            doPost(h, doc, (e) -> {
+                if (e != null) {
+                    this.host.failIteration(e);
+                    return;
+                }
+
+                this.factoryService.setTaskToRunOnNextMaintenance(() -> {
+                    doDelete(h, doc.documentSelfLink, (e1) -> {
+                        if (e1 != null) {
+                            this.host.failIteration(e1);
+                            return;
+                        }
+
+                        doPost(h, doc, (e2) -> {
+                            if (e2 != null) {
+                                this.host.failIteration(e2);
+                                return;
+                            }
+                            this.host.completeIteration();
+                        });
+                    });
+                });
+
+            });
+
+            this.host.testWait();
+        } finally {
+            h.tearDown();
+            tmp.delete();
+        }
+    }
+
+    private void doPost(VerificationHost h, ExampleServiceState doc, Consumer<Throwable> callback) {
+        h.send(Operation
+                .createPost(this.factoryUri)
+                .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_FORCE_INDEX_UPDATE)
+                .setBody(doc)
+                .setCompletion((o, e) -> {
+                    if (e != null) {
+                        callback.accept(e);
+                    } else {
+                        callback.accept(null);
+                    }
+                }));
+    }
+
+    private void doDelete(VerificationHost h, String documentSelfLink, Consumer<Throwable> callback) {
+        this.host.send(Operation.createDelete(
+                UriUtils.buildUri(h, documentSelfLink))
+                .setBody(new ExampleServiceState())
+                .setCompletion(
+                        (o, e) -> {
+                            if (e != null) {
+                                callback.accept(e);
+                            } else {
+                                callback.accept(null);
+                            }
+                        }));
+    }
+
+    private SynchTestFactoryService startSynchFactoryService(VerificationHost h) throws Throwable {
+        SynchTestFactoryService factoryService = new SynchTestFactoryService();
+
+        h.startService(
+                Operation.createPost(this.factoryUri), factoryService);
+        h.waitForServiceAvailable(SynchTestFactoryService.SELF_LINK);
+
+        return factoryService;
     }
 
     @Test

@@ -231,7 +231,9 @@ public class LoaderService extends StatefulService {
             }
         }
 
-        URLClassLoader cl = new URLClassLoader(urls);
+        URLClassLoader cl = null;
+        try {
+            cl = new URLClassLoader(urls);
 
         for (LoaderServiceInfo packageInfo : services.values()) {
             logFine("Processing package %s", packageInfo.name);
@@ -245,6 +247,14 @@ public class LoaderService extends StatefulService {
                                     service.getClass())), service);
                     packageInfo.serviceClasses.put(serviceClass, service.getSelfLink());
                     logInfo("Started service " + service.getSelfLink());
+                }
+            }
+        }
+        } finally {
+            if (cl != null) {
+                try {
+                    cl.close();
+                } catch (IOException e) {
                 }
             }
         }

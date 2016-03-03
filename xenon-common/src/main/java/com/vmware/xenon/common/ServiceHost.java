@@ -1847,13 +1847,11 @@ public class ServiceHost {
             // do not directly attach utility services
         } else {
             synchronized (this.state) {
-                existing = this.attachedServices.put(servicePath, service);
+                existing = this.attachedServices.get(servicePath);
                 if (existing != null && existing.getProcessingStage() == ProcessingStage.STOPPED) {
                     existing = null;
                 }
                 if (existing != null) {
-                    // restore existing entry and check for idempotent
-                    this.attachedServices.put(servicePath, existing);
                     boolean isIdempotent = service.hasOption(ServiceOption.IDEMPOTENT_POST);
                     if (!isIdempotent) {
                         Service parent = findService(UriUtils.getParentPath(servicePath));
@@ -1866,6 +1864,8 @@ public class ServiceHost {
                                         existing.getProcessingStage()));
                         return this;
                     }
+                } else {
+                    this.attachedServices.put(servicePath, service);
                 }
 
                 if (service.hasOption(ServiceOption.URI_NAMESPACE_OWNER)) {
@@ -2669,16 +2669,20 @@ public class ServiceHost {
         }
 
         boolean isDeleted = ServiceDocument.isDeleted(stateFromStore);
+        boolean isSynch = serviceStartPost.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_SYNCH);
 
         if (!serviceStartPost.hasBody()) {
+            // this POST is due to a restart, or synchronization attempt which will never have a body
             if (isDeleted) {
-                return false;
+                // fail only if the service is deleted, and we are not synchronizing. If we are synchronizing
+                // we want to explicitly start this link
+                return isSynch;
             } else {
                 // this POST is due to a restart, which will never have a body
+                // service is not deleted we can restart it
                 return true;
             }
         }
-
         ServiceDocument initState = (ServiceDocument) serviceStartPost.getBodyRaw();
         if (isDeleted) {
             if (stateFromStore.documentVersion < initState.documentVersion) {
@@ -4345,7 +4349,7 @@ public class ServiceHost {
                 continue;
             }
             if (lastSynchTime < selectorSynchTime) {
-                log(Level.INFO, "Service %s started at %d, last synch at %d", link,
+                log(Level.FINE, "Service %s started at %d, last synch at %d", link,
                         lastSynchTime, selectorSynchTime);
                 selectorPathsToSynch.add(s.getPeerNodeSelectorPath());
             }

@@ -289,7 +289,7 @@ public class TestTransactionService extends BasicReusableHostTestCase {
         this.host.testWait();
     }
 
-    private void createAccount(String transactionId, String accountId, boolean independentTest)
+    public void createAccount(String transactionId, String accountId, boolean independentTest)
             throws Throwable {
         createAccount(transactionId, accountId, 0.0, independentTest);
     }
@@ -353,7 +353,7 @@ public class TestTransactionService extends BasicReusableHostTestCase {
         assertEquals(expected, task.results.documentCount.longValue());
     }
 
-    private void sumAccounts(String transactionId, double expected) throws Throwable {
+    public void sumAccounts(String transactionId, double expected) throws Throwable {
         Query.Builder queryBuilder = Query.Builder.create().addKindFieldClause(BankAccountServiceState.class)
                 .addFieldClause(ServiceDocument.FIELD_NAME_SELF_LINK,
                         BankAccountService.FACTORY_LINK + UriUtils.URI_PATH_CHAR + this.baseAccountId + UriUtils.URI_WILDCARD_CHAR,
@@ -426,7 +426,7 @@ public class TestTransactionService extends BasicReusableHostTestCase {
         return patch;
     }
 
-    private void withdrawFromAccount(String transactionId, String accountId,
+    public void withdrawFromAccount(String transactionId, String accountId,
             double amountToWithdraw,
             boolean independentTest)
             throws Throwable {
