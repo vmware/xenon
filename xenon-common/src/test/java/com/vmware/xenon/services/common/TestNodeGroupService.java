@@ -840,6 +840,10 @@ public class TestNodeGroupService {
 
         updateExampleServiceOptions(childStates);
 
+        for (VerificationHost h : this.host.getInProcessHostMap().values()) {
+            h.setPeerSynchronizationTimeLimitSeconds(1);
+        }
+
         this.host.setNodeGroupConfig(this.nodeGroupConfig);
         this.host.setNodeGroupQuorum((this.nodeCount + 1) / 2);
 
@@ -880,7 +884,7 @@ public class TestNodeGroupService {
                     + TimeUnit.MILLISECONDS.toMicros(250);
 
         };
-        this.host.schedule(r ,  1, TimeUnit.MILLISECONDS);
+        this.host.schedule(r, 1, TimeUnit.MILLISECONDS);
 
         childStates = doStateUpdateReplicationTest(Action.PATCH, this.serviceCount,
                 this.updateCount,
@@ -2128,13 +2132,6 @@ public class TestNodeGroupService {
 
         verifyDocumentOwnerAndEpoch(childStatesPerLink, newOwnerIds, 0,
                 childStatesPerLink.size() * 2, minOwnerChangeCount);
-
-        // verify factory marked itself available
-        factoryUri = this.host.getPeerServiceUri(factoryUri.getPath());
-        Operation getAvailable = Operation.createGet(UriUtils.buildAvailableUri(factoryUri))
-                .setCompletion(this.host.getCompletion());
-        this.host.sendAndWait(getAvailable);
-
         this.host.logNodeGroupStats();
     }
 
@@ -2616,6 +2613,15 @@ public class TestNodeGroupService {
             BiPredicate<T, T> convergenceChecker,
             Map<String, T> initialStatesPerChild) throws Throwable {
         this.host.testStart("Replicated " + action, null, childCount * updateCount);
+
+        if (!this.expectFailure) {
+            // Before we do the replication test, wait for factory availability.
+            for (URI fu : this.host.getNodeGroupToFactoryMap(this.replicationTargetFactoryLink)
+                    .values()) {
+                // confirm that /factory/available returns 200 across all nodes
+                this.host.waitForServiceAvailable(fu);
+            }
+        }
 
         AtomicInteger failedCount = new AtomicInteger();
         // issue an update to each child service and verify it was reflected

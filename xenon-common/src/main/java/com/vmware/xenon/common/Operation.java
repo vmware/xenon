@@ -439,6 +439,12 @@ public class Operation implements Cloneable {
      */
     public static final String PRAGMA_DIRECTIVE_NO_INDEX_UPDATE = "xn-no-index-update";
 
+    /**
+     * Infrastructure use only. Debugging only. Indicates this operation was converted from POST to PUT
+     * due to {@link ServiceOption.IDEMPOTENT_POST}
+     */
+    public static final String PRAGMA_DIRECTIVE_POST_TO_PUT = "xn-post-to-put";
+
     public static final String TX_TRY_COMMIT = "try-commit";
     public static final String TX_ENSURE_COMMIT = "ensure-commit";
     public static final String TX_COMMIT = "commit";

@@ -2,6 +2,12 @@
 
 ## 0.7.2-SNAPSHOT
 
+* Throttle peer synchronization of services further: we now only
+  synchronize one replicated factory at a time. A factory already
+  throttles and synchronizes a limited number of children before
+  doing the next batch. This will greatly help with scenarios when
+  N nodes, with lots of existing state, all start and join at once.
+
 * Add ServiceDocument.PropertyOptions that supercedes
   ServiceDocument.UsageOptions and can also specify indexing
   options.

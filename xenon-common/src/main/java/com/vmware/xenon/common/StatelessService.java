@@ -461,7 +461,7 @@ public class StatelessService implements Service {
             return;
         }
 
-        getHost().notifyServiceAvailabilitySubscribers(this);
+        getHost().processPendingServiceAvailableOperations(this, null);
     }
 
     @Override
