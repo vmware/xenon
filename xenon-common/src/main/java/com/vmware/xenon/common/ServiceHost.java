@@ -83,6 +83,7 @@ import com.vmware.xenon.common.ServiceErrorResponse.ErrorDetail;
 import com.vmware.xenon.common.ServiceHost.ServiceHostState.MemoryLimitType;
 import com.vmware.xenon.common.ServiceHost.ServiceHostState.SslClientAuthMode;
 import com.vmware.xenon.common.ServiceMaintenanceRequest.MaintenanceReason;
+import com.vmware.xenon.common.ServiceStats.ServiceStat;
 import com.vmware.xenon.common.ServiceSubscriptionState.ServiceSubscriber;
 import com.vmware.xenon.common.http.netty.NettyHttpListener;
 import com.vmware.xenon.common.http.netty.NettyHttpServiceClient;
@@ -215,6 +216,13 @@ public class ServiceHost implements ServiceRequestSender {
          * A stable identity associated with this host
          */
         public String id;
+
+        /**
+         * An upper bound, in seconds, for service synchronization to complete. Synchronization runs
+         * if {@link Arguments.isPeerSynchronizationEnabled} is true, and the node group has observed
+         * a node joining or leaving (becoming unavailable)
+         */
+        public long peerSynchronizationTimeLimitSeconds = TimeUnit.MINUTES.toSeconds(10);
 
         /**
          * Value indicating whether node group changes will automatically
@@ -362,6 +370,7 @@ public class ServiceHost implements ServiceRequestSender {
         public URI transactionServiceReference;
         public String id;
         public boolean isPeerSynchronizationEnabled;
+        public long peerSynchronizationTimeLimitSeconds;
         public boolean isAuthorizationEnabled;
         public transient boolean isStarted;
         public transient boolean isStopping;
@@ -463,6 +472,7 @@ public class ServiceHost implements ServiceRequestSender {
 
     private final ConcurrentSkipListMap<String, Long> synchronizationTimes = new ConcurrentSkipListMap<>();
     private final ConcurrentSkipListMap<String, Long> synchronizationRequiredServices = new ConcurrentSkipListMap<>();
+    private final ConcurrentSkipListMap<String, Long> synchronizationActiveServices = new ConcurrentSkipListMap<>();
     private final ConcurrentSkipListMap<String, NodeGroupState> pendingNodeSelectorsForFactorySynch = new ConcurrentSkipListMap<>();
     private final SortedSet<Operation> pendingStartOperations = createOperationSet();
     private final Map<String, SortedSet<Operation>> pendingServiceAvailableCompletions = new ConcurrentSkipListMap<>();
@@ -631,6 +641,7 @@ public class ServiceHost implements ServiceRequestSender {
             this.state.id = args.id;
         }
 
+        this.state.peerSynchronizationTimeLimitSeconds = args.peerSynchronizationTimeLimitSeconds;
         this.state.isPeerSynchronizationEnabled = args.isPeerSynchronizationEnabled;
         this.state.isAuthorizationEnabled = args.isAuthorizationEnabled;
 
@@ -2739,6 +2750,7 @@ public class ServiceHost implements ServiceRequestSender {
                 }
             }
 
+            this.synchronizationActiveServices.remove(path);
             this.synchronizationRequiredServices.remove(path);
             this.pendingPauseServices.remove(path);
             clearCachedServiceState(path);
@@ -3550,6 +3562,7 @@ public class ServiceHost implements ServiceRequestSender {
 
             this.pendingPauseServices.clear();
             this.synchronizationRequiredServices.clear();
+            this.synchronizationActiveServices.clear();
         }
 
         stopAndClearPendingQueues();
@@ -4386,9 +4399,47 @@ public class ServiceHost implements ServiceRequestSender {
         String nodeSelectorPath = entry.getKey();
         Long selectorSynchTime = this.synchronizationTimes.get(nodeSelectorPath);
         NodeGroupState ngs = entry.getValue();
+        long now = Utils.getNowMicrosUtc();
+
+        for (Entry<String, Long> en : this.synchronizationActiveServices.entrySet()) {
+            String link = en.getKey();
+            Service s = findService(link, true);
+            if (s == null) {
+                continue;
+            }
+
+            long delta = now - en.getValue();
+            boolean shouldLog = false;
+            if (delta > this.state.operationTimeoutMicros) {
+                s.toggleOption(ServiceOption.INSTRUMENTATION, true);
+                s.adjustStat(Service.STAT_NAME_NODE_GROUP_SYNCH_DELAYED_COUNT, 1);
+                ServiceStat st = s.getStat(Service.STAT_NAME_NODE_GROUP_SYNCH_DELAYED_COUNT);
+                if (st != null && st.latestValue % 10 == 0) {
+                    shouldLog = true;
+                }
+            }
+
+            long deltaSeconds = TimeUnit.MICROSECONDS.toSeconds(delta);
+            if (shouldLog) {
+                log(Level.WARNING, "Service %s has been synchronizing for %d seconds",
+                        link, deltaSeconds);
+            }
+
+            if (this.state.peerSynchronizationTimeLimitSeconds < deltaSeconds) {
+                log(Level.WARNING, "Service %s has exceeded synchronization limit of %d",
+                        link, this.state.peerSynchronizationTimeLimitSeconds);
+                this.synchronizationActiveServices.remove(link);
+                // proceed with synchronization of another service
+                break;
+            }
+
+            // a service is actively synchronizing, skip any further synchronization starts.
+            return;
+        }
+
         for (Entry<String, Long> en : this.synchronizationRequiredServices
                 .entrySet()) {
-            long now = Utils.getNowMicrosUtc();
+            now = Utils.getNowMicrosUtc();
             if (isStopping()) {
                 return;
             }
@@ -4419,29 +4470,32 @@ public class ServiceHost implements ServiceRequestSender {
             }
 
             Operation maintOp = Operation.createPost(s.getUri()).setCompletion((o, e) -> {
+                this.synchronizationActiveServices.remove(link);
                 if (e != null) {
                     log(Level.WARNING, "Node group change maintenance failed for %s: %s",
                             s.getSelfLink(),
                             e.getMessage());
                 }
 
-                log(Level.FINE, "Node group change maintenance done for group %s, service %s",
-                        e, s.getSelfLink());
+                log(Level.INFO, "Synch done for selector %s, service %s",
+                        nodeSelectorPath, s.getSelfLink());
             });
 
             // update service entry so we do not reschedule it
             this.synchronizationRequiredServices.put(link, now);
+            this.synchronizationActiveServices.put(link, now);
 
             ServiceMaintenanceRequest body = ServiceMaintenanceRequest.create();
             body.reasons.add(MaintenanceReason.NODE_GROUP_CHANGE);
             body.nodeGroupState = ngs;
             maintOp.setBodyNoCloning(body);
 
+            long n = now;
             // allow overlapping node group change maintenance requests
             this.run(() -> {
                 OperationContext.setAuthorizationContext(this.getSystemAuthorizationContext());
-                log(Level.INFO, " Synchronizing %s (last:%d, sl: %d now:%d)", link,
-                        lastSynchTime, selectorSynchTime, now);
+                log(Level.FINE, " Synchronizing %s (last:%d, sl: %d now:%d)", link,
+                        lastSynchTime, selectorSynchTime, n);
                 s.adjustStat(Service.STAT_NAME_NODE_GROUP_CHANGE_MAINTENANCE_COUNT, 1);
                 s.handleMaintenance(maintOp);
             });
