@@ -54,7 +54,6 @@ Once you have installed all the pre-requisites from the root of the repository e
 
 The above command will compile the code, run checkstyle and run unit-tests.
 
-### Editing the code
+### Contributing
 
-The team uses Eclipse or IntelliJ. Formatting style settings for both these editors can be found in the
-[contrib](https://github.com/vmware/xenon/tree/master/contrib) folder.
+We welcome contributions and help with Xenon!  Up to date information regarding contributing to Xenon can be found in the project wiki at https://github.com/vmware/xenon/contributing 
