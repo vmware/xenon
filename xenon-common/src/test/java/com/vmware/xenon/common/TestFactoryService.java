@@ -57,6 +57,40 @@ class TypeMismatchTestFactoryService extends FactoryService {
     }
 }
 
+class SynchOverlapTestFactoryService extends FactoryService {
+
+    public SynchOverlapTestFactoryService() {
+        super(ExampleServiceState.class);
+    }
+
+    @Override
+    public Service createServiceInstance() throws Throwable {
+        Service s = new ExampleService();
+        return s;
+    }
+
+    public long synchStart;
+    public long synchEnd;
+    public TestContext ctx;
+
+    @Override
+    public void handleNodeGroupMaintenance(Operation post) {
+        post.nestCompletion((o, e) -> {
+            if (e != null) {
+                this.ctx.failIteration(e);
+                post.fail(e);
+                return;
+            }
+            this.synchEnd = Utils.getNowMicrosUtc();
+            post.complete();
+            this.ctx.completeIteration();
+        });
+        this.synchStart = Utils.getNowMicrosUtc();
+        logInfo("started");
+        super.handleNodeGroupMaintenance(post);
+    }
+}
+
 class SynchTestFactoryService extends FactoryService {
     private static final int MAINTENANCE_DELAY_HANDLE_MILLIS = 1;
     public static final String TEST_FACTORY_PATH = "/subpath/testfactory";
@@ -117,6 +151,49 @@ public class TestFactoryService extends BasicReusableHostTestCase {
     public void setup() throws Throwable {
         this.factoryUri = UriUtils.buildUri(this.host, SomeFactoryService.class);
         CommandLineArgumentParser.parseFromProperties(this);
+    }
+
+    /**
+     * Validate that two factories will not attempt to synchronize at the same time
+     */
+    @Test
+    public void synchronizationNonOverlap() throws Throwable {
+
+        TemporaryFolder tmp = new TemporaryFolder();
+        tmp.create();
+        ServiceHost.Arguments args = new ServiceHost.Arguments();
+        args.port = 0;
+        args.sandbox = tmp.getRoot().toPath();
+        VerificationHost h = VerificationHost.create(args);
+        try {
+            h.setMaintenanceIntervalMicros(TimeUnit.MILLISECONDS.toMicros(50));
+            h.setTemporaryFolder(tmp);
+            // we will kick of synchronization explicitly
+            h.setPeerSynchronizationEnabled(false);
+            h.start();
+
+            SynchOverlapTestFactoryService f1 = new SynchOverlapTestFactoryService();
+            h.startServiceAndWait(f1, UUID.randomUUID().toString(), null);
+            SynchOverlapTestFactoryService f2 = new SynchOverlapTestFactoryService();
+            h.startServiceAndWait(f2, UUID.randomUUID().toString(), null);
+
+            TestContext ctx = testCreate(2);
+            f1.ctx = ctx;
+            f2.ctx = ctx;
+            h.scheduleNodeGroupChangeMaintenance(ServiceUriPaths.DEFAULT_NODE_SELECTOR);
+            ctx.await();
+
+            // synchronization must have run, since context completed.
+            long lastStart = Math.max(f1.synchStart, f2.synchStart);
+            long firstEnd = Math.min(f1.synchEnd, f2.synchEnd);
+
+            if (lastStart < firstEnd) {
+                throw new IllegalStateException("Synchronization overlapped");
+            }
+
+        } finally {
+            h.tearDown();
+        }
     }
 
     /**
