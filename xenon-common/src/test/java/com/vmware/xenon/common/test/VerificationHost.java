@@ -1316,7 +1316,7 @@ public class VerificationHost extends ExampleServiceHost {
                 return;
             }
 
-            Thread.sleep(100);
+            Thread.sleep(getMaintenanceIntervalMicros() / 1000);
         }
 
         if (new Date().after(exp)) {
