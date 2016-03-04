@@ -217,8 +217,6 @@ public class ReplicationTestService extends StatefulService {
         ServiceMaintenanceRequest body = maintOp.getBody(ServiceMaintenanceRequest.class);
         // call super method to make sure handleNodeGroupMaintenance is called
         super.handleMaintenance(maintOp);
-
-        logInfo("%s", body.reasons);
         if (!body.reasons.contains(MaintenanceReason.SERVICE_OPTION_TOGGLE)) {
             return;
         }

@@ -33,6 +33,31 @@ public class TestOperation extends BasicReusableHostTestCase {
     private List<Service> services;
 
     @Test
+    public void addRemovePragma() {
+        Operation op = Operation.createGet(this.host.getUri());
+        op.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_CREATED);
+        assertTrue(op.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_CREATED));
+
+        op.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_INDEX_CHECK);
+        assertTrue(op.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_CREATED));
+        assertTrue(op.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_INDEX_CHECK));
+
+        // add a pragma that already exists
+        op.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_INDEX_CHECK);
+        assertTrue(op.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_CREATED));
+        assertTrue(op.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_INDEX_CHECK));
+
+        op.removePragmaDirective(Operation.PRAGMA_DIRECTIVE_INDEX_CHECK);
+        assertTrue(op.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_CREATED));
+        assertTrue(!op.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_INDEX_CHECK));
+
+        // attempt to remove that does not exist
+        op.removePragmaDirective(Operation.PRAGMA_DIRECTIVE_INDEX_CHECK);
+        assertTrue(op.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_CREATED));
+        assertTrue(!op.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_INDEX_CHECK));
+    }
+
+    @Test
     public void setterValidation() {
         Operation op = Operation.createGet(this.host.getUri());
 
