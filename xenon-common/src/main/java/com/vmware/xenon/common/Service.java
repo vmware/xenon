@@ -292,6 +292,7 @@ public interface Service extends ServiceRequestSender {
     static final String STAT_NAME_OPERATION_DURATION = "operationDuration";
     static final String STAT_NAME_MAINTENANCE_COUNT = "maintenanceCount";
     static final String STAT_NAME_NODE_GROUP_CHANGE_MAINTENANCE_COUNT = "maintenanceForNodeGroupChangeCount";
+    static final String STAT_NAME_NODE_GROUP_SYNCH_DELAYED_COUNT = "maintenanceForNodeGroupDelayedCount";
     static final String STAT_NAME_MAINTENANCE_COMPLETION_DELAYED_COUNT = "maintenanceCompletionDelayedCount";
     static final String STAT_NAME_CACHE_MISS_COUNT = "stateCacheMissCount";
     static final String STAT_NAME_CACHE_CLEAR_COUNT = "stateCacheClearCount";

@@ -119,12 +119,13 @@ public class NodeSelectorReplicationService extends StatelessService {
 
             if (fCount >= failureThresholdFinal || ((fCount + sCount) == memberCount)) {
                 String error = String
-                        .format("%s to %s failed. Success: %d,  Fail: %d, quorum: %d",
+                        .format("%s to %s failed. Success: %d,  Fail: %d, quorum: %d, threshold: %d",
                                 outboundOp.getAction(),
                                 outboundOp.getUri().getPath(),
                                 sCount,
                                 fCount,
-                                selfNode.membershipQuorum);
+                                selfNode.membershipQuorum,
+                                failureThresholdFinal);
                 logWarning("%s", error);
                 outboundOp.fail(new IllegalStateException(error));
             }

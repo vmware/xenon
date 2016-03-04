@@ -401,7 +401,6 @@ public abstract class FactoryService extends StatelessService {
     }
 
     private void handlePostCompletion(Operation o) {
-
         if (o.getStatusCode() == Operation.STATUS_CODE_ACCEPTED) {
             // the derived class dealt with this operation, do not create a new
             // service
@@ -412,7 +411,6 @@ public abstract class FactoryService extends StatelessService {
         // Request directly from clients must be marked with appropriate PRAGMA, so
         // the runtime knows this is not a restart of a service, but an original, create request
         o.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_CREATED);
-
         // create and start service instance. If service is durable, and a body
         // is attached to the POST, a document will be created
         Service childService;
