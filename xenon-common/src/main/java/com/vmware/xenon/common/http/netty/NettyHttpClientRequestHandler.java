@@ -90,9 +90,14 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
             request = Operation.createGet(null);
             request.setAction(Action.valueOf(nettyRequest.method().toString()))
                     .setExpiration(expMicros);
+
+            String query = targetUri.getQuery();
+            if (query != null && !query.isEmpty()) {
+                query = QueryStringDecoder.decodeComponent(targetUri.getQuery());
+            }
+
             URI uri = new URI(UriUtils.HTTP_SCHEME, null, ServiceHost.LOCAL_HOST,
-                    this.host.getPort(), targetUri.getPath(),
-                    QueryStringDecoder.decodeComponent(targetUri.getQuery()), null);
+                    this.host.getPort(), targetUri.getPath(), query, null);
             request.setUri(uri);
 
             // The streamId will be null for HTTP/1.1 connections, and valid for HTTP/2 connections

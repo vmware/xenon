@@ -293,6 +293,11 @@ public class MinimalTestService extends StatefulService {
             return;
         }
 
+        if (put.getUri().getQuery() != null) {
+            put.fail(new IllegalArgumentException("Query not expected"));
+            return;
+        }
+
         MinimalTestServiceState replacementState = put.getBody(MinimalTestServiceState.class);
 
         if (replacementState.id == null) {
