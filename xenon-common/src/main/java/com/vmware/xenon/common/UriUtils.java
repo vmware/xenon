@@ -165,10 +165,11 @@ public class UriUtils {
         String query = null;
         if (path != null && path.contains(UriUtils.URI_QUERY_CHAR)) {
             String[] pathAndQuery = path.split("\\" + UriUtils.URI_QUERY_CHAR);
-            path = pathAndQuery[0];
-            query = pathAndQuery[1];
+            if (pathAndQuery.length == 2) {
+                path = pathAndQuery[0];
+                query = pathAndQuery[1];
+            }
         }
-
         return buildUri(uri.getScheme(), uri.getHost(), uri.getPort(),
                 normalizeUriPath(uri.getPath()) + normalizeUriPath(path),
                 query);
@@ -191,8 +192,10 @@ public class UriUtils {
         try {
             if (path != null && path.contains(UriUtils.URI_QUERY_CHAR)) {
                 String[] pathAndQuery = path.split("\\" + UriUtils.URI_QUERY_CHAR);
-                path = pathAndQuery[0];
-                query = pathAndQuery[1];
+                if (pathAndQuery.length == 2) {
+                    path = pathAndQuery[0];
+                    query = pathAndQuery[1];
+                }
             }
             path = normalizeUriPath(path);
             return new URI(scheme, null, host, port, path, query, null).normalize();
