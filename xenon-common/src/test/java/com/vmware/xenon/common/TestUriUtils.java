@@ -23,8 +23,6 @@ import java.util.UUID;
 
 import org.junit.Test;
 
-import com.vmware.xenon.common.UriUtils;
-
 public class TestUriUtils {
 
     @Test
@@ -110,6 +108,16 @@ public class TestUriUtils {
         assertEquals("/" + pathSegment + "/" + pathSegment2, u.getPath());
         assertEquals(combinedQuery, u.getQuery());
 
+        String pathEndingWithQueryChar = pathSegment + "?";
+        u = UriUtils.buildUri(baseUri, pathEndingWithQueryChar);
+        assertEquals("/" + pathSegment, u.getPath());
+        assertEquals(null, u.getQuery());
+
+        String pathEndingWithQueryChars = pathSegment + "???";
+        u = UriUtils.buildUri(baseUri, pathEndingWithQueryChars);
+        assertEquals("/" + pathSegment, u.getPath());
+        assertEquals(null, u.getQuery());
+
         URI abNormalUri = new URI("http://localhost:8000/foo/./../bar");
         u = UriUtils.buildUri(abNormalUri, abNormalUri.getPath());
         assertEquals("/bar", u.getPath());
@@ -118,6 +126,44 @@ public class TestUriUtils {
         u = UriUtils.buildUri(abNormalUri, abNormalUri.getPath());
         assertEquals("/foo/bar", u.getPath());
     }
+
+    @Test
+    public void buildUriFromParts() throws URISyntaxException {
+        String scheme = "http";
+        String host = "host";
+        int port = 8080;
+        String path = "path/to/somewhere";
+        String query = "key1=value1&key2=value2";
+
+        URI u = UriUtils.buildUri(scheme, host, port, path, query);
+
+        assertEquals(scheme, u.getScheme());
+        assertEquals(host, u.getHost());
+        assertEquals(port, u.getPort());
+        assertEquals("/" + path, u.getPath());
+        assertEquals(query, u.getQuery());
+
+        String pathEndingWithQueryChar = path + "?";
+        u = UriUtils.buildUri(scheme, host, port, pathEndingWithQueryChar, query);
+
+        assertEquals(scheme, u.getScheme());
+        assertEquals(host, u.getHost());
+        assertEquals(port, u.getPort());
+        assertEquals("/" + path, u.getPath());
+        assertEquals(query, u.getQuery());
+
+        String pathEndingWithQueryChars = path + "???";
+        u = UriUtils.buildUri(scheme, host, port, pathEndingWithQueryChar, query);
+
+        assertEquals(scheme, u.getScheme());
+        assertEquals(host, u.getHost());
+        assertEquals(port, u.getPort());
+        assertEquals("/" + path, u.getPath());
+        assertEquals(query, u.getQuery());
+    }
+
+
+
 
     @Test
     public void extendUri() throws URISyntaxException {
@@ -145,11 +191,48 @@ public class TestUriUtils {
         assertEquals(basePath + "/" + path, u.getPath());
         assertEquals(query, u.getQuery());
 
+        String pathEndingWithQueryChar = path + "?";
+        u = UriUtils.extendUri(httpBase, pathEndingWithQueryChar);
+        assertEquals(basePath + "/" + path, u.getPath());
+
+        String pathEndingWithQueryChars = path + "???";
+        u = UriUtils.extendUri(httpBase, pathEndingWithQueryChars);
+        assertEquals(basePath + "/" + path, u.getPath());
+
         u = UriUtils.extendUri(httpBase, "/bar/./../foo");
         assertEquals(httpBase.getPath() + "/foo", u.getPath());
 
         u = UriUtils.extendUri(httpBase, "/bar/./foo");
         assertEquals(httpBase.getPath() + "/bar/foo", u.getPath());
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void buildUriFailure() throws URISyntaxException {
+        URI baseUri = new URI("http://localhost:8000");
+        String path = "too?many?queries";
+        UriUtils.buildUri(baseUri, path);
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void buildUriFromPartsFailure() throws URISyntaxException {
+        String scheme = "http";
+        String host = "host";
+        int port = 8080;
+        String path = "too?many?queries";
+        String query = "key1=value1&key2=value2";
+
+        URI u = UriUtils.buildUri(scheme, host, port, path, query);
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void extendUriFailure() throws URISyntaxException {
+        String basePath = UriUtils.buildUriPath("some", UUID.randomUUID().toString());
+        URI baseUri = new URI("http://localhost:8000");
+        URI httpBase = UriUtils.buildUri(baseUri, basePath);
+        String path = UUID.randomUUID().toString();
+
+        String pathWitMultipleQueryChars = path + "?" + "afterFirst" + "?" + "afterSecond";
+        final URI u = UriUtils.extendUri(httpBase, pathWitMultipleQueryChars);
     }
 
     @Test
