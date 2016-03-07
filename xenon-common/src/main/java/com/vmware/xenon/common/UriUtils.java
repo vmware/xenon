@@ -166,9 +166,12 @@ public class UriUtils {
         if (path != null && path.contains(UriUtils.URI_QUERY_CHAR)) {
             String[] pathAndQuery = path.split("\\" + UriUtils.URI_QUERY_CHAR);
             path = pathAndQuery[0];
-            query = pathAndQuery[1];
+            if (pathAndQuery.length == 2) {
+                query = pathAndQuery[1];
+            } else if (pathAndQuery.length != 1) { //too many '?' characters
+                throw new IllegalArgumentException("invalid path: " + path);
+            }
         }
-
         return buildUri(uri.getScheme(), uri.getHost(), uri.getPort(),
                 normalizeUriPath(uri.getPath()) + normalizeUriPath(path),
                 query);
@@ -192,7 +195,11 @@ public class UriUtils {
             if (path != null && path.contains(UriUtils.URI_QUERY_CHAR)) {
                 String[] pathAndQuery = path.split("\\" + UriUtils.URI_QUERY_CHAR);
                 path = pathAndQuery[0];
-                query = pathAndQuery[1];
+                if (pathAndQuery.length == 2) {
+                    query = pathAndQuery[1];
+                } else  if (pathAndQuery.length != 1) { //too many '?' characters
+                    throw new IllegalArgumentException("invalid path: " + path);
+                }
             }
             path = normalizeUriPath(path);
             return new URI(scheme, null, host, port, path, query, null).normalize();
