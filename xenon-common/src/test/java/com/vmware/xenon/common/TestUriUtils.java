@@ -23,8 +23,6 @@ import java.util.UUID;
 
 import org.junit.Test;
 
-import com.vmware.xenon.common.UriUtils;
-
 public class TestUriUtils {
 
     @Test
@@ -110,6 +108,23 @@ public class TestUriUtils {
         assertEquals("/" + pathSegment + "/" + pathSegment2, u.getPath());
         assertEquals(combinedQuery, u.getQuery());
 
+        final String queryContainingQueryChar = "key=value&url=/url/with?query=true";
+        String pathWithMutlipleQueryChars = pathSegment + "?" + queryContainingQueryChar;
+        u = UriUtils.buildUri(baseUri, pathWithMutlipleQueryChars);
+        assertEquals("/" + pathSegment, u.getPath());
+        assertEquals(queryContainingQueryChar, u.getQuery());
+
+        String pathEndingWithQueryChar = pathSegment + "?";
+        u = UriUtils.buildUri(baseUri, pathEndingWithQueryChar);
+        assertEquals("/" + pathSegment, u.getPath());
+        assertEquals(null, u.getQuery());
+
+        String queryContainingOnlyQueryChars = "??";
+        String pathEndingWithQueryChars = pathSegment + "?" + queryContainingOnlyQueryChars;
+        u = UriUtils.buildUri(baseUri, pathEndingWithQueryChars);
+        assertEquals("/" + pathSegment, u.getPath());
+        assertEquals(queryContainingOnlyQueryChars, u.getQuery());
+
         URI abNormalUri = new URI("http://localhost:8000/foo/./../bar");
         u = UriUtils.buildUri(abNormalUri, abNormalUri.getPath());
         assertEquals("/bar", u.getPath());
@@ -118,6 +133,46 @@ public class TestUriUtils {
         u = UriUtils.buildUri(abNormalUri, abNormalUri.getPath());
         assertEquals("/foo/bar", u.getPath());
     }
+
+    @Test
+    public void buildUriFromParts() throws URISyntaxException {
+        String scheme = "http";
+        String host = "host";
+        int port = 8080;
+        String path = "path/to/somewhere";
+        String query = "key1=value1&key2=value2";
+
+        URI u = UriUtils.buildUri(scheme, host, port, path, query);
+
+        assertEquals(scheme, u.getScheme());
+        assertEquals(host, u.getHost());
+        assertEquals(port, u.getPort());
+        assertEquals("/" + path, u.getPath());
+        assertEquals(query, u.getQuery());
+
+        String pathEndingWithQueryChar = path + "?";
+        u = UriUtils.buildUri(scheme, host, port, pathEndingWithQueryChar, query);
+
+        assertEquals(scheme, u.getScheme());
+        assertEquals(host, u.getHost());
+        assertEquals(port, u.getPort());
+        assertEquals("/" + path, u.getPath());
+        assertEquals(query, u.getQuery());
+
+
+
+        String queryContainingQueryChar = "key=value&url=/url/with?query=true";
+        u = UriUtils.buildUri(scheme, host, port, pathEndingWithQueryChar, queryContainingQueryChar);
+
+        assertEquals(scheme, u.getScheme());
+        assertEquals(host, u.getHost());
+        assertEquals(port, u.getPort());
+        assertEquals("/" + path, u.getPath());
+        assertEquals(queryContainingQueryChar, u.getQuery());
+    }
+
+
+
 
     @Test
     public void extendUri() throws URISyntaxException {
@@ -144,6 +199,23 @@ public class TestUriUtils {
         u = UriUtils.extendUri(httpBase, pathWithQuery);
         assertEquals(basePath + "/" + path, u.getPath());
         assertEquals(query, u.getQuery());
+
+        String queryContainingQueryChar = "key=value&url=/url/with?query=true";
+        String pathWithQueryChars = path + "?" + queryContainingQueryChar;
+        u = UriUtils.extendUri(httpBase, pathWithQueryChars);
+        assertEquals(basePath + "/" + path, u.getPath());
+        assertEquals(queryContainingQueryChar, u.getQuery());
+
+        String pathEndingWithQueryChar = path + "?";
+        u = UriUtils.extendUri(httpBase, pathEndingWithQueryChar);
+        assertEquals(basePath + "/" + path, u.getPath());
+        assertEquals(null, u.getQuery());
+
+        String queryContainingOnlyQueryChars = "??";
+        String pathEndingWithQueryChars = path + "?" + queryContainingOnlyQueryChars;
+        u = UriUtils.extendUri(httpBase, pathEndingWithQueryChars);
+        assertEquals(basePath + "/" + path, u.getPath());
+        assertEquals(queryContainingOnlyQueryChars, u.getQuery());
 
         u = UriUtils.extendUri(httpBase, "/bar/./../foo");
         assertEquals(httpBase.getPath() + "/foo", u.getPath());

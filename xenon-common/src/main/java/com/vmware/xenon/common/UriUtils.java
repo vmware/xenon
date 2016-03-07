@@ -164,11 +164,12 @@ public class UriUtils {
     public static URI extendUri(URI uri, String path) {
         String query = null;
         if (path != null && path.contains(UriUtils.URI_QUERY_CHAR)) {
-            String[] pathAndQuery = path.split("\\" + UriUtils.URI_QUERY_CHAR);
-            path = pathAndQuery[0];
-            query = pathAndQuery[1];
+            final int indexOfFirstQueryChar = path.indexOf(UriUtils.URI_QUERY_CHAR);
+            if (indexOfFirstQueryChar < path.length() - 1) {
+                query = path.substring(indexOfFirstQueryChar + 1, path.length());
+            }
+            path = path.substring(0, indexOfFirstQueryChar);
         }
-
         return buildUri(uri.getScheme(), uri.getHost(), uri.getPort(),
                 normalizeUriPath(uri.getPath()) + normalizeUriPath(path),
                 query);
@@ -190,9 +191,11 @@ public class UriUtils {
     public static URI buildUri(String scheme, String host, int port, String path, String query) {
         try {
             if (path != null && path.contains(UriUtils.URI_QUERY_CHAR)) {
-                String[] pathAndQuery = path.split("\\" + UriUtils.URI_QUERY_CHAR);
-                path = pathAndQuery[0];
-                query = pathAndQuery[1];
+                final int indexOfFirstQueryChar = path.indexOf(UriUtils.URI_QUERY_CHAR);
+                if (indexOfFirstQueryChar < path.length() - 1) {
+                    query = path.substring(indexOfFirstQueryChar + 1, path.length());
+                }
+                path = path.substring(0, indexOfFirstQueryChar);
             }
             path = normalizeUriPath(path);
             return new URI(scheme, null, host, port, path, query, null).normalize();
@@ -280,13 +283,16 @@ public class UriUtils {
                 continue;
             }
             if (p.contains(UriUtils.URI_QUERY_CHAR)) {
-                String[] pathAndQuery = p.split("\\" + UriUtils.URI_QUERY_CHAR);
-                p = pathAndQuery[0];
-                if (query == null) {
-                    query = pathAndQuery[1];
-                } else {
-                    query += pathAndQuery[1];
+                final int indexOfFirstQueryChar = p.indexOf(UriUtils.URI_QUERY_CHAR);
+                if (indexOfFirstQueryChar < p.length() - 1) {
+                    final String curQuery = p.substring(indexOfFirstQueryChar + 1, p.length());
+                    if (query == null) {
+                        query = curQuery;
+                    } else {
+                        query += curQuery;
+                    }
                 }
+                p = p.substring(0, indexOfFirstQueryChar);
             }
             p = normalizeUriPath(p);
             if (buildPath == null) {
