@@ -16,17 +16,14 @@ package com.vmware.xenon.services.common;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
-
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
-
 import org.junit.Before;
 import org.junit.Test;
-
 
 import com.vmware.xenon.common.BasicReusableHostTestCase;
 import com.vmware.xenon.common.FactoryService;
@@ -57,6 +54,7 @@ public class TestTransactionService extends BasicReusableHostTestCase {
 
     @Before
     public void prepare() throws Throwable {
+        this.baseAccountId = Utils.getNowMicrosUtc();
         this.host.waitForServiceAvailable(ExampleService.FACTORY_LINK);
         this.host.waitForServiceAvailable(TransactionFactoryService.SELF_LINK);
         if (this.host.getServiceStage(BankAccountService.FACTORY_LINK) == null) {
@@ -180,6 +178,40 @@ public class TestTransactionService extends BasicReusableHostTestCase {
         committed =  commit(txid, this.accountCount);
         assertTrue(committed);
         countAccounts(null, 0);
+    }
+
+    @Test
+    public void testVisibilityWithinTransaction() throws Throwable {
+        String txid = newTransaction();
+        for (int i = 0; i < this.accountCount; i++) {
+            String accountId = buildAccountId(i);
+            createAccount(txid, accountId, true);
+            countAccounts(txid, i + 1);
+            depositToAccount(txid, accountId, 100.0, true);
+            verifyAccountBalance(txid, accountId, 100.0);
+        }
+        boolean aborted = abort(txid, 3 * this.accountCount);
+        assertTrue(aborted);
+        countAccounts(null, 0);
+    }
+
+    @Test
+    public void testShortTransactions() throws Throwable {
+        for (int i = 0; i < this.accountCount; i++) {
+            String txid = newTransaction();
+            String accountId = buildAccountId(i);
+            createAccount(txid, accountId, true);
+            if (i % 2 == 0) {
+                depositToAccount(txid, accountId, 100.0, true);
+                boolean committed = commit(txid, 2);
+                assertTrue(committed);
+            } else {
+                boolean aborted = abort(txid, 2);
+                assertTrue(aborted);
+            }
+        }
+        countAccounts(null, this.accountCount / 2);
+        sumAccounts(null, 100.0 * this.accountCount / 2);
     }
 
     private String newTransaction() throws Throwable {
@@ -485,6 +517,11 @@ public class TestTransactionService extends BasicReusableHostTestCase {
                 .createGet(buildAccountUri(accountId))
                 .setCompletion((o, e) -> {
                     if (operationFailed(o, e)) {
+                        if (o.getStatusCode() == Operation.STATUS_CODE_NOT_FOUND) {
+                            responses[0] = null;
+                            this.host.completeIteration();
+                            return;
+                        }
                         this.host.failIteration(e);
                         return;
                     }
