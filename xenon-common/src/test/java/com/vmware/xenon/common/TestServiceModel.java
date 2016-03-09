@@ -239,9 +239,7 @@ public class TestServiceModel extends BasicReusableHostTestCase {
 
         public ParentContextIdTestService() {
             super(ServiceDocument.class);
-            super.toggleOption(ServiceOption.REPLICATION, true);
             super.toggleOption(ServiceOption.PERSISTENCE, true);
-            super.toggleOption(ServiceOption.OWNER_SELECTION, true);
         }
 
         public void setChildService(List<Service> services) {
@@ -286,9 +284,7 @@ public class TestServiceModel extends BasicReusableHostTestCase {
 
         public ChildTestService() {
             super(ChildTestServiceState.class);
-            super.toggleOption(ServiceOption.REPLICATION, true);
             super.toggleOption(ServiceOption.PERSISTENCE, true);
-            super.toggleOption(ServiceOption.OWNER_SELECTION, true);
         }
 
         public static class ChildTestServiceState extends ServiceDocument {

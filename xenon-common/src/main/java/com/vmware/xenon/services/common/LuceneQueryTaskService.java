@@ -144,7 +144,7 @@ public class LuceneQueryTaskService extends StatefulService {
         URI localQueryTaskFactoryUri = UriUtils.buildUri(this.getHost(),
                 ServiceUriPaths.CORE_LOCAL_QUERY_TASKS);
         URI forwardingService = UriUtils.buildBroadcastRequestUri(localQueryTaskFactoryUri,
-                ServiceUriPaths.DEFAULT_NODE_SELECTOR);
+                queryTask.nodeSelectorLink);
 
         Operation op = Operation
                 .createPost(forwardingService)

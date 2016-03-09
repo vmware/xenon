@@ -754,6 +754,11 @@ public class QueryTask extends ServiceDocument {
      */
     public String indexLink = ServiceUriPaths.CORE_DOCUMENT_INDEX;
 
+    /**
+     * The node selector to use when {@link QueryOption.BROADCAST} is set
+     */
+    public String nodeSelectorLink = ServiceUriPaths.DEFAULT_NODE_SELECTOR;
+
     public static QueryTask create(QuerySpecification q) {
         QueryTask qt = new QueryTask();
         qt.querySpec = q;
