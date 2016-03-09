@@ -410,17 +410,12 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
             }
 
             long start = 0;
-            while (new Date().before(this.host.getTestExpiration())) {
-                try {
-                    start = Utils.getNowMicrosUtc();
-                    h.start();
-                    break;
-                } catch (org.apache.lucene.store.LockObtainFailedException e) {
-                    this.host.log("Lock still held on lucene index: %s", e.toString());
-                    // The attempt to restart might rarely timeout because the FS did not release lock in time
-                    Thread.sleep(250);
-                    continue;
-                }
+            try {
+                start = Utils.getNowMicrosUtc();
+                h.start();
+            } catch (org.apache.lucene.store.LockObtainFailedException e) {
+                this.host.log("Lock still held on lucene index: %s, aborting", e.toString());
+                return;
             }
 
             this.host.toggleServiceOptions(h.getDocumentIndexServiceUri(),

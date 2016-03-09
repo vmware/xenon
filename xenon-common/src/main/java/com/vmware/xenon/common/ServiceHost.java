@@ -2008,14 +2008,17 @@ public class ServiceHost implements ServiceRequestSender {
 
     private boolean checkIfServiceExistsAndAttach(Service service, String servicePath,
             Operation post) {
-        boolean isSynchRequest = post.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_SYNCH);
+        boolean isCreateOrSynchRequest =
+                post.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_CREATED)
+                        || post.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_SYNCH);
         Service existing = null;
 
         synchronized (this.state) {
             existing = this.attachedServices.get(servicePath);
             if (existing != null) {
-                if (!isSynchRequest && existing.getProcessingStage() == ProcessingStage.STOPPED) {
-                    // service was just stopped and about to be removed. We are not synchronizing, so
+                if (isCreateOrSynchRequest
+                        && existing.getProcessingStage() == ProcessingStage.STOPPED) {
+                    // service was just stopped and about to be removed. We are creating a new instance, so
                     // its fine to re-attach. We will do a state version check if this is a persisted service
                     existing = null;
                 }
@@ -2036,14 +2039,6 @@ public class ServiceHost implements ServiceRequestSender {
             }
         }
 
-        if (isSynchRequest) {
-            // do nothing, service already attached. We should have sent a PUT, but this
-            // can happen if a service is just starting. This means it will replicate and there is
-            // no need for explicit synch
-            post.complete();
-            return true;
-        }
-
         boolean isIdempotent = service.hasOption(ServiceOption.IDEMPOTENT_POST);
         if (!isIdempotent) {
             // check factory, its more likely to have the IDEMPOTENT option
@@ -2057,6 +2052,14 @@ public class ServiceHost implements ServiceRequestSender {
             post.setStatusCode(Operation.STATUS_CODE_CONFLICT)
                     .fail(new ServiceAlreadyStartedException(servicePath,
                             existing.getProcessingStage()));
+            return true;
+        }
+
+        if (!isCreateOrSynchRequest) {
+            // This is a restart, do nothing, service already attached. We should have sent a PUT, but this
+            // can happen if a service is just starting. This means it will replicate and there is
+            // no need for explicit synch
+            post.complete();
             return true;
         }
 
@@ -2272,8 +2275,15 @@ public class ServiceHost implements ServiceRequestSender {
                 }
                 break;
             case INDEXING_INITIAL_STATE:
-                boolean needsIndexing = isServiceIndexed(s)
-                        && hasClientSuppliedInitialState;
+                boolean needsIndexing = false;
+
+                if (isServiceIndexed(s) && !s.hasOption(ServiceOption.FACTORY)) {
+                    // we only index if this is a synchronization request from a remote peer, or
+                    // this is a new "create", brand new service start.
+                    if (post.isSynchronize() || hasClientSuppliedInitialState) {
+                        needsIndexing = true;
+                    }
+                }
 
                 post.nestCompletion(o -> {
                     processServiceStart(ProcessingStage.AVAILABLE, s, post,
@@ -2429,7 +2439,6 @@ public class ServiceHost implements ServiceRequestSender {
         }
 
         if (s == null) {
-            post.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_SYNCH);
             post.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_VERSION_CHECK);
             startService(post, child);
             return;
@@ -2479,7 +2488,7 @@ public class ServiceHost implements ServiceRequestSender {
                 return;
             }
 
-            if (!op.isSynchronize()) {
+            if (ServiceHost.isServiceCreate(op)) {
                 s.toggleOption(ServiceOption.DOCUMENT_OWNER, rsp.isLocalHostOwner);
                 op.complete();
                 return;
@@ -2529,14 +2538,12 @@ public class ServiceHost implements ServiceRequestSender {
                 op.fail(e);
                 return;
             }
-            template.documentKind = Utils.buildKind(s.getStateType());
+
             template.documentSelfLink = s.getSelfLink();
             template.documentEpoch = 0L;
+            // set version to negative so we do not select this over peer state
+            template.documentVersion = -1;
             t.state = template;
-        }
-
-        if (t.state.documentSelfLink == null) {
-            log(Level.WARNING, "missing selflink for %s", s.getClass());
         }
 
         CompletionHandler c = (o, e) -> {
@@ -2571,6 +2578,9 @@ public class ServiceHost implements ServiceRequestSender {
                         selectedState);
                 return;
             }
+
+            // indicate that synchronization occurred, we got an updated state from peers
+            op.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_SYNCH);
 
             // The remote peers have a more recent state than the one we loaded from the store.
             // Use the peer service state as the initial state.

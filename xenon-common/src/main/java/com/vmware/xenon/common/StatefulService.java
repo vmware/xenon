@@ -299,7 +299,7 @@ public class StatefulService implements Service {
             }
 
             if (opProcessingStage == OperationProcessingStage.PROCESSING_FILTERS) {
-                if (request.getAction() != Action.GET && validateReplicatedUpdate(request)) {
+                if (request.getAction() != Action.GET && validateOwnerSelectedUpdate(request)) {
                     return;
                 }
 
@@ -411,27 +411,14 @@ public class StatefulService implements Service {
         return true;
     }
 
-    private boolean validateReplicatedUpdate(Operation request) {
+    private boolean validateOwnerSelectedUpdate(Operation request) {
         if (hasOption(ServiceOption.CONCURRENT_UPDATE_HANDLING)) {
             return false;
         }
 
         // do basic version checking, regardless of service options
         ServiceDocument stateFromOwner = request.getLinkedState();
-        if (request.isFromReplication()) {
-            if (stateFromOwner == null) {
-                failRequest(request, new IllegalArgumentException("missing state in replicated op:"
-                        + request.toString()), true);
-                return true;
-            }
-            if (stateFromOwner.documentVersion == this.context.version) {
-                return resolvePossibleVersionConflict(request);
-            }
-        }
-
         if (!request.isFromReplication()) {
-            // Direct request to synchronize with peers. We will resume processing of the request
-            // depending on the synchronization result
             if (request.isSynchronize()) {
                 synchronizeWithPeers(request, null);
                 return true;
@@ -443,7 +430,6 @@ public class StatefulService implements Service {
                             "not marked as owner"));
                     return true;
                 } else {
-                    // local instance is already the owner no need for further validation
                     return false;
                 }
             }
@@ -451,6 +437,14 @@ public class StatefulService implements Service {
 
         if (!hasOption(ServiceOption.OWNER_SELECTION)) {
             return false;
+        }
+
+        // the code below applies to replicated updates that came from a remote owner
+
+        if (stateFromOwner == null) {
+            failRequest(request, new IllegalArgumentException("missing state in replicated op:"
+                    + request.toString()), true);
+            return true;
         }
 
         if (stateFromOwner.documentOwner == null) {
@@ -464,6 +458,9 @@ public class StatefulService implements Service {
         //
         // 1) The epoch for this document
         // 2) The owner for this document
+        // 3) The version of the document. However, since our index
+        // and caching policy serves the highest version, even if we receive
+        // updates out of order, they will not affect client results
 
         if (stateFromOwner.documentEpoch == null
                 || this.context.epoch > stateFromOwner.documentEpoch) {
@@ -548,53 +545,6 @@ public class StatefulService implements Service {
         }
 
         return false;
-    }
-
-    private boolean resolvePossibleVersionConflict(Operation request) {
-        ServiceDocument stateFromOwner = request.getLinkedState();
-
-        if (request.isCommit()) {
-            if (request.getAction() != Action.DELETE) {
-                // Update Commits are expected to have the same version as latest proposal
-                request.complete();
-                processPending(request);
-                return true;
-            } else {
-                // a DELETE commit from the remote owner means its time to stop the service, so
-                // return false to allow regular DELETE processing
-                return false;
-            }
-        }
-
-        request.nestCompletion((o, e) -> {
-            ServiceDocument stateFromIndex = request.getLinkedState();
-            boolean isEqual = ServiceDocument.equals(
-                    getHost().buildDocumentDescription(this),
-                    stateFromOwner, stateFromIndex);
-
-            if (isEqual) {
-                // versions match and signature matches. If this is a commit, its likely a duplicate
-                logFine("Version match (%d) and signature match from owner %s",
-                        stateFromOwner.documentVersion, stateFromOwner.documentOwner);
-                request.complete();
-                processPending(request);
-                return;
-            }
-
-            adjustStat(STAT_NAME_VERSION_CONFLICT_COUNT, 1);
-            setStat(STAT_NAME_VERSION_IN_CONFLICT, this.context.version);
-
-            request.setStatusCode(Operation.STATUS_CODE_CONFLICT);
-            Throwable ex = new IllegalStateException(
-                    String.format(
-                            "%s latest version is %d, replicated request version: %d",
-                            getSelfLink(), this.context.version,
-                            stateFromOwner.documentVersion));
-            failRequest(request, ex, true);
-        });
-
-        getHost().loadServiceState(this, request);
-        return true;
     }
 
     public void handlePost(Operation post) {
@@ -1160,7 +1110,7 @@ public class StatefulService implements Service {
         if (failure != null) {
             logWarning("synchronizing with peers due to %s", failure.getMessage());
         } else {
-            logFine("synchronizing with peers e:%d v:%d", this.context.epoch, this.context.version);
+            logInfo("synchronizing with peers e:%d v:%d", this.context.epoch, this.context.version);
         }
 
         // clone the request so we can update its body without affecting the client request
@@ -1186,7 +1136,8 @@ public class StatefulService implements Service {
         boolean isOwner = hasOption(ServiceOption.DOCUMENT_OWNER);
         boolean isStateUpdated = false;
 
-        if (!isOwner) {
+        // if we are not owner and this is not a forced synchronized (not caused by failure), abort
+        if (!isOwner && failure != null) {
             completeSynchronizationRequest(request, failure, false);
             return;
         }
@@ -1215,7 +1166,7 @@ public class StatefulService implements Service {
             request.linkState(state);
         }
 
-        if (!wasOwner) {
+        if (!wasOwner && isOwner) {
             isStateUpdated = true;
         }
 

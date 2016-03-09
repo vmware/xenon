@@ -25,6 +25,7 @@ import com.vmware.xenon.common.NodeSelectorService.SelectOwnerResponse;
 import com.vmware.xenon.common.Operation.CompletionHandler;
 import com.vmware.xenon.services.common.NodeGroupService.NodeGroupState;
 import com.vmware.xenon.services.common.QueryTask;
+import com.vmware.xenon.services.common.QueryTask.QuerySpecification.QueryOption;
 import com.vmware.xenon.services.common.ServiceUriPaths;
 
 /**
@@ -47,7 +48,6 @@ public abstract class FactoryService extends StatelessService {
     }
 
     public static final int SELF_QUERY_RESULT_LIMIT = 1000;
-    private static final long SELF_QUERY_TIMEOUT_MINUTES = 60;
     private EnumSet<ServiceOption> childOptions;
     private String nodeSelectorLink = ServiceUriPaths.DEFAULT_NODE_SELECTOR;
     private int selfQueryResultLimit = SELF_QUERY_RESULT_LIMIT;
@@ -160,7 +160,7 @@ public abstract class FactoryService extends StatelessService {
         setAvailable(false);
         QueryTask queryTask = buildChildQueryTask();
         queryForChildren(queryTask,
-                UriUtils.buildUri(this.getHost(), ServiceUriPaths.CORE_LOCAL_QUERY_TASKS),
+                UriUtils.buildUri(this.getHost(), ServiceUriPaths.CORE_QUERY_TASKS),
                 op);
     }
 
@@ -230,12 +230,20 @@ public abstract class FactoryService extends StatelessService {
 
         queryTask.querySpec.query.addBooleanClause(kindClause);
 
-        // The self query task might take a long time if we are loading millions of services. The
-        // the user can either rely on ServiceOption.ON_DEMAND_LOAD, or use a custom
-        // and longer operation timeout, during host start.
-        long timeoutMicros = TimeUnit.MINUTES.toMicros(SELF_QUERY_TIMEOUT_MINUTES);
+        // set timeout based on peer synchronization upper limit
+        long timeoutMicros = TimeUnit.SECONDS.toMicros(
+                getHost().getPeerSynchronizationTimeLimitSeconds());
         timeoutMicros = Math.max(timeoutMicros, getHost().getOperationTimeoutMicros());
         queryTask.documentExpirationTimeMicros = Utils.getNowMicrosUtc() + timeoutMicros;
+
+        // The factory instance on this host is owner, so its responsible for getting the child links
+        // from all peers. Use the broadcast query task to achieve this, since it will join
+        // results
+        queryTask.querySpec.options = EnumSet.of(QueryOption.BROADCAST);
+
+        // use the same selector as the one we are associated with so it goes to the
+        // proper node group
+        queryTask.nodeSelectorLink = getPeerNodeSelectorPath();
 
         // process child services in limited numbers, set query result limit
         queryTask.querySpec.resultLimit = this.selfQueryResultLimit;
@@ -755,6 +763,31 @@ public abstract class FactoryService extends StatelessService {
             return;
         }
 
+        // Only one node is responsible for synchronizing the child services of a given factory.
+        // Ask the runtime if this is the owner node, using the factory self link as the key.
+        Operation selectOwnerOp = maintOp.clone().setExpiration(Utils.getNowMicrosUtc()
+                + getHost().getOperationTimeoutMicros());
+        selectOwnerOp.setCompletion((o, e) -> {
+            if (e != null) {
+                logWarning("owner selection failed: %s", e.toString());
+                maintOp.fail(e);
+                return;
+            }
+            SelectOwnerResponse rsp = o.getBody(SelectOwnerResponse.class);
+            if (rsp.isLocalHostOwner == false) {
+                // We do not need to do anything. A peer factory will update our
+                // status to available, when its done synchronizing everyone
+                maintOp.complete();
+                return;
+            }
+
+            synchronizeChildServicesAsOwner(maintOp);
+        });
+
+        getHost().selectOwner(this.nodeSelectorLink, this.getSelfLink(), selectOwnerOp);
+    }
+
+    private void synchronizeChildServicesAsOwner(Operation maintOp) {
         maintOp.nestCompletion((o, e) -> {
             if (e != null) {
                 logWarning("synch failed: %s", e.toString());
@@ -765,7 +798,6 @@ public abstract class FactoryService extends StatelessService {
             setAvailable(true);
             maintOp.complete();
         });
-
         startOrSynchronizeChildServices(maintOp);
     }
 
