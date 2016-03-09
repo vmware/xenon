@@ -2275,6 +2275,10 @@ public class ServiceHost implements ServiceRequestSender {
                 boolean needsIndexing = isServiceIndexed(s)
                         && hasClientSuppliedInitialState;
 
+                if (post.isSynchronize()) {
+                    needsIndexing = true;
+                }
+
                 post.nestCompletion(o -> {
                     processServiceStart(ProcessingStage.AVAILABLE, s, post,
                             hasClientSuppliedInitialState);
@@ -2529,14 +2533,12 @@ public class ServiceHost implements ServiceRequestSender {
                 op.fail(e);
                 return;
             }
-            template.documentKind = Utils.buildKind(s.getStateType());
+
             template.documentSelfLink = s.getSelfLink();
             template.documentEpoch = 0L;
+            // set version to negative so we do not select this over peer state
+            template.documentVersion = -1;
             t.state = template;
-        }
-
-        if (t.state.documentSelfLink == null) {
-            log(Level.WARNING, "missing selflink for %s", s.getClass());
         }
 
         CompletionHandler c = (o, e) -> {

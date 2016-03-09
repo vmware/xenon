@@ -2,6 +2,15 @@
 
 ## 0.7.2-SNAPSHOT
 
+* Simplify service synchronization logic during node group
+  changes. Eliminate support for complex divergence scenarios
+  and focus on reliable behavior on a few scenarios.
+  We now throttle synchronization further by electing a single
+  node to synchronize a given factory. Since we already only let
+  a single factory synchronize per node, this further reduces
+  contention.
+  See https://www.pivotaltracker.com/story/show/115367955
+
 * Throttle peer synchronization of services further: we now only
   synchronize one replicated factory at a time. A factory already
   throttles and synchronizes a limited number of children before
