@@ -1925,13 +1925,18 @@ public class VerificationHost extends ExampleServiceHost {
     }
 
     public void waitForNodeGroupIsAvailableConvergence(String nodeGroupPath) throws Throwable {
+        waitForNodeGroupIsAvailableConvergence(nodeGroupPath, this.peerNodeGroups.values());
+    }
+
+    public void waitForNodeGroupIsAvailableConvergence(String nodeGroupPath,
+            Collection<URI> nodeGroupUris) throws Throwable {
         if (nodeGroupPath == null) {
             nodeGroupPath = ServiceUriPaths.DEFAULT_NODE_GROUP;
         }
         Date expiration = getTestExpiration();
         while (new Date().before(expiration)) {
             boolean isConverged = true;
-            for (URI nodeGroupUri : this.peerNodeGroups.values()) {
+            for (URI nodeGroupUri : nodeGroupUris) {
                 URI u = UriUtils.buildUri(nodeGroupUri, nodeGroupPath);
                 URI statsUri = UriUtils.buildStatsUri(u);
                 ServiceStats stats = getServiceState(null, ServiceStats.class, statsUri);
@@ -2434,6 +2439,7 @@ public class VerificationHost extends ExampleServiceHost {
     }
 
     public void stopHost(VerificationHost host) {
+        log("Stopping host %s (%s)", host.getUri(), host.getId());
         host.tearDown();
         this.peerHostIdToNodeState.remove(host.getId());
         this.peerNodeGroups.remove(host.getUri());
