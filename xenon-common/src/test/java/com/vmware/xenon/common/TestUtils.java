@@ -69,6 +69,15 @@ public class TestUtils {
     public static final String SOME_IGNORE_VALUE = "ignore me";
     public static final String SOME_OTHER_IGNORE_VALUE = "ignore me please";
 
+    private static class Range {
+        public final int from;
+        public final int to;
+
+        public Range(int from, int to) {
+            this.from = from;
+            this.to = to;
+        }
+    }
     @Test
     public void toHexString() {
         byte[] bytes = new byte[4];
@@ -662,6 +671,15 @@ public class TestUtils {
         Assert.assertEquals("Annotated s field", source.s, SOME_OTHER_STRING_VALUE);
         Assert.assertEquals("Annotated x field", source.x, SOME_OTHER_INT_VALUE);
         Assert.assertNull("Non-annotated ignore field", source.ignore);
+    }
+
+    @Test
+    public void testSerializeClassesWithoutDefaultConstructor() {
+        Range range = new Range(0, 100);
+        // clone uses kryo serialization
+        Range clone = Utils.clone(range);
+        assertEquals(range.from, clone.from);
+        assertEquals(range.to, clone.to);
     }
 
     /**

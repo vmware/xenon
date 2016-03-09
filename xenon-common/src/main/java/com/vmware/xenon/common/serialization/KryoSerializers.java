@@ -20,7 +20,9 @@ import java.time.ZonedDateTime;
 import java.util.UUID;
 
 import com.esotericsoftware.kryo.Kryo;
+import com.esotericsoftware.kryo.Kryo.DefaultInstantiatorStrategy;
 import com.esotericsoftware.kryo.serializers.VersionFieldSerializer;
+import org.objenesis.strategy.StdInstantiatorStrategy;
 
 public final class KryoSerializers {
 
@@ -43,6 +45,9 @@ public final class KryoSerializers {
 
     public static Kryo create(boolean isObjectSerializer) {
         Kryo k = new Kryo();
+        // handle classes with missing default constructors
+        k.setInstantiatorStrategy(new DefaultInstantiatorStrategy(new StdInstantiatorStrategy()));
+
         k.setDefaultSerializer(VersionFieldSerializer.class);
         // Custom serializers for Java 8 date/time
         k.addDefaultSerializer(ZonedDateTime.class, ZonedDateTimeSerializer.INSTANCE);
