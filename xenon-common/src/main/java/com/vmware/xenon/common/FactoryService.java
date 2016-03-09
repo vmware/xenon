@@ -755,9 +755,34 @@ public abstract class FactoryService extends StatelessService {
             return;
         }
 
-        maintOp.nestCompletion((o, e) -> {
+        // Only one node is responsible for synchronizing the child services of a given factory.
+        // Ask the runtime if this is the owner node, using the factory self link as the key.
+        Operation selectOwnerOp = maintOp.clone().setExpiration(Utils.getNowMicrosUtc()
+                + getHost().getMaintenanceIntervalMicros());
+        selectOwnerOp.setCompletion((o, e) -> {
             if (e != null) {
-                logWarning("synch failed: %s", e.toString());
+                logWarning("owner selection failed: %s", e.toString());
+                maintOp.fail(e);
+                return;
+            }
+            SelectOwnerResponse rsp = o.getBody(SelectOwnerResponse.class);
+            if (rsp.isLocalHostOwner == false) {
+                // We do not need to do anything. A peer factory will update our
+                // status to available, when its done synchronizing everyone
+                maintOp.complete();
+                return;
+            }
+
+            synchronizeChildServicesAsOwner(maintOp);
+        });
+
+        getHost().selectOwner(this.nodeSelectorLink, this.getSelfLink(), selectOwnerOp);
+    }
+
+    private void synchronizeChildServicesAsOwner(Operation maintOp) {
+        maintOp.nestCompletion((o1, e1) -> {
+            if (e1 != null) {
+                logWarning("synch failed: %s", e1.toString());
             }
             // Update stat and /available so any service or client that cares, can notice this factory
             // is done with synchronization and child restart. As mentioned earlier, the status of
@@ -765,7 +790,6 @@ public abstract class FactoryService extends StatelessService {
             setAvailable(true);
             maintOp.complete();
         });
-
         startOrSynchronizeChildServices(maintOp);
     }
 

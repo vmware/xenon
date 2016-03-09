@@ -504,8 +504,11 @@ public class TestNodeGroupService {
     @Test
     public void synchronizationManualWithDifferentNodeInitialStatePartitionAndRestart()
             throws Throwable {
-        this.isPeerSynchronizationEnabled = false;
-        doSynchronizationWithDifferentNodeInitialState();
+        for (int i = 0; i < this.testIterationCount; i++) {
+            tearDown();
+            this.isPeerSynchronizationEnabled = false;
+            doSynchronizationWithDifferentNodeInitialState();
+        }
     }
 
     private void doSynchronizationWithDifferentNodeInitialState() throws Throwable {
