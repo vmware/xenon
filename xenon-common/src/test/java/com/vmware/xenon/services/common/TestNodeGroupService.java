@@ -131,9 +131,9 @@ public class TestNodeGroupService {
     private VerificationHost host;
 
     /**
-     * Command line argument specifying number of times to run the same test method
+     * Command line argument specifying number of times to run the same test method.
      */
-    public int testIterationCount = 1;
+    public int testIterationCount = 0;
 
     /**
      * Command line argument specifying default number of in process service hosts
@@ -502,10 +502,94 @@ public class TestNodeGroupService {
     }
 
     @Test
+    public void synchronizationOneWithStateManyWithNoState() throws Throwable {
+        setUp(this.nodeCount);
+
+        // On one host, add some services. They exist only on this host and we expect them to synchronize
+        // across all hosts once this one joins with the group
+        URI hostUriWithInitialState = this.host.getPeerHostUri();
+        this.host.log("Adding children to %s", hostUriWithInitialState);
+        Map<String, ExampleServiceState> exampleStatesPerSelfLink =
+                createExampleServices(hostUriWithInitialState);
+
+        URI hostWithStateNodeGroup = UriUtils.buildUri(hostUriWithInitialState,
+                ServiceUriPaths.DEFAULT_NODE_GROUP);
+
+        // before start joins, verify isolated factory synchronization is done
+        for (URI hostUri : this.host.getNodeGroupMap().keySet()) {
+            this.host.waitForServiceAvailable(UriUtils.buildUri(hostUri,
+                    ExampleService.FACTORY_LINK));
+        }
+
+        // join a node, with no state, one by one, to the host with state.
+        // The steps are:
+        // 1) set quorum to node group size + 1
+        // 2) Join new empty node with existing node group
+        // 3) verify convergence of factory state
+        // 4) repeat
+
+        List<URI> joinedHosts = new ArrayList<>();
+        Map<URI, URI> factories = new HashMap<>();
+        factories.put(hostWithStateNodeGroup, UriUtils.buildUri(hostWithStateNodeGroup,
+                ExampleService.FACTORY_LINK));
+        joinedHosts.add(hostWithStateNodeGroup);
+        int fullQuorum = 1;
+        for (URI nodeGroupUri : this.host.getNodeGroupMap().values()) {
+            // skip host with state
+            if (hostWithStateNodeGroup.equals(nodeGroupUri)) {
+                continue;
+            }
+            // set quorum to expected full node group size, for the setup hosts
+            this.host.setNodeGroupQuorum(++fullQuorum);
+
+            this.host.testStart(1);
+            // join empty node, with node with state
+            this.host.joinNodeGroup(hostWithStateNodeGroup, nodeGroupUri, fullQuorum);
+            this.host.testWait();
+            joinedHosts.add(nodeGroupUri);
+            factories.put(nodeGroupUri, UriUtils.buildUri(nodeGroupUri,
+                    ExampleService.FACTORY_LINK));
+            this.host.waitForNodeGroupConvergence(joinedHosts, fullQuorum, fullQuorum, true);
+            this.host.waitForNodeGroupIsAvailableConvergence(nodeGroupUri.getPath(), joinedHosts);
+
+            this.waitForReplicatedFactoryChildServiceConvergence(
+                    factories,
+                    exampleStatesPerSelfLink,
+                    this.exampleStateConvergenceChecker, exampleStatesPerSelfLink.size(),
+                    0);
+        }
+    }
+
+    private Map<String, ExampleServiceState> createExampleServices(URI hostUri) throws Throwable {
+        URI factoryUri = UriUtils.buildUri(hostUri, ExampleService.FACTORY_LINK);
+
+        // add some services on one of the peers, so we can verify the get synchronized after they all join
+        Map<URI, ExampleServiceState> exampleStates = this.host.doFactoryChildServiceStart(
+                null,
+                this.serviceCount,
+                ExampleServiceState.class,
+                (o) -> {
+                    ExampleServiceState s = new ExampleServiceState();
+                    s.name = UUID.randomUUID().toString();
+                    o.setBody(s);
+                }, factoryUri);
+
+        Map<String, ExampleServiceState> exampleStatesPerSelfLink = new HashMap<>();
+
+        for (ExampleServiceState s : exampleStates.values()) {
+            exampleStatesPerSelfLink.put(s.documentSelfLink, s);
+        }
+        return exampleStatesPerSelfLink;
+    }
+
+    @Test
     public void synchronizationManualWithDifferentNodeInitialStatePartitionAndRestart()
             throws Throwable {
-        this.isPeerSynchronizationEnabled = false;
-        doSynchronizationWithDifferentNodeInitialState();
+        for (int i = 0; i < this.testIterationCount; i++) {
+            tearDown();
+            this.isPeerSynchronizationEnabled = false;
+            doSynchronizationWithDifferentNodeInitialState();
+        }
     }
 
     private void doSynchronizationWithDifferentNodeInitialState() throws Throwable {
@@ -525,26 +609,10 @@ public class TestNodeGroupService {
             // across all hosts once this one joins with the group
             VerificationHost hostWithInitialState = this.host.getInProcessHostMap().values()
                     .iterator().next();
-            URI factoryUri = UriUtils.buildFactoryUri(hostWithInitialState,
-                    ExampleService.class);
             this.host.log("Starting, auto synch: %s. Adding children to %s",
-                    this.isPeerSynchronizationEnabled, factoryUri);
-            // add some services on one of the peers, so we can verify the get synchronized after they all join
-            Map<URI, ExampleServiceState> exampleStates = this.host.doFactoryChildServiceStart(
-                    null,
-                    this.serviceCount,
-                    ExampleServiceState.class,
-                    (o) -> {
-                        ExampleServiceState s = new ExampleServiceState();
-                        s.name = UUID.randomUUID().toString();
-                        o.setBody(s);
-                    }, factoryUri);
-
-            Map<String, ExampleServiceState> exampleStatesPerSelfLink = new HashMap<>();
-
-            for (ExampleServiceState s : exampleStates.values()) {
-                exampleStatesPerSelfLink.put(s.documentSelfLink, s);
-            }
+                    this.isPeerSynchronizationEnabled, hostWithInitialState.getUri());
+            Map<String, ExampleServiceState> exampleStatesPerSelfLink = createExampleServices(
+                    hostWithInitialState.getUri());
 
             // add the *same* service instance, all *all* peers, so we force synchronization and epoch
             // change on an instance that exists everywhere
@@ -554,7 +622,7 @@ public class TestNodeGroupService {
             Map<URI, ExampleServiceState> dupStates = new HashMap<>();
             for (VerificationHost v : this.host.getInProcessHostMap().values()) {
                 counter.set(0);
-                factoryUri = UriUtils.buildFactoryUri(v,
+                URI factoryUri = UriUtils.buildFactoryUri(v,
                         ExampleService.class);
                 dupStates = this.host.doFactoryChildServiceStart(
                         null,
@@ -2809,7 +2877,20 @@ public class TestNodeGroupService {
             BiPredicate<T, T> stateChecker,
             int expectedChildCount, long expectedVersion)
             throws Throwable, TimeoutException {
+        return waitForReplicatedFactoryChildServiceConvergence(
+                getFactoriesPerNodeGroup(this.replicationTargetFactoryLink),
+                serviceStates,
+                stateChecker,
+                expectedChildCount,
+                expectedVersion);
+    }
 
+    private <T extends ServiceDocument> Map<String, T> waitForReplicatedFactoryChildServiceConvergence(
+            Map<URI, URI> factories,
+            Map<String, T> serviceStates,
+            BiPredicate<T, T> stateChecker,
+            int expectedChildCount, long expectedVersion)
+            throws Throwable, TimeoutException {
         Class<?> stateType = serviceStates.values().iterator().next().getClass();
 
         // now poll all hosts until they converge: They all have a child service
@@ -2819,7 +2900,7 @@ public class TestNodeGroupService {
         Date expiration = new Date(new Date().getTime()
                 + TimeUnit.SECONDS.toMillis(this.host.getTimeoutSeconds()));
         do {
-            Map<URI, URI> factories = getFactoriesPerNodeGroup(this.replicationTargetFactoryLink);
+
             URI node = factories.keySet().iterator().next();
             AtomicInteger getFailureCount = new AtomicInteger();
             if (expectedChildCount != 0) {
@@ -2873,7 +2954,7 @@ public class TestNodeGroupService {
 
             this.host.testWait();
 
-            long expectedNodeCountPerLink = this.host.getNodeGroupMap().size();
+            long expectedNodeCountPerLink = factories.size();
             if (this.replicationFactor != 0) {
                 expectedNodeCountPerLink = this.replicationFactor;
             }

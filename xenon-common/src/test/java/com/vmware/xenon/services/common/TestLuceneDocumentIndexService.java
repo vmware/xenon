@@ -350,6 +350,7 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
             args.sandbox = tmpFolder.getRoot().toPath();
             h.initialize(args);
             h.setOperationTimeOutMicros(this.host.getOperationTimeoutMicros());
+            h.setMaintenanceIntervalMicros(TimeUnit.MILLISECONDS.toMicros(100));
             h.start();
 
             this.host.toggleServiceOptions(h.getDocumentIndexServiceUri(),

@@ -2453,6 +2453,15 @@ public class ServiceHost implements ServiceRequestSender {
     }
 
     private void synchronizeWithPeers(Service s, Operation op, SelectOwnerResponse rsp) {
+        if (rsp.isLocalHostOwner && rsp.selectedNodes.size() == 1) {
+            // Optimization: skip synchronization request, we are a single node.
+            // The synchronization service will short cut this as well, but we avoid the setup
+            // cost below.
+            s.toggleOption(ServiceOption.DOCUMENT_OWNER, true);
+            op.complete();
+            return;
+        }
+
         // service is durable and replicated. We need to ask our peers if they
         // have more recent state version than we do, then pick the latest one
         // (or the most valid one, depending on peer consensus)
