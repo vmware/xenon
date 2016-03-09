@@ -518,7 +518,7 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
         }
 
         this.isSynchronizationRequired = false;
-        logInfo("Scheduling synchronization of replicated services due to node group change");
+        logInfo("Scheduling synchronization (%d nodes)", this.cachedGroupState.nodes.size());
         adjustStat(STAT_NAME_SYNCHRONIZATION_COUNT, 1);
         getHost().scheduleNodeGroupChangeMaintenance(getSelfLink());
     }
