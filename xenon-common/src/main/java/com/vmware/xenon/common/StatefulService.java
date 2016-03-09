@@ -1186,7 +1186,8 @@ public class StatefulService implements Service {
         boolean isOwner = hasOption(ServiceOption.DOCUMENT_OWNER);
         boolean isStateUpdated = false;
 
-        if (!isOwner) {
+        // if we are not owner and this is not a forced synchronized (not caused by failure), abort
+        if (!isOwner && failure != null) {
             completeSynchronizationRequest(request, failure, false);
             return;
         }
@@ -1215,7 +1216,7 @@ public class StatefulService implements Service {
             request.linkState(state);
         }
 
-        if (!wasOwner) {
+        if (!wasOwner && isOwner) {
             isStateUpdated = true;
         }
 
