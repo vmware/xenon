@@ -255,7 +255,8 @@ public class Operation implements Cloneable {
                 return this;
             }
 
-            public Builder setResourceQueryFilterMap(Map<Action, QueryFilter> resourceQueryFiltersMap) {
+            public Builder setResourceQueryFilterMap(
+                    Map<Action, QueryFilter> resourceQueryFiltersMap) {
                 this.authorizationContext.resourceQueryFiltersMap = resourceQueryFiltersMap;
                 return this;
             }
@@ -575,6 +576,14 @@ public class Operation implements Cloneable {
 
     public static Operation createGet(URI uri) {
         return createOperation(Action.GET, uri);
+    }
+
+    public static Operation createOptions(Service sender, String targetPath) {
+        return createOptions(UriUtils.buildUri(sender.getHost(), targetPath));
+    }
+
+    public static Operation createOptions(URI uri) {
+        return createOperation(Action.OPTIONS, uri);
     }
 
     public void sendWith(ServiceRequestSender sender) {
