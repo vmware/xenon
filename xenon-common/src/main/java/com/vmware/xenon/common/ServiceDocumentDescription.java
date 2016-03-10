@@ -141,6 +141,10 @@ public class ServiceDocumentDescription {
 
     public static class PropertyDescription {
         public ServiceDocumentDescription.TypeName typeName;
+        /**
+         * Set only for PODO-typed fields.
+         */
+        public String kind;
         public Object exampleValue;
         transient Field accessor;
 
@@ -288,6 +292,10 @@ public class ServiceDocumentDescription {
 
                 fd.accessor = f;
                 pd.fieldDescriptions.put(f.getName(), fd);
+
+                if (fd.typeName == TypeName.PODO) {
+                    fd.kind = Utils.buildKind(f.getType());
+                }
             }
 
             visited.remove(typeName);

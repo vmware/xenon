@@ -233,7 +233,7 @@ public class ServiceHost implements ServiceRequestSender {
          * The default value of 10 minutes allows for 1.8M services to synchronize, given an estimate of
          * 3,000 service synchronizations per second, on a three node cluster, on a local network.
          *
-         * Synchronization starts automatically if {@link Arguments.isPeerSynchronizationEnabled} is true,
+         * Synchronization starts automatically if {@link Arguments#isPeerSynchronizationEnabled} is true,
          * and the node group has observed a node joining or leaving (becoming unavailable)
          */
         public int perFactoryPeerSynchronizationLimitSeconds = (int) TimeUnit.MINUTES.toSeconds(10);
@@ -5339,6 +5339,26 @@ public class ServiceHost implements ServiceRequestSender {
                 }
             }
         }
+        r.documentOwner = getId();
+        get.setBodyNoCloning(r).complete();
+    }
+
+    public void queryNonItemServices(Operation get) {
+        ServiceDocumentQueryResult r = new ServiceDocumentQueryResult();
+
+        for (Service s : this.attachedServices.values()) {
+            if (s.getProcessingStage() != ProcessingStage.AVAILABLE) {
+                continue;
+            }
+            if (s.hasOption(ServiceOption.UTILITY)) {
+                continue;
+            }
+
+            if (!s.hasOption(ServiceOption.FACTORY_ITEM)) {
+                r.documentLinks.add(s.getSelfLink());
+            }
+        }
+
         r.documentOwner = getId();
         get.setBodyNoCloning(r).complete();
     }
