@@ -810,6 +810,9 @@ public class TestUtils {
                     PropertyUsageOption.OPTIONAL})
         public String opts;
 
+        @PropertyOptions(indexing = PropertyIndexingOption.EXPAND)
+        public Range nestedPodo;
+
     }
 
     private static class TestKeyObjectValueHolder {
@@ -864,6 +867,19 @@ public class TestUtils {
         assertEquals(optsDesc.usageOptions, EnumSet.of(PropertyUsageOption.ID, PropertyUsageOption.OPTIONAL));
         assertEquals(optsDesc.indexingOptions, EnumSet.of(PropertyIndexingOption.SORT, PropertyIndexingOption.EXCLUDE_FROM_SIGNATURE));
     }
+
+    @Test
+    public void testNestedPodosAreAssignedKinds() {
+        Builder builder = ServiceDocumentDescription.Builder.create();
+        ServiceDocumentDescription desc = builder.buildDescription(AnnotatedDoc.class);
+        PropertyDescription nestedPodo = desc.propertyDescriptions.get("nestedPodo");
+        assertEquals(Utils.buildKind(Range.class), nestedPodo.kind);
+
+        // primitives don't have kind
+        PropertyDescription opt = desc.propertyDescriptions.get("opt");
+        assertEquals(null, opt.kind);
+    }
+
 
     @Test
     public void testMergeQueryResultsWithDifferentData() {

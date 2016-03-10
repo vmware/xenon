@@ -106,4 +106,5 @@ public class ServiceUriPaths {
     public static final String WS_SERVICE_LIB_JS_PATH =
             Utils.buildUiResourceUriPrefixPath(WebSocketService.class) + "/ws-service-lib.js";
 
+    public static final String SWAGGER = "/discovery/swagger";
 }

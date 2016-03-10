@@ -452,6 +452,7 @@ public class Operation implements Cloneable {
     public static final String REPLICATION_PHASE_COMMIT = "commit";
 
     public static final String MEDIA_TYPE_APPLICATION_JSON = "application/json";
+    public static final String MEDIA_TYPE_TEXT_YAML = "text/x-yaml";
     public static final String MEDIA_TYPE_APPLICATION_OCTET_STREAM = "application/octet-stream";
     public static final String MEDIA_TYPE_APPLICATION_X_WWW_FORM_ENCODED = "application/x-www-form-urlencoded";
     public static final String MEDIA_TYPE_TEXT_HTML = "text/html";

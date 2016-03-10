@@ -30,6 +30,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 import com.vmware.xenon.common.RequestRouter.Route;
 import com.vmware.xenon.common.Service.Action;
@@ -141,6 +142,10 @@ public class ServiceDocumentDescription {
 
     public static class PropertyDescription {
         public ServiceDocumentDescription.TypeName typeName;
+        /**
+         * Set only for PODO-typed fields.
+         */
+        public String kind;
         public Object exampleValue;
         transient Field accessor;
 
@@ -157,6 +162,11 @@ public class ServiceDocumentDescription {
          * Description of element type if this property is of the ARRAY or COLLECTION type.
          */
         public PropertyDescription elementDescription;
+
+        /**
+         * Set only for enums, the set of possible values.
+         */
+        public String[] enumValues;
 
         public PropertyDescription() {
             this.indexingOptions = EnumSet.noneOf(PropertyIndexingOption.class);
@@ -288,6 +298,10 @@ public class ServiceDocumentDescription {
 
                 fd.accessor = f;
                 pd.fieldDescriptions.put(f.getName(), fd);
+
+                if (fd.typeName == TypeName.PODO) {
+                    fd.kind = Utils.buildKind(f.getType());
+                }
             }
 
             visited.remove(typeName);
@@ -422,6 +436,11 @@ public class ServiceDocumentDescription {
                     pd.elementDescription = fd;
                 } else if (Enum.class.isAssignableFrom(clazz)) {
                     pd.typeName = TypeName.ENUM;
+                    pd.enumValues = Arrays
+                            .stream(clazz.getEnumConstants())
+                            .map( o -> ((Enum)o).name())
+                            .collect(Collectors.toList())
+                            .toArray(new String[0]);
                 } else if (clazz.isArray()) {
                     pd.typeName = TypeName.ARRAY;
 
@@ -461,6 +480,7 @@ public class ServiceDocumentDescription {
                     pd.elementDescription = fd;
                 } else {
                     pd.typeName = TypeName.PODO;
+                    pd.kind = Utils.buildKind(clazz);
                     if (depth > 0) {
                         // Force indexing of all nested complex PODO fields. If the service author
                         // instructed expand at the root level, we will index and expand everything

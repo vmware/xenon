@@ -527,8 +527,8 @@ public class UtilityService implements Service {
             updateBody = op.getBody(ServiceConfigUpdateRequest.class);
         }
 
-        if (!ServiceConfigUpdateRequest.KIND.equals(updateBody.kind)) {
-            op.fail(new IllegalArgumentException("Unrecognized kind: " + updateBody.kind));
+        if (!ServiceConfigUpdateRequest.KIND.equals(updateBody.documentKind)) {
+            op.fail(new IllegalArgumentException("Unrecognized kind: " + updateBody.documentKind));
             return;
         }
 

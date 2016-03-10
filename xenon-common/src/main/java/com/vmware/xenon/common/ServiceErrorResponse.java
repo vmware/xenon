@@ -23,8 +23,10 @@ import java.util.List;
  * it will be preserved. Service authors should derive from this class and add any
  * additional fields that communicate error details to the client.
  */
-public class ServiceErrorResponse {
-    public static enum ErrorDetail {
+public class ServiceErrorResponse extends ServiceDocument {
+    public static final String KIND = Utils.buildKind(ServiceErrorResponse.class);
+
+    public enum ErrorDetail {
         SHOULD_RETRY
     }
 
@@ -46,12 +48,14 @@ public class ServiceErrorResponse {
         return rsp;
     }
 
-    public static final String KIND = Utils.buildKind(ServiceErrorResponse.class);
+
+    public ServiceErrorResponse() {
+        this.documentKind = KIND;
+    }
+
     public String message;
     public String messageId;
     public List<String> stackTrace;
     public int statusCode;
     public EnumSet<ErrorDetail> details;
-
-    public String documentKind = KIND;
 }

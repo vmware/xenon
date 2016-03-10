@@ -21,13 +21,16 @@ import com.vmware.xenon.common.Service.ServiceOption;
  * Configuration update request body. Allows a client to dynamically update service instance
  * configuration (including a sub set of the capabilities) through the /config utility service
  */
-public class ServiceConfigUpdateRequest {
+public class ServiceConfigUpdateRequest extends ServiceDocument {
     public static final String KIND = Utils.buildKind(ServiceConfigUpdateRequest.class);
 
     public static ServiceConfigUpdateRequest create() {
         ServiceConfigUpdateRequest r = new ServiceConfigUpdateRequest();
-        r.kind = KIND;
         return r;
+    }
+
+    public ServiceConfigUpdateRequest() {
+        this.documentKind = KIND;
     }
 
     public EnumSet<ServiceOption> addOptions;
@@ -35,6 +38,5 @@ public class ServiceConfigUpdateRequest {
     public Integer operationQueueLimit;
     public Long epoch;
     public Long maintenanceIntervalMicros;
-    public String kind;
 
 }

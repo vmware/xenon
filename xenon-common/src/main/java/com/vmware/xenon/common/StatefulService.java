@@ -1745,7 +1745,7 @@ public class StatefulService implements Service {
         }
 
         ServiceConfigUpdateRequest body = request.getBody(ServiceConfigUpdateRequest.class);
-        if (!ServiceConfigUpdateRequest.KIND.equals(body.kind)) {
+        if (!ServiceConfigUpdateRequest.KIND.equals(body.documentKind)) {
             return false;
         }
 
