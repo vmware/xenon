@@ -941,4 +941,19 @@ public class Utils {
 
         return result;
     }
+
+    /**
+     * Checks if fieldName is present and accessible in service type
+     * @param type
+     * @param fieldName
+     * @return
+     */
+    public static boolean hasField(Class<? extends Service> type, String fieldName) {
+        try {
+            type.getField(fieldName);
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
 }
