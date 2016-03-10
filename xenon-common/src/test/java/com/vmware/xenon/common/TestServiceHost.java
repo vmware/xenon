@@ -56,6 +56,7 @@ import com.vmware.xenon.services.common.ExampleService;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
 import com.vmware.xenon.services.common.ExampleServiceHost;
 import com.vmware.xenon.services.common.LuceneDocumentIndexService;
+import com.vmware.xenon.services.common.MinimalFactoryTestService;
 import com.vmware.xenon.services.common.MinimalTestService;
 import com.vmware.xenon.services.common.NodeGroupService.NodeGroupState;
 import com.vmware.xenon.services.common.NodeState;
@@ -886,6 +887,47 @@ public class TestServiceHost {
                     .setCompletion(this.host.getExpectedFailureCompletion()));
         }
         this.host.testWait();
+    }
+
+    @Test
+    public void registerForFactoryServiceAvailability()
+            throws Throwable {
+        setUp(false);
+        this.host.startFactoryServicesSynchronously(new TestFactoryService.SomeFactoryService(),
+                SomeExampleService.createFactory());
+        this.host.waitForServiceAvailable(SomeExampleService.FACTORY_LINK);
+        this.host.waitForServiceAvailable(TestFactoryService.SomeFactoryService.SELF_LINK);
+        try {
+            // not a factory so will fail
+            this.host.startFactoryServicesSynchronously(new ExampleService());
+            throw new IllegalStateException("Should have failed");
+        } catch (IllegalArgumentException e) {
+
+        }
+
+        try {
+            // does not have SELF_LINK/FACTORY_LINK so will fail
+            this.host.startFactoryServicesSynchronously(new MinimalFactoryTestService());
+            throw new IllegalStateException("Should have failed");
+        } catch (IllegalArgumentException e) {
+
+        }
+    }
+
+    public static class SomeExampleService extends StatefulService {
+        public static final String FACTORY_LINK = UUID.randomUUID().toString();
+
+        public static Service createFactory() {
+            return FactoryService.create(SomeExampleService.class, SomeExampleServiceState.class);
+        }
+
+        public SomeExampleService() {
+            super(SomeExampleServiceState.class);
+        }
+
+        public static class SomeExampleServiceState extends ServiceDocument {
+            public String name ;
+        }
     }
 
     @Test
