@@ -1528,6 +1528,40 @@ public class ServiceHost implements ServiceRequestSender {
         sendRequest(peerRequestOp);
     }
 
+    protected void startFactoryServicesSynchronously(Service... services) throws Throwable {
+        List<Operation> posts = new ArrayList<>();
+        for (Service s : services) {
+            if (!(s instanceof FactoryService)) {
+                String message = String
+                        .format("Service %s is not a FactoryService", s.getClass().getSimpleName());
+                log(Level.SEVERE, "%s", message);
+                throw new IllegalArgumentException(message);
+            }
+            URI u = null;
+            if (Utils.hasField(s.getClass(), UriUtils.FIELD_NAME_SELF_LINK)) {
+                u = UriUtils.buildUri(this, s.getClass());
+            } else {
+                Class<? extends Service> childClass = ((FactoryService) s).createServiceInstance()
+                        .getClass();
+                if (Utils.hasField(childClass, UriUtils.FIELD_NAME_FACTORY_LINK)) {
+                    u = UriUtils.buildFactoryUri(this, childClass);
+                }
+                if (u == null) {
+                    String message = String
+                            .format("%s field not found in class %s and %s field not found in class %s",
+                                    UriUtils.FIELD_NAME_SELF_LINK, s.getClass().getSimpleName(),
+                                    UriUtils.FIELD_NAME_FACTORY_LINK,
+                                    childClass.getSimpleName());
+                    log(Level.SEVERE, "%s", message);
+                    throw new IllegalArgumentException(message);
+                }
+            }
+            Operation startPost = Operation.createPost(u);
+            posts.add(startPost);
+        }
+        startCoreServicesSynchronously(posts, Arrays.asList(services));
+    }
+
     protected void startCoreServicesSynchronously(Service... services) throws Throwable {
         List<Operation> posts = new ArrayList<>();
         for (Service s : services) {
