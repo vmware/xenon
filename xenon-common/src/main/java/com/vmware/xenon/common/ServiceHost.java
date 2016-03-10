@@ -233,7 +233,7 @@ public class ServiceHost implements ServiceRequestSender {
          * The default value of 10 minutes allows for 1.8M services to synchronize, given an estimate of
          * 3,000 service synchronizations per second, on a three node cluster, on a local network.
          *
-         * Synchronization starts automatically if {@link Arguments.isPeerSynchronizationEnabled} is true,
+         * Synchronization starts automatically if {@link Arguments#isPeerSynchronizationEnabled} is true,
          * and the node group has observed a node joining or leaving (becoming unavailable)
          */
         public int perFactoryPeerSynchronizationLimitSeconds = (int) TimeUnit.MINUTES.toSeconds(10);
@@ -306,9 +306,11 @@ public class ServiceHost implements ServiceRequestSender {
     public static final String[] RESERVED_SERVICE_URI_PATHS = {
             SERVICE_URI_SUFFIX_AVAILABLE,
             SERVICE_URI_SUFFIX_REPLICATION,
-            SERVICE_URI_SUFFIX_STATS, SERVICE_URI_SUFFIX_SUBSCRIPTIONS,
+            SERVICE_URI_SUFFIX_STATS,
+            SERVICE_URI_SUFFIX_SUBSCRIPTIONS,
             SERVICE_URI_SUFFIX_UI,
-            SERVICE_URI_SUFFIX_CONFIG, SERVICE_URI_SUFFIX_TEMPLATE };
+            SERVICE_URI_SUFFIX_CONFIG,
+            SERVICE_URI_SUFFIX_TEMPLATE };
 
     static final Path DEFAULT_TMPDIR = Paths.get(System.getProperty("java.io.tmpdir"));
     static final Path DEFAULT_SANDBOX = DEFAULT_TMPDIR.resolve("xenon");
@@ -5301,23 +5303,40 @@ public class ServiceHost implements ServiceRequestSender {
         get.setBodyNoCloning(r).complete();
     }
 
-    /**
-     * Queries services in the AVAILABLE stage based on the provided options
-     *
-     * matchAllOptions = true : all options must match
-     * matchAllOptions = false : any option must match
-     */
     public void queryServiceUris(EnumSet<ServiceOption> options, boolean matchAllOptions,
             Operation get) {
+        queryServiceUris(options, matchAllOptions, get, null);
+    }
+
+    /**
+     * Queries services in the AVAILABLE stage based on the provided options, excluding all
+     * UTILITY services.
+     *
+     * @param options options that must match
+     * @param matchAllOptions true : all options must match,  false : any option must match
+     * @param get
+     * @param exclusionOptions if not-null, exclude services that have any of the excluded options
+     */
+    public void queryServiceUris(EnumSet<ServiceOption> options, boolean matchAllOptions,
+            Operation get, EnumSet<ServiceOption> exclusionOptions) {
         ServiceDocumentQueryResult r = new ServiceDocumentQueryResult();
 
-        for (Service s : this.attachedServices.values()) {
+        loop: for (Service s : this.attachedServices.values()) {
             if (s.getProcessingStage() != ProcessingStage.AVAILABLE) {
                 continue;
             }
             if (s.hasOption(ServiceOption.UTILITY)) {
                 continue;
             }
+
+            if (exclusionOptions != null) {
+                for (ServiceOption exOp : exclusionOptions) {
+                    if (s.hasOption(exOp)) {
+                        continue loop;
+                    }
+                }
+            }
+
             String servicePath = s.getSelfLink();
 
             if (matchAllOptions) {

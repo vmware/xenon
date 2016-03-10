@@ -20,6 +20,7 @@ import static org.junit.Assert.assertTrue;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
+import java.math.RoundingMode;
 import java.net.URLEncoder;
 import java.nio.ByteBuffer;
 import java.nio.file.Path;
@@ -42,7 +43,6 @@ import java.util.concurrent.TimeUnit;
 import java.util.logging.Logger;
 
 import com.google.gson.reflect.TypeToken;
-
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -51,9 +51,11 @@ import com.vmware.xenon.common.ServiceDocumentDescription.Builder;
 import com.vmware.xenon.common.ServiceDocumentDescription.PropertyDescription;
 import com.vmware.xenon.common.ServiceDocumentDescription.PropertyIndexingOption;
 import com.vmware.xenon.common.ServiceDocumentDescription.PropertyUsageOption;
+import com.vmware.xenon.common.ServiceDocumentDescription.TypeName;
 import com.vmware.xenon.common.SystemHostInfo.OsFamily;
 import com.vmware.xenon.common.test.VerificationHost;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
+import com.vmware.xenon.services.common.QueryTask.NumericRange;
 import com.vmware.xenon.services.common.QueryValidationTestService.QueryValidationServiceState;
 import com.vmware.xenon.services.common.ServiceUriPaths;
 
@@ -810,6 +812,11 @@ public class TestUtils {
                     PropertyUsageOption.OPTIONAL})
         public String opts;
 
+        @PropertyOptions(indexing = PropertyIndexingOption.EXPAND)
+        public Range nestedPodo;
+
+        public RoundingMode someEnum;
+
     }
 
     private static class TestKeyObjectValueHolder {
@@ -863,6 +870,38 @@ public class TestUtils {
         PropertyDescription optsDesc = desc.propertyDescriptions.get("opts");
         assertEquals(optsDesc.usageOptions, EnumSet.of(PropertyUsageOption.ID, PropertyUsageOption.OPTIONAL));
         assertEquals(optsDesc.indexingOptions, EnumSet.of(PropertyIndexingOption.SORT, PropertyIndexingOption.EXCLUDE_FROM_SIGNATURE));
+    }
+
+    @Test
+    public void testNestedPodosAreAssignedKinds() {
+        ServiceDocumentDescription desc = ServiceDocumentDescription.Builder.create()
+                .buildDescription(AnnotatedDoc.class);
+        PropertyDescription nestedPodo = desc.propertyDescriptions.get("nestedPodo");
+        assertEquals(Utils.buildKind(Range.class), nestedPodo.kind);
+
+        // primitives don't have a kind
+        PropertyDescription opt = desc.propertyDescriptions.get("opt");
+        assertNull(opt.kind);
+    }
+
+    @Test
+    public void testEnumValuesArePopulated() {
+        ServiceDocumentDescription desc = ServiceDocumentDescription.Builder.create()
+                .buildDescription(AnnotatedDoc.class);
+        PropertyDescription someEnum = desc.propertyDescriptions.get("someEnum");
+        PropertyDescription nestedPodo = desc.propertyDescriptions.get("nestedPodo");
+
+        assertEquals(RoundingMode.values().length, someEnum.enumValues.length);
+        assertNull(nestedPodo.enumValues);
+    }
+
+    @Test
+    public void testNumberFieldsCoercedToDouble() {
+        PropertyDescription desc = ServiceDocumentDescription.Builder
+                .create()
+                .buildPodoPropertyDescription(NumericRange.class);
+        assertEquals(TypeName.DOUBLE, desc.fieldDescriptions.get("min").typeName);
+        assertEquals(TypeName.DOUBLE, desc.fieldDescriptions.get("max").typeName);
     }
 
     @Test
