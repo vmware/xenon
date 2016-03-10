@@ -59,6 +59,7 @@
     <module>xenon-loader</module>
     <module>xenon-slf4j</module>
     <module>xenon-ui</module>
+    <module>xenon-swagger</module>
   </modules>
 
   <properties>
