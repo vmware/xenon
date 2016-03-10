@@ -1528,6 +1528,49 @@ public class ServiceHost implements ServiceRequestSender {
         sendRequest(peerRequestOp);
     }
 
+    /**
+     * Helper method to start both anonymous and non-anonymous factory services uniformly.
+     *
+     * Starts factory services using:
+     * -  {@code UriUtils.FIELD_NAME_SELF_LINK} field on service or
+     * -  {@code UriUtils.FIELD_NAME_FACTORY_LINK} field on childService.
+     *
+     * Services do not start in case:
+     * - Any instance is not a factory service or
+     * - {@code UriUtils.FIELD_NAME_SELF_LINK} and {@code UriUtils.FIELD_NAME_FACTORY_LINK} fields are missing.
+     */
+    protected void startFactoryServicesSynchronously(Service... services) throws Throwable {
+        List<Operation> posts = new ArrayList<>();
+        for (Service s : services) {
+            if (!(s instanceof FactoryService)) {
+                String message = String
+                        .format("Service %s is not a FactoryService", s.getClass().getSimpleName());
+                throw new IllegalArgumentException(message);
+            }
+            URI u = null;
+            if (ReflectionUtils.hasField(s.getClass(), UriUtils.FIELD_NAME_SELF_LINK)) {
+                u = UriUtils.buildUri(this, s.getClass());
+            } else {
+                Class<? extends Service> childClass = ((FactoryService) s).createServiceInstance()
+                        .getClass();
+                if (ReflectionUtils.hasField(childClass, UriUtils.FIELD_NAME_FACTORY_LINK)) {
+                    u = UriUtils.buildFactoryUri(this, childClass);
+                }
+                if (u == null) {
+                    String message = String
+                            .format("%s field not found in class %s and %s field not found in class %s",
+                                    UriUtils.FIELD_NAME_SELF_LINK, s.getClass().getSimpleName(),
+                                    UriUtils.FIELD_NAME_FACTORY_LINK,
+                                    childClass.getSimpleName());
+                    throw new IllegalArgumentException(message);
+                }
+            }
+            Operation startPost = Operation.createPost(u);
+            posts.add(startPost);
+        }
+        startCoreServicesSynchronously(posts, Arrays.asList(services));
+    }
+
     protected void startCoreServicesSynchronously(Service... services) throws Throwable {
         List<Operation> posts = new ArrayList<>();
         for (Service s : services) {

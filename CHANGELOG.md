@@ -17,6 +17,10 @@
   to be dealt with uniformly. Clients may need to recompile as a lot
   of overloaded methods are removed.
 
+* Add ServiceHost helper method startFactoryServicesSynchronously
+  for starting factory services . Allows to start both anonymous and
+  non-anonymous factory services uniformly.
+
 ## 0.7.1
 
 * Added VerificationHost.waitFor() utility method
