@@ -110,6 +110,7 @@
         <module>xenon-dns</module>
         <module>xenon-loader-test</module>
         <module>xenon-websocket-test</module>
+        <module>xenon-client</module>
       </modules>
       <activation>
         <activeByDefault>true</activeByDefault>
@@ -124,6 +125,7 @@
         <module>xenon-dns</module>
         <module>xenon-loader-test</module>
         <module>xenon-websocket-test</module>
+        <module>xenon-client</module>
       </modules>
       <build>
         <plugins>
