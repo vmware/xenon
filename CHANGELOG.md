@@ -17,6 +17,10 @@
   to be dealt with uniformly. Clients may need to recompile as a lot
   of overloaded methods are removed.
 
+* Add a new module xenon-client that provides 'xenonc' executable.
+  The client application works with an intuitive DSL to interact with 
+  a xenon-host. YAML and JSON are currently supported.
+
 ## 0.7.1
 
 * Added VerificationHost.waitFor() utility method
