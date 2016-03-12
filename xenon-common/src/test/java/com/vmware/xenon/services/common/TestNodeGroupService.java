@@ -31,6 +31,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -1887,7 +1888,7 @@ public class TestNodeGroupService {
     }
 
     @Test
-    public void testAuthorizationReplication() throws Throwable {
+    public void replicationWithAuthAndNodeRestart() throws Throwable {
         AuthorizationHelper authHelper;
 
         this.isAuthorizationEnabled = true;
@@ -1897,6 +1898,7 @@ public class TestNodeGroupService {
 
         // relax quorum to allow for divergent writes, on independent nodes (not yet joined)
         this.host.setNodeGroupQuorum(1);
+        this.host.setSystemAuthorizationContext();
 
         // Create the same users and roles on every peer independently
         Map<ServiceHost, Collection<String>> roleLinksByHost = new HashMap<>();
@@ -1969,6 +1971,7 @@ public class TestNodeGroupService {
         ExampleServiceState exampleServiceState = new ExampleServiceState();
         exampleServiceState.name = "jane";
 
+        Set<String> exampleLinks = new ConcurrentSkipListSet<>();
         this.host.testStart(exampleServiceCount);
         for (int i = 0; i < exampleServiceCount; i++) {
             CompletionHandler c = (o, e) -> {
@@ -1981,6 +1984,7 @@ public class TestNodeGroupService {
                 ExampleServiceState state = o.getBody(ExampleServiceState.class);
                 assertEquals(state.documentAuthPrincipalLink,
                         AuthorizationHelper.USER_SERVICE_PATH);
+                exampleLinks.add(state.documentSelfLink);
                 this.host.completeIteration();
             };
             this.host.send(Operation
@@ -2010,6 +2014,63 @@ public class TestNodeGroupService {
                     }));
         }
         this.host.testWait();
+
+        // relax quorum
+        this.host.setNodeGroupQuorum(this.nodeCount - 1);
+        // expire node that went away quickly to avoid alot of log spam from gossip failures
+        NodeGroupConfig cfg = new NodeGroupConfig();
+        cfg.nodeRemovalDelayMicros = TimeUnit.SECONDS.toMicros(1);
+        this.host.setNodeGroupConfig(cfg);
+
+        // verify restart, with authorization.
+        // stop one host
+        VerificationHost hostToStop = this.host.getInProcessHostMap().values().iterator().next();
+        restartAuthorizedHost(exampleLinks, hostToStop);
+
+    }
+
+    private void restartAuthorizedHost(Set<String> exampleLinks, VerificationHost hostToStop)
+            throws Throwable, InterruptedException {
+        this.host.stopHostAndPreserveState(hostToStop);
+
+        this.host.waitForNodeGroupConvergence(2, 2);
+
+        VerificationHost existingHost = this.host.getInProcessHostMap().values().iterator().next();
+
+        hostToStop.setPort(0);
+        hostToStop.start();
+        Thread.sleep(250);
+        hostToStop.waitForServiceAvailable(UriUtils.buildUri(hostToStop,
+                ExampleService.FACTORY_LINK));
+
+        // increase quorum on existing nodes, so they wait for new node
+        this.host.setNodeGroupQuorum(this.nodeCount);
+
+        // restart host, rejoin it
+        URI nodeGroupU = UriUtils.buildUri(hostToStop, ServiceUriPaths.DEFAULT_NODE_GROUP);
+        URI eNodeGroupU = UriUtils.buildUri(existingHost, ServiceUriPaths.DEFAULT_NODE_GROUP);
+        this.host.testStart(1);
+        this.host.setSystemAuthorizationContext();
+        this.host.joinNodeGroup(nodeGroupU, eNodeGroupU, this.nodeCount);
+        this.host.testWait();
+        this.host.addPeerNode(hostToStop);
+        this.host.waitForNodeGroupConvergence(this.nodeCount);
+
+        // wait until example factory is ready again
+        hostToStop.waitForServiceAvailable(UriUtils.buildUri(hostToStop,
+                ExampleService.FACTORY_LINK));
+
+        this.host.resetAuthorizationContext();
+        // verify all services are restarted
+        this.host.waitFor("Services not started in restarted host", () -> {
+            for (String s : exampleLinks) {
+                ProcessingStage st = hostToStop.getServiceStage(s);
+                if (st == null) {
+                    return false;
+                }
+            }
+            return true;
+        });
     }
 
     private Map<ServiceHost, Map<URI, RoleState>> getRolesByHost(
@@ -2516,7 +2577,7 @@ public class TestNodeGroupService {
                                         }
                                         this.host.completeIteration();
                                     });
-                    this.host.sendRequestWithCallback(get);
+                    this.host.sendRequest(get);
                 }
                 this.host.testWait();
             }

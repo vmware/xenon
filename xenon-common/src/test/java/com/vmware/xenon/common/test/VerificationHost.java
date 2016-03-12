@@ -2205,6 +2205,7 @@ public class VerificationHost extends ExampleServiceHost {
 
     public void setNodeGroupConfig(NodeGroupConfig config)
             throws Throwable {
+        setSystemAuthorizationContext();
         TestContext ctx = testCreate(getNodeGroupMap().size());
         for (URI nodeGroup : getNodeGroupMap().values()) {
             NodeGroupState body = new NodeGroupState();
@@ -2214,6 +2215,7 @@ public class VerificationHost extends ExampleServiceHost {
                     .setCompletion(ctx.getCompletion())
                     .setBody(body));
         }
+        resetAuthorizationContext();
         ctx.await();
     }
 
@@ -2221,6 +2223,8 @@ public class VerificationHost extends ExampleServiceHost {
             throws Throwable {
         // we can issue the update to any one node and it will update
         // everyone in the group
+
+        setSystemAuthorizationContext();
 
         for (URI nodeGroup : getNodeGroupMap().values()) {
             log("Changing quorum to %d on group %s", quorum, nodeGroup);
@@ -2230,6 +2234,7 @@ public class VerificationHost extends ExampleServiceHost {
         Date exp = getTestExpiration();
         while (new Date().before(exp)) {
             boolean isConverged = true;
+            setSystemAuthorizationContext();
             for (URI n : this.peerNodeGroups.values()) {
                 NodeGroupState s = getServiceState(null, NodeGroupState.class, n);
                 for (NodeState ns : s.nodes.values()) {
@@ -2238,12 +2243,16 @@ public class VerificationHost extends ExampleServiceHost {
                     }
                 }
             }
+            resetAuthorizationContext();
             if (isConverged) {
+
                 log("converged");
                 return;
             }
             Thread.sleep(500);
         }
+        resetAuthorizationContext();
+
         throw new TimeoutException();
     }
 

@@ -206,6 +206,7 @@ public class LuceneQueryTaskService extends StatefulService {
 
             ServiceDocument postBody = new ServiceDocument();
             postBody.documentSelfLink = broadcastPageServiceUri.getPath();
+            postBody.documentExpirationTimeMicros = queryTask.documentExpirationTimeMicros;
 
             Operation startPost = Operation
                     .createPost(broadcastPageServiceUri)
@@ -228,7 +229,8 @@ public class LuceneQueryTaskService extends StatefulService {
                 queryTask.results.nextPageLink = forwarderUri.getPath() + UriUtils.URI_QUERY_CHAR +
                         forwarderUri.getQuery();
                 this.getHost().startService(startPost,
-                        new BroadcastQueryPageService(queryTask.querySpec, nextPageLinks));
+                        new BroadcastQueryPageService(queryTask.querySpec, nextPageLinks,
+                                queryTask.documentExpirationTimeMicros));
             } else {
                 queryTask.results.nextPageLink = null;
             }

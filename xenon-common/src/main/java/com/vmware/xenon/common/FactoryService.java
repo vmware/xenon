@@ -235,6 +235,7 @@ public abstract class FactoryService extends StatelessService {
                 getHost().getPeerSynchronizationTimeLimitSeconds());
         timeoutMicros = Math.max(timeoutMicros, getHost().getOperationTimeoutMicros());
         queryTask.documentExpirationTimeMicros = Utils.getNowMicrosUtc() + timeoutMicros;
+        logInfo("expires at %d", queryTask.documentExpirationTimeMicros);
 
         // The factory instance on this host is owner, so its responsible for getting the child links
         // from all peers. Use the broadcast query task to achieve this, since it will join
@@ -763,11 +764,13 @@ public abstract class FactoryService extends StatelessService {
             return;
         }
 
+        OperationContext opContext = OperationContext.getOperationContext();
         // Only one node is responsible for synchronizing the child services of a given factory.
         // Ask the runtime if this is the owner node, using the factory self link as the key.
         Operation selectOwnerOp = maintOp.clone().setExpiration(Utils.getNowMicrosUtc()
                 + getHost().getOperationTimeoutMicros());
         selectOwnerOp.setCompletion((o, e) -> {
+            OperationContext.restoreOperationContext(opContext);
             if (e != null) {
                 logWarning("owner selection failed: %s", e.toString());
                 maintOp.fail(e);

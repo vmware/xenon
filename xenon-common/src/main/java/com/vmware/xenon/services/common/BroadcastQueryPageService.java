@@ -35,11 +35,14 @@ public class BroadcastQueryPageService extends StatelessService {
 
     private QueryTask.QuerySpecification spec;
     private List<String> pageLinks;
+    private long expirationMicros;
 
-    public BroadcastQueryPageService(QueryTask.QuerySpecification spec, List<String> pageLinks) {
+    public BroadcastQueryPageService(QueryTask.QuerySpecification spec, List<String> pageLinks,
+            long expMicros) {
         super(QueryTask.class);
         this.spec = spec;
         this.pageLinks = pageLinks;
+        this.expirationMicros = expMicros;
     }
 
     @Override
@@ -144,6 +147,7 @@ public class BroadcastQueryPageService extends StatelessService {
 
         ServiceDocument postBody = new ServiceDocument();
         postBody.documentSelfLink = broadcastPageServiceUri.getPath();
+        postBody.documentExpirationTimeMicros = this.expirationMicros;
 
         Operation startPost = Operation
                 .createPost(broadcastPageServiceUri)
@@ -155,7 +159,7 @@ public class BroadcastQueryPageService extends StatelessService {
                     }
                 });
         this.getHost().startService(startPost,
-                new BroadcastQueryPageService(this.spec, pageLinks));
+                new BroadcastQueryPageService(this.spec, pageLinks, this.expirationMicros));
 
         return broadcastQueryPageLink;
     }
