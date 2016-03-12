@@ -4575,12 +4575,7 @@ public class ServiceHost implements ServiceRequestSender {
                 log(Level.WARNING, "Service %s has exceeded synchronization limit of %d",
                         link, this.state.peerSynchronizationTimeLimitSeconds);
                 this.synchronizationActiveServices.remove(link);
-                // proceed with synchronization of another service
-                break;
             }
-
-            // a service is actively synchronizing, skip any further synchronization starts.
-            return;
         }
 
         for (Entry<String, Long> en : this.synchronizationRequiredServices
@@ -4640,14 +4635,11 @@ public class ServiceHost implements ServiceRequestSender {
             // allow overlapping node group change maintenance requests
             this.run(() -> {
                 OperationContext.setAuthorizationContext(this.getSystemAuthorizationContext());
-                log(Level.FINE, " Synchronizing %s (last:%d, sl: %d now:%d)", link,
+                log(Level.INFO, " Synchronizing %s (last:%d, sl: %d now:%d)", link,
                         lastSynchTime, selectorSynchTime, n);
                 s.adjustStat(Service.STAT_NAME_NODE_GROUP_CHANGE_MAINTENANCE_COUNT, 1);
                 s.handleMaintenance(maintOp);
             });
-
-            // we only synchronize one service at a time
-            break;
         }
     }
 

@@ -49,6 +49,7 @@ import com.vmware.xenon.common.ServiceHost.ServiceHostState.MemoryLimitType;
 import com.vmware.xenon.common.ServiceStats.ServiceStat;
 import com.vmware.xenon.common.test.AuthorizationHelper;
 import com.vmware.xenon.common.test.MinimalTestServiceState;
+import com.vmware.xenon.common.test.TestContext;
 import com.vmware.xenon.common.test.TestProperty;
 import com.vmware.xenon.common.test.VerificationHost;
 import com.vmware.xenon.services.common.AuthorizationContextService;
@@ -951,6 +952,97 @@ public class TestServiceHost {
                 links);
 
         this.host.testWait();
+    }
+
+    public static class ParentService extends StatefulService {
+
+        public static final String FACTORY_LINK = "/test/parent";
+
+        public static Service createFactory() {
+            return FactoryService.create(ParentService.class, ExampleServiceState.class);
+        }
+
+        public ParentService() {
+            super(ExampleServiceState.class);
+            super.toggleOption(ServiceOption.REPLICATION, true);
+            super.toggleOption(ServiceOption.OWNER_SELECTION, true);
+            super.toggleOption(ServiceOption.PERSISTENCE, true);
+        }
+    }
+
+    public static class ChildDependsOnParentService extends StatefulService {
+        public static final String FACTORY_LINK = "/test/child-of-parent";
+
+        public static Service createFactory() {
+            return FactoryService.create(ChildDependsOnParentService.class,
+                    ExampleServiceState.class);
+        }
+
+        public ChildDependsOnParentService() {
+            super(ExampleServiceState.class);
+            super.toggleOption(ServiceOption.REPLICATION, true);
+            super.toggleOption(ServiceOption.OWNER_SELECTION, true);
+            super.toggleOption(ServiceOption.PERSISTENCE, true);
+        }
+
+        @Override
+        public void handleStart(Operation post) {
+            // do not complete post for start, until we see a instance of the parent
+            // being available. If there is an issue with factory start, this will
+            // deadlock
+            ExampleServiceState st = getBody(post);
+            String id = Service.getId(st.documentSelfLink);
+            String parentPath = UriUtils.buildUriPath(ParentService.FACTORY_LINK, id);
+            post.nestCompletion((o, e) -> {
+                if (e != null) {
+                    post.fail(e);
+                    return;
+                }
+                logInfo("Parent service started!");
+                post.complete();
+            });
+            getHost().registerForServiceAvailability(post, parentPath);
+        }
+    }
+
+    @Test
+    public void registerForServiceAvailabilityWithCrossDependencies()
+            throws Throwable {
+        setUp(false);
+        this.host.startFactoryServicesSynchronously(ParentService.createFactory(),
+                ChildDependsOnParentService.createFactory());
+        String id = UUID.randomUUID().toString();
+        TestContext ctx = this.host.testCreate(2);
+        // start a parent instance and a child instance.
+        ExampleServiceState st = new ExampleServiceState();
+        st.documentSelfLink = id;
+        st.name = id;
+        Operation post = Operation
+                .createPost(UriUtils.buildUri(this.host, ParentService.FACTORY_LINK))
+                .setCompletion(ctx.getCompletion())
+                .setBody(st);
+        this.host.send(post);
+        post = Operation
+                .createPost(UriUtils.buildUri(this.host, ChildDependsOnParentService.FACTORY_LINK))
+                .setCompletion(ctx.getCompletion())
+                .setBody(st);
+        this.host.send(post);
+        ctx.await();
+
+        // we create the two persisted instances, and they started. Now stop the host and confirm restart occurs
+        this.host.stop();
+        this.host.setPort(0);
+        this.host.start();
+        this.host.startFactoryServicesSynchronously(ParentService.createFactory(),
+                ChildDependsOnParentService.createFactory());
+
+        // verify instance services started
+        ctx = this.host.testCreate(1);
+        String childPath = UriUtils.buildUriPath(ChildDependsOnParentService.FACTORY_LINK, id);
+        Operation get = Operation.createGet(UriUtils.buildUri(this.host, childPath))
+                .setCompletion(ctx.getCompletion());
+        this.host.send(get);
+        ctx.await();
     }
 
     @Test
