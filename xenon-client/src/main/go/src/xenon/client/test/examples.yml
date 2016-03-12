@@ -1,0 +1,9 @@
+action: post
+
+path: /core/examples
+
+body:
+  name: My example service
+  keyValues:
+    mykey:  My Value
+    otherKey: Other Value

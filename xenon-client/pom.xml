@@ -8,77 +8,23 @@
     <version>0.7.2-SNAPSHOT</version>
   </parent>
 
-  <artifactId>xenon-common</artifactId>
-
-  <properties>
-    <gson.version>2.3.1</gson.version>
-    <kryo.version>3.0.2</kryo.version>
-    <lucene.version>5.3.1</lucene.version>
-    <netty.version>4.1.0.Beta8</netty.version>
-    <hpack.version>v1.0.1</hpack.version>
-  </properties>
+  <artifactId>xenon-client</artifactId>
 
   <dependencies>
     <dependency>
-      <groupId>io.netty</groupId>
-      <artifactId>netty-all</artifactId>
-      <version>${netty.version}</version>
+      <groupId>${project.groupId}</groupId>
+      <artifactId>xenon-common</artifactId>
+      <version>${project.version}</version>
     </dependency>
     <dependency>
-      <groupId>com.google.code.gson</groupId>
-      <artifactId>gson</artifactId>
-      <version>${gson.version}</version>
-    </dependency>
-    <dependency>
-      <groupId>com.esotericsoftware</groupId>
-      <artifactId>kryo-shaded</artifactId>
-      <version>${kryo.version}</version>
-    </dependency>
-    <dependency>
-      <groupId>org.apache.lucene</groupId>
-      <artifactId>lucene-analyzers-common</artifactId>
-      <version>${lucene.version}</version>
-    </dependency>
-    <dependency>
-      <groupId>org.apache.lucene</groupId>
-      <artifactId>lucene-core</artifactId>
-      <version>${lucene.version}</version>
-    </dependency>
-    <dependency>
-      <groupId>org.apache.lucene</groupId>
-      <artifactId>lucene-misc</artifactId>
-      <version>${lucene.version}</version>
-    </dependency>
-    <dependency>
-      <groupId>org.apache.lucene</groupId>
-      <artifactId>lucene-queries</artifactId>
-      <version>${lucene.version}</version>
-    </dependency>
-    <dependency>
-      <groupId>org.apache.lucene</groupId>
-      <artifactId>lucene-backward-codecs</artifactId>
-      <version>${lucene.version}</version>
-    </dependency>
-    <dependency>
-      <groupId>com.twitter</groupId>
-      <artifactId>hpack</artifactId>
-      <version>${hpack.version}</version>
+      <groupId>${project.groupId}</groupId>
+      <artifactId>xenon-common</artifactId>
+      <version>${project.version}</version>
+      <type>test-jar</type>
+      <scope>compile</scope>
     </dependency>
   </dependencies>
-  <build>
-    <plugins>
-      <plugin>
-        <artifactId>maven-jar-plugin</artifactId>
-        <executions>
-          <execution>
-            <goals>
-              <goal>test-jar</goal>
-            </goals>
-          </execution>
-        </executions>
-      </plugin>
-    </plugins>
-  </build>
+
   <profiles>
     <profile>
       <id>unix</id>
@@ -116,7 +62,6 @@
                   <environmentVariables>
                   </environmentVariables>
                   <arguments>
-                    <argument>goversion</argument>
                     <argument>deps</argument>
                   </arguments>
                 </configuration>
@@ -133,6 +78,41 @@
                   <arguments>
                     <argument>verify</argument>
                   </arguments>
+                </configuration>
+              </execution>
+              <execution>
+                <id>go-build</id>
+                <phase>generate-resources</phase>
+                <goals>
+                  <goal>exec</goal>
+                </goals>
+                <configuration>
+                  <executable>make</executable>
+                  <workingDirectory>src/main/go</workingDirectory>
+                  <arguments>
+                    <argument>clean</argument>
+                    <argument>gobuild</argument>
+                    <argument>package</argument>
+                  </arguments>
+                </configuration>
+              </execution>
+              <execution>
+                <id>go-test</id>
+                <phase>test</phase>
+                <goals>
+                  <goal>exec</goal>
+                </goals>
+                <configuration>
+                  <executable>make</executable>
+                  <workingDirectory>src/main/go</workingDirectory>
+                  <environmentVariables>
+                    <XENON_JAR>${project.basedir}/../xenon-host/target/xenon-host-${project.version}-jar-with-dependencies.jar</XENON_JAR>
+                  </environmentVariables>
+                  <arguments>
+                    <argument>test</argument>
+                    <argument>TEST_OPTS=-v -run '${test}'</argument>
+                  </arguments>
+                  <skip>${skipTests}</skip>
                 </configuration>
               </execution>
             </executions>
