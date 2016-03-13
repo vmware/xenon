@@ -4,8 +4,23 @@ Simple command line interface to Xenon services.
 
 ## Installation
 
+If GO 1.5 or 1.6 is found in PATH, mvn install automatically builds xenonc.
+The binaries can be found in `resources/linux/bin/xenonc` and
+`resources/darwin/bin/xenonc` respectively. If GO is not found xenonc is
+skipped. Use `-DskipGO` as maven argument to skip the build explicitly.
+
+xenonc can be built on OSX and GNU/Linux using make.
+
 ```
-go get https://github.com/vmware/xenon.git/xenon-client/src/main/go
+cd xenon/xenon-common/src/main/go
+make deps verify
+```
+The above step downloads and installs common dependencies and tooling.
+
+```
+cd xenon/xenon-client/src/main/go
+make clean deps verify test
+make gobuild package 
 ```
 
 ## Usage
