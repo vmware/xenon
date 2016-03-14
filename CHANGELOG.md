@@ -1,5 +1,8 @@
 # CHANGELOG
 
+## 0.7.5-SNAPSHOT
+
+
 ## 0.7.2
 
 * Simplify service synchronization logic during node group
