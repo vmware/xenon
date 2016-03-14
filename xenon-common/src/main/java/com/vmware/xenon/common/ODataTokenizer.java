@@ -28,6 +28,10 @@ public class ODataTokenizer {
     private static final Pattern OTHER_LIT = Pattern
             .compile("(?:\\p{L}|\\p{Digit}|[-._~%!$&*+;:@])+");
 
+    // Both "/" and "." separators for specifying nested properties are supported.
+    private static final String ODATA_NESTED_SEPARATOR = "/";
+    private static final String DEFAULT_NESTED_SEPARATOR = ".";
+
     int curPosition;
     final String expression;
     final int expressionLength;
@@ -84,7 +88,6 @@ public class ODataTokenizer {
                 break;
 
             case '=':
-            case '/':
             case '?':
                 // Treat star (*) and periods (.) as literals rather than symbols to support WILD_CARD queries and phrases
                 // with dots (e.g. IPs).
@@ -126,7 +129,8 @@ public class ODataTokenizer {
 
     private boolean checkForLiteral(final int oldPosition, final char curCharacter,
             final String rem_expr) {
-        final Matcher matcher = OTHER_LIT.matcher(rem_expr);
+        String normalizedExpr = rem_expr.replace(ODATA_NESTED_SEPARATOR, DEFAULT_NESTED_SEPARATOR);
+        final Matcher matcher = OTHER_LIT.matcher(normalizedExpr);
         boolean isLiteral = false;
         if (matcher.lookingAt()) {
             String token = matcher.group();

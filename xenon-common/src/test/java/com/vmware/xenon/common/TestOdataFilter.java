@@ -19,7 +19,6 @@ import static org.junit.Assert.assertNull;
 
 import org.junit.Test;
 
-import com.vmware.xenon.common.ODataQueryVisitor;
 import com.vmware.xenon.services.common.QueryTask;
 import com.vmware.xenon.services.common.QueryTask.NumericRange;
 import com.vmware.xenon.services.common.QueryTask.Query;

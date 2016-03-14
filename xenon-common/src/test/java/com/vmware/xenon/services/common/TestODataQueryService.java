@@ -22,6 +22,7 @@ import java.net.URLEncoder;
 import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -34,10 +35,7 @@ import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.ServiceDocumentQueryResult;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
-import com.vmware.xenon.services.common.ExampleService;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
-import com.vmware.xenon.services.common.QueryTask;
-import com.vmware.xenon.services.common.ServiceUriPaths;
 
 public class TestODataQueryService extends BasicReusableHostTestCase {
     public long min = 10;
@@ -58,6 +56,9 @@ public class TestODataQueryService extends BasicReusableHostTestCase {
             ExampleService.ExampleServiceState inState = new ExampleService.ExampleServiceState();
             inState.name = String.format("name-%d", i);
             inState.counter = i;
+            inState.keyValues = new HashMap<String, String>();
+            inState.keyValues.put(String.format("key-%d-A", i), String.format("value-%d-A", i));
+            inState.keyValues.put(String.format("key-%d-B", i), String.format("value-%d-B", i));
 
             this.host.send(Operation.createPost(UriUtils.extendUri(this.host.getUri(),
                     ExampleService.FACTORY_LINK)).setBody(inState)
@@ -215,6 +216,7 @@ public class TestODataQueryService extends BasicReusableHostTestCase {
         testLEQuery();
         testNumericEqQuery();
         testOdataQueryWithUriEncoding();
+        testOdataQueryNested();
     }
 
     private void testSimpleStringQuery() throws Throwable {
@@ -341,6 +343,56 @@ public class TestODataQueryService extends BasicReusableHostTestCase {
         outState = Utils.fromJson(
                 out.get(inState.documentSelfLink), ExampleService.ExampleServiceState.class);
         assertTrue(outState.name.equals(inState.name));
+    }
+
+    private void testOdataQueryNested() throws Throwable {
+        ExampleServiceState inStateA = new ExampleService.ExampleServiceState();
+        inStateA.name = "TEST STRING A";
+        inStateA.keyValues = new HashMap<String, String>();
+        inStateA.keyValues.put("key", "value-A");
+        postExample(inStateA);
+
+        ExampleServiceState inStateB = new ExampleService.ExampleServiceState();
+        inStateB.name = "TEST STRING B";
+        inStateB.keyValues = new HashMap<String, String>();
+        inStateB.keyValues.put("key", "value-B");
+        postExample(inStateB);
+
+        // Xenon nested property filter
+        testOdataQueryNested("/", inStateA, inStateB);
+
+        // OData specification nested property filter
+        testOdataQueryNested(".", inStateA, inStateB);
+    }
+
+    private void testOdataQueryNested(String separator, ExampleServiceState stateA,
+            ExampleServiceState stateB) throws Throwable {
+        String queryString = URLEncoder.encode("$filter=keyValues" + separator
+                + "key eq 'value-A'",
+                Charset.defaultCharset().toString());
+        Map<String, Object> out = doQuery(queryString, true).documents;
+        assertEquals(1, out.size());
+        ExampleServiceState outState = Utils.fromJson(
+                out.get(stateA.documentSelfLink), ExampleServiceState.class);
+        assertTrue(outState.name.equals(stateA.name));
+
+        queryString = URLEncoder.encode("$filter=keyValues" + separator
+                + "key eq 'value*'",
+                Charset.defaultCharset().toString());
+        out = doQuery(queryString, true).documents;
+        assertEquals(2, out.size());
+
+        outState = Utils.fromJson(out.get(stateA.documentSelfLink), ExampleServiceState.class);
+        assertTrue(outState.name.equals(stateA.name));
+
+        outState = Utils.fromJson(out.get(stateB.documentSelfLink), ExampleServiceState.class);
+        assertTrue(outState.name.equals(stateB.name));
+
+        queryString = URLEncoder.encode("$filter=keyValues" + separator
+                + "key-unexisting eq 'value-C'",
+                Charset.defaultCharset().toString());
+        out = doQuery(queryString, true).documents;
+        assertTrue(out.isEmpty());
     }
 
     private ServiceDocumentQueryResult doQuery(String query, boolean remote) throws Throwable {
