@@ -80,6 +80,7 @@ import com.vmware.xenon.common.Service.ProcessingStage;
 import com.vmware.xenon.common.Service.ServiceOption;
 import com.vmware.xenon.common.ServiceDocumentDescription.Builder;
 import com.vmware.xenon.common.ServiceErrorResponse.ErrorDetail;
+import com.vmware.xenon.common.ServiceHost.Arguments;
 import com.vmware.xenon.common.ServiceHost.ServiceHostState.MemoryLimitType;
 import com.vmware.xenon.common.ServiceHost.ServiceHostState.SslClientAuthMode;
 import com.vmware.xenon.common.ServiceMaintenanceRequest.MaintenanceReason;
@@ -718,40 +719,47 @@ public class ServiceHost implements ServiceRequestSender {
         File hostStateFile = new File(s, SERVICE_HOST_STATE_FILE);
         if (hostStateFile.exists()) {
             CountDownLatch l = new CountDownLatch(1);
-            FileUtils.readFileAndComplete(
-                    Operation.createGet(null).setCompletion(
-                            (o, e) -> {
-                                if (e != null) {
-                                    log(Level.WARNING, "Failure loading state from %s: %s",
-                                            hostStateFile, Utils.toString(e));
-                                    l.countDown();
-                                    return;
-                                }
+            FileUtils
+                    .readFileAndComplete(
+                            Operation
+                                    .createGet(null)
+                                    .setCompletion(
+                                            (o, e) -> {
+                                                if (e != null) {
+                                                    log(Level.WARNING,
+                                                            "Failure loading state from %s: %s",
+                                                            hostStateFile, Utils.toString(e));
+                                                    l.countDown();
+                                                    return;
+                                                }
 
-                                try {
-                                    ServiceHostState fileState = o.getBody(ServiceHostState.class);
-                                    if (fileState.id == null) {
-                                        log(Level.WARNING, "Invalid state from %s: %s",
-                                                hostStateFile,
-                                                Utils.toJsonHtml(fileState));
-                                        l.countDown();
-                                        return;
-                                    }
-                                    fileState.isStarted = this.state.isStarted;
-                                    fileState.isStopping = this.state.isStopping;
-                                    if (fileState.maintenanceIntervalMicros < Service.MIN_MAINTENANCE_INTERVAL_MICROS) {
-                                        fileState.maintenanceIntervalMicros = Service.MIN_MAINTENANCE_INTERVAL_MICROS;
-                                    }
-                                    this.state = fileState;
-                                    l.countDown();
-                                } catch (Throwable ex) {
-                                    log(Level.WARNING, "Invalid state from %s: %s", hostStateFile,
-                                            Utils.toJsonHtml(o.getBodyRaw()));
-                                    l.countDown();
-                                    return;
-                                }
-                            }),
-                    hostStateFile);
+                                                try {
+                                                    ServiceHostState fileState = o
+                                                            .getBody(ServiceHostState.class);
+                                                    if (fileState.id == null) {
+                                                        log(Level.WARNING,
+                                                                "Invalid state from %s: %s",
+                                                                hostStateFile,
+                                                                Utils.toJsonHtml(fileState));
+                                                        l.countDown();
+                                                        return;
+                                                    }
+                                                    fileState.isStarted = this.state.isStarted;
+                                                    fileState.isStopping = this.state.isStopping;
+                                                    if (fileState.maintenanceIntervalMicros < Service.MIN_MAINTENANCE_INTERVAL_MICROS) {
+                                                        fileState.maintenanceIntervalMicros = Service.MIN_MAINTENANCE_INTERVAL_MICROS;
+                                                    }
+                                                    this.state = fileState;
+                                                    l.countDown();
+                                                } catch (Throwable ex) {
+                                                    log(Level.WARNING, "Invalid state from %s: %s",
+                                                            hostStateFile,
+                                                            Utils.toJsonHtml(o.getBodyRaw()));
+                                                    l.countDown();
+                                                    return;
+                                                }
+                                            }),
+                            hostStateFile);
             l.await();
         }
     }
@@ -2071,7 +2079,7 @@ public class ServiceHost implements ServiceRequestSender {
             // Service is in the process of starting or stopping. Retry at a later time.
             schedule(() -> {
                 handleRequest(null, post);
-            } , this.getMaintenanceIntervalMicros(), TimeUnit.MICROSECONDS);
+            }, this.getMaintenanceIntervalMicros(), TimeUnit.MICROSECONDS);
             return true;
         }
 
@@ -2743,7 +2751,6 @@ public class ServiceHost implements ServiceRequestSender {
         if (op != null && op.getAction() == Action.DELETE) {
             return;
         }
-
 
         synchronized (s.getSelfLink()) {
             ServiceDocument cachedState = this.cachedServiceStates.put(s.getSelfLink(), st);
