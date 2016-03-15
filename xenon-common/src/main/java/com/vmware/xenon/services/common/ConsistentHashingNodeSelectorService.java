@@ -238,16 +238,8 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
             return;
         }
 
-        int quorum = localState.nodes.get(getHost().getId()).membershipQuorum;
-        int availableNodes = localState.nodes.size();
-        SortedMap<BigInteger, NodeState> closestNodes =
-                selectNodes(op, keyValue, localState, digest, quorum, availableNodes);
-
-        NodeState closest = closestNodes.get(closestNodes.firstKey());
-        response.ownerNodeId = closest.id;
-        response.isLocalHostOwner = response.ownerNodeId.equals(getHost().getId());
-        response.ownerNodeReference = UriUtils.buildUri(closest.groupReference, "");
-        response.selectedNodes = closestNodes.values();
+        // select nodes and update response
+        selectNodes(op, response, localState, digest);
 
         if (body.targetPath == null) {
             op.setBodyNoCloning(response).complete();
@@ -264,9 +256,9 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
         }
 
         // If targetPath != null, we need to forward the operation.
-        URI remoteService = UriUtils.buildUri(response.ownerNodeReference.getScheme(),
-                response.ownerNodeReference.getHost(),
-                response.ownerNodeReference.getPort(),
+        URI remoteService = UriUtils.buildUri(response.ownerNodeGroupReference.getScheme(),
+                response.ownerNodeGroupReference.getHost(),
+                response.ownerNodeGroupReference.getPort(),
                 body.targetPath, body.targetQuery);
 
         Operation fwdOp = op.clone().setCompletion(
@@ -282,9 +274,12 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
         getHost().getClient().send(fwdOp.setUri(remoteService));
     }
 
-    private SortedMap<BigInteger, NodeState> selectNodes(Operation op, String keyValue,
-            NodeGroupState localState, MessageDigest digest, int quorum,
-            int availableNodes) {
+    private void selectNodes(Operation op,
+            SelectOwnerResponse response,
+            NodeGroupState localState, MessageDigest digest) {
+        int quorum = localState.nodes.get(getHost().getId()).membershipQuorum;
+        int availableNodes = localState.nodes.size();
+
         SortedMap<BigInteger, NodeState> closestNodes = new TreeMap<>();
         int maxQuorum = 0;
         long neighbourCount = 1;
@@ -298,10 +293,11 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
 
         byte[] key;
         try {
-            key = digest.digest(keyValue.getBytes(Utils.CHARSET));
+            key = digest.digest(response.key.getBytes(Utils.CHARSET));
         } catch (UnsupportedEncodingException e) {
             op.fail(e);
-            return null;
+            response.selectedNodes = null;
+            return;
         }
 
         BigInteger keyInteger = new BigInteger(key);
@@ -310,6 +306,8 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
                 availableNodes--;
                 continue;
             }
+
+            response.availableNodeCount++;
 
             quorum = Math.max(m.membershipQuorum, quorum);
             maxQuorum = Math.max(quorum, maxQuorum);
@@ -323,7 +321,7 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
                 }
             } catch (UnsupportedEncodingException e) {
                 op.fail(e);
-                return closestNodes;
+                return;
             }
             BigInteger nodeIdInteger = new BigInteger(hashedNodeId);
             BigInteger distance = nodeIdInteger.subtract(keyInteger);
@@ -343,10 +341,14 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
         if (availableNodes < quorum) {
             op.fail(new IllegalStateException("Available nodes: "
                     + availableNodes + ", quorum:" + quorum));
-            return closestNodes;
+            return;
         }
 
-        return closestNodes;
+        NodeState closest = closestNodes.get(closestNodes.firstKey());
+        response.ownerNodeId = closest.id;
+        response.isLocalHostOwner = response.ownerNodeId.equals(getHost().getId());
+        response.ownerNodeGroupReference = closest.groupReference;
+        response.selectedNodes = closestNodes.values();
     }
 
     private void broadcast(Operation op, SelectAndForwardRequest req,

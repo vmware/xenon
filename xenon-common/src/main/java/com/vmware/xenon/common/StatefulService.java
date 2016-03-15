@@ -1107,12 +1107,6 @@ public class StatefulService implements Service {
             return;
         }
 
-        if (failure != null) {
-            logWarning("synchronizing with peers due to %s", failure.getMessage());
-        } else {
-            logInfo("synchronizing with peers e:%d v:%d", this.context.epoch, this.context.version);
-        }
-
         // clone the request so we can update its body without affecting the client request
         Operation clonedRequest = request.clone();
         boolean wasOwner = hasOption(ServiceOption.DOCUMENT_OWNER);
@@ -1123,7 +1117,9 @@ public class StatefulService implements Service {
 
         clonedRequest.setRetryCount(0);
         clonedRequest.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_SYNCH);
-        getHost().selectServiceOwnerAndSynchState(this, clonedRequest);
+        boolean isFactorySync = request
+                .hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_NO_FORWARDING);
+        getHost().selectServiceOwnerAndSynchState(this, clonedRequest, isFactorySync);
     }
 
     private void handleSynchronizeWithPeersCompletion(Operation request, Throwable failure,
@@ -1136,11 +1132,8 @@ public class StatefulService implements Service {
         boolean isOwner = hasOption(ServiceOption.DOCUMENT_OWNER);
         boolean isStateUpdated = false;
 
-        // if we are not owner and this is not a forced synchronized (not caused by failure), abort
-        if (!isOwner && failure != null) {
-            completeSynchronizationRequest(request, failure, false);
-            return;
-        }
+        logInfo("isOwner:%s e:%d v:%d, cause:%s",
+                isOwner, this.context.epoch, this.context.version, failure);
 
         // update and index using latest state from peers
         ServiceDocument state = (ServiceDocument) o.getBodyRaw();

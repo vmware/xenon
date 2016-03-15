@@ -180,7 +180,7 @@ public abstract class FactoryService extends StatelessService {
 
                     if (e != null) {
                         if (!getHost().isStopping()) {
-                            logSevere(e);
+                            logWarning("Query failed with %s", e.toString());
                         } else {
                             parentOperation.fail(e);
                             return;
@@ -781,6 +781,11 @@ public abstract class FactoryService extends StatelessService {
                 // status to available, when its done synchronizing everyone
                 maintOp.complete();
                 return;
+            }
+
+            if (rsp.availableNodeCount > 1) {
+                logInfo("Elected owner on %s, starting synch (%d)", getHost().getId(),
+                        rsp.availableNodeCount);
             }
 
             synchronizeChildServicesAsOwner(maintOp);

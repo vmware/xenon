@@ -565,7 +565,8 @@ public class TestNodeGroupService {
                 this.host.send(patch);
             }
         }
-        ctx.await();
+        this.host.testWait(ctx);
+        this.host.log("Done with PATCH to %d example services", states.size());
     }
 
     private void doNodeStopWithUpdates(Map<String, ExampleServiceState> exampleStatesPerSelfLink)
@@ -2015,7 +2016,7 @@ public class TestNodeGroupService {
                     }));
         }
         this.host.testWait();
-        this.host.toggleNegativeTestMode(true);
+        this.host.toggleNegativeTestMode(false);
 
         // verify restart, with authorization.
         // stop one host
@@ -2068,6 +2069,7 @@ public class TestNodeGroupService {
             for (String s : exampleLinks) {
                 ProcessingStage st = hostToStop.getServiceStage(s);
                 if (st == null) {
+                    hostToStop.log("Not started yet: %s", s);
                     return false;
                 }
             }
