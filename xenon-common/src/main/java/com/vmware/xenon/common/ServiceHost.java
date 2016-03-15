@@ -1540,7 +1540,7 @@ public class ServiceHost implements ServiceRequestSender {
      * - Any instance is not a factory service or
      * - {@code UriUtils.FIELD_NAME_SELF_LINK} and {@code UriUtils.FIELD_NAME_FACTORY_LINK} fields are missing.
      */
-    protected void startFactoryServicesSynchronously(Service... services) throws Throwable {
+    public void startFactoryServicesSynchronously(Service... services) throws Throwable {
         List<Operation> posts = new ArrayList<>();
         for (Service s : services) {
             if (!(s instanceof FactoryService)) {
