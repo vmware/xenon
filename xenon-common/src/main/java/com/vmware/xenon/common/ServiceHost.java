@@ -2192,7 +2192,8 @@ public class ServiceHost implements ServiceRequestSender {
                             hasInitialState);
                 });
 
-                selectServiceOwnerAndSynchState(s, post);
+                boolean isFactorySync = !ServiceHost.isServiceCreate(post);
+                selectServiceOwnerAndSynchState(s, post, isFactorySync);
                 break;
 
             case EXECUTING_CREATE_HANDLER:
@@ -2421,6 +2422,10 @@ public class ServiceHost implements ServiceRequestSender {
         sendRequest(get);
     }
 
+    /**
+     * Infrastructure use only. Invoked by a factory service to either start or synchronize
+     * a child service
+     */
     void startOrSynchService(Operation post, Service child, NodeGroupState ngs) {
         String path = post.getUri().getPath();
         // not a thread safe check, but startService() will do the right thing
@@ -2468,7 +2473,7 @@ public class ServiceHost implements ServiceRequestSender {
         sendRequest(synchPut);
     }
 
-    void selectServiceOwnerAndSynchState(Service s, Operation op) {
+    void selectServiceOwnerAndSynchState(Service s, Operation op, boolean isFactorySync) {
         CompletionHandler c = (o, e) -> {
             if (e != null) {
                 log(Level.WARNING, "Failure partitioning %s: %s", op.getUri(),
@@ -2488,12 +2493,18 @@ public class ServiceHost implements ServiceRequestSender {
                 return;
             }
 
-            if (ServiceHost.isServiceCreate(op)) {
-                s.toggleOption(ServiceOption.DOCUMENT_OWNER, rsp.isLocalHostOwner);
+            s.toggleOption(ServiceOption.DOCUMENT_OWNER, rsp.isLocalHostOwner);
+
+            if (ServiceHost.isServiceCreate(op) || (!isFactorySync && !rsp.isLocalHostOwner)) {
+                // if this is from a client, do not synchronize. an conflict can be resolved
+                // when we attempt to replicate the POST.
+                // if this is synchronization attempt and we are not the owner, do nothing
                 op.complete();
                 return;
             }
 
+            // we are on owner node, proceed with synchronization logic that will discover
+            // and push, latest, best state, to all peers
             synchronizeWithPeers(s, op, rsp);
         };
 
@@ -2513,9 +2524,8 @@ public class ServiceHost implements ServiceRequestSender {
         t.stateDescription = buildDocumentDescription(s);
         t.wasOwner = s.hasOption(ServiceOption.DOCUMENT_OWNER);
         t.isOwner = rsp.isLocalHostOwner;
-        t.ownerNodeReference = rsp.ownerNodeReference;
+        t.ownerNodeReference = rsp.ownerNodeGroupReference;
         t.ownerNodeId = rsp.ownerNodeId;
-        s.toggleOption(ServiceOption.DOCUMENT_OWNER, t.isOwner);
         t.options = s.getOptions();
         t.state = op.hasBody() ? op.getBody(s.getStateType()) : null;
         t.factoryLink = UriUtils.getParentPath(s.getSelfLink());

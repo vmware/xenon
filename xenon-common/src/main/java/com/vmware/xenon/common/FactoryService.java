@@ -783,6 +783,11 @@ public abstract class FactoryService extends StatelessService {
                 return;
             }
 
+            if (rsp.availableNodeCount > 1) {
+                logInfo("Elected owner on %s, starting synch (%d)", getHost().getId(),
+                        rsp.availableNodeCount);
+            }
+
             synchronizeChildServicesAsOwner(maintOp);
         });
 
