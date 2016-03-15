@@ -275,8 +275,11 @@ public class TransactionService extends StatefulService {
         setState(put, existing);
         put.complete();
 
+        this.logInfo("Transaction %s (SubStage=%s) received log record number %d, expectedOperationCount=%d", this.getSelfId(),
+                existing.taskSubStage, existing.pendingOperationCount, existing.expectedOperationCount);
         if (existing.taskSubStage == SubStage.RESOLVING && existing.pendingOperationCount == existing.expectedOperationCount) {
             // handle the case of pending operations received after transaction commit request
+            this.logInfo("Transaction %s: received all expected operations; sending self-commit", this.getSelfId());
             ResolutionRequest body = new ResolutionRequest();
             body.kind = TransactionService.ResolutionKind.COMMIT;
             body.pendingOperations = existing.expectedOperationCount;
@@ -344,7 +347,11 @@ public class TransactionService extends StatefulService {
         ResolutionRequest commitRequest = op.getBody(ResolutionRequest.class);
         currentState.expectedOperationCount = commitRequest.pendingOperations;
 
+        this.logInfo("Transaction %s: handling commit requst: pendingOperationsCount=%d, expectedOperationCount=%d", this.getSelfId(),
+                currentState.pendingOperationCount, currentState.expectedOperationCount);
         if (currentState.pendingOperationCount == currentState.expectedOperationCount) {
+            this.logInfo("Transaction %s: handling commit requst: pendingOperationsCount == expectedOperationCount; proceeding to commit",
+                    this.getSelfId());
             handleCommit(op);
             return;
         }
@@ -358,6 +365,8 @@ public class TransactionService extends StatefulService {
         }
 
         // re-enter when the rest of the pending operations are received
+        this.logInfo("Transaction %s: handling commit requst: pendingOperationsCount < expectedOperationCount; will re-check when new operations arrive",
+                this.getSelfId());
     }
 
     /**
