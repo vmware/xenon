@@ -19,7 +19,6 @@ import java.util.Map.Entry;
 
 import com.vmware.xenon.common.FactoryService;
 import com.vmware.xenon.common.Operation;
-import com.vmware.xenon.common.Service;
 import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.ServiceDocumentDescription.PropertyDescription;
 import com.vmware.xenon.common.ServiceDocumentDescription.PropertyIndexingOption;
@@ -38,12 +37,8 @@ public class ExampleService extends StatefulService {
      * Create a default factory service that starts instances of this service on POST.
      * This method is optional, {@code FactoryService.create} can be used directly
      */
-    public static Service createFactory() {
-        Service fs = FactoryService.create(ExampleService.class, ExampleServiceState.class);
-        // Set additional factory service option. This can be set in service constructor as well
-        // but its really relevant on the factory of a service.
-        fs.toggleOption(ServiceOption.IDEMPOTENT_POST, true);
-        return fs;
+    public static FactoryService createFactory() {
+        return FactoryService.createIdempotent(ExampleService.class, ExampleServiceState.class);
     }
 
     public static class ExampleServiceState extends ServiceDocument {

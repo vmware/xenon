@@ -15,9 +15,7 @@ package com.vmware.xenon.samples;
 
 import java.util.logging.Level;
 
-import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.ServiceHost;
-import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.services.common.RootNamespaceService;
 import com.vmware.xenon.services.samples.SampleFactoryServiceWithCustomUi;
 import com.vmware.xenon.services.samples.SamplePreviousEchoFactoryService;
@@ -53,37 +51,22 @@ public class SampleHost extends ServiceHost {
 
         // Start the root namespace service: this will list all available factory services for
         // queries to the root (/)
-        super.startService(
-                Operation.createPost(UriUtils.buildUri(this, RootNamespaceService.class)),
-                new RootNamespaceService());
+        super.startService(new RootNamespaceService());
 
         // start the custom ui factory
-        super.startService(
-                Operation
-                        .createPost(UriUtils.buildUri(this, SampleServiceWithSharedCustomUi.class)),
-                new SampleServiceWithSharedCustomUi());
+        super.startService(new SampleServiceWithSharedCustomUi());
 
         // start the shared UI resources service
-        super.startService(
-                Operation.createPost(
-                        UriUtils.buildUri(this, SampleFactoryServiceWithCustomUi.class)),
-                new SampleFactoryServiceWithCustomUi());
+        super.startService(new SampleFactoryServiceWithCustomUi());
 
         // Start a factory for echo sample service
-        super.startService(
-                Operation.createPost(UriUtils.buildUri(this, SampleSimpleEchoFactoryService.class)),
-                new SampleSimpleEchoFactoryService());
+        super.startService(new SampleSimpleEchoFactoryService());
 
         // Start a factory for the service that returns the previous results
-        super.startService(
-                Operation.createPost(UriUtils
-                        .buildUri(this, SamplePreviousEchoFactoryService.class)),
-                new SamplePreviousEchoFactoryService());
+        super.startService(new SamplePreviousEchoFactoryService());
 
         // Start UI service
-        super.startService(
-                Operation.createPost(UriUtils.buildUri(this, UiService.class)),
-                new UiService());
+        super.startService(new UiService());
         return this;
     }
 }

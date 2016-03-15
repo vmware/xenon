@@ -15,9 +15,7 @@ package com.vmware.xenon.services.samples;
 
 import java.util.logging.Level;
 
-import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.ServiceHost;
-import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.services.common.RootNamespaceService;
 
 public class SampleServiceCustomUiHost extends ServiceHost {
@@ -39,21 +37,13 @@ public class SampleServiceCustomUiHost extends ServiceHost {
 
         startDefaultCoreServicesSynchronously();
 
-        super.startService(
-                Operation.createPost(UriUtils.buildUri(this, RootNamespaceService.class)),
-                new RootNamespaceService()
-        );
+        super.startService(new RootNamespaceService());
 
         // start the example custom ui factory
-        super.startService(
-                Operation.createPost(UriUtils.buildUri(this, SampleServiceWithSharedCustomUi
-                        .class)), new SampleServiceWithSharedCustomUi());
+        super.startService(new SampleServiceWithSharedCustomUi());
 
         // start the example custom ui factory
-        super.startService(
-                Operation.createPost(
-                        UriUtils.buildUri(this, SampleFactoryServiceWithCustomUi.class)),
-                new SampleFactoryServiceWithCustomUi());
+        super.startService(new SampleFactoryServiceWithCustomUi());
 
         return this;
     }

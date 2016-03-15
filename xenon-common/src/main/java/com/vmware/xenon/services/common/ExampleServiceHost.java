@@ -16,9 +16,7 @@ package com.vmware.xenon.services.common;
 import java.util.logging.Level;
 
 import com.vmware.xenon.common.AuthorizationSetupHelper;
-import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.ServiceHost;
-import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
 
@@ -82,21 +80,15 @@ public class ExampleServiceHost extends ServiceHost {
         setAuthorizationContext(this.getSystemAuthorizationContext());
 
         // Start the example service factory
-        super.startService(
-                Operation.createPost(UriUtils.buildFactoryUri(this, ExampleService.class)),
-                ExampleService.createFactory());
+        super.startFactory(ExampleService.class, ExampleService::createFactory);
 
         // Start the example task service factory: when it receives a task, it will delete
         // all example services
-        super.startService(
-                Operation.createPost(UriUtils.buildFactoryUri(this, ExampleTaskService.class)),
-                ExampleTaskService.createFactory());
+        super.startFactory(ExampleTaskService.class, ExampleTaskService::createFactory);
 
         // Start the root namespace factory: this will respond to the root URI (/) and list all
         // the factory services.
-        super.startService(
-                Operation.createPost(UriUtils.buildUri(this, RootNamespaceService.class)),
-                new RootNamespaceService());
+        super.startService(new RootNamespaceService());
 
         // The args are null because many of the tests use this class (via VerificationHost)
         // without providing arguments.

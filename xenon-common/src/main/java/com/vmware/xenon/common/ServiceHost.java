@@ -61,6 +61,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 import java.util.logging.ConsoleHandler;
 import java.util.logging.FileHandler;
 import java.util.logging.Level;
@@ -1866,6 +1867,16 @@ public class ServiceHost implements ServiceRequestSender {
     }
 
     /**
+     * Start a service using the default start operation.
+     * @param service the service to start
+     * @return the service host
+     */
+    public ServiceHost startService(Service service) {
+        Operation post = Operation.createPost(UriUtils.buildUri(this, service.getClass()));
+        return startService(post, service);
+    }
+
+    /**
      * A service becomes available for operation processing after its attached to a running host.
      * Service initialization is asynchronous and two phase, allowing for multiple services to start
      * concurrently but still take dependencies on each other
@@ -1957,6 +1968,41 @@ public class ServiceHost implements ServiceRequestSender {
         // kick off service start state machine
         processServiceStart(ProcessingStage.INITIALIZING, service, post, post.hasBody());
         return this;
+    }
+
+    /**
+     * Starts a default factory service for the given instance service. Note that this will not start the instance
+     * service.
+     * @param instanceService the instance service whose factory service should be started
+     * @return the service host
+     */
+    public ServiceHost startFactory(Service instanceService) {
+        final Class<? extends Service> serviceClass = instanceService.getClass();
+        return startFactory(serviceClass, () -> FactoryService.create(serviceClass, instanceService.getStateType()));
+    }
+
+    /**
+     * Starts a factory service for the given instance service class using the provided factory creator.
+     * @param instServiceClass the class of the instance service
+     * @param factoryCreator a function which creates a factory service
+     * @return the service host
+     */
+    public ServiceHost startFactory(Class<? extends Service> instServiceClass, Supplier<FactoryService> factoryCreator) {
+        Operation post = Operation.createPost(UriUtils.buildFactoryUri(this, instServiceClass));
+        FactoryService factoryService = factoryCreator.get();
+        return startService(post, factoryService);
+    }
+
+    /**
+     * Starts an idempotent factory service for the given instance service. Note that this will not start the
+     * instance service.
+     * @param instanceService the instance service whose factory service should be started
+     * @return the service host
+     */
+    public ServiceHost startIdempotentFactory(Service instanceService) {
+        final Class<? extends Service> serviceClass = instanceService.getClass();
+        return startFactory(serviceClass,
+                () -> FactoryService.createIdempotent(serviceClass, instanceService.getStateType()));
     }
 
     void processPendingServiceAvailableOperations(Service s, Throwable e) {
