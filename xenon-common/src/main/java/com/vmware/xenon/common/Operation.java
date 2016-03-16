@@ -351,6 +351,7 @@ public class Operation implements Cloneable {
             + "rpl-phase";
     public static final String VMWARE_DCP_TRANSACTION_HEADER = HEADER_NAME_PREFIX
             + "tx-phase";
+    public static final String TRANSACTION_ID_HEADER = HEADER_NAME_PREFIX + "tx-id";
 
     /**
      * Infrastructure use only. Set when a service is first created due to a client request. Since
