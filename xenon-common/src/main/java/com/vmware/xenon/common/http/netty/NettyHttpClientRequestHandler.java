@@ -180,6 +180,11 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
 
         request.setContextId(getAndRemove(headers, Operation.CONTEXT_ID_HEADER));
 
+        String transactionId = getAndRemove(headers, Operation.TRANSACTION_ID_HEADER);
+        if (transactionId != null) {
+            request.setTransactionId(transactionId);
+        }
+
         String contentType = getAndRemove(headers, HttpHeaderNames.CONTENT_TYPE);
         if (contentType != null) {
             request.setContentType(contentType);

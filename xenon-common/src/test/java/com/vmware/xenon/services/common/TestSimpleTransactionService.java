@@ -23,6 +23,7 @@ import java.util.Collection;
 import java.util.Random;
 import java.util.UUID;
 
+import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -36,7 +37,9 @@ import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.StatefulService;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
+import com.vmware.xenon.common.test.VerificationHost;
 import com.vmware.xenon.services.common.QueryTask.Query;
+import com.vmware.xenon.services.common.QueryTask.QuerySpecification.QueryOption;
 import com.vmware.xenon.services.common.QueryTask.QueryTerm.MatchType;
 import com.vmware.xenon.services.common.SimpleTransactionService.SimpleTransactionServiceState;
 import com.vmware.xenon.services.common.SimpleTransactionService.TransactionalRequestFilter;
@@ -50,11 +53,32 @@ public class TestSimpleTransactionService extends BasicReusableHostTestCase {
     static final int SLEEP_BETWEEN_RETRIES_MILLIS = 2000;
 
     /**
-     * Parameter that specifies the number of accounts to create
+     * Command line argument specifying default number of accounts
      */
     public int accountCount = 20;
 
+    /**
+     * Command line argument specifying default number of in process service hosts
+     */
+    public int nodeCount = 3;
+
+    /**
+     * A base component of generated account ids to provide uniqueness
+     */
     private long baseAccountId;
+
+    /**
+     * Default host for test operations. This is the reusable host in case of
+     * single-host tests and a peer host in the case of multi-hosts tests.
+     */
+    private VerificationHost defaultHost;
+
+    /**
+     * Controls whether the current test is a multi-host test.
+     * This is explicitly set by {@link #setUpMultiHost()} and unset by
+     * {@link #tearDownMultiHost()}.
+     */
+    private boolean multiHostTest = false;
 
     private String buildAccountId(int i) {
         return this.baseAccountId + "-" + String.valueOf(i);
@@ -64,15 +88,40 @@ public class TestSimpleTransactionService extends BasicReusableHostTestCase {
     public void setUp() throws Exception {
         try {
             this.baseAccountId = Utils.getNowMicrosUtc();
-            this.host.setTransactionService(null);
-            if (this.host.getServiceStage(SimpleTransactionFactoryService.SELF_LINK) == null) {
-                this.host.startServiceAndWait(SimpleTransactionFactoryService.class,
-                        SimpleTransactionFactoryService.SELF_LINK);
-                this.host.startServiceAndWait(BankAccountFactoryService.class,
-                        BankAccountFactoryService.SELF_LINK);
-            }
+            setUpHostWithAdditionalServices(this.host);
+            this.defaultHost = this.host;
         } catch (Throwable e) {
             throw new RuntimeException(e);
+        }
+    }
+
+    private void setUpMultiHost() throws Throwable {
+        this.multiHostTest = true;
+        this.host.setUpPeerHosts(this.nodeCount);
+        this.host.joinNodesAndVerifyConvergence(this.nodeCount);
+        for (VerificationHost h : this.host.getInProcessHostMap().values()) {
+            setUpHostWithAdditionalServices(h);
+        }
+
+        this.defaultHost = this.host.getPeerHost();
+    }
+
+    @After
+    public void tearDownMultiHost() {
+        if (this.multiHostTest) {
+            this.host.tearDownInProcessPeers();
+            this.defaultHost = this.host;
+            this.multiHostTest = false;
+        }
+    }
+
+    private void setUpHostWithAdditionalServices(VerificationHost h) throws Throwable {
+        h.setTransactionService(null);
+        if (h.getServiceStage(SimpleTransactionFactoryService.SELF_LINK) == null) {
+            h.startServiceAndWait(SimpleTransactionFactoryService.class,
+                    SimpleTransactionFactoryService.SELF_LINK);
+            h.startServiceAndWait(BankAccountFactoryService.class,
+                    BankAccountFactoryService.SELF_LINK);
         }
     }
 
@@ -98,6 +147,12 @@ public class TestSimpleTransactionService extends BasicReusableHostTestCase {
         deleteAccounts(txid, this.accountCount);
         commit(txid);
         countAccounts(null, 0);
+    }
+
+    @Test
+    public void testBasicCRUDMultiHost() throws Throwable {
+        setUpMultiHost();
+        testBasicCRUD();
     }
 
     @Test
@@ -264,7 +319,7 @@ public class TestSimpleTransactionService extends BasicReusableHostTestCase {
             verifyAccountBalance(null, buildAccountId(i), 100.0);
             double amountToWithdraw = i % 2 == 0 ? 100.0 : 101.0;
             try {
-                this.host.log("trying to withdraw %f from account %d", amountToWithdraw, i);
+                this.defaultHost.log("trying to withdraw %f from account %d", amountToWithdraw, i);
                 withdrawFromAccount(txid, buildAccountId(i), amountToWithdraw, true);
             } catch (IllegalArgumentException ex) {
                 assertTrue(i % 2 != 0);
@@ -296,59 +351,59 @@ public class TestSimpleTransactionService extends BasicReusableHostTestCase {
             }
             final int final_j = j;
             int amount = 1 + rand.nextInt(3);
-            this.host
+            this.defaultHost
                     .log("Transaction %s: Transferring $%d from %d to %d", tid, amount, i, final_j);
             Operation withdraw = createWithdrawOperation(tid, buildAccountId(i), amount);
             withdraw.setCompletion((o, e) -> {
                 if (e != null) {
-                    this.host.log("Transaction %s: failed to withdraw, aborting...", tid);
-                    Operation abort = SimpleTransactionService.TxUtils.buildAbortRequest(this.host,
+                    this.defaultHost.log("Transaction %s: failed to withdraw, aborting...", tid);
+                    Operation abort = SimpleTransactionService.TxUtils.buildAbortRequest(this.defaultHost,
                             tid);
                     abort.setCompletion((op, ex) -> {
                         if (independentTest) {
-                            this.host.completeIteration();
+                            this.defaultHost.completeIteration();
                         }
                     });
-                    this.host.send(abort);
+                    this.defaultHost.send(abort);
                     return;
                 }
                 Operation deposit = createDepositOperation(tid, buildAccountId(final_j), amount);
                 deposit.setCompletion((op, ex) -> {
                     if (ex != null) {
-                        this.host.log("Transaction %s: failed to deposit, aborting...", tid);
+                        this.defaultHost.log("Transaction %s: failed to deposit, aborting...", tid);
                         Operation abort = SimpleTransactionService.TxUtils.buildAbortRequest(
-                                this.host, tid);
+                                this.defaultHost, tid);
                         abort.setCompletion((op2, ex2) -> {
                             if (independentTest) {
-                                this.host.completeIteration();
+                                this.defaultHost.completeIteration();
                             }
                         });
-                        this.host.send(abort);
+                        this.defaultHost.send(abort);
                         return;
                     }
-                    this.host.log("Transaction %s: Committing", tid);
+                    this.defaultHost.log("Transaction %s: Committing", tid);
                     Operation commit = SimpleTransactionService.TxUtils.buildCommitRequest(
-                            this.host, tid);
+                            this.defaultHost, tid);
                     commit.setCompletion((op2, ex2) -> {
                         if (independentTest) {
-                            this.host.completeIteration();
+                            this.defaultHost.completeIteration();
                         }
                     });
-                    this.host.send(commit);
+                    this.defaultHost.send(commit);
                 });
-                this.host.send(deposit);
+                this.defaultHost.send(deposit);
             });
             requests.add(withdraw);
         }
 
         if (independentTest) {
-            this.host.testStart(numOfTransfers);
+            this.defaultHost.testStart(numOfTransfers);
         }
         for (Operation withdraw : requests) {
-            this.host.send(withdraw);
+            this.defaultHost.send(withdraw);
         }
         if (independentTest) {
-            this.host.testWait();
+            this.defaultHost.testWait();
         }
     }
 
@@ -365,52 +420,52 @@ public class TestSimpleTransactionService extends BasicReusableHostTestCase {
         String txid = UUID.randomUUID().toString();
 
         // this section is required until IDEMPOTENT_POST is used
-        this.host.testStart(1);
+        this.defaultHost.testStart(1);
         SimpleTransactionServiceState initialState = new SimpleTransactionServiceState();
         initialState.documentSelfLink = txid;
         Operation post = Operation
                 .createPost(getTransactionFactoryUri())
                 .setBody(initialState).setCompletion((o, e) -> {
                     if (e != null) {
-                        this.host.failIteration(e);
+                        this.defaultHost.failIteration(e);
                         return;
                     }
-                    this.host.completeIteration();
+                    this.defaultHost.completeIteration();
                 });
-        this.host.send(post);
-        this.host.testWait();
+        this.defaultHost.send(post);
+        this.defaultHost.testWait();
 
         return txid;
     }
 
     private void commit(String transactionId) throws Throwable {
-        this.host.testStart(1);
-        Operation patch = SimpleTransactionService.TxUtils.buildCommitRequest(this.host,
+        this.defaultHost.testStart(1);
+        Operation patch = SimpleTransactionService.TxUtils.buildCommitRequest(this.defaultHost,
                 transactionId);
         patch.setCompletion((o, e) -> {
             if (operationFailed(o, e)) {
-                this.host.failIteration(e);
+                this.defaultHost.failIteration(e);
                 return;
             }
-            this.host.completeIteration();
+            this.defaultHost.completeIteration();
         });
-        this.host.send(patch);
-        this.host.testWait();
+        this.defaultHost.send(patch);
+        this.defaultHost.testWait();
     }
 
     private void abort(String transactionId) throws Throwable {
-        this.host.testStart(1);
-        Operation patch = SimpleTransactionService.TxUtils.buildAbortRequest(this.host,
+        this.defaultHost.testStart(1);
+        Operation patch = SimpleTransactionService.TxUtils.buildAbortRequest(this.defaultHost,
                 transactionId);
         patch.setCompletion((o, e) -> {
             if (operationFailed(o, e)) {
-                this.host.failIteration(e);
+                this.defaultHost.failIteration(e);
                 return;
             }
-            this.host.completeIteration();
+            this.defaultHost.completeIteration();
         });
-        this.host.send(patch);
-        this.host.testWait();
+        this.defaultHost.send(patch);
+        this.defaultHost.testWait();
     }
 
     private void createAccounts(String transactionId, int accounts) throws Throwable {
@@ -418,11 +473,11 @@ public class TestSimpleTransactionService extends BasicReusableHostTestCase {
     }
 
     private void createAccounts(String transactionId, int accounts, double initialBalance) throws Throwable {
-        this.host.testStart(accounts);
+        this.defaultHost.testStart(accounts);
         for (int i = 0; i < accounts; i++) {
             createAccount(transactionId, buildAccountId(i), initialBalance, false);
         }
-        this.host.testWait();
+        this.defaultHost.testWait();
     }
 
     private void createAccount(String transactionId, String accountId, boolean independentTest)
@@ -433,7 +488,7 @@ public class TestSimpleTransactionService extends BasicReusableHostTestCase {
     private void createAccount(String transactionId, String accountId, double initialBalance, boolean independentTest)
             throws Throwable {
         if (independentTest) {
-            this.host.testStart(1);
+            this.defaultHost.testStart(1);
         }
         BankAccountServiceState initialState = new BankAccountServiceState();
         initialState.documentSelfLink = accountId;
@@ -442,38 +497,38 @@ public class TestSimpleTransactionService extends BasicReusableHostTestCase {
                 .createPost(getAccountFactoryUri())
                 .setBody(initialState).setCompletion((o, e) -> {
                     if (operationFailed(o, e)) {
-                        this.host.failIteration(e);
+                        this.defaultHost.failIteration(e);
                         return;
                     }
-                    this.host.completeIteration();
+                    this.defaultHost.completeIteration();
                 });
         if (transactionId != null) {
             post.setTransactionId(transactionId);
         }
-        this.host.send(post);
+        this.defaultHost.send(post);
         if (independentTest) {
-            this.host.testWait();
+            this.defaultHost.testWait();
         }
     }
 
     private void deleteAccounts(String transactionId, int accounts) throws Throwable {
-        this.host.testStart(accounts);
+        this.defaultHost.testStart(accounts);
         for (int i = 0; i < accounts; i++) {
             Operation delete = Operation
                     .createDelete(buildAccountUri(buildAccountId(i)))
                     .setCompletion((o, e) -> {
                         if (operationFailed(o, e)) {
-                            this.host.failIteration(e);
+                            this.defaultHost.failIteration(e);
                             return;
                         }
-                        this.host.completeIteration();
+                        this.defaultHost.completeIteration();
                     });
             if (transactionId != null) {
                 delete.setTransactionId(transactionId);
             }
-            this.host.send(delete);
+            this.defaultHost.send(delete);
         }
-        this.host.testWait();
+        this.defaultHost.testWait();
     }
 
     private void countAccounts(String transactionId, long expected) throws Throwable {
@@ -484,8 +539,8 @@ public class TestSimpleTransactionService extends BasicReusableHostTestCase {
         if (transactionId != null) {
             queryBuilder.addFieldClause(ServiceDocument.FIELD_NAME_TRANSACTION_ID, transactionId);
         }
-        QueryTask task = QueryTask.Builder.createDirectTask().setQuery(queryBuilder.build()).build();
-        this.host.createQueryTaskService(task, false, true, task, null);
+        QueryTask task = QueryTask.Builder.createDirectTask().setQuery(queryBuilder.build()).addOption(QueryOption.BROADCAST).build();
+        this.defaultHost.createQueryTaskService(task, false, true, task, null);
         assertEquals(expected, task.results.documentCount.longValue());
     }
 
@@ -499,29 +554,29 @@ public class TestSimpleTransactionService extends BasicReusableHostTestCase {
         boolean createNewTransaction = transactionId == null;
         if (createNewTransaction) {
             transactionId = newTransaction();
-            this.host.log("Created new transaction %s for snapshot read", transactionId);
+            this.defaultHost.log("Created new transaction %s for snapshot read", transactionId);
         } else {
             queryBuilder.addFieldClause(ServiceDocument.FIELD_NAME_TRANSACTION_ID, transactionId);
         }
-        QueryTask task = QueryTask.Builder.createDirectTask().setQuery(queryBuilder.build()).build();
-        this.host.createQueryTaskService(task, false, true, task, null);
+        QueryTask task = QueryTask.Builder.createDirectTask().setQuery(queryBuilder.build()).addOption(QueryOption.BROADCAST).build();
+        this.defaultHost.createQueryTaskService(task, false, true, task, null);
         double sum = 0;
         for (String serviceSelfLink : task.results.documentLinks) {
             String accountId = serviceSelfLink.substring(serviceSelfLink.lastIndexOf('/') + 1);
             for (int i = 0; i < RETRIES_IN_CASE_OF_CONFLICTS; i++) {
                 try {
-                    this.host.log("Trying to read account %s", accountId);
+                    this.defaultHost.log("Trying to read account %s", accountId);
                     BankAccountServiceState account = getAccount(transactionId, accountId);
                     sum += account.balance;
-                    this.host.log("Successfully read account %s, runnin sum=%f", accountId, sum);
+                    this.defaultHost.log("Successfully read account %s, runnin sum=%f", accountId, sum);
                     break;
                 } catch (IllegalStateException ex) {
-                    this.host.log("Could not read account %s probably due to a transactional conflict", accountId);
+                    this.defaultHost.log("Could not read account %s probably due to a transactional conflict", accountId);
                     Thread.sleep(new Random().nextInt(SLEEP_BETWEEN_RETRIES_MILLIS));
                     if (i == RETRIES_IN_CASE_OF_CONFLICTS - 1) {
-                        this.host.log("Giving up reading account %s", accountId);
+                        this.defaultHost.log("Giving up reading account %s", accountId);
                     } else {
-                        this.host.log("Retrying reading account %s", accountId);
+                        this.defaultHost.log("Retrying reading account %s", accountId);
                     }
                 }
             }
@@ -534,11 +589,11 @@ public class TestSimpleTransactionService extends BasicReusableHostTestCase {
 
     private void depositToAccounts(String transactionId, int accounts, double amountToDeposit)
             throws Throwable {
-        this.host.testStart(accounts);
+        this.defaultHost.testStart(accounts);
         for (int i = 0; i < accounts; i++) {
             depositToAccount(transactionId, buildAccountId(i), amountToDeposit, false);
         }
-        this.host.testWait();
+        this.defaultHost.testWait();
     }
 
     private void depositToAccount(String transactionId, String accountId, double amountToDeposit,
@@ -546,24 +601,24 @@ public class TestSimpleTransactionService extends BasicReusableHostTestCase {
             throws Throwable {
         Throwable[] ex = new Throwable[1];
         if (independentTest) {
-            this.host.testStart(1);
+            this.defaultHost.testStart(1);
         }
         Operation patch = createDepositOperation(transactionId, accountId, amountToDeposit);
         patch.setCompletion((o, e) -> {
             if (operationFailed(o, e)) {
                 if (e instanceof IllegalStateException) {
                     ex[0] = e;
-                    this.host.completeIteration();
+                    this.defaultHost.completeIteration();
                 } else {
-                    this.host.failIteration(e);
+                    this.defaultHost.failIteration(e);
                 }
                 return;
             }
-            this.host.completeIteration();
+            this.defaultHost.completeIteration();
         });
-        this.host.send(patch);
+        this.defaultHost.send(patch);
         if (independentTest) {
-            this.host.testWait();
+            this.defaultHost.testWait();
         }
 
         if (ex[0] != null) {
@@ -591,7 +646,7 @@ public class TestSimpleTransactionService extends BasicReusableHostTestCase {
             throws Throwable {
         Throwable[] ex = new Throwable[1];
         if (independentTest) {
-            this.host.testStart(1);
+            this.defaultHost.testStart(1);
         }
         BankAccountServiceRequest body = new BankAccountServiceRequest();
         body.kind = BankAccountServiceRequest.Kind.WITHDRAW;
@@ -601,17 +656,17 @@ public class TestSimpleTransactionService extends BasicReusableHostTestCase {
             if (operationFailed(o, e)) {
                 if (e instanceof IllegalStateException || e instanceof IllegalArgumentException) {
                     ex[0] = e;
-                    this.host.completeIteration();
+                    this.defaultHost.completeIteration();
                 } else {
-                    this.host.failIteration(e);
+                    this.defaultHost.failIteration(e);
                 }
                 return;
             }
-            this.host.completeIteration();
+            this.defaultHost.completeIteration();
         });
-        this.host.send(patch);
+        this.defaultHost.send(patch);
         if (independentTest) {
-            this.host.testWait();
+            this.defaultHost.testWait();
         }
 
         if (ex[0] != null) {
@@ -643,27 +698,27 @@ public class TestSimpleTransactionService extends BasicReusableHostTestCase {
             throws Throwable {
         Throwable[] ex = new Throwable[1];
         BankAccountServiceState[] responses = new BankAccountServiceState[1];
-        this.host.testStart(1);
+        this.defaultHost.testStart(1);
         Operation get = Operation
                 .createGet(buildAccountUri(accountId))
                 .setCompletion((o, e) -> {
                     if (operationFailed(o, e)) {
                         if (e instanceof IllegalStateException) {
                             ex[0] = e;
-                            this.host.completeIteration();
+                            this.defaultHost.completeIteration();
                         } else {
-                            this.host.failIteration(e);
+                            this.defaultHost.failIteration(e);
                         }
                         return;
                     }
                     responses[0] = o.getBody(BankAccountServiceState.class);
-                    this.host.completeIteration();
+                    this.defaultHost.completeIteration();
                 });
         if (transactionId != null) {
             get.setTransactionId(transactionId);
         }
-        this.host.send(get);
-        this.host.testWait();
+        this.defaultHost.send(get);
+        this.defaultHost.testWait();
 
         if (ex[0] != null) {
             throw ex[0];
@@ -673,11 +728,11 @@ public class TestSimpleTransactionService extends BasicReusableHostTestCase {
     }
 
     private URI getTransactionFactoryUri() {
-        return UriUtils.buildUri(this.host, SimpleTransactionFactoryService.class);
+        return UriUtils.buildUri(this.defaultHost, SimpleTransactionFactoryService.class);
     }
 
     private URI getAccountFactoryUri() {
-        return UriUtils.buildUri(this.host, BankAccountFactoryService.class);
+        return UriUtils.buildUri(this.defaultHost, BankAccountFactoryService.class);
     }
 
     private URI buildAccountUri(String accountId) {

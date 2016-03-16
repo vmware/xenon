@@ -227,6 +227,7 @@ public class NettyHttpServiceClient implements ServiceClient {
             }
             addAuthorizationContextHeader(clone);
             addContextIdHeader(clone);
+            addTransactionIdHeader(clone);
             sendRemote(clone);
         } finally {
             // we must restore the operation context after each send, since
@@ -248,6 +249,12 @@ public class NettyHttpServiceClient implements ServiceClient {
     private void addContextIdHeader(Operation op) {
         if (op.getContextId() != null) {
             op.addRequestHeader(Operation.CONTEXT_ID_HEADER, op.getContextId());
+        }
+    }
+
+    private void addTransactionIdHeader(Operation op) {
+        if (op.getTransactionId() != null) {
+            op.addRequestHeader(Operation.TRANSACTION_ID_HEADER, op.getTransactionId());
         }
     }
 

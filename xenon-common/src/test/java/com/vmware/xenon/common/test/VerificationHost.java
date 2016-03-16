@@ -2439,7 +2439,7 @@ public class VerificationHost extends ExampleServiceHost {
             if (h == null) {
                 continue;
             }
-            h.tearDown();
+            stopHost(h);
         }
     }
 
