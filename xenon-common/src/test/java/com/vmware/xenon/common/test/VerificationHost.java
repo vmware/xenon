@@ -1661,17 +1661,22 @@ public class VerificationHost extends ExampleServiceHost {
 
         this.peerNodeGroups.clear();
         for (String remoteNode : peerNodes) {
-            URI remoteHostBaseURI = new URI(remoteNode);
-            if (remoteHostBaseURI.getPort() == 80 || remoteHostBaseURI.getPort() == -1) {
-                remoteHostBaseURI = UriUtils.buildUri(remoteNode, ServiceHost.DEFAULT_PORT, "",
-                        null);
-            }
+            addRemotePeer(remoteNode);
+        }
+    }
 
-            URI remoteNodeGroup = UriUtils.extendUri(remoteHostBaseURI,
-                    ServiceUriPaths.DEFAULT_NODE_GROUP);
-            this.peerNodeGroups.put(remoteHostBaseURI, remoteNodeGroup);
+    public void addRemotePeer(String remoteNode) throws URISyntaxException {
+        this.isRemotePeerTest = true;
+
+        URI remoteHostBaseURI = new URI(remoteNode);
+        if (remoteHostBaseURI.getPort() == 80 || remoteHostBaseURI.getPort() == -1) {
+            remoteHostBaseURI = UriUtils.buildUri(remoteNode, ServiceHost.DEFAULT_PORT, "",
+                    null);
         }
 
+        URI remoteNodeGroup = UriUtils.extendUri(remoteHostBaseURI,
+                ServiceUriPaths.DEFAULT_NODE_GROUP);
+        this.peerNodeGroups.put(remoteHostBaseURI, remoteNodeGroup);
     }
 
     public void joinNodesAndVerifyConvergence(int nodeCount) throws Throwable {
@@ -2743,6 +2748,38 @@ public class VerificationHost extends ExampleServiceHost {
         setAuthorizationContext(ab.getResult());
     }
 
+
+    public void deleteAllDocuments(URI host, String factoryURI)
+            throws Throwable {
+        ServiceDocumentQueryResult res = getFactoryState(UriUtils.buildUri(host, factoryURI));
+        if (res.documentLinks.isEmpty()) {
+            return;
+        }
+
+        TestContext ctx = testCreate(1);
+
+        OperationJoin.JoinedCompletionHandler handler = (ops, failures) -> {
+            if (failures != null && !failures.isEmpty()) {
+                ctx.failIteration(failure);
+            }
+            ctx.completeIteration();
+        };
+
+        Collection<Operation> deletes = new LinkedList<>();
+        for (String documentLink : res.documentLinks) {
+            Operation deleteOperation =
+                    Operation.createDelete(UriUtils.buildUri(host, documentLink))
+                            .setBody("{}")
+                            .setReferer(this.getUri());
+            deletes.add(deleteOperation);
+        }
+
+        OperationJoin join = OperationJoin.create(deletes);
+        join.setCompletion(handler);
+        join.sendWith(this);
+        testWait(ctx);
+    }
+
     public void deleteAllChildServices(URI factoryURI) throws Throwable {
         ServiceDocumentQueryResult res = getFactoryState(factoryURI);
         if (res.documentLinks.isEmpty()) {
@@ -2751,7 +2788,14 @@ public class VerificationHost extends ExampleServiceHost {
         TestContext ctx = testCreate(res.documentLinks.size());
         for (String link : res.documentLinks) {
             send(Operation.createDelete(UriUtils.buildUri(this, link))
-                    .setCompletion(ctx.getCompletion()));
+                    .forceRemote()
+                    .setCompletion((o, e) -> {
+                        if (e != null) {
+                            ctx.failIteration(e);
+                            return;
+                        }
+                        ctx.completeIteration();
+                    }));
         }
         testWait(ctx);
     }

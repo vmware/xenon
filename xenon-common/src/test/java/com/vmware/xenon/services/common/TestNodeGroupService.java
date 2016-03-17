@@ -178,10 +178,22 @@ public class TestNodeGroupService {
     private boolean isAuthorizationEnabled = false;
     private HttpScheme replicationUriScheme;
 
-    private void setUp(int localHostCount) throws Throwable {
-        if (this.host != null) {
-            return;
+    private void setUpLocalPeers(int nodeCount) throws Throwable {
+        List<ServiceHost> newHosts = Collections.synchronizedList(new ArrayList<>());
+        this.host.testStart(nodeCount);
+        for (int i = 0; i < nodeCount; i++) {
+            this.host.run(() -> {
+                try {
+                    this.host.setUpLocalPeerHost(newHosts, DEFAULT_MAINT_INTERVAL_MICROS);
+                } catch (Throwable e) {
+                    this.host.failIteration(e);
+                }
+            });
         }
+        this.host.testWait();
+    }
+
+    private void setUpLocalHost() throws Throwable {
         CommandLineArgumentParser.parseFromProperties(this);
         this.host = VerificationHost.create(0);
         this.host.setAuthorizationEnabled(this.isAuthorizationEnabled);
@@ -203,6 +215,14 @@ public class TestNodeGroupService {
         CommandLineArgumentParser.parseFromProperties(this.host);
         this.host.setStressTest(this.host.isStressTest);
         this.host.setPeerSynchronizationEnabled(this.isPeerSynchronizationEnabled);
+    }
+
+    private void setUp(int localHostCount) throws Throwable {
+        if (this.host != null) {
+            return;
+        }
+
+        setUpLocalHost();
         this.host.setUpPeerHosts(localHostCount);
 
         for (VerificationHost h1 : this.host.getInProcessHostMap().values()) {
@@ -250,6 +270,52 @@ public class TestNodeGroupService {
         }
 
         return map;
+    }
+
+    private String[] parseArgumentsAndGetRemotePeersForIncrementalJoin() {
+        String[] peerNodes;
+        CommandLineArgumentParser.parseFromProperties(this.host);
+        peerNodes = this.host.peerNodes;
+        this.host.peerNodes = null;
+        return peerNodes;
+    }
+
+    private Set<URI> addAdditionalPeers(String[] peerNodes, int nodeCounter,
+                                        int totalNodes, Set<URI> alreadyAddedHosts) throws Throwable {
+        if (nodeCounter > totalNodes) {
+            return null;
+        }
+
+        if (peerNodes == null) {
+            setUpLocalPeers(1);
+
+            for (VerificationHost h1 : this.host.getInProcessHostMap().values()) {
+                if (!alreadyAddedHosts.contains(h1.getUri())) {
+                    setUpPeerHostWithAdditionalServices(h1);
+                    alreadyAddedHosts.add(h1.getUri());
+                }
+            }
+
+        } else {
+            String newPeer = peerNodes[nodeCounter - 1];
+            this.host.addRemotePeer(newPeer);
+            URI nodeGroupU = UriUtils.buildUri(newPeer, ServiceUriPaths.DEFAULT_NODE_GROUP);
+            URI eNodeGroupU = UriUtils.buildUri(this.host.getUri(), ServiceUriPaths.DEFAULT_NODE_GROUP);
+            this.host.joinNodeGroup(nodeGroupU, eNodeGroupU, this.nodeCount);
+            alreadyAddedHosts.add(new URI(newPeer));
+        }
+
+        return alreadyAddedHosts;
+    }
+
+    private void clearPeerNodes(String[] peerNodes) throws Throwable {
+        if (peerNodes == null) {
+            return;
+        }
+
+        for (String peer : peerNodes) {
+            this.host.deleteAllDocuments(new URI(peer), this.replicationTargetFactoryLink);
+        }
     }
 
     @Before
@@ -1220,6 +1286,18 @@ public class TestNodeGroupService {
     }
 
     private void doReplication() throws Throwable {
+        int nodeCount = 1;
+        int totalNodes = this.nodeCount;
+        this.nodeCount = nodeCount;
+
+        Set<URI> alreadyAddedPeers = new HashSet<>();
+        String[] remotePeerNodes = null;
+
+        if (this.replicationFactor != 0) {
+            this.nodeCount = totalNodes;
+            nodeCount = totalNodes;
+        }
+
         this.isPeerSynchronizationEnabled = false;
         CommandLineArgumentParser.parseFromProperties(this);
         Date expiration = new Date();
@@ -1228,19 +1306,28 @@ public class TestNodeGroupService {
                     + TimeUnit.SECONDS.toMillis(this.testDurationSeconds));
         }
 
+        if (this.host == null) {
+            setUpLocalHost();
+            remotePeerNodes = parseArgumentsAndGetRemotePeersForIncrementalJoin();
+            clearPeerNodes(remotePeerNodes);
+            if (remotePeerNodes != null) {
+                totalNodes = remotePeerNodes.length;
+            }
+        }
+
+        alreadyAddedPeers = addAdditionalPeers(remotePeerNodes, nodeCount, totalNodes, alreadyAddedPeers);
+        this.host.setNodeGroupQuorum(nodeCount);
+        this.host.joinNodesAndVerifyConvergence(this.host.getPeerCount());
+        this.nodeCount = nodeCount;
+
+        if (nodeCount < totalNodes) {
+            nodeCount++;
+        }
+
         long totalOperations = 0;
         do {
-            if (this.host == null) {
-                setUp(this.nodeCount);
-                this.host.joinNodesAndVerifyConvergence(this.host.getPeerCount());
-                // for limited replication factor, we will still set the quorum high, and expect
-                // the limited replication selector to use the minimum between majority of replication
-                // factor, versus node group membership quorum
-                this.host.setNodeGroupQuorum(this.nodeCount);
-            }
+            Map<String, ExampleServiceState> childStates = doExampleFactoryPostReplicationTest(this.serviceCount);
 
-            Map<String, ExampleServiceState> childStates = doExampleFactoryPostReplicationTest(
-                    this.serviceCount);
             totalOperations += this.serviceCount;
 
             // verify IDEMPOTENT POST conversion to PUT, with replication
@@ -1309,6 +1396,27 @@ public class TestNodeGroupService {
                 throw new TimeoutException();
             }
 
+
+            alreadyAddedPeers = addAdditionalPeers(remotePeerNodes, nodeCount, totalNodes, alreadyAddedPeers);
+
+            this.host.joinNodesAndVerifyConvergence(this.host.getPeerCount());
+            this.host.setNodeGroupQuorum(nodeCount);
+            this.nodeCount = nodeCount;
+
+            if (nodeCount < totalNodes) {
+                nodeCount++;
+            }
+
+            while (new Date().before(queryExp)) {
+                Set<String> links = verifyReplicatedServiceCountWithBroadcastQueries();
+                if (links.size() < this.serviceCount) {
+                    this.host.log("Found only %d links across nodes, retrying", links.size());
+                    Thread.sleep(500);
+                    continue;
+                }
+                break;
+            }
+
             expectedVersion += 1;
             doStateUpdateReplicationTest(Action.DELETE, this.serviceCount, 1,
                     expectedVersion,
@@ -1320,7 +1428,7 @@ public class TestNodeGroupService {
 
             this.host.log("Total operations: %d", totalOperations);
 
-        } while (new Date().before(expiration));
+        } while (new Date().before(expiration) || nodeCount < totalNodes);
 
         this.host.doNodeGroupStatsVerification(this.host.getNodeGroupMap());
     }
@@ -1666,7 +1774,6 @@ public class TestNodeGroupService {
                 // initial ID to be the same as the self link
                 if (!s.id.equals(s.documentSelfLink)) {
                     throw new IllegalStateException("Service forwarding failure");
-                } else {
                 }
             }
         }
@@ -2478,6 +2585,7 @@ public class TestNodeGroupService {
             URI factoryOnRandomPeerUri = this.host.getPeerServiceUri(factoryPath);
             Operation post = Operation
                     .createPost(factoryOnRandomPeerUri)
+                    .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_FORCE_INDEX_UPDATE)
                     .setCompletion(this.host.getCompletion());
 
             ExampleServiceState initialState = new ExampleServiceState();

@@ -274,6 +274,14 @@ public class UriUtils {
      * Builds a new URI using the scheme, authority, host and port from the baseUri, and the path
      * from the path argument
      */
+    public static URI buildUri(String baseUri, String... path) {
+        return buildUri(buildUri(baseUri), path);
+    }
+
+    /**
+     * Builds a new URI using the scheme, authority, host and port from the baseUri, and the path
+     * from the path argument
+     */
     public static URI buildUri(URI baseUri, String... path) {
         String query = null;
         String buildPath = null;
