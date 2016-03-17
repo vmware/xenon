@@ -815,8 +815,8 @@ public class TestUtils {
         @PropertyOptions(indexing = PropertyIndexingOption.EXPAND)
         public Range nestedPodo;
 
+        @UsageOption(option = PropertyUsageOption.OPTIONAL)
         public RoundingMode someEnum;
-
     }
 
     private static class TestKeyObjectValueHolder {

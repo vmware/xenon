@@ -13,32 +13,17 @@
 
 package com.vmware.xenon.performance;
 
-import java.util.ArrayList;
-import java.util.List;
-
 import com.vmware.xenon.common.FactoryService;
 import com.vmware.xenon.common.Service;
 import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.StatefulService;
 
 public class OwnerSelectedService extends StatefulService {
-    public static class OwnerSelectedFactoryService extends FactoryService {
-        public static String SELF_LINK = PerfUtils.BENCH + "/owner-selected";
-        public List<ServiceOption> caps = new ArrayList<>();
 
-        public OwnerSelectedFactoryService(Class<? extends ServiceDocument> stateClass) {
-            super(stateClass);
-        }
+    public static String FACTORY_LINK = PerfUtils.BENCH + "/owner-selected";
 
-        public static OwnerSelectedFactoryService create(Class<? extends ServiceDocument> stateClass) {
-            OwnerSelectedFactoryService gfs = new OwnerSelectedFactoryService(stateClass);
-            return gfs;
-        }
-
-        @Override
-        public Service createServiceInstance() throws Throwable {
-            return new OwnerSelectedService(this.stateType);
-        }
+    public static Service createFactory(Class<? extends ServiceDocument> stateClass) {
+        return FactoryService.create(OwnerSelectedService.class, stateClass);
     }
 
     public OwnerSelectedService(Class<? extends ServiceDocument> stateClass) {

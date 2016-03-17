@@ -36,6 +36,27 @@ import com.vmware.xenon.services.common.ServiceUriPaths;
  */
 public abstract class FactoryService extends StatelessService {
 
+    /**
+     * Creates a factory service instance that starts the specified child service
+     * on POST
+     */
+    public static FactoryService create(Class<? extends Service> childServiceType) {
+        try {
+            Service s = childServiceType.newInstance();
+            Class<? extends ServiceDocument> childServiceDocumentType = s.getStateType();
+            FactoryService fs = create(childServiceType, childServiceDocumentType);
+            return fs;
+        } catch (Throwable e) {
+            Utils.logWarning("Failure creating factory for %s: %s", childServiceType,
+                    Utils.toString(e));
+            return null;
+        }
+    }
+
+    /**
+     * Creates a factory service instance that starts the specified child service
+     * on POST
+     */
     public static FactoryService create(Class<? extends Service> childServiceType,
             Class<? extends ServiceDocument> childServiceDocumentType) {
         return new FactoryService(childServiceDocumentType) {
@@ -46,6 +67,10 @@ public abstract class FactoryService extends StatelessService {
         };
     }
 
+    /**
+     * Creates a factory service instance that starts the specified child service
+     * on POST. The factory service has {@link ServiceOption.IDEMPOTENT_POST} enabled
+     */
     public static FactoryService createIdempotent(Class<? extends Service> childServiceType) {
         try {
             Service s = childServiceType.newInstance();
@@ -60,8 +85,24 @@ public abstract class FactoryService extends StatelessService {
         }
     }
 
+    /**
+     * Creates a factory service instance that starts the specified child service
+     * on POST. The supplied options are set on the factory service.
+     */
     public static FactoryService createWithOptions(Class<? extends Service> childServiceType,
-            Class<? extends ServiceDocument> childServiceDocumentType, EnumSet<ServiceOption> options) {
+            EnumSet<ServiceOption> options) {
+        FactoryService fs = create(childServiceType);
+        options.forEach(option -> fs.toggleOption(option, true));
+        return fs;
+    }
+
+    /**
+     * Creates a factory service instance that starts the specified child service
+     * on POST. The supplied options are set on the factory service.
+     */
+    public static FactoryService createWithOptions(Class<? extends Service> childServiceType,
+            Class<? extends ServiceDocument> childServiceDocumentType,
+            EnumSet<ServiceOption> options) {
         FactoryService fs = create(childServiceType, childServiceDocumentType);
         options.forEach(option -> fs.toggleOption(option, true));
         return fs;

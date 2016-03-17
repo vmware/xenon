@@ -77,7 +77,7 @@ public class ExampleTaskService extends StatefulService {
      * Create a default factory service that starts instances of this task service on POST.
      */
     public static FactoryService createFactory() {
-        return FactoryService.createWithOptions(ExampleTaskService.class, ExampleTaskServiceState.class,
+        return FactoryService.createWithOptions(ExampleTaskService.class,
                 EnumSet.of(ServiceOption.IDEMPOTENT_POST, ServiceOption.INSTRUMENTATION));
     }
 

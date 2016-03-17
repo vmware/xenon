@@ -13,32 +13,16 @@
 
 package com.vmware.xenon.performance;
 
-import java.util.ArrayList;
-import java.util.List;
-
 import com.vmware.xenon.common.FactoryService;
 import com.vmware.xenon.common.Service;
 import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.StatefulService;
 
 public class SimpleStatefulService extends StatefulService {
-    public static class SimpleStatefulFactoryService extends FactoryService {
-        public static String SELF_LINK = PerfUtils.BENCH + "/stateful";
-        public List<ServiceOption> caps = new ArrayList<>();
+    public static String FACTORY_LINK = PerfUtils.BENCH + "/stateful";
 
-        public SimpleStatefulFactoryService(Class <? extends ServiceDocument> stateClass) {
-            super(stateClass);
-        }
-
-        public static SimpleStatefulFactoryService create(Class<? extends ServiceDocument> stateClass) {
-            SimpleStatefulFactoryService gfs = new SimpleStatefulFactoryService(stateClass);
-            return gfs;
-        }
-
-        @Override
-        public Service createServiceInstance() throws Throwable {
-            return new SimpleStatefulService(this.stateType);
-        }
+    public static Service createFactory(Class<? extends ServiceDocument> stateClass) {
+        return FactoryService.create(SimpleStatefulService.class, stateClass);
     }
 
     public SimpleStatefulService(Class <? extends ServiceDocument> stateClass) {

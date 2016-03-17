@@ -16,16 +16,11 @@ package com.vmware.xenon.performance;
 import java.util.logging.Level;
 
 import com.vmware.xenon.common.ServiceHost;
-import com.vmware.xenon.performance.FullCapService.FullCapFactoryService;
-import com.vmware.xenon.performance.OwnerSelectedService.OwnerSelectedFactoryService;
-import com.vmware.xenon.performance.PersistedService.PersistedFactoryService;
-import com.vmware.xenon.performance.ReplicatedService.ReplicatedFactoryService;
-import com.vmware.xenon.performance.SimpleStatefulService.SimpleStatefulFactoryService;
 import com.vmware.xenon.services.common.ExampleService;
 import com.vmware.xenon.services.common.RootNamespaceService;
 
 /**
- * Host a number of services targeting performance benchrmaks
+ * Host a number of services targeting performance benchmarks
  */
 public class PerfHost extends ServiceHost {
 
@@ -42,7 +37,6 @@ public class PerfHost extends ServiceHost {
 
     /**
      * Currently: Start a continuum of example services
-     * TODO -- test UI rendering
      */
     @Override
     public ServiceHost start() throws Throwable {
@@ -52,11 +46,11 @@ public class PerfHost extends ServiceHost {
 
         super.startService(new RootNamespaceService());
         super.startService(new SimpleStatelessService());
-        super.startService(new SimpleStatefulFactoryService(PerfUtils.SimpleState.class));
-        super.startService(new PersistedFactoryService(PerfUtils.SimpleState.class));
-        super.startService(new ReplicatedFactoryService(PerfUtils.SimpleState.class));
-        super.startService(new OwnerSelectedFactoryService(PerfUtils.SimpleState.class));
-        super.startService(FullCapFactoryService.create(PerfUtils.SimpleState.class));
+        super.startService(SimpleStatefulService.createFactory(PerfUtils.SimpleState.class));
+        super.startService(PersistedService.createFactory(PerfUtils.SimpleState.class));
+        super.startService(ReplicatedService.createFactory(PerfUtils.SimpleState.class));
+        super.startService(OwnerSelectedService.createFactory(PerfUtils.SimpleState.class));
+        super.startService(FullCapService.createFactory(PerfUtils.SimpleState.class));
         super.startFactory(ExampleService.class, ExampleService::createFactory);
 
         return this;
