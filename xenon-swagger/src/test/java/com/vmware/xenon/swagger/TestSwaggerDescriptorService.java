@@ -61,7 +61,8 @@ public class TestSwaggerDescriptorService {
         swagger.setExcludedPrefixes("/core/authz/");
         host.start();
 
-        SwaggerDescriptorService.startService(host, swagger);
+        host.startService(swagger);
+
         host.startService(
                 Operation.createPost(UriUtils.buildFactoryUri(host, ExampleService.class)),
                 ExampleService.createFactory());
@@ -117,7 +118,7 @@ public class TestSwaggerDescriptorService {
         assertNull(e);
         try {
             Swagger swagger = Yaml.mapper().readValue(o.getBody(String.class), Swagger.class);
-            System.out.println(Yaml.pretty().writeValueAsString(swagger));
+            // System.out.println(Yaml.pretty().writeValueAsString(swagger));
 
             assertSwagger(swagger);
         } catch (IOException ioe) {
@@ -155,7 +156,7 @@ public class TestSwaggerDescriptorService {
 
         try {
             Swagger swagger = Json.mapper().readValue(o.getBody(String.class), Swagger.class);
-            System.out.println(Json.pretty().writeValueAsString(swagger));
+            // System.out.println(Json.pretty().writeValueAsString(swagger));
 
             assertSwagger(swagger);
         } catch (IOException ioe) {
