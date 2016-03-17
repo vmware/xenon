@@ -20,9 +20,7 @@ import io.swagger.models.Info;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.ServiceDocumentQueryResult;
-import com.vmware.xenon.common.ServiceHost;
 import com.vmware.xenon.common.StatelessService;
-import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.services.common.ServiceUriPaths;
 
 /**
@@ -41,19 +39,6 @@ public class SwaggerDescriptorService extends StatelessService {
         toggleOption(ServiceOption.HTML_USER_INTERFACE, true);
         toggleOption(ServiceOption.ON_DEMAND_LOAD, true);
         toggleOption(ServiceOption.CONCURRENT_GET_HANDLING, true);
-    }
-
-    /**
-     * Start a Swagger descriptor stateless service on the default uri.
-     * @see ServiceUriPaths#SWAGGER
-     *
-     * @param host
-     * @param service
-     */
-    public static void startService(ServiceHost host, SwaggerDescriptorService service) {
-        Operation post = Operation
-                .createPost(UriUtils.buildUri(host, SwaggerDescriptorService.class));
-        host.startService(post, service);
     }
 
     /**

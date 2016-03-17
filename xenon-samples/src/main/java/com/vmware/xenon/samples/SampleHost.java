@@ -92,7 +92,7 @@ public class SampleHost extends ServiceHost {
         swagger.setInfo(apiInfo);
 
         // Serve swagger on default uri
-        SwaggerDescriptorService.startService(this, swagger);
+        super.startService(swagger);
         System.out.println("Checkout swaggerUI: " + this.getPublicUri() + ServiceUriPaths.SWAGGER + "/ui");
 
         return this;
