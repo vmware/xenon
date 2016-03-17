@@ -24,7 +24,6 @@ import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.OperationJoin;
 import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.ServiceDocumentDescription.PropertyUsageOption;
-import com.vmware.xenon.common.StatefulService;
 import com.vmware.xenon.common.TaskState;
 import com.vmware.xenon.common.TaskState.TaskStage;
 import com.vmware.xenon.common.UriUtils;
@@ -57,14 +56,15 @@ import com.vmware.xenon.services.common.QueryTask.Query;
  * with just the STARTED TaskStage.
  *
  */
-public class ExampleTaskService extends StatefulService {
+public class ExampleTaskService
+        extends TaskService<ExampleTaskService.ExampleTaskServiceState> {
 
     /**
      * These substages are for tracking the stages unique to our task service. They are only
      * relevant to the STARTED TaskStage. If you create your own task service, these substages
      * will probably be where most of the work happens. See the description above.
      */
-    public static enum SubStage {
+    public enum SubStage {
         QUERY_EXAMPLES, DELETE_EXAMPLES
     }
 
@@ -81,7 +81,7 @@ public class ExampleTaskService extends StatefulService {
                 EnumSet.of(ServiceOption.IDEMPOTENT_POST, ServiceOption.INSTRUMENTATION));
     }
 
-    public static class ExampleTaskServiceState extends ServiceDocument {
+    public static class ExampleTaskServiceState extends TaskService.TaskServiceState {
 
         /**
          * Time in seconds before the task expires
@@ -92,19 +92,6 @@ public class ExampleTaskService extends StatefulService {
          */
         @UsageOption(option = PropertyUsageOption.AUTO_MERGE_IF_NOT_NULL)
         public Long taskLifetime;
-
-        /**
-         * This field shouldn't be manipulated by clients, but can be examined to see the progress
-         * of the task
-         */
-        @UsageOption(option = PropertyUsageOption.AUTO_MERGE_IF_NOT_NULL)
-        public TaskState taskInfo;
-
-        /**
-         * If taskInfo.stage == FAILED, this message will say why
-         */
-        @UsageOption(option = PropertyUsageOption.AUTO_MERGE_IF_NOT_NULL)
-        public String failureMessage;
 
         /**
          * The current substage. See {@link SubStage}
@@ -129,39 +116,15 @@ public class ExampleTaskService extends StatefulService {
     }
 
     /**
-     * This handles the initial POST that creates the task service.
-     */
-    @Override
-    public void handleStart(Operation taskOperation) {
-        ExampleTaskServiceState task = validateStartPost(taskOperation);
-        if (task == null) {
-            return;
-        }
-        taskOperation.complete();
-
-        initializeState(task, taskOperation);
-        sendSelfPatch(task);
-    }
-
-    /**
      * Ensure that the input task is valid.
      *
      * Technically we don't need to require a body since there are no parameters. However,
      * non-example tasks will normally have parameters, so this is an example of how they
      * could be validated.
      */
-    private ExampleTaskServiceState validateStartPost(Operation taskOperation) {
-        if (!taskOperation.hasBody()) {
-            taskOperation.fail(new IllegalArgumentException("POST body is required"));
-            return null;
-        }
+    protected ExampleTaskServiceState validateStartPost(Operation taskOperation) {
+        ExampleTaskServiceState task = super.validateStartPost(taskOperation);
 
-        ExampleTaskServiceState task = getBody(taskOperation);
-        if (task.taskInfo != null) {
-            taskOperation.fail(
-                    new IllegalArgumentException("Do not specify taskBody: internal use only"));
-            return null;
-        }
         if (task.subStage != null) {
             taskOperation.fail(
                     new IllegalArgumentException("Do not specify subStage: internal use only"));
@@ -188,9 +151,8 @@ public class ExampleTaskService extends StatefulService {
      * If your task does significant initialization, you may prefer to do it in the
      * CREATED state.
      */
-    private void initializeState(ExampleTaskServiceState task, Operation taskOperation) {
-        task.taskInfo = new TaskState();
-        task.taskInfo.stage = TaskState.TaskStage.STARTED;
+    protected void initializeState(ExampleTaskServiceState task, Operation taskOperation) {
+        super.initializeState(task, taskOperation);
         task.subStage = SubStage.QUERY_EXAMPLES;
 
         if (task.taskLifetime != null) {
@@ -200,7 +162,6 @@ public class ExampleTaskService extends StatefulService {
             task.documentExpirationTimeMicros = Utils.getNowMicrosUtc()
                     + TimeUnit.SECONDS.toMicros(DEFAULT_TASK_LIFETIME);
         }
-        taskOperation.setBody(task);
     }
 
     /**
@@ -219,7 +180,7 @@ public class ExampleTaskService extends StatefulService {
         if (!validateTransition(patch, currentTask, patchBody)) {
             return;
         }
-        updateState(patch, currentTask, patchBody);
+        updateState(currentTask, patchBody);
         patch.complete();
 
         switch (patchBody.taskInfo.stage) {
@@ -262,29 +223,14 @@ public class ExampleTaskService extends StatefulService {
     /**
      * Validate that the PATCH we got requests reasonanble changes to our state
      */
-    private boolean validateTransition(Operation patch, ExampleTaskServiceState currentTask,
+    protected boolean validateTransition(Operation patch, ExampleTaskServiceState currentTask,
             ExampleTaskServiceState patchBody) {
-        if (patchBody.taskInfo == null) {
-            patch.fail(new IllegalArgumentException("Missing taskInfo"));
-            return false;
-        }
-        if (patchBody.taskInfo.stage == null) {
-            patch.fail(new IllegalArgumentException("Missing stage"));
-            return false;
-        }
+        super.validateTransition(patch, currentTask, patchBody);
         if (patchBody.taskInfo.stage == TaskStage.STARTED && patchBody.subStage == null) {
             patch.fail(new IllegalArgumentException("Missing substage"));
             return false;
         }
-        if (patchBody.taskInfo.stage == TaskStage.CREATED) {
-            patch.fail(new IllegalArgumentException("Did not expect to receive CREATED stage"));
-            return false;
-        }
         if (currentTask.taskInfo != null && currentTask.taskInfo.stage != null) {
-            if (currentTask.taskInfo.stage.ordinal() > patchBody.taskInfo.stage.ordinal()) {
-                patch.fail(new IllegalArgumentException("Task stage cannot move backwards"));
-                return false;
-            }
             if (currentTask.taskInfo.stage == TaskStage.STARTED
                     && patchBody.taskInfo.stage == TaskStage.STARTED) {
                 if (currentTask.subStage.ordinal() > patchBody.subStage.ordinal()) {
@@ -295,23 +241,6 @@ public class ExampleTaskService extends StatefulService {
         }
 
         return true;
-    }
-
-    /**
-     * This updates the state of the task. Note that we are merging information from the
-     * PATCH into the current task. Because we are merging into the current task (it's the
-     * same object), we do not need to explicitly save the state: that will happen when
-     * we call patch.complete()
-     */
-    private void updateState(Operation patch,
-            ExampleTaskServiceState currentTask,
-            ExampleTaskServiceState patchBody) {
-        Utils.mergeWithState(getDocumentTemplate().documentDescription, currentTask, patchBody);
-
-        // Take the new document expiration time
-        if (currentTask.documentExpirationTimeMicros == 0) {
-            currentTask.documentExpirationTimeMicros = patchBody.documentExpirationTimeMicros;
-        }
     }
 
     /**
@@ -421,19 +350,4 @@ public class ExampleTaskService extends StatefulService {
         sendSelfPatch(task);
     }
 
-    /**
-     * Send ourselves a PATCH. The caller is responsible for creating the PATCH body
-     */
-    private void sendSelfPatch(ExampleTaskServiceState task) {
-        Operation patch = Operation.createPatch(getUri())
-                .setBody(task)
-                .setCompletion(
-                        (op, ex) -> {
-                            if (ex != null) {
-                                logWarning("Failed to send patch, task has failed: %s",
-                                        ex.getMessage());
-                            }
-                        });
-        sendRequest(patch);
-    }
 }

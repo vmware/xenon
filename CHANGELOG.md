@@ -2,6 +2,11 @@
 
 ## 0.7.5-SNAPSHOT
 
+* New TaskService.java base class to reduce duplicate code when
+  implementing a task service. Subclasses no longer need to
+  override: handleStart(), sendSelfPatch(), updateSelf(). Also
+  provides common validation and default task expiration.
+
 * New FactoryService.create helpers and ServiceHost.startFactory
   and startService helpers that reduce duplicate code
 
