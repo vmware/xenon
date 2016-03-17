@@ -2038,6 +2038,11 @@ public class TestNodeGroupService {
         this.host.waitForNodeGroupConvergence(2, 2);
         VerificationHost existingHost = this.host.getInProcessHostMap().values().iterator().next();
 
+        // restarting a host using the same lucene index can lead to LockAlreadyHeld exceptions
+        // because lucene is still holding file system files, even if we told to stop. This causes
+        // spurious exceptions unrelated to the test at hand. Add a sleep to reduce the chance
+        // they occur, although, they still can ... 
+        Thread.sleep(1000);
         hostToStop.setPort(0);
         hostToStop.start();
         Thread.sleep(250);
