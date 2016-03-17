@@ -959,7 +959,7 @@ public class TestServiceHost {
         public static final String FACTORY_LINK = "/test/parent";
 
         public static Service createFactory() {
-            return FactoryService.create(ParentService.class, ExampleServiceState.class);
+            return FactoryService.create(ParentService.class);
         }
 
         public ParentService() {
@@ -974,8 +974,7 @@ public class TestServiceHost {
         public static final String FACTORY_LINK = "/test/child-of-parent";
 
         public static Service createFactory() {
-            return FactoryService.create(ChildDependsOnParentService.class,
-                    ExampleServiceState.class);
+            return FactoryService.create(ChildDependsOnParentService.class);
         }
 
         public ChildDependsOnParentService() {

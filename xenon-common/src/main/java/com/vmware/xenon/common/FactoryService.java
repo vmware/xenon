@@ -36,6 +36,19 @@ import com.vmware.xenon.services.common.ServiceUriPaths;
  */
 public abstract class FactoryService extends StatelessService {
 
+    public static FactoryService create(Class<? extends Service> childServiceType) {
+        try {
+            Service s = childServiceType.newInstance();
+            Class<? extends ServiceDocument> childServiceDocumentType = s.getStateType();
+            FactoryService fs = create(childServiceType, childServiceDocumentType);
+            return fs;
+        } catch (Throwable e) {
+            Utils.logWarning("Failure creating factory for %s: %s", childServiceType,
+                    Utils.toString(e));
+            return null;
+        }
+    }
+
     public static FactoryService create(Class<? extends Service> childServiceType,
             Class<? extends ServiceDocument> childServiceDocumentType) {
         return new FactoryService(childServiceDocumentType) {

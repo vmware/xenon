@@ -312,6 +312,7 @@ public class ServiceDocumentDescription {
             return pd;
         }
 
+        @SuppressWarnings("rawtypes")
         protected void buildPropertyDescription(
                 PropertyDescription pd,
                 Class<?> clazz,
