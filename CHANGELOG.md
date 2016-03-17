@@ -15,6 +15,9 @@
 
 * Option to serve a Swagger 2.0 API description of a ServiceHost
 
+* Add a UiContentService that behaves like a regular web-server serving
+  static files from a folder. It simplifies custom UI hosting.
+
 ## 0.7.2
 
 * Simplify service synchronization logic during node group

@@ -3036,11 +3036,6 @@ public class ServiceHost implements ServiceRequestSender {
             return candidate;
         }
 
-        // Remove this special case: https://www.pivotaltracker.com/story/show/114447679
-        if (uriPath.startsWith(ServiceUriPaths.UI_SERVICE_CORE_PATH)) {
-            return this.attachedServices.get(ServiceUriPaths.UI_SERVICE_CORE_PATH);
-        }
-
         return null;
     }
 
