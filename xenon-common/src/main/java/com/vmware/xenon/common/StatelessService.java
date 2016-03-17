@@ -22,6 +22,7 @@ import com.vmware.xenon.common.Operation.AuthorizationContext;
 import com.vmware.xenon.common.ServiceStats.ServiceStat;
 import com.vmware.xenon.common.ServiceStats.ServiceStatLogHistogram;
 import com.vmware.xenon.common.jwt.Signer;
+import com.vmware.xenon.services.common.ServiceUriPaths;
 
 /**
  * Infrastructure use only. Minimal Service implementation. Core service implementations that do not
@@ -636,5 +637,62 @@ public class StatelessService implements Service {
         } else {
             throw new RuntimeException("Service not allowed to get system authorization context");
         }
+    }
+
+    /**
+     * @see #handleUiGet(String, Service, Operation)
+     * @param get
+     */
+    protected void handleUiGet(Operation get) {
+        handleUiGet(getSelfLink(), this, get);
+    }
+
+    /**
+     * This method does basic URL rewriting and forwards to the Ui service.
+     *
+     * Every request to /some/service/FILE gets forwarded to
+     * /user-interface/resources/${serviceClass}/FILE
+     * @param get
+     */
+    protected void handleUiGet(String selfLink, Service ownerService, Operation get) {
+        String requestUri = get.getUri().getPath();
+
+        String uiResourcePath;
+
+        ServiceDocumentDescription desc = ownerService.getDocumentTemplate().documentDescription;
+        if (desc != null && desc.userInterfaceResourcePath != null) {
+            uiResourcePath = UriUtils.buildUriPath(ServiceUriPaths.UI_RESOURCES,
+                    desc.userInterfaceResourcePath);
+        } else {
+            uiResourcePath = Utils.buildUiResourceUriPrefixPath(ownerService);
+        }
+
+        if (selfLink.equals(requestUri)) {
+            // no trailing /, redirect to a location with trailing /
+            get.setStatusCode(Operation.STATUS_CODE_MOVED_TEMP);
+            get.addResponseHeader(Operation.LOCATION_HEADER, selfLink + UriUtils.URI_PATH_CHAR);
+            get.complete();
+            return;
+        } else {
+            String relativeToSelfUri = requestUri.substring(selfLink.length());
+            if (relativeToSelfUri.equals(UriUtils.URI_PATH_CHAR)) {
+                // serve the index.html
+                uiResourcePath += UriUtils.URI_PATH_CHAR + ServiceUriPaths.UI_RESOURCE_DEFAULT_FILE;
+            } else {
+                // serve whatever resource
+                uiResourcePath += relativeToSelfUri;
+            }
+        }
+
+        // Forward request to the /user-interface service
+        Operation operation = get.clone();
+        operation.setUri(UriUtils.buildUri(getHost(), uiResourcePath))
+                .setCompletion((o, e) -> {
+                    get.setBody(o.getBodyRaw())
+                            .setContentType(o.getContentType())
+                            .complete();
+                });
+
+        getHost().sendRequest(operation);
     }
 }
