@@ -61,7 +61,8 @@ public class TestSwaggerDescriptorService {
         swagger.setExcludedPrefixes("/core/authz/");
         host.start();
 
-        SwaggerDescriptorService.startService(host, swagger);
+        host.startService(swagger);
+
         host.startService(
                 Operation.createPost(UriUtils.buildFactoryUri(host, ExampleService.class)),
                 ExampleService.createFactory());
