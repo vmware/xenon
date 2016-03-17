@@ -27,17 +27,21 @@ import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.services.samples.SampleFactoryServiceWithCustomUi;
 import com.vmware.xenon.services.samples.SampleServiceWithCustomUi.SampleServiceWithCustomUiState;
+import com.vmware.xenon.services.samples.SampleServiceWithSharedCustomUi;
 
 public class TestSampleServiceWithCustomUi extends BasicReusableHostTestCase {
 
-    private static final String THE_SERVICE_URI = SampleFactoryServiceWithCustomUi.SELF_LINK + "/name";
+    private static final String THE_SERVICE_URI =
+            SampleFactoryServiceWithCustomUi.SELF_LINK + "/name";
 
     @Before
     public void prepare() throws Throwable {
         URI factoryUri = UriUtils.buildUri(this.host, SampleFactoryServiceWithCustomUi.class);
-        this.host.startService(
-                Operation.createPost(factoryUri),
-                new SampleFactoryServiceWithCustomUi());
+
+        this.host.startService(new SampleFactoryServiceWithCustomUi());
+
+        // start the custom ui factory
+        this.host.startService(new SampleServiceWithSharedCustomUi());
 
         createService();
     }
@@ -67,8 +71,43 @@ public class TestSampleServiceWithCustomUi extends BasicReusableHostTestCase {
                 .createGet(UriUtils.buildUri(this.host, THE_SERVICE_URI + "/ui"))
                 .setCompletion(getSafeHandler((o, e) -> {
                     assertNull(e);
-                    assertEquals("Did not receive temporary redirect", Operation.STATUS_CODE_MOVED_TEMP, o.getStatusCode());
-                    assertTrue("Redirected url does not end with /", o.getResponseHeader("location").endsWith("/"));
+                    assertEquals("Did not receive temporary redirect",
+                            Operation.STATUS_CODE_MOVED_TEMP, o.getStatusCode());
+                    assertTrue("Redirected url does not end with /",
+                            o.getResponseHeader("location").endsWith("/"));
+                }));
+
+        this.host.testStart(1);
+        this.host.send(op);
+        this.host.testWait();
+    }
+
+    @Test
+    public void testRootGetForSharedUi() throws Throwable {
+        Operation op = Operation
+                .createGet(UriUtils.buildUri(this.host, SampleServiceWithSharedCustomUi.SELF_LINK))
+                .setCompletion(getSafeHandler((o, e) -> {
+                    assertNull(e);
+                    assertEquals("Did not receive temporary redirect",
+                            Operation.STATUS_CODE_MOVED_TEMP, o.getStatusCode());
+                    assertTrue("Redirected url does not end with /",
+                            o.getResponseHeader(Operation.LOCATION_HEADER).endsWith("/"));
+                }));
+
+        this.host.testStart(1);
+        this.host.send(op);
+        this.host.testWait();
+    }
+
+    @Test
+    public void testGetUiWithSlashForSharedUi() throws Throwable {
+        Operation op = Operation
+                .createGet(URI.create(UriUtils.buildUri(this.host, SampleServiceWithSharedCustomUi.SELF_LINK) + "/"))
+                .setCompletion(getSafeHandler((o, e) -> {
+                    assertNull(e);
+                    assertEquals("Expected 200 OK", Operation.STATUS_CODE_OK, o.getStatusCode());
+                    assertTrue("Expected content of the index.html",
+                            o.getBody(String.class).contains("customUiApp"));
                 }));
 
         this.host.testStart(1);
@@ -83,7 +122,25 @@ public class TestSampleServiceWithCustomUi extends BasicReusableHostTestCase {
                 .setCompletion(getSafeHandler((o, e) -> {
                     assertNull(e);
                     assertEquals("Expected 200 OK", Operation.STATUS_CODE_OK, o.getStatusCode());
-                    assertTrue("Expected content of the index.html", o.getBody(String.class).contains("DOCTYPE"));
+                    assertTrue("Expected content of the index.html",
+                            o.getBody(String.class).contains("DOCTYPE"));
+                }));
+
+        this.host.testStart(1);
+        this.host.send(op);
+        this.host.testWait();
+    }
+
+    @Test
+    public void testRelativePathGetForSharedUi() throws Throwable {
+        Operation op = Operation
+                .createGet(UriUtils.buildUri(this.host,
+                        SampleServiceWithSharedCustomUi.SELF_LINK + "/constants.js"))
+                .setCompletion(getSafeHandler((o, e) -> {
+                    assertNull(e);
+                    assertEquals("Expected 200 OK", Operation.STATUS_CODE_OK, o.getStatusCode());
+                    assertTrue("Expected the contents of the README.txt",
+                            o.getBody(String.class).contains("UI_CUSTOM_BASE"));
                 }));
 
         this.host.testStart(1);
@@ -94,11 +151,13 @@ public class TestSampleServiceWithCustomUi extends BasicReusableHostTestCase {
     @Test
     public void testGetResource() throws Throwable {
         Operation op = Operation
-                .createGet(URI.create(UriUtils.buildUri(this.host, THE_SERVICE_URI + "/ui/README.txt") + "/"))
+                .createGet(URI.create(
+                        UriUtils.buildUri(this.host, THE_SERVICE_URI + "/ui/README.txt") + "/"))
                 .setCompletion(getSafeHandler((o, e) -> {
                     assertNull(e);
-                    assertEquals("Expected 200 OK",Operation.STATUS_CODE_OK, o.getStatusCode());
-                    assertTrue("Expected the contents of the README.txt", o.getBody(String.class).contains("unit-test"));
+                    assertEquals("Expected 200 OK", Operation.STATUS_CODE_OK, o.getStatusCode());
+                    assertTrue("Expected the contents of the README.txt",
+                            o.getBody(String.class).contains("unit-test"));
                 }));
 
         this.host.testStart(1);
