@@ -327,15 +327,6 @@ public class ExampleTaskService
                 }).sendWith(this);
     }
 
-
-    /**
-     * Send ourselves a PATCH that will indicate failure
-     */
-    private void sendSelfFailurePatch(ExampleTaskServiceState task, String failureMessage) {
-        task.failureMessage = failureMessage;
-        sendSelfPatch(task, TaskStage.FAILED, null);
-    }
-
     /**
      * Send ourselves a PATCH that will advance to another step in the task workflow to the
      * specified stage and substage.

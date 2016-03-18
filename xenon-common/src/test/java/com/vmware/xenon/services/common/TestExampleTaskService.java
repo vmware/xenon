@@ -13,11 +13,18 @@
 
 package com.vmware.xenon.services.common;
 
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.both;
+import static org.hamcrest.Matchers.equalTo;
+import static org.hamcrest.Matchers.greaterThan;
+import static org.hamcrest.Matchers.is;
+import static org.hamcrest.Matchers.lessThan;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 
 import java.net.URI;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.logging.Level;
 
@@ -29,6 +36,7 @@ import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.ServiceDocumentQueryResult;
 import com.vmware.xenon.common.TaskState.TaskStage;
 import com.vmware.xenon.common.UriUtils;
+import com.vmware.xenon.common.Utils;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
 import com.vmware.xenon.services.common.ExampleTaskService.ExampleTaskServiceState;
 
@@ -55,7 +63,9 @@ public class TestExampleTaskService extends BasicReusableHostTestCase {
         Consumer<Operation> notificationTarget = createNotificationTarget();
         String taskPath = createExampleTask();
         subscribeTask(taskPath, notificationTarget);
-        waitForTask(taskPath);
+
+        ExampleTaskServiceState state = waitForTask(taskPath);
+        updateTaskExpirationAndValidate(state);
         validateNoServices();
     }
 
@@ -106,8 +116,8 @@ public class TestExampleTaskService extends BasicReusableHostTestCase {
                 substage = taskState.subStage.toString();
             }
             this.host.log(Level.INFO,
-                    "Received task notification: %s, stage = %s, substage = %s",
-                    update.getAction(), stage, substage);
+                    "Received task notification: %s, stage = %s, substage = %s, documentExpiration = %d",
+                    update.getAction(), stage, substage, taskState.documentExpirationTimeMicros);
         };
         return notificationTarget;
     }
@@ -119,6 +129,7 @@ public class TestExampleTaskService extends BasicReusableHostTestCase {
         URI exampleTaskFactoryUri = UriUtils.buildFactoryUri(this.host, ExampleTaskService.class);
 
         String[] taskUri = new String[1];
+        long[] initialExpiration = new long[1];
         ExampleTaskServiceState task = new ExampleTaskServiceState();
         Operation createPost = Operation.createPost(exampleTaskFactoryUri)
                 .setBody(task)
@@ -130,6 +141,7 @@ public class TestExampleTaskService extends BasicReusableHostTestCase {
                             }
                             ExampleTaskServiceState taskResponse = op.getBody(ExampleTaskServiceState.class);
                             taskUri[0] = taskResponse.documentSelfLink;
+                            initialExpiration[0] = taskResponse.documentExpirationTimeMicros;
                             this.host.completeIteration();
                         });
 
@@ -138,6 +150,14 @@ public class TestExampleTaskService extends BasicReusableHostTestCase {
         this.host.testWait();
 
         assertNotNull(taskUri[0]);
+
+        // Since our task body didn't set expiration, the default from TaskService should be used
+        long expectedExpiration = Utils.getNowMicrosUtc() + TimeUnit.MINUTES.toMicros(TaskService.DEFAULT_EXPIRATION_MINUTES);
+        long wiggleRoom = TimeUnit.MINUTES.toMicros(5); // ensure it's accurate within 5 minutes
+        long minExpectedTime = expectedExpiration - wiggleRoom;
+        long maxExpectedTime = expectedExpiration + wiggleRoom;
+        assertThat("The task's expiration time is incorrect", initialExpiration[0],
+                is(both(greaterThan(minExpectedTime)).and(lessThan(maxExpectedTime))));
         return taskUri[0];
     }
 
@@ -164,7 +184,7 @@ public class TestExampleTaskService extends BasicReusableHostTestCase {
     /**
      * Wait for the task to complete. It's fast, but it does take time.
      */
-    private void waitForTask(String taskUri) throws Throwable {
+    private ExampleTaskServiceState waitForTask(String taskUri) throws Throwable {
         URI exampleTaskUri = UriUtils.buildUri(this.host, taskUri);
 
         ExampleTaskServiceState state = null;
@@ -180,6 +200,35 @@ public class TestExampleTaskService extends BasicReusableHostTestCase {
             Thread.sleep(250);
         }
         assertEquals(state.taskInfo.stage, TaskStage.FINISHED);
+        return state;
+    }
+
+    private void updateTaskExpirationAndValidate(ExampleTaskServiceState state) throws Throwable {
+        // Update expiration time to be one hour earlier and make sure state is updated accordingly
+        long originalExpiration = state.documentExpirationTimeMicros;
+        long newExpiration = originalExpiration - TimeUnit.HOURS.toMicros(1);
+        state.documentExpirationTimeMicros = newExpiration;
+        state.subStage = null;
+        long[] patchedExpiration = new long[1];
+
+        URI exampleTaskUri = UriUtils.buildUri(this.host, state.documentSelfLink);
+        Operation patchExpiration = Operation.createPatch(exampleTaskUri)
+                .setBody(state)
+                .setCompletion((op, ex) -> {
+                    if (ex != null) {
+                        this.host.failIteration(ex);
+                        return;
+                    }
+                    ExampleTaskServiceState taskResponse = op.getBody(ExampleTaskServiceState.class);
+                    patchedExpiration[0] = taskResponse.documentExpirationTimeMicros;
+                    this.host.completeIteration();
+                });
+        this.host.testStart(1);
+        this.host.send(patchExpiration);
+        this.host.testWait();
+
+        assertThat("The PATCHed expiration date was not updated correctly",
+                patchedExpiration[0], equalTo(newExpiration));
     }
 
     /**

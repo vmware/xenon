@@ -67,17 +67,22 @@ public abstract class TaskService<T extends TaskService.TaskServiceState>
     /**
      * Helper method so a task can easily set its expiration time,
      * {@link ServiceDocument#documentExpirationTimeMicros}
+     * <br/>
+     * For example, to set the task's {@code state} to expire in 30 seconds, you would use:
+     * <pre>
+     *     setExpiration(state, 30, TimeUnit.SECONDS);
+     * </pre>
      *
-     * @param state   the state representation of the task.  The {@code
-     *                state.documentExpirationTimeMicros} will be updated accordingly.
-     * @param minutes the number of minutes from now that this task should expire
+     * @param state         the state representation of the task. The {@code
+     *                      state.documentExpirationTimeMicros} will be updated accordingly.
+     * @param timeUnit      the unit of measure to set the expiration (ie: SECONDS, MINUTES, etc)
+     * @param timeUnitValue the value
      */
-    protected void setExpirationFromMinutes(T state, long minutes) {
+    protected void setExpiration(T state, long timeUnitValue, TimeUnit timeUnit) {
         if (state == null) {
             throw new IllegalArgumentException("state cannot be null");
         }
-        state.documentExpirationTimeMicros =
-                Utils.getNowMicrosUtc() + TimeUnit.MINUTES.toMicros(minutes);
+        state.documentExpirationTimeMicros = Utils.getNowMicrosUtc() + timeUnit.toMicros(timeUnitValue);
     }
 
     /**
@@ -129,7 +134,7 @@ public abstract class TaskService<T extends TaskService.TaskServiceState>
 
         // Put in some default expiration time if it hasn't been provided yet.
         if (task.documentExpirationTimeMicros == 0) {
-            setExpirationFromMinutes(task, DEFAULT_EXPIRATION_MINUTES);
+            setExpiration(task, DEFAULT_EXPIRATION_MINUTES, TimeUnit.MINUTES);
         }
 
         // Subclasses should initialize their "SubStage"...
@@ -182,9 +187,22 @@ public abstract class TaskService<T extends TaskService.TaskServiceState>
     protected void updateState(T currentTask, T patchBody) {
         Utils.mergeWithState(getDocumentTemplate().documentDescription, currentTask, patchBody);
 
-        // Take the new document expiration time
-        if (currentTask.documentExpirationTimeMicros == 0) {
+        // Take the new document expiration time, if it's provided in patchBody
+        if (patchBody.documentExpirationTimeMicros != 0) {
             currentTask.documentExpirationTimeMicros = patchBody.documentExpirationTimeMicros;
         }
+    }
+
+    /**
+     * Send ourselves a PATCH that will indicate failure
+     */
+    protected void sendSelfFailurePatch(T task, String failureMessage) {
+        task.failureMessage = failureMessage;
+
+        if (task.taskInfo == null) {
+            task.taskInfo = new TaskState();
+        }
+        task.taskInfo.stage = TaskState.TaskStage.FAILED;
+        sendSelfPatch(task);
     }
 }
