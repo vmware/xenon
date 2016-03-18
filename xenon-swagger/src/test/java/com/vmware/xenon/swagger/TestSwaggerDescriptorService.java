@@ -85,6 +85,12 @@ public class TestSwaggerDescriptorService {
         host.stop();
     }
 
+
+    @Test
+    public void justRun() throws InterruptedException {
+        System.out.println(this.host.getPublicUri() + "/discovery/swagger/ui");
+        Thread.sleep(1111111111);
+    }
     @Test
     public void getDescriptionInJson() throws Throwable {
         host.testStart(1);

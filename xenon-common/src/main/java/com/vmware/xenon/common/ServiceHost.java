@@ -2988,7 +2988,7 @@ public class ServiceHost implements ServiceRequestSender {
         // be ignored and never schedule for maintenance if its stopped
     }
 
-    protected Service findService(String uriPath) {
+    public Service findService(String uriPath) {
         return findService(uriPath, true);
     }
 

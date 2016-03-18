@@ -23,6 +23,7 @@ import com.vmware.xenon.common.StatefulService;
 
 /**
  */
+@DescribedBy(CarServiceDescriptor.class)
 public class CarService extends StatefulService {
     public static final String FACTORY_LINK = "/cars";
 
