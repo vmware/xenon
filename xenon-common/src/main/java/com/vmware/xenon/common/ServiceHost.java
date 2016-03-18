@@ -2004,8 +2004,7 @@ public class ServiceHost implements ServiceRequestSender {
     public ServiceHost startIdempotentFactory(Service instanceService) {
         final Class<? extends Service> serviceClass = instanceService.getClass();
         return startFactory(serviceClass,
-                () -> FactoryService.createWithOptions(serviceClass,
-                        EnumSet.of(ServiceOption.IDEMPOTENT_POST)));
+                () -> FactoryService.createIdempotent(serviceClass));
     }
 
     void processPendingServiceAvailableOperations(Service s, Throwable e) {

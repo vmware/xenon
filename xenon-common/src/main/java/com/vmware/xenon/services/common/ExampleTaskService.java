@@ -15,7 +15,6 @@ package com.vmware.xenon.services.common;
 
 import java.net.URI;
 import java.util.ArrayList;
-import java.util.EnumSet;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
@@ -77,8 +76,8 @@ public class ExampleTaskService
      * Create a default factory service that starts instances of this task service on POST.
      */
     public static FactoryService createFactory() {
-        return FactoryService.createWithOptions(ExampleTaskService.class,
-                EnumSet.of(ServiceOption.IDEMPOTENT_POST, ServiceOption.INSTRUMENTATION));
+        return FactoryService.create(ExampleTaskService.class, ServiceOption.IDEMPOTENT_POST,
+                ServiceOption.INSTRUMENTATION);
     }
 
     public static class ExampleTaskServiceState extends TaskService.TaskServiceState {
