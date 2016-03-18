@@ -14,6 +14,7 @@
 package com.vmware.xenon.common;
 
 import java.net.URI;
+import java.util.Arrays;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.UUID;
@@ -40,11 +41,12 @@ public abstract class FactoryService extends StatelessService {
      * Creates a factory service instance that starts the specified child service
      * on POST
      */
-    public static FactoryService create(Class<? extends Service> childServiceType) {
+    public static FactoryService create(Class<? extends Service> childServiceType,
+            ServiceOption... options) {
         try {
             Service s = childServiceType.newInstance();
             Class<? extends ServiceDocument> childServiceDocumentType = s.getStateType();
-            FactoryService fs = create(childServiceType, childServiceDocumentType);
+            FactoryService fs = create(childServiceType, childServiceDocumentType, options);
             return fs;
         } catch (Throwable e) {
             Utils.logWarning("Failure creating factory for %s: %s", childServiceType,
@@ -58,13 +60,15 @@ public abstract class FactoryService extends StatelessService {
      * on POST
      */
     public static FactoryService create(Class<? extends Service> childServiceType,
-            Class<? extends ServiceDocument> childServiceDocumentType) {
-        return new FactoryService(childServiceDocumentType) {
+            Class<? extends ServiceDocument> childServiceDocumentType, ServiceOption... options) {
+        FactoryService fs = new FactoryService(childServiceDocumentType) {
             @Override
             public Service createServiceInstance() throws Throwable {
                 return childServiceType.newInstance();
             }
         };
+        Arrays.stream(options).forEach(option -> fs.toggleOption(option, true));
+        return fs;
     }
 
     /**
@@ -72,40 +76,16 @@ public abstract class FactoryService extends StatelessService {
      * on POST. The factory service has {@link ServiceOption.IDEMPOTENT_POST} enabled
      */
     public static FactoryService createIdempotent(Class<? extends Service> childServiceType) {
-        try {
-            Service s = childServiceType.newInstance();
-            Class<? extends ServiceDocument> childServiceDocumentType = s.getStateType();
-            FactoryService fs = create(childServiceType, childServiceDocumentType);
-            fs.toggleOption(ServiceOption.IDEMPOTENT_POST, true);
-            return fs;
-        } catch (Throwable e) {
-            Utils.logWarning("Failure creating factory for %s: %s", childServiceType,
-                    Utils.toString(e));
-            return null;
-        }
+        return create(childServiceType, ServiceOption.IDEMPOTENT_POST);
     }
 
     /**
      * Creates a factory service instance that starts the specified child service
-     * on POST. The supplied options are set on the factory service.
+     * on POST. The factory service has {@link ServiceOption.IDEMPOTENT_POST} enabled
      */
-    public static FactoryService createWithOptions(Class<? extends Service> childServiceType,
-            EnumSet<ServiceOption> options) {
-        FactoryService fs = create(childServiceType);
-        options.forEach(option -> fs.toggleOption(option, true));
-        return fs;
-    }
-
-    /**
-     * Creates a factory service instance that starts the specified child service
-     * on POST. The supplied options are set on the factory service.
-     */
-    public static FactoryService createWithOptions(Class<? extends Service> childServiceType,
-            Class<? extends ServiceDocument> childServiceDocumentType,
-            EnumSet<ServiceOption> options) {
-        FactoryService fs = create(childServiceType, childServiceDocumentType);
-        options.forEach(option -> fs.toggleOption(option, true));
-        return fs;
+    public static FactoryService createIdempotent(Class<? extends Service> childServiceType,
+            Class<? extends ServiceDocument> childServiceDocumentType) {
+        return create(childServiceType, childServiceDocumentType, ServiceOption.IDEMPOTENT_POST);
     }
 
     public static final int SELF_QUERY_RESULT_LIMIT = 1000;
@@ -556,7 +536,8 @@ public abstract class FactoryService extends StatelessService {
             });
 
             if (o.isWithinTransaction() && this.getHost().getTransactionServiceUri() != null) {
-                TransactionServiceHelper.notifyTransactionCoordinatorOfNewService(this, childService, o);
+                TransactionServiceHelper.notifyTransactionCoordinatorOfNewService(this,
+                        childService, o);
             }
         }
 
