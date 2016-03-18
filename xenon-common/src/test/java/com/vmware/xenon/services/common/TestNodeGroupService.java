@@ -554,6 +554,10 @@ public class TestNodeGroupService {
         this.host.log("Starting PATCH to %d example services", states.size());
         TestContext ctx = this.host
                 .testCreate(this.updateCount * states.size());
+
+        long expMicros = TimeUnit.SECONDS.toMicros(
+                this.host.getTimeoutSeconds()) + Utils.getNowMicrosUtc();
+
         for (int i = 0; i < this.updateCount; i++) {
             for (Entry<String, ExampleServiceState> e : states.entrySet()) {
                 ExampleServiceState st = Utils.clone(e.getValue());
@@ -561,6 +565,7 @@ public class TestNodeGroupService {
                 Operation patch = Operation
                         .createPatch(UriUtils.buildUri(nodeGroupOnSomeHost, e.getKey()))
                         .setCompletion(ctx.getCompletion())
+                        .setExpiration(expMicros)
                         .setBody(st);
                 this.host.send(patch);
             }
