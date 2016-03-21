@@ -495,7 +495,7 @@ public class TestNodeGroupService {
 
         // before start joins, verify isolated factory synchronization is done
         for (URI hostUri : this.host.getNodeGroupMap().keySet()) {
-            this.host.waitForServiceAvailable(UriUtils.buildUri(hostUri,
+            this.host.waitForReplicatedFactoryServiceAvailable(UriUtils.buildUri(hostUri,
                     ExampleService.FACTORY_LINK));
         }
 
@@ -715,7 +715,7 @@ public class TestNodeGroupService {
             this.host.setNodeGroupQuorum(quorum, mainHostNodeGroupUri);
             this.host.setNodeGroupQuorum(quorum);
 
-            this.host.scheduleSynchronizationIfAutoSyncDisabled();
+            this.host.scheduleSynchronizationIfAutoSyncDisabled(this.replicationNodeSelector);
 
             int peerNodeCount = h.getInitialPeerHosts().size();
             // include self in peers
@@ -735,11 +735,8 @@ public class TestNodeGroupService {
                     this.exampleStateConvergenceChecker,
                     exampleStatesPerSelfLink);
 
-            for (VerificationHost peer : this.host.getInProcessHostMap().values()) {
-                verifyFactoryAvailable(UriUtils.buildFactoryUri(peer, ExampleService.class));
-            }
-
-            verifyFactoryAvailable(UriUtils.buildFactoryUri(h, ExampleService.class));
+            URI exampleFactoryUri = this.host.getPeerServiceUri(ExampleService.FACTORY_LINK);
+            this.host.waitForReplicatedFactoryServiceAvailable(exampleFactoryUri);
         } finally {
             this.host.log("test finished");
             if (h != null) {
@@ -1080,7 +1077,7 @@ public class TestNodeGroupService {
         this.host.log("Inducing synchronization");
         // Induce synchronization on stable node group. No changes should be observed since
         // all nodes should have identical state
-        this.host.scheduleSynchronizationIfAutoSyncDisabled();
+        this.host.scheduleSynchronizationIfAutoSyncDisabled(this.replicationNodeSelector);
         // give synchronization a chance to run, its 100% asynchronous so we can't really tell when each
         // child is done, but a small delay should be sufficient for 99.9% of test environments, even under
         // load
@@ -1242,6 +1239,10 @@ public class TestNodeGroupService {
                 // the limited replication selector to use the minimum between majority of replication
                 // factor, versus node group membership quorum
                 this.host.setNodeGroupQuorum(this.nodeCount);
+                // since we have disabled peer synch, trigger it explicitly so factories become available
+                this.host.scheduleSynchronizationIfAutoSyncDisabled(this.replicationNodeSelector);
+                this.host.waitForReplicatedFactoryServiceAvailable(
+                        this.host.getPeerServiceUri(this.replicationTargetFactoryLink));
             }
 
             Map<String, ExampleServiceState> childStates = doExampleFactoryPostReplicationTest(
@@ -2056,7 +2057,7 @@ public class TestNodeGroupService {
         hostToStop.setPort(0);
         hostToStop.start();
         Thread.sleep(250);
-        hostToStop.waitForServiceAvailable(UriUtils.buildUri(hostToStop,
+        hostToStop.waitForReplicatedFactoryServiceAvailable(UriUtils.buildUri(hostToStop,
                 ExampleService.FACTORY_LINK));
 
         // increase quorum on existing nodes, so they wait for new node
@@ -2075,7 +2076,7 @@ public class TestNodeGroupService {
         this.host.setNodeGroupQuorum(this.nodeCount);
 
         // wait until example factory is ready again
-        hostToStop.waitForServiceAvailable(UriUtils.buildUri(hostToStop,
+        hostToStop.waitForReplicatedFactoryServiceAvailable(UriUtils.buildUri(hostToStop,
                 ExampleService.FACTORY_LINK));
 
         this.host.resetAuthorizationContext();
@@ -2107,30 +2108,6 @@ public class TestNodeGroupService {
             roleStateByHost.put(h, serviceState);
         }
         return roleStateByHost;
-    }
-
-    private void verifyFactoryAvailable(URI factoryUri)
-            throws Throwable {
-        URI statsUri = UriUtils.buildStatsUri(factoryUri);
-        Date exp = this.host.getTestExpiration();
-        while (new Date().before(exp)) {
-            ServiceStats stats = this.host.getServiceState(null, ServiceStats.class, statsUri);
-            ServiceStat availableStat = stats.entries
-                    .get(Service.STAT_NAME_AVAILABLE);
-            if (availableStat == null) {
-                // no stat == by default available
-                break;
-            }
-
-            if (availableStat.latestValue == Service.STAT_VALUE_TRUE) {
-                return;
-            }
-
-            this.host.log("Not converged, expected %s, stat: %f", Service.STAT_VALUE_TRUE,
-                    availableStat.latestValue);
-
-            Thread.sleep(250);
-        }
     }
 
     private void verifyOperationJoinAcrossPeers(Map<URI, ReplicationTestServiceState> childStates)
@@ -2378,7 +2355,7 @@ public class TestNodeGroupService {
             for (URI fu : this.host.getNodeGroupToFactoryMap(this.replicationTargetFactoryLink)
                     .values()) {
                 // confirm that /factory/available returns 200 across all nodes
-                this.host.waitForServiceAvailable(fu);
+                this.host.waitForReplicatedFactoryServiceAvailable(fu);
             }
         }
 
@@ -2635,13 +2612,22 @@ public class TestNodeGroupService {
 
             this.host.testWait();
 
-            long expectedNodeCountPerLink = factories.size();
+            long expectedNodeCountPerLinkMax = factories.size();
+            long expectedNodeCountPerLinkMin = expectedNodeCountPerLinkMax;
             if (this.replicationFactor != 0) {
-                expectedNodeCountPerLink = this.replicationFactor;
+                // We expect services to end up either on K nodes, or K + 1 nodes,
+                // if limited replication is enabled. The reason we might end up with services on
+                // an additional node, is because we elect an owner to synchronize an entire factory,
+                // using the factory's link, and that might end up on a node not used for any child.
+                // This will produce children on that node, giving us K+1 replication, which is acceptable
+                // given K (replication factor) << N (total nodes in group)
+                expectedNodeCountPerLinkMax = this.replicationFactor + 1;
+                expectedNodeCountPerLinkMin = this.replicationFactor;
             }
 
             if (expectedChildCount == 0) {
-                expectedNodeCountPerLink = 0;
+                expectedNodeCountPerLinkMax = 0;
+                expectedNodeCountPerLinkMin = 0;
             }
 
             // build a service link to node map so we can tell on which node each service instance landed
@@ -2678,9 +2664,11 @@ public class TestNodeGroupService {
                     continue;
                 }
 
-                if (e.getValue().size() != expectedNodeCountPerLink) {
-                    this.host.log("Service %s found on %d nodes, expected %d", e.getKey(), e
-                            .getValue().size(), expectedNodeCountPerLink);
+                if (e.getValue().size() < expectedNodeCountPerLinkMin
+                        || e.getValue().size() > expectedNodeCountPerLinkMax) {
+                    this.host.log("Service %s found on %d nodes, expected %d -> %d", e.getKey(), e
+                            .getValue().size(), expectedNodeCountPerLinkMin,
+                            expectedNodeCountPerLinkMax);
                     isConverged = false;
                 }
             }
@@ -2695,14 +2683,10 @@ public class TestNodeGroupService {
                 return updatedStatesPerSelfLink;
             }
 
-            // verify /available reports correct results
-            this.host.log("Starting convergence check for %s", factories);
+            // verify /available reports correct results on the factory.
+            URI factoryUri = factories.values().iterator().next();
             Class<?> stateType = serviceStates.values().iterator().next().getClass();
-
-            for (URI factory : factories.values()) {
-                this.host.waitForServiceAvailable(factory);
-                this.host.log("Factory %s converged", factory);
-            }
+            this.host.waitForReplicatedFactoryServiceAvailable(factoryUri);
 
             // we have the correct number of services on all hosts. Now verify
             // the state of each service matches what we expect
@@ -2766,7 +2750,8 @@ public class TestNodeGroupService {
                     convergedNodeCount++;
                 }
 
-                if (convergedNodeCount != expectedNodeCountPerLink) {
+                if (convergedNodeCount < expectedNodeCountPerLinkMin
+                        || convergedNodeCount > expectedNodeCountPerLinkMax) {
                     isConverged = false;
                     break;
                 }
