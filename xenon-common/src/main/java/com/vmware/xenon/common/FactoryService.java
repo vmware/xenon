@@ -131,6 +131,7 @@ public abstract class FactoryService extends StatelessService {
     public final void handleStart(Operation startPost) {
 
         try {
+            setAvailable(false);
             // create a child service class instance and force generation of its document description
             Service s = createChildService();
             s.setHost(getHost());
@@ -161,6 +162,7 @@ public abstract class FactoryService extends StatelessService {
         }
 
         if (!ServiceHost.isServiceIndexed(this)) {
+            setAvailable(true);
             startPost.complete();
             return;
         }
@@ -198,7 +200,6 @@ public abstract class FactoryService extends StatelessService {
         // accepting requests while available is set to false. An external client or another
         // service can use /available and the associated stat as a hint, but it has no bearing
         // on runtime behavior and request processing
-        setAvailable(false);
         QueryTask queryTask = buildChildQueryTask();
         queryForChildren(queryTask,
                 UriUtils.buildUri(this.getHost(), ServiceUriPaths.CORE_QUERY_TASKS),
@@ -849,6 +850,7 @@ public abstract class FactoryService extends StatelessService {
         });
         startOrSynchronizeChildServices(maintOp);
     }
+
 
     public abstract Service createServiceInstance() throws Throwable;
 }

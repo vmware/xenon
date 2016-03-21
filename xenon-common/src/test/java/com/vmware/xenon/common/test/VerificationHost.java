@@ -17,6 +17,7 @@ import static javax.xml.bind.DatatypeConverter.printBase64Binary;
 
 import static org.junit.Assert.assertTrue;
 
+
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
@@ -50,12 +51,16 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import java.util.logging.Level;
 
+
 import javax.net.ssl.SSLContext;
+
 
 import io.netty.handler.ssl.util.InsecureTrustManagerFactory;
 import io.netty.handler.ssl.util.SelfSignedCertificate;
 
+
 import org.junit.rules.TemporaryFolder;
+
 
 import com.vmware.xenon.common.Claims;
 import com.vmware.xenon.common.CommandLineArgumentParser;
@@ -88,6 +93,7 @@ import com.vmware.xenon.services.common.ExampleService;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
 import com.vmware.xenon.services.common.ExampleServiceHost;
 import com.vmware.xenon.services.common.MinimalTestService.MinimalTestServiceErrorResponse;
+import com.vmware.xenon.services.common.NodeGroupBroadcastResponse;
 import com.vmware.xenon.services.common.NodeGroupService;
 import com.vmware.xenon.services.common.NodeGroupService.JoinPeerRequest;
 import com.vmware.xenon.services.common.NodeGroupService.NodeGroupConfig;
@@ -1294,25 +1300,41 @@ public class VerificationHost extends ExampleServiceHost {
         ctx.await();
     }
 
-    public void waitForServiceAvailable(URI u) throws Throwable {
+    public void waitForServiceAvailable(URI u, String selectorPath) throws Throwable {
         Date exp = getTestExpiration();
         boolean[] isReady = new boolean[1];
+        log("Starting /available check on %s", u);
         while (new Date().before(exp)) {
             TestContext ctx = testCreate(1);
             URI available = UriUtils.buildAvailableUri(u);
+            if (selectorPath != null) {
+                // we are in multiple node mode, create a broadcast URI since replicated
+                // factories will only be marked available on one node, the owner for the factory
+                available = UriUtils.buildBroadcastRequestUri(available, selectorPath);
+            }
             Operation get = Operation.createGet(available).setCompletion((o, e) -> {
                 if (e != null) {
                     // not ready
                     isReady[0] = false;
-                } else {
-                    isReady[0] = true;
+                    ctx.completeIteration();
+                    return;
                 }
+
+                if (selectorPath == null) {
+                    isReady[0] = true;
+                    ctx.completeIteration();
+                    return;
+                }
+
+                NodeGroupBroadcastResponse rsp = o.getBody(NodeGroupBroadcastResponse.class);
+                isReady[0] = rsp.failures.size() < rsp.nodeCount;
                 ctx.completeIteration();
             });
             send(get);
             ctx.await();
 
             if (isReady[0]) {
+                log("%s /available returned success", get.getUri());
                 return;
             }
 
@@ -1562,15 +1584,14 @@ public class VerificationHost extends ExampleServiceHost {
         return this.peerHostIdToNodeState;
     }
 
-    public void scheduleSynchronizationIfAutoSyncDisabled() throws Throwable {
+    public void scheduleSynchronizationIfAutoSyncDisabled(String selectorPath) throws Throwable {
         if (this.isPeerSynchronizationEnabled()) {
             return;
         }
         for (VerificationHost peerHost : getInProcessHostMap().values()) {
-            peerHost.scheduleNodeGroupChangeMaintenance(
-                    ServiceUriPaths.DEFAULT_NODE_SELECTOR);
+            peerHost.scheduleNodeGroupChangeMaintenance(selectorPath);
             ServiceStats selectorStats = getServiceState(null, ServiceStats.class,
-                    UriUtils.buildStatsUri(peerHost, ServiceUriPaths.DEFAULT_NODE_SELECTOR));
+                    UriUtils.buildStatsUri(peerHost, selectorPath));
             ServiceStat synchStat = selectorStats.entries
                     .get(ConsistentHashingNodeSelectorService.STAT_NAME_SYNCHRONIZATION_COUNT);
             if (synchStat != null && synchStat.latestValue > 0) {

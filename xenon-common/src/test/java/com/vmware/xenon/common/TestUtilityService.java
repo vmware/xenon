@@ -315,15 +315,12 @@ public class TestUtilityService extends BasicReusableHostTestCase {
 
         // first verify that service that do not explicitly use the setAvailable method,
         // appear available. Both a factory and a child service
-        Operation get = Operation.createGet(UriUtils.buildAvailableUri(factoryURI));
-
-        // expect 200 from /factory/available
-        this.host.sendAndWaitExpectSuccess(get);
+        this.host.waitForServiceAvailable(factoryURI, null);
 
         // expect 200 from /factory/<child>/available
         TestContext ctx = testCreate(states.size());
         for (URI u : states.keySet()) {
-            get = get.clone().setUri(UriUtils.buildAvailableUri(u))
+            Operation get = Operation.createGet(UriUtils.buildAvailableUri(u))
                     .setCompletion(ctx.getCompletion());
             this.host.send(get);
         }
@@ -340,7 +337,7 @@ public class TestUtilityService extends BasicReusableHostTestCase {
         this.host.sendAndWaitExpectSuccess(put);
 
         // verify factory now appears unavailable
-        get = Operation.createGet(UriUtils.buildAvailableUri(factoryURI));
+        Operation get = Operation.createGet(UriUtils.buildAvailableUri(factoryURI));
         this.host.sendAndWaitExpectFailure(get);
 
         // verify PUT on child services makes them unavailable

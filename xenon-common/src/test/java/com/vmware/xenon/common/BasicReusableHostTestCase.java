@@ -32,7 +32,7 @@ import com.vmware.xenon.services.common.ExampleService;
 
 public class BasicReusableHostTestCase {
 
-    private static final int MAINTENANCE_INTERVAL_MILLIS = 1000;
+    private static final int MAINTENANCE_INTERVAL_MILLIS = 250;
 
     private static VerificationHost HOST;
 

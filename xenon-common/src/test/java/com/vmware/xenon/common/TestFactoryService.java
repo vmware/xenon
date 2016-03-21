@@ -540,6 +540,9 @@ public class TestFactoryService extends BasicReusableHostTestCase {
             URI[] childUris,
             Map<URI, MinimalTestServiceState> childServiceStates,
             int patchCount) throws Throwable {
+
+        this.host.waitForServiceAvailable(factoryUri, null);
+
         // since we stopped AND marked each child service state deleted, the
         // factory should have not re-created any service. Confirm.
 
