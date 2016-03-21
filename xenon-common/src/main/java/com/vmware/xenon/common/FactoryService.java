@@ -131,6 +131,7 @@ public abstract class FactoryService extends StatelessService {
     public final void handleStart(Operation startPost) {
 
         try {
+            setAvailable(false);
             // create a child service class instance and force generation of its document description
             Service s = createChildService();
             s.setHost(getHost());
@@ -161,6 +162,7 @@ public abstract class FactoryService extends StatelessService {
         }
 
         if (!ServiceHost.isServiceIndexed(this)) {
+            setAvailable(true);
             startPost.complete();
             return;
         }
@@ -193,12 +195,7 @@ public abstract class FactoryService extends StatelessService {
             op.complete();
             return;
         }
-        // Update stat value to indicate service will be busy with synchronization / restart.
-        // The runtime does not rely on GET /available so the factory is capable of
-        // accepting requests while available is set to false. An external client or another
-        // service can use /available and the associated stat as a hint, but it has no bearing
-        // on runtime behavior and request processing
-        setAvailable(false);
+
         QueryTask queryTask = buildChildQueryTask();
         queryForChildren(queryTask,
                 UriUtils.buildUri(this.getHost(), ServiceUriPaths.CORE_QUERY_TASKS),
@@ -842,13 +839,14 @@ public abstract class FactoryService extends StatelessService {
                 logWarning("synch failed: %s", e.toString());
             }
             // Update stat and /available so any service or client that cares, can notice this factory
-            // is done with synchronization and child restart. As mentioned earlier, the status of
+            // is done with synchronization and child restart. The status of /available and
             // the available stat does not prevent the runtime from routing requests to this service
             setAvailable(true);
             maintOp.complete();
         });
         startOrSynchronizeChildServices(maintOp);
     }
+
 
     public abstract Service createServiceInstance() throws Throwable;
 }

@@ -88,6 +88,7 @@ import com.vmware.xenon.services.common.ExampleService;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
 import com.vmware.xenon.services.common.ExampleServiceHost;
 import com.vmware.xenon.services.common.MinimalTestService.MinimalTestServiceErrorResponse;
+import com.vmware.xenon.services.common.NodeGroupBroadcastResponse;
 import com.vmware.xenon.services.common.NodeGroupService;
 import com.vmware.xenon.services.common.NodeGroupService.JoinPeerRequest;
 import com.vmware.xenon.services.common.NodeGroupService.NodeGroupConfig;
@@ -1294,25 +1295,48 @@ public class VerificationHost extends ExampleServiceHost {
         ctx.await();
     }
 
-    public void waitForServiceAvailable(URI u) throws Throwable {
+    public void waitForReplicatedFactoryServiceAvailable(URI u) throws Throwable {
+        // always use the default selector for factories, since a factory owner can be assigned
+        // on any node.
+        waitForServiceAvailable(u, ServiceUriPaths.DEFAULT_NODE_SELECTOR);
+    }
+
+    public void waitForServiceAvailable(URI u, String selectorPath) throws Throwable {
         Date exp = getTestExpiration();
         boolean[] isReady = new boolean[1];
+        log("Starting /available check on %s", u);
         while (new Date().before(exp)) {
             TestContext ctx = testCreate(1);
             URI available = UriUtils.buildAvailableUri(u);
+            if (selectorPath != null) {
+                // we are in multiple node mode, create a broadcast URI since replicated
+                // factories will only be marked available on one node, the owner for the factory
+                available = UriUtils.buildBroadcastRequestUri(available, selectorPath);
+            }
             Operation get = Operation.createGet(available).setCompletion((o, e) -> {
                 if (e != null) {
                     // not ready
                     isReady[0] = false;
-                } else {
-                    isReady[0] = true;
+                    ctx.completeIteration();
+                    return;
                 }
+
+                if (selectorPath == null) {
+                    isReady[0] = true;
+                    ctx.completeIteration();
+                    return;
+                }
+
+                NodeGroupBroadcastResponse rsp = o.getBody(NodeGroupBroadcastResponse.class);
+                // we expect at least node to NOT return failure, when its factory is ready
+                isReady[0] = rsp.failures.size() < rsp.availableNodeCount;
                 ctx.completeIteration();
             });
             send(get);
             ctx.await();
 
             if (isReady[0]) {
+                log("%s /available returned success", get.getUri());
                 return;
             }
 
@@ -1562,15 +1586,14 @@ public class VerificationHost extends ExampleServiceHost {
         return this.peerHostIdToNodeState;
     }
 
-    public void scheduleSynchronizationIfAutoSyncDisabled() throws Throwable {
+    public void scheduleSynchronizationIfAutoSyncDisabled(String selectorPath) throws Throwable {
         if (this.isPeerSynchronizationEnabled()) {
             return;
         }
         for (VerificationHost peerHost : getInProcessHostMap().values()) {
-            peerHost.scheduleNodeGroupChangeMaintenance(
-                    ServiceUriPaths.DEFAULT_NODE_SELECTOR);
+            peerHost.scheduleNodeGroupChangeMaintenance(selectorPath);
             ServiceStats selectorStats = getServiceState(null, ServiceStats.class,
-                    UriUtils.buildStatsUri(peerHost, ServiceUriPaths.DEFAULT_NODE_SELECTOR));
+                    UriUtils.buildStatsUri(peerHost, selectorPath));
             ServiceStat synchStat = selectorStats.entries
                     .get(ConsistentHashingNodeSelectorService.STAT_NAME_SYNCHRONIZATION_COUNT);
             if (synchStat != null && synchStat.latestValue > 0) {

@@ -437,7 +437,7 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
 
             URI exampleFactoryUri = UriUtils.buildUri(h, ExampleService.FACTORY_LINK);
             URI exampleFactoryStatsUri = UriUtils.buildStatsUri(exampleFactoryUri);
-            this.host.waitForServiceAvailable(exampleFactoryUri);
+            this.host.waitForServiceAvailable(exampleFactoryUri, null);
 
             String statName = Service.STAT_NAME_NODE_GROUP_CHANGE_MAINTENANCE_COUNT;
             this.host.waitFor("node group change stat missing", () -> {
@@ -538,7 +538,7 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
             return false;
         });
 
-        this.host.waitForServiceAvailable(factory.getUri());
+        this.host.waitForServiceAvailable(factory.getUri(), null);
 
     }
 
