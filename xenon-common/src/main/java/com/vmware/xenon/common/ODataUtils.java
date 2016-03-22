@@ -38,6 +38,7 @@ public class ODataUtils {
 
         Integer top = UriUtils.getODataTopParamValue(op.getUri());
         Integer skip = UriUtils.getODataSkipParamValue(op.getUri());
+        Integer limit = UriUtils.getODataLimitParamValue(op.getUri());
         UriUtils.ODataOrderByTuple orderBy = UriUtils.getODataOrderByParamValue(op.getUri());
 
         QueryTask task = new QueryTask();
@@ -64,13 +65,22 @@ public class ODataUtils {
 
         if (skip != null) {
             op.fail(new IllegalArgumentException(
-                    UriUtils.URI_PARAM_ODATA_SKIP + " is not supported"));
+                    UriUtils.URI_PARAM_ODATA_SKIP + " is not supported, see skipTo"));
             return null;
         }
 
+        if (limit != null && limit > 0) {
+            if (top != null) {
+                op.fail(new IllegalArgumentException(UriUtils.URI_PARAM_ODATA_TOP
+                        + " cannot be used together with " + UriUtils.URI_PARAM_ODATA_LIMIT));
+                return null;
+            }
+            task.querySpec.resultLimit = limit;
+        }
+
         if (q == null) {
-            op.fail(new IllegalArgumentException(UriUtils.URI_PARAM_ODATA_FILTER + " is required"
-                    + op.getUri().getQuery()));
+            op.fail(new IllegalArgumentException(
+                    UriUtils.URI_PARAM_ODATA_FILTER + " is required" + op.getUri().getQuery()));
             return null;
         }
 
