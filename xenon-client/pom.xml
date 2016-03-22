@@ -114,7 +114,7 @@
                   </environmentVariables>
                   <arguments>
                     <argument>test</argument>
-                    <argument>TEST_OPTS=-v -run '${test}'</argument>
+                    <argument>TEST_OPTS=-v -timeout 5m -run '${test}'</argument>
                   </arguments>
                   <skip>${skipTests}</skip>
                 </configuration>
