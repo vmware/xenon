@@ -33,18 +33,11 @@ import com.vmware.xenon.services.common.TransactionResolutionService;
  */
 public class UriUtils {
 
-    public static enum ForwardingTarget {
-        PEER_ID,
-        KEY_HASH,
-        ALL
-    }
-
     public static final String FORWARDING_URI_PARAM_NAME_QUERY = "query";
     public static final String FORWARDING_URI_PARAM_NAME_TARGET = "target";
     public static final String FORWARDING_URI_PARAM_NAME_PATH = "path";
     public static final String FORWARDING_URI_PARAM_NAME_KEY = "key";
     public static final String FORWARDING_URI_PARAM_NAME_PEER = "peer";
-
     public static final String URI_PARAM_ODATA_EXPAND = "$expand";
     public static final String URI_PARAM_ODATA_EXPAND_NO_DOLLAR_SIGN = "expand";
     public static final String URI_PARAM_ODATA_FILTER = "$filter";
@@ -53,6 +46,9 @@ public class UriUtils {
     public static final String URI_PARAM_ODATA_ORDER_BY_VALUE_ASC = "asc";
     public static final String URI_PARAM_ODATA_ORDER_BY_VALUE_DESC = "desc";
     public static final String URI_PARAM_ODATA_TOP = "$top";
+    public static final String URI_PARAM_ODATA_LIMIT = "$limit";
+    public static final String URI_PARAM_ODATA_SKIP_TO = "$skipTo";
+    public static final String URI_PARAM_ODATA_NODE = "$node";
     public static final String HTTP_SCHEME = "http";
     public static final String HTTPS_SCHEME = "https";
     public static final int HTTP_DEFAULT_PORT = 80;
@@ -70,7 +66,7 @@ public class UriUtils {
     /**
      * Computes the parent path of the specified path.
      *
-     * @param path
+     * @param path the path to be parsed
      * @return the parent of the specified path, or {@code null} if the specified path is
      *         {@code "/"}.
      */
@@ -109,8 +105,7 @@ public class UriUtils {
             return false;
         }
         // in the event parent path did not include the path char
-        if (!parentPath.endsWith(URI_PATH_CHAR)
-                && !path.startsWith(URI_PATH_CHAR, parentPath.length())) {
+        if (!parentPath.endsWith(URI_PATH_CHAR) && !path.startsWith(URI_PATH_CHAR, parentPath.length())) {
             return false;
         }
         return true;
@@ -121,13 +116,11 @@ public class UriUtils {
     }
 
     public static URI buildTransactionResolutionUri(ServiceHost host, String txid) {
-        return buildUri(host.getUri(), ServiceUriPaths.CORE_TRANSACTIONS, txid,
-                TransactionResolutionService.RESOLUTION_SUFFIX);
+        return buildUri(host.getUri(), ServiceUriPaths.CORE_TRANSACTIONS, txid, TransactionResolutionService.RESOLUTION_SUFFIX);
     }
 
     public static URI buildSubscriptionUri(ServiceHost host, String path) {
-        return extendUri(host.getUri(),
-                UriUtils.buildUriPath(path, ServiceHost.SERVICE_URI_SUFFIX_SUBSCRIPTIONS));
+        return extendUri(host.getUri(), UriUtils.buildUriPath(path, ServiceHost.SERVICE_URI_SUFFIX_SUBSCRIPTIONS));
     }
 
     public static URI buildSubscriptionUri(URI serviceUri) {
@@ -135,8 +128,7 @@ public class UriUtils {
     }
 
     public static URI buildStatsUri(ServiceHost host, String path) {
-        return extendUri(host.getUri(),
-                UriUtils.buildUriPath(path, ServiceHost.SERVICE_URI_SUFFIX_STATS));
+        return extendUri(host.getUri(), UriUtils.buildUriPath(path, ServiceHost.SERVICE_URI_SUFFIX_STATS));
     }
 
     public static URI buildStatsUri(URI serviceUri) {
@@ -144,8 +136,7 @@ public class UriUtils {
     }
 
     public static URI buildConfigUri(ServiceHost host, String path) {
-        return extendUri(host.getUri(),
-                UriUtils.buildUriPath(path, ServiceHost.SERVICE_URI_SUFFIX_CONFIG));
+        return extendUri(host.getUri(), UriUtils.buildUriPath(path, ServiceHost.SERVICE_URI_SUFFIX_CONFIG));
     }
 
     public static URI buildConfigUri(URI serviceUri) {
@@ -153,8 +144,7 @@ public class UriUtils {
     }
 
     public static URI buildAvailableUri(ServiceHost host, String path) {
-        return extendUri(host.getUri(),
-                UriUtils.buildUriPath(path, ServiceHost.SERVICE_URI_SUFFIX_AVAILABLE));
+        return extendUri(host.getUri(), UriUtils.buildUriPath(path, ServiceHost.SERVICE_URI_SUFFIX_AVAILABLE));
     }
 
     public static URI buildAvailableUri(URI serviceUri) {
@@ -202,12 +192,10 @@ public class UriUtils {
             path = normalizeUriPath(path);
             return new URI(scheme, null, host, port, path, query, null).normalize();
         } catch (URISyntaxException e) {
-            Utils.log(UriUtils.class, Utils.class.getSimpleName(), Level.SEVERE, "%s",
-                    Utils.toString(e));
+            Utils.log(UriUtils.class, Utils.class.getSimpleName(), Level.SEVERE, "%s", Utils.toString(e));
             return null;
         }
     }
-
 
     public static String normalizeUriPath(String path) {
         if (path == null) {
@@ -248,10 +236,13 @@ public class UriUtils {
             String path = (String) f.get(null);
             return buildUri(host, path);
         } catch (Exception e) {
-            Utils.log(Utils.class, Utils.class.getSimpleName(), Level.SEVERE,
-                    "%s field not found in class %s: %s", FIELD_NAME_SELF_LINK,
-                    type.getSimpleName(),
-                    Utils.toString(e));
+            Utils.log(Utils.class,
+                      Utils.class.getSimpleName(),
+                      Level.SEVERE,
+                      "%s field not found in class %s: %s",
+                      FIELD_NAME_SELF_LINK,
+                      type.getSimpleName(),
+                      Utils.toString(e));
         }
         return null;
     }
@@ -262,10 +253,13 @@ public class UriUtils {
             String path = (String) f.get(null);
             return buildUri(host, path);
         } catch (Exception e) {
-            Utils.log(Utils.class, Utils.class.getSimpleName(), Level.SEVERE,
-                    "%s field not found in class %s: %s", FIELD_NAME_FACTORY_LINK,
-                    type.getSimpleName(),
-                    Utils.toString(e));
+            Utils.log(Utils.class,
+                      Utils.class.getSimpleName(),
+                      Level.SEVERE,
+                      "%s field not found in class %s: %s",
+                      FIELD_NAME_FACTORY_LINK,
+                      type.getSimpleName(),
+                      Utils.toString(e));
         }
         return null;
     }
@@ -305,12 +299,9 @@ public class UriUtils {
         }
 
         try {
-            return new URI(baseUri.getScheme(), baseUri.getUserInfo(), baseUri.getHost(),
-                    baseUri.getPort(), buildPath, query, null).normalize();
+            return new URI(baseUri.getScheme(), baseUri.getUserInfo(), baseUri.getHost(), baseUri.getPort(), buildPath, query, null).normalize();
         } catch (Throwable e) {
-            Utils.log(Utils.class, Utils.class.getSimpleName(), Level.SEVERE,
-                    "Failure building uri %s, %s: %s", baseUri, path,
-                    Utils.toString(e));
+            Utils.log(Utils.class, Utils.class.getSimpleName(), Level.SEVERE, "Failure building uri %s, %s: %s", baseUri, path, Utils.toString(e));
         }
         return null;
     }
@@ -322,16 +313,14 @@ public class UriUtils {
         try {
             return new URI(uri);
         } catch (Throwable e) {
-            Utils.log(Utils.class, Utils.class.getSimpleName(), Level.SEVERE,
-                    "Failure building uri %s: %s", uri, Utils.toString(e));
+            Utils.log(Utils.class, Utils.class.getSimpleName(), Level.SEVERE, "Failure building uri %s: %s", uri, Utils.toString(e));
         }
         return null;
     }
 
     public static URI extendUriWithQuery(URI u, String... keyValues) {
         if (keyValues.length % 2 != 0) {
-            throw new IllegalArgumentException(
-                    "keyValues array length must be even, with key and value pairs interleaved");
+            throw new IllegalArgumentException("keyValues array length must be even, with key and value pairs interleaved");
         }
         StringBuilder sb = new StringBuilder();
 
@@ -354,21 +343,15 @@ public class UriUtils {
 
         try {
             String query = u.getQuery() == null ? sb.toString() : u.getQuery() + sb.toString();
-            u = new URI(u.getScheme(), null, u.getHost(),
-                    u.getPort(), u.getPath(), query, null);
+            u = new URI(u.getScheme(), null, u.getHost(), u.getPort(), u.getPath(), query, null);
             return u;
         } catch (URISyntaxException e) {
-            Utils.log(UriUtils.class, Utils.class.getSimpleName(), Level.SEVERE, "%s",
-                    Utils.toString(e));
+            Utils.log(UriUtils.class, Utils.class.getSimpleName(), Level.SEVERE, "%s", Utils.toString(e));
             return null;
         }
     }
 
-    public static URI buildDocumentQueryUri(ServiceHost host,
-            String selfLink,
-            boolean doExpand,
-            boolean includeDeleted,
-            EnumSet<ServiceOption> serviceCaps) {
+    public static URI buildDocumentQueryUri(ServiceHost host, String selfLink, boolean doExpand, boolean includeDeleted, EnumSet<ServiceOption> serviceCaps) {
         ServiceOption queryCap = ServiceOption.NONE;
         if (serviceCaps.contains(ServiceOption.PERSISTENCE)) {
             queryCap = ServiceOption.PERSISTENCE;
@@ -376,33 +359,19 @@ public class UriUtils {
         return buildDocumentQueryUri(host, selfLink, doExpand, includeDeleted, queryCap);
     }
 
-    public static URI buildDocumentQueryUri(ServiceHost host,
-            String selfLink,
-            boolean doExpand,
-            boolean includeDeleted,
-            ServiceOption cap) {
+    public static URI buildDocumentQueryUri(ServiceHost host, String selfLink, boolean doExpand, boolean includeDeleted, ServiceOption cap) {
 
         URI indexUri = host.getDocumentIndexServiceUri();
-        return buildIndexQueryUri(indexUri,
-                selfLink, doExpand, includeDeleted, cap);
+        return buildIndexQueryUri(indexUri, selfLink, doExpand, includeDeleted, cap);
     }
 
-    public static URI buildOperationTracingQueryUri(ServiceHost host,
-            String selfLink,
-            boolean doExpand,
-            boolean includeDeleted,
-            ServiceOption cap) {
+    public static URI buildOperationTracingQueryUri(ServiceHost host, String selfLink, boolean doExpand, boolean includeDeleted, ServiceOption cap) {
 
         URI hostURI = UriUtils.extendUri(host.getUri(), ServiceUriPaths.CORE_OPERATION_INDEX);
-        return buildIndexQueryUri(hostURI,
-                selfLink, doExpand, includeDeleted, cap);
+        return buildIndexQueryUri(hostURI, selfLink, doExpand, includeDeleted, cap);
     }
 
-    public static URI buildIndexQueryUri(URI indexURI,
-            String selfLink,
-            boolean doExpand,
-            boolean includeDeleted,
-            ServiceOption cap) {
+    public static URI buildIndexQueryUri(URI indexURI, String selfLink, boolean doExpand, boolean includeDeleted, ServiceOption cap) {
 
         if (cap == null) {
             cap = ServiceOption.NONE;
@@ -433,7 +402,7 @@ public class UriUtils {
     }
 
     public static Map<String, String> parseUriQueryParams(URI uri) {
-        Map<String, String> params = new HashMap<String, String>();
+        Map<String, String> params = new HashMap<>();
         String query = uri.getQuery();
         if (query == null || query.isEmpty()) {
             return params;
@@ -462,8 +431,7 @@ public class UriUtils {
     }
 
     public static URI buildExpandLinksQueryUri(URI factoryServiceUri) {
-        return extendUriWithQuery(factoryServiceUri, UriUtils.URI_PARAM_ODATA_EXPAND,
-                ServiceDocumentQueryResult.FIELD_NAME_DOCUMENT_LINKS);
+        return extendUriWithQuery(factoryServiceUri, UriUtils.URI_PARAM_ODATA_EXPAND, ServiceDocumentQueryResult.FIELD_NAME_DOCUMENT_LINKS);
     }
 
     /**
@@ -475,13 +443,11 @@ public class UriUtils {
             throw new IllegalStateException("Host not in valid state");
         }
 
-        if (host.getState().systemInfo.ipAddresses == null
-                || host.getState().systemInfo.ipAddresses.isEmpty()) {
+        if (host.getState().systemInfo.ipAddresses == null || host.getState().systemInfo.ipAddresses.isEmpty()) {
             throw new IllegalStateException("No IP addresses found in host:" + host.toString());
         }
 
-        if (host.getPort() != remoteService.getPort()
-                && host.getSecurePort() != remoteService.getPort()) {
+        if (host.getPort() != remoteService.getPort() && host.getSecurePort() != remoteService.getPort()) {
             return false;
         }
 
@@ -495,8 +461,7 @@ public class UriUtils {
     }
 
     public static String buildPathWithVersion(String link, Long latestVersion) {
-        return link + UriUtils.URI_QUERY_CHAR + ServiceDocument.FIELD_NAME_VERSION
-                + UriUtils.URI_QUERY_PARAM_KV_CHAR + latestVersion;
+        return link + UriUtils.URI_QUERY_CHAR + ServiceDocument.FIELD_NAME_VERSION + UriUtils.URI_QUERY_PARAM_KV_CHAR + latestVersion;
     }
 
     public static URI buildPublicUri(ServiceHost host, String... path) {
@@ -506,12 +471,9 @@ public class UriUtils {
     public static URI buildPublicUri(ServiceHost host, String path, String query) {
         URI baseUri = host.getPublicUri();
         try {
-            return new URI(baseUri.getScheme(), baseUri.getUserInfo(), baseUri.getHost(),
-                    baseUri.getPort(), path, query, null);
+            return new URI(baseUri.getScheme(), baseUri.getUserInfo(), baseUri.getHost(), baseUri.getPort(), path, query, null);
         } catch (Throwable e) {
-            Utils.log(Utils.class, Utils.class.getSimpleName(), Level.SEVERE,
-                    "Failure building uri %s, %s, %s: %s", baseUri, path, query,
-                    Utils.toString(e));
+            Utils.log(Utils.class, Utils.class.getSimpleName(), Level.SEVERE, "Failure building uri %s, %s, %s: %s", baseUri, path, query, Utils.toString(e));
         }
         return null;
     }
@@ -521,25 +483,17 @@ public class UriUtils {
      * If the key argument is supplied, it is used instead
      */
     public static URI buildForwardRequestUri(URI targetService, String key, String selectorPath) {
-        URI u = UriUtils.buildUri(targetService, UriUtils.buildUriPath(
-                selectorPath,
-                ServiceUriPaths.SERVICE_URI_SUFFIX_FORWARDING));
+        URI u = UriUtils.buildUri(targetService, UriUtils.buildUriPath(selectorPath, ServiceUriPaths.SERVICE_URI_SUFFIX_FORWARDING));
         if (key == null) {
             key = targetService.getPath();
         }
 
-        u = UriUtils.extendUriWithQuery(u, FORWARDING_URI_PARAM_NAME_PATH,
-                key,
-                FORWARDING_URI_PARAM_NAME_TARGET,
-                ForwardingTarget.KEY_HASH.toString());
+        u = UriUtils.extendUriWithQuery(u, FORWARDING_URI_PARAM_NAME_PATH, key, FORWARDING_URI_PARAM_NAME_TARGET, ForwardingTarget.KEY_HASH.toString());
         return u;
     }
 
-    public static URI buildForwardToPeerUri(URI targetService, String peerId, String selectorPath,
-            EnumSet<ServiceOption> caps) {
-        URI u = UriUtils.buildUri(targetService, UriUtils.buildUriPath(
-                selectorPath,
-                ServiceUriPaths.SERVICE_URI_SUFFIX_FORWARDING));
+    public static URI buildForwardToPeerUri(URI targetService, String peerId, String selectorPath, EnumSet<ServiceOption> caps) {
+        URI u = UriUtils.buildUri(targetService, UriUtils.buildUriPath(selectorPath, ServiceUriPaths.SERVICE_URI_SUFFIX_FORWARDING));
         String query = targetService.getQuery();
         if (query == null) {
             query = "";
@@ -547,24 +501,25 @@ public class UriUtils {
             query += "";
         }
 
-        u = UriUtils.extendUriWithQuery(u, FORWARDING_URI_PARAM_NAME_PEER,
-                peerId,
-                FORWARDING_URI_PARAM_NAME_PATH,
-                targetService.getPath(),
-                FORWARDING_URI_PARAM_NAME_QUERY,
-                query,
-                FORWARDING_URI_PARAM_NAME_TARGET,
-                ForwardingTarget.PEER_ID.toString());
+        u = UriUtils.extendUriWithQuery(u,
+                                        FORWARDING_URI_PARAM_NAME_PEER,
+                                        peerId,
+                                        FORWARDING_URI_PARAM_NAME_PATH,
+                                        targetService.getPath(),
+                                        FORWARDING_URI_PARAM_NAME_QUERY,
+                                        query,
+                                        FORWARDING_URI_PARAM_NAME_TARGET,
+                                        ForwardingTarget.PEER_ID.toString());
         return u;
     }
 
     public static URI buildBroadcastRequestUri(URI targetService, String selectorPath) {
-        URI u = UriUtils.buildUri(targetService, UriUtils.buildUriPath(selectorPath,
-                ServiceUriPaths.SERVICE_URI_SUFFIX_FORWARDING));
-        u = UriUtils.extendUriWithQuery(u, FORWARDING_URI_PARAM_NAME_PATH,
-                targetService.getPath(),
-                FORWARDING_URI_PARAM_NAME_TARGET,
-                ForwardingTarget.ALL.toString());
+        URI u = UriUtils.buildUri(targetService, UriUtils.buildUriPath(selectorPath, ServiceUriPaths.SERVICE_URI_SUFFIX_FORWARDING));
+        u = UriUtils.extendUriWithQuery(u,
+                                        FORWARDING_URI_PARAM_NAME_PATH,
+                                        targetService.getPath(),
+                                        FORWARDING_URI_PARAM_NAME_TARGET,
+                                        ForwardingTarget.ALL.toString());
         return u;
     }
 
@@ -575,78 +530,55 @@ public class UriUtils {
         if (uri.getPort() == newPort) {
             return uri;
         }
-        return UriUtils.buildUri(uri.getScheme(),
-                uri.getHost(),
-                newPort,
-                uri.getPath(),
-                uri.getQuery());
+        return UriUtils.buildUri(uri.getScheme(), uri.getHost(), newPort, uri.getPath(), uri.getQuery());
     }
 
     public static String getODataFilterParamValue(URI uri) {
-        String query = uri.getQuery();
-        if (query == null || query.isEmpty()) {
-            return null;
-        }
-
-        if (!query.contains(URI_PARAM_ODATA_FILTER)) {
-            return null;
-        }
-
-        Map<String, String> queryParams = parseUriQueryParams(uri);
-
-        String filterParamValue = queryParams.get(URI_PARAM_ODATA_FILTER);
-        if (filterParamValue == null || filterParamValue.isEmpty()) {
-            return null;
-        }
-
-        return filterParamValue;
+        return getODataParamValueAsString(uri, URI_PARAM_ODATA_FILTER);
     }
 
     public static Integer getODataSkipParamValue(URI uri) {
-        String query = uri.getQuery();
-        if (query == null || query.isEmpty()) {
-            return null;
-        }
-
-        if (!query.contains(URI_PARAM_ODATA_SKIP)) {
-            return null;
-        }
-
-        Map<String, String> queryParams = parseUriQueryParams(uri);
-
-        String paramValue = queryParams.get(URI_PARAM_ODATA_SKIP);
-        if (paramValue == null || paramValue.isEmpty()) {
-            return null;
-        }
-        return Integer.valueOf(paramValue);
+        return getODataParamValue(uri, URI_PARAM_ODATA_SKIP);
     }
 
     public static Integer getODataTopParamValue(URI uri) {
+        return getODataParamValue(uri, URI_PARAM_ODATA_TOP);
+    }
+
+    public static Integer getODataLimitParamValue(URI uri) {
+        return getODataParamValue(uri, URI_PARAM_ODATA_LIMIT);
+    }
+
+    public static String getODataSkipToParamValue(URI uri) {
+        return getODataParamValueAsString(uri, URI_PARAM_ODATA_SKIP_TO);
+    }
+
+    public static String getODataNodeParamValue(URI uri) {
+        return getODataParamValueAsString(uri, URI_PARAM_ODATA_NODE);
+    }
+
+    public static Integer getODataParamValue(final URI uri, final String uriParamOdataType) {
+        String paramValue = getODataParamValueAsString(uri, uriParamOdataType);
+        return paramValue != null ? Integer.valueOf(paramValue) : null;
+    }
+
+    public static String getODataParamValueAsString(final URI uri, final String uriParamOdataType) {
         String query = uri.getQuery();
         if (query == null || query.isEmpty()) {
             return null;
         }
 
-        if (!query.contains(URI_PARAM_ODATA_TOP)) {
+        if (!query.contains(uriParamOdataType)) {
             return null;
         }
 
         Map<String, String> queryParams = parseUriQueryParams(uri);
 
-        String paramValue = queryParams.get(URI_PARAM_ODATA_TOP);
+        String paramValue = queryParams.get(uriParamOdataType);
         if (paramValue == null || paramValue.isEmpty()) {
             return null;
         }
-        return Integer.valueOf(paramValue);
-    }
-
-    public enum ODataOrder {
-        ASC, DESC
-    }
-
-    public static class ODataOrderByTuple {
-        public ODataOrder order;
-        public String propertyName;
+        return paramValue;
     }
 
     public static ODataOrderByTuple getODataOrderByParamValue(URI uri) {
@@ -720,5 +652,22 @@ public class UriUtils {
             return "";
         }
         return link.substring(link.lastIndexOf(UriUtils.URI_PATH_CHAR) + 1);
+    }
+
+    public enum ForwardingTarget {
+                                  PEER_ID,
+                                  KEY_HASH,
+                                  ALL
+    }
+
+    public enum ODataOrder {
+                            ASC,
+                            DESC
+    }
+
+    public static class ODataOrderByTuple {
+
+        public ODataOrder order;
+        public String propertyName;
     }
 }

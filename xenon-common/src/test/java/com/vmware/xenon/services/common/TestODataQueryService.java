@@ -38,6 +38,7 @@ import com.vmware.xenon.common.Utils;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
 
 public class TestODataQueryService extends BasicReusableHostTestCase {
+
     public long min = 10;
     public long max = 30;
     public List<String> selfLinks;
@@ -60,19 +61,17 @@ public class TestODataQueryService extends BasicReusableHostTestCase {
             inState.keyValues.put(String.format("key-%d-A", i), String.format("value-%d-A", i));
             inState.keyValues.put(String.format("key-%d-B", i), String.format("value-%d-B", i));
 
-            this.host.send(Operation.createPost(UriUtils.extendUri(this.host.getUri(),
-                    ExampleService.FACTORY_LINK)).setBody(inState)
-                    .setCompletion((o, e) -> {
-                        if (e != null) {
-                            this.host.failIteration(e);
-                            return;
-                        }
-                        ServiceDocument d = o.getBody(ServiceDocument.class);
-                        synchronized (selfLinks) {
-                            selfLinks.add(d.documentSelfLink);
-                        }
-                        this.host.completeIteration();
-                    }));
+            this.host.send(Operation.createPost(UriUtils.extendUri(this.host.getUri(), ExampleService.FACTORY_LINK)).setBody(inState).setCompletion((o, e) -> {
+                if (e != null) {
+                    this.host.failIteration(e);
+                    return;
+                }
+                ServiceDocument d = o.getBody(ServiceDocument.class);
+                synchronized (selfLinks) {
+                    selfLinks.add(d.documentSelfLink);
+                }
+                this.host.completeIteration();
+            }));
         }
         this.host.testWait();
         return selfLinks;
@@ -80,19 +79,14 @@ public class TestODataQueryService extends BasicReusableHostTestCase {
 
     private void postExample(ExampleService.ExampleServiceState inState) throws Throwable {
         this.host.testStart(1);
-        this.host.send(Operation
-                .createPost(UriUtils.buildFactoryUri(this.host, ExampleService.class))
-                .setBody(inState)
-                .setCompletion(
-                        (o, e) -> {
-                            if (e != null) {
-                                this.host.failIteration(e);
-                            }
-                            ExampleService.ExampleServiceState s = o
-                                    .getBody(ExampleService.ExampleServiceState.class);
-                            inState.documentSelfLink = s.documentSelfLink;
-                            this.host.completeIteration();
-                        }));
+        this.host.send(Operation.createPost(UriUtils.buildFactoryUri(this.host, ExampleService.class)).setBody(inState).setCompletion((o, e) -> {
+            if (e != null) {
+                this.host.failIteration(e);
+            }
+            ExampleService.ExampleServiceState s = o.getBody(ExampleService.ExampleServiceState.class);
+            inState.documentSelfLink = s.documentSelfLink;
+            this.host.completeIteration();
+        }));
         this.host.testWait();
     }
 
@@ -186,8 +180,7 @@ public class TestODataQueryService extends BasicReusableHostTestCase {
         }
     }
 
-    private void doOrderByQueryAndValidateResult(int c, List<String> expectedOrder,
-            String queryString) throws Throwable {
+    private void doOrderByQueryAndValidateResult(int c, List<String> expectedOrder, String queryString) throws Throwable {
         ServiceDocumentQueryResult res = doQuery(queryString, true);
         if (this.isFailureExpected) {
             return;
@@ -229,14 +222,12 @@ public class TestODataQueryService extends BasicReusableHostTestCase {
         Map<String, Object> out = doQuery(queryString, false).documents;
         assertNotNull(out);
 
-        ExampleService.ExampleServiceState outState = Utils.fromJson(
-                out.get(inState.documentSelfLink), ExampleService.ExampleServiceState.class);
+        ExampleService.ExampleServiceState outState = Utils.fromJson(out.get(inState.documentSelfLink), ExampleService.ExampleServiceState.class);
         assertTrue(outState.name.equals(inState.name));
 
         out = doFactoryServiceQuery(queryString, false);
         assertNotNull(out);
-        outState = Utils.fromJson(
-                out.get(inState.documentSelfLink), ExampleService.ExampleServiceState.class);
+        outState = Utils.fromJson(out.get(inState.documentSelfLink), ExampleService.ExampleServiceState.class);
         assertTrue(outState.name.equals(inState.name));
     }
 
@@ -307,14 +298,12 @@ public class TestODataQueryService extends BasicReusableHostTestCase {
         Map<String, Object> out = doQuery(queryString, false).documents;
         assertNotNull(out);
 
-        ExampleService.ExampleServiceState outState = Utils.fromJson(
-                out.get(inState.documentSelfLink), ExampleService.ExampleServiceState.class);
+        ExampleService.ExampleServiceState outState = Utils.fromJson(out.get(inState.documentSelfLink), ExampleService.ExampleServiceState.class);
         assertEquals(outState.counter, inState.counter);
 
         out = doFactoryServiceQuery(queryString, false);
         assertNotNull(out);
-        outState = Utils.fromJson(
-                out.get(inState.documentSelfLink), ExampleService.ExampleServiceState.class);
+        outState = Utils.fromJson(out.get(inState.documentSelfLink), ExampleService.ExampleServiceState.class);
         assertEquals(outState.counter, inState.counter);
     }
 
@@ -325,8 +314,7 @@ public class TestODataQueryService extends BasicReusableHostTestCase {
 
         /* Perform URL encoding on the query String */
 
-        String queryString = URLEncoder.encode("$filter=name eq 'TEST STRING'",
-                Charset.defaultCharset().toString());
+        String queryString = URLEncoder.encode("$filter=name eq 'TEST STRING'", Charset.defaultCharset().toString());
 
         assert (queryString.contains("+"));
 
@@ -334,14 +322,12 @@ public class TestODataQueryService extends BasicReusableHostTestCase {
 
         assertNotNull(out);
 
-        ExampleService.ExampleServiceState outState = Utils.fromJson(
-                out.get(inState.documentSelfLink), ExampleService.ExampleServiceState.class);
+        ExampleService.ExampleServiceState outState = Utils.fromJson(out.get(inState.documentSelfLink), ExampleService.ExampleServiceState.class);
         assertTrue(outState.name.equals(inState.name));
 
         out = doFactoryServiceQuery(queryString, true);
         assertNotNull(out);
-        outState = Utils.fromJson(
-                out.get(inState.documentSelfLink), ExampleService.ExampleServiceState.class);
+        outState = Utils.fromJson(out.get(inState.documentSelfLink), ExampleService.ExampleServiceState.class);
         assertTrue(outState.name.equals(inState.name));
     }
 
@@ -365,20 +351,14 @@ public class TestODataQueryService extends BasicReusableHostTestCase {
         testOdataQueryNested(".", inStateA, inStateB);
     }
 
-    private void testOdataQueryNested(String separator, ExampleServiceState stateA,
-            ExampleServiceState stateB) throws Throwable {
-        String queryString = URLEncoder.encode("$filter=keyValues" + separator
-                + "key eq 'value-A'",
-                Charset.defaultCharset().toString());
+    private void testOdataQueryNested(String separator, ExampleServiceState stateA, ExampleServiceState stateB) throws Throwable {
+        String queryString = URLEncoder.encode("$filter=keyValues" + separator + "key eq 'value-A'", Charset.defaultCharset().toString());
         Map<String, Object> out = doQuery(queryString, true).documents;
         assertEquals(1, out.size());
-        ExampleServiceState outState = Utils.fromJson(
-                out.get(stateA.documentSelfLink), ExampleServiceState.class);
+        ExampleServiceState outState = Utils.fromJson(out.get(stateA.documentSelfLink), ExampleServiceState.class);
         assertTrue(outState.name.equals(stateA.name));
 
-        queryString = URLEncoder.encode("$filter=keyValues" + separator
-                + "key eq 'value*'",
-                Charset.defaultCharset().toString());
+        queryString = URLEncoder.encode("$filter=keyValues" + separator + "key eq 'value*'", Charset.defaultCharset().toString());
         out = doQuery(queryString, true).documents;
         assertEquals(2, out.size());
 
@@ -388,9 +368,7 @@ public class TestODataQueryService extends BasicReusableHostTestCase {
         outState = Utils.fromJson(out.get(stateB.documentSelfLink), ExampleServiceState.class);
         assertTrue(outState.name.equals(stateB.name));
 
-        queryString = URLEncoder.encode("$filter=keyValues" + separator
-                + "key-unexisting eq 'value-C'",
-                Charset.defaultCharset().toString());
+        queryString = URLEncoder.encode("$filter=keyValues" + separator + "key-unexisting eq 'value-C'", Charset.defaultCharset().toString());
         out = doQuery(queryString, true).documents;
         assertTrue(out.isEmpty());
     }
@@ -438,10 +416,8 @@ public class TestODataQueryService extends BasicReusableHostTestCase {
         return res;
     }
 
-    private Map<String, Object> doFactoryServiceQuery(String query, boolean remote)
-            throws Throwable {
-        URI odataQuery = UriUtils.buildUri(this.host, ExampleService.FACTORY_LINK, query
-                + "&" + UriUtils.URI_PARAM_ODATA_EXPAND);
+    private Map<String, Object> doFactoryServiceQuery(String query, boolean remote) throws Throwable {
+        URI odataQuery = UriUtils.buildUri(this.host, ExampleService.FACTORY_LINK, query + "&" + UriUtils.URI_PARAM_ODATA_EXPAND);
 
         final ServiceDocumentQueryResult[] qr = { null };
         Operation get = Operation.createGet(odataQuery).setCompletion((ox, ex) -> {
@@ -467,5 +443,114 @@ public class TestODataQueryService extends BasicReusableHostTestCase {
         assertNotNull(res.documents);
 
         return res.documents;
+    }
+
+    @Test
+    public void testLimit() throws Throwable {
+        ExampleService.ExampleServiceState inState = new ExampleService.ExampleServiceState();
+        int c = 5;
+        List<String> expectedOrder = new ArrayList<>();
+        for (int i = 0; i < c; i++) {
+            inState.documentSelfLink = null;
+            inState.counter = 1L;
+            inState.name = i + "-abcd";
+            postExample(inState);
+            expectedOrder.add(inState.name);
+        }
+
+        // limit + filter
+        int limit = c - 2;
+        String queryString = "$filter=counter eq 1";
+        queryString += "&" + "$limit=" + +limit;
+        ServiceDocumentQueryResult res = doOdataQuery(queryString, true);
+        assertTrue(res.documentCount == 0);
+        assertTrue(res.documentLinks.size() == 0);
+        assertTrue(res.documents.size() == 0);
+        assertTrue(res.nextPageLink != null);
+
+        // skip first page which is empty
+        URI uri = new URI(res.nextPageLink);
+        String peer = UriUtils.getODataParamValueAsString(uri, "peer");
+        String page = UriUtils.getODataParamValueAsString(uri, "path");
+        assertTrue(peer != null);
+        assertTrue(page != null);
+
+        page = page.replaceAll("\\D+", "");
+        assertTrue(!page.isEmpty());
+
+        res = getNextPage(page, peer, true);
+        long counter = 0;
+
+        while (res.nextPageLink != null) {
+            if (res.documentCount % limit == 0) {
+                assertTrue(res.documentCount == limit);
+                assertTrue(res.documentLinks.size() == limit);
+                assertTrue(res.documents.size() == limit);
+            } else if (counter + res.documentCount == c) {
+                assertTrue(res.documentCount == c - counter);
+                assertTrue(res.documentLinks.size() == c - counter);
+                assertTrue(res.documents.size() == c - counter);
+            }
+            counter = counter + res.documentCount;
+            res = getNextPage(res.nextPageLink, true);
+        }
+
+        assertTrue(counter == c);
+    }
+
+    private ServiceDocumentQueryResult getNextPage(final String nextPage, final boolean remote) throws Throwable {
+        URI odataQuery = UriUtils.buildUri(this.host, nextPage);
+        return doQuery(odataQuery, remote);
+    }
+
+    private ServiceDocumentQueryResult getNextPage(final String page, final String peer, final boolean remote) throws Throwable {
+        String queryString = String.format("$node=%s&$skipTo=%s", peer, page);
+        return doOdataQuery(queryString, remote);
+    }
+
+    private ServiceDocumentQueryResult doOdataQuery(final String query, final boolean remote) throws Throwable {
+        URI odataQuery = UriUtils.buildUri(this.host, ServiceUriPaths.ODATA_QUERIES, query);
+        return doQuery(odataQuery, remote);
+    }
+
+    private ServiceDocumentQueryResult doQuery(final URI uri, final boolean remote) throws Throwable {
+        final ServiceDocumentQueryResult[] qr = { null };
+        Operation get = Operation.createGet(uri).setCompletion((ox, ex) -> {
+            if (ex != null) {
+                if (this.isFailureExpected) {
+                    this.host.completeIteration();
+                } else {
+                    this.host.failIteration(ex);
+                }
+                return;
+            }
+
+            if (this.isFailureExpected) {
+                this.host.failIteration(new IllegalStateException("failure was expected"));
+                return;
+            }
+
+            QueryTask tq = ox.getBody(QueryTask.class);
+            qr[0] = tq.results;
+
+            this.host.completeIteration();
+        });
+
+        this.host.testStart(1);
+        if (remote) {
+            get.forceRemote();
+        }
+        this.host.send(get);
+        this.host.testWait();
+
+        if (this.isFailureExpected) {
+            return null;
+        }
+
+        ServiceDocumentQueryResult res = qr[0];
+        assertNotNull(res);
+        assertNotNull(res.documents);
+
+        return res;
     }
 }
