@@ -468,4 +468,118 @@ public class TestODataQueryService extends BasicReusableHostTestCase {
 
         return res.documents;
     }
+
+    @Test
+    public void testLimit() throws Throwable {
+        ExampleService.ExampleServiceState inState = new ExampleService.ExampleServiceState();
+        int c = 5;
+        List<String> expectedOrder = new ArrayList<>();
+        for (int i = 0; i < c; i++) {
+            inState.documentSelfLink = null;
+            inState.counter = 1L;
+            inState.name = i + "-abcd";
+            postExample(inState);
+            expectedOrder.add(inState.name);
+        }
+
+        // limit + filter
+        int limit = c - 2;
+        String queryString = "$filter=counter eq 1";
+        queryString += "&" + "$limit=" + +limit;
+        ServiceDocumentQueryResult res = doOdataQuery(queryString, true);
+        assertTrue(res.documentCount == 0);
+        assertTrue(res.documentLinks.size() == 0);
+        assertTrue(res.documents.size() == 0);
+        assertTrue(res.nextPageLink != null);
+
+        // skip first page which is empty
+        URI uri = new URI(res.nextPageLink);
+        String peer = UriUtils.getODataParamValueAsString(uri, "peer");
+        String page = UriUtils.getODataParamValueAsString(uri, "path");
+        assertTrue(peer != null);
+        assertTrue(page != null);
+
+        page = page.replaceAll("\\D+", "");
+        assertTrue(!page.isEmpty());
+
+        res = getNextPage(page, peer, true);
+        long counter = 0;
+
+        while (res.nextPageLink != null) {
+            if (res.documentCount % limit == 0) {
+                assertTrue(res.documentCount == limit);
+                assertTrue(res.documentLinks.size() == limit);
+                assertTrue(res.documents.size() == limit);
+            } else if (counter + res.documentCount == c) {
+                assertTrue(res.documentCount == c - counter);
+                assertTrue(res.documentLinks.size() == c - counter);
+                assertTrue(res.documents.size() == c - counter);
+            }
+            counter = counter + res.documentCount;
+            res = getNextPage(res.nextPageLink, true);
+        }
+
+        assertTrue(counter == c);
+    }
+
+    private ServiceDocumentQueryResult getNextPage(final String nextPage, final boolean remote)
+            throws Throwable {
+        URI odataQuery = UriUtils.buildUri(this.host, nextPage);
+        return doQuery(odataQuery, remote);
+    }
+
+    private ServiceDocumentQueryResult getNextPage(final String page, final String peer,
+            final boolean remote) throws Throwable {
+        String queryString = String.format("%s=%s&%s=%s", UriUtils.URI_PARAM_ODATA_NODE, peer,
+                UriUtils.URI_PARAM_ODATA_SKIP_TO, page);
+        return doOdataQuery(queryString, remote);
+    }
+
+    private ServiceDocumentQueryResult doOdataQuery(final String query, final boolean remote)
+            throws Throwable {
+        URI odataQuery = UriUtils.buildUri(this.host, ServiceUriPaths.ODATA_QUERIES, query);
+        return doQuery(odataQuery, remote);
+    }
+
+    private ServiceDocumentQueryResult doQuery(final URI uri, final boolean remote)
+            throws Throwable {
+        final ServiceDocumentQueryResult[] qr = { null };
+        Operation get = Operation.createGet(uri).setCompletion((ox, ex) -> {
+            if (ex != null) {
+                if (this.isFailureExpected) {
+                    this.host.completeIteration();
+                } else {
+                    this.host.failIteration(ex);
+                }
+                return;
+            }
+
+            if (this.isFailureExpected) {
+                this.host.failIteration(new IllegalStateException("failure was expected"));
+                return;
+            }
+
+            QueryTask tq = ox.getBody(QueryTask.class);
+            qr[0] = tq.results;
+
+            this.host.completeIteration();
+        });
+
+        this.host.testStart(1);
+        if (remote) {
+            get.forceRemote();
+        }
+        this.host.send(get);
+        this.host.testWait();
+
+        if (this.isFailureExpected) {
+            return null;
+        }
+
+        ServiceDocumentQueryResult res = qr[0];
+        assertNotNull(res);
+        assertNotNull(res.documents);
+
+        return res;
+    }
 }

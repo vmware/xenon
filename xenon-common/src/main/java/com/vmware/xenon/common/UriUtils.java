@@ -53,6 +53,9 @@ public class UriUtils {
     public static final String URI_PARAM_ODATA_ORDER_BY_VALUE_ASC = "asc";
     public static final String URI_PARAM_ODATA_ORDER_BY_VALUE_DESC = "desc";
     public static final String URI_PARAM_ODATA_TOP = "$top";
+    public static final String URI_PARAM_ODATA_LIMIT = "$limit";
+    public static final String URI_PARAM_ODATA_SKIP_TO = "$skipto";
+    public static final String URI_PARAM_ODATA_NODE = "$nodeid  ";
     public static final String HTTP_SCHEME = "http";
     public static final String HTTPS_SCHEME = "https";
     public static final int HTTP_DEFAULT_PORT = 80;
@@ -70,7 +73,7 @@ public class UriUtils {
     /**
      * Computes the parent path of the specified path.
      *
-     * @param path
+     * @param path the path to be parsed
      * @return the parent of the specified path, or {@code null} if the specified path is
      *         {@code "/"}.
      */
@@ -603,41 +606,47 @@ public class UriUtils {
     }
 
     public static Integer getODataSkipParamValue(URI uri) {
-        String query = uri.getQuery();
-        if (query == null || query.isEmpty()) {
-            return null;
-        }
-
-        if (!query.contains(URI_PARAM_ODATA_SKIP)) {
-            return null;
-        }
-
-        Map<String, String> queryParams = parseUriQueryParams(uri);
-
-        String paramValue = queryParams.get(URI_PARAM_ODATA_SKIP);
-        if (paramValue == null || paramValue.isEmpty()) {
-            return null;
-        }
-        return Integer.valueOf(paramValue);
+        return getODataParamValue(uri, URI_PARAM_ODATA_SKIP);
     }
 
     public static Integer getODataTopParamValue(URI uri) {
+        return getODataParamValue(uri, URI_PARAM_ODATA_TOP);
+    }
+
+    public static Integer getODataLimitParamValue(URI uri) {
+        return getODataParamValue(uri, URI_PARAM_ODATA_LIMIT);
+    }
+
+    public static String getODataSkipToParamValue(URI uri) {
+        return getODataParamValueAsString(uri, URI_PARAM_ODATA_SKIP_TO);
+    }
+
+    public static String getODataNodeParamValue(URI uri) {
+        return getODataParamValueAsString(uri, URI_PARAM_ODATA_NODE);
+    }
+
+    public static Integer getODataParamValue(final URI uri, final String uriParamOdataType) {
+        String paramValue = getODataParamValueAsString(uri, uriParamOdataType);
+        return paramValue != null ? Integer.valueOf(paramValue) : null;
+    }
+
+    public static String getODataParamValueAsString(final URI uri, final String uriParamOdataType) {
         String query = uri.getQuery();
         if (query == null || query.isEmpty()) {
             return null;
         }
 
-        if (!query.contains(URI_PARAM_ODATA_TOP)) {
+        if (!query.contains(uriParamOdataType)) {
             return null;
         }
 
         Map<String, String> queryParams = parseUriQueryParams(uri);
 
-        String paramValue = queryParams.get(URI_PARAM_ODATA_TOP);
+        String paramValue = queryParams.get(uriParamOdataType);
         if (paramValue == null || paramValue.isEmpty()) {
             return null;
         }
-        return Integer.valueOf(paramValue);
+        return paramValue;
     }
 
     public enum ODataOrder {
