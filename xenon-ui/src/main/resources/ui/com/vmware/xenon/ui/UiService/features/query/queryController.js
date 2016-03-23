@@ -191,6 +191,17 @@ angular.module('dcpDefault').controller('QueryController', ['$scope', 'QueryServ
                 return specObject;
             };
 
+            /**
+             * Checks if the documents exists for the corresponding selected query type - simple/advanced
+             * @returns true if documents exists, false otherwise
+             */
+            vm.documentsExist = function(){
+                return (vm.queryType === 'simple' && vm.simpleResults
+                       && vm.simpleResults.documentLinks.length == 0) ||
+                       (vm.queryType === 'advanced' && vm.advancedResults
+                       && vm.advancedResults.documentLinks.length == 0);
+            };
+
             var clearResults = function () {
                 if (vm.queryType === 'simple') {
                     vm.simpleResults = "";
