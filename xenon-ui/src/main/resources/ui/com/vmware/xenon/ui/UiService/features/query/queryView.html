@@ -106,8 +106,8 @@
             <a ng-href="{{baseUrl + selfLink}}">{{::selfLink}}</a>
         </div>
     </div>
-    <div ng-if="ctrl.simpleResults.documentLinks.length == 0
-            && ctrl.advancedResults.documentLinks.length == 0">
+    <div ng-if="(ctrl.queryType === 'simple' && ctrl.simpleResults && ctrl.simpleResults.documentLinks.length == 0)
+            || (ctrl.queryType === 'advanced' && ctrl.advancedResults && ctrl.advancedResults.documentLinks.length == 0)">
         <div class="zeroData">
             <span class="glyphicon glyphicon-info-sign"></span> No documents were found.
         </div>
