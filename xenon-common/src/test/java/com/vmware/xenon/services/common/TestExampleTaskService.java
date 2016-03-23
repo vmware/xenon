@@ -14,8 +14,8 @@
 package com.vmware.xenon.services.common;
 
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertTrue;
 
 import java.net.URI;
 import java.util.concurrent.TimeUnit;
@@ -27,8 +27,9 @@ import org.junit.Test;
 
 import com.vmware.xenon.common.BasicReusableHostTestCase;
 import com.vmware.xenon.common.Operation;
+import com.vmware.xenon.common.Operation.CompletionHandler;
 import com.vmware.xenon.common.ServiceDocumentQueryResult;
-import com.vmware.xenon.common.TaskState.TaskStage;
+import com.vmware.xenon.common.TaskState;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
 import com.vmware.xenon.services.common.ExampleTaskService.ExampleTaskServiceState;
@@ -54,12 +55,60 @@ public class TestExampleTaskService extends BasicReusableHostTestCase {
 
         createExampleServices();
         Consumer<Operation> notificationTarget = createNotificationTarget();
-        String taskPath = createExampleTask();
-        subscribeTask(taskPath, notificationTarget);
 
-        ExampleTaskServiceState state = waitForTask(taskPath);
+        String[] taskUri = new String[1];
+        CompletionHandler successCompletion = getCompletionWithUri(taskUri);
+        ExampleTaskServiceState initialState = new ExampleTaskServiceState();
+        sendFactoryPost(ExampleTaskService.class, initialState, successCompletion);
+        assertNotNull(taskUri[0]);
+
+        subscribeTask(taskUri[0], notificationTarget);
+
+        ExampleTaskServiceState state = waitForFinishedTask(initialState.getClass(), taskUri[0]);
         updateTaskExpirationAndValidate(state);
         validateNoServices();
+    }
+
+    @Test
+    public void handleStartError_taskBody() throws Throwable {
+        ExampleTaskServiceState badState = new ExampleTaskServiceState();
+        badState.taskInfo = new TaskState();
+        badState.taskInfo.stage = TaskState.TaskStage.CREATED;
+        testExpectedHandleStartError(badState, IllegalArgumentException.class, "Do not specify taskBody: internal use only");
+    }
+
+    @Test
+    public void handleStartErrors_subStage() throws Throwable {
+        ExampleTaskServiceState badState = new ExampleTaskServiceState();
+        badState.subStage = ExampleTaskService.SubStage.QUERY_EXAMPLES;
+        testExpectedHandleStartError(badState, IllegalArgumentException.class, "Do not specify subStage: internal use only");
+    }
+
+    @Test
+    public void handleStartErrors_exampleQueryTask() throws Throwable {
+        ExampleTaskServiceState badState = new ExampleTaskServiceState();
+        badState.exampleQueryTask = QueryTask.create(null);
+        testExpectedHandleStartError(badState, IllegalArgumentException.class, "Do not specify exampleQueryTask: internal use only");
+    }
+
+    @Test
+    public void handleStartErrors_taskLifetimeNegative() throws Throwable {
+        ExampleTaskServiceState badState = new ExampleTaskServiceState();
+        badState.taskLifetime = -1L;
+        testExpectedHandleStartError(badState, IllegalArgumentException.class, "taskLifetime must be positive");
+    }
+
+    private void testExpectedHandleStartError(ExampleTaskServiceState badState,
+            Class<? extends Throwable> expectedException, String expectedMessage) throws Throwable {
+        Throwable[] thrown = new Throwable[1];
+        Operation.CompletionHandler errorHandler = getExpectedFailureCompletionReturningThrowable(thrown);
+        sendFactoryPost(ExampleTaskService.class, badState, errorHandler);
+
+        assertNotNull(thrown[0]);
+
+        String message = String.format("Thrown exception [thrown=%s] is not 'instanceof' [expected=%s]", thrown[0].getClass(), expectedException);
+        assertTrue(message, expectedException.isAssignableFrom(thrown[0].getClass()));
+        assertEquals(expectedMessage, thrown[0].getMessage());
     }
 
     /**
@@ -116,35 +165,6 @@ public class TestExampleTaskService extends BasicReusableHostTestCase {
     }
 
     /**
-     * Create the task that will delete the examples
-     */
-    private String createExampleTask() throws Throwable {
-        URI exampleTaskFactoryUri = UriUtils.buildFactoryUri(this.host, ExampleTaskService.class);
-
-        String[] taskUri = new String[1];
-        ExampleTaskServiceState task = new ExampleTaskServiceState();
-        Operation createPost = Operation.createPost(exampleTaskFactoryUri)
-                .setBody(task)
-                .setCompletion(
-                        (op, ex) -> {
-                            if (ex != null) {
-                                this.host.failIteration(ex);
-                                return;
-                            }
-                            ExampleTaskServiceState taskResponse = op.getBody(ExampleTaskServiceState.class);
-                            taskUri[0] = taskResponse.documentSelfLink;
-                            this.host.completeIteration();
-                        });
-
-        this.host.testStart(1);
-        this.host.send(createPost);
-        this.host.testWait();
-
-        assertNotNull(taskUri[0]);
-        return taskUri[0];
-    }
-
-    /**
      * Subscribe to notifications from the task.
      *
      * Note that in this short-running test, we are not guaranteed to get all notifications:
@@ -162,28 +182,6 @@ public class TestExampleTaskService extends BasicReusableHostTestCase {
         this.host.testStart(1);
         this.host.startSubscriptionService(subscribe, notificationTarget);
         this.host.testWait();
-    }
-
-    /**
-     * Wait for the task to complete. It's fast, but it does take time.
-     */
-    private ExampleTaskServiceState waitForTask(String taskUri) throws Throwable {
-        URI exampleTaskUri = UriUtils.buildUri(this.host, taskUri);
-
-        ExampleTaskServiceState state = null;
-        for (int i = 0; i < 20; i++) {
-            state = this.host.getServiceState(null, ExampleTaskServiceState.class,
-                    exampleTaskUri);
-            if (state.taskInfo != null) {
-                assertNotEquals(state.taskInfo.stage, TaskStage.FAILED);
-                if (state.taskInfo.stage == TaskStage.FINISHED) {
-                    break;
-                }
-            }
-            Thread.sleep(250);
-        }
-        assertEquals(state.taskInfo.stage, TaskStage.FINISHED);
-        return state;
     }
 
     private void updateTaskExpirationAndValidate(ExampleTaskServiceState state) throws Throwable {
