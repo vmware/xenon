@@ -24,11 +24,11 @@ import org.junit.rules.TestRule;
 import org.junit.rules.TestWatcher;
 import org.junit.runner.Description;
 
-import com.vmware.xenon.common.CommandLineArgumentParser;
 import com.vmware.xenon.common.Operation.CompletionHandler;
 import com.vmware.xenon.common.test.TestContext;
 import com.vmware.xenon.common.test.VerificationHost;
 import com.vmware.xenon.services.common.ExampleService;
+import com.vmware.xenon.services.common.TaskService;
 
 public class BasicReusableHostTestCase {
 
@@ -95,4 +95,42 @@ public class BasicReusableHostTestCase {
     public static CompletionHandler getSafeHandler(CompletionHandler handler) {
         return HOST.getSafeHandler(handler);
     }
+
+    /**
+     * @see VerificationHost#sendFactoryPost(Class, ServiceDocument, Operation.CompletionHandler)
+     */
+    public static <T extends ServiceDocument> void sendFactoryPost(Class<? extends Service> service,
+            T state, CompletionHandler handler) throws Throwable {
+        HOST.sendFactoryPost(service, state, handler);
+    }
+
+    /** @see VerificationHost#getCompletionWithUri(String[]) */
+    public static CompletionHandler getCompletionWithUri(String[] storeUri) {
+        return HOST.getCompletionWithUri(storeUri);
+    }
+
+    /** @see VerificationHost#getExpectedFailureCompletionReturningThrowable(Throwable[]) */
+    public static CompletionHandler getExpectedFailureCompletionReturningThrowable(
+            Throwable[] storeException) {
+        return HOST.getExpectedFailureCompletionReturningThrowable(storeException);
+    }
+
+    /** @see VerificationHost#waitForFinishedTask(Class, String) */
+    public static <T extends TaskService.TaskServiceState> T waitForFinishedTask(Class<T> type,
+            String taskUri) throws Throwable {
+        return HOST.waitForFinishedTask(type, taskUri);
+    }
+
+    /** @see VerificationHost#waitForFailedTask(Class, String) */
+    public static <T extends TaskService.TaskServiceState> T waitForFailedTask(Class<T> type,
+            String taskUri) throws Throwable {
+        return HOST.waitForFailedTask(type, taskUri);
+    }
+
+    /** @see VerificationHost#waitForTask(Class, String, TaskState.TaskStage) */
+    public static <T extends TaskService.TaskServiceState> T waitForTask(Class<T> type, String taskUri,
+            TaskState.TaskStage expectedStage) throws Throwable {
+        return HOST.waitForTask(type, taskUri, expectedStage);
+    }
+
 }

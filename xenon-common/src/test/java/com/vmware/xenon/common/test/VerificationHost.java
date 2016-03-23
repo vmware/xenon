@@ -15,6 +15,7 @@ package com.vmware.xenon.common.test;
 
 import static javax.xml.bind.DatatypeConverter.printBase64Binary;
 
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
 import java.io.BufferedReader;
@@ -27,6 +28,7 @@ import java.net.URISyntaxException;
 import java.net.URL;
 import java.security.GeneralSecurityException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Date;
@@ -107,6 +109,7 @@ import com.vmware.xenon.services.common.QueryValidationTestService.QueryValidati
 import com.vmware.xenon.services.common.ServiceHostLogService.LogServiceState;
 import com.vmware.xenon.services.common.ServiceHostManagementService;
 import com.vmware.xenon.services.common.ServiceUriPaths;
+import com.vmware.xenon.services.common.TaskService;
 
 public class VerificationHost extends ExampleServiceHost {
 
@@ -2879,6 +2882,173 @@ public class VerificationHost extends ExampleServiceHost {
                 ctx.failIteration(t);
             }
         };
+    }
+
+    /**
+     * Creates a new service instance of type {@code service} via a {@code HTTP POST} to the service
+     * factory URI (which is discovered automatically based on {@code service}). It passes {@code
+     * state} as the body of the {@code POST}.
+     * <p/>
+     * See javadoc for <i>handler</i> param for important details on how to properly use this
+     * method. If your test expects the service instance to be created successfully, you might use:
+     * <pre>
+     * String[] taskUri = new String[1];
+     * CompletionHandler successHandler = getCompletionWithUri(taskUri);
+     * sendFactoryPost(ExampleTaskService.class, new ExampleTaskServiceState(), successHandler);
+     * </pre>
+     *
+     * @param service the type of service to create
+     * @param state   the body of the {@code POST} to use to create the service instance
+     * @param handler the completion handler to use when creating the service instance.
+     *                <b>IMPORTANT</b>: This handler must properly call {@code host.failIteration()}
+     *                or {@code host.completeIteration()}.
+     * @param <T>     the state that represents the service instance
+     * @see com.vmware.xenon.services.common.TestExampleTaskService#testExampleTestServices()
+     */
+    public <T extends ServiceDocument> void sendFactoryPost(Class<? extends Service> service,
+            T state, CompletionHandler handler) throws Throwable {
+        URI factoryURI = UriUtils.buildFactoryUri(this, service);
+        log(Level.INFO, "Creating POST for [uri=%s] [body=%s]", factoryURI, state);
+        Operation createPost = Operation.createPost(factoryURI)
+                .setBody(state)
+                .setCompletion(handler);
+
+        testStart(1);
+        send(createPost);
+        testWait();
+    }
+
+    /**
+     * Helper completion handler that:
+     * <ul>
+     * <li>Expects valid response to be returned; no exceptions when processing the operation</li>
+     * <li>Expects a {@code ServiceDocument} to be returned in the response body. The response's
+     * {@link ServiceDocument#documentSelfLink} will be stored in {@code storeUri[0]} so it can be
+     * used for test assertions and logic</li>
+     * </ul>
+     *
+     * @param storeUri The {@code documentSelfLink} of the created {@code ServiceDocument} will be
+     *                 stored in {@code storeUri[0]} so it can be used for test assertions and
+     *                 logic. This must be non-null and its length cannot be zero
+     * @return a completion handler, handy for using in methods like {@link
+     * #sendFactoryPost(Class, ServiceDocument, CompletionHandler)}
+     */
+    public CompletionHandler getCompletionWithUri(String[] storeUri) {
+        if (storeUri == null || storeUri.length == 0) {
+            throw new IllegalArgumentException(
+                    "storeUri must be initialized and have room for at least one item");
+        }
+
+        return (op, ex) -> {
+            if (ex != null) {
+                failIteration(ex);
+                return;
+            }
+
+            ServiceDocument response = op.getBody(ServiceDocument.class);
+            if (response == null) {
+                failIteration(new IllegalStateException(
+                        "Expected non-null ServiceDocument in response body"));
+                return;
+            }
+
+            log(Level.INFO, "Created service instance. [selfLink=%s] [kind=%s]",
+                    response.documentSelfLink, response.documentKind);
+            storeUri[0] = response.documentSelfLink;
+            completeIteration();
+        };
+    }
+
+    /**
+     * Helper completion handler that:
+     * <ul>
+     * <li>Expects an exception when processing the handler; it is a {@code failIteration} if an
+     * exception is <b>not</b> thrown.</li>
+     * <li>The exception will be stored in {@code storeException[0]} so it can be used for test
+     * assertions and logic.</li>
+     * </ul>
+     *
+     * @param storeException the exception that occurred in completion handler will be stored in
+     *                       {@code storeException[0]} so it can be used for test assertions and
+     *                       logic. This must be non-null and its length cannot be zero.
+     * @return a completion handler, handy for using in methods like {@link
+     * #sendFactoryPost(Class, ServiceDocument, CompletionHandler)}
+     */
+    public CompletionHandler getExpectedFailureCompletionReturningThrowable(
+            Throwable[] storeException) {
+        if (storeException == null || storeException.length == 0) {
+            throw new IllegalArgumentException(
+                    "storeException must be initialized and have room for at least one item");
+        }
+
+        return (op, ex) -> {
+            if (ex == null) {
+                failIteration(new IllegalStateException("Failure expected"));
+            }
+            storeException[0] = ex;
+            completeIteration();
+        };
+    }
+
+    /**
+     * Helper method that waits for {@code taskUri} to have a {@link TaskState.TaskStage} == {@code
+     * TaskStage.FINISHED}.
+     *
+     * @param type    The class type that represent's the task's state
+     * @param taskUri the URI of the task to wait for
+     * @param <T>     the type that represent's the task's state
+     * @return the state of the task once's it's {@code FINISHED}
+     */
+    public <T extends TaskService.TaskServiceState> T waitForFinishedTask(Class<T> type, String taskUri)
+            throws Throwable {
+        return waitForTask(type, taskUri, TaskState.TaskStage.FINISHED);
+    }
+
+    /**
+     * Helper method that waits for {@code taskUri} to have a {@link TaskState.TaskStage} == {@code
+     * TaskStage.FAILED}.
+     *
+     * @param type    The class type that represent's the task's state
+     * @param taskUri the URI of the task to wait for
+     * @param <T>     the type that represent's the task's state
+     * @return the state of the task once's it s {@code FAILED}
+     */
+    public <T extends TaskService.TaskServiceState> T waitForFailedTask(Class<T> type, String taskUri)
+            throws Throwable {
+        return waitForTask(type, taskUri, TaskState.TaskStage.FAILED);
+    }
+
+    /**
+     * Helper method that waits for {@code taskUri} to have a {@link TaskState.TaskStage} == {@code
+     * expectedStage}.
+     *
+     * @param type          The class type of that represent's the task's state
+     * @param taskUri       the URI of the task to wait for
+     * @param expectedStage the stage we expect the task to eventually get to
+     * @param <T>           the type that represent's the task's state
+     * @return the state of the task once it's {@link TaskState.TaskStage} == {@code expectedStage}
+     */
+    public <T extends TaskService.TaskServiceState> T waitForTask(Class<T> type, String taskUri,
+            TaskState.TaskStage expectedStage) throws Throwable {
+        URI uri = UriUtils.buildUri(this, taskUri);
+
+        // If the task's state ever reaches one of these "final" stages, we can stop waiting...
+        List<TaskState.TaskStage> finalTaskStages = Arrays
+                .asList(TaskState.TaskStage.CANCELLED, TaskState.TaskStage.FAILED,
+                        TaskState.TaskStage.FINISHED, expectedStage);
+
+        T state = null;
+        for (int i = 0; i < 20; i++) {
+            state = this.getServiceState(null, type, uri);
+            if (state.taskInfo != null) {
+                if (finalTaskStages.contains(state.taskInfo.stage)) {
+                    break;
+                }
+            }
+            Thread.sleep(250);
+        }
+        assertEquals("Task did not reach expected state", state.taskInfo.stage, expectedStage);
+        return state;
     }
 
     @FunctionalInterface

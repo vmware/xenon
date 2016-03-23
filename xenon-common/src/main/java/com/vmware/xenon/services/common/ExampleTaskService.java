@@ -123,6 +123,9 @@ public class ExampleTaskService
      */
     protected ExampleTaskServiceState validateStartPost(Operation taskOperation) {
         ExampleTaskServiceState task = super.validateStartPost(taskOperation);
+        if (task == null) {
+            return null;
+        }
 
         if (task.subStage != null) {
             taskOperation.fail(
@@ -131,7 +134,8 @@ public class ExampleTaskService
         }
         if (task.exampleQueryTask != null) {
             taskOperation.fail(
-                    new IllegalArgumentException("Do not specify taskBody: internal use only"));
+                    new IllegalArgumentException(
+                            "Do not specify exampleQueryTask: internal use only"));
             return null;
         }
         if (task.taskLifetime != null && task.taskLifetime <= 0) {
