@@ -22,16 +22,13 @@ import java.util.concurrent.TimeoutException;
 
 import org.junit.After;
 import org.junit.Before;
-import org.junit.Ignore;
 import org.junit.Test;
 
 import com.vmware.xenon.common.BasicReusableHostTestCase;
 import com.vmware.xenon.common.Operation;
+import com.vmware.xenon.common.Service.Action;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
-import com.vmware.xenon.services.common.ExampleService;
-import com.vmware.xenon.services.common.QueryTask;
-import com.vmware.xenon.services.common.ServiceUriPaths;
 
 public class TestOperationIndexService extends BasicReusableHostTestCase {
 
@@ -61,7 +58,6 @@ public class TestOperationIndexService extends BasicReusableHostTestCase {
         this.host.toggleOperationTracing(this.host.getUri(), true);
     }
 
-    @Ignore("https://www.pivotaltracker.com/story/show/116147825")
     @Test
     public void testPost() throws Throwable {
         this.host.testStart(this.updateCount);
@@ -93,8 +89,15 @@ public class TestOperationIndexService extends BasicReusableHostTestCase {
         q.querySpec.options = EnumSet.of(QueryTask.QuerySpecification.QueryOption.EXPAND_CONTENT);
         q.taskInfo.isDirect = true;
 
-        q.querySpec.query.setTermPropertyName("path");
-        q.querySpec.query.setTermMatchValue(ExampleService.FACTORY_LINK);
+        QueryTask.Query pathClause = new QueryTask.Query()
+                .setTermPropertyName("path")
+                .setTermMatchValue(ExampleService.FACTORY_LINK);
+
+        QueryTask.Query actionTypeClause = new QueryTask.Query()
+                .setTermPropertyName("action")
+                .setTermMatchValue(Action.POST.toString());
+
+        q.querySpec.query.addBooleanClause(pathClause).addBooleanClause(actionTypeClause);
         q.indexLink = ServiceUriPaths.CORE_OPERATION_INDEX;
 
         // We need to poll even when testWait tells us the POST is done.
@@ -174,8 +177,8 @@ public class TestOperationIndexService extends BasicReusableHostTestCase {
         this.host.testWait();
 
         // Verify the blacklist by querying for everything in the op index.
-        q.querySpec.query.setTermMatchType(QueryTask.QueryTerm.MatchType.WILDCARD);
-        q.querySpec.query.setTermMatchValue("*");
+        pathClause.setTermMatchType(QueryTask.QueryTerm.MatchType.WILDCARD);
+        pathClause.setTermMatchValue("*");
         queryOp.setBody(q)
                 .setCompletion((o, e) -> {
                     try {
@@ -188,19 +191,25 @@ public class TestOperationIndexService extends BasicReusableHostTestCase {
                             throw new IllegalStateException("no results");
                         }
 
+                        int actualDocLinkSize = query.results.documentLinks.size();
                         // we have at least updateCount * 2 worth of documents
-                        if (query.results.documentLinks.size() < this.updateCount * 2) {
+                        if (actualDocLinkSize < this.updateCount * 2) {
                             throw new IllegalStateException("expected more operations");
                         }
 
                         // Check that there are no greater than the above + some fudge factor.  We don't want
                         // too many documents in the index (thereby verifying the blacklist is working as intended).
                         // Use 10% of updateCount as the fudge factor.  Anything greater than that just sounds unreasonable.
-                        if (query.results.documentLinks.size() > (this.updateCount * 2 + (this.updateCount / 10))) {
+                        int maxDocLinkSize = this.updateCount * 2 + (this.updateCount / 10);
+                        if (actualDocLinkSize > maxDocLinkSize) {
                             for (Object l : query.results.documents.values()) {
                                 this.host.log("%s", l);
                             }
-                            throw new IllegalStateException("too many operations found");
+                            String msg = String
+                                    .format("too many operations found. expected less than %d, but was %d. \n%s",
+                                            maxDocLinkSize, actualDocLinkSize,
+                                            Utils.toJsonHtml(query.results));
+                            throw new IllegalStateException(msg);
                         }
 
                         this.host.completeIteration();
