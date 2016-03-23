@@ -825,6 +825,9 @@ public class TestUtils {
 
         @UsageOption(option = PropertyUsageOption.OPTIONAL)
         public RoundingMode someEnum;
+
+        @UsageOption(option = PropertyUsageOption.OPTIONAL)
+        public Enum<?> justEnum;
     }
 
     private static class TestKeyObjectValueHolder {
@@ -898,9 +901,13 @@ public class TestUtils {
                 .buildDescription(AnnotatedDoc.class);
         PropertyDescription someEnum = desc.propertyDescriptions.get("someEnum");
         PropertyDescription nestedPodo = desc.propertyDescriptions.get("nestedPodo");
+        PropertyDescription justEnum = desc.propertyDescriptions.get("justEnum");
 
         assertEquals(RoundingMode.values().length, someEnum.enumValues.length);
         assertNull(nestedPodo.enumValues);
+
+        // handle generic classes where the type parameter is Enum
+        assertNull(justEnum.enumValues);
     }
 
     @Test
