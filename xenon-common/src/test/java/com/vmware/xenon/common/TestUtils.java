@@ -13,6 +13,7 @@
 
 package com.vmware.xenon.common;
 
+import static junit.framework.TestCase.assertNotNull;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNull;
@@ -825,6 +826,9 @@ public class TestUtils {
 
         @UsageOption(option = PropertyUsageOption.OPTIONAL)
         public RoundingMode someEnum;
+
+        @UsageOption(option = PropertyUsageOption.OPTIONAL)
+        public Enum<?> justEnum;
     }
 
     private static class TestKeyObjectValueHolder {
@@ -898,9 +902,14 @@ public class TestUtils {
                 .buildDescription(AnnotatedDoc.class);
         PropertyDescription someEnum = desc.propertyDescriptions.get("someEnum");
         PropertyDescription nestedPodo = desc.propertyDescriptions.get("nestedPodo");
+        PropertyDescription justEnum = desc.propertyDescriptions.get("justEnum");
 
+        assertNotNull(Enum.class.getEnumConstants());
         assertEquals(RoundingMode.values().length, someEnum.enumValues.length);
         assertNull(nestedPodo.enumValues);
+
+        // handle generic classes where the type parameter is Enum
+        assertNull(justEnum.enumValues);
     }
 
     @Test
