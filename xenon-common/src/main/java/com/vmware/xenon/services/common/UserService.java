@@ -33,6 +33,7 @@ public class UserService extends StatefulService {
      */
     public static class UserState extends ServiceDocument {
         public static final String FIELD_NAME_EMAIL = "email";
+        public static final String FIELD_NAME_USER_GROUP_LINKS = "userGroupLinks";
         public String email;
         public Set<String> userGroupLinks;
     }
