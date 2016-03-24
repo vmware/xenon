@@ -83,6 +83,8 @@ func (s *TestServiceHost) readState() error {
 func (s *TestServiceHost) poll() error {
 	timer := time.NewTimer(time.Second * 10)
 	ticker := time.NewTicker(time.Millisecond * 100)
+	http.DefaultClient.Timeout = time.Minute
+
 	defer ticker.Stop()
 
 	for {
