@@ -33,6 +33,7 @@ public class UserService extends StatefulService {
      */
     public static class UserState extends ServiceDocument {
         public static final String FIELD_NAME_EMAIL = "email";
+        public static final String FIELD_NAME_USER_GROUP_LINKS = "userGroupLinks";
         public String email;
         public Set<String> userGroupLinks;
     }
@@ -71,7 +72,18 @@ public class UserService extends StatefulService {
             return;
         }
 
-        setState(op, newState);
+        UserState currentState = getState(op);
+        // if the email field has not changed and the userGroupsLinks field is either null
+        // or the same in both the current state and the state passed in return a 304
+        // response
+        if (currentState.email.equals(newState.email)
+                && ((currentState.userGroupLinks == null && newState.userGroupLinks == null)
+                || (currentState.userGroupLinks != null && newState.userGroupLinks != null
+                    && currentState.userGroupLinks.equals(newState.userGroupLinks)))) {
+            op.setStatusCode(Operation.STATUS_CODE_NOT_MODIFIED);
+        } else {
+            setState(op, newState);
+        }
         op.complete();
     }
 
@@ -86,7 +98,7 @@ public class UserService extends StatefulService {
         if (newState.email != null) {
             currentState.email = newState.email;
         }
-        if (newState.userGroupLinks  != null) {
+        if (newState.userGroupLinks != null) {
             if (currentState.userGroupLinks == null) {
                 currentState.userGroupLinks = newState.userGroupLinks;
             } else {
