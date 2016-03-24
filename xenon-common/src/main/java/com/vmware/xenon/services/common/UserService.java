@@ -13,6 +13,8 @@
 
 package com.vmware.xenon.services.common;
 
+import java.util.Set;
+
 import com.vmware.xenon.common.FactoryService;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Service;
@@ -32,6 +34,7 @@ public class UserService extends StatefulService {
     public static class UserState extends ServiceDocument {
         public static final String FIELD_NAME_EMAIL = "email";
         public String email;
+        public Set<String> userGroupLinks;
     }
 
     public UserService() {
@@ -68,13 +71,29 @@ public class UserService extends StatefulService {
             return;
         }
 
-        UserState currentState = getState(op);
-        if (currentState.email.equals(newState.email)) {
-            op.setStatusCode(Operation.STATUS_CODE_NOT_MODIFIED);
-        } else {
-            setState(op, newState);
-        }
+        setState(op, newState);
+        op.complete();
+    }
 
+    @Override
+    public void handlePatch(Operation op) {
+        if (!op.hasBody()) {
+            op.fail(new IllegalArgumentException("body is required"));
+            return;
+        }
+        UserState currentState = getState(op);
+        UserState newState = op.getBody(UserState.class);
+        if (newState.email != null) {
+            currentState.email = newState.email;
+        }
+        if (newState.userGroupLinks  != null) {
+            if (currentState.userGroupLinks == null) {
+                currentState.userGroupLinks = newState.userGroupLinks;
+            } else {
+                currentState.userGroupLinks.addAll(newState.userGroupLinks);
+            }
+        }
+        op.setBody(currentState);
         op.complete();
     }
 

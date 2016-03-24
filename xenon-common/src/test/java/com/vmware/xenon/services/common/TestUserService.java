@@ -16,6 +16,8 @@ package com.vmware.xenon.services.common;
 import static org.junit.Assert.assertEquals;
 
 import java.net.URI;
+import java.util.HashSet;
+import java.util.UUID;
 
 import org.junit.After;
 import org.junit.Before;
@@ -82,7 +84,7 @@ public class TestUserService extends BasicReusableHostTestCase {
         responseState = (UserState) this.host.verifyPost(UserState.class,
                 ServiceUriPaths.CORE_AUTHZ_USERS,
                 state,
-                Operation.STATUS_CODE_NOT_MODIFIED);
+                Operation.STATUS_CODE_OK);
 
         assertEquals(state.email,responseState.email);
 
@@ -124,5 +126,41 @@ public class TestUserService extends BasicReusableHostTestCase {
 
         assertEquals(Operation.STATUS_CODE_FAILURE_THRESHOLD, outOp[0].getStatusCode());
         assertEquals("email is invalid", outEx[0].getMessage());
+    }
+
+    @Test
+    public void testPatch() throws Throwable {
+        UserState state = new UserState();
+        state.email = "jane@doe.com";
+        state.documentSelfLink = UUID.randomUUID().toString();
+        state.userGroupLinks = new HashSet<String>();
+        state.userGroupLinks.add("link1");
+        state.userGroupLinks.add("link2");
+
+
+        UserState responseState = (UserState) this.host.verifyPost(UserState.class,
+                ServiceUriPaths.CORE_AUTHZ_USERS,
+                state,
+                Operation.STATUS_CODE_OK);
+
+        assertEquals(state.email,responseState.email);
+        assertEquals(state.userGroupLinks.size(),state.userGroupLinks.size());
+
+        state.email = "john@doe.com";
+        state.userGroupLinks.clear();
+        state.userGroupLinks.add("link2");
+        state.userGroupLinks.add("link3");
+        this.host.sendAndWait(Operation.createPatch(this.host,
+                UriUtils.buildUriPath(ServiceUriPaths.CORE_AUTHZ_USERS, state.documentSelfLink))
+                    .setBody(state)
+                    .setCompletion((op, ex) -> {
+                        if (ex != null) {
+                            this.host.failIteration(ex);
+                        }
+                        UserState patchedState = op.getBody(UserState.class);
+                        assertEquals(state.email, patchedState.email);
+                        assertEquals(3, patchedState.userGroupLinks.size());
+                        this.host.completeIteration();
+                    }));
     }
 }
