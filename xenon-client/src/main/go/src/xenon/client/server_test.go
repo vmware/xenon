@@ -82,7 +82,7 @@ func (s *TestServiceHost) readState() error {
 
 func (s *TestServiceHost) poll() error {
 	timer := time.NewTimer(time.Second * 10)
-	ticker := time.NewTicker(time.Millisecond * 100)
+	ticker := time.NewTicker(time.Second * 2)
 	defer ticker.Stop()
 
 	for {
