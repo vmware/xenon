@@ -20,6 +20,7 @@ import static org.junit.Assert.assertTrue;
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Random;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
@@ -259,6 +260,53 @@ public class TestTransactionService extends BasicReusableHostTestCase {
         countAccounts(null, 0);
     }
 
+    @Test
+    public void testSingleClientMultiDocumentTransactions() throws Throwable {
+        String txid = newTransaction();
+        createAccounts(txid, this.accountCount, 100.0);
+        boolean committed = commit(txid, this.accountCount);
+        assertTrue(committed);
+
+        int numOfTransfers = this.accountCount / 3;
+        String[] txids = newTransactions(numOfTransfers);
+        Random rand = new Random();
+        for (int k = 0; k < numOfTransfers; k++) {
+            int i = rand.nextInt(this.accountCount);
+            int j = rand.nextInt(this.accountCount);
+            if (i == j) {
+                j = (j + 1) % this.accountCount;
+            }
+            int amount = 1 + rand.nextInt(3);
+            withdrawFromAccount(txids[k], buildAccountId(i), amount, null);
+            depositToAccount(txids[k], buildAccountId(i), amount, null);
+        }
+
+        for (int k = 0; k < numOfTransfers; k++) {
+            if (k % 5 == 0) {
+                boolean aborted = abort(txids[k], 2);
+                assertTrue(aborted);
+            } else {
+                // we don't assert here as we expect some commits to fail the race and abort.
+                // the test just verifies that no funds are lost.
+                commit(txids[k], 2);
+            }
+        }
+
+        sumAccounts(null, 100.0 * this.accountCount);
+
+        deleteAccounts(null, this.accountCount);
+        countAccounts(null, 0);
+    }
+
+    private String[] newTransactions(int numOfTransactions) throws Throwable {
+        String[] txids = new String[numOfTransactions];
+        for (int k = 0; k < numOfTransactions; k++) {
+            txids[k] = newTransaction();
+        }
+
+        return txids;
+    }
+
     private String newTransaction() throws Throwable {
         String txid = UUID.randomUUID().toString();
 
@@ -456,7 +504,7 @@ public class TestTransactionService extends BasicReusableHostTestCase {
             this.host.log("Reading account %s", accountId);
             BankAccountServiceState account = getAccount(transactionId, accountId);
             sum += account.balance;
-            this.host.log("Read account %s, runnin sum=%f", accountId, sum);
+            this.host.log("Read account %s, running sum=%f", accountId, sum);
         }
         if (createNewTransaction) {
             abort(transactionId, task.results.documentLinks.size());
