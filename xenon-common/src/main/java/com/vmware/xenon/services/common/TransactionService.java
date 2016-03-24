@@ -305,11 +305,11 @@ public class TransactionService extends StatefulService {
 
         // In the first two cases, another coordinator is asking about state
         // in the fall-back, client is sending a commit/abort request.
-        if (patch.getRequestHeader(Operation.VMWARE_DCP_TRANSACTION_HEADER) != null) {
-            if (patch.getRequestHeader(Operation.VMWARE_DCP_TRANSACTION_HEADER)
+        if (patch.getRequestHeader(Operation.TRANSACTION_HEADER) != null) {
+            if (patch.getRequestHeader(Operation.TRANSACTION_HEADER)
                     .equals(Operation.TX_TRY_COMMIT)) {
                 handleTryCommit(patch);
-            } else if (patch.getRequestHeader(Operation.VMWARE_DCP_TRANSACTION_HEADER)
+            } else if (patch.getRequestHeader(Operation.TRANSACTION_HEADER)
                     .equals(Operation.TX_ENSURE_COMMIT)) {
                 handleEnsureCommit(patch);
             }
@@ -376,26 +376,33 @@ public class TransactionService extends StatefulService {
         TransactionServiceState existing = getState(op);
 
         if (existing.options.allowErrorsCauseAbort && !existing.failedLinks.isEmpty()) {
+            this.logWarning("Failed to commit: some transactional operations have failed. Aborting.");
             handleAbort(op);
             return;
         }
 
         // This is to guard against passing empty state to our little concurrency calculus:)
         List<OperationJoin> operationJoins = new ArrayList<>();
-        if (!setOfTryPreceedOps(existing).isEmpty()) {
-            operationJoins.add(OperationJoin.create(setOfTryPreceedOps(existing)));
+        Collection<Operation> setOfTryPreceedOps = setOfTryPreceedOps(existing);
+        if (!setOfTryPreceedOps.isEmpty()) {
+            operationJoins.add(OperationJoin.create(setOfTryPreceedOps));
         }
-        if (!setOfEnsurePreceedOps(existing).isEmpty()) {
-            operationJoins.add(OperationJoin.create(setOfEnsurePreceedOps(existing)));
+
+        Collection<Operation> setOfEnsurePreceedOps = setOfEnsurePreceedOps(existing);
+        if (!setOfEnsurePreceedOps.isEmpty()) {
+            operationJoins.add(OperationJoin.create(setOfEnsurePreceedOps));
         }
-        if (!createNotifyServicesToCommit(existing).isEmpty()) {
-            operationJoins.add(OperationJoin.create(createNotifyServicesToCommit(existing)));
+
+        Collection<Operation> notifyServicesToCommitOps = createNotifyServicesToCommit(existing);
+        if (!notifyServicesToCommitOps.isEmpty()) {
+            operationJoins.add(OperationJoin.create(notifyServicesToCommitOps));
         }
 
         OperationSequence os = OperationSequence
                 .create(operationJoins.toArray(new OperationJoin[operationJoins.size()]));
         os.setCompletion((operations, failures) -> {
             if (failures != null) {
+                this.logWarning("Failed to commit: %s. Aborting.", failures);
                 handleAbort(op);
                 return;
             }
@@ -506,9 +513,10 @@ public class TransactionService extends StatefulService {
 
                 // a peer at RESOLVING (incl. RESOLVING_CIRCULAR) will append this to mustCommitAfter
                 operations.add(createNotifyOp(UriUtils.buildUri(coordinator),
-                        Operation.TX_TRY_COMMIT, null, (o, e) -> {
+                        Operation.TX_TRY_COMMIT, (o, e) -> {
                             if (e == null) {
-                                SubStage s = o.getBody(SubStage.class);
+                                TransactionServiceState exchangeState = o.getBody(TransactionServiceState.class);
+                                SubStage s = exchangeState.taskSubStage;
                                 if (s == SubStage.COMMITTED) {
                                     state.dependentLinks.add(coordinator);
                                 } else if (s == SubStage.RESOLVING_CIRCULAR) {
@@ -542,9 +550,10 @@ public class TransactionService extends StatefulService {
                     cache.add(coordinator);
                 }
                 operations.add(createNotifyOp(UriUtils.buildUri(coordinator),
-                        Operation.TX_ENSURE_COMMIT, null, (o, e) -> {
+                        Operation.TX_ENSURE_COMMIT, (o, e) -> {
                             if (e == null) {
-                                SubStage s = o.getBody(SubStage.class);
+                                TransactionServiceState exchangeState = o.getBody(TransactionServiceState.class);
+                                SubStage s = exchangeState.taskSubStage;
                                 if (s == SubStage.COMMITTED) {
                                     state.taskSubStage = SubStage.ABORTED;
                                 } // if in resolving, peer appends this to commitAfter
@@ -610,7 +619,7 @@ public class TransactionService extends StatefulService {
         // (handler would not change this, we will solve this using a transaction GC service)
         return Operation
                 .createPatch(service)
-                .addRequestHeader(Operation.VMWARE_DCP_TRANSACTION_HEADER, header)
+                .addRequestHeader(Operation.TRANSACTION_HEADER, header)
                 // just an empty body
                 .setBody(new TransactionServiceState())
                 .setReferer(getUri());
@@ -629,13 +638,13 @@ public class TransactionService extends StatefulService {
     /**
      * Prepare an operation to resolve precedence with a remote coordinator
      */
-    private Operation createNotifyOp(URI service, String header, Object body,
-            Operation.CompletionHandler callback) {
+    private Operation createNotifyOp(URI service, String header, Operation.CompletionHandler callback) {
         return Operation
                 .createPatch(service)
-                .addRequestHeader(Operation.VMWARE_DCP_TRANSACTION_HEADER, header)
+                .addRequestHeader(Operation.TRANSACTION_HEADER, header)
+                // just an empty body
+                .setBody(new TransactionServiceState())
                 .setReferer(getUri())
-                .setBody(body)
                 .setCompletion(callback);
     }
 

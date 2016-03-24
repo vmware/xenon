@@ -349,7 +349,7 @@ public class Operation implements Cloneable {
             + "auth-token";
     public static final String REPLICATION_PHASE_HEADER = HEADER_NAME_PREFIX
             + "rpl-phase";
-    public static final String VMWARE_DCP_TRANSACTION_HEADER = HEADER_NAME_PREFIX
+    public static final String TRANSACTION_HEADER = HEADER_NAME_PREFIX
             + "tx-phase";
     public static final String TRANSACTION_ID_HEADER = HEADER_NAME_PREFIX + "tx-id";
 

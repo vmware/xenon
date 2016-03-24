@@ -13,7 +13,6 @@
 
 package com.vmware.xenon.common;
 
-import static com.vmware.xenon.common.TransactionServiceHelper.abortTransactions;
 import static com.vmware.xenon.common.TransactionServiceHelper.handleGetWithinTransaction;
 import static com.vmware.xenon.common.TransactionServiceHelper.handleOperationInTransaction;
 import static com.vmware.xenon.common.TransactionServiceHelper.notifyTransactionCoordinator;
@@ -177,17 +176,10 @@ public class StatefulService implements Service {
         // even if service is stopped, check the pending queue for operations
         setProcessingStage(Service.ProcessingStage.STOPPED);
         Collection<Operation> opsToCancel = null;
-        Set<String> txCoordinators = null;
         synchronized (this.context) {
             opsToCancel = this.context.operationQueue.toCollection();
             this.context.operationQueue.clear();
-            if (hasPendingTransactions()) {
-                txCoordinators = new HashSet<>(this.context.txCoordinatorLinks);
-                txCoordinators.clear();
-            }
         }
-
-        abortTransactions(this, txCoordinators);
 
         for (Operation o : opsToCancel) {
             if (o.isFromReplication() && o.getAction() == Action.DELETE) {
@@ -307,7 +299,7 @@ public class StatefulService implements Service {
                 isCompletionNested = true;
 
                 if (handleOperationInTransaction(this, this.context.stateType,
-                        this.context.txCoordinatorLinks, request)) {
+                        request)) {
                     return;
                 }
 
@@ -672,12 +664,8 @@ public class StatefulService implements Service {
         }
 
         if (op.isWithinTransaction() && this.getHost().getTransactionServiceUri() != null) {
-            synchronized (this.context) {
-                if (this.context.txCoordinatorLinks == null) {
-                    this.context.txCoordinatorLinks = new HashSet<>();
-                }
-            }
-            notifyTransactionCoordinator(this, this.context.txCoordinatorLinks, op, e);
+            allocatePendingTransactions();
+            notifyTransactionCoordinator(this, op, e);
         }
 
         if (e != null) {
@@ -1767,12 +1755,60 @@ public class StatefulService implements Service {
     }
 
     /**
+     * Adds the specified coordinator link to this service' pending transactions
+     */
+    void addPendingTransaction(String txCoordinatorLink) {
+        synchronized (this.context) {
+            if (this.context.txCoordinatorLinks == null) {
+                this.context.txCoordinatorLinks = new HashSet<>();
+            }
+            this.context.txCoordinatorLinks.add(txCoordinatorLink);
+        }
+    }
+
+    /**
+     * Removes the specified coordinator link from this service' pending transactions
+     */
+    void removePendingTransaction(String txCoordinatorLink) {
+        synchronized (this.context) {
+            if (this.context.txCoordinatorLinks == null) {
+                return;
+            }
+            this.context.txCoordinatorLinks.remove(txCoordinatorLink);
+        }
+    }
+
+    /**
+     * Return this service' pending transactions. The returned reference is an
+     * internal reference (to avoid cloning overhead) hence it should not
+     * be accessed outside the scope of the current request.
+     */
+    Set<String> getPendingTransactions() {
+        synchronized (this.context) {
+            return this.context.txCoordinatorLinks;
+        }
+    }
+
+    /**
      * Most of the transaction-related code becomes obsolete if we haven't seen transactions. A good
      * idea is to check whether the service has pending transactions
      */
     private boolean hasPendingTransactions() {
-        return this.context.txCoordinatorLinks != null
-                && !this.context.txCoordinatorLinks.isEmpty();
+        synchronized (this.context) {
+            return this.context.txCoordinatorLinks != null
+                    && !this.context.txCoordinatorLinks.isEmpty();
+        }
+    }
+
+    /**
+     * Allocates this service' pending transactions if not already allocated
+     */
+    private void allocatePendingTransactions() {
+        synchronized (this.context) {
+            if (this.context.txCoordinatorLinks == null) {
+                this.context.txCoordinatorLinks = new HashSet<>();
+            }
+        }
     }
 
 }
