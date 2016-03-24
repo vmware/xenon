@@ -14,6 +14,7 @@
 package com.vmware.xenon.services.common;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 import java.net.URI;
@@ -215,12 +216,57 @@ public class TestTransactionService extends BasicReusableHostTestCase {
         sumAccounts(null, 100.0 * this.accountCount / 2);
     }
 
+    @Test
+    public void testSingleClientMultipleActiveTransactions() throws Throwable {
+        String[] txids = new String[this.accountCount];
+        for (int i = 0; i < this.accountCount; i++) {
+            txids[i] = newTransaction();
+            String accountId = buildAccountId(i);
+            createAccount(txids[i], accountId, null);
+            if (i % 2 == 0) {
+                depositToAccount(txids[i], accountId, 100.0, null);
+            }
+        }
+
+        for (int i = 0; i < this.accountCount; i++) {
+            String accountId = buildAccountId(i);
+            for (int j = 0; j <= i; j++) {
+                BankAccountServiceState account = getAccount(txids[j], accountId);
+                if (j != i) {
+                    assertNull(account);
+                    continue;
+                }
+                if (i % 2 == 0) {
+                    assertEquals(100.0, account.balance, 0);
+                } else {
+                    assertEquals(0, account.balance, 0);
+                }
+            }
+        }
+
+        for (int i = 0; i < this.accountCount; i++) {
+            int pendingOps = this.accountCount - i + 1;
+            if (i % 2 == 0) {
+                ++pendingOps;
+            }
+            boolean committed = commit(txids[i], pendingOps);
+            assertTrue(committed);
+        }
+        countAccounts(null, this.accountCount);
+        sumAccounts(null, 100.0 * this.accountCount / 2);
+
+        deleteAccounts(null, this.accountCount);
+        countAccounts(null, 0);
+    }
+
     private String newTransaction() throws Throwable {
         String txid = UUID.randomUUID().toString();
 
         TestContext ctx = testCreate(1);
         TransactionServiceState initialState = new TransactionServiceState();
         initialState.documentSelfLink = txid;
+        initialState.options = new TransactionService.Options();
+        initialState.options.allowErrorsCauseAbort = false;
         Operation post = Operation
                 .createPost(getTransactionFactoryUri())
                 .setBody(initialState).setCompletion((o, e) -> {
