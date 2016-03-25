@@ -341,6 +341,7 @@ public class TransactionService extends StatefulService {
             }
 
             if (currentState.taskSubStage == SubStage.ABORTING || currentState.taskSubStage == SubStage.ABORTED) {
+                logInfo("Alreading in sub-stage %s. Completing request.", currentState.taskSubStage);
                 patch.complete();
                 return;
             }
@@ -354,7 +355,8 @@ public class TransactionService extends StatefulService {
                 return;
             }
 
-            if (currentState.taskSubStage == SubStage.RESOLVING || currentState.taskSubStage == SubStage.COMMITTED) {
+            if (currentState.taskSubStage == SubStage.COMMITTED) {
+                logInfo("Alreading in sub-stage %s. Completing request.", currentState.taskSubStage);
                 patch.complete();
                 return;
             }
@@ -381,6 +383,7 @@ public class TransactionService extends StatefulService {
      */
     private void handleCommitIfAllPendingOperationsReceived(TransactionServiceState currentState) {
         if (currentState.pendingOperationCount == currentState.expectedOperationCount) {
+            logInfo("All operations have been received, proceeding with commit");
             handleCommit(currentState);
             return;
         }
@@ -394,6 +397,7 @@ public class TransactionService extends StatefulService {
         }
 
         // re-enter when the rest of the pending operations are received
+        logInfo("Suspending transaction until all operations have been received");
     }
 
     /**
