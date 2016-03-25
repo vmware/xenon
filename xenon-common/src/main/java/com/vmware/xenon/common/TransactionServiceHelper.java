@@ -167,7 +167,7 @@ public class TransactionServiceHelper {
             return;
         }
         ResolutionRequest resolution = new ResolutionRequest();
-        resolution.kind = ResolutionKind.ABORT;
+        resolution.resolutionKind = ResolutionKind.ABORT;
         for (String coordinator : coordinators) {
             service.sendRequest(Operation.createPatch(UriUtils.buildUri(coordinator))
                     .setBodyNoCloning(resolution));

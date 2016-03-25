@@ -51,7 +51,7 @@ public class TestTransactionService extends BasicReusableHostTestCase {
     /**
      * Parameter that specifies the number of accounts to create
      */
-    public int accountCount = 20;
+    public int accountCount = 10;
 
     private long baseAccountId;
 
@@ -220,43 +220,37 @@ public class TestTransactionService extends BasicReusableHostTestCase {
     @Test
     public void testSingleClientMultipleActiveTransactions() throws Throwable {
         String[] txids = new String[this.accountCount];
+
         for (int i = 0; i < this.accountCount; i++) {
             txids[i] = newTransaction();
             String accountId = buildAccountId(i);
-            createAccount(txids[i], accountId, null);
-            if (i % 2 == 0) {
-                depositToAccount(txids[i], accountId, 100.0, null);
-            }
+            double initialBalance = i % 2 == 0 ? 100.0 : 0;
+            createAccount(txids[i], accountId, initialBalance, null);
+        }
+
+        String interferrer = newTransaction();
+        for (int i = 0; i < this.accountCount; i++) {
+            String accountId = buildAccountId(i);
+            BankAccountServiceState account = getAccount(interferrer, accountId);
+            assertNull(account);
         }
 
         for (int i = 0; i < this.accountCount; i++) {
             String accountId = buildAccountId(i);
-            for (int j = 0; j <= i; j++) {
-                BankAccountServiceState account = getAccount(txids[j], accountId);
-                if (j != i) {
-                    assertNull(account);
-                    continue;
-                }
-                if (i % 2 == 0) {
-                    assertEquals(100.0, account.balance, 0);
-                } else {
-                    assertEquals(0, account.balance, 0);
-                }
-            }
+            BankAccountServiceState account = getAccount(txids[i], accountId);
+            double expectedBalance = i % 2 == 0 ? 100.0 : 0;
+            assertEquals(expectedBalance, account.balance, 0);
         }
 
         for (int i = 0; i < this.accountCount; i++) {
-            int pendingOps = this.accountCount - i + 1;
-            if (i % 2 == 0) {
-                ++pendingOps;
-            }
-            boolean committed = commit(txids[i], pendingOps);
-            assertTrue(committed);
+            int pendingOps = 3;
+            boolean aborted = abort(txids[i], pendingOps);
+            assertTrue(aborted);
         }
-        countAccounts(null, this.accountCount);
-        sumAccounts(null, 100.0 * this.accountCount / 2);
 
-        deleteAccounts(null, this.accountCount);
+        boolean aborted = abort(interferrer, this.accountCount);
+        assertTrue(aborted);
+
         countAccounts(null, 0);
     }
 
@@ -333,7 +327,7 @@ public class TestTransactionService extends BasicReusableHostTestCase {
     private boolean commit(String txid, int pendingOperations) throws Throwable {
         TestContext ctx = testCreate(1);
         ResolutionRequest body = new ResolutionRequest();
-        body.kind = TransactionService.ResolutionKind.COMMIT;
+        body.resolutionKind = TransactionService.ResolutionKind.COMMIT;
         body.pendingOperations = pendingOperations;
         boolean[] succeeded = new boolean[1];
         Operation commit = Operation
@@ -352,7 +346,7 @@ public class TestTransactionService extends BasicReusableHostTestCase {
     private boolean abort(String txid, int pendingOperations) throws Throwable {
         TestContext ctx = testCreate(1);
         ResolutionRequest body = new ResolutionRequest();
-        body.kind = TransactionService.ResolutionKind.ABORT;
+        body.resolutionKind = TransactionService.ResolutionKind.ABORT;
         body.pendingOperations = pendingOperations;
         boolean[] succeeded = new boolean[1];
         Operation abort = Operation
@@ -487,13 +481,7 @@ public class TestTransactionService extends BasicReusableHostTestCase {
                 .addFieldClause(ServiceDocument.FIELD_NAME_SELF_LINK,
                         BankAccountService.FACTORY_LINK + UriUtils.URI_PATH_CHAR + this.baseAccountId + UriUtils.URI_WILDCARD_CHAR,
                         MatchType.WILDCARD);
-        // we need to sum up the account balances in a logical 'snapshot'. right now the only way to do this
-        // is using a transaction, so if transactionId is null we're creating a new transaction
-        boolean createNewTransaction = transactionId == null;
-        if (createNewTransaction) {
-            transactionId = newTransaction();
-            this.host.log("Created new transaction %s for snapshot read", transactionId);
-        } else {
+        if (transactionId != null) {
             queryBuilder.addFieldClause(ServiceDocument.FIELD_NAME_TRANSACTION_ID, transactionId);
         }
         QueryTask task = QueryTask.Builder.createDirectTask().setQuery(queryBuilder.build()).build();
@@ -501,13 +489,8 @@ public class TestTransactionService extends BasicReusableHostTestCase {
         double sum = 0;
         for (String serviceSelfLink : task.results.documentLinks) {
             String accountId = serviceSelfLink.substring(serviceSelfLink.lastIndexOf('/') + 1);
-            this.host.log("Reading account %s", accountId);
             BankAccountServiceState account = getAccount(transactionId, accountId);
             sum += account.balance;
-            this.host.log("Read account %s, running sum=%f", accountId, sum);
-        }
-        if (createNewTransaction) {
-            abort(transactionId, task.results.documentLinks.size());
         }
         assertEquals(expected, sum, 0);
     }

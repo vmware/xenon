@@ -14,22 +14,20 @@
 package com.vmware.xenon.services.common;
 
 import java.net.URI;
-import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Operation.TransactionContext;
 import com.vmware.xenon.common.OperationJoin;
-import com.vmware.xenon.common.OperationSequence;
 import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.StatefulService;
 import com.vmware.xenon.common.TaskState;
 import com.vmware.xenon.common.UriUtils;
+import com.vmware.xenon.common.Utils;
 
 /**
  * Transaction Coordinator responsible for driving a single transaction. Naming conventions follow
@@ -101,15 +99,27 @@ public class TransactionService extends StatefulService {
      * Captures a request to commit or abort
      */
     public static class ResolutionRequest {
+        public static final String KIND = Utils.buildKind(ResolutionRequest.class);
+        public String kind = KIND;
+
         /**
          * Commit or Abort
          */
-        public ResolutionKind kind;
+        public ResolutionKind resolutionKind;
         /**
          * Number of operations the coordinator must know about -- if operations issued
          * fully-asynchronously/concurrently.
          */
         public int pendingOperations;
+    }
+
+    /**
+     * Captures a request to add a dependency to dependentLinks.
+     * The dependency is captured in the referrer.
+     */
+    public static class AddDependentCoordinatorRequest {
+        public static final String KIND = Utils.buildKind(AddDependentCoordinatorRequest.class);
+        public String kind = KIND;
     }
 
     /**
@@ -125,7 +135,7 @@ public class TransactionService extends StatefulService {
         public Set<String> readLinks;
 
         /**
-         * Set of services opeartions within the transaction wrote (e.g., PUT, PATCH) state to
+         * Set of services operations within the transaction wrote (e.g., PUT, PATCH) state to
          */
         public Set<String> modifiedLinks;
 
@@ -275,18 +285,9 @@ public class TransactionService extends StatefulService {
         setState(put, existing);
         put.complete();
 
-        this.logInfo("Transaction %s (SubStage=%s) received log record number %d, expectedOperationCount=%d", this.getSelfId(),
-                existing.taskSubStage, existing.pendingOperationCount, existing.expectedOperationCount);
         if (existing.taskSubStage == SubStage.RESOLVING && existing.pendingOperationCount == existing.expectedOperationCount) {
             // handle the case of pending operations received after transaction commit request
-            this.logInfo("Transaction %s: received all expected operations; sending self-commit", this.getSelfId());
-            ResolutionRequest body = new ResolutionRequest();
-            body.kind = TransactionService.ResolutionKind.COMMIT;
-            body.pendingOperations = existing.expectedOperationCount;
-            Operation commit = Operation
-                    .createPatch(this.getUri())
-                    .setBody(body);
-            sendRequest(commit);
+            selfPatch(ResolutionKind.COMMIT, existing.expectedOperationCount);
         }
     }
 
@@ -313,27 +314,64 @@ public class TransactionService extends StatefulService {
                     .equals(Operation.TX_ENSURE_COMMIT)) {
                 handleEnsureCommit(patch);
             }
-        } else {
-            // we can't use PRAGMAs, because a client encodes action in the message, not in metadata
-            ResolutionRequest resolution = patch.getBody(ResolutionRequest.class);
-            // both commit and abort are now handled asynchronously, so complete ASAP
-            if (resolution.kind == ResolutionKind.ABORT) {
-                updateStage(patch, SubStage.ABORTING);
-                patch.complete();
-                handleAbort(patch);
-            } else if (resolution.kind == ResolutionKind.COMMIT) {
-                updateStage(patch, SubStage.RESOLVING);
-                handleCommitIfAllPendingOperationsReceived(patch);
-            } else if (resolution.kind == ResolutionKind.COMMITTED) {
-                updateStage(patch, SubStage.COMMITTED);
-                patch.complete();
-            } else if (resolution.kind == ResolutionKind.ABORTED) {
-                updateStage(patch, SubStage.ABORTED);
-                patch.complete();
-            } else {
-                patch.fail(new IllegalArgumentException(
-                        "Unrecognized resolution kind: " + resolution.kind));
+            return;
+        }
+
+        // Handle AddDependentCoordinator request
+        TransactionServiceState currentState = getState(patch);
+        AddDependentCoordinatorRequest addDependentCoordinatorRequest = patch.getBody(AddDependentCoordinatorRequest.class);
+        if (addDependentCoordinatorRequest.kind == AddDependentCoordinatorRequest.KIND) {
+            currentState.dependentLinks.add(patch.getReferer().toString());
+            patch.complete();
+            return;
+        }
+
+        // Handle ResolutionRequest
+        ResolutionRequest resolution = patch.getBody(ResolutionRequest.class);
+        if (resolution.kind != ResolutionRequest.KIND) {
+            patch.fail(new IllegalArgumentException(
+                    "Unrecognized request kind: " + resolution.kind));
+            return;
+        }
+
+        if (resolution.resolutionKind == ResolutionKind.ABORT) {
+            if (currentState.taskSubStage == SubStage.COMMITTED) {
+                patch.fail(new IllegalStateException("Already committed"));
+                return;
             }
+
+            if (currentState.taskSubStage == SubStage.ABORTING || currentState.taskSubStage == SubStage.ABORTED) {
+                patch.complete();
+                return;
+            }
+
+            updateStage(patch, SubStage.ABORTING);
+            patch.complete();
+            handleAbort(currentState);
+        } else if (resolution.resolutionKind == ResolutionKind.COMMIT) {
+            if (currentState.taskSubStage == SubStage.ABORTED || currentState.taskSubStage == SubStage.ABORTING) {
+                patch.fail(new IllegalStateException("Already aborted"));
+                return;
+            }
+
+            if (currentState.taskSubStage == SubStage.RESOLVING || currentState.taskSubStage == SubStage.COMMITTED) {
+                patch.complete();
+                return;
+            }
+
+            currentState.expectedOperationCount = resolution.pendingOperations;
+            updateStage(patch, SubStage.RESOLVING);
+            patch.complete();
+            handleCommitIfAllPendingOperationsReceived(currentState);
+        } else if (resolution.resolutionKind == ResolutionKind.COMMITTED) {
+            updateStage(patch, SubStage.COMMITTED);
+            patch.complete();
+        } else if (resolution.resolutionKind == ResolutionKind.ABORTED) {
+            updateStage(patch, SubStage.ABORTED);
+            patch.complete();
+        } else {
+            patch.fail(new IllegalArgumentException(
+                    "Unrecognized resolution kind: " + resolution.resolutionKind));
         }
     }
 
@@ -341,18 +379,9 @@ public class TransactionService extends StatefulService {
      * Checks if all pending operations sent by participating services have
      * been received by this coordinator, and if so proceeds with commit
      */
-    private void handleCommitIfAllPendingOperationsReceived(Operation op) {
-        TransactionServiceState currentState = getState(op);
-        ResolutionRequest commitRequest = op.getBody(ResolutionRequest.class);
-        currentState.expectedOperationCount = commitRequest.pendingOperations;
-        op.complete();
-
-        this.logInfo("Transaction %s: handling commit requst: pendingOperationsCount=%d, expectedOperationCount=%d", this.getSelfId(),
-                currentState.pendingOperationCount, currentState.expectedOperationCount);
+    private void handleCommitIfAllPendingOperationsReceived(TransactionServiceState currentState) {
         if (currentState.pendingOperationCount == currentState.expectedOperationCount) {
-            this.logInfo("Transaction %s: handling commit requst: pendingOperationsCount == expectedOperationCount; proceeding to commit",
-                    this.getSelfId());
-            handleCommit(op);
+            handleCommit(currentState);
             return;
         }
 
@@ -360,55 +389,25 @@ public class TransactionService extends StatefulService {
             String errorMsg = String.format("Illegal commit request: client provided pending operations %d is less than already received %d",
                     currentState.expectedOperationCount, currentState.pendingOperationCount);
             logWarning(errorMsg);
-            handleAbort(op);
+            selfPatch(ResolutionKind.ABORT);
             return;
         }
 
         // re-enter when the rest of the pending operations are received
-        this.logInfo("Transaction %s: handling commit requst: pendingOperationsCount < expectedOperationCount; will re-check when new operations arrive",
-                this.getSelfId());
     }
 
     /**
      * Handle the case where a client requests to commit. This initiates conflict resolution, state updates etc.
      */
-    private void handleCommit(Operation op) {
-        TransactionServiceState existing = getState(op);
-
+    private void handleCommit(TransactionServiceState existing) {
         if (existing.options.allowErrorsCauseAbort && !existing.failedLinks.isEmpty()) {
-            this.logWarning("Failed to commit: some transactional operations have failed. Aborting.");
-            handleAbort(op);
+            logWarning("Failed to commit: some transactional operations have failed. Aborting.");
+            selfPatch(ResolutionKind.ABORT);
             return;
         }
 
-        // This is to guard against passing empty state to our little concurrency calculus:)
-        List<OperationJoin> operationJoins = new ArrayList<>();
-        Collection<Operation> setOfTryPreceedOps = setOfTryPreceedOps(existing);
-        if (!setOfTryPreceedOps.isEmpty()) {
-            operationJoins.add(OperationJoin.create(setOfTryPreceedOps));
-        }
-
-        Collection<Operation> setOfEnsurePreceedOps = setOfEnsurePreceedOps(existing);
-        if (!setOfEnsurePreceedOps.isEmpty()) {
-            operationJoins.add(OperationJoin.create(setOfEnsurePreceedOps));
-        }
-
-        Collection<Operation> notifyServicesToCommitOps = createNotifyServicesToCommit(existing);
-        if (!notifyServicesToCommitOps.isEmpty()) {
-            operationJoins.add(OperationJoin.create(notifyServicesToCommitOps));
-        }
-
-        OperationSequence os = OperationSequence
-                .create(operationJoins.toArray(new OperationJoin[operationJoins.size()]));
-        os.setCompletion((operations, failures) -> {
-            if (failures != null) {
-                this.logWarning("Failed to commit: %s. Aborting.", failures);
-                handleAbort(op);
-                return;
-            }
-            selfPatch(ResolutionKind.COMMITTED);
-        });
-        os.sendWith(getHost());
+        // kick-off the try-precede -> ensure-precede -> committed sequence
+        tryPrecede(existing);;
     }
 
     /**
@@ -421,11 +420,19 @@ public class TransactionService extends StatefulService {
     }
 
     /**
-     * Send a selfPatch as requested
+     * Sends a selfPatch resolution request with zero pending operations
      */
     private void selfPatch(ResolutionKind resolution) {
+        selfPatch(resolution, 0);
+    }
+
+    /**
+     * Sends a selfPatch resolution request
+     */
+    private void selfPatch(ResolutionKind resolution, int pendingOperations) {
         ResolutionRequest resolve = new ResolutionRequest();
-        resolve.kind = resolution;
+        resolve.resolutionKind = resolution;
+        resolve.pendingOperations = pendingOperations;
         Operation operation = Operation
                 .createPatch(getUri())
                 .setCompletion((o, e) -> {
@@ -438,15 +445,30 @@ public class TransactionService extends StatefulService {
     }
 
     /**
+     * Sends a selfPatch AddDependentCoordinator request
+     */
+    private void selfPatch(URI coordinatorUri) {
+        AddDependentCoordinatorRequest body = new AddDependentCoordinatorRequest();
+        Operation operation = Operation
+                .createPatch(getUri())
+                .setCompletion((o, e) -> {
+                    if (e != null) {
+                        logWarning("Failure self patching: %s", e.getMessage());
+                    }
+                })
+                .setBody(body)
+                .setReferer(coordinatorUri);
+        sendRequest(operation);
+    }
+
+    /**
      * Handle the case when a client requests to abort.
      */
-    private void handleAbort(Operation op) {
-        TransactionServiceState existing = getState(op);
+    private void handleAbort(TransactionServiceState existing) {
         OperationJoin.create(createNotifyServicesToAbort(existing))
                 .setCompletion((operations, failures) -> {
                     if (failures != null) {
-                        logWarning("Transaction failed to abort: %s", failures.toString());
-                        return;
+                        logWarning("Transaction failed to notify some services to abort: %s", failures.toString());
                     }
                     selfPatch(ResolutionKind.ABORTED);
                 }).sendWith(this);
@@ -454,25 +476,31 @@ public class TransactionService extends StatefulService {
 
     /**
      * Handle the case when another coordinator is about to commit, and wants to learn about the status
-     * of one of the coordinators (this) in its write set. Any commit ordering is allowed, as long as
+     * of one of the coordinators (this) in its read set. Any commit ordering is allowed, as long as
      * it is maintained across all nodes.
      */
     private void handleTryCommit(Operation op) {
         // TODO: optimize by maintaining a flat, top-level set
         TransactionServiceState existing = getState(op);
         TransactionServiceState exchangeState = new TransactionServiceState();
+        if (existing.taskSubStage == SubStage.COMMITTED) {
+            exchangeState.taskSubStage = SubStage.COMMITTED;
+            op.setBodyNoCloning(exchangeState);
+            op.complete();
+            return;
+        }
+
         for (Set<String> serviceSet : existing.servicesToCoordinators.values()) {
             if (serviceSet.contains(op.getReferer().toString())) {
                 // notify about deterministic resolution..
                 exchangeState.taskSubStage = SubStage.RESOLVING_CIRCULAR;
                 // ..and resolve deterministically
                 if (!compareTo(op.getReferer())) {
-                    existing.taskSubStage = SubStage.ABORTED;
+                    selfPatch(ResolutionKind.ABORT);
                 }
             }
         }
-        // update state
-        setState(op, existing);
+
         op.setBodyNoCloning(exchangeState);
         op.complete();
     }
@@ -485,20 +513,23 @@ public class TransactionService extends StatefulService {
     private void handleEnsureCommit(Operation op) {
         TransactionServiceState existing = getState(op);
         TransactionServiceState exchangeState = new TransactionServiceState();
+
+        exchangeState.taskSubStage = existing.taskSubStage;
         existing.dependentLinks.add(op.getReferer().toString());
-        // update state
-        setState(op, existing);
+
         op.setBodyNoCloning(exchangeState);
         op.complete();
     }
 
     /**
-     * Create operations to contact peer coordinators in the read set -- in an effort to set "mustCommitAfter".
+     * Contacts peer coordinators in the read set -- in an effort to set "mustCommitAfter".
      */
-    private Collection<Operation> setOfTryPreceedOps(TransactionServiceState state) {
+    private void tryPrecede(TransactionServiceState state) {
         // keep a cache of contacted coordinators, to minimize network overhead
         HashSet<String> cache = new HashSet<>();
         Collection<Operation> operations = new HashSet<>();
+        boolean[] continueWithCommit = new boolean[1];
+        continueWithCommit[0] = true;
 
         for (String service : state.readLinks) {
             if (!state.servicesToCoordinators.containsKey(service)) {
@@ -512,32 +543,52 @@ public class TransactionService extends StatefulService {
                 }
 
                 // a peer at RESOLVING (incl. RESOLVING_CIRCULAR) will append this to mustCommitAfter
-                operations.add(createNotifyOp(UriUtils.buildUri(coordinator),
+                URI coordinatorUri = UriUtils.buildUri(coordinator);
+                operations.add(createNotifyOp(UriUtils.buildUri(coordinatorUri),
                         Operation.TX_TRY_COMMIT, (o, e) -> {
                             if (e == null) {
                                 TransactionServiceState exchangeState = o.getBody(TransactionServiceState.class);
                                 SubStage s = exchangeState.taskSubStage;
                                 if (s == SubStage.COMMITTED) {
-                                    state.dependentLinks.add(coordinator);
+                                    selfPatch(coordinatorUri);
                                 } else if (s == SubStage.RESOLVING_CIRCULAR) {
-                                    if (!compareTo(o.getReferer())) {
-                                        state.taskSubStage = SubStage.ABORTED;
+                                    if (!compareTo(coordinatorUri)) {
+                                        continueWithCommit[0] = false;
+                                        selfPatch(ResolutionKind.ABORT);
                                     }
                                 }
                             }
                         }));
             }
         }
-        return operations;
+
+        if (operations.isEmpty()) {
+            ensurePrecede(state);
+            return;
+        }
+
+        OperationJoin.create(operations).setCompletion((ops, failures) -> {
+            if (failures != null) {
+                logWarning("Failed to commit: %s. Aborting.", failures);
+                selfPatch(ResolutionKind.ABORT);
+                return;
+            }
+
+            if (continueWithCommit[0]) {
+                ensurePrecede(state);
+            }
+        }).sendWith(getHost());
     }
 
     /**
      * Contacts peer coordinators in the write set -- in an effort to ensure sequencing
      */
-    private Collection<Operation> setOfEnsurePreceedOps(TransactionServiceState state) {
+    private void ensurePrecede(TransactionServiceState state) {
         // keep a cache of contacted coordinators, to minimize network overhead
         HashSet<String> cache = new HashSet<>();
         Collection<Operation> operations = new HashSet<>();
+        boolean[] continueWithCommit = new boolean[1];
+        continueWithCommit[0] = true;
 
         for (String service : state.modifiedLinks) {
             if (!state.servicesToCoordinators.containsKey(service)) {
@@ -555,13 +606,29 @@ public class TransactionService extends StatefulService {
                                 TransactionServiceState exchangeState = o.getBody(TransactionServiceState.class);
                                 SubStage s = exchangeState.taskSubStage;
                                 if (s == SubStage.COMMITTED) {
-                                    state.taskSubStage = SubStage.ABORTED;
+                                    continueWithCommit[0] = false;
+                                    selfPatch(ResolutionKind.ABORT);
                                 } // if in resolving, peer appends this to commitAfter
                             }
                         }));
             }
         }
-        return operations;
+
+        if (operations.isEmpty()) {
+            notifyServicesToCommit(state);
+            return;
+        }
+
+        OperationJoin.create(operations).setCompletion((ops, failures) -> {
+            if (failures != null) {
+                logWarning("Failed to commit: %s. Aborting.", failures);
+                selfPatch(ResolutionKind.ABORT);
+                return;
+            }
+            if (continueWithCommit[0]) {
+                notifyServicesToCommit(state);
+            }
+        }).sendWith(getHost());
     }
 
     /**
@@ -594,7 +661,7 @@ public class TransactionService extends StatefulService {
     /**
      * Send a tiny metadata request to all services to commit
      */
-    private Collection<Operation> createNotifyServicesToCommit(TransactionServiceState state) {
+    private void notifyServicesToCommit(TransactionServiceState state) {
         Collection<Operation> operations = new HashSet<>();
         for (String service : state.deletedLinks) {
             operations.add(createDeleteOp(UriUtils.buildUri(service)));
@@ -607,7 +674,21 @@ public class TransactionService extends StatefulService {
         operations.addAll(state.modifiedLinks.stream()
                 .map(service -> createNotifyOp(UriUtils.buildUri(service), Operation.TX_COMMIT))
                 .collect(Collectors.toSet()));
-        return operations;
+
+        if (operations.isEmpty()) {
+            selfPatch(ResolutionKind.COMMITTED);
+            return;
+        }
+
+        OperationJoin.create(operations).setCompletion((ops, failures) -> {
+            if (failures != null) {
+                logWarning("Failed to commit: %s. Aborting.", failures);
+                selfPatch(ResolutionKind.ABORT);
+                return;
+            }
+
+            selfPatch(ResolutionKind.COMMITTED);
+        }).sendWith(getHost());
     }
 
     /**
@@ -622,7 +703,8 @@ public class TransactionService extends StatefulService {
                 .addRequestHeader(Operation.TRANSACTION_HEADER, header)
                 // just an empty body
                 .setBody(new TransactionServiceState())
-                .setReferer(getUri());
+                .setReferer(getUri())
+                .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_NO_QUEUING);
     }
 
     /**
