@@ -28,6 +28,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 
 import org.junit.Before;
+import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 
@@ -268,6 +269,7 @@ public class TestFactoryService extends BasicReusableHostTestCase {
         this.host.testWait();
     }
 
+    @Ignore("https://www.pivotaltracker.com/story/show/116217439")
     @Test
     public void factoryDurableServicePostWithDeleteRestart() throws Throwable {
         // first create the factory service
@@ -304,6 +306,7 @@ public class TestFactoryService extends BasicReusableHostTestCase {
                 factoryService.getUri());
     }
 
+    @Ignore("https://www.pivotaltracker.com/story/show/116217439")
     @Test
     public void factoryDurableServicePostNoCaching()
             throws Throwable {
