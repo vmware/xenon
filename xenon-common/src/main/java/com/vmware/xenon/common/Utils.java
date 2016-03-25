@@ -180,7 +180,7 @@ public class Utils {
 
             Object fieldValue = ReflectionUtils.getPropertyValue(pd, s);
             if (pd.typeName == TypeName.COLLECTION || pd.typeName == TypeName.MAP
-                    || pd.typeName == TypeName.PODO || pd.typeName == TypeName.ARRAY) {
+                    || pd.typeName == TypeName.PODO) {
                 String content = Utils.toJson(fieldValue);
                 position = Utils.toBytes(content, buffer, position);
             } else if (fieldValue != null) {

@@ -164,8 +164,7 @@ public class TestQueryTaskService {
         assertTrue(descriptionsPerType.get(TypeName.MAP) == 8L);
         assertEquals(descriptionsPerType.get(TypeName.LONG), (Long)(1L + 4L + 3L));
         assertTrue(descriptionsPerType.get(TypeName.PODO) == 3L);
-        assertTrue(descriptionsPerType.get(TypeName.COLLECTION) == 4L);
-        assertTrue(descriptionsPerType.get(TypeName.ARRAY) == 3L);
+        assertTrue(descriptionsPerType.get(TypeName.COLLECTION) == 7L);
         assertTrue(descriptionsPerType.get(TypeName.STRING) == 5L + 5L);
         assertTrue(descriptionsPerType.get(TypeName.DATE) == 1L);
         assertTrue(descriptionsPerType.get(TypeName.DOUBLE) == 4L);
@@ -210,13 +209,13 @@ public class TestQueryTaskService {
         // Verify the reflection of array types
         pd = sdd.propertyDescriptions.get("arrayOfStrings");
         assertTrue(pd != null);
-        assertTrue(pd.typeName.equals(TypeName.ARRAY));
+        assertTrue(pd.typeName.equals(TypeName.COLLECTION));
         assertTrue(pd.elementDescription != null);
         assertTrue(pd.elementDescription.typeName.equals(TypeName.STRING));
 
         pd = sdd.propertyDescriptions.get("arrayOfExampleValues");
         assertTrue(pd != null);
-        assertTrue(pd.typeName.equals(TypeName.ARRAY));
+        assertTrue(pd.typeName.equals(TypeName.COLLECTION));
         assertTrue(pd.elementDescription != null);
         assertTrue(pd.elementDescription.typeName.equals(TypeName.PODO));
 

@@ -1446,8 +1446,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         } else if (expandField && pd.typeName.equals(TypeName.MAP)) {
             addMapIndexableFieldToDocument(doc, v, pd, fieldName);
             return;
-        } else if (expandField && (pd.typeName.equals(TypeName.COLLECTION) ||
-                pd.typeName.equals(TypeName.ARRAY))) {
+        } else if (expandField && (pd.typeName.equals(TypeName.COLLECTION))) {
             addCollectionIndexableFieldToDocument(doc, v, pd, fieldName);
             return;
         } else {

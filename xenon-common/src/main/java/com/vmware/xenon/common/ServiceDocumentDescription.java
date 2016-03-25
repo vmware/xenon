@@ -68,8 +68,7 @@ public class ServiceDocumentDescription {
         InternetAddressV6,
         DATE,
         URI,
-        ENUM,
-        ARRAY,
+        ENUM
     }
 
     public enum PropertyUsageOption {
@@ -453,7 +452,7 @@ public class ServiceDocumentDescription {
                                 .toArray(new String[0]);
                     }
                 } else if (clazz.isArray()) {
-                    pd.typeName = TypeName.ARRAY;
+                    pd.typeName = TypeName.COLLECTION;
 
                     // Extract the component class from type
                     Type componentType = clazz.getComponentType();

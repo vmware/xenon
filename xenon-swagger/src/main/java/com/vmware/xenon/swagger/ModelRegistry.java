@@ -90,8 +90,6 @@ class ModelRegistry {
 
     private Property makeProperty(PropertyDescription pd) {
         switch (pd.typeName) {
-        case ARRAY:
-            return new ArrayProperty(makeProperty(pd.elementDescription));
         case BOOLEAN:
             return new BooleanProperty();
         case BYTES:
