@@ -153,6 +153,11 @@ public class TestNodeGroupService {
      */
     public long testDurationSeconds;
 
+    /**
+     * Command line argument specifying iterations per test method
+     */
+    public long iterationCount = 1;
+
     private NodeGroupConfig nodeGroupConfig = new NodeGroupConfig();
     private EnumSet<ServiceOption> postCreationServiceOptions = EnumSet.noneOf(ServiceOption.class);
     private boolean expectFailure;
@@ -1527,21 +1532,18 @@ public class TestNodeGroupService {
 
     @Test
     public void forwardingAndSelection() throws Throwable {
+        this.isPeerSynchronizationEnabled = false;
         setUp(this.nodeCount);
         this.host.joinNodesAndVerifyConvergence(this.nodeCount);
-        forwardingToPeerId();
-
-        directOwnerSelection();
-
-        forwardingToKeyHashNode();
-
-        broadcast();
+        for (int i = 0; i < this.iterationCount; i++) {
+            directOwnerSelection();
+            forwardingToPeerId();
+            forwardingToKeyHashNode();
+            broadcast();
+        }
     }
 
-    private void broadcast() throws Throwable {
-        setUp(this.nodeCount);
-        this.host.joinNodesAndVerifyConvergence(this.nodeCount);
-
+    public void broadcast() throws Throwable {
         // Do a broadcast on a local, non replicated service. Replicated services can not
         // be used with broadcast since they will duplicate the update and potentially route
         // to a single node
@@ -1602,7 +1604,7 @@ public class TestNodeGroupService {
         }
     }
 
-    private void forwardingToKeyHashNode() throws Throwable {
+    public void forwardingToKeyHashNode() throws Throwable {
         long c = this.updateCount * this.nodeCount;
         Map<String, List<String>> ownersPerServiceLink = new HashMap<>();
 
@@ -1710,11 +1712,8 @@ public class TestNodeGroupService {
         }
     }
 
-    private void forwardingToPeerId() throws Throwable {
-
+    public void forwardingToPeerId() throws Throwable {
         long c = this.updateCount * this.nodeCount;
-        Map<String, URI> nodeIdToServiceURI = new HashMap<>();
-
         // 0) Create N service instances, in each peer host. Services are NOT replicated
         // 1) issue a forward request to a specific peer id, per service link
         // 2) verify the request ended up on the peer we targeted
@@ -1728,6 +1727,10 @@ public class TestNodeGroupService {
         this.host.testStart(c * this.host.getPeerCount());
         for (VerificationHost peer : this.host.getInProcessHostMap().values()) {
             for (ServiceDocument s : initialStates) {
+                s = Utils.clone(s);
+                // set the owner to be the target node. we will use this to verify it matches
+                // the id in the state, which is set through a forwarded PATCH
+                s.documentOwner = peer.getId();
                 Operation post = Operation.createPost(UriUtils.buildUri(peer, s.documentSelfLink))
                         .setCompletion(this.host.getCompletion())
                         .setBody(s);
@@ -1744,20 +1747,12 @@ public class TestNodeGroupService {
         UUID id = UUID.randomUUID();
         String headerRequestValue = "request-" + id;
         String headerResponseValue = "response-" + id;
-        List<ServiceDocument> documentsRemaining = new ArrayList<>(initialStates);
-        this.host.testStart(documentsRemaining.size());
-        while (!documentsRemaining.isEmpty()) {
-            // round robin the service documents between the peers
+        this.host.testStart(initialStates.size() * this.nodeCount);
+        for (ServiceDocument s : initialStates) {
+            // send a PATCH the id for each document, to each peer. If it routes to the proper peer
+            // the initial state.documentOwner, will match the state.id
 
             for (VerificationHost peer : this.host.getInProcessHostMap().values()) {
-                if (documentsRemaining.isEmpty()) {
-                    break;
-                }
-
-                ServiceDocument s = documentsRemaining.remove(0);
-                // Create a URI for the service instance we expect the PUT to land on: It will be
-                // on the peer we forward to, not the peer we forward *through*
-                URI serviceUri = UriUtils.buildUri(peer.getUri(), s.documentSelfLink);
                 // For testing coverage, force the use of the same forwarding service instance.
                 // We make all request flow from one peer to others, testing both loopback p2p
                 // and true forwarding. Otherwise, the forwarding happens by directly contacting
@@ -1773,7 +1768,6 @@ public class TestNodeGroupService {
                         .buildMinimalTestState();
                 body.id = peer.getId();
 
-                nodeIdToServiceURI.put(peer.getId(), serviceUri);
                 this.host.send(Operation.createPut(u)
                         .addRequestHeader(headerName, headerRequestValue)
                         .setCompletion(
@@ -1795,20 +1789,31 @@ public class TestNodeGroupService {
         }
         this.host.testWait();
         this.host.logThroughput();
-        Map<URI, MinimalTestServiceState> states = this.host.getServiceState(null,
-                MinimalTestServiceState.class, nodeIdToServiceURI.values());
-        for (MinimalTestServiceState s : states.values()) {
-            NodeState ns = this.host.getNodeStateMap().get(s.id);
-            if (ns == null) {
-                throw new IllegalStateException("host id not valid for " + s.documentSelfLink
-                        + " id:" + s.id);
-            }
-            URI expectedServiceUri = nodeIdToServiceURI.get(s.id);
-            if (expectedServiceUri == null
-                    || !expectedServiceUri.getPath().equals(s.documentSelfLink)) {
-                throw new IllegalStateException("host id not valid for " + s.documentSelfLink);
+
+        TestContext ctx = this.host.testCreate(c * this.host.getPeerCount());
+        for (VerificationHost peer : this.host.getInProcessHostMap().values()) {
+            for (ServiceDocument s : initialStates) {
+                Operation get = Operation.createGet(UriUtils.buildUri(peer, s.documentSelfLink))
+                        .setCompletion(
+                                (o, e) -> {
+                                    if (e != null) {
+                                        ctx.failIteration(e);
+                                        return;
+                                    }
+                                    MinimalTestServiceState rsp = o
+                                            .getBody(MinimalTestServiceState.class);
+                                    if (!rsp.id.equals(rsp.documentOwner)) {
+                                        ctx.failIteration(
+                                                new IllegalStateException("Expected: "
+                                                        + rsp.documentOwner + " was: " + rsp.id));
+                                    } else {
+                                        ctx.completeIteration();
+                                    }
+                                });
+                this.host.send(get);
             }
         }
+        this.host.testWait(ctx);
 
         // Do a negative test: Send a request that will induce failure in the service handler and
         // make sure we receive back failure, with a ServiceErrorResponse body
@@ -1856,19 +1861,21 @@ public class TestNodeGroupService {
 
     private void directOwnerSelection() throws Throwable {
         Map<URI, Map<String, Long>> keyToNodeAssignmentsPerNode = new HashMap<>();
-        Set<String> keys = new HashSet<>();
+        List<String> keys = new ArrayList<>();
 
         long c = this.updateCount * this.nodeCount;
         // generate N keys once, then ask each node to assign to its peers. Each node should come up
         // with the same distribution
 
         for (int i = 0; i < c; i++) {
-            keys.add(UUID.randomUUID().toString());
+            keys.add(Utils.getNowMicrosUtc() + "");
         }
 
         for (URI nodeGroup : this.host.getNodeGroupMap().values()) {
             keyToNodeAssignmentsPerNode.put(nodeGroup, new HashMap<>());
         }
+
+        this.host.waitForNodeGroupConvergence(this.nodeCount);
 
         this.host.testStart(c * this.nodeCount);
         for (URI nodeGroup : this.host.getNodeGroupMap().values()) {
@@ -1911,18 +1918,19 @@ public class TestNodeGroupService {
             if (countPerNode == null) {
                 countPerNode = assignmentsPerNode;
             }
+
+            this.host.log("Node group %s assignments: %s", nodeGroup, assignmentsPerNode);
+
             for (Entry<String, Long> e : assignmentsPerNode.entrySet()) {
                 // we assume that with random keys, and random node ids, each node will get at least
                 // one key.
                 assertTrue(e.getValue() > 0);
-                this.host.log("Node group %s assigned node id %s %d keys", nodeGroup, e.getKey(),
-                        e.getValue());
-
                 Long count = countPerNode.get(e.getKey());
                 if (count == null) {
                     continue;
                 }
                 if (!count.equals(e.getValue())) {
+                    this.host.logNodeGroupState();
                     throw new IllegalStateException(
                             "Node id got assigned the same key different number of times, on one of the nodes");
                 }
