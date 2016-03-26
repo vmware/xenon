@@ -112,7 +112,7 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
         sendRequest(Operation.createGet(this, this.cachedState.nodeGroupLink).setCompletion(
                 (o, e) -> {
                     if (e == null) {
-                        this.cachedGroupState = o.getBody(NodeGroupState.class);
+                        updateCachedNodeGroupState(o.getBody(NodeGroupState.class));
                     } else {
                         logSevere(e);
                     }
@@ -143,7 +143,7 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
             }
 
             NodeGroupState previous = this.cachedGroupState;
-            this.cachedGroupState = ngs;
+            updateCachedNodeGroupState(ngs);
             if (previous == null) {
                 return;
             }
@@ -207,7 +207,7 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
      *  Infrastructure use only
      */
     public void selectAndForward(Operation op, SelectAndForwardRequest body) {
-        selectAndForward(body, op, this.cachedGroupState, null);
+        selectAndForward(body, op, this.cachedGroupState);
     }
 
     /**
@@ -215,8 +215,7 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
      * node. Both the key and the nodes are hashed
      */
     private void selectAndForward(SelectAndForwardRequest body, Operation op,
-            NodeGroupState localState,
-            MessageDigest digest) {
+            NodeGroupState localState) {
 
         String keyValue = body.key != null ? body.key : body.targetPath;
         SelectOwnerResponse response = new SelectOwnerResponse();
@@ -239,7 +238,7 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
         }
 
         // select nodes and update response
-        selectNodes(op, response, localState, digest);
+        selectNodes(op, response, localState);
 
         if (body.targetPath == null) {
             op.setBodyNoCloning(response).complete();
@@ -276,7 +275,7 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
 
     private void selectNodes(Operation op,
             SelectOwnerResponse response,
-            NodeGroupState localState, MessageDigest digest) {
+            NodeGroupState localState) {
         int quorum = localState.nodes.get(getHost().getId()).membershipQuorum;
         int availableNodes = localState.nodes.size();
 
@@ -287,9 +286,7 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
             neighbourCount = this.cachedState.replicationFactor;
         }
 
-        if (digest == null) {
-            digest = Utils.createDigest();
-        }
+        MessageDigest digest = Utils.createDigest();
 
         byte[] key;
         try {
@@ -482,8 +479,6 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
             return;
         }
 
-        MessageDigest digest = Utils.createDigest();
-
         while (!this.pendingRequests.isEmpty()) {
             SelectAndForwardRequest req = this.pendingRequests.poll();
             if (req == null) {
@@ -493,7 +488,8 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
                 req.associatedOp.fail(new CancellationException());
                 continue;
             }
-            selectAndForward(req, req.associatedOp, this.cachedGroupState, digest);
+
+            selectAndForward(req, req.associatedOp, this.cachedGroupState);
         }
 
     }
@@ -535,8 +531,7 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
 
             final int quorumWarningsBeforeQuiet = 10;
             NodeGroupState ngs = o.getBody(NodeGroupState.class);
-            long membershipUpdate = ngs.membershipUpdateTimeMicros;
-            this.cachedGroupState = ngs;
+            long membershipUpdate = updateCachedNodeGroupState(ngs);
             Operation op = Operation.createPost(null)
                     .setReferer(getUri())
                     .setExpiration(Utils.getNowMicrosUtc() + getHost().getOperationTimeoutMicros());
@@ -562,6 +557,8 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
                                     return;
                                 }
 
+                                this.hashedNodeIds.clear();
+
                                 // if node group changed since we kicked of this check, we need to wait for
                                 // newer convergence completions
                                 this.isNodeGroupConverged = membershipUpdate == this.cachedGroupState.membershipUpdateTimeMicros;
@@ -572,6 +569,20 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
         };
 
         sendRequest(Operation.createGet(this, this.cachedState.nodeGroupLink).setCompletion(c));
+    }
+
+    private long updateCachedNodeGroupState(NodeGroupState ngs) {
+        synchronized (this.cachedState) {
+            if (this.cachedGroupState == null) {
+                this.cachedGroupState = ngs;
+                return ngs.membershipUpdateTimeMicros;
+            }
+            long membershipUpdate = ngs.membershipUpdateTimeMicros;
+            if (this.cachedGroupState.membershipUpdateTimeMicros <= ngs.membershipUpdateTimeMicros) {
+                this.cachedGroupState = ngs;
+            }
+            return membershipUpdate;
+        }
     }
 
     @Override
