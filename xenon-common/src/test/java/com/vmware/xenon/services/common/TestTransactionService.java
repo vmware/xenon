@@ -166,7 +166,7 @@ public class TestTransactionService extends BasicReusableHostTestCase {
         assertTrue(committed);
         countAccounts(null, this.accountCount);
 
-     // deposit a different amount to each account in a single transaction, commit and verify balances
+        // deposit a different amount to each account in a single transaction, commit and verify balances
         txid = newTransaction();
         TestContext ctx = testCreate(this.accountCount);
         for (int i = 0; i < this.accountCount; i++) {

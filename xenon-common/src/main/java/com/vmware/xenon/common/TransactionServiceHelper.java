@@ -16,7 +16,6 @@ package com.vmware.xenon.common;
 import java.net.URI;
 import java.util.EnumSet;
 import java.util.List;
-import java.util.Set;
 
 import com.vmware.xenon.common.ServiceDocumentDescription.TypeName;
 import com.vmware.xenon.services.common.QueryTask;
@@ -25,8 +24,6 @@ import com.vmware.xenon.services.common.QueryTask.Query.Occurance;
 import com.vmware.xenon.services.common.QueryTask.QuerySpecification.QueryOption;
 import com.vmware.xenon.services.common.QueryTask.QueryTerm.MatchType;
 import com.vmware.xenon.services.common.ServiceUriPaths;
-import com.vmware.xenon.services.common.TransactionService.ResolutionKind;
-import com.vmware.xenon.services.common.TransactionService.ResolutionRequest;
 
 /**
  * Stateless helpers for transactions
@@ -142,7 +139,7 @@ public class TransactionServiceHelper {
 
         URI txCoordinator = UriUtils.buildTransactionUri(s.getHost(), op.getTransactionId());
 
-        s.addPendingTransaction(txCoordinator.toString());
+        s.addPendingTransaction(txCoordinator.getPath());
 
         s.sendRequest(Operation.createPut(txCoordinator).setBody(operationsLogRecord));
     }
@@ -160,18 +157,6 @@ public class TransactionServiceHelper {
 
         // TODO: remove cast by changing childService type at the origin (FactoryService)
         notifyTransactionCoordinator((StatefulService) childService, op, null);
-    }
-
-    static void abortTransactions(StatefulService service, Set<String> coordinators) {
-        if (coordinators == null || coordinators.isEmpty()) {
-            return;
-        }
-        ResolutionRequest resolution = new ResolutionRequest();
-        resolution.resolutionKind = ResolutionKind.ABORT;
-        for (String coordinator : coordinators) {
-            service.sendRequest(Operation.createPatch(UriUtils.buildUri(coordinator))
-                    .setBodyNoCloning(resolution));
-        }
     }
 
     /**
@@ -195,7 +180,7 @@ public class TransactionServiceHelper {
                 Operation.TX_COMMIT)) {
             // commit should expose latest state, i.e., remove shadow and bump the version
             // and remove transaction from pending
-            s.removePendingTransaction(request.getReferer().toString());
+            s.removePendingTransaction(request.getReferer().getPath());
 
 
             QueryTask.QuerySpecification q = new QueryTask.QuerySpecification();
@@ -222,7 +207,7 @@ public class TransactionServiceHelper {
         } else if (request.getRequestHeader(Operation.TRANSACTION_HEADER).equals(
                 Operation.TX_ABORT)) {
             // abort should just remove transaction from pending
-            s.removePendingTransaction(request.getReferer().toString());
+            s.removePendingTransaction(request.getReferer().getPath());
             request.complete();
         } else {
             request.fail(new IllegalArgumentException(

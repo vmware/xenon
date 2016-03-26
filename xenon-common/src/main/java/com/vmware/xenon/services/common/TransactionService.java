@@ -13,7 +13,6 @@
 
 package com.vmware.xenon.services.common;
 
-import java.net.URI;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -115,11 +114,11 @@ public class TransactionService extends StatefulService {
 
     /**
      * Captures a request to add a dependency to dependentLinks.
-     * The dependency is captured in the referrer.
      */
     public static class AddDependentCoordinatorRequest {
         public static final String KIND = Utils.buildKind(AddDependentCoordinatorRequest.class);
         public String kind = KIND;
+        public String coordinatorSelfLink;
     }
 
     /**
@@ -257,29 +256,29 @@ public class TransactionService extends StatefulService {
         TransactionServiceState existing = getState(put);
 
         if (record.action == Action.GET) {
-            existing.readLinks.add(put.getReferer().toString());
+            existing.readLinks.add(put.getReferer().getPath());
         } else {
-            existing.modifiedLinks.add(put.getReferer().toString());
+            existing.modifiedLinks.add(put.getReferer().getPath());
         }
         if (record.action == Action.POST) {
-            existing.createdLinks.add(put.getReferer().toString());
+            existing.createdLinks.add(put.getReferer().getPath());
         }
         if (record.action == Action.DELETE) {
-            existing.deletedLinks.add(put.getReferer().toString());
+            existing.deletedLinks.add(put.getReferer().getPath());
         }
 
         // This has the possibility of overwriting existing pending, but that's OK, because it means the service
         // evolved, either by (being asked to) commit/abort or having seen more operations -- in any case, this
         // "pending" is the most recent one, so we're good.
         if (record.coordinatorLinks != null) {
-            existing.servicesToCoordinators.put(put.getReferer().toString(),
+            existing.servicesToCoordinators.put(put.getReferer().getPath(),
                     record.coordinatorLinks);
         }
         if (!record.isSuccessful) {
             if (existing.failedLinks == null) {
                 existing.failedLinks = new HashSet<>();
             }
-            existing.failedLinks.add(put.getReferer().toString());
+            existing.failedLinks.add(put.getReferer().getPath());
         }
         ++existing.pendingOperationCount;
         setState(put, existing);
@@ -321,7 +320,7 @@ public class TransactionService extends StatefulService {
         TransactionServiceState currentState = getState(patch);
         AddDependentCoordinatorRequest addDependentCoordinatorRequest = patch.getBody(AddDependentCoordinatorRequest.class);
         if (addDependentCoordinatorRequest.kind == AddDependentCoordinatorRequest.KIND) {
-            currentState.dependentLinks.add(patch.getReferer().toString());
+            currentState.dependentLinks.add(addDependentCoordinatorRequest.coordinatorSelfLink);
             patch.complete();
             return;
         }
@@ -451,8 +450,9 @@ public class TransactionService extends StatefulService {
     /**
      * Sends a selfPatch AddDependentCoordinator request
      */
-    private void selfPatch(URI coordinatorUri) {
+    private void selfPatch(String coordinator) {
         AddDependentCoordinatorRequest body = new AddDependentCoordinatorRequest();
+        body.coordinatorSelfLink = coordinator;
         Operation operation = Operation
                 .createPatch(getUri())
                 .setCompletion((o, e) -> {
@@ -460,8 +460,7 @@ public class TransactionService extends StatefulService {
                         logWarning("Failure self patching: %s", e.getMessage());
                     }
                 })
-                .setBody(body)
-                .setReferer(coordinatorUri);
+                .setBody(body);
         sendRequest(operation);
     }
 
@@ -495,11 +494,11 @@ public class TransactionService extends StatefulService {
         }
 
         for (Set<String> serviceSet : existing.servicesToCoordinators.values()) {
-            if (serviceSet.contains(op.getReferer().toString())) {
+            if (serviceSet.contains(op.getReferer().getPath())) {
                 // notify about deterministic resolution..
                 exchangeState.taskSubStage = SubStage.RESOLVING_CIRCULAR;
                 // ..and resolve deterministically
-                if (!compareTo(op.getReferer())) {
+                if (!compareTo(op.getReferer().getPath())) {
                     selfPatch(ResolutionKind.ABORT);
                 }
             }
@@ -519,7 +518,7 @@ public class TransactionService extends StatefulService {
         TransactionServiceState exchangeState = new TransactionServiceState();
 
         exchangeState.taskSubStage = existing.taskSubStage;
-        existing.dependentLinks.add(op.getReferer().toString());
+        existing.dependentLinks.add(op.getReferer().getPath());
 
         op.setBodyNoCloning(exchangeState);
         op.complete();
@@ -540,23 +539,22 @@ public class TransactionService extends StatefulService {
                 continue;
             }
             for (String coordinator : state.servicesToCoordinators.get(service)) {
-                if ((cache.contains(coordinator)) || (coordinator.equals(getUri().toString()))) {
+                if ((cache.contains(coordinator)) || (coordinator.equals(getSelfLink()))) {
                     continue;
                 } else {
                     cache.add(coordinator);
                 }
 
                 // a peer at RESOLVING (incl. RESOLVING_CIRCULAR) will append this to mustCommitAfter
-                URI coordinatorUri = UriUtils.buildUri(coordinator);
-                operations.add(createNotifyOp(UriUtils.buildUri(coordinatorUri),
+                operations.add(createNotifyOp(coordinator,
                         Operation.TX_TRY_COMMIT, (o, e) -> {
                             if (e == null) {
                                 TransactionServiceState exchangeState = o.getBody(TransactionServiceState.class);
                                 SubStage s = exchangeState.taskSubStage;
                                 if (s == SubStage.COMMITTED) {
-                                    selfPatch(coordinatorUri);
+                                    selfPatch(coordinator);
                                 } else if (s == SubStage.RESOLVING_CIRCULAR) {
-                                    if (!compareTo(coordinatorUri)) {
+                                    if (!compareTo(coordinator)) {
                                         continueWithCommit[0] = false;
                                         selfPatch(ResolutionKind.ABORT);
                                     }
@@ -599,12 +597,12 @@ public class TransactionService extends StatefulService {
                 continue;
             }
             for (String coordinator : state.servicesToCoordinators.get(service)) {
-                if ((cache.contains(coordinator)) || (coordinator.equals(getUri().toString()))) {
+                if ((cache.contains(coordinator)) || (coordinator.equals(getSelfLink()))) {
                     continue;
                 } else {
                     cache.add(coordinator);
                 }
-                operations.add(createNotifyOp(UriUtils.buildUri(coordinator),
+                operations.add(createNotifyOp(coordinator,
                         Operation.TX_ENSURE_COMMIT, (o, e) -> {
                             if (e == null) {
                                 TransactionServiceState exchangeState = o.getBody(TransactionServiceState.class);
@@ -636,11 +634,11 @@ public class TransactionService extends StatefulService {
     }
 
     /**
-     * Lexicographic comparison between this selfUri and the remote
+     * Lexicographic comparison between this selfLink and the remote
      * @return true, this wins; false, remote wins
      */
-    private boolean compareTo(URI remote) {
-        return getUri().compareTo(remote) < 0;
+    private boolean compareTo(String remote) {
+        return getSelfLink().compareTo(remote) < 0;
     }
 
     /**
@@ -649,15 +647,15 @@ public class TransactionService extends StatefulService {
     private Collection<Operation> createNotifyServicesToAbort(TransactionServiceState state) {
         Collection<Operation> operations = new HashSet<>();
         for (String service : state.createdLinks) {
-            operations.add(createDeleteOp(UriUtils.buildUri(service)));
+            operations.add(createDeleteOp(service));
             state.readLinks.remove(service);
             state.modifiedLinks.remove(service);
         }
         for (String service : state.readLinks) {
-            operations.add(createNotifyOp(UriUtils.buildUri(service), Operation.TX_ABORT));
+            operations.add(createNotifyOp(service, Operation.TX_ABORT));
         }
         for (String service : state.modifiedLinks) {
-            operations.add(createNotifyOp(UriUtils.buildUri(service), Operation.TX_ABORT));
+            operations.add(createNotifyOp(service, Operation.TX_ABORT));
         }
         return operations;
     }
@@ -668,15 +666,15 @@ public class TransactionService extends StatefulService {
     private void notifyServicesToCommit(TransactionServiceState state) {
         Collection<Operation> operations = new HashSet<>();
         for (String service : state.deletedLinks) {
-            operations.add(createDeleteOp(UriUtils.buildUri(service)));
+            operations.add(createDeleteOp(service));
             state.readLinks.remove(service);
             state.modifiedLinks.remove(service);
         }
         operations.addAll(state.readLinks.stream()
-                .map(service -> createNotifyOp(UriUtils.buildUri(service), Operation.TX_COMMIT))
+                .map(service -> createNotifyOp(service, Operation.TX_COMMIT))
                 .collect(Collectors.toSet()));
         operations.addAll(state.modifiedLinks.stream()
-                .map(service -> createNotifyOp(UriUtils.buildUri(service), Operation.TX_COMMIT))
+                .map(service -> createNotifyOp(service, Operation.TX_COMMIT))
                 .collect(Collectors.toSet()));
 
         if (operations.isEmpty()) {
@@ -698,12 +696,12 @@ public class TransactionService extends StatefulService {
     /**
      * Prepare a simple metadata request to a service
      */
-    private Operation createNotifyOp(URI service, String header) {
+    private Operation createNotifyOp(String service, String header) {
         // no completion handler, worst case something will fail, nothing will change on part of the service
         // and transactional operations headed there will need to contact us prior to commit
         // (handler would not change this, we will solve this using a transaction GC service)
         return Operation
-                .createPatch(service)
+                .createPatch(UriUtils.buildUri(getHost(), service))
                 .addRequestHeader(Operation.TRANSACTION_HEADER, header)
                 // just an empty body
                 .setBody(new TransactionServiceState())
@@ -714,19 +712,19 @@ public class TransactionService extends StatefulService {
     /**
      * Prepare a delete request to a service
      */
-    private Operation createDeleteOp(URI service) {
+    private Operation createDeleteOp(String service) {
         // no completion handler. we'll handle in a transaction GC service
         return Operation
-                .createDelete(service)
+                .createDelete(UriUtils.buildUri(getHost(), service))
                 .setReferer(getUri());
     }
 
     /**
      * Prepare an operation to resolve precedence with a remote coordinator
      */
-    private Operation createNotifyOp(URI service, String header, Operation.CompletionHandler callback) {
+    private Operation createNotifyOp(String coordinator, String header, Operation.CompletionHandler callback) {
         return Operation
-                .createPatch(service)
+                .createPatch(UriUtils.buildUri(getHost(), coordinator))
                 .addRequestHeader(Operation.TRANSACTION_HEADER, header)
                 // just an empty body
                 .setBody(new TransactionServiceState())
