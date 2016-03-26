@@ -170,7 +170,7 @@ public class NodeGroupService extends StatefulService {
     @Override
     public void handleGet(Operation get) {
         NodeGroupState state = getState(get);
-        get.setBodyNoCloning(state).complete();
+        get.setBody(state).complete();
     }
 
     @Override
