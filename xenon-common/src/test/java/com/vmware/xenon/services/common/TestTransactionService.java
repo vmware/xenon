@@ -477,6 +477,13 @@ public class TestTransactionService extends BasicReusableHostTestCase {
         }
         QueryTask task = QueryTask.Builder.createDirectTask().setQuery(queryBuilder.build()).build();
         this.host.createQueryTaskService(task, false, true, task, null);
+        if (expected != task.results.documentCount.longValue()) {
+            this.host.log("Number of accounts found is different than expected:");
+            for (String serviceSelfLink : task.results.documentLinks) {
+                String accountId = serviceSelfLink.substring(serviceSelfLink.lastIndexOf('/') + 1);
+                this.host.log("Found account: %s", accountId);
+            }
+        }
         assertEquals(expected, task.results.documentCount.longValue());
     }
 

@@ -713,10 +713,16 @@ public class TransactionService extends StatefulService {
      * Prepare a delete request to a service
      */
     private Operation createDeleteOp(String service) {
-        // no completion handler. we'll handle in a transaction GC service
         return Operation
                 .createDelete(this, service)
-                .setReferer(getUri());
+                .setReferer(getUri())
+                .setCompletion((o, e) -> {
+                    if (e != null) {
+                        logWarning("Deletion of service %s failed: %s", service, e);
+                    } else {
+                        logInfo("Deletion of service %s succeeded", service);
+                    }
+                });
     }
 
     /**
