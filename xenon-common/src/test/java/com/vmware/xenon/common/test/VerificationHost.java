@@ -91,7 +91,6 @@ import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
 import com.vmware.xenon.services.common.ExampleServiceHost;
 import com.vmware.xenon.services.common.MinimalTestService.MinimalTestServiceErrorResponse;
 import com.vmware.xenon.services.common.NodeGroupBroadcastResponse;
-import com.vmware.xenon.services.common.NodeGroupService;
 import com.vmware.xenon.services.common.NodeGroupService.JoinPeerRequest;
 import com.vmware.xenon.services.common.NodeGroupService.NodeGroupConfig;
 import com.vmware.xenon.services.common.NodeGroupService.NodeGroupState;
@@ -2024,15 +2023,15 @@ public class VerificationHost extends ExampleServiceHost {
         do {
             nodesPerHost.clear();
             updateTime.clear();
-            testStart(nodeGroupUris.size());
+            TestContext ctx = testCreate(nodeGroupUris.size());
             for (URI nodeGroup : nodeGroupUris) {
-                getNodeState(nodeGroup, nodesPerHost);
+                getNodeState(nodeGroup, nodesPerHost, ctx);
                 EnumSet<NodeOption> expectedOptions = expectedOptionsPerNodeGroupUri.get(nodeGroup);
                 if (expectedOptions == null) {
                     expectedOptionsPerNodeGroupUri.put(nodeGroup, NodeState.DEFAULT_OPTIONS);
                 }
             }
-            testWait();
+            testWait(ctx);
 
             boolean isConverged = true;
             for (Entry<URI, NodeGroupState> entry : nodesPerHost
@@ -2154,6 +2153,10 @@ public class VerificationHost extends ExampleServiceHost {
     }
 
     public void getNodeState(URI nodeGroup, Map<URI, NodeGroupState> nodesPerHost) {
+        getNodeState(nodeGroup, nodesPerHost, null);
+    }
+
+    public void getNodeState(URI nodeGroup, Map<URI, NodeGroupState> nodesPerHost, TestContext ctx) {
         URI u = UriUtils.buildExpandLinksQueryUri(nodeGroup);
         Operation get = Operation.createGet(u).setCompletion((o, e) -> {
             NodeGroupState ngs = null;
@@ -2166,7 +2169,11 @@ public class VerificationHost extends ExampleServiceHost {
             }
             synchronized (nodesPerHost) {
                 nodesPerHost.put(nodeGroup, ngs);
+            }
+            if (ctx == null) {
                 completeIteration();
+            } else {
+                ctx.completeIteration();
             }
         });
         send(get);
@@ -2523,30 +2530,23 @@ public class VerificationHost extends ExampleServiceHost {
         }
     }
 
-    public void logNodeGroupStats() throws Throwable {
-        Map<URI, ServiceStats> statsPerNodeGroup = Collections.synchronizedMap(new HashMap<>());
+    /**
+     * Retrieves node group service state from all peers and logs it in JSON format
+     */
+    public void logNodeGroupState() throws Throwable {
         TestContext ctx = testCreate(getNodeGroupMap().size());
         for (URI nodeGroup : getNodeGroupMap().values()) {
-            URI stats = UriUtils.buildStatsUri(nodeGroup);
-            send(Operation.createGet(stats).setCompletion((o, e) -> {
+            send(Operation.createGet(nodeGroup).setCompletion((o, e) -> {
                 if (e != null) {
                     ctx.failIteration(e);
                     return;
                 }
-                statsPerNodeGroup.put(nodeGroup, o.getBody(ServiceStats.class));
+                NodeGroupState ngs = o.getBody(NodeGroupState.class);
+                log("%s", Utils.toJsonHtml(ngs));
                 ctx.completeIteration();
             }));
         }
         testWait(ctx);
-
-        for (ServiceStats s : statsPerNodeGroup.values()) {
-            ServiceStat restartFailureCount = s.entries
-                    .get(NodeGroupService.STAT_NAME_RESTARTING_SERVICES_FAILURE_COUNT);
-            if (restartFailureCount != null && restartFailureCount.accumulatedValue > 0) {
-                throw new IllegalStateException("Restart failures occured: " + Utils.toJsonHtml(s));
-            }
-        }
-
     }
 
     public void setServiceMaintenanceIntervalMicros(String path, long micros) throws Throwable {
