@@ -635,7 +635,8 @@ public class TestSubscriptions extends BasicReportTestCase {
         this.host.send(Operation.createPost(subUri)
                 .setCompletion(this.host.getCompletion())
                 .setReferer(this.host.getReferer())
-                .setBody(sr));
+                .setBody(sr)
+                .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_QUEUE_FOR_SERVICE_AVAILABILITY));
     }
 
     private void unsubscribeFromChildren(URI[] uris, URI targetUri,

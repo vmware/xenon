@@ -620,6 +620,7 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
     }
 
     private void verifyOnDemandLoad(ServiceHost h, String onDemandFactoryLink) throws Throwable {
+        this.host.log("******************************* entered *******************************");
         URI factoryUri = UriUtils.buildUri(h, onDemandFactoryLink);
         ServiceDocumentQueryResult rsp = this.host.getFactoryState(factoryUri);
         // verify that for every factory child reported by the index, through the GET (query), the service is NOT
@@ -646,7 +647,7 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
                         this.host.getExpectedFailureCompletion(Operation.STATUS_CODE_NOT_FOUND));
         this.host.sendAndWait(getToNowhere);
 
-        // verify that no attempts to start service occured
+        // verify that no attempts to start service occurred
         assertTrue(startCount == MinimalTestService.HANDLE_START_COUNT.get());
 
         // delete some of the services, not using a body, emulation DELETE through expiration
@@ -704,6 +705,7 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
         delete = Operation.createDelete(serviceToDelete)
                 .setCompletion(this.host.getCompletion());
         this.host.sendAndWait(delete);
+        this.host.log("******************************* finished *******************************");
     }
 
     private void createOnDemandLoadServices(ExampleServiceHost h, String factoryLink)

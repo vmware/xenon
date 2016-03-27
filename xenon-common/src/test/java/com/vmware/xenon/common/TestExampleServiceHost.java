@@ -135,6 +135,7 @@ public class TestExampleServiceHost extends BasicReusableHostTestCase {
             Operation get = Operation.createGet(exampleUri)
                     .forceRemote()
                     .addRequestHeader(Operation.REQUEST_AUTH_TOKEN_HEADER, authToken)
+                    .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_QUEUE_FOR_SERVICE_AVAILABILITY)
                     .setCompletion((op, ex) -> {
                         if (ex != null) {
                             this.host.failIteration(ex);
