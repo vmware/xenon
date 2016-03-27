@@ -705,8 +705,7 @@ public class TransactionService extends StatefulService {
                 .addRequestHeader(Operation.TRANSACTION_HEADER, header)
                 // just an empty body
                 .setBody(new TransactionServiceState())
-                .setReferer(getUri())
-                .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_NO_QUEUING);
+                .setReferer(getUri());
     }
 
     /**

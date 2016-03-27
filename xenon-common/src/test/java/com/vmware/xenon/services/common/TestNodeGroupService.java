@@ -1519,7 +1519,6 @@ public class TestNodeGroupService {
             URI bogusChild = UriUtils.extendUri(factoryURI, UUID.randomUUID().toString());
             Operation patch = Operation.createPatch(bogusChild)
                     .setCompletion(this.host.getExpectedFailureCompletion())
-                    .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_NO_QUEUING)
                     .setBody(new ExampleServiceState());
 
             this.host.send(patch);
