@@ -1205,7 +1205,7 @@ public class TestQueryTaskService {
 
     private void startPagedBroadCastQuery(VerificationHost targetHost) {
 
-        // This is a multi stage task, that could be easily modelled as a service,
+        // This is a multi stage task, that could be easily modeled as a service,
         // but since we are in test code, we use synchronous waits between stages,
         // but run N threads in parallel
         final int documentCount = this.serviceCount;
@@ -1246,6 +1246,7 @@ public class TestQueryTaskService {
                         CountDownLatch waitForCompletion = new CountDownLatch(1);
                         Operation get = Operation
                                 .createGet(taskUri)
+                                .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_QUEUE_FOR_SERVICE_AVAILABILITY)
                                 .setCompletion((o, e) -> {
                                     if (e != null) {
                                         targetHost.failIteration(e);
@@ -1295,6 +1296,7 @@ public class TestQueryTaskService {
                         CountDownLatch waitForCompletion = new CountDownLatch(1);
                         Operation get = Operation
                                 .createGet(u)
+                                .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_QUEUE_FOR_SERVICE_AVAILABILITY)
                                 .setCompletion((o, e) -> {
                                     if (e != null) {
                                         targetHost.failIteration(e);
