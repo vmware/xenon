@@ -189,8 +189,6 @@ public class AuthorizationContextService extends StatelessService {
                     loadUserGroups(ctx, claims, userState);
                 });
 
-        // Do not queue as the user might no longer be present in the system
-        get.addRequestHeader(Operation.PRAGMA_HEADER, Operation.PRAGMA_DIRECTIVE_NO_QUEUING);
         setAuthorizationContext(get, getSystemAuthorizationContext());
         sendRequest(get);
     }

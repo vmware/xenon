@@ -385,9 +385,9 @@ public class Operation implements Cloneable {
     public static final String PRAGMA_DIRECTIVE_SYNCH = "xn-synch";
 
     /**
-     * Advanced use. Prevents the request from getting queued, if a service is not yet available.
+     * Advanced use. Forces the request to be queued, if a service is not yet available.
      */
-    public static final String PRAGMA_DIRECTIVE_NO_QUEUING = "xn-no-queuing";
+    public static final String PRAGMA_DIRECTIVE_QUEUING = "xn-queuing";
 
     /**
      * Advanced use. Instructs the runtime to queue a request, for a service to become available
