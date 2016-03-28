@@ -800,12 +800,12 @@ public class StatefulService implements Service {
             return false;
         }
 
+        if (op.getAction() == Action.DELETE) {
+            ServiceDocument body = new ServiceDocument();
+            op.setBodyNoCloning(body);
+        }
+
         if (!op.hasBody()) {
-            // we do not replicate operations without a body. The only such
-            // operation that is valid is a DELETE to stop a service locally,
-            // but local service stops do not replicate. A DELETE with a body,
-            // which causes both a stop and the service document to be removed,
-            // will be replicated
             return false;
         }
 
