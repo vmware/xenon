@@ -13,12 +13,15 @@
 
 package com.vmware.xenon.services.samples;
 
+import com.vmware.xenon.common.FactoryService;
 import com.vmware.xenon.common.Operation;
+import com.vmware.xenon.common.Service;
 import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.StatefulService;
 import com.vmware.xenon.common.TaskState;
 import com.vmware.xenon.common.TaskState.TaskStage;
 import com.vmware.xenon.common.fsm.TaskFSMTracker;
+import com.vmware.xenon.services.common.ServiceUriPaths;
 
 /**
  * This service provides a simple demonstration for the usage of TaskFSM to validate input against current state and to adjust state.
@@ -26,6 +29,12 @@ import com.vmware.xenon.common.fsm.TaskFSMTracker;
  * State is updated synchronously in this sample.
  */
 public class FsmTaskService extends StatefulService {
+
+    public static final String FACTORY_LINK = ServiceUriPaths.SAMPLES + "/fsmTask";
+
+    public static Service createFactory() {
+        return FactoryService.create(FsmTaskService.class);
+    }
 
     public static class FsmTaskServiceState extends ServiceDocument {
         public TaskFSMTracker fsmInfo;

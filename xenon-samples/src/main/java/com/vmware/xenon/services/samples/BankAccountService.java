@@ -13,13 +13,22 @@
 
 package com.vmware.xenon.services.samples;
 
+import com.vmware.xenon.common.FactoryService;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.OperationProcessingChain;
 import com.vmware.xenon.common.RequestRouter;
+import com.vmware.xenon.common.Service;
 import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.StatefulService;
+import com.vmware.xenon.services.common.ServiceUriPaths;
 
 public class BankAccountService extends StatefulService {
+
+    public static final String FACTORY_LINK = ServiceUriPaths.SAMPLES + "/bank-accounts";
+
+    public static Service createFactory() {
+        return FactoryService.create(BankAccountService.class);
+    }
 
     public static class BankAccountServiceState extends ServiceDocument {
         public double balance;

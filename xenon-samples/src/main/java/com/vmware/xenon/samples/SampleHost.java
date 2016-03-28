@@ -15,18 +15,16 @@ package com.vmware.xenon.samples;
 
 import java.util.logging.Level;
 
-
 import io.swagger.models.Contact;
 import io.swagger.models.Info;
 import io.swagger.models.License;
 
 import com.vmware.xenon.common.ServiceHost;
 import com.vmware.xenon.services.common.RootNamespaceService;
-import com.vmware.xenon.services.common.ServiceUriPaths;
 import com.vmware.xenon.services.samples.SampleFactoryServiceWithCustomUi;
-import com.vmware.xenon.services.samples.SamplePreviousEchoFactoryService;
+import com.vmware.xenon.services.samples.SamplePreviousEchoService;
 import com.vmware.xenon.services.samples.SampleServiceWithSharedCustomUi;
-import com.vmware.xenon.services.samples.SampleSimpleEchoFactoryService;
+import com.vmware.xenon.services.samples.SampleSimpleEchoService;
 import com.vmware.xenon.swagger.SwaggerDescriptorService;
 import com.vmware.xenon.ui.UiService;
 
@@ -53,7 +51,7 @@ public class SampleHost extends ServiceHost {
     public ServiceHost start() throws Throwable {
         super.start();
 
-        // Start core services (logging, gossiping)-- must be done once
+        // Start core services, must be done once
         startDefaultCoreServicesSynchronously();
 
         // Start the root namespace service: this will list all available factory services for
@@ -67,14 +65,20 @@ public class SampleHost extends ServiceHost {
         super.startService(new SampleFactoryServiceWithCustomUi());
 
         // Start a factory for echo sample service
-        super.startService(new SampleSimpleEchoFactoryService());
+        super.startFactory(new SampleSimpleEchoService());
 
         // Start a factory for the service that returns the previous results
-        super.startService(new SamplePreviousEchoFactoryService());
+        super.startFactory(new SamplePreviousEchoService());
 
         // Start UI service
         super.startService(new UiService());
 
+        startSwaggerDescriptorService();
+
+        return this;
+    }
+
+    private void startSwaggerDescriptorService() {
         // Serve Swagger 2.0 compatible API description
         SwaggerDescriptorService swagger = new SwaggerDescriptorService();
 
@@ -93,8 +97,5 @@ public class SampleHost extends ServiceHost {
 
         // Serve swagger on default uri
         super.startService(swagger);
-        System.out.println("Checkout swaggerUI: " + this.getPublicUri() + ServiceUriPaths.SWAGGER + "/ui");
-
-        return this;
     }
 }

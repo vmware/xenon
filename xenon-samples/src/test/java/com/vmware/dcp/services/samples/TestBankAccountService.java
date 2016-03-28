@@ -29,7 +29,7 @@ import com.vmware.xenon.common.Service.Action;
 import com.vmware.xenon.common.ServiceDocumentDescription;
 import com.vmware.xenon.common.ServiceHost;
 import com.vmware.xenon.common.UriUtils;
-import com.vmware.xenon.services.samples.BankAccountFactoryService;
+import com.vmware.xenon.services.samples.BankAccountService;
 import com.vmware.xenon.services.samples.BankAccountService.BankAccountServiceRequest;
 import com.vmware.xenon.services.samples.BankAccountService.BankAccountServiceState;
 
@@ -38,12 +38,12 @@ public class TestBankAccountService extends BasicReusableHostTestCase {
     @Before
     public void setUp() throws Exception {
         try {
-            if (this.host.getServiceStage(BankAccountFactoryService.SELF_LINK) != null) {
+            if (this.host.getServiceStage(BankAccountService.FACTORY_LINK) != null) {
                 return;
             }
             // Start a factory for bank account service
-            this.host.startServiceAndWait(BankAccountFactoryService.class,
-                    BankAccountFactoryService.SELF_LINK);
+            this.host.startServiceAndWait(BankAccountService.createFactory(),
+                    BankAccountService.FACTORY_LINK, null);
         } catch (Throwable e) {
             throw new RuntimeException(e);
         }
@@ -53,13 +53,13 @@ public class TestBankAccountService extends BasicReusableHostTestCase {
     @Test
     public void testCRUD() throws Throwable {
         // locate factory and create a service instance
-        URI factoryUri = UriUtils.buildUri(this.host, BankAccountFactoryService.class);
+        URI factoryUri = UriUtils.buildUri(this.host, BankAccountService.FACTORY_LINK);
         this.host.testStart(1);
         BankAccountServiceState initialState = new BankAccountServiceState();
         double initialBalance = 100.0;
         initialState.balance = initialBalance;
         initialState.documentSelfLink = UUID.randomUUID().toString();
-        URI childURI = UriUtils.buildUri(this.host, BankAccountFactoryService.SELF_LINK + "/"
+        URI childURI = UriUtils.buildUri(this.host, BankAccountService.FACTORY_LINK + "/"
                 + initialState.documentSelfLink);
         BankAccountServiceState[] responses = new BankAccountServiceState[1];
         Operation post = Operation
@@ -134,13 +134,13 @@ public class TestBankAccountService extends BasicReusableHostTestCase {
     @Test
     public void testGetTemplate() throws Throwable {
         // locate factory and create a service instance
-        URI factoryUri = UriUtils.buildUri(this.host, BankAccountFactoryService.class);
+        URI factoryUri = UriUtils.buildUri(this.host, BankAccountService.FACTORY_LINK);
         this.host.testStart(1);
         BankAccountServiceState initialState = new BankAccountServiceState();
         double initialBalance = 100.0;
         initialState.balance = initialBalance;
         initialState.documentSelfLink = UUID.randomUUID().toString();
-        URI childURI = UriUtils.buildUri(this.host, BankAccountFactoryService.SELF_LINK + "/"
+        URI childURI = UriUtils.buildUri(this.host, BankAccountService.FACTORY_LINK + "/"
                 + initialState.documentSelfLink);
         BankAccountServiceState[] responses = new BankAccountServiceState[1];
         Operation post = Operation

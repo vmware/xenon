@@ -17,7 +17,9 @@ import java.net.URI;
 import java.util.EnumSet;
 import java.util.List;
 
+import com.vmware.xenon.common.FactoryService;
 import com.vmware.xenon.common.Operation;
+import com.vmware.xenon.common.Service;
 import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.StatefulService;
 import com.vmware.xenon.common.UriUtils;
@@ -31,6 +33,12 @@ import com.vmware.xenon.services.common.ServiceUriPaths;
  * recording (N-1 PUT) when called (GET). Consecutive PUTs or PATCHes just update the state.
  */
 public class SamplePreviousEchoService extends StatefulService {
+    public static final String FACTORY_LINK = ServiceUriPaths.SAMPLES + "/previous-echoes";
+
+    public static Service createFactory() {
+        return FactoryService.create(SamplePreviousEchoService.class);
+    }
+
     public static class EchoServiceState extends ServiceDocument {
         public String message;
     }
@@ -38,6 +46,7 @@ public class SamplePreviousEchoService extends StatefulService {
     public SamplePreviousEchoService() {
         super(EchoServiceState.class);
         toggleOption(ServiceOption.PERSISTENCE, true);
+        toggleOption(ServiceOption.INSTRUMENTATION, true);
     }
 
     /**

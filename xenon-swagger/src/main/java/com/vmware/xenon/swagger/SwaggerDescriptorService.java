@@ -20,6 +20,7 @@ import io.swagger.models.Info;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.ServiceDocumentQueryResult;
+import com.vmware.xenon.common.ServiceHost;
 import com.vmware.xenon.common.StatelessService;
 import com.vmware.xenon.services.common.ServiceUriPaths;
 
@@ -65,6 +66,14 @@ public class SwaggerDescriptorService extends StatelessService {
      */
     public void setExcludeUtilities(boolean excludeUtilities) {
         this.excludeUtilities = excludeUtilities;
+    }
+
+    @Override
+    public void handleStart(Operation start) {
+        logInfo("Swagger UI available at: %s", getHost().getPublicUri()
+                + ServiceUriPaths.SWAGGER
+                + ServiceHost.SERVICE_URI_SUFFIX_UI);
+        start.complete();
     }
 
     @Override

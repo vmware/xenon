@@ -84,6 +84,7 @@ public class BasicReusableHostTestCase {
 
     @AfterClass
     public static void tearDownOnce() {
+        HOST.tearDownInProcessPeers();
         HOST.tearDown();
     }
 

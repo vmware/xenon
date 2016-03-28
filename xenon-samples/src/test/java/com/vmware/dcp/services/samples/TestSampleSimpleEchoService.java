@@ -20,30 +20,25 @@ import java.net.URI;
 import org.junit.Before;
 import org.junit.Test;
 
-import com.vmware.xenon.common.BasicReportTestCase;
+import com.vmware.xenon.common.BasicReusableHostTestCase;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.ServiceErrorResponse;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.services.samples.SamplePreviousEchoService.EchoServiceState;
-import com.vmware.xenon.services.samples.SampleSimpleEchoFactoryService;
+import com.vmware.xenon.services.samples.SampleSimpleEchoService;
 
-public class TestSampleSimpleEchoService extends BasicReportTestCase {
+public class TestSampleSimpleEchoService extends BasicReusableHostTestCase {
 
     @Before
     public void prepare() throws Throwable {
-        this.host.startService(
-                Operation.createPost(UriUtils.buildUri(this.host,
-                        SampleSimpleEchoFactoryService.class)),
-                new SampleSimpleEchoFactoryService());
-        this.host.waitForServiceAvailable(SampleSimpleEchoFactoryService.SELF_LINK);
+        this.host.startFactory(new SampleSimpleEchoService());
+        this.host.waitForServiceAvailable(SampleSimpleEchoService.FACTORY_LINK);
     }
 
     @Test
     public void testState() throws Throwable {
-        this.host.waitForServiceAvailable(SampleSimpleEchoFactoryService.SELF_LINK);
-
-        URI factoryUri = UriUtils.buildUri(this.host, SampleSimpleEchoFactoryService.class);
+        URI factoryUri = UriUtils.buildFactoryUri(this.host, SampleSimpleEchoService.class);
         this.host.testStart(1);
         URI[] instanceURIs = new URI[1];
         EchoServiceState initialState = new EchoServiceState();
