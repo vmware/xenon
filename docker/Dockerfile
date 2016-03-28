@@ -1,13 +1,8 @@
-# This image is built by Dockerfile in machines repository at docker/jre8.
-FROM jre8-minimal:latest
+FROM java:openjdk-8-jre-alpine
 
-ADD root /
+ENTRYPOINT ["/start.sh"]
+EXPOSE 8000
+ENV XENON_HOME=/opt/xenon JAVA_OPTS= DEFAULT_OPTS= DEBUG_PORT= DEBUG_SUSPEND= VERBOSE_GC=
 
-RUN mkdir -p /opt/xenon
-
-RUN echo "hosts: files dns" > /etc/nsswitch.conf
-
-WORKDIR /opt/xenon
-CMD bin/run.sh
-
-ADD base /opt/xenon
+COPY logging.properties /opt/xenon/
+COPY start.sh /
