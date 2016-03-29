@@ -1223,7 +1223,6 @@ public class LuceneDocumentIndexService extends StatelessService {
 
         for (String selfLink : r.documentLinks) {
             sendRequest(Operation.createGet(this, selfLink)
-                    .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_NO_QUEUING)
                     .setCompletion(c));
         }
     }

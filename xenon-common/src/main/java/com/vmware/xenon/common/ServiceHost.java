@@ -3410,19 +3410,7 @@ public class ServiceHost implements ServiceRequestSender {
             return;
         }
 
-        boolean doNotQueue = op.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_NO_QUEUING);
-        String userAgent = op.getRequestHeader(Operation.USER_AGENT_HEADER);
-        if (userAgent == null) {
-            userAgent = op.getRequestHeader(Operation.USER_AGENT_HEADER.toLowerCase());
-        }
-
-        if (!op.isForwarded() && !op.isFromReplication() && userAgent != null
-                && !userAgent.contains(ServiceHost.class.getSimpleName())) {
-            // do not implicitly queue requests from clients not associated with service hosts
-            doNotQueue = true;
-        }
-
-        if (doNotQueue) {
+        if (!op.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_QUEUE_FOR_SERVICE_AVAILABILITY)) {
             this.failRequestServiceNotFound(op);
             return;
         }
@@ -4932,13 +4920,8 @@ public class ServiceHost implements ServiceRequestSender {
                 return false;
             }
 
-            inboundOp.removePragmaDirective(Operation.PRAGMA_DIRECTIVE_INDEX_CHECK);
-
             long pendingPauseCount = this.pendingPauseServices.size();
             if (pendingPauseCount == 0) {
-                if (inboundOp.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_NO_QUEUING)) {
-                    return false;
-                }
                 return checkAndOnDemandStartService(inboundOp, factoryService);
             }
 
@@ -4991,8 +4974,6 @@ public class ServiceHost implements ServiceRequestSender {
         }
 
         if (!parentService.hasOption(ServiceOption.ON_DEMAND_LOAD)) {
-            // skip service pause check next time around
-            inboundOp.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_NO_QUEUING);
             return false;
         }
 

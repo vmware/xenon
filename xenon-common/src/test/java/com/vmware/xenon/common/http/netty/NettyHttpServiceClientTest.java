@@ -233,7 +233,6 @@ public class NettyHttpServiceClientTest {
         this.host.testStart(1);
         Operation get = Operation
                 .createGet(UriUtils.buildUri(this.host, UUID.randomUUID().toString()))
-                .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_NO_QUEUING)
                 .setCompletion(
                         (op, ex) -> {
                             if (op.getStatusCode() == Operation.STATUS_CODE_NOT_FOUND) {
@@ -425,7 +424,6 @@ public class NettyHttpServiceClientTest {
         // cause the this.host to queue the request until the child became available
         Operation put = Operation.createPut(uriToMissingService)
                 .setBody(this.host.buildMinimalTestState())
-                .addRequestHeader(Operation.PRAGMA_HEADER, Operation.PRAGMA_DIRECTIVE_NO_QUEUING)
                 .setCompletion(this.host.getExpectedFailureCompletion());
 
         this.host.send(put);
@@ -440,7 +438,6 @@ public class NettyHttpServiceClientTest {
                         uriToMissingService)
                 .setBody(this.host.buildMinimalTestState())
                 .forceRemote()
-                .addRequestHeader(Operation.PRAGMA_HEADER, Operation.PRAGMA_DIRECTIVE_NO_QUEUING)
                 .setCompletion(this.host.getExpectedFailureCompletion());
 
         this.host.send(put);

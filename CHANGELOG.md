@@ -7,6 +7,12 @@
 * Add logging methods that take lambda expression to construct
   log message. The lambda is evaluated lazily.
 
+* Remove PRAGMA_DIRECTIVE_NO_QUEUING and make no-queuing
+  the default behavior. That means finding a service succeeds
+  if the service exists or fails-fast in the case it doesn't.
+  Use PRAGMA_DIRECTIVE_QUEUE_FOR_SERVICE_AVAILABILITY to
+  override the default.
+
 ## 0.7.6
 
 * Improve index searcher management in lucene document index

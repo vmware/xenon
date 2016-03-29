@@ -588,6 +588,7 @@ public class TestNodeGroupService {
 
     public void doNodeStopWithUpdates(Map<String, ExampleServiceState> exampleStatesPerSelfLink)
             throws Throwable {
+        this.host.log("Starting to stop nodes and send updates");
         VerificationHost remainingHost = this.host.getPeerHost();
         Collection<VerificationHost> hostsToStop = new ArrayList<>(this.host.getInProcessHostMap()
                 .values());
@@ -601,6 +602,7 @@ public class TestNodeGroupService {
 
         // nodes are stopped, do updates again, quorum is relaxed, they should work
         doExampleServicePatch(exampleStatesPerSelfLink, remainingHost.getUri());
+        this.host.log("Done with stop nodes and send updates");
     }
 
     private Map<String, ExampleServiceState> createExampleServices(URI hostUri) throws Throwable {
@@ -1519,7 +1521,6 @@ public class TestNodeGroupService {
             URI bogusChild = UriUtils.extendUri(factoryURI, UUID.randomUUID().toString());
             Operation patch = Operation.createPatch(bogusChild)
                     .setCompletion(this.host.getExpectedFailureCompletion())
-                    .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_NO_QUEUING)
                     .setBody(new ExampleServiceState());
 
             this.host.send(patch);
@@ -2931,6 +2932,7 @@ public class TestNodeGroupService {
     private void stopHostsAndVerifyQueuing(Collection<VerificationHost> hostsToStop,
             VerificationHost remainingHost,
             Collection<URI> serviceTargets) throws Throwable {
+        this.host.log("Starting to stop hosts and verify queuing");
 
         // reduce node expiration for unavailable hosts so gossip warning
         // messages do not flood the logs
@@ -2969,18 +2971,21 @@ public class TestNodeGroupService {
                 if (s.outboundRequestFailureCompletion.get() < serviceTargets.size()) {
                     // We expect at least one failure per service target, if we have less
                     // keep polling.
+                    this.host.log("Not converged yet: service %s on host %s has %d outbound request failures, which is lower than %d",
+                            s.getSelfLink(), s.getHost().getId(), s.outboundRequestFailureCompletion.get(), serviceTargets.size());
                     isConverged = false;
                     break;
                 }
             }
 
             if (isConverged) {
+                this.host.log("Done with stop hosts and verify queuing");
                 return;
             }
 
             Thread.sleep(250);
         }
-        ;
+
         throw new TimeoutException();
     }
 }
