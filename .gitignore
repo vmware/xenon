@@ -23,3 +23,7 @@ pom.xml.releaseBackup
 xenon-client/src/main/resources/*
 xenon-client/src/main/go/_vendor/src/*
 xenon-common/src/main/go/_vendor/src/*
+
+# vagrant
+vagrant/
+.vagrant/
