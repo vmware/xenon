@@ -750,30 +750,30 @@ public class VerificationHost extends ExampleServiceHost {
         return latestTaskState;
     }
 
-    public void createAndWaitSimpleDirectQuery(
+    public ServiceDocumentQueryResult createAndWaitSimpleDirectQuery(
             String fieldName, String fieldValue, long documentCount, long expectedResultCount)
             throws Throwable {
-        createAndWaitSimpleDirectQuery(this.getUri(), fieldName, fieldValue, documentCount,
+        return createAndWaitSimpleDirectQuery(this.getUri(), fieldName, fieldValue, documentCount,
                 expectedResultCount);
     }
 
-    public void createAndWaitSimpleDirectQuery(URI hostUri,
+    public ServiceDocumentQueryResult createAndWaitSimpleDirectQuery(URI hostUri,
             String fieldName, String fieldValue, long documentCount, long expectedResultCount)
             throws Throwable {
         QueryTask.QuerySpecification q = new QueryTask.QuerySpecification();
         q.query.setTermPropertyName(fieldName).setTermMatchValue(fieldValue);
-        createAndWaitSimpleDirectQuery(hostUri, q,
+        return createAndWaitSimpleDirectQuery(hostUri, q,
                 documentCount, expectedResultCount);
     }
 
-    public void createAndWaitSimpleDirectQuery(QueryTask.QuerySpecification spec,
+    public ServiceDocumentQueryResult createAndWaitSimpleDirectQuery(QueryTask.QuerySpecification spec,
             long documentCount, long expectedResultCount)
             throws Throwable {
-        createAndWaitSimpleDirectQuery(this.getUri(), spec,
+        return createAndWaitSimpleDirectQuery(this.getUri(), spec,
                 documentCount, expectedResultCount);
     }
 
-    public void createAndWaitSimpleDirectQuery(URI hostUri,
+    public ServiceDocumentQueryResult createAndWaitSimpleDirectQuery(URI hostUri,
             QueryTask.QuerySpecification spec, long documentCount, long expectedResultCount)
             throws Throwable {
         long start = Utils.getNowMicrosUtc();
@@ -800,6 +800,7 @@ public class VerificationHost extends ExampleServiceHost {
         double thpt = documentCount / delta;
         log("Document count: %d, Expected match count: %d, Documents / sec: %f",
                 documentCount, expectedResultCount, thpt);
+        return task.results;
     }
 
     public void validatePermanentServiceDocumentDeletion(String linkPrefix, long count,
