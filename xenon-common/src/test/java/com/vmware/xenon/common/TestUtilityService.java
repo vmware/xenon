@@ -315,7 +315,7 @@ public class TestUtilityService extends BasicReusableHostTestCase {
 
         // first verify that service that do not explicitly use the setAvailable method,
         // appear available. Both a factory and a child service
-        this.host.waitForServiceAvailable(factoryURI, null);
+        this.host.waitForServiceAvailable(factoryURI);
 
         // expect 200 from /factory/<child>/available
         TestContext ctx = testCreate(states.size());

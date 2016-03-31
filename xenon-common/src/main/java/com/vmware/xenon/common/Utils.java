@@ -58,6 +58,7 @@ import com.vmware.xenon.common.ServiceDocumentDescription.PropertyDescription;
 import com.vmware.xenon.common.ServiceDocumentDescription.PropertyIndexingOption;
 import com.vmware.xenon.common.ServiceDocumentDescription.PropertyUsageOption;
 import com.vmware.xenon.common.ServiceDocumentDescription.TypeName;
+import com.vmware.xenon.common.ServiceHost.ServiceHostState;
 import com.vmware.xenon.common.SystemHostInfo.OsFamily;
 import com.vmware.xenon.common.logging.StackAwareLogRecord;
 import com.vmware.xenon.common.serialization.BufferThreadLocal;
@@ -373,8 +374,17 @@ public class Utils {
         Logger.getAnonymousLogger().warning(String.format(fmt, args));
     }
 
-    private static AtomicLong prevTime = new AtomicLong();
-    private static long timeComparisonEpsilonMicros = TimeUnit.SECONDS.toMicros(120);
+    private static AtomicLong PREVIOUS_TIME_VALUE = new AtomicLong();
+    private static long TIME_COMPARISON_EPSILON_MICROS = initializeTimeEpsilon();
+    public static final String PROPERTY_NAME_TIME_COMPARISON = "timeComparisonEpsilonMicros";
+
+    private static long initializeTimeEpsilon() {
+        Long l = Long.getLong(Utils.PROPERTY_NAME_PREFIX + PROPERTY_NAME_TIME_COMPARISON);
+        if (l == null) {
+            l = ServiceHostState.DEFAULT_OPERATION_TIMEOUT_MICROS;
+        }
+        return l;
+    }
 
     /**
      * Return wall clock time, in microseconds since Unix Epoch (1/1/1970 UTC midnight). This
@@ -385,13 +395,13 @@ public class Utils {
      */
     public static long getNowMicrosUtc() {
         long now = System.currentTimeMillis() * 1000;
-        long time = prevTime.getAndIncrement();
+        long time = PREVIOUS_TIME_VALUE.getAndIncrement();
 
         // Only set time if current time is greater than our stored time.
         if (now > time) {
             // This CAS can fail; getAndIncrement() ensures no value is returned twice.
-            prevTime.compareAndSet(time + 1, now);
-            return prevTime.getAndIncrement();
+            PREVIOUS_TIME_VALUE.compareAndSet(time + 1, now);
+            return PREVIOUS_TIME_VALUE.getAndIncrement();
         }
 
         return time;
@@ -489,14 +499,6 @@ public class Utils {
         }
 
         return jo;
-    }
-
-    public static void setTimeComparisonEpsilonMicros(long micros) {
-        timeComparisonEpsilonMicros = micros;
-    }
-
-    public static long getTimeComparisonEpsilonMicros() {
-        return timeComparisonEpsilonMicros;
     }
 
     public static String validateServiceOption(EnumSet<ServiceOption> options,
@@ -940,6 +942,40 @@ public class Utils {
         }
 
         return result;
+    }
+
+    /**
+     * Resets comparison value from default or global property
+     */
+    public static void resetTimeComparisonEpsilonMicros() {
+        TIME_COMPARISON_EPSILON_MICROS = initializeTimeEpsilon();
+    }
+
+    /**
+     * Sets the time interval, in microseconds, for replicated document time comparisons.
+     */
+    public static void setTimeComparisonEpsilonMicros(long micros) {
+        TIME_COMPARISON_EPSILON_MICROS = micros;
+    }
+
+    /**
+     * Gets the time comparison interval, or epsilon.
+     * See {@link setTimeComparisonEpsilonMicros}
+     * @return
+     */
+    public static long getTimeComparisonEpsilonMicros() {
+        return TIME_COMPARISON_EPSILON_MICROS;
+    }
+
+    /**
+    * Compares a time value with current time. Both time values are in micros since epoch.
+    * Since we can not assume the time came from the same node, we use the concept of a
+    * time epsilon: any two time values within epsilon are considered too close to
+    * globally order in respect to each other and this method will return true.
+    */
+    public static boolean isWithinTimeComparisonEpsilon(long timeMicros) {
+        long now = Utils.getNowMicrosUtc();
+        return Math.abs(timeMicros - now) < TIME_COMPARISON_EPSILON_MICROS;
     }
 
 }

@@ -449,13 +449,13 @@ public class MigrationTaskService extends StatefulService {
             Operation destinationOp = new Operation()
                     .setReferer(getUri())
                     .setCompletion(destinationCheckHandler);
-            NodeGroupUtils.checkConvergenceOfRemoteNodegroup(getHost(), currentState.sourceNodeGroupReference, destinationOp);
+            NodeGroupUtils.checkConvergence(getHost(), currentState.sourceNodeGroupReference, destinationOp);
         };
 
         Operation sourceOp = new Operation()
                 .setCompletion(sourceCheckHandler)
                 .setReferer(getUri());
-        NodeGroupUtils.checkConvergenceOfRemoteNodegroup(getHost(), currentState.sourceNodeGroupReference, sourceOp);
+        NodeGroupUtils.checkConvergence(getHost(), currentState.sourceNodeGroupReference, sourceOp);
     }
 
     private void scheduleWaitUntilNodeGroupsAreStable(State currentState, int allowedConvergenceChecks, Runnable onSuccess) {

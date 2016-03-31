@@ -349,6 +349,7 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
         response.isLocalHostOwner = response.ownerNodeId.equals(getHost().getId());
         response.ownerNodeGroupReference = closest.groupReference;
         response.selectedNodes = closestNodes.values();
+        response.membershipUpdateTimeMicros = localState.membershipUpdateTimeMicros;
     }
 
     private void broadcast(Operation op, SelectAndForwardRequest req,

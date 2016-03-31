@@ -1243,6 +1243,18 @@ public class TestNodeGroupService {
                 this.host.scheduleSynchronizationIfAutoSyncDisabled(this.replicationNodeSelector);
                 this.host.waitForReplicatedFactoryServiceAvailable(
                         this.host.getPeerServiceUri(this.replicationTargetFactoryLink));
+
+                // for code coverage, verify the convenience method on the host also reports available
+                TestContext ctx = this.host.testCreate(1);
+                VerificationHost peerHost = this.host.getPeerHost();
+                peerHost.checkReplicatedServiceAvailable((o, e) -> {
+                    if (e != null) {
+                        ctx.failIteration(e);
+                        return;
+                    }
+                    ctx.completeIteration();
+                }, this.replicationTargetFactoryLink);
+                ctx.await();
             }
 
             Map<String, ExampleServiceState> childStates = doExampleFactoryPostReplicationTest(

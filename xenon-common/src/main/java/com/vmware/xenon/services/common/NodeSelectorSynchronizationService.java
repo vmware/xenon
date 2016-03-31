@@ -165,6 +165,7 @@ public class NodeSelectorSynchronizationService extends StatelessService {
         }
 
         ServiceDocument bestPeerRsp = null;
+        boolean incrementEpoch = false;
 
         TreeMap<Long, List<ServiceDocument>> syncRspsPerEpoch = new TreeMap<>();
         Map<URI, ServiceDocument> peerStates = new HashMap<>();
@@ -191,6 +192,10 @@ public class NodeSelectorSynchronizationService extends StatelessService {
                 syncRspsPerEpoch.put(peerState.documentEpoch, statesForEpoch);
             }
             statesForEpoch.add(peerState);
+
+            if (!request.ownerNodeId.equals(peerState.documentOwner)) {
+                incrementEpoch = true;
+            }
         }
 
         // As part of synchronization we need to detect what peer services do not have the best state.
@@ -207,8 +212,6 @@ public class NodeSelectorSynchronizationService extends StatelessService {
             }
             peerStates.put(remotePeerService, new ServiceDocument());
         }
-
-        boolean incrementEpoch = false;
 
         if (!syncRspsPerEpoch.isEmpty()) {
             List<ServiceDocument> statesForHighestEpoch = syncRspsPerEpoch.get(syncRspsPerEpoch
@@ -267,10 +270,6 @@ public class NodeSelectorSynchronizationService extends StatelessService {
             logInfo("Using best peer state %s", Utils.toJson(bestPeerRsp));
         }
 
-        // increment epoch if owner changed
-        if (bestPeerRsp.documentOwner != null) {
-            incrementEpoch = !request.ownerNodeId.equals(bestPeerRsp.documentOwner);
-        }
         bestPeerRsp.documentOwner = request.ownerNodeId;
 
         broadcastBestState(rsp.selectedNodes, peerStates, post, request, bestPeerRsp,
@@ -337,8 +336,18 @@ public class NodeSelectorSynchronizationService extends StatelessService {
 
             ServiceDocument clonedState = Utils.clone(bestPeerRsp);
             for (Entry<URI, ServiceDocument> entry : peerStates.entrySet()) {
-
                 URI peer = entry.getKey();
+                ServiceDocument peerState = entry.getValue();
+                if (!incrementEpoch
+                        && bestPeerRsp.getClass().equals(peerState.getClass())
+                        && ServiceDocument.equals(request.stateDescription, bestPeerRsp, peerState)) {
+                    if (this.isDetailedLoggingEnabled) {
+                        logInfo("Skipping %s, state identical with best state",
+                                peerState.documentSelfLink);
+                    }
+                    c.handle(null, null);
+                    continue;
+                }
 
                 URI targetFactoryUri = UriUtils.buildUri(peer, request.factoryLink);
                 Operation peerOp = Operation.createPost(targetFactoryUri)
