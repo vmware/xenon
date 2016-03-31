@@ -545,7 +545,9 @@ public class TestNodeGroupService {
 
         }
 
-        doNodeStopWithUpdates(exampleStatesPerSelfLink);
+        // Re-enable when this is fixed:
+        // https://www.pivotaltracker.com/story/show/115993543
+        // doNodeStopWithUpdates(exampleStatesPerSelfLink);
 
     }
 
@@ -574,7 +576,7 @@ public class TestNodeGroupService {
         this.host.log("Done with PATCH to %d example services", states.size());
     }
 
-    private void doNodeStopWithUpdates(Map<String, ExampleServiceState> exampleStatesPerSelfLink)
+    public void doNodeStopWithUpdates(Map<String, ExampleServiceState> exampleStatesPerSelfLink)
             throws Throwable {
         VerificationHost remainingHost = this.host.getPeerHost();
         Collection<VerificationHost> hostsToStop = new ArrayList<>(this.host.getInProcessHostMap()
