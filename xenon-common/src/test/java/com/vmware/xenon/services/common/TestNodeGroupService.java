@@ -75,6 +75,7 @@ import com.vmware.xenon.common.test.RoundRobinIterator;
 import com.vmware.xenon.common.test.TestContext;
 import com.vmware.xenon.common.test.TestProperty;
 import com.vmware.xenon.common.test.VerificationHost;
+import com.vmware.xenon.common.test.VerificationHost.WaitHandler;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
 import com.vmware.xenon.services.common.MinimalTestService.MinimalTestServiceErrorResponse;
 import com.vmware.xenon.services.common.NodeGroupService.JoinPeerRequest;
@@ -1245,6 +1246,8 @@ public class TestNodeGroupService {
                 this.host.scheduleSynchronizationIfAutoSyncDisabled(this.replicationNodeSelector);
                 this.host.waitForReplicatedFactoryServiceAvailable(
                         this.host.getPeerServiceUri(this.replicationTargetFactoryLink));
+
+                waitForReplicationFactoryConvergence();
             }
 
             Map<String, ExampleServiceState> childStates = doExampleFactoryPostReplicationTest(
@@ -1331,6 +1334,27 @@ public class TestNodeGroupService {
         } while (new Date().before(expiration));
 
         this.host.doNodeGroupStatsVerification(this.host.getNodeGroupMap());
+    }
+
+    private void waitForReplicationFactoryConvergence() throws Throwable {
+        // for code coverage, verify the convenience method on the host also reports available
+        WaitHandler wh = () -> {
+            boolean[] isReady = new boolean[1];
+            TestContext ctx = this.host.testCreate(1);
+            VerificationHost peerHost = this.host.getPeerHost();
+            peerHost.checkReplicatedServiceAvailable((o, e) -> {
+                if (e != null) {
+                    isReady[0] = false;
+                } else {
+                    isReady[0] = true;
+                }
+                ctx.completeIteration();
+            }, this.replicationTargetFactoryLink);
+            ctx.await();
+            return isReady[0];
+        };
+
+        this.host.waitFor("available check timeout for " + this.replicationTargetFactoryLink, wh);
     }
 
     private Set<String> verifyReplicatedServiceCountWithBroadcastQueries()

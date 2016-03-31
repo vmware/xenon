@@ -97,6 +97,12 @@ public interface NodeSelectorService extends Service {
          */
         public Collection<NodeState> selectedNodes;
 
+        /**
+         * Membership update time correlated with this response. This value is the
+         * max between all times reported by the peers and should be used only for
+         * relative comparisons
+         */
+        public long membershipUpdateTimeMicros;
 
         public static URI buildUriToOwner(SelectOwnerResponse rsp, String path, String query) {
             return UriUtils.buildUri(rsp.ownerNodeGroupReference.getScheme(),

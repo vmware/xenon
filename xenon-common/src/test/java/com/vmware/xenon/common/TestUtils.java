@@ -14,6 +14,7 @@
 package com.vmware.xenon.common;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
@@ -43,6 +44,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.logging.Logger;
 
 import com.google.gson.reflect.TypeToken;
+
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -132,6 +134,35 @@ public class TestUtils {
                 String.format(
                         "Binary serializations per second: %f, iterations: %d, byte count: %d",
                         thpt, count, byteCount));
+    }
+
+    @Test
+    public void setAndGetTimeComparisonEpsilon() {
+        long l = Utils.getTimeComparisonEpsilonMicros();
+        assertTrue(l > TimeUnit.SECONDS.toMicros(1));
+        l = 41;
+        // implicitly set epsilon through JVM property
+        System.setProperty(Utils.PROPERTY_NAME_PREFIX +
+                Utils.PROPERTY_NAME_TIME_COMPARISON, "" + l);
+        Utils.resetTimeComparisonEpsilonMicros();
+        long k = Utils.getTimeComparisonEpsilonMicros();
+        assertEquals(k, l);
+        // explicitly set epsilon
+        l = 45;
+        Utils.setTimeComparisonEpsilonMicros(l);
+        k = Utils.getTimeComparisonEpsilonMicros();
+        assertEquals(k, l);
+    }
+
+    @Test
+    public void isWithinTimeComparisonEpsilon() {
+        Utils.setTimeComparisonEpsilonMicros(TimeUnit.SECONDS.toMicros(10));
+        // check a value within about a millisecond from now
+        long l = Utils.getNowMicrosUtc() + 1000;
+        assertTrue(Utils.isWithinTimeComparisonEpsilon(l));
+        // check a value days from now
+        l = Utils.getNowMicrosUtc() + TimeUnit.DAYS.toMicros(2);
+        assertFalse(Utils.isWithinTimeComparisonEpsilon(l));
     }
 
     @Test

@@ -561,10 +561,34 @@ public class UriUtils {
         return u;
     }
 
+    /**
+     * Broadcasts the request to the service on all nodes associated with the node selector group.
+     * If the node selector is using limited replication, use the broadcast method that requires a
+     * selection key, instead of this one.
+     */
     public static URI buildBroadcastRequestUri(URI targetService, String selectorPath) {
         URI u = UriUtils.buildUri(targetService, UriUtils.buildUriPath(selectorPath,
                 ServiceUriPaths.SERVICE_URI_SUFFIX_FORWARDING));
         u = UriUtils.extendUriWithQuery(u, FORWARDING_URI_PARAM_NAME_PATH,
+                targetService.getPath(),
+                FORWARDING_URI_PARAM_NAME_TARGET,
+                ForwardingTarget.ALL.toString());
+        return u;
+    }
+
+    /**
+     * Broadcasts the request to the service on all nodes associated with the node selector group,
+     * using the selection key to pick the nodes. This is applicable for node selectors with limited
+     * replication.
+     */
+    public static URI buildBroadcastRequestUri(URI targetService,
+            String selectorPath, String selectionKey) {
+        URI u = UriUtils.buildUri(targetService, UriUtils.buildUriPath(selectorPath,
+                ServiceUriPaths.SERVICE_URI_SUFFIX_FORWARDING));
+        u = UriUtils.extendUriWithQuery(u,
+                FORWARDING_URI_PARAM_NAME_KEY,
+                selectionKey,
+                FORWARDING_URI_PARAM_NAME_PATH,
                 targetService.getPath(),
                 FORWARDING_URI_PARAM_NAME_TARGET,
                 ForwardingTarget.ALL.toString());

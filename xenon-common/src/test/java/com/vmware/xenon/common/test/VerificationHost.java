@@ -90,7 +90,6 @@ import com.vmware.xenon.services.common.ExampleService;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
 import com.vmware.xenon.services.common.ExampleServiceHost;
 import com.vmware.xenon.services.common.MinimalTestService.MinimalTestServiceErrorResponse;
-import com.vmware.xenon.services.common.NodeGroupBroadcastResponse;
 import com.vmware.xenon.services.common.NodeGroupService;
 import com.vmware.xenon.services.common.NodeGroupService.JoinPeerRequest;
 import com.vmware.xenon.services.common.NodeGroupService.NodeGroupConfig;
@@ -1300,23 +1299,30 @@ public class VerificationHost extends ExampleServiceHost {
     }
 
     public void waitForReplicatedFactoryServiceAvailable(URI u) throws Throwable {
-        // always use the default selector for factories, since a factory owner can be assigned
-        // on any node.
-        waitForServiceAvailable(u, ServiceUriPaths.DEFAULT_NODE_SELECTOR);
+        waitFor("replicated available check time out for " + u, () -> {
+            boolean[] isReady = new boolean[1];
+            TestContext ctx = testCreate(1);
+            NodeGroupUtils.checkServiceAvailability((o, e) -> {
+                if (e != null) {
+                    isReady[0] = false;
+                    ctx.completeIteration();
+                    return;
+                }
+
+                isReady[0] = true;
+                ctx.completeIteration();
+            }, this, u, ServiceUriPaths.DEFAULT_NODE_SELECTOR);
+            ctx.await();
+            return isReady[0];
+        });
     }
 
-    public void waitForServiceAvailable(URI u, String selectorPath) throws Throwable {
-        Date exp = getTestExpiration();
+    public void waitForServiceAvailable(URI u) throws Throwable {
         boolean[] isReady = new boolean[1];
         log("Starting /available check on %s", u);
-        while (new Date().before(exp)) {
+        waitFor("available check timeout for " + u, () -> {
             TestContext ctx = testCreate(1);
             URI available = UriUtils.buildAvailableUri(u);
-            if (selectorPath != null) {
-                // we are in multiple node mode, create a broadcast URI since replicated
-                // factories will only be marked available on one node, the owner for the factory
-                available = UriUtils.buildBroadcastRequestUri(available, selectorPath);
-            }
             Operation get = Operation.createGet(available).setCompletion((o, e) -> {
                 if (e != null) {
                     // not ready
@@ -1324,33 +1330,19 @@ public class VerificationHost extends ExampleServiceHost {
                     ctx.completeIteration();
                     return;
                 }
-
-                if (selectorPath == null) {
-                    isReady[0] = true;
-                    ctx.completeIteration();
-                    return;
-                }
-
-                NodeGroupBroadcastResponse rsp = o.getBody(NodeGroupBroadcastResponse.class);
-                // we expect at least node to NOT return failure, when its factory is ready
-                isReady[0] = rsp.failures.size() < rsp.availableNodeCount;
+                isReady[0] = true;
                 ctx.completeIteration();
+                return;
             });
             send(get);
             ctx.await();
 
             if (isReady[0]) {
                 log("%s /available returned success", get.getUri());
-                return;
+                return true;
             }
-
-            Thread.sleep(getMaintenanceIntervalMicros() / 1000);
-        }
-
-        if (new Date().after(exp)) {
-            throw new TimeoutException();
-        }
-
+            return false;
+        });
     }
 
     public <T> Map<URI, T> doFactoryChildServiceStart(

@@ -235,7 +235,7 @@ public abstract class FactoryService extends StatelessService {
                         return;
                     }
                     processChildQueryPage(UriUtils.buildUri(queryFactoryUri, rsp.nextPageLink),
-                            queryTask, parentOperation);
+                            queryTask, parentOperation, true);
                 });
 
         sendRequest(queryPost);
@@ -291,7 +291,8 @@ public abstract class FactoryService extends StatelessService {
     /**
      * Retrieves a page worth of results for child service links and restarts them
      */
-    private void processChildQueryPage(URI queryPage, QueryTask queryTask, Operation parentOp) {
+    private void processChildQueryPage(URI queryPage, QueryTask queryTask, Operation parentOp,
+            boolean verifyOwner) {
         if (queryPage == null) {
             parentOp.complete();
             return;
@@ -299,6 +300,11 @@ public abstract class FactoryService extends StatelessService {
 
         if (getHost().isStopping()) {
             parentOp.fail(new CancellationException());
+            return;
+        }
+
+        if (verifyOwner && hasOption(ServiceOption.REPLICATION)) {
+            verifySynchronizationOwner(queryPage, queryTask, parentOp);
             return;
         }
 
@@ -354,7 +360,7 @@ public abstract class FactoryService extends StatelessService {
             URI nextQueryPage = rsp.nextPageLink == null ? null : UriUtils.buildUri(
                     queryPage, rsp.nextPageLink);
 
-            processChildQueryPage(nextQueryPage, queryTask, parentOp);
+            processChildQueryPage(nextQueryPage, queryTask, parentOp, true);
         };
 
         for (String link : rsp.documentLinks) {
@@ -828,6 +834,46 @@ public abstract class FactoryService extends StatelessService {
             }
 
             synchronizeChildServicesAsOwner(maintOp);
+        });
+
+        getHost().selectOwner(this.nodeSelectorLink, this.getSelfLink(), selectOwnerOp);
+    }
+
+    /**
+     * Invoked per query result page to check if should continue with synchronization.
+     * Node group might have changed and we might no longer be the owner.
+     *
+     * This check is mostly for optimization: By interrupting synchronization
+     * when a new owner is selected for this factory self link we avoid collision of PUT/POSTs
+     * on the child service, from two different factories synchronizing it. In theory, its benign, since
+     * the child should reject anything with the wrong epoch.
+     *
+     * The correctness issue is that the stateless factory is not using the default consensus approach
+     * of propose, learn, decide before it kicks of synchronization. It relies on the node group selection
+     * to produce the same owner, across all nodes, which happens only when the group is stable
+     * This should be replaced with a "synchronization" task and a POST to a dedicated synchronization
+     * factory in the future
+     *
+     * https://www.pivotaltracker.com/story/show/116784577
+     *
+     */
+    private void verifySynchronizationOwner(URI queryPage, QueryTask queryTask, Operation parentOp) {
+        OperationContext opContext = OperationContext.getOperationContext();
+        Operation selectOwnerOp = parentOp.clone().setExpiration(Utils.getNowMicrosUtc()
+                + getHost().getOperationTimeoutMicros());
+        selectOwnerOp.setCompletion((o, e) -> {
+            OperationContext.restoreOperationContext(opContext);
+            if (e != null) {
+                parentOp.fail(e);
+                return;
+            }
+            SelectOwnerResponse rsp = o.getBody(SelectOwnerResponse.class);
+            if (rsp.isLocalHostOwner == false) {
+                logWarning("No longer owner, aborting synch. New owner %s", rsp.ownerNodeId);
+                parentOp.complete();
+                return;
+            }
+            processChildQueryPage(queryPage, queryTask, parentOp, false);
         });
 
         getHost().selectOwner(this.nodeSelectorLink, this.getSelfLink(), selectOwnerOp);
