@@ -2,6 +2,19 @@
 
 ## 0.7.6-SNAPSHOT
 
+* Add ServiceHost.checkFactoryAvailable and
+  NodeGroupUtils.checkServiceAvailability convenience methods
+  that use broadcast GET requests to all peers, to the service
+  /available suffix, and return success if at least one peer
+  reports status OK. This is useful for tests and production
+  code that wants to determine if factory synchronization is
+  complete, either on initial node start or after node changes
+
+* Add MigrationTaskService, a task that can synchronize state
+  between two node groups, for a given factory. Used as part
+  of the "blue/green" live upgrade procedure. See wiki for
+  multi node live upgrade details
+
 * Add userGroupLinks as a field in UserService
 
 * Remove TypeName.ARRAY and use TypeName.COLLECTION instead

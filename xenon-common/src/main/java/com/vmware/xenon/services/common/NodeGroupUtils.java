@@ -18,9 +18,12 @@ import java.util.ArrayList;
 import java.util.List;
 
 import com.vmware.xenon.common.Operation;
+import com.vmware.xenon.common.Operation.CompletionHandler;
 import com.vmware.xenon.common.OperationJoin;
 import com.vmware.xenon.common.OperationJoin.JoinedCompletionHandler;
+import com.vmware.xenon.common.Service;
 import com.vmware.xenon.common.ServiceHost;
+import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
 import com.vmware.xenon.services.common.NodeGroupService.CheckConvergenceRequest;
 import com.vmware.xenon.services.common.NodeGroupService.CheckConvergenceResponse;
@@ -28,8 +31,68 @@ import com.vmware.xenon.services.common.NodeGroupService.NodeGroupState;
 
 public class NodeGroupUtils {
 
-    public static void checkConvergence(ServiceHost host, NodeGroupState ngs, Operation parentOp) {
+    /**
+     * Issues a broadcast GET to service/available on all nodes and returns success if at least one
+     * service replied with status OK
+     */
+    public static void checkServiceAvailability(CompletionHandler ch, Service s) {
+        checkServiceAvailability(ch, s.getHost(), s.getSelfLink(), s.getPeerNodeSelectorPath());
+    }
 
+    /**
+     * Issues a broadcast GET to service/available on all nodes and returns success if at least one
+     * service replied with status OK
+     */
+    public static void checkServiceAvailability(CompletionHandler ch, ServiceHost host,
+            String link, String selectorPath) {
+        if (link == null) {
+            throw new IllegalArgumentException("link is required");
+        }
+
+        URI service = UriUtils.buildUri(host, link);
+        checkServiceAvailability(ch, host, service, selectorPath);
+    }
+
+    /**
+     * Issues a broadcast GET to service/available on all nodes and returns success if at least one
+     * service replied with status OK
+     */
+    public static void checkServiceAvailability(CompletionHandler ch, ServiceHost host,
+            URI service,
+            String selectorPath) {
+        URI available = UriUtils.buildAvailableUri(service);
+
+        if (selectorPath == null) {
+            throw new IllegalArgumentException("selectorPath is required");
+        }
+        // we are in multiple node mode, create a broadcast URI since replicated
+        // factories will only be marked available on one node, the owner for the factory
+        available = UriUtils.buildBroadcastRequestUri(available, selectorPath, service.getPath());
+
+        Operation get = Operation.createGet(available).setCompletion((o, e) -> {
+            if (e != null) {
+                // the broadcast request itself failed
+                ch.handle(null, e);
+                return;
+            }
+
+            NodeGroupBroadcastResponse rsp = o.getBody(NodeGroupBroadcastResponse.class);
+            // we expect at least one node to not return failure, when its factory is ready
+            if (rsp.failures.size() < rsp.availableNodeCount) {
+                ch.handle(o, null);
+                return;
+            }
+
+            ch.handle(null, new IllegalStateException("All services on all nodes not available"));
+        });
+        host.sendRequest(get.setReferer(host.getPublicUri()));
+    }
+
+    /**
+     * Issues a convergence request to the node group service on all peers and returns success
+     * if all nodes confirm that they are converged (in terms of last membership update)
+     */
+    public static void checkConvergence(ServiceHost host, NodeGroupState ngs, Operation parentOp) {
         NodeState self = ngs.nodes.get(host.getId());
         if (self == null) {
             parentOp.fail(new IllegalStateException("Self node is required"));
@@ -40,11 +103,11 @@ public class NodeGroupUtils {
             parentOp.complete();
             return;
         }
-
-        checkConvergenceOfRemoteNodegroup(host, ngs, parentOp);
+        checkConvergenceAcrossPeers(host, ngs, parentOp);
     }
 
-    public static void checkConvergenceOfRemoteNodegroup(ServiceHost host, NodeGroupState ngs, Operation parentOp) {
+    private static void checkConvergenceAcrossPeers(ServiceHost host, NodeGroupState ngs,
+            Operation parentOp) {
         JoinedCompletionHandler joinedCompletion = (ops, failures) -> {
             if (failures != null) {
                 parentOp.fail(new IllegalStateException("At least one peer failed convergence"));
@@ -85,18 +148,17 @@ public class NodeGroupUtils {
         OperationJoin.create(ops).setCompletion(joinedCompletion).sendWith(host);
     }
 
-    public static void checkConvergenceOfRemoteNodegroup(ServiceHost host, URI nodegroupReference, Operation parentOp) {
+    public static void checkConvergence(ServiceHost host, URI nodegroupReference, Operation parentOp) {
         Operation.createGet(nodegroupReference)
-            .setReferer(parentOp.getReferer())
-            .setCompletion((o, t) -> {
-                if (t != null) {
-                    parentOp.fail(t);
-                    return;
-                }
-                NodeGroupState ngs = o.getBody(NodeGroupState.class);
-                checkConvergenceOfRemoteNodegroup(host, ngs, parentOp);
-            })
-            .sendWith(host);
+                .setReferer(parentOp.getReferer())
+                .setCompletion((o, t) -> {
+                    if (t != null) {
+                        parentOp.fail(t);
+                        return;
+                    }
+                    NodeGroupState ngs = o.getBody(NodeGroupState.class);
+                    checkConvergenceAcrossPeers(host, ngs, parentOp);
+                }).sendWith(host);
     }
 
     /**

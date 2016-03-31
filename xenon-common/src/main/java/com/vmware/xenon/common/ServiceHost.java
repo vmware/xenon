@@ -103,6 +103,7 @@ import com.vmware.xenon.services.common.LuceneQueryTaskFactoryService;
 import com.vmware.xenon.services.common.NodeGroupFactoryService;
 import com.vmware.xenon.services.common.NodeGroupService.JoinPeerRequest;
 import com.vmware.xenon.services.common.NodeGroupService.NodeGroupState;
+import com.vmware.xenon.services.common.NodeGroupUtils;
 import com.vmware.xenon.services.common.NodeSelectorSynchronizationService.SynchronizePeersRequest;
 import com.vmware.xenon.services.common.NodeState;
 import com.vmware.xenon.services.common.ODataQueryService;
@@ -4213,12 +4214,31 @@ public class ServiceHost implements ServiceRequestSender {
         return s.getProcessingStage();
     }
 
+    /**
+     * Checks if the service associated with the supplied path is started
+     * and in processing stage available
+     */
     public boolean checkServiceAvailable(String servicePath) {
         Service s = this.findService(servicePath, true);
         if (s == null) {
             return false;
         }
         return s.getProcessingStage() == ProcessingStage.AVAILABLE;
+    }
+
+    /**
+     * Convenience method that uses a broadcast GET to the supplied
+     * service available suffix (/available). If at least one peer service responds
+     * with OK, the supplied completion handler will complete with success.
+     * See {@link NodeGroupUtils}
+     */
+    public void checkReplicatedServiceAvailable(CompletionHandler ch, String servicePath) {
+        Service s = this.findService(servicePath, true);
+        if (s == null) {
+            ch.handle(null, new IllegalStateException("service not found"));
+            return;
+        }
+        NodeGroupUtils.checkServiceAvailability(ch, s);
     }
 
     public SystemHostInfo getSystemInfo() {
@@ -4679,6 +4699,8 @@ public class ServiceHost implements ServiceRequestSender {
             if (this.synchronizationActiveServices.get(link) != null) {
                 // service actively synchronizing, do not re-schedule
                 log(Level.WARNING, "Skipping synch for service %s, already in progress", link);
+                // service can cancel a pending synchronization if it detects node group has
+                // changed since it started synchronization for the current epoch
                 continue;
             }
 
