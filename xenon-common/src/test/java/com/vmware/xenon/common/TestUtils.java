@@ -489,6 +489,12 @@ public class TestUtils {
 
         options = EnumSet.of(ServiceOption.OWNER_SELECTION);
         checkOptions(options, true);
+
+        options = EnumSet.of(ServiceOption.PERIODIC_MAINTENANCE, ServiceOption.ON_DEMAND_LOAD);
+        checkOptions(options, true);
+
+        options = EnumSet.of(ServiceOption.ON_DEMAND_LOAD);
+        checkOptions(options, false);
     }
 
     @Test

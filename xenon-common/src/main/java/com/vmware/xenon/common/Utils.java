@@ -519,6 +519,7 @@ public class Utils {
             antiReqs = EnumSet.of(ServiceOption.PERSISTENCE, ServiceOption.REPLICATION);
             break;
         case PERIODIC_MAINTENANCE:
+            antiReqs = EnumSet.of(ServiceOption.ON_DEMAND_LOAD);
             break;
         case PERSISTENCE:
             break;
@@ -541,6 +542,9 @@ public class Utils {
         case NONE:
             break;
         case UTILITY:
+            break;
+        case ON_DEMAND_LOAD:
+            antiReqs = EnumSet.of(ServiceOption.PERIODIC_MAINTENANCE);
             break;
         default:
             break;

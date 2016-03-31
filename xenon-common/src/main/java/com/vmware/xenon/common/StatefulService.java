@@ -1309,6 +1309,13 @@ public class StatefulService implements Service {
             toggleOption(ServiceOption.CONCURRENT_GET_HANDLING, true);
         }
 
+        if (option == ServiceOption.PERIODIC_MAINTENANCE && hasOption(ServiceOption
+                .ON_DEMAND_LOAD) || option == ServiceOption.ON_DEMAND_LOAD && hasOption
+                (ServiceOption.PERIODIC_MAINTENANCE)) {
+            throw new IllegalArgumentException("Service option PERIODIC_MAINTENANCE and " +
+                    "ON_DEMAND_LOAD cannot co-exists.");
+        }
+
         synchronized (this.context) {
             if (enable) {
                 this.context.options.add(option);
