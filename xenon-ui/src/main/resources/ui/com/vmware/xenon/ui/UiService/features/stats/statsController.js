@@ -33,7 +33,7 @@ angular.module('dcpDefault').controller('StatsController', ['$scope', 'StatsServ
                     },
                     transitionDuration: 500,
                     xAxis: {
-                        axisLabel: 'Miliseconds'
+                        axisLabel: 'Microseconds'
                     },
                     yAxis: {
                         axisLabel: 'Request #',

@@ -22,14 +22,17 @@
     <h2 class="section-header">Services</h2>
 
     <div ng-if="ctrl.documents.length > 0">
-        <table class="table table-striped">
-            <tr ng-repeat="result in ctrl.documents">
-                <td><a
-                        ng-href="{{baseUrl + uiBase + ctrl.documents[$index]}}/instanceHome">{{ctrl.documents[$index]}}</a>
-                </td>
-            </tr>
-        </table>
+        <paginator model="ctrl.documents" items-per-page="10" properties="{'baseUrl':baseUrl, 'uiBase':uiBase}">
+            <table class="table table-striped">
+                <tr ng-repeat="result in pageData">
+                    <td><a
+                            ng-href="{{properties.baseUrl + properties.uiBase + pageData[$index]}}/instanceHome">{{pageData[$index]}}</a>
+                    </td>
+                </tr>
+            </table>
+        </paginator>
     </div>
+
     <div ng-if="ctrl.documents.length == 0">
         <div class="zeroData">
             <span class="glyphicon glyphicon-info-sign"></span> No services exist.

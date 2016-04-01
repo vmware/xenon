@@ -5,7 +5,7 @@
 'use strict';
 /* App Module */
 var dcpDefault = angular.module('dcpDefault', ['ngRoute', 'ngResource', 'nvd3', 'json-tree',
-    'ngSanitize', 'MassAutoComplete', 'ui.bootstrap.datetimepicker']);
+    'ngSanitize', 'MassAutoComplete', 'ui.bootstrap.datetimepicker', 'xenon.ui.pagination']);
 
 dcpDefault.config(['$routeProvider', function ($routeProvider) {
     $routeProvider.
