@@ -56,8 +56,10 @@ The above command will compile the code, run checkstyle and run unit-tests.
 
 ### Contributing
 
-We welcome contributions and help with Xenon!  Up to date information regarding contributing to
-Xenon can be found in the project wiki at https://github.com/vmware/xenon/contributing
+We welcome contributions and help with Xenon!  If you wish to contribute code and you have not
+signed our contributor license agreement (CLA), our bot will update the issue when you open a
+[Pull Request](https://help.github.com/articles/creating-a-pull-request). For any questions about
+the CLA process, please refer to our [FAQ](https://cla.vmware.com/faq).
 
 ### Editing the code
 
