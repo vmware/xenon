@@ -18,7 +18,7 @@ export FOUND_GO
 export GOPATH
 export TMPDIR
 
-all: goversion deps verify
+all: goversion deps verify test
 
 ifneq ($(FOUND_GO),)
 verify: goversion goimports govet golint
@@ -35,6 +35,13 @@ deps:
 	fi;
 	$(GO) get -d github.com/golang/lint/golint
 	$(GO) get -d github.com/pborman/uuid
+	$(GO) get -d github.com/golang/glog
+	$(GO) get -d golang.org/x/net/context
+	$(GO) get -d github.com/pborman/uuid
+	$(GO) get -d golang.org/x/crypto/ssh
+	$(GO) get -d golang.org/x/crypto/ssh/testdata
+	$(GO) get -d github.com/golang/groupcache/singleflight
+	$(GO) get -d github.com/stretchr/testify/assert
 else
 deps:
 endif
@@ -48,18 +55,49 @@ endif
 
 goimports:
 	$(GO) install golang.org/x/tools/cmd/goimports
+	@echo checking go fmt...
+	@! $(GOVENDOR)/bin/goimports -d src 2>&1 | egrep -v '^$$'
 
 govet:
 	@if [ -w "$(shell $(GO) env GOTOOLDIR)" ] ; then \
 		echo "$(GO) install golang.org/x/tools/cmd/vet"; \
 		$(GO) install golang.org/x/tools/cmd/vet; \
 	fi;
+	@echo checking go vet...
+	@! $(GO) vet ./... 2>&1 | egrep -v '^$$'
 
 golint:
 	$(GO) install github.com/golang/lint/golint
+	@echo checking golint...
+	@$(GOVENDOR)/bin/golint ./... | sh -c '! grep -v comment'
+
+ifneq ($(FOUND_GO),)
+test:
+	$(GO) test $(TEST_OPTS) ./...
+else
+test:
+endif
+
+ifneq ($(FOUND_GO),)
+gobuild:
+	GOOS=linux $(GO) build -o bin/xenon-host-linux -pkgdir ./pkg xenon/cmd/xenongo
+	GOOS=darwin $(GO) build -o bin/xenon-host-darwin -pkgdir ./pkg xenon/cmd/xenongo
+else
+gobuild:
+endif
+
+ifneq ($(FOUND_GO),)
+package:
+	mkdir -p ../resources/linux/bin
+	mkdir -p ../resources/darwin/bin
+	cp bin/xenon-host-linux ../resources/linux/bin/xenon-host
+	cp bin/xenon-host-darwin ../resources/darwin/bin/xenon-host
+else
+package:
+endif
 
 clean:
-	rm -rf $(GOVENDOR)/pkg $(GOVENDOR)/bin
+	rm -rf pkg bin $(GOVENDOR)/pkg $(GOVENDOR)/bin ../resources/linux/xenon-host ../resources/darwin/xenon-host
 
 # For use by external tools such as emacs or for example:
 # GOPATH=$(make gopath) go get ...
