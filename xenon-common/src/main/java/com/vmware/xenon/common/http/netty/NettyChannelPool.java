@@ -400,6 +400,16 @@ public class NettyChannelPool {
 
                 if (future.isSuccess()) {
                     sendAfterConnect(future.channel(), contextFinal, request, group);
+
+                    // trigger pending requests
+                    synchronized (group) {
+                        for (Operation pendingRequest : group.pendingRequests) {
+                            contextFinal.setOperation(pendingRequest);
+                            pendingRequest.complete();
+                        }
+                        group.pendingRequests.clear();
+                    }
+
                 } else {
                     returnOrClose(contextFinal, true);
                     fail(request, future.cause());
