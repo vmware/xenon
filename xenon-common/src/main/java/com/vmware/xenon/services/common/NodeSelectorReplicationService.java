@@ -91,6 +91,28 @@ public class NodeSelectorReplicationService extends StatelessService {
             }
         }
 
+        String rplQuorumValue = outboundOp.getRequestHeader(Operation.REPLICATION_QUORUM_HEADER);
+        if (rplQuorumValue != null) {
+            try {
+                if (Operation.REPLICATION_QUORUM_HEADER_VALUE_ALL.equals(rplQuorumValue)) {
+                    successThreshold = eligibleMemberCount;
+                } else {
+                    successThreshold = Integer.parseInt(rplQuorumValue);
+                }
+                if (successThreshold > eligibleMemberCount) {
+                    String errorMsg = String.format(
+                            "Requested quorum %d is larger than member count %d",
+                            successThreshold, eligibleMemberCount);
+                    throw new IllegalArgumentException(errorMsg);
+                }
+                failureThreshold = eligibleMemberCount - successThreshold;
+                outboundOp.getRequestHeaders().remove(Operation.REPLICATION_QUORUM_HEADER);
+            } catch (Throwable e) {
+                outboundOp.fail(e);
+                return;
+            }
+        }
+
         final int successThresholdFinal = successThreshold;
         final int failureThresholdFinal = failureThreshold;
 

@@ -2,6 +2,13 @@
 
 ## 0.7.6-SNAPSHOT
 
+* Add replication request header that allows the replication
+  level to be set per operation. Useful for scenarios that
+  require all peer nodes to see an update, independent of the
+  membership quorum associated with the node group. For example
+  all authorization related updates should replicate to all
+  peers, before the operation completes
+
 * Switch consistent hashing algorithm used by the default
   node selector, to Murmur3 32bit, instead of SHA1. Much less
   memory use, faster, leaner. This is an implementation detail,

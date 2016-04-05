@@ -1095,6 +1095,20 @@ public class StatefulService implements Service {
             return;
         }
 
+        if (failure != null && request.hasBody()) {
+            ServiceErrorResponse rsp = request.clone().getBody(ServiceErrorResponse.class);
+            // only proceed with synchronization if a retry is requested
+            if (rsp != null && rsp.details != null) {
+                if (!rsp.details.contains(ErrorDetail.SHOULD_RETRY)) {
+                    failRequest(request, failure);
+                    return;
+                }
+            } else {
+                failRequest(request, failure);
+                return;
+            }
+        }
+
         // clone the request so we can update its body without affecting the client request
         Operation clonedRequest = request.clone();
         boolean wasOwner = hasOption(ServiceOption.DOCUMENT_OWNER);

@@ -28,6 +28,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Objects;
+import java.util.Random;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentSkipListMap;
@@ -840,6 +841,10 @@ public class TestNodeGroupService {
                 this.exampleStateConvergenceChecker,
                 childStates);
 
+        long now = Utils.getNowMicrosUtc();
+
+        validatePerOperationReplicationQuorum(childStates, now);
+
         // expect failure, since we will stop some hosts, break quorum
         this.expectFailure = true;
 
@@ -889,6 +894,63 @@ public class TestNodeGroupService {
                 this.exampleStateUpdateBodySetter,
                 this.exampleStateConvergenceChecker,
                 childStates);
+    }
+
+    private void validatePerOperationReplicationQuorum(Map<String, ExampleServiceState> childStates,
+            long now) throws Throwable {
+        Random r = new Random();
+        // issue a patch, with per operation quorum set, verify it applied
+        for (Entry<String, ExampleServiceState> e : childStates.entrySet()) {
+            TestContext ctx = this.host.testCreate(1);
+            ExampleServiceState body = e.getValue();
+            body.counter = now;
+            Operation patch = Operation.createPatch(this.host.getPeerServiceUri(e.getKey()))
+                    .setCompletion(ctx.getCompletion())
+                    .setBody(body);
+
+            // add an explicit replication count header, using either the "all" value, or an
+            // explicit node count
+            if (r.nextBoolean()) {
+                patch.addRequestHeader(Operation.REPLICATION_QUORUM_HEADER,
+                        Operation.REPLICATION_QUORUM_HEADER_VALUE_ALL);
+            } else {
+                patch.addRequestHeader(Operation.REPLICATION_QUORUM_HEADER,
+                        this.nodeCount + "");
+            }
+
+            this.host.send(patch);
+            this.host.testWait(ctx);
+            // Go to each peer, directly to their index, and verify update is present. This is not
+            // proof the per operation quorum was applied "synchronously", before the response
+            // was sent, but over many runs, if there is a race or its applied asynchronously,
+            // we will see failures
+            for (URI hostBaseUri : this.host.getNodeGroupMap().keySet()) {
+                URI indexUri = UriUtils.buildUri(hostBaseUri, ServiceUriPaths.CORE_DOCUMENT_INDEX);
+                indexUri = UriUtils.buildIndexQueryUri(indexUri,
+                        e.getKey(), true, false, ServiceOption.PERSISTENCE);
+
+                ExampleServiceState afterState = this.host.getServiceState(null,
+                        ExampleServiceState.class, indexUri);
+                assertEquals(body.counter, afterState.counter);
+            }
+        }
+
+        this.host.toggleNegativeTestMode(true);
+        // verify that if we try to set per operation quorum too high, request will fail
+        for (Entry<String, ExampleServiceState> e : childStates.entrySet()) {
+            TestContext ctx = this.host.testCreate(1);
+            ExampleServiceState body = e.getValue();
+            body.counter = now;
+            Operation patch = Operation.createPatch(this.host.getPeerServiceUri(e.getKey()))
+                    .addRequestHeader(Operation.REPLICATION_QUORUM_HEADER,
+                            (this.nodeCount * 2) + "")
+                    .setCompletion(ctx.getExpectedFailureCompletion())
+                    .setBody(body);
+            this.host.send(patch);
+            this.host.testWait(ctx);
+            break;
+        }
+        this.host.toggleNegativeTestMode(false);
     }
 
     private void setOperationTimeoutMicros(long opTimeoutMicros) {
