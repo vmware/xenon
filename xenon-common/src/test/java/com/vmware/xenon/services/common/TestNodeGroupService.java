@@ -840,6 +840,10 @@ public class TestNodeGroupService {
                 this.exampleStateConvergenceChecker,
                 childStates);
 
+        long now = Utils.getNowMicrosUtc();
+
+        validatePerOperationReplicationQuorum(childStates, now);
+
         // expect failure, since we will stop some hosts, break quorum
         this.expectFailure = true;
 
@@ -889,6 +893,53 @@ public class TestNodeGroupService {
                 this.exampleStateUpdateBodySetter,
                 this.exampleStateConvergenceChecker,
                 childStates);
+    }
+
+    private void validatePerOperationReplicationQuorum(Map<String, ExampleServiceState> childStates,
+            long now) throws Throwable {
+        // issue a patch, with per operation quorum set, verify it applied
+        for (Entry<String, ExampleServiceState> e : childStates.entrySet()) {
+            TestContext ctx = this.host.testCreate(1);
+            ExampleServiceState body = e.getValue();
+            body.counter = now;
+            Operation patch = Operation.createPatch(this.host.getPeerServiceUri(e.getKey()))
+                    .addRequestHeader(Operation.REPLICATION_QUORUM_HEADER, this.nodeCount + "")
+                    .setCompletion(ctx.getCompletion())
+                    .setBody(body);
+            this.host.send(patch);
+            this.host.testWait(ctx);
+            // Go to a random node, directly to the index, and verify update is present. This is not
+            // proof the per operation quorum was applied "synchronously", before the response
+            // was sent, but over many runs, if there is a race or its applied asynchronously,
+            // we will see failures
+            URI indexUri = UriUtils.buildDocumentQueryUri(this.host.getPeerHost(),
+                    e.getKey(), true, false, ServiceOption.PERSISTENCE);
+            ExampleServiceState afterState = this.host.getServiceState(null,
+                    ExampleServiceState.class, indexUri);
+            assertEquals(body.counter, afterState.counter);
+        }
+
+        if (childStates.size() > 0) {
+            // TODO REMOVE BEFORE CHECKIN
+            return;
+        }
+
+        this.host.toggleNegativeTestMode(true);
+        // verify that if we try to set per operation quorum too high, request will fail
+        for (Entry<String, ExampleServiceState> e : childStates.entrySet()) {
+            TestContext ctx = this.host.testCreate(1);
+            ExampleServiceState body = e.getValue();
+            body.counter = now;
+            Operation patch = Operation.createPatch(this.host.getPeerServiceUri(e.getKey()))
+                    .addRequestHeader(Operation.REPLICATION_QUORUM_HEADER,
+                            (this.nodeCount * 2) + "")
+                    .setCompletion(ctx.getExpectedFailureCompletion())
+                    .setBody(body);
+            this.host.send(patch);
+            this.host.testWait(ctx);
+            break;
+        }
+        this.host.toggleNegativeTestMode(false);
     }
 
     private void setOperationTimeoutMicros(long opTimeoutMicros) {
