@@ -1348,19 +1348,28 @@ public class TestNodeGroupService {
     }
 
     private void waitForReplicationFactoryConvergence() throws Throwable {
+
         // for code coverage, verify the convenience method on the host also reports available
         WaitHandler wh = () -> {
-            boolean[] isReady = new boolean[1];
             TestContext ctx = this.host.testCreate(1);
-            VerificationHost peerHost = this.host.getPeerHost();
-            peerHost.checkReplicatedServiceAvailable((o, e) -> {
+            boolean[] isReady = new boolean[1];
+            CompletionHandler ch = (o, e) -> {
                 if (e != null) {
                     isReady[0] = false;
                 } else {
                     isReady[0] = true;
                 }
                 ctx.completeIteration();
-            }, this.replicationTargetFactoryLink);
+            };
+
+            VerificationHost peerHost = this.host.getPeerHost();
+            if (peerHost == null) {
+                NodeGroupUtils.checkServiceAvailability(ch, this.host,
+                        this.host.getPeerServiceUri(this.replicationTargetFactoryLink),
+                        this.replicationNodeSelector);
+            } else {
+                peerHost.checkReplicatedServiceAvailable(ch, this.replicationTargetFactoryLink);
+            }
             ctx.await();
             return isReady[0];
         };
