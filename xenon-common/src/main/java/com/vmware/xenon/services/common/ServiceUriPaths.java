@@ -48,11 +48,10 @@ public class ServiceUriPaths {
 
     public static final String NODE_SELECTOR_PREFIX = CORE + "/node-selectors";
     public static final String DEFAULT_NODE_SELECTOR_NAME = "default";
-    public static final String SHA1_NODE_SELECTOR_NAME = "sha1-hash";
     public static final String DEFAULT_NODE_SELECTOR = NODE_SELECTOR_PREFIX + "/"
             + DEFAULT_NODE_SELECTOR_NAME;
-    public static final String SHA1_3X_NODE_SELECTOR = NODE_SELECTOR_PREFIX + "/"
-            + SHA1_NODE_SELECTOR_NAME + "-3x";
+    public static final String DEFAULT_3X_NODE_SELECTOR = NODE_SELECTOR_PREFIX + "/"
+            + DEFAULT_NODE_SELECTOR_NAME + "-3x";
 
     public static final String CORE_AUTH = CORE + "/auth";
     public static final String CORE_CREDENTIALS = CORE_AUTH + "/credentials";

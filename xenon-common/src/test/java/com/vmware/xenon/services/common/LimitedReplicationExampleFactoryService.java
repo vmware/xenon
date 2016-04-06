@@ -26,7 +26,7 @@ public class LimitedReplicationExampleFactoryService extends FactoryService {
 
     public LimitedReplicationExampleFactoryService() {
         super(ExampleServiceState.class);
-        super.setPeerNodeSelectorPath(ServiceUriPaths.SHA1_3X_NODE_SELECTOR);
+        super.setPeerNodeSelectorPath(ServiceUriPaths.DEFAULT_3X_NODE_SELECTOR);
     }
 
     @Override

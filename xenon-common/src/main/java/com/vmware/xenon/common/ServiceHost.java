@@ -1455,7 +1455,7 @@ public class ServiceHost implements ServiceRequestSender {
         startNodeSelectorPosts.add(startPost);
         nodeSelectorServices.add(new ConsistentHashingNodeSelectorService());
         startPost = Operation.createPost(UriUtils.buildUri(this,
-                ServiceUriPaths.SHA1_3X_NODE_SELECTOR));
+                ServiceUriPaths.DEFAULT_3X_NODE_SELECTOR));
         NodeSelectorState initialState = new NodeSelectorState();
         initialState.nodeGroupLink = ServiceUriPaths.DEFAULT_NODE_GROUP;
         // we start second node selector that does 3X replication only

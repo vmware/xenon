@@ -1291,7 +1291,7 @@ public class TestNodeGroupService {
     @Test
     public void replicationLimitedFactor() throws Throwable {
         this.replicationFactor = 3L;
-        this.replicationNodeSelector = ServiceUriPaths.SHA1_3X_NODE_SELECTOR;
+        this.replicationNodeSelector = ServiceUriPaths.DEFAULT_3X_NODE_SELECTOR;
         this.replicationTargetFactoryLink = LimitedReplicationExampleFactoryService.SELF_LINK;
         this.nodeCount = Math.max(5, this.nodeCount);
         doReplication();
