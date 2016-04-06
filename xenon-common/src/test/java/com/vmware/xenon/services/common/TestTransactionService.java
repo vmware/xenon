@@ -14,7 +14,6 @@
 package com.vmware.xenon.services.common;
 
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 import java.net.URI;
@@ -166,13 +165,17 @@ public class TestTransactionService extends BasicReusableHostTestCase {
         assertTrue(committed);
         countAccounts(null, this.accountCount);
 
-        // deposit 100 in each account in a single transaction, commit and verify balances
+        // deposit a different amount to each account in a single transaction, commit and verify balances
         txid = newTransaction();
-        depositToAccounts(txid, this.accountCount, 100.0);
+        TestContext ctx = testCreate(this.accountCount);
+        for (int i = 0; i < this.accountCount; i++) {
+            depositToAccount(txid, buildAccountId(i), i, ctx);
+        }
+        testWait(ctx);
         committed = commit(txid, this.accountCount);
         assertTrue(committed);
         for (int i = 0; i < this.accountCount; i++) {
-            verifyAccountBalance(null, buildAccountId(i), 100.0);
+            verifyAccountBalance(null, buildAccountId(i), i);
         }
 
         // delete ACCOUNT accounts in a single transaction, commit, query and verify count == 0
@@ -231,22 +234,16 @@ public class TestTransactionService extends BasicReusableHostTestCase {
 
         for (int i = 0; i < this.accountCount; i++) {
             String accountId = buildAccountId(i);
-            for (int j = 0; j <= i; j++) {
-                BankAccountServiceState account = getAccount(txids[j], accountId);
-                if (j != i) {
-                    assertNull(account);
-                    continue;
-                }
-                if (i % 2 == 0) {
-                    assertEquals(100.0, account.balance, 0);
-                } else {
-                    assertEquals(0, account.balance, 0);
-                }
+            BankAccountServiceState account = getAccount(txids[i], accountId);
+            if (i % 2 == 0) {
+                assertEquals(100.0, account.balance, 0);
+            } else {
+                assertEquals(0, account.balance, 0);
             }
         }
 
         for (int i = 0; i < this.accountCount; i++) {
-            int pendingOps = this.accountCount - i + 1;
+            int pendingOps = 2;
             if (i % 2 == 0) {
                 ++pendingOps;
             }
@@ -510,15 +507,6 @@ public class TestTransactionService extends BasicReusableHostTestCase {
             abort(transactionId, task.results.documentLinks.size());
         }
         assertEquals(expected, sum, 0);
-    }
-
-    private void depositToAccounts(String transactionId, int accounts, double amountToDeposit)
-            throws Throwable {
-        TestContext ctx = testCreate(accounts);
-        for (int i = 0; i < accounts; i++) {
-            depositToAccount(transactionId, buildAccountId(i), amountToDeposit, ctx);
-        }
-        testWait(ctx);
     }
 
     private void depositToAccount(String transactionId, String accountId, double amountToDeposit,
