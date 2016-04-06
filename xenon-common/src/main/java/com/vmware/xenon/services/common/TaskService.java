@@ -14,6 +14,7 @@
 package com.vmware.xenon.services.common;
 
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.ServiceDocument;
@@ -201,5 +202,26 @@ public abstract class TaskService<T extends TaskService.TaskServiceState>
         }
         task.taskInfo.stage = TaskState.TaskStage.FAILED;
         sendSelfPatch(task);
+    }
+
+    /**
+     * Send ourselves a PATCH that will advance to another step in the task workflow to the
+     * specified stage and substage.
+     *
+     * @param taskState the task's state to use for the PATCH
+     * @param stage the next stage to advance to
+     * @param setSubstage lambda helper for setting the next SubStage to advance to. If null, it
+     *                    will be ignored.
+     */
+    protected void sendSelfPatch(T taskState, TaskState.TaskStage stage, Consumer<T> setSubstage) {
+        if (taskState.taskInfo == null) {
+            taskState.taskInfo = new TaskState();
+        }
+        taskState.taskInfo.stage = stage;
+
+        if (setSubstage != null) {
+            setSubstage.accept(taskState);
+        }
+        sendSelfPatch(taskState);
     }
 }

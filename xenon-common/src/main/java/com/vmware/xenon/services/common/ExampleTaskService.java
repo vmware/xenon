@@ -17,13 +17,13 @@ import java.net.URI;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 
 import com.vmware.xenon.common.FactoryService;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.OperationJoin;
 import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.ServiceDocumentDescription.PropertyUsageOption;
-import com.vmware.xenon.common.TaskState;
 import com.vmware.xenon.common.TaskState.TaskStage;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
@@ -285,7 +285,7 @@ public class ExampleTaskService
                             // We extract the result of the task because DELETE_EXAMPLES will use
                             // the list of documents found
                             task.exampleQueryTask = op.getBody(QueryTask.class);
-                            sendSelfPatch(task, TaskStage.STARTED, SubStage.DELETE_EXAMPLES);
+                            sendSelfPatch(task, TaskStage.STARTED, subStageSetter(SubStage.DELETE_EXAMPLES));
                         });
         sendRequest(queryRequest);
     }
@@ -335,16 +335,13 @@ public class ExampleTaskService
     }
 
     /**
-     * Send ourselves a PATCH that will advance to another step in the task workflow to the
-     * specified stage and substage.
+     * Helper method that returns a lambda that will set SubStage for us
+     * @param subStage the SubStage to use
+     *
+     * @return lambda helper needed for {@link TaskService#sendSelfPatch(TaskServiceState, TaskStage, Consumer)}
      */
-    private void sendSelfPatch(ExampleTaskServiceState task, TaskStage stage, SubStage subStage) {
-        if (task.taskInfo == null) {
-            task.taskInfo = new TaskState();
-        }
-        task.taskInfo.stage = stage;
-        task.subStage = subStage;
-        sendSelfPatch(task);
+    private Consumer<ExampleTaskServiceState> subStageSetter(SubStage subStage) {
+        return taskState -> taskState.subStage = subStage;
     }
 
 }
