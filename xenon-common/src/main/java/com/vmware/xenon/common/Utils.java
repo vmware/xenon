@@ -41,6 +41,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Supplier;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -331,12 +332,22 @@ public class Utils {
     public static void log(Class<?> type, String classOrUri, Level level, String fmt,
             Object... args) {
         Logger lg = Logger.getLogger(type.getName());
-        log(lg, 3, classOrUri, level, fmt, args);
+        log(lg, 3, classOrUri, level, () -> String.format(fmt, args));
+    }
+
+    public static void log(Class<?> type, String classOrUri, Level level,
+            Supplier<String> messageSupplier) {
+        Logger lg = Logger.getLogger(type.getName());
+        log(lg, 3, classOrUri, level, messageSupplier);
     }
 
     public static void log(Logger lg, Integer nestingLevel, String classOrUri, Level level,
-            String fmt,
-            Object... args) {
+            String fmt, Object... args) {
+        log(lg, nestingLevel, classOrUri, level, () -> String.format(fmt, args));
+    }
+
+    public static void log(Logger lg, Integer nestingLevel, String classOrUri, Level level,
+            Supplier<String> messageSupplier) {
         if (nestingLevel == null) {
             nestingLevel = 2;
         }
@@ -357,7 +368,8 @@ public class Utils {
             return;
         }
 
-        StackAwareLogRecord lr = new StackAwareLogRecord(level, String.format(fmt, args));
+        String message = messageSupplier.get();
+        StackAwareLogRecord lr = new StackAwareLogRecord(level, message);
         Exception e = new Exception();
         StackTraceElement[] stacks = e.getStackTrace();
         if (stacks.length > nestingLevel) {

@@ -2,6 +2,9 @@
 
 ## 0.8.0-SNAPSHOT
 
+* Add logging methods that take lambda expression to construct 
+  log message. The lambda is evaluated lazily.
+
 ## 0.7.6
 
 * Improve index searcher management in lucene document index

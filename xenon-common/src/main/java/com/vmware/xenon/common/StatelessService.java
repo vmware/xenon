@@ -15,6 +15,7 @@ package com.vmware.xenon.common;
 
 import java.net.URI;
 import java.util.EnumSet;
+import java.util.function.Supplier;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -496,30 +497,54 @@ public class StatelessService implements Service {
     }
 
     public void logSevere(Throwable e) {
-        log(Level.SEVERE, "%s", Utils.toString(e));
+        doLogging(Level.SEVERE, () -> Utils.toString(e));
     }
 
     public void logSevere(String fmt, Object... args) {
-        log(Level.SEVERE, fmt, args);
+        doLogging(Level.SEVERE, () -> String.format(fmt, args));
+    }
+
+    public void logSevere(Supplier<String> messageSupplier) {
+        doLogging(Level.SEVERE, messageSupplier);
     }
 
     public void logInfo(String fmt, Object... args) {
-        log(Level.INFO, fmt, args);
+        doLogging(Level.INFO, () -> String.format(fmt, args));
+    }
+
+    public void logInfo(Supplier<String> messageSupplier) {
+        doLogging(Level.INFO, messageSupplier);
     }
 
     public void logFine(String fmt, Object... args) {
-        log(Level.FINE, fmt, args);
+        doLogging(Level.FINE, () -> String.format(fmt, args));
+    }
+
+    public void logFine(Supplier<String> messageSupplier) {
+        doLogging(Level.FINE, messageSupplier);
     }
 
     public void logWarning(String fmt, Object... args) {
-        log(Level.WARNING, fmt, args);
+        doLogging(Level.WARNING, () -> String.format(fmt, args));
     }
 
-    protected void log(Level level, String fmt, Object... args) {
+    public void logWarning(Supplier<String> messageSupplier) {
+        doLogging(Level.WARNING, messageSupplier);
+    }
+
+    public void log(Level level, String fmt, Object... args) {
+        doLogging(level, () -> String.format(fmt, args));
+    }
+
+    public void log(Level level, Supplier<String> messageSupplier) {
+        doLogging(level, messageSupplier);
+    }
+
+    private void doLogging(Level level, Supplier<String> messageSupplier) {
         String uri = this.host != null && this.selfLink != null ? getUri().toString()
                 : this.getClass().getSimpleName();
         Logger lg = Logger.getLogger(this.getClass().getName());
-        Utils.log(lg, 3, uri, level, fmt, args);
+        Utils.log(lg, 3, uri, level, messageSupplier);
     }
 
     @Override
@@ -563,7 +588,7 @@ public class StatelessService implements Service {
         }
 
         if (micros > 0 && micros < Service.MIN_MAINTENANCE_INTERVAL_MICROS) {
-            log(Level.WARNING, "Maintenance interval %d is less than the minimum interval %d"
+            logWarning("Maintenance interval %d is less than the minimum interval %d"
                     + ", reducing to min interval", micros, Service.MIN_MAINTENANCE_INTERVAL_MICROS);
             micros = Service.MIN_MAINTENANCE_INTERVAL_MICROS;
         }

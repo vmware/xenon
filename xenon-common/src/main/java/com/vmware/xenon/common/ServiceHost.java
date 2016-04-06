@@ -4063,14 +4063,25 @@ public class ServiceHost implements ServiceRequestSender {
     }
 
     public void log(Level level, String fmt, Object... args) {
-        log(level, 3, fmt, args);
+        log(level, 3, () -> String.format(fmt, args));
+    }
+
+    public void log(Level level, Supplier<String> messageSupplier) {
+        log(level, 3, messageSupplier);
     }
 
     protected void log(Level level, Integer nestingLevel, String fmt, Object... args) {
         if (this.logPrefix == null) {
             this.logPrefix = getPublicUri().toString();
         }
-        Utils.log(this.logger, nestingLevel, this.logPrefix, level, fmt, args);
+        Utils.log(this.logger, nestingLevel, this.logPrefix, level, () -> String.format(fmt, args));
+    }
+
+    protected void log(Level level, Integer nestingLevel, Supplier<String> messageSupplier) {
+        if (this.logPrefix == null) {
+            this.logPrefix = getPublicUri().toString();
+        }
+        Utils.log(this.logger, nestingLevel, this.logPrefix, level, messageSupplier);
     }
 
     /**
