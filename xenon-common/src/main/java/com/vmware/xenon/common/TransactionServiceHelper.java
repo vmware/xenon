@@ -68,8 +68,8 @@ public class TransactionServiceHelper {
                             get.fail(e);
                             return;
                         }
-
-                        returnLatestOrFail(response, get, fr);
+                        QueryTask nonTransactionResponse = o2.getBody(QueryTask.class);
+                        returnLatestOrFail(nonTransactionResponse, get, fr);
                     });
                     s.sendRequest(nonTransactionQueryOp);
                 } else {
@@ -197,9 +197,18 @@ public class TransactionServiceHelper {
             // and remove transaction from pending
             s.removePendingTransaction(request.getReferer().toString());
 
+
             QueryTask.QuerySpecification q = new QueryTask.QuerySpecification();
-            q.query.setTermPropertyName(ServiceDocument.FIELD_NAME_TRANSACTION_ID);
-            q.query.setTermMatchValue(UriUtils.getLastPathSegment(request.getReferer()));
+            QueryTask.Query txnIdClause = new QueryTask.Query().setTermPropertyName(
+                    ServiceDocument.FIELD_NAME_TRANSACTION_ID)
+                    .setTermMatchValue(UriUtils.getLastPathSegment(request.getReferer()));
+            txnIdClause.occurance = QueryTask.Query.Occurance.MUST_OCCUR;
+            q.query.addBooleanClause(txnIdClause);
+            QueryTask.Query selfLinkClause = new QueryTask.Query().setTermPropertyName(
+                    ServiceDocument.FIELD_NAME_SELF_LINK)
+                    .setTermMatchValue(s.getSelfLink());
+            selfLinkClause.occurance = QueryTask.Query.Occurance.MUST_OCCUR;
+            q.query.addBooleanClause(selfLinkClause);
             q.options = EnumSet.of(QueryTask.QuerySpecification.QueryOption.EXPAND_CONTENT,
                     QueryTask.QuerySpecification.QueryOption.INCLUDE_ALL_VERSIONS);
             QueryTask task = QueryTask.create(q).setDirect(true);
