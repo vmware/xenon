@@ -40,7 +40,7 @@ public class TestSubscriptions extends BasicReportTestCase {
     private final int NODE_COUNT = 2;
 
     public int serviceCount = 100;
-    public long updateCount = 10;
+    public long updateCount = 1000;
 
     public void beforeHostStart(VerificationHost host) {
         host.setMaintenanceIntervalMicros(TimeUnit.MILLISECONDS

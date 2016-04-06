@@ -344,7 +344,7 @@ public class NodeGroupService extends StatefulService {
         NodeGroupState localState = getState(post);
         localState.nodes.put(body.id, body);
 
-        post.setBody(body).complete();
+        post.setBody(localState).complete();
     }
 
     private void handleCheckConvergencePost(Operation post, CheckConvergenceRequest body) {

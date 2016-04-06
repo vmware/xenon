@@ -799,7 +799,14 @@ public class StatefulService implements Service {
 
         op.nestCompletion((o, e) -> {
             if (e != null) {
-                synchronizeWithPeers(op, e);
+                ServiceErrorResponse rsp = o.getBody(ServiceErrorResponse.class);
+                // only proceed with synchronization if a retry is requested
+                if (rsp != null && rsp.details != null
+                        && rsp.details.contains(ErrorDetail.SHOULD_RETRY)) {
+                    synchronizeWithPeers(op, e);
+                } else {
+                    failRequest(op, e);
+                }
                 return;
             }
             op.setReplicationDisabled(true);
@@ -1093,20 +1100,6 @@ public class StatefulService implements Service {
         if (failure instanceof CancellationException) {
             failRequest(request, failure);
             return;
-        }
-
-        if (failure != null && request.hasBody()) {
-            ServiceErrorResponse rsp = request.clone().getBody(ServiceErrorResponse.class);
-            // only proceed with synchronization if a retry is requested
-            if (rsp != null && rsp.details != null) {
-                if (!rsp.details.contains(ErrorDetail.SHOULD_RETRY)) {
-                    failRequest(request, failure);
-                    return;
-                }
-            } else {
-                failRequest(request, failure);
-                return;
-            }
         }
 
         // clone the request so we can update its body without affecting the client request

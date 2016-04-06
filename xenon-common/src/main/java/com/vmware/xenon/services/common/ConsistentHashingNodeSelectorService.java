@@ -37,6 +37,7 @@ import com.vmware.xenon.common.StatelessService;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
 import com.vmware.xenon.services.common.NodeGroupService.NodeGroupState;
+import com.vmware.xenon.services.common.NodeGroupService.UpdateQuorumRequest;
 
 /**
  * Uses consistent hashing to assign a client specified key to one
@@ -132,15 +133,21 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
     private Consumer<Operation> handleNodeGroupNotification() {
         return (notifyOp) -> {
             notifyOp.complete();
-            if (notifyOp.getAction() != Action.PATCH) {
+
+            NodeGroupState ngs = null;
+            if (notifyOp.getAction() == Action.PATCH) {
+                UpdateQuorumRequest bd = notifyOp.getBody(UpdateQuorumRequest.class);
+                if (UpdateQuorumRequest.KIND.equals(bd.kind)) {
+                    return;
+                }
+            } else if (notifyOp.getAction() != Action.POST) {
                 return;
             }
 
-            NodeGroupState ngs = notifyOp.getBody(NodeGroupState.class);
+            ngs = notifyOp.getBody(NodeGroupState.class);
             if (ngs.nodes == null || ngs.nodes.isEmpty()) {
                 return;
             }
-
             updateCachedNodeGroupState(ngs);
         };
     }
