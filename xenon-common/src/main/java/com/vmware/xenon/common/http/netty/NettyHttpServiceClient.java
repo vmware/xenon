@@ -34,6 +34,7 @@ import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpVersion;
 import io.netty.handler.codec.http.cookie.ClientCookieDecoder;
 import io.netty.handler.codec.http.cookie.Cookie;
+import io.netty.handler.codec.http2.HttpConversionUtil;
 
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Operation.AuthorizationContext;
@@ -496,6 +497,9 @@ public class NettyHttpServiceClient implements ServiceClient {
             // The Netty HTTP/2 code uses the URI to create the :scheme pseudo-header.
             if (useHttp2) {
                 request.setUri(op.getUri().toString());
+
+                // when operation is cloned, it may contain original streamId header. remove it.
+                request.headers().remove(HttpConversionUtil.ExtensionHeaderNames.STREAM_ID.text());
             }
 
             op.nestCompletion((o, e) -> {
