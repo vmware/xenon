@@ -558,10 +558,7 @@ public class TestNodeGroupService {
 
         }
 
-        // Re-enable when this is fixed:
-        // https://www.pivotaltracker.com/story/show/115993543
-        // doNodeStopWithUpdates(exampleStatesPerSelfLink);
-
+        doNodeStopWithUpdates(exampleStatesPerSelfLink);
     }
 
     private void doExampleServicePatch(Map<String, ExampleServiceState> states,
