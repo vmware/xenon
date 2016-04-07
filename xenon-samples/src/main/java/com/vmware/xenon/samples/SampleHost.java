@@ -20,6 +20,8 @@ import io.swagger.models.Info;
 import io.swagger.models.License;
 
 import com.vmware.xenon.common.ServiceHost;
+import com.vmware.xenon.services.common.ExampleService;
+import com.vmware.xenon.services.common.ExampleTaskService;
 import com.vmware.xenon.services.common.RootNamespaceService;
 import com.vmware.xenon.services.samples.SampleFactoryServiceWithCustomUi;
 import com.vmware.xenon.services.samples.SamplePreviousEchoService;
@@ -69,6 +71,10 @@ public class SampleHost extends ServiceHost {
 
         // Start a factory for the service that returns the previous results
         super.startFactory(new SamplePreviousEchoService());
+
+        // Start example tutorial services
+        super.startFactory(new ExampleService());
+        super.startFactory(new ExampleTaskService());
 
         // Start UI service
         super.startService(new UiService());
