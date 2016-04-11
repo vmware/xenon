@@ -693,22 +693,17 @@ public class Utils {
         }
 
         if (data == null) {
-            if (contentType == null
-                    || contentType.contains(Operation.MEDIA_TYPE_APPLICATION_JSON)) {
-                String encodedBody;
-                if (op.getAction() == Action.GET) {
-                    encodedBody = Utils.toJsonHtml(body);
-                } else {
-                    encodedBody = Utils.toJson(body);
-                    if (contentType == null) {
-                        op.setContentType(Operation.MEDIA_TYPE_APPLICATION_JSON);
-                    }
-                }
-                data = encodedBody.getBytes(Utils.CHARSET);
-                op.setContentLength(data.length);
+            String encodedBody;
+            if (op.getAction() == Action.GET) {
+                encodedBody = Utils.toJsonHtml(body);
             } else {
-                throw new IllegalArgumentException("Unrecognized content type: " + contentType);
+                encodedBody = Utils.toJson(body);
+                if (contentType == null) {
+                    op.setContentType(Operation.MEDIA_TYPE_APPLICATION_JSON);
+                }
             }
+            data = encodedBody.getBytes(Utils.CHARSET);
+            op.setContentLength(data.length);
         }
 
         return data;
@@ -750,12 +745,7 @@ public class Utils {
             return null;
         }
 
-        if (contentType.contains(Operation.MEDIA_TYPE_APPLICATION_JSON)
-                || contentType.contains("text")
-                || contentType.contains("css")
-                || contentType.contains("script")
-                || contentType.contains("html")
-                || contentType.contains("xml")) {
+        if (isContentTypeText(contentType)) {
             body = Charset.forName(Utils.CHARSET).newDecoder().decode(buffer).toString();
         } else if (contentType.contains(Operation.MEDIA_TYPE_APPLICATION_X_WWW_FORM_ENCODED)) {
             body = Charset.forName(Utils.CHARSET).newDecoder().decode(buffer).toString();
@@ -767,6 +757,17 @@ public class Utils {
         }
 
         return body;
+    }
+
+    private static boolean isContentTypeText(String contentType) {
+        return contentType.contains(Operation.MEDIA_TYPE_APPLICATION_JSON)
+                || contentType.contains("text")
+                || contentType.contains("css")
+                || contentType.contains("script")
+                || contentType.contains("html")
+                || contentType.contains("xml")
+                || contentType.contains("yaml")
+                || contentType.contains("yml");
     }
 
     /**
