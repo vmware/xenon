@@ -132,15 +132,15 @@ public class ODataQueryVisitor {
             final Object rightSide) {
 
         Query q = new Query();
+
         // handle the operator by setting the query occurance.
-        Query.Occurance occurance = convertToLuceneOccur(operator);
+        q.occurance = convertToLuceneOccur(operator);
+
         // Handle a nested query. We return a query with left and right attached as boolean queries.
         if (leftSide instanceof Query) {
             if (!(rightSide instanceof Query)) {
                 throw LeftRightTypeException;
             }
-            ((Query) leftSide).occurance = occurance;
-            ((Query) rightSide).occurance = occurance;
             q.addBooleanClause((Query) leftSide);
             q.addBooleanClause((Query) rightSide);
             return q;
