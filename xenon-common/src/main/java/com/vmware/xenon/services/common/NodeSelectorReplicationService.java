@@ -164,6 +164,7 @@ public class NodeSelectorReplicationService extends StatelessService {
                 .transferRequestHeadersFrom(outboundOp)
                 .removePragmaDirective(Operation.PRAGMA_DIRECTIVE_FORWARDED)
                 .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_REPLICATED)
+                .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_USE_HTTP2)
                 .setReferer(outboundOp.getReferer());
 
         update.removeRequestCallbackLocation();
