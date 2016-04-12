@@ -480,6 +480,7 @@ public class Operation implements Cloneable {
     public static final int STATUS_CODE_MOVED_PERM = HttpURLConnection.HTTP_MOVED_PERM;
     public static final int STATUS_CODE_MOVED_TEMP = HttpURLConnection.HTTP_MOVED_TEMP;
     public static final int STATUS_CODE_OK = HttpURLConnection.HTTP_OK;
+    public static final int STATUS_CODE_CREATED = HttpURLConnection.HTTP_CREATED;
     public static final int STATUS_CODE_ACCEPTED = HttpURLConnection.HTTP_ACCEPTED;
     public static final int STATUS_CODE_BAD_REQUEST = HttpURLConnection.HTTP_BAD_REQUEST;
     public static final int STATUS_CODE_BAD_METHOD = HttpURLConnection.HTTP_BAD_METHOD;
