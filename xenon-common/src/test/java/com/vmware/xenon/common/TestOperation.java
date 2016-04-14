@@ -14,6 +14,7 @@
 package com.vmware.xenon.common;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 import java.util.EnumSet;
@@ -120,13 +121,54 @@ public class TestOperation extends BasicReusableHostTestCase {
 
     @Test
     public void defaultFailureCompletion() {
-        Operation getToNowhere = Operation
-                .createGet(UriUtils.buildUri(this.host, "/somethingnotvalid"))
-                .setReferer(this.host.getUri())
-                .setContextId("some context");
+        Operation getToNowhere = getOperationFailure();
         // we are just making no exceptions are thrown in the context of the sendRequest call
         this.host.sendRequest(getToNowhere);
 
+    }
+
+    @Test
+    public void completion() throws Throwable {
+        boolean[] isSuccessHandlerCalled = new boolean[] { false };
+        boolean[] isFailureHandlerCalled = new boolean[] { false };
+        Consumer<Operation> successHandler = op -> isSuccessHandlerCalled[0] = true;
+        CompletionHandler failureHandler = (op, e) -> isFailureHandlerCalled[0] = true;
+
+        Operation successOp = getOperationSuccess().setCompletion(successHandler, failureHandler);
+        wrapCompletionHandlerWithCompleteIteration(successOp);
+
+        this.host.sendAndWait(successOp);
+        assertTrue("op success should call success handler", isSuccessHandlerCalled[0]);
+        assertFalse("op success should NOT call success handler", isFailureHandlerCalled[0]);
+
+        // reset the flags
+        isSuccessHandlerCalled[0] = false;
+        isFailureHandlerCalled[0] = false;
+
+        Operation failureOp = getOperationFailure().setCompletion(successHandler, failureHandler);
+        wrapCompletionHandlerWithCompleteIteration(failureOp);
+
+        this.host.sendAndWait(failureOp);
+        assertFalse("op failure should NOT call success handler", isSuccessHandlerCalled[0]);
+        assertTrue("op failure should call success handler", isFailureHandlerCalled[0]);
+    }
+
+    private Operation getOperationSuccess() {
+        return Operation.createGet(this.host, ExampleService.FACTORY_LINK)
+                .setReferer(this.host.getUri());
+    }
+
+    private Operation getOperationFailure() {
+        return Operation.createGet(UriUtils.buildUri(this.host, "/somethingnotvalid"))
+                .setReferer(this.host.getUri());
+    }
+
+    private void wrapCompletionHandlerWithCompleteIteration(Operation operation) {
+        CompletionHandler ch = operation.getCompletion();
+        operation.setCompletion((op, e) -> {
+            ch.handle(op, e);
+            this.host.completeIteration();
+        });
     }
 
     @Test

@@ -866,6 +866,28 @@ public class Operation implements Cloneable {
         return this;
     }
 
+    /**
+     * Takes two discrete callback handlers for completion.
+     *
+     * For completion that does not share code between success and failure paths, this should be the
+     * preferred alternative.
+     *
+     * @param successHandler called at successful operation completion
+     * @param failureHandler called at failure operation completion
+     * @return operation
+     */
+    public Operation setCompletion(Consumer<Operation> successHandler,
+            CompletionHandler failureHandler) {
+        setCompletion((op, e) -> {
+            if (e != null) {
+                failureHandler.handle(op, e);
+                return;
+            }
+            successHandler.accept(op);
+        });
+        return this;
+    }
+
     public CompletionHandler getCompletion() {
         return this.completion;
     }

@@ -2,6 +2,12 @@
 
 ## 0.8.0-SNAPSHOT
 
+* Add additional "Operation#setOperationCompletion" that allows the caller
+  to supply two discrete callbacks: one for successful completion, and
+  one for failure.
+  For completion that does not share code between the two paths, this
+  should be the preferred alternative.
+
 * Use HTTP/2 for replication and forwarding requests
 
 * Add logging methods that take lambda expression to construct
