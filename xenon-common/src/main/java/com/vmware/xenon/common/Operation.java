@@ -866,6 +866,22 @@ public class Operation implements Cloneable {
         return this;
     }
 
+    /**
+     * Completion handler taking success and failure handlers.
+     * Each handler is called at success or failure operation completion, respectively.
+     */
+    public Operation setCompletion(Consumer<Operation> successHandler,
+            CompletionHandler failureHandler) {
+        setCompletion((op, e) -> {
+            if (e != null) {
+                failureHandler.handle(op, e);
+                return;
+            }
+            successHandler.accept(op);
+        });
+        return this;
+    }
+
     public CompletionHandler getCompletion() {
         return this.completion;
     }

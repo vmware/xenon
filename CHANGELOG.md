@@ -2,6 +2,10 @@
 
 ## 0.8.0-SNAPSHOT
 
+* Add "Operation#setCompletion(op -> {}, (op,e) -> {})"
+  At successful operation, first handler is called. When operation
+  failed, the second handler is invoked with throwable object.
+
 * Use HTTP/2 for replication and forwarding requests
 
 * Add logging methods that take lambda expression to construct
