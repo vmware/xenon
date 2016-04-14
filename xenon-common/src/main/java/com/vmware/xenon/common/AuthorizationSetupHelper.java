@@ -276,6 +276,7 @@ public class AuthorizationSetupHelper {
                     this.currentStep = UserCreationStep.MAKE_CREDENTIALS;
                     setupUser();
                 });
+        addReplicationFactor(postUser);
         this.host.sendRequest(postUser);
     }
 
@@ -303,6 +304,7 @@ public class AuthorizationSetupHelper {
                     this.currentStep = UserCreationStep.MAKE_USER_GROUP;
                     setupUser();
                 });
+        addReplicationFactor(postCreds);
         this.host.sendRequest(postCreds);
     }
 
@@ -335,6 +337,7 @@ public class AuthorizationSetupHelper {
                     this.currentStep = UserCreationStep.MAKE_RESOURCE_GROUP;
                     setupUser();
                 });
+        addReplicationFactor(postGroup);
         this.host.sendRequest(postGroup);
     }
 
@@ -404,6 +407,7 @@ public class AuthorizationSetupHelper {
                     this.currentStep = UserCreationStep.MAKE_ROLE;
                     setupUser();
                 });
+        addReplicationFactor(postGroup);
         this.host.sendRequest(postGroup);
     }
 
@@ -439,7 +443,20 @@ public class AuthorizationSetupHelper {
                     this.currentStep = UserCreationStep.SUCCESS;
                     setupUser();
                 });
+        addReplicationFactor(postGroup);
         this.host.sendRequest(postGroup);
+    }
+
+    /**
+     * Authorization related operations should take effect on all replicas, before they
+     * complete. This method adds a special header that sets the quorum level to all
+     * available nodes, avoiding a race where a client can reach a node that has not yet
+     * received latest authorization changes, even if it received success from this auth
+     * helper class
+     */
+    private void addReplicationFactor(Operation op) {
+        op.addRequestHeader(Operation.REPLICATION_QUORUM_HEADER,
+                Operation.REPLICATION_QUORUM_HEADER_VALUE_ALL);
     }
 
     /**
