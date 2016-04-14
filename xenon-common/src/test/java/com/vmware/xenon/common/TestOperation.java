@@ -130,6 +130,97 @@ public class TestOperation extends BasicReusableHostTestCase {
     }
 
     @Test
+    public void completion() throws Throwable {
+        String[] message = new String[] { "original" };
+        Consumer<Operation> successHandler = op -> message[0] = "success";
+        Consumer<Throwable> failureHandler = op -> message[0] = "failure";
+
+        Operation successOp = getOperationSuccess().setCompletion(successHandler, failureHandler);
+        wrapCompletionHandlerWithCompleteIteration(successOp);
+
+        this.host.sendAndWait(successOp);
+        assertEquals("success", message[0]);
+
+        Operation failureOp = getOperationFailure().setCompletion(successHandler, failureHandler);
+        wrapCompletionHandlerWithCompleteIteration(failureOp);
+
+        this.host.sendAndWait(failureOp);
+        assertEquals("failure", message[0]);
+    }
+
+    @Test
+    public void completionSuccess() throws Throwable {
+        String[] message = new String[] { "original" };
+        Consumer<Operation> handler = op -> message[0] = "success";
+
+        Operation successOp = getOperationSuccess().setCompletionSuccess(handler);
+        wrapCompletionHandlerWithCompleteIteration(successOp);
+
+        this.host.sendAndWait(successOp);
+        assertEquals("success", message[0]);
+
+        // verify handler is not called for failure case
+        message[0] = "original";
+        Operation failureOp = getOperationFailure().setCompletionSuccess(handler);
+        wrapCompletionHandlerWithCompleteIteration(failureOp);
+        this.host.sendAndWait(failureOp);
+        assertEquals("original", message[0]);
+    }
+
+    @Test
+    public void completionFailure() throws Throwable {
+        String[] message = new String[] { "original" };
+        Consumer<Throwable> failureConsumer = e -> message[0] = "failure";
+        Operation successOp;
+        Operation failureOp;
+
+        // with failure consumer
+        failureOp = getOperationFailure().setCompletionFailure(failureConsumer);
+        wrapCompletionHandlerWithCompleteIteration(failureOp);
+        this.host.sendAndWait(failureOp);
+        assertEquals("failure", message[0]);
+
+        message[0] = "original";
+        successOp = getOperationSuccess().setCompletionFailure(failureConsumer);
+        wrapCompletionHandlerWithCompleteIteration(successOp);
+        this.host.sendAndWait(successOp);
+        assertEquals("original", message[0]);
+
+        // with CompletionHandler
+        CompletionHandler ch = (op, e) -> message[0] = "failure2";
+
+        message[0] = "original";
+        failureOp = getOperationFailure().setCompletionFailure(ch);
+        wrapCompletionHandlerWithCompleteIteration(failureOp);
+        this.host.sendAndWait(failureOp);
+        assertEquals("failure2", message[0]);
+
+        message[0] = "original";
+        successOp = getOperationSuccess().setCompletionFailure(ch);
+        wrapCompletionHandlerWithCompleteIteration(successOp);
+        this.host.sendAndWait(successOp);
+        assertEquals("original", message[0]);
+    }
+
+    private Operation getOperationSuccess() {
+        return Operation.createGet(this.host, ExampleService.FACTORY_LINK)
+                .setReferer(this.host.getUri());
+    }
+
+    private Operation getOperationFailure() {
+        return Operation.createGet(UriUtils.buildUri(this.host, "/somethingnotvalid"))
+                .setReferer(this.host.getUri());
+    }
+
+    private void wrapCompletionHandlerWithCompleteIteration(Operation operation) {
+        CompletionHandler ch = operation.getCompletion();
+        operation.setCompletion((op, e) -> {
+            ch.handle(op, e);
+            this.host.completeIteration();
+        });
+    }
+
+    @Test
     public void setterValidation() {
         Operation op = Operation.createGet(this.host.getUri());
 

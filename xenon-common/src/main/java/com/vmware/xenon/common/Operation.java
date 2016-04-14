@@ -871,6 +871,61 @@ public class Operation implements Cloneable {
         return this;
     }
 
+    public Operation setCompletion(Consumer<Operation> successHandler,
+            Consumer<Throwable> failureHandler) {
+        setCompletion((op, e) -> {
+            if (e != null) {
+                failureHandler.accept(e);
+                return;
+            }
+            successHandler.accept(op);
+        });
+        return this;
+    }
+
+    /**
+     * Completion handler for successful operation.
+     *
+     * {@link #setCompletion}, {@link #setCompletionFailure)}, and this method are mutually
+     * exclusive.
+     * If handler has already set by one of them, the new call replaces the old handler.
+     */
+    public Operation setCompletionSuccess(Consumer<Operation> successHandler) {
+        setCompletion(successHandler, e -> { });
+        return this;
+    }
+
+    /**
+     * Completion handler for failed operation.
+     *
+     * {@link #setCompletion}, {@link #setCompletionSuccess)}, and this method are mutually
+     * exclusive.
+     * If handler has already set by one of them, the new call replaces the old handler.
+     */
+    public Operation setCompletionFailure(Consumer<Throwable> failureHandler) {
+        setCompletion(op -> { }, failureHandler);
+        return this;
+    }
+
+    /**
+     * Completion handler for failed operation.
+     *
+     * The handler receives both {@link Operation} and {@link Throwable}. However, it is only
+     * called when operation was failed.
+     *
+     * {@link #setCompletion}, {@link #setCompletionSuccess)}, and this method are mutually
+     * exclusive.
+     * If handler has already set by one of them, the new call replaces the old handler.
+     */
+    public Operation setCompletionFailure(CompletionHandler failureHandler) {
+        setCompletion((op, e) -> {
+            if (e != null) {
+                failureHandler.handle(op, e);
+            }
+        });
+        return this;
+    }
+
     public CompletionHandler getCompletion() {
         return this.completion;
     }
