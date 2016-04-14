@@ -276,6 +276,7 @@ public class AuthorizationSetupHelper {
                     this.currentStep = UserCreationStep.MAKE_CREDENTIALS;
                     setupUser();
                 });
+        addReplicationFactor(postUser);
         this.host.sendRequest(postUser);
     }
 
@@ -303,6 +304,7 @@ public class AuthorizationSetupHelper {
                     this.currentStep = UserCreationStep.MAKE_USER_GROUP;
                     setupUser();
                 });
+        addReplicationFactor(postCreds);
         this.host.sendRequest(postCreds);
     }
 
@@ -335,6 +337,7 @@ public class AuthorizationSetupHelper {
                     this.currentStep = UserCreationStep.MAKE_RESOURCE_GROUP;
                     setupUser();
                 });
+        addReplicationFactor(postGroup);
         this.host.sendRequest(postGroup);
     }
 
@@ -404,6 +407,7 @@ public class AuthorizationSetupHelper {
                     this.currentStep = UserCreationStep.MAKE_ROLE;
                     setupUser();
                 });
+        addReplicationFactor(postGroup);
         this.host.sendRequest(postGroup);
     }
 
@@ -439,7 +443,13 @@ public class AuthorizationSetupHelper {
                     this.currentStep = UserCreationStep.SUCCESS;
                     setupUser();
                 });
+        addReplicationFactor(postGroup);
         this.host.sendRequest(postGroup);
+    }
+
+    private void addReplicationFactor(Operation op) {
+        op.addRequestHeader(Operation.REPLICATION_QUORUM_HEADER,
+                Operation.REPLICATION_QUORUM_HEADER_VALUE_ALL);
     }
 
     /**
