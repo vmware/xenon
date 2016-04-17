@@ -3130,28 +3130,51 @@ public class ServiceHost implements ServiceRequestSender {
             }
 
             // request service using either prefix or longest match
+            boolean ba = path.contains("bank-accounts");
+            if (ba) {
+                log(Level.INFO, "processing request %s with path %s (service unknown)", inboundOp.getAction(), path);
+            }
             service = findService(path, false);
+            if (ba) {
+                log(Level.INFO, "processing request %s with path %s (service unknown); found service: %s", inboundOp.getAction(), path, service);
+            }
         } else {
             path = service.getSelfLink();
+        }
+        boolean ba = path.contains("bank-accounts");
+        if (ba) {
+            log(Level.INFO, "processing request %s with path %s (service: %s)", inboundOp.getAction(), path, service);
         }
 
         // if this service was about to stop, due to memory pressure, cancel, its still active
         Service pendingStopService = this.pendingPauseServices.remove(path);
         if (pendingStopService != null) {
             service = pendingStopService;
+            if (ba) {
+                log(Level.INFO, "Found service with path %s. Service is pending stop.", path);
+            }
         }
 
         if (queueRequestUntilServiceAvailable(inboundOp, service, path)) {
+            if (ba) {
+                log(Level.INFO, "queueRequestUntilServiceAvailable() returned true, waiting until service with path %s is available.", path);
+            }
             return;
         }
 
         if (queueOrForwardRequest(service, path, inboundOp)) {
+            if (ba) {
+                log(Level.INFO, "queueOrForwardRequest() returned true, waiting until service with path %s is available.", path);
+            }
             return;
         }
 
         if (service == null) {
             failRequestServiceNotFound(inboundOp);
             return;
+        }
+        if (ba) {
+            log(Level.INFO, "Found service with path %s. Continuing to process request %s.", path, inboundOp.getAction());
         }
 
         traceOperation(inboundOp);
@@ -3260,7 +3283,11 @@ public class ServiceHost implements ServiceRequestSender {
         String nodeSelectorPath;
         Service parent = null;
         EnumSet<ServiceOption> options = null;
+        boolean ba = path.contains("bank-accounts");
         if (s != null) {
+            if (ba) {
+                log(Level.INFO, "Service with path %s is known. Operation: %s.", path, op.getAction());
+            }
             // Common path, service is known.
             options = s.getOptions();
 
@@ -3284,6 +3311,9 @@ public class ServiceHost implements ServiceRequestSender {
                 return false;
             }
         } else {
+            if (ba) {
+                log(Level.INFO, "Service with path %s is unknown. Operation: %s.", path, op.getAction());
+            }
             // Service is unknown.
             // Find the service options indirectly, if there is a parent factory.
             if (isHelperServicePath(path)) {
@@ -3364,6 +3394,9 @@ public class ServiceHost implements ServiceRequestSender {
 
             Operation forwardOp = op.clone().setCompletion(fc);
             if (rsp.isLocalHostOwner) {
+                if (ba) {
+                    log(Level.INFO, "Owner: Service with path %s, Operation %s, Service %s.", servicePath, op.getAction(), s);
+                }
                 if (s == null) {
                     queueOrFailRequestForServiceNotFoundOnOwner(servicePath, op);
                     return;
@@ -3400,6 +3433,10 @@ public class ServiceHost implements ServiceRequestSender {
     }
 
     private void queueOrFailRequestForServiceNotFoundOnOwner(String path, Operation op) {
+        boolean ba = path.contains("bank-accounts");
+        if (ba) {
+            log(Level.INFO, "Service with path %s, Operation %s.", path, op.getAction());
+        }
         if (op.getAction() == Action.DELETE) {
             // do not queue DELETE actions for services not present, complete with success
             op.complete();
@@ -3411,6 +3448,9 @@ public class ServiceHost implements ServiceRequestSender {
         }
 
         if (!op.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_QUEUE_FOR_SERVICE_AVAILABILITY)) {
+            if (ba) {
+                log(Level.INFO, "Service with path %s, Operation %s: failing with SERVICE_NOT_FOUND", path, op.getAction());
+            }
             this.failRequestServiceNotFound(op);
             return;
         }
