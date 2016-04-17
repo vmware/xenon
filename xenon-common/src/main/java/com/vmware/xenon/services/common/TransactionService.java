@@ -705,7 +705,14 @@ public class TransactionService extends StatefulService {
                 .addRequestHeader(Operation.TRANSACTION_HEADER, header)
                 // just an empty body
                 .setBody(new TransactionServiceState())
-                .setReferer(getUri());
+                .setReferer(getUri())
+                .setCompletion((o, e) -> {
+                    if (e != null) {
+                        logWarning("Notifying service %s failed: %s", service, e);
+                    } else {
+                        logInfo("Notifying service %s succeeded", service);
+                    }
+                });
     }
 
     /**
