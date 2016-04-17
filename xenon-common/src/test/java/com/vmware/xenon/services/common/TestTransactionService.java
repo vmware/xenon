@@ -25,7 +25,6 @@ import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
 import org.junit.Before;
-import org.junit.Ignore;
 import org.junit.Test;
 
 import com.vmware.xenon.common.BasicReusableHostTestCase;
@@ -41,6 +40,7 @@ import com.vmware.xenon.common.Utils;
 import com.vmware.xenon.common.test.TestContext;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
 import com.vmware.xenon.services.common.QueryTask.Query;
+import com.vmware.xenon.services.common.QueryTask.QuerySpecification.QueryOption;
 import com.vmware.xenon.services.common.QueryTask.QueryTerm.MatchType;
 import com.vmware.xenon.services.common.TestTransactionService.BankAccountService.BankAccountServiceRequest;
 import com.vmware.xenon.services.common.TestTransactionService.BankAccountService.BankAccountServiceState;
@@ -222,7 +222,7 @@ public class TestTransactionService extends BasicReusableHostTestCase {
         sumAccounts(null, 100.0 * this.accountCount / 2);
     }
 
-    @Ignore("https://www.pivotaltracker.com/n/projects/1471320/stories/117202333")
+    //@Ignore("https://www.pivotaltracker.com/n/projects/1471320/stories/117202333")
     @Test
     public void testSingleClientMultipleActiveTransactions() throws Throwable {
         String[] txids = new String[this.accountCount];
@@ -477,13 +477,18 @@ public class TestTransactionService extends BasicReusableHostTestCase {
         if (transactionId != null) {
             queryBuilder.addFieldClause(ServiceDocument.FIELD_NAME_TRANSACTION_ID, transactionId);
         }
-        QueryTask task = QueryTask.Builder.createDirectTask().setQuery(queryBuilder.build()).build();
+        QueryTask task = QueryTask.Builder.createDirectTask().setQuery(queryBuilder.build()).addOption(QueryOption.EXPAND_CONTENT).build();
         this.host.createQueryTaskService(task, false, true, task, null);
         if (expected != task.results.documentCount.longValue()) {
             this.host.log("Number of accounts found is different than expected:");
             for (String serviceSelfLink : task.results.documentLinks) {
                 String accountId = UriUtils.getLastPathSegment(serviceSelfLink);
                 this.host.log("Found account: %s", accountId);
+                Object serializedAccount = task.results.documents.get(serviceSelfLink);
+                BankAccountServiceState accountState = Utils.fromJson((String) serializedAccount, BankAccountServiceState.class);
+                this.host.log("Account documentUpdateAction: %s", accountState.documentUpdateAction);
+                this.host.log("Account documentVersion: %d", accountState.documentVersion);
+                this.host.log("Account documentTransactionId: %s", accountState.documentTransactionId);
             }
         }
         assertEquals(expected, task.results.documentCount.longValue());
