@@ -25,7 +25,6 @@ import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
 import org.junit.Before;
-import org.junit.Ignore;
 import org.junit.Test;
 
 import com.vmware.xenon.common.BasicReusableHostTestCase;
@@ -41,6 +40,7 @@ import com.vmware.xenon.common.Utils;
 import com.vmware.xenon.common.test.TestContext;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
 import com.vmware.xenon.services.common.QueryTask.Query;
+import com.vmware.xenon.services.common.QueryTask.QuerySpecification.QueryOption;
 import com.vmware.xenon.services.common.QueryTask.QueryTerm.MatchType;
 import com.vmware.xenon.services.common.TestTransactionService.BankAccountService.BankAccountServiceRequest;
 import com.vmware.xenon.services.common.TestTransactionService.BankAccountService.BankAccountServiceState;
@@ -222,27 +222,40 @@ public class TestTransactionService extends BasicReusableHostTestCase {
         sumAccounts(null, 100.0 * this.accountCount / 2);
     }
 
-    @Ignore("https://www.pivotaltracker.com/n/projects/1471320/stories/117202333")
+    /*
+    @Test
+    public void testSingleClientMultipleActiveTransactionsRepeat() throws Throwable {
+        for (int i=0; i<1000; i++) {
+            System.out.println("Iteration " + i);
+            testSingleClientMultipleActiveTransactions(i);
+        }
+    }
+    */
+
+    //@Ignore("https://www.pivotaltracker.com/n/projects/1471320/stories/117202333")
     @Test
     public void testSingleClientMultipleActiveTransactions() throws Throwable {
+        int j = 0;
         String[] txids = new String[this.accountCount];
 
         for (int i = 0; i < this.accountCount; i++) {
             txids[i] = newTransaction();
-            String accountId = buildAccountId(i);
+            this.host.log("Created transaction %s", txids[i]);
+            String accountId = buildAccountId(j * this.accountCount + i);
             double initialBalance = i % 2 == 0 ? 100.0 : 0;
             createAccount(txids[i], accountId, initialBalance, null);
         }
 
         String interferrer = newTransaction();
+        this.host.log("Created interferer transactio %s", interferrer);
         for (int i = 0; i < this.accountCount; i++) {
-            String accountId = buildAccountId(i);
+            String accountId = buildAccountId(j * this.accountCount + i);
             BankAccountServiceState account = getAccount(interferrer, accountId);
             assertNull(account);
         }
 
         for (int i = 0; i < this.accountCount; i++) {
-            String accountId = buildAccountId(i);
+            String accountId = buildAccountId(j * this.accountCount + i);
             BankAccountServiceState account = getAccount(txids[i], accountId);
             double expectedBalance = i % 2 == 0 ? 100.0 : 0;
             assertEquals(expectedBalance, account.balance, 0);
@@ -477,13 +490,18 @@ public class TestTransactionService extends BasicReusableHostTestCase {
         if (transactionId != null) {
             queryBuilder.addFieldClause(ServiceDocument.FIELD_NAME_TRANSACTION_ID, transactionId);
         }
-        QueryTask task = QueryTask.Builder.createDirectTask().setQuery(queryBuilder.build()).build();
+        QueryTask task = QueryTask.Builder.createDirectTask().setQuery(queryBuilder.build()).addOption(QueryOption.EXPAND_CONTENT).build();
         this.host.createQueryTaskService(task, false, true, task, null);
         if (expected != task.results.documentCount.longValue()) {
             this.host.log("Number of accounts found is different than expected:");
             for (String serviceSelfLink : task.results.documentLinks) {
                 String accountId = UriUtils.getLastPathSegment(serviceSelfLink);
                 this.host.log("Found account: %s", accountId);
+                Object serializedAccount = task.results.documents.get(serviceSelfLink);
+                BankAccountServiceState accountState = Utils.fromJson((String) serializedAccount, BankAccountServiceState.class);
+                this.host.log("Account documentUpdateAction: %s", accountState.documentUpdateAction);
+                this.host.log("Account documentVersion: %d", accountState.documentVersion);
+                this.host.log("Account documentTransactionId: %s", accountState.documentTransactionId);
             }
         }
         assertEquals(expected, task.results.documentCount.longValue());
