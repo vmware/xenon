@@ -763,6 +763,7 @@ public class StatefulService implements Service {
         // have already run.
 
         getHost().stopService(this);
+        logInfo("Service has been stopped+deleted, op id %s, op context id %s", op.getId(), op.getContextId());
         return false;
     }
 
