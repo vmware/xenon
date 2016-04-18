@@ -210,6 +210,7 @@ public class TestODataQueryService extends BasicReusableHostTestCase {
     public void filterQueries() throws Throwable {
         this.selfLinks = postExample(this.min, this.max);
         testSimpleStringQuery();
+        testSimpleOrQuery();
         testGTQuery();
         testGEQuery();
         testLTQuery();
@@ -238,6 +239,29 @@ public class TestODataQueryService extends BasicReusableHostTestCase {
         outState = Utils.fromJson(
                 out.get(inState.documentSelfLink), ExampleService.ExampleServiceState.class);
         assertTrue(outState.name.equals(inState.name));
+    }
+
+    private void testSimpleOrQuery() throws Throwable {
+        ExampleService.ExampleServiceState document1 = new ExampleService.ExampleServiceState();
+        document1.name = "STRING1";
+        postExample(document1);
+
+        ExampleService.ExampleServiceState document2 = new ExampleService.ExampleServiceState();
+        document2.name = "STRING2";
+        postExample(document2);
+
+        String queryString = "$filter=name eq STRING1 or name eq STRING2";
+
+        Map<String, Object> out = doQuery(queryString, false).documents;
+        assertNotNull(out);
+        assertEquals(2, out.keySet().size());
+        ExampleService.ExampleServiceState outState1 = Utils.fromJson(
+                out.get(document1.documentSelfLink), ExampleService.ExampleServiceState.class);
+        assertTrue(outState1.name.equals(document1.name));
+
+        ExampleService.ExampleServiceState outState2 = Utils.fromJson(
+                out.get(document2.documentSelfLink), ExampleService.ExampleServiceState.class);
+        assertTrue(outState2.name.equals(document2.name));
     }
 
     private void testGTQuery() throws Throwable {

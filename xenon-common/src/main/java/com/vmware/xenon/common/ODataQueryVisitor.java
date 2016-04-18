@@ -134,13 +134,15 @@ public class ODataQueryVisitor {
         Query q = new Query();
 
         // handle the operator by setting the query occurance.
-        q.occurance = convertToLuceneOccur(operator);
+        Query.Occurance occurance = convertToLuceneOccur(operator);
 
         // Handle a nested query. We return a query with left and right attached as boolean queries.
         if (leftSide instanceof Query) {
             if (!(rightSide instanceof Query)) {
                 throw LeftRightTypeException;
             }
+
+            updateOccuranceForBinaryOperator(occurance, (Query) leftSide, (Query) rightSide);
             q.addBooleanClause((Query) leftSide);
             q.addBooleanClause((Query) rightSide);
             return q;
@@ -152,6 +154,7 @@ public class ODataQueryVisitor {
             throw LeftRightTypeException;
         }
         q.setTermPropertyName((String) leftSide);
+        q.occurance = occurance;
 
         if (((String) leftSide).contains(UriUtils.URI_WILDCARD_CHAR)) {
             q.setTermMatchType(QueryTerm.MatchType.WILDCARD);
@@ -178,6 +181,31 @@ public class ODataQueryVisitor {
         }
 
         return q;
+    }
+
+    private void updateOccuranceForBinaryOperator(
+            Query.Occurance operatorOccurance, Query leftSide, Query rightSide) {
+        if (leftSide.term != null && rightSide.booleanClauses != null) {
+            rightSide.occurance = operatorOccurance;
+            if (leftSide.occurance != Query.Occurance.MUST_NOT_OCCUR) {
+                leftSide.occurance = operatorOccurance;
+            }
+        } else if (rightSide.term != null && leftSide.booleanClauses != null) {
+            leftSide.occurance = operatorOccurance;
+            if (rightSide.occurance != Query.Occurance.MUST_NOT_OCCUR) {
+                rightSide.occurance = operatorOccurance;
+            }
+        } else if (leftSide.booleanClauses != null && rightSide.booleanClauses != null) {
+            leftSide.occurance = operatorOccurance;
+            rightSide.occurance = operatorOccurance;
+        }  else if (leftSide.term != null && rightSide.term != null) {
+            if (leftSide.occurance != Query.Occurance.MUST_NOT_OCCUR) {
+                leftSide.occurance = operatorOccurance;
+            }
+            if (rightSide.occurance != Query.Occurance.MUST_NOT_OCCUR) {
+                rightSide.occurance = operatorOccurance;
+            }
+        }
     }
 
     private static Query.Occurance convertToLuceneOccur(BinaryVerb binaryOp) {
