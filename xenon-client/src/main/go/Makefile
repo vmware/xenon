@@ -46,10 +46,6 @@ goimports:
 	@! $(GOVENDORCOMMON)/bin/goimports -d src 2>&1 | egrep -v '^$$'
 
 govet:
-	@if [ -w "$(shell $(GO) env GOTOOLDIR)" ] ; then \
-		echo "$(GO) install golang.org/x/tools/cmd/vet"; \
-		$(GO) install golang.org/x/tools/cmd/vet; \
-	fi;
 	@echo checking go vet...
 	@! $(GO) vet ./... 2>&1 | egrep -v '^$$'
 
