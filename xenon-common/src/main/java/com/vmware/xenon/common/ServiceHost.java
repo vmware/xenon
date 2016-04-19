@@ -3972,7 +3972,9 @@ public class ServiceHost implements ServiceRequestSender {
 
     public static boolean isServiceCreate(Operation op) {
         return op.getAction() == Action.POST
-                && op.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_CREATED);
+                && op.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_CREATED)
+                && !op.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_SYNCH)
+                && !op.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_REPLICATED);
     }
 
     public static boolean isServiceStop(Operation op) {

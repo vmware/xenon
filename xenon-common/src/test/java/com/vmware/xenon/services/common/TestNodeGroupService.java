@@ -69,6 +69,7 @@ import com.vmware.xenon.common.ServiceHost.ServiceHostState;
 import com.vmware.xenon.common.ServiceStats;
 import com.vmware.xenon.common.ServiceStats.ServiceStat;
 import com.vmware.xenon.common.StatefulService;
+import com.vmware.xenon.common.TaskState;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
 import com.vmware.xenon.common.test.AuthorizationHelper;
@@ -79,6 +80,7 @@ import com.vmware.xenon.common.test.TestProperty;
 import com.vmware.xenon.common.test.VerificationHost;
 import com.vmware.xenon.common.test.VerificationHost.WaitHandler;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
+import com.vmware.xenon.services.common.ExampleTaskService.ExampleTaskServiceState;
 import com.vmware.xenon.services.common.MinimalTestService.MinimalTestServiceErrorResponse;
 import com.vmware.xenon.services.common.NodeGroupService.JoinPeerRequest;
 import com.vmware.xenon.services.common.NodeGroupService.NodeGroupConfig;
@@ -2081,6 +2083,69 @@ public class TestNodeGroupService {
             }
         }
 
+        // create some example tasks, which delete example services. We dont have any
+        // examples services created, which is good, since we just want these tasks to
+        // go to finished state, then verify, after node restart, they all start
+        Set<String> exampleTaskLinks = new ConcurrentSkipListSet<>();
+        createReplicatedExampleTasks(exampleTaskLinks, null);
+
+        Set<String> exampleLinks = new ConcurrentSkipListSet<>();
+        verifyReplicatedAuthorizedPost(exampleLinks);
+
+        // verify restart, with authorization.
+        // stop one host
+        VerificationHost hostToStop = this.host.getInProcessHostMap().values().iterator().next();
+        restartAuthorizedHost(exampleLinks, exampleTaskLinks, hostToStop);
+
+    }
+
+    private void createReplicatedExampleTasks(Set<String> exampleTaskLinks, String name)
+            throws Throwable {
+        URI factoryUri = UriUtils.buildFactoryUri(this.host.getPeerHost(),
+                ExampleTaskService.class);
+        this.host.setSystemAuthorizationContext();
+        // Sample body that this user is authorized to create
+        ExampleTaskServiceState exampleServiceState = new ExampleTaskServiceState();
+        exampleServiceState.exampleNameFieldValue = name;
+        this.host.testStart("creating example *task* instances", null, this.serviceCount);
+        for (int i = 0; i < this.serviceCount; i++) {
+            CompletionHandler c = (o, e) -> {
+                if (e != null) {
+                    this.host.failIteration(e);
+                    return;
+                }
+                ExampleTaskServiceState rsp = o.getBody(ExampleTaskServiceState.class);
+                synchronized (exampleTaskLinks) {
+                    exampleTaskLinks.add(rsp.documentSelfLink);
+                }
+                this.host.completeIteration();
+            };
+            this.host.send(Operation
+                    .createPost(factoryUri)
+                    .setBody(exampleServiceState)
+                    .setCompletion(c));
+        }
+        this.host.testWait();
+
+        // ensure all tasks are in finished state
+        this.host.waitFor("Example tasks did not finish", () -> {
+            ServiceDocumentQueryResult rsp = this.host.getExpandedFactoryState(factoryUri);
+            for (Object o : rsp.documents.values()) {
+                ExampleTaskServiceState doc = Utils.fromJson(o, ExampleTaskServiceState.class);
+                if (TaskState.isFailed(doc.taskInfo)) {
+                    this.host.log("task %s failed: %s", doc.documentSelfLink, doc.failureMessage);
+                    throw new IllegalStateException("task failed");
+                }
+                if (!TaskState.isFinished(doc.taskInfo)) {
+                    return false;
+                }
+            }
+            return true;
+        });
+    }
+
+    private void verifyReplicatedAuthorizedPost(Set<String> exampleLinks)
+            throws Throwable {
         Collection<VerificationHost> hosts = this.host.getInProcessHostMap().values();
         RoundRobinIterator<VerificationHost> it = new RoundRobinIterator<>(hosts);
         int exampleServiceCount = this.serviceCount;
@@ -2092,7 +2157,7 @@ public class TestNodeGroupService {
         ExampleServiceState exampleServiceState = new ExampleServiceState();
         exampleServiceState.name = "jane";
 
-        Set<String> exampleLinks = new ConcurrentSkipListSet<>();
+
         this.host.testStart("creating example instances", null, exampleServiceCount);
         for (int i = 0; i < exampleServiceCount; i++) {
             CompletionHandler c = (o, e) -> {
@@ -2114,6 +2179,7 @@ public class TestNodeGroupService {
                     .setCompletion(c));
         }
         this.host.testWait();
+
 
         this.host.toggleNegativeTestMode(true);
         // Sample body that this user is NOT authorized to create
@@ -2137,15 +2203,10 @@ public class TestNodeGroupService {
         }
         this.host.testWait();
         this.host.toggleNegativeTestMode(false);
-
-        // verify restart, with authorization.
-        // stop one host
-        VerificationHost hostToStop = this.host.getInProcessHostMap().values().iterator().next();
-        restartAuthorizedHost(exampleLinks, hostToStop);
-
     }
 
-    private void restartAuthorizedHost(Set<String> exampleLinks, VerificationHost hostToStop)
+    private void restartAuthorizedHost(Set<String> exampleLinks, Set<String> exampleTaskLinks,
+            VerificationHost hostToStop)
             throws Throwable, InterruptedException {
         // relax quorum
         this.host.setNodeGroupQuorum(this.nodeCount - 1);
@@ -2158,6 +2219,13 @@ public class TestNodeGroupService {
         this.host.waitForNodeGroupConvergence(2, 2);
         VerificationHost existingHost = this.host.getInProcessHostMap().values().iterator().next();
 
+        this.host.waitForReplicatedFactoryServiceAvailable(
+                this.host.getPeerServiceUri(ExampleTaskService.FACTORY_LINK));
+
+        // create some additional tasks on the remaining two hosts, but make sure they don't delete
+        // any example service instances, by specifying a name value we know will not match anything
+        createReplicatedExampleTasks(exampleTaskLinks, UUID.randomUUID().toString());
+
         // restarting a host using the same lucene index can lead to LockAlreadyHeld exceptions
         // because lucene is still holding file system files, even if we told to stop. This causes
         // spurious exceptions unrelated to the test at hand. Add a sleep to reduce the chance
@@ -2169,6 +2237,9 @@ public class TestNodeGroupService {
         Thread.sleep(250);
         hostToStop.waitForReplicatedFactoryServiceAvailable(UriUtils.buildUri(hostToStop,
                 ExampleService.FACTORY_LINK));
+
+        hostToStop.waitForReplicatedFactoryServiceAvailable(UriUtils.buildUri(hostToStop,
+                ExampleTaskService.FACTORY_LINK));
 
         // increase quorum on existing nodes, so they wait for new node
         this.host.setNodeGroupQuorum(this.nodeCount);
@@ -2193,6 +2264,17 @@ public class TestNodeGroupService {
         // verify all services are restarted
         this.host.waitFor("Services not started in restarted host", () -> {
             for (String s : exampleLinks) {
+                ProcessingStage st = hostToStop.getServiceStage(s);
+                if (st == null) {
+                    hostToStop.log("Not started yet: %s", s);
+                    return false;
+                }
+            }
+            return true;
+        });
+
+        this.host.waitFor("Task services not started in restarted host", () -> {
+            for (String s : exampleTaskLinks) {
                 ProcessingStage st = hostToStop.getServiceStage(s);
                 if (st == null) {
                     hostToStop.log("Not started yet: %s", s);
