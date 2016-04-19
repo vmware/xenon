@@ -1128,8 +1128,10 @@ public class StatefulService implements Service {
         boolean isOwner = hasOption(ServiceOption.DOCUMENT_OWNER);
         boolean isStateUpdated = false;
 
-        logInfo("isOwner:%s e:%d v:%d, cause:%s",
-                isOwner, this.context.epoch, this.context.version, failure);
+        if (failure != null) {
+            logWarning("isOwner:%s e:%d v:%d, cause:%s",
+                    isOwner, this.context.epoch, this.context.version, failure);
+        }
 
         // update and index using latest state from peers
         ServiceDocument state = (ServiceDocument) o.getBodyRaw();
