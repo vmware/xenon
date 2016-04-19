@@ -101,6 +101,10 @@ public class TaskState {
         return taskInfo.stage == TaskStage.FAILED;
     }
 
+    public static boolean isCreated(TaskState taskInfo) {
+        return taskInfo.stage == TaskStage.CREATED;
+    }
+
     public static boolean isFinished(TaskState taskInfo) {
         return taskInfo.stage == TaskStage.FINISHED;
     }

@@ -2897,14 +2897,14 @@ public class VerificationHost extends ExampleServiceHost {
      * used for test assertions and logic</li>
      * </ul>
      *
-     * @param storeUri The {@code documentSelfLink} of the created {@code ServiceDocument} will be
-     *                 stored in {@code storeUri[0]} so it can be used for test assertions and
+     * @param storedLink The {@code documentSelfLink} of the created {@code ServiceDocument} will be
+     *                 stored in {@code storedLink[0]} so it can be used for test assertions and
      *                 logic. This must be non-null and its length cannot be zero
      * @return a completion handler, handy for using in methods like {@link
      * #sendFactoryPost(Class, ServiceDocument, CompletionHandler)}
      */
-    public CompletionHandler getCompletionWithUri(String[] storeUri) {
-        if (storeUri == null || storeUri.length == 0) {
+    public CompletionHandler getCompletionWithSelflink(String[] storedLink) {
+        if (storedLink == null || storedLink.length == 0) {
             throw new IllegalArgumentException(
                     "storeUri must be initialized and have room for at least one item");
         }
@@ -2924,7 +2924,7 @@ public class VerificationHost extends ExampleServiceHost {
 
             log(Level.INFO, "Created service instance. [selfLink=%s] [kind=%s]",
                     response.documentSelfLink, response.documentKind);
-            storeUri[0] = response.documentSelfLink;
+            storedLink[0] = response.documentSelfLink;
             completeIteration();
         };
     }

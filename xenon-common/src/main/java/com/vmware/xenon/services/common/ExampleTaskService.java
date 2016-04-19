@@ -24,6 +24,7 @@ import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.OperationJoin;
 import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.ServiceDocumentDescription.PropertyUsageOption;
+import com.vmware.xenon.common.ServiceHost;
 import com.vmware.xenon.common.TaskState.TaskStage;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
@@ -127,17 +128,22 @@ public class ExampleTaskService
             return null;
         }
 
-        if (task.subStage != null) {
-            taskOperation.fail(
-                    new IllegalArgumentException("Do not specify subStage: internal use only"));
-            return null;
+        if (ServiceHost.isServiceCreate(taskOperation)) {
+            // apply validation only for the initial creation POST, not restart. Alternatively,
+            // this code can exist in the handleCreate method
+            if (task.subStage != null) {
+                taskOperation.fail(
+                        new IllegalArgumentException("Do not specify subStage: internal use only"));
+                return null;
+            }
+            if (task.exampleQueryTask != null) {
+                taskOperation.fail(
+                        new IllegalArgumentException(
+                                "Do not specify exampleQueryTask: internal use only"));
+                return null;
+            }
         }
-        if (task.exampleQueryTask != null) {
-            taskOperation.fail(
-                    new IllegalArgumentException(
-                            "Do not specify exampleQueryTask: internal use only"));
-            return null;
-        }
+
         if (task.taskLifetime != null && task.taskLifetime <= 0) {
             taskOperation.fail(
                     new IllegalArgumentException("taskLifetime must be positive"));

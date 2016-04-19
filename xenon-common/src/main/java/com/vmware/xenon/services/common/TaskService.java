@@ -19,6 +19,7 @@ import java.util.function.Consumer;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.ServiceDocumentDescription;
+import com.vmware.xenon.common.ServiceHost;
 import com.vmware.xenon.common.StatefulService;
 import com.vmware.xenon.common.TaskState;
 import com.vmware.xenon.common.Utils;
@@ -100,7 +101,17 @@ public abstract class TaskService<T extends TaskService.TaskServiceState>
         }
         taskOperation.complete();
 
+        if (!ServiceHost.isServiceCreate(taskOperation)
+                || (task.taskInfo != null && !TaskState.isCreated(task.taskInfo))) {
+            // Skip self patch to STARTED if this is a restart operation, or, task stage is
+            // other than CREATED.
+            // Tasks that handle restart should override handleStart and decide if they should
+            // continue processing on restart, or fail
+            return;
+        }
+
         initializeState(task, taskOperation);
+
         sendSelfPatch(task);
     }
 
@@ -109,12 +120,19 @@ public abstract class TaskService<T extends TaskService.TaskServiceState>
      * implementation to also validate their {@code SubStage}.
      */
     protected T validateStartPost(Operation taskOperation) {
+        T task = getBody(taskOperation);
+
         if (!taskOperation.hasBody()) {
             taskOperation.fail(new IllegalArgumentException("POST body is required"));
             return null;
         }
 
-        T task = getBody(taskOperation);
+        if (!ServiceHost.isServiceCreate(taskOperation)) {
+            // we apply validation only on the original, client issued POST, not operations
+            // caused by host restart
+            return task;
+        }
+
         if (task.taskInfo != null) {
             taskOperation.fail(new IllegalArgumentException(
                     "Do not specify taskBody: internal use only"));

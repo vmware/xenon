@@ -48,23 +48,34 @@ public class TestExampleTaskService extends BasicReusableHostTestCase {
         // wait for them since since they are not core services. Note that production code
         // should be asynchronous and not wait like this
         this.host.waitForServiceAvailable(ExampleService.FACTORY_LINK);
+        this.host.waitForServiceAvailable(ExampleTaskService.FACTORY_LINK);
     }
 
     @Test
-    public void testExampleTestServices() throws Throwable {
+    public void taskCreationWithRestart() throws Throwable {
 
         createExampleServices();
         Consumer<Operation> notificationTarget = createNotificationTarget();
 
-        String[] taskUri = new String[1];
-        CompletionHandler successCompletion = getCompletionWithUri(taskUri);
+        String[] taskLink = new String[1];
+        CompletionHandler successCompletion = getCompletionWithSelfLink(taskLink);
         ExampleTaskServiceState initialState = new ExampleTaskServiceState();
         sendFactoryPost(ExampleTaskService.class, initialState, successCompletion);
-        assertNotNull(taskUri[0]);
+        assertNotNull(taskLink[0]);
 
-        subscribeTask(taskUri[0], notificationTarget);
+        subscribeTask(taskLink[0], notificationTarget);
 
-        ExampleTaskServiceState state = waitForFinishedTask(initialState.getClass(), taskUri[0]);
+        ExampleTaskServiceState state = waitForFinishedTask(initialState.getClass(), taskLink[0]);
+
+        // stop the host, and verify task deals with restart
+        this.host.stop();
+        this.host.setPort(0);
+        this.host.start();
+
+        this.host.waitForServiceAvailable(taskLink[0]);
+        // verify service is re-started, and in FINISHED state
+        state = waitForFinishedTask(initialState.getClass(), taskLink[0]);
+
         updateTaskExpirationAndValidate(state);
         validateNoServices();
     }
