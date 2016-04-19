@@ -597,8 +597,9 @@ public class NodeGroupService extends StatefulService {
                     .createPatch(peerUri)
                     .setBody(localState)
                     .setRetryCount(0)
+                    .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_USE_HTTP2)
                     .setExpiration(
-                            Utils.getNowMicrosUtc() + getHost().getOperationTimeoutMicros() / 2)
+                            Utils.getNowMicrosUtc() + getHost().getOperationTimeoutMicros() / 3)
                     .forceRemote()
                     .setCompletion(ch);
 
