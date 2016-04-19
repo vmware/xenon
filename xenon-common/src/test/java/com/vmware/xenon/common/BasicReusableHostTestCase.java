@@ -105,9 +105,9 @@ public class BasicReusableHostTestCase {
         HOST.sendFactoryPost(service, state, handler);
     }
 
-    /** @see VerificationHost#getCompletionWithUri(String[]) */
-    public static CompletionHandler getCompletionWithUri(String[] storeUri) {
-        return HOST.getCompletionWithUri(storeUri);
+    /** @see VerificationHost#getCompletionWithSelflink(String[]) */
+    public static CompletionHandler getCompletionWithSelfLink(String[] storedLink) {
+        return HOST.getCompletionWithSelflink(storedLink);
     }
 
     /** @see VerificationHost#getExpectedFailureCompletionReturningThrowable(Throwable[]) */
