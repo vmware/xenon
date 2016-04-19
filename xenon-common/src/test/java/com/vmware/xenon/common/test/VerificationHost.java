@@ -1005,6 +1005,11 @@ public class VerificationHost extends ExampleServiceHost {
         return this.getServiceState(null, ServiceDocumentQueryResult.class, factoryUri);
     }
 
+    public ServiceDocumentQueryResult getExpandedFactoryState(URI factoryUri) throws Throwable {
+        factoryUri = UriUtils.buildExpandLinksQueryUri(factoryUri);
+        return this.getServiceState(null, ServiceDocumentQueryResult.class, factoryUri);
+    }
+
     public <T> void doPutPerService(List<Service> services)
             throws Throwable {
         doPutPerService(EnumSet.noneOf(TestProperty.class), services);
@@ -2076,6 +2081,8 @@ public class VerificationHost extends ExampleServiceHost {
             throw e;
         }
 
+        waitForNodeGroupIsAvailableConvergence();
+
         if (!waitForTimeSync) {
             return;
         }
@@ -2226,9 +2233,7 @@ public class VerificationHost extends ExampleServiceHost {
             throws Throwable {
         // we can issue the update to any one node and it will update
         // everyone in the group
-
         setSystemAuthorizationContext();
-
         for (URI nodeGroup : getNodeGroupMap().values()) {
             log("Changing quorum to %d on group %s", quorum, nodeGroup);
             setNodeGroupQuorum(quorum, nodeGroup);
@@ -2240,15 +2245,13 @@ public class VerificationHost extends ExampleServiceHost {
             setSystemAuthorizationContext();
             for (URI n : this.peerNodeGroups.values()) {
                 NodeGroupState s = getServiceState(null, NodeGroupState.class, n);
-                for (NodeState ns : s.nodes.values()) {
-                    if (quorum != ns.membershipQuorum) {
-                        isConverged = false;
-                    }
+                NodeState selfNode = s.nodes.get(s.documentOwner);
+                if (quorum != selfNode.membershipQuorum) {
+                    isConverged = false;
                 }
             }
             resetAuthorizationContext();
             if (isConverged) {
-
                 log("converged");
                 return;
             }
