@@ -3519,8 +3519,8 @@ public class ServiceHost implements ServiceRequestSender {
             }
         }
 
-        if (inboundOp.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_QUEUE_FOR_SERVICE_AVAILABILITY)
-                || inboundOp.isForwardingDisabled()) {
+        if (inboundOp
+                .hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_QUEUE_FOR_SERVICE_AVAILABILITY)) {
             waitForService = true;
         }
 
@@ -4870,6 +4870,7 @@ public class ServiceHost implements ServiceRequestSender {
         if (factoryPath != null) {
             factoryService = this.findService(factoryPath);
         }
+
         if (factoryService != null
                 && !this.serviceFactoriesUnderMemoryPressure.contains(factoryPath)) {
             if (!factoryService.hasOption(ServiceOption.ON_DEMAND_LOAD)) {
@@ -4978,7 +4979,6 @@ public class ServiceHost implements ServiceRequestSender {
         }
 
         FactoryService factoryService = (FactoryService) parentService;
-
         Operation onDemandPost = Operation.createPost(inboundOp.getUri());
 
         CompletionHandler c = (o, e) -> {

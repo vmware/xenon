@@ -177,7 +177,7 @@ public class LuceneQueryTaskService extends StatefulService {
                 });
         // Send the operation using a callback service to avoid consuming the connection
         // for the duration of the query.
-        this.getHost().sendRequestWithCallback(op);
+        this.getHost().sendRequest(op);
     }
 
     private void collectBroadcastQueryResults(Map<URI, String> jsonResponses, QueryTask queryTask) {

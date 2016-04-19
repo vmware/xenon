@@ -70,6 +70,7 @@ public class BroadcastQueryPageService extends StatelessService {
             Operation op = Operation
                     .createGet(UriUtils.buildUri(this.getHost(), indexLink))
                     .setReferer(get.getReferer())
+                    .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_USE_HTTP2)
                     .setCompletion((o, e) -> {
                         if (e != null) {
                             QueryTask t = new QueryTask();
