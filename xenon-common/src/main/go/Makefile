@@ -21,7 +21,7 @@ export TMPDIR
 all: goversion deps verify
 
 ifneq ($(FOUND_GO),)
-verify: goversion goimports govet golint
+verify: goversion goimports golint
 else
 verify:
 endif
@@ -29,10 +29,6 @@ endif
 ifneq ($(FOUND_GO),)
 deps:
 	$(GO) get -d golang.org/x/tools/cmd/goimports
-	@if [ -w "$(shell $(GO) env GOTOOLDIR)" ] ; then \
-		echo "$(GO) get golang.org/x/tools/cmd/vet"; \
-		$(GO) get -d golang.org/x/tools/cmd/vet; \
-	fi;
 	$(GO) get -d github.com/golang/lint/golint
 	$(GO) get -d github.com/pborman/uuid
 else
@@ -48,12 +44,6 @@ endif
 
 goimports:
 	$(GO) install golang.org/x/tools/cmd/goimports
-
-govet:
-	@if [ -w "$(shell $(GO) env GOTOOLDIR)" ] ; then \
-		echo "$(GO) install golang.org/x/tools/cmd/vet"; \
-		$(GO) install golang.org/x/tools/cmd/vet; \
-	fi;
 
 golint:
 	$(GO) install github.com/golang/lint/golint
