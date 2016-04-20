@@ -358,7 +358,7 @@ public class TestBasicAuthenticationService extends BasicTestCase {
         }
 
         Map<String, String> cookieElements = CookieJar.decodeCookies(cookieHeader);
-        if (!cookieElements.containsKey(AuthenticationConstants.XENON_JWT_COOKIE)) {
+        if (!cookieElements.containsKey(AuthenticationConstants.REQUEST_AUTH_TOKEN_COOKIE)) {
             this.host.failIteration(new IllegalStateException("Missing auth cookie"));
             return false;
         }
@@ -368,7 +368,7 @@ public class TestBasicAuthenticationService extends BasicTestCase {
             return false;
         }
 
-        String authCookie = cookieElements.get(AuthenticationConstants.XENON_JWT_COOKIE);
+        String authCookie = cookieElements.get(AuthenticationConstants.REQUEST_AUTH_TOKEN_COOKIE);
         String authToken = op.getResponseHeader(Operation.REQUEST_AUTH_TOKEN_HEADER);
 
         if (!authCookie.equals(authToken)) {

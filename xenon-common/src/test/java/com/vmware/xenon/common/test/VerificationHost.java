@@ -1660,6 +1660,14 @@ public class VerificationHost extends ExampleServiceHost {
         try {
             VerificationHost.createAndAttachSSLClient(h, this.getExecutor(),
                     this.getScheduledExecutor());
+
+            // override with parent cert info.
+            // Within same node group, all hosts are required to use same cert, private key, and
+            // passphrase for now.
+            h.setCertificateFileReference(this.getState().certificateFileReference);
+            h.setPrivateKeyFileReference(this.getState().privateKeyFileReference);
+            h.setPrivateKeyPassphrase(this.getState().privateKeyPassphrase);
+
             h.start();
             h.setMaintenanceIntervalMicros(maintIntervalMicros);
         } catch (Throwable e) {

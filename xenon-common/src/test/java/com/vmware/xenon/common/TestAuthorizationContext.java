@@ -115,7 +115,7 @@ public class TestAuthorizationContext extends BasicTestCase {
         properties.put("hello", "world");
 
         Claims.Builder builder = new Claims.Builder();
-        builder.setIssuer(AuthenticationConstants.JWT_ISSUER);
+        builder.setIssuer(AuthenticationConstants.DEFAULT_ISSUER);
         builder.setSubject(UriUtils.buildUriPath(ServiceUriPaths.CORE_AUTHZ_USERS, subject));
         builder.setExpirationTime(Utils.getNowMicrosUtc() + TimeUnit.HOURS.toMicros(1));
         builder.setProperties(properties);

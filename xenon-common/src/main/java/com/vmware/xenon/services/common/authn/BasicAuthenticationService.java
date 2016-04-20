@@ -34,7 +34,7 @@ public class BasicAuthenticationService extends StatelessService {
     public static String SELF_LINK = ServiceUriPaths.CORE_AUTHN_BASIC;
 
     public static final String WWW_AUTHENTICATE_HEADER_NAME = "WWW-Authenticate";
-    public static final String WWW_AUTHENTICATE_HEADER_VALUE = "Basic realm=\"dcp\"";
+    public static final String WWW_AUTHENTICATE_HEADER_VALUE = "Basic realm=\"xenon\"";
     public static final String AUTHORIZATION_HEADER_NAME = "Authorization";
     public static final String BASIC_AUTH_NAME = "Basic";
     private static final String BASIC_AUTH_SEPERATOR = " ";
@@ -213,7 +213,7 @@ public class BasicAuthenticationService extends StatelessService {
 
     private boolean associateAuthorizationContext(Operation op, String userLink, long expirationTime) {
         Claims.Builder builder = new Claims.Builder();
-        builder.setIssuer(AuthenticationConstants.JWT_ISSUER);
+        builder.setIssuer(AuthenticationConstants.DEFAULT_ISSUER);
         builder.setSubject(userLink);
         builder.setExpirationTime(expirationTime);
 
