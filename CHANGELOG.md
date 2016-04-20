@@ -2,6 +2,15 @@
 
 ## 0.8.0-SNAPSHOT
 
+* When SSL private key is provided("--keyFile" argument), use it as a secret
+  to sign/verify authorization context token.
+  If not specified, default value(same across all nodes) is used.
+
+  NOTE:
+    Using the default token is insecure and should not be done in production
+    settings. If SSL is not enabled, it is recommended to programmatically
+    set the secret calling "ServiceHost#setTokenSecret()".
+
 * Add additional "Operation#setOperationCompletion" that allows the caller
   to supply two discrete callbacks: one for successful completion, and
   one for failure.

@@ -29,6 +29,7 @@ import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.security.GeneralSecurityException;
 import java.security.KeyStore;
+import java.security.PrivateKey;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Calendar;
@@ -43,6 +44,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Properties;
+import java.util.Random;
 import java.util.Set;
 import java.util.SortedSet;
 import java.util.TreeSet;
@@ -66,7 +68,6 @@ import java.util.logging.ConsoleHandler;
 import java.util.logging.FileHandler;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManagerFactory;
 
@@ -178,7 +179,7 @@ public class ServiceHost implements ServiceRequestSender {
         public SslClientAuthMode sslClientAuthMode = SslClientAuthMode.NONE;
 
         /**
-         * File path to key file
+         * File path to key file(PKCS#8 private key file in PEM format)
          */
         public Path keyFile;
 
@@ -258,6 +259,7 @@ public class ServiceHost implements ServiceRequestSender {
          * the JAR file of the host
          */
         public Path resourceSandbox;
+
     }
 
     private static final LogFormatter LOG_FORMATTER = new LogFormatter();
@@ -390,6 +392,7 @@ public class ServiceHost implements ServiceRequestSender {
         public boolean isPeerSynchronizationEnabled;
         public int peerSynchronizationTimeLimitSeconds;
         public boolean isAuthorizationEnabled;
+        public byte[] tokenSecret;
         public transient boolean isStarted;
         public transient boolean isStopping;
         public SystemHostInfo systemInfo;
@@ -604,12 +607,6 @@ public class ServiceHost implements ServiceRequestSender {
 
         updateSystemInfo(false);
 
-        // Create token signer and verifier
-        this.tokenSigner = new Signer(
-                AuthenticationConstants.JWT_SECRET.getBytes(Utils.CHARSET));
-        this.tokenVerifier = new Verifier(
-                AuthenticationConstants.JWT_SECRET.getBytes(Utils.CHARSET));
-
         // Set default limits for memory utilization on core services and the host
         if (getServiceMemoryLimitMB(ROOT_PATH, MemoryLimitType.EXACT) == null) {
             setServiceMemoryLimit(ROOT_PATH, DEFAULT_PCT_MEMORY_LIMIT);
@@ -632,8 +629,35 @@ public class ServiceHost implements ServiceRequestSender {
         return this;
     }
 
-    private void initializeStateFromArguments(File s, Arguments args) throws URISyntaxException {
+    protected byte[] getJWTSecret() throws IOException {
+        byte[] secret;
 
+        URI privateKeyFileUri = this.state.privateKeyFileReference;
+        if (privateKeyFileUri != null) {
+            log(Level.INFO, "Using %s for secret to sign/verify JSON(JWT)", privateKeyFileUri);
+
+            Path privKeyFilePath = Paths.get(privateKeyFileUri);
+            PrivateKey privateKey = PrivateKeyReader
+                    .fromPem(privKeyFilePath, this.state.privateKeyPassphrase);
+
+            secret = privateKey.getEncoded();
+        } else {
+            log(Level.WARNING, "Using default secret to sign/verify JSON(JWT)");
+
+            // This random generator is seeded with constant value. It means this generator always
+            // produce same value. This is not much different from calling "str".getBytes(). Not more
+            // then providing a bit of obfuscation.
+            // When we implement "rotation of keys", this implementation should be revisited.
+            Random random = new Random(AuthenticationConstants.DEFAULT_TOKEN_SEED);
+            secret = new byte[32];
+            random.nextBytes(secret);
+        }
+
+        return secret;
+    }
+
+    private void initializeStateFromArguments(File s, Arguments args) throws
+            URISyntaxException {
         if (args.resourceSandbox != null) {
             File resDir = args.resourceSandbox.toFile();
             if (resDir.exists()) {
@@ -834,6 +858,13 @@ public class ServiceHost implements ServiceRequestSender {
             throw new IllegalStateException("Already started");
         }
         this.state.isAuthorizationEnabled = isAuthorizationEnabled;
+    }
+
+    public void setTokenSecret(byte[] tokenSecret) {
+        if (isStarted()) {
+            throw new IllegalStateException("Already started");
+        }
+        this.state.tokenSecret = tokenSecret;
     }
 
     public boolean isPeerSynchronizationEnabled() {
@@ -1093,6 +1124,12 @@ public class ServiceHost implements ServiceRequestSender {
         if (this.isAuthorizationEnabled() && this.authorizationService == null) {
             this.authorizationService = new AuthorizationContextService();
         }
+
+        if (this.state.tokenSecret == null) {
+            this.state.tokenSecret = getJWTSecret();
+        }
+        this.tokenSigner = new Signer(this.state.tokenSecret);
+        this.tokenVerifier = new Verifier(this.state.tokenSecret);
 
         this.executor = Executors.newWorkStealingPool(Utils.DEFAULT_THREAD_COUNT);
         this.scheduledExecutor = Executors.newScheduledThreadPool(Utils.DEFAULT_THREAD_COUNT,
@@ -3176,7 +3213,7 @@ public class ServiceHost implements ServiceRequestSender {
             if (cookies == null) {
                 return null;
             }
-            token = cookies.get(AuthenticationConstants.XENON_JWT_COOKIE);
+            token = cookies.get(AuthenticationConstants.REQUEST_AUTH_TOKEN_COOKIE);
         }
 
         if (token == null) {
@@ -5614,7 +5651,7 @@ public class ServiceHost implements ServiceRequestSender {
      */
     private AuthorizationContext createAuthorizationContext(String userLink) {
         Claims.Builder cb = new Claims.Builder();
-        cb.setIssuer(AuthenticationConstants.JWT_ISSUER);
+        cb.setIssuer(AuthenticationConstants.DEFAULT_ISSUER);
         cb.setSubject(userLink);
 
         // Set an effective expiration to never
