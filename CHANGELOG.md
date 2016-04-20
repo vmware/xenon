@@ -2,6 +2,20 @@
 
 ## 0.8.0-SNAPSHOT
 
+* Update JWT(Json Web Token) to use private key when SSL is enabled. Otherwise,
+  default value(same across all nodes) is used. (NOT SECURE)
+  JWT is used to sign/verify authorization context token.
+
+  In multi node environment, it is required to use same certificate and private
+  key within same node group.
+  If different cert is used, communication between nodes will fail since different
+  private key is used to sign/verify json.
+  We are planning certificate rotation in future.
+
+  NOTE:
+    Using the default token is insecure and should not be done in production
+    settings when authorization is enabled.
+
 * Add additional "Operation#setOperationCompletion" that allows the caller
   to supply two discrete callbacks: one for successful completion, and
   one for failure.

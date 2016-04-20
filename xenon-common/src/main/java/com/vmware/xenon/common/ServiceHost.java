@@ -22,6 +22,7 @@ import java.net.ServerSocket;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URL;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -29,6 +30,7 @@ import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.security.GeneralSecurityException;
 import java.security.KeyStore;
+import java.security.PrivateKey;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Calendar;
@@ -66,7 +68,6 @@ import java.util.logging.ConsoleHandler;
 import java.util.logging.FileHandler;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManagerFactory;
 
@@ -178,7 +179,7 @@ public class ServiceHost implements ServiceRequestSender {
         public SslClientAuthMode sslClientAuthMode = SslClientAuthMode.NONE;
 
         /**
-         * File path to key file
+         * File path to key file(PKCS#8 private key file in PEM format)
          */
         public Path keyFile;
 
@@ -258,6 +259,7 @@ public class ServiceHost implements ServiceRequestSender {
          * the JAR file of the host
          */
         public Path resourceSandbox;
+
     }
 
     private static final LogFormatter LOG_FORMATTER = new LogFormatter();
@@ -604,12 +606,6 @@ public class ServiceHost implements ServiceRequestSender {
 
         updateSystemInfo(false);
 
-        // Create token signer and verifier
-        this.tokenSigner = new Signer(
-                AuthenticationConstants.JWT_SECRET.getBytes(Utils.CHARSET));
-        this.tokenVerifier = new Verifier(
-                AuthenticationConstants.JWT_SECRET.getBytes(Utils.CHARSET));
-
         // Set default limits for memory utilization on core services and the host
         if (getServiceMemoryLimitMB(ROOT_PATH, MemoryLimitType.EXACT) == null) {
             setServiceMemoryLimit(ROOT_PATH, DEFAULT_PCT_MEMORY_LIMIT);
@@ -632,8 +628,38 @@ public class ServiceHost implements ServiceRequestSender {
         return this;
     }
 
-    private void initializeStateFromArguments(File s, Arguments args) throws URISyntaxException {
+    protected byte[] getJWTSecret() throws IOException {
+        byte[] secret;
 
+        URI privateKeyFileUri = this.state.privateKeyFileReference;
+        if (privateKeyFileUri != null) {
+            log(Level.INFO, "Using %s for secret to sign/verify JSON(JWT)", privateKeyFileUri);
+
+            Path privKeyFilePath = Paths.get(privateKeyFileUri);
+            PrivateKey privateKey = PrivateKeyReader
+                    .fromPem(privKeyFilePath, this.state.privateKeyPassphrase);
+
+            secret = privateKey.getEncoded();
+        } else {
+            if (this.isAuthorizationEnabled()) {
+                String msg = "\n\n"
+                        + "########################################################\n"
+                        + "##  Using default secret to sign/verify JSON(JWT)     ##\n"
+                        + "##  This is NOT secure. Please consider enabling SSL. ##\n"
+                        + "########################################################\n"
+                        + "\n";
+                log(Level.WARNING, msg);
+            } else {
+                log(Level.INFO, "Using default secret to sign/verify JSON(JWT)");
+            }
+            secret = AuthenticationConstants.DEFAULT_JWT_SECRET.getBytes(StandardCharsets.UTF_8);
+        }
+
+        return secret;
+    }
+
+    private void initializeStateFromArguments(File s, Arguments args) throws
+            URISyntaxException {
         if (args.resourceSandbox != null) {
             File resDir = args.resourceSandbox.toFile();
             if (resDir.exists()) {
@@ -1093,6 +1119,10 @@ public class ServiceHost implements ServiceRequestSender {
         if (this.isAuthorizationEnabled() && this.authorizationService == null) {
             this.authorizationService = new AuthorizationContextService();
         }
+
+        byte[] secret = getJWTSecret();
+        this.tokenSigner = new Signer(secret);
+        this.tokenVerifier = new Verifier(secret);
 
         this.executor = Executors.newWorkStealingPool(Utils.DEFAULT_THREAD_COUNT);
         this.scheduledExecutor = Executors.newScheduledThreadPool(Utils.DEFAULT_THREAD_COUNT,
@@ -3176,7 +3206,7 @@ public class ServiceHost implements ServiceRequestSender {
             if (cookies == null) {
                 return null;
             }
-            token = cookies.get(AuthenticationConstants.XENON_JWT_COOKIE);
+            token = cookies.get(AuthenticationConstants.REQUEST_AUTH_TOKEN_COOKIE);
         }
 
         if (token == null) {
@@ -5614,7 +5644,7 @@ public class ServiceHost implements ServiceRequestSender {
      */
     private AuthorizationContext createAuthorizationContext(String userLink) {
         Claims.Builder cb = new Claims.Builder();
-        cb.setIssuer(AuthenticationConstants.JWT_ISSUER);
+        cb.setIssuer(AuthenticationConstants.DEFAULT_ISSUER);
         cb.setSubject(userLink);
 
         // Set an effective expiration to never

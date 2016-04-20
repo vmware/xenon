@@ -46,7 +46,6 @@ import io.netty.handler.codec.http.websocketx.WebSocketVersion;
 import io.netty.handler.ssl.SslContext;
 import io.netty.handler.ssl.SslContextBuilder;
 import io.netty.handler.ssl.util.InsecureTrustManagerFactory;
-
 import org.mozilla.javascript.Context;
 import org.mozilla.javascript.Function;
 import org.mozilla.javascript.NativeObject;
@@ -213,7 +212,8 @@ public class JsWebSocket extends ScriptableObject {
         if (OperationContext.getAuthorizationContext() != null
                 && OperationContext.getAuthorizationContext().getToken() != null) {
             headers.add(HttpHeaderNames.COOKIE, CookieJar.encodeCookies(Collections.singletonMap(
-                    AuthenticationConstants.XENON_JWT_COOKIE, OperationContext.getAuthorizationContext().getToken())));
+                    AuthenticationConstants.REQUEST_AUTH_TOKEN_COOKIE,
+                    OperationContext.getAuthorizationContext().getToken())));
         }
         final WebSocketClientHandler handler = new WebSocketClientHandler(
                 WebSocketClientHandshakerFactory.newHandshaker(

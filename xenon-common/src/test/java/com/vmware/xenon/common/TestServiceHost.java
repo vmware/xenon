@@ -15,10 +15,14 @@ package com.vmware.xenon.common;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotSame;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 import java.io.File;
 import java.net.URI;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Date;
@@ -47,6 +51,9 @@ import com.vmware.xenon.common.ServiceHost.ServiceAlreadyStartedException;
 import com.vmware.xenon.common.ServiceHost.ServiceHostState;
 import com.vmware.xenon.common.ServiceHost.ServiceHostState.MemoryLimitType;
 import com.vmware.xenon.common.ServiceStats.ServiceStat;
+import com.vmware.xenon.common.jwt.Rfc7519Claims;
+import com.vmware.xenon.common.jwt.Signer;
+import com.vmware.xenon.common.jwt.Verifier;
 import com.vmware.xenon.common.test.AuthorizationHelper;
 import com.vmware.xenon.common.test.MinimalTestServiceState;
 import com.vmware.xenon.common.test.TestContext;
@@ -431,6 +438,182 @@ public class TestServiceHost {
         }
 
     }
+
+    @Test
+    public void jwtSecret() throws Throwable {
+        setUp(false);
+
+        Claims claims = new Claims.Builder().setSubject("foo").getResult();
+
+        Signer bogusSigner = new Signer("bogus".getBytes());
+        Signer defaultSigner = this.host.getTokenSigner();
+        Verifier defaultVerifier = this.host.getTokenVerifier();
+
+        String signedByBogus = bogusSigner.sign(claims);
+        String signedByDefault = defaultSigner.sign(claims);
+
+        try {
+            defaultVerifier.verify(signedByBogus);
+            fail("Signed by bogusSigner should be invalid for defaultVerifier.");
+        } catch (Verifier.InvalidSignatureException ex) {
+        }
+
+        Rfc7519Claims verified = defaultVerifier.verify(signedByDefault);
+        assertEquals("foo", verified.getSubject());
+
+        this.host.stop();
+
+        // assign cert and private-key. private-key is used for JWT seed.
+        URI certFileUri = getClass().getResource("/ssl/server.crt").toURI();
+        URI keyFileUri = getClass().getResource("/ssl/server.pem").toURI();
+
+        this.host.setCertificateFileReference(certFileUri);
+        this.host.setPrivateKeyFileReference(keyFileUri);
+        this.host.start();
+
+        Signer newSigner = this.host.getTokenSigner();
+        Verifier newVerifier = this.host.getTokenVerifier();
+
+        assertNotSame("new signer must be created", defaultSigner, newSigner);
+        assertNotSame("new verifier must be created", defaultVerifier, newVerifier);
+
+        try {
+            newVerifier.verify(signedByDefault);
+            fail("Signed by defaultSigner should be invalid for newVerifier");
+        } catch (Verifier.InvalidSignatureException ex) {
+        }
+
+        // sign by newSigner
+        String signedByNewSigner = newSigner.sign(claims);
+
+        verified = newVerifier.verify(signedByNewSigner);
+        assertEquals("foo", verified.getSubject());
+
+        try {
+            defaultVerifier.verify(signedByNewSigner);
+            fail("Signed by newSigner should be invalid for defaultVerifier");
+        } catch (Verifier.InvalidSignatureException ex) {
+        }
+
+    }
+
+    @Test
+    public void startWithNonEncryptedPem() throws Throwable {
+        ExampleServiceHost h = new ExampleServiceHost();
+        String tmpFolderPath = this.tmpFolder.getRoot().getAbsolutePath();
+
+        // We run test from filesystem so far, thus expect files to be on file system.
+        // For example, if we run test from jar file, needs to copy the resource to tmp dir.
+        Path certFilePath = Paths.get(getClass().getResource("/ssl/server.crt").toURI());
+        Path keyFilePath = Paths.get(getClass().getResource("/ssl/server.pem").toURI());
+        String certFile = certFilePath.toFile().getAbsolutePath();
+        String keyFile = keyFilePath.toFile().getAbsolutePath();
+
+        String[] args = {
+                "--sandbox=" + tmpFolderPath,
+                "--port=0",
+                "--securePort=0",
+                "--certificateFile=" + certFile,
+                "--keyFile=" + keyFile
+        };
+
+        try {
+            h.initialize(args);
+            h.start();
+        } finally {
+            h.stop();
+        }
+
+        // with wrong password
+        args = new String[] {
+                "--sandbox=" + tmpFolderPath,
+                "--port=0",
+                "--securePort=0",
+                "--certificateFile=" + certFile,
+                "--keyFile=" + keyFile,
+                "--keyPassphrase=WRONG_PASSWORD",
+        };
+
+        try {
+            h.initialize(args);
+            h.start();
+            fail("Host should NOT start with password for non-encrypted pem key");
+        } catch (Exception ex) {
+        } finally {
+            h.stop();
+        }
+
+    }
+
+    @Test
+    public void startWithEncryptedPem() throws Throwable {
+        ExampleServiceHost h = new ExampleServiceHost();
+        String tmpFolderPath = this.tmpFolder.getRoot().getAbsolutePath();
+
+        // We run test from filesystem so far, thus expect files to be on file system.
+        // For example, if we run test from jar file, needs to copy the resource to tmp dir.
+        Path certFilePath = Paths.get(getClass().getResource("/ssl/server.crt").toURI());
+        Path keyFilePath = Paths.get(getClass().getResource("/ssl/server-with-pass.p8").toURI());
+        String certFile = certFilePath.toFile().getAbsolutePath();
+        String keyFile = keyFilePath.toFile().getAbsolutePath();
+
+        String[] args = {
+                "--sandbox=" + tmpFolderPath,
+                "--port=0",
+                "--securePort=0",
+                "--certificateFile=" + certFile,
+                "--keyFile=" + keyFile,
+                "--keyPassphrase=password",
+        };
+
+        try {
+            h.initialize(args);
+            h.start();
+        } finally {
+            h.stop();
+        }
+
+        // with wrong password
+        args = new String[] {
+                "--sandbox=" + tmpFolderPath,
+                "--port=0",
+                "--securePort=0",
+                "--certificateFile=" + certFile,
+                "--keyFile=" + keyFile,
+                "--keyPassphrase=WRONG_PASSWORD",
+        };
+
+        try {
+            h.initialize(args);
+            h.start();
+            fail("Host should NOT start with wrong password for encrypted pem key");
+        } catch (Exception ex) {
+        } finally {
+            h.stop();
+        }
+
+        // with no password
+        args = new String[] {
+                "--sandbox=" + tmpFolderPath,
+                "--port=0",
+                "--securePort=0",
+                "--certificateFile=" + certFile,
+                "--keyFile=" + keyFile,
+        };
+
+        try {
+            h.initialize(args);
+            h.start();
+            fail("Host should NOT start when no password is specified for encrypted pem key");
+        } catch (Exception ex) {
+        } finally {
+            h.stop();
+        }
+
+    }
+
+
+
 
     @Test
     public void setAuthEnforcement() throws Throwable {
