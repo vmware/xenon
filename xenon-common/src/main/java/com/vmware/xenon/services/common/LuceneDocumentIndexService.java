@@ -2084,7 +2084,7 @@ public class LuceneDocumentIndexService extends StatelessService {
             List<IndexSearcher> searchers = entry.getValue();
             for (IndexSearcher s : searchers) {
                 try {
-                    logInfo("Closing paginated query searcher, expired at %d", entry.getKey());
+                    logFine("Closing paginated query searcher, expired at %d", entry.getKey());
                     s.getIndexReader().close();
                 } catch (Throwable e) {
 
