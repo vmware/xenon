@@ -15,7 +15,9 @@ package com.vmware.xenon.common;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotSame;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 import java.io.File;
 import java.net.URI;
@@ -47,6 +49,9 @@ import com.vmware.xenon.common.ServiceHost.ServiceAlreadyStartedException;
 import com.vmware.xenon.common.ServiceHost.ServiceHostState;
 import com.vmware.xenon.common.ServiceHost.ServiceHostState.MemoryLimitType;
 import com.vmware.xenon.common.ServiceStats.ServiceStat;
+import com.vmware.xenon.common.jwt.Rfc7519Claims;
+import com.vmware.xenon.common.jwt.Signer;
+import com.vmware.xenon.common.jwt.Verifier;
 import com.vmware.xenon.common.test.AuthorizationHelper;
 import com.vmware.xenon.common.test.MinimalTestServiceState;
 import com.vmware.xenon.common.test.TestContext;
@@ -431,6 +436,95 @@ public class TestServiceHost {
             NodeState selfEntry = ngs.nodes.get(h.getId());
             assertEquals(publicAddress, selfEntry.groupReference.getHost());
             assertEquals(publicPort, selfEntry.groupReference.getPort());
+        } finally {
+            h.stop();
+            tmpFolder.delete();
+        }
+
+    }
+
+    @Test
+    public void setTokenSecret() throws Throwable {
+        setUp(false);
+        ExampleServiceHost h = new ExampleServiceHost();
+        TemporaryFolder tmpFolder = new TemporaryFolder();
+        tmpFolder.create();
+
+        try {
+
+            String bindAddress = "127.0.0.1";
+            String hostId = UUID.randomUUID().toString();
+
+            // not binding specific tokenSecret
+            String[] args = {
+                    "--sandbox=" + tmpFolder.getRoot().getAbsolutePath(),
+                    "--port=0",
+                    "--bindAddress=" + bindAddress,
+                    "--id=" + hostId
+            };
+
+            h.initialize(args);
+            h.start();
+
+            Claims claims = new Claims.Builder().setSubject("foo").getResult();
+
+            Signer bogusSigner = new Signer("bogus".getBytes());
+            Signer defaultSigner = h.getTokenSigner();
+            Verifier defaultVerifier = h.getTokenVerifier();
+
+            String signedByBogus = bogusSigner.sign(claims);
+            String signedByDefault = defaultSigner.sign(claims);
+
+            try {
+                defaultVerifier.verify(signedByBogus);
+                fail("Signed by bogusSigner should be invalid for defaultVerifier.");
+            } catch (Verifier.InvalidSignatureException ex) {
+            }
+
+            Rfc7519Claims verified = defaultVerifier.verify(signedByDefault);
+            assertEquals("foo", verified.getSubject());
+
+            h.stop();
+
+            // programmatically assign tokenSecret
+            h.setTokenSecret("new-secret".getBytes());
+            h.start();
+
+            Signer newSigner = h.getTokenSigner();
+            Verifier newVerifier = h.getTokenVerifier();
+
+            assertNotSame("new signer must be created", defaultSigner, newSigner);
+            assertNotSame("new verifier must be created", defaultVerifier, newVerifier);
+
+            try {
+                newVerifier.verify(signedByDefault);
+                fail("Signed by defaultSigner should be invalid for newVerifier");
+            } catch (Verifier.InvalidSignatureException ex) {
+            }
+
+            // sign by newSigner
+            String signedByNewSigner = newSigner.sign(claims);
+
+            verified = newVerifier.verify(signedByNewSigner);
+            assertEquals("foo", verified.getSubject());
+
+            try {
+                defaultVerifier.verify(signedByNewSigner);
+                fail("Signed by newSigner should be invalid for defaultVerifier");
+            } catch (Verifier.InvalidSignatureException ex) {
+            }
+
+            // sign by a signer which uses same secret
+            Signer sameSecretSigner = new Signer("new-secret".getBytes());
+            Verifier sameSecretVerifier = new Verifier("new-secret".getBytes());
+
+            // if same secret token is used, signer and verifier are compatible
+            String signedBySameSecret = sameSecretSigner.sign(claims);
+            verified = newVerifier.verify(signedBySameSecret);
+            assertEquals("foo", verified.getSubject());
+
+            verified = sameSecretVerifier.verify(signedByNewSigner);
+            assertEquals("foo", verified.getSubject());
         } finally {
             h.stop();
             tmpFolder.delete();

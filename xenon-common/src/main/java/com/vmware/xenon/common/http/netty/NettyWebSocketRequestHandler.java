@@ -169,7 +169,8 @@ public class NettyWebSocketRequestHandler extends SimpleChannelInboundHandler<Ob
             if (token == null) {
                 String cookie = nettyRequest.headers().get(HttpHeaderNames.COOKIE);
                 if (cookie != null) {
-                    token = CookieJar.decodeCookies(cookie).get(AuthenticationConstants.XENON_JWT_COOKIE);
+                    token = CookieJar.decodeCookies(cookie)
+                            .get(AuthenticationConstants.REQUEST_AUTH_TOKEN_COOKIE);
                 }
 
             }

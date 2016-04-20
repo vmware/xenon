@@ -13,12 +13,13 @@
 
 package com.vmware.xenon.services.common.authn;
 
-public class AuthenticationConstants {
+public interface AuthenticationConstants {
 
     //TODO: This obviously cannot be hardcoded
-    public static final String JWT_SECRET = "dcp-secret";
-    //jwt issuer name
-    public static final String JWT_ISSUER = "dcp";
-    // jwt cookie name
-    public static final String XENON_JWT_COOKIE = "xenon-auth-cookie";
+    long DEFAULT_TOKEN_SEED = 10L;
+
+    String DEFAULT_ISSUER = "xn";
+
+    String REQUEST_AUTH_TOKEN_COOKIE = "xenon-auth-cookie";
+
 }

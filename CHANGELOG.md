@@ -2,6 +2,11 @@
 
 ## 0.8.0-SNAPSHOT
 
+* Add "--tokenSecret" argument used to sign/verify authorization
+  context token. As this secret is symmetric, it needs to be passed as
+  argument to every node in a deployment at start time.
+  If not specified, default value(same across all nodes) is used.
+
 * Use HTTP/2 for replication and forwarding requests
 
 * Add logging methods that take lambda expression to construct
