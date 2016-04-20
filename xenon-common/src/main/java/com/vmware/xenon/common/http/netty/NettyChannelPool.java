@@ -26,6 +26,7 @@ import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeoutException;
+import java.util.logging.Logger;
 import javax.net.ssl.SSLContext;
 
 import io.netty.bootstrap.Bootstrap;
@@ -63,6 +64,8 @@ public class NettyChannelPool {
         public List<NettyChannelContext> http2Channels = new ArrayList<>();
         public List<Operation> pendingRequests = new ArrayList<>();
     }
+
+    private static final Logger logger = Logger.getLogger(NettyChannelPool.class.getName());
 
     private static final long CHANNEL_EXPIRATION_MICROS =
             ServiceHostState.DEFAULT_OPERATION_TIMEOUT_MICROS * 2;
@@ -682,6 +685,10 @@ public class NettyChannelPool {
             }
             for (Operation opToExpire : opsToExpire) {
                 this.executor.execute(() -> {
+                    long opId = opToExpire.getId();
+                    String pragma = opToExpire.getRequestHeader(Operation.PRAGMA_HEADER);
+                    logger.info(() -> String.format("Expiring http2 operation. opId=%d, pragma=%s",
+                            opId, pragma));
                     // client has nested completion on failure, and will close context
                     opToExpire.fail(new TimeoutException(opToExpire.toString()));
                 });

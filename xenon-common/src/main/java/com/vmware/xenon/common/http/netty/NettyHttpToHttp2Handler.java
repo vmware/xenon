@@ -98,8 +98,10 @@ public class NettyHttpToHttp2Handler extends Http2ConnectionHandler {
                             Operation oldOperation = socketContext
                                     .getOperationForStream(this.currentStreamId);
                             if (oldOperation != null && oldOperation != operation) {
-                                Utils.logWarning("===== ajr Reusing stream %d",
-                                        this.currentStreamId);
+                                long oldOpId = oldOperation.getId();
+                                long opId = operation.getId();
+                                Utils.logWarning("===== ajr Reusing stream %d. opId=%d, oldOpId=%d",
+                                        this.currentStreamId, opId, oldOpId);
                             }
 
                             socketContext.setOperationForStream(this.currentStreamId, operation);
