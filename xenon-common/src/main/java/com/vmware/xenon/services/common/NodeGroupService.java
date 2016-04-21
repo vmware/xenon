@@ -316,8 +316,10 @@ public class NodeGroupService extends StatefulService {
 
         JoinPeerRequest joinBody = post.getBody(JoinPeerRequest.class);
         if (joinBody != null && joinBody.memberGroupReference != null) {
-            handleJoinPost(joinBody, post, post.getExpirationMicrosUtc(),
-                    getState(post), null);
+            // set a short join operation timeout so that join retries will occur in any environment
+            long joinTimeOutMicrosUtc = Utils.getNowMicrosUtc() +
+                    Math.max(TimeUnit.SECONDS.toMicros(1), getHost().getOperationTimeoutMicros() / 10);
+            handleJoinPost(joinBody, post, joinTimeOutMicrosUtc, getState(post), null);
             return;
         }
 
@@ -438,6 +440,11 @@ public class NodeGroupService extends StatefulService {
         if (expirationMicros < Utils.getNowMicrosUtc()) {
             logWarning("Failure joining peer %s, attempt expired, will not retry",
                     joinBody.memberGroupReference);
+            return;
+        }
+
+        // avoid rescheduling if the host is in the process of stopping
+        if (getHost().isStopping()) {
             return;
         }
 
