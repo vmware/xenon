@@ -1475,6 +1475,9 @@ public class ServiceHost implements ServiceRequestSender {
         }
 
         try {
+            // set operation timeout to 2 seconds, so join retries will occur in any environment
+            this.setOperationTimeOutMicros(TimeUnit.SECONDS.toMicros(2));
+
             for (URI peerNodeBaseUri : peers) {
                 URI localNodeGroupUri = UriUtils.buildUri(this, nodeGroupUriPath);
                 JoinPeerRequest joinBody = JoinPeerRequest.create(
