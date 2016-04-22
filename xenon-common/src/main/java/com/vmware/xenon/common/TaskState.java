@@ -98,18 +98,30 @@ public class TaskState {
     }
 
     public static boolean isFailed(TaskState taskInfo) {
+        if (taskInfo == null) {
+            return false;
+        }
         return taskInfo.stage == TaskStage.FAILED;
     }
 
     public static boolean isCreated(TaskState taskInfo) {
+        if (taskInfo == null) {
+            return false;
+        }
         return taskInfo.stage == TaskStage.CREATED;
     }
 
     public static boolean isFinished(TaskState taskInfo) {
+        if (taskInfo == null) {
+            return false;
+        }
         return taskInfo.stage == TaskStage.FINISHED;
     }
 
     public static boolean isCancelled(TaskState taskInfo) {
+        if (taskInfo == null) {
+            return false;
+        }
         return taskInfo.stage == TaskStage.CANCELLED;
     }
 }

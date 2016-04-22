@@ -850,6 +850,10 @@ public class Operation implements Cloneable {
         return this.retryCount;
     }
 
+    public int incrementRetryCount() {
+        return ++this.retryCount;
+    }
+
     public Operation setRetryCount(int retryCount) {
         if (retryCount < 0) {
             throw new IllegalArgumentException("retryCount must be positive");
