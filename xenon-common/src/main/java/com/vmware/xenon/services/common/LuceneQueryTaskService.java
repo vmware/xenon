@@ -158,10 +158,18 @@ public class LuceneQueryTaskService extends StatefulService {
 
                     NodeGroupBroadcastResponse rsp = o.getBody((NodeGroupBroadcastResponse.class));
                     if (!rsp.failures.isEmpty()) {
-                        failTask(new IllegalStateException(
-                                "Failures received: " + Utils.toJsonHtml(rsp)),
-                                startPost, null);
-                        return;
+                        if (rsp.jsonResponses.size() < rsp.membershipQuorum) {
+                            failTask(new IllegalStateException(
+                                    "Failures received: " + Utils.toJsonHtml(rsp)),
+                                    startPost, null);
+                            return;
+                        } else {
+                            logWarning(
+                                    "task will proceed, received %d responses (for quorum size %d)"
+                                            + "even though %d errors were received: %s",
+                                    rsp.jsonResponses.size(), rsp.membershipQuorum,
+                                    rsp.failures.keySet());
+                        }
                     }
 
                     collectBroadcastQueryResults(rsp.jsonResponses, queryTask);
@@ -175,9 +183,7 @@ public class LuceneQueryTaskService extends StatefulService {
                         sendRequest(Operation.createPatch(getUri()).setBodyNoCloning(queryTask));
                     }
                 });
-        // Send the operation using a callback service to avoid consuming the connection
-        // for the duration of the query.
-        this.getHost().sendRequestWithCallback(op);
+        this.getHost().sendRequest(op);
     }
 
     private void collectBroadcastQueryResults(Map<URI, String> jsonResponses, QueryTask queryTask) {

@@ -1005,6 +1005,11 @@ public class VerificationHost extends ExampleServiceHost {
         return this.getServiceState(null, ServiceDocumentQueryResult.class, factoryUri);
     }
 
+    public ServiceDocumentQueryResult getExpandedFactoryState(URI factoryUri) throws Throwable {
+        factoryUri = UriUtils.buildExpandLinksQueryUri(factoryUri);
+        return this.getServiceState(null, ServiceDocumentQueryResult.class, factoryUri);
+    }
+
     public <T> void doPutPerService(List<Service> services)
             throws Throwable {
         doPutPerService(EnumSet.noneOf(TestProperty.class), services);

@@ -83,12 +83,6 @@ public class NodeSelectorReplicationService extends StatelessService {
         if (req.serviceOptions.contains(ServiceOption.OWNER_SELECTION)) {
             successThreshold = Math.min(eligibleMemberCount, selfNode.membershipQuorum);
             failureThreshold = eligibleMemberCount - successThreshold;
-
-            if (failureThreshold == successThreshold && successThreshold == 1) {
-                // degenerate case: node group has just two members and quorum must be one, which
-                // means even the single remote peer is down, we should still succeed.
-                failureThreshold = 0;
-            }
         }
 
         String rplQuorumValue = outboundOp.getRequestHeader(Operation.REPLICATION_QUORUM_HEADER);
@@ -139,7 +133,7 @@ public class NodeSelectorReplicationService extends StatelessService {
                 return;
             }
 
-            if (fCount >= failureThresholdFinal || ((fCount + sCount) == memberCount)) {
+            if (fCount > failureThresholdFinal || ((fCount + sCount) == memberCount)) {
                 String error = String
                         .format("%s to %s failed. Success: %d,  Fail: %d, quorum: %d, threshold: %d",
                                 outboundOp.getAction(),

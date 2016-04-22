@@ -567,7 +567,7 @@ public class NettyHttpServiceClient implements ServiceClient {
             return;
         }
 
-        LOGGER.info(String.format("(%d) Retry %d of request %d from %s to %s due to %s",
+        LOGGER.fine(String.format("(%d) Retry %d of request %d from %s to %s due to %s",
                 pool.getPendingRequestCount(op), op.getRetryCount() - op.getRetriesRemaining(),
                 op.getId(),
                 op.getReferer(), op.getUri(), e.toString()));

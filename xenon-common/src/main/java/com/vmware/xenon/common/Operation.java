@@ -41,6 +41,11 @@ import com.vmware.xenon.services.common.SystemUserService;
  */
 public class Operation implements Cloneable {
 
+    /**
+     * Portion of serialized JSON body string to include in {@code toString}
+     */
+    private static final int TO_STRING_SERIALIZED_BODY_LIMIT = 256;
+
     @FunctionalInterface
     public interface CompletionHandler {
         void handle(Operation completedOp, Throwable failure);
@@ -623,6 +628,11 @@ public class Operation implements Cloneable {
     @Override
     public String toString() {
         SerializedOperation sop = SerializedOperation.create(this);
+        if (sop.jsonBody != null && sop.jsonBody.length() > TO_STRING_SERIALIZED_BODY_LIMIT) {
+            // Avoiding logging the entire body, which could be huge, and overwhelm the logs.
+            // Keep just an arbitrary prefix, serving as a hint
+            sop.jsonBody = sop.jsonBody.substring(0, TO_STRING_SERIALIZED_BODY_LIMIT);
+        }
         return Utils.toJsonHtml(sop);
     }
 
@@ -852,6 +862,10 @@ public class Operation implements Cloneable {
 
     public int getRetryCount() {
         return this.retryCount;
+    }
+
+    public int incrementRetryCount() {
+        return ++this.retryCount;
     }
 
     public Operation setRetryCount(int retryCount) {

@@ -322,7 +322,12 @@ public class NodeSelectorSynchronizationService extends StatelessService {
                 if (r != 0) {
                     return;
                 }
-                post.complete();
+
+                // if we are not the owner, request has already completed, before we even sent
+                // the requests
+                if (request.isOwner) {
+                    post.complete();
+                }
             });
 
             if (incrementEpoch) {
@@ -333,6 +338,13 @@ public class NodeSelectorSynchronizationService extends StatelessService {
             }
 
             post.setBody(bestPeerRsp);
+
+            // if we are not the owner, complete operation, to avoid deadlock:
+            // if we send a POST which converts to a PUT, on the actual owner of the service, it will
+            // attempt to synchronize with this host, but since we are blocked waiting for it, we deadlock
+            if (!request.isOwner) {
+                post.complete();
+            }
 
             ServiceDocument clonedState = Utils.clone(bestPeerRsp);
             for (Entry<URI, ServiceDocument> entry : peerStates.entrySet()) {
@@ -353,6 +365,8 @@ public class NodeSelectorSynchronizationService extends StatelessService {
                 Operation peerOp = Operation.createPost(targetFactoryUri)
                         .setReferer(post.getReferer()).setExpiration(post.getExpirationMicrosUtc())
                         .setCompletion(c);
+
+                peerOp.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_USE_HTTP2);
 
                 // Mark it as replicated so the remote factories do not try to replicate it again
                 peerOp.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_REPLICATED);

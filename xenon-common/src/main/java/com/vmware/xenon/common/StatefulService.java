@@ -1127,9 +1127,6 @@ public class StatefulService implements Service {
         boolean isOwner = hasOption(ServiceOption.DOCUMENT_OWNER);
         boolean isStateUpdated = false;
 
-        logInfo("isOwner:%s e:%d v:%d, cause:%s",
-                isOwner, this.context.epoch, this.context.version, failure);
-
         // update and index using latest state from peers
         ServiceDocument state = (ServiceDocument) o.getBodyRaw();
         if (state != null) {
@@ -1175,20 +1172,23 @@ public class StatefulService implements Service {
     private void completeSynchronizationRequest(Operation request, Throwable failure,
             boolean isStateUpdated) {
         if (failure != null) {
+            logWarning("isUpdated:%s, e:%d v:%d, cause:%s (%d",
+                    isStateUpdated, this.context.epoch, this.context.version, failure,
+                    request.getId());
             request.setStatusCode(Operation.STATUS_CODE_CONFLICT);
             failRequest(request, new IllegalStateException(
                     "Synchronization complete, original failure: " + failure.toString()), true);
             return;
         }
 
+        // avoid replicating this synchronization request, on completion
+        request.setFromReplication(true);
+
         if (!isStateUpdated) {
             processPending(request);
             request.complete();
             return;
         }
-
-        // avoid replicating this synchronization request, on completion
-        request.setFromReplication(true);
 
         // proceed with normal completion pipeline, including indexing
         request.nestCompletion(this::handleRequestCompletion);

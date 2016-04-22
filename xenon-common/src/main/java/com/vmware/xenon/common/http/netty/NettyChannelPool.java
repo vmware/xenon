@@ -17,6 +17,7 @@ import static java.util.stream.Collectors.toList;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.EnumSet;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -26,6 +27,8 @@ import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeoutException;
+import java.util.logging.Logger;
+
 import javax.net.ssl.SSLContext;
 
 import io.netty.bootstrap.Bootstrap;
@@ -38,6 +41,8 @@ import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioSocketChannel;
 
 import com.vmware.xenon.common.Operation;
+import com.vmware.xenon.common.ServiceErrorResponse;
+import com.vmware.xenon.common.ServiceErrorResponse.ErrorDetail;
 import com.vmware.xenon.common.ServiceHost.ServiceHostState;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
@@ -84,6 +89,8 @@ public class NettyChannelPool {
     private int connectionLimit = 1;
 
     private SSLContext sslContext;
+
+    private Logger logger = Logger.getLogger(getClass().getName());
 
     public NettyChannelPool(ExecutorService executor) {
         this.executor = executor;
@@ -634,8 +641,7 @@ public class NettyChannelPool {
                 continue;
             }
             this.executor.execute(() -> {
-                // client has nested completion on failure, and will close context
-                activeOp.fail(new TimeoutException(activeOp.toString()));
+                failRequestWithTimeout(activeOp);
             });
             continue;
         }
@@ -682,11 +688,23 @@ public class NettyChannelPool {
             }
             for (Operation opToExpire : opsToExpire) {
                 this.executor.execute(() -> {
-                    // client has nested completion on failure, and will close context
-                    opToExpire.fail(new TimeoutException(opToExpire.toString()));
+                    long opId = opToExpire.getId();
+                    String pragma = opToExpire.getRequestHeader(Operation.PRAGMA_HEADER);
+                    this.logger.info(() -> String.format("Expiring http2 operation. opId=%d, pragma=%s",
+                            opId, pragma));
+                    failRequestWithTimeout(opToExpire);
                 });
             }
         }
+    }
+
+    private void failRequestWithTimeout(Operation opToExpire) {
+        Throwable e = new TimeoutException(opToExpire.toString());
+        opToExpire.setBodyNoCloning(
+                ServiceErrorResponse.create(e, Operation.STATUS_CODE_TIMEOUT,
+                        EnumSet.of(ErrorDetail.SHOULD_RETRY)));
+        // client has nested completion on failure, and will close context
+        opToExpire.fail(e, Operation.STATUS_CODE_TIMEOUT);
     }
 
     /**
