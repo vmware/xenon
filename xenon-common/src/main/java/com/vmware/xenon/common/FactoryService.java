@@ -462,7 +462,10 @@ public abstract class FactoryService extends StatelessService {
 
         // Request directly from clients must be marked with appropriate PRAGMA, so
         // the runtime knows this is not a restart of a service, but an original, create request
-        o.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_CREATED);
+        if (!o.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_SYNCH)) {
+            o.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_CREATED);
+        }
+
         // create and start service instance. If service is durable, and a body
         // is attached to the POST, a document will be created
         Service childService;
@@ -593,6 +596,9 @@ public abstract class FactoryService extends StatelessService {
                             SelectOwnerResponse rsp = so.getBody(SelectOwnerResponse.class);
                             ServiceDocument initialState = (ServiceDocument) o.getBodyRaw();
                             initialState.documentOwner = rsp.ownerNodeId;
+                            if (initialState.documentEpoch == null) {
+                                initialState.documentEpoch = 0L;
+                            }
 
                             if (rsp.isLocalHostOwner) {
                                 completePostRequest(o, childService);
