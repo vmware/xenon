@@ -37,11 +37,11 @@ import java.util.stream.Collectors;
 import org.junit.After;
 import org.junit.AfterClass;
 import org.junit.Before;
-import org.junit.Ignore;
 import org.junit.Test;
 
 import com.vmware.xenon.common.BasicReusableHostTestCase;
 import com.vmware.xenon.common.Operation;
+import com.vmware.xenon.common.Service.ServiceOption;
 import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.ServiceDocumentQueryResult;
 import com.vmware.xenon.common.ServiceStats;
@@ -60,7 +60,6 @@ import com.vmware.xenon.services.common.QueryTask.NumericRange;
 import com.vmware.xenon.services.common.QueryTask.Query;
 import com.vmware.xenon.services.common.QueryTask.QuerySpecification;
 
-@Ignore
 public class TestMigrationTaskService extends BasicReusableHostTestCase {
     private static final int UNACCESSABLE_PORT = 123;
     private static final URI FAKE_URI = UriUtils.buildUri("127.0.0.1", UNACCESSABLE_PORT, null, null);
@@ -89,6 +88,8 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
                 startMigrationService(host);
                 host.waitForServiceAvailable(ExampleService.FACTORY_LINK);
                 host.waitForServiceAvailable(MigrationTaskService.FACTORY_LINK);
+                host.toggleServiceOptions(UriUtils.buildUri(host, ExampleService.FACTORY_LINK),
+                        EnumSet.of(ServiceOption.IDEMPOTENT_POST), null);
             }
         }
 
@@ -104,6 +105,8 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
                 startMigrationService(host);
                 host.waitForServiceAvailable(ExampleService.FACTORY_LINK);
                 host.waitForServiceAvailable(MigrationTaskService.FACTORY_LINK);
+                host.toggleServiceOptions(UriUtils.buildUri(host, ExampleService.FACTORY_LINK),
+                        EnumSet.of(ServiceOption.IDEMPOTENT_POST), null);
             }
         }
 
@@ -507,10 +510,10 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
         testWait(ctx2);
 
         waitForServiceCompletion = waitForServiceCompletion(out[0], getDestinationHost());
-        stats = getStats(out[0], getDestinationHost());
-        processedDocuments = Long.valueOf((long) stats.entries.get(MigrationTaskService.STAT_NAME_PROCESSED_DOCUMENTS).latestValue);
         assertEquals(waitForServiceCompletion.taskInfo.stage, TaskStage.FINISHED);
         assertEquals(Long.valueOf(this.serviceCount), processedDocuments);
+        stats = getStats(out[0], getDestinationHost());
+        processedDocuments = Long.valueOf((long) stats.entries.get(MigrationTaskService.STAT_NAME_PROCESSED_DOCUMENTS).latestValue);
 
         // check if object is in new host
         Collection<URI> uris = links.stream()
