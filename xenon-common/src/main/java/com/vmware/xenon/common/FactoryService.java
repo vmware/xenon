@@ -37,6 +37,13 @@ import com.vmware.xenon.services.common.ServiceUriPaths;
  */
 public abstract class FactoryService extends StatelessService {
 
+    static class SynchronizationContext {
+        SelectOwnerResponse originalSelection;
+        QueryTask queryTask;
+        Operation maintOp;
+        public URI nextPageReference;
+    }
+
     /**
      * Creates a factory service instance that starts the specified child service
      * on POST
@@ -88,7 +95,9 @@ public abstract class FactoryService extends StatelessService {
         return create(childServiceType, childServiceDocumentType, ServiceOption.IDEMPOTENT_POST);
     }
 
-    public static final int SELF_QUERY_RESULT_LIMIT = 1000;
+    public static final Integer SELF_QUERY_RESULT_LIMIT = Integer.getInteger(
+            Utils.PROPERTY_NAME_PREFIX
+            + "FactoryService.SELF_QUERY_RESULT_LIMIT", 1000);
     private EnumSet<ServiceOption> childOptions;
     private String nodeSelectorLink = ServiceUriPaths.DEFAULT_NODE_SELECTOR;
     private int selfQueryResultLimit = SELF_QUERY_RESULT_LIMIT;
@@ -182,60 +191,58 @@ public abstract class FactoryService extends StatelessService {
         });
 
         if (!this.childOptions.contains(ServiceOption.REPLICATION)) {
-            startOrSynchronizeChildServices(clonedOp);
+            SynchronizationContext ctx = new SynchronizationContext();
+            ctx.originalSelection = null;
+            ctx.maintOp = clonedOp;
+            startOrSynchronizeChildServices(ctx);
             return;
         }
         // when the node group becomes available, the maintenance handler will initiate
         // service start and synchronization
     }
 
-    private void startOrSynchronizeChildServices(Operation op) {
+    private void startOrSynchronizeChildServices(SynchronizationContext ctx) {
         if (this.childOptions.contains(ServiceOption.ON_DEMAND_LOAD)) {
-            setAvailable(true);
-            op.complete();
+            ctx.maintOp.complete();
             return;
         }
 
         QueryTask queryTask = buildChildQueryTask();
-        queryForChildren(queryTask,
-                UriUtils.buildUri(this.getHost(), ServiceUriPaths.CORE_QUERY_TASKS),
-                op);
+        ctx.queryTask = queryTask;
+        queryForChildren(ctx);
     }
 
-    protected void queryForChildren(QueryTask queryTask, URI queryFactoryUri,
-            Operation parentOperation) {
+    protected void queryForChildren(SynchronizationContext ctx) {
+        URI queryFactoryUri = UriUtils.buildUri(this.getHost(), ServiceUriPaths.CORE_QUERY_TASKS);
         // check with the document store if any documents exist for services
         // under our URI name space. If they do, we need to re-instantiate these
         // services by issuing self posts
         Operation queryPost = Operation
                 .createPost(queryFactoryUri)
-                .setBody(queryTask)
+                .setBody(ctx.queryTask)
                 .setCompletion((o, e) -> {
                     if (getHost().isStopping()) {
-                        parentOperation.fail(new CancellationException("host is stopping"));
+                        ctx.maintOp.fail(new CancellationException("host is stopping"));
                         return;
                     }
 
                     if (e != null) {
                         if (!getHost().isStopping()) {
                             logWarning("Query failed with %s", e.toString());
-                        } else {
-                            parentOperation.fail(e);
-                            return;
                         }
-                        // still complete start
-                        parentOperation.complete();
+                        ctx.maintOp.fail(e);
                         return;
                     }
 
                     ServiceDocumentQueryResult rsp = o.getBody(QueryTask.class).results;
 
                     if (rsp.nextPageLink == null) {
-                        parentOperation.complete();
+                        ctx.maintOp.complete();
                         return;
                     }
-                    processChildQueryPage(UriUtils.buildUri(queryFactoryUri, rsp.nextPageLink),
-                            queryTask, parentOperation, true);
+
+                    ctx.nextPageReference = UriUtils.buildUri(queryFactoryUri, rsp.nextPageLink);
+                    processChildQueryPage(ctx, true);
                 });
 
         sendRequest(queryPost);
@@ -291,54 +298,53 @@ public abstract class FactoryService extends StatelessService {
     /**
      * Retrieves a page worth of results for child service links and restarts them
      */
-    private void processChildQueryPage(URI queryPage, QueryTask queryTask, Operation parentOp,
-            boolean verifyOwner) {
-        if (queryPage == null) {
-            parentOp.complete();
+    private void processChildQueryPage(SynchronizationContext ctx, boolean verifyOwner) {
+        if (ctx.nextPageReference == null) {
+            ctx.maintOp.complete();
             return;
         }
 
         if (getHost().isStopping()) {
-            parentOp.fail(new CancellationException());
+            ctx.maintOp.fail(new CancellationException());
             return;
         }
 
         if (verifyOwner && hasOption(ServiceOption.REPLICATION)) {
-            verifySynchronizationOwner(queryPage, queryTask, parentOp);
+            verifySynchronizationOwner(ctx);
             return;
         }
 
-        sendRequest(Operation.createGet(queryPage).setCompletion(
+        sendRequest(Operation.createGet(ctx.nextPageReference).setCompletion(
                 (o, e) -> {
                     if (e != null) {
                         if (!getHost().isStopping()) {
-                            logWarning("Failure retrieving query results from %s: %s", queryPage,
+                            logWarning("Failure retrieving query results from %s: %s",
+                                    ctx.nextPageReference,
                                     e.toString());
                         }
-                        parentOp.complete();
+                        ctx.maintOp.fail(new IllegalStateException(
+                                "failure retrieving query page results"));
                         return;
                     }
 
                     ServiceDocumentQueryResult rsp = o.getBody(QueryTask.class).results;
                     if (rsp.documentCount == 0 || rsp.documentLinks.isEmpty()) {
-                        parentOp.complete();
+                        ctx.maintOp.complete();
                         return;
                     }
-                    synchronizeChildrenInQueryPage(queryPage, queryTask, parentOp,
-                            rsp);
+                    synchronizeChildrenInQueryPage(ctx, rsp);
                 }));
     }
 
-    private void synchronizeChildrenInQueryPage(URI queryPage,
-            QueryTask queryTask, Operation parentOp,
+    private void synchronizeChildrenInQueryPage(SynchronizationContext ctx,
             ServiceDocumentQueryResult rsp) {
         if (getProcessingStage() == ProcessingStage.STOPPED) {
-            parentOp.fail(new CancellationException());
+            ctx.maintOp.fail(new CancellationException());
             return;
         }
         ServiceMaintenanceRequest smr = null;
-        if (parentOp.hasBody()) {
-            smr = parentOp.getBody(ServiceMaintenanceRequest.class);
+        if (ctx.maintOp.hasBody()) {
+            smr = ctx.maintOp.getBody(ServiceMaintenanceRequest.class);
         }
         AtomicInteger pendingStarts = new AtomicInteger(rsp.documentLinks.size());
         // track child service request in parallel, passing a single parent operation
@@ -349,7 +355,7 @@ public abstract class FactoryService extends StatelessService {
             }
 
             if (getHost().isStopping()) {
-                parentOp.fail(new CancellationException());
+                ctx.maintOp.fail(new CancellationException());
                 return;
             }
 
@@ -357,15 +363,14 @@ public abstract class FactoryService extends StatelessService {
                 return;
             }
 
-            URI nextQueryPage = rsp.nextPageLink == null ? null : UriUtils.buildUri(
-                    queryPage, rsp.nextPageLink);
-
-            processChildQueryPage(nextQueryPage, queryTask, parentOp, true);
+            ctx.nextPageReference = rsp.nextPageLink == null ? null : UriUtils.buildUri(
+                    ctx.nextPageReference, rsp.nextPageLink);
+            processChildQueryPage(ctx, true);
         };
 
         for (String link : rsp.documentLinks) {
             if (getHost().isStopping()) {
-                parentOp.fail(new CancellationException());
+                ctx.maintOp.fail(new CancellationException());
                 return;
             }
             Operation post = Operation.createPost(this, link)
@@ -462,7 +467,10 @@ public abstract class FactoryService extends StatelessService {
 
         // Request directly from clients must be marked with appropriate PRAGMA, so
         // the runtime knows this is not a restart of a service, but an original, create request
-        o.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_CREATED);
+        if (!o.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_SYNCH)) {
+            o.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_CREATED);
+        }
+
         // create and start service instance. If service is durable, and a body
         // is attached to the POST, a document will be created
         Service childService;
@@ -593,6 +601,9 @@ public abstract class FactoryService extends StatelessService {
                             SelectOwnerResponse rsp = so.getBody(SelectOwnerResponse.class);
                             ServiceDocument initialState = (ServiceDocument) o.getBodyRaw();
                             initialState.documentOwner = rsp.ownerNodeId;
+                            if (initialState.documentEpoch == null) {
+                                initialState.documentEpoch = 0L;
+                            }
 
                             if (rsp.isLocalHostOwner) {
                                 completePostRequest(o, childService);
@@ -833,7 +844,10 @@ public abstract class FactoryService extends StatelessService {
                         rsp.availableNodeCount);
             }
 
-            synchronizeChildServicesAsOwner(maintOp);
+            SynchronizationContext ctx = new SynchronizationContext();
+            ctx.originalSelection = rsp;
+            ctx.maintOp = maintOp;
+            synchronizeChildServicesAsOwner(ctx);
         });
 
         getHost().selectOwner(this.nodeSelectorLink, this.getSelfLink(), selectOwnerOp);
@@ -857,40 +871,51 @@ public abstract class FactoryService extends StatelessService {
      * https://www.pivotaltracker.com/story/show/116784577
      *
      */
-    private void verifySynchronizationOwner(URI queryPage, QueryTask queryTask, Operation parentOp) {
+    private void verifySynchronizationOwner(SynchronizationContext ctx) {
         OperationContext opContext = OperationContext.getOperationContext();
-        Operation selectOwnerOp = parentOp.clone().setExpiration(Utils.getNowMicrosUtc()
+        Operation selectOwnerOp = ctx.maintOp.clone().setExpiration(Utils.getNowMicrosUtc()
                 + getHost().getOperationTimeoutMicros());
-        selectOwnerOp.setCompletion((o, e) -> {
-            OperationContext.restoreOperationContext(opContext);
-            if (e != null) {
-                parentOp.fail(e);
-                return;
-            }
-            SelectOwnerResponse rsp = o.getBody(SelectOwnerResponse.class);
-            if (rsp.isLocalHostOwner == false) {
-                logWarning("No longer owner, aborting synch. New owner %s", rsp.ownerNodeId);
-                parentOp.complete();
-                return;
-            }
-            processChildQueryPage(queryPage, queryTask, parentOp, false);
-        });
+        selectOwnerOp
+                .setCompletion((o, e) -> {
+                    OperationContext.restoreOperationContext(opContext);
+                    if (e != null) {
+                        ctx.maintOp.fail(e);
+                        return;
+                    }
+
+                    SelectOwnerResponse rsp = o.getBody(SelectOwnerResponse.class);
+                    if (rsp.availableNodeCount != ctx.originalSelection.availableNodeCount
+                            || rsp.membershipUpdateTimeMicros != ctx.originalSelection.membershipUpdateTimeMicros) {
+                        logWarning("Membership changed, aborting synch");
+                        ctx.maintOp.fail(new CancellationException(
+                                "aborted due to node group change"));
+                        return;
+                    }
+
+                    if (rsp.isLocalHostOwner == false) {
+                        logWarning("No longer owner, aborting synch. New owner %s", rsp.ownerNodeId);
+                        ctx.maintOp.fail(new CancellationException("aborted due to owner change"));
+                        return;
+                    }
+                    processChildQueryPage(ctx, false);
+                });
 
         getHost().selectOwner(this.nodeSelectorLink, this.getSelfLink(), selectOwnerOp);
     }
 
-    private void synchronizeChildServicesAsOwner(Operation maintOp) {
-        maintOp.nestCompletion((o, e) -> {
+    private void synchronizeChildServicesAsOwner(SynchronizationContext ctx) {
+        ctx.maintOp.nestCompletion((o, e) -> {
             if (e != null) {
                 logWarning("synch failed: %s", e.toString());
+            } else {
+                // Update stat and /available so any service or client that cares, can notice this factory
+                // is done with synchronization and child restart. The status of /available and
+                // the available stat does not prevent the runtime from routing requests to this service
+                setAvailable(true);
             }
-            // Update stat and /available so any service or client that cares, can notice this factory
-            // is done with synchronization and child restart. The status of /available and
-            // the available stat does not prevent the runtime from routing requests to this service
-            setAvailable(true);
-            maintOp.complete();
+            ctx.maintOp.complete();
         });
-        startOrSynchronizeChildServices(maintOp);
+        startOrSynchronizeChildServices(ctx);
     }
 
 
