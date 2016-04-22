@@ -599,6 +599,7 @@ public class TestNodeGroupService {
         }
 
         stopHostsAndVerifyQueuing(hostsToStop, remainingHost, targetServices);
+        this.host.waitForNodeGroupConvergence(1);
 
         // nodes are stopped, do updates again, quorum is relaxed, they should work
         doExampleServicePatch(exampleStatesPerSelfLink, remainingHost.getUri());
@@ -2937,7 +2938,7 @@ public class TestNodeGroupService {
 
         // reduce node expiration for unavailable hosts so gossip warning
         // messages do not flood the logs
-        this.nodeGroupConfig.nodeRemovalDelayMicros = TimeUnit.MILLISECONDS.toMicros(250);
+        this.nodeGroupConfig.nodeRemovalDelayMicros = remainingHost.getMaintenanceIntervalMicros();
         this.host.setNodeGroupConfig(this.nodeGroupConfig);
         this.setOperationTimeoutMicros(TimeUnit.SECONDS.toMicros(10));
 

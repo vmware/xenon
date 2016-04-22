@@ -495,7 +495,7 @@ public class ServiceHost implements ServiceRequestSender {
     private final ConcurrentSkipListMap<String, NodeGroupState> pendingNodeSelectorsForFactorySynch = new ConcurrentSkipListMap<>();
     private final SortedSet<Operation> pendingStartOperations = createOperationSet();
     private final Map<String, SortedSet<Operation>> pendingServiceAvailableCompletions = new ConcurrentSkipListMap<>();
-    private final SortedSet<Operation> pendingOperationsForRetry = createOperationSet();
+    private final ConcurrentSkipListMap<Long, Operation> pendingOperationsForRetry = new ConcurrentSkipListMap<>();
 
     private ServiceHostState state;
     private Service documentIndexService;
@@ -3471,7 +3471,7 @@ public class ServiceHost implements ServiceRequestSender {
         }
 
         if (shouldRetry) {
-            this.pendingOperationsForRetry.add(op);
+            this.pendingOperationsForRetry.put(Utils.getNowMicrosUtc(), op);
             return;
         }
 
@@ -3481,7 +3481,6 @@ public class ServiceHost implements ServiceRequestSender {
         }
 
         failForwardRequest(op, fo, fe);
-
     }
 
     /**
@@ -3918,7 +3917,7 @@ public class ServiceHost implements ServiceRequestSender {
     }
 
     private void stopAndClearPendingQueues() {
-        for (Operation op : this.pendingOperationsForRetry) {
+        for (Operation op : this.pendingOperationsForRetry.values()) {
             op.fail(new CancellationException());
         }
         this.pendingOperationsForRetry.clear();
@@ -4545,6 +4544,7 @@ public class ServiceHost implements ServiceRequestSender {
 
     private void performPendingOperationMaintenance() {
         long now = Utils.getNowMicrosUtc();
+        long interval = getMaintenanceIntervalMicros();
         Iterator<Operation> startOpsIt = this.pendingStartOperations.iterator();
         checkOperationExpiration(now, startOpsIt);
 
@@ -4553,15 +4553,26 @@ public class ServiceHost implements ServiceRequestSender {
             checkOperationExpiration(now, it);
         }
 
-        Iterator<Operation> it = this.pendingOperationsForRetry.iterator();
+        final int retryLimit = 10;
+        Iterator<Entry<Long, Operation>> it = this.pendingOperationsForRetry.entrySet().iterator();
+        int i = 0;
         while (it.hasNext()) {
-            Operation o = it.next();
+            Entry<Long, Operation> entry = it.next();
+            Operation o = entry.getValue();
             if (isStopping()) {
                 o.fail(new CancellationException());
                 return;
             }
+            long queuingTimeMicros = entry.getKey();
+            if (Math.abs(queuingTimeMicros - now) < interval * 2) {
+                // skip operations that were recently queued to avoid retry storms
+                continue;
+            }
             it.remove();
             handleRequest(null, o);
+            if (++i > retryLimit) {
+                break;
+            }
         }
     }
 
