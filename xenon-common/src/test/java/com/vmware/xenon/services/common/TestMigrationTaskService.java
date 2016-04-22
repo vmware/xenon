@@ -14,6 +14,7 @@
 package com.vmware.xenon.services.common;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
@@ -43,6 +44,7 @@ import com.vmware.xenon.common.BasicReusableHostTestCase;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.ServiceDocumentQueryResult;
+import com.vmware.xenon.common.ServiceStats;
 import com.vmware.xenon.common.StatelessService;
 import com.vmware.xenon.common.TaskState;
 import com.vmware.xenon.common.TaskState.TaskStage;
@@ -58,7 +60,7 @@ import com.vmware.xenon.services.common.QueryTask.NumericRange;
 import com.vmware.xenon.services.common.QueryTask.Query;
 import com.vmware.xenon.services.common.QueryTask.QuerySpecification;
 
-@Ignore("https://www.pivotaltracker.com/story/show/116498189")
+@Ignore
 public class TestMigrationTaskService extends BasicReusableHostTestCase {
     private static final int UNACCESSABLE_PORT = 123;
     private static final URI FAKE_URI = UriUtils.buildUri("127.0.0.1", UNACCESSABLE_PORT, null, null);
@@ -82,6 +84,7 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
             getSourceHost().setNodeGroupQuorum(this.nodeCount);
             this.host.joinNodesAndVerifyConvergence(this.nodeCount, true);
             this.host.setNodeGroupQuorum(this.nodeCount);;
+
             for (VerificationHost host : this.host.getInProcessHostMap().values()) {
                 startMigrationService(host);
                 host.waitForServiceAvailable(ExampleService.FACTORY_LINK);
@@ -129,13 +132,11 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
     @After
     public void cleanUp() throws Throwable {
         for (VerificationHost host : this.host.getInProcessHostMap().values()) {
-            host.deleteAllChildServices(UriUtils.buildUri(host, MigrationTaskService.FACTORY_LINK));
-            host.deleteAllChildServices(UriUtils.buildUri(host, ExampleService.FACTORY_LINK));
+            checkAndStartHost(host);
         }
 
         for (VerificationHost host : destinationHost.getInProcessHostMap().values()) {
-            host.deleteAllChildServices(UriUtils.buildUri(host, MigrationTaskService.FACTORY_LINK));
-            host.deleteAllChildServices(UriUtils.buildUri(host, ExampleService.FACTORY_LINK));
+            checkAndStartHost(host);
         }
         // need to reset the maintenance intervals on the hosts otherwise clean up can fail
         // between tests due to the very low maintenance interval set in the test for
@@ -240,12 +241,15 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
                 });
         getDestinationHost().send(op);
         testWait(ctx);
-        // wait until migration finished
+
         State finalServiceState = waitForServiceCompletion(out[0], getDestinationHost());
+        ServiceStats stats = getStats(out[0], getDestinationHost());
 
         assertEquals(TaskStage.FINISHED, finalServiceState.taskInfo.stage);
-        assertEquals(Long.valueOf(this.serviceCount), finalServiceState.processedServiceCount);
-        assertEquals(Long.valueOf(this.serviceCount), finalServiceState.estimatedTotalServiceCount);
+        Long processedDocuments = Long.valueOf((long) stats.entries.get(MigrationTaskService.STAT_NAME_PROCESSED_DOCUMENTS).latestValue);
+        Long estimatedTotalServiceCount = Long.valueOf((long) stats.entries.get(MigrationTaskService.STAT_NAME_ESTIMATED_TOTAL_SERVICE_COUNT).latestValue);
+        assertEquals(Long.valueOf(this.serviceCount), processedDocuments);
+        assertEquals(Long.valueOf(this.serviceCount), estimatedTotalServiceCount);
         assertEquals(Long.valueOf(time), finalServiceState.latestSourceUpdateTimeMicros);
 
         // check if object is in new host
@@ -276,10 +280,11 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
                 });
         getDestinationHost().send(op);
         testWait(ctx);
-        // wait until migration finished
+
         State waitForServiceCompletion = waitForServiceCompletion(out[0], getDestinationHost());
+        ServiceStats stats = getStats(out[0], getDestinationHost());
         assertEquals(TaskStage.FINISHED, waitForServiceCompletion.taskInfo.stage);
-        assertEquals(Long.valueOf(0), waitForServiceCompletion.processedServiceCount);
+        assertFalse(stats.entries.containsKey(MigrationTaskService.STAT_NAME_PROCESSED_DOCUMENTS));
     }
 
     @Test
@@ -322,10 +327,11 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
                 });
         getDestinationHost().send(op);
         testWait(ctx);
-        // wait until migration finished
+
         State waitForServiceCompletion = waitForServiceCompletion(out[0], getDestinationHost());
+        ServiceStats stats = getStats(out[0], getDestinationHost());
         assertEquals(TaskStage.FINISHED, waitForServiceCompletion.taskInfo.stage);
-        assertEquals(Long.valueOf(0), waitForServiceCompletion.processedServiceCount);
+        assertFalse(stats.entries.containsKey(MigrationTaskService.STAT_NAME_PROCESSED_DOCUMENTS));
 
         // check that objects were not migrated
         TestContext ctx2 = testCreate(1);
@@ -368,10 +374,12 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
                 });
         getDestinationHost().send(op);
         testWait(ctx);
-        // wait until migration finished
+
         State waitForServiceCompletion = waitForServiceCompletion(out[0], getDestinationHost());
+        ServiceStats stats = getStats(out[0], getDestinationHost());
+        Long processedDocuments = Long.valueOf((long) stats.entries.get(MigrationTaskService.STAT_NAME_PROCESSED_DOCUMENTS).latestValue);
         assertEquals(TaskStage.FINISHED, waitForServiceCompletion.taskInfo.stage);
-        assertEquals(Long.valueOf(this.serviceCount), waitForServiceCompletion.processedServiceCount);
+        assertEquals(Long.valueOf(this.serviceCount), processedDocuments);
 
         // check if object is in new host
         Collection<URI> uris = links.stream()
@@ -388,9 +396,8 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
                 this.serviceCount);
         Collection<URI> uris = links.stream().map(link -> UriUtils.buildUri(getSourceHost(), link))
                 .collect(Collectors.toList());
-        long time = getDestinationHost()
-                .getServiceState(EnumSet.noneOf(TestProperty.class), ExampleServiceState.class,
-                        uris)
+        long time = getSourceHost()
+                .getServiceState(EnumSet.noneOf(TestProperty.class), ExampleServiceState.class, uris)
                 .values()
                 .stream()
                 .mapToLong(d -> d.documentUpdateTimeMicros)
@@ -424,10 +431,12 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
                 });
         getDestinationHost().send(op);
         testWait(ctx);
-        // wait until migration finished
+
         State waitForServiceCompletion = waitForServiceCompletion(out[0], getDestinationHost());
+        ServiceStats stats = getStats(out[0], getDestinationHost());
+        Long processedDocuments = Long.valueOf((long) stats.entries.get(MigrationTaskService.STAT_NAME_PROCESSED_DOCUMENTS).latestValue);
         assertEquals(TaskStage.FINISHED, waitForServiceCompletion.taskInfo.stage);
-        assertTrue(Long.valueOf(this.serviceCount) + " <= " + waitForServiceCompletion.processedServiceCount, Long.valueOf(this.serviceCount) <= waitForServiceCompletion.processedServiceCount);
+        assertTrue(Long.valueOf(this.serviceCount) + " <= " + processedDocuments, Long.valueOf(this.serviceCount) <= processedDocuments);
 
         // check if object is in new host
         uris = newLinks.stream().map(link -> UriUtils.buildUri(getDestinationHost(), link))
@@ -474,10 +483,12 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
                 });
         getDestinationHost().send(op);
         testWait(ctx);
-        // wait until migration finished
+
         State waitForServiceCompletion = waitForServiceCompletion(out[0], getDestinationHost());
+        ServiceStats stats = getStats(out[0], getDestinationHost());
+        Long processedDocuments = Long.valueOf((long) stats.entries.get(MigrationTaskService.STAT_NAME_PROCESSED_DOCUMENTS).latestValue);
         assertEquals(TaskStage.FINISHED, waitForServiceCompletion.taskInfo.stage);
-        assertEquals(Long.valueOf(this.serviceCount), waitForServiceCompletion.processedServiceCount);
+        assertEquals(Long.valueOf(this.serviceCount), processedDocuments);
 
         TestContext ctx2 = testCreate(1);
         migrationState.documentSelfLink = null;
@@ -494,9 +505,12 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
                 });
         getDestinationHost().send(op);
         testWait(ctx2);
+
         waitForServiceCompletion = waitForServiceCompletion(out[0], getDestinationHost());
+        stats = getStats(out[0], getDestinationHost());
+        processedDocuments = Long.valueOf((long) stats.entries.get(MigrationTaskService.STAT_NAME_PROCESSED_DOCUMENTS).latestValue);
         assertEquals(waitForServiceCompletion.taskInfo.stage, TaskStage.FINISHED);
-        assertEquals(Long.valueOf(this.serviceCount), waitForServiceCompletion.processedServiceCount);
+        assertEquals(Long.valueOf(this.serviceCount), processedDocuments);
 
         // check if object is in new host
         Collection<URI> uris = links.stream()
@@ -541,10 +555,12 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
         getDestinationHost().send(op);
         testWait(ctx);
 
-        // wait until migration finished
         State waitForServiceCompletion = waitForServiceCompletion(out[0], getDestinationHost());
+        ServiceStats stats = getStats(out[0], getDestinationHost());
+        Long processedDocuments = Long.valueOf((long) stats.entries.get(MigrationTaskService.STAT_NAME_PROCESSED_DOCUMENTS).latestValue);
+
         assertEquals(waitForServiceCompletion.taskInfo.stage, TaskStage.FINISHED);
-        assertEquals(Long.valueOf(this.serviceCount), waitForServiceCompletion.processedServiceCount);
+        assertEquals(Long.valueOf(this.serviceCount), processedDocuments);
 
         // check if object is in new host and transformed
         Collection<URI> uris = links.stream()
@@ -605,13 +621,15 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
 
         getDestinationHost().setMaintenanceIntervalMicros(migrationState.maintenanceIntervalMicros / 10);
 
-        // wait until migration finished
         Set<TaskStage> finalStages = new HashSet<>(Arrays.asList(TaskStage.FAILED, TaskStage.FINISHED));
         State finalServiceState = waitForServiceCompletion(out[0], getDestinationHost(), finalStages);
+        ServiceStats stats = getStats(out[0], getDestinationHost());
 
         assertEquals(TaskStage.FINISHED, finalServiceState.taskInfo.stage);
-        assertTrue(Long.valueOf(this.serviceCount) + " <= " + finalServiceState.processedServiceCount, Long.valueOf(this.serviceCount) <= finalServiceState.processedServiceCount);
-        assertTrue(Long.valueOf(this.serviceCount) + " <= " + finalServiceState.estimatedTotalServiceCount, Long.valueOf(this.serviceCount) <= finalServiceState.estimatedTotalServiceCount);
+        Long processedDocuments = Long.valueOf((long) stats.entries.get(MigrationTaskService.STAT_NAME_PROCESSED_DOCUMENTS).latestValue);
+        Long estimatedTotalServiceCount = Long.valueOf((long) stats.entries.get(MigrationTaskService.STAT_NAME_ESTIMATED_TOTAL_SERVICE_COUNT).latestValue);
+        assertTrue(Long.valueOf(this.serviceCount) + " <= " + processedDocuments, Long.valueOf(this.serviceCount) <= processedDocuments);
+        assertTrue(Long.valueOf(this.serviceCount) + " <= " + estimatedTotalServiceCount, Long.valueOf(this.serviceCount) <= estimatedTotalServiceCount);
         assertEquals(Long.valueOf(time), finalServiceState.latestSourceUpdateTimeMicros);
 
         // check if object is in new host
@@ -626,43 +644,8 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
         MigrationTaskService.State migrationState = validMigrationState(
                 ExampleService.FACTORY_LINK);
 
-        migrationState.resolvedSourceNodeGroupReferences
-            = getHostUris(this.host.getInProcessHostMap().values());
-        migrationState.resolvedSourceNodeGroupReferences.add(FAKE_URI);
-        migrationState.resolvedDestinationNodeGroupReferences
-            = getHostUris(destinationHost.getInProcessHostMap().values());
-
-        TestContext ctx = testCreate(1);
-        String[] out = new String[1];
-        Operation op = Operation.createPost(this.destinationFactoryUri)
-                .setBody(migrationState)
-                .setCompletion((o, e) -> {
-                    if (e != null) {
-                        this.host.log("Post service error: %s", Utils.toString(e));
-                        ctx.failIteration(e);
-                        return;
-                    }
-                    out[0] = o.getBody(State.class).documentSelfLink;
-                    ctx.completeIteration();
-                });
-        getDestinationHost().send(op);
-        testWait(ctx);
-
-        State waitForServiceCompletion = waitForServiceCompletion(out[0], getDestinationHost());
-        assertEquals(TaskStage.FAILED, waitForServiceCompletion.taskInfo.stage);
-    }
-
-    @Test
-    public void failOnSourceNodeFailureDuringResultRetrieval() throws Throwable {
-        MigrationTaskService.State migrationState = validMigrationState(
-                ExampleService.FACTORY_LINK);
-
-        migrationState.resolvedSourceNodeGroupReferences
-            = getHostUris(this.host.getInProcessHostMap().values());
-        migrationState.resolvedDestinationNodeGroupReferences
-            = getHostUris(destinationHost.getInProcessHostMap().values());
-        migrationState.currentPageLinks = new ArrayList<>();
-        migrationState.currentPageLinks.add(FAKE_URI);
+        migrationState.sourceNodeGroupReference = FAKE_URI;
+        migrationState.destinationNodeGroupReference = UriUtils.extendUri(getDestinationHost().getPublicUri(), ServiceUriPaths.DEFAULT_NODE_GROUP);
 
         TestContext ctx = testCreate(1);
         String[] out = new String[1];
@@ -691,11 +674,8 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
         MigrationTaskService.State migrationState = validMigrationState(
                 ExampleService.FACTORY_LINK);
 
-        migrationState.resolvedSourceNodeGroupReferences
-            = getHostUris(this.host.getInProcessHostMap().values());
-        migrationState.resolvedDestinationNodeGroupReferences
-            = new ArrayList<>();
-        migrationState.resolvedDestinationNodeGroupReferences.add(FAKE_URI);
+        migrationState.sourceNodeGroupReference = UriUtils.extendUri(getSourceHost().getPublicUri(), ServiceUriPaths.DEFAULT_NODE_GROUP);
+        migrationState.destinationNodeGroupReference = FAKE_URI;
 
         TestContext ctx = testCreate(1);
         String[] out = new String[1];
@@ -715,77 +695,6 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
 
         State waitForServiceCompletion = waitForServiceCompletion(out[0], getDestinationHost());
         assertEquals(TaskStage.FAILED, waitForServiceCompletion.taskInfo.stage);
-    }
-
-    @Test
-    public void failOnDestinationNodeFailureDuringResultPosting() throws Throwable {
-        createExampleDocuments(this.exampleSourceFactory, getSourceHost(),
-                this.serviceCount);
-        MigrationTaskService.State migrationState = validMigrationState(
-                ExampleService.FACTORY_LINK);
-
-        migrationState.resolvedSourceNodeGroupReferences
-            = getHostUris(this.host.getInProcessHostMap().values());
-        migrationState.resolvedDestinationNodeGroupReferences = new ArrayList<>();
-        migrationState.resolvedDestinationNodeGroupReferences.add(FAKE_URI);
-        migrationState.currentPageLinks = computeFirstCurrentPageLink(this.host.getInProcessHostMap().values());
-
-        TestContext ctx = testCreate(1);
-        String[] out = new String[1];
-        Operation op = Operation.createPost(this.destinationFactoryUri)
-                .setBody(migrationState)
-                .setCompletion((o, e) -> {
-                    if (e != null) {
-                        this.host.log("Post service error: %s", Utils.toString(e));
-                        ctx.failIteration(e);
-                        return;
-                    }
-                    out[0] = o.getBody(State.class).documentSelfLink;
-                    ctx.completeIteration();
-                });
-        getDestinationHost().send(op);
-        testWait(ctx);
-
-        State waitForServiceCompletion = waitForServiceCompletion(out[0], getDestinationHost());
-        assertEquals(TaskStage.FAILED, waitForServiceCompletion.taskInfo.stage);
-    }
-
-    private List<URI> getHostUris(Collection<VerificationHost> hosts) {
-        return hosts.stream()
-                .map(h -> h.getUri())
-                .collect(Collectors.toList());
-    }
-
-    private List<URI> computeFirstCurrentPageLink(Collection<VerificationHost> hosts) throws Throwable {
-        Query query = Query.Builder.create()
-                .addFieldClause(ServiceDocument.FIELD_NAME_SELF_LINK, ExampleService.FACTORY_LINK + "*",
-                        QueryTask.QueryTerm.MatchType.WILDCARD)
-                .build();
-        QuerySpecification spec = new QuerySpecification();
-        spec.resultLimit = 1;
-        spec.query = query;
-        spec.options.add(QueryTask.QuerySpecification.QueryOption.EXPAND_CONTENT);
-
-        QueryTask queryTask = QueryTask.create(spec).setDirect(true);
-        List<URI> uris = new ArrayList<>();
-        TestContext ctx = testCreate(hosts.size());
-        for (VerificationHost host : hosts) {
-            Operation post = Operation.createPost(UriUtils.buildUri(host.getUri(), ServiceUriPaths.CORE_LOCAL_QUERY_TASKS))
-                    .setBody(queryTask)
-                    .setCompletion((o, t) -> {
-                        if (t != null) {
-                            this.host.log("Post service error: %s", Utils.toString(t));
-                            ctx.failIteration(t);
-                            return;
-                        }
-                        QueryTask task = o.getBody(QueryTask.class);
-                        uris.add(UriUtils.buildUri(host, task.results.nextPageLink));
-                        ctx.completeIteration();
-                    });
-            host.send(post);
-        }
-        testWait(ctx);
-        return uris;
     }
 
     public static class ExampleTranformationService extends StatelessService {
@@ -861,5 +770,33 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
         Operation post = Operation.createPost(u);
         host.startService(post, MigrationTaskService.createFactory());
         host.waitForServiceAvailable(MigrationTaskService.FACTORY_LINK);
+    }
+
+    private ServiceStats getStats(String documentLink, VerificationHost host) throws Throwable {
+        TestContext ctx = testCreate(1);
+        ServiceStats[] out = new ServiceStats[1];
+        Operation op = Operation.createGet(UriUtils.buildUri(host, documentLink + "/stats"))
+                .setCompletion((o, e) -> {
+                    if (e != null) {
+                        ctx.failIteration(e);
+                        return;
+                    }
+                    out[0] = o.getBody(ServiceStats.class);
+                    ctx.completeIteration();
+                });
+        host.send(op);
+        testWait(ctx);
+        return out[0];
+    }
+
+    private void checkAndStartHost(VerificationHost host) throws Throwable {
+        if (host.isStopping() || !host.isStarted()) {
+            host.start();
+            startMigrationService(host);
+            host.waitForServiceAvailable(ExampleService.FACTORY_LINK);
+            host.waitForServiceAvailable(MigrationTaskService.FACTORY_LINK);
+        }
+        host.deleteAllChildServices(UriUtils.buildUri(host, MigrationTaskService.FACTORY_LINK));
+        host.deleteAllChildServices(UriUtils.buildUri(host, ExampleService.FACTORY_LINK));
     }
 }
