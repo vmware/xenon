@@ -374,7 +374,11 @@ public class NodeGroupService extends StatefulService {
             self.documentVersion++;
 
             if (joinBody.membershipQuorum != null) {
-                self.membershipQuorum = Math.max(self.membershipQuorum, joinBody.membershipQuorum);
+                if (joinBody.membershipQuorum.equals(self.membershipQuorum)) {
+                    logInfo("Quorum changed from %d to %d", self.membershipQuorum,
+                            joinBody.membershipQuorum);
+                }
+                self.membershipQuorum = joinBody.membershipQuorum;
             }
 
             if (joinBody.localNodeOptions != null) {
