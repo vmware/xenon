@@ -619,6 +619,10 @@ public class Operation implements Cloneable {
     @Override
     public String toString() {
         SerializedOperation sop = SerializedOperation.create(this);
+        if (sop.jsonBody != null && sop.jsonBody.length() > 256) {
+            // keep just body prefix to avoid DoS attack using operation.toString()
+            sop.jsonBody = sop.jsonBody.substring(0, 256);
+        }
         return Utils.toJsonHtml(sop);
     }
 
@@ -848,6 +852,10 @@ public class Operation implements Cloneable {
 
     public int getRetryCount() {
         return this.retryCount;
+    }
+
+    public int incrementRetryCount() {
+        return ++this.retryCount;
     }
 
     public Operation setRetryCount(int retryCount) {

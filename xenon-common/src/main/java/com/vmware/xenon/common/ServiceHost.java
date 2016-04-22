@@ -367,6 +367,7 @@ public class ServiceHost implements ServiceRequestSender {
         public static final long DEFAULT_MAINTENANCE_INTERVAL_MICROS = TimeUnit.SECONDS
                 .toMicros(1);
         public static final long DEFAULT_OPERATION_TIMEOUT_MICROS = TimeUnit.SECONDS.toMicros(60);
+
         public String bindAddress;
         public int httpPort;
         public int httpsPort;
@@ -495,7 +496,7 @@ public class ServiceHost implements ServiceRequestSender {
     private final ConcurrentSkipListMap<String, NodeGroupState> pendingNodeSelectorsForFactorySynch = new ConcurrentSkipListMap<>();
     private final SortedSet<Operation> pendingStartOperations = createOperationSet();
     private final Map<String, SortedSet<Operation>> pendingServiceAvailableCompletions = new ConcurrentSkipListMap<>();
-    private final SortedSet<Operation> pendingOperationsForRetry = createOperationSet();
+    private final ConcurrentSkipListMap<Long, Operation> pendingOperationsForRetry = new ConcurrentSkipListMap<>();
 
     private ServiceHostState state;
     private Service documentIndexService;
@@ -3350,7 +3351,7 @@ public class ServiceHost implements ServiceRequestSender {
 
             CompletionHandler fc = (fo, fe) -> {
                 if (fe != null) {
-                    retryOrFailRequest(op, fo, fe);
+                    scheduleRetryOrFailRequest(op, fo, fe);
                     return;
                 }
 
@@ -3383,6 +3384,11 @@ public class ServiceHost implements ServiceRequestSender {
                 return;
             }
 
+            // Forwarded operations are retried until the parent operation, from the client,
+            // expires. Since a peer might have become unresponsive, we want short time outs
+            // and retries, to whatever peer we select, on each retry.
+            forwardOp.setExpiration(Utils.getNowMicrosUtc()
+                    + this.state.operationTimeoutMicros / 10);
             forwardOp.setUri(SelectOwnerResponse.buildUriToOwner(rsp, op));
             forwardOp.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_FORWARDED);
             forwardOp.removeRequestCallbackLocation();
@@ -3454,7 +3460,7 @@ public class ServiceHost implements ServiceRequestSender {
         op.setBodyNoCloning(fo.getBodyRaw()).fail(fe);
     }
 
-    private void retryOrFailRequest(Operation op, Operation fo, Throwable fe) {
+    private void scheduleRetryOrFailRequest(Operation op, Operation fo, Throwable fe) {
         boolean shouldRetry = false;
 
         if (fo.hasBody()) {
@@ -3470,18 +3476,20 @@ public class ServiceHost implements ServiceRequestSender {
             shouldRetry = false;
         }
 
-        if (shouldRetry) {
-            this.pendingOperationsForRetry.add(op);
-            return;
-        }
-
         if (op.getExpirationMicrosUtc() < Utils.getNowMicrosUtc()) {
             op.setBodyNoCloning(fo.getBodyRaw()).fail(new TimeoutException());
             return;
         }
 
-        failForwardRequest(op, fo, fe);
+        if (!shouldRetry) {
+            failForwardRequest(op, fo, fe);
+            return;
+        }
 
+        log(Level.WARNING, "Retrying id %d to %s (retries: %d)", op.getId(),
+                op.getUri().getHost() + ":" + op.getUri().getPort(), op.getRetryCount());
+        op.incrementRetryCount();
+        this.pendingOperationsForRetry.put(Utils.getNowMicrosUtc(), op);
     }
 
     /**
@@ -3918,7 +3926,7 @@ public class ServiceHost implements ServiceRequestSender {
     }
 
     private void stopAndClearPendingQueues() {
-        for (Operation op : this.pendingOperationsForRetry) {
+        for (Operation op : this.pendingOperationsForRetry.values()) {
             op.fail(new CancellationException());
         }
         this.pendingOperationsForRetry.clear();
@@ -4553,12 +4561,23 @@ public class ServiceHost implements ServiceRequestSender {
             checkOperationExpiration(now, it);
         }
 
-        Iterator<Operation> it = this.pendingOperationsForRetry.iterator();
+        final long intervalMicros = TimeUnit.SECONDS.toMicros(1);
+        Iterator<Entry<Long, Operation>> it = this.pendingOperationsForRetry.entrySet().iterator();
         while (it.hasNext()) {
-            Operation o = it.next();
+            Entry<Long, Operation> entry = it.next();
+            Operation o = entry.getValue();
             if (isStopping()) {
                 o.fail(new CancellationException());
                 return;
+            }
+
+            // Apply linear back-off: we delay retry based on the number of retry attempts. We
+            // keep retrying until expiration of the operation (applied in retryOrFailRequest)
+            long queuingTimeMicros = entry.getKey();
+            long estimatedRetryTimeMicros = o.getRetryCount() * intervalMicros +
+                    queuingTimeMicros;
+            if (estimatedRetryTimeMicros > now) {
+                continue;
             }
             it.remove();
             handleRequest(null, o);
