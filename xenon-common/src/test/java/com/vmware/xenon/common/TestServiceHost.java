@@ -36,8 +36,8 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 
 import io.netty.handler.ssl.util.SelfSignedCertificate;
-
 import org.junit.After;
+import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 
@@ -83,6 +83,9 @@ public class TestServiceHost {
     public int indexFileThreshold = 100;
 
     public long serviceCacheClearDelaySeconds = 2;
+
+    @Rule
+    public TemporaryFolder tmpFolder = new TemporaryFolder();
 
     public void beforeHostStart(VerificationHost host) {
         host.setMaintenanceIntervalMicros(TimeUnit.MILLISECONDS
@@ -198,15 +201,12 @@ public class TestServiceHost {
     public void startUpWithArgumentsAndHostConfigValidation() throws Throwable {
         setUp(false);
         ExampleServiceHost h = new ExampleServiceHost();
-        TemporaryFolder tmpFolder = new TemporaryFolder();
-        tmpFolder.create();
         try {
             String bindAddress = "127.0.0.1";
             String hostId = UUID.randomUUID().toString();
 
             String[] args = {
-                    "--sandbox="
-                            + tmpFolder.getRoot().toURI(),
+                    "--sandbox=" + this.tmpFolder.getRoot().toURI(),
                     "--port=0",
                     "--bindAddress=" + bindAddress,
                     "--id=" + hostId
@@ -320,8 +320,7 @@ public class TestServiceHost {
             String [] args2 = {
                     "--port=" + 0,
                     "--bindAddress=" + bindAddress,
-                    "--sandbox="
-                            + tmpFolder.getRoot().toURI(),
+                    "--sandbox=" + this.tmpFolder.getRoot().toURI(),
                     "--id=" + hostId
             };
 
@@ -334,7 +333,6 @@ public class TestServiceHost {
             verifyAuthorizedServiceMethods(h);
         } finally {
             h.stop();
-            tmpFolder.delete();
         }
 
     }
@@ -365,8 +363,6 @@ public class TestServiceHost {
     public void setPublicUri() throws Throwable {
         setUp(false);
         ExampleServiceHost h = new ExampleServiceHost();
-        TemporaryFolder tmpFolder = new TemporaryFolder();
-        tmpFolder.create();
 
         try {
 
@@ -404,8 +400,7 @@ public class TestServiceHost {
             String hostId = UUID.randomUUID().toString();
 
             String[] args = {
-                    "--sandbox="
-                            + tmpFolder.getRoot().getAbsolutePath(),
+                    "--sandbox=" + this.tmpFolder.getRoot().getAbsolutePath(),
                     "--port=0",
                     "--bindAddress=" + bindAddress,
                     "--publicUri=" + new URI("http://" + publicAddress + ":" + publicPort),
@@ -433,7 +428,6 @@ public class TestServiceHost {
             assertEquals(publicPort, selfEntry.groupReference.getPort());
         } finally {
             h.stop();
-            tmpFolder.delete();
         }
 
     }
@@ -442,15 +436,12 @@ public class TestServiceHost {
     public void setAuthEnforcement() throws Throwable {
         setUp(false);
         ExampleServiceHost h = new ExampleServiceHost();
-        TemporaryFolder tmpFolder = new TemporaryFolder();
-        tmpFolder.create();
         try {
             String bindAddress = "127.0.0.1";
             String hostId = UUID.randomUUID().toString();
 
             String[] args = {
-                    "--sandbox="
-                            + tmpFolder.getRoot().getAbsolutePath(),
+                    "--sandbox=" + this.tmpFolder.getRoot().getAbsolutePath(),
                     "--port=0",
                     "--bindAddress=" + bindAddress,
                     "--isAuthorizationEnabled=" + Boolean.TRUE.toString(),
@@ -479,7 +470,6 @@ public class TestServiceHost {
             this.host.testWait();
         } finally {
             h.stop();
-            tmpFolder.delete();
         }
 
     }
