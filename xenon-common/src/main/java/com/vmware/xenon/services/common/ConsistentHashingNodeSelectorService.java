@@ -389,6 +389,7 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
             Operation remoteOp = Operation.createPost(remoteService)
                     .transferRequestHeadersFrom(op)
                     .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_NO_FORWARDING)
+                    .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_USE_HTTP2)
                     .setAction(op.getAction())
                     .setCompletion(c)
                     .setReferer(op.getReferer())
@@ -560,7 +561,10 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
 
     private void updateCachedNodeGroupState(NodeGroupState ngs, UpdateQuorumRequest quorumUpdate) {
         if (ngs != null) {
-            logInfo("Node count: %d", ngs.nodes.size());
+            NodeGroupState currentState = this.cachedGroupState;
+            if (currentState != null && currentState.nodes.size() != ngs.nodes.size()) {
+                logInfo("Node count: %d", ngs.nodes.size());
+            }
         } else {
             logInfo("Quorum update: %d", quorumUpdate.membershipQuorum);
         }
@@ -573,15 +577,18 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
                 }
                 return;
             }
-            // every time we update cached state, request convergence check
-            this.isNodeGroupConverged = false;
-            this.isSynchronizationRequired = true;
+
             if (this.cachedGroupState == null) {
                 this.cachedGroupState = ngs;
-                return;
             }
-            if (this.cachedGroupState.membershipUpdateTimeMicros <= ngs.membershipUpdateTimeMicros) {
+
+            if (this.cachedGroupState.documentUpdateTimeMicros <= ngs.documentUpdateTimeMicros) {
                 this.cachedGroupState = ngs;
+                // every time we update cached state, request convergence check
+                this.isNodeGroupConverged = false;
+                this.isSynchronizationRequired = true;
+            } else {
+                return;
             }
         }
     }
