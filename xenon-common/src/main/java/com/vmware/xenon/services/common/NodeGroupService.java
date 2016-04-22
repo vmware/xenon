@@ -122,6 +122,11 @@ public class NodeGroupService extends StatefulService {
          * selection and replication requests should be processed.
          */
         public long stableGroupMaintenanceIntervalCount = 5;
+
+        /**
+         * Timeout for gossip requests to peers, in microseconds
+         */
+        public long peerRequestTimeoutMicros = TimeUnit.SECONDS.toMicros(10);
     }
 
     public static class NodeGroupState extends ServiceDocument {
@@ -374,7 +379,11 @@ public class NodeGroupService extends StatefulService {
             self.documentVersion++;
 
             if (joinBody.membershipQuorum != null) {
-                self.membershipQuorum = Math.max(self.membershipQuorum, joinBody.membershipQuorum);
+                if (joinBody.membershipQuorum.equals(self.membershipQuorum)) {
+                    logInfo("Quorum changed from %d to %d", self.membershipQuorum,
+                            joinBody.membershipQuorum);
+                }
+                self.membershipQuorum = joinBody.membershipQuorum;
             }
 
             if (joinBody.localNodeOptions != null) {
@@ -598,7 +607,7 @@ public class NodeGroupService extends StatefulService {
                     .setBody(localState)
                     .setRetryCount(0)
                     .setExpiration(
-                            Utils.getNowMicrosUtc() + getHost().getOperationTimeoutMicros() / 2)
+                            Utils.getNowMicrosUtc() + localState.config.peerRequestTimeoutMicros)
                     .forceRemote()
                     .setCompletion(ch);
 

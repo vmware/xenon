@@ -129,7 +129,7 @@ public class TestSubscriptions extends BasicReportTestCase {
             } else {
                 ownerHost = h;
             }
-            h.setOperationTimeOutMicros(TimeUnit.SECONDS.toMicros(1));
+            h.setOperationTimeOutMicros(TimeUnit.SECONDS.toMicros(10));
         }
 
         this.host.log("Owner node: %s, subscriber node: %s (%s)", ownerHostId[0],
@@ -168,7 +168,7 @@ public class TestSubscriptions extends BasicReportTestCase {
 
         // stop host that has ownership of example service
         NodeGroupConfig cfg = new NodeGroupConfig();
-        cfg.nodeRemovalDelayMicros = TimeUnit.SECONDS.toMicros(5);
+        cfg.nodeRemovalDelayMicros = TimeUnit.SECONDS.toMicros(2);
         this.host.setNodeGroupConfig(cfg);
 
         // relax quorum

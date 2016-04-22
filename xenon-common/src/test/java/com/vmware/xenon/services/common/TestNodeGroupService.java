@@ -494,7 +494,7 @@ public class TestNodeGroupService {
     }
 
     @Test
-    public void synchronizationOneByOne() throws Throwable {
+    public void synchronizationOneByOneWithAbruptNodeShutdown() throws Throwable {
         setUp(this.nodeCount);
 
         // On one host, add some services. They exist only on this host and we expect them to synchronize
@@ -567,8 +567,7 @@ public class TestNodeGroupService {
         TestContext ctx = this.host
                 .testCreate(this.updateCount * states.size());
 
-        long expMicros = TimeUnit.SECONDS.toMicros(
-                this.host.getTimeoutSeconds()) + Utils.getNowMicrosUtc();
+        this.setOperationTimeoutMicros(TimeUnit.SECONDS.toMicros(this.host.getTimeoutSeconds()));
 
         for (int i = 0; i < this.updateCount; i++) {
             for (Entry<String, ExampleServiceState> e : states.entrySet()) {
@@ -577,7 +576,6 @@ public class TestNodeGroupService {
                 Operation patch = Operation
                         .createPatch(UriUtils.buildUri(nodeGroupOnSomeHost, e.getKey()))
                         .setCompletion(ctx.getCompletion())
-                        .setExpiration(expMicros)
                         .setBody(st);
                 this.host.send(patch);
             }
@@ -2934,7 +2932,7 @@ public class TestNodeGroupService {
 
         // reduce node expiration for unavailable hosts so gossip warning
         // messages do not flood the logs
-        this.nodeGroupConfig.nodeRemovalDelayMicros = TimeUnit.MILLISECONDS.toMicros(250);
+        this.nodeGroupConfig.nodeRemovalDelayMicros = remainingHost.getMaintenanceIntervalMicros();
         this.host.setNodeGroupConfig(this.nodeGroupConfig);
         this.setOperationTimeoutMicros(TimeUnit.SECONDS.toMicros(10));
 
