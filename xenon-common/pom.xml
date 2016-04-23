@@ -139,6 +139,41 @@
                   </arguments>
                 </configuration>
               </execution>
+              <execution>
+                <id>go-build</id>
+                <phase>generate-resources</phase>
+                <goals>
+                  <goal>exec</goal>
+                </goals>
+                <configuration>
+                  <executable>make</executable>
+                  <workingDirectory>src/main/go</workingDirectory>
+                  <arguments>
+                    <argument>clean</argument>
+                    <argument>gobuild</argument>
+                    <argument>package</argument>
+                  </arguments>
+                </configuration>
+              </execution>
+              <execution>
+                <id>go-test</id>
+                <phase>test</phase>
+                <goals>
+                  <goal>exec</goal>
+                </goals>
+                <configuration>
+                  <executable>make</executable>
+                  <workingDirectory>src/main/go</workingDirectory>
+                  <environmentVariables>
+                    <XENON_JAR>${project.basedir}/../xenon-host/target/xenon-host-${project.version}-jar-with-dependencies.jar</XENON_JAR>
+                  </environmentVariables>
+                  <arguments>
+                    <argument>test</argument>
+                    <argument>TEST_OPTS=-v -run '${test}'</argument>
+                  </arguments>
+                  <skip>${skipTests}</skip>
+                </configuration>
+              </execution>
             </executions>
           </plugin>
         </plugins>

@@ -2,6 +2,7 @@ GOVENDORCOMMON := $(CURDIR)/../../../../xenon-common/src/main/go/_vendor/
 GOVENDOR :=$(CURDIR)/_vendor
 TMPDIR :=$(CURDIR)/_tmp
 GOPATH := $(GOVENDOR):$(GOVENDORCOMMON):$(CURDIR)
+GOBIN := $(GOVENDORCOMMON)/bin
 GO ?= go
 OS := $(shell uname)
 GO1.5 ?= go1.5
