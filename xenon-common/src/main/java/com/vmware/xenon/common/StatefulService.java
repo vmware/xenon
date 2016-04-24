@@ -761,7 +761,7 @@ public class StatefulService implements Service {
         // DELETE completion runs when a DELETE was issued by a client, not local host shutdown.
         // It needs to stop the service now, since the handleDelete() and handleStop() handlers
         // have already run.
-
+        getHost().markAsPendingDelete(this);
         getHost().stopService(this);
         return false;
     }

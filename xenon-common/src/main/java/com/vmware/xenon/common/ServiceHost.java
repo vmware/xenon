@@ -496,6 +496,7 @@ public class ServiceHost implements ServiceRequestSender {
     private final ConcurrentSkipListMap<String, Long> synchronizationActiveServices = new ConcurrentSkipListMap<>();
     private final ConcurrentSkipListMap<String, NodeGroupState> pendingNodeSelectorsForFactorySynch = new ConcurrentSkipListMap<>();
     private final SortedSet<Operation> pendingStartOperations = createOperationSet();
+    private final Set<String> pendingDeleteServices = Collections.synchronizedSet(new HashSet<String>());
     private final Map<String, SortedSet<Operation>> pendingServiceAvailableCompletions = new ConcurrentSkipListMap<>();
     private final ConcurrentSkipListMap<Long, Operation> pendingOperationsForRetry = new ConcurrentSkipListMap<>();
 
@@ -2920,6 +2921,15 @@ public class ServiceHost implements ServiceRequestSender {
         }
 
         boolean isDeleted = ServiceDocument.isDeleted(stateFromStore);
+        if (!isDeleted) {
+            isDeleted = this.pendingDeleteServices.contains(s.getSelfLink());
+            if (isDeleted) {
+                boolean ba = s.getSelfLink().contains("bank-accounts");
+                if (ba) {
+                    log(Level.INFO, "found %s in pendingDeleteServices. Setting isDeleted to true", s.getSelfLink());
+                }
+            }
+        }
 
         if (!serviceStartPost.hasBody()) {
             // this POST is due to a restart, or synchronization attempt which will never have a body
@@ -2960,6 +2970,14 @@ public class ServiceHost implements ServiceRequestSender {
         }
 
         return true;
+    }
+
+    void markAsPendingDelete(StatefulService service) {
+        this.pendingDeleteServices.add(service.getSelfLink());
+        boolean ba = service.getSelfLink().contains("bank-accounts");
+        if (ba) {
+            log(Level.INFO, "Added %s to pendingDeleteServices", service.getSelfLink());
+        }
     }
 
     /**
@@ -3823,6 +3841,7 @@ public class ServiceHost implements ServiceRequestSender {
         this.attachedServices.clear();
         this.attachedNamespaceServices.clear();
         this.maintenanceHelper.close();
+        this.pendingDeleteServices.clear();
         this.state.isStarted = false;
 
         removeLogging();
@@ -5195,6 +5214,21 @@ public class ServiceHost implements ServiceRequestSender {
     }
 
     void saveServiceState(Service s, Operation op, ServiceDocument state) {
+        if (op.getAction() == Action.DELETE && isServiceIndexed(s)) {
+            op.nestCompletion((o, e) -> {
+                this.pendingDeleteServices.remove(s.getSelfLink());
+                boolean ba = s.getSelfLink().contains("bank-accounts");
+                if (ba) {
+                    log(Level.INFO, "Removed %s from pendingDeleteServices", s.getSelfLink());
+                }
+                if (e != null) {
+                    op.fail(e);
+                    return;
+                }
+                op.complete();
+            });
+        }
+
         if (state == null) {
             op.fail(new IllegalArgumentException("linkedState is required"));
             return;

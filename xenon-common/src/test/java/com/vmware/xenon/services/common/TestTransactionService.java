@@ -25,7 +25,6 @@ import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
 import org.junit.Before;
-import org.junit.Ignore;
 import org.junit.Test;
 
 import com.vmware.xenon.common.BasicReusableHostTestCase;
@@ -222,7 +221,6 @@ public class TestTransactionService extends BasicReusableHostTestCase {
         sumAccounts(null, 100.0 * this.accountCount / 2);
     }
 
-    @Ignore("https://www.pivotaltracker.com/n/projects/1471320/stories/117202333")
     @Test
     public void testSingleClientMultipleActiveTransactions() throws Throwable {
         String[] txids = new String[this.accountCount];
