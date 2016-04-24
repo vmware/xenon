@@ -25,7 +25,6 @@ import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
 import org.junit.Before;
-import org.junit.Ignore;
 import org.junit.Test;
 
 import com.vmware.xenon.common.BasicReusableHostTestCase;
@@ -222,19 +221,20 @@ public class TestTransactionService extends BasicReusableHostTestCase {
         sumAccounts(null, 100.0 * this.accountCount / 2);
     }
 
-    @Ignore("https://www.pivotaltracker.com/n/projects/1471320/stories/117202333")
     @Test
     public void testSingleClientMultipleActiveTransactions() throws Throwable {
         String[] txids = new String[this.accountCount];
 
         for (int i = 0; i < this.accountCount; i++) {
             txids[i] = newTransaction();
+            this.host.log("Created transaction %s", txids[i]);
             String accountId = buildAccountId(i);
             double initialBalance = i % 2 == 0 ? 100.0 : 0;
             createAccount(txids[i], accountId, initialBalance, null);
         }
 
         String interferrer = newTransaction();
+        this.host.log("Created interferer transaction %s", interferrer);
         for (int i = 0; i < this.accountCount; i++) {
             String accountId = buildAccountId(i);
             BankAccountServiceState account = getAccount(interferrer, accountId);
