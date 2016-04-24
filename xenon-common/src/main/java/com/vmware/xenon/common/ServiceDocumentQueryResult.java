@@ -18,7 +18,14 @@ import java.util.List;
 import java.util.Map;
 
 public class ServiceDocumentQueryResult extends ServiceDocument {
+
     public static final String FIELD_NAME_DOCUMENT_LINKS = "documentLinks";
+    public static final String FIELD_NAME_DOCUMENTS = "documents";
+    public static final String FIELD_NAME_DOCUMENT_COUNT = "documentCount";
+    public static final String FIELD_NAME_PREV_PAGE_LINK = "prevPageLink";
+    public static final String FIELD_NAME_NEXT_PAGE_LINK = "nextPageLink";
+    public static final String FIELD_NAME_QUERY_TIME_MICROS = "queryTimeMicros";
+
     /**
      * Collection of self links associated with each document found. The self link acts as the
      * primary key for a document.
@@ -54,4 +61,24 @@ public class ServiceDocumentQueryResult extends ServiceDocument {
      * Duration of the query execution.
      */
     public Long queryTimeMicros;
+
+    /**
+     * Returns whether or not the {@code name} is a built-in field.
+     *
+     * @param name Field name
+     * @return true/false
+     */
+    public static boolean isBuiltInField(String name) {
+        switch (name) {
+        case FIELD_NAME_DOCUMENT_LINKS:
+        case FIELD_NAME_DOCUMENTS:
+        case FIELD_NAME_DOCUMENT_COUNT:
+        case FIELD_NAME_PREV_PAGE_LINK:
+        case FIELD_NAME_NEXT_PAGE_LINK:
+        case FIELD_NAME_QUERY_TIME_MICROS:
+            return true;
+        default:
+            return false;
+        }
+    }
 }
