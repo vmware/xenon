@@ -22,7 +22,6 @@ import java.util.function.Consumer;
 import com.vmware.xenon.common.FactoryService;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.OperationJoin;
-import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.ServiceDocumentDescription.PropertyUsageOption;
 import com.vmware.xenon.common.ServiceHost;
 import com.vmware.xenon.common.TaskState.TaskStage;
@@ -103,8 +102,19 @@ public class ExampleTaskService
          * The query we make to the Query Task service, and the result we
          * get back from it.
          */
-        @UsageOption(option = PropertyUsageOption.AUTO_MERGE_IF_NOT_NULL)
+        @PropertyOptions(usage = {
+                PropertyUsageOption.AUTO_MERGE_IF_NOT_NULL,
+                PropertyUsageOption.SERVICE_USE })
         public QueryTask exampleQueryTask;
+
+        /**
+         * Optional query clause that will be added, with MUST_OCCUR,
+         * to the query used to find example service instances. The default query
+         * uses only the document kind to restrict results to example service documents.
+         */
+        @PropertyOptions(usage = {
+                PropertyUsageOption.OPTIONAL })
+        public Query customQueryClause;
     }
 
     public ExampleTaskService() {
@@ -206,7 +216,7 @@ public class ExampleTaskService
             logInfo("Task canceled: not implemented, ignoring");
             break;
         case FINISHED:
-            logInfo("Task finished successfully");
+            logFine("Task finished successfully");
             break;
         case FAILED:
             logWarning("Task failed: %s", (patchBody.failureMessage == null ? "No reason given"
@@ -264,10 +274,16 @@ public class ExampleTaskService
     private void handleQueryExamples(ExampleTaskServiceState task) {
         // Create a query for "all documents with kind ==
         // com:vmware:xenon:services:common:ExampleService:ExampleServiceState"
-        Query exampleDocumentQuery = Query.Builder.create()
-                .setTerm(ServiceDocument.FIELD_NAME_KIND,
-                        Utils.buildKind(ExampleServiceState.class))
-                .build();
+        Query.Builder builder = Query.Builder.create()
+                .addKindFieldClause(ExampleServiceState.class);
+
+        if (task.customQueryClause != null) {
+            // expand query with a specified field value, narrowing down the eligible
+            // services
+            builder.addClause((task.customQueryClause));
+        }
+
+        Query exampleDocumentQuery = builder.build();
         task.exampleQueryTask = QueryTask.Builder.createDirectTask()
                 .setQuery(exampleDocumentQuery)
                 .build();
@@ -313,8 +329,9 @@ public class ExampleTaskService
             return;
         }
         if (task.exampleQueryTask.results.documentLinks.size() == 0) {
-            logInfo("No example service documents found, nothing to do");
+            logFine("No example service documents found, nothing to do");
             sendSelfPatch(task, TaskStage.FINISHED, null);
+            return;
         }
 
         List<Operation> deleteOperations = new ArrayList<>();
