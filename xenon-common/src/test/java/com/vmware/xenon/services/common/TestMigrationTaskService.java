@@ -521,6 +521,68 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
     }
 
     @Test
+    public void successMigrateSameDocumentsTwice() throws Throwable {
+        // create object in host
+        Collection<String> links = createExampleDocuments(this.exampleSourceFactory, getSourceHost(),
+                this.serviceCount);
+
+        // start migration
+        MigrationTaskService.State migrationState = validMigrationState(
+                ExampleService.FACTORY_LINK);
+
+        TestContext ctx = testCreate(1);
+        String[] out = new String[1];
+        Operation op = Operation.createPost(this.destinationFactoryUri)
+                .setBody(migrationState)
+                .setCompletion((o, e) -> {
+                    if (e != null) {
+                        this.host.log("Post service error: %s", Utils.toString(e));
+                        ctx.failIteration(e);
+                        return;
+                    }
+                    out[0] = o.getBody(State.class).documentSelfLink;
+                    ctx.completeIteration();
+                });
+        getDestinationHost().send(op);
+        testWait(ctx);
+
+        State waitForServiceCompletion = waitForServiceCompletion(out[0], getDestinationHost());
+        ServiceStats stats = getStats(out[0], getDestinationHost());
+        Long processedDocuments = Long.valueOf((long) stats.entries.get(MigrationTaskService.STAT_NAME_PROCESSED_DOCUMENTS).latestValue);
+        assertEquals(TaskStage.FINISHED, waitForServiceCompletion.taskInfo.stage);
+        assertEquals(Long.valueOf(this.serviceCount), processedDocuments);
+
+        TestContext ctx2 = testCreate(1);
+        migrationState.documentSelfLink = null;
+        op = Operation.createPost(this.destinationFactoryUri)
+                .setBody(migrationState)
+                .setCompletion((o, e) -> {
+                    if (e != null) {
+                        this.host.log("Post service error: %s", Utils.toString(e));
+                        ctx2.failIteration(e);
+                        return;
+                    }
+                    out[0] = o.getBody(State.class).documentSelfLink;
+                    ctx2.completeIteration();
+                });
+        getDestinationHost().send(op);
+        testWait(ctx2);
+
+        waitForServiceCompletion = waitForServiceCompletion(out[0], getDestinationHost());
+        stats = getStats(out[0], getDestinationHost());
+        processedDocuments = Long.valueOf((long) stats.entries.get(MigrationTaskService.STAT_NAME_PROCESSED_DOCUMENTS).latestValue);
+        assertEquals(waitForServiceCompletion.taskInfo.stage, TaskStage.FINISHED);
+        assertEquals(Long.valueOf(this.serviceCount), processedDocuments);
+
+        // check if object is in new host
+        Collection<URI> uris = links.stream()
+                .map(link -> UriUtils.buildUri(getDestinationHost(), link))
+                .collect(Collectors.toList());
+        getDestinationHost().getServiceState(EnumSet.noneOf(TestProperty.class),
+                ExampleServiceState.class, uris);
+    }
+
+    @Test
     public void successMigrateTransformedDocuments() throws Throwable {
         // start transformation service
         URI u = UriUtils.buildUri(getDestinationHost(), TRANSFORMATION);

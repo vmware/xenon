@@ -28,6 +28,7 @@ import java.util.stream.Collectors;
 import com.vmware.xenon.common.FactoryService;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.OperationJoin;
+import com.vmware.xenon.common.OperationSequence;
 import com.vmware.xenon.common.Service;
 import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.ServiceDocumentDescription.PropertyUsageOption;
@@ -157,6 +158,12 @@ public class MigrationTaskService extends StatefulService {
         @UsageOption(option = PropertyUsageOption.AUTO_MERGE_IF_NOT_NULL)
         public Boolean continuousMigration;
 
+        /**
+         * (Optional) Flag enabling delete post upgrade (default: false).
+         */
+        @UsageOption(option = PropertyUsageOption.AUTO_MERGE_IF_NOT_NULL)
+        public Boolean useDeletePostMigration;
+
         // The following attributes are the outputs of the task.
         /**
          * Timestamp of the newest document migrated. This will only be accurate once the migration
@@ -233,6 +240,9 @@ public class MigrationTaskService extends StatefulService {
         }
         if (initState.continuousMigration == null) {
             initState.continuousMigration = Boolean.FALSE;
+        }
+        if (initState.useDeletePostMigration == null) {
+            initState.useDeletePostMigration = Boolean.FALSE;
         }
         return initState;
     }
@@ -588,13 +598,59 @@ public class MigrationTaskService extends StatefulService {
         OperationJoin.create(posts)
             .setCompletion((os, ts) -> {
                 if (ts != null && !ts.isEmpty()) {
+                    if (state.useDeletePostMigration) {
+                        useFallBack(state, posts, ts, nextPageLinks, destinationURIs, lastUpdateTimesPerOwner);
+                    } else {
+                        failTask(ts.values());
+                        return;
+                    }
+                } else {
+                    adjustStat(STAT_NAME_PROCESSED_DOCUMENTS, posts.size());
+                    migrate(state, nextPageLinks, destinationURIs, lastUpdateTimesPerOwner);
+                }
+            })
+            .sendWith(this);
+    }
+
+    private void useFallBack(State state, Collection<Operation> posts, Map<Long, Throwable> operationFailures, Set<URI> nextPageLinks, List<URI> destinationURIs, Map<String, Long> lastUpdateTimesPerOwner) {
+
+        Map<URI, Operation> failedOps = getFailedOPerations(posts, operationFailures);
+        Collection<Operation> getOperations = createGetOperations(failedOps.keySet());
+
+        OperationJoin.create(getOperations)
+            .setCompletion((os ,ts) -> {
+                if (ts != null && !ts.isEmpty()) {
                     failTask(ts.values());
                     return;
                 }
-                adjustStat(STAT_NAME_PROCESSED_DOCUMENTS, posts.size());
-                migrate(state, nextPageLinks, destinationURIs, lastUpdateTimesPerOwner);
+                Collection<Operation> deleteOperations = createDelteOperations(failedOps.keySet());
+                Collection<Operation> postOperations = createPostOperations(failedOps, os);
+
+                OperationSequence
+                    .create(OperationJoin.create(deleteOperations))
+                    .next(OperationJoin.create(postOperations))
+                    .setCompletion((oss, tss) -> {
+                        if (tss != null && !ts.isEmpty()) {
+                            failTask(ts.values());
+                            return;
+                        }
+                        adjustStat(STAT_NAME_PROCESSED_DOCUMENTS, posts.size());
+                        migrate(state, nextPageLinks, destinationURIs, lastUpdateTimesPerOwner);
+                    })
+                    .sendWith(this);
             })
             .sendWith(this);
+    }
+
+    private Operation buildGetDeletePost(Operation operation) {
+        URI postUri = operation.getUri();
+        Object jsonObject = operation.getBodyRaw();
+        String selfLink = Utils.getJsonMapValue(jsonObject, ServiceDocument.FIELD_NAME_SELF_LINK, String.class);
+
+        return Operation.createGet(UriUtils.buildUri(postUri, postUri.getPath(), selfLink))
+            .setCompletion((o1, e1) -> {
+
+            });
     }
 
     private boolean verifyPatchedState(State state, Operation operation) {
