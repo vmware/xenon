@@ -27,7 +27,7 @@ public class NettyLoggingUtil {
 
     public static synchronized void setupNettyLogging() {
         if (!setupLogging) {
-            InternalLoggerFactory.setDefaultFactory(new JdkLoggerFactory());
+            InternalLoggerFactory.setDefaultFactory(JdkLoggerFactory.INSTANCE);
         }
     }
 }

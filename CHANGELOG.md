@@ -2,6 +2,8 @@
 
 ## 0.8.0-SNAPSHOT
 
+* Upgrade netty from 4.1.0.CR3 to 4.1.0.CR7
+
 * Update JWT(Json Web Token) to use private key when SSL is enabled. Otherwise,
   default value(same across all nodes) is used. (NOT SECURE)
   JWT is used to sign/verify authorization context token.
