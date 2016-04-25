@@ -58,7 +58,9 @@ public class NettyHttpServiceClient implements ServiceClient {
      * this limit is set too high, and we are talking to many remote hosts, we can possibly exceed
      * the process file descriptor limit
      */
-    public static final int DEFAULT_CONNECTIONS_PER_HOST = 128;
+    public static final int DEFAULT_CONNECTIONS_PER_HOST =
+            Integer.getInteger(Utils.PROPERTY_NAME_PREFIX
+                    + "NettyHttpServiceClient.DEFAULT_CONNECTIONS_PER_HOST", 128);
 
     /**
      * Netty defaults to allowing 2^32 concurrent streams, which feels like a  bit much.

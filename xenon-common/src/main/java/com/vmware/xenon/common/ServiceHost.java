@@ -3539,8 +3539,8 @@ public class ServiceHost implements ServiceRequestSender {
             }
         }
 
-        if (inboundOp.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_QUEUE_FOR_SERVICE_AVAILABILITY)
-                || inboundOp.isForwardingDisabled()) {
+        if (inboundOp
+                .hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_QUEUE_FOR_SERVICE_AVAILABILITY)) {
             waitForService = true;
         }
 

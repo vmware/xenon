@@ -66,26 +66,27 @@ public class BroadcastQueryPageService extends StatelessService {
         List<QueryTask> responses = Collections.synchronizedList(new ArrayList<>());
         AtomicInteger remainingQueries = new AtomicInteger(this.pageLinks.size());
 
+        if (remainingQueries.get() == 0) {
+            get.complete();
+            return;
+        }
         for (String indexLink : this.pageLinks) {
             Operation op = Operation
                     .createGet(UriUtils.buildUri(this.getHost(), indexLink))
                     .setReferer(get.getReferer())
+                    .setExpiration(
+                            Utils.getNowMicrosUtc() + getHost().getOperationTimeoutMicros() / 3)
                     .setCompletion((o, e) -> {
                         if (e != null) {
-                            QueryTask t = new QueryTask();
-                            t.taskInfo.stage = TaskState.TaskStage.FAILED;
-                            t.taskInfo.failure = Utils.toServiceErrorResponse(e);
-                            get.setBody(t).fail(e);
-
+                            get.fail(e);
                             return;
                         }
-
                         QueryTask rsp = o.getBody(QueryTask.class);
                         if (rsp != null) {
                             responses.add(rsp);
                         }
-
-                        if (remainingQueries.decrementAndGet() == 0) {
+                        int r = remainingQueries.decrementAndGet();
+                        if (r == 0) {
                             rsp.results = collectPagesAndStartNewServices(responses);
                             get.setBodyNoCloning(rsp).complete();
                         }

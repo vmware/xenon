@@ -49,6 +49,10 @@ public class NodeSelectorForwardingService extends StatelessService {
         Map<String, String> params = UriUtils.parseUriQueryParams(op.getUri());
         String link = params.get(UriUtils.FORWARDING_URI_PARAM_NAME_PATH);
         if (link == null) {
+            if (params.isEmpty() && op.getAction() == Action.DELETE) {
+                super.handleRequest(op);
+                return;
+            }
             op.fail(new IllegalArgumentException("link uri parameter is required"));
             return;
         }

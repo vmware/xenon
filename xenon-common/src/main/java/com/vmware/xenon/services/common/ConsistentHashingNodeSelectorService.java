@@ -254,16 +254,17 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
                 response.ownerNodeGroupReference.getPort(),
                 body.targetPath, body.targetQuery);
 
-        Operation fwdOp = op.clone().setCompletion(
-                (o, e) -> {
-                    op.transferResponseHeadersFrom(o).setStatusCode(o.getStatusCode())
-                            .setBodyNoCloning(o.getBodyRaw());
-                    if (e != null) {
-                        op.fail(e);
-                        return;
-                    }
-                    op.complete();
-                });
+        Operation fwdOp = op.clone()
+                .setCompletion(
+                        (o, e) -> {
+                            op.transferResponseHeadersFrom(o).setStatusCode(o.getStatusCode())
+                                    .setBodyNoCloning(o.getBodyRaw());
+                            if (e != null) {
+                                op.fail(e);
+                                return;
+                            }
+                            op.complete();
+                        });
         getHost().getClient().send(fwdOp.setUri(remoteService));
     }
 
