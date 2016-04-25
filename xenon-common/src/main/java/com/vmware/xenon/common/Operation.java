@@ -967,6 +967,10 @@ public class Operation implements Cloneable {
         return this.expirationMicrosUtc;
     }
 
+    /**
+     * Sets the expiration using the supplied absolute time value, that should be in microseconds
+     * since epoch
+     */
     public Operation setExpiration(long futureMicrosUtc) {
         this.expirationMicrosUtc = futureMicrosUtc;
         return this;
