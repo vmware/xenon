@@ -95,7 +95,6 @@ public class LuceneQueryPageService extends StatelessService {
     @Override
     public void handleMaintenance(Operation op) {
         op.complete();
-
         // This service only lives as long as its parent QueryTask
         getHost().stopService(this);
     }

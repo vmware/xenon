@@ -314,26 +314,26 @@ public abstract class FactoryService extends StatelessService {
             return;
         }
 
-        sendRequest(Operation.createGet(ctx.nextPageReference).setCompletion(
-                (o, e) -> {
-                    if (e != null) {
-                        if (!getHost().isStopping()) {
-                            logWarning("Failure retrieving query results from %s: %s",
-                                    ctx.nextPageReference,
-                                    e.toString());
-                        }
-                        ctx.maintOp.fail(new IllegalStateException(
-                                "failure retrieving query page results"));
-                        return;
-                    }
+        CompletionHandler c = (o, e) -> {
+            if (e != null) {
+                if (!getHost().isStopping()) {
+                    logWarning("Failure retrieving query results from %s: %s",
+                            ctx.nextPageReference,
+                            e.toString());
+                }
+                ctx.maintOp.fail(new IllegalStateException(
+                        "failure retrieving query page results"));
+                return;
+            }
 
-                    ServiceDocumentQueryResult rsp = o.getBody(QueryTask.class).results;
-                    if (rsp.documentCount == 0 || rsp.documentLinks.isEmpty()) {
-                        ctx.maintOp.complete();
-                        return;
-                    }
-                    synchronizeChildrenInQueryPage(ctx, rsp);
-                }));
+            ServiceDocumentQueryResult rsp = o.getBody(QueryTask.class).results;
+            if (rsp.documentCount == 0 || rsp.documentLinks.isEmpty()) {
+                ctx.maintOp.complete();
+                return;
+            }
+            synchronizeChildrenInQueryPage(ctx, rsp);
+        };
+        sendRequest(Operation.createGet(ctx.nextPageReference).setCompletion(c));
     }
 
     private void synchronizeChildrenInQueryPage(SynchronizationContext ctx,
@@ -350,7 +350,7 @@ public abstract class FactoryService extends StatelessService {
         // track child service request in parallel, passing a single parent operation
         CompletionHandler c = (so, se) -> {
             int r = pendingStarts.decrementAndGet();
-            if (se != null && getHost().isStopping()) {
+            if (se != null && !getHost().isStopping()) {
                 logWarning("Restart for children failed: %s", se.getMessage());
             }
 

@@ -255,7 +255,6 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
                 body.targetPath, body.targetQuery);
 
         Operation fwdOp = op.clone()
-                .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_USE_HTTP2)
                 .setCompletion(
                         (o, e) -> {
                             op.transferResponseHeadersFrom(o).setStatusCode(o.getStatusCode())
@@ -389,6 +388,7 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
             Operation remoteOp = Operation.createPost(remoteService)
                     .transferRequestHeadersFrom(op)
                     .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_NO_FORWARDING)
+                    .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_USE_HTTP2)
                     .setAction(op.getAction())
                     .setCompletion(c)
                     .setReferer(op.getReferer())
