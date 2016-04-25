@@ -13,15 +13,14 @@
 
 package com.vmware.xenon.common.http.netty;
 
-import static java.util.stream.Collectors.toList;
-
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.EnumSet;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
+import java.util.Map.Entry;
 import java.util.Set;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.ExecutorService;
@@ -679,12 +678,15 @@ public class NettyChannelPool {
             List<Operation> opsToExpire = new ArrayList<>();
             // Synchronize on the stream map: same as in NettyChannelContext
             synchronized (c.streamIdMap) {
-                opsToExpire.addAll(
-                        c.streamIdMap.values().stream()
-                                .filter(Objects::nonNull)
-                                .filter(activeOp -> activeOp.getExpirationMicrosUtc() <= now)
-                                .collect(toList())
-                );
+                Iterator<Entry<Integer, Operation>> entryIt = c.streamIdMap.entrySet().iterator();
+                while (entryIt.hasNext()) {
+                    Entry<Integer, Operation> entry = entryIt.next();
+                    if (entry.getValue().getExpirationMicrosUtc() > now) {
+                        continue;
+                    }
+                    opsToExpire.add(entry.getValue());
+                    entryIt.remove();
+                }
             }
             for (Operation opToExpire : opsToExpire) {
                 this.executor.execute(() -> {
