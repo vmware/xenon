@@ -14,9 +14,11 @@
 package com.vmware.xenon.services.common;
 
 import java.net.URI;
+import java.util.AbstractMap;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -83,6 +85,18 @@ public class MigrationTaskService extends StatefulService {
     public static final String STAT_NAME_PROCESSED_DOCUMENTS = "processedServiceCount";
     public static final String STAT_NAME_ESTIMATED_TOTAL_SERVICE_COUNT = "estimatedTotalServiceCount";
     public static final String FACTORY_LINK = ServiceUriPaths.MIGRATION_TASKS;
+
+    public static enum MigrationOption {
+        /**
+         * Enables continuous data migration.
+         */
+        CONTINUOUS,
+
+        /**
+         * Enables delete post upgrade fall back if idempotent post does not work.
+         */
+        DELETE_AFTER
+    }
 
     /**
      * Create a default factory service that starts instances of this task service on POST.
@@ -156,6 +170,12 @@ public class MigrationTaskService extends StatefulService {
          */
         @UsageOption(option = PropertyUsageOption.AUTO_MERGE_IF_NOT_NULL)
         public Boolean continuousMigration;
+
+        /**
+         * (Optional) Migration options as destribed in {@link MigrationOption}.
+         */
+        @UsageOption(option = PropertyUsageOption.AUTO_MERGE_IF_NOT_NULL)
+        public EnumSet<MigrationOption> migrationOptions;
 
         // The following attributes are the outputs of the task.
         /**
@@ -231,8 +251,14 @@ public class MigrationTaskService extends StatefulService {
         if (initState.maximumConvergenceChecks == null) {
             initState.maximumConvergenceChecks = DEFAULT_MAXIMUM_CONVERGENCE_CHECKS;
         }
+        if (initState.migrationOptions == null) {
+            initState.migrationOptions = EnumSet.noneOf(MigrationOption.class);
+        }
         if (initState.continuousMigration == null) {
             initState.continuousMigration = Boolean.FALSE;
+        }
+        if (initState.continuousMigration) {
+            initState.migrationOptions.add(MigrationOption.CONTINUOUS);
         }
         return initState;
     }
@@ -575,26 +601,89 @@ public class MigrationTaskService extends StatefulService {
 
     private void migrateEntities(Map<Object, String> json, State state, Set<URI> nextPageLinks, List<URI> destinationURIs, Map<String, Long> lastUpdateTimesPerOwner) {
         // create objects on destination
-        Collection<Operation> posts = json.entrySet().stream()
+        Map<Operation, Object> posts = json.entrySet().stream()
                 .map(d -> {
-                    return Operation.createPost(
+                    Operation op = Operation.createPost(
                             UriUtils.buildUri(
                                     selectRandomUri(destinationURIs),
                                     d.getValue()))
-                            .setBody(d.getKey());
+                            .setBodyNoCloning(d.getKey());
+                    return new AbstractMap.SimpleEntry<Operation, Object>(op, d.getKey());
                 })
-                .collect(Collectors.toList());
+                .collect(Collectors.toMap(e -> e.getKey(), e -> e.getValue()));
 
-        OperationJoin.create(posts)
+        OperationJoin.create(posts.keySet())
             .setCompletion((os, ts) -> {
+                if (ts != null && !ts.isEmpty()) {
+                    if (state.migrationOptions.contains(MigrationOption.DELETE_AFTER)) {
+                        useFallBack(state, posts, ts, nextPageLinks, destinationURIs, lastUpdateTimesPerOwner);
+                    } else {
+                        failTask(ts.values());
+                        return;
+                    }
+                } else {
+                    adjustStat(STAT_NAME_PROCESSED_DOCUMENTS, posts.size());
+                    migrate(state, nextPageLinks, destinationURIs, lastUpdateTimesPerOwner);
+                }
+            })
+            .sendWith(this);
+    }
+
+    private void useFallBack(State state, Map<Operation, Object> posts, Map<Long, Throwable> operationFailures, Set<URI> nextPageLinks, List<URI> destinationURIs, Map<String, Long> lastUpdateTimesPerOwner) {
+        Map<URI, Operation> entityDestinationUriTofailedOps = getFailedOperations(posts, operationFailures);
+        Collection<Operation> deleteOperations = createDeleteOperations(entityDestinationUriTofailedOps.keySet());
+
+        OperationJoin.create(deleteOperations)
+            .setCompletion((os ,ts) -> {
                 if (ts != null && !ts.isEmpty()) {
                     failTask(ts.values());
                     return;
                 }
-                adjustStat(STAT_NAME_PROCESSED_DOCUMENTS, posts.size());
-                migrate(state, nextPageLinks, destinationURIs, lastUpdateTimesPerOwner);
+                Collection<Operation> postOperations = createPostOperations(entityDestinationUriTofailedOps, posts);
+
+                OperationJoin
+                    .create(postOperations)
+                    .setCompletion((oss, tss) -> {
+                        if (tss != null && !tss.isEmpty()) {
+                            failTask(tss.values());
+                            return;
+                        }
+                        adjustStat(STAT_NAME_PROCESSED_DOCUMENTS, posts.size());
+                        migrate(state, nextPageLinks, destinationURIs, lastUpdateTimesPerOwner);
+                    })
+                    .sendWith(this);
             })
             .sendWith(this);
+    }
+
+    private Map<URI, Operation> getFailedOperations(Map<Operation, Object> posts, Map<Long, Throwable> operationFailures) {
+        Map<URI, Operation> ops = new HashMap<>();
+        for (Map.Entry<Operation, Object> entry : posts.entrySet()) {
+            Operation op = entry.getKey();
+            if (operationFailures.containsKey(op.getId())) {
+                Object jsonObject = entry.getValue();
+                String selfLink = Utils.getJsonMapValue(jsonObject, ServiceDocument.FIELD_NAME_SELF_LINK, String.class);
+                URI getUri = UriUtils.buildUri(op.getUri(), op.getUri().getPath(), selfLink);
+                ops.put(getUri, op);
+            }
+        }
+        return ops;
+    }
+
+    private Collection<Operation> createDeleteOperations(Collection<URI> uris) {
+        return uris.stream().map(u -> Operation.createDelete(u)).collect(Collectors.toList());
+    }
+
+    private Collection<Operation> createPostOperations(Map<URI, Operation> failedOps, Map<Operation, Object> posts) {
+        return failedOps.values().stream()
+               .map(o -> {
+                   Object newBody = posts.get(o);
+                   return Operation.createPost(o.getUri())
+                           .setBodyNoCloning(newBody)
+                           .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_FORCE_INDEX_UPDATE);
+
+               })
+               .collect(Collectors.toList());
     }
 
     private boolean verifyPatchedState(State state, Operation operation) {
@@ -665,6 +754,7 @@ public class MigrationTaskService extends StatefulService {
     }
 
     private void failTask(Collection<Throwable> t) {
+        logWarning("%s", t.iterator().next());
         failTask(t.iterator().next());
     }
 }
