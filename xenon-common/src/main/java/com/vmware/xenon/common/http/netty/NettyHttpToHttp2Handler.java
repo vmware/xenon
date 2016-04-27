@@ -59,33 +59,32 @@ public class NettyHttpToHttp2Handler extends HttpToHttp2ConnectionHandler {
         }
 
         NettyFullHttpRequest request = (NettyFullHttpRequest) msg;
+        Operation operation = request.getOperation();
+        if (operation == null) {
+            return;
+        }
 
         int currentStreamId;
         try {
             currentStreamId = getStreamId(request.headers());
         } catch (Exception ex) {
             Utils.logWarning("Failed to retrieve streamId: %s", Utils.toString(ex));
-            // TODO: fail operation if exists
+            operation.fail(new RuntimeException("Failed to retrieve streamId", ex));
             return;
         }
 
-        Operation operation = request.getOperation();
-        if (operation != null) {
-            NettyChannelContext socketContext = (NettyChannelContext) operation
-                    .getSocketContext();
-
-            if (socketContext != null) {
-                Operation oldOperation = socketContext.getOperationForStream(currentStreamId);
-                if (oldOperation != null && oldOperation != operation) {
-                    long oldOpId = oldOperation.getId();
-                    long opId = operation.getId();
-                    // Reusing stream should NOT happen. sign for serious error...
-                    Utils.logWarning("Reusing stream %d. opId=%d, oldOpId=%d",
-                            currentStreamId, opId, oldOpId);
-                }
-
-                socketContext.setOperationForStream(currentStreamId, operation);
+        NettyChannelContext socketContext = (NettyChannelContext) operation.getSocketContext();
+        if (socketContext != null) {
+            Operation oldOperation = socketContext.getOperationForStream(currentStreamId);
+            if (oldOperation != null && oldOperation != operation) {
+                long oldOpId = oldOperation.getId();
+                long opId = operation.getId();
+                // Reusing stream should NOT happen. sign for serious error...
+                Utils.logWarning("Reusing stream %d. opId=%d, oldOpId=%d",
+                        currentStreamId, opId, oldOpId);
             }
+
+            socketContext.setOperationForStream(currentStreamId, operation);
         }
 
     }
