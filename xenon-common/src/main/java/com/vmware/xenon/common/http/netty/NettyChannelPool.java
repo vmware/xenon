@@ -316,6 +316,7 @@ public class NettyChannelPool {
     private NettyChannelContext selectHttp2Context(
             NettyChannelGroup group, String host, int port, String key) {
         NettyChannelContext http2Channel = null;
+        NettyChannelContext badHttp2Channel = null;
         synchronized (group) {
             // Find a channel that's not exhausted, if any.
             for (NettyChannelContext channel : group.http2Channels) {
@@ -342,9 +343,7 @@ public class NettyChannelPool {
                 group.http2Channels.add(http2Channel);
             } else if (http2Channel.getChannel() != null
                     && !http2Channel.getChannel().isOpen()) {
-                // We found an channel, but it's in a bad state. Replace it.
-                http2Channel.close();
-                group.http2Channels.remove(http2Channel);
+                badHttp2Channel = http2Channel;
                 http2Channel = new NettyChannelContext(host, port, key,
                         NettyChannelContext.Protocol.HTTP2);
                 http2Channel.setOpenInProgress(true);
@@ -352,6 +351,14 @@ public class NettyChannelPool {
             }
             http2Channel.updateLastUseTime();
         }
+
+        if (badHttp2Channel != null) {
+            Logger.getAnonymousLogger().warning(
+                    "Found channel in bad state: " + badHttp2Channel.getChannel());
+            // We found an channel, but it's in a bad state. Replace it.
+            returnOrCloseDirectHttp2(badHttp2Channel, group, true);
+        }
+
         return http2Channel;
     }
 
@@ -603,101 +610,167 @@ public class NettyChannelPool {
     }
 
     public void handleMaintenance(Operation op) {
+        long now = Utils.getNowMicrosUtc();
+        long http1Start = 0;
+        long http2Start = 0;
+        long http2End = 0;
+        long http1End = 0;
         if (this.isHttp2Only) {
-            handleHttp2Maintenance(op);
+            http2Start = now;
+            handleHttp2Maintenance(op, now);
+            http2End = Utils.getNowMicrosUtc();
         } else {
-            handleHttp1Maintenance(op);
+            http1Start = Utils.getNowMicrosUtc();
+            handleHttp1Maintenance(op, now);
+            http1End = Utils.getNowMicrosUtc();
+        }
+        long end = Utils.getNowMicrosUtc();
+        if (end - now > 100) {
+            String log = String.format("Duration: http2 %d, http1 %d (micros)",
+                    http2End - http2Start, http1End - http1Start);
+            logger.info(log);
         }
         op.complete();
     }
 
-    private void handleHttp1Maintenance(Operation op) {
+    private void handleHttp1Maintenance(Operation op, long nowMicros) {
+        List<Operation> expiredOps = new ArrayList<>();
         for (NettyChannelGroup g : this.channelGroups.values()) {
             synchronized (g) {
-                closeContexts(g.availableChannels, false);
-                closeExpiredInUseContext(g.inUseChannels);
+                //closeContexts(g.availableChannels, nowMicros, false);
+                //closeExpiredInUseContext(g.inUseChannels, nowMicros);
+                //findExpiredPendingRequests(g, nowMicros, expiredOps);
             }
+        }
+        failExpiredRequests(expiredOps);
+    }
+
+    private void handleHttp2Maintenance(Operation op, long nowMicros) {
+        List<Operation> expiredOps = new ArrayList<>();
+        for (NettyChannelGroup g : this.channelGroups.values()) {
+            synchronized (g) {
+                findExpiredHttp2Requests(g, nowMicros, expiredOps);
+                closeHttp2Context(g, nowMicros);
+                findExpiredPendingRequests(g, nowMicros, expiredOps);
+            }
+        }
+        failExpiredRequests(expiredOps);
+    }
+
+    private void failExpiredRequests(List<Operation> expiredOps) {
+        if (expiredOps.isEmpty()) {
+            return;
+        }
+
+        logger.info(String.format("Failing %d expired operations", expiredOps.size()));
+        for (Operation op : expiredOps) {
+            this.executor.execute(() -> {
+                failRequestWithTimeout(op);
+            });
         }
     }
 
-    private void handleHttp2Maintenance(Operation op) {
-        for (NettyChannelGroup g : this.channelGroups.values()) {
-            synchronized (g) {
-                expireHttp2Operations(g);
-                closeHttp2Context(g);
-            }
+    private void findExpiredPendingRequests(NettyChannelGroup g, long nowMicros,
+            List<Operation> expiredOps) {
+        if (g.pendingRequests.isEmpty()) {
+            return;
         }
+        // Pending requests are in FIFO order, and we make the simplifying assumption
+        // they use similar expiration intervals. So if we find one not yet expired, assume
+        // others have not either. In the future, we might track them using
+        // a sorted tree map
+        if (g.pendingRequests.get(0).getExpirationMicrosUtc() > nowMicros) {
+            return;
+        }
+        Iterator<Operation> it = g.pendingRequests.iterator();
+        while (it.hasNext()) {
+            Operation op = it.next();
+            if (op.getExpirationMicrosUtc() > nowMicros) {
+                // same assumption: if the current operation has not expired, stop iteration
+                break;
+            }
+            it.remove();
+            expiredOps.add(op);
+        }
+        if (expiredOps.isEmpty()) {
+            return;
+        }
+        logger.info(String.format("Found %d pending expired operations", expiredOps.size()));
     }
 
     /**
      * Scan HTTP/1.1 contexts and timeout any operations that need to be timed out.
      */
-    private void closeExpiredInUseContext(Collection<NettyChannelContext> contexts) {
-        long now = Utils.getNowMicrosUtc();
+    private void closeExpiredInUseContext(Collection<NettyChannelContext> contexts,
+            long nowMicros) {
         for (NettyChannelContext c : contexts) {
             Operation activeOp = c.getOperation();
-            if (activeOp == null || activeOp.getExpirationMicrosUtc() > now) {
+            if (activeOp == null || activeOp.getExpirationMicrosUtc() > nowMicros) {
                 continue;
             }
             this.executor.execute(() -> {
                 failRequestWithTimeout(activeOp);
             });
-            continue;
         }
     }
 
     /**
-     * Scan unused HTTP/1.1 contexts and close any that have been unused for CHANNEL_EXPIRATION_MICROS
+     * Scan unused HTTP/1.1 contexts and close any that have been unused for
+     * CHANNEL_EXPIRATION_MICROS
      */
-    private void closeContexts(Collection<NettyChannelContext> contexts, boolean forceClose) {
+    private void closeContexts(Collection<NettyChannelContext> contexts,
+            long nowMicros, boolean forceClose) {
         long now = Utils.getNowMicrosUtc();
-        List<NettyChannelContext> items = new ArrayList<>();
+        List<NettyChannelContext> items = null;
         for (NettyChannelContext c : contexts) {
+            long delta = nowMicros - c.getLastUseTimeMicros();
+            if (!forceClose && delta < CHANNEL_EXPIRATION_MICROS) {
+                break;
+            }
             try {
                 if (c.getChannel() == null || !c.getChannel().isOpen()) {
                     continue;
                 }
             } catch (Throwable e) {
             }
-
-            long delta = now - c.getLastUseTimeMicros();
-            if (!forceClose && delta < CHANNEL_EXPIRATION_MICROS) {
-                continue;
-            }
             c.close();
+            if (items == null) {
+                items = new ArrayList<>();
+            }
             items.add(c);
         }
+        long end = Utils.getNowMicrosUtc();
+        if (end - now > 100) {
+            logger.info(contexts.size() + " closing contexts delay " + (end - now));
+        }
+        if (items.isEmpty()) {
+            return;
+        }
+
         for (NettyChannelContext c : items) {
             contexts.remove(c);
         }
     }
 
-    private void expireHttp2Operations(NettyChannelGroup group) {
-        long now = Utils.getNowMicrosUtc();
+    private List<Operation> findExpiredHttp2Requests(NettyChannelGroup group, long nowMicros,
+            List<Operation> expiredOps) {
         for (NettyChannelContext c : group.http2Channels) {
-            List<Operation> opsToExpire = new ArrayList<>();
             // Synchronize on the stream map: same as in NettyChannelContext
             synchronized (c.streamIdMap) {
                 Iterator<Entry<Integer, Operation>> entryIt = c.streamIdMap.entrySet().iterator();
                 while (entryIt.hasNext()) {
                     Entry<Integer, Operation> entry = entryIt.next();
-                    if (entry.getValue().getExpirationMicrosUtc() > now) {
-                        continue;
+                    if (entry.getValue().getExpirationMicrosUtc() > nowMicros) {
+                        // The map is sorted in ascending order, by expiration. If we find an entry
+                        // that has not expired, all other entries after it, also have not
+                        break;
                     }
-                    opsToExpire.add(entry.getValue());
+                    expiredOps.add(entry.getValue());
                     entryIt.remove();
                 }
             }
-            for (Operation opToExpire : opsToExpire) {
-                this.executor.execute(() -> {
-                    long opId = opToExpire.getId();
-                    String pragma = opToExpire.getRequestHeader(Operation.PRAGMA_HEADER);
-                    logger.info(() -> String.format("Expiring http2 operation. opId=%d, pragma=%s",
-                            opId, pragma));
-                    failRequestWithTimeout(opToExpire);
-                });
-            }
         }
+        return expiredOps;
     }
 
     private void failRequestWithTimeout(Operation opToExpire) {
@@ -714,8 +787,7 @@ public class NettyChannelPool {
      * the maximum number of streams that can be sent on the connection.
      * @param group
      */
-    private void closeHttp2Context(NettyChannelGroup group) {
-        long now = Utils.getNowMicrosUtc();
+    private void closeHttp2Context(NettyChannelGroup group, long nowMicros) {
         List<NettyChannelContext> items = new ArrayList<>();
         for (NettyChannelContext http2Channel : group.http2Channels) {
 
@@ -731,7 +803,7 @@ public class NettyChannelPool {
                 continue;
             }
 
-            long delta = now - http2Channel.getLastUseTimeMicros();
+            long delta = nowMicros - http2Channel.getLastUseTimeMicros();
             if (delta < CHANNEL_EXPIRATION_MICROS && http2Channel.isValid()) {
                 continue;
             }

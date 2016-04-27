@@ -13,8 +13,7 @@
 
 package com.vmware.xenon.common.http.netty;
 
-import java.util.HashMap;
-import java.util.Map;
+import java.util.TreeMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import io.netty.buffer.PooledByteBufAllocator;
@@ -81,7 +80,7 @@ public class NettyChannelContext extends SocketContext {
 
     // An HTTP/2 connection may have multiple simultaneous operations. This map
     // Will associate each stream with the operation happening on the stream
-    public final Map<Integer, Operation> streamIdMap;
+    public final TreeMap<Integer, Operation> streamIdMap;
 
     // We need to know if an HTTP/2 connection is being opened so that we can queue
     // pending operations instead of adding a new HTTP/2 connection
@@ -96,7 +95,7 @@ public class NettyChannelContext extends SocketContext {
         this.key = key;
         this.protocol = protocol;
         if (protocol == Protocol.HTTP2) {
-            this.streamIdMap = new HashMap<Integer, Operation>();
+            this.streamIdMap = new TreeMap<Integer, Operation>();
         } else {
             this.streamIdMap = null;
         }
