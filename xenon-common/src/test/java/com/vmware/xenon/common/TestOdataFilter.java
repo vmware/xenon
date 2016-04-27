@@ -44,13 +44,14 @@ public class TestOdataFilter {
 
         // The test $filter is (name eq 'faiyaz') OR (foo eq 'bar')
 
-        // OR is SHOULD_OCCUR in our query verbiage.
-        expected.occurance = Query.Occurance.SHOULD_OCCUR;
+        expected.occurance = Query.Occurance.MUST_OCCUR;
 
         Query term1 = new Query().setTermPropertyName("name").setTermMatchValue("faiyaz");
+        term1.occurance = Query.Occurance.SHOULD_OCCUR;
         expected.addBooleanClause(term1);
 
         Query term2 = new Query().setTermPropertyName("foo").setTermMatchValue("bar");
+        term2.occurance = Query.Occurance.SHOULD_OCCUR;
         expected.addBooleanClause(term2);
 
         String odataFilter = String.format("(%s eq %s) or (%s eq %s)", term1.term.propertyName,
@@ -244,7 +245,7 @@ public class TestOdataFilter {
         // The test  ($filter name eq 'foo') OR (($filter age le 50) AND ($filter income ge 1000000))
 
         // Top-level OR
-        expected.occurance = Query.Occurance.SHOULD_OCCUR;
+        expected.occurance = Query.Occurance.MUST_OCCUR;
 
         // first term
         Query nameQ = new Query().setTermPropertyName("name").setTermMatchValue("foo");
@@ -265,6 +266,8 @@ public class TestOdataFilter {
         betweenRangesQ.addBooleanClause(new Query().setTermPropertyName("income").setNumericRange
                 (greatherThanOrEqual1M));
 
+        nameQ.occurance = Query.Occurance.SHOULD_OCCUR;
+        betweenRangesQ.occurance = Query.Occurance.SHOULD_OCCUR;
         expected.addBooleanClause(nameQ);
         expected.addBooleanClause(betweenRangesQ);
 

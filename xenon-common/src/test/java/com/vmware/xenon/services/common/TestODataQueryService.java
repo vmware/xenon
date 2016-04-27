@@ -395,6 +395,218 @@ public class TestODataQueryService extends BasicReusableHostTestCase {
         assertTrue(out.isEmpty());
     }
 
+    @Test
+    public void complexFilterQueries() throws Throwable {
+        testSimpleOrQuery();
+        testSimpleAndQuery();
+        testAndWithNEQuery();
+        testOrWithNEQuery();
+        testAndWithNestedORQuery();
+        testOrWithNestedAndQuery();
+    }
+
+    private void testSimpleOrQuery() throws Throwable {
+        ExampleService.ExampleServiceState document1 = new ExampleService.ExampleServiceState();
+        document1.name = "STRING1";
+        postExample(document1);
+
+        ExampleService.ExampleServiceState document2 = new ExampleService.ExampleServiceState();
+        document2.name = "STRING2";
+        postExample(document2);
+
+        String queryString = "$filter=name eq STRING1 or name eq STRING2";
+
+        Map<String, Object> out = doQuery(queryString, false).documents;
+        assertNotNull(out);
+        assertEquals(2, out.keySet().size());
+        ExampleService.ExampleServiceState outState1 = Utils.fromJson(
+                out.get(document1.documentSelfLink), ExampleService.ExampleServiceState.class);
+        assertTrue(outState1.name.equals(document1.name));
+
+        ExampleService.ExampleServiceState outState2 = Utils.fromJson(
+                out.get(document2.documentSelfLink), ExampleService.ExampleServiceState.class);
+        assertTrue(outState2.name.equals(document2.name));
+    }
+
+    private void testSimpleAndQuery() throws Throwable {
+        ExampleService.ExampleServiceState document1 = new ExampleService.ExampleServiceState();
+        document1.name = "STRING1";
+        document1.counter = 10L;
+        postExample(document1);
+
+        ExampleService.ExampleServiceState document2 = new ExampleService.ExampleServiceState();
+        document2.name = "STRING2";
+        document2.counter = 15L;
+        postExample(document2);
+
+        String queryString = "$filter=name eq STRING* and counter lt 13";
+
+        Map<String, Object> out = doQuery(queryString, false).documents;
+        assertNotNull(out);
+        assertEquals(1, out.keySet().size());
+        ExampleService.ExampleServiceState outState1 = Utils.fromJson(
+                out.get(document1.documentSelfLink), ExampleService.ExampleServiceState.class);
+        assertTrue(outState1.name.equals(document1.name));
+    }
+
+    private void testAndWithNEQuery() throws Throwable {
+        ExampleService.ExampleServiceState document1 = new ExampleService.ExampleServiceState();
+        document1.name = "MAPPING1";
+        document1.keyValues.put("A","a");
+        postExample(document1);
+
+        ExampleService.ExampleServiceState document2 = new ExampleService.ExampleServiceState();
+        document2.name = "MAPPING2";
+        document2.keyValues.put("B", "b");
+        postExample(document2);
+
+        ExampleService.ExampleServiceState document3 = new ExampleService.ExampleServiceState();
+        document3.name = "MAPPING3";
+        document3.keyValues.put("B", "b");
+        postExample(document3);
+
+
+        String queryString1 = "$filter=name ne MAPPING2 and keyValues.A eq a";
+
+        Map<String, Object> out1 = doQuery(queryString1, false).documents;
+        assertNotNull(out1);
+        assertEquals(1, out1.keySet().size());
+        ExampleService.ExampleServiceState outState1 = Utils.fromJson(
+                out1.get(document1.documentSelfLink), ExampleService.ExampleServiceState.class);
+        assertTrue(outState1.name.equals(document1.name));
+
+        String queryString2 = "$filter=name ne MAPPING3 and keyValues.B eq b";
+
+        Map<String, Object> out2 = doQuery(queryString2, false).documents;
+        assertNotNull(out2);
+        assertEquals(1, out2.keySet().size());
+        ExampleService.ExampleServiceState outState2 = Utils.fromJson(
+                out2.get(document2.documentSelfLink), ExampleService.ExampleServiceState.class);
+        assertTrue(outState2.name.equals(document2.name));
+    }
+
+    private void testOrWithNEQuery() throws Throwable {
+        ExampleService.ExampleServiceState document1 = new ExampleService.ExampleServiceState();
+        document1.name = "MAPPING4";
+        document1.keyValues.put("P","p");
+        postExample(document1);
+
+        ExampleService.ExampleServiceState document2 = new ExampleService.ExampleServiceState();
+        document2.name = "MAPPING4";
+        document2.keyValues.put("P", "P");
+        postExample(document2);
+
+        ExampleService.ExampleServiceState document3 = new ExampleService.ExampleServiceState();
+        document3.name = "MAPPING5";
+        document3.keyValues.put("Q", "q");
+        postExample(document3);
+
+        String queryString1 = "$filter=name eq MAPPING4 or keyValues.P ne P";
+
+        Map<String, Object> out1 = doQuery(queryString1, false).documents;
+        assertNotNull(out1);
+        assertEquals(1, out1.keySet().size());
+        ExampleService.ExampleServiceState outState1 = Utils.fromJson(
+                out1.get(document1.documentSelfLink), ExampleService.ExampleServiceState.class);
+        assertTrue(outState1.name.equals(document1.name));
+    }
+
+    private void testAndWithNestedORQuery() throws Throwable {
+        ExampleService.ExampleServiceState document1 = new ExampleService.ExampleServiceState();
+        document1.name = "Java";
+        document1.keyValues.put("version", "7");
+        document1.keyValues.put("arch", "arm32");
+        postExample(document1);
+
+        ExampleService.ExampleServiceState document2 = new ExampleService.ExampleServiceState();
+        document2.name = "Java";
+        document2.keyValues.put("version", "8");
+        document2.keyValues.put("arch", "arm64");
+        postExample(document2);
+
+        ExampleService.ExampleServiceState document3 = new ExampleService.ExampleServiceState();
+        document3.name = "GO";
+        document3.keyValues.put("version", "1.6");
+        document3.keyValues.put("arch", "arm64");
+        postExample(document3);
+
+        String queryString1 = "$filter=name eq Java and (keyValues.version eq '7' or keyValues.version eq '8')";
+
+        Map<String, Object> out1 = doQuery(queryString1, false).documents;
+        assertNotNull(out1);
+        assertEquals(2, out1.keySet().size());
+        ExampleService.ExampleServiceState outState1 = Utils.fromJson(
+                out1.get(document1.documentSelfLink), ExampleService.ExampleServiceState.class);
+        assertTrue(outState1.name.equals(document1.name));
+        assertTrue(outState1.keyValues.get("version").equals("7"));
+
+        ExampleService.ExampleServiceState outState2 = Utils.fromJson(
+                out1.get(document2.documentSelfLink), ExampleService.ExampleServiceState.class);
+        assertTrue(outState2.name.equals(document2.name));
+        assertTrue(outState2.keyValues.get("version").equals("8"));
+
+        String queryString2 = "$filter=name eq Java and (keyValues.arch eq 'arm64' or keyValues.version ne '7')";
+
+        Map<String, Object> out2 = doQuery(queryString2, false).documents;
+        assertNotNull(out2);
+        assertEquals(1, out2.keySet().size());
+        ExampleService.ExampleServiceState outState3 = Utils.fromJson(
+                out2.get(document2.documentSelfLink), ExampleService.ExampleServiceState.class);
+        assertTrue(outState3.name.equals(document2.name));
+        assertTrue(outState3.keyValues.get("version").equals("8"));
+    }
+
+    private void testOrWithNestedAndQuery() throws Throwable {
+        ExampleService.ExampleServiceState document1 = new ExampleService.ExampleServiceState();
+        document1.name = "gcc";
+        document1.keyValues.put("version", "5");
+        document1.keyValues.put("arch", "i686");
+        postExample(document1);
+
+        ExampleService.ExampleServiceState document2 = new ExampleService.ExampleServiceState();
+        document2.name = "gcc";
+        document2.keyValues.put("version", "6");
+        document2.keyValues.put("arch", "amd64");
+        postExample(document2);
+
+        ExampleService.ExampleServiceState document3 = new ExampleService.ExampleServiceState();
+        document3.name = "llvm";
+        document3.keyValues.put("version", "3.8");
+        document3.keyValues.put("arch", "ppc64le");
+        postExample(document3);
+
+        String queryString1 = "$filter=name eq llvm or (name eq gcc and keyValues.version eq '6')";
+
+        Map<String, Object> out1 = doQuery(queryString1, false).documents;
+        assertNotNull(out1);
+        assertEquals(2, out1.keySet().size());
+        ExampleService.ExampleServiceState outState1 = Utils.fromJson(
+                out1.get(document2.documentSelfLink), ExampleService.ExampleServiceState.class);
+        assertTrue(outState1.name.equals(document2.name));
+        assertTrue(outState1.keyValues.get("version").equals("6"));
+
+        ExampleService.ExampleServiceState outState2 = Utils.fromJson(
+                out1.get(document3.documentSelfLink), ExampleService.ExampleServiceState.class);
+        assertTrue(outState2.name.equals(document3.name));
+        assertTrue(outState2.keyValues.get("version").equals("3.8"));
+
+        String queryString2 = "$filter=name eq llvm or (keyValues.version eq '5' and keyValues.arch ne 'amd64')";
+
+        Map<String, Object> out2 = doQuery(queryString2, false).documents;
+        assertNotNull(out2);
+        assertEquals(2, out2.keySet().size());
+        ExampleService.ExampleServiceState outState3 = Utils.fromJson(
+                out2.get(document1.documentSelfLink), ExampleService.ExampleServiceState.class);
+        assertTrue(outState3.name.equals(document1.name));
+        assertTrue(outState3.keyValues.get("version").equals("5"));
+        assertTrue(outState3.keyValues.get("arch").equals("i686"));
+        ExampleService.ExampleServiceState outState4 = Utils.fromJson(
+                out2.get(document3.documentSelfLink), ExampleService.ExampleServiceState.class);
+        assertTrue(outState4.name.equals(document3.name));
+        assertTrue(outState4.keyValues.get("version").equals("3.8"));
+        assertTrue(outState4.keyValues.get("arch").equals("ppc64le"));
+    }
+
     private ServiceDocumentQueryResult doQuery(String query, boolean remote) throws Throwable {
         URI odataQuery = UriUtils.buildUri(this.host, ServiceUriPaths.ODATA_QUERIES, query);
 
