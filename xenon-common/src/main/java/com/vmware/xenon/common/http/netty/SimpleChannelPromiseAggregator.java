@@ -29,13 +29,13 @@ import io.netty.util.concurrent.EventExecutor;
 public class SimpleChannelPromiseAggregator extends DefaultChannelPromise {
     private final ChannelPromise promise;
     private int expectedCount;
-    private int successfulCount;
-    private int failureCount;
+    private int doneCount;
+    private Throwable lastFailure;
     private boolean doneAllocating;
 
     SimpleChannelPromiseAggregator(ChannelPromise promise, Channel c, EventExecutor e) {
         super(c, e);
-        assert promise != null;
+        assert promise != null && !promise.isDone();
         this.promise = promise;
     }
 
@@ -45,9 +45,7 @@ public class SimpleChannelPromiseAggregator extends DefaultChannelPromise {
      * {@code null} if {@link #doneAllocatingPromises()} was previously called.
      */
     public ChannelPromise newPromise() {
-        if (this.doneAllocating) {
-            throw new IllegalStateException("Done allocating. No more promises can be allocated.");
-        }
+        assert !this.doneAllocating : "Done allocating. No more promises can be allocated.";
         ++this.expectedCount;
         return this;
     }
@@ -60,9 +58,8 @@ public class SimpleChannelPromiseAggregator extends DefaultChannelPromise {
     public ChannelPromise doneAllocatingPromises() {
         if (!this.doneAllocating) {
             this.doneAllocating = true;
-            if (this.successfulCount == this.expectedCount) {
-                this.promise.setSuccess();
-                return super.setSuccess(null);
+            if (this.doneCount == this.expectedCount || this.expectedCount == 0) {
+                return setPromise();
             }
         }
         return this;
@@ -71,10 +68,10 @@ public class SimpleChannelPromiseAggregator extends DefaultChannelPromise {
     @Override
     public boolean tryFailure(Throwable cause) {
         if (allowFailure()) {
-            ++this.failureCount;
-            if (this.failureCount == 1) {
-                this.promise.tryFailure(cause);
-                return super.tryFailure(cause);
+            ++this.doneCount;
+            this.lastFailure = cause;
+            if (allPromisesDone()) {
+                return tryPromise();
             }
             // TODO: We break the interface a bit here.
             // Multiple failure events can be processed without issue because this is an aggregation.
@@ -92,30 +89,21 @@ public class SimpleChannelPromiseAggregator extends DefaultChannelPromise {
     @Override
     public ChannelPromise setFailure(Throwable cause) {
         if (allowFailure()) {
-            ++this.failureCount;
-            if (this.failureCount == 1) {
-                this.promise.setFailure(cause);
-                return super.setFailure(cause);
+            ++this.doneCount;
+            this.lastFailure = cause;
+            if (allPromisesDone()) {
+                return setPromise();
             }
         }
         return this;
     }
 
-    private boolean allowFailure() {
-        return awaitingPromises() || this.expectedCount == 0;
-    }
-
-    private boolean awaitingPromises() {
-        return this.successfulCount + this.failureCount < this.expectedCount;
-    }
-
     @Override
     public ChannelPromise setSuccess(Void result) {
         if (awaitingPromises()) {
-            ++this.successfulCount;
-            if (this.successfulCount == this.expectedCount && this.doneAllocating) {
-                this.promise.setSuccess(result);
-                return super.setSuccess(result);
+            ++this.doneCount;
+            if (allPromisesDone()) {
+                setPromise();
             }
         }
         return this;
@@ -124,15 +112,46 @@ public class SimpleChannelPromiseAggregator extends DefaultChannelPromise {
     @Override
     public boolean trySuccess(Void result) {
         if (awaitingPromises()) {
-            ++this.successfulCount;
-            if (this.successfulCount == this.expectedCount && this.doneAllocating) {
-                this.promise.trySuccess(result);
-                return super.trySuccess(result);
+            ++this.doneCount;
+            if (allPromisesDone()) {
+                return tryPromise();
             }
             // TODO: We break the interface a bit here.
             // Multiple success events can be processed without issue because this is an aggregation.
             return true;
         }
         return false;
+    }
+
+    private boolean allowFailure() {
+        return awaitingPromises() || this.expectedCount == 0;
+    }
+
+    private boolean awaitingPromises() {
+        return this.doneCount < this.expectedCount;
+    }
+
+    private boolean allPromisesDone() {
+        return this.doneCount == this.expectedCount && this.doneAllocating;
+    }
+
+    private ChannelPromise setPromise() {
+        if (this.lastFailure == null) {
+            this.promise.setSuccess();
+            return super.setSuccess(null);
+        } else {
+            this.promise.setFailure(this.lastFailure);
+            return super.setFailure(this.lastFailure);
+        }
+    }
+
+    private boolean tryPromise() {
+        if (this.lastFailure == null) {
+            this.promise.trySuccess();
+            return super.trySuccess(null);
+        } else {
+            this.promise.tryFailure(this.lastFailure);
+            return super.tryFailure(this.lastFailure);
+        }
     }
 }
