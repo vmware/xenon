@@ -83,7 +83,7 @@ public class ODataQueryVisitor {
 
         if (tokens.hasNext()
                 && tokens.lookToken().getKind().equals(ODataToken.ODataTokenKind.BINARY_OPERATOR)) {
-            left = visitBinary(left, stringToVerb(tokens.next().getUriLiteral()),
+            left = visitBinaryOperator(left, stringToVerb(tokens.next().getUriLiteral()),
                     walkTokens(tokens, null));
         }
 
@@ -122,35 +122,24 @@ public class ODataQueryVisitor {
             throw new IllegalArgumentException("Term mismatch");
         }
 
-        return visitBinary(left.getUriLiteral(), stringToVerb(verb.getUriLiteral()),
+        return visitBinaryComparator(left.getUriLiteral(), stringToVerb(verb.getUriLiteral()),
                 right.getUriLiteral());
     }
 
-    // Either return a unary query term, or a query term with 2 boolean queries (which may have other queries within).
-    private Query visitBinary(final Object leftSide,
-            final BinaryVerb operator,
-            final Object rightSide) {
+    // return a unary query term.
+    private Query visitBinaryComparator(final Object leftSide,
+                              final BinaryVerb operator,
+                              final Object rightSide) {
 
         Query q = new Query();
 
         // handle the operator by setting the query occurance.
         q.occurance = convertToLuceneOccur(operator);
 
-        // Handle a nested query. We return a query with left and right attached as boolean queries.
-        if (leftSide instanceof Query) {
-            if (!(rightSide instanceof Query)) {
-                throw LeftRightTypeException;
-            }
-            q.addBooleanClause((Query) leftSide);
-            q.addBooleanClause((Query) rightSide);
-            return q;
-        }
-
-        // If the left side is a String, the right side can only be a String or a Range.
-        // If the left side is a Query, the right side can only be a Query.
         if (rightSide instanceof Query) {
             throw LeftRightTypeException;
         }
+
         q.setTermPropertyName((String) leftSide);
 
         if (((String) leftSide).contains(UriUtils.URI_WILDCARD_CHAR)) {
@@ -176,6 +165,50 @@ public class ODataQueryVisitor {
             // We don't know what type this is.
             throw LeftRightTypeException;
         }
+
+        return q;
+    }
+
+    // Return a query term with 2 boolean queries (which may have other queries within).
+    private Query visitBinaryOperator(final Query leftSide,
+            final BinaryVerb operator,
+            final Query rightSide) {
+
+        Query q = new Query();
+
+        switch (operator) {
+        case AND:
+            /*
+             * AND will set the left, right queries to MUST
+             * unless already set MUST_NOT
+             */
+            if (leftSide.occurance != Query.Occurance.MUST_NOT_OCCUR) {
+                leftSide.occurance = Query.Occurance.MUST_OCCUR;
+            }
+
+            if (rightSide.occurance != Query.Occurance.MUST_NOT_OCCUR) {
+                rightSide.occurance = Query.Occurance.MUST_OCCUR;
+            }
+            break;
+        case OR:
+            /*
+             * OR will set the left, right queries to SHOULD
+             * unless already set to MUST_NOT
+             */
+            if (leftSide.occurance != Query.Occurance.MUST_NOT_OCCUR) {
+                leftSide.occurance = Query.Occurance.SHOULD_OCCUR;
+            }
+
+            if (rightSide.occurance != Query.Occurance.MUST_NOT_OCCUR) {
+                rightSide.occurance = Query.Occurance.SHOULD_OCCUR;
+            }
+            break;
+        default:
+            break;
+        }
+
+        q.addBooleanClause(leftSide);
+        q.addBooleanClause(rightSide);
 
         return q;
     }
