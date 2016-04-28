@@ -153,6 +153,24 @@ public class ExampleService extends StatefulService {
         return hasStateChanged;
     }
 
+    @Override
+    public void handleDelete(Operation delete) {
+        if (!delete.hasBody()) {
+            delete.complete();
+            return;
+        }
+
+        // A DELETE can be used to both stop the service, mark it deleted in the index
+        // so its excluded from queries, but it can also set its expiration so its state
+        // history is permanently removed
+        ExampleServiceState currentState = getState(delete);
+        ExampleServiceState st = delete.getBody(ExampleServiceState.class);
+        if (st.documentExpirationTimeMicros > 0) {
+            currentState.documentExpirationTimeMicros = st.documentExpirationTimeMicros;
+        }
+        delete.complete();
+    }
+
     /**
      * Provides a default instance of the service state and allows service author to specify
      * indexing and usage options, per service document property
