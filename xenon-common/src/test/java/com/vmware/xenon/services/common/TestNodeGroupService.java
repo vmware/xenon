@@ -841,7 +841,7 @@ public class TestNodeGroupService {
         // when quorum is not met the runtime will just queue requests until expiration, so
         // we set expiration to something quick. Some requests will make it past queuing
         // and will fail because replication quorum is not met
-        long opTimeoutMicros = TimeUnit.MILLISECONDS.toMicros(500);
+        long opTimeoutMicros = TimeUnit.SECONDS.toMicros(2);
         setOperationTimeoutMicros(opTimeoutMicros);
 
         int i = 0;
@@ -1317,18 +1317,19 @@ public class TestNodeGroupService {
                     this.serviceCount);
             totalOperations += this.serviceCount;
 
-            // verify IDEMPOTENT POST conversion to PUT, with replication
-            TestContext ctx = this.host.testCreate(childStates.size());
-            for (Entry<String, ExampleServiceState> entry : childStates.entrySet()) {
-                Operation post = Operation
-                        .createPost(this.host.getPeerServiceUri(ExampleService.FACTORY_LINK))
-                        .setBody(entry.getValue())
-                        .setCompletion(ctx.getCompletion());
-                this.host.send(post);
+            if (this.testDurationSeconds == 0) {
+                // verify IDEMPOTENT POST conversion to PUT, with replication
+                TestContext ctx = this.host.testCreate(childStates.size());
+                for (Entry<String, ExampleServiceState> entry : childStates.entrySet()) {
+                    Operation post = Operation
+                            .createPost(this.host.getPeerServiceUri(ExampleService.FACTORY_LINK))
+                            .setBody(entry.getValue())
+                            .setCompletion(ctx.getCompletion());
+                    this.host.send(post);
+                }
+                ctx.await();
+                totalOperations += this.serviceCount;
             }
-            ctx.await();
-
-            totalOperations += this.serviceCount;
 
             if (expiration == null) {
                 expiration = this.host.getTestExpiration();

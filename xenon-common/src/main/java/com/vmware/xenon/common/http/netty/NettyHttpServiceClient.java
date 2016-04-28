@@ -16,11 +16,15 @@ package com.vmware.xenon.common.http.netty;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.EnumSet;
+import java.util.Iterator;
 import java.util.Map.Entry;
+import java.util.SortedMap;
 import java.util.concurrent.CancellationException;
+import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -76,6 +80,7 @@ public class NettyHttpServiceClient implements ServiceClient {
     private URI httpProxy;
     private String userAgent;
 
+    private SortedMap<Long, Operation> pendingRequests = new ConcurrentSkipListMap<>();
     private NettyChannelPool sslChannelPool;
     private NettyChannelPool channelPool;
     private NettyChannelPool http2ChannelPool;
@@ -219,6 +224,8 @@ public class NettyHttpServiceClient implements ServiceClient {
 
         OperationContext ctx = OperationContext.getOperationContext();
 
+        trackPending(clone);
+
         try {
             // First attempt in process delivery to co-located host
             if (!op.isRemote()) {
@@ -232,6 +239,20 @@ public class NettyHttpServiceClient implements ServiceClient {
             // it can be reset by the host, depending on queuing and dispatching behavior
             OperationContext.restoreOperationContext(ctx);
         }
+    }
+
+    private void trackPending(Operation clone) {
+        clone.nestCompletion((o, e) -> {
+            this.pendingRequests.remove(clone.getExpirationMicrosUtc());
+            if (e != null) {
+                clone.fail(e);
+                return;
+            }
+            handleSetCookieHeaders(clone);
+            clone.complete();
+        });
+
+        this.pendingRequests.put(clone.getExpirationMicrosUtc(), clone);
     }
 
     private void setExpiration(Operation op) {
@@ -326,18 +347,6 @@ public class NettyHttpServiceClient implements ServiceClient {
     }
 
     private void setCookies(Operation clone) {
-        // Extract cookies into cookie jar, regardless of where this operation ends up being
-        // handled.
-        clone.nestCompletion((o, e) -> {
-            if (e != null) {
-                clone.fail(e);
-                return;
-            }
-
-            handleSetCookieHeaders(clone);
-            clone.complete();
-        });
-
         if (this.cookieJar.isEmpty()) {
             return;
         }
@@ -556,11 +565,15 @@ public class NettyHttpServiceClient implements ServiceClient {
                 isRetryRequested = false;
             } else if (op.getStatusCode() == Operation.STATUS_CODE_NOT_FOUND) {
                 isRetryRequested = false;
+            } else if (op.getStatusCode() == Operation.STATUS_CODE_FORBIDDEN) {
+                isRetryRequested = false;
+            } else if (op.getStatusCode() == Operation.STATUS_CODE_UNAVAILABLE) {
+                isRetryRequested = false;
             }
         }
 
         if (!isRetryRequested) {
-            LOGGER.warning(String.format("(%d) Send of %d, from %s to %s failed with %s",
+            LOGGER.fine(String.format("(%d) Send of %d, from %s to %s failed with %s",
                     pool.getPendingRequestCount(op), op.getId(), op.getReferer(), op.getUri(),
                     e.toString()));
             op.fail(e);
@@ -624,6 +637,7 @@ public class NettyHttpServiceClient implements ServiceClient {
 
     @Override
     public void handleMaintenance(Operation op) {
+        long now = Utils.getNowMicrosUtc();
         if (this.sslChannelPool != null) {
             this.sslChannelPool.handleMaintenance(Operation.createPost(op.getUri()));
         }
@@ -631,6 +645,25 @@ public class NettyHttpServiceClient implements ServiceClient {
             this.http2ChannelPool.handleMaintenance(Operation.createPost(op.getUri()));
         }
         this.channelPool.handleMaintenance(op);
+        failExpiredRequests(now);
+    }
+
+    private void failExpiredRequests(long now) {
+        if (this.pendingRequests.isEmpty()) {
+            return;
+        }
+
+        Iterator<Entry<Long, Operation>> itPending = this.pendingRequests.entrySet().iterator();
+        while (itPending.hasNext()) {
+            Entry<Long, Operation> entry = itPending.next();
+            long exp = entry.getKey();
+            if (exp > now) {
+                break;
+            }
+            Operation o = entry.getValue();
+            o.fail(new TimeoutException("Request timed out at " + o.getExpirationMicrosUtc()),
+                    Operation.STATUS_CODE_TIMEOUT);
+        }
     }
 
     /**
