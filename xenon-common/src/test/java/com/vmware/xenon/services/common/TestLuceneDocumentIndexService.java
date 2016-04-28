@@ -1114,12 +1114,12 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
 
             // first time, patch to zero, which means ignore expiration, and we should not
             // observe any expired documents
-            patchExpiration(factoryUri, services, expTime, expectedCount);
+            patchOrDeleteWithExpiration(factoryUri, services, expTime, expectedCount);
 
             // now set expiration to 1, which is definitely in the past, observe all documents expired
             expTime = 1;
             expectedCount = 0;
-            patchExpiration(factoryUri, services, expTime, expectedCount);
+            patchOrDeleteWithExpiration(factoryUri, services, expTime, expectedCount);
             this.host.log("All example services expired");
 
             ServiceStat expiredCountAfterExpiration = null;
@@ -1143,6 +1143,11 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
                         luceneStatsUri);
                 ServiceStat deletedCountAfterExpiration = stats.entries
                         .get(LuceneDocumentIndexService.STAT_NAME_SERVICE_DELETE_COUNT);
+
+                if (deletedCountAfterExpiration == null) {
+                    Thread.sleep(250);
+                    continue;
+                }
 
                 if (deletedCountBeforeExpiration.latestValue >= deletedCountAfterExpiration.latestValue) {
                     this.host.log("No service deletions seen, currently at %f",
@@ -1264,16 +1269,38 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
         }
     }
 
-    private void patchExpiration(URI factoryUri, Map<URI, ExampleServiceState> services,
+    private void patchOrDeleteWithExpiration(URI factoryUri, Map<URI, ExampleServiceState> services,
             long expTime, int expectedCount) throws Throwable, InterruptedException {
         // now patch again, this time setting expiration to 1 (so definitely in the past)
         this.host.testStart(services.size());
+        int i = 0;
         for (URI u : services.keySet()) {
             ExampleServiceState s = new ExampleServiceState();
             s.name = UUID.randomUUID().toString();
             s.documentExpirationTimeMicros = expTime;
-            this.host.send(Operation.createPatch(u).setBody(s)
-                    .setCompletion(this.host.getCompletion()));
+            Operation op = Operation.createPatch(u).setBody(s)
+                    .setCompletion((o, e) -> {
+                        if (e != null) {
+                            this.host.failIteration(e);
+                            return;
+                        }
+                        // verify response body matches request
+                        ExampleServiceState st = o.getBody(ExampleServiceState.class);
+                        if (!s.name.equals(st.name)
+                                || s.documentExpirationTimeMicros != st.documentExpirationTimeMicros) {
+                            this.host.failIteration(new IllegalStateException(
+                                    "Response not expected:" + Utils.toJson(st)));
+                            return;
+                        }
+                        this.host.completeIteration();
+                    });
+            if (expTime == 1 && (++i) % 2 == 0) {
+                // Send a DELETE for every other request. We are verifying that
+                // updating expiration with either a PATCH or a DELETE, works.
+                op.setAction(Action.DELETE);
+            }
+            this.host.log("Sending %s to %s with exp of %d", op.getAction(), op.getUri(), expTime);
+            this.host.send(op);
         }
         this.host.testWait();
 
@@ -1301,6 +1328,7 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
             }
             // if expiration is in the past also send a DELETE, to once again make sure its completed
             this.host.send(Operation.createDelete(u).setBody(new ServiceDocument())
+                    .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_NO_QUEUING)
                     .setCompletion((o, e) -> {
                         this.host.completeIteration();
                     }));
