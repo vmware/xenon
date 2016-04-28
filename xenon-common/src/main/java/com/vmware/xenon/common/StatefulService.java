@@ -788,12 +788,15 @@ public class StatefulService implements Service {
             return false;
         }
 
-        if (op.getAction() == Action.DELETE) {
-            ServiceDocument body = new ServiceDocument();
+        if (op.getAction() == Action.DELETE && !op.hasBody()) {
+            ServiceDocument body = op.getLinkedState();
             op.setBodyNoCloning(body);
         }
 
         if (!op.hasBody()) {
+            // we replicate the linked state but only do so if there is a request body
+            // associated with the update. So even if we don't replicate the body, we
+            // still require it to be there.
             return false;
         }
 
