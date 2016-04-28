@@ -66,6 +66,7 @@ import java.util.logging.ConsoleHandler;
 import java.util.logging.FileHandler;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManagerFactory;
 
@@ -3463,6 +3464,15 @@ public class ServiceHost implements ServiceRequestSender {
         // a specific ServiceErrorResponse will be added in the future with retry hints
         request.setStatusCode(Operation.STATUS_CODE_UNAVAILABLE)
                 .fail(new CancellationException("queue limit exceeded"));
+    }
+
+    void failRequestWithTimeout(Operation opToExpire) {
+        Throwable e = new TimeoutException(opToExpire.toString());
+        opToExpire.setBodyNoCloning(
+                ServiceErrorResponse.create(e, Operation.STATUS_CODE_TIMEOUT,
+                        EnumSet.of(ErrorDetail.SHOULD_RETRY)));
+        // client has nested completion on failure, and will close context
+        opToExpire.fail(e, Operation.STATUS_CODE_TIMEOUT);
     }
 
     private void failForwardRequest(Operation op, Operation fo, Throwable fe) {
