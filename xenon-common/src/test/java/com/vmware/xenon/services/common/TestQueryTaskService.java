@@ -955,6 +955,9 @@ public class TestQueryTaskService {
         paginatedBroadcastQueryTasksOnExampleStates(targetHost);
         paginatedBroadcastQueryTasksWithoutMatching(targetHost);
         paginatedBroadcastQueryTasksRepeatSamePage(targetHost);
+
+        // test with QueryOption.OWNER_SELECTION
+        nonpaginatedBroadcastQueryTasksWithOwnerSelection(targetHost);
     }
 
     private void verifyOnlySupportSortOnSelfLinkInBroadcast(VerificationHost targetHost) throws Throwable {
@@ -1201,6 +1204,79 @@ public class TestQueryTaskService {
         }
 
         assertTrue(documentLinksList.get(0).equals(documentLinksList.get(1)));
+    }
+
+    private void nonpaginatedBroadcastQueryTasksWithOwnerSelection(VerificationHost targetHost)
+            throws Throwable {
+        QuerySpecification q = new QuerySpecification();
+        Query kindClause = new Query();
+        kindClause.setTermPropertyName(ServiceDocument.FIELD_NAME_KIND)
+                .setTermMatchValue(Utils.buildKind(ExampleServiceState.class));
+        q.query = kindClause;
+        // send forwardingService to collect each node's local query result, so QueryOption.BROADCAST is not set here
+        q.options = EnumSet.of(QueryOption.EXPAND_CONTENT, QueryOption.OWNER_SELECTION);
+
+        QueryTask task = QueryTask.create(q);
+        task.setDirect(true);
+
+        URI localQueryTaskFactoryUri = UriUtils.buildUri(targetHost,
+                ServiceUriPaths.CORE_LOCAL_QUERY_TASKS);
+        URI forwardingService = UriUtils.buildBroadcastRequestUri(localQueryTaskFactoryUri,
+                task.nodeSelectorLink);
+
+        targetHost.testStart(1);
+        // refer to LuceneQueryTaskService.createAndSendBroadcastQuery() to get the the internal result (before merge)
+        // so we can get each node's local query result, then verify whether we have got the authoritative result
+        Operation op = Operation
+                .createPost(forwardingService)
+                .setBody(task)
+                .setReferer(targetHost.getUri())
+                .setCompletion((o, e) -> {
+                    if (e != null) {
+                        targetHost.failIteration(e);
+                        return;
+                    }
+
+                    NodeGroupBroadcastResponse rsp = o.getBody((NodeGroupBroadcastResponse.class));
+
+                    if (!rsp.failures.isEmpty()) {
+                        targetHost.failIteration(new IllegalStateException(
+                                "Failures received: " + Utils.toJsonHtml(rsp)));
+                        return;
+                    }
+
+                    // check the correctness of rsp.jsonResponses, the internal result (before merge)
+                    int totalDocumentCount = 0;
+                    for (Map.Entry<URI, String> entry : rsp.jsonResponses.entrySet()) {
+                        QueryTask queryTask = Utils.fromJson(entry.getValue(), QueryTask.class);
+                        // calculate the total document count from each node's local query result
+                        totalDocumentCount += queryTask.results.documentCount;
+                        String queryTaskDocumentOwner = queryTask.documentOwner;
+                        // check whether each link's owner is the node itself
+                        for (String link : queryTask.results.documentLinks) {
+                            String linkOwner = Utils.fromJson(queryTask.results.documents.get(link),
+                                    ServiceDocument.class).documentOwner;
+                            // find non-authoritative result
+                            if (!linkOwner.equals(queryTaskDocumentOwner)) {
+                                targetHost.failIteration(new IllegalStateException("Non-authoritative result returned: "
+                                        + queryTaskDocumentOwner + " expected, but " + linkOwner + " returned"));
+                                return;
+                            }
+                        }
+                    }
+
+                    // check the total documents count
+                    if (this.serviceCount != totalDocumentCount) {
+                        targetHost.failIteration(new IllegalStateException("Incorrect number of documents returned: "
+                                + this.serviceCount + " expected, but " + totalDocumentCount + " returned"));
+                        return;
+                    }
+
+                    targetHost.completeIteration();
+                });
+
+        targetHost.sendRequestWithCallback(op);
+        targetHost.testWait();
     }
 
     private void startPagedBroadCastQuery(VerificationHost targetHost) {
