@@ -1054,7 +1054,7 @@ public class ServiceHost implements ServiceRequestSender {
         return this.scheduledExecutor;
     }
 
-    protected ExecutorService getExecutor() {
+    public ExecutorService getExecutor() {
         return this.executor;
     }
 
@@ -1088,7 +1088,6 @@ public class ServiceHost implements ServiceRequestSender {
     }
 
     private ServiceHost startImpl() throws Throwable {
-
         synchronized (this.state) {
             if (isStarted()) {
                 return this;
@@ -3399,9 +3398,10 @@ public class ServiceHost implements ServiceRequestSender {
             // and retries, to whatever peer we select, on each retry.
             forwardOp.setExpiration(Utils.getNowMicrosUtc()
                     + this.state.operationTimeoutMicros / 10);
-            forwardOp.setUri(SelectOwnerResponse.buildUriToOwner(rsp, op));
-            forwardOp.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_FORWARDED);
-            forwardOp.removeRequestCallbackLocation();
+            forwardOp.setUri(SelectOwnerResponse.buildUriToOwner(rsp, op))
+                    .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_FORWARDED)
+                    .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_USE_HTTP2);
+
             // Local host is not the owner, but is the entry host for a client. Forward to owner
             // node
             sendRequest(forwardOp);
@@ -3496,8 +3496,9 @@ public class ServiceHost implements ServiceRequestSender {
             return;
         }
 
-        log(Level.WARNING, "Retrying id %d to %s (retries: %d)", op.getId(),
-                op.getUri().getHost() + ":" + op.getUri().getPort(), op.getRetryCount());
+        log(Level.WARNING, "Retrying id %d to %s (retries: %d). Failure: %s", op.getId(),
+                op.getUri().getHost() + ":" + op.getUri().getPort(), op.getRetryCount(),
+                fe.toString());
         op.incrementRetryCount();
         this.pendingOperationsForRetry.put(Utils.getNowMicrosUtc(), op);
     }
@@ -3553,8 +3554,6 @@ public class ServiceHost implements ServiceRequestSender {
                 return false;
             }
 
-            Level l = inboundOp.isFromReplication() ? Level.FINE : Level.INFO;
-            log(l, "registering for %s (%s) to become available", path, factoryPath);
             // service is in the process of starting
             inboundOp.nestCompletion((o) -> {
                 inboundOp.setTargetReplicated(false);
@@ -3630,7 +3629,7 @@ public class ServiceHost implements ServiceRequestSender {
             }
 
             if (!s.queueRequest(op)) {
-                this.executor.execute(() -> {
+                Runnable r = () -> {
                     OperationContext.setContextId(op.getContextId());
                     OperationContext.setAuthorizationContext(op.getAuthorizationContext());
 
@@ -3642,7 +3641,8 @@ public class ServiceHost implements ServiceRequestSender {
 
                     OperationContext.setAuthorizationContext(null);
                     OperationContext.setContextId(null);
-                });
+                };
+                this.executor.execute(r);
             }
         }
     }
@@ -3827,6 +3827,12 @@ public class ServiceHost implements ServiceRequestSender {
 
         removeLogging();
 
+        try {
+            this.client.stop();
+            this.client = null;
+        } catch (Throwable e1) {
+        }
+
         // listener will implicitly shutdown the executor (which is shared for both I/O dispatching
         // and internal dispatching), so stop it last
         try {
@@ -3836,12 +3842,6 @@ public class ServiceHost implements ServiceRequestSender {
                 this.httpsListener.stop();
                 this.httpsListener = null;
             }
-        } catch (Throwable e1) {
-        }
-
-        try {
-            this.client.stop();
-            this.client = null;
         } catch (Throwable e1) {
         }
 

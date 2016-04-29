@@ -73,7 +73,7 @@ public class NettyHttpServiceClientTest {
 
     public int requestCount = 16;
 
-    public int serviceCount = 16;
+    public int serviceCount = 32;
 
     public int connectionCount = 32;
 
@@ -733,7 +733,12 @@ public class NettyHttpServiceClientTest {
                     TimeUnit.SECONDS.toMicros(this.host.getTimeoutSeconds()));
         }
 
-        for (int i = 0; i < 5; i++) {
+        // use global limit, which applies by default to all tags
+        int limit = this.host.getClient().getConnectionLimitPerHost();
+        this.host.connectionTag = null;
+        this.host.log("Using client global connection limit %d", limit);
+
+        for (int i = 0; i < 6; i++) {
             this.host.doPutPerService(
                     this.requestCount,
                     EnumSet.of(TestProperty.FORCE_REMOTE),
@@ -744,7 +749,29 @@ public class NettyHttpServiceClientTest {
             }
         }
 
-        if (!this.host.isStressTest()) {
+        limit = 8;
+        this.host.connectionTag = "http1.1test";
+        this.host.log("Using tag specific connection limit %d", limit);
+        this.host.getClient().setConnectionLimitPerTag(this.host.connectionTag, limit);
+        this.host.doPutPerService(
+                this.requestCount,
+                EnumSet.of(TestProperty.FORCE_REMOTE),
+                services);
+        for (int k = 0; k < 5; k++) {
+            Runtime.getRuntime().gc();
+            Runtime.getRuntime().runFinalization();
+        }
+    }
+
+    @Test
+    public void throughputPutRemoteWithCallback() throws Throwable {
+        this.host.setOperationTimeOutMicros(TimeUnit.SECONDS.toMicros(120));
+        List<Service> services = this.host.doThroughputServiceStart(this.serviceCount,
+                MinimalTestService.class,
+                this.host.buildMinimalTestState(),
+                null, null);
+
+        for (int i = 0; i < 5; i++) {
             this.host.doPutPerService(
                     this.requestCount,
                     EnumSet.of(TestProperty.FORCE_REMOTE, TestProperty.CALLBACK_SEND),

@@ -13,7 +13,10 @@
 
 package com.vmware.xenon.common.http.netty;
 
+import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -24,6 +27,9 @@ import io.netty.util.AttributeKey;
 
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Operation.SocketContext;
+import com.vmware.xenon.common.ServiceErrorResponse;
+import com.vmware.xenon.common.ServiceErrorResponse.ErrorDetail;
+import com.vmware.xenon.common.http.netty.NettyChannelPool.NettyChannelGroupKey;
 
 public class NettyChannelContext extends SocketContext {
 
@@ -73,10 +79,8 @@ public class NettyChannelContext extends SocketContext {
         return new PooledByteBufAllocator(true, 2, 2, 8192, maxOrder, 64, 32, 16);
     }
 
-    int port;
-    String host;
     private Channel channel;
-    private final String key;
+    private final NettyChannelGroupKey key;
     private Protocol protocol;
 
     // An HTTP/2 connection may have multiple simultaneous operations. This map
@@ -90,9 +94,7 @@ public class NettyChannelContext extends SocketContext {
     // We track the largest stream ID seen, so we know when the connection is exhausted
     private int largestStreamId = 0;
 
-    public NettyChannelContext(String host, int port, String key, Protocol protocol) {
-        this.host = host;
-        this.port = port;
+    public NettyChannelContext(NettyChannelGroupKey key, Protocol protocol) {
         this.key = key;
         this.protocol = protocol;
         if (protocol == Protocol.HTTP2) {
@@ -115,7 +117,13 @@ public class NettyChannelContext extends SocketContext {
     }
 
     public NettyChannelContext setOperation(Operation request) {
+        if (this.channel == null) {
+            return this;
+        }
         this.channel.attr(OPERATION_KEY).set(request);
+        if (request == null) {
+            return this;
+        }
         request.setSocketContext(this);
         return this;
     }
@@ -166,13 +174,7 @@ public class NettyChannelContext extends SocketContext {
         }
     }
 
-    public int getActiveStreamCount() {
-        synchronized (this.streamIdMap) {
-            return this.streamIdMap.size();
-        }
-    }
-
-    public String getKey() {
+    public NettyChannelGroupKey getKey() {
         return this.key;
     }
 
@@ -225,12 +227,36 @@ public class NettyChannelContext extends SocketContext {
         if (c == null) {
             return;
         }
-        if (!c.isOpen()) {
+
+        if (c.isOpen()) {
+            try {
+                c.close();
+            } catch (Throwable e) {
+            }
+        }
+
+        Operation op = this.getOperation();
+        if (op != null) {
+            setOperation(null);
+            Throwable e = new IllegalStateException("Socket channel closed");
+            int sc = Operation.STATUS_CODE_FAILURE_THRESHOLD;
+            Object body = ServiceErrorResponse.create(e, sc,
+                    EnumSet.of(ErrorDetail.SHOULD_RETRY));
+            op.setStatusCode(sc).fail(e, body);
             return;
         }
-        try {
-            c.close();
-        } catch (Throwable e) {
+
+        if (this.streamIdMap == null || this.streamIdMap.isEmpty()) {
+            return;
+        }
+
+        List<Operation> ops = new ArrayList<>();
+        synchronized (this.streamIdMap) {
+            ops.addAll(this.streamIdMap.values());
+            this.streamIdMap.clear();
+        }
+        for (Operation o : ops) {
+            o.fail(new IllegalStateException("Socket channel closed"));
         }
     }
 }
