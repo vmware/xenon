@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2014-2015 VMware, Inc. All Rights Reserved.
+ * Copyright (c) 2014-2016 VMware, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not
  * use this file except in compliance with the License.  You may obtain a copy of
@@ -348,11 +348,14 @@ public class ServiceDocumentDescription {
             } else if (Float.class.equals(clazz) || float.class.equals(clazz)) {
                 pd.typeName = TypeName.DOUBLE;
                 pd.exampleValue = 0.0F;
-            } else if (Number.class.isAssignableFrom(clazz)) {
-                // coerce all Numbers to double, may lose precision with BigDecimal and BigInteger
+            } else if (Number.class.equals(clazz)) {
+                // Special case for undefined Number fields.  Number subclasses will be PODOs.
                 pd.typeName = TypeName.DOUBLE;
-                pd.exampleValue = 0.0F;
-            } else if (String.class.equals(clazz) || char.class.equals(clazz)) {
+                pd.exampleValue = 0.0;
+            } else if (Character.class.equals(clazz) || char.class.equals(clazz)) {
+                pd.typeName = TypeName.STRING;
+                pd.exampleValue = 'a';
+            } else if (String.class.equals(clazz)) {
                 pd.typeName = TypeName.STRING;
                 pd.exampleValue = "example string";
             } else if (Date.class.equals(clazz)) {
