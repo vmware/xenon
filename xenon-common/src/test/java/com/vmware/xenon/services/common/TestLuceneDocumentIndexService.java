@@ -420,6 +420,7 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
             long start = 0;
             try {
                 start = Utils.getNowMicrosUtc();
+                Thread.sleep(2000);
                 h.start();
             } catch (org.apache.lucene.store.LockObtainFailedException e) {
                 this.host.log("Lock still held on lucene index: %s, aborting", e.toString());

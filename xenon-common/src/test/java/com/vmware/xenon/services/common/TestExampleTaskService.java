@@ -31,6 +31,7 @@ import com.vmware.xenon.common.Operation.CompletionHandler;
 import com.vmware.xenon.common.ServiceDocumentQueryResult;
 import com.vmware.xenon.common.TaskState;
 import com.vmware.xenon.common.UriUtils;
+import com.vmware.xenon.common.test.VerificationHost;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
 import com.vmware.xenon.services.common.ExampleTaskService.ExampleTaskServiceState;
 
@@ -70,8 +71,7 @@ public class TestExampleTaskService extends BasicReusableHostTestCase {
         // stop the host, and verify task deals with restart
         this.host.stop();
         this.host.setPort(0);
-        this.host.start();
-
+        VerificationHost.restartStatefulHost(this.host);
         this.host.waitForServiceAvailable(taskLink[0]);
         // verify service is re-started, and in FINISHED state
         state = waitForFinishedTask(initialState.getClass(), taskLink[0]);

@@ -2226,18 +2226,12 @@ public class TestNodeGroupService {
         // any example service instances, by specifying a name value we know will not match anything
         createReplicatedExampleTasks(exampleTaskLinks, UUID.randomUUID().toString());
 
-        // restarting a host using the same lucene index can lead to LockAlreadyHeld exceptions
-        // because lucene is still holding file system files, even if we told to stop. This causes
-        // spurious exceptions unrelated to the test at hand. Add a sleep to reduce the chance
-        // they occur
-        Thread.sleep(1000);
-
         // increase quorum on existing nodes, so they wait for new node
         this.host.setNodeGroupQuorum(this.nodeCount);
 
         hostToStop.setPort(0);
         hostToStop.setSecurePort(0);
-        hostToStop.start();
+        VerificationHost.restartStatefulHost(hostToStop);
 
         // restart host, rejoin it
         URI nodeGroupU = UriUtils.buildUri(hostToStop, ServiceUriPaths.DEFAULT_NODE_GROUP);
