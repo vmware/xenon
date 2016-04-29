@@ -18,6 +18,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.EnumSet;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -500,6 +501,32 @@ public class LuceneQueryTaskService extends StatefulService {
             if (handleQueryRetry(task, directOp)) {
                 scheduleExpiration = false;
                 return;
+            }
+
+            if (task.querySpec.options.contains(QueryOption.OWNER_SELECTION)) {
+                Iterator<String> it = task.results.documentLinks.iterator();
+
+                while (it.hasNext()) {
+                    String link = it.next();
+                    String documentOwner = Utils.fromJson(task.results.documents.get(link),
+                            ServiceDocument.class).documentOwner;
+                    // For each link that it's NOT owner, remove the link
+                    if (!documentOwner.equals(getHost().getId())) {
+                        // remove from documentLinks
+                        it.remove();
+                        // remove from documents
+                        if (!task.results.documents.containsKey(link)) {
+                            failTask(new IllegalStateException(
+                                    "Failures received: results.documents is not consistent with results.documentLinks"),
+                                    directOp, null);
+                            return;
+                        }
+
+                        task.results.documents.remove(link);
+                        // update documentCount
+                        task.results.documentCount--;
+                    }
+                }
             }
 
             if (task.querySpec.options.contains(QueryOption.CONTINUOUS)) {
