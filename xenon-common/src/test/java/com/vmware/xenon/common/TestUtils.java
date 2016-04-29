@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2014-2015 VMware, Inc. All Rights Reserved.
+ * Copyright (c) 2014-2016 VMware, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not
  * use this file except in compliance with the License.  You may obtain a copy of
@@ -15,13 +15,11 @@ package com.vmware.xenon.common;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
-import java.math.RoundingMode;
 import java.net.URLEncoder;
 import java.nio.ByteBuffer;
 import java.nio.file.Path;
@@ -50,14 +48,10 @@ import org.junit.Test;
 
 import com.vmware.xenon.common.Service.ServiceOption;
 import com.vmware.xenon.common.ServiceDocumentDescription.Builder;
-import com.vmware.xenon.common.ServiceDocumentDescription.PropertyDescription;
 import com.vmware.xenon.common.ServiceDocumentDescription.PropertyIndexingOption;
-import com.vmware.xenon.common.ServiceDocumentDescription.PropertyUsageOption;
-import com.vmware.xenon.common.ServiceDocumentDescription.TypeName;
 import com.vmware.xenon.common.SystemHostInfo.OsFamily;
 import com.vmware.xenon.common.test.VerificationHost;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
-import com.vmware.xenon.services.common.QueryTask.NumericRange;
 import com.vmware.xenon.services.common.QueryValidationTestService.QueryValidationServiceState;
 import com.vmware.xenon.services.common.ServiceUriPaths;
 
@@ -65,26 +59,6 @@ import com.vmware.xenon.services.common.ServiceUriPaths;
 public class TestUtils {
 
     public int iterationCount = 1000;
-
-    public static final Integer SOME_INT_VALUE = 100;
-    public static final Integer SOME_OTHER_INT_VALUE = 200;
-    public static final long SOME_EXPIRATION_VALUE = Utils.getNowMicrosUtc();
-    public static final String SOME_STRING_VALUE = "some value";
-    public static final String SOME_OTHER_STRING_VALUE = "some other value";
-    public static final String SOME_IGNORE_VALUE = "ignore me";
-    public static final String SOME_OTHER_IGNORE_VALUE = "ignore me please";
-    public static final long SOME_OTHER_EXPIRATION_VALUE =
-            Utils.getNowMicrosUtc() + TimeUnit.MINUTES.toMicros(5);
-
-    private static class Range {
-        public final int from;
-        public final int to;
-
-        public Range(int from, int to) {
-            this.from = from;
-            this.to = to;
-        }
-    }
 
     @Test
     public void toHexString() {
@@ -481,6 +455,24 @@ public class TestUtils {
                 TimeUnit.NANOSECONDS.toMillis(stop - start)));
     }
 
+    private static class TestKeyObjectValueHolder {
+        private final Map<String, Object> keyValues = new HashMap<>();
+    }
+
+    private void checkOptions(EnumSet<Service.ServiceOption> options) {
+        checkOptions(options, false);
+    }
+
+    private void checkOptions(EnumSet<Service.ServiceOption> options, boolean isFailureExpected) {
+        String error;
+        for (Service.ServiceOption o : options) {
+            error = Utils.validateServiceOption(options, o);
+            if (error != null && !isFailureExpected) {
+                throw new IllegalArgumentException(error);
+            }
+        }
+    }
+
     @Test
     public void validateServiceOption() {
         // positive tests
@@ -677,214 +669,6 @@ public class TestUtils {
         assertTrue(val3.containsKey("key32"));
     }
 
-    /**
-     * Test merging where patch updates all mergeable fields.
-     */
-    @Test
-    public void testFullMerge() {
-        MergeTest source = new MergeTest();
-        source.s = SOME_STRING_VALUE;
-        source.x = SOME_INT_VALUE;
-        source.ignore = SOME_IGNORE_VALUE;
-        source.documentExpirationTimeMicros = SOME_EXPIRATION_VALUE;
-        MergeTest patch = new MergeTest();
-        patch.s = SOME_OTHER_STRING_VALUE;
-        patch.x = SOME_OTHER_INT_VALUE;
-        patch.ignore = SOME_OTHER_IGNORE_VALUE;
-        patch.documentExpirationTimeMicros = SOME_OTHER_EXPIRATION_VALUE;
-
-        ServiceDocumentDescription d = ServiceDocumentDescription.Builder.create()
-                .buildDescription(MergeTest.class);
-        Assert.assertTrue("There should be changes", Utils.mergeWithState(d, source, patch));
-        Assert.assertEquals("Annotated s field", source.s, SOME_OTHER_STRING_VALUE);
-        Assert.assertEquals("Annotated x field", source.x, SOME_OTHER_INT_VALUE);
-        Assert.assertEquals("Non-annotated ignore field", source.ignore, SOME_IGNORE_VALUE);
-        Assert.assertEquals("Auto-annotated expiration field", source.documentExpirationTimeMicros,
-                SOME_OTHER_EXPIRATION_VALUE);
-    }
-
-    /**
-     * Test merging where patch updates all mergeable fields into an object which have all the fields unset.
-     */
-    @Test
-    public void testFullMerge2() {
-        MergeTest source = new MergeTest();
-        MergeTest patch = new MergeTest();
-        patch.s = SOME_OTHER_STRING_VALUE;
-        patch.x = SOME_OTHER_INT_VALUE;
-        patch.ignore = SOME_OTHER_IGNORE_VALUE;
-        ServiceDocumentDescription d = ServiceDocumentDescription.Builder.create()
-                .buildDescription(MergeTest.class);
-        Assert.assertTrue("There should be changes", Utils.mergeWithState(d, source, patch));
-        Assert.assertEquals("Annotated s field", source.s, SOME_OTHER_STRING_VALUE);
-        Assert.assertEquals("Annotated x field", source.x, SOME_OTHER_INT_VALUE);
-        Assert.assertNull("Non-annotated ignore field", source.ignore);
-    }
-
-    @Test
-    public void testSerializeClassesWithoutDefaultConstructor() {
-        Range range = new Range(0, 100);
-        // clone uses kryo serialization
-        Range clone = Utils.clone(range);
-        assertEquals(range.from, clone.from);
-        assertEquals(range.to, clone.to);
-    }
-
-    /**
-     * Test merging partially defined patch object.
-     */
-    @Test
-    public void testPartialMerge() {
-        MergeTest source = new MergeTest();
-        source.s = SOME_STRING_VALUE;
-        source.x = SOME_INT_VALUE;
-        source.ignore = SOME_IGNORE_VALUE;
-        MergeTest patch = new MergeTest();
-        patch.x = SOME_OTHER_INT_VALUE;
-        ServiceDocumentDescription d = ServiceDocumentDescription.Builder.create()
-                .buildDescription(MergeTest.class);
-        Assert.assertTrue("There should be changes", Utils.mergeWithState(d, source, patch));
-        Assert.assertEquals("Annotated s field", source.s, SOME_STRING_VALUE);
-        Assert.assertEquals("Annotated x field", source.x, SOME_OTHER_INT_VALUE);
-        Assert.assertEquals("Non-annotated ignore field", source.ignore, SOME_IGNORE_VALUE);
-    }
-
-    /**
-     * Test merging in an empty patch.
-     */
-    @Test
-    public void testEmptyMerge() {
-        MergeTest source = new MergeTest();
-        source.s = SOME_STRING_VALUE;
-        source.x = SOME_INT_VALUE;
-        source.ignore = SOME_IGNORE_VALUE;
-        MergeTest patch = new MergeTest();
-        ServiceDocumentDescription d = ServiceDocumentDescription.Builder.create()
-                .buildDescription(MergeTest.class);
-        Assert.assertFalse("There should be no changes", Utils.mergeWithState(d, source, patch));
-        Assert.assertEquals("Annotated s field", source.s, SOME_STRING_VALUE);
-        Assert.assertEquals("Annotated x field", source.x, SOME_INT_VALUE);
-        Assert.assertEquals("Non-annotated ignore field", source.ignore, SOME_IGNORE_VALUE);
-    }
-
-    /**
-     * Test merging patch with same values as existing value.
-     */
-    @Test
-    public void testEqualsMerge() {
-        MergeTest source = new MergeTest();
-        source.s = SOME_STRING_VALUE;
-        source.x = SOME_INT_VALUE;
-        source.ignore = SOME_IGNORE_VALUE;
-        MergeTest patch = new MergeTest();
-        patch.s = source.s;
-        patch.x = source.x;
-        patch.ignore = SOME_OTHER_IGNORE_VALUE;
-        ServiceDocumentDescription d = ServiceDocumentDescription.Builder.create()
-                .buildDescription(MergeTest.class);
-        Assert.assertFalse("There should be no changes", Utils.mergeWithState(d, source, patch));
-        Assert.assertEquals("Annotated s field", source.s, SOME_STRING_VALUE);
-        Assert.assertEquals("Annotated x field", source.x, SOME_INT_VALUE);
-        Assert.assertEquals("Non-annotated ignore field", source.ignore, SOME_IGNORE_VALUE);
-    }
-
-    @Test
-    public void testComputeSignatureChanged() {
-        ServiceDocumentDescription description = ServiceDocumentDescription.Builder.create()
-                .buildDescription(QueryValidationServiceState.class);
-
-        QueryValidationServiceState document = new QueryValidationServiceState();
-        document.documentSelfLink = "testComputeSignatureChange";
-        document.stringValue = "valueA";
-        document.documentExpirationTimeMicros = 1;
-        String initialSignature = Utils.computeSignature(document, description);
-
-        document.stringValue = "valueB";
-        String valueChangedSignature = Utils.computeSignature(document, description);
-
-        assertNotEquals(initialSignature, valueChangedSignature);
-
-        document.documentExpirationTimeMicros = 2;
-        String expirationChangedSignature = Utils.computeSignature(document, description);
-
-        assertNotEquals(initialSignature, expirationChangedSignature);
-        assertNotEquals(valueChangedSignature, expirationChangedSignature);
-    }
-
-    @Test
-    public void testComputeSignatureUnchanged() {
-        ServiceDocumentDescription description = ServiceDocumentDescription.Builder.create()
-                .buildDescription(QueryValidationServiceState.class);
-
-        QueryValidationServiceState document = new QueryValidationServiceState();
-        document.documentSelfLink = "testComputeSignatureChange";
-        document.stringValue = "valueA";
-        document.documentUpdateTimeMicros = 1;
-        String initialSignature = Utils.computeSignature(document, description);
-
-        document.documentUpdateTimeMicros = 2;
-        String updateChangedSignature = Utils.computeSignature(document, description);
-
-        assertEquals(initialSignature, updateChangedSignature);
-    }
-
-    /**
-     * Test service document.
-     */
-    private static class MergeTest extends ServiceDocument {
-        @UsageOption(option = PropertyUsageOption.AUTO_MERGE_IF_NOT_NULL)
-        public Integer x;
-        @UsageOption(option = PropertyUsageOption.INFRASTRUCTURE)
-        @UsageOption(option = PropertyUsageOption.AUTO_MERGE_IF_NOT_NULL)
-        public String s;
-        public String ignore;
-    }
-
-
-    @ServiceDocument.IndexingParameters(serializedStateSize = 8, versionRetention = 44)
-    private static class AnnotatedDoc extends ServiceDocument {
-        @UsageOption(option = PropertyUsageOption.AUTO_MERGE_IF_NOT_NULL)
-        @PropertyOptions(indexing = PropertyIndexingOption.STORE_ONLY)
-        @Documentation(description = "desc", exampleString = "example")
-        public String opt;
-
-        @UsageOption(option = PropertyUsageOption.ID)
-        @PropertyOptions(
-                indexing = {
-                    PropertyIndexingOption.SORT,
-                    PropertyIndexingOption.EXCLUDE_FROM_SIGNATURE},
-                usage = {
-                    PropertyUsageOption.OPTIONAL})
-        public String opts;
-
-        @PropertyOptions(indexing = PropertyIndexingOption.EXPAND)
-        public Range nestedPodo;
-
-        @UsageOption(option = PropertyUsageOption.OPTIONAL)
-        public RoundingMode someEnum;
-
-        @UsageOption(option = PropertyUsageOption.OPTIONAL)
-        public Enum<?> justEnum;
-    }
-
-    private static class TestKeyObjectValueHolder {
-        private final Map<String, Object> keyValues = new HashMap<>();
-    }
-
-    private void checkOptions(EnumSet<ServiceOption> options) {
-        checkOptions(options, false);
-    }
-
-    private void checkOptions(EnumSet<ServiceOption> options, boolean isFailureExpected) {
-        String error;
-        for (ServiceOption o : options) {
-            error = Utils.validateServiceOption(options, o);
-            if (error != null && !isFailureExpected) {
-                throw new IllegalArgumentException(error);
-            }
-        }
-    }
-
     @Test
     public void testMergeQueryResultsWithSameData() {
 
@@ -900,60 +684,6 @@ public class TestUtils {
         ServiceDocumentQueryResult mergeResult = Utils.mergeQueryResults(resultsToMerge, true);
 
         assertTrue(verifyMergeResult(mergeResult, new int[] { 1, 10, 2, 3, 4, 5, 6, 7, 8, 9 }));
-    }
-
-    @Test
-    public void testAnnotationOnFields() {
-        Builder builder = ServiceDocumentDescription.Builder.create();
-        ServiceDocumentDescription desc = builder.buildDescription(AnnotatedDoc.class);
-        assertEquals(8, desc.serializedStateSizeLimit);
-        assertEquals(44, desc.versionRetentionLimit);
-
-        PropertyDescription optDesc = desc.propertyDescriptions.get("opt");
-        assertEquals(optDesc.usageOptions, EnumSet.of(PropertyUsageOption.AUTO_MERGE_IF_NOT_NULL));
-        assertEquals(optDesc.indexingOptions, EnumSet.of(PropertyIndexingOption.STORE_ONLY));
-        assertEquals(optDesc.exampleValue, "example");
-        assertEquals(optDesc.propertyDocumentation, "desc");
-
-        PropertyDescription optsDesc = desc.propertyDescriptions.get("opts");
-        assertEquals(optsDesc.usageOptions, EnumSet.of(PropertyUsageOption.ID, PropertyUsageOption.OPTIONAL));
-        assertEquals(optsDesc.indexingOptions, EnumSet.of(PropertyIndexingOption.SORT, PropertyIndexingOption.EXCLUDE_FROM_SIGNATURE));
-    }
-
-    @Test
-    public void testNestedPodosAreAssignedKinds() {
-        ServiceDocumentDescription desc = ServiceDocumentDescription.Builder.create()
-                .buildDescription(AnnotatedDoc.class);
-        PropertyDescription nestedPodo = desc.propertyDescriptions.get("nestedPodo");
-        assertEquals(Utils.buildKind(Range.class), nestedPodo.kind);
-
-        // primitives don't have a kind
-        PropertyDescription opt = desc.propertyDescriptions.get("opt");
-        assertNull(opt.kind);
-    }
-
-    @Test
-    public void testEnumValuesArePopulated() {
-        ServiceDocumentDescription desc = ServiceDocumentDescription.Builder.create()
-                .buildDescription(AnnotatedDoc.class);
-        PropertyDescription someEnum = desc.propertyDescriptions.get("someEnum");
-        PropertyDescription nestedPodo = desc.propertyDescriptions.get("nestedPodo");
-        PropertyDescription justEnum = desc.propertyDescriptions.get("justEnum");
-
-        assertEquals(RoundingMode.values().length, someEnum.enumValues.length);
-        assertNull(nestedPodo.enumValues);
-
-        // handle generic classes where the type parameter is Enum
-        assertNull(justEnum.enumValues);
-    }
-
-    @Test
-    public void testNumberFieldsCoercedToDouble() {
-        PropertyDescription desc = ServiceDocumentDescription.Builder
-                .create()
-                .buildPodoPropertyDescription(NumericRange.class);
-        assertEquals(TypeName.DOUBLE, desc.fieldDescriptions.get("min").typeName);
-        assertEquals(TypeName.DOUBLE, desc.fieldDescriptions.get("max").typeName);
     }
 
     @Test
