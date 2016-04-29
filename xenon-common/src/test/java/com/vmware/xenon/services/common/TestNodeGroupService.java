@@ -160,6 +160,11 @@ public class TestNodeGroupService {
      */
     public long iterationCount = 1;
 
+    /**
+     * Command line argument used by replication long running tests
+     */
+    public long totalOperationLimit = Long.MAX_VALUE;
+
     private NodeGroupConfig nodeGroupConfig = new NodeGroupConfig();
     private EnumSet<ServiceOption> postCreationServiceOptions = EnumSet.noneOf(ServiceOption.class);
     private boolean expectFailure;
@@ -1400,7 +1405,7 @@ public class TestNodeGroupService {
 
             this.host.log("Total operations: %d", totalOperations);
 
-        } while (new Date().before(expiration));
+        } while (new Date().before(expiration) && this.totalOperationLimit > totalOperations);
 
         this.host.doNodeGroupStatsVerification(this.host.getNodeGroupMap());
     }

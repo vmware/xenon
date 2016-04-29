@@ -26,6 +26,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Operation.CompletionHandler;
+import com.vmware.xenon.common.ServiceClient;
 import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.StatefulService;
 import com.vmware.xenon.common.UriUtils;
@@ -613,6 +614,8 @@ public class NodeGroupService extends StatefulService {
                     .createPatch(peerUri)
                     .setBody(localState)
                     .setRetryCount(0)
+                    .setConnectionTag(ServiceClient.CONNECTION_TAG_REPLICATION)
+                    .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_USE_HTTP2)
                     .setExpiration(
                             Utils.getNowMicrosUtc() + localState.config.peerRequestTimeoutMicros)
                     .forceRemote()
