@@ -37,7 +37,28 @@ public interface ServiceClient extends ServiceRequestSender {
 
     void sendWithCallback(Operation op);
 
+    /**
+     * Maximum number of connections cached and re-used for a given host and port tuple. This
+     * setting applies to HTTP1.1 and HTTPS on HTTP1.1 connections. If the connection limit is
+     * used and all out bound channels are busy waiting for responses, any new requests are queued.
+     *
+     * For fine grained control of connection limits please use {@code ServiceClient#setConnectionLimitPerTag(int)}
+     */
     ServiceClient setConnectionLimitPerHost(int limit);
 
+    /**
+     * Returns the maximum number of connections per host and port tuple
+     */
     int getConnectionLimitPerHost();
+
+    /**
+     * Maximum number of connections cached and re-used for a given host, port and
+     * connection tag tuple
+     */
+    ServiceClient setConnectionLimitPerTag(String connectionTag, int limit);
+
+    /**
+     * Returns the maximum number of connections for the given tag
+     */
+    int getConnectionLimitPerTag(String connectionTag);
 }

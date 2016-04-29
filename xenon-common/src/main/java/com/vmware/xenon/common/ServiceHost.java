@@ -288,6 +288,11 @@ public class ServiceHost implements ServiceRequestSender {
 
     public static final String ROOT_PATH = "";
 
+    public static final String CONNECTION_TAG_FORWARDING = Operation.PRAGMA_DIRECTIVE_FORWARDED;
+    public static final String CONNECTION_TAG_REPLICATION = Operation.PRAGMA_DIRECTIVE_REPLICATED;
+    public static final int DEFAULT_CONNECTION_LIMIT_PER_TAG = Integer.getInteger(
+            Utils.PROPERTY_NAME_PREFIX + "ServiceHost.DEFAULT_CONNECTION_LIMIT_PER_TAG", 8);
+
     public static final String SERVICE_URI_SUFFIX_STATS = "/stats";
     public static final String SERVICE_URI_SUFFIX_SUBSCRIPTIONS = "/subscriptions";
 
@@ -1088,7 +1093,6 @@ public class ServiceHost implements ServiceRequestSender {
     }
 
     private ServiceHost startImpl() throws Throwable {
-
         synchronized (this.state) {
             if (isStarted()) {
                 return this;
@@ -1172,6 +1176,13 @@ public class ServiceHost implements ServiceRequestSender {
             clientContext.init(null, trustManagerFactory.getTrustManagers(), null);
             this.client.setSSLContext(clientContext);
         }
+
+        // Set connection pool limits, for some default connection tags. Built in
+        // services that do forwarding and replication use these tags for out bound requests
+        this.client.setConnectionLimitPerTag(CONNECTION_TAG_FORWARDING,
+                DEFAULT_CONNECTION_LIMIT_PER_TAG);
+        this.client.setConnectionLimitPerTag(CONNECTION_TAG_REPLICATION,
+                DEFAULT_CONNECTION_LIMIT_PER_TAG);
 
         // Start client as system user; it starts a callback service
         AuthorizationContext ctx = OperationContext.getAuthorizationContext();
@@ -3399,8 +3410,10 @@ public class ServiceHost implements ServiceRequestSender {
             // and retries, to whatever peer we select, on each retry.
             forwardOp.setExpiration(Utils.getNowMicrosUtc()
                     + this.state.operationTimeoutMicros / 10);
-            forwardOp.setUri(SelectOwnerResponse.buildUriToOwner(rsp, op));
-            forwardOp.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_FORWARDED);
+            forwardOp.setUri(SelectOwnerResponse.buildUriToOwner(rsp, op))
+                    .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_FORWARDED)
+                    .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_USE_HTTP2)
+                    .setConnectionTag(CONNECTION_TAG_FORWARDING);
             forwardOp.removeRequestCallbackLocation();
             // Local host is not the owner, but is the entry host for a client. Forward to owner
             // node
@@ -3553,8 +3566,6 @@ public class ServiceHost implements ServiceRequestSender {
                 return false;
             }
 
-            Level l = inboundOp.isFromReplication() ? Level.FINE : Level.INFO;
-            log(l, "registering for %s (%s) to become available", path, factoryPath);
             // service is in the process of starting
             inboundOp.nestCompletion((o) -> {
                 inboundOp.setTargetReplicated(false);
@@ -3630,7 +3641,7 @@ public class ServiceHost implements ServiceRequestSender {
             }
 
             if (!s.queueRequest(op)) {
-                this.executor.execute(() -> {
+                Runnable r = () -> {
                     OperationContext.setContextId(op.getContextId());
                     OperationContext.setAuthorizationContext(op.getAuthorizationContext());
 
@@ -3642,7 +3653,8 @@ public class ServiceHost implements ServiceRequestSender {
 
                     OperationContext.setAuthorizationContext(null);
                     OperationContext.setContextId(null);
-                });
+                };
+                this.executor.execute(r);
             }
         }
     }
@@ -3827,6 +3839,12 @@ public class ServiceHost implements ServiceRequestSender {
 
         removeLogging();
 
+        try {
+            this.client.stop();
+            this.client = null;
+        } catch (Throwable e1) {
+        }
+
         // listener will implicitly shutdown the executor (which is shared for both I/O dispatching
         // and internal dispatching), so stop it last
         try {
@@ -3836,12 +3854,6 @@ public class ServiceHost implements ServiceRequestSender {
                 this.httpsListener.stop();
                 this.httpsListener = null;
             }
-        } catch (Throwable e1) {
-        }
-
-        try {
-            this.client.stop();
-            this.client = null;
         } catch (Throwable e1) {
         }
 
