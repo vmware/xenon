@@ -88,7 +88,6 @@ public class NettyHttpServiceClient implements ServiceClient {
     private SortedMap<Long, Operation> pendingRequests = new ConcurrentSkipListMap<>();
 
     private ScheduledExecutorService scheduledExecutor;
-    private ExecutorService executor;
 
     private SSLContext sslContext;
 
@@ -112,11 +111,10 @@ public class NettyHttpServiceClient implements ServiceClient {
             ServiceHost host) throws URISyntaxException {
         NettyHttpServiceClient sc = new NettyHttpServiceClient();
         sc.userAgent = userAgent;
-        sc.executor = executor;
         sc.scheduledExecutor = scheduledExecutor;
         sc.host = host;
-        sc.channelPool = new NettyChannelPool(executor);
-        sc.http2ChannelPool = new NettyChannelPool(executor);
+        sc.channelPool = new NettyChannelPool();
+        sc.http2ChannelPool = new NettyChannelPool();
         String proxy = System.getenv(ENV_VAR_NAME_HTTP_PROXY);
         if (proxy != null) {
             sc.setHttpProxy(new URI(proxy));
@@ -154,7 +152,7 @@ public class NettyHttpServiceClient implements ServiceClient {
         this.http2ChannelPool.start();
 
         if (this.sslContext != null) {
-            this.sslChannelPool = new NettyChannelPool(this.executor);
+            this.sslChannelPool = new NettyChannelPool();
             this.sslChannelPool.setConnectionLimitPerHost(getConnectionLimitPerHost());
             this.sslChannelPool.setThreadTag(buildThreadTag());
             this.sslChannelPool.setThreadCount(DEFAULT_EVENT_LOOP_THREAD_COUNT);
