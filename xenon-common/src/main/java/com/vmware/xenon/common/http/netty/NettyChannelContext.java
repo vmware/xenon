@@ -180,7 +180,7 @@ public class NettyChannelContext extends SocketContext {
         return this.channel;
     }
 
-    public boolean getOpenInProgress() {
+    public boolean isOpenInProgress() {
         return this.openInProgress.get();
     }
 

@@ -40,6 +40,7 @@ import org.junit.After;
 import org.junit.AfterClass;
 import org.junit.Before;
 import org.junit.BeforeClass;
+import org.junit.Ignore;
 import org.junit.Test;
 
 import com.vmware.xenon.common.CommandLineArgumentParser;
@@ -280,12 +281,13 @@ public class NettyHttpServiceClientTest {
     }
 
     @Test
-    public void remotePatchTimeout() throws Throwable {
+    public void sendRequestWithTimeout() throws Throwable {
         doRemotePatchWithTimeout(false);
     }
 
+    @Ignore
     @Test
-    public void remotePatchWithCallbackTimeout() throws Throwable {
+    public void sendRequestWithCallbackWithTimeout() throws Throwable {
         doRemotePatchWithTimeout(true);
     }
 
@@ -303,7 +305,7 @@ public class NettyHttpServiceClientTest {
 
         this.host.getClient()
                 .setConnectionLimitPerHost(NettyHttpServiceClient.DEFAULT_CONNECTIONS_PER_HOST);
-        int count = NettyHttpServiceClient.DEFAULT_CONNECTIONS_PER_HOST * 2;
+        int count = NettyHttpServiceClient.DEFAULT_CONNECTIONS_PER_HOST;
         // timeout tracking currently works only for remote requests ...
         this.host.testStart(count);
         for (int i = 0; i < count; i++) {
@@ -724,6 +726,11 @@ public class NettyHttpServiceClientTest {
                     this.requestCount,
                     EnumSet.of(TestProperty.FORCE_REMOTE),
                     services);
+            this.host.getClient()
+                    .setConnectionLimitPerHost(NettyHttpServiceClient.DEFAULT_CONNECTIONS_PER_HOST);
+        } else {
+            this.host.setOperationTimeOutMicros(
+                    TimeUnit.SECONDS.toMicros(this.host.getTimeoutSeconds()));
         }
 
         for (int i = 0; i < 5; i++) {
@@ -898,11 +905,6 @@ public class NettyHttpServiceClientTest {
         assertNotNull("expect cookies to be set", actualCookies.get(0));
         assertEquals(1, actualCookies.get(0).size());
         assertEquals("value", actualCookies.get(0).get("key"));
-    }
-
-    @Test
-    public void singleCookieLocal() throws Throwable {
-        singleCookieTest(false);
     }
 
     @Test

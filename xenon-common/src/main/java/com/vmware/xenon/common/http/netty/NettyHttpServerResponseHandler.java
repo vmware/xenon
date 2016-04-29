@@ -149,6 +149,9 @@ public class NettyHttpServerResponseHandler extends SimpleChannelInboundHandler<
                 request.fail(e);
                 return;
             }
+            if (checkResponseForError(request)) {
+                return;
+            }
             completeRequest(request);
         });
 
