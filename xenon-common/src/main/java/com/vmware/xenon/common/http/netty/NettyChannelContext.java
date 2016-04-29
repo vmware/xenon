@@ -15,6 +15,7 @@ package com.vmware.xenon.common.http.netty;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import io.netty.buffer.PooledByteBufAllocator;
@@ -25,7 +26,7 @@ import io.netty.util.AttributeKey;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Operation.SocketContext;
 
-public class NettyChannelContext extends SocketContext {
+public class NettyChannelContext extends SocketContext implements Comparable<SocketContext> {
 
     // For HTTP/1.1 channels, this stores the operation associated with the channel
     static final AttributeKey<Operation> OPERATION_KEY = AttributeKey
@@ -115,7 +116,13 @@ public class NettyChannelContext extends SocketContext {
     }
 
     public NettyChannelContext setOperation(Operation request) {
+        if (this.channel == null) {
+            return this;
+        }
         this.channel.attr(OPERATION_KEY).set(request);
+        if (request == null) {
+            return this;
+        }
         request.setSocketContext(this);
         return this;
     }
@@ -163,12 +170,6 @@ public class NettyChannelContext extends SocketContext {
     public boolean hasActiveStreams() {
         synchronized (this.streamIdMap) {
             return !this.streamIdMap.isEmpty();
-        }
-    }
-
-    public int getActiveStreamCount() {
-        synchronized (this.streamIdMap) {
-            return this.streamIdMap.size();
         }
     }
 
@@ -225,12 +226,49 @@ public class NettyChannelContext extends SocketContext {
         if (c == null) {
             return;
         }
-        if (!c.isOpen()) {
+
+        if (c.isOpen()) {
+            try {
+                c.close();
+            } catch (Throwable e) {
+            }
+        }
+
+        Operation op = this.getOperation();
+        if (op != null) {
+            setOperation(null);
+            op.fail(new CancellationException("Socket channel closed"));
             return;
         }
-        try {
-            c.close();
-        } catch (Throwable e) {
+
+        if (this.streamIdMap == null || this.streamIdMap.isEmpty()) {
+            return;
         }
+        for (Operation o : this.streamIdMap.values()) {
+            o.fail(new CancellationException("Socket channel closed"));
+        }
+        this.streamIdMap.clear();
+    }
+
+    @Override
+    public int hashCode() {
+        return super.hashCode();
+    }
+
+    @Override
+    public boolean equals(Object other) {
+        if (this == other) {
+            return true;
+        }
+        if (!(other instanceof NettyChannelContext)) {
+            return false;
+        }
+        NettyChannelContext otherCtx = (NettyChannelContext) other;
+        return hashCode() == otherCtx.hashCode();
+    }
+
+    @Override
+    public int compareTo(SocketContext o) {
+        return Integer.compare(this.hashCode(), o.hashCode());
     }
 }

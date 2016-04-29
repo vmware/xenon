@@ -384,6 +384,7 @@ public class NettyHttp2Test {
 
     @Test
     public void throughputPutRemote() throws Throwable {
+        //Thread.sleep(20000);
         List<Service> services = this.host.doThroughputServiceStart(this.serviceCount,
                 MinimalTestService.class,
                 this.host.buildMinimalTestState(),

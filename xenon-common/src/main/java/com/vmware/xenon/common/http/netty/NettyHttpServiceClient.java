@@ -66,13 +66,6 @@ public class NettyHttpServiceClient implements ServiceClient {
             Integer.getInteger(Utils.PROPERTY_NAME_PREFIX
                     + "NettyHttpServiceClient.DEFAULT_CONNECTIONS_PER_HOST", 128);
 
-    /**
-     * Netty defaults to allowing 2^32 concurrent streams, which feels like a  bit much.
-     * We set it to a smaller amount: we'll tune it as we get experience with it. It may
-     * be reasonable to make it much larger than 1024.
-     */
-    public static final int DEFAULT_HTTP2_STREAMS_PER_HOST = 1024;
-
     public static final Logger LOGGER = Logger.getLogger(ServiceClient.class
             .getName());
     private static final String ENV_VAR_NAME_HTTP_PROXY = "http_proxy";
@@ -88,7 +81,6 @@ public class NettyHttpServiceClient implements ServiceClient {
     private SortedMap<Long, Operation> pendingRequests = new ConcurrentSkipListMap<>();
 
     private ScheduledExecutorService scheduledExecutor;
-    private ExecutorService executor;
 
     private SSLContext sslContext;
 
@@ -112,11 +104,10 @@ public class NettyHttpServiceClient implements ServiceClient {
             ServiceHost host) throws URISyntaxException {
         NettyHttpServiceClient sc = new NettyHttpServiceClient();
         sc.userAgent = userAgent;
-        sc.executor = executor;
         sc.scheduledExecutor = scheduledExecutor;
         sc.host = host;
-        sc.channelPool = new NettyChannelPool(executor);
-        sc.http2ChannelPool = new NettyChannelPool(executor);
+        sc.channelPool = new NettyChannelPool();
+        sc.http2ChannelPool = new NettyChannelPool();
         String proxy = System.getenv(ENV_VAR_NAME_HTTP_PROXY);
         if (proxy != null) {
             sc.setHttpProxy(new URI(proxy));
@@ -149,12 +140,11 @@ public class NettyHttpServiceClient implements ServiceClient {
         // when using HTTP/2 since HTTP/2 multiplexes streams on a single connection.
         this.http2ChannelPool.setThreadTag(buildThreadTag());
         this.http2ChannelPool.setThreadCount(DEFAULT_EVENT_LOOP_THREAD_COUNT);
-        this.http2ChannelPool.setConnectionLimitPerHost(DEFAULT_HTTP2_STREAMS_PER_HOST);
         this.http2ChannelPool.setHttp2Only();
         this.http2ChannelPool.start();
 
         if (this.sslContext != null) {
-            this.sslChannelPool = new NettyChannelPool(this.executor);
+            this.sslChannelPool = new NettyChannelPool();
             this.sslChannelPool.setConnectionLimitPerHost(getConnectionLimitPerHost());
             this.sslChannelPool.setThreadTag(buildThreadTag());
             this.sslChannelPool.setThreadCount(DEFAULT_EVENT_LOOP_THREAD_COUNT);
