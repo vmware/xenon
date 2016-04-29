@@ -977,9 +977,6 @@ public class VerificationHost extends ExampleServiceHost {
         }
 
         testWait(ctx);
-        if (uris.length >= 100) {
-            logThroughput();
-        }
         if (uris.length == 1) {
             results.put(uris[0], (T) state[0]);
         }
@@ -1101,6 +1098,10 @@ public class VerificationHost extends ExampleServiceHost {
             }
         }
 
+        if (properties.contains(TestProperty.HTTP2)) {
+            updateOp.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_USE_HTTP2);
+        }
+
         if (properties.contains(TestProperty.BINARY_PAYLOAD)) {
             updateOp.setContentType(Operation.MEDIA_TYPE_APPLICATION_OCTET_STREAM);
             updateOp.setCompletion((o, eb) -> {
@@ -1157,7 +1158,7 @@ public class VerificationHost extends ExampleServiceHost {
         int byteCount = Utils.toJson(body).getBytes(Utils.CHARSET).length;
         log("Bytes per payload %s", byteCount);
 
-        long startTimeMicros = Utils.getNowMicrosUtc();
+        long startTimeMicros = System.nanoTime() / 1000;
         testStart(testName, properties, count * services.size());
 
         boolean isConcurrentSend = properties.contains(TestProperty.CONCURRENT_SEND);
@@ -1236,9 +1237,11 @@ public class VerificationHost extends ExampleServiceHost {
             return;
         }
 
-        if (count * services.size() > 100) {
-            logThroughput();
-        }
+        long endTimeMicros = System.nanoTime() / 1000;
+        double deltaSeconds = (endTimeMicros - startTimeMicros) / 1000000.0;
+        double ioCount = count * services.size();
+        double throughput = ioCount / deltaSeconds;
+        log("Operation count: %f, throughput(ops/sec): %f", ioCount, throughput);
 
         if (properties.contains(TestProperty.BINARY_PAYLOAD)) {
             return;

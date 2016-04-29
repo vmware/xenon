@@ -17,6 +17,7 @@ import static org.junit.Assert.assertTrue;
 
 import java.net.URI;
 import java.util.EnumSet;
+import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -29,6 +30,7 @@ import org.junit.Test;
 
 import com.vmware.xenon.common.CommandLineArgumentParser;
 import com.vmware.xenon.common.Operation;
+import com.vmware.xenon.common.Service;
 import com.vmware.xenon.common.ServiceClient;
 import com.vmware.xenon.common.ServiceHost;
 import com.vmware.xenon.common.UriUtils;
@@ -47,14 +49,14 @@ public class NettyHttp2Test {
 
     private VerificationHost host;
 
-    // Operation timeout is in seconds
-    public int operationTimeout = 5;
-
     // Large operation body size used in basicHttp test.
     public int largeBodySize = 10000;
 
     // Number of GETs done in basicHttp2()
     public int requestCount = 10;
+
+    // Number of service instances to target
+    public int serviceCount = 16;
 
     @BeforeClass
     public static void setUpOnce() throws Exception {
@@ -83,7 +85,9 @@ public class NettyHttp2Test {
     public void setUp() {
         CommandLineArgumentParser.parseFromProperties(this);
         this.host = HOST;
-        this.host.setOperationTimeOutMicros(TimeUnit.SECONDS.toMicros(this.operationTimeout));
+        this.host.setStressTest(HOST.isStressTest);
+        this.host
+                .setOperationTimeOutMicros(TimeUnit.SECONDS.toMicros(this.host.getTimeoutSeconds()));
     }
 
     @AfterClass
@@ -376,6 +380,25 @@ public class NettyHttp2Test {
         // We stop and start the client to ensure we get a new connection for the other tests.
         client.stop();
         client.start();
+    }
+
+    @Test
+    public void throughputPutRemote() throws Throwable {
+        List<Service> services = this.host.doThroughputServiceStart(this.serviceCount,
+                MinimalTestService.class,
+                this.host.buildMinimalTestState(),
+                null, null);
+
+        for (int i = 0; i < 5; i++) {
+            this.host.doPutPerService(
+                    this.requestCount,
+                    EnumSet.of(TestProperty.FORCE_REMOTE, TestProperty.HTTP2),
+                    services);
+            for (int k = 0; k < 5; k++) {
+                Runtime.getRuntime().gc();
+                Runtime.getRuntime().runFinalization();
+            }
+        }
     }
 
     /**

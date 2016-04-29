@@ -15,18 +15,13 @@ package com.vmware.xenon.common.http.netty;
 
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.EnumSet;
 import java.util.HashSet;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.Map.Entry;
 import java.util.Set;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.TimeoutException;
-import java.util.logging.Logger;
 
 import javax.net.ssl.SSLContext;
 
@@ -40,8 +35,6 @@ import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioSocketChannel;
 
 import com.vmware.xenon.common.Operation;
-import com.vmware.xenon.common.ServiceErrorResponse;
-import com.vmware.xenon.common.ServiceErrorResponse.ErrorDetail;
 import com.vmware.xenon.common.ServiceHost.ServiceHostState;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
@@ -67,8 +60,6 @@ public class NettyChannelPool {
         public List<NettyChannelContext> http2Channels = new ArrayList<>();
         public List<Operation> pendingRequests = new ArrayList<>();
     }
-
-    private static final Logger logger = Logger.getLogger(NettyChannelPool.class.getName());
 
     private static final long CHANNEL_EXPIRATION_MICROS =
             ServiceHostState.DEFAULT_OPERATION_TIMEOUT_MICROS * 2;
@@ -242,7 +233,6 @@ public class NettyChannelPool {
 
                             // We also note that this is an HTTP2 channel--it simplifies some other code
                             channel.attr(NettyChannelContext.HTTP2_KEY).set(true);
-
                             waitForSettings(channel, context, request, group);
                         } else {
                             sendAfterConnect(channel, context, request, null);
@@ -324,7 +314,7 @@ public class NettyChannelPool {
                     break;
                 }
             }
-            if (http2Channel != null && http2Channel.getOpenInProgress()) {
+            if (http2Channel != null && http2Channel.isOpenInProgress()) {
                 // If the channel is being opened, indicate that caller should
                 // queue the operation to be delivered later.
                 return null;
@@ -371,19 +361,21 @@ public class NettyChannelPool {
                 context.updateLastUseTime();
             } else if (group.inUseChannels.size() >= this.connectionLimit) {
                 return null;
-            } else {
-                context = new NettyChannelContext(host, port, key,
-                        NettyChannelContext.Protocol.HTTP11);
             }
 
             // It's possible that we've selected a channel that we think is open, but
             // it's not. If so, it's a bad context, so recreate it.
-            if (context.getChannel() != null) {
+            if (context != null && context.getChannel() != null) {
                 if (!context.getChannel().isOpen()) {
                     context.close();
-                    context = new NettyChannelContext(host, port, key,
-                            NettyChannelContext.Protocol.HTTP11);
+                    context = null;
                 }
+            }
+
+            if (context == null) {
+                context = new NettyChannelContext(host, port, key,
+                        NettyChannelContext.Protocol.HTTP11);
+                context.setOpenInProgress(true);
             }
 
             group.inUseChannels.add(context);
@@ -434,11 +426,15 @@ public class NettyChannelPool {
      */
     private void sendAfterConnect(Channel ch, NettyChannelContext contextFinal, Operation request,
             NettyChannelGroup group) {
-        if (this.isHttp2Only) {
-            contextFinal.setOpenInProgress(false);
-        }
+        contextFinal.setOpenInProgress(false);
         contextFinal.setChannel(ch).setOperation(request);
-        request.complete();
+        if (request.getStatusCode() < Operation.STATUS_CODE_FAILURE_THRESHOLD) {
+            request.complete();
+        } else {
+            // request might have been marked as failed upstream, but we are racing the
+            // expiration code
+            request.fail(request.getStatusCode());
+        }
     }
 
     private void fail(Operation request, Throwable e) {
@@ -615,7 +611,6 @@ public class NettyChannelPool {
         for (NettyChannelGroup g : this.channelGroups.values()) {
             synchronized (g) {
                 closeContexts(g.availableChannels, false);
-                closeExpiredInUseContext(g.inUseChannels);
             }
         }
     }
@@ -623,26 +618,8 @@ public class NettyChannelPool {
     private void handleHttp2Maintenance(Operation op) {
         for (NettyChannelGroup g : this.channelGroups.values()) {
             synchronized (g) {
-                expireHttp2Operations(g);
                 closeHttp2Context(g);
             }
-        }
-    }
-
-    /**
-     * Scan HTTP/1.1 contexts and timeout any operations that need to be timed out.
-     */
-    private void closeExpiredInUseContext(Collection<NettyChannelContext> contexts) {
-        long now = Utils.getNowMicrosUtc();
-        for (NettyChannelContext c : contexts) {
-            Operation activeOp = c.getOperation();
-            if (activeOp == null || activeOp.getExpirationMicrosUtc() > now) {
-                continue;
-            }
-            this.executor.execute(() -> {
-                failRequestWithTimeout(activeOp);
-            });
-            continue;
         }
     }
 
@@ -670,43 +647,6 @@ public class NettyChannelPool {
         for (NettyChannelContext c : items) {
             contexts.remove(c);
         }
-    }
-
-    private void expireHttp2Operations(NettyChannelGroup group) {
-        long now = Utils.getNowMicrosUtc();
-        for (NettyChannelContext c : group.http2Channels) {
-            List<Operation> opsToExpire = new ArrayList<>();
-            // Synchronize on the stream map: same as in NettyChannelContext
-            synchronized (c.streamIdMap) {
-                Iterator<Entry<Integer, Operation>> entryIt = c.streamIdMap.entrySet().iterator();
-                while (entryIt.hasNext()) {
-                    Entry<Integer, Operation> entry = entryIt.next();
-                    if (entry.getValue().getExpirationMicrosUtc() > now) {
-                        continue;
-                    }
-                    opsToExpire.add(entry.getValue());
-                    entryIt.remove();
-                }
-            }
-            for (Operation opToExpire : opsToExpire) {
-                this.executor.execute(() -> {
-                    long opId = opToExpire.getId();
-                    String pragma = opToExpire.getRequestHeader(Operation.PRAGMA_HEADER);
-                    logger.info(() -> String.format("Expiring http2 operation. opId=%d, pragma=%s",
-                            opId, pragma));
-                    failRequestWithTimeout(opToExpire);
-                });
-            }
-        }
-    }
-
-    private void failRequestWithTimeout(Operation opToExpire) {
-        Throwable e = new TimeoutException(opToExpire.toString());
-        opToExpire.setBodyNoCloning(
-                ServiceErrorResponse.create(e, Operation.STATUS_CODE_TIMEOUT,
-                        EnumSet.of(ErrorDetail.SHOULD_RETRY)));
-        // client has nested completion on failure, and will close context
-        opToExpire.fail(e, Operation.STATUS_CODE_TIMEOUT);
     }
 
     /**
