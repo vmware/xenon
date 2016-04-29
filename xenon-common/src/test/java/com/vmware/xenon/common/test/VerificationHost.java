@@ -1168,6 +1168,10 @@ public class VerificationHost extends ExampleServiceHost {
 
         for (Service s : services) {
 
+            if (properties.contains(TestProperty.HTTP2)) {
+                updateOp.setConnectionTag(s.getSelfLink());
+            }
+
             long[] expectedVersion = new long[1];
             if (s.hasOption(ServiceOption.STRICT_UPDATE_CHECKING)) {
                 // we have to serialize requests and properly set version to match expected current

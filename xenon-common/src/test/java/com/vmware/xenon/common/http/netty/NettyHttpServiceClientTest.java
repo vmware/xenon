@@ -73,7 +73,7 @@ public class NettyHttpServiceClientTest {
 
     public int requestCount = 16;
 
-    public int serviceCount = 16;
+    public int serviceCount = 32;
 
     public int connectionCount = 32;
 
@@ -743,8 +743,17 @@ public class NettyHttpServiceClientTest {
                 Runtime.getRuntime().runFinalization();
             }
         }
+    }
 
-        if (!this.host.isStressTest()) {
+    @Test
+    public void throughputPutRemoteWithCallback() throws Throwable {
+        this.host.setOperationTimeOutMicros(TimeUnit.SECONDS.toMicros(120));
+        List<Service> services = this.host.doThroughputServiceStart(this.serviceCount,
+                MinimalTestService.class,
+                this.host.buildMinimalTestState(),
+                null, null);
+
+        for (int i = 0; i < 5; i++) {
             this.host.doPutPerService(
                     this.requestCount,
                     EnumSet.of(TestProperty.FORCE_REMOTE, TestProperty.CALLBACK_SEND),

@@ -3630,7 +3630,7 @@ public class ServiceHost implements ServiceRequestSender {
             }
 
             if (!s.queueRequest(op)) {
-                this.executor.execute(() -> {
+                Runnable r = () -> {
                     OperationContext.setContextId(op.getContextId());
                     OperationContext.setAuthorizationContext(op.getAuthorizationContext());
 
@@ -3642,7 +3642,8 @@ public class ServiceHost implements ServiceRequestSender {
 
                     OperationContext.setAuthorizationContext(null);
                     OperationContext.setContextId(null);
-                });
+                };
+                this.executor.execute(r);
             }
         }
     }
@@ -3827,6 +3828,12 @@ public class ServiceHost implements ServiceRequestSender {
 
         removeLogging();
 
+        try {
+            this.client.stop();
+            this.client = null;
+        } catch (Throwable e1) {
+        }
+
         // listener will implicitly shutdown the executor (which is shared for both I/O dispatching
         // and internal dispatching), so stop it last
         try {
@@ -3836,12 +3843,6 @@ public class ServiceHost implements ServiceRequestSender {
                 this.httpsListener.stop();
                 this.httpsListener = null;
             }
-        } catch (Throwable e1) {
-        }
-
-        try {
-            this.client.stop();
-            this.client = null;
         } catch (Throwable e1) {
         }
 

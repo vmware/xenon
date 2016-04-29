@@ -56,7 +56,7 @@ public class NettyHttp2Test {
     public int requestCount = 10;
 
     // Number of service instances to target
-    public int serviceCount = 16;
+    public int serviceCount = 32;
 
     @BeforeClass
     public static void setUpOnce() throws Exception {
