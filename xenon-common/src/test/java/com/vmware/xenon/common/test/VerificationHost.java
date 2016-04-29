@@ -151,6 +151,11 @@ public class VerificationHost extends ExampleServiceHost {
      */
     public long maintenanceIntervalMillis = FAST_MAINT_INTERVAL_MILLIS;
 
+    /**
+     * Command line argument
+     */
+    public String connectionTag;
+
     private String lastTestName;
 
     private TemporaryFolder temporaryFolder;
@@ -1167,6 +1172,7 @@ public class VerificationHost extends ExampleServiceHost {
         final boolean isFailureExpectedFinal = isFailureExpected;
 
         for (Service s : services) {
+            updateOp.setConnectionTag(this.connectionTag);
 
             long[] expectedVersion = new long[1];
             if (s.hasOption(ServiceOption.STRICT_UPDATE_CHECKING)) {
