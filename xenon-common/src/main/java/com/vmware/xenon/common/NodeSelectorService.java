@@ -28,7 +28,6 @@ import com.vmware.xenon.services.common.NodeState;
  * all interaction with a service, regardless of location should be through REST asynchronous operations
  */
 public interface NodeSelectorService extends Service {
-
     public static final String STAT_NAME_QUEUED_REQUEST_COUNT = "queuedRequestCount";
     public static final String STAT_NAME_SYNCHRONIZATION_COUNT = "synchronizationCount";
 

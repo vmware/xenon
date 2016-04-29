@@ -89,8 +89,10 @@ public class Utils {
     private static final String HASH_NAME_SHA_1 = "SHA-1";
     public static final String DEFAULT_CONTENT_HASH = HASH_NAME_SHA_1;
 
-    public static final int DEFAULT_THREAD_COUNT = Math.max(4, Runtime.getRuntime()
+    public static final int DEFAULT_IO_THREAD_COUNT = Math.min(4, Runtime.getRuntime()
             .availableProcessors());
+    public static final int DEFAULT_THREAD_COUNT = Math.max(4, Runtime.getRuntime()
+            .availableProcessors() + DEFAULT_IO_THREAD_COUNT);
 
     /**
      * {@link #isReachableByPing} launches a separate ping process to ascertain whether a given IP
@@ -199,7 +201,6 @@ public class Utils {
     }
 
     public static byte[] getBuffer(int capacity) {
-
         byte[] buffer = bufferPerThread.get();
         if (buffer.length < capacity) {
             buffer = new byte[capacity];
@@ -760,7 +761,8 @@ public class Utils {
     }
 
     private static boolean isContentTypeText(String contentType) {
-        return contentType.contains(Operation.MEDIA_TYPE_APPLICATION_JSON)
+        return Operation.MEDIA_TYPE_APPLICATION_JSON.equals(contentType)
+                || contentType.contains(Operation.MEDIA_TYPE_APPLICATION_JSON)
                 || contentType.contains("text")
                 || contentType.contains("css")
                 || contentType.contains("script")
