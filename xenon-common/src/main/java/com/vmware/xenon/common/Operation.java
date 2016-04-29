@@ -1091,8 +1091,8 @@ public class Operation implements Cloneable {
         CompletionHandler existing = this.completion;
 
         setCompletion((o, e) -> {
-            setCompletion(existing);
-            setStatusCode(o.getStatusCode());
+            this.completion = existing;
+            this.statusCode = o.statusCode;
             h.handle(o, e);
         });
         return this;
@@ -1100,9 +1100,9 @@ public class Operation implements Cloneable {
 
     public void nestCompletion(Consumer<Operation> successHandler) {
         CompletionHandler existing = this.completion;
-
         setCompletion((o, e) -> {
-            setCompletion(existing);
+            this.completion = existing;
+            this.statusCode = o.statusCode;
             if (e != null) {
                 o.fail(e);
                 return;
