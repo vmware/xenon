@@ -116,6 +116,11 @@ public class QueryTask extends ServiceDocument {
              * Need to broadcast this task to all nodes
              */
             BROADCAST,
+
+            /**
+             * Query only keep the result from the node, per self link that was declared owner for that link.
+             */
+            OWNER_SELECTION,
         }
 
         public enum SortOrder {
