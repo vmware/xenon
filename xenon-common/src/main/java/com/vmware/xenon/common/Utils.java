@@ -199,7 +199,6 @@ public class Utils {
     }
 
     public static byte[] getBuffer(int capacity) {
-
         byte[] buffer = bufferPerThread.get();
         if (buffer.length < capacity) {
             buffer = new byte[capacity];
@@ -760,6 +759,9 @@ public class Utils {
     }
 
     private static boolean isContentTypeText(String contentType) {
+        if (Operation.MEDIA_TYPE_APPLICATION_JSON.equals(contentType)) {
+            return true;
+        }
         return contentType.contains(Operation.MEDIA_TYPE_APPLICATION_JSON)
                 || contentType.contains("text")
                 || contentType.contains("css")

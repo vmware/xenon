@@ -167,7 +167,6 @@ public class NettyHttpClientRequestInitializer extends ChannelInitializer<Socket
                 connection, inboundAdapter);
 
         Http2Settings settings = new Http2Settings();
-        //settings.maxConcurrentStreams(this.pool.getConnectionLimitPerHost());
         settings.initialWindowSize(NettyChannelContext.INITIAL_HTTP2_WINDOW_SIZE);
 
         NettyHttpToHttp2HandlerBuilder builder = new NettyHttpToHttp2HandlerBuilder()

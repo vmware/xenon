@@ -131,7 +131,7 @@ public class Operation implements Cloneable {
         public Map<String, String> responseHeaders = new HashMap<>();
         public Principal peerPrincipal;
         public X509Certificate[] peerCertificateChain;
-        public boolean isKeepAlive;
+        public String connectionTag;
     }
 
     /**
@@ -268,7 +268,12 @@ public class Operation implements Cloneable {
     }
 
     public static enum OperationOption {
-        REPLICATED, REPLICATION_DISABLED, CLONING_DISABLED, NOTIFICATION_DISABLED, REPLICATED_TARGET
+        KEEP_ALIVE,
+        REPLICATED,
+        REPLICATION_DISABLED,
+        CLONING_DISABLED,
+        NOTIFICATION_DISABLED,
+        REPLICATED_TARGET
     }
 
     public static class SerializedOperation extends ServiceDocument {
@@ -1199,13 +1204,32 @@ public class Operation implements Cloneable {
     }
 
     public boolean isKeepAlive() {
-        return this.remoteCtx == null ? false : this.remoteCtx.isKeepAlive;
+        return this.remoteCtx == null ? false : this.options.contains(OperationOption.KEEP_ALIVE);
     }
 
     public Operation setKeepAlive(boolean isKeepAlive) {
         allocateRemoteContext();
-        this.remoteCtx.isKeepAlive = isKeepAlive;
+        if (isKeepAlive) {
+            this.options.add(OperationOption.KEEP_ALIVE);
+        } else {
+            this.options.remove(OperationOption.KEEP_ALIVE);
+        }
         return this;
+    }
+
+    /**
+     * Sets a tag used to pool out bound connections together. The service request client uses this
+     * tag as a hint, in addition with the operation URI host name and port, to determine connection
+     * re-use for requests
+     */
+    public Operation setConnectionTag(String tag) {
+        allocateRemoteContext();
+        this.remoteCtx.connectionTag = tag;
+        return this;
+    }
+
+    public String getConnectionTag() {
+        return this.remoteCtx == null ? null : this.remoteCtx.connectionTag;
     }
 
     void setHandlerInvokeTime(long nowMicrosUtc) {

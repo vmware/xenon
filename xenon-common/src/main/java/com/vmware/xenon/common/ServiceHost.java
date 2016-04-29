@@ -3630,7 +3630,7 @@ public class ServiceHost implements ServiceRequestSender {
             }
 
             if (!s.queueRequest(op)) {
-                this.executor.execute(() -> {
+                Runnable r = () -> {
                     OperationContext.setContextId(op.getContextId());
                     OperationContext.setAuthorizationContext(op.getAuthorizationContext());
 
@@ -3642,7 +3642,8 @@ public class ServiceHost implements ServiceRequestSender {
 
                     OperationContext.setAuthorizationContext(null);
                     OperationContext.setContextId(null);
-                });
+                };
+                this.executor.execute(r);
             }
         }
     }
