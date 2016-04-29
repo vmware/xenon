@@ -1076,7 +1076,7 @@ public class LuceneDocumentIndexService extends StatelessService {
 
         ScoreDoc lastDocVisited = null;
         Set<String> fieldsToLoad = this.fieldsToLoadNoExpand;
-        if (options.contains(QueryOption.EXPAND_CONTENT)) {
+        if (options.contains(QueryOption.EXPAND_CONTENT) || options.contains(QueryOption.OWNER_SELECTION)) {
             fieldsToLoad = this.fieldsToLoadWithExpand;
         }
 
@@ -1141,9 +1141,11 @@ public class LuceneDocumentIndexService extends StatelessService {
                 continue;
             }
 
-            if (options.contains(QueryOption.EXPAND_CONTENT)) {
-                String json = null;
-                ServiceDocument state = getStateFromLuceneDocument(d, link);
+            String json = null;
+            ServiceDocument state = null;
+
+            if (options.contains(QueryOption.EXPAND_CONTENT) || options.contains(QueryOption.OWNER_SELECTION)) {
+                state = getStateFromLuceneDocument(d, link);
                 if (state == null) {
                     // support reading JSON serialized state for backwards compatibility
                     json = d.get(LUCENE_FIELD_NAME_JSON_SERIALIZED_STATE);
@@ -1153,6 +1155,22 @@ public class LuceneDocumentIndexService extends StatelessService {
                 } else {
                     json = Utils.toJson(state);
                 }
+            }
+
+            if (options.contains(QueryOption.OWNER_SELECTION)) {
+                String documentOwner = null;
+                if (state == null) {
+                    documentOwner = Utils.fromJson(json, ServiceDocument.class).documentOwner;
+                } else {
+                    documentOwner = state.documentOwner;
+                }
+                // omit the result if the documentOwner is not the same as the local owner
+                if (documentOwner != null && !documentOwner.equals(getHost().getId())) {
+                    continue;
+                }
+            }
+
+            if (options.contains(QueryOption.EXPAND_CONTENT)) {
                 if (!rsp.documents.containsKey(link)) {
                     rsp.documents.put(link, new JsonParser().parse(json).getAsJsonObject());
                 }

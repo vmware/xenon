@@ -113,9 +113,17 @@ public class QueryTask extends ServiceDocument {
             TASK,
 
             /**
-             * Need to broadcast this task to all nodes
+             * Broadcast the query to each node, using the local query task factory.
+             * It then merges results from each node. See related option @{code QueryOption.OWNER_SELECTION}
              */
             BROADCAST,
+
+            /**
+             * Filters query results based on the document owner ID.
+             * If the owner ID of the document does not match the ID of the host executing the query,
+             * the document is removed from the result
+             */
+            OWNER_SELECTION,
         }
 
         public enum SortOrder {
