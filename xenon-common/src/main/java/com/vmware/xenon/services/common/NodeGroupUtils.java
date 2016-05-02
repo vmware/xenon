@@ -83,7 +83,7 @@ public class NodeGroupUtils {
                 return;
             }
 
-            ch.handle(null, new IllegalStateException("All services on all nodes not available"));
+            ch.handle(o, new IllegalStateException("All services on all nodes not available"));
         });
         host.sendRequest(get.setReferer(host.getPublicUri()));
     }
