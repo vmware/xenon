@@ -496,6 +496,7 @@ public class ServiceHost implements ServiceRequestSender {
     private final ConcurrentSkipListMap<String, Long> synchronizationActiveServices = new ConcurrentSkipListMap<>();
     private final ConcurrentSkipListMap<String, NodeGroupState> pendingNodeSelectorsForFactorySynch = new ConcurrentSkipListMap<>();
     private final SortedSet<Operation> pendingStartOperations = createOperationSet();
+    private final Set<String> pendingServiceDeletions = Collections.synchronizedSet(new HashSet<String>());
     private final Map<String, SortedSet<Operation>> pendingServiceAvailableCompletions = new ConcurrentSkipListMap<>();
     private final ConcurrentSkipListMap<Long, Operation> pendingOperationsForRetry = new ConcurrentSkipListMap<>();
 
@@ -1960,10 +1961,15 @@ public class ServiceHost implements ServiceRequestSender {
                 post.fail(new IllegalStateException(errorMsg));
                 return this;
             }
-
-        } else if (checkIfServiceExistsAndAttach(service, servicePath, post)) {
-            // service exists, do not proceed with start
-            return this;
+        } else {
+            boolean ba = servicePath.contains("bank-accounts");
+            if (ba) {
+                log(Level.INFO, "Path %s, Starting service %s, Op id %s, referrer %s", servicePath, service, post.getId(), post.getReferer());
+            }
+            if (checkIfServiceExistsAndAttach(service, servicePath, post)) {
+                // service exists, do not proceed with start
+                return this;
+            }
         }
 
         service.setProcessingStage(ProcessingStage.CREATED);
@@ -2920,6 +2926,15 @@ public class ServiceHost implements ServiceRequestSender {
         }
 
         boolean isDeleted = ServiceDocument.isDeleted(stateFromStore);
+        if (!isDeleted) {
+            isDeleted = this.pendingServiceDeletions.contains(s.getSelfLink());
+            if (isDeleted) {
+                boolean ba = s.getSelfLink().contains("bank-accounts");
+                if (ba) {
+                    log(Level.INFO, "found %s in pendingServiceDeletions. Setting isDeleted to true", s.getSelfLink());
+                }
+            }
+        }
 
         if (!serviceStartPost.hasBody()) {
             // this POST is due to a restart, or synchronization attempt which will never have a body
@@ -2960,6 +2975,26 @@ public class ServiceHost implements ServiceRequestSender {
         }
 
         return true;
+    }
+
+    void markAsPendingDelete(Service service) {
+        if (isServiceIndexed(service)) {
+            this.pendingServiceDeletions.add(service.getSelfLink());
+            boolean ba = service.getSelfLink().contains("bank-accounts");
+            if (ba) {
+                log(Level.INFO, "Added %s to pendingServiceDeletions", service.getSelfLink());
+            }
+        }
+    }
+
+    void unmarkAsPendingDelete(Service service) {
+        if (isServiceIndexed(service)) {
+            this.pendingServiceDeletions.remove(service.getSelfLink());
+            boolean ba = service.getSelfLink().contains("bank-accounts");
+            if (ba) {
+                log(Level.INFO, "Removed %s from pendingServiceDeletions", service.getSelfLink());
+            }
+        }
     }
 
     /**
@@ -3141,7 +3176,14 @@ public class ServiceHost implements ServiceRequestSender {
             }
 
             // request service using either prefix or longest match
+            boolean ba = path.contains("bank-accounts");
+            if (ba) {
+                log(Level.INFO, "processing request %s with path %s (service unknown) id %s", inboundOp.getAction(), path, inboundOp.getId());
+            }
             service = findService(path, false);
+            if (ba) {
+                log(Level.INFO, "processing request %s with path %s (service unknown) id %s; found service: %s", inboundOp.getAction(), path, inboundOp.getId(), service);
+            }
         } else {
             path = service.getSelfLink();
         }
@@ -3823,6 +3865,7 @@ public class ServiceHost implements ServiceRequestSender {
         this.attachedServices.clear();
         this.attachedNamespaceServices.clear();
         this.maintenanceHelper.close();
+        this.pendingServiceDeletions.clear();
         this.state.isStarted = false;
 
         removeLogging();
@@ -5195,11 +5238,6 @@ public class ServiceHost implements ServiceRequestSender {
     }
 
     void saveServiceState(Service s, Operation op, ServiceDocument state) {
-        if (state == null) {
-            op.fail(new IllegalArgumentException("linkedState is required"));
-            return;
-        }
-
         // If this request doesn't originate from replication (which might happen asynchronously, i.e. through
         // (re-)synchronization after a node group change), don't update the documentAuthPrincipalLink because
         // it will be set to the system user. The specified state is expected to have the documentAuthPrincipalLink
@@ -5221,10 +5259,12 @@ public class ServiceHost implements ServiceRequestSender {
         }
 
         Service indexService = this.documentIndexService;
+        /*
         if (indexService == null) {
             op.fail(new IllegalStateException("document index service is required"));
             return;
         }
+        */
 
         // serialize state and compute signature. The index service will take
         // the serialized state and store as is, and it will index all fields
@@ -5234,16 +5274,14 @@ public class ServiceHost implements ServiceRequestSender {
         // retrieve the description through the cached template so its the thread safe,
         // immutable version
         body.description = buildDocumentDescription(s);
-        try {
-            cacheServiceState(s, state, op);
-        } catch (Throwable e1) {
-            op.fail(e1);
-            return;
-        }
+        cacheServiceState(s, state, op);
 
         Operation post = Operation.createPost(indexService.getUri())
                 .setBodyNoCloning(body)
                 .setCompletion((o, e) -> {
+                    if (op.getAction() == Action.DELETE) {
+                        unmarkAsPendingDelete(s);
+                    }
                     if (e != null) {
                         clearCachedServiceState(s.getSelfLink());
                         op.fail(e);
