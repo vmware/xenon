@@ -105,6 +105,7 @@ public class OperationSequence {
     private OperationSequence parent;
     private ServiceRequestSender sender;
     private boolean cumulative = true;
+    private boolean abortOnFirstFailure = false;
 
     private OperationSequence(OperationJoin join) {
         this.join = join;
@@ -165,6 +166,32 @@ public class OperationSequence {
     }
 
     /**
+     * Abort entire sequence on first operation failure.
+     *
+     * The joinedCompletion handler set by {@link #setCompletion(JoinedCompletionHandler)}
+     * will NOT be called when the sequence encounters an operation failure.
+     *
+     * <pre>
+     * {@code
+     *    Operation op1 = Operation.createGet(...)
+     *        .setCompletion((o, e) -> {
+     *            // This will be called always
+     *        });
+     *
+     *    OperationSequence.create(op1)
+     *        .setCompletion((ops, exs) -> {
+     *            // This will NOT be called if op1 failed
+     *         })
+     *        .abortOnFirstFailure();
+     * }
+     * </pre>
+     */
+    public OperationSequence abortOnFirstFailure() {
+        this.abortOnFirstFailure = true;
+        return this;
+    }
+
+    /**
      * Send using the {@link ServiceRequestSender}.
      * @see OperationJoin#sendWith(ServiceRequestSender)
      */
@@ -203,6 +230,12 @@ public class OperationSequence {
         @Override
         public void handle(final Map<Long, Operation> ops, final Map<Long, Throwable> failures) {
             if (!this.completed.compareAndSet(false, true)) {
+                return;
+            }
+
+            boolean hasFailure = failures != null && !failures.isEmpty();
+            boolean abortImmediately = this.sequence.hasAbortOnFirstFailureInChildSequences();
+            if (hasFailure && abortImmediately) {
                 return;
             }
 
@@ -265,6 +298,17 @@ public class OperationSequence {
         if (this.join == null) {
             throw new IllegalStateException("No joined operation to be sent.");
         }
+    }
+
+    private boolean hasAbortOnFirstFailureInChildSequences() {
+        OperationSequence childSequence = this.child;
+        while (childSequence != null) {
+            if (childSequence.abortOnFirstFailure) {
+                return true;
+            }
+            childSequence = childSequence.child;
+        }
+        return false;
     }
 
 }

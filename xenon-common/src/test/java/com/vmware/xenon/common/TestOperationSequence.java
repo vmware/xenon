@@ -14,7 +14,10 @@
 package com.vmware.xenon.common;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 import java.util.EnumSet;
 import java.util.List;
@@ -22,10 +25,6 @@ import java.util.List;
 import org.junit.Before;
 import org.junit.Test;
 
-import com.vmware.xenon.common.Operation;
-import com.vmware.xenon.common.OperationJoin;
-import com.vmware.xenon.common.OperationSequence;
-import com.vmware.xenon.common.Service;
 import com.vmware.xenon.common.test.MinimalTestServiceState;
 import com.vmware.xenon.services.common.MinimalTestService;
 
@@ -398,6 +397,48 @@ public class TestOperationSequence extends BasicReusableHostTestCase {
                 })
                 .sendWith(host);
         host.testWait();
+    }
+
+    @Test
+    public void testAbortOnFirstFailure() throws Throwable {
+        Operation op1 = createServiceOperation(this.services.get(0));
+        Operation op2 = createServiceOperation(this.services.get(1));
+        Operation op3 = createServiceOperation(this.services.get(1));
+
+        boolean[] called = new boolean[3];
+
+        op1.setCompletion((o, e) -> {
+            called[0] = true;
+        });
+
+        // make op2 fail with 404
+        op2.setUri(UriUtils.buildUri(op1.getUri(), "/not-exist"));
+        op2.setCompletion((o, e) -> {
+            called[1] = true;
+            assertNotNull("op2 should fail with error", e);
+            host.completeIteration();
+        });
+
+        op3.setCompletion((o, e) -> {
+            called[2] = true;
+            fail("op3 completionHandler should not be called");
+        });
+
+        host.testStart(1);
+        OperationSequence
+                .create(op1)
+                .next(op2)
+                .next(op3)
+                .setCompletion((ops, exc) -> {
+                    fail("Joined completion handler should not be called");
+                })
+                .abortOnFirstFailure()
+                .sendWith(host);
+        host.testWait();
+
+        assertTrue("op1 should be called", called[0]);
+        assertTrue("op2 should be called", called[1]);
+        assertFalse("op3 should not be called", called[2]);
     }
 
     private List<Service> initServices() throws Throwable {
