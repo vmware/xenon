@@ -31,6 +31,7 @@ import java.nio.file.Paths;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.List;
@@ -628,7 +629,7 @@ public class Utils {
                     "-n", "1",
                     "-w", Long.toString(timeoutMs),
                     getNormalizedHostAddress(systemInfo, addr))
-                            .start();
+                    .start();
             boolean completed = process.waitFor(
                     PING_LAUNCH_TOLERANCE_MS + timeoutMs,
                     TimeUnit.MILLISECONDS);
@@ -882,6 +883,27 @@ public class Utils {
         result.documents = new HashMap<>();
         result.documentCount = 0L;
 
+        //check if it is a query with count option.
+        int count = 0;
+        long highestCount = 0;
+        for (int i = 0; i < dataSources.size(); i++) {
+            ServiceDocumentQueryResult dataSource = dataSources.get(i);
+            if ((dataSource.documentLinks == null || dataSource.documentLinks.isEmpty())
+                    && (dataSource.documents == null || dataSource.documents.isEmpty())
+                    && dataSource.documentCount != null && dataSource.documentCount > 0) {
+                count++;
+                if (highestCount < dataSource.documentCount) {
+                    highestCount = dataSource.documentCount;
+                }
+            }
+        }
+        if (count == dataSources.size()) {
+            //it is a count query, no need to merge
+            result.documentCount = highestCount;
+            result.documentLinks = Collections.emptyList();
+            return result;
+        }
+
         // For each list of documents to be merged, a pointer is maintained to indicate which element
         // is to be merged. The initial values are 0s.
         int[] indices = new int[dataSources.size()];
@@ -899,7 +921,8 @@ public class Utils {
             // In each iteration, the current elements in all lists need to be compared to pick the winners.
             for (int i = 0; i < dataSources.size(); i++) {
                 // If the current list still have elements left to be merged, then proceed.
-                if (indices[i] < dataSources.get(i).documentCount) {
+                if (indices[i] < dataSources.get(i).documentCount
+                        && !dataSources.get(i).documentLinks.isEmpty()) {
                     String documentLink = dataSources.get(i).documentLinks.get(indices[i]);
                     if (documentLinkPicked == null) {
                         // No document link has been picked in this iteration, so it is the winner at the current time.

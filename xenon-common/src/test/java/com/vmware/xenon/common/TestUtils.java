@@ -55,7 +55,6 @@ import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
 import com.vmware.xenon.services.common.QueryValidationTestService.QueryValidationServiceState;
 import com.vmware.xenon.services.common.ServiceUriPaths;
 
-
 public class TestUtils {
 
     public int iterationCount = 1000;
@@ -315,7 +314,7 @@ public class TestUtils {
 
     public void logThroughput(int count, boolean useBinary, ServiceDocumentDescription desc,
             ServiceDocument original)
-                    throws Throwable {
+            throws Throwable {
 
         long s = Utils.getNowMicrosUtc();
         long length = 0;
@@ -346,7 +345,7 @@ public class TestUtils {
 
     public QueryValidationServiceState serializedAndCompareDocuments(
             boolean useBinary, QueryValidationServiceState original)
-                    throws Throwable {
+            throws Throwable {
         QueryValidationServiceState originalDeserializedWithSig = null;
         if (useBinary) {
             byte[] serializedDocument = new byte[4096];
@@ -747,6 +746,28 @@ public class TestUtils {
         ServiceDocumentQueryResult mergeResult = Utils.mergeQueryResults(resultsToMerge, false);
 
         assertTrue(verifyMergeResult(mergeResult, new int[] { 9, 8, 7, 6, 5, 4, 3, 2, 10, 1 }));
+    }
+
+    @Test
+    public void testMergeQueryResultsWhenOnlyCount() {
+        ServiceDocumentQueryResult result1 = createServiceDocumentQueryResult(
+                new int[] { 9, 7, 5, 4, 3, 1 });
+        result1.documentLinks.clear();
+        result1.documents.clear();
+        ServiceDocumentQueryResult result2 = createServiceDocumentQueryResult(
+                new int[] { 9, 6, 5, 4, 3, 2, 10 });
+        result2.documentLinks.clear();
+        result2.documents.clear();
+        ServiceDocumentQueryResult result3 = createServiceDocumentQueryResult(
+                new int[] { 8, 4, 3, 2, 10, 1 });
+        result3.documentLinks.clear();
+        result3.documents.clear();
+
+        List<ServiceDocumentQueryResult> resultsToMerge = Arrays.asList(result1, result2, result3);
+
+        ServiceDocumentQueryResult mergeResult = Utils.mergeQueryResults(resultsToMerge, false);
+
+        assertEquals(result2.documentCount, mergeResult.documentCount);
     }
 
     private ServiceDocumentQueryResult createServiceDocumentQueryResult(int[] documentIndices) {
