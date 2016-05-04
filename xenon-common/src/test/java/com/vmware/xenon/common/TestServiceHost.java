@@ -19,6 +19,9 @@ import static org.junit.Assert.assertNotSame;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
+import static com.vmware.xenon.common.test.VerificationHost.buildDefaultServiceHostArguments;
+import static com.vmware.xenon.common.test.VerificationHost.initialize;
+
 import java.io.File;
 import java.net.URI;
 import java.nio.file.Path;
@@ -1629,6 +1632,26 @@ public class TestServiceHost {
         assertEquals(ServiceHost.HttpScheme.HTTPS_ONLY, this.host.getCurrentHttpScheme());
         assertTrue("public uri scheme should be HTTPS",
                 this.host.getPublicUri().getScheme().equals("https"));
+    }
+
+    @Test
+    public void getSandboxPath() throws Throwable {
+        File newPath = this.tmpFolder.newFolder("my-custom-sandbox");
+
+        this.host = new VerificationHost() {
+            @Override
+            protected Path getSandboxPath(Arguments args) {
+                return newPath.toPath();
+            }
+        };
+        // need to initialize via VerificationHost static methods to prepare internal objects...
+        initialize(this.host, buildDefaultServiceHostArguments(0));
+
+        this.host.start();
+        this.host.stop();
+
+        File hostStateFile = newPath.toPath().resolve(ServiceHost.SERVICE_HOST_STATE_FILE).toFile();
+        assertTrue("ServiceHost state file should exist", hostStateFile.exists());
     }
 
     @After

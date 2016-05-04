@@ -557,8 +557,7 @@ public class ServiceHost implements ServiceRequestSender {
     public ServiceHost initialize(Arguments args) throws Throwable {
         setSystemProperties();
 
-        Path sandbox = args.sandbox.resolve(Integer.toString(args.port));
-        URI storageSandbox = sandbox.toFile().toURI();
+        Path sandbox = getSandboxPath(args);
 
         if (!Files.exists(sandbox)) {
             Files.createDirectories(sandbox);
@@ -584,19 +583,19 @@ public class ServiceHost implements ServiceRequestSender {
             throw new IllegalStateException();
         }
 
-        File s = new File(storageSandbox);
+        File sandboxFile = sandbox.toFile();
 
-        if (!s.exists()) {
+        if (!sandboxFile.exists()) {
             throw new IllegalArgumentException("storageSandbox directory does not exist: "
-                    + storageSandbox);
+                    + sandboxFile.toURI());
         }
 
         // load configuration from disk
-        this.state.storageSandboxFileReference = storageSandbox;
-        loadState(storageSandbox, s);
+        this.state.storageSandboxFileReference = sandboxFile.toURI();
+        loadState(sandboxFile);
 
         // apply command line arguments, potentially overriding file configuration
-        initializeStateFromArguments(s, args);
+        initializeStateFromArguments(sandboxFile, args);
 
         LuceneDocumentIndexService documentIndexService = new LuceneDocumentIndexService();
         setDocumentIndexingService(documentIndexService);
@@ -626,6 +625,10 @@ public class ServiceHost implements ServiceRequestSender {
                     DEFAULT_PCT_MEMORY_LIMIT_SERVICE_CONTEXT_INDEX);
         }
         return this;
+    }
+
+    protected Path getSandboxPath(Arguments args) {
+        return args.sandbox.resolve(Integer.toString(args.port));
     }
 
     /**
@@ -726,7 +729,7 @@ public class ServiceHost implements ServiceRequestSender {
         }
     }
 
-    private void loadState(URI storageSandbox, File s) throws IOException, InterruptedException {
+    private void loadState(File s) throws IOException, InterruptedException {
         File hostStateFile = new File(s, SERVICE_HOST_STATE_FILE);
         if (hostStateFile.exists()) {
             CountDownLatch l = new CountDownLatch(1);
