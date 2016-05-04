@@ -202,7 +202,9 @@ public class LuceneQueryTaskService extends StatefulService {
         if (!isPaginatedQuery) {
             boolean isAscOrder = queryTask.querySpec.sortOrder == null
                     || queryTask.querySpec.sortOrder == QuerySpecification.SortOrder.ASC;
-            queryTask.results = Utils.mergeQueryResults(queryResults, isAscOrder);
+
+            queryTask.results = Utils.mergeQueryResults(queryResults, isAscOrder,
+                    queryTask.querySpec.options);
         } else {
             URI broadcastPageServiceUri = UriUtils.buildUri(this.getHost(), UriUtils.buildUriPath(ServiceUriPaths.CORE,
                     BroadcastQueryPageService.SELF_LINK_PREFIX, String.valueOf(Utils.getNowMicrosUtc())));
