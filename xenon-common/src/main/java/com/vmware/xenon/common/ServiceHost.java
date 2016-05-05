@@ -168,7 +168,7 @@ public class ServiceHost implements ServiceRequestSender {
         /**
          * HTTPS port
          */
-        public int securePort;
+        public int securePort = PORT_VALUE_LISTENER_DISABLED;
 
         /**
          * SSL client authorization mode
@@ -524,7 +524,21 @@ public class ServiceHost implements ServiceRequestSender {
     public ServiceHost initialize(Arguments args) throws Throwable {
         setSystemProperties();
 
-        Path sandbox = args.sandbox.resolve(Integer.toString(args.port));
+        if (args.port == PORT_VALUE_LISTENER_DISABLED
+                && args.securePort == PORT_VALUE_LISTENER_DISABLED) {
+            throw new IllegalArgumentException("both http and https are disabled");
+        }
+
+        if (args.port != PORT_VALUE_LISTENER_DISABLED && args.port < 0) {
+            throw new IllegalArgumentException("port: negative values not allowed");
+        }
+
+        if (args.securePort != PORT_VALUE_LISTENER_DISABLED && args.securePort < 0) {
+            throw new IllegalArgumentException("securePort: negative values not allowed");
+        }
+
+        int sandboxPort = args.port == PORT_VALUE_LISTENER_DISABLED ? args.securePort : args.port;
+        Path sandbox = args.sandbox.resolve(Integer.toString(sandboxPort));
         URI storageSandbox = sandbox.toFile().toURI();
 
         if (!Files.exists(sandbox)) {
@@ -540,11 +554,6 @@ public class ServiceHost implements ServiceRequestSender {
 
         if (args.bindAddress != null && args.bindAddress.equals("")) {
             throw new IllegalArgumentException("bindAddress should be a non empty valid IP address");
-        }
-
-        if (args.port < 0) {
-            throw new IllegalArgumentException(
-                    "port: negative values not allowed");
         }
 
         if (this.state == null) {
@@ -1083,18 +1092,23 @@ public class ServiceHost implements ServiceRequestSender {
             this.httpListener.start(getPort(), this.state.bindAddress);
         }
 
-        if ((this.state.certificateFileReference != null
-                || this.state.privateKeyFileReference != null)
-                && this.httpsListener == null) {
-            this.httpsListener = new NettyHttpListener(this);
-        }
-
-        if (this.httpsListener != null) {
-            if (!this.httpsListener.isSSLConfigured()) {
-                this.httpsListener.setSSLContextFiles(this.state.certificateFileReference,
-                        this.state.privateKeyFileReference, this.state.privateKeyPassphrase);
+        if (getSecurePort() != PORT_VALUE_LISTENER_DISABLED) {
+            if (this.httpsListener == null) {
+                if (this.state.certificateFileReference == null
+                        && this.state.privateKeyFileReference == null) {
+                    log(Level.WARNING, "certificate and private key are missing");
+                } else {
+                    this.httpsListener = new NettyHttpListener(this);
+                }
             }
-            this.httpsListener.start(getSecurePort(), this.state.bindAddress);
+
+            if (this.httpsListener != null) {
+                if (!this.httpsListener.isSSLConfigured()) {
+                    this.httpsListener.setSSLContextFiles(this.state.certificateFileReference,
+                            this.state.privateKeyFileReference, this.state.privateKeyPassphrase);
+                }
+                this.httpsListener.start(getSecurePort(), this.state.bindAddress);
+            }
         }
 
         // Update the state JSON file if the port was chosen by the httpListener.
