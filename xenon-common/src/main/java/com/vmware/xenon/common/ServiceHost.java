@@ -334,6 +334,19 @@ public class ServiceHost implements ServiceRequestSender {
             / 2;
     private static final long ONE_MINUTE_IN_MICROS = TimeUnit.MINUTES.toMicros(1);
 
+    private static final String PROPERTY_NAME_APPEND_PORT_TO_SANDBOX =
+            Utils.PROPERTY_NAME_PREFIX + "ServiceHost.APPEND_PORT_TO_SANDBOX";
+
+    /**
+     * Control creating a directory using port number under sandbox directory.
+     *
+     * VM argument: "-Dxenon.ServiceHost.APPEND_PORT_TO_SANDBOX=[true|false]"
+     * Default is set to true.
+     */
+    public static final boolean APPEND_PORT_TO_SANDBOX =
+            System.getProperty(PROPERTY_NAME_APPEND_PORT_TO_SANDBOX) == null
+                    || Boolean.getBoolean(PROPERTY_NAME_APPEND_PORT_TO_SANDBOX);
+
     public static class RequestRateInfo {
         /**
          * Request limit (upper bound) in requests per second
@@ -532,8 +545,13 @@ public class ServiceHost implements ServiceRequestSender {
             throw new IllegalArgumentException("securePort: negative values not allowed");
         }
 
-        int sandboxPort = args.port == PORT_VALUE_LISTENER_DISABLED ? args.securePort : args.port;
-        Path sandbox = args.sandbox.resolve(Integer.toString(sandboxPort));
+        Path sandbox = args.sandbox;
+        if (APPEND_PORT_TO_SANDBOX) {
+            int sandboxPort =
+                    args.port == PORT_VALUE_LISTENER_DISABLED ? args.securePort : args.port;
+            sandbox = sandbox.resolve(Integer.toString(sandboxPort));
+        }
+
         URI storageSandbox = sandbox.toFile().toURI();
 
         if (!Files.exists(sandbox)) {
