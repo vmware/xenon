@@ -15,7 +15,9 @@ package com.vmware.xenon.common;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNotSame;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
@@ -614,7 +616,37 @@ public class TestServiceHost {
 
     }
 
+    @Test
+    public void httpsOnly() throws Throwable {
+        ExampleServiceHost h = new ExampleServiceHost();
+        String tmpFolderPath = this.tmpFolder.getRoot().getAbsolutePath();
 
+        // We run test from filesystem so far, thus expect files to be on file system.
+        // For example, if we run test from jar file, needs to copy the resource to tmp dir.
+        Path certFilePath = Paths.get(getClass().getResource("/ssl/server.crt").toURI());
+        Path keyFilePath = Paths.get(getClass().getResource("/ssl/server.pem").toURI());
+        String certFile = certFilePath.toFile().getAbsolutePath();
+        String keyFile = keyFilePath.toFile().getAbsolutePath();
+
+        // set -1 to disable http
+        String[] args = {
+                "--sandbox=" + tmpFolderPath,
+                "--port=-1",
+                "--securePort=0",
+                "--certificateFile=" + certFile,
+                "--keyFile=" + keyFile
+        };
+
+        try {
+            h.initialize(args);
+            h.start();
+
+            assertNull("http should be disabled", h.getListener());
+            assertNotNull("https should be enabled", h.getSecureListener());
+        } finally {
+            h.stop();
+        }
+    }
 
 
     @Test
@@ -1582,8 +1614,11 @@ public class TestServiceHost {
         this.host.setCertificateFileReference(ssc.certificate().toURI());
         this.host.setPrivateKeyFileReference(ssc.privateKey().toURI());
 
-        assertEquals("before starting, scheme is NONE", ServiceHost.HttpScheme.NONE, this.host.getCurrentHttpScheme());
+        assertEquals("before starting, scheme is NONE", ServiceHost.HttpScheme.NONE,
+                this.host.getCurrentHttpScheme());
 
+        this.host.setPort(0);
+        this.host.setSecurePort(0);
         this.host.start();
 
         ServiceRequestListener httpListener = this.host.getListener();

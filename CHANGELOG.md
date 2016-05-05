@@ -2,14 +2,16 @@
 
 ## 0.8.1-SNAPSHOT
 
+* Add support for starting ServiceHost only with HTTPS.
+  To disable HTTP listener, provide "--port=-1" to the startup parameters.
+
 * Add support for connection tags, optimize HTTP/2 I/O path. Connection
   tags allow finer control of connection pools, connection limit. HTTP/2
   default connection tag uses (by default) 4 parallel HTTP/2 connections
   per host, with potentially millions of pending operations in each.
   Perf gain of 2x on HTTP/2, with these changes.
 
-* Enable HTTP2 for forwarding (as part of built in
-  owner selection and loadbalancing)
+* Enable HTTP2 for forwarding (as part of built in owner selection and loadbalancing)
 
 ## 0.8.0
 
