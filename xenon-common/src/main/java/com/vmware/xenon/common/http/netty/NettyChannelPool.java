@@ -58,7 +58,9 @@ public class NettyChannelPool {
                         : ServiceClient.CONNECTION_TAG_DEFAULT;
             }
             this.connectionTag = tag;
-            this.host = host;
+            // a null host is not valid but we do URI validation elsewhere. If we are called with null host
+            // here it means we are trying to fail the operation that failed the validation, so use empty string
+            this.host = host == null ? "" : host;
             if (port <= 0) {
                 port = UriUtils.HTTP_DEFAULT_PORT;
             }

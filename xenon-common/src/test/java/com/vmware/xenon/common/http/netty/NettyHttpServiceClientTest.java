@@ -40,7 +40,6 @@ import org.junit.After;
 import org.junit.AfterClass;
 import org.junit.Before;
 import org.junit.BeforeClass;
-import org.junit.Ignore;
 import org.junit.Test;
 
 import com.vmware.xenon.common.CommandLineArgumentParser;
@@ -112,6 +111,7 @@ public class NettyHttpServiceClientTest {
 
     @AfterClass
     public static void tearDown() {
+        HOST.log("final teardown");
         HOST.tearDown();
     }
 
@@ -119,11 +119,13 @@ public class NettyHttpServiceClientTest {
     public void setUp() {
         CommandLineArgumentParser.parseFromProperties(this);
         this.host = HOST;
+        this.host.log("restoring operation timeout");
         this.host.setOperationTimeOutMicros(TimeUnit.SECONDS.toMicros(this.operationTimeout));
     }
 
     @After
     public void cleanUp() {
+        this.host.log("cleanup");
         this.host.getClient().setConnectionLimitPerHost(NettyHttpServiceClient.DEFAULT_CONNECTIONS_PER_HOST);
     }
 
@@ -285,7 +287,6 @@ public class NettyHttpServiceClientTest {
         doRemotePatchWithTimeout(false);
     }
 
-    @Ignore
     @Test
     public void sendRequestWithCallbackWithTimeout() throws Throwable {
         doRemotePatchWithTimeout(true);
@@ -1084,7 +1085,7 @@ public class NettyHttpServiceClientTest {
                 this.host.failIteration(ex);
                 return;
             }
-            if (!ex.getMessage().contains("Missing host")) {
+            if (!ex.getMessage().contains("host")) {
                 this.host.failIteration(new IllegalStateException("Unexpected exception"));
                 return;
             }
@@ -1092,8 +1093,9 @@ public class NettyHttpServiceClientTest {
         });
 
         this.host.toggleNegativeTestMode(true);
-        this.host.getClient().send(noUriOp);
-        this.host.getClient().send(noHostOp);
+        ServiceClient cl = this.host.getClient();
+        cl.send(noUriOp);
+        cl.send(noHostOp);
         this.host.testWait();
         this.host.toggleNegativeTestMode(false);
     }
