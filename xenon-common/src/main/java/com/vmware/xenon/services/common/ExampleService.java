@@ -38,7 +38,7 @@ public class ExampleService extends StatefulService {
      * This method is optional, {@code FactoryService.create} can be used directly
      */
     public static FactoryService createFactory() {
-        return FactoryService.createIdempotent(ExampleService.class);
+        return FactoryService.create(ExampleService.class);
     }
 
     public static class ExampleServiceState extends ServiceDocument {

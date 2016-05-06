@@ -2096,8 +2096,9 @@ public class ServiceHost implements ServiceRequestSender {
                     && parent.hasOption(ServiceOption.IDEMPOTENT_POST);
         }
 
-        if (!isIdempotent) {
-            // service already attached, and not idempotent, fail request
+        if (!isIdempotent && !post.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_SYNCH)) {
+            // service already attached, not idempotent, and this is not a synchronization attempt.
+            // We fail request with conflict
             post.setStatusCode(Operation.STATUS_CODE_CONFLICT)
                     .fail(new ServiceAlreadyStartedException(servicePath,
                             existing.getProcessingStage()));

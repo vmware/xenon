@@ -375,6 +375,9 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
             }, ExampleService.FACTORY_LINK);
             this.host.testWait();
 
+            this.host.toggleServiceOptions(UriUtils.buildUri(h, ExampleService.FACTORY_LINK),
+                    EnumSet.of(ServiceOption.IDEMPOTENT_POST), null);
+
             ServiceHostState initialState = h.getState();
 
             ExampleServiceState body = new ExampleServiceState();
@@ -443,6 +446,9 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
             URI exampleFactoryUri = UriUtils.buildUri(h, ExampleService.FACTORY_LINK);
             URI exampleFactoryStatsUri = UriUtils.buildStatsUri(exampleFactoryUri);
             this.host.waitForServiceAvailable(exampleFactoryUri);
+
+            this.host.toggleServiceOptions(exampleFactoryUri,
+                    EnumSet.of(ServiceOption.IDEMPOTENT_POST), null);
 
             String statName = Service.STAT_NAME_NODE_GROUP_CHANGE_MAINTENANCE_COUNT;
             this.host.waitFor("node group change stat missing", () -> {

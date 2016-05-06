@@ -1328,16 +1328,7 @@ public class TestNodeGroupService {
                     this.serviceCount);
             totalOperations += this.serviceCount;
 
-            // verify IDEMPOTENT POST conversion to PUT, with replication
-            TestContext ctx = this.host.testCreate(childStates.size());
-            for (Entry<String, ExampleServiceState> entry : childStates.entrySet()) {
-                Operation post = Operation
-                        .createPost(this.host.getPeerServiceUri(ExampleService.FACTORY_LINK))
-                        .setBody(entry.getValue())
-                        .setCompletion(ctx.getCompletion());
-                this.host.send(post);
-            }
-            ctx.await();
+            verifyReplicatedIdempotentPost(childStates);
 
             totalOperations += this.serviceCount;
 
@@ -1408,6 +1399,27 @@ public class TestNodeGroupService {
         } while (new Date().before(expiration) && this.totalOperationLimit > totalOperations);
 
         this.host.doNodeGroupStatsVerification(this.host.getNodeGroupMap());
+    }
+
+    private void verifyReplicatedIdempotentPost(Map<String, ExampleServiceState> childStates)
+            throws Throwable {
+        // verify IDEMPOTENT POST conversion to PUT, with replication
+        // Since the factory is not idempotent by default, enable the option dynamically
+        Map<URI, URI> exampleFactoryUris = this.host
+                .getNodeGroupToFactoryMap(ExampleService.FACTORY_LINK);
+        for (URI factoryUri : exampleFactoryUris.values()) {
+            this.host.toggleServiceOptions(factoryUri,
+                    EnumSet.of(ServiceOption.IDEMPOTENT_POST), null);
+        }
+        TestContext ctx = this.host.testCreate(childStates.size());
+        for (Entry<String, ExampleServiceState> entry : childStates.entrySet()) {
+            Operation post = Operation
+                    .createPost(this.host.getPeerServiceUri(ExampleService.FACTORY_LINK))
+                    .setBody(entry.getValue())
+                    .setCompletion(ctx.getCompletion());
+            this.host.send(post);
+        }
+        ctx.await();
     }
 
     private void waitForReplicationFactoryConvergence() throws Throwable {
