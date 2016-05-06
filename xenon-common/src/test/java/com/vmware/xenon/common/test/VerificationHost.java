@@ -1172,7 +1172,9 @@ public class VerificationHost extends ExampleServiceHost {
         final boolean isFailureExpectedFinal = isFailureExpected;
 
         for (Service s : services) {
-            updateOp.setConnectionTag(this.connectionTag);
+            if (properties.contains(TestProperty.FORCE_REMOTE)) {
+                updateOp.setConnectionTag(this.connectionTag);
+            }
 
             long[] expectedVersion = new long[1];
             if (s.hasOption(ServiceOption.STRICT_UPDATE_CHECKING)) {

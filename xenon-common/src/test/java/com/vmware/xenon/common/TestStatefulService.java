@@ -296,9 +296,9 @@ public class TestStatefulService extends BasicReusableHostTestCase {
         }
         this.host.testWait();
 
-        this.host.doPutPerService(c, props, services);
-        this.host.doPutPerService(c, props, services);
-        this.host.doPutPerService(c, props, services);
+        for (int i = 0; i < 5; i++) {
+            this.host.doPutPerService(c, props, services);
+        }
     }
 
     @Test
