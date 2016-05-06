@@ -469,6 +469,7 @@ public class ServiceHost implements ServiceRequestSender {
     private ConcurrentSkipListMap<String, Class<? extends Service>> privilegedServiceTypes = new ConcurrentSkipListMap<>();
 
     private final Set<String> pendingServiceDeletions = Collections.synchronizedSet(new HashSet<String>());
+    private final Map<String, Service> pendingPauseServices = new ConcurrentSkipListMap<>();
 
     private ServiceHostState state;
     private Service documentIndexService;
@@ -485,17 +486,13 @@ public class ServiceHost implements ServiceRequestSender {
     private URI transactionServiceUri;
     private ScheduledFuture<?> maintenanceTask;
 
-    private final ConcurrentSkipListMap<String, ServiceDocument> cachedServiceStates = new ConcurrentSkipListMap<>();
-
-    private ConcurrentSkipListSet<String> serviceFactoriesUnderMemoryPressure = new ConcurrentSkipListSet<>();
-    private ConcurrentSkipListMap<String, Service> pendingPauseServices = new ConcurrentSkipListMap<>();
-
     private final ServiceSynchronizationTracker serviceSynchTracker = ServiceSynchronizationTracker
             .create(this);
     private final ServiceMaintenanceTracker serviceMaintTracker = ServiceMaintenanceTracker
             .create(this);
-    private final OperationTracker operationTracker = OperationTracker
-            .create(this);
+    private final ServiceResourceTracker serviceResourceTracker = ServiceResourceTracker
+            .create(this, this.attachedServices, this.pendingPauseServices);
+    private final OperationTracker operationTracker = OperationTracker.create(this);
 
     private String logPrefix;
     private URI cachedUri;
@@ -1875,7 +1872,7 @@ public class ServiceHost implements ServiceRequestSender {
         return false;
     }
 
-    private boolean isServiceStarting(Service service, String path) {
+    boolean isServiceStarting(Service service, String path) {
         if (service != null) {
             return isServiceStarting(service.getProcessingStage());
         }
@@ -2435,7 +2432,7 @@ public class ServiceHost implements ServiceRequestSender {
     }
 
     void loadServiceState(Service s, Operation op) {
-        ServiceDocument state = getCachedServiceState(s.getSelfLink());
+        ServiceDocument state = this.serviceResourceTracker.getCachedServiceState(s.getSelfLink());
 
         // Clone state if it might change while processing
         if (state != null && !s.hasOption(ServiceOption.CONCURRENT_UPDATE_HANDLING)) {
@@ -2580,14 +2577,7 @@ public class ServiceHost implements ServiceRequestSender {
             return;
         }
 
-
-        synchronized (s.getSelfLink()) {
-            ServiceDocument cachedState = this.cachedServiceStates.put(s.getSelfLink(), st);
-            if (cachedState != null && cachedState.documentVersion > st.documentVersion) {
-                // restore cached state, discarding update, if the existing version is higher
-                this.cachedServiceStates.put(s.getSelfLink(), cachedState);
-            }
-        }
+        this.serviceResourceTracker.updateCachedServiceState(s, st);
     }
 
     private void handleLoadInitialStateCompletion(Service s, Operation serviceStartPost,
@@ -2738,8 +2728,6 @@ public class ServiceHost implements ServiceRequestSender {
 
             this.serviceSynchTracker.removeService(path);
             this.pendingPauseServices.remove(path);
-            clearCachedServiceState(path);
-
             this.state.serviceCount--;
         }
 
@@ -2978,7 +2966,7 @@ public class ServiceHost implements ServiceRequestSender {
         return null;
     }
 
-    private void failRequestServiceNotFound(Operation inboundOp) {
+    void failRequestServiceNotFound(Operation inboundOp) {
         failRequest(inboundOp, Operation.STATUS_CODE_NOT_FOUND, new ServiceNotFoundException());
     }
 
@@ -3168,7 +3156,7 @@ public class ServiceHost implements ServiceRequestSender {
             return;
         }
 
-        if (checkAndResumePausedService(op)) {
+        if (this.serviceResourceTracker.checkAndResumePausedService(op)) {
             return;
         }
 
@@ -3272,7 +3260,7 @@ public class ServiceHost implements ServiceRequestSender {
                 if (!waitForService) {
                     // the service might be paused (stopped due to memory pressure)
                     if (factoryService.hasOption(ServiceOption.PERSISTENCE)) {
-                        if (checkAndResumePausedService(inboundOp)) {
+                        if (this.serviceResourceTracker.checkAndResumePausedService(inboundOp)) {
                             return true;
                         }
                     }
@@ -3340,7 +3328,7 @@ public class ServiceHost implements ServiceRequestSender {
             }
 
             if (stage == ProcessingStage.PAUSED) {
-                if (checkAndResumePausedService(op)) {
+                if (this.serviceResourceTracker.checkAndResumePausedService(op)) {
                     processRequest = false;
                     return;
                 }
@@ -3541,10 +3529,9 @@ public class ServiceHost implements ServiceRequestSender {
             this.state.isStopping = true;
             servicesToClose = new HashSet<Service>(
                     this.attachedServices.values());
-
-            this.pendingPauseServices.clear();
         }
 
+        this.serviceResourceTracker.close();
         this.serviceMaintTracker.close();
         this.operationTracker.close();
         this.serviceSynchTracker.close();
@@ -4193,7 +4180,7 @@ public class ServiceHost implements ServiceRequestSender {
                 stage = MaintenanceStage.MEMORY;
                 break;
             case MEMORY:
-                applyMemoryLimit(deadline);
+                this.serviceResourceTracker.performMaintenance(now, deadline);
                 stage = MaintenanceStage.IO;
                 break;
             case IO:
@@ -4289,203 +4276,8 @@ public class ServiceHost implements ServiceRequestSender {
     }
 
 
-    /**
-     * Estimates how much memory is used by host caches, queues and based on the memory limits
-     * takes appropriate action: clears cached service state, temporarily stops services
-     */
-    private void applyMemoryLimit(long deadlineMicros) {
 
-        long memoryLimitLowMB = getServiceMemoryLimitMB(ROOT_PATH,
-                MemoryLimitType.HIGH_WATERMARK);
-
-        long memoryInUseMB = this.state.serviceCount * DEFAULT_SERVICE_INSTANCE_COST_BYTES;
-        memoryInUseMB /= (1024 * 1024);
-
-        boolean shouldPause = memoryLimitLowMB <= memoryInUseMB;
-
-        int pauseServiceCount = 0;
-        for (Service service : this.attachedServices.values()) {
-            // skip factory services, they do not have state, and should not be paused
-            if (service.hasOption(ServiceOption.FACTORY)) {
-                continue;
-            }
-
-            if (!isServiceIndexed(service)) {
-                // we do not clear cache or stop in memory services
-                continue;
-            }
-
-            ServiceDocument s = this.cachedServiceStates.get(service.getSelfLink());
-
-            if (s != null) {
-                if ((this.state.serviceCacheClearDelayMicros + s.documentUpdateTimeMicros) < Utils
-                        .getNowMicrosUtc()) {
-                    clearCachedServiceState(service.getSelfLink());
-                }
-
-                if (this.state.lastMaintenanceTimeUtcMicros
-                        - s.documentUpdateTimeMicros < service
-                        .getMaintenanceIntervalMicros() * 2) {
-                    // Skip pause for services that have been active within a maintenance interval
-                    continue;
-                }
-            }
-
-            // we still want to clear a cache for periodic services, so check here, after the cache clear
-            if (service.hasOption(ServiceOption.PERIODIC_MAINTENANCE)) {
-                // Services with periodic maintenance stay resident, for now. We might stop them in the future
-                // if they have long periods
-                continue;
-            }
-
-            if (!shouldPause) {
-                continue;
-            }
-
-            if (!service.hasOption(ServiceOption.FACTORY_ITEM)) {
-                continue;
-            }
-
-            if (isServiceStarting(service, service.getSelfLink())) {
-                continue;
-            }
-
-            Service existing = this.pendingPauseServices.put(service.getSelfLink(), service);
-            if (existing == null) {
-                pauseServiceCount++;
-            }
-
-            String factoryPath = UriUtils.getParentPath(service.getSelfLink());
-            if (factoryPath != null) {
-                this.serviceFactoriesUnderMemoryPressure.add(factoryPath);
-            }
-
-            if (deadlineMicros < Utils.getNowMicrosUtc()) {
-                break;
-            }
-        }
-
-        if (pauseServiceCount == 0) {
-            return;
-        }
-
-        // Make sure our service count matches the list contents, they could drift. Using size()
-        // on a concurrent data structure is costly so we do this only when pausing services
-        synchronized (this.state) {
-            this.state.serviceCount = this.attachedServices.size();
-        }
-
-        pauseServices();
-    }
-
-    boolean checkAndResumePausedService(Operation inboundOp) {
-        String key = inboundOp.getUri().getPath();
-        if (isHelperServicePath(key)) {
-            key = UriUtils.getParentPath(key);
-        }
-
-        String factoryPath = UriUtils.getParentPath(key);
-        Service factoryService = null;
-        if (factoryPath != null) {
-            factoryService = this.findService(factoryPath);
-        }
-        if (factoryService != null
-                && !this.serviceFactoriesUnderMemoryPressure.contains(factoryPath)) {
-            if (!factoryService.hasOption(ServiceOption.ON_DEMAND_LOAD)) {
-                // minor optimization: if the service factory has never experienced a pause for one of the child
-                // services, do not bother querying the blob index. A node might never come under memory
-                // pressure so this lookup avoids the index query.
-                return false;
-            }
-        }
-
-        String path = key;
-
-        if (factoryService == null) {
-            failRequestServiceNotFound(inboundOp);
-            return true;
-        }
-
-        if (isStopping()
-                && inboundOp.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_NO_INDEX_UPDATE)
-                && inboundOp.getAction() == Action.DELETE) {
-            // do not attempt to resume services if they are paused or in the process of being paused
-            inboundOp.complete();
-            return true;
-        }
-
-        if (inboundOp.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_INDEX_CHECK)) {
-            Service service = this.pendingPauseServices.remove(path);
-            if (service != null) {
-                // Abort pause
-                log(Level.INFO, "Aborting service pause for %s", path);
-                resumeService(path, service);
-                return false;
-            }
-
-            if (inboundOp.getExpirationMicrosUtc() < Utils.getNowMicrosUtc()) {
-                log(Level.WARNING, "Request to %s has expired", path);
-                return false;
-            }
-
-            if (isStopping()) {
-                return false;
-            }
-
-            service = this.attachedServices.get(path);
-            if (service != null && service.getProcessingStage() == ProcessingStage.PAUSED) {
-                log(Level.INFO, "Service attached, but paused, aborting pause for %s", path);
-                resumeService(path, service);
-                return false;
-            }
-
-            long pendingPauseCount = this.pendingPauseServices.size();
-            if (pendingPauseCount == 0) {
-                return checkAndOnDemandStartService(inboundOp, factoryService);
-            }
-
-            // there is a small window between pausing a service, and the service being indexed in the
-            // blob store, where an operation coming in might find the service missing from the blob index and from
-            // attachedServices map.
-            schedule(
-                    () -> {
-                        log(Level.INFO,
-                                "Retrying index lookup for %s, pending pause: %d",
-                                path, pendingPauseCount);
-                        checkAndResumePausedService(inboundOp);
-                    }, 1, TimeUnit.SECONDS);
-            return true;
-        }
-
-        inboundOp.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_INDEX_CHECK);
-
-        Operation query = ServiceContextIndexService
-                .createGet(this, path)
-                .setCompletion(
-                        (o, e) -> {
-                            if (e != null) {
-                                log(Level.WARNING,
-                                        "Failure checking if service paused: " + Utils.toString(e));
-                                handleRequest(null, inboundOp);
-                                return;
-                            }
-
-                            if (!o.hasBody()) {
-                                // service is not paused
-                                handleRequest(null, inboundOp);
-                                return;
-                            }
-
-                            Service resumedService = (Service) o.getBodyRaw();
-                            resumeService(path, resumedService);
-                            handleRequest(null, inboundOp);
-                        });
-
-        sendRequest(query.setReferer(getUri()));
-        return true;
-    }
-
-    private boolean checkAndOnDemandStartService(Operation inboundOp, Service parentService) {
+    boolean checkAndOnDemandStartService(Operation inboundOp, Service parentService) {
         String link = inboundOp.getUri().getPath();
         if (!parentService.hasOption(ServiceOption.FACTORY)) {
             failRequestServiceNotFound(inboundOp);
@@ -4533,98 +4325,6 @@ public class ServiceHost implements ServiceRequestSender {
         // service creation
         this.startService(onDemandPost, childService);
         return true;
-    }
-
-    private void resumeService(String path, Service resumedService) {
-        if (isStopping()) {
-            return;
-        }
-        resumedService.setHost(this);
-        resumedService.setProcessingStage(ProcessingStage.AVAILABLE);
-        synchronized (this.state) {
-            if (!this.attachedServices.containsKey(path)) {
-                this.attachedServices.put(path, resumedService);
-                this.state.serviceCount++;
-            }
-        }
-    }
-
-    private void pauseServices() {
-        if (isStopping()) {
-            return;
-        }
-
-        int servicePauseCount = 0;
-        for (Service s : this.pendingPauseServices.values()) {
-            if (s.getProcessingStage() != ProcessingStage.AVAILABLE) {
-                continue;
-            }
-
-            try {
-                s.setProcessingStage(ProcessingStage.PAUSED);
-            } catch (Throwable e) {
-                log(Level.INFO, "Failure setting stage to %s for %s: %s", ProcessingStage.PAUSED,
-                        s.getSelfLink(), e.getMessage());
-                continue;
-            }
-            servicePauseCount++;
-            String path = s.getSelfLink();
-
-            // ask object index to store service object. It should be tiny since services
-            // should hold no instanced fields. We avoid service stop/start by doing this
-            sendRequest(ServiceContextIndexService.createPost(this, path, s)
-                    .setReferer(getUri()).setCompletion((o, e) -> {
-                        if (e != null && !this.isStopping()) {
-                            log(Level.WARNING, "Failure indexing service for pause: %s",
-                                    Utils.toString(e));
-                            resumeService(path, s);
-                            return;
-                        }
-
-                        Service serviceEntry = this.pendingPauseServices.remove(path);
-                        if (serviceEntry == null && !isStopping()) {
-                            log(Level.INFO, "aborting pause for %s", path);
-                            resumeService(path, s);
-                            // this means service received a request and is active. Its OK, the index will have
-                            // a stale entry that will get deleted next time we query for this self link.
-                            processPendingServiceAvailableOperations(s, null);
-                            return;
-                        }
-
-                        synchronized (this.state) {
-                            if (null != this.attachedServices.remove(path)) {
-                                this.state.serviceCount--;
-                            }
-                        }
-                    }));
-        }
-        log(Level.INFO, "Paused %d services, attached: %d", servicePauseCount,
-                this.state.serviceCount);
-    }
-
-    private ServiceDocument getCachedServiceState(String servicePath) {
-        ServiceDocument state = this.cachedServiceStates.get(servicePath);
-        if (state == null) {
-            return null;
-        }
-
-        // Check if this is expired and, if so, remove it from cache.
-        if (state.documentExpirationTimeMicros > 0 &&
-                state.documentExpirationTimeMicros < Utils.getNowMicrosUtc()) {
-            clearCachedServiceState(servicePath);
-            return null;
-        }
-
-        return state;
-    }
-
-    private void clearCachedServiceState(String servicePath) {
-        this.cachedServiceStates.remove(servicePath);
-        Service s = this.attachedServices.get(servicePath);
-        if (s == null) {
-            return;
-        }
-        s.adjustStat(Service.STAT_NAME_CACHE_CLEAR_COUNT, 1);
     }
 
     public ServiceHost setOperationTimeOutMicros(long timeoutMicros) {
@@ -4724,7 +4424,7 @@ public class ServiceHost implements ServiceRequestSender {
                         unmarkAsPendingDelete(s);
                     }
                     if (e != null) {
-                        clearCachedServiceState(s.getSelfLink());
+                        this.serviceResourceTracker.clearCachedServiceState(s.getSelfLink());
                         op.fail(e);
                         return;
                     }
