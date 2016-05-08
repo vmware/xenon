@@ -31,6 +31,10 @@ import com.vmware.xenon.services.common.NodeState.NodeOption;
 
 public class NodeSelectorReplicationService extends StatelessService {
 
+    private static final String PRAGMA_DIRECTIVES = Operation.PRAGMA_DIRECTIVE_REPLICATED
+            + ";"
+            + Operation.PRAGMA_DIRECTIVE_USE_HTTP2;
+
     private Service parent;
 
     public NodeSelectorReplicationService(Service parent) {
@@ -155,21 +159,22 @@ public class NodeSelectorReplicationService extends StatelessService {
                 .setCompletion(c)
                 .setRetryCount(1)
                 .setExpiration(outboundOp.getExpirationMicrosUtc())
-                .transferRequestHeadersFrom(outboundOp)
-                .removePragmaDirective(Operation.PRAGMA_DIRECTIVE_FORWARDED)
-                .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_REPLICATED)
-                .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_USE_HTTP2)
-                .setConnectionTag(ServiceClient.CONNECTION_TAG_REPLICATION)
                 .setReferer(outboundOp.getReferer());
 
-        update.removeRequestCallbackLocation();
+        // Only use replication tag on HTTP + HTTP/2. On HTTPS, we want to use the default HTTP1.1
+        // connection tag, which allows for a lot more concurrent connections. This will change
+        // once we have TLS/APLN support for HTTP/2
+        if (selfNode.groupReference.getScheme().equals(UriUtils.HTTP_SCHEME)) {
+            update.setConnectionTag(ServiceClient.CONNECTION_TAG_REPLICATION);
+        }
 
+        update.getRequestHeaders().put(Operation.PRAGMA_HEADER, PRAGMA_DIRECTIVES);
         if (update.getCookies() != null) {
             update.getCookies().clear();
         }
 
         ServiceClient cl = getHost().getClient();
-        String selfId = getHost().getId();
+        String selfId = selfNode.id;
 
         // trigger completion once, for self node, since its part of our accounting
         c.handle(null, null);
