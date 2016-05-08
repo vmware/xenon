@@ -20,7 +20,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
-import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -131,7 +130,7 @@ public class NodeGroupService extends StatefulService {
 
     public static class NodeGroupState extends ServiceDocument {
         public NodeGroupConfig config;
-        public Map<String, NodeState> nodes = new ConcurrentSkipListMap<>();
+        public Map<String, NodeState> nodes = new HashMap<>();
         public long membershipUpdateTimeMicros;
     }
 
@@ -187,6 +186,12 @@ public class NodeGroupService extends StatefulService {
         }
 
         NodeGroupState localState = getState(patch);
+
+        if (localState == null || localState.nodes == null) {
+            logWarning("Invalid local state");
+            patch.fail(Operation.STATUS_CODE_FAILURE_THRESHOLD);
+            return;
+        }
 
         if (body.config == null && body.nodes.isEmpty()) {
             UpdateQuorumRequest bd = patch.getBody(UpdateQuorumRequest.class);
@@ -313,9 +318,16 @@ public class NodeGroupService extends StatefulService {
             return;
         }
 
+        NodeGroupState localState = getState(post);
+        if (localState == null || localState.nodes == null) {
+            logWarning("invalid local state");
+            post.fail(Operation.STATUS_CODE_BAD_REQUEST);
+            return;
+        }
+
         CheckConvergenceRequest cr = post.getBody(CheckConvergenceRequest.class);
         if (CheckConvergenceRequest.KIND.equals(cr.kind)) {
-            handleCheckConvergencePost(post, cr);
+            handleCheckConvergencePost(post, localState, cr);
             return;
         }
 
@@ -348,14 +360,12 @@ public class NodeGroupService extends StatefulService {
             body.documentSelfLink = UriUtils.buildUriPath(getSelfLink(), body.id);
         }
 
-        NodeGroupState localState = getState(post);
         localState.nodes.put(body.id, body);
-
         post.setBody(localState).complete();
     }
 
-    private void handleCheckConvergencePost(Operation post, CheckConvergenceRequest body) {
-        NodeGroupState localState = getState(post);
+    private void handleCheckConvergencePost(Operation post, NodeGroupState localState,
+            CheckConvergenceRequest body) {
         CheckConvergenceResponse rsp = new CheckConvergenceResponse();
         rsp.isConverged = localState.membershipUpdateTimeMicros == body.membershipUpdateTimeMicros;
         post.setBody(rsp).complete();
