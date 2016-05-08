@@ -208,6 +208,12 @@ public class TestNodeGroupService {
             this.host.setPort(ServiceHost.PORT_VALUE_LISTENER_DISABLED);
         }
 
+        if (this.testDurationSeconds > 0) {
+            // for long running tests use the default interval to match production code
+            this.host.maintenanceIntervalMillis = TimeUnit.MICROSECONDS.toMillis(
+                    ServiceHostState.DEFAULT_MAINTENANCE_INTERVAL_MICROS);
+        }
+
         this.host.start();
 
         if (this.host.isAuthorizationEnabled()) {
@@ -1328,7 +1334,9 @@ public class TestNodeGroupService {
                     this.serviceCount);
             totalOperations += this.serviceCount;
 
-            verifyReplicatedIdempotentPost(childStates);
+            if (this.testDurationSeconds == 0) {
+                verifyReplicatedIdempotentPost(childStates);
+            }
 
             totalOperations += this.serviceCount;
 
@@ -2660,9 +2668,6 @@ public class TestNodeGroupService {
         this.host.log("%s: Starting replication", this.host.buildTestNameFromStack());
 
         String factoryPath = this.replicationTargetFactoryLink;
-        long[] startAndEndTime = new long[2];
-
-        startAndEndTime[0] = System.nanoTime();
         Map<String, ExampleServiceState> serviceStates = new HashMap<>();
         this.host.testStart(childCount);
         for (int i = 0; i < childCount; i++) {
@@ -2700,6 +2705,8 @@ public class TestNodeGroupService {
         }
 
         this.host.testWait();
+
+        this.host.logThroughput();
 
         return waitForReplicatedFactoryChildServiceConvergence(serviceStates,
                 this.exampleStateConvergenceChecker,

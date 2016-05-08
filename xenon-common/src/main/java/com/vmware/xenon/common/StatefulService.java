@@ -62,6 +62,7 @@ public class StatefulService implements Service {
         public String nodeSelectorLink = ServiceUriPaths.DEFAULT_NODE_SELECTOR;
 
         public Set<String> txCoordinatorLinks;
+        public long lastCommitTimeMicros;
     }
 
     private final RuntimeContext context = new RuntimeContext();
@@ -888,10 +889,8 @@ public class StatefulService implements Service {
         // will be behind. Here we re-issue the current state (committed) when we notice the
         // pending operation queue is empty
         if (op.getAction() != Action.DELETE) {
-            synchronized (this.context) {
-                if (!this.context.operationQueue.isEmpty()) {
-                    return;
-                }
+            if (!this.context.operationQueue.isEmpty()) {
+                return;
             }
         } else {
             if (op.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_NO_INDEX_UPDATE)) {
@@ -901,11 +900,19 @@ public class StatefulService implements Service {
             }
         }
 
-        if (this.getHost().isStopping()) {
+        ServiceDocument latestState = op.getLinkedState();
+        long delta = latestState.documentUpdateTimeMicros - this.context.lastCommitTimeMicros;
+        if (delta < getHost().getMaintenanceIntervalMicros()) {
             return;
         }
 
-        ServiceDocument latestState = op.getLinkedState();
+        if (latestState.documentVersion < this.context.version
+                || latestState.documentEpoch < this.context.epoch) {
+            return;
+        }
+
+        this.context.lastCommitTimeMicros = latestState.documentUpdateTimeMicros;
+
         URI u = getUri();
         Operation commitOp = Operation
                 .createPut(u)

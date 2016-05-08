@@ -81,6 +81,13 @@ class ServiceResourceTracker {
             return null;
         }
 
+        if (state.documentExpirationTimeMicros > 0
+                && state.documentExpirationTimeMicros < state.documentUpdateTimeMicros) {
+            // state expired, clear from cache
+            clearCachedServiceState(servicePath);
+            return null;
+        }
+
         return state;
     }
 
