@@ -347,6 +347,7 @@ public class Operation implements Cloneable {
     public static final String LOCATION_HEADER = "location";
     public static final String USER_AGENT_HEADER = "user-agent";
     public static final String ACCEPT_HEADER = "accept";
+    public static final String AUTHORIZATION_HEADER = "Authorization";
 
     // HTTP2 Header definitions
     public static final String STREAM_ID_HEADER = "x-http2-stream-id";
