@@ -829,7 +829,7 @@ public class TestNodeGroupService {
         int hostRestartCount = 2;
 
         Map<String, ExampleServiceState> childStates = doExampleFactoryPostReplicationTest(
-                this.serviceCount, null);
+                this.serviceCount, null, null);
 
         updateExampleServiceOptions(childStates);
 
@@ -1313,6 +1313,9 @@ public class TestNodeGroupService {
                     + TimeUnit.SECONDS.toMillis(this.testDurationSeconds));
         }
 
+        Map<Action, Long> elapsedTimePerAction = new HashMap<>();
+        Map<Action, Long> countPerAction = new HashMap<>();
+
         long totalOperations = 0;
         do {
             if (this.host == null) {
@@ -1328,10 +1331,11 @@ public class TestNodeGroupService {
                         this.host.getPeerServiceUri(this.replicationTargetFactoryLink));
 
                 waitForReplicationFactoryConvergence();
+
             }
 
             Map<String, ExampleServiceState> childStates = doExampleFactoryPostReplicationTest(
-                    this.serviceCount);
+                    this.serviceCount, countPerAction, elapsedTimePerAction);
             totalOperations += this.serviceCount;
 
             if (this.testDurationSeconds == 0) {
@@ -1354,24 +1358,29 @@ public class TestNodeGroupService {
                 doMissingServiceUpdatesNoQueuing();
             }
 
+            long opCount = this.serviceCount * this.updateCount;
             childStates = doStateUpdateReplicationTest(Action.PATCH, this.serviceCount,
                     this.updateCount,
                     expectedVersion,
                     this.exampleStateUpdateBodySetter,
                     this.exampleStateConvergenceChecker,
-                    childStates);
+                    childStates,
+                    countPerAction,
+                    elapsedTimePerAction);
             expectedVersion += this.updateCount;
 
-            totalOperations += this.serviceCount * this.updateCount;
+            totalOperations += opCount;
 
             childStates = doStateUpdateReplicationTest(Action.PUT, this.serviceCount,
                     this.updateCount,
                     expectedVersion,
                     this.exampleStateUpdateBodySetter,
                     this.exampleStateConvergenceChecker,
-                    childStates);
+                    childStates,
+                    countPerAction,
+                    elapsedTimePerAction);
 
-            totalOperations += this.serviceCount * this.updateCount;
+            totalOperations += opCount;
 
             Date queryExp = this.host.getTestExpiration();
             if (expiration.after(queryExp)) {
@@ -1398,15 +1407,58 @@ public class TestNodeGroupService {
                     expectedVersion,
                     this.exampleStateUpdateBodySetter,
                     this.exampleStateConvergenceChecker,
-                    childStates);
+                    childStates,
+                    countPerAction,
+                    elapsedTimePerAction);
 
-            totalOperations += this.serviceCount * this.updateCount;
+            totalOperations += this.serviceCount;
 
             this.host.log("Total operations: %d", totalOperations);
 
         } while (new Date().before(expiration) && this.totalOperationLimit > totalOperations);
 
+        logPerActionThroughput(elapsedTimePerAction, countPerAction);
+
         this.host.doNodeGroupStatsVerification(this.host.getNodeGroupMap());
+    }
+
+    private void logPerActionThroughput(Map<Action, Long> elapsedTimePerAction,
+            Map<Action, Long> countPerAction) {
+        for (Action a : EnumSet.allOf(Action.class)) {
+            Long count = countPerAction.get(a);
+            if (count == null) {
+                continue;
+            }
+            Long elapsedMicros = elapsedTimePerAction.get(a);
+
+            double thpt = (count * 1.0) / (1.0 * elapsedMicros);
+            thpt *= 1000000;
+            this.host.log("Total ops for %s: %d, Throughput (ops/sec): %f", a, count, thpt);
+        }
+    }
+
+    private void updatePerfDataPerAction(Action a, Long startTime, Long opCount,
+            Map<Action, Long> countPerAction, Map<Action, Long> elapsedTime) {
+        if (opCount == null || countPerAction != null) {
+            countPerAction.merge(a, opCount, (e, n) -> {
+                if (e == null) {
+                    return n;
+                }
+                return e + n;
+            });
+        }
+
+        if (startTime == null || elapsedTime == null) {
+            return;
+        }
+
+        long delta = Utils.getNowMicrosUtc() - startTime;
+        elapsedTime.merge(a, delta, (e, n) -> {
+            if (e == null) {
+                return n;
+            }
+            return e + n;
+        });
     }
 
     private void verifyReplicatedIdempotentPost(Map<String, ExampleServiceState> childStates)
@@ -2555,6 +2607,18 @@ public class TestNodeGroupService {
             Function<T, Void> updateBodySetter,
             BiPredicate<T, T> convergenceChecker,
             Map<String, T> initialStatesPerChild) throws Throwable {
+        return doStateUpdateReplicationTest(action, childCount, updateCount, expectedVersion,
+                updateBodySetter, convergenceChecker, initialStatesPerChild, null, null);
+    }
+
+    private <T extends ServiceDocument> Map<String, T> doStateUpdateReplicationTest(Action action,
+            int childCount, int updateCount,
+            long expectedVersion,
+            Function<T, Void> updateBodySetter,
+            BiPredicate<T, T> convergenceChecker,
+            Map<String, T> initialStatesPerChild,
+            Map<Action, Long> countsPerAction,
+            Map<Action, Long> elapsedTimePerAction) throws Throwable {
         this.host.testStart("Replicated " + action, null, childCount * updateCount);
 
         if (!this.expectFailure) {
@@ -2566,6 +2630,7 @@ public class TestNodeGroupService {
             }
         }
 
+        long before = Utils.getNowMicrosUtc();
         AtomicInteger failedCount = new AtomicInteger();
         // issue an update to each child service and verify it was reflected
         // among
@@ -2617,6 +2682,9 @@ public class TestNodeGroupService {
         this.host.testWait();
         this.host.logThroughput();
 
+        updatePerfDataPerAction(action, before, (long) (childCount * updateCount), countsPerAction,
+                elapsedTimePerAction);
+
         if (this.expectFailure) {
             this.host.log("Failed count: %d", failedCount.get());
             if (failedCount.get() == 0) {
@@ -2644,13 +2712,18 @@ public class TestNodeGroupService {
                 expectedVersion);
     }
 
-    private Map<String, ExampleServiceState> doExampleFactoryPostReplicationTest(int childCount)
+    private Map<String, ExampleServiceState> doExampleFactoryPostReplicationTest(int childCount,
+            Map<Action, Long> countPerAction,
+            Map<Action, Long> elapsedTimePerAction)
             throws Throwable, TimeoutException {
-        return doExampleFactoryPostReplicationTest(childCount, null);
+        return doExampleFactoryPostReplicationTest(childCount, null,
+                countPerAction, elapsedTimePerAction);
     }
 
     private Map<String, ExampleServiceState> doExampleFactoryPostReplicationTest(int childCount,
-            EnumSet<TestProperty> props) throws Throwable {
+            EnumSet<TestProperty> props,
+            Map<Action, Long> countPerAction,
+            Map<Action, Long> elapsedTimePerAction) throws Throwable {
 
         if (props == null) {
             props = EnumSet.noneOf(TestProperty.class);
@@ -2669,6 +2742,7 @@ public class TestNodeGroupService {
 
         String factoryPath = this.replicationTargetFactoryLink;
         Map<String, ExampleServiceState> serviceStates = new HashMap<>();
+        long before = Utils.getNowMicrosUtc();
         this.host.testStart(childCount);
         for (int i = 0; i < childCount; i++) {
             URI factoryOnRandomPeerUri = this.host.getPeerServiceUri(factoryPath);
@@ -2705,6 +2779,8 @@ public class TestNodeGroupService {
         }
 
         this.host.testWait();
+        updatePerfDataPerAction(Action.POST, before, (long) this.serviceCount, countPerAction,
+                elapsedTimePerAction);
 
         this.host.logThroughput();
 
