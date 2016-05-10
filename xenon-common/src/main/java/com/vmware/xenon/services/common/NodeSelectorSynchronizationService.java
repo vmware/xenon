@@ -388,7 +388,7 @@ public class NodeSelectorSynchronizationService extends StatelessService {
     private void skipSynchOrStartServiceOnPeer(Operation peerOp, String link) {
         Operation checkGet = Operation.createGet(UriUtils.buildUri(peerOp.getUri(), link))
                 .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_NO_FORWARDING)
-                .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_USE_HTTP2)
+                .setConnectionSharing(true)
                 .setExpiration(Utils.getNowMicrosUtc() + TimeUnit.SECONDS.toMicros(2))
                 .setCompletion((o, e) -> {
                     if (e == null) {
@@ -412,7 +412,7 @@ public class NodeSelectorSynchronizationService extends StatelessService {
                 .setReferer(post.getReferer()).setExpiration(post.getExpirationMicrosUtc())
                 .setCompletion(c);
 
-        peerOp.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_USE_HTTP2);
+        peerOp.setConnectionSharing(true);
 
         // Mark it as replicated so the remote factories do not try to replicate it again
         peerOp.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_REPLICATED);

@@ -355,9 +355,11 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
         response.headers().setInt(HttpHeaderNames.CONTENT_LENGTH,
                 response.content().readableBytes());
 
-        // add any other custom headers associated with operation
-        for (Entry<String, String> nameValue : request.getResponseHeaders().entrySet()) {
-            response.headers().set(nameValue.getKey(), nameValue.getValue());
+        if (request.hasResponseHeaders()) {
+            // add any other custom headers associated with operation
+            for (Entry<String, String> nameValue : request.getResponseHeaders().entrySet()) {
+                response.headers().set(nameValue.getKey(), nameValue.getValue());
+            }
         }
 
         // Add auth token to response if authorization context

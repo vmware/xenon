@@ -133,7 +133,7 @@ public class NettyHttp2Test {
         this.host.testStart(1);
         Operation put = Operation.createPut(u)
                 .forceRemote()
-                .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_USE_HTTP2)
+                .setConnectionSharing(true)
                 .setBody(largeState)
                 .setCompletion((o, e) -> {
                     if (e != null) {
@@ -160,7 +160,7 @@ public class NettyHttp2Test {
         // Part 2: GET the large state and ensure it is correct.
         Operation get = Operation.createGet(u)
                 .forceRemote()
-                .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_USE_HTTP2)
+                .setConnectionSharing(true)
                 .setCompletion((o, e) -> {
                     if (e != null) {
                         this.host.failIteration(e);
@@ -232,7 +232,7 @@ public class NettyHttp2Test {
             Operation getRequest = Operation
                     .createGet(u)
                     .forceRemote()
-                    .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_USE_HTTP2)
+                    .setConnectionSharing(true)
                     .setCompletion((o, e) -> {
                         if (e != null) {
                             this.host.failIteration(e);
@@ -282,7 +282,7 @@ public class NettyHttp2Test {
             Operation request = Operation
                     .createPatch(service.getUri())
                     .forceRemote()
-                    .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_USE_HTTP2)
+                    .setConnectionSharing(true)
                     .setBody(body)
                     .setCompletion((o, e) -> {
                         if (e != null) {

@@ -973,7 +973,7 @@ public class VerificationHost extends ExampleServiceHost {
                 get.forceRemote();
             }
             if (props != null && props.contains(TestProperty.HTTP2)) {
-                get.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_USE_HTTP2);
+                get.setConnectionSharing(true);
             }
 
             if (props != null && props.contains(TestProperty.DISABLE_CONTEXT_ID_VALIDATION)) {
@@ -1106,7 +1106,7 @@ public class VerificationHost extends ExampleServiceHost {
         }
 
         if (properties.contains(TestProperty.HTTP2)) {
-            updateOp.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_USE_HTTP2);
+            updateOp.setConnectionSharing(true);
         }
 
         if (properties.contains(TestProperty.BINARY_PAYLOAD)) {
