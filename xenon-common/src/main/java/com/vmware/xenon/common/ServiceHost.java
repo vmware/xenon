@@ -3136,7 +3136,7 @@ public class ServiceHost implements ServiceRequestSender {
                     + this.state.operationTimeoutMicros / 10);
             forwardOp.setUri(SelectOwnerResponse.buildUriToOwner(rsp, op))
                     .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_FORWARDED)
-                    .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_USE_HTTP2);
+                    .setConnectionSharing(true);
 
             // Local host is not the owner, but is the entry host for a client. Forward to owner
             // node

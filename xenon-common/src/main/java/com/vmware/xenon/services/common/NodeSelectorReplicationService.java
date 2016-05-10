@@ -14,7 +14,6 @@
 package com.vmware.xenon.services.common;
 
 import java.net.URI;
-import java.util.concurrent.atomic.AtomicInteger;
 
 import com.vmware.xenon.common.NodeSelectorService.SelectAndForwardRequest;
 import com.vmware.xenon.common.NodeSelectorService.SelectOwnerResponse;
@@ -55,7 +54,6 @@ public class NodeSelectorReplicationService extends StatelessService {
 
         int memberCount = localState.nodes.size();
         NodeState selfNode = localState.nodes.get(getHost().getId());
-        AtomicInteger successCount = new AtomicInteger(0);
 
         if (req.serviceOptions.contains(ServiceOption.OWNER_SELECTION)
                 && selfNode.membershipQuorum > memberCount) {
@@ -68,7 +66,7 @@ public class NodeSelectorReplicationService extends StatelessService {
             return;
         }
 
-        AtomicInteger failureCount = new AtomicInteger();
+        int[] completionCounts = new int[2];
 
         // The eligible count can be less than the member count if the parent node selector has
         // a smaller replication factor than group size. We need to use the replication factor
@@ -115,13 +113,16 @@ public class NodeSelectorReplicationService extends StatelessService {
                     && o.getStatusCode() >= Operation.STATUS_CODE_FAILURE_THRESHOLD) {
                 e = new IllegalStateException("Request failed: " + o.toString());
             }
-            int sCount = successCount.get();
-            int fCount = failureCount.get();
-            if (e != null) {
-                logInfo("Replication to %s failed: %s", o.getUri(), e.toString());
-                fCount = failureCount.incrementAndGet();
-            } else {
-                sCount = successCount.incrementAndGet();
+            int sCount = completionCounts[0];
+            int fCount = completionCounts[1];
+            synchronized (outboundOp) {
+                if (e != null) {
+                    completionCounts[1] = completionCounts[1] + 1;
+                    fCount = completionCounts[1];
+                } else {
+                    completionCounts[0] = completionCounts[0] + 1;
+                    sCount = completionCounts[0];
+                }
             }
 
             if (sCount == successThresholdFinal) {
@@ -148,6 +149,8 @@ public class NodeSelectorReplicationService extends StatelessService {
         };
 
         String jsonBody = Utils.toJson(req.linkedState);
+        String path = outboundOp.getUri().getPath();
+        String query = outboundOp.getUri().getQuery();
 
         Operation update = Operation.createPost(null)
                 .setAction(outboundOp.getAction())
@@ -155,14 +158,17 @@ public class NodeSelectorReplicationService extends StatelessService {
                 .setCompletion(c)
                 .setRetryCount(1)
                 .setExpiration(outboundOp.getExpirationMicrosUtc())
-                .transferRequestHeadersFrom(outboundOp)
-                .removePragmaDirective(Operation.PRAGMA_DIRECTIVE_FORWARDED)
-                .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_REPLICATED)
-                .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_USE_HTTP2)
-                .setConnectionTag(ServiceClient.CONNECTION_TAG_REPLICATION)
                 .setReferer(outboundOp.getReferer());
 
-        update.removeRequestCallbackLocation();
+        update.setFromReplication(true);
+        update.setConnectionSharing(true);
+
+        // Only use replication tag on HTTP + HTTP/2. On HTTPS, we want to use the default HTTP1.1
+        // connection tag, which allows for a lot more concurrent connections. This will change
+        // once we have TLS/APLN support for HTTP/2
+        if (selfNode.groupReference.getScheme().equals(UriUtils.HTTP_SCHEME)) {
+            update.setConnectionTag(ServiceClient.CONNECTION_TAG_REPLICATION);
+        }
 
         if (update.getCookies() != null) {
             update.getCookies().clear();
@@ -174,30 +180,31 @@ public class NodeSelectorReplicationService extends StatelessService {
         // trigger completion once, for self node, since its part of our accounting
         c.handle(null, null);
 
-        rsp.selectedNodes.forEach((m) -> {
+        for (NodeState m : rsp.selectedNodes) {
             if (m.id.equals(selfId)) {
-                return;
+                continue;
             }
 
             if (m.options.contains(NodeOption.OBSERVER)) {
-                return;
+                continue;
             }
 
             try {
-                URI remotePeerService = new URI(m.groupReference.getScheme(),
-                        null, m.groupReference.getHost(), m.groupReference.getPort(),
-                        outboundOp.getUri().getPath(), outboundOp.getUri().getQuery(), null);
+                URI remoteHost = m.groupReference;
+                URI remotePeerService = new URI(remoteHost.getScheme(),
+                        null, remoteHost.getHost(), remoteHost.getPort(),
+                        path, query, null);
                 update.setUri(remotePeerService);
             } catch (Throwable e1) {
             }
 
             if (NodeState.isUnAvailable(m)) {
                 c.handle(update, new IllegalStateException("node is not available"));
-                return;
+                continue;
             }
 
             cl.send(update);
-        });
+        }
     }
 
     @Override
