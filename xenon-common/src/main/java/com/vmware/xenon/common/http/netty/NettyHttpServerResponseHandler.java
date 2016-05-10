@@ -124,6 +124,11 @@ public class NettyHttpServerResponseHandler extends SimpleChannelInboundHandler<
         for (Entry<String, String> h : headers) {
             String key = h.getKey();
             String value = h.getValue();
+            if (Operation.STREAM_ID_HEADER.equals(key)) {
+                // Prevent allocation of response headers in Operation and hide the stream ID
+                // header, since it is manipulated by the HTTP layer, not services
+                continue;
+            }
             request.addResponseHeader(key, value);
         }
     }

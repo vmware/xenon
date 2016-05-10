@@ -2,6 +2,9 @@
 
 ## 0.8.1-SNAPSHOT
 
+* Remove experimental PRAGMA_VALUE_HTTP2, it is now expressed
+  through OperationOption.CONNECTION_SHARING.
+
 * Add support for starting ServiceHost only with HTTPS.
   To disable HTTP listener, provide "--port=-1" to the startup parameters.
 

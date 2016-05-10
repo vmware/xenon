@@ -246,32 +246,6 @@ public class NettyHttpServiceClient implements ServiceClient {
         }
     }
 
-    private void addContextIdHeader(Operation op) {
-        if (op.getContextId() != null) {
-            op.addRequestHeader(Operation.CONTEXT_ID_HEADER, op.getContextId());
-        }
-    }
-
-    private void addTransactionIdHeader(Operation op) {
-        if (op.getTransactionId() != null) {
-            op.addRequestHeader(Operation.TRANSACTION_ID_HEADER, op.getTransactionId());
-        }
-    }
-
-    private void addAuthorizationContextHeader(Operation op) {
-        AuthorizationContext ctx = op.getAuthorizationContext();
-        if (ctx == null) {
-            return;
-        }
-
-        String token = ctx.getToken();
-        if (token == null) {
-            return;
-        }
-
-        op.addRequestHeader(Operation.REQUEST_AUTH_TOKEN_HEADER, token);
-    }
-
     private void addToPending(Operation op) {
         this.pendingRequests.put(op.getExpirationMicrosUtc(), op);
     }
@@ -281,9 +255,6 @@ public class NettyHttpServiceClient implements ServiceClient {
     }
 
     private void sendRemote(Operation op) {
-        addAuthorizationContextHeader(op);
-        addContextIdHeader(op);
-        addTransactionIdHeader(op);
         addToPending(op);
         connect(op);
     }
@@ -370,9 +341,14 @@ public class NettyHttpServiceClient implements ServiceClient {
             return;
         }
 
-        URI uri = this.httpProxy == null ? op.getUri() : this.httpProxy;
-        if (op.getUri().getHost().equals(ServiceHost.LOCAL_HOST)) {
-            uri = op.getUri();
+        String host = op.getUri().getHost();
+        String scheme = op.getUri().getScheme();
+        int port = op.getUri().getPort();
+
+        if (this.httpProxy != null && !ServiceHost.LOCAL_HOST.equals(host)) {
+            host = this.httpProxy.getHost();
+            port = this.httpProxy.getPort();
+            scheme = this.httpProxy.getScheme();
         }
 
         op.nestCompletion((o, e) -> {
@@ -389,18 +365,17 @@ public class NettyHttpServiceClient implements ServiceClient {
             doSendRequest(op);
         });
 
-        int port = uri.getPort();
         NettyChannelPool pool = this.channelPool;
 
-        if (op.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_USE_HTTP2)) {
+        if (op.isConnectionSharing()) {
             pool = this.http2ChannelPool;
         }
 
-        if (uri.getScheme().equals(UriUtils.HTTP_SCHEME)) {
+        if (scheme.equals(UriUtils.HTTP_SCHEME)) {
             if (port == -1) {
                 port = UriUtils.HTTP_DEFAULT_PORT;
             }
-        } else if (uri.getScheme().equals(UriUtils.HTTPS_SCHEME)) {
+        } else if (scheme.equals(UriUtils.HTTPS_SCHEME)) {
             if (port == -1) {
                 port = UriUtils.HTTPS_DEFAULT_PORT;
             }
@@ -422,7 +397,7 @@ public class NettyHttpServiceClient implements ServiceClient {
         }
 
         NettyChannelGroupKey key = new NettyChannelGroupKey(
-                op.getConnectionTag(), uri.getHost(), port, pool.isHttp2Only());
+                op.getConnectionTag(), host, port, pool.isHttp2Only());
         pool.connectOrReuse(key, op);
     }
 
@@ -445,7 +420,14 @@ public class NettyHttpServiceClient implements ServiceClient {
                 pathAndQuery = path;
             }
 
-            boolean useHttp2 = op.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_USE_HTTP2);
+            /**
+             * NOTE: Pay close attention to calls that access the operation request headers, since
+             * they will cause a memory allocation. We avoid the allocation by first checking if
+             * the operation has any custom headers to begin with, then we check for the specific
+             * header
+             */
+            boolean hasRequestHeaders = op.hasRequestHeaders();
+            boolean useHttp2 = op.isConnectionSharing();
             if (this.httpProxy != null || useHttp2) {
                 pathAndQuery = op.getUri().toString();
             }
@@ -462,12 +444,9 @@ public class NettyHttpServiceClient implements ServiceClient {
 
             if (useHttp2) {
                 // when operation is cloned, it may contain original streamId header. remove it.
-                op.getRequestHeaders().remove(Operation.STREAM_ID_HEADER);
-
-                // The fact that we use HTTP2 is an internal detail, not to share on the wire.
-                // We use a pragma instead of exposing an API (e.g. setHttp2()) on the Operation
-                // because it's an implementation detail not normally needed by clients.
-                op.removePragmaDirective(Operation.PRAGMA_DIRECTIVE_USE_HTTP2);
+                if (hasRequestHeaders) {
+                    op.getRequestHeaders().remove(Operation.STREAM_ID_HEADER);
+                }
 
                 // We set the operation so that once a streamId is assigned, we can record
                 // the correspondence between the streamId and operation: this will let us
@@ -475,8 +454,30 @@ public class NettyHttpServiceClient implements ServiceClient {
                 request.setOperation(op);
             }
 
-            for (Entry<String, String> nameValue : op.getRequestHeaders().entrySet()) {
-                request.headers().set(nameValue.getKey(), nameValue.getValue());
+            String pragmaHeader = op.getRequestHeader(Operation.PRAGMA_HEADER);
+
+            if (op.isFromReplication() && pragmaHeader == null) {
+                request.headers().set(HttpHeaderNames.PRAGMA,
+                        Operation.PRAGMA_DIRECTIVE_REPLICATED);
+            }
+
+            if (op.getTransactionId() != null) {
+                request.headers().set(Operation.TRANSACTION_ID_HEADER, op.getTransactionId());
+            }
+
+            if (op.getContextId() != null) {
+                request.headers().set(Operation.CONTEXT_ID_HEADER, op.getContextId());
+            }
+
+            AuthorizationContext ctx = op.getAuthorizationContext();
+            if (ctx != null && ctx.getToken() != null) {
+                request.headers().set(Operation.REQUEST_AUTH_TOKEN_HEADER, ctx.getToken());
+            }
+
+            if (hasRequestHeaders) {
+                for (Entry<String, String> nameValue : op.getRequestHeaders().entrySet()) {
+                    request.headers().set(nameValue.getKey(), nameValue.getValue());
+                }
             }
 
             request.headers().set(HttpHeaderNames.CONTENT_LENGTH,
@@ -494,7 +495,7 @@ public class NettyHttpServiceClient implements ServiceClient {
             }
 
             request.headers().set(HttpHeaderNames.USER_AGENT, this.userAgent);
-            if (!op.getRequestHeaders().containsKey(Operation.ACCEPT_HEADER)) {
+            if (op.getRequestHeader(Operation.ACCEPT_HEADER) == null) {
                 request.headers().set(HttpHeaderNames.ACCEPT,
                         Operation.MEDIA_TYPE_EVERYTHING_WILDCARDS);
             }
