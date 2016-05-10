@@ -57,6 +57,7 @@ public class UriUtils {
     public static final String URI_PARAM_ODATA_ORDER_BY_VALUE_DESC = "desc";
     public static final String URI_PARAM_ODATA_TOP = "$top";
     public static final String URI_PARAM_ODATA_LIMIT = "$limit";
+    public static final String URI_PARAM_ODATA_COUNT = "$count";
     public static final String URI_PARAM_ODATA_SKIP_TO = "$skipto";
     public static final String URI_PARAM_ODATA_NODE = "$nodeid  ";
     public static final String HTTP_SCHEME = "http";
@@ -638,6 +639,11 @@ public class UriUtils {
 
     public static Integer getODataTopParamValue(URI uri) {
         return getODataParamValue(uri, URI_PARAM_ODATA_TOP);
+    }
+
+    public static Boolean getODataCountParamValue(URI uri) {
+        String paramValue = getODataParamValueAsString(uri, URI_PARAM_ODATA_COUNT);
+        return Boolean.valueOf(paramValue);
     }
 
     public static Integer getODataLimitParamValue(URI uri) {

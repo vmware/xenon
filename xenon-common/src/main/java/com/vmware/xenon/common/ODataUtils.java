@@ -39,6 +39,7 @@ public class ODataUtils {
         Integer top = UriUtils.getODataTopParamValue(op.getUri());
         Integer skip = UriUtils.getODataSkipParamValue(op.getUri());
         Integer limit = UriUtils.getODataLimitParamValue(op.getUri());
+        Boolean count = UriUtils.getODataCountParamValue(op.getUri());
         UriUtils.ODataOrderByTuple orderBy = UriUtils.getODataOrderByParamValue(op.getUri());
 
         QueryTask task = new QueryTask();
@@ -49,6 +50,11 @@ public class ODataUtils {
         task.querySpec.options.add(QueryOption.EXPAND_CONTENT);
 
         if (orderBy != null) {
+            if (count.booleanValue()) {
+                op.fail(new IllegalArgumentException(UriUtils.URI_PARAM_ODATA_COUNT
+                        + " cannot be used together with " + UriUtils.URI_PARAM_ODATA_ORDER_BY));
+                return null;
+            }
             task.querySpec.options.add(QueryOption.SORT);
             task.querySpec.sortOrder = orderBy.order == ODataOrder.ASC ? SortOrder.ASC
                     : SortOrder.DESC;
@@ -59,6 +65,11 @@ public class ODataUtils {
         }
 
         if (top != null) {
+            if (count.booleanValue()) {
+                op.fail(new IllegalArgumentException(UriUtils.URI_PARAM_ODATA_COUNT
+                        + " cannot be used together with " + UriUtils.URI_PARAM_ODATA_TOP));
+                return null;
+            }
             task.querySpec.options.add(QueryOption.TOP_RESULTS);
             task.querySpec.resultLimit = top;
         }
@@ -70,12 +81,22 @@ public class ODataUtils {
         }
 
         if (limit != null && limit > 0) {
+            if (count.booleanValue()) {
+                op.fail(new IllegalArgumentException(UriUtils.URI_PARAM_ODATA_COUNT
+                        + " cannot be used together with " + UriUtils.URI_PARAM_ODATA_LIMIT));
+                return null;
+            }
             if (top != null) {
                 op.fail(new IllegalArgumentException(UriUtils.URI_PARAM_ODATA_TOP
                         + " cannot be used together with " + UriUtils.URI_PARAM_ODATA_LIMIT));
                 return null;
             }
             task.querySpec.resultLimit = limit;
+        }
+
+        if (count.booleanValue()) {
+            task.querySpec.options.remove(QueryOption.EXPAND_CONTENT);
+            task.querySpec.options.add(QueryOption.COUNT);
         }
 
         if (q == null) {

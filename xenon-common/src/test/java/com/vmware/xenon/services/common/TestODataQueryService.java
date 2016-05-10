@@ -97,6 +97,34 @@ public class TestODataQueryService extends BasicReusableHostTestCase {
     }
 
     @Test
+    public void count() throws Throwable {
+        ExampleService.ExampleServiceState inState = new ExampleService.ExampleServiceState();
+        int c = 5;
+        List<String> expectedOrder = new ArrayList<>();
+        for (int i = 0; i < c; i++) {
+            inState.documentSelfLink = null;
+            inState.counter = 1L;
+            inState.name = i + "-abcd";
+            postExample(inState);
+            expectedOrder.add(inState.name);
+        }
+
+        String queryString = "$filter=counter eq 1";
+        queryString += "&" + "$count=true";
+        ServiceDocumentQueryResult res = doQuery(queryString, true);
+        assertTrue(res.documentCount == c);
+        assertTrue(res.documentLinks.size() == 0);
+        assertTrue(res.documents == null);
+
+        queryString = "$filter=counter eq 1";
+        queryString += "&" + "$count=false";
+        res = doQuery(queryString, true);
+        assertTrue(res.documentCount == c);
+        assertTrue(res.documentLinks.size() == c);
+        assertTrue(res.documents.size() == c);
+    }
+
+    @Test
     public void orderBy() throws Throwable {
         ExampleService.ExampleServiceState inState = new ExampleService.ExampleServiceState();
         int c = 5;
@@ -696,7 +724,9 @@ public class TestODataQueryService extends BasicReusableHostTestCase {
 
         ServiceDocumentQueryResult res = qr[0];
         assertNotNull(res);
-        assertNotNull(res.documents);
+        if (!query.contains(UriUtils.URI_PARAM_ODATA_COUNT)) {
+            assertNotNull(res.documents);
+        }
 
         return res;
     }
