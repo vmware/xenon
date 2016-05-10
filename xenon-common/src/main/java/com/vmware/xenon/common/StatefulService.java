@@ -836,8 +836,7 @@ public class StatefulService implements Service {
             completeRequest(op);
         });
 
-        ServiceDocument mergedState = op.getLinkedState();
-        this.context.host.saveServiceState(this, op, mergedState);
+        this.context.host.saveServiceState(this, op, op.getLinkedState());
     }
 
     private void completeRequest(Operation op) {
@@ -1052,8 +1051,6 @@ public class StatefulService implements Service {
     }
 
     private void applyUpdate(Operation op) throws Throwable {
-        long time = Utils.getNowMicrosUtc();
-
         ServiceDocument cachedState = op.getLinkedState();
         if (cachedState == null) {
             cachedState = this.context.stateType.newInstance();
@@ -1063,6 +1060,8 @@ public class StatefulService implements Service {
             if (hasOption(ServiceOption.OWNER_SELECTION)) {
                 cachedState.documentEpoch = this.context.epoch;
             }
+
+            long time = Utils.getNowMicrosUtc();
 
             // Update version only if request came directly from client (which also means local
             // node is owner for OWNER_SELECTION enabled services
@@ -1079,9 +1078,6 @@ public class StatefulService implements Service {
         // a replica simply sets its version to the highest version it has seen. Agreement on
         // owner and epoch is done in validation methods upstream
         this.context.version = Math.max(cachedState.documentVersion, this.context.version);
-
-        cachedState.documentUpdateTimeMicros = Math.max(
-                cachedState.documentUpdateTimeMicros, time);
 
         if (hasOption(ServiceOption.OWNER_SELECTION)) {
             long prevEpoch = this.context.epoch;

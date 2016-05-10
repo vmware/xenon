@@ -148,13 +148,21 @@ public class NodeSelectorReplicationService extends StatelessService {
             }
         };
 
-        String jsonBody = Utils.toJson(req.linkedState);
+        Operation update = Operation.createPost(null);
+        if (outboundOp.getAction() != Action.POST) {
+            byte[] buffer = new byte[4096];
+            int size = Utils.toBytes(req.linkedState, buffer, 0);
+            update.setContentLength(size);
+            update.setContentType(Operation.MEDIA_TYPE_APPLICATION_KRYO_OCTET_STREAM);
+            update.setBodyNoCloning(buffer);
+        } else {
+            update.setBodyNoCloning(Utils.toJson(req.linkedState));
+        }
+
         String path = outboundOp.getUri().getPath();
         String query = outboundOp.getUri().getQuery();
 
-        Operation update = Operation.createPost(null)
-                .setAction(outboundOp.getAction())
-                .setBodyNoCloning(jsonBody)
+        update.setAction(outboundOp.getAction())
                 .setCompletion(c)
                 .setRetryCount(1)
                 .setExpiration(outboundOp.getExpirationMicrosUtc())

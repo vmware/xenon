@@ -2644,7 +2644,6 @@ public class TestNodeGroupService {
             for (int i = 0; i < updateCount; i++) {
 
                 long sentTime = Utils.getNowMicrosUtc();
-                String contextId = sentTime + "";
                 URI factoryOnRandomPeerUri = this.host
                         .getPeerServiceUri(this.replicationTargetFactoryLink);
 
@@ -2652,7 +2651,6 @@ public class TestNodeGroupService {
                         .createPatch(UriUtils.buildUri(factoryOnRandomPeerUri,
                                 initState.documentSelfLink))
                         .setAction(action)
-                        .setContextId(contextId)
                         .forceRemote()
                         .setBody(initState)
                         .setCompletion(

@@ -2340,6 +2340,10 @@ public class ServiceHost implements ServiceRequestSender {
                     break;
                 }
 
+                if (post.isFromReplication()) {
+                    post.resetSerializedLinkedState();
+                }
+
                 saveServiceState(s, post, (ServiceDocument) post.getBodyRaw());
                 break;
             case AVAILABLE:
@@ -2836,10 +2840,6 @@ public class ServiceHost implements ServiceRequestSender {
             if (!UriUtils.isHostEqual(this, inboundOp.getUri())) {
                 return false;
             }
-        }
-
-        if (inboundOp.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_REPLICATED)) {
-            inboundOp.setFromReplication(true).setTargetReplicated(true);
         }
 
         if (!this.state.isStarted) {
@@ -4414,10 +4414,16 @@ public class ServiceHost implements ServiceRequestSender {
         // from the document instance, using the description for instructions
         UpdateIndexRequest body = new UpdateIndexRequest();
         body.document = state;
+        body.serializedDocument = op.getSerializedLinkedState();
+        body.serializedDocumentSize = (int) op.getContentLength();
         // retrieve the description through the cached template so its the thread safe,
         // immutable version
         body.description = buildDocumentDescription(s);
-        cacheServiceState(s, state, op);
+        if (!op.isFromReplication()) {
+            // Do not cache state, in replicas, massively reducing the transient memory
+            // foot print.
+            cacheServiceState(s, state, op);
+        }
 
         Operation post = Operation.createPost(indexService.getUri())
                 .setBodyNoCloning(body)

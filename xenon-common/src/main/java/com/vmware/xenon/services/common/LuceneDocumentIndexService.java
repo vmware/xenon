@@ -1321,7 +1321,7 @@ public class LuceneDocumentIndexService extends StatelessService {
                 s.documentUpdateAction);
         doc.add(updateActionField);
 
-        addBinaryStateFieldToDocument(s, desc, doc);
+        addBinaryStateFieldToDocument(s, r.serializedDocument, r.serializedDocumentSize, desc, doc);
 
         Field selfLinkField = new StringField(ServiceDocument.FIELD_NAME_SELF_LINK,
                 link,
@@ -1388,11 +1388,15 @@ public class LuceneDocumentIndexService extends StatelessService {
         }
     }
 
-    private void addBinaryStateFieldToDocument(ServiceDocument s,
+    private void addBinaryStateFieldToDocument(ServiceDocument s, byte[] serializedDocument,
+            int count,
             ServiceDocumentDescription desc, Document doc) {
         try {
-            byte[] content = Utils.getBuffer(desc.serializedStateSizeLimit);
-            int count = Utils.toBytes(s, content, 0);
+            byte[] content = serializedDocument;
+            if (content == null) {
+                content = Utils.getBuffer(desc.serializedStateSizeLimit);
+                count = Utils.toBytes(s, content, 0);
+            }
             Field bodyField = new StoredField(LUCENE_FIELD_NAME_BINARY_SERIALIZED_STATE,
                     content, 0, count);
             doc.add(bodyField);

@@ -185,20 +185,37 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
             request.setTransactionId(transactionId);
         }
 
-        String contentType = getAndRemove(headers, HttpHeaderNames.CONTENT_TYPE);
+        String contentType = getAndRemove(headers, Operation.CONTENT_TYPE_HEADER);
         if (contentType != null) {
             request.setContentType(contentType);
         }
 
-        String cookie = getAndRemove(headers, HttpHeaderNames.COOKIE);
+        String cookie = getAndRemove(headers, Operation.COOKIE_HEADER);
         if (cookie != null) {
             request.setCookies(CookieJar.decodeCookies(cookie));
+        }
+
+        String pragma = headers.get(Operation.PRAGMA_HEADER);
+        if (Operation.PRAGMA_DIRECTIVE_REPLICATED.equals(pragma)) {
+            request.setFromReplication(true).setTargetReplicated(true);
+            headers.remove(Operation.PRAGMA_HEADER);
+        }
+
+        if (Operation.MEDIA_TYPE_APPLICATION_KRYO_OCTET_STREAM.equals(contentType)) {
+            // Associate the binary encoded replicated state as a binary linked state,
+            // allowing the index service to use it as is, instead of having to binary
+            // serialize again
+            request.linkSerializedState();
         }
 
         for (Entry<String, String> h : headers) {
             String key = h.getKey();
             String value = h.getValue();
             request.addRequestHeader(key, value);
+        }
+
+        if (request.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_REPLICATED)) {
+            request.setFromReplication(true).setTargetReplicated(true);
         }
 
         if (this.sslHandler == null) {
