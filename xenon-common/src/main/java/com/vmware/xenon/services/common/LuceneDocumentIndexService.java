@@ -1907,6 +1907,9 @@ public class LuceneDocumentIndexService extends StatelessService {
             }
             reOpenWriterSynchronously();
         } catch (Throwable e) {
+            if (this.getHost().isStopping()) {
+                return;
+            }
             logWarning("Attempting recovery due to error: %s", e.getMessage());
             reOpenWriterSynchronously();
             throw e;

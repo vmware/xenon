@@ -2,6 +2,11 @@
 
 ## 0.8.1-SNAPSHOT
 
+* Add support for binary serialization of operation body, using
+  KRYO binary serializer (same as what currently used for storing
+  state in the index). The client opts in by setting the operation
+  content type to the new Operation.MEDIA_TYPE_APPLICATION_KRYO_OCTET_STREAM
+
 * Remove experimental PRAGMA_VALUE_HTTP2, it is now expressed
   through OperationOption.CONNECTION_SHARING.
 

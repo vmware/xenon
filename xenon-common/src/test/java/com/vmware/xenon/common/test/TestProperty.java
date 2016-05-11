@@ -29,5 +29,6 @@ public enum TestProperty {
     SET_CONTEXT_ID,
     CALLBACK_SEND,
     PERSISTED,
+    BINARY_SERIALIZATION,
     HTTP2
 }

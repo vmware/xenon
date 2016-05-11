@@ -365,18 +365,22 @@ public class Operation implements Cloneable {
     // HTTP Header definitions
     public static final String REFERER_HEADER = "referer";
     public static final String CONTENT_TYPE_HEADER = "content-type";
+    public static final String CONTENT_LENGTH_HEADER = "content-length";
     public static final String CONTENT_RANGE_HEADER = "content-range";
     public static final String RANGE_HEADER = "range";
     public static final String RETRY_AFTER_HEADER = "retry-after";
     public static final String PRAGMA_HEADER = "pragma";
     public static final String SET_COOKIE_HEADER = "set-cookie";
+    public static final String COOKIE_HEADER = "cookie";
     public static final String LOCATION_HEADER = "location";
     public static final String USER_AGENT_HEADER = "user-agent";
+    public static final String HOST_HEADER = "host";
     public static final String ACCEPT_HEADER = "accept";
     public static final String AUTHORIZATION_HEADER = "Authorization";
 
     // HTTP2 Header definitions
     public static final String STREAM_ID_HEADER = "x-http2-stream-id";
+    public static final String HTTP2_SCHEME_HEADER = "x-http2-scheme";
 
     // Proprietary header definitions
     public static final String HEADER_NAME_PREFIX = "x-xenon-";
@@ -490,6 +494,7 @@ public class Operation implements Cloneable {
     public static final String MEDIA_TYPE_APPLICATION_JSON = "application/json";
     public static final String MEDIA_TYPE_TEXT_YAML = "text/x-yaml";
     public static final String MEDIA_TYPE_APPLICATION_OCTET_STREAM = "application/octet-stream";
+    public static final String MEDIA_TYPE_APPLICATION_KRYO_OCTET_STREAM = "application/kryo-octet-stream";
     public static final String MEDIA_TYPE_APPLICATION_X_WWW_FORM_ENCODED = "application/x-www-form-urlencoded";
     public static final String MEDIA_TYPE_TEXT_HTML = "text/html";
     public static final String MEDIA_TYPE_TEXT_PLAIN = "text/plain";
@@ -786,7 +791,11 @@ public class Operation implements Cloneable {
             if (isCloningDisabled()) {
                 this.body = body;
             } else {
-                this.body = Utils.clone(body);
+                if (body instanceof byte[]) {
+                    this.body = body;
+                } else {
+                    this.body = Utils.clone(body);
+                }
             }
         } else {
             this.body = null;
@@ -827,10 +836,8 @@ public class Operation implements Cloneable {
         }
 
         if (this.body != null && !(this.body instanceof String)) {
-
-            if (this.isRemote()
-                    && (this.contentType == null || !this.contentType
-                            .contains(MEDIA_TYPE_APPLICATION_JSON))) {
+            if (this.contentType == null
+                    || !this.contentType.contains(MEDIA_TYPE_APPLICATION_JSON)) {
                 throw new IllegalStateException("content type is not JSON: " + this.contentType);
             }
 

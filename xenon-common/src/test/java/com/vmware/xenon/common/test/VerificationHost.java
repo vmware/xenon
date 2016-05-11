@@ -43,9 +43,6 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -273,21 +270,12 @@ public class VerificationHost extends ExampleServiceHost {
         return h;
     }
 
-    public static void createAndAttachSSLClient(ServiceHost h,
-            ExecutorService executor, ScheduledExecutorService schExec) throws Throwable {
-        if (executor == null) {
-            executor = Executors.newFixedThreadPool(Utils.DEFAULT_THREAD_COUNT);
-        }
-
-        if (schExec == null) {
-            schExec = Executors.newScheduledThreadPool(1);
-        }
-
+    public static void createAndAttachSSLClient(ServiceHost h) throws Throwable {
         // we create a random userAgent string to validate host to host communication when
         // the client appears to be from an external, non-Xenon source.
         ServiceClient client = NettyHttpServiceClient.create(UUID.randomUUID().toString(),
-                executor,
-                schExec, h);
+                h.getExecutor(),
+                h.getScheduledExecutor(), h);
 
         SSLContext clientContext = SSLContext.getInstance(ServiceClient.TLS_PROTOCOL_NAME);
         clientContext.init(null, InsecureTrustManagerFactory.INSTANCE.getTrustManagers(), null);
@@ -1073,6 +1061,13 @@ public class VerificationHost extends ExampleServiceHost {
         if (!this.isStressTest()) {
             body.documentSelfLink = UUID.randomUUID().toString();
             body.documentKind = UUID.randomUUID().toString();
+        } else {
+            body.stringValue = UUID.randomUUID().toString();
+            body.id = UUID.randomUUID().toString();
+            body.responseDelay = 10;
+            body.documentVersion = 10;
+            body.documentEpoch = 10L;
+            body.documentOwner = UUID.randomUUID().toString();
         }
 
         if (properties.contains(TestProperty.SET_EXPIRATION)) {
@@ -1163,6 +1158,11 @@ public class VerificationHost extends ExampleServiceHost {
         }
 
         int byteCount = Utils.toJson(body).getBytes(Utils.CHARSET).length;
+        if (properties.contains(TestProperty.BINARY_SERIALIZATION)) {
+            byte[] buffer = new byte[4096];
+            long c = Utils.toDocumentBytes((Object) body, buffer, 0);
+            byteCount = (int) c;
+        }
         log("Bytes per payload %s", byteCount);
 
         long startTimeMicros = System.nanoTime() / 1000;
@@ -1215,6 +1215,13 @@ public class VerificationHost extends ExampleServiceHost {
                 }
 
                 Object b = binaryBody != null ? binaryBody : body;
+                if (properties.contains(TestProperty.BINARY_SERIALIZATION)) {
+                    // provide hints to runtime on how to serialize the body,
+                    // using binary serialization and a buffer size equal to content length
+                    updateOp.setContentLength(byteCount);
+                    updateOp.setContentType(Operation.MEDIA_TYPE_APPLICATION_KRYO_OCTET_STREAM);
+                }
+
                 if (isConcurrentSend) {
                     Operation putClone = updateOp.clone();
                     putClone.setBody(b).setUri(sUri);
@@ -1224,7 +1231,6 @@ public class VerificationHost extends ExampleServiceHost {
                 } else if (properties.contains(TestProperty.CALLBACK_SEND)) {
                     sendRequestWithCallback(updateOp.setBody(b).setReferer(getReferer()));
                 } else {
-
                     send(updateOp.setBody(b));
                 }
 
@@ -1676,8 +1682,7 @@ public class VerificationHost extends ExampleServiceHost {
             h.setAuthorizationService(new AuthorizationContextService());
         }
         try {
-            VerificationHost.createAndAttachSSLClient(h, this.getExecutor(),
-                    this.getScheduledExecutor());
+            VerificationHost.createAndAttachSSLClient(h);
 
             // override with parent cert info.
             // Within same node group, all hosts are required to use same cert, private key, and
@@ -3098,5 +3103,15 @@ public class VerificationHost extends ExampleServiceHost {
             }
         } while (Utils.getNowMicrosUtc() < exp);
         return false;
+    }
+
+    public void waitForGC() {
+        if (!isStressTest()) {
+            return;
+        }
+        for (int k = 0; k < 10; k++) {
+            Runtime.getRuntime().gc();
+            Runtime.getRuntime().runFinalization();
+        }
     }
 }

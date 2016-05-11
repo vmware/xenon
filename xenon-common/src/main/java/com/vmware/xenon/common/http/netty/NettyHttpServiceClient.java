@@ -78,6 +78,8 @@ public class NettyHttpServiceClient implements ServiceClient {
 
     private ScheduledExecutorService scheduledExecutor;
 
+    private ExecutorService executor;
+
     private SSLContext sslContext;
 
     private ServiceHost host;
@@ -101,6 +103,7 @@ public class NettyHttpServiceClient implements ServiceClient {
         NettyHttpServiceClient sc = new NettyHttpServiceClient();
         sc.userAgent = userAgent;
         sc.scheduledExecutor = scheduledExecutor;
+        sc.executor = executor;
         sc.host = host;
         sc.channelPool = new NettyChannelPool();
         sc.http2ChannelPool = new NettyChannelPool();
@@ -141,7 +144,7 @@ public class NettyHttpServiceClient implements ServiceClient {
         this.http2ChannelPool.setThreadTag(buildThreadTag());
         this.http2ChannelPool.setThreadCount(Utils.DEFAULT_IO_THREAD_COUNT);
         if (this.host != null) {
-            this.http2ChannelPool.setExecutor(this.host.getExecutor());
+            this.http2ChannelPool.setExecutor(this.executor);
         }
         this.http2ChannelPool.setHttp2Only();
         this.http2ChannelPool.start();
@@ -437,7 +440,7 @@ public class NettyHttpServiceClient implements ServiceClient {
             if (body == null || body.length == 0) {
                 request = new NettyFullHttpRequest(HttpVersion.HTTP_1_1, method, pathAndQuery);
             } else {
-                ByteBuf content = Unpooled.wrappedBuffer(body);
+                ByteBuf content = Unpooled.wrappedBuffer(body, 0, (int) op.getContentLength());
                 request = new NettyFullHttpRequest(HttpVersion.HTTP_1_1, method, pathAndQuery,
                         content, false);
             }
