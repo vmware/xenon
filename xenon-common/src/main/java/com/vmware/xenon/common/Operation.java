@@ -268,12 +268,37 @@ public class Operation implements Cloneable {
     }
 
     public static enum OperationOption {
+        /**
+         * Set to request underlying support for overlapping operations on the same connection. For example,
+         * if set, and the the service client is HTTP/2 aware, the operation will use the same connection as
+         * many others, pending, operations
+         */
         CONNECTION_SHARING,
+        /**
+         * Set when the connection the operation is using is long lived, preventing close on
+         * operation completion
+         */
         KEEP_ALIVE,
+        /**
+         * Set on both out-bound and in-bound replicated updates
+         */
         REPLICATED,
+        /**
+         * Set to prevent replication
+         */
         REPLICATION_DISABLED,
+        /**
+         * Set to prevent cloning of the body during {@link Operation#setBody(Object)}
+         */
         CLONING_DISABLED,
+        /**
+         * Set to prevent notifications being sent after the service handler completes the
+         * operation
+         */
         NOTIFICATION_DISABLED,
+        /**
+         * Set if the target service is replicated
+         */
         REPLICATED_TARGET
     }
 
