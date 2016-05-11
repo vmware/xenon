@@ -21,6 +21,7 @@ import java.util.UUID;
 
 import com.esotericsoftware.kryo.Kryo;
 import com.esotericsoftware.kryo.Kryo.DefaultInstantiatorStrategy;
+import com.esotericsoftware.kryo.serializers.FieldSerializer;
 import com.esotericsoftware.kryo.serializers.VersionFieldSerializer;
 import org.objenesis.strategy.StdInstantiatorStrategy;
 
@@ -40,15 +41,32 @@ public final class KryoSerializers {
         }
     }
 
+    public static class KryoForPayloadThreadLocal extends ThreadLocal<Kryo> {
+        @Override
+        protected Kryo initialValue() {
+            return KryoSerializers.create(false, true);
+        }
+    }
+
     private KryoSerializers() {
     }
 
     public static Kryo create(boolean isObjectSerializer) {
+        return create(isObjectSerializer, false);
+    }
+
+    public static Kryo create(boolean isObjectSerializer, boolean isPayloadSerializer) {
         Kryo k = new Kryo();
         // handle classes with missing default constructors
         k.setInstantiatorStrategy(new DefaultInstantiatorStrategy(new StdInstantiatorStrategy()));
 
-        k.setDefaultSerializer(VersionFieldSerializer.class);
+        if (isPayloadSerializer) {
+            // small overhead, does not support addition/removal of fields
+            k.setDefaultSerializer(FieldSerializer.class);
+        } else {
+            // supports addition of fields if the @since annotation is used
+            k.setDefaultSerializer(VersionFieldSerializer.class);
+        }
         // Custom serializers for Java 8 date/time
         k.addDefaultSerializer(ZonedDateTime.class, ZonedDateTimeSerializer.INSTANCE);
         k.addDefaultSerializer(Instant.class, InstantSerializer.INSTANCE);
@@ -56,14 +74,15 @@ public final class KryoSerializers {
         // Add non-cloning serializers for all immutable types bellow
         k.addDefaultSerializer(UUID.class, UUIDSerializer.INSTANCE);
         k.addDefaultSerializer(URI.class, URISerializer.INSTANCE);
-        if (isObjectSerializer) {
-            // To avoid monotonic increase of memory use, due to reference tracking, we must
-            // reset kryo after each use.
-            k.setAutoReset(true);
-        } else {
+
+        if (!isObjectSerializer) {
             // For performance reasons, and to avoid memory use, assume documents do not
             // require object graph serialization with duplicate or recursive references
             k.setReferences(false);
+        } else {
+            // To avoid monotonic increase of memory use, due to reference tracking, we must
+            // reset after each use.
+            k.setAutoReset(true);
         }
         return k;
     }

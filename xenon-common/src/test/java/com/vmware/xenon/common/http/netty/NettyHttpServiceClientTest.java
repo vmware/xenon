@@ -739,15 +739,17 @@ public class NettyHttpServiceClientTest {
         this.host.connectionTag = null;
         this.host.log("Using client global connection limit %d", limit);
 
-        for (int i = 0; i < 6; i++) {
+        for (int i = 0; i < 5; i++) {
             this.host.doPutPerService(
                     this.requestCount,
                     EnumSet.of(TestProperty.FORCE_REMOTE),
                     services);
-            for (int k = 0; k < 5; k++) {
-                Runtime.getRuntime().gc();
-                Runtime.getRuntime().runFinalization();
-            }
+            this.host.waitForGC();
+            this.host.doPutPerService(
+                    this.requestCount,
+                    EnumSet.of(TestProperty.FORCE_REMOTE, TestProperty.BINARY_SERIALIZATION),
+                    services);
+            this.host.waitForGC();
         }
 
         limit = 8;
@@ -758,10 +760,6 @@ public class NettyHttpServiceClientTest {
                 this.requestCount,
                 EnumSet.of(TestProperty.FORCE_REMOTE),
                 services);
-        for (int k = 0; k < 5; k++) {
-            Runtime.getRuntime().gc();
-            Runtime.getRuntime().runFinalization();
-        }
     }
 
     @Test

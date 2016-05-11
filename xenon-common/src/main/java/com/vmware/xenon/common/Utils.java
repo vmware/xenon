@@ -47,6 +47,7 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import com.esotericsoftware.kryo.Kryo;
+import com.esotericsoftware.kryo.KryoException;
 import com.esotericsoftware.kryo.io.Input;
 import com.esotericsoftware.kryo.io.Output;
 
@@ -68,6 +69,7 @@ import com.vmware.xenon.common.serialization.BufferThreadLocal;
 import com.vmware.xenon.common.serialization.JsonMapper;
 import com.vmware.xenon.common.serialization.KryoSerializers.KryoForDocumentThreadLocal;
 import com.vmware.xenon.common.serialization.KryoSerializers.KryoForObjectThreadLocal;
+import com.vmware.xenon.common.serialization.KryoSerializers.KryoForPayloadThreadLocal;
 import com.vmware.xenon.services.common.QueryTask.QuerySpecification.QueryOption;
 import com.vmware.xenon.services.common.ServiceUriPaths;
 
@@ -106,6 +108,7 @@ public class Utils {
 
     private static final KryoForObjectThreadLocal kryoForObjectPerThread = new KryoForObjectThreadLocal();
     private static final KryoForDocumentThreadLocal kryoForDocumentPerThread = new KryoForDocumentThreadLocal();
+    private static final KryoForPayloadThreadLocal kryoForPayloadPerThread = new KryoForPayloadThreadLocal();
     private static final DigestThreadLocal digestPerThread = new DigestThreadLocal();
     private static final BufferThreadLocal bufferPerThread = new BufferThreadLocal();
 
@@ -157,7 +160,7 @@ public class Utils {
     }
 
     public static <T> T clone(T t) {
-        Kryo k = kryoForDocumentPerThread.get();
+        Kryo k = kryoForPayloadPerThread.get();
         T clone = k.copy(t);
         return clone;
     }
@@ -225,6 +228,14 @@ public class Utils {
         return out.position();
     }
 
+    public static int toPayloadBytes(Object o, byte[] buffer, int position) {
+        Kryo k = kryoForPayloadPerThread.get();
+        Output out = new Output(buffer);
+        out.setPosition(position);
+        k.writeClassAndObject(out, o);
+        return out.position();
+    }
+
     public static int toBytes(ServiceDocument o, byte[] buffer, int position) {
         Kryo k = kryoForDocumentPerThread.get();
         Output out = new Output(buffer);
@@ -245,6 +256,12 @@ public class Utils {
 
     public static Object fromDocumentBytes(byte[] bytes, int offset, int length) {
         Kryo k = kryoForDocumentPerThread.get();
+        Input in = new Input(bytes, offset, length);
+        return k.readClassAndObject(in);
+    }
+
+    public static Object fromPayloadBytes(byte[] bytes, int offset, int length) {
+        Kryo k = kryoForPayloadPerThread.get();
         Input in = new Input(bytes, offset, length);
         return k.readClassAndObject(in);
     }
@@ -717,6 +734,21 @@ public class Utils {
             }
             if (op.getContentLength() == 0 || op.getContentLength() > data.length) {
                 op.setContentLength(data.length);
+            }
+        } else if (Operation.MEDIA_TYPE_APPLICATION_KRYO_OCTET_STREAM.equals(contentType)) {
+            int limit = ServiceDocumentDescription.DEFAULT_SERIALIZED_STATE_LIMIT;
+            if (op.getContentLength() < 1024) {
+                op.setContentLength(1024);
+            }
+            while (op.getContentLength() <= limit) {
+                try {
+                    data = new byte[(int) op.getContentLength()];
+                    int count = Utils.toPayloadBytes(body, data, 0);
+                    op.setContentLength(count);
+                    break;
+                } catch (KryoException e) {
+                    op.setContentLength(op.getContentLength() * 2);
+                }
             }
         }
 

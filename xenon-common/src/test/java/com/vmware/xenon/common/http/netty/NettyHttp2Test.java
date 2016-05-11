@@ -414,10 +414,13 @@ public class NettyHttp2Test {
                     this.requestCount,
                     EnumSet.of(TestProperty.FORCE_REMOTE, TestProperty.HTTP2),
                     services);
-            for (int k = 0; k < 5; k++) {
-                Runtime.getRuntime().gc();
-                Runtime.getRuntime().runFinalization();
-            }
+            this.host.waitForGC();
+            this.host.doPutPerService(
+                    this.requestCount,
+                    EnumSet.of(TestProperty.FORCE_REMOTE, TestProperty.HTTP2,
+                            TestProperty.BINARY_SERIALIZATION),
+                    services);
+            this.host.waitForGC();
         }
 
         // do some in process runs, do verify perf is not degraded
@@ -426,10 +429,7 @@ public class NettyHttp2Test {
                     this.requestCount,
                     EnumSet.noneOf(TestProperty.class),
                     services);
-            for (int k = 0; k < 5; k++) {
-                Runtime.getRuntime().gc();
-                Runtime.getRuntime().runFinalization();
-            }
+            this.host.waitForGC();
         }
 
         // set a specific tag limit
@@ -441,10 +441,6 @@ public class NettyHttp2Test {
                 this.requestCount,
                 EnumSet.of(TestProperty.FORCE_REMOTE, TestProperty.HTTP2),
                 services);
-        for (int k = 0; k < 5; k++) {
-            Runtime.getRuntime().gc();
-            Runtime.getRuntime().runFinalization();
-        }
     }
 
     /**
