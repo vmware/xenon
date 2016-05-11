@@ -180,17 +180,14 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
 
         request.setContextId(getAndRemove(headers, Operation.CONTEXT_ID_HEADER));
 
-        String transactionId = getAndRemove(headers, Operation.TRANSACTION_ID_HEADER);
-        if (transactionId != null) {
-            request.setTransactionId(transactionId);
-        }
+        request.setTransactionId(getAndRemove(headers, Operation.TRANSACTION_ID_HEADER));
 
-        String contentType = getAndRemove(headers, HttpHeaderNames.CONTENT_TYPE);
+        String contentType = getAndRemove(headers, Operation.CONTENT_TYPE_HEADER);
         if (contentType != null) {
             request.setContentType(contentType);
         }
 
-        String cookie = getAndRemove(headers, HttpHeaderNames.COOKIE);
+        String cookie = getAndRemove(headers, Operation.COOKIE_HEADER);
         if (cookie != null) {
             request.setCookies(CookieJar.decodeCookies(cookie));
         }

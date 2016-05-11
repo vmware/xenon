@@ -437,7 +437,7 @@ public class NettyHttpServiceClient implements ServiceClient {
             if (body == null || body.length == 0) {
                 request = new NettyFullHttpRequest(HttpVersion.HTTP_1_1, method, pathAndQuery);
             } else {
-                ByteBuf content = Unpooled.wrappedBuffer(body);
+                ByteBuf content = Unpooled.wrappedBuffer(body, 0, (int) op.getContentLength());
                 request = new NettyFullHttpRequest(HttpVersion.HTTP_1_1, method, pathAndQuery,
                         content, false);
             }

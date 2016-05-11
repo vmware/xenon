@@ -26,6 +26,9 @@ import org.objenesis.strategy.StdInstantiatorStrategy;
 
 public final class KryoSerializers {
 
+    /**
+     * Binary serialization thread local instances that track object references
+     */
     public static class KryoForObjectThreadLocal extends ThreadLocal<Kryo> {
         @Override
         protected Kryo initialValue() {
@@ -33,6 +36,10 @@ public final class KryoSerializers {
         }
     }
 
+    /**
+     * Binary serialization thread local instances that do not track object references, used
+     * for document and operation body serialization
+     */
     public static class KryoForDocumentThreadLocal extends ThreadLocal<Kryo> {
         @Override
         protected Kryo initialValue() {
@@ -47,7 +54,7 @@ public final class KryoSerializers {
         Kryo k = new Kryo();
         // handle classes with missing default constructors
         k.setInstantiatorStrategy(new DefaultInstantiatorStrategy(new StdInstantiatorStrategy()));
-
+            // supports addition of fields if the @since annotation is used
         k.setDefaultSerializer(VersionFieldSerializer.class);
         // Custom serializers for Java 8 date/time
         k.addDefaultSerializer(ZonedDateTime.class, ZonedDateTimeSerializer.INSTANCE);
@@ -56,14 +63,15 @@ public final class KryoSerializers {
         // Add non-cloning serializers for all immutable types bellow
         k.addDefaultSerializer(UUID.class, UUIDSerializer.INSTANCE);
         k.addDefaultSerializer(URI.class, URISerializer.INSTANCE);
-        if (isObjectSerializer) {
-            // To avoid monotonic increase of memory use, due to reference tracking, we must
-            // reset kryo after each use.
-            k.setAutoReset(true);
-        } else {
+
+        if (!isObjectSerializer) {
             // For performance reasons, and to avoid memory use, assume documents do not
             // require object graph serialization with duplicate or recursive references
             k.setReferences(false);
+        } else {
+            // To avoid monotonic increase of memory use, due to reference tracking, we must
+            // reset after each use.
+            k.setAutoReset(true);
         }
         return k;
     }

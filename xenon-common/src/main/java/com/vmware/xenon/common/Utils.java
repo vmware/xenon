@@ -47,6 +47,7 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import com.esotericsoftware.kryo.Kryo;
+import com.esotericsoftware.kryo.KryoException;
 import com.esotericsoftware.kryo.io.Input;
 import com.esotericsoftware.kryo.io.Output;
 
@@ -217,6 +218,11 @@ public class Utils {
         return buffer;
     }
 
+    /**
+     * Serializes an arbitrary object into a binary representation, using full
+     * reference tracking and the object graph serializer.
+     * Must be paired with {@code Utils#fromBytes(byte[], int, int)} or {@code Utils#fromBytes(byte[])}
+     */
     public static int toBytes(Object o, byte[] buffer, int position) {
         Kryo k = kryoForObjectPerThread.get();
         Output out = new Output(buffer);
@@ -225,6 +231,22 @@ public class Utils {
         return out.position();
     }
 
+    /**
+     * Serializes a PODO into a binary representation.
+     * Must be paired with {@code Utils#fromDocumentBytes(byte[], int, int)}
+     */
+    public static int toDocumentBytes(Object o, byte[] buffer, int position) {
+        Kryo k = kryoForDocumentPerThread.get();
+        Output out = new Output(buffer);
+        out.setPosition(position);
+        k.writeClassAndObject(out, o);
+        return out.position();
+    }
+
+    /**
+     * Serializes a PODO into a binary representation.
+     * Must be paired with {@code Utils#fromDocumentBytes(byte[], int, int)}
+     */
     public static int toBytes(ServiceDocument o, byte[] buffer, int position) {
         Kryo k = kryoForDocumentPerThread.get();
         Output out = new Output(buffer);
@@ -233,16 +255,28 @@ public class Utils {
         return out.position();
     }
 
+    /**
+     * Deserializes into a native object, using the object graph serializer.
+     * Must be paired with {@code Utils#toBytes(Object, byte[], int)}
+     */
     public static Object fromBytes(byte[] bytes) {
         return fromBytes(bytes, 0, bytes.length);
     }
 
+    /**
+     * Deserializes into a native object, using the object graph serializer.
+     * Must be paired with {@code Utils#toBytes(Object, byte[], int)}
+     */
     public static Object fromBytes(byte[] bytes, int offset, int length) {
         Kryo k = kryoForObjectPerThread.get();
         Input in = new Input(bytes, offset, length);
         return k.readClassAndObject(in);
     }
 
+    /**
+     * Deserializes into a native ServiceDocument derived type, using the document serializer.
+     * Must be paired with {@code Utils#toBytes(ServiceDocument, byte[], int)
+     */
     public static Object fromDocumentBytes(byte[] bytes, int offset, int length) {
         Kryo k = kryoForDocumentPerThread.get();
         Input in = new Input(bytes, offset, length);
@@ -717,6 +751,21 @@ public class Utils {
             }
             if (op.getContentLength() == 0 || op.getContentLength() > data.length) {
                 op.setContentLength(data.length);
+            }
+        } else if (Operation.MEDIA_TYPE_APPLICATION_KRYO_OCTET_STREAM.equals(contentType)) {
+            int limit = ServiceDocumentDescription.DEFAULT_SERIALIZED_STATE_LIMIT;
+            if (op.getContentLength() < 1024) {
+                op.setContentLength(1024);
+            }
+            while (op.getContentLength() <= limit) {
+                try {
+                    data = new byte[(int) op.getContentLength()];
+                    int count = Utils.toDocumentBytes(body, data, 0);
+                    op.setContentLength(count);
+                    break;
+                } catch (KryoException e) {
+                    op.setContentLength(op.getContentLength() * 2);
+                }
             }
         }
 

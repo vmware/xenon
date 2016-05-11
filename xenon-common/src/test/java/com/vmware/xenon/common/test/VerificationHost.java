@@ -1073,6 +1073,13 @@ public class VerificationHost extends ExampleServiceHost {
         if (!this.isStressTest()) {
             body.documentSelfLink = UUID.randomUUID().toString();
             body.documentKind = UUID.randomUUID().toString();
+        } else {
+            body.stringValue = UUID.randomUUID().toString();
+            body.id = UUID.randomUUID().toString();
+            body.responseDelay = 10;
+            body.documentVersion = 10;
+            body.documentEpoch = 10L;
+            body.documentOwner = UUID.randomUUID().toString();
         }
 
         if (properties.contains(TestProperty.SET_EXPIRATION)) {
@@ -1163,6 +1170,11 @@ public class VerificationHost extends ExampleServiceHost {
         }
 
         int byteCount = Utils.toJson(body).getBytes(Utils.CHARSET).length;
+        if (properties.contains(TestProperty.BINARY_SERIALIZATION)) {
+            byte[] buffer = new byte[4096];
+            long c = Utils.toDocumentBytes((Object) body, buffer, 0);
+            byteCount = (int) c;
+        }
         log("Bytes per payload %s", byteCount);
 
         long startTimeMicros = System.nanoTime() / 1000;
@@ -1215,6 +1227,13 @@ public class VerificationHost extends ExampleServiceHost {
                 }
 
                 Object b = binaryBody != null ? binaryBody : body;
+                if (properties.contains(TestProperty.BINARY_SERIALIZATION)) {
+                    // provide hints to runtime on how to serialize the body,
+                    // using binary serialization and a buffer size equal to content length
+                    updateOp.setContentLength(byteCount);
+                    updateOp.setContentType(Operation.MEDIA_TYPE_APPLICATION_KRYO_OCTET_STREAM);
+                }
+
                 if (isConcurrentSend) {
                     Operation putClone = updateOp.clone();
                     putClone.setBody(b).setUri(sUri);
@@ -1224,7 +1243,6 @@ public class VerificationHost extends ExampleServiceHost {
                 } else if (properties.contains(TestProperty.CALLBACK_SEND)) {
                     sendRequestWithCallback(updateOp.setBody(b).setReferer(getReferer()));
                 } else {
-
                     send(updateOp.setBody(b));
                 }
 
@@ -3098,5 +3116,15 @@ public class VerificationHost extends ExampleServiceHost {
             }
         } while (Utils.getNowMicrosUtc() < exp);
         return false;
+    }
+
+    public void waitForGC() {
+        if (!isStressTest()) {
+            return;
+        }
+        for (int k = 0; k < 10; k++) {
+            Runtime.getRuntime().gc();
+            Runtime.getRuntime().runFinalization();
+        }
     }
 }

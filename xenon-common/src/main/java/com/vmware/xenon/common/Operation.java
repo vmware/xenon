@@ -370,6 +370,7 @@ public class Operation implements Cloneable {
     public static final String RETRY_AFTER_HEADER = "retry-after";
     public static final String PRAGMA_HEADER = "pragma";
     public static final String SET_COOKIE_HEADER = "set-cookie";
+    public static final String COOKIE_HEADER = "cookie";
     public static final String LOCATION_HEADER = "location";
     public static final String USER_AGENT_HEADER = "user-agent";
     public static final String ACCEPT_HEADER = "accept";
@@ -490,6 +491,7 @@ public class Operation implements Cloneable {
     public static final String MEDIA_TYPE_APPLICATION_JSON = "application/json";
     public static final String MEDIA_TYPE_TEXT_YAML = "text/x-yaml";
     public static final String MEDIA_TYPE_APPLICATION_OCTET_STREAM = "application/octet-stream";
+    public static final String MEDIA_TYPE_APPLICATION_KRYO_OCTET_STREAM = "application/kryo-octet-stream";
     public static final String MEDIA_TYPE_APPLICATION_X_WWW_FORM_ENCODED = "application/x-www-form-urlencoded";
     public static final String MEDIA_TYPE_TEXT_HTML = "text/html";
     public static final String MEDIA_TYPE_TEXT_PLAIN = "text/plain";
@@ -786,7 +788,11 @@ public class Operation implements Cloneable {
             if (isCloningDisabled()) {
                 this.body = body;
             } else {
-                this.body = Utils.clone(body);
+                if (body instanceof byte[]) {
+                    this.body = body;
+                } else {
+                    this.body = Utils.clone(body);
+                }
             }
         } else {
             this.body = null;
@@ -827,10 +833,19 @@ public class Operation implements Cloneable {
         }
 
         if (this.body != null && !(this.body instanceof String)) {
+            if (Operation.MEDIA_TYPE_APPLICATION_KRYO_OCTET_STREAM.equals(this.contentType)) {
+                if (this.serializedBody != null && this.serializedBody instanceof byte[]) {
+                    this.body = this.serializedBody;
+                } else {
+                    this.serializedBody = this.body;
+                }
+                this.body = Utils.fromDocumentBytes((byte[]) this.body, 0,
+                        (int) this.contentLength);
+                return (T) this.body;
+            }
 
-            if (this.isRemote()
-                    && (this.contentType == null || !this.contentType
-                            .contains(MEDIA_TYPE_APPLICATION_JSON))) {
+            if (this.contentType == null
+                    || !this.contentType.contains(MEDIA_TYPE_APPLICATION_JSON)) {
                 throw new IllegalStateException("content type is not JSON: " + this.contentType);
             }
 
