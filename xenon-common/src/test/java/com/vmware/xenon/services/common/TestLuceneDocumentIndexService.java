@@ -1652,11 +1652,10 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
         }
         this.host.testWait();
 
-        this.host.doServiceUpdates(action, count, props, services);
-
-        this.host.doServiceUpdates(action, count, props, services);
-
-        this.host.doServiceUpdates(action, count, props, services);
+        int repeat = 5;
+        for (int i = 0; i < repeat; i++) {
+            this.host.doServiceUpdates(action, count, props, services);
+        }
 
         // decrease maintenance, which will trigger cache clears
         this.host.setMaintenanceIntervalMicros(250000);
@@ -1666,9 +1665,9 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
                 MinimalTestServiceState.class, services);
         int mismatchCount = 0;
         for (MinimalTestServiceState st : statesBeforeRestart.values()) {
-            if (st.documentVersion != count * 3) {
+            if (st.documentVersion != count * repeat) {
                 this.host.log("Version mismatch for %s. Expected %d, got %d", st.documentSelfLink,
-                        count * 3, st.documentVersion);
+                        count * repeat, st.documentVersion);
                 mismatchCount++;
             }
         }

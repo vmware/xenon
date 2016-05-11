@@ -19,8 +19,12 @@ public interface ServiceClient extends ServiceRequestSender {
     String SSL_PROTOCOL_NAME = "SSL";
     String TLS_PROTOCOL_NAME = "TLS";
 
+    public static final int MAX_BINARY_SERIALIZED_BODY_LIMIT = Integer.getInteger(
+            Utils.PROPERTY_NAME_PREFIX + "ServiceClient.MAX_BINARY_SERIALIZED_BODY_LIMIT",
+            1024 * 1024);
+
     public static final int DEFAULT_CONNECTION_LIMIT_PER_HOST = Integer.getInteger(
-            Utils.PROPERTY_NAME_PREFIX + "NettyHttpServiceClient.DEFAULT_CONNECTIONS_PER_HOST",
+            Utils.PROPERTY_NAME_PREFIX + "ServiceClient.DEFAULT_CONNECTIONS_PER_HOST",
             128);
 
     public static final int DEFAULT_CONNECTION_LIMIT_PER_TAG = Integer.getInteger(

@@ -176,21 +176,27 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
         request.setKeepAlive(HttpUtil.isKeepAlive(nettyRequest));
         if (HttpUtil.isContentLengthSet(nettyRequest)) {
             request.setContentLength(HttpUtil.getContentLength(nettyRequest));
+            getAndRemove(headers, Operation.CONTENT_LENGTH_HEADER);
+        }
+
+        String pragma = headers.get(Operation.PRAGMA_HEADER);
+        if (Operation.PRAGMA_DIRECTIVE_REPLICATED.equals(pragma)) {
+            // replication requests will have a single PRAGMA directive. Set the right
+            // options and remove the header to avoid further allocations
+            request.setFromReplication(true).setTargetReplicated(true);
+            headers.remove(Operation.PRAGMA_HEADER);
         }
 
         request.setContextId(getAndRemove(headers, Operation.CONTEXT_ID_HEADER));
 
-        String transactionId = getAndRemove(headers, Operation.TRANSACTION_ID_HEADER);
-        if (transactionId != null) {
-            request.setTransactionId(transactionId);
-        }
+        request.setTransactionId(getAndRemove(headers, Operation.TRANSACTION_ID_HEADER));
 
-        String contentType = getAndRemove(headers, HttpHeaderNames.CONTENT_TYPE);
+        String contentType = getAndRemove(headers, Operation.CONTENT_TYPE_HEADER);
         if (contentType != null) {
             request.setContentType(contentType);
         }
 
-        String cookie = getAndRemove(headers, HttpHeaderNames.COOKIE);
+        String cookie = getAndRemove(headers, Operation.COOKIE_HEADER);
         if (cookie != null) {
             request.setCookies(CookieJar.decodeCookies(cookie));
         }
@@ -198,7 +204,30 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
         for (Entry<String, String> h : headers) {
             String key = h.getKey();
             String value = h.getValue();
+            if (Operation.STREAM_ID_HEADER.equals(key)) {
+                continue;
+            }
+            if (Operation.HTTP2_SCHEME_HEADER.equals(key)) {
+                continue;
+            }
+            if (request.isFromReplication()) {
+                if (Operation.HOST_HEADER.equals(key)) {
+                    continue;
+                }
+                if (Operation.ACCEPT_HEADER.equals(key)) {
+                    continue;
+                }
+                if (Operation.USER_AGENT_HEADER.equals(key)) {
+                    continue;
+                }
+            }
             request.addRequestHeader(key, value);
+        }
+
+        if (request.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_REPLICATED)) {
+            // synchronization requests will have additional directives, so check again here
+            // if the request is replicated
+            request.setFromReplication(true).setTargetReplicated(true);
         }
 
         if (this.sslHandler == null) {

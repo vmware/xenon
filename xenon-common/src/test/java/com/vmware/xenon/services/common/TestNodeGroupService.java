@@ -200,7 +200,7 @@ public class TestNodeGroupService {
         this.host = VerificationHost.create(0);
         this.host.setAuthorizationEnabled(this.isAuthorizationEnabled);
 
-        VerificationHost.createAndAttachSSLClient(this.host, null, null);
+        VerificationHost.createAndAttachSSLClient(this.host);
 
         if (this.replicationUriScheme == HttpScheme.HTTPS_ONLY) {
             // disable HTTP, forcing host.getPublicUri() to return a HTTPS schemed URI. This in
@@ -1317,6 +1317,7 @@ public class TestNodeGroupService {
         Map<Action, Long> countPerAction = new HashMap<>();
 
         long totalOperations = 0;
+        boolean isFirstRun = true;
         do {
             if (this.host == null) {
                 setUp(this.nodeCount);
@@ -1414,6 +1415,13 @@ public class TestNodeGroupService {
             totalOperations += this.serviceCount;
 
             this.host.log("Total operations: %d", totalOperations);
+
+            if (isFirstRun && this.testDurationSeconds > 0) {
+                // ignore data during JVM warm-up
+                countPerAction.clear();
+                elapsedTimePerAction.clear();
+                isFirstRun = false;
+            }
 
         } while (new Date().before(expiration) && this.totalOperationLimit > totalOperations);
 

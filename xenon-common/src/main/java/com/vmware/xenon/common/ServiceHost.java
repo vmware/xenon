@@ -611,7 +611,20 @@ public class ServiceHost implements ServiceRequestSender {
             setServiceMemoryLimit(ServiceUriPaths.CORE_SERVICE_CONTEXT_INDEX,
                     DEFAULT_PCT_MEMORY_LIMIT_SERVICE_CONTEXT_INDEX);
         }
+        allocateExecutors();
         return this;
+    }
+
+    private void allocateExecutors() {
+        if (this.executor != null) {
+            this.executor.shutdownNow();
+        }
+        if (this.scheduledExecutor != null) {
+            this.scheduledExecutor.shutdownNow();
+        }
+        this.executor = Executors.newWorkStealingPool(Utils.DEFAULT_THREAD_COUNT);
+        this.scheduledExecutor = Executors.newScheduledThreadPool(Utils.DEFAULT_THREAD_COUNT,
+                r -> new Thread(r, getUri().toString() + "/scheduled/" + this.state.id));
     }
 
     /**
@@ -1040,7 +1053,7 @@ public class ServiceHost implements ServiceRequestSender {
         return this;
     }
 
-    protected ScheduledExecutorService getScheduledExecutor() {
+    public ScheduledExecutorService getScheduledExecutor() {
         return this.scheduledExecutor;
     }
 
@@ -1086,6 +1099,10 @@ public class ServiceHost implements ServiceRequestSender {
             this.state.isStopping = false;
         }
 
+        if (this.executor == null || this.scheduledExecutor == null) {
+            allocateExecutors();
+        }
+
         if (this.isAuthorizationEnabled() && this.authorizationService == null) {
             this.authorizationService = new AuthorizationContextService();
         }
@@ -1093,10 +1110,6 @@ public class ServiceHost implements ServiceRequestSender {
         byte[] secret = getJWTSecret();
         this.tokenSigner = new Signer(secret);
         this.tokenVerifier = new Verifier(secret);
-
-        this.executor = Executors.newWorkStealingPool(Utils.DEFAULT_THREAD_COUNT);
-        this.scheduledExecutor = Executors.newScheduledThreadPool(Utils.DEFAULT_THREAD_COUNT,
-                r -> new Thread(r, getUri().toString() + "/scheduled/" + this.state.id));
 
         if (getPort() != PORT_VALUE_LISTENER_DISABLED) {
             if (this.httpListener == null) {
@@ -2838,10 +2851,6 @@ public class ServiceHost implements ServiceRequestSender {
             }
         }
 
-        if (inboundOp.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_REPLICATED)) {
-            inboundOp.setFromReplication(true).setTargetReplicated(true);
-        }
-
         if (!this.state.isStarted) {
             failRequest(inboundOp, Operation.STATUS_CODE_NOT_FOUND,
                     new IllegalStateException("Service host not started"));
@@ -3524,6 +3533,7 @@ public class ServiceHost implements ServiceRequestSender {
     public void stop() {
 
         Set<Service> servicesToClose = null;
+
         synchronized (this.state) {
             if (!this.state.isStarted || this.state.isStopping) {
                 return;
@@ -3577,6 +3587,8 @@ public class ServiceHost implements ServiceRequestSender {
 
         this.executor.shutdownNow();
         this.scheduledExecutor.shutdownNow();
+        this.executor = null;
+        this.scheduledExecutor = null;
     }
 
     private List<Service> stopServices(Set<Service> servicesToClose) {

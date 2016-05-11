@@ -1654,7 +1654,7 @@ public class TestServiceHost {
         // set both HTTP and secure port, to null out the listeners from the host instance.
         this.host.setPort(ServiceHost.PORT_VALUE_LISTENER_DISABLED);
         this.host.setSecurePort(0);
-        VerificationHost.createAndAttachSSLClient(this.host, null, null);
+        VerificationHost.createAndAttachSSLClient(this.host);
         this.host.start();
 
         httpListener = this.host.getListener();
