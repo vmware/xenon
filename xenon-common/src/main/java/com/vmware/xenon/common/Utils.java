@@ -56,6 +56,7 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.google.gson.reflect.TypeToken;
 
+import com.vmware.xenon.common.MurmurHash3.LongPair;
 import com.vmware.xenon.common.Service.Action;
 import com.vmware.xenon.common.Service.ServiceOption;
 import com.vmware.xenon.common.ServiceDocumentDescription.PropertyDescription;
@@ -85,13 +86,13 @@ class DigestThreadLocal extends ThreadLocal<MessageDigest> {
 public class Utils {
     private static final int BUFFER_INITIAL_CAPACITY = 1 * 1024;
     private static final String CHARSET_UTF_8 = "UTF-8";
+    private static final String HASH_NAME_SHA_1 = "SHA-1";
+    public static final String DEFAULT_CONTENT_HASH = HASH_NAME_SHA_1;
     public static final String PROPERTY_NAME_PREFIX = "xenon.";
     public static final String CHARSET = CHARSET_UTF_8;
     public static final String UI_DIRECTORY_NAME = "ui";
 
     private static final char[] HEX_CHARS = "0123456789abcdef".toCharArray();
-    private static final String HASH_NAME_SHA_1 = "SHA-1";
-    public static final String DEFAULT_CONTENT_HASH = HASH_NAME_SHA_1;
 
     public static final int DEFAULT_IO_THREAD_COUNT = Math.min(4, Runtime.getRuntime()
             .availableProcessors());
@@ -107,7 +108,6 @@ public class Utils {
 
     private static final KryoForObjectThreadLocal kryoForObjectPerThread = new KryoForObjectThreadLocal();
     private static final KryoForDocumentThreadLocal kryoForDocumentPerThread = new KryoForDocumentThreadLocal();
-    private static final DigestThreadLocal digestPerThread = new DigestThreadLocal();
     private static final BufferThreadLocal bufferPerThread = new BufferThreadLocal();
 
     private static final JsonMapper JSON = new JsonMapper();
@@ -293,10 +293,9 @@ public class Utils {
     }
 
     private static String computeHash(byte[] content, int offset, int length) {
-        MessageDigest digest = digestPerThread.get();
-        digest.update(content, offset, length);
-        byte[] hash = digest.digest();
-        return Utils.toHexString(hash);
+        LongPair lp = new LongPair();
+        MurmurHash3.murmurhash3_x64_128(content, offset, length, 0, lp);
+        return Long.toHexString(lp.val1) + Long.toHexString(lp.val2);
     }
 
     public static String toJson(Object body) {
