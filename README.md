@@ -221,7 +221,7 @@ Maven command:
 
 The above command will compile the code, run checkstyle, and run unit-tests.
 
-# 3.2 Editing the code
+## 3.2 Editing the code
 
 The team uses Eclipse or IntelliJ. Formatting style settings for both these editors can be found in
 the [contrib](https://github.com/vmware/xenon/tree/master/contrib) folder.
