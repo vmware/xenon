@@ -2,6 +2,9 @@
 
 ## 0.8.1-SNAPSHOT
 
+* Use Murmur3 hash, instead of SHA1 for ServiceDocument.equals
+  and document signature calculation
+
 * Add support for binary serialization of operation body, using
   KRYO binary serializer (same as what currently used for storing
   state in the index). The client opts in by setting the operation
