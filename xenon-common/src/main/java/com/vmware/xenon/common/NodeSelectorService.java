@@ -67,11 +67,6 @@ public interface NodeSelectorService extends Service {
          */
         public transient Operation associatedOp;
 
-        /**
-         * Infrastructure use only
-         */
-        public transient ServiceDocument linkedState;
-
         public EnumSet<ForwardingOption> options;
 
         public EnumSet<ServiceOption> serviceOptions;

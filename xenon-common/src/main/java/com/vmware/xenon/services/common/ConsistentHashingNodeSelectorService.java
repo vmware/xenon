@@ -241,6 +241,9 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
 
         if (body.options != null && body.options.contains(ForwardingOption.BROADCAST)) {
             if (body.options.contains(ForwardingOption.REPLICATE)) {
+                if (op.getAction() == Action.DELETE) {
+                    response.selectedNodes = localState.nodes.values();
+                }
                 replicateRequest(op, body, response);
             } else {
                 broadcast(op, body, response);
