@@ -450,7 +450,7 @@ public class QueryTask extends ServiceDocument {
                 if (itemNames.size() == 1) {
                     return addFieldClause(
                             fieldName,
-                            itemNames.iterator().next());
+                            itemNames.iterator().next(), occurance);
                 }
 
                 Query.Builder inClause = Query.Builder.create(occurance);
