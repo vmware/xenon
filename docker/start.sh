@@ -30,7 +30,6 @@ DEFAULT_OPTS="\
 -XX:ErrorFile=$XENON_HOME/hprof/error_xenon_%p.log \
 -XX:+HeapDumpOnOutOfMemoryError \
 -XX:HeapDumpPath=$XENON_HOME/hprof \
--XX:+UseG1GC \
 -XX:MaxGCPauseMillis=100 \
 -XX:InitiatingHeapOccupancyPercent=60 \
 -Dsun.io.useCanonCaches=false \
