@@ -483,7 +483,7 @@ public class Operation implements Cloneable {
 
     /**
      * Infrastructure use only. Debugging only. Indicates this operation was converted from POST to PUT
-     * due to {@link ServiceOption.IDEMPOTENT_POST}
+     * due to {@link com.vmware.xenon.common.Service.ServiceOption#IDEMPOTENT_POST}
      */
     public static final String PRAGMA_DIRECTIVE_POST_TO_PUT = "xn-post-to-put";
 
@@ -829,7 +829,7 @@ public class Operation implements Cloneable {
      * occurs only for local operations, not operations that have a serialized
      * body already attached (in the form of a JSON string).
      *
-     * If idempotent behavior is desired, use {@link getBodyRaw}
+     * If idempotent behavior is desired, use {@link #getBodyRaw}
      */
     @SuppressWarnings("unchecked")
     public <T> T getBody(Class<T> type) {
