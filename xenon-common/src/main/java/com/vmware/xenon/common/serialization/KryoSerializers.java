@@ -54,7 +54,7 @@ public final class KryoSerializers {
         Kryo k = new Kryo();
         // handle classes with missing default constructors
         k.setInstantiatorStrategy(new DefaultInstantiatorStrategy(new StdInstantiatorStrategy()));
-            // supports addition of fields if the @since annotation is used
+        // supports addition of fields if the @since annotation is used
         k.setDefaultSerializer(VersionFieldSerializer.class);
         // Custom serializers for Java 8 date/time
         k.addDefaultSerializer(ZonedDateTime.class, ZonedDateTimeSerializer.INSTANCE);

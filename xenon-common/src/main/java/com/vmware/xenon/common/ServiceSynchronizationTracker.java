@@ -136,7 +136,7 @@ class ServiceSynchronizationTracker {
                 .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_NO_FORWARDING)
                 .setReplicationDisabled(true)
                 .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_SYNCH)
-                .setReferer(post.getReferer())
+                .transferRefererFrom(post)
                 .setCompletion((o, e) -> {
                     if (e != null) {
                         post.setStatusCode(o.getStatusCode()).setBodyNoCloning(o.getBodyRaw())

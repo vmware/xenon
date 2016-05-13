@@ -74,7 +74,7 @@ public class BroadcastQueryPageService extends StatelessService {
         for (String indexLink : this.pageLinks) {
             Operation op = Operation
                     .createGet(UriUtils.buildUri(this.getHost(), indexLink))
-                    .setReferer(get.getReferer())
+                    .transferRefererFrom(get)
                     .setExpiration(
                             Utils.getNowMicrosUtc() + getHost().getOperationTimeoutMicros() / 3)
                     .setCompletion((o, e) -> {

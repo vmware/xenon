@@ -438,7 +438,8 @@ public class NettyHttpServiceClient implements ServiceClient {
             NettyFullHttpRequest request = null;
             HttpMethod method = HttpMethod.valueOf(op.getAction().toString());
             if (body == null || body.length == 0) {
-                request = new NettyFullHttpRequest(HttpVersion.HTTP_1_1, method, pathAndQuery);
+                request = new NettyFullHttpRequest(HttpVersion.HTTP_1_1, method, pathAndQuery,
+                        Unpooled.buffer(0), false);
             } else {
                 ByteBuf content = Unpooled.wrappedBuffer(body, 0, (int) op.getContentLength());
                 request = new NettyFullHttpRequest(HttpVersion.HTTP_1_1, method, pathAndQuery,
@@ -488,22 +489,26 @@ public class NettyHttpServiceClient implements ServiceClient {
             request.headers().set(HttpHeaderNames.CONTENT_TYPE, op.getContentType());
             request.headers().set(HttpHeaderNames.CONNECTION, HttpHeaderValues.KEEP_ALIVE);
 
-            if (op.getReferer() != null) {
-                request.headers().set(HttpHeaderNames.REFERER, op.getReferer().toString());
-            }
+            if (!op.isFromReplication()) {
+                if (op.getCookies() != null) {
+                    String header = CookieJar.encodeCookies(op.getCookies());
+                    request.headers().set(HttpHeaderNames.COOKIE, header);
+                }
 
-            if (op.getCookies() != null) {
-                String header = CookieJar.encodeCookies(op.getCookies());
-                request.headers().set(HttpHeaderNames.COOKIE, header);
-            }
+                if (op.hasReferer()) {
+                    request.headers().set(HttpHeaderNames.REFERER, op.getRefererAsString());
+                }
 
-            request.headers().set(HttpHeaderNames.USER_AGENT, this.userAgent);
-            if (op.getRequestHeader(Operation.ACCEPT_HEADER) == null) {
-                request.headers().set(HttpHeaderNames.ACCEPT,
-                        Operation.MEDIA_TYPE_EVERYTHING_WILDCARDS);
-            }
+                request.headers().set(HttpHeaderNames.USER_AGENT, this.userAgent);
+                if (op.getRequestHeader(Operation.ACCEPT_HEADER) == null) {
+                    request.headers().set(HttpHeaderNames.ACCEPT,
+                            Operation.MEDIA_TYPE_EVERYTHING_WILDCARDS);
+                }
 
-            request.headers().set(HttpHeaderNames.HOST, op.getUri().getHost());
+                request.headers().set(HttpHeaderNames.HOST, this.host != null
+                        ? this.host.getPublicUri().getHost()
+                        : ServiceHost.LOCAL_HOST);
+            }
 
             op.nestCompletion((o, e) -> {
                 if (e != null) {
@@ -579,7 +584,8 @@ public class NettyHttpServiceClient implements ServiceClient {
 
         if (!isRetryRequested) {
             LOGGER.fine(String.format("(%d) Send of %d, from %s to %s failed with %s",
-                    pool.getPendingRequestCount(op), op.getId(), op.getReferer(), op.getUri(),
+                    pool.getPendingRequestCount(op), op.getId(), op.getRefererAsString(),
+                    op.getUri(),
                     e.toString()));
             op.fail(e);
             return;
@@ -588,7 +594,7 @@ public class NettyHttpServiceClient implements ServiceClient {
         LOGGER.fine(String.format("(%d) Retry %d of request %d from %s to %s due to %s",
                 pool.getPendingRequestCount(op), op.getRetryCount() - op.getRetriesRemaining(),
                 op.getId(),
-                op.getReferer(), op.getUri(), e.toString()));
+                op.getRefererAsString(), op.getUri(), e.toString()));
 
         int delaySeconds = op.getRetryCount() - op.getRetriesRemaining();
 
@@ -618,7 +624,7 @@ public class NettyHttpServiceClient implements ServiceClient {
             e = new IllegalArgumentException("Action is required");
         }
 
-        if (op.getReferer() == null) {
+        if (!op.hasReferer()) {
             e = new IllegalArgumentException("Referer is required");
         }
 

@@ -146,8 +146,7 @@ public class StatefulService implements Service {
             op.setEnqueueTime(Utils.getNowMicrosUtc());
         }
 
-        URI referer = op.getReferer();
-        if (referer == null) {
+        if (!op.hasReferer()) {
             op.fail(new IllegalArgumentException("Referer is required"));
             return true;
         }

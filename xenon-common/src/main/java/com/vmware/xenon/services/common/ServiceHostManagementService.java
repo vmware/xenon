@@ -262,7 +262,7 @@ public class ServiceHostManagementService extends StatefulService {
         File f = new File(file);
 
         Operation post = Operation.createPost(req.destination)
-                .setReferer(op.getReferer()).setCompletion((o, e) -> {
+                .transferRefererFrom(op).setCompletion((o, e) -> {
                     if (e != null) {
                         op.fail(e);
                         return;
@@ -318,7 +318,7 @@ public class ServiceHostManagementService extends StatefulService {
             };
 
             Operation downloadFileOp = Operation.createGet(req.destination)
-                    .setReferer(op.getReferer()).setCompletion(c);
+                    .transferRefererFrom(op).setCompletion(c);
             FileUtils.getFile(this.getHost().getClient(), downloadFileOp, fileToDownload);
 
         } catch (IOException e) {

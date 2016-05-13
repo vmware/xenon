@@ -390,7 +390,7 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
                     .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_NO_FORWARDING)
                     .setAction(op.getAction())
                     .setCompletion(c)
-                    .setReferer(op.getReferer())
+                    .transferRefererFrom(op)
                     .setExpiration(op.getExpirationMicrosUtc())
                     .setBody(op.getBodyRaw());
 

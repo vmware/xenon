@@ -113,6 +113,7 @@ public class NodeSelectorReplicationService extends StatelessService {
                     && o.getStatusCode() >= Operation.STATUS_CODE_FAILURE_THRESHOLD) {
                 e = new IllegalStateException("Request failed: " + o.toString());
             }
+
             int sCount = completionCounts[0];
             int fCount = completionCounts[1];
             synchronized (outboundOp) {
@@ -158,7 +159,7 @@ public class NodeSelectorReplicationService extends StatelessService {
                 .setCompletion(c)
                 .setRetryCount(1)
                 .setExpiration(outboundOp.getExpirationMicrosUtc())
-                .setReferer(outboundOp.getReferer());
+                .transferRefererFrom(outboundOp);
 
         update.setFromReplication(true);
         update.setConnectionSharing(true);
