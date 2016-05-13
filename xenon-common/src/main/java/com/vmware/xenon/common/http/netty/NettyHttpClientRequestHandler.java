@@ -156,20 +156,16 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
 
     private void parseRequestHeaders(ChannelHandlerContext ctx, Operation request,
             HttpRequest nettyRequest) {
-        HttpHeaders headers = nettyRequest.headers();
 
-        String referer = getAndRemove(headers, HttpHeaderNames.REFERER);
+        HttpHeaders headers = nettyRequest.headers();
+        boolean hasHeaders = !headers.isEmpty();
+
+        String referer = getAndRemove(headers, Operation.REFERER_HEADER);
         if (referer != null) {
-            try {
-                request.setReferer(new URI(referer));
-            } catch (URISyntaxException e) {
-                setRefererFromSocketContext(ctx, request);
-            }
-        } else {
-            setRefererFromSocketContext(ctx, request);
+            request.setReferer(referer);
         }
 
-        if (headers.isEmpty()) {
+        if (!hasHeaders) {
             return;
         }
 
@@ -179,12 +175,19 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
             getAndRemove(headers, Operation.CONTENT_LENGTH_HEADER);
         }
 
-        String pragma = headers.get(Operation.PRAGMA_HEADER);
+        String pragma = getAndRemove(headers, Operation.PRAGMA_HEADER);
         if (Operation.PRAGMA_DIRECTIVE_REPLICATED.equals(pragma)) {
             // replication requests will have a single PRAGMA directive. Set the right
             // options and remove the header to avoid further allocations
             request.setFromReplication(true).setTargetReplicated(true);
-            headers.remove(Operation.PRAGMA_HEADER);
+        } else if (pragma != null) {
+            request.addRequestHeader(Operation.PRAGMA_HEADER, pragma);
+        }
+
+        if (request.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_REPLICATED)) {
+            // synchronization requests will have additional directives, so check again here
+            // if the request is replicated
+            request.setFromReplication(true).setTargetReplicated(true);
         }
 
         request.setContextId(getAndRemove(headers, Operation.CONTEXT_ID_HEADER));
@@ -201,6 +204,8 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
             request.setCookies(CookieJar.decodeCookies(cookie));
         }
 
+        String host = getAndRemove(headers, Operation.HOST_HEADER);
+
         for (Entry<String, String> h : headers) {
             String key = h.getKey();
             String value = h.getValue();
@@ -210,24 +215,18 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
             if (Operation.HTTP2_SCHEME_HEADER.equals(key)) {
                 continue;
             }
-            if (request.isFromReplication()) {
-                if (Operation.HOST_HEADER.equals(key)) {
-                    continue;
-                }
-                if (Operation.ACCEPT_HEADER.equals(key)) {
-                    continue;
-                }
-                if (Operation.USER_AGENT_HEADER.equals(key)) {
-                    continue;
-                }
-            }
+
             request.addRequestHeader(key, value);
         }
 
-        if (request.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_REPLICATED)) {
-            // synchronization requests will have additional directives, so check again here
-            // if the request is replicated
-            request.setFromReplication(true).setTargetReplicated(true);
+        if (!request.isFromReplication()) {
+            request.addRequestHeader(Operation.HOST_HEADER, host);
+        }
+
+        if (!request.hasReferer() && request.isFromReplication()) {
+            // we assume referrer is the same service, but from the remote node. Do not
+            // bother with rewriting the URI with the remote host, at avoid allocations
+            request.setReferer(request.getUri());
         }
 
         if (this.sslHandler == null) {
@@ -245,12 +244,6 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
         }
     }
 
-    private String getAndRemove(HttpHeaders headers, AsciiString headerName) {
-        String headerValue = headers.get(headerName.toString());
-        headers.remove(headerName);
-        return headerValue;
-    }
-
     private String getAndRemove(HttpHeaders headers, String headerName) {
         String headerValue = headers.get(headerName);
         headers.remove(headerName);
@@ -264,6 +257,11 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
         });
 
         request.setCloningDisabled(true);
+
+        if (!request.hasReferer()) {
+            setRefererFromSocketContext(ctx, request);
+        }
+
         Operation localOp = request;
         if (request.getRequestCallbackLocation() != null) {
             localOp = processRequestWithCallback(request);

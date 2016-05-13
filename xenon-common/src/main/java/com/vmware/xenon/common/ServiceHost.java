@@ -1860,7 +1860,7 @@ public class ServiceHost implements ServiceRequestSender {
         // delete the notification target
         sendRequest(Operation
                 .createDelete(notificationTarget)
-                .setReferer(unsubscribe.getReferer())
+                .transferRefererFrom(unsubscribe)
                 .setCompletion(
                         (deleteOp, deleteEx) -> {
                             if (deleteEx != null) {
@@ -1940,7 +1940,7 @@ public class ServiceHost implements ServiceRequestSender {
             post.setUri(UriUtils.buildUri(this, service.getClass()));
         }
 
-        if (post.getReferer() == null) {
+        if (!post.hasReferer()) {
             post.setReferer(post.getUri());
         }
 
@@ -2475,7 +2475,7 @@ public class ServiceHost implements ServiceRequestSender {
         URI u = UriUtils.buildDocumentQueryUri(this, s.getSelfLink(), false, true, s.getOptions());
         Operation loadGet = Operation
                 .createGet(u)
-                .setReferer(op.getReferer())
+                .transferRefererFrom(op)
                 .setCompletion((o, e) -> {
                     if (e != null) {
                         op.fail(e);
@@ -2562,7 +2562,7 @@ public class ServiceHost implements ServiceRequestSender {
                 s.getOptions());
         Operation loadGet = Operation
                 .createGet(u)
-                .setReferer(serviceStartPost.getReferer())
+                .transferRefererFrom(serviceStartPost)
                 .setCompletion((indexQueryOperation, e) -> {
                     handleLoadInitialStateCompletion(s, serviceStartPost, next,
                             hasClientSuppliedState,
@@ -4319,7 +4319,7 @@ public class ServiceHost implements ServiceRequestSender {
 
         onDemandPost.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_INDEX_CHECK)
                 .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_VERSION_CHECK)
-                .setReferer(inboundOp.getReferer())
+                .transferRefererFrom(inboundOp)
                 .setExpiration(inboundOp.getExpirationMicrosUtc())
                 .setReplicationDisabled(true)
                 .setCompletion(c);

@@ -89,7 +89,7 @@ public class NettyHttpServiceClientTest {
                 TimeUnit.MILLISECONDS.toMicros(VerificationHost.FAST_MAINT_INTERVAL_MILLIS));
 
         ServiceClient client = NettyHttpServiceClient.create(
-                NettyHttpServiceClientTest.class.getCanonicalName(),
+                NettyHttpServiceClientTest.class.getSimpleName(),
                 Executors.newFixedThreadPool(4),
                 Executors.newScheduledThreadPool(1), HOST);
 

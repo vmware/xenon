@@ -522,7 +522,7 @@ public class FileUtils {
         };
 
         h.send(Operation.createGet(get.getUri())
-                .setReferer(get.getReferer())
+                .transferRefererFrom(get)
                 .addHeader(new ContentRange().toRangeHeader(), false)
                 .setExpiration(get.getExpirationMicrosUtc())
                 .setCompletion(getCompletion));
@@ -542,7 +542,7 @@ public class FileUtils {
             final boolean getNextSet = (chunksInFlight == ContentRange.MAX_IN_FLIGHT_CHUNKS - 1);
             Operation nextGet = Operation
                     .createGet(parentGet.getUri())
-                    .setReferer(parentGet.getReferer())
+                    .transferRefererFrom(parentGet)
                     .addHeader(range[0].toRangeHeader(), false)
                     .setExpiration(parentGet.getExpirationMicrosUtc())
                     .setCompletion(
@@ -658,7 +658,7 @@ public class FileUtils {
                                         .setBodyNoCloning(buf)
                                         .setContentLength(bb.limit())
                                         .setRetryCount(0)
-                                        .setReferer(put.getReferer())
+                                        .transferRefererFrom(put)
                                         .setExpiration(put.getExpirationMicrosUtc())
                                         .setCompletion(
                                                 (o, e) -> {

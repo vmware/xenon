@@ -146,7 +146,7 @@ public class NodeGroupUtils {
             CheckConvergenceRequest peerReq = CheckConvergenceRequest
                     .create(ngs.membershipUpdateTimeMicros);
             Operation peerOp = Operation.createPost(ns.groupReference)
-                    .setReferer(parentOp.getReferer())
+                    .transferRefererFrom(parentOp)
                     .setExpiration(parentOp.getExpirationMicrosUtc())
                     .setBodyNoCloning(peerReq);
             ops.add(peerOp);
@@ -162,7 +162,7 @@ public class NodeGroupUtils {
 
     public static void checkConvergence(ServiceHost host, URI nodegroupReference, Operation parentOp) {
         Operation.createGet(nodegroupReference)
-                .setReferer(parentOp.getReferer())
+                .transferRefererFrom(parentOp)
                 .setCompletion((o, t) -> {
                     if (t != null) {
                         parentOp.fail(t);

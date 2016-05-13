@@ -94,7 +94,7 @@ public class NettyHttpClientRequestInitializer extends ChannelInitializer<Socket
         HttpClientCodec http1_codec = new HttpClientCodec(
                 NettyChannelContext.MAX_INITIAL_LINE_LENGTH,
                 NettyChannelContext.MAX_HEADER_SIZE,
-                NettyChannelContext.MAX_CHUNK_SIZE, false);
+                NettyChannelContext.MAX_CHUNK_SIZE, false, false);
 
         // The HttpClientCodec combines the HttpRequestEncoder and the HttpResponseDecoder, and it
         // also provides a method for upgrading the protocol, which we use to support HTTP/2.

@@ -325,7 +325,7 @@ public class Operation implements Cloneable {
             SerializedOperation ctx = new SerializedOperation();
             ctx.contextId = op.getContextId();
             ctx.action = op.action;
-            ctx.referer = op.referer;
+            ctx.referer = op.getReferer();
             ctx.id = op.id;
             ctx.options = op.options.clone();
             ctx.transactionId = op.getTransactionId();
@@ -531,7 +531,7 @@ public class Operation implements Cloneable {
                     "completion");
 
     private URI uri;
-    private URI referer;
+    private Object referer;
     private final long id = idCounter.incrementAndGet();
     private int statusCode = HttpURLConnection.HTTP_OK;
     private Action action;
@@ -986,8 +986,43 @@ public class Operation implements Cloneable {
         return this;
     }
 
+    public Operation setReferer(String uri) {
+        this.referer = uri;
+        return this;
+    }
+
+    public Operation transferRefererFrom(Operation op) {
+        this.referer = op.referer;
+        return this;
+    }
+
+    public boolean hasReferer() {
+        return this.referer != null;
+    }
+
     public URI getReferer() {
-        return this.referer;
+        if (this.referer == null) {
+            return null;
+        }
+        if (!(this.referer instanceof URI)) {
+            try {
+                this.referer = new URI((String) this.referer);
+            } catch (Throwable e) {
+                throw new RuntimeException(e);
+            }
+        }
+        return (URI) this.referer;
+    }
+
+    public String getRefererAsString() {
+        if (this.referer == null) {
+            return null;
+        }
+        if (this.referer instanceof String) {
+            return (String) this.referer;
+        } else {
+            return ((URI) this.referer).toString();
+        }
     }
 
     public Operation setAction(Action action) {
