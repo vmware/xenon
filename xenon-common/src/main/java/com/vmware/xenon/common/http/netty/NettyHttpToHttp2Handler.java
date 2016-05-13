@@ -82,23 +82,28 @@ public class NettyHttpToHttp2Handler extends HttpToHttp2ConnectionHandler {
         }
 
         Operation oldOperation = socketContext.getOperationForStream(currentStreamId);
-        if (oldOperation != null && oldOperation.getId() != operation.getId()) {
-            long oldOpId = oldOperation.getId();
-            long opId = operation.getId();
-            // Reusing stream should NOT happen. sign for serious error...
-            Utils.logWarning("Reusing stream %d. opId=%d, oldOpId=%d",
-                    currentStreamId, opId, oldOpId);
-            Throwable e = new IllegalStateException("HTTP/2 Stream ID collision for id "
-                    + currentStreamId);
-            ServiceErrorResponse rsp = ServiceErrorResponse.create(
-                    e,
-                    Operation.STATUS_CODE_FAILURE_THRESHOLD,
-                    EnumSet.of(ErrorDetail.SHOULD_RETRY));
-            oldOperation.setBodyNoCloning(rsp).fail(e, rsp.statusCode);
+
+        if (oldOperation == null || oldOperation.getId() == operation.getId()) {
+            socketContext.setOperationForStream(currentStreamId, operation);
+            return;
         }
+        long oldOpId = oldOperation.getId();
+        long opId = operation.getId();
+        // Reusing stream should NOT happen. sign for serious error...
+        Utils.logWarning("Reusing stream %d. opId=%d, oldOpId=%d",
+                currentStreamId, opId, oldOpId);
+        Throwable e = new IllegalStateException("HTTP/2 Stream ID collision for id "
+                + currentStreamId);
+        ServiceErrorResponse rsp = ServiceErrorResponse.create(
+                e,
+                Operation.STATUS_CODE_FAILURE_THRESHOLD,
+                EnumSet.of(ErrorDetail.SHOULD_RETRY));
 
-        socketContext.setOperationForStream(currentStreamId, operation);
-
+        // fail both operations, close the channel
+        socketContext.setOperation(null);
+        socketContext.close();
+        oldOperation.setBodyNoCloning(rsp).fail(e, rsp.statusCode);
+        operation.setBodyNoCloning(rsp).fail(e, rsp.statusCode);
     }
 
     /**

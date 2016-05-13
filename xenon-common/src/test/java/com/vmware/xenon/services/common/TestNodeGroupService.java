@@ -118,6 +118,7 @@ public class TestNodeGroupService {
 
     }
 
+    private static final String CUSTOM_EXAMPLE_SERVICE_KIND = "xenon:examplestate";
     private static final String CUSTOM_NODE_GROUP_NAME = "custom";
     private static final String CUSTOM_NODE_GROUP = UriUtils.buildUriPath(
             ServiceUriPaths.NODE_GROUP_FACTORY,
@@ -177,6 +178,9 @@ public class TestNodeGroupService {
     private BiPredicate<ExampleServiceState, ExampleServiceState> exampleStateConvergenceChecker = (
             initial, current) -> {
         if (current.name == null) {
+            return false;
+        }
+        if (!CUSTOM_EXAMPLE_SERVICE_KIND.equals(current.documentKind)) {
             return false;
         }
         return current.name.equals(initial.name);
@@ -275,10 +279,13 @@ public class TestNodeGroupService {
     @Before
     public void setUp() {
         CommandLineArgumentParser.parseFromProperties(this);
+        Utils.registerKind(ExampleServiceState.class, CUSTOM_EXAMPLE_SERVICE_KIND);
     }
 
     @After
     public void tearDown() throws InterruptedException {
+        Utils.registerKind(ExampleServiceState.class,
+                Utils.toDocumentKind(ExampleServiceState.class));
         if (this.host == null) {
             return;
         }
@@ -1340,11 +1347,8 @@ public class TestNodeGroupService {
             totalOperations += this.serviceCount;
 
             if (this.testDurationSeconds == 0) {
+                verifyReplicatedForcedPostAfterDelete(childStates);
                 verifyInstantNotFoundFailureOnBadLinks();
-                return;
-            }
-
-            if (this.testDurationSeconds == 0) {
                 verifyReplicatedIdempotentPost(childStates);
             }
 
@@ -1492,6 +1496,51 @@ public class TestNodeGroupService {
         ctx.await();
     }
 
+    /**
+     * Verifies that DELETE actions propagate and commit, and, that forced POST actions succeed
+     */
+    private void verifyReplicatedForcedPostAfterDelete(Map<String, ExampleServiceState> childStates)
+            throws Throwable {
+        // delete one of the children, then re-create but with a zero version, using a special
+        // directive that forces creation
+        Entry<String, ExampleServiceState> childEntry = childStates.entrySet().iterator().next();
+        TestContext ctx = this.host.testCreate(1);
+        Operation delete = Operation
+                .createDelete(this.host.getPeerServiceUri(childEntry.getKey()))
+                .setCompletion(ctx.getCompletion());
+        this.host.send(delete);
+        ctx.await();
+
+        if (!this.host.isRemotePeerTest()) {
+            this.host.waitFor("services not deleted", () -> {
+                for (VerificationHost h : this.host.getInProcessHostMap().values()) {
+                    ProcessingStage stg = h.getServiceStage(childEntry.getKey());
+                    if (stg != null) {
+                        this.host.log("Service exists %s on host %s, stage %s",
+                                childEntry.getKey(), h.toString(), stg);
+                        return false;
+                    }
+                }
+                return true;
+            });
+        }
+
+        TestContext postCtx = this.host.testCreate(1);
+        Operation opPost = Operation
+                .createPost(this.host.getPeerServiceUri(this.replicationTargetFactoryLink))
+                .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_FORCE_INDEX_UPDATE)
+                .setBody(childEntry.getValue())
+                .setCompletion((o, e) -> {
+                    if (e != null) {
+                        postCtx.failIteration(e);
+                    } else {
+                        postCtx.completeIteration();
+                    }
+                });
+        this.host.send(opPost);
+        this.host.testWait(postCtx);
+    }
+
     private void waitForReplicationFactoryConvergence() throws Throwable {
 
         // for code coverage, verify the convenience method on the host also reports available
@@ -1596,6 +1645,24 @@ public class TestNodeGroupService {
 
     private void verifyInstantNotFoundFailureOnBadLinks() throws Throwable {
         this.host.toggleNegativeTestMode(true);
+
+        CompletionHandler c = (o, e) -> {
+            if (e != null) {
+                this.host.completeIteration();
+                return;
+            }
+            // strange, service exists, lets verify
+            for (VerificationHost h : this.host.getInProcessHostMap().values()) {
+                ProcessingStage stg = h.getServiceStage(o.getUri().getPath());
+                if (stg != null) {
+                    this.host.log("Service exists %s on host %s, stage %s",
+                            o.getUri().getPath(), h.toString(), stg);
+                }
+            }
+            this.host.failIteration(new Throwable("Expected service to not exist:"
+                    + o.toString()));
+        };
+
         // do a negative test: send request to a example child we know does not exist, but disable queuing
         // so we get 404 right away
         this.host.testStart(this.serviceCount);
@@ -1605,21 +1672,7 @@ public class TestNodeGroupService {
             URI bogusChild = UriUtils.extendUri(factoryURI,
                     Utils.getNowMicrosUtc() + UUID.randomUUID().toString());
             Operation patch = Operation.createPatch(bogusChild)
-                    .setCompletion((o, e) -> {
-                        if (e != null) {
-                            this.host.completeIteration();
-                            return;
-                        }
-                        // strange, service exists, lets verify
-                        for (VerificationHost h : this.host.getInProcessHostMap().values()) {
-                            ProcessingStage stg = h.getServiceStage(o.getUri().getPath());
-                            if (stg != null) {
-                                this.host.log("Service exists %s on host %s, stage %s",
-                                        o.getUri().getPath(), h.toString(), stg);
-                            }
-                        }
-                        this.host.failIteration(new Throwable("Expected service to not exist"));
-                    })
+                    .setCompletion(c)
                     .setBody(new ExampleServiceState());
 
             this.host.send(patch);
@@ -2668,38 +2721,44 @@ public class TestNodeGroupService {
 
             for (int i = 0; i < updateCount; i++) {
 
-                long sentTime = Utils.getNowMicrosUtc();
+                long sentTime = 0;
+                if (this.expectFailure) {
+                    sentTime = Utils.getNowMicrosUtc();
+                }
                 URI factoryOnRandomPeerUri = this.host
                         .getPeerServiceUri(this.replicationTargetFactoryLink);
 
-                this.host.send(Operation
-                        .createPatch(UriUtils.buildUri(factoryOnRandomPeerUri,
-                                initState.documentSelfLink))
-                        .setAction(action)
-                        .forceRemote()
-                        .setBody(initState)
-                        .setCompletion(
-                                (o, e) -> {
-                                    if (e != null) {
-                                        if (this.expectFailure) {
-                                            failedCount.incrementAndGet();
-                                            this.host.completeIteration();
-                                            return;
-                                        }
-                                        this.host.failIteration(e);
-                                        return;
-                                    }
+                long finalSentTime = sentTime;
+                this.host
+                        .send(Operation
+                                .createPatch(UriUtils.buildUri(factoryOnRandomPeerUri,
+                                        initState.documentSelfLink))
+                                .setAction(action)
+                                .forceRemote()
+                                .setBodyNoCloning(initState)
+                                .setCompletion(
+                                        (o, e) -> {
+                                            if (e != null) {
+                                                if (this.expectFailure) {
+                                                    failedCount.incrementAndGet();
+                                                    this.host.completeIteration();
+                                                    return;
+                                                }
+                                                this.host.failIteration(e);
+                                                return;
+                                            }
 
-                                    if (this.expectFailure
-                                            && this.expectedFailureStartTimeMicros > 0
-                                            && sentTime > this.expectedFailureStartTimeMicros) {
-                                        this.host.failIteration(new IllegalStateException(
-                                                "Request should have failed: %s" + o.toString()
-                                                        + " sent at " + sentTime));
-                                        return;
-                                    }
-                                    this.host.completeIteration();
-                                }));
+                                            if (this.expectFailure
+                                                    && this.expectedFailureStartTimeMicros > 0
+                                                    && finalSentTime > this.expectedFailureStartTimeMicros) {
+                                                this.host.failIteration(new IllegalStateException(
+                                                        "Request should have failed: %s"
+                                                                + o.toString()
+                                                                + " sent at " + finalSentTime));
+                                                return;
+                                            }
+                                            this.host.completeIteration();
+                                        }));
             }
         }
         this.host.testWait();
