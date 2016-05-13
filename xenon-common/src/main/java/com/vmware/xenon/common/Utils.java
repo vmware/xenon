@@ -38,6 +38,7 @@ import java.util.Map;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Supplier;
@@ -48,7 +49,6 @@ import com.esotericsoftware.kryo.Kryo;
 import com.esotericsoftware.kryo.KryoException;
 import com.esotericsoftware.kryo.io.Input;
 import com.esotericsoftware.kryo.io.Output;
-
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
@@ -101,6 +101,7 @@ public class Utils {
 
     private static final JsonMapper JSON = new JsonMapper();
     private static final ConcurrentMap<Class<?>, JsonMapper> CUSTOM_JSON = new ConcurrentHashMap<>();
+    private static final Map<String, String> KINDS = new ConcurrentSkipListMap<>();
 
     private static JsonMapper getJsonMapperFor(Type type) {
         if (type instanceof Class) {
@@ -430,8 +431,29 @@ public class Utils {
         return time;
     }
 
+    public static String toDocumentKind(Class<?> type) {
+        String name = type.getCanonicalName();
+        String kind = name.replace(".", ":");
+        return kind;
+    }
+
+    /**
+     * Registers mapping between a type and document kind string the runtime
+     * will use for all services with that state type
+     */
+    public static String registerKind(Class<?> type, String kind) {
+        return KINDS.put(type.getCanonicalName(), kind);
+    }
+
+    /**
+     * Builds a kind string from a type. It uses a cache to lookup the type to kind
+     * mapping. The mapping can be overridden with {@code Utils#registerKind(Class, String)}
+     */
     public static String buildKind(Class<?> type) {
-        return type.getCanonicalName().replace(".", ":");
+        String kind = KINDS.computeIfAbsent(type.getCanonicalName(), (name) -> {
+            return toDocumentKind(type);
+        });
+        return kind;
     }
 
     public static ServiceErrorResponse toServiceErrorResponse(Throwable e) {
@@ -719,16 +741,44 @@ public class Utils {
         return addrStr;
     }
 
-    public static byte[] encodeBody(Operation op) throws Throwable {
-        byte[] data = null;
-        String contentType = op.getContentType();
+    /**
+     * Infrastructure use. Serializes linked state associated with source operation
+     * and sets the result as the body of the target operation
+     */
+    public static void encodeAndTransferLinkedStateToBody(Operation source, Operation target,
+            boolean useBinary) {
+        if (useBinary && source.getAction() != Action.POST) {
+            try {
+                byte[] encodedBody = Utils.encodeBody(source, source.getLinkedState(),
+                        Operation.MEDIA_TYPE_APPLICATION_KRYO_OCTET_STREAM);
+                source.linkSerializedState(encodedBody);
+            } catch (Throwable e2) {
+                Utils.logWarning("Failure binary serializing, will fallback to JSON: %s",
+                        Utils.toString(e2));
+            }
+        }
 
-        if (!op.hasBody()) {
+        if (!source.hasLinkedSerializedState()) {
+            target.setContentType(Operation.MEDIA_TYPE_APPLICATION_JSON);
+            target.setBodyNoCloning(Utils.toJson(source.getLinkedState()));
+        } else {
+            target.setContentType(Operation.MEDIA_TYPE_APPLICATION_KRYO_OCTET_STREAM);
+            target.setBodyNoCloning(source.getLinkedSerializedState());
+        }
+    }
+
+    public static byte[] encodeBody(Operation op) throws Throwable {
+        return encodeBody(op, op.getBodyRaw(), op.getContentType());
+    }
+
+    public static byte[] encodeBody(Operation op, Object body, String contentType) throws Throwable {
+        byte[] data = null;
+
+        if (body == null) {
             op.setContentLength(0);
             return null;
         }
 
-        Object body = op.getBodyRaw();
         if (body instanceof String) {
             data = ((String) body).getBytes(Utils.CHARSET);
             op.setContentLength(data.length);
@@ -783,15 +833,22 @@ public class Utils {
         try {
             String contentType = op.getContentType();
             Object body = decodeIfText(buffer, contentType);
-            if (body == null) {
-                // unrecognized or binary body, use the raw bytes
-                byte[] data = new byte[(int) op.getContentLength()];
-                buffer.get(data);
-                if (Operation.MEDIA_TYPE_APPLICATION_KRYO_OCTET_STREAM.equals(contentType)) {
-                    body = Utils.fromDocumentBytes(data, 0, data.length);
-                } else {
-                    body = data;
+            if (body != null) {
+                op.setBodyNoCloning(body).complete();
+                return;
+            }
+
+            // unrecognized or binary body, use the raw bytes
+            byte[] data = new byte[(int) op.getContentLength()];
+            buffer.get(data);
+            if (Operation.MEDIA_TYPE_APPLICATION_KRYO_OCTET_STREAM.equals(contentType)) {
+                body = Utils.fromDocumentBytes(data, 0, data.length);
+                if (op.isFromReplication()) {
+                    // optimization to avoid having to serialize state again, during indexing
+                    op.linkSerializedState(data);
                 }
+            } else {
+                body = data;
             }
             op.setBodyNoCloning(body).complete();
         } catch (Throwable e) {

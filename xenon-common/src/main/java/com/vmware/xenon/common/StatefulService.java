@@ -924,6 +924,7 @@ public class StatefulService implements Service {
             commitOp.setAction(op.getAction());
         }
 
+        commitOp.linkState(latestState);
         getHost().replicateRequest(this.context.options, latestState, getPeerNodeSelectorPath(),
                 getSelfLink(),
                 commitOp);
@@ -1051,14 +1052,13 @@ public class StatefulService implements Service {
     }
 
     private void applyUpdate(Operation op) throws Throwable {
-        long time = Utils.getNowMicrosUtc();
-
         ServiceDocument cachedState = op.getLinkedState();
         if (cachedState == null) {
             cachedState = this.context.stateType.newInstance();
         }
 
         if (!op.isFromReplication()) {
+            long time = Utils.getNowMicrosUtc();
             if (hasOption(ServiceOption.OWNER_SELECTION)) {
                 cachedState.documentEpoch = this.context.epoch;
             }
@@ -1078,9 +1078,6 @@ public class StatefulService implements Service {
         // a replica simply sets its version to the highest version it has seen. Agreement on
         // owner and epoch is done in validation methods upstream
         this.context.version = Math.max(cachedState.documentVersion, this.context.version);
-
-        cachedState.documentUpdateTimeMicros = Math.max(
-                cachedState.documentUpdateTimeMicros, time);
 
         if (hasOption(ServiceOption.OWNER_SELECTION)) {
             long prevEpoch = this.context.epoch;
@@ -1432,6 +1429,13 @@ public class StatefulService implements Service {
             op.setTargetReplicated(true);
         }
         op.setReferer(UriUtils.buildUri(getHost().getPublicUri(), getSelfLink()));
+    }
+
+    /**
+     * Gets the cached ServiceDocumentDescription instance for the service state.
+     */
+    public ServiceDocumentDescription getStateDescription() {
+        return getHost().buildDocumentDescription(this);
     }
 
     /**

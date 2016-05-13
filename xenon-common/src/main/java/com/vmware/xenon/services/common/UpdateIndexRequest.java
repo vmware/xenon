@@ -19,4 +19,5 @@ import com.vmware.xenon.common.ServiceDocumentDescription;
 public class UpdateIndexRequest {
     public transient ServiceDocument document;
     public transient ServiceDocumentDescription description;
+    public byte[] serializedDocument;
 }

@@ -451,11 +451,11 @@ public class NettyHttpServiceClient implements ServiceClient {
                 if (hasRequestHeaders) {
                     op.getRequestHeaders().remove(Operation.STREAM_ID_HEADER);
                 }
-
                 // We set the operation so that once a streamId is assigned, we can record
                 // the correspondence between the streamId and operation: this will let us
                 // handle responses properly later.
                 request.setOperation(op);
+
             }
 
             String pragmaHeader = op.getRequestHeader(Operation.PRAGMA_HEADER);
@@ -534,9 +534,7 @@ public class NettyHttpServiceClient implements ServiceClient {
 
     private void failWithTimeout(Operation op, Object originalBody) {
         Throwable e = new TimeoutException(op.getUri() + ":" + op.getExpirationMicrosUtc());
-        op.setBodyNoCloning(
-                ServiceErrorResponse.create(e, Operation.STATUS_CODE_TIMEOUT,
-                        EnumSet.of(ErrorDetail.SHOULD_RETRY)));
+        op.setStatusCode(Operation.STATUS_CODE_TIMEOUT);
         fail(e, op, originalBody);
     }
 
@@ -589,7 +587,7 @@ public class NettyHttpServiceClient implements ServiceClient {
             return;
         }
 
-        LOGGER.fine(String.format("(%d) Retry %d of request %d from %s to %s due to %s",
+        LOGGER.info(String.format("(%d) Retry %d of request %d from %s to %s due to %s",
                 pool.getPendingRequestCount(op), op.getRetryCount() - op.getRetriesRemaining(),
                 op.getId(),
                 op.getRefererAsString(), op.getUri(), e.toString()));
@@ -601,6 +599,7 @@ public class NettyHttpServiceClient implements ServiceClient {
         op.setStatusCode(Operation.STATUS_CODE_OK).setBodyNoCloning(originalBody);
 
         this.scheduledExecutor.schedule(() -> {
+            addToPending(op);
             connect(op);
         } , delaySeconds, TimeUnit.SECONDS);
     }

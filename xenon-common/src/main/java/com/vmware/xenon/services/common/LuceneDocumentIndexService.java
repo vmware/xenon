@@ -742,15 +742,8 @@ public class LuceneDocumentIndexService extends StatelessService {
             return;
         }
 
-        BytesRef binaryState = doc.getBinaryValue(LUCENE_FIELD_NAME_BINARY_SERIALIZED_STATE);
-
-        if (binaryState != null) {
-            ServiceDocument state = (ServiceDocument) Utils.fromDocumentBytes(binaryState.bytes,
-                    binaryState.offset,
-                    binaryState.length);
-            op.setBodyNoCloning(state);
-        }
-        op.complete();
+        ServiceDocument sd = getStateFromLuceneDocument(doc, selfLink);
+        op.setBodyNoCloning(sd).complete();
     }
 
     /**
@@ -1296,7 +1289,7 @@ public class LuceneDocumentIndexService extends StatelessService {
                 s.documentUpdateAction);
         doc.add(updateActionField);
 
-        addBinaryStateFieldToDocument(s, desc, doc);
+        addBinaryStateFieldToDocument(s, r.serializedDocument, desc, doc);
 
         Field selfLinkField = new StringField(ServiceDocument.FIELD_NAME_SELF_LINK,
                 link,
@@ -1306,9 +1299,10 @@ public class LuceneDocumentIndexService extends StatelessService {
                 new BytesRef(link));
         doc.add(sortedSelfLinkField);
 
-        if (s.documentKind != null) {
+        String kind = s.documentKind;
+        if (kind != null) {
             Field kindField = new StringField(ServiceDocument.FIELD_NAME_KIND,
-                    s.documentKind,
+                    kind,
                     Field.Store.NO);
             doc.add(kindField);
         }
@@ -1358,13 +1352,18 @@ public class LuceneDocumentIndexService extends StatelessService {
         }
     }
 
-    private void addBinaryStateFieldToDocument(ServiceDocument s,
+    private void addBinaryStateFieldToDocument(ServiceDocument s, byte[] serializedDocument,
             ServiceDocumentDescription desc, Document doc) {
         try {
-            byte[] content = Utils.getBuffer(desc.serializedStateSizeLimit);
-            int count = Utils.toBytes(s, content, 0);
+            int count = 0;
+            if (serializedDocument == null) {
+                serializedDocument = Utils.getBuffer(desc.serializedStateSizeLimit);
+                count = Utils.toBytes(s, serializedDocument, 0);
+            } else {
+                count = serializedDocument.length;
+            }
             Field bodyField = new StoredField(LUCENE_FIELD_NAME_BINARY_SERIALIZED_STATE,
-                    content, 0, count);
+                    serializedDocument, 0, count);
             doc.add(bodyField);
         } catch (KryoException ke) {
             throw new IllegalArgumentException(

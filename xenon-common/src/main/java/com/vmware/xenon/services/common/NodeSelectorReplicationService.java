@@ -30,6 +30,10 @@ import com.vmware.xenon.services.common.NodeState.NodeOption;
 
 public class NodeSelectorReplicationService extends StatelessService {
 
+    public static final int BINARY_SERIALIZATION =
+            Integer.getInteger(Utils.PROPERTY_NAME_PREFIX
+                    + "NodeSelectorReplicationService.BINARY_SERIALIZATION", 1);
+
     private Service parent;
 
     public NodeSelectorReplicationService(Service parent) {
@@ -100,7 +104,7 @@ public class NodeSelectorReplicationService extends StatelessService {
                 failureThreshold = eligibleMemberCount - successThreshold;
                 outboundOp.getRequestHeaders().remove(Operation.REPLICATION_QUORUM_HEADER);
             } catch (Throwable e) {
-                outboundOp.fail(e);
+                outboundOp.setRetryCount(0).fail(e);
                 return;
             }
         }
@@ -154,17 +158,28 @@ public class NodeSelectorReplicationService extends StatelessService {
             }
         };
 
-        String jsonBody = Utils.toJson(req.linkedState);
         String path = outboundOp.getUri().getPath();
         String query = outboundOp.getUri().getQuery();
 
         Operation update = Operation.createPost(null)
                 .setAction(outboundOp.getAction())
-                .setBodyNoCloning(jsonBody)
                 .setCompletion(c)
                 .setRetryCount(1)
                 .setExpiration(outboundOp.getExpirationMicrosUtc())
                 .transferRefererFrom(outboundOp);
+
+        String pragmaHeader = outboundOp.getRequestHeader(Operation.PRAGMA_HEADER);
+        if (pragmaHeader != null && !Operation.PRAGMA_DIRECTIVE_FORWARDED.equals(pragmaHeader)) {
+            update.addRequestHeader(Operation.PRAGMA_HEADER, pragmaHeader);
+            update.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_REPLICATED);
+        }
+
+        String commitHeader = outboundOp.getRequestHeader(Operation.REPLICATION_PHASE_HEADER);
+        if (commitHeader != null) {
+            update.addRequestHeader(Operation.REPLICATION_PHASE_HEADER, commitHeader);
+        }
+
+        Utils.encodeAndTransferLinkedStateToBody(outboundOp, update, BINARY_SERIALIZATION == 1);
 
         update.setFromReplication(true);
         update.setConnectionSharing(true);

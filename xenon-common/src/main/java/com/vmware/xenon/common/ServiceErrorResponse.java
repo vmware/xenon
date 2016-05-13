@@ -32,6 +32,11 @@ public class ServiceErrorResponse {
         return create(e, statusCode, null);
     }
 
+    public static ServiceErrorResponse createWithShouldRetry(Throwable e) {
+        return create(e, Operation.STATUS_CODE_FAILURE_THRESHOLD,
+                EnumSet.of(ErrorDetail.SHOULD_RETRY));
+    }
+
     public static ServiceErrorResponse create(Throwable e, int statusCode,
             EnumSet<ErrorDetail> details) {
         ServiceErrorResponse rsp = new ServiceErrorResponse();

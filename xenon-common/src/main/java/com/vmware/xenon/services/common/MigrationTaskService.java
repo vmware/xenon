@@ -606,7 +606,7 @@ public class MigrationTaskService extends StatefulService {
     }
 
     private State applyPatch(State patchState, State currentState) {
-        Utils.mergeWithState(getDocumentTemplate().documentDescription, currentState, patchState);
+        Utils.mergeWithState(getStateDescription(), currentState, patchState);
         currentState.latestSourceUpdateTimeMicros = Math.max(
                 Optional.ofNullable(currentState.latestSourceUpdateTimeMicros).orElse(0L),
                 Optional.ofNullable(patchState.latestSourceUpdateTimeMicros).orElse(0L));
