@@ -149,17 +149,34 @@ public class NodeSelectorReplicationService extends StatelessService {
             }
         };
 
-        String jsonBody = Utils.toJson(req.linkedState);
         String path = outboundOp.getUri().getPath();
         String query = outboundOp.getUri().getQuery();
 
         Operation update = Operation.createPost(null)
                 .setAction(outboundOp.getAction())
-                .setBodyNoCloning(jsonBody)
                 .setCompletion(c)
                 .setRetryCount(1)
                 .setExpiration(outboundOp.getExpirationMicrosUtc())
                 .transferRefererFrom(outboundOp);
+
+        String pragmaHeader = outboundOp.getRequestHeader(Operation.PRAGMA_HEADER);
+        if (pragmaHeader != null) {
+            // we need to propagate certain directives, if present
+            if (pragmaHeader.contains(Operation.PRAGMA_DIRECTIVE_VERSION_CHECK)
+                    || pragmaHeader.contains(Operation.PRAGMA_DIRECTIVE_FORCE_INDEX_UPDATE)) {
+                update.addRequestHeader(Operation.PRAGMA_HEADER, pragmaHeader);
+                update.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_REPLICATED);
+            }
+        }
+
+        // encode body once, otherwise HTTP client will encode it N times, each time
+        // it sends the request to a peer node
+        if (outboundOp.getLinkedSerializedState() == null) {
+            update.setBodyNoCloning(Utils.toJson(req.linkedState));
+        } else {
+            update.setContentType(Operation.MEDIA_TYPE_APPLICATION_KRYO_OCTET_STREAM);
+            update.setBodyNoCloning(outboundOp.getLinkedSerializedState());
+        }
 
         update.setFromReplication(true);
         update.setConnectionSharing(true);

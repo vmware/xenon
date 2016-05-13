@@ -98,6 +98,7 @@ public abstract class FactoryService extends StatelessService {
     public static final Integer SELF_QUERY_RESULT_LIMIT = Integer.getInteger(
             Utils.PROPERTY_NAME_PREFIX
             + "FactoryService.SELF_QUERY_RESULT_LIMIT", 1000);
+    private String childKind;
     private EnumSet<ServiceOption> childOptions;
     private String nodeSelectorLink = ServiceUriPaths.DEFAULT_NODE_SELECTOR;
     private int selfQueryResultLimit = SELF_QUERY_RESULT_LIMIT;
@@ -111,6 +112,7 @@ public abstract class FactoryService extends StatelessService {
         super.toggleOption(ServiceOption.FACTORY, true);
         setSelfLink("");
         Service s = createChildServiceSafe();
+        this.childKind = Utils.buildKind(this.stateType);
         if (s == null) {
             throw new IllegalStateException("Could not create service of type "
                     + childServiceDocumentType.toString());
@@ -516,7 +518,7 @@ public abstract class FactoryService extends StatelessService {
         }
 
         initialState.documentSelfLink = o.getUri().getPath();
-        initialState.documentKind = Utils.buildKind(this.stateType);
+        initialState.documentKind = this.childKind;
         initialState.documentTransactionId = o.getTransactionId();
         o.setBody(initialState);
 

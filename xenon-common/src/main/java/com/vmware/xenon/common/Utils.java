@@ -783,15 +783,22 @@ public class Utils {
         try {
             String contentType = op.getContentType();
             Object body = decodeIfText(buffer, contentType);
-            if (body == null) {
-                // unrecognized or binary body, use the raw bytes
-                byte[] data = new byte[(int) op.getContentLength()];
-                buffer.get(data);
-                if (Operation.MEDIA_TYPE_APPLICATION_KRYO_OCTET_STREAM.equals(contentType)) {
-                    body = Utils.fromDocumentBytes(data, 0, data.length);
-                } else {
-                    body = data;
+            if (body != null) {
+                op.setBodyNoCloning(body).complete();
+                return;
+            }
+
+            // unrecognized or binary body, use the raw bytes
+            byte[] data = new byte[(int) op.getContentLength()];
+            buffer.get(data);
+            if (Operation.MEDIA_TYPE_APPLICATION_KRYO_OCTET_STREAM.equals(contentType)) {
+                body = Utils.fromDocumentBytes(data, 0, data.length);
+                if (op.isFromReplication()) {
+                    // optimization to avoid having to serialize state again, during indexing
+                    op.linkSerializedState(data);
                 }
+            } else {
+                body = data;
             }
             op.setBodyNoCloning(body).complete();
         } catch (Throwable e) {
