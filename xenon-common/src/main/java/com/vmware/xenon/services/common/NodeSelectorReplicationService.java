@@ -24,7 +24,6 @@ import com.vmware.xenon.common.ServiceClient;
 import com.vmware.xenon.common.ServiceHost;
 import com.vmware.xenon.common.StatelessService;
 import com.vmware.xenon.common.UriUtils;
-import com.vmware.xenon.common.Utils;
 import com.vmware.xenon.services.common.NodeGroupService.NodeGroupState;
 import com.vmware.xenon.services.common.NodeState.NodeOption;
 
@@ -149,17 +148,27 @@ public class NodeSelectorReplicationService extends StatelessService {
             }
         };
 
-        String jsonBody = Utils.toJson(req.linkedState);
         String path = outboundOp.getUri().getPath();
         String query = outboundOp.getUri().getQuery();
 
         Operation update = Operation.createPost(null)
                 .setAction(outboundOp.getAction())
-                .setBodyNoCloning(jsonBody)
                 .setCompletion(c)
                 .setRetryCount(1)
                 .setExpiration(outboundOp.getExpirationMicrosUtc())
                 .transferRefererFrom(outboundOp);
+
+        String pragmaHeader = outboundOp.getRequestHeader(Operation.PRAGMA_HEADER);
+        if (pragmaHeader != null) {
+            // we need to propagate certain directives, if present
+            if (pragmaHeader.contains(Operation.PRAGMA_DIRECTIVE_VERSION_CHECK)
+                    || pragmaHeader.contains(Operation.PRAGMA_DIRECTIVE_FORCE_INDEX_UPDATE)) {
+                update.addRequestHeader(Operation.PRAGMA_HEADER, pragmaHeader);
+                update.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_REPLICATED);
+            }
+        }
+
+        Operation.transferLinkedStateToBody(outboundOp, update);
 
         update.setFromReplication(true);
         update.setConnectionSharing(true);

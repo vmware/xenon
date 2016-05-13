@@ -46,6 +46,28 @@ public class Operation implements Cloneable {
      */
     private static final int TO_STRING_SERIALIZED_BODY_LIMIT = 256;
 
+    /**
+     * Infrastructure use
+     */
+    public static void transferLinkedStateToBody(Operation source, Operation target) {
+        if (source.getAction() != Action.POST) {
+            try {
+                byte[] encodedBody = Utils.encodeBody(source, source.getLinkedState(),
+                        Operation.MEDIA_TYPE_APPLICATION_KRYO_OCTET_STREAM);
+                source.linkSerializedState(encodedBody);
+            } catch (Throwable e2) {
+                Utils.logWarning("Failure binary serializing: %s", Utils.toString(e2));
+            }
+        }
+
+        if (!source.hasLinkedSerializedState()) {
+            target.setBodyNoCloning(Utils.toJson(source.linkedState));
+        } else {
+            target.setContentType(Operation.MEDIA_TYPE_APPLICATION_KRYO_OCTET_STREAM);
+            target.setBodyNoCloning(source.linkedSerializedState);
+        }
+    }
+
     @FunctionalInterface
     public interface CompletionHandler {
         void handle(Operation completedOp, Throwable failure);
@@ -536,6 +558,7 @@ public class Operation implements Cloneable {
     private int statusCode = HttpURLConnection.HTTP_OK;
     private Action action;
     private ServiceDocument linkedState;
+    private byte[] linkedSerializedState;
     private volatile CompletionHandler completion;
     private String contextId;
     private String transactionId;
@@ -791,11 +814,7 @@ public class Operation implements Cloneable {
             if (isCloningDisabled()) {
                 this.body = body;
             } else {
-                if (body instanceof byte[]) {
-                    this.body = body;
-                } else {
-                    this.body = Utils.clone(body);
-                }
+                this.body = Utils.clone(body);
             }
         } else {
             this.body = null;
@@ -979,6 +998,17 @@ public class Operation implements Cloneable {
 
     ServiceDocument getLinkedState() {
         return this.linkedState;
+    }
+
+    /**
+     * Infrastructure use only
+     */
+    byte[] getLinkedSerializedState() {
+        return this.linkedSerializedState;
+    }
+
+    public boolean hasLinkedSerializedState() {
+        return this.linkedSerializedState != null;
     }
 
     public Operation setReferer(URI uri) {
@@ -1394,7 +1424,10 @@ public class Operation implements Cloneable {
         if (this.remoteCtx.requestHeaders == null) {
             return null;
         }
-        String value = this.remoteCtx.requestHeaders.get(headerName.toLowerCase());
+        String value = this.remoteCtx.requestHeaders.get(headerName);
+        if (value == null) {
+            value = this.remoteCtx.requestHeaders.get(headerName.toLowerCase());
+        }
         if (value != null) {
             value = value.trim().replace(CR_LF, "");
         }
@@ -1408,7 +1441,10 @@ public class Operation implements Cloneable {
         if (this.remoteCtx.responseHeaders == null) {
             return null;
         }
-        String value = this.remoteCtx.responseHeaders.get(headerName.toLowerCase());
+        String value = this.remoteCtx.responseHeaders.get(headerName);
+        if (value == null) {
+            value = this.remoteCtx.responseHeaders.get(headerName.toLowerCase());
+        }
         if (value != null) {
             value = value.trim().replace(CR_LF, "");
         }
@@ -1666,5 +1702,12 @@ public class Operation implements Cloneable {
 
     boolean isSynchronize() {
         return hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_SYNCH);
+    }
+
+    /**
+     * Infrastructure use only
+     */
+    void linkSerializedState(byte[] data) {
+        this.linkedSerializedState = data;
     }
 }

@@ -2668,38 +2668,44 @@ public class TestNodeGroupService {
 
             for (int i = 0; i < updateCount; i++) {
 
-                long sentTime = Utils.getNowMicrosUtc();
+                long sentTime = 0;
+                if (this.expectFailure) {
+                    sentTime = Utils.getNowMicrosUtc();
+                }
                 URI factoryOnRandomPeerUri = this.host
                         .getPeerServiceUri(this.replicationTargetFactoryLink);
 
-                this.host.send(Operation
-                        .createPatch(UriUtils.buildUri(factoryOnRandomPeerUri,
-                                initState.documentSelfLink))
-                        .setAction(action)
-                        .forceRemote()
-                        .setBody(initState)
-                        .setCompletion(
-                                (o, e) -> {
-                                    if (e != null) {
-                                        if (this.expectFailure) {
-                                            failedCount.incrementAndGet();
-                                            this.host.completeIteration();
-                                            return;
-                                        }
-                                        this.host.failIteration(e);
-                                        return;
-                                    }
+                long finalSentTime = sentTime;
+                this.host
+                        .send(Operation
+                                .createPatch(UriUtils.buildUri(factoryOnRandomPeerUri,
+                                        initState.documentSelfLink))
+                                .setAction(action)
+                                .forceRemote()
+                                .setBodyNoCloning(initState)
+                                .setCompletion(
+                                        (o, e) -> {
+                                            if (e != null) {
+                                                if (this.expectFailure) {
+                                                    failedCount.incrementAndGet();
+                                                    this.host.completeIteration();
+                                                    return;
+                                                }
+                                                this.host.failIteration(e);
+                                                return;
+                                            }
 
-                                    if (this.expectFailure
-                                            && this.expectedFailureStartTimeMicros > 0
-                                            && sentTime > this.expectedFailureStartTimeMicros) {
-                                        this.host.failIteration(new IllegalStateException(
-                                                "Request should have failed: %s" + o.toString()
-                                                        + " sent at " + sentTime));
-                                        return;
-                                    }
-                                    this.host.completeIteration();
-                                }));
+                                            if (this.expectFailure
+                                                    && this.expectedFailureStartTimeMicros > 0
+                                                    && finalSentTime > this.expectedFailureStartTimeMicros) {
+                                                this.host.failIteration(new IllegalStateException(
+                                                        "Request should have failed: %s"
+                                                                + o.toString()
+                                                                + " sent at " + finalSentTime));
+                                                return;
+                                            }
+                                            this.host.completeIteration();
+                                        }));
             }
         }
         this.host.testWait();
