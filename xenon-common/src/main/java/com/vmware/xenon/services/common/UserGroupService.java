@@ -71,7 +71,7 @@ public class UserGroupService extends StatefulService {
         }
 
         UserGroupState currentState = getState(op);
-        ServiceDocumentDescription documentDescription = this.getDocumentTemplate().documentDescription;
+        ServiceDocumentDescription documentDescription = getStateDescription();
         if (ServiceDocument.equals(documentDescription, currentState, newState)) {
             op.setStatusCode(Operation.STATUS_CODE_NOT_MODIFIED);
         } else {
