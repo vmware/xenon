@@ -41,6 +41,7 @@ import java.util.Map.Entry;
 import java.util.Random;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -567,6 +568,25 @@ public class VerificationHost extends ExampleServiceHost {
         minState.stringValue = sb.toString();
 
         return minState;
+    }
+
+    public CompletableFuture<Operation> sendWithFuture(Operation op) {
+        if (op.getCompletion() != null) {
+            throw new IllegalStateException("completion handler must not be set");
+        }
+
+        CompletableFuture<Operation> res = new CompletableFuture<>();
+        op.setCompletion((o, e) -> {
+            if (e != null) {
+                res.completeExceptionally(e);
+            } else {
+                res.complete(o);
+            }
+        });
+
+        this.send(op);
+
+        return res;
     }
 
     /**
