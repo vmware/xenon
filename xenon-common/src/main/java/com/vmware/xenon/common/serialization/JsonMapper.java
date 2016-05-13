@@ -13,7 +13,6 @@
 
 package com.vmware.xenon.common.serialization;
 
-import java.io.IOException;
 import java.lang.reflect.Type;
 import java.util.function.Consumer;
 
@@ -66,10 +65,6 @@ public class JsonMapper {
      * Outputs a JSON representation of the given object in compact JSON.
      */
     public String toJson(Object body) {
-        if (body instanceof String) {
-            return (String) body;
-        }
-
         for (int i = 1;; i++) {
             try {
                 return this.compact.toJson(body);
@@ -80,14 +75,6 @@ public class JsonMapper {
     }
 
     public void toJson(Object body, Appendable appendable) {
-        if (body instanceof String) {
-            try {
-                appendable.append(body.toString());
-            } catch (IOException ignore) {
-            }
-            return;
-        }
-
         for (int i = 1;; i++) {
             try {
                 this.compact.toJson(body, appendable);
@@ -185,5 +172,16 @@ public class JsonMapper {
         bldr.registerTypeAdapter(ZonedDateTimeConverter.TYPE, ZonedDateTimeConverter.INSTANCE);
         bldr.registerTypeHierarchyAdapter(byte[].class, new ByteArrayToBase64TypeAdapter());
         bldr.registerTypeAdapter(RequestRouteConverter.TYPE, RequestRouteConverter.INSTANCE);
+    }
+
+    public void toJsonHtml(Object body, Appendable appendable) {
+        for (int i = 1;; i++) {
+            try {
+                this.pretty.toJson(body, appendable);
+                return;
+            } catch (IllegalStateException e) {
+                handleIllegalStateException(e, i);
+            }
+        }
     }
 }

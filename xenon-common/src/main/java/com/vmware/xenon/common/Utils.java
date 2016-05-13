@@ -75,7 +75,6 @@ import com.vmware.xenon.services.common.ServiceUriPaths;
  * Runtime utility functions
  */
 public class Utils {
-    private static final int BUFFER_INITIAL_CAPACITY = 1 * 1024;
     private static final String CHARSET_UTF_8 = "UTF-8";
     public static final String PROPERTY_NAME_PREFIX = "xenon.";
     public static final String CHARSET = CHARSET_UTF_8;
@@ -101,7 +100,10 @@ public class Utils {
 
     private static final JsonMapper JSON = new JsonMapper();
     private static final ConcurrentMap<Class<?>, JsonMapper> CUSTOM_JSON = new ConcurrentHashMap<>();
+
     private static final Map<String, String> KINDS = new ConcurrentSkipListMap<>();
+
+    private static final StringBuilderThreadLocal builderPerThread = new StringBuilderThreadLocal();
 
     private static JsonMapper getJsonMapperFor(Type type) {
         if (type instanceof Class) {
@@ -187,11 +189,6 @@ public class Utils {
         }
 
         return computeHash(buffer, 0, position);
-    }
-
-    private static void appendJson(Object obj, Appendable buf) {
-        JsonMapper mapper = getJsonMapperFor(obj);
-        mapper.toJson(obj, buf);
     }
 
     public static byte[] getBuffer(int capacity) {
@@ -292,13 +289,20 @@ public class Utils {
         if (body instanceof String) {
             return (String) body;
         }
-        StringBuilder content = new StringBuilder(BUFFER_INITIAL_CAPACITY);
-        appendJson(body, content);
+        StringBuilder content = getBuilder();
+        JsonMapper mapper = getJsonMapperFor(body);
+        mapper.toJson(body, content);
         return content.toString();
     }
 
     public static String toJsonHtml(Object body) {
-        return getJsonMapperFor(body).toJsonHtml(body);
+        if (body instanceof String) {
+            return (String) body;
+        }
+        StringBuilder content = getBuilder();
+        JsonMapper mapper = getJsonMapperFor(body);
+        mapper.toJsonHtml(body, content);
+        return content.toString();
     }
 
     public static <T> T fromJson(String json, Class<T> clazz) {
@@ -897,7 +901,7 @@ public class Utils {
      * will be calculated using service path Eg. for ExampleService
      * default path will be ui/com/vmware/xenon/services/common/ExampleService
      *
-     * @param type service class for which UI path has to be extracted
+     * @param s service class for which UI path has to be extracted
      * @return UI resource path object
      */
     public static Path getServiceUiResourcePath(Service s) {
@@ -1138,4 +1142,8 @@ public class Utils {
         return Math.abs(timeMicros - now) < TIME_COMPARISON_EPSILON_MICROS;
     }
 
+    public static StringBuilder getBuilder() {
+        return builderPerThread.get();
+
+    }
 }
