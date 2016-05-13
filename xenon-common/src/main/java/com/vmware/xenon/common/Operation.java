@@ -22,6 +22,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
@@ -504,7 +505,7 @@ public class Operation implements Cloneable {
 
     /**
      * Infrastructure use only. Debugging only. Indicates this operation was converted from POST to PUT
-     * due to {@link ServiceOption.IDEMPOTENT_POST}
+     * due to {@link com.vmware.xenon.common.Service.ServiceOption#IDEMPOTENT_POST}
      */
     public static final String PRAGMA_DIRECTIVE_POST_TO_PUT = "xn-post-to-put";
 
@@ -681,6 +682,25 @@ public class Operation implements Cloneable {
         sender.sendRequest(this);
     }
 
+    public CompletableFuture<Operation> sendFuture(ServiceRequestSender sender) {
+        if (this.getCompletion() != null) {
+            throw new IllegalStateException("completion handler must not be set");
+        }
+
+        CompletableFuture<Operation> res = new CompletableFuture<>();
+        this.setCompletion((o, e) -> {
+            if (e != null) {
+                res.completeExceptionally(e);
+            } else {
+                res.complete(o);
+            }
+        });
+
+        this.sendWith(sender);
+
+        return res;
+    }
+
     @Override
     public String toString() {
         SerializedOperation sop = SerializedOperation.create(this);
@@ -848,7 +868,7 @@ public class Operation implements Cloneable {
      * occurs only for local operations, not operations that have a serialized
      * body already attached (in the form of a JSON string).
      *
-     * If idempotent behavior is desired, use {@link getBodyRaw}
+     * If idempotent behavior is desired, use {@link #getBodyRaw}
      */
     @SuppressWarnings("unchecked")
     public <T> T getBody(Class<T> type) {
