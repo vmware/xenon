@@ -148,10 +148,12 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
                 sendResponse(ctx, request, streamId);
                 return;
             }
+
             submitRequest(ctx, request, streamId);
         });
 
         Utils.decodeBody(request, content.nioBuffer());
+
     }
 
     private void parseRequestHeaders(ChannelHandlerContext ctx, Operation request,

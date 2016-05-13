@@ -118,7 +118,7 @@ public class ExampleService extends StatefulService {
         // use helper that will merge automatically current state, with state supplied in body.
         // Note the usage option PropertyUsageOption.AUTO_MERGE_IF_NOT_NULL has been set on the
         // "name" field.
-        boolean hasStateChanged = Utils.mergeWithState(getDocumentTemplate().documentDescription,
+        boolean hasStateChanged = Utils.mergeWithState(getStateDescription(),
                 currentState, body);
 
         updateCounter(body, currentState, hasStateChanged);
