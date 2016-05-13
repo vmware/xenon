@@ -61,6 +61,18 @@ public class TestUtils {
     public int iterationCount = 1000;
 
     @Test
+    public void registerKind() {
+        String kindBefore = Utils.buildKind(ExampleServiceState.class);
+        String newKind = "e";
+        Utils.registerKind(ExampleServiceState.class, newKind);
+        String kindAfter = Utils.buildKind(ExampleServiceState.class);
+        assertEquals(newKind, kindAfter);
+        Utils.registerKind(ExampleServiceState.class, kindBefore);
+        kindAfter = Utils.buildKind(ExampleServiceState.class);
+        assertEquals(kindBefore, kindAfter);
+    }
+
+    @Test
     public void toHexString() {
         byte[] bytes = new byte[4];
         bytes[0] = 0x12;

@@ -14,6 +14,7 @@
 package com.vmware.xenon.common.http.netty;
 
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -127,8 +128,9 @@ public class NettyChannelPool {
     public static final Logger LOGGER = Logger.getLogger(NettyChannelPool.class
             .getName());
 
-    private static final long CHANNEL_EXPIRATION_MICROS =
-            ServiceHostState.DEFAULT_OPERATION_TIMEOUT_MICROS * 2;
+    private static final long CHANNEL_EXPIRATION_MICROS = Long.getLong(
+            Utils.PROPERTY_NAME_PREFIX + "NettyChannelPool.CHANNEL_EXPIRATION_MICROS",
+            ServiceHostState.DEFAULT_OPERATION_TIMEOUT_MICROS * 10);
 
     private ExecutorService nettyExecutorService;
     private ExecutorService executor;
@@ -681,9 +683,10 @@ public class NettyChannelPool {
      */
     private void closeIdleChannelContexts(NettyChannelGroup group,
             boolean forceClose, long now) {
-        List<NettyChannelContext> items = null;
         synchronized (group) {
-            for (NettyChannelContext c : group.availableChannels) {
+            Iterator<NettyChannelContext> it = group.availableChannels.iterator();
+            while (it.hasNext()) {
+                NettyChannelContext c = it.next();
                 if (!forceClose) {
                     long delta = now - c.getLastUseTimeMicros();
                     if (delta < CHANNEL_EXPIRATION_MICROS) {
@@ -697,20 +700,9 @@ public class NettyChannelPool {
                     }
                 }
 
-                if (items == null) {
-                    items = new ArrayList<>();
-                }
-                items.add(c);
+                it.remove();
+                c.close();
             }
-        }
-        if (items == null) {
-            return;
-        }
-        for (NettyChannelContext c : items) {
-            if (!group.availableChannels.remove(c)) {
-                continue;
-            }
-            c.close();
         }
     }
 
@@ -720,10 +712,10 @@ public class NettyChannelPool {
      * @param group
      */
     private void closeInvalidHttp2ChannelContexts(NettyChannelGroup group, long now) {
-        List<NettyChannelContext> items = null;
-
         synchronized (group) {
-            for (NettyChannelContext http2Channel : group.inUseChannels) {
+            Iterator<NettyChannelContext> it = group.inUseChannels.iterator();
+            while (it.hasNext()) {
+                NettyChannelContext http2Channel = it.next();
                 // We close a channel for two reasons:
                 // First, if it hasn't been used for a while
                 // Second, if we've exhausted the number of streams
@@ -741,20 +733,8 @@ public class NettyChannelPool {
                     continue;
                 }
 
-                if (items == null) {
-                    items = new ArrayList<>();
-                }
-                items.add(http2Channel);
-            }
-
-            if (items == null) {
-                return;
-            }
-            for (NettyChannelContext c : items) {
-                if (!group.inUseChannels.remove(c)) {
-                    return;
-                }
-                c.close();
+                it.remove();
+                http2Channel.close();
             }
         }
     }

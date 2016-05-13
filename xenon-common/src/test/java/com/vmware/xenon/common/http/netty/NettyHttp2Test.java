@@ -267,6 +267,7 @@ public class NettyHttp2Test {
         // force single connection
         this.host.getClient().setConnectionLimitPerHost(1);
         this.host.connectionTag = ServiceClient.CONNECTION_TAG_HTTP2_DEFAULT;
+        this.host.getClient().setConnectionLimitPerTag(this.host.connectionTag, 1);
 
         int count = 10;
         this.host.testStart(count);
@@ -425,7 +426,7 @@ public class NettyHttp2Test {
         }
 
         // set a specific tag limit
-        limit = 2;
+        limit = 16;
         this.host.connectionTag = "http2test";
         this.host.log("Using tag specific connection limit %d", limit);
         this.host.getClient().setConnectionLimitPerTag(this.host.connectionTag, limit);

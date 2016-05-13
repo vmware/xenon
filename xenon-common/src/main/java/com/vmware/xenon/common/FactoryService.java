@@ -580,6 +580,7 @@ public abstract class FactoryService extends StatelessService {
         // if limited replication is used for this service, supply a selection key, the fully qualified service link
         // so the same set of nodes get selected for the POST to create the service, as the nodes chosen
         // for subsequence updates to the child service
+        op.linkState(clonedInitState);
         getHost().replicateRequest(this.childOptions, clonedInitState, getPeerNodeSelectorPath(),
                 originalLink, op);
     }

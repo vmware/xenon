@@ -14,7 +14,6 @@
 package com.vmware.xenon.common.http.netty;
 
 import java.util.ArrayList;
-import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -28,7 +27,6 @@ import io.netty.util.AttributeKey;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Operation.SocketContext;
 import com.vmware.xenon.common.ServiceErrorResponse;
-import com.vmware.xenon.common.ServiceErrorResponse.ErrorDetail;
 import com.vmware.xenon.common.http.netty.NettyChannelPool.NettyChannelGroupKey;
 
 public class NettyChannelContext extends SocketContext {
@@ -235,14 +233,13 @@ public class NettyChannelContext extends SocketContext {
             }
         }
 
+        Throwable e = new IllegalStateException("Socket channel closed:" + this.key);
+        ServiceErrorResponse body = ServiceErrorResponse.createWithShouldRetry(e);
+
         Operation op = this.getOperation();
         if (op != null) {
             setOperation(null);
-            Throwable e = new IllegalStateException("Socket channel closed");
-            int sc = Operation.STATUS_CODE_FAILURE_THRESHOLD;
-            Object body = ServiceErrorResponse.create(e, sc,
-                    EnumSet.of(ErrorDetail.SHOULD_RETRY));
-            op.setStatusCode(sc);
+            op.setStatusCode(body.statusCode);
             op.fail(e, body);
             return;
         }
@@ -257,7 +254,8 @@ public class NettyChannelContext extends SocketContext {
             this.streamIdMap.clear();
         }
         for (Operation o : ops) {
-            o.fail(new IllegalStateException("Socket channel closed"));
+            o.setStatusCode(body.statusCode);
+            o.fail(e, body);
         }
     }
 }

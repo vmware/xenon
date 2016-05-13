@@ -2,6 +2,22 @@
 
 ## 0.8.1-SNAPSHOT
 
+* Add Utils.registerKind(Class<?>, String) allowing for custom mapping
+  of service document types to kind strings. The default is derived
+  from the canonical name of the class, as before. This is not a breaking
+  change.
+
+* Enable binary payload serialization during replication, using the same KRYO
+  serialization we currently use for storing state in the index. The
+  binary payload is only used during replication to peers so this is
+  an internal optimization, not visible to clients or service authors.
+  HTTP + JSON is still the default mechanism for all I/O between
+  services and clients to xenon hosts. This is not a breaking change.
+
+* Add StatefulService.getStateDescription() convenience method
+  which also reduces allocations when a service author needs
+  the reflect state document description
+
 * Use Murmur3 hash, instead of SHA1 for ServiceDocument.equals
   and document signature calculation
 

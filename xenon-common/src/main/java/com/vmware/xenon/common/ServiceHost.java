@@ -2353,6 +2353,10 @@ public class ServiceHost implements ServiceRequestSender {
                     break;
                 }
 
+                if (post.isFromReplication()) {
+                    post.linkSerializedState(null);
+                }
+
                 saveServiceState(s, post, (ServiceDocument) post.getBodyRaw());
                 break;
             case AVAILABLE:
@@ -2426,11 +2430,8 @@ public class ServiceHost implements ServiceRequestSender {
         initialState.documentKind = Utils.buildKind(initialState.getClass());
         initialState.documentAuthPrincipalLink = (post.getAuthorizationContext() != null) ? post
                 .getAuthorizationContext().getClaims().getSubject() : null;
-        post.setBody(initialState);
-        if (!s.hasOption(ServiceOption.CONCURRENT_UPDATE_HANDLING)) {
-            initialState = Utils.clone(initialState);
-        }
-
+        initialState = Utils.clone(initialState);
+        post.setBodyNoCloning(initialState);
         cacheServiceState(s, initialState, null);
     }
 
@@ -3133,11 +3134,6 @@ public class ServiceHost implements ServiceRequestSender {
                 return;
             }
 
-            if (op.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_REPLICATED)) {
-                failRequestOwnerMismatch(op, op.getUri().getPath(), null);
-                return;
-            }
-
             // Forwarded operations are retried until the parent operation, from the client,
             // expires. Since a peer might have become unresponsive, we want short time outs
             // and retries, to whatever peer we select, on each retry.
@@ -3223,6 +3219,12 @@ public class ServiceHost implements ServiceRequestSender {
             if (rsp != null && rsp.details != null) {
                 shouldRetry = rsp.details.contains(ErrorDetail.SHOULD_RETRY);
             }
+        }
+
+        if (fo.getStatusCode() == Operation.STATUS_CODE_TIMEOUT) {
+            // the I/O code might have timed out, but we will keep retrying until the operation
+            // expiration is reached
+            shouldRetry = true;
         }
 
         if (op.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_FORWARDED)) {
@@ -4429,9 +4431,10 @@ public class ServiceHost implements ServiceRequestSender {
         // retrieve the description through the cached template so its the thread safe,
         // immutable version
         body.description = buildDocumentDescription(s);
+        body.serializedDocument = op.getLinkedSerializedState();
+        op.linkSerializedState(null);
         if (!op.isFromReplication()) {
-            // Do not cache state, in replicas, massively reducing the transient memory
-            // foot print.
+            // Do not cache state, in replicas
             cacheServiceState(s, state, op);
         }
 
@@ -4608,7 +4611,6 @@ public class ServiceHost implements ServiceRequestSender {
         req.targetQuery = op.getUri().getQuery();
         req.options = EnumSet.of(ForwardingOption.BROADCAST, ForwardingOption.REPLICATE);
         req.serviceOptions = serviceOptions;
-        req.linkedState = state;
         nss.selectAndForward(op, req);
     }
 
