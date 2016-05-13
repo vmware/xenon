@@ -25,7 +25,6 @@ import com.esotericsoftware.kryo.serializers.VersionFieldSerializer;
 import org.objenesis.strategy.StdInstantiatorStrategy;
 
 public final class KryoSerializers {
-
     /**
      * Binary serialization thread local instances that track object references
      */
