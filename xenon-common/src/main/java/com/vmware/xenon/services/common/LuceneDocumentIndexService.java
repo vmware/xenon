@@ -45,33 +45,31 @@ import com.google.gson.JsonParser;
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.core.SimpleAnalyzer;
 import org.apache.lucene.document.Document;
-import org.apache.lucene.document.DoubleField;
+import org.apache.lucene.document.DoublePoint;
 import org.apache.lucene.document.Field;
-import org.apache.lucene.document.Field.Store;
-import org.apache.lucene.document.FieldType;
-import org.apache.lucene.document.LongField;
+import org.apache.lucene.document.LongPoint;
+import org.apache.lucene.document.NumericDocValuesField;
 import org.apache.lucene.document.SortedDocValuesField;
+import org.apache.lucene.document.SortedNumericDocValuesField;
 import org.apache.lucene.document.StoredField;
 import org.apache.lucene.document.StringField;
 import org.apache.lucene.document.TextField;
-import org.apache.lucene.index.CheckIndex;
 import org.apache.lucene.index.DirectoryReader;
-import org.apache.lucene.index.DocValuesType;
 import org.apache.lucene.index.IndexCommit;
-import org.apache.lucene.index.IndexOptions;
 import org.apache.lucene.index.IndexUpgrader;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.IndexWriterConfig;
 import org.apache.lucene.index.IndexWriterConfig.OpenMode;
 import org.apache.lucene.index.IndexableField;
 import org.apache.lucene.index.KeepOnlyLastCommitDeletionPolicy;
+import org.apache.lucene.index.SegmentCommitInfo;
+import org.apache.lucene.index.SegmentInfos;
 import org.apache.lucene.index.SnapshotDeletionPolicy;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.search.BooleanClause.Occur;
 import org.apache.lucene.search.BooleanQuery;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.MatchNoDocsQuery;
-import org.apache.lucene.search.NumericRangeQuery;
 import org.apache.lucene.search.PrefixQuery;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.ScoreDoc;
@@ -83,6 +81,7 @@ import org.apache.lucene.store.AlreadyClosedException;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.MMapDirectory;
 import org.apache.lucene.util.BytesRef;
+import org.apache.lucene.util.NumericUtils;
 import org.apache.lucene.util.Version;
 
 import com.vmware.xenon.common.FileUtils;
@@ -206,12 +205,6 @@ public class LuceneDocumentIndexService extends StatelessService {
 
     private ExecutorService privateQueryExecutor;
 
-    private final FieldType longStoredField = numericDocType(FieldType.NumericType.LONG, true);
-    private final FieldType longUnStoredField = numericDocType(FieldType.NumericType.LONG, false);
-    private final FieldType doubleStoredField = numericDocType(FieldType.NumericType.DOUBLE, true);
-    private final FieldType doubleUnStoredField = numericDocType(FieldType.NumericType.DOUBLE,
-            false);
-
     private Set<String> fieldsToLoadNoExpand;
     private Set<String> fieldsToLoadWithExpand;
 
@@ -319,7 +312,7 @@ public class LuceneDocumentIndexService extends StatelessService {
 
         iwc.setOpenMode(OpenMode.CREATE_OR_APPEND);
         iwc.setIndexDeletionPolicy(new SnapshotDeletionPolicy(
-                new KeepOnlyLastCommitDeletionPolicy()));
+                    new KeepOnlyLastCommitDeletionPolicy()));
 
 
         this.writer = new IndexWriter(dir, iwc);
@@ -332,25 +325,20 @@ public class LuceneDocumentIndexService extends StatelessService {
 
     private void upgradeIndex(Directory dir) throws IOException {
         boolean doUpgrade = false;
-        IndexWriterConfig iwc = new IndexWriterConfig(null);
 
-        CheckIndex chkIndex = new CheckIndex(dir);
-
-        try {
-            for (CheckIndex.Status.SegmentInfoStatus segmentInfo : chkIndex
-                    .checkIndex().segmentInfos) {
-                if (!segmentInfo.version.equals(Version.LATEST)) {
-                    logInfo("Found Index version %s", segmentInfo.version.toString());
-                    doUpgrade = true;
-                    break;
-                }
+        String lastSegmentsFile = SegmentInfos.getLastCommitSegmentsFileName(dir.listAll());
+        SegmentInfos sis = SegmentInfos.readCommit(dir, lastSegmentsFile);
+        for (SegmentCommitInfo commit : sis) {
+            if (!commit.info.getVersion().equals(Version.LATEST)) {
+                logInfo("Found Index version %s", commit.info.getVersion().toString());
+                doUpgrade = true;
+                break;
             }
-        } finally {
-            chkIndex.close();
         }
 
         if (doUpgrade) {
             logInfo("Upgrading index to %s", Version.LATEST.toString());
+            IndexWriterConfig iwc = new IndexWriterConfig(null);
             new IndexUpgrader(dir, iwc, false).upgrade();
             this.indexUpdateTimeMicros = Utils.getNowMicrosUtc();
         }
@@ -375,7 +363,7 @@ public class LuceneDocumentIndexService extends StatelessService {
                 .of(QueryOption.INCLUDE_ALL_VERSIONS), tq,
                 null, null, Integer.MAX_VALUE, 0, null, rsp, ServiceOption.PERSISTENCE,
                 new IndexSearcher(
-                        DirectoryReader.open(this.writer, true)));
+                    DirectoryReader.open(this.writer, true, true)));
     }
 
     private void handleBackup(Operation op, BackupRequest req) throws Throwable {
@@ -583,7 +571,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         if (w == null) {
             throw new IllegalStateException("Writer not available");
         }
-        IndexSearcher s = new IndexSearcher(DirectoryReader.open(w, true));
+        IndexSearcher s = new IndexSearcher(DirectoryReader.open(w, true, true));
         synchronized (this.searchSync) {
             List<IndexSearcher> searchers = this.searchersForPaginatedQueries.get(expirationMicros);
             if (searchers == null) {
@@ -632,7 +620,7 @@ public class LuceneDocumentIndexService extends StatelessService {
 
         if (!selfLink.endsWith(UriUtils.URI_WILDCARD_CHAR)) {
             // Most basic query is retrieving latest document at latest version for a specific link
-            queryIndexSingle(selfLink, options, get, version);
+            queryIndexSingle(selfLink, get, version);
             return;
         }
 
@@ -723,7 +711,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         return false;
     }
 
-    private void queryIndexSingle(String selfLink, EnumSet<QueryOption> options, Operation op, Long version)
+    private void queryIndexSingle(String selfLink, Operation op, Long version)
             throws Throwable {
         IndexWriter w = this.writer;
         if (w == null) {
@@ -791,11 +779,8 @@ public class LuceneDocumentIndexService extends StatelessService {
         builder.add(tqSelfLink, Occur.MUST);
 
         if (version != null) {
-            NumericRangeQuery<Long> versionQuery = NumericRangeQuery.newLongRange(
-                    ServiceDocument.FIELD_NAME_VERSION, version, version,
-                    true,
-                    true);
-
+            Query versionQuery = LongPoint.newRangeQuery(
+                        ServiceDocument.FIELD_NAME_VERSION, version, version);
             builder.add(versionQuery, Occur.MUST);
         }
 
@@ -1270,16 +1255,6 @@ public class LuceneDocumentIndexService extends StatelessService {
         }
     }
 
-    public static FieldType numericDocType(FieldType.NumericType type, boolean store) {
-        FieldType t = new FieldType();
-        t.setStored(store);
-        t.setDocValuesType(DocValuesType.NUMERIC);
-        t.setIndexOptions(IndexOptions.DOCS);
-        t.setNumericType(type);
-        t.setNumericPrecisionStep(QueryTask.DEFAULT_PRECISION_STEP);
-        return t;
-    }
-
     protected void updateIndex(Operation updateOp) throws Throwable {
         UpdateIndexRequest r = updateOp.getBody(UpdateIndexRequest.class);
         ServiceDocument s = r.document;
@@ -1352,21 +1327,16 @@ public class LuceneDocumentIndexService extends StatelessService {
             doc.add(transactionField);
         }
 
-        Field timestampField = new LongField(ServiceDocument.FIELD_NAME_UPDATE_TIME_MICROS,
-                s.documentUpdateTimeMicros, this.longStoredField);
-        doc.add(timestampField);
+        addNumericField(doc, ServiceDocument.FIELD_NAME_UPDATE_TIME_MICROS,
+                    s.documentUpdateTimeMicros, true, false);
 
         if (s.documentExpirationTimeMicros > 0) {
-            Field expirationTimeMicrosField = new LongField(
-                    ServiceDocument.FIELD_NAME_EXPIRATION_TIME_MICROS,
-                    s.documentExpirationTimeMicros, this.longStoredField);
-            doc.add(expirationTimeMicrosField);
+            addNumericField(doc, ServiceDocument.FIELD_NAME_EXPIRATION_TIME_MICROS,
+                        s.documentExpirationTimeMicros, true, false);
         }
 
-        Field versionField = new LongField(ServiceDocument.FIELD_NAME_VERSION,
-                s.documentVersion, this.longStoredField);
-
-        doc.add(versionField);
+        addNumericField(doc, ServiceDocument.FIELD_NAME_VERSION,
+                    s.documentVersion, true, false);
 
         if (desc.propertyDescriptions == null
                 || desc.propertyDescriptions.isEmpty()) {
@@ -1445,6 +1415,7 @@ public class LuceneDocumentIndexService extends StatelessService {
             isSorted = true;
         }
 
+        boolean isStored = fsv == Field.Store.YES;
         boolean expandField = opts != null && opts.contains(PropertyIndexingOption.EXPAND);
 
         if (v instanceof String) {
@@ -1472,16 +1443,15 @@ public class LuceneDocumentIndexService extends StatelessService {
                         v.toString()));
             }
         } else if (pd.typeName.equals(TypeName.LONG)) {
-            luceneField = new LongField(fieldName, ((Number) v).longValue(),
-                    fsv == Store.NO ? this.longUnStoredField : this.longStoredField);
+            long value = ((Number) v).longValue();
+            addNumericField(doc, fieldName, value, isStored, isSorted);
         } else if (pd.typeName.equals(TypeName.DATE)) {
             // Index as microseconds since UNIX epoch
-            Date dt = (Date) v;
-            luceneField = new LongField(fieldName, dt.getTime() * 1000,
-                    fsv == Store.NO ? this.longUnStoredField : this.longStoredField);
+            long value = ((Date) v).getTime() * 1000;
+            addNumericField(doc, fieldName, value, isStored, isSorted);
         } else if (pd.typeName.equals(TypeName.DOUBLE)) {
-            luceneField = new DoubleField(fieldName, ((Number) v).doubleValue(),
-                    fsv == Store.NO ? this.doubleUnStoredField : this.doubleStoredField);
+            double value = ((Number) v).doubleValue();
+            addNumericField(doc, fieldName, value, isStored, isSorted);
         } else if (pd.typeName.equals(TypeName.BOOLEAN)) {
             String booleanValue = QuerySpecification.toMatchValue((boolean) v);
             luceneField = new StringField(fieldName, booleanValue, fsv);
@@ -1532,7 +1502,7 @@ public class LuceneDocumentIndexService extends StatelessService {
             }
             Object fieldValue = ReflectionUtils.getPropertyValue(fieldDescription, v);
             String fieldName = QuerySpecification.buildCompositeFieldName(fieldNamePrefix,
-                    e.getKey());
+                        e.getKey());
             addIndexableFieldToDocument(doc, fieldValue, fieldDescription, fieldName);
         }
     }
@@ -1725,10 +1695,8 @@ public class LuceneDocumentIndexService extends StatelessService {
         hitDoc = s.doc(hits[(int) versionsToKeep - 1].doc);
         long versionUpperBound = Long.parseLong(hitDoc.get(ServiceDocument.FIELD_NAME_VERSION));
 
-        NumericRangeQuery<Long> versionQuery = NumericRangeQuery.newLongRange(
-                ServiceDocument.FIELD_NAME_VERSION, versionLowerBound, versionUpperBound,
-                true,
-                true);
+        Query versionQuery = LongPoint.newRangeQuery(
+                    ServiceDocument.FIELD_NAME_VERSION, versionLowerBound, versionUpperBound);
 
         builder.add(versionQuery, Occur.MUST);
         builder.add(linkQuery, Occur.MUST);
@@ -1841,7 +1809,7 @@ public class LuceneDocumentIndexService extends StatelessService {
 
         // Create a new searcher outside the lock. Another thread might race us and
         // also create a searcher, but that is OK: the most recent one will be used.
-        s = new IndexSearcher(DirectoryReader.open(w, true));
+        s = new IndexSearcher(DirectoryReader.open(w, true, true));
 
         if (hasOption(ServiceOption.INSTRUMENTATION)) {
             ServiceStat st = getStat(STAT_NAME_SEARCHER_UPDATE_COUNT);
@@ -2123,10 +2091,8 @@ public class LuceneDocumentIndexService extends StatelessService {
 
         long expirationUpperBound = Utils.getNowMicrosUtc();
 
-        NumericRangeQuery<Long> versionQuery = NumericRangeQuery.newLongRange(
-                ServiceDocument.FIELD_NAME_EXPIRATION_TIME_MICROS, 1L, expirationUpperBound,
-                true,
-                true);
+        Query versionQuery = LongPoint.newRangeQuery(
+                    ServiceDocument.FIELD_NAME_EXPIRATION_TIME_MICROS, 1L, expirationUpperBound);
 
         TopDocs results = s.search(versionQuery, Integer.MAX_VALUE);
         if (results.totalHits == 0) {
@@ -2192,5 +2158,43 @@ public class LuceneDocumentIndexService extends StatelessService {
             sendRequest(Operation.createPatch(this, activeTask.documentSelfLink).setBodyNoCloning(
                     patchBody));
         }
+    }
+
+    public static Document addNumericField(Document doc, String propertyName,long propertyValue,
+                                           boolean stored, boolean sorted) {
+        // StoredField is used if the property needs to be stored in the lucene document
+        if (stored) {
+            doc.add(new StoredField(propertyName, propertyValue));
+        }
+
+        // LongPoint adds an index field to the document that allows for efficient search
+        // and range queries
+        doc.add(new LongPoint(propertyName, propertyValue));
+
+        // NumericDocValues allow for efficient group operations for a property.
+        doc.add(sorted
+                ? new SortedNumericDocValuesField(propertyName, propertyValue)
+                : new NumericDocValuesField(propertyName, propertyValue));
+        return doc;
+    }
+
+    public static Document addNumericField(Document doc, String propertyName, double propertyValue,
+                                           boolean stored, boolean sorted) {
+        long longPropertyValue = NumericUtils.doubleToSortableLong(propertyValue);
+
+        // StoredField is used if the property needs to be stored in the lucene document
+        if (stored) {
+            doc.add(new StoredField(propertyName, propertyValue));
+        }
+
+        // DoublePoint adds an index field to the document that allows for efficient search
+        // and range queries
+        doc.add(new DoublePoint(propertyName, propertyValue));
+
+        // NumericDocValues allow for efficient group operations for a property.
+        doc.add(sorted
+                ? new SortedNumericDocValuesField(propertyName, longPropertyValue)
+                : new NumericDocValuesField(propertyName, longPropertyValue));
+        return doc;
     }
 }

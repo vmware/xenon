@@ -24,6 +24,8 @@
 
 * Enable HTTP2 for forwarding (as part of built in owner selection and loadbalancing)
 
+* Upgrade Lucene from 5.3.1 to 6.0.0
+
 ## 0.8.0
 
 * Enhance QueryOption.BROADCAST to use documents from owner nodes
