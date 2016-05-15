@@ -25,8 +25,7 @@ import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.core.SimpleAnalyzer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
-import org.apache.lucene.document.FieldType;
-import org.apache.lucene.document.LongField;
+import org.apache.lucene.document.LongPoint;
 import org.apache.lucene.document.StoredField;
 import org.apache.lucene.document.StringField;
 import org.apache.lucene.index.DirectoryReader;
@@ -37,7 +36,6 @@ import org.apache.lucene.index.Term;
 import org.apache.lucene.search.BooleanClause.Occur;
 import org.apache.lucene.search.BooleanQuery;
 import org.apache.lucene.search.IndexSearcher;
-import org.apache.lucene.search.NumericRangeQuery;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.Sort;
 import org.apache.lucene.search.SortField;
@@ -115,9 +113,6 @@ public class LuceneBlobIndexService extends StatelessService {
     private EnumSet<BlobIndexOption> indexOptions;
 
     private Sort timeSort;
-
-    private final FieldType longStoredField = LuceneDocumentIndexService.numericDocType(
-            FieldType.NumericType.LONG, true);
 
     private final int maxBinaryContextSizeBytes = 1024 * 1024;
 
@@ -293,9 +288,9 @@ public class LuceneBlobIndexService extends StatelessService {
                     Field.Store.NO);
             doc.add(keyField);
 
-            Field updateTimeField = new LongField(URI_PARAM_NAME_UPDATE_TIME,
-                    updateTime, this.longStoredField);
-            doc.add(updateTimeField);
+            LuceneDocumentIndexService.addNumericField(
+                    doc, URI_PARAM_NAME_UPDATE_TIME, updateTime, true, false);
+
             wr.addDocument(doc);
             this.indexUpdateTimeMicros = Utils.getNowMicrosUtc();
             post.setBody(null).complete();
@@ -346,7 +341,7 @@ public class LuceneBlobIndexService extends StatelessService {
             return s;
         }
 
-        s = new IndexSearcher(DirectoryReader.open(w, true));
+        s = new IndexSearcher(DirectoryReader.open(w, true, true));
 
         if (this.searcherUpdateTimeMicros < now) {
             closeSearcherSafe();
@@ -367,10 +362,13 @@ public class LuceneBlobIndexService extends StatelessService {
             return;
         }
 
-        NumericRangeQuery<Long> timeQuery = NumericRangeQuery.newLongRange(
-                URI_PARAM_NAME_UPDATE_TIME, null, updateTime,
-                false,
-                true);
+        // Query all blobs that satisfy the passed linkQuery and have
+        // URI_PARAM_NAME_UPDATE_TIME field set to less than or
+        // equal to updateTime
+        Query timeQuery = LongPoint.newRangeQuery(
+                URI_PARAM_NAME_UPDATE_TIME,
+                Long.MIN_VALUE,
+                updateTime);
         BooleanQuery.Builder builder = new BooleanQuery.Builder()
                 .add(linkQuery, Occur.MUST)
                 .add(timeQuery, Occur.MUST);

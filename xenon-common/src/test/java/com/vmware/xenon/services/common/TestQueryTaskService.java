@@ -81,7 +81,8 @@ import com.vmware.xenon.services.common.TenantService.TenantState;
 public class TestQueryTaskService {
     private static final String TEXT_VALUE = "the decentralized control plane is a nice framework for queries";
     private static final String SERVICE_LINK_VALUE = "provisioning/dhcp-subnets/192.4.0.0/16";
-    private static final double DOUBLE_MIN_OFFSET = 123.0;
+    private static final long LONG_START_VALUE = -10;
+    private static final double DOUBLE_MIN_OFFSET = -2.0;
 
     public int serviceCount = 50;
     public int queryCount = 10;
@@ -1818,21 +1819,24 @@ public class TestQueryTaskService {
         assertTrue(finishedTaskState.results.documentLinks.size() == sc - offset
                 * 2 - 1);
 
+        long longMin = LONG_START_VALUE;
+        long longMax = LONG_START_VALUE + sc - 1;
+
         // do inclusive range search
         q = new QueryTask.QuerySpecification();
         q.query.setTermPropertyName(longFieldName).setNumericRange(
-                NumericRange.createLongRange(0L, (long) (sc - 1), true, true));
+                NumericRange.createLongRange(longMin, longMax, true, true));
         u = this.host.createQueryTaskService(QueryTask.create(q));
         finishedTaskState = this.host.waitForQueryTaskCompletion(q, services.size(),
                 versionCount, u, false, true);
         assertTrue(finishedTaskState.results != null);
         assertTrue(finishedTaskState.results.documentLinks != null);
-        assertTrue(finishedTaskState.results.documentLinks.size() == sc);
+        assertEquals(finishedTaskState.results.documentLinks.size(), sc);
 
         // do min side open range search
         q = new QueryTask.QuerySpecification();
         q.query.setTermPropertyName(longFieldName).setNumericRange(
-                NumericRange.createLongRange(null, (long) (sc - 1), true, true));
+                NumericRange.createLongRange(null, longMax, true, true));
         u = this.host.createQueryTaskService(QueryTask.create(q));
         finishedTaskState = this.host.waitForQueryTaskCompletion(q, services.size(),
                 versionCount, u, false, true);
@@ -1843,7 +1847,7 @@ public class TestQueryTaskService {
         // do max side open range search
         q = new QueryTask.QuerySpecification();
         q.query.setTermPropertyName(longFieldName).setNumericRange(
-                NumericRange.createLongRange(0L, null, true, true));
+                NumericRange.createLongRange(longMin, null, true, true));
         u = this.host.createQueryTaskService(QueryTask.create(q));
         finishedTaskState = this.host.waitForQueryTaskCompletion(q, services.size(),
                 versionCount, u, false, true);
@@ -1851,12 +1855,14 @@ public class TestQueryTaskService {
         assertTrue(finishedTaskState.results.documentLinks != null);
         assertTrue(finishedTaskState.results.documentLinks.size() == sc);
 
+        double doubleMin = (LONG_START_VALUE * 0.1) + DOUBLE_MIN_OFFSET;
+        double doubleMax = (LONG_START_VALUE * 0.1) + DOUBLE_MIN_OFFSET + (sc * 0.1);
+
         // double fields are 1 / 10 of the long fields
         // do double inclusive range search
         q = new QueryTask.QuerySpecification();
         q.query.setTermPropertyName(doubleFieldName).setNumericRange(
-                NumericRange.createDoubleRange(DOUBLE_MIN_OFFSET, DOUBLE_MIN_OFFSET + sc * 0.1,
-                        true, true));
+                NumericRange.createDoubleRange(doubleMin, doubleMax, true, true));
         u = this.host.createQueryTaskService(QueryTask.create(q));
         finishedTaskState = this.host.waitForQueryTaskCompletion(q, services.size(),
                 versionCount, u, false, true);
@@ -1867,7 +1873,7 @@ public class TestQueryTaskService {
         // do double range search with min inclusive
         q = new QueryTask.QuerySpecification();
         q.query.setTermPropertyName(doubleFieldName).setNumericRange(
-                NumericRange.createDoubleRange(DOUBLE_MIN_OFFSET, DOUBLE_MIN_OFFSET + sc * 0.05,
+                NumericRange.createDoubleRange(doubleMin, doubleMin + sc * 0.05,
                         true, false));
         u = this.host.createQueryTaskService(QueryTask.create(q));
         finishedTaskState = this.host.waitForQueryTaskCompletion(q, services.size(),
@@ -1876,6 +1882,28 @@ public class TestQueryTaskService {
         assertTrue(finishedTaskState.results.documentLinks != null);
         assertTrue(finishedTaskState.results.documentLinks.size() == sc / 2);
         verifyNoPaginatedIndexSearchers();
+
+        // do min side open range search
+        q = new QueryTask.QuerySpecification();
+        q.query.setTermPropertyName(doubleFieldName).setNumericRange(
+                NumericRange.createDoubleRange(null, doubleMax, true, true));
+        u = this.host.createQueryTaskService(QueryTask.create(q));
+        finishedTaskState = this.host.waitForQueryTaskCompletion(q, services.size(),
+                versionCount, u, false, true);
+        assertTrue(finishedTaskState.results != null);
+        assertTrue(finishedTaskState.results.documentLinks != null);
+        assertTrue(finishedTaskState.results.documentLinks.size() == sc);
+
+        // do max side open range search
+        q = new QueryTask.QuerySpecification();
+        q.query.setTermPropertyName(doubleFieldName).setNumericRange(
+                NumericRange.createDoubleRange(doubleMin, null, true, true));
+        u = this.host.createQueryTaskService(QueryTask.create(q));
+        finishedTaskState = this.host.waitForQueryTaskCompletion(q, services.size(),
+                versionCount, u, false, true);
+        assertTrue(finishedTaskState.results != null);
+        assertTrue(finishedTaskState.results.documentLinks != null);
+        assertTrue(finishedTaskState.results.documentLinks.size() == sc);
     }
 
     @Test
@@ -2702,7 +2730,7 @@ public class TestQueryTaskService {
 
         this.host.testStart(services.size() * versionsPerService);
         Random r = new Random();
-        long k = 0;
+        long k = LONG_START_VALUE;
         templateState.mapOfLongs = new HashMap<>();
         templateState.mapOfDoubles = new HashMap<>();
         for (URI u : services) {
