@@ -18,6 +18,8 @@
   which also reduces allocations when a service author needs
   the reflect state document description
 
+* Upgrade Lucene from 5.3.1 to 6.0.0
+
 * Use Murmur3 hash, instead of SHA1 for ServiceDocument.equals
   and document signature calculation
 
@@ -39,8 +41,6 @@
   Perf gain of 2x on HTTP/2, with these changes.
 
 * Enable HTTP2 for forwarding (as part of built in owner selection and loadbalancing)
-
-* Upgrade Lucene from 5.3.1 to 6.0.0
 
 ## 0.8.0
 

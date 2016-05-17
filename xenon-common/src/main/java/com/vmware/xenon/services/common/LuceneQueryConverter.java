@@ -22,6 +22,7 @@ import org.apache.lucene.search.PhraseQuery;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.Sort;
 import org.apache.lucene.search.SortField;
+import org.apache.lucene.search.SortedNumericSortField;
 import org.apache.lucene.search.TermQuery;
 import org.apache.lucene.search.WildcardQuery;
 
@@ -197,9 +198,26 @@ class LuceneQueryConverter {
 
         boolean order =
                 querySpecification.sortOrder != QueryTask.QuerySpecification.SortOrder.ASC;
-        return new Sort(new SortField(querySpecification.sortTerm.propertyName,
-                convertToLuceneType(querySpecification.sortTerm.propertyType), order));
 
+        SortField sortField = null;
+        SortField.Type type = convertToLuceneType(querySpecification.sortTerm.propertyType);
+
+        switch (type) {
+        case LONG:
+        case DOUBLE:
+            // LuceneDocumentIndexService uses SortedNumericDocValuesField
+            // when adding indexes for Numeric fields. To maintain parity, we use
+            // SortedNumericSortField here when querying for data in sorted order
+            // for any numeric fields.
+            sortField = new SortedNumericSortField(
+                    querySpecification.sortTerm.propertyName, type, order);
+            break;
+        default:
+            sortField = new SortField(
+                    querySpecification.sortTerm.propertyName, type, order);
+            break;
+        }
+        return new Sort(sortField);
     }
 
     static void validateSortTerm(QueryTask.QueryTerm term) {
