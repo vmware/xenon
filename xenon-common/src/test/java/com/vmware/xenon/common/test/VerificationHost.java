@@ -1185,7 +1185,7 @@ public class VerificationHost extends ExampleServiceHost {
             }
 
             URI sUri = s.getUri();
-            updateOp.setUri(sUri);
+            updateOp.setUri(sUri).setReferer(getReferer());
 
             for (int i = 0; i < count; i++) {
                 if (!isFailureExpected) {
@@ -1228,7 +1228,7 @@ public class VerificationHost extends ExampleServiceHost {
                         send(putClone);
                     });
                 } else if (properties.contains(TestProperty.CALLBACK_SEND)) {
-                    sendRequestWithCallback(updateOp.setBody(b).setReferer(getReferer()));
+                    sendRequestWithCallback(updateOp.setBody(b));
                 } else {
                     send(updateOp.setBody(b));
                 }

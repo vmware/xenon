@@ -775,6 +775,11 @@ public class NettyHttpServiceClientTest {
                     this.requestCount,
                     EnumSet.of(TestProperty.FORCE_REMOTE, TestProperty.CALLBACK_SEND),
                     services);
+            this.host.doPutPerService(
+                    this.requestCount,
+                    EnumSet.of(TestProperty.FORCE_REMOTE, TestProperty.BINARY_SERIALIZATION,
+                            TestProperty.CALLBACK_SEND),
+                    services);
         }
     }
 

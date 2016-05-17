@@ -315,9 +315,9 @@ class ServiceSynchronizationTracker {
     }
 
     public void performNodeSelectorChangeMaintenance(Operation post, long now,
-            MaintenanceStage nextStage, boolean isCheckRequired) {
+            MaintenanceStage nextStage, boolean isCheckRequired, long deadline) {
 
-        if (isCheckRequired && checkAndScheduleNodeSelectorSynch(post, nextStage)) {
+        if (isCheckRequired && checkAndScheduleNodeSelectorSynch(post, nextStage, deadline)) {
             return;
         }
 
@@ -331,11 +331,12 @@ class ServiceSynchronizationTracker {
                 performNodeSelectorChangeMaintenance(e);
             }
         } finally {
-            this.host.performMaintenanceStage(post, nextStage);
+            this.host.performMaintenanceStage(post, nextStage, deadline);
         }
     }
 
-    private boolean checkAndScheduleNodeSelectorSynch(Operation post, MaintenanceStage nextStage) {
+    private boolean checkAndScheduleNodeSelectorSynch(Operation post, MaintenanceStage nextStage,
+            long deadline) {
         boolean hasSynchOccuredAtLeastOnce = false;
         for (Long synchTime : this.synchronizationTimes.values()) {
             if (synchTime != null && synchTime > 0) {
@@ -376,9 +377,11 @@ class ServiceSynchronizationTracker {
         AtomicInteger pending = new AtomicInteger(selectorPathsToSynch.size());
         CompletionHandler c = (o, e) -> {
             if (e != null) {
-                this.host.log(Level.WARNING, "skipping synchronization, error: %s",
-                        Utils.toString(e));
-                this.host.performMaintenanceStage(post, nextStage);
+                if (!this.host.isStopping()) {
+                    this.host.log(Level.WARNING, "skipping synchronization, error: %s",
+                            Utils.toString(e));
+                }
+                this.host.performMaintenanceStage(post, nextStage, deadline);
                 return;
             }
             int r = pending.decrementAndGet();
@@ -387,7 +390,8 @@ class ServiceSynchronizationTracker {
             }
 
             // we refreshed the pending selector list, now ready to do kick of synchronization
-            performNodeSelectorChangeMaintenance(post, Utils.getNowMicrosUtc(), nextStage, false);
+            performNodeSelectorChangeMaintenance(post, Utils.getNowMicrosUtc(), nextStage, false,
+                    deadline);
         };
 
         for (String path : selectorPathsToSynch) {
