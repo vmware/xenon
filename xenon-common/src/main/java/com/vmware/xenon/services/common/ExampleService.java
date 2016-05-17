@@ -44,12 +44,15 @@ public class ExampleService extends StatefulService {
     public static class ExampleServiceState extends ServiceDocument {
         public static final String FIELD_NAME_KEY_VALUES = "keyValues";
         public static final String FIELD_NAME_COUNTER = "counter";
+        public static final String FIELD_NAME_SORTED_COUNTER = "sortedCounter";
         public static final String FIELD_NAME_NAME = "name";
         public static final long VERSION_RETENTION_LIMIT = 100;
 
         @UsageOption(option = PropertyUsageOption.OPTIONAL)
         public Map<String, String> keyValues = new HashMap<>();
         public Long counter;
+        @PropertyOptions(indexing = PropertyIndexingOption.SORT)
+        public Long sortedCounter;
         @UsageOption(option = PropertyUsageOption.AUTO_MERGE_IF_NOT_NULL)
         public String name;
     }
