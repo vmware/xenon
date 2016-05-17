@@ -1580,11 +1580,11 @@ public class Operation implements Cloneable {
         return this;
     }
 
-    public Operation setRequestCallbackLocation(URI location) {
+    public Operation setRequestCallbackLocation(String location) {
         allocateRemoteContext();
         allocateRequestHeaders();
         this.remoteCtx.requestHeaders.put(REQUEST_CALLBACK_LOCATION_HEADER,
-                location == null ? null : location.toString());
+                location == null ? null : location);
         return this;
     }
 

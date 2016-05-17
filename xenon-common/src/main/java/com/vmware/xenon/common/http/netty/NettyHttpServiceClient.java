@@ -15,8 +15,9 @@ package com.vmware.xenon.common.http.netty;
 
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.util.ArrayList;
 import java.util.EnumSet;
-import java.util.Iterator;
+import java.util.List;
 import java.util.Map.Entry;
 import java.util.SortedMap;
 import java.util.concurrent.CancellationException;
@@ -42,12 +43,14 @@ import io.netty.handler.codec.http.cookie.Cookie;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Operation.AuthorizationContext;
 import com.vmware.xenon.common.Operation.CompletionHandler;
+import com.vmware.xenon.common.Operation.SocketContext;
 import com.vmware.xenon.common.OperationContext;
 import com.vmware.xenon.common.Service.Action;
 import com.vmware.xenon.common.ServiceClient;
 import com.vmware.xenon.common.ServiceErrorResponse;
 import com.vmware.xenon.common.ServiceErrorResponse.ErrorDetail;
 import com.vmware.xenon.common.ServiceHost;
+import com.vmware.xenon.common.ServiceHost.ServiceHostState;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
 import com.vmware.xenon.common.http.netty.NettyChannelPool.NettyChannelGroupKey;
@@ -169,7 +172,7 @@ public class NettyHttpServiceClient implements ServiceClient {
                                     e.toString());
                         }
                     });
-            this.callbackService = new HttpRequestCallbackService();
+            this.callbackService = new HttpRequestCallbackService(this);
             this.host.startService(startCallbackPost, this.callbackService);
         }
     }
@@ -183,7 +186,7 @@ public class NettyHttpServiceClient implements ServiceClient {
         if (this.http2ChannelPool != null) {
             this.http2ChannelPool.stop();
         }
-        // In practice, it's safe not to synchornize here, but this make Findbugs happy.
+        // In practice, it's safe not to synchronize here, but this make Findbugs happy.
         synchronized (this) {
             this.isStarted = false;
         }
@@ -232,6 +235,7 @@ public class NettyHttpServiceClient implements ServiceClient {
                     return;
                 }
             }
+            startTracking(clone);
             sendRemote(clone);
         } finally {
             // we must restore the operation context after each send, since
@@ -241,25 +245,23 @@ public class NettyHttpServiceClient implements ServiceClient {
     }
 
     private void setExpiration(Operation op) {
-        if (op.getExpirationMicrosUtc() == 0) {
-            long defaultTimeoutMicros = ServiceHost.ServiceHostState.DEFAULT_OPERATION_TIMEOUT_MICROS;
-            if (this.host != null) {
-                defaultTimeoutMicros = this.host.getOperationTimeoutMicros();
-            }
-            op.setExpiration(Utils.getNowMicrosUtc() + defaultTimeoutMicros);
+        if (op.getExpirationMicrosUtc() != 0) {
+            return;
         }
+        long expMicros = this.host != null ? this.host.getOperationTimeoutMicros()
+                : ServiceHostState.DEFAULT_OPERATION_TIMEOUT_MICROS;
+        op.setExpiration(Utils.getNowMicrosUtc() + expMicros);
     }
 
-    private void addToPending(Operation op) {
-        this.pendingRequests.put(op.getExpirationMicrosUtc(), op);
+    private void startTracking(Operation op) {
+        this.pendingRequests.put(op.getId(), op);
     }
 
-    private void removeFromPending(Operation op) {
-        this.pendingRequests.remove(op.getExpirationMicrosUtc());
+    void stopTracking(Operation op) {
+        this.pendingRequests.remove(op.getId());
     }
 
     private void sendRemote(Operation op) {
-        addToPending(op);
         connect(op);
     }
 
@@ -295,13 +297,15 @@ public class NettyHttpServiceClient implements ServiceClient {
         // Queue operation, then send it to remote target. At some point later the remote host will
         // send a PATCH
         // to the callback service to complete this pending operation
-        URI u = this.callbackService.queueUntilCallback(op);
+        startTracking(op);
+        String u = this.callbackService.queueUntilCallback(op);
         Operation remoteOp = op.clone();
         remoteOp.setRequestCallbackLocation(u);
         remoteOp.setCompletion((o, e) -> {
             if (e != null) {
-                // we do not remove the operation from the callback service, it will be removed on
-                // next maintenance
+                // we do not remove the operation from the callback service, it will be removed
+                // it times out
+                stopTracking(op);
                 op.setExpiration(0).fail(e);
                 return;
             }
@@ -481,8 +485,19 @@ public class NettyHttpServiceClient implements ServiceClient {
                 request.headers().set(Operation.REQUEST_AUTH_TOKEN_HEADER, ctx.getToken());
             }
 
+            boolean isXenonToXenon = op.isFromReplication();
+            boolean isRequestWithCallback = false;
             if (hasRequestHeaders) {
                 for (Entry<String, String> nameValue : op.getRequestHeaders().entrySet()) {
+                    String key = nameValue.getKey();
+                    if (!isXenonToXenon) {
+                        if (Operation.REQUEST_CALLBACK_LOCATION_HEADER.equals(key)) {
+                            isRequestWithCallback = true;
+                            isXenonToXenon = true;
+                        } else if (Operation.RESPONSE_CALLBACK_STATUS_HEADER.equals(key)) {
+                            isXenonToXenon = true;
+                        }
+                    }
                     request.headers().set(nameValue.getKey(), nameValue.getValue());
                 }
             }
@@ -492,7 +507,7 @@ public class NettyHttpServiceClient implements ServiceClient {
             request.headers().set(HttpHeaderNames.CONTENT_TYPE, op.getContentType());
             request.headers().set(HttpHeaderNames.CONNECTION, HttpHeaderValues.KEEP_ALIVE);
 
-            if (!op.isFromReplication()) {
+            if (!isXenonToXenon) {
                 if (op.getCookies() != null) {
                     String header = CookieJar.encodeCookies(op.getCookies());
                     request.headers().set(HttpHeaderNames.COOKIE, header);
@@ -511,15 +526,21 @@ public class NettyHttpServiceClient implements ServiceClient {
                 request.headers().set(HttpHeaderNames.HOST, op.getUri().getHost());
             }
 
+            boolean doCookieJarUpdate = !isXenonToXenon;
+            boolean stopTracking = !isRequestWithCallback;
             op.nestCompletion((o, e) -> {
                 if (e != null) {
                     fail(e, op, originalBody);
                     return;
                 }
 
-                removeFromPending(op);
+                if (stopTracking) {
+                    stopTracking(op);
+                }
 
-                updateCookieJarFromResponseHeaders(o);
+                if (doCookieJarUpdate) {
+                    updateCookieJarFromResponseHeaders(o);
+                }
 
                 // After request is sent control is transferred to the
                 // NettyHttpServerResponseHandler. The response handler will nest completions
@@ -542,22 +563,25 @@ public class NettyHttpServiceClient implements ServiceClient {
     }
 
     private void fail(Throwable e, Operation op, Object originalBody) {
-        removeFromPending(op);
-        NettyChannelContext ctx = (NettyChannelContext) op.getSocketContext();
-        NettyChannelPool pool = this.channelPool;
+        stopTracking(op);
+        SocketContext ctx = op.getSocketContext();
+        if (ctx != null && ctx instanceof NettyChannelContext) {
+            NettyChannelContext nettyCtx = (NettyChannelContext) op.getSocketContext();
+            NettyChannelPool pool = this.channelPool;
 
-        if (this.sslChannelPool != null && this.sslChannelPool.isContextInUse(ctx)) {
-            pool = this.sslChannelPool;
-        }
+            if (this.sslChannelPool != null && this.sslChannelPool.isContextInUse(nettyCtx)) {
+                pool = this.sslChannelPool;
+            }
 
-        if (ctx != null && ctx.getProtocol() == NettyChannelContext.Protocol.HTTP2) {
-            // For HTTP/2, we multiple streams so we don't close the connection.
-            pool = this.http2ChannelPool;
-            pool.returnOrClose(ctx, false);
-        } else {
-            // for HTTP/1.1, we close the stream to ensure we don't use a bad connection
-            op.setSocketContext(null);
-            pool.returnOrClose(ctx, !op.isKeepAlive());
+            if (nettyCtx.getProtocol() == NettyChannelContext.Protocol.HTTP2) {
+                // For HTTP/2, we multiple streams so we don't close the connection.
+                pool = this.http2ChannelPool;
+                pool.returnOrClose(nettyCtx, false);
+            } else {
+                // for HTTP/1.1, we close the stream to ensure we don't use a bad connection
+                op.setSocketContext(null);
+                pool.returnOrClose(nettyCtx, !op.isKeepAlive());
+            }
         }
 
         if (this.scheduledExecutor.isShutdown()) {
@@ -582,18 +606,15 @@ public class NettyHttpServiceClient implements ServiceClient {
         }
 
         if (!isRetryRequested) {
-            LOGGER.fine(String.format("(%d) Send of %d, from %s to %s failed with %s",
-                    pool.getPendingRequestCount(op), op.getId(), op.getRefererAsString(),
-                    op.getUri(),
-                    e.toString()));
+            LOGGER.fine(String.format("Send of %d, from %s to %s failed with %s",
+                    op.getId(), op.getRefererAsString(), op.getUri(), e.toString()));
             op.fail(e);
             return;
         }
 
-        LOGGER.info(String.format("(%d) Retry %d of request %d from %s to %s due to %s",
-                pool.getPendingRequestCount(op), op.getRetryCount() - op.getRetriesRemaining(),
-                op.getId(),
-                op.getRefererAsString(), op.getUri(), e.toString()));
+        LOGGER.info(String.format("Retry %d of request %d from %s to %s due to %s",
+                op.getRetryCount() - op.getRetriesRemaining(), op.getId(), op.getRefererAsString(),
+                op.getUri(), e.toString()));
 
         int delaySeconds = op.getRetryCount() - op.getRetriesRemaining();
 
@@ -602,7 +623,7 @@ public class NettyHttpServiceClient implements ServiceClient {
         op.setStatusCode(Operation.STATUS_CODE_OK).setBodyNoCloning(originalBody);
 
         this.scheduledExecutor.schedule(() -> {
-            addToPending(op);
+            startTracking(op);
             connect(op);
         } , delaySeconds, TimeUnit.SECONDS);
     }
@@ -648,6 +669,7 @@ public class NettyHttpServiceClient implements ServiceClient {
 
     @Override
     public void handleMaintenance(Operation op) {
+        long now = Utils.getNowMicrosUtc();
         if (this.sslChannelPool != null) {
             this.sslChannelPool.handleMaintenance(Operation.createPost(op.getUri()));
         }
@@ -656,7 +678,7 @@ public class NettyHttpServiceClient implements ServiceClient {
         }
         this.channelPool.handleMaintenance(op);
 
-        failExpiredRequests(Utils.getNowMicrosUtc());
+        failExpiredRequests(now);
     }
 
     /**
@@ -671,28 +693,50 @@ public class NettyHttpServiceClient implements ServiceClient {
      * a complete() and non atomic roll back of the nested completions.
      */
     private void failExpiredRequests(long now) {
+        List<Operation> expired = null;
         if (this.pendingRequests.isEmpty()) {
             return;
         }
 
-        Iterator<Entry<Long, Operation>> itPending = this.pendingRequests.entrySet().iterator();
-        while (itPending.hasNext()) {
-            Entry<Long, Operation> entry = itPending.next();
-            long exp = entry.getKey();
-            if (exp > now) {
+        // We do a limited search of pending operation, in each maintenance period, to
+        // determine if any have expired. The operations are kept in a sorted map,
+        // with the key being the operation id. The operation id increments monotonically
+        // so we are effectively traversing oldest to newest. We can not assume if operation
+        // with id k, with k << n, has expired, also operation with id n has, since operations
+        // have different expirations. We limit the search so we don't take too much time when
+        // millions of operations are pending
+        final int searchLimit = 1000;
+        int i = 0;
+        for (Operation o : this.pendingRequests.values()) {
+            if (i++ >= searchLimit) {
                 break;
             }
-            Operation o = entry.getValue();
+            long exp = o.getExpirationMicrosUtc();
+            if (exp > now) {
+                continue;
+            }
             if (o.getStatusCode() == Operation.STATUS_CODE_TIMEOUT) {
-                // second pass, fail operation already marked as expired
-                failWithTimeout(o, o.getBodyRaw());
+                if (expired == null) {
+                    expired = new ArrayList<>();
+                }
+                expired.add(o);
             } else {
                 // first pass, just mark as expired, but do not fail.
                 o.setStatusCode(Operation.STATUS_CODE_TIMEOUT);
             }
         }
-    }
 
+        if (expired == null) {
+            return;
+        }
+
+        LOGGER.info("Failed expired operations, count: " + expired.size());
+
+        // second pass, fail operation already marked as expired
+        for (Operation o : expired) {
+            failWithTimeout(o, o.getBodyRaw());
+        }
+    }
 
     /**
      * @see ServiceClient#setConnectionLimitPerHost(int)
