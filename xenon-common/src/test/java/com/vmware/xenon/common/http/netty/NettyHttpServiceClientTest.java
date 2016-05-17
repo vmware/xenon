@@ -770,10 +770,15 @@ public class NettyHttpServiceClientTest {
                 this.host.buildMinimalTestState(),
                 null, null);
 
-        for (int i = 0; i < 5; i++) {
+        for (int i = 0; i < 3; i++) {
             this.host.doPutPerService(
                     this.requestCount,
                     EnumSet.of(TestProperty.FORCE_REMOTE, TestProperty.CALLBACK_SEND),
+                    services);
+            this.host.doPutPerService(
+                    this.requestCount,
+                    EnumSet.of(TestProperty.FORCE_REMOTE, TestProperty.BINARY_SERIALIZATION,
+                            TestProperty.CALLBACK_SEND),
                     services);
         }
     }

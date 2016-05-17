@@ -294,13 +294,13 @@ public class NettyHttpServiceClient implements ServiceClient {
         // Queue operation, then send it to remote target. At some point later the remote host will
         // send a PATCH
         // to the callback service to complete this pending operation
-        URI u = this.callbackService.queueUntilCallback(op);
+        String u = this.callbackService.queueUntilCallback(op);
         Operation remoteOp = op.clone();
         remoteOp.setRequestCallbackLocation(u);
         remoteOp.setCompletion((o, e) -> {
             if (e != null) {
-                // we do not remove the operation from the callback service, it will be removed on
-                // next maintenance
+                // we do not remove the operation from the callback service, it will be removed
+                // it times out
                 op.setExpiration(0).fail(e);
                 return;
             }
@@ -478,8 +478,17 @@ public class NettyHttpServiceClient implements ServiceClient {
                 request.headers().set(Operation.REQUEST_AUTH_TOKEN_HEADER, ctx.getToken());
             }
 
+            boolean isXenonToXenon = op.isFromReplication();
             if (hasRequestHeaders) {
                 for (Entry<String, String> nameValue : op.getRequestHeaders().entrySet()) {
+                    String key = nameValue.getKey();
+                    if (!isXenonToXenon) {
+                        if (Operation.REQUEST_CALLBACK_LOCATION_HEADER.equals(key)) {
+                            isXenonToXenon = true;
+                        } else if (Operation.RESPONSE_CALLBACK_STATUS_HEADER.equals(key)) {
+                            isXenonToXenon = true;
+                        }
+                    }
                     request.headers().set(nameValue.getKey(), nameValue.getValue());
                 }
             }
@@ -489,7 +498,7 @@ public class NettyHttpServiceClient implements ServiceClient {
             request.headers().set(HttpHeaderNames.CONTENT_TYPE, op.getContentType());
             request.headers().set(HttpHeaderNames.CONNECTION, HttpHeaderValues.KEEP_ALIVE);
 
-            if (!op.isFromReplication()) {
+            if (!isXenonToXenon) {
                 if (op.getCookies() != null) {
                     String header = CookieJar.encodeCookies(op.getCookies());
                     request.headers().set(HttpHeaderNames.COOKIE, header);
@@ -508,6 +517,7 @@ public class NettyHttpServiceClient implements ServiceClient {
                 request.headers().set(HttpHeaderNames.HOST, op.getUri().getHost());
             }
 
+            boolean doCookieJarUpdate = !isXenonToXenon;
             op.nestCompletion((o, e) -> {
                 if (e != null) {
                     fail(e, op, originalBody);
@@ -516,7 +526,9 @@ public class NettyHttpServiceClient implements ServiceClient {
 
                 removeFromPending(op);
 
-                updateCookieJarFromResponseHeaders(o);
+                if (doCookieJarUpdate) {
+                    updateCookieJarFromResponseHeaders(o);
+                }
 
                 // After request is sent control is transferred to the
                 // NettyHttpServerResponseHandler. The response handler will nest completions
