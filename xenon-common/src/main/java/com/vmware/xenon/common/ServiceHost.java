@@ -502,6 +502,7 @@ public class ServiceHost implements ServiceRequestSender {
 
     private AuthorizationContext systemAuthorizationContext;
     private AuthorizationContext guestAuthorizationContext;
+    private long nextDefaultExpirationMicros;
 
     protected ServiceHost() {
         this.state = new ServiceHostState();
@@ -612,6 +613,8 @@ public class ServiceHost implements ServiceRequestSender {
                     DEFAULT_PCT_MEMORY_LIMIT_SERVICE_CONTEXT_INDEX);
         }
         allocateExecutors();
+        this.nextDefaultExpirationMicros = Utils.getNowMicrosUtc()
+                + this.state.operationTimeoutMicros;
         return this;
     }
 
@@ -3505,7 +3508,7 @@ public class ServiceHost implements ServiceRequestSender {
             op.forceRemote();
         }
         if (op.getExpirationMicrosUtc() == 0) {
-            op.setExpiration(Utils.getNowMicrosUtc() + this.state.operationTimeoutMicros);
+            op.setExpiration(this.nextDefaultExpirationMicros);
         }
 
         if (op.getCompletion() == null) {
@@ -4177,8 +4180,12 @@ public class ServiceHost implements ServiceRequestSender {
     private void scheduleMaintenance() {
         Runnable r = () -> {
             this.state.lastMaintenanceTimeUtcMicros = Utils.getNowMicrosUtc();
+            long deadline = this.state.lastMaintenanceTimeUtcMicros
+                    + this.state.maintenanceIntervalMicros;
+            this.nextDefaultExpirationMicros = this.state.lastMaintenanceTimeUtcMicros
+                    + this.state.operationTimeoutMicros;
             performMaintenanceStage(Operation.createPost(getUri()),
-                    MaintenanceStage.UTILS);
+                    MaintenanceStage.UTILS, deadline);
         };
 
         this.maintenanceTask = schedule(r, getMaintenanceIntervalMicros(), TimeUnit.MICROSECONDS);
@@ -4189,12 +4196,10 @@ public class ServiceHost implements ServiceRequestSender {
      * state machine must be active per host, at any time. Maintenance is re-scheduled
      * when the final stage is complete.
      */
-    void performMaintenanceStage(Operation post, MaintenanceStage stage) {
+    void performMaintenanceStage(Operation post, MaintenanceStage stage, long deadline) {
 
         try {
             long now = Utils.getNowMicrosUtc();
-            long deadline = this.state.lastMaintenanceTimeUtcMicros
-                    + this.state.maintenanceIntervalMicros;
 
             switch (stage) {
             case UTILS:
@@ -4206,10 +4211,11 @@ public class ServiceHost implements ServiceRequestSender {
                 stage = MaintenanceStage.IO;
                 break;
             case IO:
-                performIOMaintenance(post, now, MaintenanceStage.NODE_SELECTORS);
+                performIOMaintenance(post, now, MaintenanceStage.NODE_SELECTORS, deadline);
                 return;
             case NODE_SELECTORS:
-                performNodeSelectorChangeMaintenance(post, now, MaintenanceStage.SERVICE, true);
+                performNodeSelectorChangeMaintenance(post, now, MaintenanceStage.SERVICE, true,
+                        deadline);
                 return;
             case SERVICE:
                 this.serviceMaintTracker.performMaintenance(post, deadline);
@@ -4225,7 +4231,7 @@ public class ServiceHost implements ServiceRequestSender {
                 scheduleMaintenance();
                 return;
             }
-            performMaintenanceStage(post, stage);
+            performMaintenanceStage(post, stage, deadline);
         } catch (Throwable e) {
             log(Level.SEVERE, "Uncaught exception: %s", e.toString());
             post.fail(e);
@@ -4233,12 +4239,13 @@ public class ServiceHost implements ServiceRequestSender {
     }
 
     private void performNodeSelectorChangeMaintenance(Operation post, long now,
-            MaintenanceStage nextStage, boolean isCheckRequired) {
+            MaintenanceStage nextStage, boolean isCheckRequired, long deadline) {
         this.serviceSynchTracker.performNodeSelectorChangeMaintenance(post, now, nextStage,
-                isCheckRequired);
+                isCheckRequired, deadline);
     }
 
-    private void performIOMaintenance(Operation post, long now, MaintenanceStage nextStage) {
+    private void performIOMaintenance(Operation post, long now, MaintenanceStage nextStage,
+            long deadline) {
         try {
             performPendingOperationMaintenance();
 
@@ -4272,7 +4279,7 @@ public class ServiceHost implements ServiceRequestSender {
                 if (r != 0) {
                     return;
                 }
-                performMaintenanceStage(post, nextStage);
+                performMaintenanceStage(post, nextStage, deadline);
             });
 
             if (c != null) {
@@ -4288,7 +4295,7 @@ public class ServiceHost implements ServiceRequestSender {
             }
         } catch (Throwable e) {
             log(Level.WARNING, "Exception: %s", Utils.toString(e));
-            performMaintenanceStage(post, nextStage);
+            performMaintenanceStage(post, nextStage, deadline);
         }
     }
 
@@ -4351,6 +4358,7 @@ public class ServiceHost implements ServiceRequestSender {
 
     public ServiceHost setOperationTimeOutMicros(long timeoutMicros) {
         this.state.operationTimeoutMicros = timeoutMicros;
+        this.nextDefaultExpirationMicros = Utils.getNowMicrosUtc() + timeoutMicros;
         return this;
     }
 
