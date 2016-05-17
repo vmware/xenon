@@ -1053,6 +1053,11 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
     @Test
     public void serviceCreationAndDocumentExpirationLongRunning() throws Throwable {
         this.host.waitForServiceAvailable(ExampleService.FACTORY_LINK);
+
+        // set lower batch size to validate batch expiry process
+        int oldThreshold = LuceneDocumentIndexService.getExpiredDocumentSearchThreshold();
+        LuceneDocumentIndexService.setExpiredDocumentSearchThreshold(2);
+
         Date expiration = this.host.getTestExpiration();
 
         long opTimeoutMicros = this.host.testDurationSeconds != 0 ? this.host
@@ -1160,6 +1165,16 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
                 ServiceStat deletedCountAfterExpiration = stats.entries
                         .get(LuceneDocumentIndexService.STAT_NAME_SERVICE_DELETE_COUNT);
 
+                ServiceStat deletedBatchCount = stats.entries
+                        .get(LuceneDocumentIndexService.STAT_NAME_DOCUMENT_EXPIRATION_BATCH_COUNT);
+
+                // in batch expiry mode wait till at least first batch completes
+                if (services.size() > LuceneDocumentIndexService.getExpiredDocumentSearchThreshold()
+                        && (deletedBatchCount == null || deletedBatchCount.latestValue < 2)) {
+                    Thread.sleep(250);
+                    continue;
+                }
+
                 if (deletedCountAfterExpiration == null) {
                     Thread.sleep(250);
                     continue;
@@ -1187,6 +1202,7 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
             }
 
             if (exp.before(new Date())) {
+                LuceneDocumentIndexService.setExpiredDocumentSearchThreshold(oldThreshold);
                 throw new TimeoutException();
             }
 
@@ -1282,6 +1298,8 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
                     Utils.toJsonHtml(s));
 
             assertEquals(0, r.documentLinks.size());
+
+            LuceneDocumentIndexService.setExpiredDocumentSearchThreshold(oldThreshold);
         }
     }
 

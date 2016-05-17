@@ -98,6 +98,7 @@ import com.vmware.xenon.common.ServiceDocumentDescription.PropertyUsageOption;
 import com.vmware.xenon.common.ServiceDocumentDescription.TypeName;
 import com.vmware.xenon.common.ServiceDocumentQueryResult;
 import com.vmware.xenon.common.ServiceHost.ServiceHostState.MemoryLimitType;
+import com.vmware.xenon.common.ServiceMaintenanceRequest;
 import com.vmware.xenon.common.ServiceStats.ServiceStat;
 import com.vmware.xenon.common.StatelessService;
 import com.vmware.xenon.common.TaskState;
@@ -121,6 +122,8 @@ public class LuceneDocumentIndexService extends StatelessService {
 
     private static final int DEFAULT_INDEX_SEARCHER_COUNT_THRESHOLD = 200;
 
+    private static int EXPIRED_DOCUMENT_SEARCH_THRESHOLD = 1000;
+
     private static int INDEX_SEARCHER_COUNT_THRESHOLD = DEFAULT_INDEX_SEARCHER_COUNT_THRESHOLD;
 
     private static int INDEX_FILE_COUNT_THRESHOLD_FOR_WRITER_REFRESH = DEFAULT_INDEX_FILE_COUNT_THRESHOLD_FOR_WRITER_REFRESH;
@@ -135,6 +138,14 @@ public class LuceneDocumentIndexService extends StatelessService {
 
     public static int getIndexFileCountThresholdForWriterRefresh() {
         return INDEX_FILE_COUNT_THRESHOLD_FOR_WRITER_REFRESH;
+    }
+
+    public static void setExpiredDocumentSearchThreshold(int count) {
+        EXPIRED_DOCUMENT_SEARCH_THRESHOLD = count;
+    }
+
+    public static int getExpiredDocumentSearchThreshold() {
+        return EXPIRED_DOCUMENT_SEARCH_THRESHOLD;
     }
 
     private static final String LUCENE_FIELD_NAME_BINARY_SERIALIZED_STATE = "binarySerializedState";
@@ -174,6 +185,8 @@ public class LuceneDocumentIndexService extends StatelessService {
     public static final String STAT_NAME_SERVICE_DELETE_COUNT = "serviceDeleteCount";
 
     public static final String STAT_NAME_DOCUMENT_EXPIRATION_COUNT = "expiredDocumentCount";
+
+    public static final String STAT_NAME_DOCUMENT_EXPIRATION_BATCH_COUNT = "expiredDocumentBatchCount";
 
     protected static final int UPDATE_THREAD_COUNT = 4;
 
@@ -2083,7 +2096,9 @@ public class LuceneDocumentIndexService extends StatelessService {
     }
 
     private void applyDocumentExpirationPolicy(IndexWriter w) throws Throwable {
-        IndexSearcher s = updateSearcher(null, Integer.MAX_VALUE, w);
+        // its ok if we miss a document update, we will catch it, and refresh the searcher on the next update or maintenance
+        IndexSearcher s =
+                this.searcher != null ? this.searcher : updateSearcher(null, Integer.MAX_VALUE, w);
         if (s == null) {
             return;
         }
@@ -2093,7 +2108,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         Query versionQuery = LongPoint.newRangeQuery(
                     ServiceDocument.FIELD_NAME_EXPIRATION_TIME_MICROS, 1L, expirationUpperBound);
 
-        TopDocs results = s.search(versionQuery, Integer.MAX_VALUE);
+        TopDocs results = s.search(versionQuery, EXPIRED_DOCUMENT_SEARCH_THRESHOLD);
         if (results.totalHits == 0) {
             return;
         }
@@ -2114,6 +2129,20 @@ public class LuceneDocumentIndexService extends StatelessService {
                 continue;
             }
             checkAndDeleteExpiratedDocuments(link, s, sd.doc, d, now);
+        }
+
+        // More documents to be expired trigger maintenance right away.
+        if (results.totalHits > EXPIRED_DOCUMENT_SEARCH_THRESHOLD) {
+
+            adjustStat(STAT_NAME_DOCUMENT_EXPIRATION_BATCH_COUNT, 1);
+
+            ServiceMaintenanceRequest body = ServiceMaintenanceRequest.create();
+            Operation servicePost = Operation
+                    .createPost(UriUtils.buildUri(getHost(), getSelfLink()))
+                    .setReferer(getHost().getUri())
+                    .setBody(body);
+            // servicePost can be cached
+            handleMaintenance(servicePost);
         }
     }
 
