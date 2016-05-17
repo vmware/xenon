@@ -43,6 +43,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import java.util.logging.Level;
 
+import org.junit.After;
+import org.junit.Before;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 
@@ -145,6 +147,20 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
     private final String INDEX_DIR_NAME = "lucene510";
 
     private FaultInjectionLuceneDocumentIndexService indexService;
+
+    private int expiredDocumentSearchThreshold;
+
+    @Before
+    public void setup() {
+        this.expiredDocumentSearchThreshold = LuceneDocumentIndexService
+                .getExpiredDocumentSearchThreshold();
+    }
+
+    @After
+    public void tearDown() throws Throwable {
+        LuceneDocumentIndexService
+                .setExpiredDocumentSearchThreshold(this.expiredDocumentSearchThreshold);
+    }
 
     @Override
     public void beforeHostStart(VerificationHost host) {
@@ -1053,6 +1069,9 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
     @Test
     public void serviceCreationAndDocumentExpirationLongRunning() throws Throwable {
         this.host.waitForServiceAvailable(ExampleService.FACTORY_LINK);
+
+        LuceneDocumentIndexService.setExpiredDocumentSearchThreshold(2);
+
         Date expiration = this.host.getTestExpiration();
 
         long opTimeoutMicros = this.host.testDurationSeconds != 0 ? this.host
@@ -1159,6 +1178,17 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
                         luceneStatsUri);
                 ServiceStat deletedCountAfterExpiration = stats.entries
                         .get(LuceneDocumentIndexService.STAT_NAME_SERVICE_DELETE_COUNT);
+
+                ServiceStat expiredDocumentForcedMaintenanceCount = stats.entries
+                        .get(LuceneDocumentIndexService.STAT_NAME_DOCUMENT_EXPIRATION_FORCED_MAINTENANCE_COUNT);
+
+                // in batch expiry mode wait till at least first batch completes
+                if (services.size() > LuceneDocumentIndexService.getExpiredDocumentSearchThreshold()
+                        && (expiredDocumentForcedMaintenanceCount == null
+                        || expiredDocumentForcedMaintenanceCount.latestValue < 2)) {
+                    Thread.sleep(250);
+                    continue;
+                }
 
                 if (deletedCountAfterExpiration == null) {
                     Thread.sleep(250);
