@@ -173,7 +173,7 @@ public class TestQueryTaskService {
         assertTrue(pd != null);
         assertTrue(pd.typeName.equals(TypeName.PODO));
         assertTrue(pd.fieldDescriptions != null);
-        assertTrue(pd.fieldDescriptions.size() == 3 + expectedBuiltInFields);
+        assertTrue(pd.fieldDescriptions.size() == 4 + expectedBuiltInFields);
         assertTrue(pd.fieldDescriptions.get("keyValues") != null);
 
         pd = sdd.propertyDescriptions.get("nestedComplexValue");
@@ -1565,6 +1565,7 @@ public class TestQueryTaskService {
             ExampleServiceState s = new ExampleServiceState();
             s.name = UUID.randomUUID().toString();
             s.counter = new Long(Math.abs(r.nextLong()));
+            s.sortedCounter = new Long(Math.abs(r.nextLong()));
             s.documentSelfLink = s.name;
 
             exampleServices.add(UriUtils.buildUri(this.host.getUri(),
@@ -1577,15 +1578,32 @@ public class TestQueryTaskService {
         }
         this.host.testWait();
 
+        queryAndValidateSortedResults(ExampleServiceState.FIELD_NAME_COUNTER, TypeName.LONG,
+                exampleServices, resultLimit, isDirect);
+
+        queryAndValidateSortedResults(ExampleServiceState.FIELD_NAME_SORTED_COUNTER, TypeName.LONG,
+                exampleServices, resultLimit, isDirect);
+
+        List<URI> toDelete = queryAndValidateSortedResults(ExampleServiceState.FIELD_NAME_NAME,
+                TypeName.STRING, exampleServices, resultLimit, isDirect);
+
+        deleteServices(toDelete);
+    }
+
+    private List<URI> queryAndValidateSortedResults(String propertyName, TypeName propertyType,
+                                                    List<URI> exampleServices, int resultLimit,
+                                                    boolean isDirect) throws Throwable {
         Query kindClause = Query.Builder.create()
                 .addKindFieldClause(ExampleServiceState.class)
                 .build();
 
-        QueryTask.Builder queryTaskBuilder = isDirect ? QueryTask.Builder.createDirectTask()
+        QueryTask.Builder queryTaskBuilder = isDirect
+                ? QueryTask.Builder.createDirectTask()
                 : QueryTask.Builder.create();
+
         queryTaskBuilder
                 .setQuery(kindClause)
-                .orderDescending(ExampleServiceState.FIELD_NAME_COUNTER, TypeName.LONG)
+                .orderDescending(propertyName, propertyType)
                 .addOption(QueryOption.EXPAND_CONTENT)
                 .setResultLimit(resultLimit);
 
@@ -1621,8 +1639,8 @@ public class TestQueryTaskService {
                 pageLinks);
         this.host.testWait();
 
-        assertEquals(serviceCount, numberOfDocumentLinks[0]);
-        validateSortedResults(documents, ExampleServiceState.FIELD_NAME_COUNTER);
+        assertEquals(exampleServices.size(), numberOfDocumentLinks[0]);
+        validateSortedResults(documents, propertyName);
 
         // do another query but sort on self links
         numberOfDocumentLinks[0] = 0;
@@ -1654,10 +1672,10 @@ public class TestQueryTaskService {
                 pageLinks);
         this.host.testWait();
 
-        assertEquals(serviceCount, numberOfDocumentLinks[0]);
+        assertEquals(exampleServices.size(), numberOfDocumentLinks[0]);
         validateSortedResults(documents, ServiceDocument.FIELD_NAME_SELF_LINK);
 
-        deleteServices(toDelete);
+        return toDelete;
     }
 
     private void validateSortedResults(List<ExampleServiceState> documents, String fieldName) {
@@ -1669,8 +1687,10 @@ public class TestQueryTaskService {
             if (fieldName.equals(ServiceDocument.FIELD_NAME_SELF_LINK)) {
                 int r = currentDoc.documentSelfLink.compareTo(prevDoc.documentSelfLink);
                 assertTrue("Sort by self link failed", r > 0);
-            } else {
+            } else if (fieldName.equals(ExampleServiceState.FIELD_NAME_COUNTER)) {
                 assertTrue("Sort Test Failed", currentDoc.counter < prevDoc.counter);
+            } else if (fieldName.equals(ExampleServiceState.FIELD_NAME_SORTED_COUNTER)) {
+                assertTrue("Sort Test Failed", currentDoc.sortedCounter < prevDoc.sortedCounter);
             }
             prevDoc = currentDoc;
         }

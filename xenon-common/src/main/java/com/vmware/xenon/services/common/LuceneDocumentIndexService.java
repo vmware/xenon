@@ -75,6 +75,7 @@ import org.apache.lucene.search.Query;
 import org.apache.lucene.search.ScoreDoc;
 import org.apache.lucene.search.Sort;
 import org.apache.lucene.search.SortField;
+import org.apache.lucene.search.SortedNumericSortField;
 import org.apache.lucene.search.TermQuery;
 import org.apache.lucene.search.TopDocs;
 import org.apache.lucene.store.AlreadyClosedException;
@@ -278,7 +279,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         this.searchersForPaginatedQueries.clear();
         this.searchersPendingClose.clear();
 
-        this.versionSort = new Sort(new SortField(ServiceDocument.FIELD_NAME_VERSION,
+        this.versionSort = new Sort(new SortedNumericSortField(ServiceDocument.FIELD_NAME_VERSION,
                 SortField.Type.LONG, true));
 
         this.fieldsToLoadNoExpand = new HashSet<>();
@@ -1330,7 +1331,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         }
 
         addNumericField(doc, ServiceDocument.FIELD_NAME_VERSION,
-                    s.documentVersion, true, false);
+                    s.documentVersion, true, true);
 
         if (desc.propertyDescriptions == null
                 || desc.propertyDescriptions.isEmpty()) {
