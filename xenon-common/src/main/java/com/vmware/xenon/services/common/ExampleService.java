@@ -49,6 +49,7 @@ public class ExampleService extends StatefulService {
 
         @UsageOption(option = PropertyUsageOption.OPTIONAL)
         public Map<String, String> keyValues = new HashMap<>();
+        @PropertyOptions(indexing = PropertyIndexingOption.SORT)
         public Long counter;
         @UsageOption(option = PropertyUsageOption.AUTO_MERGE_IF_NOT_NULL)
         public String name;
