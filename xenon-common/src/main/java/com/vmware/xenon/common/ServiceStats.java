@@ -14,8 +14,12 @@
 package com.vmware.xenon.common;
 
 import java.net.URI;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.SortedMap;
+import java.util.TreeMap;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Document describing the <service>/stats REST API
@@ -29,6 +33,82 @@ public class ServiceStats extends ServiceDocument {
          * values between 10 and 99, Bin[2] tracks values between 100 and 999, and so forth
          */
         public long[] bins = new long[15];
+    }
+
+    public static enum AggregationType {
+        AVG, MIN, MAX
+    }
+
+    public static class TimeSeriesDataPoint {
+        public Double avg;
+        public Double min;
+        public Double max;
+        public Double count;
+    }
+
+    public static class TimeSeriesStats {
+        public SortedMap<Long, TimeSeriesDataPoint> dataPoints;
+        int numBuckets;
+        long bucketDurationMillis;
+        EnumSet<AggregationType> aggregationType;
+
+        public TimeSeriesStats(int numBuckets, long bucketDurationMillis,
+                EnumSet<AggregationType> aggregationType) {
+            this.numBuckets = numBuckets;
+            this.bucketDurationMillis = bucketDurationMillis;
+            this.dataPoints = new TreeMap<Long, TimeSeriesDataPoint>();
+            this.aggregationType = aggregationType;
+        }
+
+        public synchronized void setDataPoint(long timestampMicros, double value) {
+            long bucketId = floorData(timestampMicros, this.bucketDurationMillis);
+            TimeSeriesDataPoint dataBucket = null;
+            if (this.dataPoints.containsKey(bucketId)) {
+                dataBucket = this.dataPoints.get(bucketId);
+            } else {
+                if (this.dataPoints.size() == this.numBuckets) {
+                    if (this.dataPoints.firstKey() > timestampMicros) {
+                        // incoming data is too old; ignore
+                        return;
+                    }
+                    // boot out the oldest entry
+                    this.dataPoints.remove(this.dataPoints.firstKey());
+                }
+                dataBucket = new TimeSeriesDataPoint();
+                this.dataPoints.put(bucketId, dataBucket);
+            }
+            if (this.aggregationType.contains(AggregationType.AVG)) {
+                if (dataBucket.avg == null) {
+                    dataBucket.avg = new Double(value);
+                    dataBucket.count = new Double(1);
+                } else {
+                    double newAvg = ((dataBucket.avg * dataBucket.count)  + value) / (dataBucket.count + 1);
+                    dataBucket.avg = newAvg;
+                    dataBucket.count++;
+                }
+            }
+            if (this.aggregationType.contains(AggregationType.MAX)) {
+                if (dataBucket.max == null) {
+                    dataBucket.max = new Double(value);
+                } else if (dataBucket.max < value) {
+                    dataBucket.max = value;
+                }
+            }
+            if (this.aggregationType.contains(AggregationType.MIN)) {
+                if (dataBucket.min == null) {
+                    dataBucket.min = new Double(value);
+                } else if (dataBucket.min > value) {
+                    dataBucket.min = value;
+                }
+            }
+        }
+
+        private long floorData(long timestampMicros, long bucketDurationMillis) {
+            long timeMillis = TimeUnit.MICROSECONDS.toMillis(timestampMicros);
+            timeMillis -= (timeMillis % bucketDurationMillis);
+            return timeMillis;
+        }
+
     }
 
     public static class ServiceStat {
@@ -46,6 +126,8 @@ public class ServiceStats extends ServiceDocument {
         public URI serviceReference;
 
         public ServiceStatLogHistogram logHistogram;
+
+        public TimeSeriesStats timeSeriesStats;
     }
 
     public String kind = KIND;
