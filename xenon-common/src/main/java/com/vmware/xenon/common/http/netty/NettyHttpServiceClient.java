@@ -107,16 +107,19 @@ public class NettyHttpServiceClient implements ServiceClient {
         sc.host = host;
         sc.channelPool = new NettyChannelPool();
         sc.http2ChannelPool = new NettyChannelPool();
+        sc.sslChannelPool = new NettyChannelPool();
         String proxy = System.getenv(ENV_VAR_NAME_HTTP_PROXY);
         if (proxy != null) {
             sc.setHttpProxy(new URI(proxy));
         }
 
+        sc.setConnectionLimitPerHost(DEFAULT_CONNECTION_LIMIT_PER_HOST);
         sc.setConnectionLimitPerTag(ServiceClient.CONNECTION_TAG_DEFAULT,
                 DEFAULT_CONNECTIONS_PER_HOST);
         sc.setConnectionLimitPerTag(ServiceClient.CONNECTION_TAG_HTTP2_DEFAULT,
                 DEFAULT_CONNECTION_LIMIT_PER_TAG);
-        return sc.setConnectionLimitPerHost(DEFAULT_CONNECTIONS_PER_HOST);
+
+        return sc;
     }
 
     private String buildThreadTag() {
@@ -150,8 +153,6 @@ public class NettyHttpServiceClient implements ServiceClient {
         this.http2ChannelPool.start();
 
         if (this.sslContext != null) {
-            this.sslChannelPool = new NettyChannelPool();
-            this.sslChannelPool.setConnectionLimitPerHost(getConnectionLimitPerHost());
             this.sslChannelPool.setThreadTag(buildThreadTag());
             this.sslChannelPool.setThreadCount(Utils.DEFAULT_IO_THREAD_COUNT);
             this.sslChannelPool.setSSLContext(this.sslContext);

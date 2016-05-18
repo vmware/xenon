@@ -243,7 +243,7 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
                         session.getPeerCertificateChain());
             }
         } catch (Exception e) {
-            this.host.log(Level.FINE, "Failed to get peer principal " + Utils.toString(e));
+            this.host.log(Level.WARNING, "Failed to get peer principal " + Utils.toString(e));
         }
     }
 
