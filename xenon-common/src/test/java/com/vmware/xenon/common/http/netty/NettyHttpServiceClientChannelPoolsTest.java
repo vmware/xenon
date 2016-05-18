@@ -15,7 +15,6 @@ package com.vmware.xenon.common.http.netty;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertNull;
 
 import java.util.concurrent.Executors;
 
@@ -45,17 +44,11 @@ public class NettyHttpServiceClientChannelPoolsTest {
 
     @Test
     public void testChannelPoolInitialization() {
-        // Instantiated before calling client.start()
-        assertNotNull(this.client.getChannelPool());
-    }
-
-    @Test
-    public void testSSLChannelPoolInitialization() {
-        assertNull(this.client.getSslChannelPool());
-
         this.client.start();
 
         assertNotNull(this.client.getSslChannelPool());
+        assertNotNull(this.client.getChannelPool());
+        assertNotNull(this.client.getHttp2ChannelPool());
     }
 
     @Test
@@ -70,7 +63,7 @@ public class NettyHttpServiceClientChannelPoolsTest {
     }
 
     @Test
-    public void testSetConnectionLimitBeforeSslChanngelPoolInit() {
+    public void testSetConnectionLimitBeforeSslChannelPoolStart() {
         int connectionLimit = 11;
 
         this.client.setConnectionLimitPerHost(connectionLimit);
@@ -82,7 +75,7 @@ public class NettyHttpServiceClientChannelPoolsTest {
     }
 
     @Test
-    public void testSetConnectionLimitAfterSslChanngelPoolInit() {
+    public void testSetConnectionLimitAfterSslChannelPoolStart() {
         int connectionLimit = 11;
 
         this.client.start();

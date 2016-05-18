@@ -385,8 +385,9 @@ public class NettyChannelPool {
                 }
             }
 
+            int activeChannelCount = group.inUseChannels.size();
             if (context != null && context.hasActiveStreams()
-                    && group.inUseChannels.size() < limit) {
+                    && activeChannelCount < limit) {
                 // create a new channel, we are below limit for concurrent connections
                 context = null;
             } else if (context == null) {
@@ -555,33 +556,31 @@ public class NettyChannelPool {
         // if the connection isn't writable, it's an indication of a problem,
         // so we'll close the connection.
         if (this.isHttp2Only) {
-            isClose = isClose || !ch.isOpen();
+            isClose = isClose || !ch.isOpen() || !context.isValid();
         } else {
             isClose = isClose || !ch.isWritable() || !ch.isOpen();
         }
         NettyChannelGroup group = this.channelGroups.get(context.getKey());
         if (group == null) {
+            LOGGER.warning("Cound not find group for " + context.getKey());
             context.close();
             return;
         }
 
-        if (this.isHttp2Only) {
-            returnOrCloseDirectHttp2(context, group, isClose);
-        } else {
-            returnOrCloseDirectHttp1(context, group, isClose);
-        }
+        returnOrCloseDirect(context, group, isClose);
     }
 
     /**
      * The implementation for returnOrCloseDirect when using HTTP/1.1
      */
-    private void returnOrCloseDirectHttp1(NettyChannelContext context, NettyChannelGroup group,
+    private void returnOrCloseDirect(NettyChannelContext context, NettyChannelGroup group,
             boolean isClose) {
-        Operation pendingOp = group.pendingRequests.poll();
+        Operation pendingOp = null;
         synchronized (group) {
+            pendingOp = group.pendingRequests.poll();
             if (isClose) {
                 group.inUseChannels.remove(context);
-            } else {
+            } else if (!this.isHttp2Only) {
                 if (pendingOp == null) {
                     group.availableChannels.add(context);
                     group.inUseChannels.remove(context);
@@ -601,33 +600,6 @@ public class NettyChannelPool {
             connectOrReuse(context.getKey(), pendingOp);
         } else {
             context.setOperation(pendingOp);
-            pendingOp.complete();
-        }
-    }
-
-    /**
-     * The implementation for returnOrCloseDirect when using HTTP/2
-     */
-    private void returnOrCloseDirectHttp2(NettyChannelContext context, NettyChannelGroup group,
-            boolean isClose) {
-
-        Operation pendingOp = group.pendingRequests.poll();
-        synchronized (group) {
-            if (isClose) {
-                context.setOpenInProgress(false);
-                group.inUseChannels.remove(context);
-                context.close();
-            }
-        }
-
-        if (pendingOp == null) {
-            return;
-        }
-
-        if (isClose || !context.isValid()) {
-            connectOrReuse(context.getKey(), pendingOp);
-        } else {
-            pendingOp.setSocketContext(context);
             pendingOp.complete();
         }
     }
@@ -701,6 +673,7 @@ public class NettyChannelPool {
                 }
 
                 it.remove();
+                LOGGER.info("Closing expired channel " + c.getKey());
                 c.close();
             }
         }

@@ -27,6 +27,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Operation.CompletionHandler;
 import com.vmware.xenon.common.ServiceDocument;
+import com.vmware.xenon.common.ServiceHost.ServiceHostState;
 import com.vmware.xenon.common.StatefulService;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
@@ -39,6 +40,8 @@ import com.vmware.xenon.services.common.NodeState.NodeStatus;
  */
 public class NodeGroupService extends StatefulService {
     public static final String STAT_NAME_JOIN_RETRY_COUNT = "joinRetryCount";
+
+    public static final String CONNECTION_TAG_GOSSIP = "NodeGroupServiceGossip";
 
     private enum NodeGroupChange {
         PEER_ADDED, PEER_STATUS_CHANGE, SELF_CHANGE
@@ -114,7 +117,7 @@ public class NodeGroupService extends StatefulService {
     }
 
     public static class NodeGroupConfig {
-        public static final long DEFAULT_NODE_REMOVAL_DELAY_MICROS = TimeUnit.HOURS.toMicros(1);
+        public static final long DEFAULT_NODE_REMOVAL_DELAY_MICROS = TimeUnit.MINUTES.toMicros(5);
         public long nodeRemovalDelayMicros = DEFAULT_NODE_REMOVAL_DELAY_MICROS;
 
         /**
@@ -124,9 +127,11 @@ public class NodeGroupService extends StatefulService {
         public long stableGroupMaintenanceIntervalCount = 5;
 
         /**
-         * Timeout for gossip requests to peers, in microseconds
+         * Timeout for gossip requests to peers, in microseconds. The default is smaller than the operation timeout
+         * so we have the chance to mark a non responsive peer as unavailable, and retry pending operations
+         * before they expire.
          */
-        public long peerRequestTimeoutMicros = TimeUnit.SECONDS.toMicros(10);
+        public long peerRequestTimeoutMicros = ServiceHostState.DEFAULT_OPERATION_TIMEOUT_MICROS / 3;
     }
 
     public static class NodeGroupState extends ServiceDocument {
@@ -623,6 +628,7 @@ public class NodeGroupService extends StatefulService {
                     .createPatch(peerUri)
                     .setBody(localState)
                     .setRetryCount(0)
+                    .setConnectionTag(CONNECTION_TAG_GOSSIP)
                     .setExpiration(
                             Utils.getNowMicrosUtc() + localState.config.peerRequestTimeoutMicros)
                     .forceRemote()

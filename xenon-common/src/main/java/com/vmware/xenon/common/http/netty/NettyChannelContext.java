@@ -118,7 +118,9 @@ public class NettyChannelContext extends SocketContext {
         if (this.channel == null) {
             return this;
         }
-        this.channel.attr(OPERATION_KEY).set(request);
+        if (this.streamIdMap == null) {
+            this.channel.attr(OPERATION_KEY).set(request);
+        }
         if (request == null) {
             return this;
         }
@@ -222,6 +224,7 @@ public class NettyChannelContext extends SocketContext {
     @Override
     public void close() {
         Channel c = this.channel;
+        this.openInProgress.set(false);
         if (c == null) {
             return;
         }
