@@ -29,6 +29,7 @@ import java.util.logging.Level;
 
 import com.vmware.xenon.common.Operation.CompletionHandler;
 import com.vmware.xenon.common.ServiceStats.ServiceStat;
+import com.vmware.xenon.common.ServiceStats.TimeSeriesStats;
 import com.vmware.xenon.common.ServiceSubscriptionState.ServiceSubscriber;
 import com.vmware.xenon.services.common.ServiceUriPaths;
 import com.vmware.xenon.services.common.UiContentService;
@@ -400,7 +401,7 @@ public class UtilityService implements Service {
                 op.fail(new IllegalArgumentException("stat does not exist"));
                 return;
             }
-            setStat(existingStat, newStat.latestValue);
+            initializeOrSetStat(existingStat, newStat);
             op.complete();
             break;
         case DELETE:
@@ -511,6 +512,16 @@ public class UtilityService implements Service {
         op.complete();
     }
 
+    private void initializeOrSetStat(ServiceStat stat, ServiceStat newValue) {
+        synchronized (stat) {
+            if (stat.timeSeriesStats == null && newValue.timeSeriesStats != null) {
+                stat.timeSeriesStats = new TimeSeriesStats(newValue.timeSeriesStats.numBuckets,
+                        newValue.timeSeriesStats.bucketDurationMillis, newValue.timeSeriesStats.aggregationType);
+            }
+            setStat(stat, newValue.latestValue);
+        }
+    }
+
     @Override
     public void setStat(ServiceStat stat, double newValue) {
         allocateStats();
@@ -527,8 +538,11 @@ public class UtilityService implements Service {
                     stat.logHistogram.bins[binIndex]++;
                 }
             }
+            stat.lastUpdateMicrosUtc = Utils.getNowMicrosUtc();
+            if (stat.timeSeriesStats != null) {
+                stat.timeSeriesStats.add(stat.lastUpdateMicrosUtc, newValue);
+            }
         }
-        stat.lastUpdateMicrosUtc = Utils.getNowMicrosUtc();
     }
 
     @Override
@@ -547,8 +561,11 @@ public class UtilityService implements Service {
                     stat.logHistogram.bins[binIndex]++;
                 }
             }
+            stat.lastUpdateMicrosUtc = Utils.getNowMicrosUtc();
+            if (stat.timeSeriesStats != null) {
+                stat.timeSeriesStats.add(stat.lastUpdateMicrosUtc, stat.latestValue);
+            }
         }
-        stat.lastUpdateMicrosUtc = Utils.getNowMicrosUtc();
     }
 
     @Override
@@ -571,7 +588,7 @@ public class UtilityService implements Service {
             // create a new stat with the default values
             ServiceStat newStat = new ServiceStat();
             newStat.name = stat.name;
-            setStat(newStat, stat.latestValue);
+            initializeOrSetStat(newStat, stat);
             if (this.stats.entries == null) {
                 this.stats.entries = new HashMap<>();
             }
