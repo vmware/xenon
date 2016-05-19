@@ -53,6 +53,7 @@ public class UriUtils {
     public static final String URI_PARAM_ODATA_FILTER = "$filter";
     public static final String URI_PARAM_ODATA_SKIP = "$skip";
     public static final String URI_PARAM_ODATA_ORDER_BY = "$orderby";
+    public static final String URI_PARAM_ODATA_ORDER_BY_TYPE = "$orderbytype";
     public static final String URI_PARAM_ODATA_ORDER_BY_VALUE_ASC = "asc";
     public static final String URI_PARAM_ODATA_ORDER_BY_VALUE_DESC = "desc";
     public static final String URI_PARAM_ODATA_TOP = "$top";
@@ -689,6 +690,7 @@ public class UriUtils {
     public static class ODataOrderByTuple {
         public ODataOrder order;
         public String propertyName;
+        public String propertyType;
     }
 
     public static ODataOrderByTuple getODataOrderByParamValue(URI uri) {
@@ -726,6 +728,11 @@ public class UriUtils {
         paramValue = paramValue.replaceAll("0x20", "");
 
         tuple.propertyName = paramValue;
+
+        String orderByType = queryParams.get(URI_PARAM_ODATA_ORDER_BY_TYPE);
+        if (orderByType != null) {
+            tuple.propertyType = orderByType.trim();
+        }
         return tuple;
     }
 

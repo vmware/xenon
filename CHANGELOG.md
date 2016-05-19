@@ -2,6 +2,11 @@
 
 ## 0.8.1-SNAPSHOT
 
+* Add OData query parameter $orderbytype used for specifying the type
+  of property specified through $orderby parameter. This allows the
+  OData query service in Xenon to support sorting for both numeric
+  and string types.
+
 * Add Utils.registerKind(Class<?>, String) allowing for custom mapping
   of service document types to kind strings. The default is derived
   from the canonical name of the class, as before. This is not a breaking
