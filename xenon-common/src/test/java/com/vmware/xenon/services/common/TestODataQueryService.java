@@ -25,6 +25,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Random;
 
 import org.junit.After;
 import org.junit.Test;
@@ -84,15 +85,15 @@ public class TestODataQueryService extends BasicReusableHostTestCase {
                 .createPost(UriUtils.buildFactoryUri(this.host, ExampleService.class))
                 .setBody(inState)
                 .setCompletion(
-                        (o, e) -> {
-                            if (e != null) {
-                                this.host.failIteration(e);
-                            }
-                            ExampleService.ExampleServiceState s = o
-                                    .getBody(ExampleService.ExampleServiceState.class);
-                            inState.documentSelfLink = s.documentSelfLink;
-                            this.host.completeIteration();
-                        }));
+                    (o, e) -> {
+                        if (e != null) {
+                            this.host.failIteration(e);
+                        }
+                        ExampleService.ExampleServiceState s = o
+                                .getBody(ExampleService.ExampleServiceState.class);
+                        inState.documentSelfLink = s.documentSelfLink;
+                        this.host.completeIteration();
+                    }));
         this.host.testWait();
     }
 
@@ -128,38 +129,79 @@ public class TestODataQueryService extends BasicReusableHostTestCase {
     public void orderBy() throws Throwable {
         ExampleService.ExampleServiceState inState = new ExampleService.ExampleServiceState();
         int c = 5;
+        Random r = new Random();
         List<String> expectedOrder = new ArrayList<>();
         for (int i = 0; i < c; i++) {
             inState.documentSelfLink = null;
             inState.counter = 1L;
+            inState.sortedCounter = new Long(Math.abs(r.nextLong()));
             inState.name = i + "-abcd";
             postExample(inState);
             expectedOrder.add(inState.name);
         }
 
-        // post an example that will not get past the filter
-        inState.documentSelfLink = null;
-        inState.counter = 10000L;
-        inState.name = 0 + "-abcd";
-        postExample(inState);
+        for (int i = 0; i < c; i++) {
+            inState.documentSelfLink = null;
+            inState.counter = 1000L + i;
+            inState.sortedCounter = new Long(Math.abs(r.nextLong()));
+            inState.name = i + "-abcd";
+            postExample(inState);
+        }
 
         // ascending search first
         String queryString = "$filter=counter eq 1";
         queryString += "&" + "$orderby=name asc";
-
         doOrderByQueryAndValidateResult(c, expectedOrder, queryString);
 
         // descending search
         queryString = "$filter=counter eq 1";
         queryString += "&" + "$orderby=name desc";
+        queryString += "&" + "$orderbytype=STRING";
         Collections.reverse(expectedOrder);
         doOrderByQueryAndValidateResult(c, expectedOrder, queryString);
+
+        // ascending search (sortedCounter)
+        queryString = "$filter=counter eq 1";
+        queryString += "&" + "$orderby=sortedCounter asc";
+        queryString += "&" + "$orderbytype=LONG";
+        doOrderByQueryAndValidateNumericResult(c, queryString,
+                ExampleServiceState.FIELD_NAME_SORTED_COUNTER, "asc");
+
+        // descending search (sortedCounter)
+        queryString = "$filter=counter eq 1";
+        queryString += "&" + "$orderby=sortedCounter desc";
+        queryString += "&" + "$orderbytype=LONG";
+        doOrderByQueryAndValidateNumericResult(c, queryString,
+                ExampleServiceState.FIELD_NAME_SORTED_COUNTER, "desc");
+
+        // ascending search (counter)
+        queryString += "$orderby=counter asc";
+        queryString += "&" + "$orderbytype=LONG";
+        doOrderByQueryAndValidateNumericResult(c, queryString,
+                ExampleServiceState.FIELD_NAME_COUNTER, "asc");
+
+        // descending search (sortedCounter)
+        queryString += "$orderby=counter desc";
+        queryString += "&" + "$orderbytype=LONG";
+        doOrderByQueryAndValidateNumericResult(c, queryString,
+                ExampleServiceState.FIELD_NAME_COUNTER, "desc");
 
         // pass a bogus order specifier, expect failure.
         this.isFailureExpected = true;
         try {
             queryString = "$filter=counter eq 1";
             queryString += "&" + "$orderby=name something";
+            doOrderByQueryAndValidateResult(c, expectedOrder, queryString);
+        } finally {
+            this.isFailureExpected = false;
+        }
+
+        // pass a bogus orderbytype specifier, expect failure.
+        this.isFailureExpected = true;
+        try {
+            queryString = "$filter=counter eq 1";
+            queryString += "&" + "$orderby=name asc";
+            queryString += "&" + "$orderbytype=badtypename";
             doOrderByQueryAndValidateResult(c, expectedOrder, queryString);
         } finally {
             this.isFailureExpected = false;
@@ -231,6 +273,36 @@ public class TestODataQueryService extends BasicReusableHostTestCase {
             if (!expected.equals(st.name)) {
                 throw new IllegalStateException("sort order not expected: " + Utils.toJsonHtml(res));
             }
+        }
+    }
+
+    private void doOrderByQueryAndValidateNumericResult(
+            int c, String queryString, String propertyName, String order) throws Throwable {
+        ServiceDocumentQueryResult res = doQuery(queryString, true);
+        if (this.isFailureExpected) {
+            return;
+        }
+        assertEquals(c, res.documentLinks.size());
+        assertNotNull(res.documents);
+
+        long previous = order.equals("asc") ? Long.MIN_VALUE : Long.MAX_VALUE;
+
+        for (String link : res.documentLinks) {
+            Object document = res.documents.get(link);
+            ExampleServiceState st = Utils.fromJson(document, ExampleServiceState.class);
+            long current = Long.MIN_VALUE;
+            if (propertyName.equals(ExampleServiceState.FIELD_NAME_COUNTER)) {
+                current = st.counter;
+            } else if (propertyName.equals(ExampleServiceState.FIELD_NAME_SORTED_COUNTER)) {
+                current = st.sortedCounter;
+            } else {
+                throw new IllegalStateException("Unexpected propertyName passed");
+            }
+            if ((order.equals("asc") && previous > current) ||
+                    (order.equals("desc") && previous < current)) {
+                throw new IllegalStateException("Data was not sorted as expected: " + Utils.toJsonHtml(res));
+            }
+            previous = current;
         }
     }
 
