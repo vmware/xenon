@@ -59,8 +59,19 @@ public class ODataUtils {
             task.querySpec.sortOrder = orderBy.order == ODataOrder.ASC ? SortOrder.ASC
                     : SortOrder.DESC;
             task.querySpec.sortTerm = new QueryTerm();
-            // we only support ordering of string fields, through the ODATA service
-            task.querySpec.sortTerm.propertyType = TypeName.STRING;
+
+            TypeName typeName = TypeName.STRING;
+            if (orderBy.propertyType != null) {
+                try {
+                    typeName = Enum.valueOf(TypeName.class, orderBy.propertyType);
+                } catch (IllegalArgumentException ex) {
+                    op.fail(new IllegalArgumentException("Type name " + orderBy.propertyType +
+                            " is not supported for " + UriUtils.URI_PARAM_ODATA_ORDER_BY_TYPE));
+                    return null;
+                }
+            }
+
+            task.querySpec.sortTerm.propertyType = typeName;
             task.querySpec.sortTerm.propertyName = orderBy.propertyName;
         }
 
