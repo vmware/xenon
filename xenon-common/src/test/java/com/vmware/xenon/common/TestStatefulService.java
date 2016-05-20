@@ -24,6 +24,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -34,6 +35,7 @@ import com.vmware.xenon.common.Operation.CompletionHandler;
 import com.vmware.xenon.common.Service.ServiceOption;
 import com.vmware.xenon.common.ServiceStats.ServiceStat;
 import com.vmware.xenon.common.test.MinimalTestServiceState;
+import com.vmware.xenon.common.test.TestContext;
 import com.vmware.xenon.common.test.TestProperty;
 import com.vmware.xenon.services.common.ExampleService;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
@@ -415,6 +417,41 @@ public class TestStatefulService extends BasicReusableHostTestCase {
         }
 
         throw new TimeoutException();
+    }
+
+    @Test
+    public void expirationNonPersistedService() throws Throwable {
+        List<Service> services = this.host.doThroughputServiceStart(this.serviceCount,
+                MinimalTestService.class,
+                this.host.buildMinimalTestState(),
+                EnumSet.noneOf(ServiceOption.class), null);
+
+        int expMillis = 250;
+        // patch services to expire in the near future
+        TestContext ctx = testCreate(services.size());
+        for (Service s : services) {
+            MinimalTestServiceState body = new MinimalTestServiceState();
+            body.id = Utils.getNowMicrosUtc() + "";
+            body.documentExpirationTimeMicros = Utils.getNowMicrosUtc()
+                    + TimeUnit.MILLISECONDS.toMicros(expMillis);
+            Operation patchExp = Operation.createPatch(s.getUri())
+                    .setBody(body)
+                    .setCompletion(ctx.getCompletion());
+            this.host.send(patchExp);
+        }
+        testWait(ctx);
+
+        // expiration will occur on the next maintenance interval
+        Thread.sleep(expMillis);
+
+        this.host.waitFor("never expired", () -> {
+            for (Service s : services) {
+                if (this.host.getServiceStage(s.getSelfLink()) != null) {
+                    return false;
+                }
+            }
+            return true;
+        });
     }
 
     @Test

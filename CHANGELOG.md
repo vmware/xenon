@@ -2,6 +2,10 @@
 
 ## 0.8.1-SNAPSHOT
 
+* Add support for expiration on stateful in-memory services. We now
+  support expiration and auto-DELETE on services with
+  ServiceOption.PERSISTED and without
+
 * Add Operation.disableFailureLogging to allow control on default
   failure logging behavior. Disable logging of failures on on demand
   load services, if the demand load action is a DELETE

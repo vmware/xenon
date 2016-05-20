@@ -85,10 +85,30 @@ class ServiceResourceTracker {
                 && state.documentExpirationTimeMicros < state.documentUpdateTimeMicros) {
             // state expired, clear from cache
             clearCachedServiceState(servicePath);
+            stopExpiredService(servicePath);
             return null;
         }
 
         return state;
+    }
+
+    private void stopExpiredService(String servicePath) {
+        Service s = this.host.findService(servicePath, true);
+        if (s == null) {
+            return;
+        }
+        if (s.hasOption(ServiceOption.PERSISTENCE)) {
+            // the index service tracks expiration of persisted services
+            return;
+        }
+        // Issue DELETE to stop the service. The PRAGMA is not required, since
+        // we know the service is in memory only, but we are using it to maintain
+        // symmetry with the expiration induced deletes from the index
+        Operation deleteExp = Operation.createDelete(s.getUri())
+                .disableFailureLogging(true)
+                .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_NO_INDEX_UPDATE)
+                .setReferer(this.host.getUri());
+        this.host.sendRequest(deleteExp);
     }
 
     public void clearCachedServiceState(String servicePath) {
@@ -117,19 +137,23 @@ class ServiceResourceTracker {
 
         int pauseServiceCount = 0;
         for (Service service : this.attachedServices.values()) {
-            // skip factory services, they do not have state, and should not be paused
+            // skip factory services, they do not have state
             if (service.hasOption(ServiceOption.FACTORY)) {
-                continue;
-            }
-
-            if (!ServiceHost.isServiceIndexed(service)) {
-                // we do not clear cache or stop in memory services
                 continue;
             }
 
             ServiceDocument s = this.cachedServiceStates.get(service.getSelfLink());
 
             if (s != null) {
+
+                if (!ServiceHost.isServiceIndexed(service)) {
+                    // we do not clear cache or stop in memory services but we do check expiration
+                    if (s.documentExpirationTimeMicros != 0 && s.documentExpirationTimeMicros < now) {
+                        stopExpiredService(service.getSelfLink());
+                    }
+                    continue;
+                }
+
                 if ((hostState.serviceCacheClearDelayMicros + s.documentUpdateTimeMicros) < now) {
                     clearCachedServiceState(service.getSelfLink());
                 }
