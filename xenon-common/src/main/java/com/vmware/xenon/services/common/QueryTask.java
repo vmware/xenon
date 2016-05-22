@@ -450,12 +450,19 @@ public class QueryTask extends ServiceDocument {
                 if (itemNames.size() == 1) {
                     return addFieldClause(
                             fieldName,
-                            itemNames.iterator().next());
+                            itemNames.iterator().next(), occurance);
                 }
 
+                // IN ( A, B, C) => MUST (SHOULD A, SHOULD B, SHOULD C)
+                // NOT IN (A, B, C) => MUST_NOT ( MUST A, MUST B, MUST C)
                 Query.Builder inClause = Query.Builder.create(occurance);
                 for (String itemName : itemNames) {
-                    inClause.addFieldClause(fieldName, itemName, Occurance.SHOULD_OCCUR);
+                    if (occurance == Occurance.MUST_NOT_OCCUR) {
+                        inClause.addFieldClause(fieldName, itemName, Occurance.MUST_OCCUR);
+                    } else {
+                        inClause.addFieldClause(fieldName, itemName, Occurance.SHOULD_OCCUR);
+                    }
+
                 }
 
                 return addClause(inClause.build());
