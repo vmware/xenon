@@ -1326,9 +1326,9 @@ public class StatefulService implements Service {
             toggleOption(ServiceOption.CONCURRENT_GET_HANDLING, true);
         }
 
-        if (option == ServiceOption.PERIODIC_MAINTENANCE && hasOption(ServiceOption
-                .ON_DEMAND_LOAD) || option == ServiceOption.ON_DEMAND_LOAD && hasOption
-                (ServiceOption.PERIODIC_MAINTENANCE)) {
+        if (option == ServiceOption.PERIODIC_MAINTENANCE && hasOption(ServiceOption.ON_DEMAND_LOAD)
+                || option == ServiceOption.ON_DEMAND_LOAD
+                        && hasOption(ServiceOption.PERIODIC_MAINTENANCE)) {
             throw new IllegalArgumentException("Service option PERIODIC_MAINTENANCE and " +
                     "ON_DEMAND_LOAD cannot co-exists.");
         }
@@ -1518,7 +1518,8 @@ public class StatefulService implements Service {
     }
 
     protected void doLogging(Level level, Supplier<String> messageSupplier) {
-        String uri = this.context.host != null && getUri() != null ? getUri().toString() : this.getClass().getSimpleName();
+        String uri = this.context.host != null && getUri() != null ? getUri().toString()
+                : this.getClass().getSimpleName();
         Logger lg = Logger.getLogger(this.getClass().getName());
         Utils.log(lg, 3, uri, level, messageSupplier);
     }
@@ -1542,9 +1543,11 @@ public class StatefulService implements Service {
     @Override
     public void handleMaintenance(Operation post) {
         ServiceMaintenanceRequest request = post.getBody(ServiceMaintenanceRequest.class);
-        if (request.reasons.contains(ServiceMaintenanceRequest.MaintenanceReason.PERIODIC_SCHEDULE)) {
+        if (request.reasons
+                .contains(ServiceMaintenanceRequest.MaintenanceReason.PERIODIC_SCHEDULE)) {
             this.handlePeriodicMaintenance(post);
-        } else if (request.reasons.contains(ServiceMaintenanceRequest.MaintenanceReason.NODE_GROUP_CHANGE)) {
+        } else if (request.reasons
+                .contains(ServiceMaintenanceRequest.MaintenanceReason.NODE_GROUP_CHANGE)) {
             this.handleNodeGroupMaintenance(post);
         } else {
             post.complete();
@@ -1698,7 +1701,8 @@ public class StatefulService implements Service {
 
         if (micros > 0 && micros < Service.MIN_MAINTENANCE_INTERVAL_MICROS) {
             logWarning("Maintenance interval %d is less than the minimum interval %d"
-                    + ", reducing to min interval", micros, Service.MIN_MAINTENANCE_INTERVAL_MICROS);
+                    + ", reducing to min interval", micros,
+                    Service.MIN_MAINTENANCE_INTERVAL_MICROS);
             micros = Service.MIN_MAINTENANCE_INTERVAL_MICROS;
         }
 
@@ -1841,7 +1845,7 @@ public class StatefulService implements Service {
      * Most of the transaction-related code becomes obsolete if we haven't seen transactions. A good
      * idea is to check whether the service has pending transactions
      */
-    private boolean hasPendingTransactions() {
+    boolean hasPendingTransactions() {
         synchronized (this.context) {
             return this.context.txCoordinatorLinks != null
                     && !this.context.txCoordinatorLinks.isEmpty();

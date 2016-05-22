@@ -334,8 +334,8 @@ public class ServiceHost implements ServiceRequestSender {
             / 2;
     private static final long ONE_MINUTE_IN_MICROS = TimeUnit.MINUTES.toMicros(1);
 
-    private static final String PROPERTY_NAME_APPEND_PORT_TO_SANDBOX =
-            Utils.PROPERTY_NAME_PREFIX + "ServiceHost.APPEND_PORT_TO_SANDBOX";
+    private static final String PROPERTY_NAME_APPEND_PORT_TO_SANDBOX = Utils.PROPERTY_NAME_PREFIX
+            + "ServiceHost.APPEND_PORT_TO_SANDBOX";
 
     /**
      * Control creating a directory using port number under sandbox directory.
@@ -343,9 +343,9 @@ public class ServiceHost implements ServiceRequestSender {
      * VM argument: "-Dxenon.ServiceHost.APPEND_PORT_TO_SANDBOX=[true|false]"
      * Default is set to true.
      */
-    public static final boolean APPEND_PORT_TO_SANDBOX =
-            System.getProperty(PROPERTY_NAME_APPEND_PORT_TO_SANDBOX) == null
-                    || Boolean.getBoolean(PROPERTY_NAME_APPEND_PORT_TO_SANDBOX);
+    public static final boolean APPEND_PORT_TO_SANDBOX = System
+            .getProperty(PROPERTY_NAME_APPEND_PORT_TO_SANDBOX) == null
+            || Boolean.getBoolean(PROPERTY_NAME_APPEND_PORT_TO_SANDBOX);
 
     public static class RequestRateInfo {
         /**
@@ -468,7 +468,8 @@ public class ServiceHost implements ServiceRequestSender {
     private final ConcurrentSkipListSet<String> coreServices = new ConcurrentSkipListSet<>();
     private ConcurrentSkipListMap<String, Class<? extends Service>> privilegedServiceTypes = new ConcurrentSkipListMap<>();
 
-    private final Set<String> pendingServiceDeletions = Collections.synchronizedSet(new HashSet<String>());
+    private final Set<String> pendingServiceDeletions = Collections
+            .synchronizedSet(new HashSet<String>());
     private final Map<String, Service> pendingPauseServices = new ConcurrentSkipListMap<>();
 
     private ServiceHostState state;
@@ -544,8 +545,8 @@ public class ServiceHost implements ServiceRequestSender {
 
         Path sandbox = args.sandbox;
         if (APPEND_PORT_TO_SANDBOX) {
-            int sandboxPort =
-                    args.port == PORT_VALUE_LISTENER_DISABLED ? args.securePort : args.port;
+            int sandboxPort = args.port == PORT_VALUE_LISTENER_DISABLED ? args.securePort
+                    : args.port;
             sandbox = sandbox.resolve(Integer.toString(sandboxPort));
         }
 
@@ -563,7 +564,8 @@ public class ServiceHost implements ServiceRequestSender {
         }
 
         if (args.bindAddress != null && args.bindAddress.equals("")) {
-            throw new IllegalArgumentException("bindAddress should be a non empty valid IP address");
+            throw new IllegalArgumentException(
+                    "bindAddress should be a non empty valid IP address");
         }
 
         if (this.state == null) {
@@ -638,8 +640,7 @@ public class ServiceHost implements ServiceRequestSender {
                 this.isAuthorizationEnabled());
     }
 
-    private void initializeStateFromArguments(File s, Arguments args) throws
-            URISyntaxException {
+    private void initializeStateFromArguments(File s, Arguments args) throws URISyntaxException {
         if (args.resourceSandbox != null) {
             File resDir = args.resourceSandbox.toFile();
             if (resDir.exists()) {
@@ -947,7 +948,8 @@ public class ServiceHost implements ServiceRequestSender {
 
         if (micros < Service.MIN_MAINTENANCE_INTERVAL_MICROS) {
             log(Level.WARNING, "Maintenance interval %d is less than the minimum interval %d"
-                    + ", reducing to min interval", micros, Service.MIN_MAINTENANCE_INTERVAL_MICROS);
+                    + ", reducing to min interval", micros,
+                    Service.MIN_MAINTENANCE_INTERVAL_MICROS);
             micros = Service.MIN_MAINTENANCE_INTERVAL_MICROS;
         }
 
@@ -2009,7 +2011,8 @@ public class ServiceHost implements ServiceRequestSender {
      */
     public ServiceHost startFactory(Service instanceService) {
         final Class<? extends Service> serviceClass = instanceService.getClass();
-        return startFactory(serviceClass, () -> FactoryService.create(serviceClass, instanceService.getStateType()));
+        return startFactory(serviceClass,
+                () -> FactoryService.create(serviceClass, instanceService.getStateType()));
     }
 
     /**
@@ -2018,7 +2021,8 @@ public class ServiceHost implements ServiceRequestSender {
      * @param factoryCreator a function which creates a factory service
      * @return the service host
      */
-    public ServiceHost startFactory(Class<? extends Service> instServiceClass, Supplier<FactoryService> factoryCreator) {
+    public ServiceHost startFactory(Class<? extends Service> instServiceClass,
+            Supplier<FactoryService> factoryCreator) {
         Operation post = Operation.createPost(UriUtils.buildFactoryUri(this, instServiceClass));
         FactoryService factoryService = factoryCreator.get();
         return startService(post, factoryService);
@@ -2085,9 +2089,8 @@ public class ServiceHost implements ServiceRequestSender {
 
     private boolean checkIfServiceExistsAndAttach(Service service, String servicePath,
             Operation post) {
-        boolean isCreateOrSynchRequest =
-                post.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_CREATED)
-                        || post.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_SYNCH);
+        boolean isCreateOrSynchRequest = post.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_CREATED)
+                || post.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_SYNCH);
         Service existing = null;
 
         synchronized (this.state) {
@@ -2149,7 +2152,7 @@ public class ServiceHost implements ServiceRequestSender {
             // Service is in the process of starting or stopping. Retry at a later time.
             schedule(() -> {
                 handleRequest(null, post);
-            } , this.getMaintenanceIntervalMicros(), TimeUnit.MICROSECONDS);
+            }, this.getMaintenanceIntervalMicros(), TimeUnit.MICROSECONDS);
             return true;
         }
 
@@ -2192,10 +2195,8 @@ public class ServiceHost implements ServiceRequestSender {
 
             switch (next) {
             case INITIALIZING:
-                final ProcessingStage nextStage =
-                        isServiceIndexed(s) ?
-                                ProcessingStage.LOADING_INITIAL_STATE :
-                                ProcessingStage.SYNCHRONIZING;
+                final ProcessingStage nextStage = isServiceIndexed(s)
+                        ? ProcessingStage.LOADING_INITIAL_STATE : ProcessingStage.SYNCHRONIZING;
 
                 buildDocumentDescription(s);
                 if (post.hasBody()) {
@@ -2207,7 +2208,8 @@ public class ServiceHost implements ServiceRequestSender {
                 // Populate authorization context if necessary
                 if (this.isAuthorizationEnabled() &&
                         this.authorizationService != null &&
-                        this.authorizationService.getProcessingStage() == ProcessingStage.AVAILABLE) {
+                        this.authorizationService
+                                .getProcessingStage() == ProcessingStage.AVAILABLE) {
                     post.nestCompletion(op -> {
                         processServiceStart(nextStage, s, post, hasClientSuppliedInitialState);
                     });
@@ -2445,7 +2447,8 @@ public class ServiceHost implements ServiceRequestSender {
     }
 
     void loadServiceState(Service s, Operation op) {
-        ServiceDocument state = this.serviceResourceTracker.getCachedServiceState(s.getSelfLink());
+        ServiceDocument state = this.serviceResourceTracker.getCachedServiceState(s.getSelfLink(),
+                op);
 
         // Clone state if it might change while processing
         if (state != null && !s.hasOption(ServiceOption.CONCURRENT_UPDATE_HANDLING)) {
@@ -2590,7 +2593,11 @@ public class ServiceHost implements ServiceRequestSender {
             return;
         }
 
-        this.serviceResourceTracker.updateCachedServiceState(s, st);
+        this.serviceResourceTracker.updateCachedServiceState(s, st, op);
+    }
+
+    void clearCachedServiceState(Service s, String transactionId) {
+        this.serviceResourceTracker.clearCachedServiceState(s.getSelfLink(), transactionId);
     }
 
     private void handleLoadInitialStateCompletion(Service s, Operation serviceStartPost,
@@ -2656,7 +2663,8 @@ public class ServiceHost implements ServiceRequestSender {
             return true;
         }
 
-        boolean isDeleted = ServiceDocument.isDeleted(stateFromStore) || this.pendingServiceDeletions.contains(s.getSelfLink());
+        boolean isDeleted = ServiceDocument.isDeleted(stateFromStore)
+                || this.pendingServiceDeletions.contains(s.getSelfLink());
 
         if (!serviceStartPost.hasBody()) {
             // this POST is due to a restart, or synchronization attempt which will never have a body
@@ -2740,7 +2748,7 @@ public class ServiceHost implements ServiceRequestSender {
             }
 
             this.serviceSynchTracker.removeService(path);
-            this.serviceResourceTracker.clearCachedServiceState(path);
+            this.serviceResourceTracker.clearCachedServiceState(path, (String) null);
             this.pendingPauseServices.remove(path);
 
             this.state.serviceCount--;
@@ -4289,8 +4297,6 @@ public class ServiceHost implements ServiceRequestSender {
         this.operationTracker.performMaintenance(now);
     }
 
-
-
     boolean checkAndOnDemandStartService(Operation inboundOp, Service parentService) {
         String link = inboundOp.getUri().getPath();
         if (!parentService.hasOption(ServiceOption.FACTORY)) {
@@ -4442,7 +4448,7 @@ public class ServiceHost implements ServiceRequestSender {
                         unmarkAsPendingDelete(s);
                     }
                     if (e != null) {
-                        this.serviceResourceTracker.clearCachedServiceState(s.getSelfLink());
+                        this.serviceResourceTracker.clearCachedServiceState(s.getSelfLink(), op);
                         op.fail(e);
                         return;
                     }
