@@ -46,6 +46,7 @@ import io.netty.util.AsciiString;
 
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Operation.AuthorizationContext;
+import com.vmware.xenon.common.Operation.OperationOption;
 import com.vmware.xenon.common.Service.Action;
 import com.vmware.xenon.common.ServiceErrorResponse;
 import com.vmware.xenon.common.ServiceHost;
@@ -261,7 +262,7 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
             sendResponse(ctx, request, streamId);
         });
 
-        request.setCloningDisabled(true);
+        request.toggleOption(OperationOption.CLONING_DISABLED, true);
 
         if (!request.hasReferer()) {
             setRefererFromSocketContext(ctx, request);

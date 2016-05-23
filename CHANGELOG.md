@@ -2,6 +2,9 @@
 
 ## 0.8.2-SNAPSHOT
 
+  Add Operation.toggleOption and Operation.hasOption to allow direct manipulation
+  of operation options and reduce code in Operation class methods
+
 ## 0.8.1
 
 * Add support for expiration on stateful in-memory services. We now
