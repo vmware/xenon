@@ -15,6 +15,7 @@ package com.vmware.xenon.services.common;
 
 import java.net.URI;
 
+import com.vmware.xenon.common.NodeSelectorService;
 import com.vmware.xenon.common.NodeSelectorService.SelectAndForwardRequest;
 import com.vmware.xenon.common.NodeSelectorService.SelectOwnerResponse;
 import com.vmware.xenon.common.Operation;
@@ -29,9 +30,7 @@ import com.vmware.xenon.services.common.NodeGroupService.NodeGroupState;
 import com.vmware.xenon.services.common.NodeState.NodeOption;
 
 public class NodeSelectorReplicationService extends StatelessService {
-    public static final int REPLICATION_TAG_CONNECTION_LIMIT = Integer.getInteger(
-            Utils.PROPERTY_NAME_PREFIX
-                    + "NodeSelectorReplicationService.REPLICATION_TAG_CONNECTION_LIMIT", 32);
+
     public static final int BINARY_SERIALIZATION = Integer.getInteger(
             Utils.PROPERTY_NAME_PREFIX
                     + "NodeSelectorReplicationService.BINARY_SERIALIZATION", 1);
@@ -44,9 +43,6 @@ public class NodeSelectorReplicationService extends StatelessService {
         super.setSelfLink(UriUtils.buildUriPath(parent.getSelfLink(),
                 ServiceHost.SERVICE_URI_SUFFIX_REPLICATION));
         super.setProcessingStage(ProcessingStage.AVAILABLE);
-        parent.getHost().getClient().setConnectionLimitPerTag(
-                ServiceClient.CONNECTION_TAG_REPLICATION,
-                REPLICATION_TAG_CONNECTION_LIMIT);
     }
 
     /**
@@ -182,6 +178,10 @@ public class NodeSelectorReplicationService extends StatelessService {
 
         update.setFromReplication(true);
         update.setConnectionTag(ServiceClient.CONNECTION_TAG_REPLICATION);
+
+        if (NodeSelectorService.REPLICATION_OPERATION_OPTION != null) {
+            update.toggleOption(NodeSelectorService.REPLICATION_OPERATION_OPTION, true);
+        }
 
         if (update.getCookies() != null) {
             update.getCookies().clear();

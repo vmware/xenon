@@ -45,6 +45,7 @@ import org.junit.Test;
 import com.vmware.xenon.common.CommandLineArgumentParser;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Operation.CompletionHandler;
+import com.vmware.xenon.common.Operation.OperationOption;
 import com.vmware.xenon.common.Service;
 import com.vmware.xenon.common.ServiceClient;
 import com.vmware.xenon.common.ServiceDocument;
@@ -307,6 +308,7 @@ public class NettyHttpServiceClientTest {
         this.host.getClient()
                 .setConnectionLimitPerHost(NettyHttpServiceClient.DEFAULT_CONNECTIONS_PER_HOST);
         int count = NettyHttpServiceClient.DEFAULT_CONNECTIONS_PER_HOST;
+
         // timeout tracking currently works only for remote requests ...
         this.host.testStart(count);
         for (int i = 0; i < count; i++) {
@@ -323,11 +325,10 @@ public class NettyHttpServiceClientTest {
                         this.host.failIteration(new IllegalStateException(
                                 "Request should have timed out"));
                     });
-            if (useCallback) {
-                this.host.sendRequestWithCallback(request.setReferer(this.host.getReferer()));
-            } else {
-                this.host.send(request);
-            }
+
+            request.toggleOption(OperationOption.SEND_WITH_CALLBACK, useCallback);
+            this.host.send(request);
+
         }
         this.host.testWait();
         this.host.toggleNegativeTestMode(false);

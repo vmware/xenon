@@ -2,6 +2,13 @@
 
 ## 0.8.2-SNAPSHOT
 
+  Remove ServiceClient.sendWithCallback and ServiceHost.sendRequestWithCallback.
+  Functionality is available through OperationOption.SEND_WITH_CALLBACK,
+  symmetric to HTTP/2 functionality that is toggled through CONNECTION_SHARING
+
+  Add new static fields that map to JVM properties that enable selection of
+  HTTP scheme, for replication and forwarding, in NodeSelectorService interface.
+
   Add Operation.toggleOption and Operation.hasOption to allow direct manipulation
   of operation options and reduce code in Operation class methods
 

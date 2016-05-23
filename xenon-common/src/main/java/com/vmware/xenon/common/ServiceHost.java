@@ -3146,8 +3146,11 @@ public class ServiceHost implements ServiceRequestSender {
             forwardOp.setExpiration(Utils.getNowMicrosUtc()
                     + this.state.operationTimeoutMicros / 10);
             forwardOp.setUri(SelectOwnerResponse.buildUriToOwner(rsp, op))
-                    .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_FORWARDED)
-                    .setConnectionSharing(true);
+                    .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_FORWARDED);
+
+            forwardOp.setConnectionTag(ServiceClient.CONNECTION_TAG_FORWARDING);
+
+            forwardOp.toggleOption(NodeSelectorService.FORWARDING_OPERATION_OPTION, true);
 
             // Local host is not the owner, but is the entry host for a client. Forward to owner
             // node
@@ -3524,15 +3527,6 @@ public class ServiceHost implements ServiceRequestSender {
                         e.getMessage());
             });
         }
-    }
-
-    /**
-     * See {@code ServiceClient} for details. Sends a request using a callback pattern
-     */
-    public void sendRequestWithCallback(Operation op) {
-        prepareRequest(op);
-        traceOperation(op);
-        this.client.sendWithCallback(op);
     }
 
     /**

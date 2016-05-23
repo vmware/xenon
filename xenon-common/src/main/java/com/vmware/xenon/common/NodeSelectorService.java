@@ -17,6 +17,7 @@ import java.net.URI;
 import java.util.Collection;
 import java.util.EnumSet;
 
+import com.vmware.xenon.common.Operation.OperationOption;
 import com.vmware.xenon.services.common.NodeState;
 
 /**
@@ -30,6 +31,32 @@ import com.vmware.xenon.services.common.NodeState;
 public interface NodeSelectorService extends Service {
     public static final String STAT_NAME_QUEUED_REQUEST_COUNT = "queuedRequestCount";
     public static final String STAT_NAME_SYNCHRONIZATION_COUNT = "synchronizationCount";
+
+    public static final OperationOption FORWARDING_OPERATION_OPTION = getOperationOption(
+            "NodeSelectorService.FORWARDING_OPERATION_OPTION", OperationOption.CONNECTION_SHARING);
+
+    public static final OperationOption REPLICATION_OPERATION_OPTION = getOperationOption(
+            "NodeSelectorService.REPLICATION_OPERATION_OPTION", null);
+
+    public static final int REPLICATION_TAG_CONNECTION_LIMIT = Integer.getInteger(
+            Utils.PROPERTY_NAME_PREFIX
+                    + "NodeSelectorService.REPLICATION_TAG_CONNECTION_LIMIT", 32);
+
+    public static final int FORWARDING_TAG_CONNECTION_LIMIT = Integer.getInteger(
+            Utils.PROPERTY_NAME_PREFIX
+                    + "NodeSelectorService.FORWARDING_TAG_CONNECTION_LIMIT", 32);
+
+    static OperationOption getOperationOption(String name, OperationOption defaultOpt) {
+        String paramName = Utils.PROPERTY_NAME_PREFIX + name;
+        String paramValue = System.getProperty(paramName);
+        if (OperationOption.SEND_WITH_CALLBACK.name().equals(paramValue)) {
+            return OperationOption.SEND_WITH_CALLBACK;
+        } else if (OperationOption.CONNECTION_SHARING.name().equals(paramValue)) {
+            return OperationOption.CONNECTION_SHARING;
+        } else {
+            return defaultOpt;
+        }
+    }
 
     /**
      * Request to select one or more nodes from the available nodes in the node group, and optionally

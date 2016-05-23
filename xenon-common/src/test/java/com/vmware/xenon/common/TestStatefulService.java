@@ -291,7 +291,7 @@ public class TestStatefulService extends BasicReusableHostTestCase {
         this.host.testStart(services.size());
         for (Service s : services) {
             ServiceConfigUpdateRequest body = ServiceConfigUpdateRequest.create();
-            body.operationQueueLimit = (int) c;
+            body.operationQueueLimit = (int) (c * Utils.DEFAULT_IO_THREAD_COUNT);
             URI configUri = UriUtils.buildConfigUri(s.getUri());
             this.host.send(Operation.createPatch(configUri).setBody(body)
                     .setCompletion(this.host.getCompletion()));
