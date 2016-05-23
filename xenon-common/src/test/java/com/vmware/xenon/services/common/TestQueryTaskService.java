@@ -46,6 +46,7 @@ import org.junit.Test;
 
 import com.vmware.xenon.common.CommandLineArgumentParser;
 import com.vmware.xenon.common.Operation;
+import com.vmware.xenon.common.Operation.OperationOption;
 import com.vmware.xenon.common.Service;
 import com.vmware.xenon.common.Service.Action;
 import com.vmware.xenon.common.Service.ServiceOption;
@@ -1316,7 +1317,8 @@ public class TestQueryTaskService {
                     targetHost.completeIteration();
                 });
 
-        targetHost.sendRequestWithCallback(op);
+        op.toggleOption(OperationOption.CONNECTION_SHARING, true);
+        targetHost.send(op);
         targetHost.testWait();
     }
 

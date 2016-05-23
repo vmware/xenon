@@ -29,6 +29,7 @@ import java.util.concurrent.TimeoutException;
 import org.junit.Test;
 
 import com.vmware.xenon.common.Operation.CompletionHandler;
+import com.vmware.xenon.common.Operation.OperationOption;
 import com.vmware.xenon.common.Service.Action;
 import com.vmware.xenon.common.Service.ProcessingStage;
 import com.vmware.xenon.common.Service.ServiceOption;
@@ -443,8 +444,7 @@ public class TestServiceModel extends BasicReusableHostTestCase {
                 throw new RuntimeException("Unsupported action");
             }
 
-            op
-                    .forceRemote()
+            op.forceRemote()
                     .setBody(new ContextIdTestService.State())
                     .setContextId(contextId)
                     .setCompletion((o, e) -> {
@@ -456,11 +456,8 @@ public class TestServiceModel extends BasicReusableHostTestCase {
                         this.host.completeIteration();
                     });
 
-            if (useCallback) {
-                this.host.sendRequestWithCallback(op.setReferer(this.host.getReferer()));
-            } else {
-                this.host.send(op);
-            }
+            op.toggleOption(OperationOption.SEND_WITH_CALLBACK, useCallback);
+            this.host.send(op);
         }
         // reset context id, since its set in the main thread
         OperationContext.setContextId(null);

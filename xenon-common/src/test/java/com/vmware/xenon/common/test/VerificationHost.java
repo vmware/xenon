@@ -63,6 +63,7 @@ import com.vmware.xenon.common.CommandLineArgumentParser;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Operation.AuthorizationContext;
 import com.vmware.xenon.common.Operation.CompletionHandler;
+import com.vmware.xenon.common.Operation.OperationOption;
 import com.vmware.xenon.common.Operation.SocketContext;
 import com.vmware.xenon.common.Service;
 import com.vmware.xenon.common.Service.Action;
@@ -1228,11 +1229,11 @@ public class VerificationHost extends ExampleServiceHost {
                         send(putClone);
                     });
                 } else if (properties.contains(TestProperty.CALLBACK_SEND)) {
-                    sendRequestWithCallback(updateOp.setBody(b));
+                    updateOp.toggleOption(OperationOption.SEND_WITH_CALLBACK, true);
+                    send(updateOp.setBody(b));
                 } else {
                     send(updateOp.setBody(b));
                 }
-
                 if (s.hasOption(ServiceOption.STRICT_UPDATE_CHECKING)) {
                     // we have to serialize requests and properly set version
                     if (!isFailureExpected) {

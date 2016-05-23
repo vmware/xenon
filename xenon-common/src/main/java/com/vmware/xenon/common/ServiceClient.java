@@ -31,10 +31,21 @@ public interface ServiceClient extends ServiceRequestSender {
             Utils.PROPERTY_NAME_PREFIX + "ServiceClient.DEFAULT_CONNECTION_LIMIT_PER_TAG", 4);
 
     /**
-     * Well known connection tag used by runtime for request related to replication and multiple
+     * Connection tag used by node group service for peer to peer random probing and liveness checks
+     */
+    public static final String CONNECTION_TAG_GOSSIP = "xn-cnx-tag-gossip";
+
+    /**
+     * Connection tag used by node selector services for request related to replication and multiple
      * node processes
      */
     public static final String CONNECTION_TAG_REPLICATION = "xn-cnx-tag-replication";
+
+    /**
+     * Connection tag used by service host for peer to peer forwarding during load
+     * balancing and node selection
+     */
+    public static final String CONNECTION_TAG_FORWARDING = "xn-cnx-tag-p2p-fwd";
 
     /**
      * Well known connection tag used when no explicit tag is specified. It will use the per
@@ -63,8 +74,6 @@ public interface ServiceClient extends ServiceRequestSender {
      * @param op
      */
     void send(Operation op);
-
-    void sendWithCallback(Operation op);
 
     /**
      * Maximum number of connections cached and re-used for a given host and port tuple. This

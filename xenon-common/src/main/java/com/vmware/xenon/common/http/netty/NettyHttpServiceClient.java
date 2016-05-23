@@ -43,6 +43,7 @@ import io.netty.handler.codec.http.cookie.Cookie;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Operation.AuthorizationContext;
 import com.vmware.xenon.common.Operation.CompletionHandler;
+import com.vmware.xenon.common.Operation.OperationOption;
 import com.vmware.xenon.common.Operation.SocketContext;
 import com.vmware.xenon.common.OperationContext;
 import com.vmware.xenon.common.Service.Action;
@@ -236,7 +237,11 @@ public class NettyHttpServiceClient implements ServiceClient {
                 }
             }
             startTracking(clone);
-            sendRemote(clone);
+            if (op.hasOption(OperationOption.SEND_WITH_CALLBACK)) {
+                sendWithCallback(clone);
+            } else {
+                sendRemote(clone);
+            }
         } finally {
             // we must restore the operation context after each send, since
             // it can be reset by the host, depending on queuing and dispatching behavior
@@ -265,35 +270,12 @@ public class NettyHttpServiceClient implements ServiceClient {
         connect(op);
     }
 
+
     /**
-     * Sends a request using the asynchronous HTTP pattern, allowing greater connection re-use. The
-     * send method creates a lightweight service that serves as the callback URI for receiving the
-     * completion status from the remote node. The callback URI is set as a header on the out bound
-     * request.
-     *
-     * The remote node, if it detects the presence of the callback location header, will create a
-     * new, local request, send it to the local service, and when that local request completes, it
-     * will issues a PATCH to the callback service on this node. The original request will then be
-     * completed and the client will see the response.
-     *
-     * The end result is that a TCP connection is not "blocked" while we wait for the remote node to
-     * return a response (similar to the benefits of the asynchronous REST pattern for services that
-     * implement it)
+     * @see OperationOption.SEND_WITH_CALLBACK
+     * @param req
      */
-    @Override
-    public void sendWithCallback(Operation req) {
-        Operation op = clone(req);
-        if (op == null) {
-            return;
-        }
-
-        setExpiration(op);
-
-        if (!req.isRemote() && this.host != null && this.host.handleRequest(op)) {
-            // request was accepted by an in-process service host
-            return;
-        }
-
+    private void sendWithCallback(Operation op) {
         // Queue operation, then send it to remote target. At some point later the remote host will
         // send a PATCH
         // to the callback service to complete this pending operation
