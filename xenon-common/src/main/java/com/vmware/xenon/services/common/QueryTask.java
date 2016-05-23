@@ -440,7 +440,7 @@ public class QueryTask extends ServiceDocument {
 
             /**
              * Add a clause with the given occurance which matches a property with at least one of several specified
-             * values (analogous to a SQL "IN" statement).
+             * values (analogous to a SQL "IN" or "NOT IN" statements).
              * @param fieldName the field name.
              * @param itemNames the item names in the collection to match.
              * @param occurance the occurance for this clause.
@@ -450,12 +450,20 @@ public class QueryTask extends ServiceDocument {
                 if (itemNames.size() == 1) {
                     return addFieldClause(
                             fieldName,
-                            itemNames.iterator().next());
+                            itemNames.iterator().next(),
+                            occurance);
                 }
 
+                // IN ( A, B, C) => MUST (SHOULD A, SHOULD B, SHOULD C)
+                // NOT IN (A, B, C) => MUST_NOT ( MUST A, MUST B, MUST C)
                 Query.Builder inClause = Query.Builder.create(occurance);
                 for (String itemName : itemNames) {
-                    inClause.addFieldClause(fieldName, itemName, Occurance.SHOULD_OCCUR);
+                    if (occurance == Occurance.MUST_NOT_OCCUR) {
+                        inClause.addFieldClause(fieldName, itemName, Occurance.MUST_OCCUR);
+                    } else {
+                        inClause.addFieldClause(fieldName, itemName, Occurance.SHOULD_OCCUR);
+                    }
+
                 }
 
                 return addClause(inClause.build());
@@ -463,7 +471,7 @@ public class QueryTask extends ServiceDocument {
 
             /**
              * Add a clause which matches a collection containing at least one of several specified
-             * values (analogous to a SQL "IN" statement).
+             * values (analogous to a SQL "IN" or "NOT IN" statements).
              * @param collectionFieldName the collection field name.
              * @param itemNames the item names in the collection to match.
              * @return a reference to this object.
@@ -477,7 +485,7 @@ public class QueryTask extends ServiceDocument {
 
             /**
              * Add a clause with the given occurance which matches a collection containing at least one of several
-             * specified values (analogous to a SQL "IN" statement).
+             * specified values (analogous to a SQL "IN" or "NOT IN" statements).
              * @param collectionFieldName the collection field name.
              * @param itemNames the item names in the collection to match.
              * @param occurance the occurance for this clause.
