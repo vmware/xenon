@@ -3146,12 +3146,13 @@ public class ServiceHost implements ServiceRequestSender {
             forwardOp.setExpiration(Utils.getNowMicrosUtc()
                     + this.state.operationTimeoutMicros / 10);
             forwardOp.setUri(SelectOwnerResponse.buildUriToOwner(rsp, op))
-                    .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_FORWARDED)
-                    .setConnectionSharing(true);
+                    .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_FORWARDED);
+
+            forwardOp.setConnectionTag(ServiceClient.CONNECTION_TAG_FORWARDING);
 
             // Local host is not the owner, but is the entry host for a client. Forward to owner
             // node
-            sendRequest(forwardOp);
+            sendRequestWithCallback(forwardOp);
         };
 
         Operation selectOwnerOp = Operation

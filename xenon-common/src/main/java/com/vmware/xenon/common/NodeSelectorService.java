@@ -31,6 +31,14 @@ public interface NodeSelectorService extends Service {
     public static final String STAT_NAME_QUEUED_REQUEST_COUNT = "queuedRequestCount";
     public static final String STAT_NAME_SYNCHRONIZATION_COUNT = "synchronizationCount";
 
+    public static final int REPLICATION_TAG_CONNECTION_LIMIT = Integer.getInteger(
+            Utils.PROPERTY_NAME_PREFIX
+                    + "NodeSelectorService.REPLICATION_TAG_CONNECTION_LIMIT", 32);
+
+    public static final int FORWARDING_TAG_CONNECTION_LIMIT = Integer.getInteger(
+            Utils.PROPERTY_NAME_PREFIX
+                    + "NodeSelectorService.FORWARDING_TAG_CONNECTION_LIMIT", 32);
+
     /**
      * Request to select one or more nodes from the available nodes in the node group, and optionally
      * forward the request

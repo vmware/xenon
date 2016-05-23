@@ -31,6 +31,7 @@ import com.vmware.xenon.common.NodeSelectorState;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Operation.CompletionHandler;
 import com.vmware.xenon.common.Service;
+import com.vmware.xenon.common.ServiceClient;
 import com.vmware.xenon.common.ServiceErrorResponse;
 import com.vmware.xenon.common.ServiceHost;
 import com.vmware.xenon.common.StatelessService;
@@ -78,6 +79,14 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
         } else {
             state = start.getBody(NodeSelectorState.class);
         }
+
+        getHost().getClient().setConnectionLimitPerTag(
+                ServiceClient.CONNECTION_TAG_REPLICATION,
+                NodeSelectorService.REPLICATION_TAG_CONNECTION_LIMIT);
+
+        getHost().getClient().setConnectionLimitPerTag(
+                ServiceClient.CONNECTION_TAG_FORWARDING,
+                FORWARDING_TAG_CONNECTION_LIMIT);
 
         state.documentSelfLink = getSelfLink();
         state.documentKind = Utils.buildKind(NodeSelectorState.class);

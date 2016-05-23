@@ -101,9 +101,20 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
                     this.host.getPort(), targetUri.getPath(), query, null);
             request.setUri(uri);
 
-            // The streamId will be null for HTTP/1.1 connections, and valid for HTTP/2 connections
-            streamId = nettyRequest.headers().getInt(
-                    HttpConversionUtil.ExtensionHeaderNames.STREAM_ID.text());
+            // @see NettyHttpServiceClient#sendWithCallback for details
+            String callbackLocation = getAndRemove(nettyRequest.headers(),
+                    Operation.REQUEST_CALLBACK_LOCATION_HEADER);
+            URI callbackUri = null;
+
+            if (callbackLocation == null) {
+                // The streamId will be null for HTTP/1.1 connections, and valid for HTTP/2 connections
+                streamId = nettyRequest.headers().getInt(
+                        HttpConversionUtil.ExtensionHeaderNames.STREAM_ID.text());
+            } else {
+                request.setReferer(callbackLocation);
+                callbackUri = new URI(callbackLocation);
+            }
+
             if (streamId == null) {
                 ctx.channel().attr(NettyChannelContext.OPERATION_KEY).set(request);
             }
@@ -118,7 +129,17 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
             }
 
             parseRequestHeaders(ctx, request, nettyRequest);
-            decodeRequestBody(ctx, request, nettyRequest.content(), streamId);
+
+            if (callbackLocation != null) {
+                Operation localOp = request.clone();
+                // complete remote operation eagerly. We will PATCH the callback location with the
+                // result when the local operation completes
+                request.setStatusCode(Operation.STATUS_CODE_ACCEPTED).setBody(null);
+                sendResponse(ctx, request, null);
+                request = localOp;
+            }
+
+            decodeRequestBody(ctx, request, nettyRequest.content(), streamId, callbackUri);
         } catch (Throwable e) {
             this.host.log(Level.SEVERE, "Uncaught exception: %s", Utils.toString(e));
             if (request == null) {
@@ -134,11 +155,12 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
         }
     }
 
-    private void decodeRequestBody(ChannelHandlerContext ctx, Operation request, ByteBuf content, Integer streamId) {
+    private void decodeRequestBody(ChannelHandlerContext ctx, Operation request,
+            ByteBuf content, Integer streamId, URI callbackLocation) {
         if (!content.isReadable()) {
             // skip body decode, request had no body
             request.setContentLength(0);
-            submitRequest(ctx, request, streamId);
+            submitRequest(ctx, request, streamId, callbackLocation);
             return;
         }
 
@@ -150,7 +172,7 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
                 return;
             }
 
-            submitRequest(ctx, request, streamId);
+            submitRequest(ctx, request, streamId, callbackLocation);
         });
 
         Utils.decodeBody(request, content.nioBuffer());
@@ -222,13 +244,11 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
             request.addRequestHeader(key, value);
         }
 
-        String callbackLocation = request.getRequestCallbackLocation();
         if (host != null) {
             request.addRequestHeader(Operation.HOST_HEADER, host);
         }
 
-        if (!request.hasReferer()
-                && (callbackLocation != null || request.isFromReplication())) {
+        if (!request.hasReferer() && request.isFromReplication()) {
             // we assume referrer is the same service, but from the remote node. Do not
             // bother with rewriting the URI with the remote host, at avoid allocations
             request.setReferer(request.getUri());
@@ -255,7 +275,8 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
         return headerValue;
     }
 
-    private void submitRequest(ChannelHandlerContext ctx, Operation request, Integer streamId) {
+    private void submitRequest(ChannelHandlerContext ctx, Operation request,
+            Integer streamId, URI callbackLocation) {
         request.nestCompletion((o, e) -> {
             request.setBodyNoCloning(o.getBodyRaw());
             sendResponse(ctx, request, streamId);
@@ -268,8 +289,8 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
         }
 
         Operation localOp = request;
-        if (request.getRequestCallbackLocation() != null) {
-            localOp = processRequestWithCallback(request);
+        if (callbackLocation != null) {
+            localOp = processRequestWithCallback(request, callbackLocation);
         }
 
         this.host.handleRequest(null, localOp);
@@ -286,23 +307,9 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
      * @param op
      * @return
      */
-    private Operation processRequestWithCallback(Operation op) {
-        final URI[] targetCallback = { null };
-        try {
-            targetCallback[0] = new URI(op.getRequestCallbackLocation());
-        } catch (URISyntaxException e1) {
-            op.fail(e1);
-            return null;
-        }
-
-        Operation localOp = op.clone();
-
-        // complete remote operation eagerly. We will PATCH the callback location with the
-        // result when the local operation completes
-        op.setStatusCode(Operation.STATUS_CODE_ACCEPTED).setBody(null).complete();
-
+    private Operation processRequestWithCallback(Operation localOp, URI callbackLocation) {
         localOp.setCompletion((o, e) -> {
-            Operation patchForCompletion = Operation.createPatch(targetCallback[0])
+            Operation patchForCompletion = Operation.createPatch(callbackLocation)
                     .setReferer(o.getUri());
             int responseStatusCode = o.getStatusCode();
             if (e != null) {
