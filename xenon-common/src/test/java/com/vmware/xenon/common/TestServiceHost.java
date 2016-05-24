@@ -358,7 +358,7 @@ public class TestServiceHost {
         }
 
         try {
-            h.cacheAuthorizationContext(s, UUID.randomUUID().toString(),
+            h.cacheAuthorizationContext(s,
                     this.host.getGuestAuthorizationContext());
             throw new IllegalStateException("call should have failed");
         } catch (IllegalStateException e) {

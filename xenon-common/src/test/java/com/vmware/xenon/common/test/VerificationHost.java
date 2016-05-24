@@ -2759,7 +2759,7 @@ public class VerificationHost extends ExampleServiceHost {
      * @param properties custom properties in claims
      * @throws GeneralSecurityException any generic security exception
      */
-    public void assumeIdentity(String userServicePath, Map<String, String> properties) throws GeneralSecurityException {
+    public AuthorizationContext assumeIdentity(String userServicePath, Map<String, String> properties) throws GeneralSecurityException {
         Claims.Builder builder = new Claims.Builder();
         builder.setSubject(userServicePath);
         builder.setProperties(properties);
@@ -2771,7 +2771,9 @@ public class VerificationHost extends ExampleServiceHost {
         ab.setToken(token);
 
         // Associate resulting authorization context with this thread
-        setAuthorizationContext(ab.getResult());
+        AuthorizationContext authContext = ab.getResult();
+        setAuthorizationContext(authContext);
+        return authContext;
     }
 
     public void deleteAllChildServices(URI factoryURI) throws Throwable {

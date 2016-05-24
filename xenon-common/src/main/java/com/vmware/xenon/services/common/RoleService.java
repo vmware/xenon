@@ -69,8 +69,7 @@ public class RoleService extends StatefulService {
         if (!validate(op, state)) {
             return;
         }
-
-        op.complete();
+        AuthorizationCacheUtils.clearAuthzCacheForRole(this, op, state);
     }
 
     @Override
@@ -92,8 +91,13 @@ public class RoleService extends StatefulService {
         } else {
             setState(op, newState);
         }
+        AuthorizationCacheUtils.clearAuthzCacheForRole(this, op, currentState);
+    }
 
-        op.complete();
+    @Override
+    public void handleDelete(Operation op) {
+        RoleState currentState = getState(op);
+        AuthorizationCacheUtils.clearAuthzCacheForRole(this, op, currentState);
     }
 
     private boolean validate(Operation op, RoleState state) {

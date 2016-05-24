@@ -2185,8 +2185,9 @@ public class TestNodeGroupService {
         // Create the same users and roles on every peer independently
         Map<ServiceHost, Collection<String>> roleLinksByHost = new HashMap<>();
         for (VerificationHost h : this.host.getInProcessHostMap().values()) {
-            authHelper.createUserService(h, "jane@doe.com");
-            authHelper.createRoles(h);
+            String email = "jane@doe.com";
+            authHelper.createUserService(h, email);
+            authHelper.createRoles(h, email);
         }
 
         // Get roles from all nodes
@@ -2311,8 +2312,9 @@ public class TestNodeGroupService {
         RoundRobinIterator<VerificationHost> it = new RoundRobinIterator<>(hosts);
         int exampleServiceCount = this.serviceCount;
 
+        String userLink = UriUtils.buildUriPath(ServiceUriPaths.CORE_AUTHZ_USERS, "jane@doe.com");
         // Verify we can assert identity and make a request to every host
-        this.host.assumeIdentity(AuthorizationHelper.USER_SERVICE_PATH, null);
+        this.host.assumeIdentity(userLink, null);
 
         // Sample body that this user is authorized to create
         ExampleServiceState exampleServiceState = new ExampleServiceState();
@@ -2330,7 +2332,7 @@ public class TestNodeGroupService {
                 // Verify the user is set as principal
                 ExampleServiceState state = o.getBody(ExampleServiceState.class);
                 assertEquals(state.documentAuthPrincipalLink,
-                        AuthorizationHelper.USER_SERVICE_PATH);
+                        userLink);
                 exampleLinks.add(state.documentSelfLink);
                 this.host.completeIteration();
             };
