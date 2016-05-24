@@ -71,8 +71,7 @@ public class ResourceGroupService extends StatefulService {
         if (!validate(op, state)) {
             return;
         }
-
-        op.complete();
+        AuthorizationCacheUtils.clearAuthzCacheForResourceGroup(this, op, state);
     }
 
     @Override
@@ -94,8 +93,13 @@ public class ResourceGroupService extends StatefulService {
         } else {
             setState(op, newState);
         }
+        AuthorizationCacheUtils.clearAuthzCacheForResourceGroup(this, op, currentState);
+    }
 
-        op.complete();
+    @Override
+    public void handleDelete(Operation op) {
+        ResourceGroupState currentState = getState(op);
+        AuthorizationCacheUtils.clearAuthzCacheForResourceGroup(this, op, currentState);
     }
 
     private boolean validate(Operation op, ResourceGroupState state) {

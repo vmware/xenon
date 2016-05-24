@@ -2,7 +2,10 @@
 
 ## 0.8.2-SNAPSHOT
 
-  Add Operation.toggleOption and Operation.hasOption to allow direct manipulation
+* Invalidate authz cache in ServideHost when any authz service(UserGroupService,
+  RoleService or ResourceGroupService) is created, modified or deleted 
+
+* Add Operation.toggleOption and Operation.hasOption to allow direct manipulation
   of operation options and reduce code in Operation class methods
 
 ## 0.8.1

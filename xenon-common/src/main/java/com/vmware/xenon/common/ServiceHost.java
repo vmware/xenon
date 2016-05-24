@@ -455,6 +455,7 @@ public class ServiceHost implements ServiceRequestSender {
     private FileHandler handler;
 
     private Map<String, AuthorizationContext> authorizationContextCache = new ConcurrentHashMap<>();
+    private Map<String, String> userLinktoTokenMap = new ConcurrentHashMap<>();
 
     private final Map<String, ServiceDocumentDescription> descriptionCache = new HashMap<>();
     private final ServiceDocumentDescription.Builder descriptionBuilder = Builder.create();
@@ -1243,8 +1244,11 @@ public class ServiceHost implements ServiceRequestSender {
 
         // Start persisted factories here, after document index is added
         coreServices.add(AuthCredentialsService.createFactory());
+        addPrivilegedService(UserGroupService.class);
         coreServices.add(UserGroupService.createFactory());
+        addPrivilegedService(ResourceGroupService.class);
         coreServices.add(ResourceGroupService.createFactory());
+        addPrivilegedService(RoleService.class);
         coreServices.add(RoleService.createFactory());
         coreServices.add(UserService.createFactory());
         coreServices.add(TenantService.createFactory());
@@ -2963,7 +2967,10 @@ public class ServiceHost implements ServiceRequestSender {
 
             Long expirationTime = claims.getExpirationTime();
             if (expirationTime != null && expirationTime <= Utils.getNowMicrosUtc()) {
-                this.authorizationContextCache.remove(token);
+                synchronized (this.state) {
+                    this.authorizationContextCache.remove(token);
+                    this.userLinktoTokenMap.remove(claims.getSubject());
+                }
                 return null;
             }
 
@@ -2975,7 +2982,10 @@ public class ServiceHost implements ServiceRequestSender {
             b.setClaims(claims);
             b.setToken(token);
             ctx = b.getResult();
-            this.authorizationContextCache.put(token, ctx);
+            synchronized (this.state) {
+                this.authorizationContextCache.put(token, ctx);
+                this.userLinktoTokenMap.put(claims.getSubject(), token);
+            }
             return ctx;
         } catch (TokenException | GeneralSecurityException e) {
             log(Level.INFO, "Error verifying token: %s", e);
@@ -4838,11 +4848,37 @@ public class ServiceHost implements ServiceRequestSender {
     /**
      * Infrastructure use only. Only services added as privileged can use this method.
      */
+    public void cacheAuthorizationContext(Service s, AuthorizationContext ctx) {
+        cacheAuthorizationContext(s, ctx.getToken(), ctx);
+    }
+
+    /**
+     * Infrastructure use only. Only services added as privileged can use this method.
+     */
     public void cacheAuthorizationContext(Service s, String token, AuthorizationContext ctx) {
         if (!this.isPrivilegedService(s)) {
             throw new RuntimeException("Service not allowed to cache authorization token");
         }
-        this.authorizationContextCache.put(token, ctx);
+        synchronized (this.state) {
+            this.authorizationContextCache.put(token, ctx);
+            this.userLinktoTokenMap.put(ctx.getClaims().getSubject(), token);
+        }
+    }
+
+    /**
+     * Infrastructure use only. Only services added as privileged can use this method.
+     */
+    public void clearAuthorizationContext(Service s, String userLink) {
+        if (!this.isPrivilegedService(s)) {
+            throw new RuntimeException("Service not allowed to clear authorization token");
+        }
+        synchronized (this.state) {
+            String token = this.userLinktoTokenMap.get(userLink);
+            if (token != null) {
+                this.authorizationContextCache.remove(token);
+            }
+            this.userLinktoTokenMap.remove(userLink);
+        }
     }
 
     /**

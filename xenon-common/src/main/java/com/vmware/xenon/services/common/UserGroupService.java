@@ -54,8 +54,7 @@ public class UserGroupService extends StatefulService {
         if (!validate(op, newState)) {
             return;
         }
-
-        op.complete();
+        AuthorizationCacheUtils.clearAuthzCacheForUserGroup(this, op, newState);
     }
 
     @Override
@@ -77,8 +76,13 @@ public class UserGroupService extends StatefulService {
         } else {
             setState(op, newState);
         }
+        AuthorizationCacheUtils.clearAuthzCacheForUserGroup(this, op, newState);
+    }
 
-        op.complete();
+    @Override
+    public void handleDelete(Operation op) {
+        UserGroupState currentState = getState(op);
+        AuthorizationCacheUtils.clearAuthzCacheForUserGroup(this, op, currentState);
     }
 
     private boolean validate(Operation op, UserGroupState state) {

@@ -408,7 +408,7 @@ public class AuthorizationContextService extends StatelessService {
         }
 
         AuthorizationContext newContext = builder.getResult();
-        getHost().cacheAuthorizationContext(this, ctx.getToken(), newContext);
+        getHost().cacheAuthorizationContext(this, newContext);
         completePendingOperations(claims.getSubject(), newContext);
     }
 
