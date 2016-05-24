@@ -2858,6 +2858,21 @@ public class VerificationHost extends ExampleServiceHost {
     }
 
     /**
+     * Sends an operation, waits for completion and return the response representation.
+     */
+    public Operation waitForResponse(Operation op) throws Throwable {
+        final Operation[] result = new Operation[1];
+        op.nestCompletion((o, e) -> {
+            result[0] = o;
+            completeIteration();
+        });
+
+        sendAndWait(op);
+
+        return result[0];
+    }
+
+    /**
      * Decorates a {@link CompletionHandler} with a try/catch-all
      * and fails the current iteration on exception. Allow for calling
      * Assert.assert* directly in a handler.

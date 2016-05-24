@@ -131,15 +131,17 @@ public class TestServiceModel extends BasicReusableHostTestCase {
         // first issue a delete with a body (used as a hint to fail delete), and it should be aborted.
         // Verify service is still running if it fails delete
         Operation delete = Operation.createDelete(serviceToBeDeleted.getUri())
-                .setBody(body)
-                .setCompletion(this.host.getExpectedFailureCompletion());
-        this.host.sendAndWait(delete);
+                .setBody(body);
+        Operation response = this.host.waitForResponse(delete);
+        assertNotNull(response);
+        assertEquals(Operation.STATUS_CODE_INTERNAL_ERROR, response.getStatusCode());
 
         // try a delete that should be aborted with the factory service
         delete = Operation.createDelete(factoryService.getUri())
-                .setBody(body)
-                .setCompletion(this.host.getExpectedFailureCompletion());
-        this.host.sendAndWait(delete);
+                .setBody(body);
+        response = this.host.waitForResponse(delete);
+        assertNotNull(response);
+        assertEquals(Operation.STATUS_CODE_INTERNAL_ERROR, response.getStatusCode());
 
         // verify services are still running
         assertEquals(ProcessingStage.AVAILABLE,
@@ -147,9 +149,11 @@ public class TestServiceModel extends BasicReusableHostTestCase {
         assertEquals(ProcessingStage.AVAILABLE,
                 this.host.getServiceStage(serviceToBeDeleted.getSelfLink()));
 
-        delete = Operation.createDelete(serviceToBeDeleted.getUri())
-                .setCompletion(this.host.getCompletion());
-        this.host.sendAndWait(delete);
+        delete = Operation.createDelete(serviceToBeDeleted.getUri());
+        response = this.host.waitForResponse(delete);
+        assertNotNull(response);
+        assertEquals(Operation.STATUS_CODE_OK, response.getStatusCode());
+
         assertTrue(serviceToBeDeleted.gotDeleted);
         assertTrue(serviceToBeDeleted.gotStopped);
 

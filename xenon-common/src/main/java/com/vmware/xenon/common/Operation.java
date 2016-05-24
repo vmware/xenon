@@ -524,6 +524,7 @@ public class Operation implements Cloneable {
     public static final int STATUS_CODE_ACCEPTED = HttpURLConnection.HTTP_ACCEPTED;
     public static final int STATUS_CODE_BAD_REQUEST = HttpURLConnection.HTTP_BAD_REQUEST;
     public static final int STATUS_CODE_BAD_METHOD = HttpURLConnection.HTTP_BAD_METHOD;
+    public static final int STATUS_CODE_INTERNAL_ERROR = HttpURLConnection.HTTP_INTERNAL_ERROR;
 
     public static final String MEDIA_TYPE_EVERYTHING_WILDCARDS = "*/*";
     public static final String EMPTY_JSON_BODY = "{}";
