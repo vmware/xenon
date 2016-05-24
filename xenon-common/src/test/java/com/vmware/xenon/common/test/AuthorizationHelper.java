@@ -37,9 +37,6 @@ import com.vmware.xenon.services.common.UserGroupService.UserGroupState;
 import com.vmware.xenon.services.common.UserService.UserState;
 
 public class AuthorizationHelper {
-    public static final String USER_EMAIL = "jane@doe.com";
-    public static final String USER_SERVICE_PATH =
-            UriUtils.buildUriPath(ServiceUriPaths.CORE_AUTHZ_USERS, USER_EMAIL);
 
     private String userGroupLink;
 
@@ -86,29 +83,30 @@ public class AuthorizationHelper {
         return createUserService(this.host, target, email);
     }
 
-    public Collection<String> createRoles(ServiceHost target) throws Throwable {
+    public Collection<String> createRoles(ServiceHost target, String email) throws Throwable {
         final Integer concurrentTasks = 6;
         this.host.testStart(concurrentTasks);
 
-        // Create user group for jane@doe.com
+        String emailPrefix = email.substring(0, email.indexOf("@"));
+        // Create user group
         String userGroupLink =
-                createUserGroup(target, "janes-user-group", Builder.create()
+                createUserGroup(target, emailPrefix + "-user-group", Builder.create()
                         .addFieldClause(
                                 "email",
-                                USER_EMAIL)
+                                email)
                         .build());
 
         setUserGroupLink(userGroupLink);
 
         // Create resource group for example service state
         String exampleServiceResourceGroupLink =
-                createResourceGroup(target, "janes-resource-group", Builder.create()
+                createResourceGroup(target, emailPrefix + "-resource-group", Builder.create()
                         .addFieldClause(
                                 ExampleServiceState.FIELD_NAME_KIND,
                                 Utils.buildKind(ExampleServiceState.class))
                         .addFieldClause(
                                 ExampleServiceState.FIELD_NAME_NAME,
-                                "jane")
+                                emailPrefix)
                         .build());
 
         // Create resource group to allow access on ALL query tasks created by user
@@ -119,7 +117,7 @@ public class AuthorizationHelper {
                                 Utils.buildKind(QueryTask.class))
                         .addFieldClause(
                                 QueryTask.FIELD_NAME_AUTH_PRINCIPAL_LINK,
-                                USER_SERVICE_PATH)
+                                UriUtils.buildUriPath(ServiceUriPaths.CORE_AUTHZ_USERS, email))
                         .build());
 
         Collection<String> paths = new HashSet<>();

@@ -42,7 +42,7 @@ public class TestAuthWebSocketService extends AbstractWebSocketServiceTest {
         this.host.setSystemAuthorizationContext();
         AuthorizationHelper authHelper = new AuthorizationHelper(this.host);
         this.userServicePath = authHelper.createUserService(this.host, "jane@doe.com");
-        authHelper.createRoles(this.host);
+        authHelper.createRoles(this.host, "jane@doe.com");
         super.setUp();
         this.host.resetSystemAuthorizationContext();
         this.host.assumeIdentity(this.userServicePath, null);
