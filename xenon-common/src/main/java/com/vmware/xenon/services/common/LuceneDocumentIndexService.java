@@ -50,7 +50,6 @@ import org.apache.lucene.document.Field;
 import org.apache.lucene.document.LongPoint;
 import org.apache.lucene.document.NumericDocValuesField;
 import org.apache.lucene.document.SortedDocValuesField;
-import org.apache.lucene.document.SortedNumericDocValuesField;
 import org.apache.lucene.document.StoredField;
 import org.apache.lucene.document.StringField;
 import org.apache.lucene.document.TextField;
@@ -2202,9 +2201,8 @@ public class LuceneDocumentIndexService extends StatelessService {
         doc.add(new LongPoint(propertyName, propertyValue));
 
         // NumericDocValues allow for efficient group operations for a property.
-        doc.add(sorted
-                ? new SortedNumericDocValuesField(propertyName, propertyValue)
-                : new NumericDocValuesField(propertyName, propertyValue));
+        // TODO Investigate and revert code to use 'sort' to determine the type of DocValuesField
+        doc.add(new NumericDocValuesField(propertyName, propertyValue));
         return doc;
     }
 
@@ -2222,9 +2220,8 @@ public class LuceneDocumentIndexService extends StatelessService {
         doc.add(new DoublePoint(propertyName, propertyValue));
 
         // NumericDocValues allow for efficient group operations for a property.
-        doc.add(sorted
-                ? new SortedNumericDocValuesField(propertyName, longPropertyValue)
-                : new NumericDocValuesField(propertyName, longPropertyValue));
+        // TODO Investigate and revert code to use 'sort' to determine the type of DocValuesField
+        doc.add(new NumericDocValuesField(propertyName, longPropertyValue));
         return doc;
     }
 }
