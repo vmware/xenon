@@ -50,40 +50,44 @@ public class TransactionServiceHelper {
      * request.
      */
     static void handleGetWithinTransaction(StatefulService s, Operation get,
-                                           Handler h, FailRequest fr) {
+            Handler h, FailRequest fr) {
         if (get.isWithinTransaction()) {
-            Operation inTransactionQueryOp = buildLatestInTransactionQueryTaskOp(s, get.getTransactionId()).setCompletion((o, e) -> {
-                if (e != null) {
-                    get.fail(e);
-                    return;
-                }
-
-                QueryTask response = o.getBody(QueryTask.class);
-                if (response.results.documentLinks.isEmpty()) {
-                    Operation nonTransactionQueryOp = buildLatestNonTransactionQueryTaskOp(s).setCompletion((o2, e2) -> {
-                        if (e2 != null) {
+            Operation inTransactionQueryOp = buildLatestInTransactionQueryTaskOp(s,
+                    get.getTransactionId()).setCompletion((o, e) -> {
+                        if (e != null) {
                             get.fail(e);
                             return;
                         }
-                        QueryTask nonTransactionResponse = o2.getBody(QueryTask.class);
-                        returnLatestOrFail(nonTransactionResponse, get, fr);
+
+                        QueryTask response = o.getBody(QueryTask.class);
+                        if (response.results.documentLinks.isEmpty()) {
+                            Operation nonTransactionQueryOp = buildLatestNonTransactionQueryTaskOp(
+                                    s).setCompletion((o2, e2) -> {
+                                        if (e2 != null) {
+                                            get.fail(e);
+                                            return;
+                                        }
+                                        QueryTask nonTransactionResponse = o2
+                                                .getBody(QueryTask.class);
+                                        returnLatestOrFail(nonTransactionResponse, get, fr);
+                                    });
+                            s.sendRequest(nonTransactionQueryOp);
+                        } else {
+                            returnLatestOrFail(response, get, fr);
+                        }
                     });
-                    s.sendRequest(nonTransactionQueryOp);
-                } else {
-                    returnLatestOrFail(response, get, fr);
-                }
-            });
             s.sendRequest(inTransactionQueryOp);
         } else {
-            Operation nonTransactionQueryOp = buildLatestNonTransactionQueryTaskOp(s).setCompletion((o, e) -> {
-                if (e != null) {
-                    get.fail(e);
-                    return;
-                }
+            Operation nonTransactionQueryOp = buildLatestNonTransactionQueryTaskOp(s)
+                    .setCompletion((o, e) -> {
+                        if (e != null) {
+                            get.fail(e);
+                            return;
+                        }
 
-                QueryTask response = o.getBody(QueryTask.class);
-                returnLatestOrFail(response, get, fr);
-            });
+                        QueryTask response = o.getBody(QueryTask.class);
+                        returnLatestOrFail(response, get, fr);
+                    });
             s.sendRequest(nonTransactionQueryOp);
         }
     }
@@ -105,27 +109,34 @@ public class TransactionServiceHelper {
         queryBuilder.addFieldClause(ServiceDocument.FIELD_NAME_SELF_LINK, s.getSelfLink());
         queryBuilder.addFieldClause(ServiceDocument.FIELD_NAME_TRANSACTION_ID, txid);
 
-        QueryTask.Builder queryTaskBuilder = QueryTask.Builder.createDirectTask().setQuery(queryBuilder.build());
+        QueryTask.Builder queryTaskBuilder = QueryTask.Builder.createDirectTask()
+                .setQuery(queryBuilder.build());
         queryTaskBuilder.addOption(QueryOption.EXPAND_CONTENT);
         queryTaskBuilder.addOption(QueryOption.INCLUDE_ALL_VERSIONS);
         queryTaskBuilder.orderDescending(ServiceDocument.FIELD_NAME_VERSION, TypeName.LONG);
         QueryTask task = queryTaskBuilder.build();
 
-        return Operation.createPost(UriUtils.buildUri(s.getHost(), ServiceUriPaths.CORE_QUERY_TASKS)).setBody(task);
+        return Operation
+                .createPost(UriUtils.buildUri(s.getHost(), ServiceUriPaths.CORE_QUERY_TASKS))
+                .setBody(task);
     }
 
     private static Operation buildLatestNonTransactionQueryTaskOp(StatefulService s) {
         Query.Builder queryBuilder = Query.Builder.create();
         queryBuilder.addFieldClause(ServiceDocument.FIELD_NAME_SELF_LINK, s.getSelfLink());
-        queryBuilder.addFieldClause(ServiceDocument.FIELD_NAME_TRANSACTION_ID, "*", MatchType.WILDCARD, Occurance.MUST_NOT_OCCUR);
+        queryBuilder.addFieldClause(ServiceDocument.FIELD_NAME_TRANSACTION_ID, "*",
+                MatchType.WILDCARD, Occurance.MUST_NOT_OCCUR);
 
-        QueryTask.Builder queryTaskBuilder = QueryTask.Builder.createDirectTask().setQuery(queryBuilder.build());
+        QueryTask.Builder queryTaskBuilder = QueryTask.Builder.createDirectTask()
+                .setQuery(queryBuilder.build());
         queryTaskBuilder.addOption(QueryOption.EXPAND_CONTENT);
         queryTaskBuilder.addOption(QueryOption.INCLUDE_ALL_VERSIONS);
         queryTaskBuilder.orderDescending(ServiceDocument.FIELD_NAME_VERSION, TypeName.LONG);
         QueryTask task = queryTaskBuilder.build();
 
-        return Operation.createPost(UriUtils.buildUri(s.getHost(), ServiceUriPaths.CORE_QUERY_TASKS)).setBody(task);
+        return Operation
+                .createPost(UriUtils.buildUri(s.getHost(), ServiceUriPaths.CORE_QUERY_TASKS))
+                .setBody(task);
     }
 
     /**
@@ -147,7 +158,8 @@ public class TransactionServiceHelper {
     /**
      * Notify the transaction coordinator of a new service
      */
-    static void notifyTransactionCoordinatorOfNewService(FactoryService factoryService, Service childService, Operation op) {
+    static void notifyTransactionCoordinatorOfNewService(FactoryService factoryService,
+            Service childService, Operation op) {
         // some of the basic properties of the child service being created are not
         // yet set at the point we're intercepting the POST, so we need to set them here
         childService.setHost(factoryService.getHost());
@@ -164,14 +176,16 @@ public class TransactionServiceHelper {
      * etc.), and take appropriate action
      */
     static boolean handleOperationInTransaction(StatefulService s,
-                                                Class<? extends ServiceDocument> st,
-                                                Operation request) {
+            Class<? extends ServiceDocument> st,
+            Operation request) {
         if (request.getRequestHeader(Operation.TRANSACTION_HEADER) == null) {
             return false;
         }
 
-        if (request.getRequestHeader(Operation.TRANSACTION_HEADER).equals(Operation.TX_TRY_COMMIT) ||
-                request.getRequestHeader(Operation.TRANSACTION_HEADER).equals(Operation.TX_ENSURE_COMMIT)) {
+        if (request.getRequestHeader(Operation.TRANSACTION_HEADER).equals(Operation.TX_TRY_COMMIT)
+                ||
+                request.getRequestHeader(Operation.TRANSACTION_HEADER)
+                        .equals(Operation.TX_ENSURE_COMMIT)) {
             // this request is targeting a transaction service - let it 'fall through'
             return false;
         }
@@ -181,7 +195,8 @@ public class TransactionServiceHelper {
             // commit should expose latest state, i.e., remove shadow and bump the version
             // and remove transaction from pending
             s.removePendingTransaction(request.getReferer().getPath());
-
+            s.getHost().clearTransactionalCachedServiceState(s,
+                    UriUtils.getLastPathSegment(request.getReferer().getPath()));
 
             QueryTask.QuerySpecification q = new QueryTask.QuerySpecification();
             QueryTask.Query txnIdClause = new QueryTask.Query().setTermPropertyName(
@@ -208,6 +223,8 @@ public class TransactionServiceHelper {
                 Operation.TX_ABORT)) {
             // abort should just remove transaction from pending
             s.removePendingTransaction(request.getReferer().getPath());
+            s.getHost().clearTransactionalCachedServiceState(s,
+                    UriUtils.getLastPathSegment(request.getReferer().getPath()));
             request.complete();
         } else {
             request.fail(new IllegalArgumentException(
@@ -217,9 +234,9 @@ public class TransactionServiceHelper {
     }
 
     static void unshadowQueryCompletion(StatefulService s,
-                                        Class<? extends ServiceDocument> st,
-                                        Operation o, Throwable f,
-                                        Operation original) {
+            Class<? extends ServiceDocument> st,
+            Operation o, Throwable f,
+            Operation original) {
         if (f != null) {
             s.logInfo(f.toString());
             original.fail(f);

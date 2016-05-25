@@ -593,6 +593,8 @@ public class Utils {
         case ON_DEMAND_LOAD:
             antiReqs = EnumSet.of(ServiceOption.PERIODIC_MAINTENANCE);
             break;
+        case TRANSACTION_PENDING:
+            break;
         default:
             break;
         }
@@ -700,7 +702,7 @@ public class Utils {
                     "-n", "1",
                     "-w", Long.toString(timeoutMs),
                     getNormalizedHostAddress(systemInfo, addr))
-                    .start();
+                            .start();
             boolean completed = process.waitFor(
                     PING_LAUNCH_TOLERANCE_MS + timeoutMs,
                     TimeUnit.MILLISECONDS);
@@ -771,7 +773,8 @@ public class Utils {
         return encodeBody(op, op.getBodyRaw(), op.getContentType());
     }
 
-    public static byte[] encodeBody(Operation op, Object body, String contentType) throws Throwable {
+    public static byte[] encodeBody(Operation op, Object body, String contentType)
+            throws Throwable {
         byte[] data = null;
 
         if (body == null) {
