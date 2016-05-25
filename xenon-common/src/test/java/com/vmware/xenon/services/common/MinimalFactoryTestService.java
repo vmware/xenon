@@ -70,4 +70,11 @@ public class MinimalFactoryTestService extends FactoryService {
         }
         return s;
     }
+
+    @Override
+    public void handlePost(Operation op) {
+        updateOperationStartStats(op);
+        super.handlePost(op);
+        updateOperationDurationStats(op);
+    }
 }
