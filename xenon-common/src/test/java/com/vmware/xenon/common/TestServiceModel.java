@@ -17,6 +17,8 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
+import static com.vmware.xenon.common.Service.STAT_NAME_OPERATION_DURATION;
+
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.Date;
@@ -819,6 +821,27 @@ public class TestServiceModel extends BasicReusableHostTestCase {
                 throw new TimeoutException();
             }
         }
+    }
+
+    @Test
+    public void getStatelessServiceOperationStats() throws Throwable {
+        MinimalFactoryTestService factoryService = new MinimalFactoryTestService();
+        MinimalTestServiceState body = new MinimalTestServiceState();
+        body.id = UUID.randomUUID().toString();
+        this.host.startServiceAndWait(factoryService, UUID.randomUUID().toString(), body);
+        // try a post on the factory service and assert that the stats are collected for the post operation.
+        Operation post = Operation.createPost(factoryService.getUri())
+                .setBody(body);
+        Operation response = this.host.waitForResponse(post);
+        assertNotNull(response);
+        ServiceStats testStats = host.getServiceState(null, ServiceStats.class, UriUtils
+                .buildStatsUri(factoryService.getUri()));
+        assertNotNull(testStats);
+        ServiceStat serviceStat = testStats.entries
+                .get(Action.POST + STAT_NAME_OPERATION_DURATION);
+        assertNotNull(serviceStat);
+        assertNotNull(serviceStat.latestValue);
+        host.log(Utils.toJsonHtml(testStats));
     }
 
 }

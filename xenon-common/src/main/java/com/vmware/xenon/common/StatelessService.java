@@ -720,4 +720,35 @@ public class StatelessService implements Service {
 
         getHost().sendRequest(operation);
     }
+
+    /**
+     * Records the handler invocation time for an operation if the instrumentation option is
+     * set in the service.This method has to be called by the child class that extends the
+     * StatelessService once operation processing starts in the handler.
+     */
+    public void setOperationHandlerInvokeTimeStat(Operation request) {
+        if (!hasOption(Service.ServiceOption.INSTRUMENTATION)) {
+            return;
+        }
+        request.setHandlerInvokeTime(Utils.getNowMicrosUtc());
+    }
+
+    /**
+     * Updates the operation duration stat using the handler invocation time and the current time
+     * if the instrumentation option is set in the service.This method has to be called by the child
+     * class that extends the StatelessService once processing is completed to report the statistics
+     * for operation duration.
+     */
+    public void setOperationDurationStat(Operation request) {
+        if (!hasOption(Service.ServiceOption.INSTRUMENTATION)) {
+            return;
+        }
+        if (request.getInstrumentationContext() == null) {
+            return;
+        }
+        setStat(request.getAction() + STAT_NAME_OPERATION_DURATION,
+                Utils.getNowMicrosUtc()
+                        - request.getInstrumentationContext().handleInvokeTimeMicrosUtc);
+
+    }
 }
