@@ -38,7 +38,6 @@ public class SwaggerDescriptorService extends StatelessService {
     public SwaggerDescriptorService() {
         super(ServiceDocument.class);
         toggleOption(ServiceOption.HTML_USER_INTERFACE, true);
-        toggleOption(ServiceOption.ON_DEMAND_LOAD, true);
         toggleOption(ServiceOption.CONCURRENT_GET_HANDLING, true);
     }
 
