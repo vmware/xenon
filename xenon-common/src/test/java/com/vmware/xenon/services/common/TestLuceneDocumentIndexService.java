@@ -753,6 +753,19 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
             return this.host.getServiceStage(path) == null;
         });
 
+        h.setServiceCacheClearDelayMicros(TimeUnit.MILLISECONDS.toMicros(250));
+        this.host.log("Waiting for on demand load services to stop, due to maintenance");
+        // verify on demand load services have been stopped, after a few maintenance intervals
+        this.host.waitFor("on demand loaded services never stopped", () -> {
+            for (URI u : childUris) {
+                ProcessingStage stg = h.getServiceStage(u.getPath());
+                this.host.log("%s %s", u.getPath(), stg);
+                if (stg != null) {
+                    return false;
+                }
+            }
+            return true;
+        });
 
 
         this.host.log("******************************* finished *******************************");

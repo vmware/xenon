@@ -2358,6 +2358,11 @@ public class ServiceHost implements ServiceRequestSender {
                             hasClientSuppliedInitialState);
                 });
 
+                if (post.hasBody()) {
+                    this.serviceResourceTracker.updateCachedServiceState(s,
+                            (ServiceDocument) post.getBodyRaw());
+                }
+
                 if (!post.hasBody() || !needsIndexing) {
                     post.complete();
                     break;
@@ -4307,7 +4312,6 @@ public class ServiceHost implements ServiceRequestSender {
 
 
     boolean checkAndOnDemandStartService(Operation inboundOp, Service parentService) {
-        String link = inboundOp.getUri().getPath();
         if (!parentService.hasOption(ServiceOption.FACTORY)) {
             failRequestServiceNotFound(inboundOp);
             return true;
@@ -4323,11 +4327,19 @@ public class ServiceHost implements ServiceRequestSender {
 
         CompletionHandler c = (o, e) -> {
             if (e != null) {
+                if (e instanceof CancellationException) {
+                    // local stop of idle service raced with client request to load it. Retry.
+                    log(Level.WARNING, "Stop of idle service %s detected, retrying", inboundOp
+                            .getUri().getPath());
+                    schedule(() -> {
+                        checkAndOnDemandStartService(inboundOp, parentService);
+                    }, 1, TimeUnit.SECONDS);
+                    return;
+                }
                 inboundOp.setBodyNoCloning(o.getBodyRaw()).setStatusCode(o.getStatusCode());
                 inboundOp.fail(e);
                 return;
             }
-
             // proceed with handling original client request, service now started
             handleRequest(null, inboundOp);
         };
@@ -4339,11 +4351,10 @@ public class ServiceHost implements ServiceRequestSender {
                 .setReplicationDisabled(true)
                 .setCompletion(c);
 
-        log(Level.FINE, "On demand service start of %s", link);
-
         Service childService;
         try {
             childService = factoryService.createServiceInstance();
+            childService.toggleOption(ServiceOption.FACTORY_ITEM, true);
         } catch (Throwable e1) {
             inboundOp.fail(e1);
             return true;

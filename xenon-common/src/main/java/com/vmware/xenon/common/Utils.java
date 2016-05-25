@@ -591,6 +591,9 @@ public class Utils {
         case UTILITY:
             break;
         case ON_DEMAND_LOAD:
+            if (!options.contains(ServiceOption.FACTORY)) {
+                reqs = EnumSet.of(ServiceOption.PERSISTENCE);
+            }
             antiReqs = EnumSet.of(ServiceOption.PERIODIC_MAINTENANCE);
             break;
         default:
