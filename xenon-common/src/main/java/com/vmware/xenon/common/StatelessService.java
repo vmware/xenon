@@ -101,6 +101,7 @@ public class StatelessService implements Service {
     @Override
     public void handleRequest(Operation op, OperationProcessingStage opProcessingStage) {
         try {
+            updateOperationStartStats(op);
             if (opProcessingStage == OperationProcessingStage.PROCESSING_FILTERS) {
                 OperationProcessingChain opProcessingChain = getOperationProcessingChain();
                 if (opProcessingChain != null && !opProcessingChain.processRequest(op)) {
@@ -254,9 +255,11 @@ public class StatelessService implements Service {
     @Override
     public void handleMaintenance(Operation post) {
         ServiceMaintenanceRequest request = post.getBody(ServiceMaintenanceRequest.class);
-        if (request.reasons.contains(ServiceMaintenanceRequest.MaintenanceReason.PERIODIC_SCHEDULE)) {
+        if (request.reasons
+                .contains(ServiceMaintenanceRequest.MaintenanceReason.PERIODIC_SCHEDULE)) {
             this.handlePeriodicMaintenance(post);
-        } else if (request.reasons.contains(ServiceMaintenanceRequest.MaintenanceReason.NODE_GROUP_CHANGE)) {
+        } else if (request.reasons
+                .contains(ServiceMaintenanceRequest.MaintenanceReason.NODE_GROUP_CHANGE)) {
             this.handleNodeGroupMaintenance(post);
         } else {
             post.complete();
@@ -589,7 +592,8 @@ public class StatelessService implements Service {
 
         if (micros > 0 && micros < Service.MIN_MAINTENANCE_INTERVAL_MICROS) {
             logWarning("Maintenance interval %d is less than the minimum interval %d"
-                    + ", reducing to min interval", micros, Service.MIN_MAINTENANCE_INTERVAL_MICROS);
+                    + ", reducing to min interval", micros,
+                    Service.MIN_MAINTENANCE_INTERVAL_MICROS);
             micros = Service.MIN_MAINTENANCE_INTERVAL_MICROS;
         }
 
@@ -719,5 +723,27 @@ public class StatelessService implements Service {
                 });
 
         getHost().sendRequest(operation);
+    }
+
+    /**
+     * Recording the handler invocation time for an operation if the instrumentation option is set in the service.
+     */
+    private void updateOperationStartStats(Operation request) {
+        if (hasOption(Service.ServiceOption.INSTRUMENTATION)) {
+            request.setHandlerInvokeTime(Utils.getNowMicrosUtc());
+        }
+    }
+
+    /**
+     * Updates the operation duration stat using the handler invocation time and the current time if the instrumentation option
+     * is set in the service.This method has to be called by the child class that extends the StatelessService once processing
+     * is completed for reporting the statistics for time spent in a given operation.
+     */
+    public void updateOperationDurationStats(Operation request) {
+        if (hasOption(Service.ServiceOption.INSTRUMENTATION)) {
+            setStat(STAT_NAME_OPERATION_DURATION,
+                    Utils.getNowMicrosUtc()
+                            - request.getInstrumentationContext().handleInvokeTimeMicrosUtc);
+        }
     }
 }
