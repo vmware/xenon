@@ -284,7 +284,8 @@ public class TransactionService extends StatefulService {
         setState(put, existing);
         put.complete();
 
-        if (existing.taskSubStage == SubStage.RESOLVING && existing.pendingOperationCount == existing.expectedOperationCount) {
+        if (existing.taskSubStage == SubStage.RESOLVING
+                && existing.pendingOperationCount == existing.expectedOperationCount) {
             // handle the case of pending operations received after transaction commit request
             selfPatch(ResolutionKind.COMMIT, existing.expectedOperationCount);
         }
@@ -318,7 +319,8 @@ public class TransactionService extends StatefulService {
 
         // Handle AddDependentCoordinator request
         TransactionServiceState currentState = getState(patch);
-        AddDependentCoordinatorRequest addDependentCoordinatorRequest = patch.getBody(AddDependentCoordinatorRequest.class);
+        AddDependentCoordinatorRequest addDependentCoordinatorRequest = patch
+                .getBody(AddDependentCoordinatorRequest.class);
         if (addDependentCoordinatorRequest.kind == AddDependentCoordinatorRequest.KIND) {
             currentState.dependentLinks.add(addDependentCoordinatorRequest.coordinatorLink);
             patch.complete();
@@ -339,8 +341,10 @@ public class TransactionService extends StatefulService {
                 return;
             }
 
-            if (currentState.taskSubStage == SubStage.ABORTING || currentState.taskSubStage == SubStage.ABORTED) {
-                logInfo("Alreading in sub-stage %s. Completing request.", currentState.taskSubStage);
+            if (currentState.taskSubStage == SubStage.ABORTING
+                    || currentState.taskSubStage == SubStage.ABORTED) {
+                logInfo("Alreading in sub-stage %s. Completing request.",
+                        currentState.taskSubStage);
                 patch.complete();
                 return;
             }
@@ -349,13 +353,15 @@ public class TransactionService extends StatefulService {
             patch.complete();
             handleAbort(currentState);
         } else if (resolution.resolutionKind == ResolutionKind.COMMIT) {
-            if (currentState.taskSubStage == SubStage.ABORTED || currentState.taskSubStage == SubStage.ABORTING) {
+            if (currentState.taskSubStage == SubStage.ABORTED
+                    || currentState.taskSubStage == SubStage.ABORTING) {
                 patch.fail(new IllegalStateException("Already aborted"));
                 return;
             }
 
             if (currentState.taskSubStage == SubStage.COMMITTED) {
-                logInfo("Alreading in sub-stage %s. Completing request.", currentState.taskSubStage);
+                logInfo("Alreading in sub-stage %s. Completing request.",
+                        currentState.taskSubStage);
                 patch.complete();
                 return;
             }
@@ -388,7 +394,8 @@ public class TransactionService extends StatefulService {
         }
 
         if (currentState.pendingOperationCount > currentState.expectedOperationCount) {
-            String errorMsg = String.format("Illegal commit request: client provided pending operations %d is less than already received %d",
+            String errorMsg = String.format(
+                    "Illegal commit request: client provided pending operations %d is less than already received %d",
                     currentState.expectedOperationCount, currentState.pendingOperationCount);
             logWarning(errorMsg);
             selfPatch(ResolutionKind.ABORT);
@@ -410,7 +417,7 @@ public class TransactionService extends StatefulService {
         }
 
         // kick-off the try-precede -> ensure-precede -> committed sequence
-        tryPrecede(existing);;
+        tryPrecede(existing);
     }
 
     /**
@@ -471,7 +478,8 @@ public class TransactionService extends StatefulService {
         OperationJoin.create(createNotifyServicesToAbort(existing))
                 .setCompletion((operations, failures) -> {
                     if (failures != null) {
-                        logWarning("Transaction failed to notify some services to abort: %s", failures.toString());
+                        logWarning("Transaction failed to notify some services to abort: %s",
+                                failures.toString());
                     }
                     selfPatch(ResolutionKind.ABORTED);
                 }).sendWith(this);
@@ -483,45 +491,60 @@ public class TransactionService extends StatefulService {
      * it is maintained across all nodes.
      */
     private void handleTryCommit(Operation op) {
-        // TODO: optimize by maintaining a flat, top-level set
         TransactionServiceState existing = getState(op);
         TransactionServiceState exchangeState = new TransactionServiceState();
-        if (existing.taskSubStage == SubStage.COMMITTED) {
-            exchangeState.taskSubStage = SubStage.COMMITTED;
-            op.setBodyNoCloning(exchangeState);
-            op.complete();
-            return;
-        }
+        exchangeState.taskSubStage = existing.taskSubStage;
+        boolean abort = false;
 
-        for (Set<String> serviceSet : existing.servicesToCoordinators.values()) {
-            if (serviceSet.contains(op.getReferer().getPath())) {
-                // notify about deterministic resolution..
-                exchangeState.taskSubStage = SubStage.RESOLVING_CIRCULAR;
-                // ..and resolve deterministically
-                if (!compareTo(op.getReferer().getPath())) {
-                    selfPatch(ResolutionKind.ABORT);
-                }
+        if (existing.taskSubStage == SubStage.RESOLVING) {
+            // notify about deterministic resolution..
+            exchangeState.taskSubStage = SubStage.RESOLVING_CIRCULAR;
+            // ..and resolve deterministically
+            if (!compareTo(op.getReferer().getPath())) {
+                logInfo("Conflicting transaction %s is trying to commit, aborting this transaction...",
+                        op.getReferer().getPath());
+                abort = true;
+                updateStage(op, SubStage.ABORTING);
             }
         }
 
         op.setBodyNoCloning(exchangeState);
         op.complete();
+
+        if (abort) {
+            handleAbort(existing);
+        }
     }
 
     /**
      * Handle the case when another, peer coordinator is about to commit, and wants to learn about a coordinator (this)
-     * in its read set. If this coordinator has committed, the peer has to abort; otherwise, this
+     * in its write set. If this coordinator has committed, the peer has to abort; otherwise, this
      * has to ensure it commits afterwards.
      */
     private void handleEnsureCommit(Operation op) {
         TransactionServiceState existing = getState(op);
         TransactionServiceState exchangeState = new TransactionServiceState();
+        boolean abort = false;
 
-        exchangeState.taskSubStage = existing.taskSubStage;
-        existing.dependentLinks.add(op.getReferer().getPath());
+        if (existing.taskSubStage == SubStage.COLLECTING
+                || existing.taskSubStage == SubStage.RESOLVING) {
+            // notify about deterministic resolution..
+            exchangeState.taskSubStage = SubStage.RESOLVING_CIRCULAR;
+            // ..and resolve deterministically
+            if (!compareTo(op.getReferer().getPath())) {
+                logInfo("Conflicting transaction %s is trying to commit, aborting this transaction...",
+                        op.getReferer().getPath());
+                abort = true;
+                updateStage(op, SubStage.ABORTING);
+            }
+        }
 
         op.setBodyNoCloning(exchangeState);
         op.complete();
+
+        if (abort) {
+            handleAbort(existing);
+        }
     }
 
     /**
@@ -549,13 +572,16 @@ public class TransactionService extends StatefulService {
                 operations.add(createNotifyOp(coordinator,
                         Operation.TX_TRY_COMMIT, (o, e) -> {
                             if (e == null) {
-                                TransactionServiceState exchangeState = o.getBody(TransactionServiceState.class);
+                                TransactionServiceState exchangeState = o
+                                        .getBody(TransactionServiceState.class);
                                 SubStage s = exchangeState.taskSubStage;
                                 if (s == SubStage.COMMITTED) {
                                     selfPatch(coordinator);
                                 } else if (s == SubStage.RESOLVING_CIRCULAR) {
                                     if (!compareTo(coordinator)) {
                                         continueWithCommit[0] = false;
+                                        logInfo("Conflicting transaction %s is committing, aborting this transaction...",
+                                                coordinator);
                                         selfPatch(ResolutionKind.ABORT);
                                     }
                                 }
@@ -605,12 +631,20 @@ public class TransactionService extends StatefulService {
                 operations.add(createNotifyOp(coordinator,
                         Operation.TX_ENSURE_COMMIT, (o, e) -> {
                             if (e == null) {
-                                TransactionServiceState exchangeState = o.getBody(TransactionServiceState.class);
+                                TransactionServiceState exchangeState = o
+                                        .getBody(TransactionServiceState.class);
                                 SubStage s = exchangeState.taskSubStage;
                                 if (s == SubStage.COMMITTED) {
                                     continueWithCommit[0] = false;
                                     selfPatch(ResolutionKind.ABORT);
-                                } // if in resolving, peer appends this to commitAfter
+                                } else if (s == SubStage.RESOLVING_CIRCULAR) {
+                                    if (!compareTo(coordinator)) {
+                                        continueWithCommit[0] = false;
+                                        logInfo("Conflicting transaction %s is committing, aborting this transaction...",
+                                                coordinator);
+                                        selfPatch(ResolutionKind.ABORT);
+                                    }
+                                }
                             }
                         }));
             }
@@ -727,7 +761,8 @@ public class TransactionService extends StatefulService {
     /**
      * Prepare an operation to resolve precedence with a remote coordinator
      */
-    private Operation createNotifyOp(String coordinator, String header, Operation.CompletionHandler callback) {
+    private Operation createNotifyOp(String coordinator, String header,
+            Operation.CompletionHandler callback) {
         return Operation
                 .createPatch(this, coordinator)
                 .addRequestHeader(Operation.TRANSACTION_HEADER, header)
