@@ -192,12 +192,16 @@ public interface Service extends ServiceRequestSender {
          */
         FACTORY_ITEM,
 
-
         /**
          * Set by runtime. Service is currently assigned ownership of the replicated document. Any
          * work initiated through an update should only happen on this instance
          */
         DOCUMENT_OWNER,
+
+        /**
+         * Set by runtime. Service has one or more pending transactions.
+         */
+        TRANSACTION_PENDING,
 
         NONE
     }
