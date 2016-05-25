@@ -2358,6 +2358,11 @@ public class ServiceHost implements ServiceRequestSender {
                             hasClientSuppliedInitialState);
                 });
 
+                if (post.hasBody()) {
+                    this.serviceResourceTracker.updateCachedServiceState(s,
+                            (ServiceDocument) post.getBodyRaw());
+                }
+
                 if (!post.hasBody() || !needsIndexing) {
                     post.complete();
                     break;
@@ -2756,6 +2761,8 @@ public class ServiceHost implements ServiceRequestSender {
 
             this.state.serviceCount--;
         }
+
+        log(Level.INFO, "stop of %s", path);
 
         // we do not remove from maintenance tracker, service will
         // be ignored and never schedule for maintenance if its stopped
@@ -4307,7 +4314,6 @@ public class ServiceHost implements ServiceRequestSender {
 
 
     boolean checkAndOnDemandStartService(Operation inboundOp, Service parentService) {
-        String link = inboundOp.getUri().getPath();
         if (!parentService.hasOption(ServiceOption.FACTORY)) {
             failRequestServiceNotFound(inboundOp);
             return true;
@@ -4327,7 +4333,6 @@ public class ServiceHost implements ServiceRequestSender {
                 inboundOp.fail(e);
                 return;
             }
-
             // proceed with handling original client request, service now started
             handleRequest(null, inboundOp);
         };
@@ -4338,8 +4343,6 @@ public class ServiceHost implements ServiceRequestSender {
                 .setExpiration(inboundOp.getExpirationMicrosUtc())
                 .setReplicationDisabled(true)
                 .setCompletion(c);
-
-        log(Level.FINE, "On demand service start of %s", link);
 
         Service childService;
         try {

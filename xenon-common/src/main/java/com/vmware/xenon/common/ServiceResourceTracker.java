@@ -84,19 +84,19 @@ class ServiceResourceTracker {
         if (state.documentExpirationTimeMicros > 0
                 && state.documentExpirationTimeMicros < state.documentUpdateTimeMicros) {
             // state expired, clear from cache
-            stopExpiredService(servicePath);
+            stopService(servicePath, true);
             return null;
         }
 
         return state;
     }
 
-    private void stopExpiredService(String servicePath) {
+    private void stopService(String servicePath, boolean isExpired) {
         Service s = this.host.findService(servicePath, true);
         if (s == null) {
             return;
         }
-        if (s.hasOption(ServiceOption.PERSISTENCE)) {
+        if (isExpired && s.hasOption(ServiceOption.PERSISTENCE)) {
             // the index service tracks expiration of persisted services
             return;
         }
@@ -106,6 +106,7 @@ class ServiceResourceTracker {
         Operation deleteExp = Operation.createDelete(s.getUri())
                 .disableFailureLogging(true)
                 .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_NO_INDEX_UPDATE)
+                .setReplicationDisabled(true)
                 .setReferer(this.host.getUri());
         this.host.sendRequest(deleteExp);
 
@@ -144,19 +145,20 @@ class ServiceResourceTracker {
             }
 
             ServiceDocument s = this.cachedServiceStates.get(service.getSelfLink());
+            boolean cacheCleared = s == null;
 
             if (s != null) {
-
                 if (!ServiceHost.isServiceIndexed(service)) {
                     // we do not clear cache or stop in memory services but we do check expiration
                     if (s.documentExpirationTimeMicros > 0 && s.documentExpirationTimeMicros < now) {
-                        stopExpiredService(service.getSelfLink());
+                        stopService(service.getSelfLink(), true);
                     }
                     continue;
                 }
 
                 if ((hostState.serviceCacheClearDelayMicros + s.documentUpdateTimeMicros) < now) {
                     clearCachedServiceState(service.getSelfLink());
+                    cacheCleared = true;
                 }
 
                 if (hostState.lastMaintenanceTimeUtcMicros
@@ -174,6 +176,12 @@ class ServiceResourceTracker {
                 continue;
             }
 
+            if (cacheCleared && service.hasOption(ServiceOption.ON_DEMAND_LOAD)) {
+                // instead of pausing on demand load services, simply stop them when they idle
+                stopService(service.getSelfLink(), false);
+                continue;
+            }
+
             if (!shouldPause) {
                 continue;
             }
@@ -185,6 +193,7 @@ class ServiceResourceTracker {
             if (this.host.isServiceStarting(service, service.getSelfLink())) {
                 continue;
             }
+
 
             Service existing = this.pendingPauseServices.put(service.getSelfLink(), service);
             if (existing == null) {
