@@ -54,7 +54,6 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.google.gson.reflect.TypeToken;
 
-import com.vmware.xenon.common.MurmurHash3.LongPair;
 import com.vmware.xenon.common.Service.Action;
 import com.vmware.xenon.common.Service.ServiceOption;
 import com.vmware.xenon.common.ServiceDocumentDescription.PropertyDescription;
@@ -292,9 +291,7 @@ public class Utils {
     }
 
     private static String computeHash(byte[] content, int offset, int length) {
-        LongPair lp = new LongPair();
-        MurmurHash3.murmurhash3_x64_128(content, offset, length, 0, lp);
-        return Long.toHexString(lp.val1) + Long.toHexString(lp.val2);
+        return Integer.toHexString(MurmurHash3.murmurhash3_x86_32(content, offset, length, 0));
     }
 
     public static String toJson(Object body) {

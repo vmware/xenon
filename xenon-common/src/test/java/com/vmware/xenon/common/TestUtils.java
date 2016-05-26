@@ -817,6 +817,14 @@ public class TestUtils {
     }
 
     @Test
+    public void testHash() {
+        String string1 = "foofoo";
+        String string2 = "barbar";
+        Assert.assertEquals(Utils.computeHash(string1), Utils.computeHash(string1));
+        Assert.assertNotEquals(Utils.computeHash(string1), Utils.computeHash(string2));
+    }
+
+    @Test
     public void testDecodeUrlEncodedText() throws Throwable {
 
         String textPlain = "param1=value1&param2=value 2&param3=value три";
