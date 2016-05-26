@@ -83,10 +83,22 @@ public class Utils {
 
     private static final char[] HEX_CHARS = "0123456789abcdef".toCharArray();
 
-    public static final int DEFAULT_IO_THREAD_COUNT = Math.min(4, Runtime.getRuntime()
+    /**
+     * Number of IO threads is used for the HTTP selector event processing. Most of the
+     * work is done in the context of the service host executor so we just use a couple of threads.
+     * Performance work indicates any more threads do not help, rather, they hurt throughput
+     */
+    public static final int DEFAULT_IO_THREAD_COUNT = Math.min(2, Runtime.getRuntime()
             .availableProcessors());
+
+    /**
+     * Number of threads used for the service host executor and shared across service instances.
+     * We add to the total count since the executor will also be used to process I/O selector
+     * events, which will consume threads. Using much more than the number of processors hurts
+     * operation processing throughput.
+     */
     public static final int DEFAULT_THREAD_COUNT = Math.max(4, Runtime.getRuntime()
-            .availableProcessors() + DEFAULT_IO_THREAD_COUNT);
+            .availableProcessors() + (DEFAULT_IO_THREAD_COUNT * 2));
 
     /**
      * {@link #isReachableByPing} launches a separate ping process to ascertain whether a given IP
