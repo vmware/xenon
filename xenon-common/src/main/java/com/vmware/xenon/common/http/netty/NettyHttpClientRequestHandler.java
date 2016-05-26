@@ -249,6 +249,10 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
             request.addRequestHeader(Operation.HOST_HEADER, host);
         }
 
+        if (request.getRequestHeader(Operation.RESPONSE_CALLBACK_STATUS_HEADER) != null) {
+            request.setReferer(request.getUri());
+        }
+
         if (!request.hasReferer() && request.isFromReplication()) {
             // we assume referrer is the same service, but from the remote node. Do not
             // bother with rewriting the URI with the remote host, at avoid allocations

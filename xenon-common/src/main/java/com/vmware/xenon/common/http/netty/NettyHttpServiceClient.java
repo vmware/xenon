@@ -143,7 +143,10 @@ public class NettyHttpServiceClient implements ServiceClient {
         }
 
         this.channelPool.setThreadTag(buildThreadTag());
-        this.channelPool.setThreadCount(Math.min(Utils.DEFAULT_IO_THREAD_COUNT, 2));
+        this.channelPool.setThreadCount(Utils.DEFAULT_IO_THREAD_COUNT);
+        if (this.host != null) {
+            this.channelPool.setExecutor(this.executor);
+        }
         this.channelPool.start();
 
         // We make a separate pool for HTTP/2. We want to have only one connection per host
@@ -159,6 +162,7 @@ public class NettyHttpServiceClient implements ServiceClient {
         if (this.sslContext != null) {
             this.sslChannelPool.setThreadTag(buildThreadTag());
             this.sslChannelPool.setThreadCount(Utils.DEFAULT_IO_THREAD_COUNT);
+            this.sslChannelPool.setExecutor(this.executor);
             this.sslChannelPool.setSSLContext(this.sslContext);
             this.sslChannelPool.start();
         }

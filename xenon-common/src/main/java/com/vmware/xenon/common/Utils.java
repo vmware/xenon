@@ -83,10 +83,10 @@ public class Utils {
 
     private static final char[] HEX_CHARS = "0123456789abcdef".toCharArray();
 
-    public static final int DEFAULT_IO_THREAD_COUNT = Math.min(4, Runtime.getRuntime()
+    public static final int DEFAULT_IO_THREAD_COUNT = Math.min(2, Runtime.getRuntime()
             .availableProcessors());
     public static final int DEFAULT_THREAD_COUNT = Math.max(4, Runtime.getRuntime()
-            .availableProcessors() + DEFAULT_IO_THREAD_COUNT);
+            .availableProcessors() + (DEFAULT_IO_THREAD_COUNT * 2));
 
     /**
      * {@link #isReachableByPing} launches a separate ping process to ascertain whether a given IP
