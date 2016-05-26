@@ -51,6 +51,18 @@ public class HttpRequestCallbackService extends StatelessService {
     }
 
     @Override
+    public void authorizeRequest(Operation o) {
+        if (o.getAction() != Action.PATCH) {
+            super.authorizeRequest(o);
+            return;
+        }
+
+        // the operation will fail if the id being patched is wrong.
+        o.complete();
+        return;
+    }
+
+    @Override
     public void handleRequest(Operation o) {
         if (o.getAction() == Action.DELETE) {
             super.handleRequest(o);
