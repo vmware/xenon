@@ -135,6 +135,7 @@ public class ServiceStats extends ServiceDocument {
         public long version;
         public long lastUpdateMicrosUtc;
         public String kind = KIND;
+        public String unit;
 
         /**
          * Source (provider) for this stat
