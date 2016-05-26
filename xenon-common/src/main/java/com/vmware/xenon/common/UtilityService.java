@@ -518,6 +518,7 @@ public class UtilityService implements Service {
                 stat.timeSeriesStats = new TimeSeriesStats(newValue.timeSeriesStats.numBuckets,
                         newValue.timeSeriesStats.bucketDurationMillis, newValue.timeSeriesStats.aggregationType);
             }
+            stat.unit = newValue.unit;
             setStat(stat, newValue.latestValue);
         }
     }
