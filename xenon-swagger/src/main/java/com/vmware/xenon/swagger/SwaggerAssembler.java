@@ -16,6 +16,7 @@ package com.vmware.xenon.swagger;
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -46,6 +47,7 @@ import io.swagger.util.Yaml;
 
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.OperationJoin;
+import com.vmware.xenon.common.RequestRouter.Route;
 import com.vmware.xenon.common.Service;
 import com.vmware.xenon.common.ServiceConfigUpdateRequest;
 import com.vmware.xenon.common.ServiceConfiguration;
@@ -186,7 +188,6 @@ class SwaggerAssembler {
                 // use service base path as tag
                 this.currentTag = new Tag();
                 this.currentTag.setName(uri);
-                this.swagger.addTag(this.currentTag);
 
                 addOperation(uri, e.getValue());
             }
@@ -219,8 +220,15 @@ class SwaggerAssembler {
         if (q.documents != null) {
             Object firstDoc = q.documents.values().iterator().next();
             addFactory(uri, Utils.fromJson(firstDoc, ServiceDocument.class));
-        } else {
-            // cannot handle stateless services yet
+
+            this.swagger.addTag(this.currentTag);
+        } else if (q.documentDescription != null
+                && q.documentDescription.serviceRequestRoutes != null
+                && !q.documentDescription.serviceRequestRoutes.isEmpty()) {
+            this.swagger
+                    .path(uri, pathByRoutes(q.documentDescription.serviceRequestRoutes.values()));
+
+            this.swagger.addTag(this.currentTag);
         }
     }
 
@@ -455,6 +463,18 @@ class SwaggerAssembler {
         return res;
     }
 
+    private Response responseOk(Class<?> type) {
+        Response res = new Response();
+        res.setDescription(DESCRIPTION_SUCCESS);
+
+        if (type == null) {
+            return res;
+        }
+
+        res.setSchema(refProperty(modelForPodo(type)));
+        return res;
+    }
+
     private ServiceDocument template(Class<? extends ServiceDocument> type) {
         ServiceDocumentDescription desc = ServiceDocumentDescription.Builder
                 .create()
@@ -530,20 +550,79 @@ class SwaggerAssembler {
         path.setParameters(Collections.singletonList(paramId()));
         path.setGet(opDefault(doc));
 
-        io.swagger.models.Operation op = new io.swagger.models.Operation();
-        op.addTag(this.currentTag.getName());
-        op.setParameters(Collections.singletonList(paramBody(ServiceDocument.class)));
-        op.setResponses(responseMap(
-                Operation.STATUS_CODE_OK, responseOk(doc),
-                Operation.STATUS_CODE_NOT_FOUND, responseGenericError()
-        ));
+        if (doc.documentDescription != null
+                && doc.documentDescription.serviceRequestRoutes != null
+                && !doc.documentDescription.serviceRequestRoutes.isEmpty()) {
+            Path pathByRoutes = pathByRoutes(doc.documentDescription.serviceRequestRoutes.values());
+            path.setPost(pathByRoutes.getPost());
+            path.setPut(pathByRoutes.getPut());
+            path.setPatch(pathByRoutes.getPatch());
+        } else {
+            io.swagger.models.Operation op = new io.swagger.models.Operation();
+            op.addTag(this.currentTag.getName());
+            op.setParameters(Collections.singletonList(paramBody(ServiceDocument.class)));
+            op.setResponses(responseMap(
+                    Operation.STATUS_CODE_OK, responseOk(doc),
+                    Operation.STATUS_CODE_NOT_FOUND, responseGenericError()
+            ));
 
-        // service definition should be introspected to better
-        // describe which actions are supported
-        path.setPost(op);
-        path.setPut(op);
-        path.setPatch(op);
+            // service definition should be introspected to better
+            // describe which actions are supported
+            path.setPost(op);
+            path.setPut(op);
+            path.setPatch(op);
+        }
 
+        return path;
+    }
+
+    private Path pathByRoutes(Collection<List<Route>> serviceRoutes) {
+        Path path = new Path();
+
+        for (List<Route> routes : serviceRoutes) {
+            for (Route route : routes) {
+                // Although Xenon allows us to route same action (POST, PATCH, etc.) to different
+                // implementation based on request type Swagger doesn't handle same operation with
+                // different data types. For example: PATCH /user with UserProfile PODO and
+                // PATCH /user with MemberProfile.
+                // Reference: https://github.com/OAI/OpenAPI-Specification/issues/146
+                io.swagger.models.Operation op = new io.swagger.models.Operation();
+                op.addTag(this.currentTag.getName());
+                op.setDescription(route.description);
+                if (route.requestType != null) {
+                    op.setParameters(Collections.singletonList(paramBody(route.requestType)));
+                }
+
+                // Add default response codes
+                op.setResponses(responseMap(
+                        Operation.STATUS_CODE_OK, responseOk(route.responseType),
+                        Operation.STATUS_CODE_NOT_FOUND, responseGenericError()
+                ));
+
+                switch (route.action) {
+                case POST:
+                    path.post(op);
+                    break;
+                case PUT:
+                    path.put(op);
+                    break;
+                case PATCH:
+                    path.patch(op);
+                    break;
+                case GET:
+                    path.get(op);
+                    break;
+                case DELETE:
+                    path.delete(op);
+                    break;
+                case OPTIONS:
+                    path.options(op);
+                    break;
+                default:
+                    throw new IllegalStateException("Unknown route action encounter: " + route.action);
+                }
+            }
+        }
         return path;
     }
 

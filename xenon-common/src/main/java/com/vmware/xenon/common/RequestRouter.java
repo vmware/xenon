@@ -38,6 +38,8 @@ public class RequestRouter implements Predicate<Operation> {
         public Predicate<Operation> matcher;
         public Consumer<Operation> handler;
         public String description;
+        public Class<?> requestType;
+        public Class<?> responseType;
 
         public Route(Action action, Predicate<Operation> matcher, Consumer<Operation> handler,
                 String description) {
