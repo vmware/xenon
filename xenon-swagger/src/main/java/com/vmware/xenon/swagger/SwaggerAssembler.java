@@ -219,8 +219,10 @@ class SwaggerAssembler {
         if (q.documents != null) {
             Object firstDoc = q.documents.values().iterator().next();
             addFactory(uri, Utils.fromJson(firstDoc, ServiceDocument.class));
-        } else {
-            // cannot handle stateless services yet
+        } else if (q.documentDescription != null && q.documentKind != null
+                && q.documentSelfLink == null) {
+            // special handling for stateless service, since there is no state to introspect.
+            addFactory(uri, q);
         }
     }
 

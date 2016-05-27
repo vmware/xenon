@@ -15,11 +15,14 @@ package com.vmware.xenon.common;
 
 import java.net.URI;
 import java.util.EnumSet;
+import java.util.HashMap;
 import java.util.function.Supplier;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import com.vmware.xenon.common.Operation.AuthorizationContext;
+import com.vmware.xenon.common.ServiceDocumentDescription.Builder;
+import com.vmware.xenon.common.ServiceDocumentDescription.PropertyDescription;
 import com.vmware.xenon.common.ServiceStats.ServiceStat;
 import com.vmware.xenon.common.ServiceStats.ServiceStatLogHistogram;
 import com.vmware.xenon.common.jwt.Signer;
@@ -485,6 +488,17 @@ public class StatelessService implements Service {
     public ServiceDocument getDocumentTemplate() {
         ServiceDocument d;
 
+        if (getResourceType() != null) {
+            d = new ServiceDocument();
+            d.documentDescription = new ServiceDocumentDescription();
+            PropertyDescription pd = Builder.create()
+                    .buildPodoPropertyDescription(getResourceType());
+            d.documentDescription.propertyDescriptions = new HashMap<>();
+            d.documentDescription.propertyDescriptions.putAll(pd.fieldDescriptions);
+            d.documentKind = Utils.toDocumentKind(getResourceType());
+            return d;
+        }
+
         try {
             d = this.stateType.newInstance();
         } catch (Throwable e) {
@@ -750,5 +764,12 @@ public class StatelessService implements Service {
                 Utils.getNowMicrosUtc()
                         - request.getInstrumentationContext().handleInvokeTimeMicrosUtc);
 
+    }
+
+    /**
+     * Returns the payload type for a stateless service.
+     */
+    protected Class<?> getResourceType() {
+        return null;
     }
 }

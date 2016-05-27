@@ -77,6 +77,9 @@ public class TestSwaggerDescriptorService {
                 Operation.createPost(UriUtils.buildFactoryUri(host, ExampleService.class)),
                 new ExampleService());
 
+        host.startService(Operation.createPost(UriUtils.buildUri(host, TokenService.class)),
+                new TokenService());
+
         host.waitForServiceAvailable(SwaggerDescriptorService.SELF_LINK);
     }
 
@@ -194,6 +197,31 @@ public class TestSwaggerDescriptorService {
 
 
         p = swagger.getPath("/cars/{id}");
+        assertNotNull(p);
+        assertNotNull(p.getPost());
+        assertNotNull(p.getGet());
+        assertNotNull(p.getPatch());
+        assertNotNull(p.getPut());
+
+        p = swagger.getPath("/tokens");
+        assertNotNull(p);
+        assertNotNull(p.getPost());
+        assertNotNull(p.getGet());
+
+        assertNotNull(swagger.getPath("/tokens/template"));
+        assertNotNull(swagger.getPath("/tokens/available"));
+        assertNotNull(swagger.getPath("/tokens/config"));
+        assertNotNull(swagger.getPath("/tokens/stats"));
+        assertNotNull(swagger.getPath("/tokens/subscriptions"));
+
+        assertNotNull(swagger.getPath("/tokens/{id}/template"));
+        assertNotNull(swagger.getPath("/tokens/{id}/available"));
+        assertNotNull(swagger.getPath("/tokens/{id}/config"));
+        assertNotNull(swagger.getPath("/tokens/{id}/stats"));
+        assertNotNull(swagger.getPath("/tokens/{id}/subscriptions"));
+
+
+        p = swagger.getPath("/tokens/{id}");
         assertNotNull(p);
         assertNotNull(p.getPost());
         assertNotNull(p.getGet());
