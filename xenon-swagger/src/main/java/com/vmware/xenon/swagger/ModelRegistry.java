@@ -81,8 +81,10 @@ class ModelRegistry {
             if (pd.usageOptions.contains(PropertyUsageOption.INFRASTRUCTURE)) {
                 continue;
             }
-
-            res.addProperty(name, makeProperty(pd));
+            Property property = makeProperty(pd);
+            property.description(pd.propertyDocumentation);
+            property.setExample(pd.exampleValue);
+            res.addProperty(name, property);
         }
 
         return res;
