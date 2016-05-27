@@ -14,9 +14,12 @@
 package com.vmware.xenon.swagger;
 
 import java.net.URI;
+import java.util.Collections;
+import java.util.HashMap;
 
 import com.vmware.xenon.common.FactoryService;
 import com.vmware.xenon.common.Operation;
+import com.vmware.xenon.common.RequestRouter.Route;
 import com.vmware.xenon.common.Service;
 import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.StatefulService;
@@ -55,5 +58,20 @@ public class CarService extends StatefulService {
         public String make;
         public String licensePlate;
         public EngineInfo engineInfo;
+    }
+
+    @Override
+    public ServiceDocument getDocumentTemplate() {
+        ServiceDocument d = super.getDocumentTemplate();
+        d.documentDescription.serviceRequestRoutes = new HashMap<>();
+
+        Route route = new Route();
+        route.action = Action.PUT;
+        route.description = "Updates car properties";
+        route.requestType = Car.class;
+
+        d.documentDescription.serviceRequestRoutes
+                .put(route.action, Collections.singletonList(route));
+        return d;
     }
 }

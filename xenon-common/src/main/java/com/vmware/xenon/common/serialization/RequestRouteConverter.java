@@ -15,18 +15,22 @@ package com.vmware.xenon.common.serialization;
 
 import java.lang.reflect.Type;
 
+import com.google.gson.JsonDeserializationContext;
+import com.google.gson.JsonDeserializer;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import com.google.gson.JsonParseException;
 import com.google.gson.JsonSerializationContext;
 import com.google.gson.JsonSerializer;
 import com.google.gson.reflect.TypeToken;
 
 import com.vmware.xenon.common.RequestRouter.Route;
+import com.vmware.xenon.common.Service.Action;
 
 /**
  * GSON {@link JsonSerializer} for representing a {@link Route}s as a JSON string.
  */
-public enum RequestRouteConverter implements JsonSerializer<Route> {
+public enum RequestRouteConverter implements JsonSerializer<Route>, JsonDeserializer<Route> {
     INSTANCE;
 
     public static final Type TYPE = new TypeToken<Route>() {}.getType();
@@ -36,10 +40,52 @@ public enum RequestRouteConverter implements JsonSerializer<Route> {
             JsonSerializationContext context) {
         JsonObject ob = new JsonObject();
         ob.addProperty("action", src.action.toString());
-        ob.addProperty("condition", src.matcher.toString());
+        if (src.matcher != null) {
+            ob.addProperty("condition", src.matcher.toString());
+        }
         ob.addProperty("description", src.description);
+        if (src.requestType != null) {
+            ob.addProperty("requestType", src.requestType.getName());
+        }
+
+        if (src.responseType != null) {
+            ob.addProperty("responseType", src.responseType.getName());
+        }
 
         return ob;
     }
 
+    @Override
+    public Route deserialize(JsonElement json, Type type,
+            JsonDeserializationContext jsonDeserializationContext) throws JsonParseException {
+        if (!json.isJsonObject()) {
+            throw new JsonParseException("The json element is not valid");
+        }
+
+        JsonObject jsonObject = json.getAsJsonObject();
+        Route route = new Route();
+
+        String action = checkAndGetFromJson(jsonObject, "action");
+        route.action = action == null ? null : Action.valueOf(action);
+        route.description = checkAndGetFromJson(jsonObject, "description");
+        try {
+            String requestType = checkAndGetFromJson(jsonObject, "requestType");
+            route.requestType = requestType == null ? null : Class.forName(requestType);
+
+            String responseType = checkAndGetFromJson(jsonObject, "responseType");
+            route.responseType = responseType == null ? null : Class.forName(responseType);
+        } catch (ClassNotFoundException e) {
+            throw new IllegalStateException(e);
+        }
+
+        return route;
+    }
+
+    private String checkAndGetFromJson(JsonObject jsonObject, String memberName) {
+        if (jsonObject.has(memberName)) {
+            return jsonObject.get(memberName).getAsString();
+        }
+
+        return null;
+    }
 }

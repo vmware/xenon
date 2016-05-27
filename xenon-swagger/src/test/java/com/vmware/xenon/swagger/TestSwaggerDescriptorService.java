@@ -77,6 +77,9 @@ public class TestSwaggerDescriptorService {
                 Operation.createPost(UriUtils.buildFactoryUri(host, ExampleService.class)),
                 new ExampleService());
 
+        host.startService(Operation.createPost(UriUtils.buildUri(host, TokenService.class)),
+                new TokenService());
+
         host.waitForServiceAvailable(SwaggerDescriptorService.SELF_LINK);
     }
 
@@ -195,9 +198,18 @@ public class TestSwaggerDescriptorService {
 
         p = swagger.getPath("/cars/{id}");
         assertNotNull(p);
-        assertNotNull(p.getPost());
+        assertNull(p.getPost());
+        assertNull(p.getPatch());
         assertNotNull(p.getGet());
-        assertNotNull(p.getPatch());
         assertNotNull(p.getPut());
+
+        p = swagger.getPath("/tokens");
+        assertNotNull(p);
+        assertNotNull(p.getGet());
+        assertNotNull(p.getGet().getResponses());
+        assertNotNull(p.getPost());
+        assertNotNull(p.getPost().getParameters());
+        assertNull(p.getPatch());
+        assertNull(p.getDelete());
     }
 }
