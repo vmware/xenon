@@ -112,6 +112,7 @@ public class TestDNSService extends BasicTestCase {
     public void registerWithDNSTest() throws Throwable {
 
         configureHost(this.nodeCount);
+        // the join will set quorum equal to node count
         this.host.joinNodesAndVerifyConvergence(this.nodeCount);
 
         for (VerificationHost h1 : this.host.getInProcessHostMap().values()) {
@@ -159,6 +160,9 @@ public class TestDNSService extends BasicTestCase {
 
 
     private void doServiceFailureTest() throws Throwable {
+
+        // before we stop a node, we must reduce the quorum
+        this.host.setNodeGroupQuorum(this.nodeCount - 1);
 
         /*
             Stop a peer node, issue the query again after the HEALTH_CHECK_INTERVAL

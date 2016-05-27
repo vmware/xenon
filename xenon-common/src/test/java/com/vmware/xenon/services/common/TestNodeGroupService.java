@@ -392,12 +392,17 @@ public class TestNodeGroupService {
             h.startServiceAndWait(CustomNodeGroupFactoryService.class, customFactoryLink);
         }
 
+        URI customNodeGroupServiceOnObserver = UriUtils
+                .buildUri(observerHostUri, CUSTOM_NODE_GROUP);
         Map<URI, EnumSet<NodeOption>> expectedOptionsPerNode = new HashMap<>();
-        expectedOptionsPerNode.put(UriUtils.buildUri(observerHostUri, CUSTOM_NODE_GROUP),
+        expectedOptionsPerNode.put(customNodeGroupServiceOnObserver,
                 observerSelfState.options);
 
         this.host.joinNodesAndVerifyConvergence(CUSTOM_NODE_GROUP, this.nodeCount,
                 this.nodeCount, expectedOptionsPerNode);
+
+        // one of the nodes is observer, so we must set quorum to 2 explicitly
+        this.host.setNodeGroupQuorum(2, customNodeGroupServiceOnObserver);
 
         int restartCount = 0;
         // verify that the observer node shows up as OBSERVER on all peers, including self
@@ -2179,7 +2184,7 @@ public class TestNodeGroupService {
         authHelper = new AuthorizationHelper(this.host);
 
         // relax quorum to allow for divergent writes, on independent nodes (not yet joined)
-        this.host.setNodeGroupQuorum(1);
+
         this.host.setSystemAuthorizationContext();
 
         // Create the same users and roles on every peer independently
@@ -2193,7 +2198,6 @@ public class TestNodeGroupService {
         // Get roles from all nodes
         Map<ServiceHost, Map<URI, RoleState>> roleStateByHost = getRolesByHost(roleLinksByHost);
 
-        this.host.setNodeGroupQuorum(this.nodeCount);
         // Join nodes to force synchronization and convergence
         this.host.joinNodesAndVerifyConvergence(this.host.getPeerCount());
 
@@ -2329,12 +2333,16 @@ public class TestNodeGroupService {
                     return;
                 }
 
-                // Verify the user is set as principal
-                ExampleServiceState state = o.getBody(ExampleServiceState.class);
-                assertEquals(state.documentAuthPrincipalLink,
-                        userLink);
-                exampleLinks.add(state.documentSelfLink);
-                this.host.completeIteration();
+                try {
+                    // Verify the user is set as principal
+                    ExampleServiceState state = o.getBody(ExampleServiceState.class);
+                    assertEquals(state.documentAuthPrincipalLink,
+                            userLink);
+                    exampleLinks.add(state.documentSelfLink);
+                    this.host.completeIteration();
+                } catch (Throwable e2) {
+                    this.host.failIteration(e2);
+                }
             };
             this.host.send(Operation
                     .createPost(UriUtils.buildFactoryUri(it.next(), ExampleService.class))
