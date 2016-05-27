@@ -17,6 +17,15 @@ import java.io.IOException;
 import java.net.URI;
 
 public interface ServiceRequestListener {
+    public static final String RESPONSE_PAYLOAD_SIZE_PROPERTY =
+            Utils.PROPERTY_NAME_PREFIX + "RESPONSE_PAYLOAD_SIZE_LIMIT";
+
+    /**
+     * Default maximum size limit of a response payload that can be returned by a Xenon host.
+     */
+    public static final int RESPONSE_PAYLOAD_SIZE_LIMIT = Integer.getInteger(
+            RESPONSE_PAYLOAD_SIZE_PROPERTY, 1024 * 1024 * 64);
+
     long getActiveClientCount();
 
     int getPort();

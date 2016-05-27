@@ -19,6 +19,9 @@ public interface ServiceClient extends ServiceRequestSender {
     String SSL_PROTOCOL_NAME = "SSL";
     String TLS_PROTOCOL_NAME = "TLS";
 
+    public static final String REQUEST_PAYLOAD_SIZE_LIMIT_PROPERTY =
+            Utils.PROPERTY_NAME_PREFIX + "REQUEST_PAYLOAD_SIZE_LIMIT";
+
     public static final int MAX_BINARY_SERIALIZED_BODY_LIMIT = Integer.getInteger(
             Utils.PROPERTY_NAME_PREFIX + "ServiceClient.MAX_BINARY_SERIALIZED_BODY_LIMIT",
             1024 * 1024);
@@ -29,6 +32,9 @@ public interface ServiceClient extends ServiceRequestSender {
 
     public static final int DEFAULT_CONNECTION_LIMIT_PER_TAG = Integer.getInteger(
             Utils.PROPERTY_NAME_PREFIX + "ServiceClient.DEFAULT_CONNECTION_LIMIT_PER_TAG", 4);
+
+    public static final int REQUEST_PAYLOAD_SIZE_LIMIT = Integer.getInteger(
+            REQUEST_PAYLOAD_SIZE_LIMIT_PROPERTY, 1024 * 1024 * 64);
 
     /**
      * Connection tag used by node group service for peer to peer random probing and liveness checks

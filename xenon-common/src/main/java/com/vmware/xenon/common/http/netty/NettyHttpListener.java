@@ -50,6 +50,8 @@ public class NettyHttpListener implements ServiceRequestListener {
     private ChannelHandler childChannelHandler;
     private boolean isListening;
 
+    private static int responsePayloadSizeLimit = RESPONSE_PAYLOAD_SIZE_LIMIT;
+
     public NettyHttpListener(ServiceHost host) {
         this.host = host;
     }
@@ -160,5 +162,14 @@ public class NettyHttpListener implements ServiceRequestListener {
     @Override
     public boolean isListening() {
         return this.isListening;
+    }
+
+    public static int getResponsePayloadSizeLimit() {
+        return responsePayloadSizeLimit;
+    }
+
+    // Used for unit-testing
+    public static void setResponsePayloadSizeLimit(int limit) {
+        responsePayloadSizeLimit = limit;
     }
 }

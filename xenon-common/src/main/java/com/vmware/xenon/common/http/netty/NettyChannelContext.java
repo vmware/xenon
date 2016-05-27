@@ -18,6 +18,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.logging.Logger;
 
 import io.netty.buffer.PooledByteBufAllocator;
 import io.netty.channel.Channel;
@@ -30,6 +31,7 @@ import com.vmware.xenon.common.ServiceErrorResponse;
 import com.vmware.xenon.common.http.netty.NettyChannelPool.NettyChannelGroupKey;
 
 public class NettyChannelContext extends SocketContext {
+    static final Logger logger = Logger.getLogger(NettyChannelPool.class.getName());
 
     // For HTTP/1.1 channels, this stores the operation associated with the channel
     static final AttributeKey<Operation> OPERATION_KEY = AttributeKey
@@ -104,6 +106,11 @@ public class NettyChannelContext extends SocketContext {
 
     public NettyChannelContext setChannel(Channel c) {
         this.channel = c;
+        this.channel.closeFuture().addListener(future -> logger.info(
+                "Channel closed" +
+                ", ChannelId:" + this.channel.id() +
+                ", Protocol:" + this.protocol +
+                ", NodeChannelGroupKey:" + this.key));
         return this;
     }
 

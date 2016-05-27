@@ -123,7 +123,7 @@ public class NettyHttpServerInitializer extends ChannelInitializer<SocketChannel
         }
 
         p.addLast(AGGREGATOR_HANDLER,
-                new HttpObjectAggregator(NettyChannelContext.getMaxRequestSize()));
+                new HttpObjectAggregator(NettyHttpListener.getResponsePayloadSizeLimit()));
         p.addLast(WEBSOCKET_HANDLER, new NettyWebSocketRequestHandler(this.host,
                 ServiceUriPaths.CORE_WEB_SOCKET_ENDPOINT,
                 ServiceUriPaths.WEB_SOCKET_SERVICE_PREFIX));
@@ -140,7 +140,7 @@ public class NettyHttpServerInitializer extends ChannelInitializer<SocketChannel
         // DefaultHttp2Connection is for client or server. True means "server".
         Http2Connection connection = new DefaultHttp2Connection(true);
         InboundHttp2ToHttpAdapter inboundAdapter = new InboundHttp2ToHttpAdapterBuilder(connection)
-                .maxContentLength(NettyChannelContext.MAX_CHUNK_SIZE)
+                .maxContentLength(NettyHttpListener.getResponsePayloadSizeLimit())
                 .propagateSettings(false)
                 .build();
         DelegatingDecompressorFrameListener frameListener = new DelegatingDecompressorFrameListener(

@@ -94,6 +94,7 @@ public class TestQueryTaskService {
         if (this.host != null) {
             return;
         }
+
         this.host = VerificationHost.create(0);
         CommandLineArgumentParser.parseFromProperties(this.host);
         CommandLineArgumentParser.parseFromProperties(this);
@@ -500,6 +501,79 @@ public class TestQueryTaskService {
             break;
         }
         return newState;
+    }
+
+    @Test
+    public void multiNodeQueryTasks() throws Throwable {
+        final int nodeCount = 3;
+        final int stressTestServiceCountThreshold = 100;
+
+        setUpHost();
+
+        this.host.setUpPeerHosts(nodeCount);
+        this.host.joinNodesAndVerifyConvergence(nodeCount);
+
+        VerificationHost targetHost = this.host.getPeerHost();
+        URI exampleFactoryURI = UriUtils.buildUri(targetHost, ExampleService.FACTORY_LINK);
+
+        CommandLineArgumentParser.parseFromProperties(this);
+        if (this.serviceCount > stressTestServiceCountThreshold) {
+            targetHost.setStressTest(true);
+        }
+
+        this.host.testStart(this.serviceCount);
+        List<URI> exampleServices = new ArrayList<>();
+        for (int i = 0; i < this.serviceCount; i++) {
+            ExampleServiceState s = new ExampleServiceState();
+            s.name = "document" + i;
+            s.documentSelfLink = s.name;
+            exampleServices.add(UriUtils.buildUri(this.host.getUri(),
+                    ExampleService.FACTORY_LINK, s.documentSelfLink));
+            this.host.send(Operation.createPost(exampleFactoryURI)
+                    .setBody(s)
+                    .setCompletion(this.host.getCompletion()));
+        }
+        this.host.testWait();
+
+        verifyMultiNodeIndirectQueries(this.host);
+        verifyMultiNodeBroadcastQueries(targetHost);
+    }
+
+    private void verifyMultiNodeIndirectQueries(VerificationHost targetHost) throws Throwable {
+        Query query = Query.Builder.create()
+                .addKindFieldClause(ExampleServiceState.class)
+                .build();
+
+        QueryTask queryTask = QueryTask.Builder.create().setQuery(query).build();
+        queryTask.querySpec.options.add(QueryOption.EXPAND_CONTENT);
+        URI u = targetHost.createQueryTaskService(queryTask);
+
+        QueryTask finishedTaskState = targetHost.waitForQueryTaskCompletion(queryTask.querySpec,
+                this.serviceCount, 1, u, false, false);
+        this.host.log("%s %s", u, finishedTaskState.documentOwner);
+        assertTrue(!finishedTaskState.taskInfo.isDirect);
+    }
+
+    private void verifyMultiNodeBroadcastQueries(VerificationHost targetHost) throws Throwable {
+        verifyOnlySupportSortOnSelfLinkInBroadcast(targetHost);
+        verifyDirectQueryAllowedInBroadcast(targetHost);
+        nonpaginatedBroadcastQueryTasksOnExampleStates(targetHost,
+                EnumSet.of(QueryOption.EXPAND_CONTENT, QueryOption.BROADCAST));
+        paginatedBroadcastQueryTasksOnExampleStates(targetHost);
+        paginatedBroadcastQueryTasksWithoutMatching(targetHost);
+        paginatedBroadcastQueryTasksRepeatSamePage(targetHost);
+
+        // test with QueryOption.OWNER_SELECTION
+        nonpaginatedBroadcastQueryTasksOnExampleStates(targetHost,
+                EnumSet.of(QueryOption.EXPAND_CONTENT, QueryOption.BROADCAST, QueryOption.OWNER_SELECTION));
+
+        nonpaginatedBroadcastQueryTasksOnExampleStates(targetHost,
+                EnumSet.of(QueryOption.BROADCAST, QueryOption.OWNER_SELECTION));
+
+        // send forwardingService to collect and verify each node's local query result,
+        // so QueryOption.BROADCAST is not set here
+        lowLevelBroadcastQueryTasksWithOwnerSelection(targetHost,
+                EnumSet.of(QueryOption.EXPAND_CONTENT, QueryOption.OWNER_SELECTION));
     }
 
     @Test

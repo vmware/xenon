@@ -94,6 +94,8 @@ public class NettyHttpServiceClient implements ServiceClient {
 
     private boolean isStarted;
 
+    private static int requestPayloadSizeLimit = ServiceClient.REQUEST_PAYLOAD_SIZE_LIMIT;
+
     public static ServiceClient create(String userAgent,
             ExecutorService executor,
             ScheduledExecutorService scheduledExecutor) throws URISyntaxException {
@@ -144,6 +146,7 @@ public class NettyHttpServiceClient implements ServiceClient {
 
         this.channelPool.setThreadTag(buildThreadTag());
         this.channelPool.setThreadCount(Utils.DEFAULT_IO_THREAD_COUNT);
+
         if (this.host != null) {
             this.channelPool.setExecutor(this.executor);
         }
@@ -276,8 +279,8 @@ public class NettyHttpServiceClient implements ServiceClient {
 
 
     /**
-     * @see OperationOption.SEND_WITH_CALLBACK
-     * @param req
+     * @see OperationOption#SEND_WITH_CALLBACK
+     * @param op
      */
     private void sendWithCallback(Operation op) {
         // Queue operation, then send it to remote target. At some point later the remote host will
@@ -404,6 +407,16 @@ public class NettyHttpServiceClient implements ServiceClient {
         final Object originalBody = op.getBodyRaw();
         try {
             byte[] body = Utils.encodeBody(op);
+            if (op.getContentLength() > NettyHttpServiceClient.getRequestPayloadSizeLimit()) {
+                stopTracking(op);
+                Exception e = new IllegalArgumentException(
+                        "Content-Length " + op.getContentLength() +
+                        " is greater than max size allowed " + NettyHttpServiceClient.getRequestPayloadSizeLimit());
+                op.setBody(ServiceErrorResponse.create(e, Operation.STATUS_CODE_BAD_REQUEST));
+                op.fail(e);
+                return;
+            }
+
             String pathAndQuery;
             String path = op.getUri().getPath();
             String query = op.getUri().getRawQuery();
@@ -609,7 +622,7 @@ public class NettyHttpServiceClient implements ServiceClient {
         this.scheduledExecutor.schedule(() -> {
             startTracking(op);
             connect(op);
-        } , delaySeconds, TimeUnit.SECONDS);
+        }, delaySeconds, TimeUnit.SECONDS);
     }
 
     private static Operation clone(Operation op) {
@@ -819,5 +832,14 @@ public class NettyHttpServiceClient implements ServiceClient {
      */
     public void clearCookieJar() {
         this.cookieJar = new CookieJar();
+    }
+
+    public static int getRequestPayloadSizeLimit() {
+        return requestPayloadSizeLimit;
+    }
+
+    // Used for unit-testing
+    public static void setRequestPayloadSizeLimit(int limit) {
+        requestPayloadSizeLimit = limit;
     }
 }

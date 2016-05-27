@@ -51,6 +51,7 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import javax.net.ssl.SSLContext;
+import javax.xml.bind.DatatypeConverter;
 
 import io.netty.handler.ssl.util.InsecureTrustManagerFactory;
 import io.netty.handler.ssl.util.SelfSignedCertificate;
@@ -64,7 +65,6 @@ import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Operation.AuthorizationContext;
 import com.vmware.xenon.common.Operation.CompletionHandler;
 import com.vmware.xenon.common.Operation.OperationOption;
-import com.vmware.xenon.common.Operation.SocketContext;
 import com.vmware.xenon.common.Service;
 import com.vmware.xenon.common.Service.Action;
 import com.vmware.xenon.common.Service.ServiceOption;
@@ -410,7 +410,7 @@ public class VerificationHost extends ExampleServiceHost {
             throw new IllegalStateException("Use startTest on singleton, shared host instances");
         }
         if (this.context != null) {
-            throw new IllegalStateException("An test is already started");
+            throw new IllegalStateException("A test is already started");
         }
 
         String negative = properties != null && properties.contains(TestProperty.FORCE_FAILURE) ? "(NEGATIVE)"
@@ -465,7 +465,7 @@ public class VerificationHost extends ExampleServiceHost {
 
     public void testWait() throws Throwable {
         testWait(new Exception().getStackTrace()[1].getMethodName(),
-                this.timeoutSeconds);
+                    this.timeoutSeconds);
     }
 
     public void testWait(int timeoutSeconds) throws Throwable {
@@ -558,14 +558,15 @@ public class VerificationHost extends ExampleServiceHost {
     }
 
     public ServiceDocument buildMinimalTestState() {
+        return buildMinimalTestState(20);
+    }
+
+    public MinimalTestServiceState buildMinimalTestState(int bytes) {
         MinimalTestServiceState minState = new MinimalTestServiceState();
         minState.id = Utils.getNowMicrosUtc() + "";
-        StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < 25; i++) {
-            sb.append(Utils.getNowMicrosUtc());
-        }
-        minState.stringValue = sb.toString();
-
+        byte[] body = new byte[bytes];
+        new Random().nextBytes(body);
+        minState.stringValue = DatatypeConverter.printBase64Binary(body);
         return minState;
     }
 
@@ -1080,10 +1081,10 @@ public class VerificationHost extends ExampleServiceHost {
         final int maxByteCount = 256 * 1024;
         if (properties.contains(TestProperty.LARGE_PAYLOAD)) {
             Random r = new Random();
-            int byteCount = SocketContext.getMaxRequestSize() / 4;
+            int byteCount = NettyHttpServiceClient.getRequestPayloadSizeLimit() / 4;
             if (properties.contains(TestProperty.BINARY_PAYLOAD)) {
                 if (properties.contains(TestProperty.FORCE_FAILURE)) {
-                    byteCount = SocketContext.getMaxRequestSize() * 2;
+                    byteCount = NettyHttpServiceClient.getRequestPayloadSizeLimit() * 2;
                 } else {
                     // make sure we do not blow memory if max request size is high
                     byteCount = Math.min(maxByteCount, byteCount);

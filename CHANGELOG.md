@@ -2,6 +2,9 @@
 
 ## 0.8.2-SNAPSHOT
 
+* Add new JVM properties in ServiceClient and ServiceRequestListener interfaces
+  for maximum request and response payload size limits. 
+
 * Remove ServiceClient.sendWithCallback and ServiceHost.sendRequestWithCallback.
   Functionality is available through OperationOption.SEND_WITH_CALLBACK,
   symmetric to HTTP/2 functionality that is toggled through CONNECTION_SHARING

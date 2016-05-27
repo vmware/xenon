@@ -33,6 +33,7 @@ import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Service;
 import com.vmware.xenon.common.ServiceClient;
 import com.vmware.xenon.common.ServiceHost;
+import com.vmware.xenon.common.ServiceRequestListener;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
 import com.vmware.xenon.common.test.MinimalTestServiceState;
@@ -50,7 +51,9 @@ public class NettyHttp2Test {
     private VerificationHost host;
 
     // Large operation body size used in basicHttp test.
-    public int largeBodySize = 10000;
+    // Body size is marked larger than the MAX_FRAME_SIZE to
+    // verify that the channel can handle frame aggregation correctly.
+    public int largeBodySize = 100000;
 
     // Number of GETs done in basicHttp2()
     public int requestCount = 10;
@@ -60,8 +63,9 @@ public class NettyHttp2Test {
 
     @BeforeClass
     public static void setUpOnce() throws Exception {
+        NettyHttpServiceClient.setRequestPayloadSizeLimit(1024 * 512);
+        NettyHttpListener.setResponsePayloadSizeLimit(1024 * 512);
 
-        NettyChannelContext.setMaxRequestSize(1024 * 512);
         HOST = VerificationHost.create(0);
         CommandLineArgumentParser.parseFromProperties(HOST);
         HOST.setMaintenanceIntervalMicros(
@@ -86,6 +90,9 @@ public class NettyHttp2Test {
     @AfterClass
     public static void tearDown() {
         HOST.tearDown();
+
+        NettyHttpServiceClient.setRequestPayloadSizeLimit(ServiceClient.REQUEST_PAYLOAD_SIZE_LIMIT);
+        NettyHttpListener.setResponsePayloadSizeLimit(ServiceRequestListener.RESPONSE_PAYLOAD_SIZE_LIMIT);
     }
 
     @After

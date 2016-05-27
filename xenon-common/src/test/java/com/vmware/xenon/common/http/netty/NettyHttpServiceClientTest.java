@@ -49,6 +49,7 @@ import com.vmware.xenon.common.Operation.OperationOption;
 import com.vmware.xenon.common.Service;
 import com.vmware.xenon.common.ServiceClient;
 import com.vmware.xenon.common.ServiceDocument;
+import com.vmware.xenon.common.ServiceRequestListener;
 import com.vmware.xenon.common.StatefulService;
 import com.vmware.xenon.common.StatelessService;
 import com.vmware.xenon.common.UriUtils;
@@ -82,8 +83,9 @@ public class NettyHttpServiceClientTest {
 
     @BeforeClass
     public static void setUpOnce() throws Exception {
+        NettyHttpServiceClient.setRequestPayloadSizeLimit(1024 * 512);
+        NettyHttpListener.setResponsePayloadSizeLimit(1024 * 512);
 
-        NettyChannelContext.setMaxRequestSize(1024 * 512);
         HOST = VerificationHost.create(0);
         CommandLineArgumentParser.parseFromProperties(HOST);
         HOST.setMaintenanceIntervalMicros(
@@ -115,6 +117,9 @@ public class NettyHttpServiceClientTest {
     public static void tearDown() {
         HOST.log("final teardown");
         HOST.tearDown();
+
+        NettyHttpServiceClient.setRequestPayloadSizeLimit(ServiceClient.REQUEST_PAYLOAD_SIZE_LIMIT);
+        NettyHttpListener.setResponsePayloadSizeLimit(ServiceRequestListener.RESPONSE_PAYLOAD_SIZE_LIMIT);
     }
 
     @Before
@@ -527,6 +532,26 @@ public class NettyHttpServiceClientTest {
                 EnumSet.of(TestProperty.FORCE_REMOTE, TestProperty.LARGE_PAYLOAD,
                         TestProperty.BINARY_PAYLOAD, TestProperty.FORCE_FAILURE),
                 services);
+
+        // create a PUT request larger than the allowed size of a request and verify that it fails.
+        ServiceDocument largeState = this.host.buildMinimalTestState(
+                NettyHttpServiceClient.getRequestPayloadSizeLimit() + 100);
+        this.host.testStart(1);
+        Operation put = Operation.createPut(services.get(0).getUri())
+                .forceRemote()
+                .setBody(largeState)
+                .setCompletion((o, e) -> {
+                    if (e != null && e instanceof IllegalArgumentException &&
+                            e.getMessage().contains("is greater than max size allowed")) {
+                        this.host.completeIteration();
+                        return;
+                    }
+                    this.host.failIteration(
+                            new IllegalStateException("Operation was expected to fail because " +
+                            "op.getContentLength() is more than allowed"));
+                });
+        this.host.send(put);
+        this.host.testWait();
     }
 
     @Test
