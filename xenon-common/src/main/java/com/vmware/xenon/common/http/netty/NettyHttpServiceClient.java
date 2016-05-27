@@ -404,6 +404,16 @@ public class NettyHttpServiceClient implements ServiceClient {
         final Object originalBody = op.getBodyRaw();
         try {
             byte[] body = Utils.encodeBody(op);
+            if (op.getContentLength() > SocketContext.getMaxClientRequestSize()) {
+                stopTracking(op);
+                Exception e = new IllegalArgumentException(
+                        "Content-Length " + op.getContentLength() +
+                        " is greater than max size allowed " + SocketContext.getMaxClientRequestSize());
+                op.setBody(ServiceErrorResponse.create(e, Operation.STATUS_CODE_BAD_REQUEST));
+                op.fail(e);
+                return;
+            }
+
             String pathAndQuery;
             String path = op.getUri().getPath();
             String query = op.getUri().getRawQuery();
@@ -609,7 +619,7 @@ public class NettyHttpServiceClient implements ServiceClient {
         this.scheduledExecutor.schedule(() -> {
             startTracking(op);
             connect(op);
-        } , delaySeconds, TimeUnit.SECONDS);
+        }, delaySeconds, TimeUnit.SECONDS);
     }
 
     private static Operation clone(Operation op) {

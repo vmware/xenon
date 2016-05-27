@@ -94,6 +94,7 @@ public class TestQueryTaskService {
         if (this.host != null) {
             return;
         }
+
         this.host = VerificationHost.create(0);
         CommandLineArgumentParser.parseFromProperties(this.host);
         CommandLineArgumentParser.parseFromProperties(this);
@@ -500,6 +501,53 @@ public class TestQueryTaskService {
             break;
         }
         return newState;
+    }
+
+    @Test
+    public void multiNodeQueryTasks() throws Throwable {
+        final int nodeCount = 3;
+        final int stressTestServiceCountThreshold = 100;
+
+        setUpHost();
+
+        this.host.setUpPeerHosts(nodeCount);
+        this.host.joinNodesAndVerifyConvergence(nodeCount);
+
+        VerificationHost targetHost = this.host.getPeerHost();
+        URI exampleFactoryURI = UriUtils.buildUri(targetHost, ExampleService.FACTORY_LINK);
+
+        CommandLineArgumentParser.parseFromProperties(this);
+        if (this.serviceCount > stressTestServiceCountThreshold) {
+            targetHost.setStressTest(true);
+        }
+
+        this.host.testStart(this.serviceCount);
+        List<URI> exampleServices = new ArrayList<>();
+        for (int i = 0; i < this.serviceCount; i++) {
+            ExampleServiceState s = new ExampleServiceState();
+            s.name = "document" + i;
+            s.documentSelfLink = s.name;
+            exampleServices.add(UriUtils.buildUri(this.host.getUri(),
+                    ExampleService.FACTORY_LINK, s.documentSelfLink));
+            this.host.send(Operation.createPost(exampleFactoryURI)
+                    .setBody(s)
+                    .setCompletion(this.host.getCompletion()));
+        }
+        this.host.testWait();
+
+        // Start with a simple, two clause boolean query
+        Query query = Query.Builder.create()
+                .addKindFieldClause(ExampleServiceState.class)
+                .build();
+
+        QueryTask queryTask = QueryTask.Builder.create().setQuery(query).build();
+        queryTask.querySpec.options.add(QueryOption.EXPAND_CONTENT);
+        URI u = this.host.createQueryTaskService(queryTask);
+
+        QueryTask finishedTaskState = this.host.waitForQueryTaskCompletion(queryTask.querySpec,
+                this.serviceCount, 1, u, false, false);
+        this.host.log("%s %s", u, finishedTaskState.documentOwner);
+        assertTrue(!finishedTaskState.taskInfo.isDirect);
     }
 
     @Test

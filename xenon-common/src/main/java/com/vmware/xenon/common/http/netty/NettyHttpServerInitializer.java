@@ -140,7 +140,7 @@ public class NettyHttpServerInitializer extends ChannelInitializer<SocketChannel
         // DefaultHttp2Connection is for client or server. True means "server".
         Http2Connection connection = new DefaultHttp2Connection(true);
         InboundHttp2ToHttpAdapter inboundAdapter = new InboundHttp2ToHttpAdapterBuilder(connection)
-                .maxContentLength(NettyChannelContext.MAX_CHUNK_SIZE)
+                .maxContentLength(NettyChannelContext.getMaxRequestSize())
                 .propagateSettings(false)
                 .build();
         DelegatingDecompressorFrameListener frameListener = new DelegatingDecompressorFrameListener(

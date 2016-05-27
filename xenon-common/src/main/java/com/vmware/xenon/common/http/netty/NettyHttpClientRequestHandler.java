@@ -343,6 +343,17 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
     private void writeResponseUnsafe(ChannelHandlerContext ctx, Operation request, Integer streamId) {
         ByteBuf bodyBuffer = null;
         FullHttpResponse response;
+
+        // if some service returns a response that is greater than the maximum allowed size,
+        // we return an INTERNAL_SERVER_ERROR.
+        if (request.getContentLength() > Operation.SocketContext.getMaxRequestSize()) {
+            String errorMessage = "Content-Length " + request.getContentLength()
+                    + " is greater than max size allowed " + Operation.SocketContext.getMaxClientRequestSize();
+            this.host.log(Level.SEVERE, errorMessage);
+            writeInternalServerError(ctx, request, streamId, errorMessage);
+            return;
+        }
+
         try {
             byte[] data = Utils.encodeBody(request);
             if (data != null) {
@@ -351,24 +362,7 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
         } catch (Throwable e1) {
             // Note that this is a program logic error - some service isn't properly checking or setting Content-Type
             this.host.log(Level.SEVERE, "Error encoding body: %s", Utils.toString(e1));
-            byte[] data;
-            try {
-                data = ("Error encoding body: " + e1.getMessage()).getBytes(Utils.CHARSET);
-            } catch (UnsupportedEncodingException ueex) {
-                this.exceptionCaught(ctx, ueex);
-                return;
-            }
-            response = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1,
-                    HttpResponseStatus.INTERNAL_SERVER_ERROR,
-                    Unpooled.wrappedBuffer(data), false, false);
-            if (streamId != null) {
-                response.headers().setInt(HttpConversionUtil.ExtensionHeaderNames.STREAM_ID.text(),
-                        streamId);
-            }
-            response.headers().set(HttpHeaderNames.CONTENT_TYPE, Operation.MEDIA_TYPE_TEXT_HTML);
-            response.headers().setInt(HttpHeaderNames.CONTENT_LENGTH,
-                    response.content().readableBytes());
-            writeResponse(ctx, request, response);
+            writeInternalServerError(ctx, request, streamId, "Error encoding body: " + e1.getMessage());
             return;
         }
 
@@ -425,6 +419,28 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
         }
 
         writeResponse(ctx, request, response);
+    }
+
+    private void writeInternalServerError(ChannelHandlerContext ctx, Operation request, Integer streamId, String err) {
+        byte[] data;
+        try {
+            data = err.getBytes(Utils.CHARSET);
+        } catch (UnsupportedEncodingException ueex) {
+            this.exceptionCaught(ctx, ueex);
+            return;
+        }
+
+        FullHttpResponse response = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1,
+                HttpResponseStatus.INTERNAL_SERVER_ERROR,
+                Unpooled.wrappedBuffer(data), false, false);
+        if (streamId != null) {
+            response.headers().setInt(HttpConversionUtil.ExtensionHeaderNames.STREAM_ID.text(),
+                    streamId);
+        }
+        response.headers().set(HttpHeaderNames.CONTENT_TYPE, Operation.MEDIA_TYPE_TEXT_HTML);
+        response.headers().setInt(HttpHeaderNames.CONTENT_LENGTH, response.content().readableBytes());
+        writeResponse(ctx, request, response);
+        return;
     }
 
     @Override

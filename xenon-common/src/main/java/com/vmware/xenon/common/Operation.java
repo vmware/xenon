@@ -74,9 +74,13 @@ public class Operation implements Cloneable {
             throw new IllegalStateException();
         }
 
-        private static int maxRequestSize = 1024 * 1024 * 16;
+        public static final int DEFAULT_MAX_REQUEST_SIZE = 1024 * 1024 * 16;
 
-        private static final int MAX_CLIENT_REQUEST_SIZE = 1024 * 1024 * 128;
+        public static final int DEFAULT_MAX_CLIENT_REQUEST_SIZE = 1024 * 1024 * 128;
+
+        private static int maxRequestSize = DEFAULT_MAX_REQUEST_SIZE;
+
+        private static int maxClientRequestSize = DEFAULT_MAX_CLIENT_REQUEST_SIZE;
 
         /**
          * Set maximum request/response size for socket I/O.
@@ -91,8 +95,12 @@ public class Operation implements Cloneable {
             return maxRequestSize;
         }
 
+        public static void setMaxClientRequestSize(int max) {
+            maxClientRequestSize = max;
+        }
+
         public static int getMaxClientRequestSize() {
-            return MAX_CLIENT_REQUEST_SIZE;
+            return maxClientRequestSize;
         }
     }
 

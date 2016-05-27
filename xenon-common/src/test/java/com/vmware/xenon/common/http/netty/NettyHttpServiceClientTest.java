@@ -84,6 +84,8 @@ public class NettyHttpServiceClientTest {
     public static void setUpOnce() throws Exception {
 
         NettyChannelContext.setMaxRequestSize(1024 * 512);
+        NettyChannelContext.setMaxClientRequestSize(1024 * 512);
+
         HOST = VerificationHost.create(0);
         CommandLineArgumentParser.parseFromProperties(HOST);
         HOST.setMaintenanceIntervalMicros(
@@ -115,6 +117,8 @@ public class NettyHttpServiceClientTest {
     public static void tearDown() {
         HOST.log("final teardown");
         HOST.tearDown();
+        NettyChannelContext.setMaxRequestSize(NettyChannelContext.DEFAULT_MAX_REQUEST_SIZE);
+        NettyChannelContext.setMaxClientRequestSize(NettyChannelContext.DEFAULT_MAX_CLIENT_REQUEST_SIZE);
     }
 
     @Before
@@ -527,6 +531,25 @@ public class NettyHttpServiceClientTest {
                 EnumSet.of(TestProperty.FORCE_REMOTE, TestProperty.LARGE_PAYLOAD,
                         TestProperty.BINARY_PAYLOAD, TestProperty.FORCE_FAILURE),
                 services);
+
+        // create a PUT request larger than the allowed size of a request and verify that it fails.
+        ServiceDocument largeState = this.host.buildMinimalTestState(
+                Operation.SocketContext.getMaxClientRequestSize() * 2);
+        this.host.testStart(1);
+        Operation put = Operation.createPut(services.get(0).getUri())
+                .forceRemote()
+                .setBody(largeState)
+                .setCompletion((o, e) -> {
+                    if (e != null && e instanceof IllegalArgumentException) {
+                        this.host.completeIteration();
+                        return;
+                    }
+                    this.host.failIteration(
+                            new IllegalStateException("Operation was expected to fail because " +
+                            "op.getContentLength() is more than allowed"));
+                });
+        this.host.send(put);
+        this.host.testWait();
     }
 
     @Test
