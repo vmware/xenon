@@ -607,14 +607,29 @@ public class TestODataQueryService extends BasicReusableHostTestCase {
         document3.keyValues.put("Q", "q");
         postExample(document3);
 
-        String queryString1 = "$filter=name eq MAPPING4 or keyValues.P ne P";
+        // Always use 'and' in combination with ne in a sub-clause with OR.
+        // 'name eq MAPPING4 or keyValues.P ne P'
+        // should be written as
+        // name eq MAPPING4 or (name eq MAPPING* and keyValues.P ne P)
+        // TO achieve A or Not B write A or (C Not B), choose C such that it is always true.
+        // The following example returns all documents
+        // name eq MAPPING4 fetches doc1, doc2
+        // (name eq MAPPING* and keyValues.P ne P) fetches doc1 and doc3
+        // The OR clause adds the results and returns doc1, doc2, doc3
+        String queryString1 = "$filter=name eq MAPPING4 or (name eq MAPPING* and keyValues.P ne P)";
 
         Map<String, Object> out1 = doFactoryServiceQuery(queryString1, false);
         assertNotNull(out1);
-        assertEquals(1, out1.keySet().size());
+        assertEquals(3, out1.keySet().size());
         ExampleService.ExampleServiceState outState1 = Utils.fromJson(
                 out1.get(document1.documentSelfLink), ExampleService.ExampleServiceState.class);
         assertTrue(outState1.name.equals(document1.name));
+        ExampleService.ExampleServiceState outState2 = Utils.fromJson(
+                out1.get(document2.documentSelfLink), ExampleService.ExampleServiceState.class);
+        assertTrue(outState2.name.equals(document2.name));
+        ExampleService.ExampleServiceState outState3 = Utils.fromJson(
+                out1.get(document3.documentSelfLink), ExampleService.ExampleServiceState.class);
+        assertTrue(outState3.name.equals(document3.name));
     }
 
     private void testAndWithNestedORQuery() throws Throwable {
