@@ -28,27 +28,27 @@ public class ODataUtils {
      * query parameters
      */
     public static QueryTask toQuery(Operation op) {
-        String oDataFilterParam = UriUtils.getODataFilterParamValue(op.getUri());
-        if (oDataFilterParam == null) {
-            op.fail(new IllegalArgumentException("filter is required: " + op.getUri().getQuery()));
-            return null;
-        }
-
-        Query q = new ODataQueryVisitor().toQuery(oDataFilterParam);
-
-        Integer top = UriUtils.getODataTopParamValue(op.getUri());
-        Integer skip = UriUtils.getODataSkipParamValue(op.getUri());
-        Integer limit = UriUtils.getODataLimitParamValue(op.getUri());
-        boolean count = UriUtils.getODataCountParamValue(op.getUri());
-        UriUtils.ODataOrderByTuple orderBy = UriUtils.getODataOrderByParamValue(op.getUri());
 
         QueryTask task = new QueryTask();
         task.setDirect(true);
         task.querySpec = new QueryTask.QuerySpecification();
-        task.querySpec.query.addBooleanClause(q);
 
-        task.querySpec.options.add(QueryOption.EXPAND_CONTENT);
+        boolean count = UriUtils.getODataCountParamValue(op.getUri());
+        if (count) {
+            task.querySpec.options.add(QueryOption.COUNT);
+        } else {
+            task.querySpec.options.add(QueryOption.EXPAND_CONTENT);
+        }
 
+        String filter = UriUtils.getODataFilterParamValue(op.getUri());
+        if (filter != null) {
+            Query q = new ODataQueryVisitor().toQuery(filter);
+            if (q != null) {
+                task.querySpec.query.addBooleanClause(q);
+            }
+        }
+
+        UriUtils.ODataOrderByTuple orderBy = UriUtils.getODataOrderByParamValue(op.getUri());
         if (orderBy != null) {
             if (count) {
                 op.fail(new IllegalArgumentException(UriUtils.URI_PARAM_ODATA_COUNT
@@ -75,6 +75,7 @@ public class ODataUtils {
             task.querySpec.sortTerm.propertyName = orderBy.propertyName;
         }
 
+        Integer top = UriUtils.getODataTopParamValue(op.getUri());
         if (top != null) {
             if (count) {
                 op.fail(new IllegalArgumentException(UriUtils.URI_PARAM_ODATA_COUNT
@@ -85,12 +86,14 @@ public class ODataUtils {
             task.querySpec.resultLimit = top;
         }
 
+        Integer skip = UriUtils.getODataSkipParamValue(op.getUri());
         if (skip != null) {
             op.fail(new IllegalArgumentException(
                     UriUtils.URI_PARAM_ODATA_SKIP + " is not supported, see skipto"));
             return null;
         }
 
+        Integer limit = UriUtils.getODataLimitParamValue(op.getUri());
         if (limit != null && limit > 0) {
             if (count) {
                 op.fail(new IllegalArgumentException(UriUtils.URI_PARAM_ODATA_COUNT
@@ -103,17 +106,6 @@ public class ODataUtils {
                 return null;
             }
             task.querySpec.resultLimit = limit;
-        }
-
-        if (count) {
-            task.querySpec.options.remove(QueryOption.EXPAND_CONTENT);
-            task.querySpec.options.add(QueryOption.COUNT);
-        }
-
-        if (q == null) {
-            op.fail(new IllegalArgumentException(UriUtils.URI_PARAM_ODATA_FILTER + " is required"
-                    + op.getUri().getQuery()));
-            return null;
         }
 
         return task;

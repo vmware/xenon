@@ -645,15 +645,17 @@ public abstract class FactoryService extends StatelessService {
     }
 
     private void handleGetCompletion(Operation op) {
+        String query = op.getUri().getQuery();
         String oDataFilter = UriUtils.getODataFilterParamValue(op.getUri());
-        if (oDataFilter != null) {
-            handleGetOdataCompletion(op, oDataFilter);
+        boolean expand = UriUtils.hasODataExpandParamValue(op.getUri());
+        if (query == null || (oDataFilter == null && expand)) {
+            completeGetWithQuery(op, this.childOptions);
         } else {
-            completeGetWithQuery(this, op, this.childOptions);
+            handleGetOdataCompletion(op);
         }
     }
 
-    private void handleGetOdataCompletion(Operation op, String oDataFilter) {
+    private void handleGetOdataCompletion(Operation op) {
         QueryTask task = ODataUtils.toQuery(op);
         if (task == null) {
             return;
@@ -677,15 +679,14 @@ public abstract class FactoryService extends StatelessService {
                 }));
     }
 
-    public static void completeGetWithQuery(Service s, Operation op,
-            EnumSet<ServiceOption> caps) {
+    public void completeGetWithQuery(Operation op, EnumSet<ServiceOption> caps) {
         boolean doExpand = false;
         if (op.getUri().getQuery() != null) {
             doExpand = UriUtils.hasODataExpandParamValue(op.getUri());
         }
 
-        URI u = UriUtils.buildDocumentQueryUri(s.getHost(),
-                UriUtils.buildUriPath(s.getSelfLink(), UriUtils.URI_WILDCARD_CHAR),
+        URI u = UriUtils.buildDocumentQueryUri(getHost(),
+                UriUtils.buildUriPath(getSelfLink(), UriUtils.URI_WILDCARD_CHAR),
                 doExpand,
                 false,
                 caps != null ? caps : EnumSet.of(ServiceOption.NONE));
@@ -699,7 +700,7 @@ public abstract class FactoryService extends StatelessService {
                     op.setBodyNoCloning(o.getBodyRaw()).complete();
                 });
 
-        s.sendRequest(query);
+        sendRequest(query);
     }
 
     public void handleOptions(Operation op) {
