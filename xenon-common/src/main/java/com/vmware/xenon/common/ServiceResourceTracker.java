@@ -294,6 +294,10 @@ class ServiceResourceTracker {
             if (existing == null) {
                 pauseServiceCount++;
             }
+            if (!cacheCleared) {
+                // if we're going to pause it, clear state from cache if not already cleared
+                clearCachedServiceState(service.getSelfLink(), null);
+            }
 
             String factoryPath = UriUtils.getParentPath(service.getSelfLink());
             if (factoryPath != null) {
@@ -369,8 +373,8 @@ class ServiceResourceTracker {
                         }
                     }));
         }
-        this.host.log(Level.INFO, "Paused %d services, attached: %d", servicePauseCount,
-                hostState.serviceCount);
+        this.host.log(Level.INFO, "Paused %d services, attached: %d, cached: %d", servicePauseCount,
+                hostState.serviceCount, this.cachedServiceStates.size());
     }
 
     private void resumeService(String path, Service resumedService) {
