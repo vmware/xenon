@@ -4449,7 +4449,7 @@ public class ServiceHost implements ServiceRequestSender {
         if (this.transactionService != null) {
             state.documentTransactionId = op.getTransactionId();
         }
-        state.documentUpdateAction = op.getAction().toString();
+        state.documentUpdateAction = op.getAction().name();
 
         if (!isServiceIndexed(s)) {
             cacheServiceState(s, state, op);

@@ -1361,6 +1361,9 @@ public class TestNodeGroupService {
             totalOperations += this.serviceCount;
 
             if (this.testDurationSeconds == 0) {
+                // various validation tests, executed just once, ignored in long running test
+                this.host.doExampleServiceUpdateAndQueryByVersion(this.host.getPeerHostUri(),
+                        (int) this.serviceCount);
                 verifyReplicatedForcedPostAfterDelete(childStates);
                 verifyInstantNotFoundFailureOnBadLinks();
                 verifyReplicatedIdempotentPost(childStates);

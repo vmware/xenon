@@ -395,6 +395,17 @@ public class UriUtils {
                 selfLink, doExpand, includeDeleted, cap);
     }
 
+    public static URI buildDefaultDocumentQueryUri(URI hostUri,
+            String selfLink,
+            boolean doExpand,
+            boolean includeDeleted,
+            ServiceOption cap) {
+
+        URI indexUri = UriUtils.buildUri(hostUri, ServiceUriPaths.CORE_DOCUMENT_INDEX);
+        return buildIndexQueryUri(indexUri,
+                selfLink, doExpand, includeDeleted, cap);
+    }
+
     public static URI buildOperationTracingQueryUri(ServiceHost host,
             String selfLink,
             boolean doExpand,

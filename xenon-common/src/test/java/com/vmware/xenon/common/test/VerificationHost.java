@@ -1003,6 +1003,146 @@ public class VerificationHost extends ExampleServiceHost {
         return this.getServiceState(null, ServiceDocumentQueryResult.class, factoryUri);
     }
 
+    public void doExampleServiceUpdateAndQueryByVersion(URI hostUri, int serviceCount)
+            throws Throwable {
+        Consumer<Operation> bodySetter = (o) -> {
+            ExampleServiceState s = new ExampleServiceState();
+            s.name = UUID.randomUUID().toString();
+            o.setBody(s);
+        };
+        Map<URI, ExampleServiceState> services = doFactoryChildServiceStart(null,
+                serviceCount,
+                ExampleServiceState.class, bodySetter,
+                UriUtils.buildUri(hostUri, ExampleService.FACTORY_LINK));
+
+        Map<URI, ExampleServiceState> statesBeforeUpdate = getServiceState(null,
+                ExampleServiceState.class, services.keySet());
+
+        for (ExampleServiceState state : statesBeforeUpdate.values()) {
+            assertEquals(state.documentVersion, 0);
+            queryDocumentIndexByVersionAndVerify(hostUri, state.documentSelfLink, Action.POST, 0L,
+                    0L);
+            queryDocumentIndexByVersionAndVerify(hostUri, state.documentSelfLink, Action.POST, null,
+                    0L);
+            queryDocumentIndexByVersionAndVerify(hostUri, state.documentSelfLink, Action.POST, 1L,
+                    null);
+            queryDocumentIndexByVersionAndVerify(hostUri, state.documentSelfLink, Action.POST, 10L,
+                    null);
+        }
+
+        ExampleServiceState body = new ExampleServiceState();
+        body.name = UUID.randomUUID().toString();
+        doServiceUpdates(services.keySet(), Action.PUT, body);
+        Map<URI, ExampleServiceState> statesAfterPut = getServiceState(null,
+                ExampleServiceState.class, services.keySet());
+
+        for (ExampleServiceState state : statesAfterPut.values()) {
+            assertEquals(state.documentVersion, 1);
+            queryDocumentIndexByVersionAndVerify(hostUri, state.documentSelfLink, Action.POST, 0L,
+                    0L);
+            queryDocumentIndexByVersionAndVerify(hostUri, state.documentSelfLink, Action.PUT, 1L,
+                    1L);
+            queryDocumentIndexByVersionAndVerify(hostUri, state.documentSelfLink, Action.PUT, null,
+                    1L);
+            queryDocumentIndexByVersionAndVerify(hostUri, state.documentSelfLink, Action.PUT, 10L,
+                    null);
+        }
+
+        doServiceUpdates(services.keySet(), Action.DELETE, body);
+
+        for (ExampleServiceState state : statesAfterPut.values()) {
+            queryDocumentIndexByVersionAndVerify(hostUri, state.documentSelfLink, Action.POST, 0L,
+                    0L);
+            queryDocumentIndexByVersionAndVerify(hostUri, state.documentSelfLink, Action.PUT, 1L,
+                    1L);
+            queryDocumentIndexByVersionAndVerify(hostUri, state.documentSelfLink, Action.DELETE, 2L,
+                    2L);
+            queryDocumentIndexByVersionAndVerify(hostUri, state.documentSelfLink, Action.DELETE,
+                    null, 2L);
+            queryDocumentIndexByVersionAndVerify(hostUri, state.documentSelfLink, Action.DELETE,
+                    10L, null);
+        }
+    }
+
+    private void doServiceUpdates(Collection<URI> serviceUris, Action action, ServiceDocument body)
+            throws Throwable {
+        TestContext ctx = testCreate(serviceUris.size());
+        for (URI u : serviceUris) {
+            Operation update = Operation.createPost(u)
+                    .setAction(action)
+                    .setBody(body)
+                    .setCompletion(ctx.getCompletion());
+            send(update);
+        }
+        testWait(ctx);
+    }
+
+    private void queryDocumentIndexByVersionAndVerify(URI hostUri, String selfLink,
+            Action expectedAction,
+            Long version,
+            Long latestVersion)
+                    throws Throwable {
+
+        URI localQueryUri = UriUtils.buildDefaultDocumentQueryUri(
+                hostUri,
+                selfLink,
+                false,
+                true,
+                ServiceOption.PERSISTENCE);
+
+        if (version != null) {
+            localQueryUri = UriUtils.appendQueryParam(localQueryUri,
+                    ServiceDocument.FIELD_NAME_VERSION,
+                    Long.toString(version));
+        }
+
+        TestContext ctx = testCreate(1);
+        Operation remoteGet = Operation
+                .createGet(localQueryUri)
+                .setCompletion((o, e) -> {
+                    if (e != null) {
+                        ctx.failIteration(
+                                new IllegalStateException("Could not query document-index"));
+                        return;
+                    }
+
+                    if (latestVersion == null) {
+                        if (o.hasBody()) {
+                            ctx.failIteration(new IllegalStateException(
+                                    "Document not expected"));
+                            return;
+                        }
+                        ctx.completeIteration();
+                        return;
+                    }
+
+                    ServiceDocument result = o.getBody(ServiceDocument.class);
+                    Long expectedVersion = version;
+
+                    if (version == null) {
+                        expectedVersion = latestVersion;
+                    }
+
+                    if (result.documentVersion != expectedVersion.intValue()) {
+                        ctx.failIteration(new IllegalStateException(
+                                "Invalid document version returned"));
+                        return;
+                    }
+
+                    if (!expectedAction.name().equals(result.documentUpdateAction)) {
+                        ctx.failIteration(new IllegalStateException(
+                                "Invalid document update action returned:"
+                                        + result.documentUpdateAction));
+                        return;
+                    }
+
+                    ctx.completeIteration();
+                });
+
+        send(remoteGet);
+        testWait(ctx);
+    }
+
     public <T> void doPutPerService(List<Service> services)
             throws Throwable {
         doPutPerService(EnumSet.noneOf(TestProperty.class), services);

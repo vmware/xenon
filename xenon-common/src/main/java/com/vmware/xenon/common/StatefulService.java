@@ -698,6 +698,7 @@ public class StatefulService implements Service {
                 }
 
                 linkedState.documentSelfLink = this.context.selfLink;
+                linkedState.documentUpdateAction = op.getAction().name();
                 if (linkedState.documentKind == null) {
                     linkedState.documentKind = Utils.buildKind(this.context.stateType);
                 }
