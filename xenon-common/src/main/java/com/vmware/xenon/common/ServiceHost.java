@@ -1234,13 +1234,16 @@ public class ServiceHost implements ServiceRequestSender {
         coreServices.add(new ODataQueryService());
 
         // The framework supports two phase asynchronous start to avoid explicit
-        // ordering of services. However, core services must be started before anyone else
+        // ordering of services. However, core query services must be started before anyone else
+        // since factories with persisted services use queries to enumerate their children.
         if (this.documentIndexService != null) {
             addPrivilegedService(this.documentIndexService.getClass());
-            coreServices.add(this.documentIndexService);
             if (this.documentIndexService instanceof LuceneDocumentIndexService) {
-                coreServices.add(new LuceneQueryTaskFactoryService());
-                coreServices.add(new LuceneLocalQueryTaskFactoryService());
+                Service[] queryServiceArray = new Service[] {
+                        this.documentIndexService,
+                        new LuceneQueryTaskFactoryService(),
+                        new LuceneLocalQueryTaskFactoryService() };
+                startCoreServicesSynchronously(queryServiceArray);
             }
         }
 
