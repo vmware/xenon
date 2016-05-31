@@ -94,6 +94,8 @@ public class NettyChannelContext extends SocketContext {
     // We track the largest stream ID seen, so we know when the connection is exhausted
     private int largestStreamId = 0;
 
+    private boolean isPoolStopping;
+
     public NettyChannelContext(NettyChannelGroupKey key, Protocol protocol) {
         this.key = key;
         this.protocol = protocol;
@@ -106,11 +108,15 @@ public class NettyChannelContext extends SocketContext {
 
     public NettyChannelContext setChannel(Channel c) {
         this.channel = c;
-        this.channel.closeFuture().addListener(future -> logger.info(
-                "Channel closed" +
-                ", ChannelId:" + this.channel.id() +
-                ", Protocol:" + this.protocol +
-                ", NodeChannelGroupKey:" + this.key));
+        this.channel.closeFuture().addListener(future -> {
+            if (this.isPoolStopping) {
+                return;
+            }
+            logger.info("Channel closed" +
+                    ", ChannelId:" + this.channel.id() +
+                    ", Protocol:" + this.protocol +
+                    ", NodeChannelGroupKey:" + this.key);
+        });
         return this;
     }
 
@@ -226,6 +232,11 @@ public class NettyChannelContext extends SocketContext {
     public void writeHttpRequest(Object request) {
         this.channel.writeAndFlush(request);
         updateLastUseTime();
+    }
+
+    public void close(boolean isShutdown) {
+        this.isPoolStopping = isShutdown;
+        close();
     }
 
     @Override

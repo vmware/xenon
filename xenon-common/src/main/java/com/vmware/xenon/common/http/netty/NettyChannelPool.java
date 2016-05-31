@@ -609,10 +609,10 @@ public class NettyChannelPool {
             for (NettyChannelGroup g : this.channelGroups.values()) {
                 synchronized (g) {
                     for (NettyChannelContext c : g.availableChannels) {
-                        c.close();
+                        c.close(true);
                     }
                     for (NettyChannelContext c : g.inUseChannels) {
-                        c.close();
+                        c.close(true);
                     }
                     g.availableChannels.clear();
                     g.inUseChannels.clear();
