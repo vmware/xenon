@@ -505,6 +505,8 @@ public class TestODataQueryService extends BasicReusableHostTestCase {
         testOrWithNestedAndQuery();
         testNEAndNEQuery();
         testNEOrNEQuery();
+        testANYQuery();
+        testALLQuery();
     }
 
     private void testSimpleOrQuery() throws Throwable {
@@ -771,6 +773,58 @@ public class TestODataQueryService extends BasicReusableHostTestCase {
         ExampleService.ExampleServiceState outState1 = Utils.fromJson(
                 out.get(document1.documentSelfLink), ExampleService.ExampleServiceState.class);
         assertTrue(outState1.name.equals(document1.name));
+    }
+
+    private void testANYQuery() throws Throwable {
+        this.host.deleteAllChildServices(UriUtils.buildUri(this.host, ExampleService.FACTORY_LINK));
+        ExampleService.ExampleServiceState document1 = new ExampleService.ExampleServiceState();
+        document1.name = "document1";
+        document1.tags.add("STRING ONE");
+        document1.tags.add("STRING TWO");
+        postExample(document1);
+
+        ExampleService.ExampleServiceState document2 = new ExampleService.ExampleServiceState();
+        document2.name = "document2";
+        document2.tags.add("STRING X");
+        document2.tags.add("STRING Y");
+        postExample(document2);
+
+        String queryString = "$filter=tags.item any 'STRING ONE;STRING Y'";
+
+        Map<String, Object> out = doFactoryServiceQuery(queryString, false);
+        assertNotNull(out);
+        assertEquals(2, out.keySet().size());
+        ExampleService.ExampleServiceState outState1 = Utils.fromJson(
+                out.get(document1.documentSelfLink), ExampleService.ExampleServiceState.class);
+        assertTrue(outState1.name.equals(document1.name));
+        ExampleService.ExampleServiceState outState2 = Utils.fromJson(
+                out.get(document2.documentSelfLink), ExampleService.ExampleServiceState.class);
+        assertTrue(outState2.name.equals(document2.name));
+    }
+
+    private void testALLQuery() throws Throwable {
+        this.host.deleteAllChildServices(UriUtils.buildUri(this.host, ExampleService.FACTORY_LINK));
+        ExampleService.ExampleServiceState document1 = new ExampleService.ExampleServiceState();
+        document1.name = "document1";
+        document1.tags.add("STRING ONE");
+        document1.tags.add("STRING TWO");
+        postExample(document1);
+
+        ExampleService.ExampleServiceState document2 = new ExampleService.ExampleServiceState();
+        document2.name = "document2";
+        document2.tags.add("STRING X");
+        document2.tags.add("STRING Y");
+        postExample(document2);
+
+
+        String queryString = "$filter=tags.item all 'STRING X;STRING Y'";
+
+        Map<String, Object> out = doFactoryServiceQuery(queryString, false);
+        assertNotNull(out);
+        assertEquals(1, out.keySet().size());
+        ExampleService.ExampleServiceState outState1 = Utils.fromJson(
+                out.get(document2.documentSelfLink), ExampleService.ExampleServiceState.class);
+        assertTrue(outState1.name.equals(document2.name));
     }
 
     private ServiceDocumentQueryResult doQuery(String query, boolean remote) throws Throwable {

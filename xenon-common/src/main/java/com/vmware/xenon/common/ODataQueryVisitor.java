@@ -22,6 +22,7 @@ public class ODataQueryVisitor {
     public enum BinaryVerb {
         AND("and"), OR("or"),
         EQ("eq"), NE("ne"), LT("lt"), LE("le"), GT("gt"), GE("ge"),
+        ALL("all"), ANY("any"),
         // we don't actually support these
         ADD("add"), SUB("sub"),
         MUL("mul"), DIV("div"), MODULO("mod");
@@ -37,6 +38,7 @@ public class ODataQueryVisitor {
         }
     }
 
+    private static final String DEFAULT_COLLECTION_ITEM_SEPARATOR = ";";
     private static final IllegalArgumentException LeftRightTypeException = new IllegalArgumentException(
             "left and right side type mismatch");
 
@@ -140,27 +142,45 @@ public class ODataQueryVisitor {
             throw LeftRightTypeException;
         }
 
-        q.setTermPropertyName((String) leftSide);
-
-        if (((String) leftSide).contains(UriUtils.URI_WILDCARD_CHAR)) {
-            q.setTermMatchType(QueryTerm.MatchType.WILDCARD);
-        }
-
         if (rightSide instanceof String) {
-            // Handle numeric ranges
-            if (isNumeric((String) rightSide)) {
-                // create a rangeA
-                QueryTask.NumericRange<?> r = createRange(rightSide.toString(), operator);
-                q.setNumericRange(r);
-
+            if ( operator == BinaryVerb.ANY || operator == BinaryVerb.ALL) {
+                Query.Occurance itemOccurance = Query.Occurance.MUST_OCCUR;
+                if (operator == BinaryVerb.ANY) {
+                    itemOccurance = Query.Occurance.SHOULD_OCCUR;
+                }
+                String[] itemNames = ((String) rightSide).split(DEFAULT_COLLECTION_ITEM_SEPARATOR);
+                for (String itemName : itemNames) {
+                    if (! itemName.isEmpty()) {
+                        Query itemClause = new Query();
+                        itemClause.setTermPropertyName((String) leftSide);
+                        itemClause.occurance = itemOccurance;
+                        itemClause.setTermMatchValue(itemName.replace("\'", "").trim());
+                        if (itemName.contains(UriUtils.URI_WILDCARD_CHAR)) {
+                            itemClause.setTermMatchType(QueryTerm.MatchType.WILDCARD);
+                        }
+                        q.addBooleanClause(itemClause);
+                    }
+                }
             } else {
-                q.setTermMatchValue(((String) rightSide).replace("\'", ""));
+                q.setTermPropertyName((String) leftSide);
 
-                if (((String) rightSide).contains("*")) {
+                if (((String) leftSide).contains(UriUtils.URI_WILDCARD_CHAR)) {
                     q.setTermMatchType(QueryTerm.MatchType.WILDCARD);
                 }
-            }
+                // Handle numeric ranges
+                if (isNumeric((String) rightSide)) {
+                    // create a rangeA
+                    QueryTask.NumericRange<?> r = createRange(rightSide.toString(), operator);
+                    q.setNumericRange(r);
 
+                } else {
+                    q.setTermMatchValue(((String) rightSide).replace("\'", ""));
+
+                    if (((String) rightSide).contains("*")) {
+                        q.setTermMatchType(QueryTerm.MatchType.WILDCARD);
+                    }
+                }
+            }
         } else {
             // We don't know what type this is.
             throw LeftRightTypeException;
@@ -254,6 +274,8 @@ public class ODataQueryVisitor {
         case GE:
         case LT:
         case LE:
+        case ANY:
+        case ALL:
             return Query.Occurance.MUST_OCCUR;
         default:
             throw new IllegalArgumentException("unsupported operation");

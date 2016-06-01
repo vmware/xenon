@@ -24,7 +24,7 @@ public class ODataTokenizer {
      * (https://github.com/apache/olingo-odata2).
      */
     private static final Pattern BIN_OP = Pattern.compile("^(and|or) ");
-    private static final Pattern BIN_COMP = Pattern.compile("^(eq|ne|lt|gt|le|ge) ");
+    private static final Pattern BIN_COMP = Pattern.compile("^(eq|ne|lt|gt|le|ge|any|all) ");
     private static final Pattern OTHER_LIT = Pattern
             .compile("(?:\\p{L}|\\p{Digit}|[-._~%!$&*+;:@])+");
 
