@@ -85,7 +85,8 @@ public class TestExampleTaskService extends BasicReusableHostTestCase {
         ExampleTaskServiceState badState = new ExampleTaskServiceState();
         badState.taskInfo = new TaskState();
         badState.taskInfo.stage = TaskState.TaskStage.CREATED;
-        testExpectedHandleStartError(badState, IllegalArgumentException.class, "Do not specify taskBody: internal use only");
+        testExpectedHandleStartError(badState, IllegalArgumentException.class,
+                "Do not specify taskInfo: internal use only");
     }
 
     @Test
