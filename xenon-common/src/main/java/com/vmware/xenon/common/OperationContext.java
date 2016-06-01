@@ -25,10 +25,12 @@ public class OperationContext {
 
     private AuthorizationContext authContext;
     private String contextId;
+    private String transactionId;
 
-    private OperationContext(AuthorizationContext authContext, String contextId) {
+    private OperationContext(AuthorizationContext authContext, String contextId, String transactionId) {
         this.authContext = authContext;
         this.contextId = contextId;
+        this.transactionId = transactionId;
     }
 
     /**
@@ -51,6 +53,19 @@ public class OperationContext {
     }
 
     /**
+     * Variable to store the transactionId in thread-local
+     */
+    private static final ThreadLocal<String> threadTransactionId = new ThreadLocal<>();
+
+    public static void setTransactionId(String transactionId) {
+        threadTransactionId.set(transactionId);
+    }
+
+    public static String getTransactionId() {
+        return threadTransactionId.get();
+    }
+
+    /**
      * Sets current thread's authorization context based on {@code op} headers and/or cookies.
      *
      * @param host Service host.
@@ -69,7 +84,19 @@ public class OperationContext {
      * @return OperationContext instance
      */
     public static OperationContext getOperationContext() {
-        return new OperationContext(threadAuthContext.get(), threadContextId.get());
+        return new OperationContext(threadAuthContext.get(), threadContextId.get(), threadTransactionId.get());
+    }
+
+    public static void setOperationContext(OperationContext opContext) {
+        threadAuthContext.set(opContext.authContext);
+        threadContextId.set(opContext.contextId);
+        threadTransactionId.set(opContext.transactionId);
+    }
+
+    public static void setOperationContext(AuthorizationContext authContext, String contextId, String transactionId) {
+        threadAuthContext.set(authContext);
+        threadContextId.set(contextId);
+        threadTransactionId.set(transactionId);
     }
 
     /**
@@ -79,6 +106,6 @@ public class OperationContext {
     public static void restoreOperationContext(OperationContext ctx) {
         setAuthorizationContext(ctx.authContext);
         setContextId(ctx.contextId);
+        setTransactionId(ctx.transactionId);
     }
-
 }

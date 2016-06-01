@@ -151,8 +151,9 @@ public class TransactionServiceHelper {
         URI txCoordinator = UriUtils.buildTransactionUri(s.getHost(), op.getTransactionId());
 
         s.addPendingTransaction(txCoordinator.getPath());
-
-        s.sendRequest(Operation.createPut(txCoordinator).setBody(operationsLogRecord));
+        // set the transaction id to null as this is a call to the transaction service
+        // and we don't wait a cycle of notifications
+        s.sendRequest(Operation.createPut(txCoordinator).setBody(operationsLogRecord).setTransactionId(null));
     }
 
     /**

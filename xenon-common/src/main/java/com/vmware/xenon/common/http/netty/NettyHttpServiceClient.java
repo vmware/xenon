@@ -226,6 +226,8 @@ public class NettyHttpServiceClient implements ServiceClient {
 
         setCookies(clone);
 
+        OperationContext ctx = OperationContext.getOperationContext();
+
         // if operation has a context id, set it on the local thread, otherwise, set the
         // context id from thread, on the operation
         if (op.getContextId() != null) {
@@ -233,8 +235,6 @@ public class NettyHttpServiceClient implements ServiceClient {
         } else {
             clone.setContextId(OperationContext.getContextId());
         }
-
-        OperationContext ctx = OperationContext.getOperationContext();
 
         try {
             // First attempt in process delivery to co-located host

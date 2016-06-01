@@ -2,6 +2,8 @@
 
 ## 0.8.2-SNAPSHOT
 
+* Support transaction contexts to flow across child operations automatically
+
 * Rename LuceneQueryTaskFactoryService and LuceneQueryTaskService to
   QueryTaskFactoryService and QueryTaskService. Similar change for
   local query task service. Service code should use
