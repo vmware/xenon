@@ -93,10 +93,9 @@ import com.vmware.xenon.services.common.AuthorizationContextService;
 import com.vmware.xenon.services.common.ConsistentHashingNodeSelectorService;
 import com.vmware.xenon.services.common.FileContentService;
 import com.vmware.xenon.services.common.GuestUserService;
+import com.vmware.xenon.services.common.LocalQueryTaskFactoryService;
 import com.vmware.xenon.services.common.LuceneBlobIndexService;
 import com.vmware.xenon.services.common.LuceneDocumentIndexService;
-import com.vmware.xenon.services.common.LuceneLocalQueryTaskFactoryService;
-import com.vmware.xenon.services.common.LuceneQueryTaskFactoryService;
 import com.vmware.xenon.services.common.NodeGroupFactoryService;
 import com.vmware.xenon.services.common.NodeGroupService.JoinPeerRequest;
 import com.vmware.xenon.services.common.NodeGroupService.NodeGroupState;
@@ -105,6 +104,7 @@ import com.vmware.xenon.services.common.ODataQueryService;
 import com.vmware.xenon.services.common.OperationIndexService;
 import com.vmware.xenon.services.common.ProcessFactoryService;
 import com.vmware.xenon.services.common.QueryFilter;
+import com.vmware.xenon.services.common.QueryTaskFactoryService;
 import com.vmware.xenon.services.common.ReliableSubscriptionService;
 import com.vmware.xenon.services.common.ResourceGroupService;
 import com.vmware.xenon.services.common.RoleService;
@@ -1236,8 +1236,8 @@ public class ServiceHost implements ServiceRequestSender {
                         this.documentIndexService,
                         new LuceneBlobIndexService(),
                         new ServiceContextIndexService(),
-                        new LuceneQueryTaskFactoryService(),
-                        new LuceneLocalQueryTaskFactoryService() };
+                        new QueryTaskFactoryService(),
+                        new LocalQueryTaskFactoryService() };
                 startCoreServicesSynchronously(queryServiceArray);
             }
         }

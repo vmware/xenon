@@ -19,10 +19,10 @@ import com.vmware.xenon.common.Service;
 import com.vmware.xenon.common.TaskState.TaskStage;
 import com.vmware.xenon.common.Utils;
 
-public class LuceneQueryTaskFactoryService extends FactoryService {
+public class QueryTaskFactoryService extends FactoryService {
     public static final String SELF_LINK = ServiceUriPaths.CORE_QUERY_TASKS;
 
-    public LuceneQueryTaskFactoryService() {
+    public QueryTaskFactoryService() {
         super(QueryTask.class);
     }
 
@@ -92,7 +92,7 @@ public class LuceneQueryTaskFactoryService extends FactoryService {
 
     @Override
     public Service createServiceInstance() throws Throwable {
-        return new LuceneQueryTaskService();
+        return new QueryTaskService();
     }
 
 }

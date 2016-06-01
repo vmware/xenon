@@ -15,16 +15,16 @@ package com.vmware.xenon.services.common;
 
 import com.vmware.xenon.common.Service;
 
-public class LuceneLocalQueryTaskFactoryService extends LuceneQueryTaskFactoryService {
+public class LocalQueryTaskFactoryService extends QueryTaskFactoryService {
     public static final String SELF_LINK = ServiceUriPaths.CORE_LOCAL_QUERY_TASKS;
 
-    public LuceneLocalQueryTaskFactoryService() {
+    public LocalQueryTaskFactoryService() {
         super();
     }
 
     @Override
     public Service createServiceInstance() throws Throwable {
-        LuceneQueryTaskService service = new LuceneQueryTaskService();
+        QueryTaskService service = new QueryTaskService();
         service.toggleOption(ServiceOption.REPLICATION, false);
         service.toggleOption(ServiceOption.OWNER_SELECTION, false);
         super.toggleOption(ServiceOption.REPLICATION, false);

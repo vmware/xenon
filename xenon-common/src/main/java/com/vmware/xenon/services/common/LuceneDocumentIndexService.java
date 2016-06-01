@@ -532,6 +532,18 @@ public class LuceneDocumentIndexService extends StatelessService {
 
         Query luceneQuery = (Query) qs.context.nativeQuery;
         Sort luceneSort = (Sort) qs.context.nativeSort;
+
+        if (luceneQuery == null) {
+            luceneQuery = LuceneQueryConverter.convertToLuceneQuery(task.querySpec.query);
+            qs.context.nativeQuery = luceneQuery;
+        }
+
+        if (luceneSort == null && task.querySpec.options != null
+                && task.querySpec.options.contains(QuerySpecification.QueryOption.SORT)) {
+            luceneSort = LuceneQueryConverter.convertToLuceneSort(task.querySpec);
+            task.querySpec.context.nativeSort = luceneSort;
+        }
+
         LuceneQueryPage lucenePage = (LuceneQueryPage) qs.context.nativePage;
         IndexSearcher s = (IndexSearcher) qs.context.nativeSearcher;
         ServiceDocumentQueryResult rsp = new ServiceDocumentQueryResult();

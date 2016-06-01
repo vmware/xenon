@@ -2780,7 +2780,7 @@ public class TestQueryTaskService {
             Thread.sleep(100);
             ServiceDocumentQueryResult r = this.host.getServiceState(null,
                     ServiceDocumentQueryResult.class,
-                    UriUtils.buildUri(this.host, LuceneQueryTaskFactoryService.class));
+                    UriUtils.buildUri(this.host, QueryTaskFactoryService.class));
 
             if (r.documentLinks != null) {
                 boolean taskExists = false;

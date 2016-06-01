@@ -40,11 +40,11 @@ import com.vmware.xenon.services.common.QueryTask.QuerySpecification;
 import com.vmware.xenon.services.common.QueryTask.QuerySpecification.QueryOption;
 import com.vmware.xenon.services.common.QueryTask.QueryTerm.MatchType;
 
-public class LuceneQueryTaskService extends StatefulService {
+public class QueryTaskService extends StatefulService {
     private static final long DEFAULT_EXPIRATION_SECONDS = 600;
     private ServiceDocumentQueryResult results;
 
-    public LuceneQueryTaskService() {
+    public QueryTaskService() {
         super(QueryTask.class);
         super.toggleOption(ServiceOption.REPLICATION, true);
         super.toggleOption(ServiceOption.OWNER_SELECTION, true);
@@ -89,7 +89,7 @@ public class LuceneQueryTaskService extends StatefulService {
             if (initState.querySpec.options.contains(QueryOption.BROADCAST)) {
                 createAndSendBroadcastQuery(initState, startPost);
             } else {
-                convertAndForwardToLucene(initState, startPost);
+                forwardQueryToDocumentIndexService(initState, startPost);
             }
         }
     }
@@ -341,7 +341,7 @@ public class LuceneQueryTaskService extends StatefulService {
             if (patchBody.querySpec.options.contains(QueryOption.BROADCAST)) {
                 createAndSendBroadcastQuery(patchBody, null);
             } else {
-                convertAndForwardToLucene(state, null);
+                forwardQueryToDocumentIndexService(state, null);
             }
         }
     }
@@ -379,21 +379,8 @@ public class LuceneQueryTaskService extends StatefulService {
         return true;
     }
 
-    private void convertAndForwardToLucene(QueryTask task, Operation directOp) {
+    private void forwardQueryToDocumentIndexService(QueryTask task, Operation directOp) {
         try {
-            org.apache.lucene.search.Query q =
-                    LuceneQueryConverter.convertToLuceneQuery(task.querySpec.query);
-
-            task.querySpec.context.nativeQuery = q;
-
-            org.apache.lucene.search.Sort sort = null;
-            if (task.querySpec.options != null
-                    && task.querySpec.options.contains(QuerySpecification.QueryOption.SORT)) {
-                sort = LuceneQueryConverter.convertToLuceneSort(task.querySpec);
-            }
-
-            task.querySpec.context.nativeSort = sort;
-
             if (task.querySpec.resultLimit == null) {
                 task.querySpec.resultLimit = Integer.MAX_VALUE;
             }
@@ -482,7 +469,7 @@ public class LuceneQueryTaskService extends StatefulService {
         }
 
         getHost().schedule(() -> {
-            convertAndForwardToLucene(task, directOp);
+            forwardQueryToDocumentIndexService(task, directOp);
         }, getMaintenanceIntervalMicros(), TimeUnit.MICROSECONDS);
 
         return true;
