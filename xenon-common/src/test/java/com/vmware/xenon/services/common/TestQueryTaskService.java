@@ -186,7 +186,7 @@ public class TestQueryTaskService {
         assertTrue(pd != null);
         assertTrue(pd.typeName.equals(TypeName.PODO));
         assertTrue(pd.fieldDescriptions != null);
-        assertTrue(pd.fieldDescriptions.size() == 4 + expectedBuiltInFields);
+        assertTrue(pd.fieldDescriptions.size() == 5 + expectedBuiltInFields);
         assertTrue(pd.fieldDescriptions.get("keyValues") != null);
 
         pd = sdd.propertyDescriptions.get("nestedComplexValue");
