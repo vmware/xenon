@@ -65,6 +65,10 @@ public class ServiceUriPaths {
 
     public static final String CORE_QUERY_TASKS = UriUtils.buildUriPath(ServiceUriPaths.CORE,
             "query-tasks");
+
+    public static final String CORE_GRAPH_QUERIES = UriUtils.buildUriPath(ServiceUriPaths.CORE,
+            "graph-queries");
+
     public static final String ODATA_QUERIES = UriUtils.buildUriPath(ServiceUriPaths.CORE,
             "odata-queries");
 

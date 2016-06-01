@@ -24,7 +24,6 @@ import com.vmware.xenon.common.ServiceDocumentDescription.TypeName;
 import com.vmware.xenon.common.ServiceDocumentQueryResult;
 import com.vmware.xenon.common.TaskState;
 import com.vmware.xenon.common.Utils;
-import com.vmware.xenon.services.common.QueryTask.Query.Occurance;
 import com.vmware.xenon.services.common.QueryTask.QuerySpecification.QueryOption;
 import com.vmware.xenon.services.common.QueryTask.QuerySpecification.SortOrder;
 import com.vmware.xenon.services.common.QueryTask.QueryTerm.MatchType;
@@ -245,30 +244,6 @@ public class QueryTask extends ServiceDocument {
 
         public static String toMatchValue(Enum<?> value) {
             return value == null ? null : value.name();
-        }
-
-        /**
-         * Use the Query.Builder instead.
-         */
-        @Deprecated
-        public static void buildListValueClause(QueryTask q, String propName,
-                Collection<String> values) {
-            QueryTask.Query inClause = new QueryTask.Query();
-            for (String value : values) {
-                QueryTask.Query clause = new QueryTask.Query()
-                        .setTermPropertyName(propName)
-                        .setTermMatchValue(value);
-
-                clause.occurance = Occurance.SHOULD_OCCUR;
-                inClause.addBooleanClause(clause);
-                if (values.size() == 1) {
-                    // if we only have one value then change it to single value clause.
-                    inClause = clause;
-                    inClause.occurance = Occurance.MUST_OCCUR;
-                }
-            }
-
-            q.querySpec.query.addBooleanClause(inClause);
         }
 
         public static QueryTask addExpandOption(QueryTask queryTask) {
@@ -762,6 +737,11 @@ public class QueryTask extends ServiceDocument {
         public Query setTermMatchType(MatchType matchType) {
             allocateTerm();
             this.term.matchType = matchType;
+            return this;
+        }
+
+        public Query setOccurance(Occurance occur) {
+            this.occurance = occur;
             return this;
         }
 
