@@ -25,16 +25,25 @@ public class OperationContext {
 
     private AuthorizationContext authContext;
     private String contextId;
+    private String transactionId;
 
-    private OperationContext(AuthorizationContext authContext, String contextId) {
+    private OperationContext(AuthorizationContext authContext, String contextId, String transactionId) {
         this.authContext = authContext;
         this.contextId = contextId;
+        this.transactionId = transactionId;
     }
 
     /**
      * Variable to store the contextId in thread-local
      */
     private static final ThreadLocal<String> threadContextId = new ThreadLocal<>();
+
+    /**
+     * Variable to store the transactionId in thread-local
+     */
+    private static final ThreadLocal<String> threadTransactionId = new ThreadLocal<>();
+
+    private static final ThreadLocal<AuthorizationContext> threadAuthContext = new ThreadLocal<>();
 
     public static void setContextId(String contextId) {
         threadContextId.set(contextId);
@@ -44,10 +53,16 @@ public class OperationContext {
         return threadContextId.get();
     }
 
-    private static final ThreadLocal<AuthorizationContext> threadAuthContext = new ThreadLocal<>();
-
     static void setAuthorizationContext(AuthorizationContext ctx) {
         threadAuthContext.set(ctx);
+    }
+
+    public static void setTransactionId(String transactionId) {
+        threadTransactionId.set(transactionId);
+    }
+
+    public static String getTransactionId() {
+        return threadTransactionId.get();
     }
 
     /**
@@ -69,7 +84,36 @@ public class OperationContext {
      * @return OperationContext instance
      */
     public static OperationContext getOperationContext() {
-        return new OperationContext(threadAuthContext.get(), threadContextId.get());
+        return new OperationContext(threadAuthContext.get(), threadContextId.get(), threadTransactionId.get());
+    }
+
+    /**
+     * Set the OperationContext associated with the thread based on the specified OperationContext
+     * @param opContext Input OperationContext
+     */
+    public static void setFrom(OperationContext opContext) {
+        threadAuthContext.set(opContext.authContext);
+        threadContextId.set(opContext.contextId);
+        threadTransactionId.set(opContext.transactionId);
+    }
+
+    /**
+     * Set the OperationContext associated with the thread based on the specified Operation
+     * @param op Operation to build the OperationContext
+     */
+    public static void setFrom(Operation op) {
+        threadAuthContext.set(op.getAuthorizationContext());
+        threadContextId.set(op.getContextId());
+        threadTransactionId.set(op.getTransactionId());
+    }
+
+    /**
+     * reset the OperationContext associated with the thread
+     */
+    public static void reset() {
+        threadAuthContext.set(null);
+        threadContextId.set(null);
+        threadTransactionId.set(null);
     }
 
     /**
@@ -79,6 +123,6 @@ public class OperationContext {
     public static void restoreOperationContext(OperationContext ctx) {
         setAuthorizationContext(ctx.authContext);
         setContextId(ctx.contextId);
+        setTransactionId(ctx.transactionId);
     }
-
 }

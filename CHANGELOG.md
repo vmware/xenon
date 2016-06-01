@@ -2,6 +2,9 @@
 
 ## 0.8.2-SNAPSHOT
 
+* Add transaction flow support, across related operations, similar to
+authorization context and context id flow support
+
 * Rename LuceneQueryTaskFactoryService and LuceneQueryTaskService to
   QueryTaskFactoryService and QueryTaskService. Similar change for
   local query task service. Service code should use
