@@ -505,6 +505,8 @@ public class TestODataQueryService extends BasicReusableHostTestCase {
         testOrWithNestedAndQuery();
         testNEAndNEQuery();
         testNEOrNEQuery();
+        testINQuery();
+        testNotINQuery();
     }
 
     private void testSimpleOrQuery() throws Throwable {
@@ -764,6 +766,46 @@ public class TestODataQueryService extends BasicReusableHostTestCase {
         postExample(document2);
 
         String queryString = "$filter=name ne STRING3 and name ne STRING2";
+
+        Map<String, Object> out = doFactoryServiceQuery(queryString, false);
+        assertNotNull(out);
+        assertEquals(1, out.keySet().size());
+        ExampleService.ExampleServiceState outState1 = Utils.fromJson(
+                out.get(document1.documentSelfLink), ExampleService.ExampleServiceState.class);
+        assertTrue(outState1.name.equals(document1.name));
+    }
+
+    private void testINQuery() throws Throwable {
+        this.host.deleteAllChildServices(UriUtils.buildUri(this.host, ExampleService.FACTORY_LINK));
+        ExampleService.ExampleServiceState document1 = new ExampleService.ExampleServiceState();
+        document1.name = "STRING ONE";
+        postExample(document1);
+
+        ExampleService.ExampleServiceState document2 = new ExampleService.ExampleServiceState();
+        document2.name = "STRING TWO";
+        postExample(document2);
+
+        String queryString = "$filter=name in 'STRING TWO;OTHER STRING'";
+
+        Map<String, Object> out = doFactoryServiceQuery(queryString, false);
+        assertNotNull(out);
+        assertEquals(1, out.keySet().size());
+        ExampleService.ExampleServiceState outState1 = Utils.fromJson(
+                out.get(document2.documentSelfLink), ExampleService.ExampleServiceState.class);
+        assertTrue(outState1.name.equals(document2.name));
+    }
+
+    private void testNotINQuery() throws Throwable {
+        this.host.deleteAllChildServices(UriUtils.buildUri(this.host, ExampleService.FACTORY_LINK));
+        ExampleService.ExampleServiceState document1 = new ExampleService.ExampleServiceState();
+        document1.name = "STRING ONE";
+        postExample(document1);
+
+        ExampleService.ExampleServiceState document2 = new ExampleService.ExampleServiceState();
+        document2.name = "STRING TWO";
+        postExample(document2);
+
+        String queryString = "$filter=name not-in 'STRING TWO;OTHER STRING'";
 
         Map<String, Object> out = doFactoryServiceQuery(queryString, false);
         assertNotNull(out);
