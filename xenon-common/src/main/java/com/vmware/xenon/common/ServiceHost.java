@@ -2420,6 +2420,10 @@ public class ServiceHost implements ServiceRequestSender {
         if (contextId != null) {
             OperationContext.setContextId(contextId);
         }
+        String transactionId = post.getTransactionId();
+        if (transactionId != null) {
+            OperationContext.setTransactionId(transactionId);
+        }
         OperationContext.setAuthorizationContext(post.getAuthorizationContext());
         return opCtx;
     }
@@ -3409,17 +3413,13 @@ public class ServiceHost implements ServiceRequestSender {
 
             if (!s.queueRequest(op)) {
                 Runnable r = () -> {
-                    OperationContext.setContextId(op.getContextId());
-                    OperationContext.setAuthorizationContext(op.getAuthorizationContext());
-
+                    OperationContext.setFrom(op);
                     try {
                         s.handleRequest(op);
                     } catch (Throwable e) {
                         handleUncaughtException(s, op, e);
                     }
-
-                    OperationContext.setAuthorizationContext(null);
-                    OperationContext.setContextId(null);
+                    OperationContext.reset();
                 };
                 this.executor.execute(r);
             }
@@ -4142,9 +4142,9 @@ public class ServiceHost implements ServiceRequestSender {
         if (this.executor.isShutdown()) {
             throw new IllegalStateException("Stopped");
         }
-        AuthorizationContext origContext = OperationContext.getAuthorizationContext();
+        OperationContext origContext = OperationContext.getOperationContext();
         this.executor.execute(() -> {
-            OperationContext.setAuthorizationContext(origContext);
+            OperationContext.setFrom(origContext);
             executeRunnableSafe(task);
         });
     }
@@ -4159,9 +4159,9 @@ public class ServiceHost implements ServiceRequestSender {
         if (executor.isShutdown()) {
             throw new IllegalStateException("Stopped");
         }
-        AuthorizationContext origContext = OperationContext.getAuthorizationContext();
+        OperationContext origContext = OperationContext.getOperationContext();
         executor.execute(() -> {
-            OperationContext.setAuthorizationContext(origContext);
+            OperationContext.setFrom(origContext);
             executeRunnableSafe(task);
         });
     }
@@ -4174,9 +4174,9 @@ public class ServiceHost implements ServiceRequestSender {
             throw new IllegalStateException("Stopped");
         }
 
-        AuthorizationContext origContext = OperationContext.getAuthorizationContext();
+        OperationContext origContext = OperationContext.getOperationContext();
         return this.scheduledExecutor.schedule(() -> {
-            OperationContext.setAuthorizationContext(origContext);
+            OperationContext.setFrom(origContext);
             executeRunnableSafe(task);
         }, delay, unit);
     }
