@@ -105,7 +105,7 @@ import com.vmware.xenon.common.TaskState;
 import com.vmware.xenon.common.TaskState.TaskStage;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
-import com.vmware.xenon.services.common.LuceneQueryPageService.LuceneQueryPage;
+import com.vmware.xenon.services.common.QueryPageService.LuceneQueryPage;
 import com.vmware.xenon.services.common.QueryTask.QuerySpecification;
 import com.vmware.xenon.services.common.QueryTask.QuerySpecification.QueryOption;
 
@@ -1069,7 +1069,7 @@ public class LuceneDocumentIndexService extends StatelessService {
             setAuthorizationContext(startPost, ctx);
         }
 
-        getHost().startService(startPost, new LuceneQueryPageService(spec, indexLink));
+        getHost().startService(startPost, new QueryPageService(spec, indexLink));
         return nextLink;
     }
 

@@ -2593,7 +2593,7 @@ public class TestQueryTaskService {
     }
 
     private void verifyLinks(String nextPageLink, List<URI> serviceURIs, QueryTask page) {
-        assertEquals(LuceneQueryPageService.KIND, page.documentKind);
+        assertEquals(QueryPageService.KIND, page.documentKind);
         assertNotEquals(nextPageLink, page.results.nextPageLink);
         assertNotEquals(nextPageLink, page.results.prevPageLink);
 

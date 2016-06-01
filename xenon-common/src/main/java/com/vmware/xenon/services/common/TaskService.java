@@ -135,7 +135,7 @@ public abstract class TaskService<T extends TaskService.TaskServiceState>
 
         if (task.taskInfo != null) {
             taskOperation.fail(new IllegalArgumentException(
-                    "Do not specify taskBody: internal use only"));
+                    "Do not specify taskInfo: internal use only"));
             return null;
         }
 
