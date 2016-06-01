@@ -574,12 +574,14 @@ public class Operation implements Cloneable {
         op.uri = uri;
         op.action = action;
 
-        // Set authorization context from thread local.
+        // Set operation context from thread local.
         // The thread local is populated by the service host when it handles an operation,
         // which means that derivative operations will automatically inherit this context.
         // It is set as early as possible since there is a possibility that it is
         // overridden by the service implementation (i.e. when it impersonates).
         op.authorizationCtx = OperationContext.getAuthorizationContext();
+        op.transactionId = OperationContext.getTransactionId();
+        op.contextId = OperationContext.getContextId();
 
         return op;
     }
@@ -1162,21 +1164,19 @@ public class Operation implements Cloneable {
             return;
         }
 
-        // Keep track of current authorization context so that code AFTER "op.complete()"
-        // or "op.fail()" retains its authorization context, and is not overwritten by
-        // the one associated with "op" (which might be different.
-        AuthorizationContext originalContext = OperationContext.getAuthorizationContext();
-        OperationContext.setAuthorizationContext(this.getAuthorizationContext());
-
+        // Keep track of current operation context so that code AFTER "op.complete()"
+        // or "op.fail()" retains its operation context, and is not overwritten by
+        // the one associated with "op" (which might be different).
+        OperationContext originalContext = OperationContext.getOperationContext();
         try {
-            OperationContext.setContextId(this.contextId);
+            OperationContext.setFrom(this);
             c.handle(this, e);
         } catch (Throwable outer) {
             Utils.logWarning("Uncaught failure inside completion: %s", Utils.toString(outer));
         }
 
         // Restore original context
-        OperationContext.setAuthorizationContext(originalContext);
+        OperationContext.setFrom(originalContext);
     }
 
     public boolean hasBody() {

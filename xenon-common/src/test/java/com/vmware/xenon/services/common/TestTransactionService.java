@@ -31,16 +31,19 @@ import org.junit.Test;
 import com.vmware.xenon.common.BasicReusableHostTestCase;
 import com.vmware.xenon.common.FactoryService;
 import com.vmware.xenon.common.Operation;
+import com.vmware.xenon.common.OperationContext;
 import com.vmware.xenon.common.OperationProcessingChain;
 import com.vmware.xenon.common.RequestRouter;
 import com.vmware.xenon.common.Service;
 import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.StatefulService;
+import com.vmware.xenon.common.StatelessService;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
 import com.vmware.xenon.common.test.TestContext;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
 import com.vmware.xenon.services.common.QueryTask.Query;
+import com.vmware.xenon.services.common.QueryTask.Query.Occurance;
 import com.vmware.xenon.services.common.QueryTask.QueryTerm.MatchType;
 import com.vmware.xenon.services.common.TestTransactionService.BankAccountService.BankAccountServiceRequest;
 import com.vmware.xenon.services.common.TestTransactionService.BankAccountService.BankAccountServiceState;
@@ -193,6 +196,66 @@ public class TestTransactionService extends BasicReusableHostTestCase {
         committed = commit(txid, this.accountCount);
         assertTrue(committed);
         countAccounts(null, 0);
+    }
+
+    @Test
+    public void testTransactionContextFlow() throws Throwable {
+        // stateless service that creates a bank account
+        // with the transactionId on the parent operation
+        // and one without
+        StatelessService childService = new StatelessService() {
+            @Override
+            public void handlePost(Operation postOp) {
+                try {
+                    createAccount(null, buildAccountId(0), 0.0, null);
+                    OperationContext.setTransactionId(null);
+                    createAccount(null, buildAccountId(1), 0.0, null);
+                } catch (Throwable e) {
+                    postOp.fail(e);
+                    return;
+                }
+                postOp.complete();
+            }
+        };
+        String servicePath = UUID.randomUUID().toString();
+        Operation startOp = Operation.createPost(UriUtils.buildUri(this.host, servicePath));
+        this.host.startService(startOp, childService);
+        // create two bank accounts
+        String txid = newTransaction();
+        TestContext ctx = testCreate(1);
+        Operation postOp = Operation.createPost(UriUtils.buildUri(this.host, servicePath))
+                .setCompletion((o, e) -> {
+                    if (e != null) {
+                        ctx.failIteration(e);
+                        return;
+                    }
+                    if (OperationContext.getTransactionId() == null) {
+                        ctx.failIteration(new IllegalStateException("transactionId not set"));
+                        return;
+                    }
+                    ctx.completeIteration();
+                });
+        postOp.setTransactionId(txid);
+        this.host.send(postOp);
+        testWait(ctx);
+        // only one account should be visible at this stage within the transaction
+        countAccounts(txid, 1);
+        countAccounts(null, 1);
+        boolean committed = commit(txid, 1);
+        assertTrue(committed);
+        // verify that two accounts are created (one as part of the transaction and one without)
+        countAccounts(null, 2);
+        this.baseAccountId = Utils.getNowMicrosUtc();
+        txid = newTransaction();
+        postOp = Operation.createPost(UriUtils.buildUri(this.host, servicePath));
+        postOp.setTransactionId(txid);
+        this.host.sendAndWaitExpectSuccess(postOp);
+        // transaction is still in progress, the account just created must be visible
+        countAccounts(txid, 1);
+        boolean aborted = abort(txid, 1);
+        assertTrue(aborted);
+        // verify that the account created without a transaction context is still present
+        countAccounts(null, 1);
     }
 
     @Test
@@ -588,6 +651,9 @@ public class TestTransactionService extends BasicReusableHostTestCase {
                         MatchType.WILDCARD);
         if (transactionId != null) {
             queryBuilder.addFieldClause(ServiceDocument.FIELD_NAME_TRANSACTION_ID, transactionId);
+        } else {
+            queryBuilder.addFieldClause(ServiceDocument.FIELD_NAME_TRANSACTION_ID, "*",
+                    MatchType.WILDCARD, Occurance.MUST_NOT_OCCUR);
         }
         QueryTask task = QueryTask.Builder.createDirectTask().setQuery(queryBuilder.build())
                 .build();

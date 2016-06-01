@@ -151,8 +151,10 @@ public class TransactionServiceHelper {
         URI txCoordinator = UriUtils.buildTransactionUri(s.getHost(), op.getTransactionId());
 
         s.addPendingTransaction(txCoordinator.getPath());
-
-        s.sendRequest(Operation.createPut(txCoordinator).setBody(operationsLogRecord));
+        // set the transaction id to null as this is a PUT on the transaction service
+        // and we don't want a cycle of notifications - this method will be called
+        // again when PUT operation completion handler runs resulting in a loop
+        s.sendRequest(Operation.createPut(txCoordinator).setBody(operationsLogRecord).setTransactionId(null));
     }
 
     /**
