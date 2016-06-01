@@ -111,6 +111,14 @@ public class TaskState {
         return taskInfo.stage == TaskStage.CREATED;
     }
 
+    public static boolean isInProgress(TaskState taskInfo) {
+        if (taskInfo == null) {
+            return false;
+        }
+        return taskInfo.stage == TaskStage.CREATED
+                || taskInfo.stage == TaskStage.STARTED;
+    }
+
     public static boolean isFinished(TaskState taskInfo) {
         if (taskInfo == null) {
             return false;
