@@ -2,6 +2,22 @@
 
 ## 0.9.0-SNAPSHOT
 
+* Add support for graph queries. The new GraphQueryTaskService, listening on
+  /core/graph-queries enables multi stage queries that can traverse linked
+  documents. Each stage uses the QueryTask specification, to select the documents
+  that serve as the graph nodes. The graph edges, that link nodes together are
+  specified through link fields, and the of QueryOption.SELECT_LINKS, which is
+  automatically enabled to return the set of document links that form the nodes
+  for the next stage of the graph. Like regular query tasks, both direct, and
+  asynchronous REST pattern models are supported on the task service instance.
+  The following is an example of a two stage graph query
+  Stage 0: Filter documents by kind eq ParentState. SelectLinks: childLink,nephewLink
+  Stage 1: Filter documents by kind eq ChildState AND field name = Jimmy
+  Since each stage is a full query, the results can be sorted, paginated, use
+  complex boolean, nested expression trees, etc. They can even use broadcast
+  for 3x replication scenarios.
+  The graph queries are load balanced across nodes.
+
 * Modify new QueryOption.SELECT_LINKS and QueryOption.EXPAND_LINKS behavior
   to properly de-duplicate expanded state for selected links and make the
   selection results similar to the existing documentLinks and documents,

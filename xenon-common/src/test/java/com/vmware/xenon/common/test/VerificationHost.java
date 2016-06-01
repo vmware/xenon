@@ -3032,18 +3032,33 @@ public class VerificationHost extends ExampleServiceHost {
      * Sends an operation and waits for completion, using default completion handler
      */
     public void sendAndWaitExpectSuccess(Operation op) throws Throwable {
-        // assume completion is attached, using our getCompletion() or
-        // getExpectedFailureCompletion()
         TestContext ctx = testCreate(1);
         send(op.setCompletion(ctx.getCompletion()));
         testWait(ctx);
     }
 
     public void sendAndWaitExpectFailure(Operation op) throws Throwable {
-        // assume completion is attached, using our getCompletion() or
-        // getExpectedFailureCompletion()
+        sendAndWaitExpectFailure(op, null);
+    }
+
+    public void sendAndWaitExpectFailure(Operation op, Integer expectedFailureCode)
+            throws Throwable {
         TestContext ctx = testCreate(1);
-        send(op.setCompletion(ctx.getExpectedFailureCompletion()));
+        CompletionHandler c = (o, e) -> {
+            if (e != null) {
+                if (expectedFailureCode != null) {
+                    if (!expectedFailureCode.equals(o.getStatusCode())) {
+                        ctx.failIteration(new IllegalStateException(
+                                "got unexpected status: " + expectedFailureCode));
+                        return;
+                    }
+                }
+                ctx.completeIteration();
+            } else {
+                ctx.failIteration(new IllegalStateException("got success, expected failure"));
+            }
+        };
+        send(op.setCompletion(c));
         testWait(ctx);
     }
 

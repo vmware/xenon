@@ -92,6 +92,7 @@ import com.vmware.xenon.services.common.AuthCredentialsService;
 import com.vmware.xenon.services.common.AuthorizationContextService;
 import com.vmware.xenon.services.common.ConsistentHashingNodeSelectorService;
 import com.vmware.xenon.services.common.FileContentService;
+import com.vmware.xenon.services.common.GraphQueryTaskFactoryService;
 import com.vmware.xenon.services.common.GuestUserService;
 import com.vmware.xenon.services.common.LocalQueryTaskFactoryService;
 import com.vmware.xenon.services.common.LuceneBlobIndexService;
@@ -1279,7 +1280,8 @@ public class ServiceHost implements ServiceRequestSender {
                         new LuceneBlobIndexService(),
                         new ServiceContextIndexService(),
                         new QueryTaskFactoryService(),
-                        new LocalQueryTaskFactoryService() };
+                        new LocalQueryTaskFactoryService(),
+                        new GraphQueryTaskFactoryService() };
                 startCoreServicesSynchronously(queryServiceArray);
             }
         }
