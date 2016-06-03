@@ -124,6 +124,11 @@ public class QueryTask extends ServiceDocument {
              * the document is removed from the result
              */
             OWNER_SELECTION,
+
+            /**
+             * Query results include the values for all fields marked with {@code PropertyUsageOption#LINK}
+             */
+            SELECT_LINKS
         }
 
         public enum SortOrder {
@@ -135,25 +140,40 @@ public class QueryTask extends ServiceDocument {
          */
         public Query query = new Query();
 
+        /**
+         * Property names of fields annotated with PropertyUsageOption.LINK. Used in combination with
+         * {@code QueryOption#SELECT_LINKS}
+         */
+        public List<QueryTerm> linkTerms;
+
+        /**
+         * Property name to use for primary sort. Used in combination with {@code QueryOption#SORT}
+         */
         public QueryTerm sortTerm;
 
+        /**
+         * Primary sort order. Used in combination with {@code QueryOption#SORT}
+         */
         public SortOrder sortOrder;
 
         /**
-         * The optional resultLimit field is used to enable query results pagination. When
-         * resultLimit is set, the query task will not return any results when finished, but will
-         * include a nextPageLink field. A client can then issue a GET request on the nextPageLink
-         * to get the first page of results. A nextPageLink field will be included in GET response
-         * documents until all query results have been consumed.
+         * Used for query results pagination. When specified,
+         * the query task documentLinks and documents will remain empty, but when results are available
+         * the nextPageLink field will be set. A client can then issue a GET request on the nextPageLink
+         * to get the first page of results. If additional results are available, each result page will
+         * have its nextPageLink set.
          */
         public Integer resultLimit;
 
         /**
-         * The optional expectedResultCount field will enable query retries until
-         * expectedResultCount is met or the QueryTask expires. taskInfo.stage will remain in the
-         * STARTED phase until such time.
+         * The query is retried until the result count matches the
+         * specified value or the query expires.
          */
         public Long expectedResultCount;
+
+        /**
+         * A set of options that determine query behavior
+         */
         public EnumSet<QueryOption> options = EnumSet.noneOf(QueryOption.class);
 
         /**
@@ -876,6 +896,20 @@ public class QueryTask extends ServiceDocument {
          */
         public Builder addOptions(EnumSet<QueryOption> queryOptions) {
             this.querySpec.options.addAll(queryOptions);
+            return this;
+        }
+
+        /**
+         * Add the given link field name to the {@code QuerySpecification#linkTerms}
+         */
+        public Builder addLinkTerm(String linkFieldName) {
+            QueryTerm linkTerm = new QueryTerm();
+            linkTerm.propertyName = linkFieldName;
+            linkTerm.propertyType = TypeName.STRING;
+            if (this.querySpec.linkTerms == null) {
+                this.querySpec.linkTerms = new ArrayList<>();
+            }
+            this.querySpec.linkTerms.add(linkTerm);
             return this;
         }
 

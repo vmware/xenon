@@ -33,10 +33,19 @@ public class ServiceDocumentQueryResult extends ServiceDocument {
     public List<String> documentLinks = new ArrayList<>();
 
     /**
-     * If the query included an expand directory, this map contains the JSON serialized service
+     * If the query included QueryOption.EXPAND, this map populated with the JSON serialized service
      * state document associated with each link
      */
     public Map<String, Object> documents;
+
+    /**
+     * If the query included QueryOption.SELECT_LINKS, this map is populated with the link
+     * names and values, for each link in the results. For example, if the query results
+     * include a document link /services/one, with a document that has a field "parentLink"
+     * and value "/parents/two", this map will look like so:
+     * { "selectedLinks" : { "/services/one" : {"parentLink" : "parents/two" } } }
+     */
+    public Map<String, Map<String, String>> selectedLinks;
 
     /**
      * Set to the number of documents that satisfy the query.
