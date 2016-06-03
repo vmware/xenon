@@ -886,6 +886,32 @@ public class TestQueryTaskService {
     }
 
     @Test
+    public void selectLinks() throws Throwable {
+
+        List<URI> services = startQueryTargetServices((int) (this.serviceCount / 2));
+
+        // start two different types of services, creating two sets of documents
+        // first start the query validation service instances, setting the id
+        // field
+        // to the same value
+        QueryValidationServiceState newState = new QueryValidationServiceState();
+        newState.id = UUID.randomUUID().toString();
+        newState = putStateOnQueryTargetServices(services, (int) 1,
+                newState);
+
+        // issue a query that matches kind for the query validation service
+        Query query = Query.Builder.create()
+                .addKindFieldClause(QueryValidationServiceState.class)
+                .build();
+        QueryTask queryTask = QueryTask.Builder.create()
+                .addOption(QueryOption.SELECT_LINKS)
+                .setQuery(query).build();
+
+        createWaitAndValidateQueryTask((int) 1, services, queryTask.querySpec,
+                false);
+    }
+
+    @Test
     public void kindMatch() throws Throwable {
         setUpHost();
         long sc = this.serviceCount;

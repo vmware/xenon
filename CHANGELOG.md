@@ -2,6 +2,11 @@
 
 ## 0.8.2-SNAPSHOT
 
+* Add QueryOption.SELECT_LINKS for selecting fields marked with
+  PropertyUsageOption.LINK and including the link values in the query results.
+  The link selection will be used for future graph query support and
+  automatic link content expansion.
+
 * Add transaction flow support, across related operations, similar to
 authorization context and context id flow support
 
