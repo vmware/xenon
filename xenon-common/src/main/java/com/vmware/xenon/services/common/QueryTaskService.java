@@ -96,25 +96,46 @@ public class QueryTaskService extends StatefulService {
 
     private boolean validateState(QueryTask initState, Operation startPost) {
         if (initState.querySpec == null) {
-            startPost.fail(new IllegalArgumentException("specification is required"));
+            startPost.fail(new IllegalArgumentException("querySpec is required"));
             return false;
         }
 
         if (initState.querySpec.query == null) {
-            startPost.fail(new IllegalArgumentException("specification.query is required"));
+            startPost.fail(new IllegalArgumentException("querySpec.query is required"));
             return false;
         }
 
+        if (initState.querySpec.options == null || initState.querySpec.options.isEmpty()) {
+            return true;
+        }
+
+        if (initState.querySpec.options.contains(QueryOption.SELECT_LINKS)) {
+            final String errFmt = QueryOption.SELECT_LINKS + " is not compatible with %s";
+            if (initState.querySpec.options.contains(QueryOption.COUNT)) {
+                startPost.fail(
+                        new IllegalArgumentException(String.format(errFmt, QueryOption.COUNT)));
+                return false;
+            }
+            if (initState.querySpec.options.contains(QueryOption.CONTINUOUS)) {
+                startPost.fail(new IllegalArgumentException(
+                        String.format(errFmt, QueryOption.CONTINUOUS)));
+                return false;
+            }
+            if (initState.querySpec.linkTerms == null || initState.querySpec.linkTerms.isEmpty()) {
+                startPost.fail(new IllegalArgumentException(
+                        "querySpec.linkTerms must have at least one entry"));
+                return false;
+            }
+        }
+
         if (initState.taskInfo.isDirect
-                && initState.querySpec.options != null
                 && initState.querySpec.options.contains(QueryOption.CONTINUOUS)) {
             startPost.fail(new IllegalArgumentException("direct query task is not compatible with "
                     + QueryOption.CONTINUOUS));
             return false;
         }
 
-        if (initState.querySpec.options != null
-                && initState.querySpec.options.contains(QueryOption.BROADCAST)
+        if (initState.querySpec.options.contains(QueryOption.BROADCAST)
                 && initState.querySpec.options.contains(QueryOption.SORT)
                 && initState.querySpec.sortTerm != null
                 && !Objects.equals(initState.querySpec.sortTerm.propertyName, ServiceDocument.FIELD_NAME_SELF_LINK)) {
@@ -275,6 +296,9 @@ public class QueryTaskService extends StatefulService {
         }
         if (r.documents != null) {
             currentState.results.documents = new HashMap<>(r.documents);
+        }
+        if (r.selectedLinks != null) {
+            currentState.results.selectedLinks = new HashMap<>(r.selectedLinks);
         }
 
         get.setBodyNoCloning(currentState).complete();

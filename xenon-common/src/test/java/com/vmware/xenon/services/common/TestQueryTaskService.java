@@ -78,6 +78,7 @@ import com.vmware.xenon.services.common.QueryTask.Query;
 import com.vmware.xenon.services.common.QueryTask.Query.Occurance;
 import com.vmware.xenon.services.common.QueryTask.QuerySpecification;
 import com.vmware.xenon.services.common.QueryTask.QuerySpecification.QueryOption;
+import com.vmware.xenon.services.common.QueryTask.QueryTerm;
 import com.vmware.xenon.services.common.QueryTask.QueryTerm.MatchType;
 import com.vmware.xenon.services.common.QueryValidationTestService.QueryValidationServiceState;
 import com.vmware.xenon.services.common.TenantService.TenantState;
@@ -883,6 +884,31 @@ public class TestQueryTaskService {
             this.host.createAndWaitSimpleDirectQuery(spec,
                     documentCount, expectedResultCount);
         }
+    }
+
+    @Test
+    public void selectLinks() throws Throwable {
+        setUpHost();
+        List<URI> services = startQueryTargetServices(this.serviceCount / 2);
+
+        // start two different types of services, creating two sets of documents
+        // first start the query validation service instances, setting the id
+        // field
+        // to the same value
+        QueryValidationServiceState newState = new QueryValidationServiceState();
+        newState.id = UUID.randomUUID().toString();
+        newState = putStateOnQueryTargetServices(services, 1, newState);
+
+        // issue a query that matches kind for the query validation service
+        Query query = Query.Builder.create()
+                .addKindFieldClause(QueryValidationServiceState.class)
+                .build();
+        QueryTask queryTask = QueryTask.Builder.create()
+                .addOption(QueryOption.SELECT_LINKS)
+                .addLinkTerm(QueryValidationServiceState.FIELD_NAME_SERVICE_LINK)
+                .setQuery(query).build();
+
+        createWaitAndValidateQueryTask(1, services, queryTask.querySpec, false);
     }
 
     @Test
@@ -2713,6 +2739,9 @@ public class TestQueryTaskService {
             boolean isDirect)
             throws Throwable {
         QueryTask task = QueryTask.create(q).setDirect(isDirect);
+        if (q.options == null) {
+            q.options = EnumSet.noneOf(QueryOption.class);
+        }
         if (isDirect) {
             task.documentExpirationTimeMicros = Utils.getNowMicrosUtc()
                     + TimeUnit.MILLISECONDS.toMicros(100);
@@ -2724,7 +2753,7 @@ public class TestQueryTaskService {
                     forceRemote, true);
         }
 
-        if (q.options != null && q.options.contains(QueryOption.COUNT)) {
+        if (q.options.contains(QueryOption.COUNT)) {
             assertTrue(task.results.documentCount != null);
             assertTrue(task.results.documentCount == services.size() * (versionCount + 1));
             return;
@@ -2736,12 +2765,23 @@ public class TestQueryTaskService {
             verifyTaskAutoExpiration(u);
         }
 
-        if (q.options == null
-                || !q.options.contains(QueryOption.EXPAND_CONTENT)) {
-            return;
+        if (q.options.contains(QueryOption.EXPAND_CONTENT)) {
+            assertTrue(task.results.documentLinks.size() == task.results.documents
+                    .size());
         }
-        assertTrue(task.results.documentLinks.size() == task.results.documents
-                .size());
+
+        if (q.options.contains(QueryOption.SELECT_LINKS)) {
+            assertTrue(!task.results.selectedLinks.isEmpty());
+            for (QueryTerm link : task.querySpec.linkTerms) {
+                for (String selflink : task.results.documentLinks) {
+                    Map<String, String> selectedLinks = task.results.selectedLinks.get(selflink);
+                    assertTrue(!selectedLinks.isEmpty());
+                    String linkValue = selectedLinks.get(link.propertyName);
+                    assertEquals(SERVICE_LINK_VALUE, linkValue);
+                }
+            }
+        }
+
     }
 
     @Test
