@@ -628,6 +628,7 @@ public abstract class FactoryService extends StatelessService {
                             Operation forwardOp = o.clone().setUri(remotePeerService)
                                     .setCompletion(fc);
 
+                            forwardOp.setConnectionTag(ServiceClient.CONNECTION_TAG_FORWARDING);
                             forwardOp.toggleOption(NodeSelectorService.FORWARDING_OPERATION_OPTION, true);
 
                             // fix up selfLink so it does not have factory prefix
