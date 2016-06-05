@@ -24,6 +24,7 @@ import java.util.List;
 import java.util.Random;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
+import java.util.logging.Level;
 
 import org.junit.Before;
 import org.junit.Test;
@@ -41,6 +42,7 @@ import com.vmware.xenon.common.StatelessService;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
 import com.vmware.xenon.common.test.TestContext;
+import com.vmware.xenon.common.test.VerificationHost;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
 import com.vmware.xenon.services.common.QueryTask.Query;
 import com.vmware.xenon.services.common.QueryTask.Query.Occurance;
@@ -64,13 +66,17 @@ public class TestTransactionService extends BasicReusableHostTestCase {
         this.baseAccountId = Utils.getNowMicrosUtc();
         this.host.waitForServiceAvailable(ExampleService.FACTORY_LINK);
         this.host.waitForServiceAvailable(TransactionFactoryService.SELF_LINK);
-        if (this.host.getServiceStage(BankAccountService.FACTORY_LINK) == null) {
+        setUpHostWithAdditionalServices(this.host);
+        this.host.setOperationTimeOutMicros(TimeUnit.SECONDS.toMicros(1000));
+    }
+
+    private void setUpHostWithAdditionalServices(VerificationHost h) throws Throwable {
+        if (h.getServiceStage(BankAccountService.FACTORY_LINK) == null) {
             Service bankAccountFactory = FactoryService.create(BankAccountService.class,
                     BankAccountServiceState.class);
-            this.host.startServiceAndWait(bankAccountFactory, BankAccountService.FACTORY_LINK,
+            h.startServiceAndWait(bankAccountFactory, BankAccountService.FACTORY_LINK,
                     new BankAccountServiceState());
         }
-        this.host.setOperationTimeOutMicros(TimeUnit.SECONDS.toMicros(1000));
     }
 
     /**
@@ -383,6 +389,59 @@ public class TestTransactionService extends BasicReusableHostTestCase {
 
         deleteAccounts(null, this.accountCount);
         countAccounts(null, 0);
+    }
+
+    @Test
+    public void testHostRestartMidTransaction() throws Throwable {
+        // create a separate host for this test
+        VerificationHost originalHost = this.host;
+        VerificationHost vhost = VerificationHost.create(0);
+        try {
+            vhost.setMaintenanceIntervalMicros(TimeUnit.MILLISECONDS.toMicros(250));
+            vhost.start();
+            setUpHostWithAdditionalServices(vhost);
+            this.host = vhost;
+
+            // create accounts in a new transaction, do not commit yet
+            String txid = newTransaction();
+            createAccounts(txid, this.accountCount, 100.0);
+
+            // restart host
+            this.host.stopHostAndPreserveState(vhost);
+            boolean restarted = VerificationHost.restartStatefulHost(vhost);
+            if (!restarted) {
+                this.host.log(Level.WARNING, "Could not restart host, skipping test...");
+                return;
+            }
+            setUpHostWithAdditionalServices(vhost);
+            vhost.waitForReplicatedFactoryServiceAvailable(getAccountFactoryUri());
+            vhost.waitForReplicatedFactoryServiceAvailable(getTransactionFactoryUri());
+
+            // verify accounts can be used
+            for (int i = 0; i < this.accountCount; i++) {
+                withdrawFromAccount(txid, buildAccountId(i), 30.0, null);
+                verifyAccountBalance(txid, buildAccountId(i), 70.0);
+            }
+
+            // now commit...and verify count
+            boolean committed = commit(txid, this.accountCount * 3);
+            assertTrue(committed);
+            countAccounts(null, this.accountCount);
+
+            // clean up
+            deleteAccounts(null, this.accountCount);
+            countAccounts(null, 0);
+        } finally {
+            if (vhost.isStarted()) {
+                try {
+                    vhost.tearDown();
+                } catch (Exception e) {
+                    this.host.log(Level.WARNING, "Failed to tear down host during cleanup: ",
+                            e.getMessage());
+                }
+            }
+            this.host = originalHost;
+        }
     }
 
     private void sendWithdrawDepositOperationPairs(String[] txids, int numOfTransfers,
