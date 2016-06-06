@@ -43,6 +43,7 @@ public class QueryValidationTestService extends StatefulService {
     public static class QueryValidationServiceState extends ServiceDocument {
         public static final String FIELD_NAME_IGNORED_STRING_VALUE = "ignoredStringValue";
         public static final String FIELD_NAME_SERVICE_LINK = "serviceLink";
+        public static final String FIELD_NAME_SERVICE_LINKS = "serviceLinks";
         public String id;
         @Documentation(description = "a Long value")
         @PropertyOptions(usage = PropertyUsageOption.OPTIONAL)
@@ -58,6 +59,8 @@ public class QueryValidationTestService extends StatefulService {
         public String stringValue;
         @PropertyOptions(usage = { PropertyUsageOption.OPTIONAL, PropertyUsageOption.LINK })
         public String serviceLink;
+        @PropertyOptions(usage = { PropertyUsageOption.OPTIONAL, PropertyUsageOption.LINKS })
+        public List<String> serviceLinks;
         public URI referenceValue;
         public Boolean booleanValue;
         public TaskState taskInfo;
@@ -110,7 +113,6 @@ public class QueryValidationTestService extends StatefulService {
     @Override
     public ServiceDocument getDocumentTemplate() {
         ServiceDocument d = super.getDocumentTemplate();
-
         PropertyDescription pdStringValue = d.documentDescription.propertyDescriptions
                 .get("stringValue");
         pdStringValue.indexingOptions.add(PropertyIndexingOption.TEXT);

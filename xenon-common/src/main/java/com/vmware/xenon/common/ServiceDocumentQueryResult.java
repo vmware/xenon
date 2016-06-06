@@ -44,6 +44,12 @@ public class ServiceDocumentQueryResult extends ServiceDocument {
      * include a document link /services/one, with a document that has a field "parentLink"
      * and value "/parents/two", this map will look like so:
      * { "selectedLinks" : { "/services/one" : {"parentLink" : "parents/two" } } }
+     *
+     * For fields that are collections of links, marked with PropertyUsageOption.LINKS, the map
+     * will contain all of the collection items, prefixed by a unique identifier, like so:
+     *  { "selectedLinks" : { "/services/one" : {
+     *    "parentLinks.item.0" : "parents/two", "parentLinks.item.1" : "parents/three" }
+     *   } }
      */
     public Map<String, Map<String, String>> selectedLinks;
 

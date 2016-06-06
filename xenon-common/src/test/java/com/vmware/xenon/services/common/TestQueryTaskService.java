@@ -88,6 +88,7 @@ public class TestQueryTaskService {
     private static final String SERVICE_LINK_VALUE = "provisioning/dhcp-subnets/192.4.0.0/16";
     private static final long LONG_START_VALUE = -10;
     private static final double DOUBLE_MIN_OFFSET = -2.0;
+    private static final int SERVICE_LINK_COUNT = 10;
 
     public int serviceCount = 50;
     public int queryCount = 10;
@@ -98,11 +99,6 @@ public class TestQueryTaskService {
         if (this.host != null) {
             return;
         }
-
-        // Setting Maximum allowed response payload size to 50KB.
-        // This helps us easily test negative cases i.e when a service
-        // returns a larger payload than the allowed limit.
-        NettyHttpListener.setResponsePayloadSizeLimit(1024 * 50);
 
         this.host = VerificationHost.create(0);
         CommandLineArgumentParser.parseFromProperties(this.host);
@@ -149,11 +145,11 @@ public class TestQueryTaskService {
         ServiceDocumentDescription sdd = b.buildDescription(s.getClass(),
                 EnumSet.of(ServiceOption.PERSISTENCE));
 
-        final int expectedCustomFields = 34;
+        final int expectedCustomFields = 35;
         final int expectedBuiltInFields = 10;
         // Verify the reflection of the root document
         assertTrue(sdd.propertyDescriptions != null && !sdd.propertyDescriptions.isEmpty());
-        assertEquals(sdd.propertyDescriptions.size(), expectedCustomFields + expectedBuiltInFields);
+        assertEquals(expectedCustomFields + expectedBuiltInFields, sdd.propertyDescriptions.size());
 
         pd = sdd.propertyDescriptions.get(ServiceDocument.FIELD_NAME_SOURCE_LINK);
         assertTrue(pd.exampleValue == null);
@@ -177,7 +173,7 @@ public class TestQueryTaskService {
         assertTrue(descriptionsPerType.get(TypeName.MAP) == 8L);
         assertEquals(descriptionsPerType.get(TypeName.LONG), (Long)(1L + 4L + 3L));
         assertTrue(descriptionsPerType.get(TypeName.PODO) == 3L);
-        assertTrue(descriptionsPerType.get(TypeName.COLLECTION) == 7L);
+        assertTrue(descriptionsPerType.get(TypeName.COLLECTION) == 8L);
         assertTrue(descriptionsPerType.get(TypeName.STRING) == 5L + 5L);
         assertTrue(descriptionsPerType.get(TypeName.DATE) == 1L);
         assertTrue(descriptionsPerType.get(TypeName.DOUBLE) == 4L);
@@ -909,6 +905,17 @@ public class TestQueryTaskService {
                 .setQuery(query).build();
 
         createWaitAndValidateQueryTask(1, services, queryTask.querySpec, false);
+
+        // issue a another query this time for the field that has a collection of links
+        query = Query.Builder.create()
+                .addKindFieldClause(QueryValidationServiceState.class)
+                .build();
+        queryTask = QueryTask.Builder.create()
+                .addOption(QueryOption.SELECT_LINKS)
+                .addLinkTerm(QueryValidationServiceState.FIELD_NAME_SERVICE_LINKS)
+                .setQuery(query).build();
+
+        createWaitAndValidateQueryTask(1, services, queryTask.querySpec, false);
     }
 
     @Test
@@ -1531,10 +1538,15 @@ public class TestQueryTaskService {
 
         boolean limitChecked = false;
         try {
+            // set limit to a small number to force error
+            NettyHttpListener.setResponsePayloadSizeLimit(1024 * 50);
             createWaitAndValidateQueryTask(versionCount, services, q, true, true);
         } catch (ProtocolException ex) {
             assertTrue(ex.getMessage().contains("/core/query-tasks returned error 500 for POST"));
             limitChecked = true;
+        } finally {
+            NettyHttpListener.setResponsePayloadSizeLimit(
+                    ServiceRequestListener.RESPONSE_PAYLOAD_SIZE_LIMIT);
         }
         assertTrue("Expected QueryTask failure with INTERNAL_SERVER_ERROR because" +
                 "response payload size was over limit.", limitChecked);
@@ -2770,18 +2782,37 @@ public class TestQueryTaskService {
                     .size());
         }
 
-        if (q.options.contains(QueryOption.SELECT_LINKS)) {
-            assertTrue(!task.results.selectedLinks.isEmpty());
-            for (QueryTerm link : task.querySpec.linkTerms) {
-                for (String selflink : task.results.documentLinks) {
-                    Map<String, String> selectedLinks = task.results.selectedLinks.get(selflink);
-                    assertTrue(!selectedLinks.isEmpty());
+        validateSelectLinksQueryResults(q, task);
+
+    }
+
+    private void validateSelectLinksQueryResults(QueryTask.QuerySpecification q, QueryTask task) {
+        if (!q.options.contains(QueryOption.SELECT_LINKS)) {
+            return;
+        }
+        assertTrue(!task.results.selectedLinks.isEmpty());
+        for (QueryTerm link : task.querySpec.linkTerms) {
+            for (String selflink : task.results.documentLinks) {
+                Map<String, String> selectedLinks = task.results.selectedLinks.get(selflink);
+                assertTrue(!selectedLinks.isEmpty());
+
+                if (QueryValidationServiceState.FIELD_NAME_SERVICE_LINK
+                        .equals(link.propertyName)) {
                     String linkValue = selectedLinks.get(link.propertyName);
                     assertEquals(SERVICE_LINK_VALUE, linkValue);
+                } else if (QueryValidationServiceState.FIELD_NAME_SERVICE_LINKS
+                        .equals(link.propertyName)) {
+                    for (Entry<String, String> e : selectedLinks.entrySet()) {
+                        assertTrue(e.getKey().startsWith(
+                                QueryValidationServiceState.FIELD_NAME_SERVICE_LINKS));
+                        assertTrue(e.getValue().startsWith(SERVICE_LINK_VALUE));
+                    }
+                } else {
+                    throw new IllegalStateException("Unexpected link property: "
+                            + Utils.toJsonHtml(task.results));
                 }
             }
         }
-
     }
 
     @Test
@@ -2896,6 +2927,12 @@ public class TestQueryTaskService {
             templateState.mapOfDoubles.put("double", templateState.doubleValue);
             templateState.stringValue = TEXT_VALUE;
             templateState.serviceLink = SERVICE_LINK_VALUE;
+
+            templateState.serviceLinks = new ArrayList<>();
+            for (int i = 0; i < SERVICE_LINK_COUNT; i++) {
+                templateState.serviceLinks.add(SERVICE_LINK_VALUE + "." + i);
+            }
+
             for (int i = 0; i < versionsPerService; i++) {
                 // change all other fields, per service
                 templateState.booleanValue = r.nextBoolean();

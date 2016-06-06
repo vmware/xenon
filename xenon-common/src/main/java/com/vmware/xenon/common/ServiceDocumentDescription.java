@@ -103,9 +103,14 @@ public class ServiceDocumentDescription {
         ID,
 
         /**
-         * Property is a Link (currently just used for DocumentDescription generation)
+         * Property is a link (relative URI path) to another indexed document
          */
         LINK,
+
+        /**
+         * Property is a collection of links (relative URI paths) to other indexed documents
+         */
+        LINKS,
     }
 
     public enum PropertyIndexingOption {

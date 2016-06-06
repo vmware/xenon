@@ -42,6 +42,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import com.esotericsoftware.kryo.KryoException;
 import com.google.gson.JsonParser;
+
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.core.SimpleAnalyzer;
 import org.apache.lucene.document.Document;
@@ -1173,14 +1174,7 @@ public class LuceneDocumentIndexService extends StatelessService {
             }
 
             if (options.contains(QueryOption.OWNER_SELECTION)) {
-                String documentOwner = null;
-                if (state == null) {
-                    documentOwner = Utils.fromJson(json, ServiceDocument.class).documentOwner;
-                } else {
-                    documentOwner = state.documentOwner;
-                }
-                // omit the result if the documentOwner is not the same as the local owner
-                if (documentOwner != null && !documentOwner.equals(getHost().getId())) {
+                if (!processQueryResultsForOwnerSelection(json, state)) {
                     continue;
                 }
             }
@@ -1192,17 +1186,7 @@ public class LuceneDocumentIndexService extends StatelessService {
             }
 
             if (options.contains(QueryOption.SELECT_LINKS)) {
-                if (rsp.selectedLinks == null) {
-                    rsp.selectedLinks = new HashMap<>();
-                }
-                Map<String, String> linksPerDocument = rsp.selectedLinks.get(link);
-                if (linksPerDocument == null) {
-                    linksPerDocument = new HashMap<>();
-                    rsp.selectedLinks.put(link, linksPerDocument);
-                }
-                for (QueryTask.QueryTerm qt : qs.linkTerms) {
-                    linksPerDocument.put(qt.propertyName, d.get(qt.propertyName));
-                }
+                state = processQueryResultsForSelectLinks(s, qs, rsp, d, sd.doc, link, state);
             }
 
             uniques.add(link);
@@ -1217,6 +1201,75 @@ public class LuceneDocumentIndexService extends StatelessService {
         }
 
         return lastDocVisited;
+    }
+
+    private boolean processQueryResultsForOwnerSelection(String json, ServiceDocument state) {
+        String documentOwner = null;
+        if (state == null) {
+            documentOwner = Utils.fromJson(json, ServiceDocument.class).documentOwner;
+        } else {
+            documentOwner = state.documentOwner;
+        }
+        // omit the result if the documentOwner is not the same as the local owner
+        if (documentOwner != null && !documentOwner.equals(getHost().getId())) {
+            return false;
+        }
+        return true;
+    }
+
+    private ServiceDocument processQueryResultsForSelectLinks(IndexSearcher s,
+            QuerySpecification qs, ServiceDocumentQueryResult rsp, Document d, int docId,
+            String link,
+            ServiceDocument state) throws Throwable {
+        if (rsp.selectedLinks == null) {
+            rsp.selectedLinks = new HashMap<>();
+        }
+        Map<String, String> linksPerDocument = rsp.selectedLinks.get(link);
+        if (linksPerDocument == null) {
+            linksPerDocument = new HashMap<>();
+            rsp.selectedLinks.put(link, linksPerDocument);
+        }
+
+        for (QueryTask.QueryTerm qt : qs.linkTerms) {
+            String linkValue = d.get(qt.propertyName);
+            if (linkValue != null) {
+                linksPerDocument.put(qt.propertyName, linkValue);
+                continue;
+            }
+
+            // if there is no stored field with the link term property name, it might be
+            // a field with a collection of links. We do not store those in lucene, they are
+            // part of the binary serialized state.
+            if (state == null) {
+                d = s.getIndexReader().document(docId, this.fieldsToLoadWithExpand);
+                state = getStateFromLuceneDocument(d, link);
+                if (state == null) {
+                    logWarning("Skipping link %s, can not find serialized state", link);
+                    continue;
+                }
+            }
+
+            java.lang.reflect.Field linkCollectionField = ReflectionUtils.getField(
+                    state.getClass(), qt.propertyName);
+            if (linkCollectionField == null) {
+                logWarning("Skipping link %s, can not find field", link);
+                continue;
+            }
+            Object fieldValue = linkCollectionField.get(state);
+            if (!(fieldValue instanceof Collection<?>)) {
+                logWarning("Skipping link %s, field is not a collection", link);
+                continue;
+            }
+            @SuppressWarnings("unchecked")
+            Collection<String> linkCollection = (Collection<String>) fieldValue;
+            int index = 0;
+            for (String item : linkCollection) {
+                linksPerDocument.put(
+                        QuerySpecification.buildLinkCollectionItemName(qt.propertyName, index++),
+                        item);
+            }
+        }
+        return state;
     }
 
     private ServiceDocument getStateFromLuceneDocument(Document doc, String link) {
@@ -1474,6 +1527,9 @@ public class LuceneDocumentIndexService extends StatelessService {
         if (pd.usageOptions != null) {
             if (pd.usageOptions.contains(PropertyUsageOption.LINK)) {
                 fsv = Field.Store.YES;
+            }
+            if (pd.usageOptions.contains(PropertyUsageOption.LINKS)) {
+                expandField = true;
             }
         }
 

@@ -197,6 +197,11 @@ public class QueryTask extends ServiceDocument {
             return fieldName + FIELD_NAME_CHARACTER + COLLECTION_FIELD_SUFFIX;
         }
 
+        public static String buildLinkCollectionItemName(String fieldName, int ordinal) {
+            return fieldName + FIELD_NAME_CHARACTER
+                    + COLLECTION_FIELD_SUFFIX + FIELD_NAME_CHARACTER + ordinal;
+        }
+
         /**
          * Convert the given value to a normalized string representation that is used for
          * both generating indexed values and query criteria used to match against those
