@@ -20,7 +20,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Operation.CompletionHandler;
 import com.vmware.xenon.common.ServiceDocumentQueryResult;
-import com.vmware.xenon.common.ServiceHost.ServiceNotFoundException;
 import com.vmware.xenon.common.StatefulService;
 import com.vmware.xenon.common.Utils;
 import com.vmware.xenon.services.common.QueryTask.Query;
@@ -78,13 +77,13 @@ class AuthorizationCacheUtils {
     static void clearAuthzCacheForRole(StatefulService s, Operation op, RoleState roleState) {
         Operation parentOp = Operation.createGet(s.getHost(), roleState.userGroupLink)
                 .setCompletion((getOp, getEx) -> {
+                    // the userGroup link might not be valid; just mark the operation complete
+                    if (getOp.getStatusCode() == Operation.STATUS_CODE_NOT_FOUND) {
+                        op.complete();
+                        return;
+                    }
                     if (getEx != null) {
-                        // the userGroup link might not be valid; just mark the operation complete
-                        if (getEx instanceof ServiceNotFoundException) {
-                            op.complete();
-                            return;
-                        }
-                        op.fail(getEx);
+                        op.setBodyNoCloning(getOp.getBodyRaw()).fail(getOp.getStatusCode());
                         return;
                     }
                     UserGroupState userGroupState = getOp.getBody(UserGroupState.class);
