@@ -89,6 +89,10 @@ public abstract class AbstractWebSocketServiceTest extends BasicTestCase {
                 .toURI()));
         this.host.startServiceAndWait(fs, WS_TEST_JS_PATH, null);
 
+
+    }
+
+    public void setupWSServices() throws Throwable {
         // Prepare JavaScript context with WebSocket API emulation
         JsExecutor
                 .executeSynchronously(() -> {
@@ -123,7 +127,6 @@ public abstract class AbstractWebSocketServiceTest extends BasicTestCase {
         observerServiceUriForClose = waitAndGetValue("observerServiceUriForClose");
         observerServiceUriForUnsubscribe = waitAndGetValue("observerServiceUriForUnsubscribe");
     }
-
     /**
      * Tests that GET method is correctly forwarded to JS and response is correctly forwarded back
      * @throws Throwable

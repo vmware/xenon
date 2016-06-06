@@ -21,6 +21,13 @@ import org.junit.Test;
  * Tests websocket service with authentication off.
  */
 public class TestWebSocketService extends AbstractWebSocketServiceTest {
+
+    @Override
+    public void setUp() throws Throwable {
+        super.setUp();
+        setupWSServices();
+    }
+
     @Test
     public void actions() throws Throwable {
         testGet();

@@ -2323,10 +2323,7 @@ public class ServiceHost implements ServiceRequestSender {
                         document = new ServiceDocument();
                         document.documentSelfLink = s.getSelfLink();
                     }
-                    if (!isAuthorized(s, document, post)) {
-                        post.fail(Operation.STATUS_CODE_FORBIDDEN);
-                        return;
-                    }
+                    checkIfAuthorized(s, document, post);
                     processServiceStart(ProcessingStage.INDEXING_INITIAL_STATE, s, post,
                             hasClientSuppliedInitialState);
                 });
@@ -2473,10 +2470,7 @@ public class ServiceHost implements ServiceRequestSender {
         // If either there is cached state, or the service is not indexed (meaning nothing
         // will be found in the index), subject this state to authorization.
         if (state != null || !isServiceIndexed(s)) {
-            if (!isAuthorized(s, state, op)) {
-                op.fail(Operation.STATUS_CODE_FORBIDDEN);
-                return;
-            }
+            checkIfAuthorized(s, state, op);
 
             if (state != null) {
                 op.linkState(state);
@@ -2509,11 +2503,8 @@ public class ServiceHost implements ServiceRequestSender {
                     }
 
                     ServiceDocument st = o.getBody(s.getStateType());
-                    if (!isAuthorized(s, st, op)) {
-                        op.fail(Operation.STATUS_CODE_FORBIDDEN);
-                        return;
-                    }
 
+                    checkIfAuthorized(s, st, op);
                     op.linkState(st).complete();
                 });
 
@@ -2526,12 +2517,34 @@ public class ServiceHost implements ServiceRequestSender {
         this.documentIndexService.handleRequest(loadGet);
     }
 
+    private void checkIfAuthorized(Service service, ServiceDocument document, Operation op) {
+        op.nestCompletion((authOp, authEx) -> {
+            boolean evaluateQueryFilters = true;
+            // stateless services can allow access even if no explicit role is specified
+            // if the authorizeRequest() is overridden. The default implementation
+            // authorrizeRequest() calls the isAuthorized() method with evaluateQueryFilters
+            // set to true
+            if (service instanceof StatelessService) {
+                evaluateQueryFilters = false;
+            }
+            if (!isAuthorized(service, document, op, evaluateQueryFilters)) {
+                op.fail(Operation.STATUS_CODE_FORBIDDEN);
+                return;
+            }
+            service.authorizeRequest(op);
+        });
+    }
+
     /**
      * Infrastructure use. Applies authorization policy on the supplied document and fails the
      * operation if authorization fails
      * @return True if request was authorized, false otherwise
      */
     public boolean isAuthorized(Service service, ServiceDocument document, Operation op) {
+        return isAuthorized(service, document, op, true);
+    }
+
+    public boolean isAuthorized(Service service, ServiceDocument document, Operation op, boolean evaluateQueryFilters) {
         // Authorization not enabled, so there is nothing to check
         if (!this.isAuthorizationEnabled()) {
             return true;
@@ -2564,8 +2577,10 @@ public class ServiceHost implements ServiceRequestSender {
 
         ServiceDocumentDescription documentDescription = buildDocumentDescription(service);
         QueryFilter queryFilter = ctx.getResourceQueryFilter(op.getAction());
-        if (queryFilter == null || !queryFilter.evaluate(document, documentDescription)) {
-            return false;
+        if (evaluateQueryFilters) {
+            if (queryFilter == null || !queryFilter.evaluate(document, documentDescription)) {
+                return false;
+            }
         }
 
         return true;

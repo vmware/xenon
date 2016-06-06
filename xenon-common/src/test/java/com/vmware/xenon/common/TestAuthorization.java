@@ -67,6 +67,12 @@ public class TestAuthorization extends BasicTestCase {
         }
     }
 
+    public static class OpenAuthzStatelessService extends AuthzStatelessService {
+        public void authorizeRequest(Operation op) {
+            op.complete();
+        }
+    }
+
     private String userServicePath;
     private AuthorizationHelper authHelper;
     private int serviceCount = 10;
@@ -181,6 +187,25 @@ public class TestAuthorization extends BasicTestCase {
         patch.setBody(new ServiceDocument());
         this.host.testStart(1);
         patch.setCompletion(ch);
+        this.host.send(patch);
+        this.host.testWait();
+
+        // assume authorized user identity
+        this.host.assumeIdentity(this.userServicePath, null);
+
+        // create a stateless service that allows access to any user
+        serviceLink = UUID.randomUUID().toString();
+        post = Operation.createPost(UriUtils.buildUri(this.host, serviceLink));
+        this.host.testStart(1);
+        post.setCompletion(this.host.getCompletion());
+        this.host.startService(post, new OpenAuthzStatelessService());
+        this.host.testWait();
+
+        // Verify PATCH
+        patch = Operation.createPatch(UriUtils.buildUri(this.host, serviceLink));
+        patch.setBody(new ServiceDocument());
+        this.host.testStart(1);
+        patch.setCompletion(this.host.getCompletion());
         this.host.send(patch);
         this.host.testWait();
     }
