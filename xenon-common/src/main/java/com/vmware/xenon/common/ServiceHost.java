@@ -4339,6 +4339,26 @@ public class ServiceHost implements ServiceRequestSender {
                     }, 1, TimeUnit.SECONDS);
                     return;
                 }
+
+                // Since we do a POST first for services using ON_DEMAND_LOAD to start the service,
+                // we can get back a 409 status code i.e. the service has already been started or was
+                // deleted previously. We special case here by checking the the Action of the
+                // original operation. If it was POST, we let the same error propagate to the caller.
+                // If it was a DELETE, we swallow the 409 error because the service has already been
+                // deleted. In other cases, we return a 404 - Service not found.
+                if (o.hasBody() &&
+                        o.getBody(ServiceErrorResponse.class).statusCode == Operation.STATUS_CODE_CONFLICT) {
+                    if (inboundOp.getAction() == Action.DELETE) {
+                        inboundOp.complete();
+                        return;
+                    }
+
+                    if (inboundOp.getAction() != Action.POST) {
+                        failRequestServiceNotFound(inboundOp);
+                        return;
+                    }
+                }
+
                 inboundOp.setBodyNoCloning(o.getBodyRaw()).setStatusCode(o.getStatusCode());
                 inboundOp.fail(e);
                 return;

@@ -721,8 +721,26 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
         Operation patch = Operation.createPatch(serviceToDelete)
                 .setBody(st)
                 .setCompletion(
-                        this.host.getExpectedFailureCompletion(Operation.STATUS_CODE_CONFLICT));
+                        this.host.getExpectedFailureCompletion(Operation.STATUS_CODE_NOT_FOUND));
         this.host.sendAndWait(patch);
+
+        // do a GET, expect failure
+        Operation get = Operation.createGet(serviceToDelete)
+                .setCompletion(
+                        this.host.getExpectedFailureCompletion(Operation.STATUS_CODE_NOT_FOUND));
+        this.host.sendAndWait(get);
+
+        // do a PUT, expect failure
+        Operation put = Operation.createGet(serviceToDelete)
+                .setBody(st)
+                .setCompletion(
+                        this.host.getExpectedFailureCompletion(Operation.STATUS_CODE_NOT_FOUND));
+        this.host.sendAndWait(get);
+
+        // do a DELETE again, expect no failure
+        delete = Operation.createDelete(serviceToDelete)
+                .setCompletion(this.host.getCompletion());
+        this.host.sendAndWait(delete);
 
         // verify that attempting to start a service, through factory POST, that was previously created,
         // but not yet loaded/started, fails, with ServiceAlreadyStarted exception
