@@ -13,19 +13,23 @@
 
 package com.vmware.xenon.services.common.authn;
 
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
+
 import java.net.URI;
 import java.util.Base64;
 import java.util.HashMap;
 import java.util.Map;
-
-import static org.junit.Assert.assertEquals;
+import java.util.concurrent.TimeUnit;
 
 import org.junit.Before;
 import org.junit.Test;
 
 import com.vmware.xenon.common.BasicTestCase;
 import com.vmware.xenon.common.Operation;
+import com.vmware.xenon.common.Operation.AuthorizationContext;
 import com.vmware.xenon.common.UriUtils;
+import com.vmware.xenon.common.Utils;
 import com.vmware.xenon.common.http.netty.CookieJar;
 import com.vmware.xenon.common.test.VerificationHost;
 import com.vmware.xenon.services.common.AuthCredentialsService;
@@ -294,6 +298,142 @@ public class TestBasicAuthenticationService extends BasicTestCase {
                             this.host.completeIteration();
                         }));
         this.host.testWait();
+
+    }
+
+    @Test
+    public void testAuthExpiration() throws Throwable {
+        this.host.resetAuthorizationContext();
+        URI authServiceUri = UriUtils.buildUri(this.host, BasicAuthenticationService.SELF_LINK);
+
+        // Next send a valid request
+        String userPassStr = Base64.getEncoder().encodeToString(
+                (USER + BASIC_AUTH_USER_SEPERATOR + PASSWORD).getBytes());
+        String headerVal = BASIC_AUTH_PREFIX + userPassStr;
+
+        long oneHourFromNowBeforeAuth = Utils.getNowMicrosUtc() + TimeUnit.HOURS.toMicros(1);
+
+        // do not specify expiration
+        AuthenticationRequest authReq = new AuthenticationRequest();
+
+        this.host.testStart(1);
+        this.host.send(Operation
+                .createPost(authServiceUri)
+                .setBody(authReq)
+                .addRequestHeader(BasicAuthenticationService.AUTHORIZATION_HEADER_NAME, headerVal)
+                .setCompletion(
+                        (o, e) -> {
+                            if (e != null) {
+                                this.host.failIteration(e);
+                                return;
+                            }
+
+                            long oneHourFromNowAfterAuth =
+                                    Utils.getNowMicrosUtc() + TimeUnit.HOURS.toMicros(1);
+
+                            // default expiration(1hour) must be used
+                            validateExpirationTimeRange(o.getAuthorizationContext(),
+                                    oneHourFromNowBeforeAuth, oneHourFromNowAfterAuth);
+
+                            this.host.completeIteration();
+                        }));
+        this.host.testWait();
+
+        // set expiration 1min
+        authReq = new AuthenticationRequest();
+        authReq.sessionExpirationSeconds = 60L;
+
+        this.host.testStart(1);
+        this.host.send(Operation
+                .createPost(authServiceUri)
+                .setBody(authReq)
+                .addRequestHeader(BasicAuthenticationService.AUTHORIZATION_HEADER_NAME, headerVal)
+                .setCompletion(
+                        (o, e) -> {
+                            if (e != null) {
+                                this.host.failIteration(e);
+                                return;
+                            }
+
+                            long tenMinAfterNowInMicro =
+                                    Utils.getNowMicrosUtc() + TimeUnit.MINUTES.toMicros(10);
+
+                            // expiration has set to 1min, so it must be before now + 10min
+                            validateExpirationTimeRange(o.getAuthorizationContext(),
+                                    null, tenMinAfterNowInMicro);
+
+                            this.host.completeIteration();
+                        }));
+        this.host.testWait();
+
+        // with negative sec
+        authReq = new AuthenticationRequest();
+        authReq.sessionExpirationSeconds = -1L;
+
+        this.host.testStart(1);
+        this.host.send(Operation
+                .createPost(authServiceUri)
+                .setBody(authReq)
+                .addRequestHeader(BasicAuthenticationService.AUTHORIZATION_HEADER_NAME, headerVal)
+                .setCompletion(
+                        (o, e) -> {
+                            if (e != null) {
+                                this.host.failIteration(e);
+                                return;
+                            }
+
+                            // must be before now
+                            validateExpirationTimeRange(o.getAuthorizationContext(),
+                                    null, Utils.getNowMicrosUtc());
+
+                            this.host.completeIteration();
+                        }));
+        this.host.testWait();
+
+        // with 0
+        authReq = new AuthenticationRequest();
+        authReq.sessionExpirationSeconds = 0L;
+
+        this.host.testStart(1);
+        this.host.send(Operation
+                .createPost(authServiceUri)
+                .setBody(authReq)
+                .addRequestHeader(BasicAuthenticationService.AUTHORIZATION_HEADER_NAME, headerVal)
+                .setCompletion(
+                        (o, e) -> {
+                            if (e != null) {
+                                this.host.failIteration(e);
+                                return;
+                            }
+
+                            // must be before now
+                            validateExpirationTimeRange(o.getAuthorizationContext(),
+                                    null, Utils.getNowMicrosUtc());
+
+                            this.host.completeIteration();
+                        }));
+        this.host.testWait();
+
+    }
+
+    private void validateExpirationTimeRange(AuthorizationContext authContext, Long fromInMicro,
+            Long toInMicro) {
+        assertNotNull(authContext);
+        assertNotNull(authContext.getClaims());
+        assertNotNull(authContext.getClaims().getExpirationTime());
+        long expirationInMicro = authContext.getClaims().getExpirationTime();
+
+        if (fromInMicro != null && expirationInMicro <= fromInMicro) {
+            String msg = String.format("expiration must be greater than %d but was %d", fromInMicro,
+                    expirationInMicro);
+            this.host.failIteration(new IllegalStateException(msg));
+        }
+
+        if (toInMicro != null && toInMicro <= expirationInMicro) {
+            String msg = String.format("expiration must be greater less %d but was %d", toInMicro,
+                    expirationInMicro);
+            this.host.failIteration(new IllegalStateException(msg));
+        }
 
     }
 

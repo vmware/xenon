@@ -40,6 +40,10 @@ public class BasicAuthenticationService extends StatelessService {
     private static final String BASIC_AUTH_SEPERATOR = " ";
     private static final String BASIC_AUTH_USER_SEPERATOR = ":";
 
+    private static final long AUTH_TOKEN_EXPIRATION_MICROS = Long.getLong(
+            Utils.PROPERTY_NAME_PREFIX + "BasicAuthenticationService.AUTH_TOKEN_EXPIRATION_MICROS",
+            TimeUnit.HOURS.toMicros(1));
+
     @Override
     public void authorizeRequest(Operation op) {
         op.complete();
@@ -192,10 +196,18 @@ public class BasicAuthenticationService extends StatelessService {
                 parentOp.fail(Operation.STATUS_CODE_FORBIDDEN);
                 return;
             }
-            // set token validity to one hour - this is arbitrary at this point and will
-            // need to be parameterized
-            if (!associateAuthorizationContext(parentOp, userLink,
-                    (Utils.getNowMicrosUtc() + TimeUnit.HOURS.toMicros(1)))) {
+
+            AuthenticationRequest authRequest = parentOp.getBody(AuthenticationRequest.class);
+            long expirationTime;
+            if (authRequest.sessionExpirationSeconds != null) {
+                expirationTime = Utils.getNowMicrosUtc() + TimeUnit.SECONDS
+                        .toMicros(authRequest.sessionExpirationSeconds);
+            } else {
+                expirationTime = Utils.getNowMicrosUtc() + AUTH_TOKEN_EXPIRATION_MICROS;
+            }
+
+            // set token validity
+            if (!associateAuthorizationContext(parentOp, userLink, expirationTime)) {
                 parentOp.fail(Operation.STATUS_CODE_SERVER_FAILURE_THRESHOLD);
                 return;
             }
