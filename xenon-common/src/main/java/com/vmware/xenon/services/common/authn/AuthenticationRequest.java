@@ -20,4 +20,6 @@ public class AuthenticationRequest {
     }
 
     public AuthenticationRequestType requestType;
+    public Long sessionExpirationSeconds;
+
 }
