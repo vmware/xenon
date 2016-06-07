@@ -2,6 +2,9 @@
 
 ## 0.8.2-SNAPSHOT
 
+* Add new JVM property to configure auth expiration duration in
+  BasicAuthenticationService.
+
 * Use SEND_WITH_CALLBACK in NettyHttpServiceClient if the request was
   configured for connectionSharing and SSL
 
