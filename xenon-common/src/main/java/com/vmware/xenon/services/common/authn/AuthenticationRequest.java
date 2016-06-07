@@ -20,4 +20,8 @@ public class AuthenticationRequest {
     }
 
     public AuthenticationRequestType requestType;
+
+    // only positive number is effective
+    public long sessionExpirationSeconds = -1;
+
 }
