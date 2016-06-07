@@ -861,6 +861,7 @@ public class Operation implements Cloneable {
                 try {
                     this.body = Utils.fromJson(this.body, type);
                 } catch (com.google.gson.JsonSyntaxException e) {
+                    Utils.logWarning("%s", this.body);
                     throw new IllegalArgumentException("Unparseable JSON body: " + e.getMessage(),
                             e);
                 }
