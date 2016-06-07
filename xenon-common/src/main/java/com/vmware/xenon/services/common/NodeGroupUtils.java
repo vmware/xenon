@@ -15,7 +15,11 @@ package com.vmware.xenon.services.common;
 
 import java.net.URI;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Operation.CompletionHandler;
@@ -25,8 +29,6 @@ import com.vmware.xenon.common.Service;
 import com.vmware.xenon.common.ServiceHost;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
-import com.vmware.xenon.services.common.NodeGroupService.CheckConvergenceRequest;
-import com.vmware.xenon.services.common.NodeGroupService.CheckConvergenceResponse;
 import com.vmware.xenon.services.common.NodeGroupService.NodeGroupState;
 
 public class NodeGroupUtils {
@@ -126,13 +128,19 @@ public class NodeGroupUtils {
                 return;
             }
 
+            Map<URI, Long> membershipUpdateTimes = new HashMap<>();
+            Set<Long> uniqueTimes = new HashSet<>();
             for (Operation peerOp : ops.values()) {
-                CheckConvergenceResponse r = peerOp.getBody(CheckConvergenceResponse.class);
-                if (!r.isConverged) {
-                    String error = String.format("Peer %s is not converged", peerOp.getUri());
-                    parentOp.fail(new IllegalStateException(error));
-                    return;
-                }
+                NodeGroupState rsp = peerOp.getBody(NodeGroupState.class);
+                membershipUpdateTimes.put(peerOp.getUri(), rsp.membershipUpdateTimeMicros);
+                uniqueTimes.add(rsp.membershipUpdateTimeMicros);
+            }
+
+            if (uniqueTimes.size() > 1) {
+                String error = String.format("Membership times not converged: %s",
+                        membershipUpdateTimes);
+                parentOp.fail(new IllegalStateException(error));
+                return;
             }
 
             parentOp.complete();
@@ -143,12 +151,9 @@ public class NodeGroupUtils {
             if (NodeState.isUnAvailable(ns)) {
                 continue;
             }
-            CheckConvergenceRequest peerReq = CheckConvergenceRequest
-                    .create(ngs.membershipUpdateTimeMicros);
-            Operation peerOp = Operation.createPost(ns.groupReference)
+            Operation peerOp = Operation.createGet(ns.groupReference)
                     .transferRefererFrom(parentOp)
-                    .setExpiration(parentOp.getExpirationMicrosUtc())
-                    .setBodyNoCloning(peerReq);
+                    .setExpiration(parentOp.getExpirationMicrosUtc());
             ops.add(peerOp);
         }
 

@@ -284,7 +284,7 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
             SelectOwnerResponse response,
             NodeGroupState localState) {
         NodeState self = localState.nodes.get(getHost().getId());
-        int quorum = self.membershipQuorum;
+        int quorum = this.cachedState.membershipQuorum;
         int availableNodes = localState.nodes.size();
 
         if (availableNodes == 1) {
@@ -356,7 +356,7 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
             return;
         }
 
-        rsp.membershipQuorum = this.cachedGroupState.nodes.get(getHost().getId()).membershipQuorum;
+        rsp.membershipQuorum = this.cachedState.membershipQuorum;
 
         AtomicInteger availableNodeCount = new AtomicInteger();
         CompletionHandler c = (o, e) -> {
@@ -581,9 +581,10 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
 
         synchronized (this.cachedState) {
             if (quorumUpdate != null) {
+                this.cachedState.membershipQuorum = quorumUpdate.membershipQuorum;
                 if (this.cachedGroupState != null) {
-                    NodeState selfNode = this.cachedGroupState.nodes.get(getHost().getId());
-                    selfNode.membershipQuorum = quorumUpdate.membershipQuorum;
+                    this.cachedGroupState.nodes.get(
+                            getHost().getId()).membershipQuorum = quorumUpdate.membershipQuorum;
                 }
                 return;
             }

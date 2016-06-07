@@ -46,25 +46,6 @@ public class NodeGroupService extends StatefulService {
         PEER_ADDED, PEER_STATUS_CHANGE, SELF_CHANGE
     }
 
-    public static class CheckConvergenceRequest {
-        public static final String KIND = Utils.buildKind(CheckConvergenceRequest.class);
-
-        public long membershipUpdateTimeMicros;
-
-        public static CheckConvergenceRequest create(long membershipUpdateTime) {
-            CheckConvergenceRequest r = new CheckConvergenceRequest();
-            r.membershipUpdateTimeMicros = membershipUpdateTime;
-            r.kind = KIND;
-            return r;
-        }
-
-        public String kind;
-    }
-
-    public static class CheckConvergenceResponse {
-        public boolean isConverged;
-    }
-
     public static class JoinPeerRequest {
         public static final String KIND = Utils.buildKind(JoinPeerRequest.class);
 
@@ -327,12 +308,6 @@ public class NodeGroupService extends StatefulService {
             return;
         }
 
-        CheckConvergenceRequest cr = post.getBody(CheckConvergenceRequest.class);
-        if (CheckConvergenceRequest.KIND.equals(cr.kind)) {
-            handleCheckConvergencePost(post, localState, cr);
-            return;
-        }
-
         JoinPeerRequest joinBody = post.getBody(JoinPeerRequest.class);
         if (joinBody != null && joinBody.memberGroupReference != null) {
             // set a short join operation timeout so that join retries will occur in any environment
@@ -364,13 +339,6 @@ public class NodeGroupService extends StatefulService {
 
         localState.nodes.put(body.id, body);
         post.setBody(localState).complete();
-    }
-
-    private void handleCheckConvergencePost(Operation post, NodeGroupState localState,
-            CheckConvergenceRequest body) {
-        CheckConvergenceResponse rsp = new CheckConvergenceResponse();
-        rsp.isConverged = localState.membershipUpdateTimeMicros == body.membershipUpdateTimeMicros;
-        post.setBody(rsp).complete();
     }
 
     private void handleJoinPost(JoinPeerRequest joinBody,

@@ -61,6 +61,7 @@ import org.junit.rules.TemporaryFolder;
 
 import com.vmware.xenon.common.Claims;
 import com.vmware.xenon.common.CommandLineArgumentParser;
+import com.vmware.xenon.common.NodeSelectorState;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Operation.AuthorizationContext;
 import com.vmware.xenon.common.Operation.CompletionHandler;
@@ -2431,9 +2432,25 @@ public class VerificationHost extends ExampleServiceHost {
             }
             Thread.sleep(500);
         }
+        waitForNodeSelectorQuorumConvergence(ServiceUriPaths.DEFAULT_NODE_SELECTOR, quorum);
         resetAuthorizationContext();
 
         throw new TimeoutException();
+    }
+
+    public void waitForNodeSelectorQuorumConvergence(String nodeSelectorPath, int quorum)
+            throws Throwable {
+        waitFor("quorum not updated", () -> {
+            for (URI peerHostUri : getNodeGroupMap().keySet()) {
+                URI nodeSelectorUri = UriUtils.buildUri(peerHostUri, nodeSelectorPath);
+                NodeSelectorState nss = getServiceState(null, NodeSelectorState.class,
+                        nodeSelectorUri);
+                if (nss.membershipQuorum != quorum) {
+                    return false;
+                }
+            }
+            return true;
+        });
     }
 
     public void setNodeGroupQuorum(Integer quorum, URI nodeGroup)

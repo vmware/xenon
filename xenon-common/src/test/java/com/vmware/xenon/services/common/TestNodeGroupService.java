@@ -402,9 +402,6 @@ public class TestNodeGroupService {
         this.host.joinNodesAndVerifyConvergence(CUSTOM_NODE_GROUP, this.nodeCount,
                 this.nodeCount, expectedOptionsPerNode);
 
-        // one of the nodes is observer, so we must set quorum to 2 explicitly
-        this.host.setNodeGroupQuorum(2, customNodeGroupServiceOnObserver);
-
         int restartCount = 0;
         // verify that the observer node shows up as OBSERVER on all peers, including self
         for (URI hostUri : this.host.getNodeGroupMap().keySet()) {
@@ -434,6 +431,10 @@ public class TestNodeGroupService {
         // join all the nodes through the default group, making sure another group still works
         this.host.joinNodesAndVerifyConvergence(this.nodeCount, true);
 
+        // one of the nodes is observer, so we must set quorum to 2 explicitly
+        this.host.setNodeGroupQuorum(2, customNodeGroupServiceOnObserver);
+        this.host.waitForNodeSelectorQuorumConvergence(CUSTOM_GROUP_NODE_SELECTOR, 2);
+
         URI observerFactoryUri = UriUtils.buildUri(observerHostUri, customFactoryLink);
         // create N services on the custom group, verify none of them got created on the observer.
         // We actually post directly to the observer node, which should forward to the other nodes
@@ -462,7 +463,7 @@ public class TestNodeGroupService {
 
         URI existingNodeGroup = this.host.getPeerNodeGroupUri();
 
-        // start  more nodes, insert them to existing group, but with no synchronization required
+        // start more nodes, insert them to existing group, but with no synchronization required
         // start some additional nodes
         int additionalHostCount = this.nodeCount;
         List<ServiceHost> newHosts = Collections.synchronizedList(new ArrayList<>());
