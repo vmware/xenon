@@ -204,10 +204,10 @@ public class LoaderServiceTest extends BasicReusableHostTestCase {
             // Now there is one service package
             this.host.log("Verifying existence of loaded service packages");
             if (serviceState.servicePackages.size() == 1) {
-                // Expecting 3 test service classes in the package
+                // Expecting 4 test service classes in the package
                 this.host.log("Verifying loaded service classes");
                 if (serviceState.servicePackages.values().iterator()
-                        .next().serviceClasses.size() == 3) {
+                        .next().serviceClasses.size() == 4) {
                     this.host.log("Found expected service classes");
                     break;
                 } else {

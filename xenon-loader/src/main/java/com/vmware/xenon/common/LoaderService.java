@@ -73,8 +73,7 @@ public class LoaderService extends StatefulService {
     public void handlePatch(Operation patch) {
         // Get the current state.
         final LoaderServiceState currentState = getState(patch);
-        final LoaderServiceState patchBody =
-                patch.getBody(LoaderServiceState.class);
+        final LoaderServiceState patchBody = getBody(patch);
 
         if (patchBody.path != null) {
             currentState.path = patchBody.path;
@@ -182,8 +181,7 @@ public class LoaderService extends StatefulService {
         if (discoveredPackages != null) {
             LoaderServiceState newState = new LoaderServiceState();
             newState.servicePackages = discoveredPackages;
-            final Operation patch =
-                    Operation.createPatch(getUri()).setBody(newState);
+            final Operation patch = Operation.createPatch(getUri()).setBody(newState);
             sendRequest(patch);
         }
     }
@@ -217,8 +215,8 @@ public class LoaderService extends StatefulService {
 
     private void startDiscoveredServices(Map<String, LoaderServiceInfo> services,
             LoaderServiceState state)
-            throws ClassNotFoundException, InstantiationException,
-            IllegalAccessException {
+                    throws ClassNotFoundException, InstantiationException,
+                    IllegalAccessException {
         logFine("Updating the class loader with new libraries");
 
         URL[] urls = new URL[services.size()];
@@ -227,7 +225,7 @@ public class LoaderService extends StatefulService {
             try {
                 urls[i++] = new URI(servicePackage).toURL();
             } catch (MalformedURLException | URISyntaxException e) {
-                logWarning("Failed to convert pat to URL", Utils.toString(e));
+                logWarning("Failed to convert path to URL", Utils.toString(e));
             }
         }
 
@@ -241,12 +239,8 @@ public class LoaderService extends StatefulService {
                     Class<?> clazz = cl.loadClass(serviceClass);
 
                     if (isValidDynamicService(clazz)) {
-                        Service service = (Service) clazz.newInstance();
-                        getHost().startService(
-                                Operation.createPost(UriUtils.buildUri(getHost(),
-                                        service.getClass())), service);
+                        Service service = startDynamicService(clazz);
                         packageInfo.serviceClasses.put(serviceClass, service.getSelfLink());
-                        logInfo("Started service " + service.getSelfLink());
                     }
                 }
             }
@@ -260,21 +254,47 @@ public class LoaderService extends StatefulService {
         }
     }
 
-    private boolean isValidDynamicService(Class<?> clazz) throws IllegalArgumentException,
-            IllegalAccessException {
-        try {
-            if (Service.class.isAssignableFrom(clazz)) {
-                Field selfLink = clazz.getField(UriUtils.FIELD_NAME_SELF_LINK);
-                if (selfLink != null) {
-                    logFine("Class %s self link %s", clazz, selfLink.get(null));
-                    return true;
-                }
-            }
-        } catch (NoSuchFieldException e) {
-            logFine("Self link fields wasn't found in %", clazz);
+    private Service startDynamicService(Class<?> clazz)
+            throws IllegalArgumentException, IllegalAccessException, InstantiationException {
+        Service service = (Service) clazz.newInstance();
+        URI link = null;
+        // If it's a service
+        if (getSelfOrFactoryLink(clazz).getName().equals(UriUtils.FIELD_NAME_SELF_LINK)) {
+            link = UriUtils.buildUri(getHost(), service.getClass());
+            getHost().startService(
+                    Operation.createPost(link),
+                    service);
+        } else {
+            // If it's a factory
+            link = UriUtils.buildFactoryUri(getHost(), service.getClass());
+            getHost().startFactory(service);
         }
 
-        return false;
+        logInfo("Started service " + link);
+        return service;
+    }
+
+    private boolean isValidDynamicService(Class<?> clazz) throws IllegalArgumentException,
+            IllegalAccessException {
+        return (Service.class.isAssignableFrom(clazz) && getSelfOrFactoryLink(clazz) != null);
+    }
+
+    private Field getSelfOrFactoryLink(Class<?> clazz)
+            throws IllegalArgumentException, IllegalAccessException {
+        try {
+            Field link = clazz.getField(UriUtils.FIELD_NAME_SELF_LINK);
+            logFine("Class %s self link %s", clazz, link.get(null));
+            return link;
+        } catch (NoSuchFieldException e) {
+            try {
+                Field link = clazz.getField(UriUtils.FIELD_NAME_FACTORY_LINK);
+                logFine("Class %s factory link %s", clazz, link.get(null));
+                return link;
+            } catch (NoSuchFieldException e2) {
+                logFine("Self link fields wasn't found in %s", clazz);
+            }
+        }
+        return null;
     }
 
     private Map<String, LoaderServiceInfo> discoverServices(File libDir,
@@ -304,8 +324,7 @@ public class LoaderService extends StatefulService {
                 }
             }
 
-            try (JarInputStream jar =
-                    new JarInputStream(new FileInputStream(file))) {
+            try (JarInputStream jar = new JarInputStream(new FileInputStream(file))) {
                 while (true) {
                     JarEntry e = jar.getNextJarEntry();
                     if (e == null) {
@@ -318,8 +337,7 @@ public class LoaderService extends StatefulService {
                     // Service classes
                     if (isValidServiceClassName(name)) {
                         logFine("Found service class %s", name);
-                        String className =
-                                name.replaceAll(".class", "").replaceAll("/", ".");
+                        String className = name.replaceAll(".class", "").replaceAll("/", ".");
 
                         if (packageInfo == null) {
                             packageInfo = new LoaderServiceInfo();
