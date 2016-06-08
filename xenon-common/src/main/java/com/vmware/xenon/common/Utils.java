@@ -314,6 +314,26 @@ public class Utils {
         return content.toString();
     }
 
+    public static String toJsonRedacted(Object body) {
+        if (body instanceof String) {
+            return (String) body;
+        }
+        StringBuilder content = getBuilder();
+        JsonMapper mapper = getJsonMapperFor(body);
+        mapper.toJsonRedacted(body, content);
+        return content.toString();
+    }
+
+    public static String toJsonHtmlRedacted(Object body) {
+        if (body instanceof String) {
+            return (String) body;
+        }
+        StringBuilder content = getBuilder();
+        JsonMapper mapper = getJsonMapperFor(body);
+        mapper.toJsonHtmlRedacted(body, content);
+        return content.toString();
+    }
+
     public static <T> T fromJson(String json, Class<T> clazz) {
         return getJsonMapperFor(clazz).fromJson(json, clazz);
     }

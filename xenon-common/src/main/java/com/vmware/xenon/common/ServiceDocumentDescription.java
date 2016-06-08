@@ -106,6 +106,11 @@ public class ServiceDocumentDescription {
          * Property is a Link (currently just used for DocumentDescription generation)
          */
         LINK,
+
+        /**
+         * Property is ignored in creating JSON to prevent exposing sensitive information
+         */
+        SENSITIVE
     }
 
     public enum PropertyIndexingOption {
