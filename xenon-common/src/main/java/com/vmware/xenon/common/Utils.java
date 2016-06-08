@@ -314,6 +314,24 @@ public class Utils {
         return content.toString();
     }
 
+    /**
+     * Outputs a JSON representation of the given object using useHTMLFormatting to create pretty-printed,
+     * HTML-friendly JSON or compact JSON. If hideSensitiveFields is set the JSON will not include fields
+     * with the annotation {@link com.vmware.xenon.common.ServiceDocumentDescription.PropertyUsageOption.SENSITIVE}.
+     *
+     * NOTE: If the Object is a string with JSON, sensitive fields cannot be discovered (it depends on the type of
+     * the object) and may be in the output.
+     */
+    public static String toJson(boolean hideSensitiveFields, boolean useHtmlFormatting, Object body) {
+        if (body instanceof String) {
+            return (String) body;
+        }
+        StringBuilder content = getBuilder();
+        JsonMapper mapper = getJsonMapperFor(body);
+        mapper.toJson(hideSensitiveFields, useHtmlFormatting, body, content);
+        return content.toString();
+    }
+
     public static <T> T fromJson(String json, Class<T> clazz) {
         return getJsonMapperFor(clazz).fromJson(json, clazz);
     }
