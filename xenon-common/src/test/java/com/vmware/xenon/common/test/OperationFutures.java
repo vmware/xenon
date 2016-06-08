@@ -13,7 +13,6 @@
 
 package com.vmware.xenon.common.test;
 
-import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.BiFunction;
@@ -37,19 +36,6 @@ public class OperationFutures {
             ch.handle(completedOp, failure);
             return null;
         };
-    }
-
-    /**
-     * A saner version of {@link CompletableFuture#allOf(CompletableFuture[])}.
-     *
-     * @param futures
-     * @return
-     */
-    @SafeVarargs
-    @SuppressWarnings("varargs")
-    public static CompletableFuture<List<Operation>> join(
-            CompletableFuture<Operation>... futures) {
-        return join(Arrays.asList(futures));
     }
 
     public static CompletableFuture<List<Operation>> join(

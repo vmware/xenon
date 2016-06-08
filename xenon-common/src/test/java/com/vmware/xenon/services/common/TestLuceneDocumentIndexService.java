@@ -736,7 +736,7 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
                 .setBody(st)
                 .setCompletion(
                         this.host.getExpectedFailureCompletion(Operation.STATUS_CODE_NOT_FOUND));
-        this.host.sendAndWait(get);
+        this.host.sendAndWait(put);
 
         // do a POST, expect 409
         Operation post = Operation.createPost(serviceToDelete)
