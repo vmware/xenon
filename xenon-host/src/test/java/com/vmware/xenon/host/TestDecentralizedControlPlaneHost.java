@@ -20,8 +20,6 @@ import java.util.UUID;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 
-import com.vmware.xenon.host.DecentralizedControlPlaneHost;
-
 public class TestDecentralizedControlPlaneHost {
 
     @Test

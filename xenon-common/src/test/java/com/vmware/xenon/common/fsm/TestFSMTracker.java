@@ -24,8 +24,6 @@ import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 
-import com.vmware.xenon.common.fsm.FSMTracker;
-
 public class TestFSMTracker {
 
     static final int NUM = 10;

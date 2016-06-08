@@ -14,7 +14,6 @@
 package com.vmware.xenon.common.http.netty;
 
 import java.util.logging.Level;
-
 import javax.net.ssl.SSLEngine;
 
 import io.netty.channel.ChannelHandlerContext;

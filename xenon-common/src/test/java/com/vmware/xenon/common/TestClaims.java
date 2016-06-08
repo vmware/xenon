@@ -21,8 +21,6 @@ import java.util.Map;
 
 import org.junit.Test;
 
-import com.vmware.xenon.common.Claims;
-
 public class TestClaims {
 
     private static final String KEY = "key";

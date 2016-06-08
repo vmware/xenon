@@ -24,10 +24,6 @@ import java.util.UUID;
 import org.junit.Before;
 import org.junit.Test;
 
-import com.vmware.xenon.common.CommandLineArgumentParser;
-import com.vmware.xenon.common.Operation;
-import com.vmware.xenon.common.OperationQueue;
-
 public class TestOperationQueue {
 
     public int count = 10000;

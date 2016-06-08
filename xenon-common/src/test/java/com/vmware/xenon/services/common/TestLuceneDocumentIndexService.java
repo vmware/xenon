@@ -42,7 +42,6 @@ import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import java.util.logging.Level;
-
 import javax.xml.bind.DatatypeConverter;
 
 import org.junit.After;

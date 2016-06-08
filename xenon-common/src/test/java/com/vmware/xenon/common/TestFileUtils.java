@@ -23,9 +23,6 @@ import java.util.logging.Level;
 
 import org.junit.Test;
 
-import com.vmware.xenon.common.FileUtils;
-import com.vmware.xenon.common.Operation;
-
 public class TestFileUtils extends BasicReusableHostTestCase {
 
     /**

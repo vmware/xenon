@@ -22,7 +22,6 @@ import org.junit.Before;
 import org.junit.Test;
 
 import com.vmware.xenon.common.TaskState.TaskStage;
-import com.vmware.xenon.common.fsm.TaskFSMTracker;
 
 public class TestTaskFSMTracker {
 

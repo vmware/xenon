@@ -17,11 +17,9 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 
 import java.util.concurrent.Executors;
-
 import javax.net.ssl.SSLContext;
 
 import io.netty.handler.ssl.util.InsecureTrustManagerFactory;
-
 import org.junit.Before;
 import org.junit.Test;
 

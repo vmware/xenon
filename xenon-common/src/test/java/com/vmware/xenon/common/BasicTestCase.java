@@ -20,7 +20,6 @@ import org.junit.rules.TestRule;
 import org.junit.rules.TestWatcher;
 import org.junit.runner.Description;
 
-import com.vmware.xenon.common.CommandLineArgumentParser;
 import com.vmware.xenon.common.Operation.CompletionHandler;
 import com.vmware.xenon.common.test.TestContext;
 import com.vmware.xenon.common.test.VerificationHost;

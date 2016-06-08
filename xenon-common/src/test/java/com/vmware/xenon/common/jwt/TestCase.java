@@ -16,7 +16,6 @@ package com.vmware.xenon.common.jwt;
 import java.util.Base64;
 
 import com.google.gson.annotations.SerializedName;
-
 import org.junit.Before;
 
 public class TestCase {

@@ -32,12 +32,9 @@ import com.google.gson.JsonPrimitive;
 import com.google.gson.JsonSerializationContext;
 import com.google.gson.JsonSerializer;
 import com.google.gson.reflect.TypeToken;
-
 import org.junit.BeforeClass;
 import org.junit.Test;
 
-import com.vmware.xenon.common.ServiceDocument;
-import com.vmware.xenon.common.Utils;
 import com.vmware.xenon.common.serialization.JsonMapper;
 
 public class TestGsonConfiguration {

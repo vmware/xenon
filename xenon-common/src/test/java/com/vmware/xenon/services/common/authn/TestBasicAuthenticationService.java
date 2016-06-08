@@ -13,12 +13,12 @@
 
 package com.vmware.xenon.services.common.authn;
 
+import static org.junit.Assert.assertEquals;
+
 import java.net.URI;
 import java.util.Base64;
 import java.util.HashMap;
 import java.util.Map;
-
-import static org.junit.Assert.assertEquals;
 
 import org.junit.Before;
 import org.junit.Test;

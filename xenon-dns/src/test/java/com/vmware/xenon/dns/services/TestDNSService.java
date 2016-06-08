@@ -13,13 +13,12 @@
 
 package com.vmware.xenon.dns.services;
 
+import static org.junit.Assert.assertNotNull;
+
 import java.net.URI;
 import java.util.Date;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
-
-
-import static org.junit.Assert.assertNotNull;
 
 import org.junit.After;
 import org.junit.Before;

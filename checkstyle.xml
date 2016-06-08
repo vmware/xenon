@@ -11,6 +11,7 @@
     <module name="TreeWalker">
         <module name="AvoidStarImport"/>
         <module name="UnusedImports"/>
+        <module name="RedundantImport"/>
         <module name="ImportOrder">
             <property name="groups" value="/^javax?\./,/^(?!com\.vmware\.)[a-z]/"/>
             <property name="ordered" value="true"/>

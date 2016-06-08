@@ -22,8 +22,6 @@ import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 
-import com.vmware.xenon.common.Operation;
-import com.vmware.xenon.common.RequestRouter;
 import com.vmware.xenon.common.Service.Action;
 
 class RequestBody {

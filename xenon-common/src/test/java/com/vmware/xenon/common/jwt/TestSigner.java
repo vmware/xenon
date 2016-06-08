@@ -19,7 +19,6 @@ import java.util.Map.Entry;
 
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
-
 import org.junit.Test;
 
 public class TestSigner extends TestCase {

@@ -16,7 +16,6 @@ package com.vmware.xenon.services.common;
 import java.util.EnumSet;
 import java.util.concurrent.atomic.AtomicInteger;
 
-
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Operation.CompletionHandler;
 import com.vmware.xenon.common.ServiceDocumentQueryResult;
