@@ -458,6 +458,39 @@ public class TestSimpleTransactionService extends BasicReusableHostTestCase {
         }
     }
 
+    @Test
+    public void testClientFailureMidTransaction() throws Throwable {
+        // create accounts in a new transaction, do not commit
+        long transactionExpirationTimeMicros = Utils.getNowMicrosUtc()
+                + TimeUnit.SECONDS.toMicros(1);
+        String txid = newTransaction(transactionExpirationTimeMicros);
+        createAccounts(txid, this.accountCount, 0.0);
+        depositToAccounts(txid, this.accountCount, 100.0);
+
+        // if this was a real client, that for some reason failed/disconnected,
+        // no-one would have driven the transaction forward, effectively
+        // keeping the accounts 'locked'; unless the transaction automatically
+        // rolls-back...that's what we're verifying here.
+        Thread.sleep(TimeUnit.SECONDS.toMillis(2));
+        for (int i = 0; i < this.accountCount; i++) {
+            // the transaction has expired by now - verify we can access accounts
+            withdrawFromAccount(null, buildAccountId(i), 30.0, true);
+            verifyAccountBalance(null, buildAccountId(i), 70.0);
+        }
+
+        // now verify we can access in a new transaction
+        String txid2 = newTransaction();
+        for (int i = 0; i < this.accountCount; i++) {
+            withdrawFromAccount(txid2, buildAccountId(i), 20.0, true);
+            verifyAccountBalance(txid2, buildAccountId(i), 50.0);
+        }
+        commit(txid2);
+        sumAccounts(null, this.accountCount * 50.0);
+
+        deleteAccounts(null, this.accountCount);
+        countAccounts(null, 0);
+    }
+
     private void sendWithdrawDepositOperationPairs(String[] txids, int numOfTransfers,
             boolean independentTest) throws Throwable {
         Collection<Operation> requests = new ArrayList<Operation>(numOfTransfers);
@@ -538,12 +571,17 @@ public class TestSimpleTransactionService extends BasicReusableHostTestCase {
     }
 
     private String newTransaction() throws Throwable {
+        return newTransaction(0);
+    }
+
+    private String newTransaction(long transactionExpirationTimeMicros) throws Throwable {
         String txid = UUID.randomUUID().toString();
 
         // this section is required until IDEMPOTENT_POST is used
         this.defaultHost.testStart(1);
         SimpleTransactionServiceState initialState = new SimpleTransactionServiceState();
         initialState.documentSelfLink = txid;
+        initialState.documentExpirationTimeMicros = transactionExpirationTimeMicros;
         Operation post = Operation
                 .createPost(getTransactionFactoryUri())
                 .setBody(initialState).setCompletion((o, e) -> {
@@ -710,7 +748,7 @@ public class TestSimpleTransactionService extends BasicReusableHostTestCase {
                     this.defaultHost.log("Trying to read account %s", accountId);
                     BankAccountServiceState account = getAccount(transactionId, accountId);
                     sum += account.balance;
-                    this.defaultHost.log("Successfully read account %s, runnin sum=%f", accountId,
+                    this.defaultHost.log("Successfully read account %s, running sum=%f", accountId,
                             sum);
                     break;
                 } catch (IllegalStateException ex) {
