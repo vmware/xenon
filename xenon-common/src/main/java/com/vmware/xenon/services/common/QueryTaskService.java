@@ -109,11 +109,21 @@ public class QueryTaskService extends StatefulService {
             return true;
         }
 
+        if (initState.querySpec.options.contains(QueryOption.EXPAND_LINKS)) {
+            if (!initState.querySpec.options.contains(QueryOption.SELECT_LINKS)) {
+                startPost.fail(new IllegalArgumentException(
+                        "Must be combined with " + QueryOption.SELECT_LINKS));
+                return false;
+            }
+            // additional option combination validation will be done in the SELECT_LINKS
+            // block, since that option must be combined with this one
+        }
+
         if (initState.querySpec.options.contains(QueryOption.SELECT_LINKS)) {
             final String errFmt = QueryOption.SELECT_LINKS + " is not compatible with %s";
             if (initState.querySpec.options.contains(QueryOption.COUNT)) {
-                startPost.fail(
-                        new IllegalArgumentException(String.format(errFmt, QueryOption.COUNT)));
+                startPost.fail(new IllegalArgumentException(
+                        String.format(errFmt, QueryOption.COUNT)));
                 return false;
             }
             if (initState.querySpec.options.contains(QueryOption.CONTINUOUS)) {
