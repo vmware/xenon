@@ -119,6 +119,35 @@ public class TestGsonConfiguration {
         assertEquals(compactParsed, prettyParsed);
     }
 
+    @Test
+    public void testToJsonWithFieldHiding() {
+        // Testing without pretty print
+        AnnotatedDoc doc = new AnnotatedDoc();
+        doc.value = new SomeComplexObject("fred", "barney");
+        doc.sensitiveUsageOption = "sensitive information";
+        doc.sensitivePropertyOptions = "sensitive properties";
+
+        String compactRedacted = Utils.toJson(true, false, doc);
+
+        JsonElement expectedRedacted = readJson("{ \"value\": { "
+                + "\"a\": \"fred\", "
+                + "\"b\": \"barney\" "
+                + "} "
+                + BORING_JSON_DOC_BITS
+                + "}");
+        assertEquals(expectedRedacted, readJson(compactRedacted));
+
+        // Testing with pretty print
+        String prettyRedacted = Utils.toJson(true, true, doc);
+
+        assertTrue(prettyRedacted.length() > compactRedacted.length());
+
+        JsonElement compactRedactedParsed = readJson(compactRedacted);
+        JsonElement prettyRedactedParsed = readJson(prettyRedacted);
+
+        assertEquals(compactRedactedParsed, prettyRedactedParsed);
+    }
+
     private static void assertComplexObjectEquals(
             SomeComplexObject expected,
             SomeComplexObject actual) {
@@ -193,6 +222,17 @@ public class TestGsonConfiguration {
         String base64encoded = Base64.getEncoder().encodeToString(instance.picture);
         String json = Utils.toJson(instance);
         assertTrue(json.contains(base64encoded));
+    }
+
+
+    private static class AnnotatedDoc extends ServiceDocument {
+        public SomeComplexObject value;
+
+        @UsageOption(option = ServiceDocumentDescription.PropertyUsageOption.SENSITIVE)
+        public String sensitiveUsageOption;
+
+        @PropertyOptions(usage = {ServiceDocumentDescription.PropertyUsageOption.SENSITIVE})
+        public String sensitivePropertyOptions;
     }
 
     private static class SomeDocument1 extends ServiceDocument {

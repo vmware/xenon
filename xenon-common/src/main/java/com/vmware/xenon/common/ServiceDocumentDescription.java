@@ -111,6 +111,12 @@ public class ServiceDocumentDescription {
          * Property is a collection of links (relative URI paths) to other indexed documents
          */
         LINKS,
+
+        /**
+         * Property contains sensitive information. Special framework methods should be used so the property value
+         * is hidden when serializing to JSON
+         */
+        SENSITIVE,
     }
 
     public enum PropertyIndexingOption {
