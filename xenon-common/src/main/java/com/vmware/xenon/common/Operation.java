@@ -1201,13 +1201,13 @@ public class Operation implements Cloneable {
             this.statusCode = o.statusCode;
             this.completion = existing;
             if (e != null) {
-                o.fail(e);
+                fail(e);
                 return;
             }
             try {
                 successHandler.accept(o);
             } catch (Throwable ex) {
-                o.fail(ex);
+                fail(ex);
             }
         });
     }
