@@ -109,11 +109,21 @@ public class QueryTaskService extends StatefulService {
             return true;
         }
 
+        if (initState.querySpec.options.contains(QueryOption.EXPAND_LINKS)) {
+            if (!initState.querySpec.options.contains(QueryOption.SELECT_LINKS)) {
+                startPost.fail(new IllegalArgumentException(
+                        "Must be combined with " + QueryOption.SELECT_LINKS));
+                return false;
+            }
+            // additional option combination validation will be done in the SELECT_LINKS
+            // block, since that option must be combined with this one
+        }
+
         if (initState.querySpec.options.contains(QueryOption.SELECT_LINKS)) {
             final String errFmt = QueryOption.SELECT_LINKS + " is not compatible with %s";
             if (initState.querySpec.options.contains(QueryOption.COUNT)) {
-                startPost.fail(
-                        new IllegalArgumentException(String.format(errFmt, QueryOption.COUNT)));
+                startPost.fail(new IllegalArgumentException(
+                        String.format(errFmt, QueryOption.COUNT)));
                 return false;
             }
             if (initState.querySpec.options.contains(QueryOption.CONTINUOUS)) {
@@ -531,12 +541,23 @@ public class QueryTaskService extends StatefulService {
             }
 
             if (directOp != null) {
-                directOp.setBodyNoCloning(task).complete();
+                QueryTaskUtils.expandLinks(getHost(), task, directOp);
             } else {
-                // PATCH self to finished
-                // we do not clone our state since we already cloned before the query
-                // started
-                sendRequest(Operation.createPatch(getUri()).setBodyNoCloning(task));
+                if (!task.querySpec.options.contains(QueryOption.EXPAND_LINKS)) {
+                    sendRequest(Operation.createPatch(getUri()).setBodyNoCloning(task));
+                    return;
+                }
+
+                CompletionHandler c = (o, ex) -> {
+                    if (ex != null) {
+                        failTask(ex, null, null);
+                        return;
+                    }
+                    sendRequest(Operation.createPatch(getUri()).setBodyNoCloning(task));
+                };
+                Operation dummyOp = Operation.createGet(getHost().getUri()).setCompletion(c)
+                        .setReferer(getUri());
+                QueryTaskUtils.expandLinks(getHost(), task, dummyOp);
             }
         } finally {
             if (scheduleExpiration) {

@@ -965,7 +965,7 @@ public class LuceneDocumentIndexService extends StatelessService {
                         || hits.length < resultLimit) {
                     // query had less results then per page limit or page is full of results
                     expiration += queryTime;
-                    rsp.nextPageLink = createNextPage(op, s, options, tq, sort, bottom, count,
+                    rsp.nextPageLink = createNextPage(op, s, qs, tq, sort, bottom, count,
                             expiration,
                             indexLink,
                             hasPage);
@@ -980,7 +980,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         return rsp;
     }
 
-    private String createNextPage(Operation op, IndexSearcher s, EnumSet<QueryOption> options,
+    private String createNextPage(Operation op, IndexSearcher s, QuerySpecification qs,
             Query tq,
             Sort sort,
             ScoreDoc after,
@@ -1016,12 +1016,13 @@ public class LuceneDocumentIndexService extends StatelessService {
         LuceneQueryPage page = new LuceneQueryPage(hasPage ? prevLinkForNewPage : null, after);
 
         QuerySpecification spec = new QuerySpecification();
-        spec.options = options;
+        spec.options = qs.options;
         spec.context.nativeQuery = tq;
         spec.context.nativePage = page;
         spec.context.nativeSearcher = s;
         spec.context.nativeSort = sort;
         spec.resultLimit = count;
+        spec.linkTerms = qs.linkTerms;
 
         ServiceDocument body = new ServiceDocument();
         body.documentSelfLink = u.getPath();

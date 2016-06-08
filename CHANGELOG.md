@@ -2,6 +2,10 @@
 
 ## 0.8.2-SNAPSHOT
 
+* Add QueryOption.EXPAND_LINKS for expanding selected link values with the
+  target document state and including it in the query results. The serialized
+  state, is placed in the results.selectedLinks map.
+
 * Add PropertyUsageOption.SENSITIVE to describe fields that contain sensitive
   information. When marked, the field will be hidden when serializing to JSON
   using toJson(boolean hideSensitiveFields, boolean useHtmlFormatting).

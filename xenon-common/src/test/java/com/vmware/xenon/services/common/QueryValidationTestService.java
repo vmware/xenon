@@ -107,6 +107,7 @@ public class QueryValidationTestService extends StatefulService {
                 .getBody(QueryValidationServiceState.class);
         QueryValidationServiceState currentState = getState(patch);
         currentState.documentExpirationTimeMicros = body.documentExpirationTimeMicros;
+        currentState.serviceLink = body.serviceLink;
         patch.setBody(null).complete();
     }
 

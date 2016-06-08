@@ -145,7 +145,6 @@ public class QueryPageService extends StatelessService {
         }
 
         task.taskInfo.stage = TaskStage.FINISHED;
-
-        get.setBodyNoCloning(task).complete();
+        QueryTaskUtils.expandLinks(getHost(), task, get);
     }
 }
