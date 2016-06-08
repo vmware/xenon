@@ -22,6 +22,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Predicate;
 import java.util.logging.Level;
 
@@ -84,6 +85,13 @@ public class SimpleTransactionService extends StatefulService {
     }
 
     /**
+     * Response of successful enrollment request
+     */
+    public static class EnrollResponse {
+        public long transactionExpirationTimeMicros;
+    }
+
+    /**
      * Request for committing or aborting this transaction
      */
     public static class EndTransactionRequest {
@@ -139,17 +147,19 @@ public class SimpleTransactionService extends StatefulService {
         public long originalVersion;
     }
 
-
     /**
      * Indicates a request to delete an enrolled service at the end of the transaction either
      * because the service has been created during the transaction and the transaction has
      * aborted, or because the service has been deleted during the transaction and the
      * transaction has been committed.
      */
-    static final String PRAGMA_DIRECTIVE_DELETE_ON_TRANSACTION_END = "dcp-simpletx-delete-on-transaction-end";
+    static final String PRAGMA_DIRECTIVE_DELETE_ON_TRANSACTION_END = "xenon-simpletx-delete-on-transaction-end";
+
+    static long DEFAULT_DURATION_MICROS = TimeUnit.MINUTES.toMicros(5);
 
     public static class TransactionalRequestFilter implements Predicate<Operation> {
         private Service service;
+        private long transactionExpirationTimeMicros;
 
         public TransactionalRequestFilter(Service service) {
             this.service = service;
@@ -208,6 +218,19 @@ public class SimpleTransactionService extends StatefulService {
             String requestTransactionId = request.getTransactionId();
             String currentStateTransactionId = currentState.documentTransactionId;
 
+            if (currentStateTransactionId != null && this.transactionExpirationTimeMicros != 0) {
+                long now = Utils.getNowMicrosUtc();
+                if (this.transactionExpirationTimeMicros <= now) {
+                    // the transaction 'locking' this service has expired -
+                    // release lock and continue processing
+                    this.service.getHost().log(Level.INFO,
+                            "Transaction %s has expired, releasing service %s",
+                            currentStateTransactionId, this.service.getSelfLink());
+                    currentState.documentTransactionId = null;
+                    currentStateTransactionId = null;
+                }
+            }
+
             if (request.getAction() == Action.GET) {
                 if (requestTransactionId == null) {
                     // non-transactional read
@@ -236,7 +259,8 @@ public class SimpleTransactionService extends StatefulService {
                 if (requestTransactionId == null) {
                     // non-transactional write
                     if (currentStateTransactionId == null ||
-                            request.hasPragmaDirective(PRAGMA_DIRECTIVE_DELETE_ON_TRANSACTION_END)) {
+                            request.hasPragmaDirective(
+                                    PRAGMA_DIRECTIVE_DELETE_ON_TRANSACTION_END)) {
                         return false;
                     } else {
                         logTransactionConflict(request, currentState);
@@ -280,7 +304,8 @@ public class SimpleTransactionService extends StatefulService {
                 return;
             }
 
-            if (clearTransactionRequest.transactionOutcome == TransactionOutcome.ABORT && clearTransactionRequest.isUpdated) {
+            if (clearTransactionRequest.transactionOutcome == TransactionOutcome.ABORT
+                    && clearTransactionRequest.isUpdated) {
                 // restore previous state
                 URI previousStateQueryUri = UriUtils.buildDocumentQueryUri(
                         this.service.getHost(),
@@ -288,22 +313,25 @@ public class SimpleTransactionService extends StatefulService {
                         false,
                         false,
                         ServiceOption.PERSISTENCE);
-                previousStateQueryUri = UriUtils.appendQueryParam(previousStateQueryUri, ServiceDocument.FIELD_NAME_VERSION,
+                previousStateQueryUri = UriUtils.appendQueryParam(previousStateQueryUri,
+                        ServiceDocument.FIELD_NAME_VERSION,
                         Long.toString(clearTransactionRequest.originalVersion));
-                Operation previousStateGet = Operation.createGet(previousStateQueryUri).setCompletion((o, e) -> {
-                    if (e != null) {
-                        request.fail(e);
-                        return;
-                    }
-                    ServiceDocument previousState = o.getBody(currentState.getClass());
-                    this.service.getHost().log(Level.INFO,
-                            "Aborting transaction %s on service %s, current version %d, restoring version %d",
-                            request.getTransactionId(), this.service.getSelfLink(),
-                            currentState.documentVersion, clearTransactionRequest.originalVersion);
-                    previousState.documentTransactionId = null;
-                    this.service.setState(request, previousState);
-                    request.complete();
-                });
+                Operation previousStateGet = Operation.createGet(previousStateQueryUri)
+                        .setCompletion((o, e) -> {
+                            if (e != null) {
+                                request.fail(e);
+                                return;
+                            }
+                            ServiceDocument previousState = o.getBody(currentState.getClass());
+                            this.service.getHost().log(Level.INFO,
+                                    "Aborting transaction %s on service %s, current version %d, restoring version %d",
+                                    request.getTransactionId(), this.service.getSelfLink(),
+                                    currentState.documentVersion,
+                                    clearTransactionRequest.originalVersion);
+                            previousState.documentTransactionId = null;
+                            this.service.setState(request, previousState);
+                            request.complete();
+                        });
                 this.service.sendRequest(previousStateGet);
                 return;
             }
@@ -323,8 +351,8 @@ public class SimpleTransactionService extends StatefulService {
                 serviceSelfLink = UriUtils.buildUriPath(serviceSelfLink, body.documentSelfLink);
             }
 
-            long servicePreviousVersion = this.service.getState(request) == null ? -1 :
-                    this.service.getState(request).documentVersion;
+            long servicePreviousVersion = this.service.getState(request) == null ? -1
+                    : this.service.getState(request).documentVersion;
             Operation enrollRequest = SimpleTransactionService.TxUtils
                     .buildEnrollRequest(this.service.getHost(),
                             request.getTransactionId(), serviceSelfLink,
@@ -335,8 +363,10 @@ public class SimpleTransactionService extends StatefulService {
                                     request.fail(e);
                                     return;
                                 }
+                                EnrollResponse enrollRespone = o.getBody(EnrollResponse.class);
+                                this.transactionExpirationTimeMicros = enrollRespone.transactionExpirationTimeMicros;
                                 this.service.getOperationProcessingChain()
-                                    .resumeProcessingRequest(request, this);
+                                        .resumeProcessingRequest(request, this);
                             });
             this.service.sendRequest(enrollRequest);
         }
@@ -351,8 +381,10 @@ public class SimpleTransactionService extends StatefulService {
                             currentState.documentTransactionId);
         }
 
-        private String buildLogTransactionUpdateMsg(Operation request, ServiceDocument currentState) {
-            return String.format("Transaction %s set on service %s: operation: %s, previous transaction: %s",
+        private String buildLogTransactionUpdateMsg(Operation request,
+                ServiceDocument currentState) {
+            return String.format(
+                    "Transaction %s set on service %s: operation: %s, previous transaction: %s",
                     request.getTransactionId(),
                     this.service.getSelfLink(),
                     request.getAction(),
@@ -426,6 +458,11 @@ public class SimpleTransactionService extends StatefulService {
             state.deletedServicesLinks = new HashSet<>();
         }
 
+        if (state.documentExpirationTimeMicros == 0) {
+            state.documentExpirationTimeMicros = Utils.getNowMicrosUtc()
+                    + DEFAULT_DURATION_MICROS;
+        }
+
         start.setBody(state).complete();
     }
 
@@ -435,7 +472,8 @@ public class SimpleTransactionService extends StatefulService {
 
         if (TaskStage.STARTED != currentState.taskInfo.stage) {
             patch.fail(new IllegalArgumentException(String.format(
-                    "Transaction stage %s is not in the right stage", currentState.taskInfo.stage)));
+                    "Transaction stage %s is not in the right stage",
+                    currentState.taskInfo.stage)));
             return;
         }
 
@@ -460,7 +498,9 @@ public class SimpleTransactionService extends StatefulService {
             currentState.deletedServicesLinks.add(body.serviceSelfLink);
         }
 
-        patch.complete();
+        EnrollResponse enrollResponse = new EnrollResponse();
+        enrollResponse.transactionExpirationTimeMicros = currentState.documentExpirationTimeMicros;
+        patch.setBody(enrollResponse).complete();
     }
 
     void handlePatchForEndTransaction(Operation patch) {
@@ -469,7 +509,8 @@ public class SimpleTransactionService extends StatefulService {
 
         if (TaskStage.STARTED != currentState.taskInfo.stage) {
             patch.fail(new IllegalArgumentException(String.format(
-                    "Transaction stage %s is not in the right stage", currentState.taskInfo.stage)));
+                    "Transaction stage %s is not in the right stage",
+                    currentState.taskInfo.stage)));
             return;
         }
 
@@ -561,7 +602,8 @@ public class SimpleTransactionService extends StatefulService {
 
     private Collection<Operation> createDeleteRequests(SimpleTransactionServiceState currentState,
             EndTransactionRequest.TransactionOutcome transactionOutcome) {
-        Set<String> servicesToBDeleted = transactionOutcome == TransactionOutcome.COMMIT ? currentState.deletedServicesLinks
+        Set<String> servicesToBDeleted = transactionOutcome == TransactionOutcome.COMMIT
+                ? currentState.deletedServicesLinks
                 : currentState.createdServicesLinks;
         if (servicesToBDeleted.isEmpty()) {
             return null;
