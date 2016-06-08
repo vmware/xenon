@@ -2,6 +2,9 @@
 
 ## 0.8.2-SNAPSHOT
 
+* Add PropertyUsageOption.SENSITIVE to describe fields that contain sensitive
+  information. When marked, the field should be hidden when serializing to JSON.
+
 * Use SEND_WITH_CALLBACK in NettyHttpServiceClient if the request was
   configured for connectionSharing and SSL
 

@@ -13,13 +13,19 @@
 
 package com.vmware.xenon.common.serialization;
 
+import java.lang.annotation.Annotation;
 import java.lang.reflect.Type;
+import java.util.Collection;
 import java.util.function.Consumer;
 
+import com.google.gson.ExclusionStrategy;
+import com.google.gson.FieldAttributes;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonElement;
 
+import com.vmware.xenon.common.ServiceDocument;
+import com.vmware.xenon.common.ServiceDocumentDescription;
 import com.vmware.xenon.common.Utils;
 
 /**
@@ -33,13 +39,17 @@ public class JsonMapper {
 
     private final Gson compact;
     private final Gson pretty;
+    private final Gson compactSensitive;
+    private final Gson prettySensitive;
 
     /**
      * Instantiates a mapper with default GSON configurations.
      */
     public JsonMapper() {
-        this(createDefaultGson(true),
-                createDefaultGson(false));
+        this(createDefaultGson(true, false),
+                createDefaultGson(false, false),
+                createDefaultGson(true, true),
+                createDefaultGson(false, true));
     }
 
     /**
@@ -49,16 +59,20 @@ public class JsonMapper {
      * and compact instances.
      */
     public JsonMapper(Consumer<GsonBuilder> gsonConfigCallback) {
-        this(createCustomGson(true, gsonConfigCallback),
-                createCustomGson(false, gsonConfigCallback));
+        this(createCustomGson(true, false, gsonConfigCallback),
+                createCustomGson(false, false, gsonConfigCallback),
+                createCustomGson(true, true, gsonConfigCallback),
+                createCustomGson(false, true, gsonConfigCallback));
     }
 
     /**
      * Instantiates a mapper with the compact and pretty GSON instances explicitly supplied.
      */
-    public JsonMapper(Gson compact, Gson pretty) {
+    public JsonMapper(Gson compact, Gson pretty, Gson compactSensitive, Gson prettySensitive) {
         this.compact = compact;
         this.pretty = pretty;
+        this.compactSensitive = compactSensitive;
+        this.prettySensitive = prettySensitive;
     }
 
     /**
@@ -92,6 +106,37 @@ public class JsonMapper {
         for (int i = 1;; i++) {
             try {
                 return this.pretty.toJson(body);
+            } catch (IllegalStateException e) {
+                handleIllegalStateException(e, i);
+            }
+        }
+    }
+
+    /**
+     * Outputs a JSON representation of the given object using useHTMLFormatting to create pretty-printed,
+     * HTML-friendly JSON or compact JSON. If hideSensitiveFields is set the JSON will not include fields
+     * with the annotation {@link com.vmware.xenon.common.ServiceDocumentDescription.PropertyUsageOption.SENSITIVE}.
+     */
+    public void toJson(boolean hideSensitiveFields, boolean useHtmlFormatting, Object body, Appendable appendable) {
+        for (int i = 1;; i++) {
+            try {
+                if (hideSensitiveFields) {
+                    if (useHtmlFormatting) {
+                        this.prettySensitive.toJson(body, appendable);
+                        return;
+                    } else {
+                        this.compactSensitive.toJson(body, appendable);
+                        return;
+                    }
+                } else {
+                    if (useHtmlFormatting) {
+                        this.pretty.toJson(body, appendable);
+                        return;
+                    } else {
+                        this.compact.toJson(body, appendable);
+                        return;
+                    }
+                }
             } catch (IllegalStateException e) {
                 handleIllegalStateException(e, i);
             }
@@ -141,18 +186,18 @@ public class JsonMapper {
         }
     }
 
-    private static Gson createDefaultGson(boolean isCompact) {
-        return createDefaultGsonBuilder(isCompact).create();
+    private static Gson createDefaultGson(boolean isCompact, boolean isSensitive) {
+        return createDefaultGsonBuilder(isCompact, isSensitive).create();
     }
 
-    private static Gson createCustomGson(boolean isCompact,
+    private static Gson createCustomGson(boolean isCompact, boolean isSensitive,
             Consumer<GsonBuilder> gsonConfigCallback) {
-        GsonBuilder bldr = createDefaultGsonBuilder(isCompact);
+        GsonBuilder bldr = createDefaultGsonBuilder(isCompact, isSensitive);
         gsonConfigCallback.accept(bldr);
         return bldr.create();
     }
 
-    public static GsonBuilder createDefaultGsonBuilder(boolean isCompact) {
+    public static GsonBuilder createDefaultGsonBuilder(boolean isCompact, boolean isSensitive) {
         GsonBuilder bldr = new GsonBuilder();
 
         registerCommonGsonTypeAdapters(bldr);
@@ -161,6 +206,10 @@ public class JsonMapper {
             bldr.disableHtmlEscaping();
         } else {
             bldr.setPrettyPrinting();
+        }
+
+        if (isSensitive) {
+            bldr.addSerializationExclusionStrategy(new SensitiveAnnotationExclusionStrategy());
         }
 
         return bldr;
@@ -182,6 +231,46 @@ public class JsonMapper {
             } catch (IllegalStateException e) {
                 handleIllegalStateException(e, i);
             }
+        }
+    }
+
+    /**
+     * Excludes any field with the SENSITIVE option in PropertyUsageOptions.
+     */
+    private static class SensitiveAnnotationExclusionStrategy implements ExclusionStrategy {
+
+        @Override
+        public boolean shouldSkipField(FieldAttributes fieldAttributes) {
+            Collection<Annotation> annotations = fieldAttributes.getAnnotations();
+
+            for (Annotation a : annotations) {
+                if (ServiceDocument.UsageOptions.class.equals(a.annotationType())) {
+                    ServiceDocument.UsageOptions usageOptions = (ServiceDocument.UsageOptions) a;
+                    for (ServiceDocument.UsageOption usageOption: usageOptions.value()) {
+                        if (usageOption.option().equals(ServiceDocumentDescription.PropertyUsageOption.SENSITIVE)) {
+                            return true;
+                        }
+                    }
+                } else if (ServiceDocument.UsageOption.class.equals(a.annotationType())) {
+                    ServiceDocument.UsageOption usageOption = (ServiceDocument.UsageOption) a;
+                    if (usageOption.option().equals(ServiceDocumentDescription.PropertyUsageOption.SENSITIVE)) {
+                        return true;
+                    }
+                } else if (ServiceDocument.PropertyOptions.class.equals(a.annotationType())) {
+                    ServiceDocument.PropertyOptions propertyOptions = (ServiceDocument.PropertyOptions) a;
+                    for (ServiceDocumentDescription.PropertyUsageOption propertyUsageOption : propertyOptions.usage()) {
+                        if (propertyUsageOption.equals(ServiceDocumentDescription.PropertyUsageOption.SENSITIVE)) {
+                            return true;
+                        }
+                    }
+                }
+            }
+            return false;
+        }
+
+        @Override
+        public boolean shouldSkipClass(Class<?> aClass) {
+            return false;
         }
     }
 }
