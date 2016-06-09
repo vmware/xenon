@@ -4339,21 +4339,34 @@ public class ServiceHost implements ServiceRequestSender {
                     return;
                 }
 
-                // Since we do a POST first for services using ON_DEMAND_LOAD to start the service,
-                // we can get back a 409 status code i.e. the service has already been started or was
-                // deleted previously. We special case here by checking the the Action of the
-                // original operation. If it was POST, we let the same error propagate to the caller.
-                // If it was a DELETE, we swallow the 409 error because the service has already been
-                // deleted. In other cases, we return a 404 - Service not found.
-                if (o.hasBody() &&
-                        o.getBody(ServiceErrorResponse.class).statusCode == Operation.STATUS_CODE_CONFLICT) {
-                    if (inboundOp.getAction() == Action.DELETE) {
-                        inboundOp.complete();
-                        return;
+                ServiceErrorResponse response = o.hasBody()
+                        ? o.getBody(ServiceErrorResponse.class)
+                        : null;
+
+                if (response != null) {
+                    // Since we do a POST first for services using ON_DEMAND_LOAD to start the service,
+                    // we can get back a 409 status code i.e. the service has already been started or was
+                    // deleted previously. We special case here by checking the the Action of the
+                    // original operation. If it was POST, we let the same error propagate to the caller.
+                    // If it was a DELETE, we swallow the 409 error because the service has already been
+                    // deleted. In other cases, we return a 404 - Service not found.
+                    if (response.statusCode == Operation.STATUS_CODE_CONFLICT) {
+                        if (inboundOp.getAction() == Action.DELETE) {
+                            inboundOp.complete();
+                            return;
+                        }
+
+                        if (inboundOp.getAction() != Action.POST) {
+                            failRequestServiceNotFound(inboundOp);
+                            return;
+                        }
                     }
 
-                    if (inboundOp.getAction() != Action.POST) {
-                        failRequestServiceNotFound(inboundOp);
+                    // if the service we are trying to DELETE never existed, we swallow the 404 error.
+                    // This is for consistency in behavior with non ON_DEMAND_LOAD services.
+                    if (inboundOp.getAction() == Action.DELETE &&
+                                response.statusCode == Operation.STATUS_CODE_NOT_FOUND) {
+                        inboundOp.complete();
                         return;
                     }
                 }

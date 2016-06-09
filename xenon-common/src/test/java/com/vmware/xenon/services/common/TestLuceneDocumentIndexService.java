@@ -748,6 +748,11 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
                 .setCompletion(this.host.getCompletion());
         this.host.sendAndWait(delete);
 
+        // do a DELETE for a completely unknown service, expect 200
+        delete = Operation.createDelete(new URI(factoryUri.toString() + "/unknown"))
+                .setCompletion(this.host.getCompletion());
+        this.host.sendAndWait(delete);
+
         // verify that attempting to start a service, through factory POST, that was previously created,
         // but not yet loaded/started, fails, with ServiceAlreadyStarted exception
         int count = Math.min(100, childUris.size());
