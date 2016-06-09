@@ -1305,11 +1305,6 @@ public class StatefulService implements Service {
     @Override
     public void toggleOption(ServiceOption option, boolean enable) {
 
-        if (option == ServiceOption.IDEMPOTENT_POST) {
-            throw new IllegalArgumentException("Option not supported on singleton services."
-                    + " Set this service option on the factory service instead.");
-        }
-
         if (option != ServiceOption.HTML_USER_INTERFACE
                 && option != ServiceOption.DOCUMENT_OWNER
                 && option != ServiceOption.PERIODIC_MAINTENANCE

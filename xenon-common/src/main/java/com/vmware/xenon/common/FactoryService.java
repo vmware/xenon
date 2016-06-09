@@ -758,6 +758,10 @@ public abstract class FactoryService extends StatelessService {
             toggleOption(ServiceOption.INSTRUMENTATION, true);
         }
 
+        if (this.options.contains(ServiceOption.IDEMPOTENT_POST)) {
+            childService.toggleOption(ServiceOption.IDEMPOTENT_POST, true);
+        }
+
         // set capability on child to indicate its created by a factory
         childService.toggleOption(ServiceOption.FACTORY_ITEM, true);
 

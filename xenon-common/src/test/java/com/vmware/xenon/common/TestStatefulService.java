@@ -14,6 +14,7 @@
 package com.vmware.xenon.common;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
 import java.net.URI;
@@ -145,6 +146,25 @@ class MaintenanceTestService extends StatefulService {
     @Override
     public void handlePeriodicMaintenance(Operation post) {
         post.complete();
+    }
+}
+
+/**
+ * Test service options.
+ */
+class IdempotentPostService extends StatefulService {
+    public static final String FACTORY_LINK = ServiceUriPaths.CORE + "/tests/idempotentpostservice";
+
+    public static class State extends ServiceDocument {
+        public String name;
+    }
+
+    public IdempotentPostService() {
+        super(State.class);
+        toggleOption(ServiceOption.PERSISTENCE, true);
+        toggleOption(ServiceOption.REPLICATION, true);
+        toggleOption(ServiceOption.OWNER_SELECTION, true);
+        toggleOption(ServiceOption.IDEMPOTENT_POST, true);
     }
 }
 
@@ -599,5 +619,51 @@ public class TestStatefulService extends BasicReusableHostTestCase {
                 UriUtils.buildFactoryUri(host, MaintenanceTestService.class)), FactoryService
                 .create(MaintenanceTestService.class, MaintenanceTestService.MaintenanceTestState.class));
         this.host.waitForServiceAvailable(MaintenanceTestService.FACTORY_LINK);
+    }
+
+    @Test
+    public void testIdempotentPostService() throws Throwable {
+        URI factoryUri = UriUtils.buildFactoryUri(host, IdempotentPostService.class);
+        this.host.startService(Operation.createPost(factoryUri),
+                FactoryService.create(IdempotentPostService.class,
+                        IdempotentPostService.State.class));
+        this.host.waitForServiceAvailable(IdempotentPostService.FACTORY_LINK);
+
+        IdempotentPostService.State doc =
+                new IdempotentPostService.State();
+        doc.documentSelfLink = "default";
+        doc.name = "testDocument";
+
+        this.host.testStart(1);
+        this.host.send(Operation.createPost(factoryUri)
+                .setBody(doc)
+                .setCompletion(
+                        (o, e) -> {
+                            if (e != null) {
+                                this.host.failIteration(e);
+                                return;
+                            }
+
+                            this.host.send(Operation.createPost(factoryUri)
+                                    .setBody(doc)
+                                    .setCompletion(
+                                            (o2, e2) -> {
+                                                if (e2 != null) {
+                                                    this.host.failIteration(e2);
+                                                    return;
+                                                }
+
+                                                IdempotentPostService.State doc2 = o2.getBody(
+                                                        IdempotentPostService.State.class);
+                                                try {
+                                                    assertNotNull(doc2);
+                                                    assertEquals("testDocument", doc2.name);
+                                                    this.host.completeIteration();
+                                                } catch (AssertionError e3) {
+                                                    this.host.failIteration(e3);
+                                                }
+                                            }));
+                        }));
+        this.host.testWait();
     }
 }
