@@ -171,7 +171,7 @@ var WSL = (function () {
          onFailure(http_status_code, body) is called when operation is complete.
          */
         this.subscribe = function (serviceUri, onSuccess, onFailure) {
-            doRequest(this.connection, POST, serviceUri, {reference: this.uri}, function (code, body) {
+            doRequest(this.connection, POST, serviceUri, {reference: this.uri, replayState: true}, function (code, body) {
                 if (code >= 200 && code < 300) {
                     if (typeof onSuccess !== UNDEFINED) {
                         onSuccess();

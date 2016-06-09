@@ -122,6 +122,8 @@ public abstract class AbstractWebSocketServiceTest extends BasicTestCase {
         observerServiceUriForStop = waitAndGetValue("observerServiceUriForStop");
         observerServiceUriForClose = waitAndGetValue("observerServiceUriForClose");
         observerServiceUriForUnsubscribe = waitAndGetValue("observerServiceUriForUnsubscribe");
+        // verify that we got notifications for the three observers created above
+        waitAndGetArrayCount(OBJECTS_CREATED, 3);
     }
 
     /**
@@ -344,6 +346,27 @@ public abstract class AbstractWebSocketServiceTest extends BasicTestCase {
                 }
                 String s = String.join(Operation.CR_LF, values);
                 if (s.contains(expected)) {
+                    return;
+                }
+            }
+            checkError();
+            Thread.sleep(100);
+        }
+        throw new TimeoutException();
+    }
+
+    private void waitAndGetArrayCount(String name, int expected) throws Throwable {
+        Date exp = this.host.getTestExpiration();
+        while (new Date().before(exp)) {
+            Scriptable o = (Scriptable) JsExecutor.executeSynchronously(() -> ScriptableObject
+                    .getProperty(scope, name));
+            if (o.getIds().length > 0) {
+                int count = 0;
+                for (Object id : o.getIds()) {
+                    Object v = o.get((Integer) id, null);
+                    count++;
+                }
+                if (count == expected) {
                     return;
                 }
             }
