@@ -121,12 +121,12 @@ class DefaultHandlerTestService extends StatefulService {
     }
 }
 
-
 /**
  * Test service options.
  */
 class MaintenanceTestService extends StatefulService {
     public static final String FACTORY_LINK = ServiceUriPaths.CORE + "/tests/maintenanceService";
+
     /**
      * The state includes both a reference and a primitive type so as to test both.
      */
@@ -274,7 +274,7 @@ public class TestStatefulService extends BasicReusableHostTestCase {
     private void doThroughputPutTest(EnumSet<TestProperty> props,
             Class<? extends StatefulService> type,
             EnumSet<Service.ServiceOption> caps)
-                    throws Throwable {
+            throws Throwable {
         long sc = this.serviceCount;
         if (sc < 1) {
             sc = 16;
@@ -393,7 +393,7 @@ public class TestStatefulService extends BasicReusableHostTestCase {
                     s.name = UUID.randomUUID().toString();
                     s.documentExpirationTimeMicros = Utils.getNowMicrosUtc();
                     o.setBody(s);
-                } , factoryService.getUri());
+                }, factoryService.getUri());
 
         // services should expire, and we will confirm the delete handler was called. We only expire when we try to access
         // a document, so do a factory get ...
@@ -466,6 +466,40 @@ public class TestStatefulService extends BasicReusableHostTestCase {
         this.host.doThroughputServiceStart(c, MinimalTestService.class,
                 this.host.buildMinimalTestState(),
                 EnumSet.of(ServiceOption.PERSISTENCE), null);
+    }
+
+    @Test
+    public void memoryFootprintDurableServiceStart() throws Throwable {
+        long c = this.serviceCount;
+        int batchSize = 100;
+        if (c < batchSize) {
+            c = batchSize;
+        }
+        long batches = c / batchSize;
+        this.host.log("Running %d batches of size %d each", batches, batchSize);
+
+        for (int i = 0; i < batches; i++) {
+            if (i % 100 == 0) {
+                this.host.log("Iteration %d out of %d", i, batches - 1);
+                this.host.logMemoryInfo();
+            }
+
+            TestContext ctx = testCreate((int) batchSize);
+            for (int j = 0; j < batchSize; j++) {
+                Service e = new MinimalTestService();
+                e.toggleOption(ServiceOption.PERSISTENCE, true);
+                e.toggleOption(ServiceOption.FACTORY_ITEM, true);
+                e.toggleOption(ServiceOption.ON_DEMAND_LOAD, true);
+                Operation post = Operation.createPost(null);
+                post.setUri(UriUtils.buildUri(this.host, "minimal/" + post.getId()));
+                post.setCompletion(ctx.getCompletion());
+                post.setBody(this.host.buildMinimalTestState(1024));
+                this.host.startService(post, e);
+            }
+            ctx.await();
+
+            Thread.sleep(50);
+        }
     }
 
     @Test
@@ -597,7 +631,8 @@ public class TestStatefulService extends BasicReusableHostTestCase {
     public void invalidServiceOptionsValidation() throws Throwable {
         this.host.startService(Operation.createPost(
                 UriUtils.buildFactoryUri(host, MaintenanceTestService.class)), FactoryService
-                .create(MaintenanceTestService.class, MaintenanceTestService.MaintenanceTestState.class));
+                        .create(MaintenanceTestService.class,
+                                MaintenanceTestService.MaintenanceTestState.class));
         this.host.waitForServiceAvailable(MaintenanceTestService.FACTORY_LINK);
     }
 }

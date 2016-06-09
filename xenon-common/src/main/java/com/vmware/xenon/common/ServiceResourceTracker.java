@@ -290,13 +290,20 @@ class ServiceResourceTracker {
                 continue;
             }
 
-            Service existing = this.pendingPauseServices.put(service.getSelfLink(), service);
-            if (existing == null) {
-                pauseServiceCount++;
-            }
             if (!cacheCleared) {
                 // if we're going to pause it, clear state from cache if not already cleared
                 clearCachedServiceState(service.getSelfLink(), null);
+                // and check again if ON_DEMAND_LOAD then we need to stop
+                if (service.hasOption(ServiceOption.ON_DEMAND_LOAD)) {
+                    // instead of pausing on demand load services, simply stop them when they idle
+                    stopService(service.getSelfLink(), false, null);
+                    continue;
+                }
+            }
+
+            Service existing = this.pendingPauseServices.put(service.getSelfLink(), service);
+            if (existing == null) {
+                pauseServiceCount++;
             }
 
             String factoryPath = UriUtils.getParentPath(service.getSelfLink());
