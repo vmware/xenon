@@ -504,6 +504,19 @@ public class MigrationTaskService extends StatefulService {
     }
 
     private void migrate(State currentState, Set<URI> currentPageLinks, List<URI> destinationURIs, Map<String, Long> lastUpdateTimesPerOwner) {
+
+        // This method is recursively called. When a page doesn't have nextPageLink, the recursion
+        // will call here with empty currentPageLinks.
+        // In that case, this has processed all entries, thus self patch to mark finish, then exit.
+        if (currentPageLinks.isEmpty()) {
+            State patch = new State();
+            patch.taskInfo = TaskState.createAsFinished();
+            patch.latestSourceUpdateTimeMicros = lastUpdateTimesPerOwner.values()
+                    .stream().mapToLong(x -> x).min().orElse(0);
+            Operation.createPatch(getUri()).setBody(patch).sendWith(this);
+            return;
+        }
+
         // get results
         Collection<Operation> gets = currentPageLinks.stream()
                 .map(uri -> Operation.createGet(uri))
@@ -540,12 +553,7 @@ public class MigrationTaskService extends StatefulService {
                     }
                 }
 
-                if (nextPages.isEmpty()) {
-                    State patch = new State();
-                    patch.taskInfo = TaskState.createAsFinished();
-                    patch.latestSourceUpdateTimeMicros = lastUpdateTimesPerOwner.values().stream().mapToLong(x -> x).min().orElse(0);
-                    Operation.createPatch(getUri()).setBody(patch).sendWith(this);
-                } else if (results.isEmpty()) {
+                if (results.isEmpty()) {
                     // The results might be empty if all the local queries returned documents the respective hosts don't own.
                     // In this case we can just move on to the next set of pages.
                     migrate(currentState, nextPages, destinationURIs, lastUpdateTimesPerOwner);

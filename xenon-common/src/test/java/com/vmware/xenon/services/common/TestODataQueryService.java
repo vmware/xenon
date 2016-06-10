@@ -15,6 +15,7 @@ package com.vmware.xenon.services.common;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 import java.net.URI;
@@ -85,15 +86,15 @@ public class TestODataQueryService extends BasicReusableHostTestCase {
                 .createPost(UriUtils.buildFactoryUri(this.host, ExampleService.class))
                 .setBody(inState)
                 .setCompletion(
-                    (o, e) -> {
-                        if (e != null) {
-                            this.host.failIteration(e);
-                        }
-                        ExampleService.ExampleServiceState s = o
-                                .getBody(ExampleService.ExampleServiceState.class);
-                        inState.documentSelfLink = s.documentSelfLink;
-                        this.host.completeIteration();
-                    }));
+                        (o, e) -> {
+                            if (e != null) {
+                                this.host.failIteration(e);
+                            }
+                            ExampleService.ExampleServiceState s = o
+                                    .getBody(ExampleService.ExampleServiceState.class);
+                            inState.documentSelfLink = s.documentSelfLink;
+                            this.host.completeIteration();
+                        }));
         this.host.testWait();
     }
 
@@ -926,34 +927,66 @@ public class TestODataQueryService extends BasicReusableHostTestCase {
         assertTrue(res.documents.size() == 0);
         assertTrue(res.nextPageLink != null);
 
-        // skip first page which is empty
-        URI uri = new URI(res.nextPageLink);
-        String peer = UriUtils.getODataParamValueAsString(uri, "peer");
-        String page = UriUtils.getODataParamValueAsString(uri, "path");
-        assertTrue(peer != null);
-        assertTrue(page != null);
-
-        page = page.replaceAll("\\D+", "");
-        assertTrue(!page.isEmpty());
-
-        res = getNextPage(page, peer, true);
         long counter = 0;
+        String nextPageLink = res.nextPageLink;
 
-        while (res.nextPageLink != null) {
+        while (nextPageLink != null) {
+            res = getNextPage(nextPageLink, true);
+            nextPageLink = res.nextPageLink;
             if (res.documentCount % limit == 0) {
-                assertTrue(res.documentCount == limit);
-                assertTrue(res.documentLinks.size() == limit);
-                assertTrue(res.documents.size() == limit);
-            } else if (counter + res.documentCount == c) {
-                assertTrue(res.documentCount == c - counter);
-                assertTrue(res.documentLinks.size() == c - counter);
-                assertTrue(res.documents.size() == c - counter);
+                assertNotNull(res.documentCount);
+                assertEquals(limit, (long) res.documentCount);
+                assertEquals(limit, res.documentLinks.size());
+                assertEquals(limit, res.documents.size());
+            } else {
+                long expectedCount = c - counter;
+                assertEquals((Long) expectedCount, res.documentCount);
+                assertEquals(expectedCount, res.documentLinks.size());
+                assertEquals(expectedCount, res.documents.size());
             }
             counter = counter + res.documentCount;
-            res = getNextPage(res.nextPageLink, true);
         }
 
         assertTrue(counter == c);
+    }
+
+    @Test
+    public void testLimitWithExpiredDoc() throws Throwable {
+        int c = 5;
+        for (int i = 0; i < c; i++) {
+            ExampleService.ExampleServiceState inState = new ExampleService.ExampleServiceState();
+
+            inState.documentSelfLink = null;
+            inState.counter = 1L;
+            inState.name = i + "-abcd";
+
+            // make doc 1 and 2 expired
+            if (i == 1 || i == 2) {
+                inState.documentExpirationTimeMicros = 1;
+            }
+            postExample(inState);
+        }
+
+        // limit=2 + filter
+        String queryString = "$filter=counter eq 1";
+        queryString += "&" + "$limit=2";
+        ServiceDocumentQueryResult res = doOdataQuery(queryString, true);
+        assertTrue(res.documentCount == 0);
+        assertTrue(res.documentLinks.size() == 0);
+        assertTrue(res.documents.size() == 0);
+        assertTrue(res.nextPageLink != null);
+
+        // get second page
+        res = getNextPage(res.nextPageLink, true);
+        assertNotNull(res.documentCount);
+        assertEquals(2, (long) res.documentCount);
+        assertNotNull("link to 3rd page should exist", res.nextPageLink);
+
+        // get third page
+        res = getNextPage(res.nextPageLink, true);
+        assertNotNull(res.documentCount);
+        assertEquals(1, (long) res.documentCount);
+        assertNull("this is the last page. should have no nextPageLink", res.nextPageLink);
     }
 
     private ServiceDocumentQueryResult getNextPage(final String nextPage, final boolean remote)
