@@ -907,7 +907,7 @@ public class StatefulService implements Service {
         }
 
         if (latestState.documentVersion < this.context.version
-                || latestState.documentEpoch < this.context.epoch) {
+                || (latestState.documentEpoch != null && latestState.documentEpoch < this.context.epoch)) {
             return;
         }
 
