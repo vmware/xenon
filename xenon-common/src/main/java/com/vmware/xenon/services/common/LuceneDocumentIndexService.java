@@ -964,20 +964,90 @@ public class LuceneDocumentIndexService extends StatelessService {
                 if (!hasPage || rsp.documentLinks.size() >= count
                         || hits.length < resultLimit) {
                     // query had less results then per page limit or page is full of results
-                    expiration += queryTime;
-                    rsp.nextPageLink = createNextPage(op, s, qs, tq, sort, bottom, count,
-                            expiration,
-                            indexLink,
-                            hasPage);
+
+                    boolean createNextPageLink = true;
+                    if (hasPage) {
+                        createNextPageLink = checkNextPageHasEntry(bottom, options, s, tq, sort,
+                                count, qs, queryStartTimeMicros);
+                    }
+
+                    if (createNextPageLink) {
+                        expiration += queryTime;
+                        rsp.nextPageLink = createNextPage(op, s, qs, tq, sort, bottom, count,
+                                expiration,
+                                indexLink,
+                                hasPage);
+                    }
+
                     break;
                 }
             }
 
             after = bottom;
             resultLimit = count - rsp.documentLinks.size();
-        } while (true && resultLimit > 0);
+        } while (resultLimit > 0);
 
         return rsp;
+    }
+
+    /**
+     * Checks next page exists or not.
+     *
+     * If there is a valid entry in searchAfter result, this returns true.
+     * If searchAfter result is empty or entries are all invalid(expired, etc), this returns false.
+     *
+     * For example, let's say there are 5 docs. doc=1,2,5 are valid and doc=3,4 are expired(invalid).
+     *
+     * When limit=2, the first page shows doc=1,2. In this logic, searchAfter will first fetch
+     * doc=3,4 but they are invalid(filtered out in `processQueryResults`).
+     * Next iteration will hit doc=5 and it is a valid entry. Therefore, it returns true.
+     *
+     * If doc=1,2 are valid and doc=3,4,5 are invalid, then searchAfter will hit doc=3,4 and
+     * doc=5. However, all entries are invalid. This returns false indicating there is no next page.
+     */
+    private boolean checkNextPageHasEntry(ScoreDoc after,
+            EnumSet<QueryOption> options,
+            IndexSearcher s,
+            Query tq,
+            Sort sort,
+            int count,
+            QuerySpecification qs,
+            long queryStartTimeMicros) throws Throwable {
+
+        boolean hasValidNextPageEntry = false;
+
+        // Iterate searchAfter until it finds a *valid* entry.
+        // If loop reaches to the end and no valid entries found, then current page is the last page.
+        while (after != null) {
+            // fetch next page
+            TopDocs nextPageResults;
+            if (sort == null) {
+                nextPageResults = s.searchAfter(after, tq, count);
+            } else {
+                nextPageResults = s.searchAfter(after, tq, count, sort, false, false);
+            }
+            if (nextPageResults == null) {
+                break;
+            }
+
+            ScoreDoc[] hits = nextPageResults.scoreDocs;
+            if (hits.length == 0) {
+                // reached to the end
+                break;
+            }
+
+            ServiceDocumentQueryResult rspForNextPage = new ServiceDocumentQueryResult();
+            rspForNextPage.documents = new HashMap<>();
+            after = processQueryResults(qs, options, count, s, rspForNextPage, hits,
+                    queryStartTimeMicros);
+
+            if (rspForNextPage.documentCount > 0) {
+                hasValidNextPageEntry = true;
+                break;
+            }
+        }
+
+        return hasValidNextPageEntry;
     }
 
     private String createNextPage(Operation op, IndexSearcher s, QuerySpecification qs,
