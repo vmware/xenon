@@ -101,6 +101,7 @@ public abstract class FactoryService extends StatelessService {
     private EnumSet<ServiceOption> childOptions;
     private String nodeSelectorLink = ServiceUriPaths.DEFAULT_NODE_SELECTOR;
     private int selfQueryResultLimit = SELF_QUERY_RESULT_LIMIT;
+    private ServiceDocument childTemplate;
 
     /**
      * Creates a default instance of a factory service that can create and start instances
@@ -671,6 +672,17 @@ public abstract class FactoryService extends StatelessService {
                 .setTermMatchValue(kind);
         task.querySpec.query.addBooleanClause(kindClause);
 
+        if (task.querySpec.sortTerm != null) {
+            String propertyName = task.querySpec.sortTerm.propertyName;
+            try {
+                task.querySpec.sortTerm.propertyType = getChildTemplate()
+                        .documentDescription.propertyDescriptions.get(propertyName).typeName;
+            } catch (Throwable e) {
+                op.fail(new IllegalArgumentException("Sort term is not a valid property: " + propertyName));
+                return;
+            }
+        }
+
         sendRequest(Operation.createPost(this, ServiceUriPaths.CORE_QUERY_TASKS).setBody(task)
                 .setCompletion((o, e) -> {
                     if (e != null) {
@@ -798,20 +810,27 @@ public abstract class FactoryService extends StatelessService {
 
     @Override
     public ServiceDocument getDocumentTemplate() {
-        try {
-            ServiceDocumentQueryResult r = new ServiceDocumentQueryResult();
-            Service s = createServiceInstance();
-            s.setHost(getHost());
-            ServiceDocument childTemplate = s.getDocumentTemplate();
-            r.documents = new HashMap<>();
-            childTemplate.documentSelfLink = UriUtils.buildUriPath(getSelfLink(), "child-template");
-            r.documentLinks.add(childTemplate.documentSelfLink);
-            r.documents.put(childTemplate.documentSelfLink, childTemplate);
-            return r;
-        } catch (Throwable e) {
-            logSevere(e);
-            return null;
+        ServiceDocumentQueryResult r = new ServiceDocumentQueryResult();
+        ServiceDocument childTemplate = getChildTemplate();
+        r.documents = new HashMap<>();
+        childTemplate.documentSelfLink = UriUtils.buildUriPath(getSelfLink(), "child-template");
+        r.documentLinks.add(childTemplate.documentSelfLink);
+        r.documents.put(childTemplate.documentSelfLink, childTemplate);
+        return r;
+    }
+
+    private ServiceDocument getChildTemplate() {
+        if (this.childTemplate == null) {
+            try {
+                Service s = createServiceInstance();
+                s.setHost(getHost());
+                this.childTemplate = s.getDocumentTemplate();
+            } catch (Throwable e) {
+                logSevere(e);
+                return null;
+            }
         }
+        return this.childTemplate;
     }
 
     @Override

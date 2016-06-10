@@ -17,15 +17,21 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
+import java.lang.reflect.Field;
 import java.net.URI;
+import java.util.Collections;
 import java.util.EnumSet;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
+import java.util.stream.LongStream;
+import java.util.stream.Stream;
 
 import org.junit.Before;
 import org.junit.Ignore;
@@ -875,6 +881,84 @@ public class TestFactoryService extends BasicReusableHostTestCase {
         checkDerivedSelfLinkWhenProvidedSelfLinkIsJustASuffix();
         checkDerivedSelfLinkWhenProvidedSelfLinkAlreadyContainsAPath();
         checkDerivedSelfLinkWhenProvidedSelfLinkLooksLikeItContainsAPathButDoesnt();
+        this.host.testWait();
+    }
+
+    @Test
+    public void odataSupport() throws Throwable {
+        URI factoryUri = UriUtils.buildUri(this.host, ExampleService.FACTORY_LINK);
+
+        this.host.startService(Operation.createPost(factoryUri),
+                ExampleService.createFactory());
+        this.host.waitForServiceAvailable(ExampleService.FACTORY_LINK);
+
+        Supplier<Stream<ExampleServiceState>> stateSupplier = () -> LongStream.range(0, 5).mapToObj(i -> {
+            ExampleServiceState state = new ExampleServiceState();
+            state.counter = i;
+            state.name = i + "-abcd";
+            return state;
+        });
+
+        this.host.testStart(1);
+        OperationJoin
+                .create(stateSupplier.get().map(state -> {
+                    return Operation
+                        .createPost(factoryUri)
+                        .setReferer(this.host.getUri())
+                        .setBody(state);
+                }))
+                .setCompletion((os, es) -> {
+                    if (es != null && !es.isEmpty()) {
+                        this.host.failIteration(es.values().iterator().next());
+                        return;
+                    }
+                    this.host.completeIteration();
+                })
+                .sendWith(this.host);
+        this.host.testWait();
+
+        validateOrderBy(stateSupplier.get(), "counter", true);
+        validateOrderBy(stateSupplier.get(), "name", false);
+    }
+
+    private void validateOrderBy(Stream<ExampleServiceState> states,
+            String fieldName, boolean asc) throws Throwable {
+        String queryString = String.format("$orderby=%s %s", fieldName, asc ? "asc" : "desc");
+        URI uri = UriUtils.buildUri(this.host, ExampleService.FACTORY_LINK, queryString);
+
+        this.host.testStart(1);
+        Operation.createGet(uri)
+            .setCompletion((o, e) -> {
+                if (e != null) {
+                    this.host.failIteration(e);
+                    return;
+                }
+
+                try {
+                    ServiceDocumentQueryResult result = o.getBody(ServiceDocumentQueryResult.class);
+                    if (!asc) {
+                        Collections.reverse(result.documentLinks);
+                    }
+                    Iterator<String> iterator = result.documentLinks.iterator();
+                    Field field = ExampleServiceState.class.getField(fieldName);
+                    states.forEachOrdered((state) -> {
+                        ExampleServiceState resultState = Utils.fromJson(
+                                result.documents.get(iterator.next()), ExampleServiceState.class);
+                        try {
+                            assertEquals(field.get(state), field.get(resultState));
+                        } catch (Exception ex) {
+                            throw new IllegalArgumentException(ex);
+                        }
+                    });
+                } catch (Exception ex) {
+                    this.host.failIteration(ex);
+                    return;
+                }
+
+                this.host.completeIteration();
+            })
+            .setReferer(this.host.getUri())
+            .sendWith(this.host);
         this.host.testWait();
     }
 
