@@ -964,11 +964,21 @@ public class LuceneDocumentIndexService extends StatelessService {
                 if (!hasPage || rsp.documentLinks.size() >= count
                         || hits.length < resultLimit) {
                     // query had less results then per page limit or page is full of results
-                    expiration += queryTime;
-                    rsp.nextPageLink = createNextPage(op, s, options, tq, sort, bottom, count,
-                            expiration,
-                            indexLink,
-                            hasPage);
+
+                    boolean createNextPageLink = true;
+                    if (hasPage) {
+                        createNextPageLink = checkNextPageHasEntry(bottom, options, s, tq, sort,
+                                count, qs, queryStartTimeMicros);
+                    }
+
+                    if (createNextPageLink) {
+                        expiration += queryTime;
+                        rsp.nextPageLink = createNextPage(op, s, options, tq, sort, bottom, count,
+                                expiration,
+                                indexLink,
+                                hasPage);
+                    }
+
                     break;
                 }
             }
@@ -978,6 +988,58 @@ public class LuceneDocumentIndexService extends StatelessService {
         } while (true && resultLimit > 0);
 
         return rsp;
+    }
+
+    private boolean checkNextPageHasEntry(ScoreDoc after,
+            EnumSet<QueryOption> options,
+            IndexSearcher s,
+            Query tq,
+            Sort sort,
+            int count,
+            QuerySpecification qs,
+            long queryStartTimeMicros) throws Throwable {
+
+        boolean hasValidNextPageEntry = false;
+
+        // To determine next page exists or not, here needs keep searching until it finds a
+        // *valid* entry. If loop reaches to the end(no valid entry), then current page is the last
+        // page.
+        //
+        // For example, if there are 5 doc hits. doc=1,2,5 are valid and doc=3,4 are expired.
+        // When limit=2, the first page shows doc=1,2. First loop will fetch doc=3,4 but they are
+        // invalid (filtered out in `processQueryResults`). Next search will hit doc=5 which is
+        // valid. Therefore, next page exists.
+        // If doc=1,2 are valid and doc=3,4,5 are invalid, then first page is the last page.
+        while (after != null) {
+            // fetch next page
+            TopDocs nextPageResults;
+            if (sort == null) {
+                nextPageResults = s.searchAfter(after, tq, count);
+            } else {
+                nextPageResults = s.searchAfter(after, tq, count, sort, false, false);
+            }
+            if (nextPageResults == null) {
+                break;
+            }
+
+            ScoreDoc[] hits = nextPageResults.scoreDocs;
+            if (hits.length == 0) {
+                // reached to the end
+                break;
+            }
+
+            ServiceDocumentQueryResult rspForNextPage = new ServiceDocumentQueryResult();
+            rspForNextPage.documents = new HashMap<>();
+            after = processQueryResults(qs, options, count, s, rspForNextPage, hits,
+                    queryStartTimeMicros);
+
+            if (rspForNextPage.documentCount > 0) {
+                hasValidNextPageEntry = true;
+                break;
+            }
+        }
+
+        return hasValidNextPageEntry;
     }
 
     private String createNextPage(Operation op, IndexSearcher s, EnumSet<QueryOption> options,
