@@ -222,7 +222,7 @@ public class TestGsonConfiguration {
     }
 
 
-    private static class AnnotatedDoc extends ServiceDocument {
+    public static class AnnotatedDoc extends ServiceDocument {
         public SomeComplexObject value;
 
         @UsageOption(option = ServiceDocumentDescription.PropertyUsageOption.SENSITIVE)
