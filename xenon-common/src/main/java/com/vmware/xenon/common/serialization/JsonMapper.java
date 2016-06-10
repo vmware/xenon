@@ -115,7 +115,7 @@ public class JsonMapper {
     /**
      * Outputs a JSON representation of the given object using useHTMLFormatting to create pretty-printed,
      * HTML-friendly JSON or compact JSON. If hideSensitiveFields is set the JSON will not include fields
-     * with the annotation {@link com.vmware.xenon.common.ServiceDocumentDescription.PropertyUsageOption.SENSITIVE}.
+     * with the annotation {@link com.vmware.xenon.common.ServiceDocumentDescription.PropertyUsageOption#SENSITIVE}.
      */
     public void toJson(boolean hideSensitiveFields, boolean useHtmlFormatting, Object body, Appendable appendable) {
         for (int i = 1;; i++) {
@@ -202,11 +202,11 @@ public class JsonMapper {
 
         registerCommonGsonTypeAdapters(bldr);
 
-        if (isCompact) {
-            bldr.disableHtmlEscaping();
-        } else {
+        if (!isCompact) {
             bldr.setPrettyPrinting();
         }
+
+        bldr.disableHtmlEscaping();
 
         if (isSensitive) {
             bldr.addSerializationExclusionStrategy(new SensitiveAnnotationExclusionStrategy());
