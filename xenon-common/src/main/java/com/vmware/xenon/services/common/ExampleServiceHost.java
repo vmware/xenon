@@ -48,6 +48,9 @@ public class ExampleServiceHost extends ServiceHost {
     private ExampleHostArguments args;
 
     public static void main(String[] args) throws Throwable {
+
+        System.out.println(System.getProperty("java.io.tmpdir"));
+
         ExampleServiceHost h = new ExampleServiceHost();
         h.initialize(args);
         h.start();

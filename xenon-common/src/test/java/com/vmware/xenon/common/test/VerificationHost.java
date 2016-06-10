@@ -115,7 +115,7 @@ public class VerificationHost extends ExampleServiceHost {
 
     private volatile TestContext context;
 
-    private int timeoutSeconds = 30;
+    private int timeoutSeconds = 3000;
 
     private long testStartMicros;
 

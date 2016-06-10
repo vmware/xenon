@@ -990,11 +990,23 @@ public class LuceneDocumentIndexService extends StatelessService {
                 if (!hasPage || rsp.documentLinks.size() >= count
                         || hits.length < resultLimit) {
                     // query had less results then per page limit or page is full of results
-                    expiration += queryTime;
-                    rsp.nextPageLink = createNextPage(op, s, options, tq, sort, bottom, count,
-                            expiration,
-                            indexLink,
-                            hasPage);
+
+                    boolean createNextPageLink;
+                    if (!hasPage) {
+                        createNextPageLink = true;
+                    } else {
+                        createNextPageLink = checkNextPageHasEntry(bottom, options, s, tq, sort,
+                                count, qs, queryStartTimeMicros);
+                    }
+
+                    if (createNextPageLink) {
+                        expiration += queryTime;
+                        rsp.nextPageLink = createNextPage(op, s, options, tq, sort, bottom, count,
+                                expiration,
+                                indexLink,
+                                hasPage);
+                    }
+
                     break;
                 }
             }
@@ -1004,6 +1016,50 @@ public class LuceneDocumentIndexService extends StatelessService {
         } while (true && resultLimit > 0);
 
         return rsp;
+    }
+
+    private boolean checkNextPageHasEntry(ScoreDoc after,
+            EnumSet<QueryOption> options,
+            IndexSearcher s,
+            Query tq,
+            Sort sort,
+            int count,
+            QuerySpecification qs,
+            long queryStartTimeMicros) throws Throwable {
+
+        boolean hasValidNextPageEntry = false;
+
+        while (after != null) {
+
+            // fetch next page
+            TopDocs nextPageResults;
+            if (sort == null) {
+                nextPageResults = s.searchAfter(after, tq, count);
+            } else {
+                nextPageResults = s.searchAfter(after, tq, count, sort, false, false);
+            }
+            if (nextPageResults == null) {
+                break;
+            }
+
+            ScoreDoc[] hits = nextPageResults.scoreDocs;
+            if (hits.length == 0) {
+                // reached to the end
+                break;
+            }
+
+            ServiceDocumentQueryResult rspForNextPage = new ServiceDocumentQueryResult();
+            rspForNextPage.documents = new HashMap<>();
+            after = processQueryResults(qs, options, count, s, rspForNextPage, hits,
+                    queryStartTimeMicros);
+
+            if (rspForNextPage.documentCount > 0) {
+                hasValidNextPageEntry = true;
+                break;
+            }
+        }
+
+        return hasValidNextPageEntry;
     }
 
     private String createNextPage(Operation op, IndexSearcher s, EnumSet<QueryOption> options,
@@ -1057,6 +1113,8 @@ public class LuceneDocumentIndexService extends StatelessService {
         if (ctx != null) {
             body.documentAuthPrincipalLink = ctx.getClaims().getSubject();
         }
+
+        System.out.println("u=" + u);
 
         Operation startPost = Operation
                 .createPost(u)

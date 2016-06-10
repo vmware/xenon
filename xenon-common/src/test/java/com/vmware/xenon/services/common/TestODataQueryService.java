@@ -912,6 +912,7 @@ public class TestODataQueryService extends BasicReusableHostTestCase {
             inState.documentSelfLink = null;
             inState.counter = 1L;
             inState.name = i + "-abcd";
+//            inState.documentExpirationTimeMicros = Utils.getNowMicrosUtc() - TimeUnit.HOURS.toMicros(1);
             postExample(inState);
             expectedOrder.add(inState.name);
         }
@@ -926,31 +927,36 @@ public class TestODataQueryService extends BasicReusableHostTestCase {
         assertTrue(res.documents.size() == 0);
         assertTrue(res.nextPageLink != null);
 
-        // skip first page which is empty
-        URI uri = new URI(res.nextPageLink);
-        String peer = UriUtils.getODataParamValueAsString(uri, "peer");
-        String page = UriUtils.getODataParamValueAsString(uri, "path");
-        assertTrue(peer != null);
-        assertTrue(page != null);
-
-        page = page.replaceAll("\\D+", "");
-        assertTrue(!page.isEmpty());
-
-        res = getNextPage(page, peer, true);
+//        // skip first page which is empty
+//        URI uri = new URI(res.nextPageLink);
+//        String peer = UriUtils.getODataParamValueAsString(uri, "peer");
+//        String page = UriUtils.getODataParamValueAsString(uri, "path");
+//        assertTrue(peer != null);
+//        assertTrue(page != null);
+//
+//        page = page.replaceAll("\\D+", "");
+//        assertTrue(!page.isEmpty());
+//
+//        res = getNextPage(page, peer, true);
         long counter = 0;
+        String nextPageLink = res.nextPageLink;
 
-        while (res.nextPageLink != null) {
+//        while (res.nextPageLink != null) {
+        while (nextPageLink != null) {
+            res = getNextPage(nextPageLink, true);
+            nextPageLink = res.nextPageLink;
             if (res.documentCount % limit == 0) {
                 assertTrue(res.documentCount == limit);
                 assertTrue(res.documentLinks.size() == limit);
                 assertTrue(res.documents.size() == limit);
-            } else if (counter + res.documentCount == c) {
+                //            } else if (counter + res.documentCount == c) {
+            } else {
                 assertTrue(res.documentCount == c - counter);
                 assertTrue(res.documentLinks.size() == c - counter);
                 assertTrue(res.documents.size() == c - counter);
             }
             counter = counter + res.documentCount;
-            res = getNextPage(res.nextPageLink, true);
+//            res = getNextPage(res.nextPageLink, true);
         }
 
         assertTrue(counter == c);
