@@ -36,6 +36,7 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Random;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -1633,6 +1634,8 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
         // let a couple of maintenance intervals pass. not essential, since we loop below
         // but lets more documents get deleted at once
         Thread.sleep(maintIntervalMillis);
+
+        QueryTask finishedTaskWithLinksState = null;
         // issue a query that verifies we have *less* than the count versions
         Date exp = this.host.getTestExpiration();
         while (new Date().before(exp)) {
@@ -1651,7 +1654,7 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
             // also do a query that returns the actual links
             q.options = EnumSet.of(QueryOption.INCLUDE_ALL_VERSIONS);
             u = this.host.createQueryTaskService(QueryTask.create(q), false);
-            QueryTask finishedTaskWithLinksState = this.host.waitForQueryTaskCompletion(q,
+            finishedTaskWithLinksState = this.host.waitForQueryTaskCompletion(q,
                     serviceUris.size(), (int) limit, u, false, true);
 
             long expectedCount = serviceUris.size() * limit;
@@ -1670,6 +1673,26 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
                 continue;
             }
             return;
+        }
+
+        if (finishedTaskWithLinksState != null) {
+            HashMap<String, Set<Integer>> aggregated = new HashMap<>();
+            for (String link : finishedTaskWithLinksState.results.documentLinks) {
+                String documentId = link.split("\\?")[0];
+                Set<Integer> versions = aggregated.get(documentId);
+                if (versions == null) {
+                    versions = new TreeSet<>();
+                }
+                versions.add(Integer.parseInt(link.split("=")[1]));
+                aggregated.put(documentId, versions);
+            }
+            aggregated.entrySet().stream().filter(aggregate -> aggregate.getValue().size() > limit)
+                    .forEach(aggregate -> {
+                        this.host.log("Bad documentLink %s. Versions:", aggregate.getKey());
+                        for (Integer val : aggregate.getValue()) {
+                            this.host.log(val.toString());
+                        }
+                    });
         }
 
         throw new TimeoutException();
