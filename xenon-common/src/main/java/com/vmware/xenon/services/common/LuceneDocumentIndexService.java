@@ -1711,7 +1711,7 @@ public class LuceneDocumentIndexService extends StatelessService {
     private void deleteAllDocumentsForSelfLink(Operation postOrDelete, String link,
             ServiceDocument state)
                     throws Throwable {
-        deleteDocumentsFromIndex(postOrDelete, link, 0);
+        deleteDocumentsFromIndex(postOrDelete, link, 0, false);
         ServiceStat st = getStat(STAT_NAME_SERVICE_DELETE_COUNT);
         adjustStat(st, 1);
         logFine("%s expired", link);
@@ -1733,7 +1733,7 @@ public class LuceneDocumentIndexService extends StatelessService {
      * @throws Throwable
      */
     private void deleteDocumentsFromIndex(Operation delete, String link,
-            long versionsToKeep) throws Throwable {
+            long versionsToKeep, boolean versionRetention) throws Throwable {
         IndexWriter wr = this.writer;
         if (wr == null) {
             delete.fail(new CancellationException());
@@ -1773,6 +1773,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         }
 
         if (hits.length <= versionsToKeep) {
+            logInfo("*** Skipping retention for %s. Found documentCount %d", link, hits.length);
             return;
         }
 
@@ -1795,8 +1796,10 @@ public class LuceneDocumentIndexService extends StatelessService {
 
         results = s.search(bq, Integer.MAX_VALUE);
 
-        logInfo("trimming index for %s from %d to %d, query returned %d", link, hits.length,
-                versionsToKeep, results.totalHits);
+        logInfo("*** Trimming index for %s from %d to %d as part of %s, Total count: %d",
+                link, versionLowerBound, versionUpperBound,
+                versionRetention ? "version retention" : "document deletion",
+                results.totalHits);
 
         wr.deleteDocuments(bq);
         long now = Utils.getNowMicrosUtc();
@@ -2096,17 +2099,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         }
 
         for (Entry<String, Long> e : links.entrySet()) {
-            Query linkQuery = new TermQuery(new Term(ServiceDocument.FIELD_NAME_SELF_LINK,
-                    e.getKey()));
-            int documentCount = s.count(linkQuery);
-
-            int pastRetentionLimitVersions = (int) (documentCount - e.getValue());
-            if (pastRetentionLimitVersions <= 0) {
-                continue;
-            }
-
-            // trim durable index for this link
-            deleteDocumentsFromIndex(dummyDelete, e.getKey(), e.getValue());
+            deleteDocumentsFromIndex(dummyDelete, e.getKey(), e.getValue(), true);
             count++;
         }
 
