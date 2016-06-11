@@ -1592,7 +1592,7 @@ public class LuceneDocumentIndexService extends StatelessService {
             }
             Object fieldValue = ReflectionUtils.getPropertyValue(fieldDescription, v);
             String fieldName = QuerySpecification.buildCompositeFieldName(fieldNamePrefix,
-                        e.getKey());
+                    e.getKey());
             addIndexableFieldToDocument(doc, fieldValue, fieldDescription, fieldName);
         }
     }
@@ -1711,7 +1711,7 @@ public class LuceneDocumentIndexService extends StatelessService {
     private void deleteAllDocumentsForSelfLink(Operation postOrDelete, String link,
             ServiceDocument state)
                     throws Throwable {
-        deleteDocumentsFromIndex(postOrDelete, link, 0);
+        deleteDocumentsFromIndex(postOrDelete, link, 0, false);
         ServiceStat st = getStat(STAT_NAME_SERVICE_DELETE_COUNT);
         adjustStat(st, 1);
         logFine("%s expired", link);
@@ -1733,7 +1733,7 @@ public class LuceneDocumentIndexService extends StatelessService {
      * @throws Throwable
      */
     private void deleteDocumentsFromIndex(Operation delete, String link,
-            long versionsToKeep) throws Throwable {
+            long versionsToKeep, boolean versionRetention) throws Throwable {
         IndexWriter wr = this.writer;
         if (wr == null) {
             delete.fail(new CancellationException());
@@ -1762,7 +1762,7 @@ public class LuceneDocumentIndexService extends StatelessService {
             return;
         }
 
-        Document hitDoc = s.doc(hits[0].doc);
+        Document hitDoc;
 
         if (versionsToKeep == 0) {
             // we are asked to delete everything, no need to sort or query
@@ -1773,6 +1773,37 @@ public class LuceneDocumentIndexService extends StatelessService {
         }
 
         if (hits.length <= versionsToKeep) {
+            Long linkAccessTime;
+            long indexUpdate;
+            long searcherUpdate;
+            synchronized (this.searchSync) {
+                linkAccessTime = this.linkAccessTimes.get(link);
+                if (linkAccessTime == null) {
+                    linkAccessTime = 0L;
+                }
+                indexUpdate = this.indexUpdateTimeMicros;
+                searcherUpdate = this.searcherUpdateTimeMicros;
+            }
+
+            hitDoc = s.doc(hits[hits.length - 1].doc);
+            long versionLowerBound = Long.parseLong(hitDoc.get(ServiceDocument.FIELD_NAME_VERSION));
+            hitDoc = s.doc(hits[0].doc);
+            long versionUpperBound = Long.parseLong(hitDoc.get(ServiceDocument.FIELD_NAME_VERSION));
+
+            logInfo("*** Skipping retention for %s" +
+                    ", documentCount %d" +
+                    ", indexUpdateTimeMicros %d" +
+                    ", searcherUpdateTimeMicros %d" +
+                    ", linkAccessTimeMicros %d" +
+                    ", oldestVersion %d" +
+                    ", newestVersion %d",
+                    link,
+                    hits.length,
+                    indexUpdate,
+                    searcherUpdate,
+                    linkAccessTime,
+                    versionLowerBound,
+                    versionUpperBound);
             return;
         }
 
@@ -1795,8 +1826,10 @@ public class LuceneDocumentIndexService extends StatelessService {
 
         results = s.search(bq, Integer.MAX_VALUE);
 
-        logInfo("trimming index for %s from %d to %d, query returned %d", link, hits.length,
-                versionsToKeep, results.totalHits);
+        logInfo("*** Trimming index for %s from %d to %d as part of %s, Total count: %d",
+                link, versionLowerBound, versionUpperBound,
+                versionRetention ? "version retention" : "document deletion",
+                results.totalHits);
 
         wr.deleteDocuments(bq);
         long now = Utils.getNowMicrosUtc();
@@ -2090,23 +2123,8 @@ public class LuceneDocumentIndexService extends StatelessService {
             this.linkDocumentRetentionEstimates.clear();
         }
 
-        IndexSearcher s = updateSearcher(null, Integer.MAX_VALUE, wr);
-        if (s == null) {
-            return;
-        }
-
         for (Entry<String, Long> e : links.entrySet()) {
-            Query linkQuery = new TermQuery(new Term(ServiceDocument.FIELD_NAME_SELF_LINK,
-                    e.getKey()));
-            int documentCount = s.count(linkQuery);
-
-            int pastRetentionLimitVersions = (int) (documentCount - e.getValue());
-            if (pastRetentionLimitVersions <= 0) {
-                continue;
-            }
-
-            // trim durable index for this link
-            deleteDocumentsFromIndex(dummyDelete, e.getKey(), e.getValue());
+            deleteDocumentsFromIndex(dummyDelete, e.getKey(), e.getValue(), true);
             count++;
         }
 
