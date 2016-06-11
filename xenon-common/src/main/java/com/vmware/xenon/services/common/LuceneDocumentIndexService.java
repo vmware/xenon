@@ -1762,7 +1762,7 @@ public class LuceneDocumentIndexService extends StatelessService {
             return;
         }
 
-        Document hitDoc = s.doc(hits[0].doc);
+        Document hitDoc;
 
         if (versionsToKeep == 0) {
             // we are asked to delete everything, no need to sort or query
@@ -1772,7 +1772,16 @@ public class LuceneDocumentIndexService extends StatelessService {
             return;
         }
 
+        hitDoc = s.doc(hits[hits.length - 1].doc);
+        long versionLowerBound = Long.parseLong(hitDoc.get(ServiceDocument.FIELD_NAME_VERSION));
+
+        // if the number of documents found for the passed self-link are already less than the
+        // version limit, then skip version retention.
         if (hits.length <= versionsToKeep) {
+            hitDoc = s.doc(hits[0].doc);
+            long versionUpperBound = Long.parseLong(hitDoc.get(ServiceDocument.FIELD_NAME_VERSION));
+            logWarning("Skipping index trimming for %s from %d to %d. query returned :%d",
+                    link, versionLowerBound, versionUpperBound, hits.length);
             return;
         }
 
@@ -1781,8 +1790,6 @@ public class LuceneDocumentIndexService extends StatelessService {
         // grab the document at the tail of the results, and use it to form a new query
         // that will delete all documents from that document up to the version at the
         // retention limit
-        hitDoc = s.doc(hits[hits.length - 1].doc);
-        long versionLowerBound = Long.parseLong(hitDoc.get(ServiceDocument.FIELD_NAME_VERSION));
         hitDoc = s.doc(hits[(int) versionsToKeep].doc);
         long versionUpperBound = Long.parseLong(hitDoc.get(ServiceDocument.FIELD_NAME_VERSION));
 
@@ -2096,16 +2103,6 @@ public class LuceneDocumentIndexService extends StatelessService {
         }
 
         for (Entry<String, Long> e : links.entrySet()) {
-            Query linkQuery = new TermQuery(new Term(ServiceDocument.FIELD_NAME_SELF_LINK,
-                    e.getKey()));
-            int documentCount = s.count(linkQuery);
-
-            int pastRetentionLimitVersions = (int) (documentCount - e.getValue());
-            if (pastRetentionLimitVersions <= 0) {
-                continue;
-            }
-
-            // trim durable index for this link
             deleteDocumentsFromIndex(dummyDelete, e.getKey(), e.getValue());
             count++;
         }

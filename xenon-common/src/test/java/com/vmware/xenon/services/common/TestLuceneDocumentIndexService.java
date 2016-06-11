@@ -36,6 +36,7 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Random;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -1554,6 +1555,7 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
 
     private void doServiceVersionGroomingValidation(EnumSet<ServiceOption> caps) throws Throwable {
         long end = Utils.getNowMicrosUtc() + TimeUnit.SECONDS.toMicros(this.testDurationSeconds);
+        final long offset = 10;
 
         do {
             List<Service> services = this.host.doThroughputServiceStart(
@@ -1579,7 +1581,7 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
                     }, factoryUri);
 
             Collection<URI> serviceUrisWithCustomRetention = exampleStates.keySet();
-            long count = ServiceDocumentDescription.DEFAULT_VERSION_RETENTION_LIMIT;
+            long count = ServiceDocumentDescription.DEFAULT_VERSION_RETENTION_LIMIT + offset;
             this.host.testStart(this.serviceCount * count);
             for (int i = 0; i < count; i++) {
                 for (URI u : serviceUrisWithDefaultRetention) {
@@ -1589,7 +1591,7 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
                 }
             }
             this.host.testWait();
-            count = ExampleServiceState.VERSION_RETENTION_LIMIT;
+            count = ExampleServiceState.VERSION_RETENTION_LIMIT + offset;
             this.host.testStart(serviceUrisWithCustomRetention.size() * count);
             for (int i = 0; i < count; i++) {
                 for (URI u : serviceUrisWithCustomRetention) {
@@ -1625,7 +1627,7 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
     }
 
     private void verifyVersionRetention(
-            Collection<URI> serviceUris, long limit) throws InterruptedException, Throwable {
+            Collection<URI> serviceUris, long limit) throws Throwable {
 
         long maintIntervalMillis = TimeUnit.MICROSECONDS
                 .toMillis(this.host.getMaintenanceIntervalMicros());
@@ -1633,6 +1635,8 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
         // let a couple of maintenance intervals pass. not essential, since we loop below
         // but lets more documents get deleted at once
         Thread.sleep(maintIntervalMillis);
+
+        QueryTask finishedTaskWithLinksState = null;
         // issue a query that verifies we have *less* than the count versions
         Date exp = this.host.getTestExpiration();
         while (new Date().before(exp)) {
@@ -1651,7 +1655,7 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
             // also do a query that returns the actual links
             q.options = EnumSet.of(QueryOption.INCLUDE_ALL_VERSIONS);
             u = this.host.createQueryTaskService(QueryTask.create(q), false);
-            QueryTask finishedTaskWithLinksState = this.host.waitForQueryTaskCompletion(q,
+            finishedTaskWithLinksState = this.host.waitForQueryTaskCompletion(q,
                     serviceUris.size(), (int) limit, u, false, true);
 
             long expectedCount = serviceUris.size() * limit;
@@ -1670,6 +1674,29 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
                 continue;
             }
             return;
+        }
+
+        // Verification failed. Logging all self-links that returned
+        // more document versions than expected
+        if (finishedTaskWithLinksState != null) {
+            HashMap<String, TreeSet<Integer>> aggregated = new HashMap<>();
+            for (String link : finishedTaskWithLinksState.results.documentLinks) {
+                String documentSelfLink = link.split("\\?")[0];
+                TreeSet<Integer> versions = aggregated.get(documentSelfLink);
+                if (versions == null) {
+                    versions = new TreeSet<>();
+                }
+                versions.add(Integer.parseInt(link.split("=")[1]));
+                aggregated.put(documentSelfLink, versions);
+            }
+            aggregated.entrySet().stream().filter(aggregate -> aggregate.getValue().size() > limit)
+                    .forEach(aggregate -> {
+                        String documentSelfLink = aggregate.getKey();
+                        Integer lowerVersion = aggregate.getValue().first();
+                        Integer upperVersion = aggregate.getValue().last();
+                        this.host.log("Failed documentSelfLink:%s. lowerVersion:%d, upperVersion:%d",
+                                documentSelfLink, lowerVersion, upperVersion);
+                    });
         }
 
         throw new TimeoutException();
