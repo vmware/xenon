@@ -661,7 +661,15 @@ public abstract class FactoryService extends StatelessService {
     }
 
     private void handleGetOdataCompletion(Operation op) {
-        QueryTask task = ODataUtils.toQuery(op);
+        String node = UriUtils.getODataNodeParamValue(op.getUri());
+        String skipTo = UriUtils.getODataSkipToParamValue(op.getUri());
+
+        if (node != null && skipTo != null) {
+            handleNavigationRequest(op);
+            return;
+        }
+
+        QueryTask task = ODataUtils.toQuery(op, false);
         if (task == null) {
             return;
         }
@@ -684,15 +692,126 @@ public abstract class FactoryService extends StatelessService {
             task.querySpec.sortTerm.propertyType = propertyDescription.typeName;
         }
 
+        if (task.querySpec.resultLimit != null) {
+            handleODataLimitRequest(op, task);
+            return;
+        }
+
         sendRequest(Operation.createPost(this, ServiceUriPaths.CORE_QUERY_TASKS).setBody(task)
                 .setCompletion((o, e) -> {
                     if (e != null) {
                         op.fail(e);
                         return;
                     }
-                    QueryTask qrt = o.getBody(QueryTask.class);
-                    op.setBodyNoCloning(qrt.results).complete();
+                    ServiceDocumentQueryResult result = o.getBody(QueryTask.class).results;
+                    op.setBodyNoCloning(result).complete();
                 }));
+    }
+
+    private void handleNavigationRequest(Operation op) {
+        URI uri = UriUtils.buildUri(this.getHost(), ServiceUriPaths.ODATA_QUERIES, op.getUri().getQuery());
+        sendRequest(Operation.createGet(uri).setCompletion((o, e) -> {
+            if (e != null) {
+                op.fail(e);
+                return;
+            }
+            ServiceDocumentQueryResult result = o.getBody(QueryTask.class).results;
+            prepareNavigationResult(result);
+            op.setBodyNoCloning(result).complete();
+        }));
+    }
+
+    private void handleODataLimitRequest(Operation op, QueryTask task) {
+        if (task.querySpec.options.contains(QueryOption.COUNT)) {
+            task.querySpec.options.remove(QueryOption.COUNT);
+            task.querySpec.options.add(QueryOption.EXPAND_CONTENT);
+
+            Operation query = Operation
+                    .createPost(this, ServiceUriPaths.CORE_QUERY_TASKS)
+                    .setBody(task);
+            prepareRequest(query);
+
+            QueryTask countTask = new QueryTask();
+            countTask.setDirect(true);
+            countTask.querySpec = new QueryTask.QuerySpecification();
+            countTask.querySpec.options.add(QueryOption.COUNT);
+            countTask.querySpec.query = task.querySpec.query;
+
+            Operation count = Operation
+                    .createPost(this, ServiceUriPaths.CORE_QUERY_TASKS)
+                    .setBody(countTask);
+            prepareRequest(count);
+
+            OperationJoin.create(count, query).setCompletion((os, es) -> {
+                if (es != null && !es.isEmpty()) {
+                    op.fail(es.values().iterator().next());
+                    return;
+                }
+
+                ServiceDocumentQueryResult countResult = os.get(count.getId()).getBody(QueryTask.class).results;
+                ServiceDocumentQueryResult queryResult = os.get(query.getId()).getBody(QueryTask.class).results;
+
+                if (queryResult.nextPageLink == null) {
+                    op.setBodyNoCloning(queryResult).complete();
+                    return;
+                }
+
+                sendNextRequest(op, queryResult.nextPageLink, countResult.documentCount);
+
+            }).sendWith(this.getHost());
+            return;
+        }
+
+        sendRequest(Operation.createPost(this, ServiceUriPaths.CORE_QUERY_TASKS).setBody(task)
+                .setCompletion((o, e) -> {
+                    if (e != null) {
+                        op.fail(e);
+                        return;
+                    }
+
+                    ServiceDocumentQueryResult result = o.getBody(QueryTask.class).results;
+                    if (result.nextPageLink == null) {
+                        prepareNavigationResult(result);
+                        op.setBodyNoCloning(result).complete();
+                        return;
+                    }
+
+                    sendNextRequest(op, result.nextPageLink, null);
+                }));
+    }
+
+    private void sendNextRequest(Operation op, String nextPageLink, Long totalCount) {
+        sendRequest(Operation.createGet(this, nextPageLink).setCompletion((o, e) -> {
+            if (e != null) {
+                op.fail(e);
+                return;
+            }
+
+            ServiceDocumentQueryResult result = o.getBody(QueryTask.class).results;
+            result.totalCount = totalCount;
+            prepareNavigationResult(result);
+            op.setBodyNoCloning(result).complete();
+        }));
+    }
+
+    private void prepareNavigationResult(ServiceDocumentQueryResult result) {
+        if (result.nextPageLink != null) {
+            result.nextPageLink = convertNavigationLink(result.nextPageLink);
+        }
+        if (result.prevPageLink != null) {
+            result.prevPageLink = convertNavigationLink(result.prevPageLink);
+        }
+    }
+
+    private String convertNavigationLink(String navigationLink) {
+        URI uri = URI.create(navigationLink);
+        String peer = UriUtils.getODataParamValueAsString(uri, UriUtils.FORWARDING_URI_PARAM_NAME_PEER);
+        String path = UriUtils.getODataParamValueAsString(uri, UriUtils.FORWARDING_URI_PARAM_NAME_PATH)
+                .replaceAll("\\D+", "");
+        String queryString = String.format("%s=%s&%s=%s",
+                UriUtils.URI_PARAM_ODATA_NODE, peer,
+                UriUtils.URI_PARAM_ODATA_SKIP_TO, path);
+        return this.getSelfLink() + UriUtils.URI_QUERY_CHAR + queryString;
     }
 
     public void completeGetWithQuery(Operation op, EnumSet<ServiceOption> caps) {

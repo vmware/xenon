@@ -39,7 +39,7 @@ public class ODataQueryService extends StatelessService {
                 return;
             }
 
-            QueryTask task = ODataUtils.toQuery(op);
+            QueryTask task = ODataUtils.toQuery(op, true);
             if (task == null) {
                 return;
             }

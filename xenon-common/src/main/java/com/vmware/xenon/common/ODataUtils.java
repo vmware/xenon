@@ -27,7 +27,7 @@ public class ODataUtils {
      * Builds a {@code QueryTask} with a fully formed query and options, from the operation URI
      * query parameters
      */
-    public static QueryTask toQuery(Operation op) {
+    public static QueryTask toQuery(Operation op, boolean validate) {
 
         QueryTask task = new QueryTask();
         task.setDirect(true);
@@ -50,7 +50,7 @@ public class ODataUtils {
 
         UriUtils.ODataOrderByTuple orderBy = UriUtils.getODataOrderByParamValue(op.getUri());
         if (orderBy != null) {
-            if (count) {
+            if (count && validate) {
                 op.fail(new IllegalArgumentException(UriUtils.URI_PARAM_ODATA_COUNT
                         + " cannot be used together with " + UriUtils.URI_PARAM_ODATA_ORDER_BY));
                 return null;
@@ -77,7 +77,7 @@ public class ODataUtils {
 
         Integer top = UriUtils.getODataTopParamValue(op.getUri());
         if (top != null) {
-            if (count) {
+            if (count && validate) {
                 op.fail(new IllegalArgumentException(UriUtils.URI_PARAM_ODATA_COUNT
                         + " cannot be used together with " + UriUtils.URI_PARAM_ODATA_TOP));
                 return null;
@@ -95,7 +95,7 @@ public class ODataUtils {
 
         Integer limit = UriUtils.getODataLimitParamValue(op.getUri());
         if (limit != null && limit > 0) {
-            if (count) {
+            if (count && validate) {
                 op.fail(new IllegalArgumentException(UriUtils.URI_PARAM_ODATA_COUNT
                         + " cannot be used together with " + UriUtils.URI_PARAM_ODATA_LIMIT));
                 return null;

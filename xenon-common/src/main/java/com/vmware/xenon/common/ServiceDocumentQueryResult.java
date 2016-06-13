@@ -22,6 +22,7 @@ public class ServiceDocumentQueryResult extends ServiceDocument {
     public static final String FIELD_NAME_DOCUMENT_LINKS = "documentLinks";
     public static final String FIELD_NAME_DOCUMENTS = "documents";
     public static final String FIELD_NAME_DOCUMENT_COUNT = "documentCount";
+    public static final String FIELD_NAME_TOTAL_COUNT = "totalCount";
     public static final String FIELD_NAME_PREV_PAGE_LINK = "prevPageLink";
     public static final String FIELD_NAME_NEXT_PAGE_LINK = "nextPageLink";
     public static final String FIELD_NAME_QUERY_TIME_MICROS = "queryTimeMicros";
@@ -57,6 +58,11 @@ public class ServiceDocumentQueryResult extends ServiceDocument {
      * Set to the number of documents that satisfy the query.
      */
     public Long documentCount;
+
+    /**
+     * Set to the total number of documents that satisfy the query.
+     */
+    public Long totalCount;
 
     /**
      * Valid only if QuerySpecification.resultLimit is specified.
