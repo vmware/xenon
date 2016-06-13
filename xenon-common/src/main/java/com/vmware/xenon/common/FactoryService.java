@@ -661,6 +661,28 @@ public abstract class FactoryService extends StatelessService {
     }
 
     private void handleGetOdataCompletion(Operation op) {
+        String node = UriUtils.getODataNodeParamValue(op.getUri());
+        String skipTo = UriUtils.getODataSkipToParamValue(op.getUri());
+
+        if (node != null && skipTo != null) {
+            URI uri = UriUtils.buildUri(this.getHost(), ServiceUriPaths.ODATA_QUERIES, op.getUri().getQuery());
+            sendRequest(Operation.createGet(uri).setCompletion((o, e) -> {
+                if (e != null) {
+                    op.fail(e);
+                    return;
+                }
+                ServiceDocumentQueryResult result = o.getBody(QueryTask.class).results;
+                if (result.nextPageLink != null) {
+                    result.nextPageLink = convertNavigationLink(result.nextPageLink);
+                }
+                if (result.prevPageLink != null) {
+                    result.prevPageLink = convertNavigationLink(result.prevPageLink);
+                }
+                op.setBodyNoCloning(result).complete();
+            }));
+            return;
+        }
+
         QueryTask task = ODataUtils.toQuery(op);
         if (task == null) {
             return;
@@ -684,6 +706,53 @@ public abstract class FactoryService extends StatelessService {
             task.querySpec.sortTerm.propertyType = propertyDescription.typeName;
         }
 
+        if (task.querySpec.resultLimit != null && !task.querySpec.options.contains(QueryOption.COUNT)) {
+
+            Operation queryOp = Operation
+                    .createPost(this, ServiceUriPaths.CORE_QUERY_TASKS)
+                    .setBody(task);
+            prepareRequest(queryOp);
+
+            QueryTask countTask = new QueryTask();
+            countTask.setDirect(true);
+            countTask.querySpec = new QueryTask.QuerySpecification();
+            countTask.querySpec.options.add(QueryOption.COUNT);
+            countTask.querySpec.query = task.querySpec.query;
+            Operation countOp = Operation
+                    .createPost(this, ServiceUriPaths.CORE_QUERY_TASKS)
+                    .setBody(countTask);
+            prepareRequest(countOp);
+
+            OperationJoin.create(queryOp, countOp).setCompletion((os, es) -> {
+                if (es != null && !es.isEmpty()) {
+                    op.fail(es.values().iterator().next());
+                    return;
+                }
+
+                ServiceDocumentQueryResult queryResult = os.get(queryOp.getId()).getBody(QueryTask.class).results;
+                ServiceDocumentQueryResult countResult = os.get(countOp.getId()).getBody(QueryTask.class).results;
+
+                if (queryResult.nextPageLink == null) {
+                    op.setBodyNoCloning(queryResult).complete();
+                    return;
+                }
+
+                URI uri = UriUtils.buildUri(this.getHost(), convertNavigationLink(queryResult.nextPageLink));
+                sendRequest(Operation.createGet(uri).setCompletion((o, e) -> {
+                    if (e != null) {
+                        op.fail(e);
+                        return;
+                    }
+
+                    ServiceDocumentQueryResult result = o.getBody(ServiceDocumentQueryResult.class);
+                    result.documentCount = countResult.documentCount;
+                    op.setBodyNoCloning(result).complete();
+                }));
+
+            }).sendWith(this.getHost());
+            return;
+        }
+
         sendRequest(Operation.createPost(this, ServiceUriPaths.CORE_QUERY_TASKS).setBody(task)
                 .setCompletion((o, e) -> {
                     if (e != null) {
@@ -693,6 +762,16 @@ public abstract class FactoryService extends StatelessService {
                     QueryTask qrt = o.getBody(QueryTask.class);
                     op.setBodyNoCloning(qrt.results).complete();
                 }));
+    }
+
+    private String convertNavigationLink(String navigationLink) {
+        URI uri = URI.create(navigationLink);
+        String peer = UriUtils.getODataParamValueAsString(uri, "peer");
+        String path = UriUtils.getODataParamValueAsString(uri, "path").replaceAll("\\D+", "");
+        String queryString = String.format("%s=%s&%s=%s",
+                UriUtils.URI_PARAM_ODATA_NODE, peer,
+                UriUtils.URI_PARAM_ODATA_SKIP_TO, path);
+        return this.getSelfLink() + UriUtils.URI_QUERY_CHAR + queryString;
     }
 
     public void completeGetWithQuery(Operation op, EnumSet<ServiceOption> caps) {

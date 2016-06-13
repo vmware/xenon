@@ -287,7 +287,9 @@ public class QueryTaskService extends StatefulService {
         currentState.results = new ServiceDocumentQueryResult();
         r.copyTo(this.results);
 
-        currentState.results.documentCount = r.documentCount;
+        if (currentState.querySpec.options.contains(QueryOption.COUNT)) {
+            currentState.results.documentCount = r.documentCount;
+        }
         currentState.results.nextPageLink = r.nextPageLink;
         currentState.results.prevPageLink = r.prevPageLink;
 

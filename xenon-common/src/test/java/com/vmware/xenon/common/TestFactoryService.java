@@ -28,6 +28,7 @@ import java.util.Map.Entry;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 import java.util.stream.LongStream;
@@ -919,6 +920,9 @@ public class TestFactoryService extends BasicReusableHostTestCase {
 
         validateOrderBy(stateSupplier.get(), "counter", true);
         validateOrderBy(stateSupplier.get(), "name", false);
+        validateLimit(1);
+        validateLimit(5);
+        validateLimit(10);
     }
 
     private void validateOrderBy(Stream<ExampleServiceState> states,
@@ -960,6 +964,62 @@ public class TestFactoryService extends BasicReusableHostTestCase {
             .setReferer(this.host.getUri())
             .sendWith(this.host);
         this.host.testWait();
+    }
+
+    private void validateLimit(int limit) throws Throwable {
+        String queryString = String.format("$limit=%s", limit);
+        URI uri = UriUtils.buildUri(this.host, ExampleService.FACTORY_LINK, queryString);
+
+        AtomicReference<ServiceDocumentQueryResult> result = new AtomicReference<>();
+
+        this.host.testStart(1);
+        Operation.createGet(uri)
+            .setCompletion((o, e) -> {
+                if (e != null) {
+                    this.host.failIteration(e);
+                    return;
+                }
+                result.set(o.getBody(ServiceDocumentQueryResult.class));
+                this.host.completeIteration();
+            })
+            .setReferer(this.host.getUri())
+            .sendWith(this.host);
+        this.host.testWait();
+
+        long total = result.get().documentCount;
+        long count = result.get().documentLinks.size();
+
+        assertTrue(count <= limit);
+
+        while (result.get().nextPageLink != null) {
+            result.set(getNextPage(result.get().nextPageLink));
+            long documentCount = result.get().documentLinks.size();
+            assertTrue(documentCount <= limit);
+            count += documentCount;
+        }
+
+        assertTrue(total == count);
+    }
+
+    private ServiceDocumentQueryResult getNextPage(String nextPageLink) throws Throwable {
+        AtomicReference<ServiceDocumentQueryResult> result = new AtomicReference<>();
+
+        this.host.testStart(1);
+        Operation.createGet(UriUtils.buildUri(this.host, nextPageLink))
+            .setCompletion((o, e) -> {
+                if (e != null) {
+                    this.host.failIteration(e);
+                    return;
+                }
+
+                result.set(o.getBody(ServiceDocumentQueryResult.class));
+                this.host.completeIteration();
+            })
+            .setReferer(this.host.getUri())
+            .sendWith(this.host);
+        this.host.testWait();
+
+        return result.get();
     }
 
     private void startFactoryService() throws Throwable {

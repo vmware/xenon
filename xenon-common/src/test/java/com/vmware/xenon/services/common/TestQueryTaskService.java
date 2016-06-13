@@ -1135,9 +1135,9 @@ public class TestQueryTaskService {
                     }
 
                     QueryTask rsp = o.getBody(QueryTask.class);
-                    if (this.serviceCount != rsp.results.documentCount) {
+                    if (this.serviceCount != rsp.results.documentLinks.size()) {
                         targetHost.failIteration(new IllegalStateException("Incorrect number of documents returned: "
-                                + this.serviceCount + " expected, but " + rsp.results.documentCount + " returned"));
+                                + this.serviceCount + " expected, but " + rsp.results.documentLinks.size() + " returned"));
                         return;
                     }
                     targetHost.completeIteration();
@@ -1171,9 +1171,9 @@ public class TestQueryTaskService {
                     }
 
                     QueryTask rsp = o.getBody(QueryTask.class);
-                    if (this.serviceCount != rsp.results.documentCount) {
+                    if (this.serviceCount != rsp.results.documentLinks.size()) {
                         targetHost.failIteration(new IllegalStateException("Incorrect number of documents returned: "
-                                + this.serviceCount + " expected, but " + rsp.results.documentCount + " returned"));
+                                + this.serviceCount + " expected, but " + rsp.results.documentLinks.size() + " returned"));
                         return;
                     }
                     targetHost.completeIteration();
@@ -1230,9 +1230,9 @@ public class TestQueryTaskService {
                     }
 
                     QueryTask rsp = o.getBody(QueryTask.class);
-                    if (rsp.results.documentCount != 0) {
+                    if (rsp.results.documentLinks.size() != 0) {
                         targetHost.failIteration(new IllegalStateException("Incorrect number of documents returned: " +
-                                "0 expected, but " + rsp.results.documentCount + " returned"));
+                                "0 expected, but " + rsp.results.documentLinks.size() + " returned"));
                         return;
                     }
 
@@ -1298,9 +1298,9 @@ public class TestQueryTaskService {
                         QueryTask rsp = o.getBody(QueryTask.class);
                         documentLinksList.add(rsp.results.documentLinks);
 
-                        if (rsp.results.documentCount != resultLimit) {
+                        if (rsp.results.documentLinks.size() != resultLimit) {
                             targetHost.failIteration(new IllegalStateException("Incorrect number of documents " +
-                                    "returned: " + resultLimit + " was expected, but " + rsp.results.documentCount +
+                                    "returned: " + resultLimit + " was expected, but " + rsp.results.documentLinks.size() +
                                     " was returned."));
                             return;
                         }
@@ -1443,9 +1443,9 @@ public class TestQueryTaskService {
                                             || rsp.taskInfo.stage == TaskStage.FAILED
                                             || rsp.taskInfo.stage == TaskStage.CANCELLED) {
 
-                                        if (rsp.results.documentCount != 0) {
+                                        if (rsp.results.documentLinks.size() != 0) {
                                             targetHost.failIteration(new IllegalStateException("Incorrect number of documents returned: " +
-                                                    "0 expected, but " + rsp.results.documentCount + " returned"));
+                                                    "0 expected, but " + rsp.results.documentLinks.size() + " returned"));
                                             return;
                                         }
 
