@@ -28,6 +28,7 @@ import java.util.Map.Entry;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 import java.util.stream.LongStream;
@@ -917,49 +918,168 @@ public class TestFactoryService extends BasicReusableHostTestCase {
                 .sendWith(this.host);
         this.host.testWait();
 
-        validateOrderBy(stateSupplier.get(), "counter", true);
-        validateOrderBy(stateSupplier.get(), "name", false);
+        validateCount(stateSupplier, true);
+        validateCount(stateSupplier, false);
+
+        validateLimit(stateSupplier, 1, true);
+        validateLimit(stateSupplier, 5, false);
+        validateLimit(stateSupplier, 10, true);
+
+        validateOrderBy(stateSupplier, "counter", true, true);
+        validateOrderBy(stateSupplier, "name", false, false);
+
+        validateLimitAndOrderBy(stateSupplier, 1, true, "counter", true, true);
+        validateLimitAndOrderBy(stateSupplier, 5, false, "counter", false, true);
+        validateLimitAndOrderBy(stateSupplier, 10, false, "name", true, false);
     }
 
-    private void validateOrderBy(Stream<ExampleServiceState> states,
-            String fieldName, boolean asc) throws Throwable {
+    private void validateCount(Supplier<Stream<ExampleServiceState>> stateSupplier,
+            boolean count) throws Throwable {
+        String queryString = String.format("$count=%s", count);
+        ODataFactoryQueryResult result = getResult(queryString);
+        assertTrue(result.documentCount == stateSupplier.get().count());
+        assertTrue(result.totalCount == stateSupplier.get().count());
+    }
+
+    private void validateLimit(Supplier<Stream<ExampleServiceState>> stateSupplier, long limit,
+            boolean count) throws Throwable {
+        String queryString = String.format("$limit=%s&$count=%s", limit, count);
+        ODataFactoryQueryResult result = getResult(queryString);
+
+        long current = result.documentCount;
+
+        assertTrue(current <= limit);
+        assertTrue(result.totalCount == stateSupplier.get().count());
+
+        String nextPageLink = result.nextPageLink;
+        while (nextPageLink != null) {
+            ServiceDocumentQueryResult nextResult = getNextResult(nextPageLink);
+            nextPageLink = nextResult.nextPageLink;
+            assertTrue(nextResult.documentCount <= limit);
+            current += nextResult.documentCount;
+        }
+
+        assertTrue(current == stateSupplier.get().count());
+    }
+
+    private void validateOrderBy(Supplier<Stream<ExampleServiceState>> stateSupplier,
+            String fieldName, boolean asc, boolean filter) throws Throwable {
         String queryString = String.format("$orderby=%s %s", fieldName, asc ? "asc" : "desc");
-        URI uri = UriUtils.buildUri(this.host, ExampleService.FACTORY_LINK, queryString);
+        if (filter) {
+            queryString += String.format("&$filter=%s lt %s", fieldName, stateSupplier.get().count());
+        }
+        ServiceDocumentQueryResult result = getResult(queryString);
+
+        if (!asc) {
+            Collections.reverse(result.documentLinks);
+        }
+        Field field = ExampleServiceState.class.getField(fieldName);
+        Iterator<String> iterator = result.documentLinks.iterator();
+        stateSupplier.get().forEachOrdered((state) -> {
+            ExampleServiceState resultState = Utils.fromJson(
+                    result.documents.get(iterator.next()), ExampleServiceState.class);
+            try {
+                assertEquals(field.get(state), field.get(resultState));
+            } catch (Exception ex) {
+                throw new IllegalArgumentException(ex);
+            }
+        });
+    }
+
+    private void validateLimitAndOrderBy(Supplier<Stream<ExampleServiceState>> stateSupplier, long limit,
+            boolean count, String fieldName, boolean asc, boolean filter) throws Throwable {
+        String queryString = String.format("$limit=%s&$count=%s&$orderby=%s %s",
+                limit, count, fieldName, asc ? "asc" : "desc");
+        if (filter) {
+            queryString += String.format("&$filter=%s lt %s", fieldName, stateSupplier.get().count());
+        }
+        ODataFactoryQueryResult result = getResult(queryString);
+        long current = result.documentLinks.size();
+
+        assertTrue(current <= limit);
+        assertTrue(result.totalCount == stateSupplier.get().count());
+
+        if (!asc) {
+            Collections.reverse(result.documentLinks);
+        }
+        Field field = ExampleServiceState.class.getField(fieldName);
+        Iterator<String> iterator = result.documentLinks.iterator();
+        stateSupplier.get().limit(limit).forEachOrdered((state) -> {
+            ExampleServiceState resultState = Utils.fromJson(
+                    result.documents.get(iterator.next()), ExampleServiceState.class);
+            try {
+                assertEquals(field.get(state), field.get(resultState));
+            } catch (Exception ex) {
+                throw new IllegalArgumentException(ex);
+            }
+        });
+
+        String nextPageLink = result.nextPageLink;
+        while (nextPageLink != null) {
+            ServiceDocumentQueryResult nextResult = getNextResult(nextPageLink);
+            nextPageLink = nextResult.nextPageLink;
+            assertTrue(nextResult.documentCount <= limit);
+
+            if (!asc) {
+                Collections.reverse(nextResult.documentLinks);
+            }
+            Iterator<String> nextIterator = nextResult.documentLinks.iterator();
+            stateSupplier.get().skip(current).limit(limit).forEachOrdered((state) -> {
+                ExampleServiceState resultState = Utils.fromJson(
+                        nextResult.documents.get(nextIterator.next()), ExampleServiceState.class);
+                try {
+                    assertEquals(field.get(state), field.get(resultState));
+                } catch (Exception ex) {
+                    throw new IllegalArgumentException(ex);
+                }
+            });
+
+            current += nextResult.documentCount;
+        }
+
+        assertTrue(current == stateSupplier.get().count());
+    }
+
+    private ODataFactoryQueryResult getResult(String queryString) throws Throwable {
+        AtomicReference<ODataFactoryQueryResult> result = new AtomicReference<>();
 
         this.host.testStart(1);
-        Operation.createGet(uri)
+        Operation.createGet(UriUtils.buildUri(this.host, ExampleService.FACTORY_LINK, queryString))
+            .setCompletion((o, e) -> {
+                if (e != null) {
+                    this.host.failIteration(e);
+                    return;
+                }
+                result.set(o.getBody(ODataFactoryQueryResult.class));
+                this.host.completeIteration();
+            })
+            .setReferer(this.host.getUri())
+            .sendWith(this.host);
+        this.host.testWait();
+
+        assertNotNull(result.get());
+        return result.get();
+    }
+
+    private ServiceDocumentQueryResult getNextResult(String nextPageLink) throws Throwable {
+        AtomicReference<ServiceDocumentQueryResult> result = new AtomicReference<>();
+
+        this.host.testStart(1);
+        Operation.createGet(UriUtils.buildUri(this.host, nextPageLink))
             .setCompletion((o, e) -> {
                 if (e != null) {
                     this.host.failIteration(e);
                     return;
                 }
 
-                try {
-                    ServiceDocumentQueryResult result = o.getBody(ServiceDocumentQueryResult.class);
-                    if (!asc) {
-                        Collections.reverse(result.documentLinks);
-                    }
-                    Iterator<String> iterator = result.documentLinks.iterator();
-                    Field field = ExampleServiceState.class.getField(fieldName);
-                    states.forEachOrdered((state) -> {
-                        ExampleServiceState resultState = Utils.fromJson(
-                                result.documents.get(iterator.next()), ExampleServiceState.class);
-                        try {
-                            assertEquals(field.get(state), field.get(resultState));
-                        } catch (Exception ex) {
-                            throw new IllegalArgumentException(ex);
-                        }
-                    });
-                } catch (Exception ex) {
-                    this.host.failIteration(ex);
-                    return;
-                }
-
+                result.set(o.getBody(ServiceDocumentQueryResult.class));
                 this.host.completeIteration();
             })
             .setReferer(this.host.getUri())
             .sendWith(this.host);
         this.host.testWait();
+
+        return result.get();
     }
 
     private void startFactoryService() throws Throwable {

@@ -77,6 +77,21 @@ public class ServiceDocumentQueryResult extends ServiceDocument {
      */
     public Long queryTimeMicros;
 
+    @Override
+    public void copyTo(ServiceDocument target) {
+        super.copyTo(target);
+        if (target instanceof ServiceDocumentQueryResult) {
+            ServiceDocumentQueryResult sdqr = (ServiceDocumentQueryResult) target;
+            sdqr.documentLinks = this.documentLinks;
+            sdqr.documents = this.documents;
+            sdqr.selectedLinks = this.selectedLinks;
+            sdqr.documentCount = this.documentCount;
+            sdqr.prevPageLink = this.prevPageLink;
+            sdqr.nextPageLink = this.nextPageLink;
+            sdqr.queryTimeMicros = this.queryTimeMicros;
+        }
+    }
+
     /**
      * Returns whether or not the {@code name} is a built-in field.
      *

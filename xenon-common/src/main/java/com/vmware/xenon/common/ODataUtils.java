@@ -36,8 +36,8 @@ public class ODataUtils {
      * Builds a {@code QueryTask} with a fully formed query and options, from the operation URI
      * query parameters
      */
-    public static QueryTask toQuery(Operation op) {
-        return toQuery(op, Collections.emptySet());
+    public static QueryTask toQuery(Operation op, boolean validate) {
+        return toQuery(op, validate, Collections.emptySet());
     }
 
     /**
@@ -48,7 +48,7 @@ public class ODataUtils {
      * {@link UriUtils#URI_WILDCARD_CHAR} for a property name of the query will be expanded with
      * multiple OR sub-queries for each property name of this set instead of the wildcard.
      */
-    public static QueryTask toQuery(Operation op, Set<String> wildcardFilterUnfoldPropertyNames) {
+    public static QueryTask toQuery(Operation op, boolean validate, Set<String> wildcardFilterUnfoldPropertyNames) {
 
         QueryTask task = new QueryTask();
         task.setDirect(true);
@@ -71,7 +71,7 @@ public class ODataUtils {
 
         UriUtils.ODataOrderByTuple orderBy = UriUtils.getODataOrderByParamValue(op.getUri());
         if (orderBy != null) {
-            if (count) {
+            if (count && validate) {
                 op.fail(new IllegalArgumentException(UriUtils.URI_PARAM_ODATA_COUNT
                         + " cannot be used together with " + UriUtils.URI_PARAM_ODATA_ORDER_BY));
                 return null;
@@ -98,7 +98,7 @@ public class ODataUtils {
 
         Integer top = UriUtils.getODataTopParamValue(op.getUri());
         if (top != null) {
-            if (count) {
+            if (count && validate) {
                 op.fail(new IllegalArgumentException(UriUtils.URI_PARAM_ODATA_COUNT
                         + " cannot be used together with " + UriUtils.URI_PARAM_ODATA_TOP));
                 return null;
@@ -116,7 +116,7 @@ public class ODataUtils {
 
         Integer limit = UriUtils.getODataLimitParamValue(op.getUri());
         if (limit != null && limit > 0) {
-            if (count) {
+            if (count && validate) {
                 op.fail(new IllegalArgumentException(UriUtils.URI_PARAM_ODATA_COUNT
                         + " cannot be used together with " + UriUtils.URI_PARAM_ODATA_LIMIT));
                 return null;
