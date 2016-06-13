@@ -226,7 +226,6 @@ public class TestODataQueryService extends BasicReusableHostTestCase {
         String queryString = "$filter=counter eq 1";
         queryString += "&" + "$top=" + +topCount;
         ServiceDocumentQueryResult res = doQuery(queryString, true);
-        assertTrue(res.documentCount == topCount);
         assertTrue(res.documentLinks.size() == topCount);
         assertTrue(res.documents.size() == topCount);
 
@@ -234,7 +233,6 @@ public class TestODataQueryService extends BasicReusableHostTestCase {
         URI u = UriUtils.buildFactoryUri(this.host, ExampleService.class);
         u = UriUtils.extendUriWithQuery(u, "$filter", "counter eq 1", "$top", "" + topCount);
         res = this.host.getFactoryState(u);
-        assertTrue(res.documentCount == topCount);
         assertTrue(res.documentLinks.size() == topCount);
         assertTrue(res.documents.size() == topCount);
 

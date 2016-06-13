@@ -25,9 +25,14 @@ import java.util.concurrent.atomic.AtomicInteger;
 import com.vmware.xenon.common.NodeSelectorService.SelectOwnerResponse;
 import com.vmware.xenon.common.Operation.CompletionHandler;
 import com.vmware.xenon.common.ServiceDocumentDescription.PropertyDescription;
+import com.vmware.xenon.common.ServiceDocumentDescription.TypeName;
+import com.vmware.xenon.common.UriUtils.ODataOrder;
 import com.vmware.xenon.services.common.NodeGroupService.NodeGroupState;
 import com.vmware.xenon.services.common.QueryTask;
+import com.vmware.xenon.services.common.QueryTask.Query;
 import com.vmware.xenon.services.common.QueryTask.QuerySpecification.QueryOption;
+import com.vmware.xenon.services.common.QueryTask.QuerySpecification.SortOrder;
+import com.vmware.xenon.services.common.QueryTask.QueryTerm;
 import com.vmware.xenon.services.common.ServiceUriPaths;
 
 /**
@@ -661,27 +666,35 @@ public abstract class FactoryService extends StatelessService {
     }
 
     private void handleGetOdataCompletion(Operation op) {
-        QueryTask task = ODataUtils.toQuery(op);
-        if (task == null) {
+        String node = UriUtils.getODataNodeParamValue(op.getUri());
+        String skipTo = UriUtils.getODataSkipToParamValue(op.getUri());
+
+        if (node != null && skipTo != null) {
+            handleNavigationOperation(op);
             return;
         }
-        task.setDirect(true);
 
         String kind = Utils.buildKind(getStateType());
         QueryTask.Query kindClause = new QueryTask.Query()
                 .setTermPropertyName(ServiceDocument.FIELD_NAME_KIND)
                 .setTermMatchValue(kind);
-        task.querySpec.query.addBooleanClause(kindClause);
 
+        Integer limit = UriUtils.getODataLimitParamValue(op.getUri());
+        if (limit != null) {
+            handleLimitOperation(op, limit, kindClause);
+            return;
+        }
+
+        QueryTask task = ODataUtils.toQuery(op);
+        task.querySpec.query.addBooleanClause(kindClause);
         if (task.querySpec.sortTerm != null) {
-            String propertyName = task.querySpec.sortTerm.propertyName;
-            PropertyDescription propertyDescription = getChildTemplate()
-                    .documentDescription.propertyDescriptions.get(propertyName);
-            if (propertyDescription == null) {
-                op.fail(new IllegalArgumentException("Sort term is not a valid property: " + propertyName));
+            TypeName typeName = getOrderByTypeName(task.querySpec.sortTerm.propertyName);
+            if (typeName == null) {
+                op.fail(new IllegalArgumentException("Sort term is not a valid property: " +
+                        task.querySpec.sortTerm.propertyName));
                 return;
             }
-            task.querySpec.sortTerm.propertyType = propertyDescription.typeName;
+            task.querySpec.sortTerm.propertyType = typeName;
         }
 
         sendRequest(Operation.createPost(this, ServiceUriPaths.CORE_QUERY_TASKS).setBody(task)
@@ -690,9 +703,158 @@ public abstract class FactoryService extends StatelessService {
                         op.fail(e);
                         return;
                     }
-                    QueryTask qrt = o.getBody(QueryTask.class);
-                    op.setBodyNoCloning(qrt.results).complete();
+                    ServiceDocumentQueryResult result = o.getBody(QueryTask.class).results;
+                    if (!task.querySpec.options.contains(QueryOption.COUNT)) {
+                        result.documentCount = null;
+                    }
+                    op.setBodyNoCloning(result).complete();
                 }));
+    }
+
+    private void handleNavigationOperation(Operation op) {
+        URI uri = UriUtils.buildUri(this.getHost(), ServiceUriPaths.ODATA_QUERIES, op.getUri().getQuery());
+        sendRequest(Operation.createGet(uri).setCompletion((o, e) -> {
+            if (e != null) {
+                op.fail(e);
+                return;
+            }
+            ServiceDocumentQueryResult result = o.getBody(QueryTask.class).results;
+            result.documentCount = null;
+            prepareNavigationResult(result);
+            op.setBodyNoCloning(result).complete();
+        }));
+    }
+
+    private void handleLimitOperation(Operation op, int limit, QueryTask.Query kindClause) {
+        QueryTask task = new QueryTask();
+        task.setDirect(true);
+        task.querySpec = new QueryTask.QuerySpecification();
+        task.querySpec.query.addBooleanClause(kindClause);
+        String filter = UriUtils.getODataFilterParamValue(op.getUri());
+        if (filter != null) {
+            Query q = new ODataQueryVisitor().toQuery(filter);
+            if (q != null) {
+                task.querySpec.query.addBooleanClause(q);
+            }
+        }
+
+        UriUtils.ODataOrderByTuple orderBy = UriUtils.getODataOrderByParamValue(op.getUri());
+        if (orderBy != null) {
+            task.querySpec.options.add(QueryOption.SORT);
+            task.querySpec.sortOrder = orderBy.order == ODataOrder.ASC ? SortOrder.ASC
+                    : SortOrder.DESC;
+            task.querySpec.sortTerm = new QueryTerm();
+            task.querySpec.sortTerm.propertyName = orderBy.propertyName;
+            TypeName typeName = getOrderByTypeName(orderBy.propertyName);
+            if (typeName == null) {
+                op.fail(new IllegalArgumentException("Sort term is not a valid property: " + orderBy.propertyName));
+                return;
+            }
+            task.querySpec.sortTerm.propertyType = typeName;
+        }
+
+        task.querySpec.options.add(QueryOption.EXPAND_CONTENT);
+        task.querySpec.resultLimit = limit;
+
+        boolean count = UriUtils.getODataCountParamValue(op.getUri());
+        if (count) {
+
+            Operation queryOp = Operation
+                    .createPost(this, ServiceUriPaths.CORE_QUERY_TASKS)
+                    .setBody(task);
+            prepareRequest(queryOp);
+
+            QueryTask countTask = new QueryTask();
+            countTask.setDirect(true);
+            countTask.querySpec = new QueryTask.QuerySpecification();
+            countTask.querySpec.query = task.querySpec.query;
+            countTask.querySpec.options.add(QueryOption.COUNT);
+
+            Operation countOp = Operation
+                    .createPost(this, ServiceUriPaths.CORE_QUERY_TASKS)
+                    .setBody(countTask);
+            prepareRequest(countOp);
+
+            OperationJoin.create(countOp, queryOp).setCompletion((os, es) -> {
+                if (es != null && !es.isEmpty()) {
+                    op.fail(es.values().iterator().next());
+                    return;
+                }
+
+                ServiceDocumentQueryResult countResult = os.get(countOp.getId()).getBody(QueryTask.class).results;
+                ServiceDocumentQueryResult queryResult = os.get(queryOp.getId()).getBody(QueryTask.class).results;
+
+                if (queryResult.nextPageLink == null) {
+                    op.setBodyNoCloning(queryResult).complete();
+                    return;
+                }
+
+                sendNextRequest(op, queryResult.nextPageLink, countResult.documentCount);
+
+            }).sendWith(this.getHost());
+            return;
+        }
+
+        sendRequest(Operation.createPost(this, ServiceUriPaths.CORE_QUERY_TASKS).setBody(task)
+                .setCompletion((o, e) -> {
+                    if (e != null) {
+                        op.fail(e);
+                        return;
+                    }
+
+                    ServiceDocumentQueryResult result = o.getBody(QueryTask.class).results;
+                    if (result.nextPageLink == null) {
+                        result.documentCount = null;
+                        prepareNavigationResult(result);
+                        op.setBodyNoCloning(result).complete();
+                        return;
+                    }
+
+                    sendNextRequest(op, result.nextPageLink, null);
+                }));
+    }
+
+    private void sendNextRequest(Operation op, String nextPageLink, Long documentCount) {
+        sendRequest(Operation.createGet(this, nextPageLink).setCompletion((o, e) -> {
+            if (e != null) {
+                op.fail(e);
+                return;
+            }
+
+            ServiceDocumentQueryResult result = o.getBody(QueryTask.class).results;
+            result.documentCount = documentCount;
+            prepareNavigationResult(result);
+            op.setBodyNoCloning(result).complete();
+        }));
+    }
+
+    private TypeName getOrderByTypeName(String propertyName) {
+        PropertyDescription propertyDescription = getChildTemplate()
+                .documentDescription.propertyDescriptions.get(propertyName);
+        if (propertyDescription == null) {
+            return null;
+        }
+        return propertyDescription.typeName;
+    }
+
+    private void prepareNavigationResult(ServiceDocumentQueryResult result) {
+        if (result.nextPageLink != null) {
+            result.nextPageLink = convertNavigationLink(result.nextPageLink);
+        }
+        if (result.prevPageLink != null) {
+            result.prevPageLink = convertNavigationLink(result.prevPageLink);
+        }
+    }
+
+    private String convertNavigationLink(String navigationLink) {
+        URI uri = URI.create(navigationLink);
+        String peer = UriUtils.getODataParamValueAsString(uri, UriUtils.FORWARDING_URI_PARAM_NAME_PEER);
+        String path = UriUtils.getODataParamValueAsString(uri, UriUtils.FORWARDING_URI_PARAM_NAME_PATH)
+                .replaceAll("\\D+", "");
+        String queryString = String.format("%s=%s&%s=%s",
+                UriUtils.URI_PARAM_ODATA_NODE, peer,
+                UriUtils.URI_PARAM_ODATA_SKIP_TO, path);
+        return this.getSelfLink() + UriUtils.URI_QUERY_CHAR + queryString;
     }
 
     public void completeGetWithQuery(Operation op, EnumSet<ServiceOption> caps) {
