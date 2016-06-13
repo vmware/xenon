@@ -117,6 +117,11 @@ public class ServiceDocumentDescription {
          * is hidden when serializing to JSON
          */
         SENSITIVE,
+
+        /**
+         * Property is validated for null values.
+         */
+        VALIDATE
     }
 
     public enum PropertyIndexingOption {
