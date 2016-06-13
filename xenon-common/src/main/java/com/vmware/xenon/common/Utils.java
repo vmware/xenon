@@ -35,6 +35,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -1142,6 +1143,31 @@ public class Utils {
         result.documentCount = highestCount;
         result.documentLinks = Collections.emptyList();
         return result;
+    }
+
+    /**
+     * Validates {@code state} object by checking for null value fields.
+     *
+     * @param desc Service document description.
+     * @param state Source object.
+     * @param <T>    Object type.
+     * @see ServiceDocumentDescription.PropertyUsageOption
+     */
+    public static <T extends ServiceDocument> void validateState(
+            ServiceDocumentDescription desc, T state) {
+        for (PropertyDescription prop : desc.propertyDescriptions.values()) {
+            if (prop.usageOptions != null &&
+                    prop.usageOptions.contains(PropertyUsageOption.VALIDATE)) {
+                Object o = ReflectionUtils.getPropertyValue(prop, state);
+                if (o == null) {
+                    if (prop.accessor.getName().equals("id")) {
+                        ReflectionUtils.setPropertyValue(prop, state, UUID.randomUUID().toString());
+                    } else {
+                        throw new IllegalArgumentException(prop.accessor.getName() + " is required.");
+                    }
+                }
+            }
+        }
     }
 
     /**
