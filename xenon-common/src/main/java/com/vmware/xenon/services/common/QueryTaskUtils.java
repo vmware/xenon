@@ -42,9 +42,11 @@ public class QueryTaskUtils {
         }
 
         Map<String, String> uniqueLinkToState = new ConcurrentSkipListMap<>();
-        for (Map<String, String> selectedLinksPerDocument : result.selectedLinks.values()) {
+        for (Entry<String, Map<String, String>> e : result.selectedLinks.entrySet()) {
+            Map<String, String> selectedLinksPerDocument = e.getValue();
             for (Entry<String, String> en : selectedLinksPerDocument.entrySet()) {
                 uniqueLinkToState.put(en.getValue(), "");
+                host.log(Level.INFO, "Retrieving %s for document %s", en.getValue(), e.getKey());
             }
         }
 
@@ -81,6 +83,7 @@ public class QueryTaskUtils {
                 return;
             }
 
+            host.log(Level.INFO, "Done with expand for op %s:", op.toString());
             Map<String, String> updatedLinkValues = new HashMap<>();
 
             for (Map<String, String> selectedLinks : result.selectedLinks.values()) {
