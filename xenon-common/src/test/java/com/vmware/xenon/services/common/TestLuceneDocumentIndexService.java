@@ -419,7 +419,7 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
             this.host.testStart(1);
             h.registerForServiceAvailability((o, e) -> {
                 this.host.completeIteration();
-            }, ExampleService.FACTORY_LINK);
+            } , ExampleService.FACTORY_LINK);
             this.host.testWait();
 
             this.host.toggleServiceOptions(UriUtils.buildUri(h, ExampleService.FACTORY_LINK),
@@ -468,6 +468,7 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
             }
 
             long start = Utils.getNowMicrosUtc();
+
             if (!VerificationHost.restartStatefulHost(h)) {
                 this.host.log("Failed restart of host, aborting");
                 return;
@@ -476,6 +477,29 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
             this.host.toggleServiceOptions(h.getDocumentIndexServiceUri(),
                     EnumSet.of(ServiceOption.INSTRUMENTATION),
                     null);
+
+            // make sure synchronization has run, so we can verify if synch produced index updates
+            this.host.waitForReplicatedFactoryServiceAvailable(
+                    UriUtils.buildUri(h, ExampleService.FACTORY_LINK));
+
+            URI indexStatsUris = UriUtils.buildStatsUri(h.getDocumentIndexServiceUri());
+            ServiceStats afterRestartIndexStats = this.host.getServiceState(null,
+                    ServiceStats.class, indexStatsUris);
+
+            String indexedFieldCountStatName = LuceneDocumentIndexService.STAT_NAME_INDEXED_FIELD_COUNT;
+
+            ServiceStat afterRestartIndexedFieldCountStat = afterRestartIndexStats.entries
+                    .get(indexedFieldCountStatName);
+            // estimate of fields per example and on demand load service state
+            int fieldCountPerService = 13;
+            if (afterRestartIndexedFieldCountStat != null) {
+                // if we had re-indexed all state on restart, the field update count would be approximately
+                // the number of example services times their field count. We require less than that to catch
+                // re-indexing that might occur before instrumentation is enabled in the index service
+                assertTrue(
+                        afterRestartIndexedFieldCountStat.latestValue < (this.serviceCount
+                                * fieldCountPerService) / 2);
+            }
 
             beforeState = updateUriMapWithNewPort(h.getPort(), beforeState);
             List<URI> updatedExampleUris = new ArrayList<>();
