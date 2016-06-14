@@ -662,7 +662,20 @@ public class TestTransactionService extends BasicReusableHostTestCase {
             this.host.log("Number of accounts found is different than expected:");
             for (String serviceSelfLink : task.results.documentLinks) {
                 String accountId = UriUtils.getLastPathSegment(serviceSelfLink);
-                this.host.log("Found account: %s", accountId);
+                this.host.log(
+                        "Found account: %s, service stage: %s. Trying to access account with txid %s...",
+                        accountId, this.host.getServiceStage(serviceSelfLink), transactionId);
+                try {
+                    BankAccountServiceState state = getAccount(transactionId, accountId);
+                    if (state != null) {
+                        this.host.log("Got account, documentUpdateAction=%s",
+                                state.documentUpdateAction);
+                    } else {
+                        this.host.log("Failed to access account");
+                    }
+                } catch (Exception e) {
+                    this.host.log("Failed to access account: %s", e);
+                }
             }
         }
         assertEquals(expected, task.results.documentCount.longValue());
@@ -882,6 +895,9 @@ public class TestTransactionService extends BasicReusableHostTestCase {
 
         @Override
         public void handleStart(Operation start) {
+            if (start.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_VERSION_CHECK)) {
+                logInfo("Starting service due to synchronization");
+            }
             try {
                 validateState(start);
                 start.complete();
