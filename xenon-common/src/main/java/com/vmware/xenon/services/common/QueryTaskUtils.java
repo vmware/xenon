@@ -13,6 +13,7 @@
 
 package com.vmware.xenon.services.common;
 
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.concurrent.ConcurrentSkipListMap;
@@ -79,10 +80,15 @@ public class QueryTaskUtils {
                 return;
             }
 
+            Map<String, String> updatedLinkValues = new HashMap<>();
+
             for (Map<String, String> selectedLinks : result.selectedLinks.values()) {
                 for (Entry<String, String> en : selectedLinks.entrySet()) {
                     String state = uniqueLinkToState.get(en.getValue());
-                    selectedLinks.put(en.getKey(), state);
+                    updatedLinkValues.put(en.getKey(), state);
+                }
+                for (Entry<String, String> en : updatedLinkValues.entrySet()) {
+                    selectedLinks.put(en.getKey(), en.getValue());
                 }
             }
 
