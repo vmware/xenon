@@ -36,6 +36,7 @@ import com.vmware.xenon.common.OperationProcessingChain;
 import com.vmware.xenon.common.RequestRouter;
 import com.vmware.xenon.common.Service;
 import com.vmware.xenon.common.ServiceDocument;
+import com.vmware.xenon.common.ServiceHost;
 import com.vmware.xenon.common.StatefulService;
 import com.vmware.xenon.common.StatelessService;
 import com.vmware.xenon.common.UriUtils;
@@ -662,7 +663,20 @@ public class TestTransactionService extends BasicReusableHostTestCase {
             this.host.log("Number of accounts found is different than expected:");
             for (String serviceSelfLink : task.results.documentLinks) {
                 String accountId = UriUtils.getLastPathSegment(serviceSelfLink);
-                this.host.log("Found account: %s", accountId);
+                this.host.log(
+                        "Found account: %s, service stage: %s. Trying to access account with txid %s...",
+                        accountId, this.host.getServiceStage(serviceSelfLink), transactionId);
+                try {
+                    BankAccountServiceState state = getAccount(transactionId, accountId);
+                    if (state != null) {
+                        this.host.log("Got account, documentUpdateAction=%s",
+                                state.documentUpdateAction);
+                    } else {
+                        this.host.log("Failed to access account");
+                    }
+                } catch (Exception e) {
+                    this.host.log("Failed to access account: %s", e);
+                }
             }
         }
         assertEquals(expected, task.results.documentCount.longValue());
@@ -882,6 +896,9 @@ public class TestTransactionService extends BasicReusableHostTestCase {
 
         @Override
         public void handleStart(Operation start) {
+            if (!ServiceHost.isServiceCreate(start)) {
+                logInfo("Starting service due to synchronization");
+            }
             try {
                 validateState(start);
                 start.complete();

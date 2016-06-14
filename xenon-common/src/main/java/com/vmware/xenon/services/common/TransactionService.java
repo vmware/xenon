@@ -760,7 +760,14 @@ public class TransactionService extends StatefulService {
                 .addRequestHeader(Operation.TRANSACTION_HEADER, header)
                 // just an empty body
                 .setBody(new TransactionServiceState())
-                .setReferer(getUri());
+                .setReferer(getUri())
+                .setCompletion((o, e) -> {
+                    if (e != null) {
+                        logWarning("Notification of service %s failed: %s", service, e);
+                    } else {
+                        logInfo("Notification of service %s succeeded", service);
+                    }
+                });
     }
 
     /**
