@@ -43,7 +43,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 
 import org.junit.After;
-import org.junit.Ignore;
 import org.junit.Test;
 
 import com.vmware.xenon.common.CommandLineArgumentParser;
@@ -884,7 +883,6 @@ public class TestQueryTaskService {
         }
     }
 
-    @Ignore("https://www.pivotaltracker.com/story/show/121513963")
     @Test
     public void selectLinks() throws Throwable {
         setUpHost();
@@ -2522,15 +2520,15 @@ public class TestQueryTaskService {
         // direct query, with expand links
         task = QueryTask.create(new QuerySpecification()).setDirect(true);
         task.querySpec.options.add(QueryOption.SELECT_LINKS);
-        // TODO Enable when https://www.pivotaltracker.com/story/show/121518801 is fixed
-        // task.querySpec.options.add(QueryOption.EXPAND_LINKS);
-        // pageServiceURIs = new ArrayList<>();
-        // targetServiceURIs = new ArrayList<>();
-        // doPaginatedQueryTest(task, sc, resultLimit, pageServiceURIs, targetServiceURIs);
-        // String nextPageLink = task.results.nextPageLink;
-        // assertNotNull(nextPageLink);
 
-        // deleteServices(targetServiceURIs);
+        task.querySpec.options.add(QueryOption.EXPAND_LINKS);
+        pageServiceURIs = new ArrayList<>();
+        targetServiceURIs = new ArrayList<>();
+        doPaginatedQueryTest(task, sc, resultLimit, pageServiceURIs, targetServiceURIs);
+        String nextPageLink = task.results.nextPageLink;
+        assertNotNull(nextPageLink);
+
+        deleteServices(targetServiceURIs);
 
         sc = 1;
         // direct query, single result expected, plus verify all previously deleted and created
@@ -2539,7 +2537,7 @@ public class TestQueryTaskService {
         pageServiceURIs = new ArrayList<>();
         targetServiceURIs = new ArrayList<>();
         doPaginatedQueryTest(task, sc, resultLimit, pageServiceURIs, targetServiceURIs);
-        String nextPageLink = task.results.nextPageLink;
+        nextPageLink = task.results.nextPageLink;
         assertNotNull(nextPageLink);
 
         // delete target services before doing next query to verify deleted documents are excluded
