@@ -29,6 +29,7 @@ import io.swagger.util.Json;
 import io.swagger.util.Yaml;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
+import org.junit.Ignore;
 import org.junit.Test;
 
 import com.vmware.xenon.common.Operation;
@@ -89,6 +90,8 @@ public class TestSwaggerDescriptorService {
     }
 
     @Test
+    @Ignore("Expecting GSON classloading issue to be fixed: https://github.com/google/gson/issues/764 "
+            + "https://www.pivotaltracker.com/story/show/120885303")
     public void getDescriptionInJson() throws Throwable {
         host.testStart(1);
 
