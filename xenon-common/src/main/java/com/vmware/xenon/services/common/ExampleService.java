@@ -49,6 +49,8 @@ public class ExampleService extends StatefulService {
         public static final String FIELD_NAME_SORTED_COUNTER = "sortedCounter";
         public static final String FIELD_NAME_NAME = "name";
         public static final String FIELD_NAME_TAGS = "tags";
+        public static final String FIELD_NAME_ID = "id";
+        public static final String FIELD_NAME_REQUIRED = "required";
         public static final long VERSION_RETENTION_LIMIT = 100;
 
         @UsageOption(option = PropertyUsageOption.OPTIONAL)
