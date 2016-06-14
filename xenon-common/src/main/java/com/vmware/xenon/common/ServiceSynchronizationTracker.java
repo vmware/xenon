@@ -272,7 +272,7 @@ class ServiceSynchronizationTracker {
                 selectedState = o.getBody(s.getStateType());
             } else {
                 // peers did not have a better state to offer
-                op.complete();
+                op.linkState(null).complete();
                 return;
             }
 
