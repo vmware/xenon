@@ -37,8 +37,9 @@ public class ResourceGroupService extends StatefulService {
 
     /**
      * The {@link ResourceGroupState} holds a query that is used to represent a group of
-     * resources (services). {@link ResourceGroupState} and {@link UserGroupState) are used
-     * together in a {@link RoleState} to specify what resources a set of users has access to
+     * resources (services). {@link ResourceGroupState} and {@link UserGroupService.UserGroupState)
+     * are used together in a {@link AuthorizationContextService.Role} to specify what resources
+     * a set of users has access to.
      */
     public static class ResourceGroupState extends ServiceDocument {
         /**

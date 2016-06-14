@@ -84,7 +84,7 @@ public class AuthorizationSetupHelper {
     }
 
     /**
-     * The steps we follow in order to fully create a user. See {@link setupUser} for details
+     * The steps we follow in order to fully create a user. See {@link #setupUser} for details
      */
     private enum UserCreationStep {
         QUERY_USER, MAKE_USER, MAKE_CREDENTIALS, MAKE_USER_GROUP, MAKE_RESOURCE_GROUP, MAKE_ROLE, SUCCESS, FAILURE

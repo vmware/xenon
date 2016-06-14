@@ -318,7 +318,7 @@ public class Utils {
     /**
      * Outputs a JSON representation of the given object using useHTMLFormatting to create pretty-printed,
      * HTML-friendly JSON or compact JSON. If hideSensitiveFields is set the JSON will not include fields
-     * with the annotation {@link com.vmware.xenon.common.ServiceDocumentDescription.PropertyUsageOption.SENSITIVE}.
+     * with the annotation {@link PropertyUsageOption#SENSITIVE}.
      * If hideSensitiveFields is set and the Object is a string with JSON, sensitive fields cannot be discovered will
      * throw an Exception.
      */
@@ -758,8 +758,8 @@ public class Utils {
      * Specifically, Java formats link-local IPv6 addresses in Linux-friendly manner:
      * {@code <address>%<interface_name>} e.g. {@code fe80:0:0:0:5971:14f6:c8ac:9e8f%eth0}. However,
      * Windows requires a different format for such addresses: {@code <address>%<numeric_scope_id>}
-     * e.g. {@code fe80:0:0:0:5971:14f6:c8ac:9e8f%34}. This method {@link #isWindowsHost detects if
-     * the caller is a Windows host} and will adjust the host address accordingly.
+     * e.g. {@code fe80:0:0:0:5971:14f6:c8ac:9e8f%34}. This method {@link #determineOsFamily detects if
+     * the OS on the host} and will adjust the host address accordingly.
      *
      * Otherwise, this will delegate to the original method.
      */
@@ -1187,7 +1187,7 @@ public class Utils {
 
     /**
      * Gets the time comparison interval, or epsilon.
-     * See {@link setTimeComparisonEpsilonMicros}
+     * See {@link #setTimeComparisonEpsilonMicros}
      * @return
      */
     public static long getTimeComparisonEpsilonMicros() {

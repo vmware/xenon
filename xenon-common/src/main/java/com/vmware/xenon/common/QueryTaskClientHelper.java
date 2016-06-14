@@ -111,9 +111,9 @@ public class QueryTaskClientHelper<T extends ServiceDocument> {
     /**
      * Query an expanded document extending {@link ServiceDocument}s that is updated or deleted
      * since given time in the past. The result will return if there is any update or delete
-     * operation from provided documentSinceUpdateTimeMicros. The deleted documents will be marked
-     * as with {@link ServiceDocument#documentSignature} =
-     * {@link ServiceDocument#isDeletedTemplate(ServiceDocument)}. This query could be used to find
+     * operation from provided documentSinceUpdateTimeMicros.
+     *
+     * This query could be used to find
      * out if there were any updates since the time it is provided as parameter.
      *
      * @param documentSinceUpdateTimeMicros
@@ -142,11 +142,9 @@ public class QueryTaskClientHelper<T extends ServiceDocument> {
     }
 
     /**
-     * Query for a list of expanded documents extending {@link ServiceDocument}s that are updated or
-     * deleted since given time in the past. The result will include both updated and deleted
-     * documents. The deleted documents will be marked as with
-     * {@link ServiceDocument#documentSignature} =
-     * {@link ServiceDocument#isDeletedTemplate(ServiceDocument)}.
+     * Query for a list of expanded documents extending {@link ServiceDocument}s that
+     * are updated or deleted since given time in the past. The result will include
+     * both updated and deleted documents.
      *
      * @param documentSinceUpdateTimeMicros
      *            Indicating a time since the document was last updated matching the property
