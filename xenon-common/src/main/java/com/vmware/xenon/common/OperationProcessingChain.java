@@ -20,7 +20,7 @@ import java.util.function.Predicate;
 import com.vmware.xenon.common.Service.OperationProcessingStage;
 
 /**
- * A chain of filters, each of them is a {@link Predicate<Operation>}. When {@link processRequest} is called
+ * A chain of filters, each of them is a {@link Predicate<Operation>}. When {@link #processRequest} is called
  * the filters are evaluated sequentially, where each filter's {@link Predicate<Operation>#test} can return
  * <code>true</code> to have the next filter in the chain continue process the request or
  * <code>false</code> to stop processing.

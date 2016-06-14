@@ -70,7 +70,8 @@ public class QueryTask extends ServiceDocument {
 
             /**
              * Query results will return the number of documents that satisfy the query and populate the
-             * the {@link results.documentCount} field. The results will not contain links or documents
+             * the {@link ServiceDocumentQueryResult#documentCount} field. The results will not contain
+             * links or documents
              */
             COUNT,
 
@@ -87,7 +88,8 @@ public class QueryTask extends ServiceDocument {
             TOP_RESULTS,
 
             /**
-             * Query results will include the state documents in the {@link results.documents} collection
+             * Query results will include the state documents in the {@link ServiceDocumentQueryResult#documents}
+             * collection
              */
             EXPAND_CONTENT,
 
@@ -789,7 +791,7 @@ public class QueryTask extends ServiceDocument {
     public String indexLink = ServiceUriPaths.CORE_DOCUMENT_INDEX;
 
     /**
-     * The node selector to use when {@link QueryOption.BROADCAST} is set
+     * The node selector to use when {@link QueryOption#BROADCAST} is set
      */
     public String nodeSelectorLink = ServiceUriPaths.DEFAULT_NODE_SELECTOR;
 

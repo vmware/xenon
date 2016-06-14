@@ -81,7 +81,7 @@ public abstract class FactoryService extends StatelessService {
 
     /**
      * Creates a factory service instance that starts the specified child service
-     * on POST. The factory service has {@link ServiceOption.IDEMPOTENT_POST} enabled
+     * on POST. The factory service has {@link ServiceOption#IDEMPOTENT_POST} enabled
      */
     public static FactoryService createIdempotent(Class<? extends Service> childServiceType) {
         return create(childServiceType, ServiceOption.IDEMPOTENT_POST);
@@ -89,7 +89,7 @@ public abstract class FactoryService extends StatelessService {
 
     /**
      * Creates a factory service instance that starts the specified child service
-     * on POST. The factory service has {@link ServiceOption.IDEMPOTENT_POST} enabled
+     * on POST. The factory service has {@link ServiceOption#IDEMPOTENT_POST} enabled
      */
     public static FactoryService createIdempotent(Class<? extends Service> childServiceType,
             Class<? extends ServiceDocument> childServiceDocumentType) {
