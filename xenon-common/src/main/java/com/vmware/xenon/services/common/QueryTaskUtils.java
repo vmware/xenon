@@ -81,18 +81,17 @@ public class QueryTaskUtils {
                 // serialize the error response and return it in the selectedLinks map
             }
 
-            int r = remaining.decrementAndGet();
             Object body = o.getBodyRaw();
 
             try {
                 String json = Utils.toJson(body);
                 uniqueLinkToState.put(link, json);
-                host.log(Level.INFO, "Received response for %s: %s", link, json);
             } catch (Throwable ex) {
                 host.log(Level.WARNING, "Failure serializing response for %s: %s", link,
                         ex.getMessage());
             }
 
+            int r = remaining.decrementAndGet();
             if (r != 0) {
                 return;
             }
