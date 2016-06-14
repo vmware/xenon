@@ -32,9 +32,12 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.EnumSet;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Map.Entry;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
@@ -45,6 +48,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Supplier;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.stream.Collectors;
 
 import com.esotericsoftware.kryo.Kryo;
 import com.esotericsoftware.kryo.KryoException;
@@ -68,6 +72,7 @@ import com.vmware.xenon.common.serialization.BufferThreadLocal;
 import com.vmware.xenon.common.serialization.JsonMapper;
 import com.vmware.xenon.common.serialization.KryoSerializers.KryoForDocumentThreadLocal;
 import com.vmware.xenon.common.serialization.KryoSerializers.KryoForObjectThreadLocal;
+import com.vmware.xenon.services.common.QueryTask.QuerySpecification;
 import com.vmware.xenon.services.common.QueryTask.QuerySpecification.QueryOption;
 import com.vmware.xenon.services.common.ServiceUriPaths;
 
@@ -105,6 +110,12 @@ public class Utils {
      * check to account for the start-up overhead of that process.
      */
     private static final long PING_LAUNCH_TOLERANCE_MS = 50;
+
+    /**
+     * The maximum depth level of which to expand the {@link TypeName#PODO} and {@link TypeName#COLLECTION}
+     * properties when building {@link #getExpandedQueryPropertyNames(ServiceDocumentDescription)}
+     */
+    private static final int MAX_NEST_LEVEL_EXPAND_PROPERTY = 2;
 
     private static final KryoForObjectThreadLocal kryoForObjectPerThread = new KryoForObjectThreadLocal();
     private static final KryoForDocumentThreadLocal kryoForDocumentPerThread = new KryoForDocumentThreadLocal();
@@ -201,6 +212,74 @@ public class Utils {
         }
 
         return computeHash(buffer, 0, position);
+    }
+
+    /**
+     * Return all searchable properties of the given description. Complex properties
+     * {@link TypeName#PODO} and {@link TypeName#COLLECTION} are not returned, but their inner
+     * primitive type leaf properties up to a configurable level are. They are returned in
+     * {@link QuerySpecification} format.
+     *
+     * @see {@link QuerySpecification#buildCompositeFieldName(String...)}
+     */
+    public static Set<String> getExpandedQueryPropertyNames(ServiceDocumentDescription description) {
+        if (description == null) {
+            throw new IllegalArgumentException("description is required");
+        }
+
+        return getExpandedQueryPropertyNames(description.propertyDescriptions,
+                MAX_NEST_LEVEL_EXPAND_PROPERTY);
+    }
+
+    private static Set<String> getExpandedQueryPropertyNames(
+            Map<String, PropertyDescription> propertyDescriptions, int complexFieldNestLevel) {
+        Set<String> result = new HashSet<>();
+
+        for (Entry<String, PropertyDescription> entry : propertyDescriptions.entrySet()) {
+            result.addAll(getExpandedQueryPropertyNames(entry.getKey(), entry.getValue(),
+                    complexFieldNestLevel));
+        }
+
+        return result;
+    }
+
+    private static Set<String> getExpandedQueryPropertyNames(String propertyName,
+            PropertyDescription pd, int complexFieldNestLevel) {
+        if ((pd.indexingOptions != null && pd.indexingOptions
+                .contains(PropertyIndexingOption.STORE_ONLY)) ||
+                pd.usageOptions.contains(PropertyUsageOption.INFRASTRUCTURE)) {
+            return Collections.emptySet();
+        }
+
+        if (pd.typeName == TypeName.PODO && pd.fieldDescriptions != null) {
+            if (complexFieldNestLevel > 0) {
+                Set<String> innerPropertyNames = getExpandedQueryPropertyNames(
+                        pd.fieldDescriptions, complexFieldNestLevel - 1);
+
+                return innerPropertyNames.stream()
+                        .map((p) -> QuerySpecification.buildCompositeFieldName(propertyName, p))
+                        .collect(Collectors.toSet());
+            } else {
+                return Collections.emptySet();
+            }
+        } else if (pd.typeName == TypeName.COLLECTION) {
+            if (complexFieldNestLevel > 0) {
+                Set<String> innerPropertyNames = getExpandedQueryPropertyNames(
+                        QuerySpecification.COLLECTION_FIELD_SUFFIX, pd.elementDescription,
+                        complexFieldNestLevel - 1);
+
+                return innerPropertyNames.stream()
+                        .map((p) -> QuerySpecification.buildCompositeFieldName(propertyName, p))
+                        .collect(Collectors.toSet());
+            } else {
+                return Collections.emptySet();
+            }
+        } else if (pd.typeName == TypeName.MAP) {
+            // Map is not supported at the moment
+            return Collections.emptySet();
+        } else {
+            return Collections.singleton(propertyName);
+        }
     }
 
     public static byte[] getBuffer(int capacity) {
@@ -326,7 +405,8 @@ public class Utils {
             throws IllegalArgumentException {
         if (body instanceof String) {
             if (hideSensitiveFields) {
-                throw new IllegalArgumentException("Body is already a string, sensitive fields cannot be discovered");
+                throw new IllegalArgumentException(
+                        "Body is already a string, sensitive fields cannot be discovered");
             }
             return (String) body;
         }
@@ -740,7 +820,7 @@ public class Utils {
                     "-n", "1",
                     "-w", Long.toString(timeoutMs),
                     getNormalizedHostAddress(systemInfo, addr))
-                            .start();
+                    .start();
             boolean completed = process.waitFor(
                     PING_LAUNCH_TOLERANCE_MS + timeoutMs,
                     TimeUnit.MILLISECONDS);

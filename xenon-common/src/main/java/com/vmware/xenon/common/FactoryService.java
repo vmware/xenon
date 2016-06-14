@@ -17,6 +17,7 @@ import java.net.URI;
 import java.util.Arrays;
 import java.util.EnumSet;
 import java.util.HashMap;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.TimeUnit;
@@ -98,7 +99,7 @@ public abstract class FactoryService extends StatelessService {
 
     public static final Integer SELF_QUERY_RESULT_LIMIT = Integer.getInteger(
             Utils.PROPERTY_NAME_PREFIX
-            + "FactoryService.SELF_QUERY_RESULT_LIMIT", 1000);
+                    + "FactoryService.SELF_QUERY_RESULT_LIMIT", 1000);
     private EnumSet<ServiceOption> childOptions;
     private String nodeSelectorLink = ServiceUriPaths.DEFAULT_NODE_SELECTOR;
     private int selfQueryResultLimit = SELF_QUERY_RESULT_LIMIT;
@@ -631,7 +632,8 @@ public abstract class FactoryService extends StatelessService {
                                     .setCompletion(fc);
 
                             forwardOp.setConnectionTag(ServiceClient.CONNECTION_TAG_FORWARDING);
-                            forwardOp.toggleOption(NodeSelectorService.FORWARDING_OPERATION_OPTION, true);
+                            forwardOp.toggleOption(NodeSelectorService.FORWARDING_OPERATION_OPTION,
+                                    true);
 
                             // fix up selfLink so it does not have factory prefix
                         initialState.documentSelfLink = initialState.documentSelfLink
@@ -661,7 +663,11 @@ public abstract class FactoryService extends StatelessService {
     }
 
     private void handleGetOdataCompletion(Operation op) {
-        QueryTask task = ODataUtils.toQuery(op);
+        Set<String> expandedQueryPropertyNames = Utils
+                .getExpandedQueryPropertyNames(getChildTemplate().documentDescription);
+
+        QueryTask task = ODataUtils.toQuery(op, expandedQueryPropertyNames);
+
         if (task == null) {
             return;
         }
@@ -678,7 +684,8 @@ public abstract class FactoryService extends StatelessService {
             PropertyDescription propertyDescription = getChildTemplate()
                     .documentDescription.propertyDescriptions.get(propertyName);
             if (propertyDescription == null) {
-                op.fail(new IllegalArgumentException("Sort term is not a valid property: " + propertyName));
+                op.fail(new IllegalArgumentException("Sort term is not a valid property: "
+                        + propertyName));
                 return;
             }
             task.querySpec.sortTerm.propertyType = propertyDescription.typeName;
@@ -947,7 +954,6 @@ public abstract class FactoryService extends StatelessService {
         });
         startOrSynchronizeChildServices(ctx);
     }
-
 
     public abstract Service createServiceInstance() throws Throwable;
 }

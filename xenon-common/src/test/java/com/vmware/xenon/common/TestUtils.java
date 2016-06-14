@@ -31,10 +31,12 @@ import java.util.Arrays;
 import java.util.Calendar;
 import java.util.EnumSet;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Set;
 import java.util.TimeZone;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
@@ -42,6 +44,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.logging.Logger;
 
 import com.google.gson.reflect.TypeToken;
+
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -852,5 +855,65 @@ public class TestUtils {
         state.required = null;
         ServiceDocumentDescription desc = buildStateDescription(ExampleServiceState.class, null);
         Utils.validateState(desc, state);
+    }
+
+    @Test
+    public void testGetQueryPropertyNames() throws Throwable {
+        ServiceDocumentDescription desc = buildStateDescription(ExampleServiceState.class, null);
+        Set<String> queryPropertyNames = Utils.getExpandedQueryPropertyNames(desc);
+
+        Set<String> expectedPropertyNames = new HashSet<>();
+        expectedPropertyNames.add(ExampleServiceState.FIELD_NAME_COUNTER);
+        expectedPropertyNames.add(ExampleServiceState.FIELD_NAME_SORTED_COUNTER);
+        expectedPropertyNames.add(ExampleServiceState.FIELD_NAME_NAME);
+        expectedPropertyNames.add(ExampleServiceState.FIELD_NAME_ID);
+        expectedPropertyNames.add(ExampleServiceState.FIELD_NAME_REQUIRED);
+        expectedPropertyNames.add("tags.item");
+
+        assertEquals(expectedPropertyNames, queryPropertyNames);
+    }
+
+    @Test
+    public void testGetMultiLevelNestedQueryPropertyNames() throws Throwable {
+        ServiceDocumentDescription desc = buildStateDescription(ComplexServiceState.class, null);
+        Set<String> queryPropertyNames = Utils.getExpandedQueryPropertyNames(desc);
+
+        Set<String> expectedPropertyNames = new HashSet<>();
+        expectedPropertyNames.add("name");
+
+        expectedPropertyNames.add("innerServices.item.nameInner");
+
+        expectedPropertyNames.add("singleInnerService.nameInner");
+        expectedPropertyNames.add("singleInnerService.singleInnerService.nameSecondInner");
+
+        assertEquals(expectedPropertyNames, queryPropertyNames);
+    }
+
+    public static class ComplexServiceState extends ServiceDocument {
+        public String name;
+        @PropertyOptions(indexing = PropertyIndexingOption.EXPAND)
+        public ComplexInnerServiceState singleInnerService;
+        @PropertyOptions(indexing = PropertyIndexingOption.EXPAND)
+        public Set<ComplexInnerServiceState> innerServices;
+    }
+
+    public static class ComplexInnerServiceState extends ServiceDocument {
+        public String nameInner;
+        @PropertyOptions(indexing = PropertyIndexingOption.EXPAND)
+        public ComplexSecondInnerServiceState singleInnerService;
+        @PropertyOptions(indexing = PropertyIndexingOption.EXPAND)
+        public Set<ComplexSecondInnerServiceState> innerServices;
+    }
+
+    public static class ComplexSecondInnerServiceState extends ServiceDocument {
+        public String nameSecondInner;
+        @PropertyOptions(indexing = PropertyIndexingOption.EXPAND)
+        public ComplexThirdInnerServiceState singleInnerService;
+        @PropertyOptions(indexing = PropertyIndexingOption.EXPAND)
+        public Set<ComplexThirdInnerServiceState> innerServices;
+    }
+
+    public static class ComplexThirdInnerServiceState extends ServiceDocument {
+        public String nameThirdInner;
     }
 }
