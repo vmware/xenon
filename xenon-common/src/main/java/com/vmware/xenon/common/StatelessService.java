@@ -714,6 +714,7 @@ public class StatelessService implements Service {
         operation.setUri(UriUtils.buildUri(getHost(), uiResourcePath))
                 .setCompletion((o, e) -> {
                     get.setBody(o.getBodyRaw())
+                            .setStatusCode(o.getStatusCode())
                             .setContentType(o.getContentType())
                             .complete();
                 });

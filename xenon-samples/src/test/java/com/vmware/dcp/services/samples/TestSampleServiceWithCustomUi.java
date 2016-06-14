@@ -152,4 +152,18 @@ public class TestSampleServiceWithCustomUi extends BasicReusableHostTestCase {
         this.host.send(op);
         this.host.testWait();
     }
+
+    @Test
+    public void testGetBogusResource() throws Throwable {
+        Operation op = Operation
+                .createGet(URI.create(UriUtils.buildUri(this.host, THE_SERVICE_URI + "/ui/bogusFile") + "/"))
+                .setCompletion(getSafeHandler((o, e) -> {
+                    assertNull(e);
+                    assertEquals("Expected 404 NOT FOUND", Operation.STATUS_CODE_NOT_FOUND, o.getStatusCode());
+                }));
+
+        this.host.testStart(1);
+        this.host.send(op);
+        this.host.testWait();
+    }
 }
