@@ -452,6 +452,12 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
                     ExampleServiceState.class, exampleURIs);
 
             verifyChildServiceCountByOptionQuery(h, beforeState);
+            
+            // capture number of index updates, before host stop, so we can compare with after host
+            // restarts
+            
+            URI indexStatsUris = UriUtils.buildStatsUri(h.getDocumentIndexServiceUri());
+            ServiceStats beforeStopIndexStats = this.host.getServiceState(null, ServiceStats.class, indexStatsUris);
 
             // stop the host, create new one
             h.stop();
@@ -468,14 +474,32 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
             }
 
             long start = Utils.getNowMicrosUtc();
+            
+
             if (!VerificationHost.restartStatefulHost(h)) {
                 this.host.log("Failed restart of host, aborting");
                 return;
             }
-
+            
             this.host.toggleServiceOptions(h.getDocumentIndexServiceUri(),
                     EnumSet.of(ServiceOption.INSTRUMENTATION),
                     null);
+            
+            // make sure synchronization has run, so we can verify if synch produced index updates
+            this.host.waitForReplicatedFactoryServiceAvailable(
+                    UriUtils.buildUri(h, ExampleService.FACTORY_LINK));
+            
+            indexStatsUris = UriUtils.buildStatsUri(h.getDocumentIndexServiceUri());
+            ServiceStats afterRestartIndexStats = this.host.getServiceState(null, ServiceStats.class, indexStatsUris);
+            
+            String indexedFieldCountStatName = LuceneDocumentIndexService.STAT_NAME_INDEXED_FIELD_COUNT;
+            ServiceStat beforeIndexedFieldCountStat = beforeStopIndexStats.entries.get(indexedFieldCountStatName);
+            ServiceStat afterRestartIndexedFieldCountStat = afterRestartIndexStats.entries.get(indexedFieldCountStatName);
+            if (afterRestartIndexedFieldCountStat != null) {
+                // if we had re-indexed all state on restart, the update count would have at least doubled
+                assertTrue(afterRestartIndexedFieldCountStat.latestValue < beforeIndexedFieldCountStat.latestValue * 2);
+            }
+            
 
             beforeState = updateUriMapWithNewPort(h.getPort(), beforeState);
             List<URI> updatedExampleUris = new ArrayList<>();

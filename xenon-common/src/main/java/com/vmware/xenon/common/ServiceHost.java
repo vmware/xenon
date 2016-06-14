@@ -2256,7 +2256,7 @@ public class ServiceHost implements ServiceRequestSender {
 
                 post.nestCompletion((o) -> {
                     boolean hasInitialState = hasClientSuppliedInitialState;
-                    if (o.getLinkedState() != null) {
+                    if (!hasInitialState && o.getLinkedState() != null) {
                         hasInitialState = true;
                     }
                     processServiceStart(nxt, s, post,
@@ -2657,7 +2657,7 @@ public class ServiceHost implements ServiceRequestSender {
         } else if (stateFromStore != null
                 && stateFromStore.documentSelfLink != null) {
             // set the initial state from what the index returned
-            serviceStartPost.setBody(stateFromStore);
+            serviceStartPost.setBodyNoCloning(stateFromStore);
         }
 
         processServiceStart(next, s,
