@@ -32,6 +32,7 @@ import org.junit.After;
 import org.junit.Test;
 
 import com.vmware.xenon.common.BasicReusableHostTestCase;
+import com.vmware.xenon.common.ODataUtils;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.ServiceDocumentQueryResult;
@@ -301,7 +302,8 @@ public class TestODataQueryService extends BasicReusableHostTestCase {
             }
             if ((order.equals("asc") && previous > current) ||
                     (order.equals("desc") && previous < current)) {
-                throw new IllegalStateException("Data was not sorted as expected: " + Utils.toJsonHtml(res));
+                throw new IllegalStateException("Data was not sorted as expected: "
+                        + Utils.toJsonHtml(res));
             }
             previous = current;
         }
@@ -508,6 +510,7 @@ public class TestODataQueryService extends BasicReusableHostTestCase {
         testNEOrNEQuery();
         testANYQuery();
         testALLQuery();
+        testWildcardPropertyQuery();
     }
 
     private void testSimpleOrQuery() throws Throwable {
@@ -560,7 +563,7 @@ public class TestODataQueryService extends BasicReusableHostTestCase {
         this.host.deleteAllChildServices(UriUtils.buildUri(this.host, ExampleService.FACTORY_LINK));
         ExampleService.ExampleServiceState document1 = new ExampleService.ExampleServiceState();
         document1.name = "MAPPING1";
-        document1.keyValues.put("A","a");
+        document1.keyValues.put("A", "a");
         postExample(document1);
 
         ExampleService.ExampleServiceState document2 = new ExampleService.ExampleServiceState();
@@ -572,7 +575,6 @@ public class TestODataQueryService extends BasicReusableHostTestCase {
         document3.name = "MAPPING3";
         document3.keyValues.put("B", "b");
         postExample(document3);
-
 
         String queryString1 = "$filter=name ne MAPPING2 and keyValues.A eq a";
 
@@ -597,7 +599,7 @@ public class TestODataQueryService extends BasicReusableHostTestCase {
         this.host.deleteAllChildServices(UriUtils.buildUri(this.host, ExampleService.FACTORY_LINK));
         ExampleService.ExampleServiceState document1 = new ExampleService.ExampleServiceState();
         document1.name = "MAPPING4";
-        document1.keyValues.put("P","p");
+        document1.keyValues.put("P", "p");
         postExample(document1);
 
         ExampleService.ExampleServiceState document2 = new ExampleService.ExampleServiceState();
@@ -817,7 +819,6 @@ public class TestODataQueryService extends BasicReusableHostTestCase {
         document2.tags.add("STRING Y");
         postExample(document2);
 
-
         String queryString = "$filter=tags.item all 'STRING X;STRING Y'";
 
         Map<String, Object> out = doFactoryServiceQuery(queryString, false);
@@ -826,6 +827,45 @@ public class TestODataQueryService extends BasicReusableHostTestCase {
         ExampleService.ExampleServiceState outState1 = Utils.fromJson(
                 out.get(document2.documentSelfLink), ExampleService.ExampleServiceState.class);
         assertTrue(outState1.name.equals(document2.name));
+    }
+
+    private void testWildcardPropertyQuery() throws Throwable {
+        this.host.deleteAllChildServices(UriUtils.buildUri(this.host, ExampleService.FACTORY_LINK));
+        ExampleService.ExampleServiceState document1 = new ExampleService.ExampleServiceState();
+        document1.name = "document ONE";
+        document1.tags.add("STRING ONE");
+        document1.tags.add("STRING TWO");
+        postExample(document1);
+
+        ExampleService.ExampleServiceState document2 = new ExampleService.ExampleServiceState();
+        document2.name = "document TWO";
+        document2.tags.add("STRING X");
+        document2.tags.add("STRING Y");
+        postExample(document2);
+
+        String queryString = String.format("$filter=%s eq '*ONE*'",
+                ODataUtils.FILTER_VALUE_ALL_FIELDS);
+
+        Map<String, Object> out = doFactoryServiceQuery(queryString, false);
+        assertNotNull(out);
+        assertEquals(1, out.keySet().size());
+
+        ExampleService.ExampleServiceState outState1 = Utils.fromJson(
+                out.get(document1.documentSelfLink), ExampleService.ExampleServiceState.class);
+        assertTrue(outState1.name.equals(document1.name));
+
+        queryString = String.format("$filter=%s eq '*TWO*'", ODataUtils.FILTER_VALUE_ALL_FIELDS);
+        out = doFactoryServiceQuery(queryString, false);
+        assertNotNull(out);
+        assertEquals(2, out.keySet().size());
+
+        outState1 = Utils.fromJson(
+                out.get(document1.documentSelfLink), ExampleService.ExampleServiceState.class);
+        assertTrue(outState1.name.equals(document1.name));
+
+        ExampleService.ExampleServiceState outState2 = Utils.fromJson(
+                out.get(document2.documentSelfLink), ExampleService.ExampleServiceState.class);
+        assertTrue(outState2.name.equals(document2.name));
     }
 
     private ServiceDocumentQueryResult doQuery(String query, boolean remote) throws Throwable {
@@ -993,13 +1033,6 @@ public class TestODataQueryService extends BasicReusableHostTestCase {
             throws Throwable {
         URI odataQuery = UriUtils.buildUri(this.host, nextPage);
         return doQuery(odataQuery, remote);
-    }
-
-    private ServiceDocumentQueryResult getNextPage(final String page, final String peer,
-            final boolean remote) throws Throwable {
-        String queryString = String.format("%s=%s&%s=%s", UriUtils.URI_PARAM_ODATA_NODE, peer,
-                UriUtils.URI_PARAM_ODATA_SKIP_TO, page);
-        return doOdataQuery(queryString, remote);
     }
 
     private ServiceDocumentQueryResult doOdataQuery(final String query, final boolean remote)

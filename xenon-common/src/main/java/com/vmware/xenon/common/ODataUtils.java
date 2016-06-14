@@ -13,6 +13,9 @@
 
 package com.vmware.xenon.common;
 
+import java.util.Collections;
+import java.util.Set;
+
 import com.vmware.xenon.common.ServiceDocumentDescription.TypeName;
 import com.vmware.xenon.common.UriUtils.ODataOrder;
 import com.vmware.xenon.services.common.QueryTask;
@@ -24,10 +27,28 @@ import com.vmware.xenon.services.common.QueryTask.QueryTerm;
 public class ODataUtils {
 
     /**
+     * Used in OData filter, represents a property term that should includes all fields
+     * in the filter.
+     */
+    public static final String FILTER_VALUE_ALL_FIELDS = "ALL_FIELDS";
+
+    /**
      * Builds a {@code QueryTask} with a fully formed query and options, from the operation URI
      * query parameters
      */
     public static QueryTask toQuery(Operation op) {
+        return toQuery(op, Collections.emptySet());
+    }
+
+    /**
+     * Builds a {@code QueryTask} with a fully formed query and options, from the operation URI
+     * query parameters.
+     * @param wildcardFilterUnfoldPropertyNames is an optional set of property names that will
+     * be used when forming the query. In this case when the filter contains
+     * {@link UriUtils#URI_WILDCARD_CHAR} for a property name of the query will be expanded with
+     * multiple OR sub-queries for each property name of this set instead of the wildcard.
+     */
+    public static QueryTask toQuery(Operation op, Set<String> wildcardFilterUnfoldPropertyNames) {
 
         QueryTask task = new QueryTask();
         task.setDirect(true);
@@ -42,7 +63,7 @@ public class ODataUtils {
 
         String filter = UriUtils.getODataFilterParamValue(op.getUri());
         if (filter != null) {
-            Query q = new ODataQueryVisitor().toQuery(filter);
+            Query q = new ODataQueryVisitor(wildcardFilterUnfoldPropertyNames).toQuery(filter);
             if (q != null) {
                 task.querySpec.query.addBooleanClause(q);
             }

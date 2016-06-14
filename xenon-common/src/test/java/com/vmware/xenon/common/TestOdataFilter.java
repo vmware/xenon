@@ -17,11 +17,15 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 
+import java.util.HashSet;
+import java.util.Set;
+
 import org.junit.Test;
 
 import com.vmware.xenon.services.common.QueryTask;
 import com.vmware.xenon.services.common.QueryTask.NumericRange;
 import com.vmware.xenon.services.common.QueryTask.Query;
+import com.vmware.xenon.services.common.QueryTask.Query.Occurance;
 
 public class TestOdataFilter {
 
@@ -277,8 +281,49 @@ public class TestOdataFilter {
         assertQueriesEqual(actual, expected);
     }
 
+    @Test
+    public void testComplexWildcardPropertyNameQuery() throws Throwable {
+        Query wildcardQ = new Query();
+        wildcardQ.occurance = Query.Occurance.MUST_OCCUR;
+
+        Query q = new Query().setTermPropertyName("name").setTermMatchValue("foo");
+        q.occurance = Occurance.SHOULD_OCCUR;
+        wildcardQ.addBooleanClause(q);
+
+        q = new Query().setTermPropertyName("description").setTermMatchValue("foo");
+        q.occurance = Occurance.SHOULD_OCCUR;
+        wildcardQ.addBooleanClause(q);
+
+        q = new Query().setTermPropertyName("tag").setTermMatchValue("foo");
+        q.occurance = Occurance.SHOULD_OCCUR;
+        wildcardQ.addBooleanClause(q);
+
+        Query nameQ = new Query().setTermPropertyName("name").setTermMatchValue("bar");
+        nameQ.occurance = Query.Occurance.MUST_OCCUR;
+
+        Query expected = new Query();
+        expected.occurance = Query.Occurance.MUST_OCCUR;
+        expected.addBooleanClause(wildcardQ);
+        expected.addBooleanClause(nameQ);
+
+        String odataFilter = String.format("(%s eq foo) and (name eq bar)",
+                ODataUtils.FILTER_VALUE_ALL_FIELDS);
+
+        Set<String> wildcardUnfoldPropertyNames = new HashSet<>();
+        wildcardUnfoldPropertyNames.add("name");
+        wildcardUnfoldPropertyNames.add("description");
+        wildcardUnfoldPropertyNames.add("tag");
+        Query actual = toQuery(odataFilter, wildcardUnfoldPropertyNames);
+
+        assertQueriesEqual(actual, expected);
+    }
+
     private static Query toQuery(String expression) {
         return new ODataQueryVisitor().toQuery(expression);
+    }
+
+    private static Query toQuery(String expression, Set<String> wildcardUnfoldPropertyNames) {
+        return new ODataQueryVisitor(wildcardUnfoldPropertyNames).toQuery(expression);
     }
 
     private static void assertQueriesEqual(Query actual, Query expected) {

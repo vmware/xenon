@@ -13,6 +13,9 @@
 
 package com.vmware.xenon.common;
 
+import java.util.Collections;
+import java.util.Set;
+
 import com.vmware.xenon.services.common.QueryTask;
 import com.vmware.xenon.services.common.QueryTask.Query;
 import com.vmware.xenon.services.common.QueryTask.QueryTerm;
@@ -41,6 +44,22 @@ public class ODataQueryVisitor {
     private static final String DEFAULT_COLLECTION_ITEM_SEPARATOR = ";";
     private static final IllegalArgumentException LeftRightTypeException = new IllegalArgumentException(
             "left and right side type mismatch");
+
+    private Set<String> wildcardUnfoldPropertyNames;
+
+    public ODataQueryVisitor() {
+        this(Collections.emptySet());
+    }
+
+    /**
+     * Constructs ODataQueryVisitor with optional set of property names that will be used when we
+     * visit a term property name matching {@link UriUtils#URI_WILDCARD_CHAR}. In this case
+     * the query will be expanded with multiple OR sub-queries for each property name of
+     * {@link #wildcardUnfoldPropertyNames} instead of the wildcard.
+     */
+    public ODataQueryVisitor(Set<String> wildcardUnfoldPropertyNames) {
+        this.wildcardUnfoldPropertyNames = wildcardUnfoldPropertyNames;
+    }
 
     public Query toQuery(String filterExp) {
         ODataTokenizer tokenizer = new ODataTokenizer(filterExp);
@@ -130,8 +149,8 @@ public class ODataQueryVisitor {
 
     // return a unary query term.
     private Query visitBinaryComparator(final Object leftSide,
-                              final BinaryVerb operator,
-                              final Object rightSide) {
+            final BinaryVerb operator,
+            final Object rightSide) {
 
         Query q = new Query();
 
@@ -142,15 +161,25 @@ public class ODataQueryVisitor {
             throw LeftRightTypeException;
         }
 
+        if (isUnfoldQuery(leftSide, operator, rightSide)) {
+            for (String name : this.wildcardUnfoldPropertyNames) {
+                Query innerQuery = visitBinaryComparator(name, operator, rightSide);
+                innerQuery.occurance = Query.Occurance.SHOULD_OCCUR;
+                q.addBooleanClause(innerQuery);
+            }
+
+            return q;
+        }
+
         if (rightSide instanceof String) {
-            if ( operator == BinaryVerb.ANY || operator == BinaryVerb.ALL) {
+            if (operator == BinaryVerb.ANY || operator == BinaryVerb.ALL) {
                 Query.Occurance itemOccurance = Query.Occurance.MUST_OCCUR;
                 if (operator == BinaryVerb.ANY) {
                     itemOccurance = Query.Occurance.SHOULD_OCCUR;
                 }
                 String[] itemNames = ((String) rightSide).split(DEFAULT_COLLECTION_ITEM_SEPARATOR);
                 for (String itemName : itemNames) {
-                    if (! itemName.isEmpty()) {
+                    if (!itemName.isEmpty()) {
                         Query itemClause = new Query();
                         itemClause.setTermPropertyName((String) leftSide);
                         itemClause.occurance = itemOccurance;
@@ -331,5 +360,12 @@ public class ODataQueryVisitor {
         }
 
         return null;
+    }
+
+    private static boolean isUnfoldQuery(final Object leftSide, final BinaryVerb operator,
+            final Object rightSide) {
+        return ODataUtils.FILTER_VALUE_ALL_FIELDS.equals(leftSide)
+                && BinaryVerb.EQ.equals(operator)
+                && (rightSide instanceof String) && !isNumeric((String) rightSide);
     }
 }
