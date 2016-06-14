@@ -540,7 +540,13 @@ public class QueryTaskService extends StatefulService {
                 task.documentOwner = getHost().getId();
             }
 
+            scheduleExpiration = !task.querySpec.options.contains(QueryOption.EXPAND_LINKS);
             if (directOp != null) {
+                directOp.nestCompletion((o, ex) -> {
+                    directOp.setStatusCode(o.getStatusCode())
+                            .setBodyNoCloning(o.getBodyRaw()).complete();
+                    scheduleTaskExpiration(task);
+                });
                 QueryTaskUtils.expandLinks(getHost(), task, directOp);
             } else {
                 if (!task.querySpec.options.contains(QueryOption.EXPAND_LINKS)) {
@@ -549,6 +555,7 @@ public class QueryTaskService extends StatefulService {
                 }
 
                 CompletionHandler c = (o, ex) -> {
+                    scheduleTaskExpiration(task);
                     if (ex != null) {
                         failTask(ex, null, null);
                         return;
