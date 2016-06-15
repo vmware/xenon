@@ -511,6 +511,8 @@ public class TestODataQueryService extends BasicReusableHostTestCase {
         testANYQuery();
         testALLQuery();
         testWildcardPropertyQuery();
+        testMapKeyQuery();
+        testMapValueQuery();
     }
 
     private void testSimpleOrQuery() throws Throwable {
@@ -864,6 +866,78 @@ public class TestODataQueryService extends BasicReusableHostTestCase {
         assertTrue(outState1.name.equals(document1.name));
 
         ExampleService.ExampleServiceState outState2 = Utils.fromJson(
+                out.get(document2.documentSelfLink), ExampleService.ExampleServiceState.class);
+        assertTrue(outState2.name.equals(document2.name));
+    }
+
+    private void testMapKeyQuery() throws Throwable {
+        this.host.deleteAllChildServices(UriUtils.buildUri(this.host, ExampleService.FACTORY_LINK));
+        ExampleService.ExampleServiceState document1 = new ExampleService.ExampleServiceState();
+        document1.name = "Java 7";
+        document1.keyValues.put("version", "7");
+        document1.keyValues.put("arch", "arm32");
+        postExample(document1);
+
+        ExampleService.ExampleServiceState document2 = new ExampleService.ExampleServiceState();
+        document2.name = "Java";
+        document2.keyValues.put("sdk-version", "7");
+        document2.keyValues.put("arch", "arm64");
+        postExample(document2);
+
+        String queryString = "$filter=keyValues eq 'version'";
+
+        Map<String, Object> out = doFactoryServiceQuery(queryString, false);
+        assertNotNull(out);
+        assertEquals(1, out.keySet().size());
+        ExampleService.ExampleServiceState outState1 = Utils.fromJson(
+                out.get(document1.documentSelfLink), ExampleService.ExampleServiceState.class);
+        assertTrue(outState1.name.equals(document1.name));
+
+        queryString = "$filter=keyValues eq '*version'";
+
+        out = doFactoryServiceQuery(queryString, false);
+        assertNotNull(out);
+        assertEquals(2, out.keySet().size());
+        outState1 = Utils.fromJson(
+                out.get(document1.documentSelfLink), ExampleService.ExampleServiceState.class);
+        assertTrue(outState1.name.equals(document1.name));
+        ExampleService.ExampleServiceState outState2 = Utils.fromJson(
+                out.get(document2.documentSelfLink), ExampleService.ExampleServiceState.class);
+        assertTrue(outState2.name.equals(document2.name));
+    }
+
+    private void testMapValueQuery() throws Throwable {
+        this.host.deleteAllChildServices(UriUtils.buildUri(this.host, ExampleService.FACTORY_LINK));
+        ExampleService.ExampleServiceState document1 = new ExampleService.ExampleServiceState();
+        document1.name = "Java 7";
+        document1.keyValues.put("version", "7");
+        document1.keyValues.put("arch", "arm32");
+        postExample(document1);
+
+        ExampleService.ExampleServiceState document2 = new ExampleService.ExampleServiceState();
+        document2.name = "Java";
+        document2.keyValues.put("sdk-version", "7");
+        document2.keyValues.put("arch", "arm64");
+        postExample(document2);
+
+        String queryString = "$filter=keyValues eq '7'";
+
+        Map<String, Object> out = doFactoryServiceQuery(queryString, false);
+        assertNotNull(out);
+        assertEquals(2, out.keySet().size());
+        ExampleService.ExampleServiceState outState1 = Utils.fromJson(
+                out.get(document1.documentSelfLink), ExampleService.ExampleServiceState.class);
+        assertTrue(outState1.name.equals(document1.name));
+        ExampleService.ExampleServiceState outState2 = Utils.fromJson(
+                out.get(document2.documentSelfLink), ExampleService.ExampleServiceState.class);
+        assertTrue(outState2.name.equals(document2.name));
+
+        queryString = "$filter=keyValues eq 'arm64'";
+
+        out = doFactoryServiceQuery(queryString, false);
+        assertNotNull(out);
+        assertEquals(1, out.keySet().size());
+        outState2 = Utils.fromJson(
                 out.get(document2.documentSelfLink), ExampleService.ExampleServiceState.class);
         assertTrue(outState2.name.equals(document2.name));
     }

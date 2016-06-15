@@ -54,7 +54,8 @@ public class ExampleService extends StatefulService {
         public static final long VERSION_RETENTION_LIMIT = 100;
 
         @UsageOption(option = PropertyUsageOption.OPTIONAL)
-        @PropertyOptions(indexing = PropertyIndexingOption.EXPAND)
+        @PropertyOptions(indexing = { PropertyIndexingOption.EXPAND,
+                PropertyIndexingOption.FIXED_ITEM_NAME })
         public Map<String, String> keyValues = new HashMap<>();
         public Long counter;
         @PropertyOptions(indexing = PropertyIndexingOption.SORT)

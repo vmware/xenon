@@ -432,7 +432,8 @@ public class QueryTask extends ServiceDocument {
              * @param occurance the occurance for this clause.
              * @return a reference to this object.
              */
-            public Builder addKindFieldClause(Class<? extends ServiceDocument> documentClass, Occurance occurance) {
+            public Builder addKindFieldClause(Class<? extends ServiceDocument> documentClass,
+                    Occurance occurance) {
                 return addFieldClause(FIELD_NAME_KIND, Utils.buildKind(documentClass), occurance);
             }
 
@@ -455,7 +456,8 @@ public class QueryTask extends ServiceDocument {
              * @param occurance the occurance for this clause.
              * @return a reference to this object.
              */
-            public Builder addCollectionItemClause(String collectionFieldName, String itemName, Occurance occurance) {
+            public Builder addCollectionItemClause(String collectionFieldName, String itemName,
+                    Occurance occurance) {
                 return addFieldClause(
                         QuerySpecification.buildCollectionItemName(collectionFieldName),
                         itemName,
@@ -481,7 +483,8 @@ public class QueryTask extends ServiceDocument {
              * @param occurance the occurance for this clause.
              * @return a reference to this object.
              */
-            public Builder addInClause(String fieldName, Collection<String> itemNames, Occurance occurance) {
+            public Builder addInClause(String fieldName, Collection<String> itemNames,
+                    Occurance occurance) {
                 if (itemNames.size() == 1) {
                     return addFieldClause(
                             fieldName,
@@ -533,7 +536,8 @@ public class QueryTask extends ServiceDocument {
              * @param nestedFieldValue the nested field value to match.
              * @return a reference to this object.
              */
-            public Builder addCompositeFieldClause(String parentFieldName, String nestedFieldName, String nestedFieldValue) {
+            public Builder addCompositeFieldClause(String parentFieldName, String nestedFieldName,
+                    String nestedFieldValue) {
                 return addFieldClause(
                         QuerySpecification.buildCompositeFieldName(parentFieldName, nestedFieldName),
                         nestedFieldValue);
@@ -677,7 +681,8 @@ public class QueryTask extends ServiceDocument {
              * @param occurance the {@link Occurance} for this clause.
              * @return a reference to this object.
              */
-            public Builder addRangeClause(String fieldName, NumericRange<?> range, Occurance occurance) {
+            public Builder addRangeClause(String fieldName, NumericRange<?> range,
+                    Occurance occurance) {
                 Query clause = new Query()
                         .setTermPropertyName(fieldName)
                         .setNumericRange(range);
