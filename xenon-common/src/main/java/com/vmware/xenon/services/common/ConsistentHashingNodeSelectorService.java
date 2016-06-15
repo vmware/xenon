@@ -163,6 +163,19 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
     }
 
     @Override
+    public void authorizeRequest(Operation op) {
+        if (op.getAction() != Action.POST && op.getAction() != Action.GET) {
+            super.authorizeRequest(op);
+            return;
+        }
+
+        // Authorize selection requests, they have no side effects other than CPU usage (and
+        // back pressure can be used to throttle them). Forwarding requests will have
+        // authorization applied on them as part of their target service processing
+        op.complete();
+    }
+
+    @Override
     public void handleRequest(Operation op) {
         if (op.getAction() == Action.GET) {
             op.setBody(this.cachedState).complete();
@@ -200,7 +213,7 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
      *  If selectors become indexed services, this will need to be removed and the
      *  service host should do a asynchronous query or GET to retrieve the selector state. Since this
      *  is not an API a service author can call (they have no access to this instance), the change will
-     *  be transparent to DCP users.
+     *  be transparent to runtime users.
      */
     public String getNodeGroup() {
         return this.cachedState.nodeGroupLink;
@@ -579,8 +592,10 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
             logInfo("Quorum update: %d", quorumUpdate.membershipQuorum);
         }
 
+        long now = Utils.getNowMicrosUtc();
         synchronized (this.cachedState) {
             if (quorumUpdate != null) {
+                this.cachedState.documentUpdateTimeMicros = now;
                 this.cachedState.membershipQuorum = quorumUpdate.membershipQuorum;
                 if (this.cachedGroupState != null) {
                     this.cachedGroupState.nodes.get(
@@ -594,6 +609,8 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
             }
 
             if (this.cachedGroupState.documentUpdateTimeMicros <= ngs.documentUpdateTimeMicros) {
+                this.cachedState.documentUpdateTimeMicros = now;
+                this.cachedState.membershipUpdateTimeMicros = ngs.membershipUpdateTimeMicros;
                 this.cachedGroupState = ngs;
                 // every time we update cached state, request convergence check
                 this.isNodeGroupConverged = false;

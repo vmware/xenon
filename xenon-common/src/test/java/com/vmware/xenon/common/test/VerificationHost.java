@@ -1487,6 +1487,11 @@ public class VerificationHost extends ExampleServiceHost {
     }
 
     public void waitForReplicatedFactoryServiceAvailable(URI u) throws Throwable {
+        waitForReplicatedFactoryServiceAvailable(u, ServiceUriPaths.DEFAULT_NODE_SELECTOR);
+    }
+
+    public void waitForReplicatedFactoryServiceAvailable(URI u, String nodeSelectorPath)
+            throws Throwable {
         waitFor("replicated available check time out for " + u, () -> {
             boolean[] isReady = new boolean[1];
             TestContext ctx = testCreate(1);
@@ -1499,7 +1504,7 @@ public class VerificationHost extends ExampleServiceHost {
 
                 isReady[0] = true;
                 ctx.completeIteration();
-            }, this, u, ServiceUriPaths.DEFAULT_NODE_SELECTOR);
+            }, this, u, nodeSelectorPath);
             ctx.await();
             return isReady[0];
         });
@@ -1544,6 +1549,8 @@ public class VerificationHost extends ExampleServiceHost {
             props = EnumSet.noneOf(TestProperty.class);
         }
 
+        log("Sending %d POST requests to %s", c, factoryURI);
+
         TestContext ctx = testCreate((int) c);
         for (int i = 0; i < c; i++) {
             Operation createPost = Operation.createPost(factoryURI);
@@ -1576,6 +1583,7 @@ public class VerificationHost extends ExampleServiceHost {
         }
 
         ctx.await();
+        log("Done with %d POST requests to %s", c, factoryURI);
         return initialStates;
     }
 

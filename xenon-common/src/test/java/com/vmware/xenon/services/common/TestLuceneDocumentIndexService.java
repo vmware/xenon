@@ -883,7 +883,6 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
         this.host.testWait();
         String factoryLink = s.getSelfLink();
         this.host.scheduleNodeGroupChangeMaintenance(ServiceUriPaths.DEFAULT_NODE_SELECTOR);
-        this.host.waitForReplicatedFactoryServiceAvailable(factoryPost.getUri());
         this.host.log("Started on demand load factory at %s", factoryLink);
         return factoryLink;
     }
