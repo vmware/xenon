@@ -48,6 +48,8 @@ public class QueryTask extends ServiceDocument {
         public static final String FIELD_NAME_CHARACTER = ".";
         public static final String FIELD_NAME_REGEXP = "\\" + FIELD_NAME_CHARACTER;
         public static final String COLLECTION_FIELD_SUFFIX = "item";
+        public static final String MAP_KEY_FIELD_SUFFIX = "__key";
+        public static final String MAP_VALUE_FIELD_SUFFIX = "__value";
 
         /**
          * Infrastructure use only (not serialized)

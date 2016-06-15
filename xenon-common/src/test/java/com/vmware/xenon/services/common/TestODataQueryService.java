@@ -301,7 +301,8 @@ public class TestODataQueryService extends BasicReusableHostTestCase {
             }
             if ((order.equals("asc") && previous > current) ||
                     (order.equals("desc") && previous < current)) {
-                throw new IllegalStateException("Data was not sorted as expected: " + Utils.toJsonHtml(res));
+                throw new IllegalStateException("Data was not sorted as expected: "
+                        + Utils.toJsonHtml(res));
             }
             previous = current;
         }
@@ -508,6 +509,8 @@ public class TestODataQueryService extends BasicReusableHostTestCase {
         testNEOrNEQuery();
         testANYQuery();
         testALLQuery();
+        testMapKeyQuery();
+        testMapValueQuery();
     }
 
     private void testSimpleOrQuery() throws Throwable {
@@ -560,7 +563,7 @@ public class TestODataQueryService extends BasicReusableHostTestCase {
         this.host.deleteAllChildServices(UriUtils.buildUri(this.host, ExampleService.FACTORY_LINK));
         ExampleService.ExampleServiceState document1 = new ExampleService.ExampleServiceState();
         document1.name = "MAPPING1";
-        document1.keyValues.put("A","a");
+        document1.keyValues.put("A", "a");
         postExample(document1);
 
         ExampleService.ExampleServiceState document2 = new ExampleService.ExampleServiceState();
@@ -572,7 +575,6 @@ public class TestODataQueryService extends BasicReusableHostTestCase {
         document3.name = "MAPPING3";
         document3.keyValues.put("B", "b");
         postExample(document3);
-
 
         String queryString1 = "$filter=name ne MAPPING2 and keyValues.A eq a";
 
@@ -597,7 +599,7 @@ public class TestODataQueryService extends BasicReusableHostTestCase {
         this.host.deleteAllChildServices(UriUtils.buildUri(this.host, ExampleService.FACTORY_LINK));
         ExampleService.ExampleServiceState document1 = new ExampleService.ExampleServiceState();
         document1.name = "MAPPING4";
-        document1.keyValues.put("P","p");
+        document1.keyValues.put("P", "p");
         postExample(document1);
 
         ExampleService.ExampleServiceState document2 = new ExampleService.ExampleServiceState();
@@ -817,7 +819,6 @@ public class TestODataQueryService extends BasicReusableHostTestCase {
         document2.tags.add("STRING Y");
         postExample(document2);
 
-
         String queryString = "$filter=tags.item all 'STRING X;STRING Y'";
 
         Map<String, Object> out = doFactoryServiceQuery(queryString, false);
@@ -826,6 +827,78 @@ public class TestODataQueryService extends BasicReusableHostTestCase {
         ExampleService.ExampleServiceState outState1 = Utils.fromJson(
                 out.get(document2.documentSelfLink), ExampleService.ExampleServiceState.class);
         assertTrue(outState1.name.equals(document2.name));
+    }
+
+    private void testMapKeyQuery() throws Throwable {
+        this.host.deleteAllChildServices(UriUtils.buildUri(this.host, ExampleService.FACTORY_LINK));
+        ExampleService.ExampleServiceState document1 = new ExampleService.ExampleServiceState();
+        document1.name = "Java 7";
+        document1.keyValues.put("version", "7");
+        document1.keyValues.put("arch", "arm32");
+        postExample(document1);
+
+        ExampleService.ExampleServiceState document2 = new ExampleService.ExampleServiceState();
+        document2.name = "Java";
+        document2.keyValues.put("sdk-version", "7");
+        document2.keyValues.put("arch", "arm64");
+        postExample(document2);
+
+        String queryString = "$filter=keyValues.__key eq 'version'";
+
+        Map<String, Object> out = doFactoryServiceQuery(queryString, false);
+        assertNotNull(out);
+        assertEquals(1, out.keySet().size());
+        ExampleService.ExampleServiceState outState1 = Utils.fromJson(
+                out.get(document1.documentSelfLink), ExampleService.ExampleServiceState.class);
+        assertTrue(outState1.name.equals(document1.name));
+
+        queryString = "$filter=keyValues.__key eq '*version'";
+
+        out = doFactoryServiceQuery(queryString, false);
+        assertNotNull(out);
+        assertEquals(2, out.keySet().size());
+        outState1 = Utils.fromJson(
+                out.get(document1.documentSelfLink), ExampleService.ExampleServiceState.class);
+        assertTrue(outState1.name.equals(document1.name));
+        ExampleService.ExampleServiceState outState2 = Utils.fromJson(
+                out.get(document2.documentSelfLink), ExampleService.ExampleServiceState.class);
+        assertTrue(outState2.name.equals(document2.name));
+    }
+
+    private void testMapValueQuery() throws Throwable {
+        this.host.deleteAllChildServices(UriUtils.buildUri(this.host, ExampleService.FACTORY_LINK));
+        ExampleService.ExampleServiceState document1 = new ExampleService.ExampleServiceState();
+        document1.name = "Java 7";
+        document1.keyValues.put("version", "7");
+        document1.keyValues.put("arch", "arm32");
+        postExample(document1);
+
+        ExampleService.ExampleServiceState document2 = new ExampleService.ExampleServiceState();
+        document2.name = "Java";
+        document2.keyValues.put("sdk-version", "7");
+        document2.keyValues.put("arch", "arm64");
+        postExample(document2);
+
+        String queryString = "$filter=keyValues.__value eq '7'";
+
+        Map<String, Object> out = doFactoryServiceQuery(queryString, false);
+        assertNotNull(out);
+        assertEquals(2, out.keySet().size());
+        ExampleService.ExampleServiceState outState1 = Utils.fromJson(
+                out.get(document1.documentSelfLink), ExampleService.ExampleServiceState.class);
+        assertTrue(outState1.name.equals(document1.name));
+        ExampleService.ExampleServiceState outState2 = Utils.fromJson(
+                out.get(document2.documentSelfLink), ExampleService.ExampleServiceState.class);
+        assertTrue(outState2.name.equals(document2.name));
+
+        queryString = "$filter=keyValues.__value eq 'arm64'";
+
+        out = doFactoryServiceQuery(queryString, false);
+        assertNotNull(out);
+        assertEquals(1, out.keySet().size());
+        outState2 = Utils.fromJson(
+                out.get(document2.documentSelfLink), ExampleService.ExampleServiceState.class);
+        assertTrue(outState2.name.equals(document2.name));
     }
 
     private ServiceDocumentQueryResult doQuery(String query, boolean remote) throws Throwable {
