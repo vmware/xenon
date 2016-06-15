@@ -20,13 +20,19 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.logging.Level;
 
+import com.vmware.xenon.common.NodeSelectorService.SelectAndForwardRequest;
+import com.vmware.xenon.common.NodeSelectorService.SelectOwnerResponse;
+import com.vmware.xenon.common.NodeSelectorState;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Operation.CompletionHandler;
 import com.vmware.xenon.common.OperationJoin;
 import com.vmware.xenon.common.OperationJoin.JoinedCompletionHandler;
 import com.vmware.xenon.common.Service;
 import com.vmware.xenon.common.ServiceHost;
+import com.vmware.xenon.common.ServiceStats;
+import com.vmware.xenon.common.ServiceStats.ServiceStat;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
 import com.vmware.xenon.services.common.NodeGroupService.NodeGroupState;
@@ -62,32 +68,91 @@ public class NodeGroupUtils {
     public static void checkServiceAvailability(CompletionHandler ch, ServiceHost host,
             URI service,
             String selectorPath) {
-        URI available = UriUtils.buildAvailableUri(service);
+        URI statsUri = UriUtils.buildStatsUri(service);
 
         if (selectorPath == null) {
             throw new IllegalArgumentException("selectorPath is required");
         }
-        // we are in multiple node mode, create a broadcast URI since replicated
-        // factories will only be marked available on one node, the owner for the factory
-        available = UriUtils.buildBroadcastRequestUri(available, selectorPath, service.getPath());
 
-        Operation get = Operation.createGet(available).setCompletion((o, e) -> {
+        // Create operation to retrieve stats. This completion will execute after
+        // we determine the owner node
+        Operation get = Operation.createGet(statsUri).setCompletion((o, e) -> {
             if (e != null) {
-                // the broadcast request itself failed
+                host.log(Level.WARNING, "%s to %s failed: %s",
+                        o.getAction(), o.getUri(), e.toString());
                 ch.handle(null, e);
                 return;
             }
 
-            NodeGroupBroadcastResponse rsp = o.getBody(NodeGroupBroadcastResponse.class);
-            // we expect at least one node to not return failure, when its factory is ready
-            if (rsp.failures.size() < rsp.availableNodeCount) {
-                ch.handle(o, null);
+            ServiceStats s = o.getBody(ServiceStats.class);
+            ServiceStat availableStat = s.entries.get(Service.STAT_NAME_AVAILABLE);
+
+            if (availableStat == null || availableStat.latestValue == Service.STAT_VALUE_FALSE) {
+                ch.handle(o, new IllegalStateException("not available"));
                 return;
             }
 
-            ch.handle(o, new IllegalStateException("All services on all nodes not available"));
+            // We just need one service to report available, and it will be the owner if owner
+            // selection is enabled. However, availability needs to be set after the latest node
+            // group change, on that node. Its OK to compare time from the *same* node
+            // since the runtime uses a proper, always forward moving time value. We use it as an
+            // "epoch" indicator, that helps us determine if the available stat is relevant to the
+            // latest node group state
+            validateServiceAvailabilityWithNodeGroup(ch, host, o.getUri(), selectorPath,
+                    o,
+                    availableStat);
         });
-        host.sendRequest(get.setReferer(host.getPublicUri()));
+        get.setReferer(host.getPublicUri())
+                .setExpiration(Utils.getNowMicrosUtc() + host.getOperationTimeoutMicros());
+
+        URI nodeSelector = UriUtils.buildUri(service, selectorPath);
+        SelectAndForwardRequest req = new SelectAndForwardRequest();
+        req.key = service.getPath();
+
+        Operation selectPost = Operation.createPost(nodeSelector)
+                .setReferer(host.getPublicUri())
+                .setBodyNoCloning(req);
+        selectPost.setCompletion((o, e) -> {
+            if (e != null) {
+                host.log(Level.WARNING, "SelectOwner for %s to %s failed: %s",
+                        req.key, nodeSelector, e.toString());
+                ch.handle(get, e);
+                return;
+            }
+            SelectOwnerResponse selectRsp = o.getBody(SelectOwnerResponse.class);
+            URI serviceOnOwner = UriUtils.buildUri(selectRsp.ownerNodeGroupReference,
+                    statsUri.getPath());
+            get.setUri(serviceOnOwner).sendWith(host);
+        }).sendWith(host);
+    }
+
+    private static void validateServiceAvailabilityWithNodeGroup(CompletionHandler ch,
+            ServiceHost host, URI availableService, String selectorPath,
+            Operation broadcastOp,
+            ServiceStat availableStat) {
+        Operation getSelectorState = Operation
+                .createGet(UriUtils.buildUri(availableService, selectorPath));
+        getSelectorState.setCompletion((o, e) -> {
+            if (e != null) {
+                host.log(Level.WARNING, "%s to %s failed: %s",
+                        o.getAction(), o.getUri(), e.toString());
+                ch.handle(broadcastOp, e);
+                return;
+            }
+            NodeSelectorState rsp = o.getBody(NodeSelectorState.class);
+            if (rsp.membershipUpdateTimeMicros > availableStat.lastUpdateMicrosUtc) {
+                String msg = String.format(
+                        "Service %s not available (node group time:%d > stat time:%d)",
+                        availableService,
+                        rsp.documentUpdateTimeMicros,
+                        availableStat.lastUpdateMicrosUtc);
+                host.log(Level.INFO, msg);
+                ch.handle(broadcastOp, new IllegalStateException(msg));
+                return;
+            }
+
+            ch.handle(broadcastOp, null);
+        }).setReferer(host.getPublicUri()).sendWith(host);
     }
 
     /**

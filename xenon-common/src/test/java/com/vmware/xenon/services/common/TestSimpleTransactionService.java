@@ -135,6 +135,7 @@ public class TestSimpleTransactionService extends BasicReusableHostTestCase {
 
     @Test
     public void testBasicCRUD() throws Throwable {
+        this.defaultHost.log("Starting tx test");
         // create ACCOUNT accounts in a single transaction, commit, query and verify count
         String txid = newTransaction();
         createAccounts(txid, this.accountCount);

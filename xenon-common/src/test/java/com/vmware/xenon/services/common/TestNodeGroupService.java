@@ -436,6 +436,10 @@ public class TestNodeGroupService {
         this.host.waitForNodeSelectorQuorumConvergence(CUSTOM_GROUP_NODE_SELECTOR, 2);
 
         URI observerFactoryUri = UriUtils.buildUri(observerHostUri, customFactoryLink);
+
+        this.host.waitForReplicatedFactoryServiceAvailable(observerFactoryUri,
+                CUSTOM_GROUP_NODE_SELECTOR);
+
         // create N services on the custom group, verify none of them got created on the observer.
         // We actually post directly to the observer node, which should forward to the other nodes
         Map<URI, ExampleServiceState> serviceStatesOnPost = this.host.doFactoryChildServiceStart(
