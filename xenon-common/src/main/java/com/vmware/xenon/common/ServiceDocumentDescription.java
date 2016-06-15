@@ -139,6 +139,12 @@ public class ServiceDocumentDescription {
         EXPAND,
 
         /**
+         * Directs the indexing service to index the key and value pairs of a MAP
+         * using the name of the MAP field name.
+         */
+        MAP_ENTRIES,
+
+        /**
          * Directs the indexing service to store but not index this field
          */
         STORE_ONLY,
