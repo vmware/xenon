@@ -57,6 +57,12 @@
 * Add Operation.toggleOption and Operation.hasOption to allow direct manipulation
   of operation options and reduce code in Operation class methods
 
+* Add support for OData to filter by all searchable fields of a document.
+  Using "ALL_FIELDS" as a property name in a typical OData filter, e.g.
+  /documents?$filter=ALL_FIELDS eq foo, will unfold the search to all indexed
+  fields of document and their sub-fields nested up to 2 levels, excluding the
+  build-in ServiceDocument fields.
+
 ## 0.8.1
 
 * Add support for expiration on stateful in-memory services. We now
