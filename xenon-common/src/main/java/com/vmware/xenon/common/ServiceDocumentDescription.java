@@ -139,6 +139,12 @@ public class ServiceDocumentDescription {
         EXPAND,
 
         /**
+         * Directs the indexing service to ensure the indexing property name will be a fixed
+         * value, matching that of the field itself. Applicable for MAP
+         */
+        FIXED_ITEM_NAME,
+
+        /**
          * Directs the indexing service to store but not index this field
          */
         STORE_ONLY,
