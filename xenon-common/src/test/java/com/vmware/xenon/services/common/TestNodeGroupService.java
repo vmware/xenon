@@ -41,6 +41,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiPredicate;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.logging.Logger;
 
 import org.junit.After;
 import org.junit.Before;
@@ -367,6 +368,14 @@ public class TestNodeGroupService {
 
     @Test
     public void customNodeGroupWithObservers() throws Throwable {
+        for (int i = 0; i < this.iterationCount; i++) {
+            Logger.getAnonymousLogger().info("Iteration: " + i);
+            verifyCustomNodeGroupWithObservers();
+            tearDown();
+        }
+    }
+
+    private void verifyCustomNodeGroupWithObservers() throws Throwable {
         setUp(this.nodeCount);
         // on one of the hosts create the custom group but with self as an observer. That peer should
         // never receive replicated or broadcast requests

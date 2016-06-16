@@ -24,7 +24,6 @@ import java.util.logging.Level;
 
 import com.vmware.xenon.common.NodeSelectorService.SelectAndForwardRequest;
 import com.vmware.xenon.common.NodeSelectorService.SelectOwnerResponse;
-import com.vmware.xenon.common.NodeSelectorState;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Operation.CompletionHandler;
 import com.vmware.xenon.common.OperationJoin;
@@ -96,15 +95,7 @@ public class NodeGroupUtils {
                 return;
             }
 
-            // We just need one service to report available, and it will be the owner if owner
-            // selection is enabled. However, availability needs to be set after the latest node
-            // group change, on that node. Its OK to compare time from the *same* node
-            // since the runtime uses a proper, always forward moving time value. We use it as an
-            // "epoch" indicator, that helps us determine if the available stat is relevant to the
-            // latest node group state
-            validateServiceAvailabilityWithNodeGroup(ch, host, o.getUri(), selectorPath,
-                    o,
-                    availableStat);
+            ch.handle(o, null);
         });
         get.setReferer(host.getPublicUri())
                 .setExpiration(Utils.getNowMicrosUtc() + host.getOperationTimeoutMicros());
@@ -128,35 +119,6 @@ public class NodeGroupUtils {
                     statsUri.getPath());
             get.setUri(serviceOnOwner).sendWith(host);
         }).sendWith(host);
-    }
-
-    private static void validateServiceAvailabilityWithNodeGroup(CompletionHandler ch,
-            ServiceHost host, URI availableService, String selectorPath,
-            Operation broadcastOp,
-            ServiceStat availableStat) {
-        Operation getSelectorState = Operation
-                .createGet(UriUtils.buildUri(availableService, selectorPath));
-        getSelectorState.setCompletion((o, e) -> {
-            if (e != null) {
-                host.log(Level.WARNING, "%s to %s failed: %s",
-                        o.getAction(), o.getUri(), e.toString());
-                ch.handle(broadcastOp, e);
-                return;
-            }
-            NodeSelectorState rsp = o.getBody(NodeSelectorState.class);
-            if (rsp.membershipUpdateTimeMicros > availableStat.lastUpdateMicrosUtc) {
-                String msg = String.format(
-                        "Service %s not available (node group time:%d > stat time:%d)",
-                        availableService,
-                        rsp.documentUpdateTimeMicros,
-                        availableStat.lastUpdateMicrosUtc);
-                host.log(Level.INFO, msg);
-                ch.handle(broadcastOp, new IllegalStateException(msg));
-                return;
-            }
-
-            ch.handle(broadcastOp, null);
-        }).setReferer(host.getPublicUri()).sendWith(host);
     }
 
     /**

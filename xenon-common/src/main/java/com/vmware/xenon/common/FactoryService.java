@@ -857,6 +857,9 @@ public abstract class FactoryService extends StatelessService {
             return;
         }
 
+        // Become unavailable until synchronization is complete.
+        // If we are not the owner, we stay unavailable
+        setAvailable(false);
         OperationContext opContext = OperationContext.getOperationContext();
         // Only one node is responsible for synchronizing the child services of a given factory.
         // Ask the runtime if this is the owner node, using the factory self link as the key.
@@ -871,8 +874,7 @@ public abstract class FactoryService extends StatelessService {
             }
             SelectOwnerResponse rsp = o.getBody(SelectOwnerResponse.class);
             if (rsp.isLocalHostOwner == false) {
-                // We do not need to do anything. A peer factory will update our
-                // status to available, when its done synchronizing everyone
+                // We do not need to do anything
                 maintOp.complete();
                 return;
             }
