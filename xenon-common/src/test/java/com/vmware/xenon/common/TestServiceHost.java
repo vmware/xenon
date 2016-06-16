@@ -904,6 +904,10 @@ public class TestServiceHost {
                 continue;
             }
 
+            Map<String, ServiceStat> mgmtStats = getManagementServiceStats();
+            int globalCacheClearCount = (int)mgmtStats.get(Service.STAT_NAME_GLOBAL_CACHE_CLEAR_COUNT)
+                    .latestValue;
+            assertTrue(globalCacheClearCount >= cacheClearCount);
             break;
         }
         long end = Utils.getNowMicrosUtc();
@@ -1398,6 +1402,13 @@ public class TestServiceHost {
                     throw new IllegalStateException("No resumes observed");
                 }
             }
+
+            Map<String, ServiceStat> mgmtStats = getManagementServiceStats();
+            int pauses = (int)mgmtStats.get(Service.STAT_NAME_GLOBAL_PAUSE_COUNT).latestValue;
+            int resumes = (int)mgmtStats.get(Service.STAT_NAME_GLOBAL_RESUME_COUNT).latestValue;
+
+            assertTrue(pauses >= states.size());
+            assertTrue(resumes >= states.size());
             return;
         }
 
@@ -1465,7 +1476,7 @@ public class TestServiceHost {
     }
 
     @Test
-    public void serviceStopDueToMemoryPressure() throws Throwable {
+    public void maintenanceForOnDemandLoadServices() throws Throwable {
         setUp(true);
 
         long maintenanceIntervalMillis = 100;
@@ -1473,8 +1484,6 @@ public class TestServiceHost {
                 .toMicros(maintenanceIntervalMillis);
 
         // induce host to clear service state cache by setting mem limit low
-        this.host.setServiceMemoryLimit(ServiceHost.ROOT_PATH, 0.0001);
-        this.host.setServiceMemoryLimit(LuceneDocumentIndexService.SELF_LINK, 0.0001);
         this.host.setMaintenanceIntervalMicros(maintenanceIntervalMicros);
         this.host.setServiceCacheClearDelayMicros(maintenanceIntervalMicros / 2);
         this.host.start();
@@ -1493,9 +1502,6 @@ public class TestServiceHost {
         // guarantee at least a few intervals have passed.
         Thread.sleep(maintenanceIntervalMillis * 10);
 
-        // restore memory limit so we don't keep re-pausing/resuming services every time we talk to them.
-        this.host.setServiceMemoryLimit(ServiceHost.ROOT_PATH, ServiceHost.DEFAULT_PCT_MEMORY_LIMIT);
-
         // Let's verify now that all of the services have stopped by now.
         int stoppedCount = 0;
         Date exp = this.host.getTestExpiration();
@@ -1507,14 +1513,21 @@ public class TestServiceHost {
                     stoppedCount++;
                 }
             }
-
             if (stoppedCount == this.serviceCount) {
                 break;
             }
         }
-
         this.host.log("Total services stopped:" + stoppedCount);
         assertTrue("Not all services stopped.", stoppedCount == this.serviceCount);
+
+        Map<String, ServiceStat> stats = getManagementServiceStats();
+        ServiceStat odlStops = stats.get(Service.STAT_NAME_GLOBAL_ODL_STOP_COUNT);
+        ServiceStat odlCacheClears = stats.get(Service.STAT_NAME_GLOBAL_ODL_CACHE_CLEAR_COUNT);
+        ServiceStat cacheClears = stats.get(Service.STAT_NAME_GLOBAL_CACHE_CLEAR_COUNT);
+
+        assertTrue(odlStops.latestValue == this.serviceCount);
+        assertTrue(odlCacheClears.latestValue == this.serviceCount);
+        assertTrue(cacheClears.latestValue == this.serviceCount);
     }
 
     private void patchExampleServices(Map<URI, ExampleServiceState> states, int count)
@@ -1531,6 +1544,25 @@ public class TestServiceHost {
             }
         }
         this.host.testWait();
+    }
+
+    private Map<String, ServiceStat> getManagementServiceStats() throws Throwable {
+        Map<String, ServiceStat> stats = Collections.synchronizedMap(new HashMap<>());
+        this.host.testStart(1);
+        Operation getManagementStats = Operation.createGet(
+                UriUtils.buildStatsUri(this.host.getManagementServiceUri()))
+                .setCompletion((o, e) -> {
+                    if (e != null) {
+                        this.host.failIteration(e);
+                        return;
+                    }
+                    ServiceStats response = o.getBody(ServiceStats.class);
+                    stats.putAll(response.entries);
+                    this.host.completeIteration();
+                });
+        this.host.send(getManagementStats);
+        this.host.testWait();
+        return stats;
     }
 
     @Test
