@@ -502,7 +502,6 @@ class ServiceSynchronizationTracker {
             maintOp.setBodyNoCloning(body);
 
             long n = now;
-            // allow overlapping node group change maintenance requests
             this.host
                     .run(() -> {
                         OperationContext.setAuthorizationContext(this.host

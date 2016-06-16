@@ -24,7 +24,6 @@ import java.util.logging.Level;
 
 import com.vmware.xenon.common.NodeSelectorService.SelectAndForwardRequest;
 import com.vmware.xenon.common.NodeSelectorService.SelectOwnerResponse;
-import com.vmware.xenon.common.NodeSelectorState;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Operation.CompletionHandler;
 import com.vmware.xenon.common.OperationJoin;
@@ -90,8 +89,11 @@ public class NodeGroupUtils {
 
             ServiceStats s = o.getBody(ServiceStats.class);
             ServiceStat availableStat = s.entries.get(Service.STAT_NAME_AVAILABLE);
+            ServiceStat nodeGroupMaintCountStat = s.entries.get(
+                    Service.STAT_NAME_NODE_GROUP_CHANGE_MAINTENANCE_COUNT);
 
-            if (availableStat == null || availableStat.latestValue == Service.STAT_VALUE_FALSE) {
+            if (nodeGroupMaintCountStat == null || availableStat == null
+                    || availableStat.latestValue == Service.STAT_VALUE_FALSE) {
                 ch.handle(o, new IllegalStateException("not available"));
                 return;
             }
@@ -102,10 +104,20 @@ public class NodeGroupUtils {
             // since the runtime uses a proper, always forward moving time value. We use it as an
             // "epoch" indicator, that helps us determine if the available stat is relevant to the
             // latest node group state
-            validateServiceAvailabilityWithNodeGroup(ch, host, o.getUri(), selectorPath,
-                    o,
-                    availableStat);
+            if (nodeGroupMaintCountStat.lastUpdateMicrosUtc > availableStat.lastUpdateMicrosUtc) {
+                String msg = String.format(
+                        "Service %s not available (node group maint. time:%d > stat time:%d)",
+                        nodeGroupMaintCountStat.lastUpdateMicrosUtc,
+                        availableStat.lastUpdateMicrosUtc,
+                        availableStat.lastUpdateMicrosUtc);
+                host.log(Level.INFO, msg);
+                ch.handle(o, new IllegalStateException(msg));
+                return;
+            }
+
+            ch.handle(o, null);
         });
+
         get.setReferer(host.getPublicUri())
                 .setExpiration(Utils.getNowMicrosUtc() + host.getOperationTimeoutMicros());
 
@@ -128,35 +140,6 @@ public class NodeGroupUtils {
                     statsUri.getPath());
             get.setUri(serviceOnOwner).sendWith(host);
         }).sendWith(host);
-    }
-
-    private static void validateServiceAvailabilityWithNodeGroup(CompletionHandler ch,
-            ServiceHost host, URI availableService, String selectorPath,
-            Operation broadcastOp,
-            ServiceStat availableStat) {
-        Operation getSelectorState = Operation
-                .createGet(UriUtils.buildUri(availableService, selectorPath));
-        getSelectorState.setCompletion((o, e) -> {
-            if (e != null) {
-                host.log(Level.WARNING, "%s to %s failed: %s",
-                        o.getAction(), o.getUri(), e.toString());
-                ch.handle(broadcastOp, e);
-                return;
-            }
-            NodeSelectorState rsp = o.getBody(NodeSelectorState.class);
-            if (rsp.membershipUpdateTimeMicros > availableStat.lastUpdateMicrosUtc) {
-                String msg = String.format(
-                        "Service %s not available (node group time:%d > stat time:%d)",
-                        availableService,
-                        rsp.documentUpdateTimeMicros,
-                        availableStat.lastUpdateMicrosUtc);
-                host.log(Level.INFO, msg);
-                ch.handle(broadcastOp, new IllegalStateException(msg));
-                return;
-            }
-
-            ch.handle(broadcastOp, null);
-        }).setReferer(host.getPublicUri()).sendWith(host);
     }
 
     /**
