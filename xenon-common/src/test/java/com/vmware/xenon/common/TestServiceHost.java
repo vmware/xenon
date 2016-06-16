@@ -1294,10 +1294,12 @@ public class TestServiceHost {
         // set memory limit low to force service pause
         this.host.setServiceMemoryLimit(ServiceHost.ROOT_PATH, 0.00001);
         beforeHostStart(this.host);
+
         this.host.setPort(0);
         long delayMicros = TimeUnit.SECONDS
                 .toMicros(this.serviceCacheClearDelaySeconds);
         this.host.setServiceCacheClearDelayMicros(delayMicros);
+
         // disable auto sync since it might cause a false negative (skipped pauses) when
         // it kicks in within a few milliseconds from host start, during induced pause
         this.host.setPeerSynchronizationEnabled(false);
@@ -1460,6 +1462,59 @@ public class TestServiceHost {
             }
             this.host.testWait();
         }
+    }
+
+    @Test
+    public void serviceStopDueToMemoryPressure() throws Throwable {
+        setUp(true);
+
+        long maintenanceIntervalMillis = 100;
+        long maintenanceIntervalMicros = TimeUnit.MILLISECONDS
+                .toMicros(maintenanceIntervalMillis);
+
+        // induce host to clear service state cache by setting mem limit low
+        this.host.setServiceMemoryLimit(ServiceHost.ROOT_PATH, 0.0001);
+        this.host.setServiceMemoryLimit(LuceneDocumentIndexService.SELF_LINK, 0.0001);
+        this.host.setMaintenanceIntervalMicros(maintenanceIntervalMicros);
+        this.host.setServiceCacheClearDelayMicros(maintenanceIntervalMicros / 2);
+        this.host.start();
+
+        // Start some test services with ServiceOption.ON_DEMAND_LOAD
+        EnumSet<ServiceOption> caps = EnumSet.of(ServiceOption.PERSISTENCE,
+                ServiceOption.INSTRUMENTATION, ServiceOption.ON_DEMAND_LOAD, ServiceOption.FACTORY_ITEM);
+        List<Service> services = this.host.doThroughputServiceStart(this.serviceCount,
+                MinimalTestService.class, this.host.buildMinimalTestState(), caps, null);
+
+        // Also, start the factory service. it will need it to start services on-demand
+        MinimalFactoryTestService factoryService = new MinimalFactoryTestService();
+        factoryService.setChildServiceCaps(caps);
+        this.host.startServiceAndWait(factoryService, "service", null);
+
+        // guarantee at least a few intervals have passed.
+        Thread.sleep(maintenanceIntervalMillis * 10);
+
+        // restore memory limit so we don't keep re-pausing/resuming services every time we talk to them.
+        this.host.setServiceMemoryLimit(ServiceHost.ROOT_PATH, ServiceHost.DEFAULT_PCT_MEMORY_LIMIT);
+
+        // Let's verify now that all of the services have stopped by now.
+        int stoppedCount = 0;
+        Date exp = this.host.getTestExpiration();
+        while (new Date().before(exp)) {
+            stoppedCount = 0;
+            for (Service svc : services) {
+                MinimalTestService service = (MinimalTestService) svc;
+                if (service.gotStopped) {
+                    stoppedCount++;
+                }
+            }
+
+            if (stoppedCount == this.serviceCount) {
+                break;
+            }
+        }
+
+        this.host.log("Total services stopped:" + stoppedCount);
+        assertTrue("Not all services stopped.", stoppedCount == this.serviceCount);
     }
 
     private void patchExampleServices(Map<URI, ExampleServiceState> states, int count)
