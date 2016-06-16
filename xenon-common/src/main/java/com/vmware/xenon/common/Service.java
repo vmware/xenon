@@ -305,6 +305,13 @@ public interface Service extends ServiceRequestSender {
     static final String STAT_NAME_PAUSE_COUNT = "pauseCount";
     static final String STAT_NAME_RESUME_COUNT = "resumeCount";
 
+    // Global stats tracked by ServiceHostManagementService
+    static final String STAT_NAME_SERVICE_PAUSE_COUNT = "servicePauseCount";
+    static final String STAT_NAME_SERVICE_RESUME_COUNT = "serviceResumeCount";
+    static final String STAT_NAME_SERVICE_CACHE_CLEAR_COUNT = "serviceCacheClearCount";
+    static final String STAT_NAME_ODL_CACHE_CLEAR_COUNT = "onDemandLoadCacheClearCount";
+    static final String STAT_NAME_ODL_STOP_COUNT = "onDemandLoadStopCount";
+
     /**
      * Estimate on run time context cost in bytes, per service instance. Services should not use instanced
      * fields, so, other than queuing context and utility service usage, the memory overhead should be small

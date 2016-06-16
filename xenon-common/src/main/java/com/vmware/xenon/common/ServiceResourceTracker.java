@@ -180,7 +180,13 @@ class ServiceResourceTracker {
                 .disableFailureLogging(true)
                 .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_NO_INDEX_UPDATE)
                 .setReplicationDisabled(true)
-                .setReferer(this.host.getUri());
+                .setReferer(this.host.getUri())
+                .setCompletion((o, e) -> {
+                    if (s.hasOption(ServiceOption.ON_DEMAND_LOAD)) {
+                        this.host.getManagementService()
+                                .adjustStat(Service.STAT_NAME_ODL_STOP_COUNT, 1);
+                    }
+                });
         this.host.sendRequest(deleteExp);
 
         clearCachedServiceState(servicePath, op);
@@ -188,12 +194,14 @@ class ServiceResourceTracker {
 
     public void clearCachedServiceState(String servicePath, Operation op) {
         if (!isTransactional(op)) {
-            this.cachedServiceStates.remove(servicePath);
+            ServiceDocument doc = this.cachedServiceStates.remove(servicePath);
             Service s = this.host.findService(servicePath, true);
             if (s == null) {
                 return;
             }
-            s.adjustStat(Service.STAT_NAME_CACHE_CLEAR_COUNT, 1);
+            if (doc != null) {
+                updateCacheClearStats(s);
+            }
             return;
         }
 
@@ -203,12 +211,24 @@ class ServiceResourceTracker {
     public void clearTransactionalCachedServiceState(String servicePath, String transactionId) {
         CachedServiceStateKey key = new CachedServiceStateKey(servicePath,
                 transactionId);
-        this.cachedTransactionalServiceStates.remove(key);
+        ServiceDocument doc = this.cachedTransactionalServiceStates.remove(key);
         Service s = this.host.findService(servicePath, true);
         if (s == null) {
             return;
         }
+        if (doc != null) {
+            updateCacheClearStats(s);
+        }
+    }
+
+    private void updateCacheClearStats(Service s) {
         s.adjustStat(Service.STAT_NAME_CACHE_CLEAR_COUNT, 1);
+        this.host.getManagementService().adjustStat(
+                Service.STAT_NAME_SERVICE_CACHE_CLEAR_COUNT, 1);
+        if (s.hasOption(ServiceOption.ON_DEMAND_LOAD)) {
+            this.host.getManagementService().adjustStat(
+                    Service.STAT_NAME_ODL_CACHE_CLEAR_COUNT, 1);
+        }
     }
 
     /**
@@ -378,6 +398,7 @@ class ServiceResourceTracker {
                                 hostState.serviceCount--;
                             }
                         }
+                        this.host.getManagementService().adjustStat(Service.STAT_NAME_SERVICE_PAUSE_COUNT, 1);
                     }));
         }
         this.host.log(Level.INFO, "Paused %d services, attached: %d, cached: %d", servicePauseCount,
@@ -500,6 +521,8 @@ class ServiceResourceTracker {
 
                             Service resumedService = (Service) o.getBodyRaw();
                             resumeService(path, resumedService);
+
+                            this.host.getManagementService().adjustStat(Service.STAT_NAME_SERVICE_RESUME_COUNT, 1);
                             this.host.handleRequest(null, inboundOp);
                         });
 

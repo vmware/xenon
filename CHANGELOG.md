@@ -1,6 +1,9 @@
 # CHANGELOG
 
 ## 0.8.2-SNAPSHOT
+* Add global stats for total service pauses, resumes, cache clears
+  and ON_DEMAND_LOAD service stops on /core/management service.
+
 * Add PropertyUsageOption.REQUIRED to describe fields that are required.
 
 * Add validateState(description, state) to Utils to validate fields that
