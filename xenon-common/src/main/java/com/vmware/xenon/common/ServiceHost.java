@@ -476,6 +476,7 @@ public class ServiceHost implements ServiceRequestSender {
     private Service documentIndexService;
     private Service authorizationService;
     private Service transactionService;
+    private Service managementService;
     private SystemHostInfo info = new SystemHostInfo();
     private ServiceClient client;
 
@@ -485,6 +486,7 @@ public class ServiceHost implements ServiceRequestSender {
     private URI documentIndexServiceUri;
     private URI authorizationServiceUri;
     private URI transactionServiceUri;
+    private URI managementServiceUri;
     private ScheduledFuture<?> maintenanceTask;
 
     private final ServiceSynchronizationTracker serviceSynchTracker = ServiceSynchronizationTracker
@@ -588,6 +590,9 @@ public class ServiceHost implements ServiceRequestSender {
 
         LuceneDocumentIndexService documentIndexService = new LuceneDocumentIndexService();
         setDocumentIndexingService(documentIndexService);
+
+        ServiceHostManagementService managementService = new ServiceHostManagementService();
+        setManagementService(managementService);
 
         this.state.codeProperties = FileUtils.readPropertiesFromResource(this.getClass(),
                 GIT_COMMIT_PROPERTIES_RESOURCE_NAME);
@@ -1034,6 +1039,17 @@ public class ServiceHost implements ServiceRequestSender {
         return this.transactionServiceUri;
     }
 
+    public URI getManagementServiceUri() {
+        if (this.managementService == null) {
+            return null;
+        }
+        if (this.managementServiceUri != null) {
+            return this.managementServiceUri;
+        }
+        this.managementServiceUri = this.managementService.getUri();
+        return this.managementServiceUri;
+    }
+
     public ServiceHost setDocumentIndexingService(Service service) {
         if (this.state.isStarted) {
             throw new IllegalStateException("Host is started");
@@ -1053,6 +1069,18 @@ public class ServiceHost implements ServiceRequestSender {
     public ServiceHost setTransactionService(Service service) {
         this.transactionService = service;
         return this;
+    }
+
+    public ServiceHost setManagementService(Service service) {
+        if (this.state.isStarted) {
+            throw new IllegalStateException("Host is started");
+        }
+        this.managementService = service;
+        return this;
+    }
+
+    Service getManagementService() {
+        return this.managementService;
     }
 
     public ScheduledExecutorService getScheduledExecutor() {
@@ -1204,7 +1232,7 @@ public class ServiceHost implements ServiceRequestSender {
             throw new IllegalStateException("Already started");
         }
 
-        addPrivilegedService(ServiceHostManagementService.class);
+        addPrivilegedService(this.managementService.getClass());
         addPrivilegedService(OperationIndexService.class);
         addPrivilegedService(LuceneBlobIndexService.class);
         addPrivilegedService(BasicAuthenticationService.class);
@@ -1242,7 +1270,7 @@ public class ServiceHost implements ServiceRequestSender {
         }
 
         List<Service> coreServices = new ArrayList<>();
-        coreServices.add(new ServiceHostManagementService());
+        coreServices.add(this.managementService);
         coreServices.add(new ProcessFactoryService());
         coreServices.add(new ODataQueryService());
 
@@ -1268,7 +1296,7 @@ public class ServiceHost implements ServiceRequestSender {
         Service[] coreServiceArray = new Service[coreServices.size()];
         coreServices.toArray(coreServiceArray);
         startCoreServicesSynchronously(coreServiceArray);
-        this.transactionService = transactionFactoryService;
+        setTransactionService(transactionFactoryService);
 
         // start the log services in parallel and asynchronously
         startService(
