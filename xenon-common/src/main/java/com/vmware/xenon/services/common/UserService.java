@@ -13,12 +13,15 @@
 
 package com.vmware.xenon.services.common;
 
+import java.util.EnumSet;
 import java.util.Set;
 
 import com.vmware.xenon.common.FactoryService;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Service;
 import com.vmware.xenon.common.ServiceDocument;
+import com.vmware.xenon.common.ServiceDocumentDescription;
+import com.vmware.xenon.common.ServiceDocumentDescription.PropertyIndexingOption;
 import com.vmware.xenon.common.StatefulService;
 
 public class UserService extends StatefulService {
@@ -56,8 +59,7 @@ public class UserService extends StatefulService {
         if (!validate(op, state)) {
             return;
         }
-
-        op.complete();
+        AuthorizationCacheUtils.clearAuthzCacheForUser(this, op, state);
     }
 
     @Override
@@ -84,7 +86,7 @@ public class UserService extends StatefulService {
         } else {
             setState(op, newState);
         }
-        op.complete();
+        AuthorizationCacheUtils.clearAuthzCacheForUser(this, op, newState);
     }
 
     @Override
@@ -106,7 +108,13 @@ public class UserService extends StatefulService {
             }
         }
         op.setBody(currentState);
-        op.complete();
+        AuthorizationCacheUtils.clearAuthzCacheForUser(this, op, currentState);
+    }
+
+    @Override
+    public void handleDelete(Operation op) {
+        UserState currentState = getState(op);
+        AuthorizationCacheUtils.clearAuthzCacheForUser(this, op, currentState);
     }
 
     private boolean validate(Operation op, UserState state) {
@@ -126,5 +134,19 @@ public class UserService extends StatefulService {
         }
 
         return true;
+    }
+
+    @Override
+    public ServiceDocument getDocumentTemplate() {
+        ServiceDocument td = super.getDocumentTemplate();
+        ServiceDocumentDescription.PropertyDescription pdGroupLinks = td.documentDescription.propertyDescriptions
+                .get(UserState.FIELD_NAME_USER_GROUP_LINKS);
+        if (pdGroupLinks == null) {
+            throw new IllegalStateException(UserState.FIELD_NAME_USER_GROUP_LINKS
+                    + " property is missing in the service document");
+        }
+        pdGroupLinks.indexingOptions = EnumSet
+                .of(PropertyIndexingOption.EXPAND);
+        return td;
     }
 }

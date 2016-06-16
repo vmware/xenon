@@ -1254,6 +1254,7 @@ public class ServiceHost implements ServiceRequestSender {
         coreServices.add(ResourceGroupService.createFactory());
         addPrivilegedService(RoleService.class);
         coreServices.add(RoleService.createFactory());
+        addPrivilegedService(UserService.class);
         coreServices.add(UserService.createFactory());
         coreServices.add(TenantService.createFactory());
         coreServices.add(new SystemUserService());

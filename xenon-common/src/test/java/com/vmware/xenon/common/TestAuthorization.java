@@ -54,6 +54,8 @@ import com.vmware.xenon.services.common.QueryTask;
 import com.vmware.xenon.services.common.QueryTask.Query;
 import com.vmware.xenon.services.common.QueryTask.Query.Builder;
 import com.vmware.xenon.services.common.ResourceGroupService.ResourceGroupState;
+import com.vmware.xenon.services.common.UserGroupService;
+import com.vmware.xenon.services.common.UserService.UserState;
 
 public class TestAuthorization extends BasicTestCase {
 
@@ -484,10 +486,17 @@ public class TestAuthorization extends BasicTestCase {
         AuthorizationHelper authHelperForFoo = new AuthorizationHelper(this.host);
         String email = "foo@foo.com";
         String fooUserLink = authHelperForFoo.createUserService(this.host, email);
-        authHelperForFoo.createRoles(this.host, email);
+        UserState patchState = new UserState();
+        patchState.userGroupLinks = new HashSet<String>();
+        patchState.userGroupLinks.add(UriUtils.buildUriPath(
+                UserGroupService.FACTORY_LINK, authHelperForFoo.getUserGroupName(email)));
+        authHelperForFoo.patchUserService(this.host, fooUserLink, patchState);
+        // create a user group based on a query for userGroupLink
+        authHelperForFoo.createRoles(this.host, email, false);
         AuthorizationHelper authHelperForBar = new AuthorizationHelper(this.host);
         email = "bar@foo.com";
         String barUserLink = authHelperForBar.createUserService(this.host, email);
+        // create a user group based on the UserService email field
         authHelperForBar.createRoles(this.host, email);
         AuthorizationHelper authHelperForFooBar = new AuthorizationHelper(this.host);
         email = "foobar@foo.com";
@@ -562,6 +571,19 @@ public class TestAuthorization extends BasicTestCase {
         this.host.resetSystemAuthorizationContext();
         // verify that the the authz cache has been invalidated
         authContextFromCache = this.host.getAuthorizationContext(s, barAuthContext.getToken());
+        assertNull(authContextFromCache);
+        // assume identity as foo again
+        fooAuthContext = this.host.assumeIdentity(fooUserLink, null);
+        this.host.sendAndWaitExpectSuccess(
+                Operation.createGet(UriUtils.buildUri(this.host, ExampleService.FACTORY_LINK)));
+        authContextFromCache = this.host.getAuthorizationContext(s, fooAuthContext.getToken());
+        assertNotNull(authContextFromCache);
+        this.host.setSystemAuthorizationContext();
+        // delete the user service; the authz cache should be cleared
+        this.host.sendAndWaitExpectSuccess(
+                Operation.createDelete(UriUtils.buildUri(this.host, fooUserLink)));
+        this.host.resetSystemAuthorizationContext();
+        authContextFromCache = this.host.getAuthorizationContext(s, fooAuthContext.getToken());
         assertNull(authContextFromCache);
     }
 

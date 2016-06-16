@@ -29,10 +29,12 @@ import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
 import com.vmware.xenon.services.common.QueryTask;
 import com.vmware.xenon.services.common.QueryTask.Query;
 import com.vmware.xenon.services.common.QueryTask.Query.Builder;
+import com.vmware.xenon.services.common.QueryTask.QuerySpecification;
 import com.vmware.xenon.services.common.ResourceGroupService.ResourceGroupState;
 import com.vmware.xenon.services.common.RoleService.Policy;
 import com.vmware.xenon.services.common.RoleService.RoleState;
 import com.vmware.xenon.services.common.ServiceUriPaths;
+import com.vmware.xenon.services.common.UserGroupService;
 import com.vmware.xenon.services.common.UserGroupService.UserGroupState;
 import com.vmware.xenon.services.common.UserService.UserState;
 
@@ -71,6 +73,22 @@ public class AuthorizationHelper {
         return userUriPath[0];
     }
 
+    public void patchUserService(ServiceHost target, String userServiceLink, UserState userState) throws Throwable {
+        URI patchUserUri = UriUtils.buildUri(target, userServiceLink);
+        this.host.testStart(1);
+        this.host.send(Operation
+                .createPatch(patchUserUri)
+                .setBody(userState)
+                .setCompletion((o, e) -> {
+                    if (e != null) {
+                        this.host.failIteration(e);
+                        return;
+                    }
+                    this.host.completeIteration();
+                }));
+        this.host.testWait();
+    }
+
     public void setUserGroupLink(String userGroupLink) {
         this.userGroupLink = userGroupLink;
     }
@@ -84,18 +102,37 @@ public class AuthorizationHelper {
     }
 
     public Collection<String> createRoles(ServiceHost target, String email) throws Throwable {
+        return createRoles(target, email, true);
+    }
+
+    public String getUserGroupName(String email) {
+        String emailPrefix = email.substring(0, email.indexOf("@"));
+        return emailPrefix + "-user-group";
+    }
+
+    public Collection<String> createRoles(ServiceHost target, String email, boolean createUserGroupByEmail) throws Throwable {
         final Integer concurrentTasks = 6;
         this.host.testStart(concurrentTasks);
 
         String emailPrefix = email.substring(0, email.indexOf("@"));
+        String userGroupLink = null;
         // Create user group
-        String userGroupLink =
-                createUserGroup(target, emailPrefix + "-user-group", Builder.create()
+        if (createUserGroupByEmail) {
+            userGroupLink =  createUserGroup(target, getUserGroupName(email), Builder.create()
                         .addFieldClause(
                                 "email",
                                 email)
                         .build());
 
+        } else {
+            String groupName = getUserGroupName(email);
+            userGroupLink =  createUserGroup(target, groupName, Builder.create()
+                    .addFieldClause(
+                            QuerySpecification
+                            .buildCollectionItemName(UserState.FIELD_NAME_USER_GROUP_LINKS),
+                            UriUtils.buildUriPath(UserGroupService.FACTORY_LINK, groupName))
+                    .build());
+        }
         setUserGroupLink(userGroupLink);
 
         // Create resource group for example service state
