@@ -1280,30 +1280,7 @@ public class TestServiceHost {
 
     @Test
     public void servicePauseDueToMemoryPressure() throws Throwable {
-        setUp(true);
-
-        if (this.serviceCount >= 1000) {
-            this.host.setStressTest(true);
-        }
-
-        // Set the threshold low to induce it during this test, several times. This will
-        // verify that refreshing the index writer does not break the index semantics
-        LuceneDocumentIndexService
-                .setIndexFileCountThresholdForWriterRefresh(this.indexFileThreshold);
-
-        // set memory limit low to force service pause
-        this.host.setServiceMemoryLimit(ServiceHost.ROOT_PATH, 0.00001);
-        beforeHostStart(this.host);
-        this.host.setPort(0);
-        long delayMicros = TimeUnit.SECONDS
-                .toMicros(this.serviceCacheClearDelaySeconds);
-        this.host.setServiceCacheClearDelayMicros(delayMicros);
-        // disable auto sync since it might cause a false negative (skipped pauses) when
-        // it kicks in within a few milliseconds from host start, during induced pause
-        this.host.setPeerSynchronizationEnabled(false);
-        long delayMicrosAfter = this.host.getServiceCacheClearDelayMicros();
-        assertTrue(delayMicros == delayMicrosAfter);
-        this.host.start();
+        setupForMemoryPressureTests();
 
         AtomicLong selfLinkCounter = new AtomicLong();
         String prefix = "instance-";
@@ -1460,6 +1437,81 @@ public class TestServiceHost {
             }
             this.host.testWait();
         }
+    }
+
+    @Test
+    public void serviceStopDueToMemoryPressure() throws Throwable {
+        setupForMemoryPressureTests();
+
+        // Start some test services with ServiceOption.ON_DEMAND_LOAD
+        EnumSet<ServiceOption> caps = EnumSet.of(ServiceOption.PERSISTENCE,
+                ServiceOption.INSTRUMENTATION, ServiceOption.ON_DEMAND_LOAD, ServiceOption.FACTORY_ITEM);
+        List<Service> services = this.host.doThroughputServiceStart(this.serviceCount,
+                MinimalTestService.class, this.host.buildMinimalTestState(), caps, null);
+
+        // Also, start the factory service. it will need it to start services on-demand
+        MinimalFactoryTestService factoryService = new MinimalFactoryTestService();
+        factoryService.setChildServiceCaps(caps);
+        this.host.startServiceAndWait(factoryService, "service", null);
+
+        long opCount = 100;
+        if (this.testDurationSeconds > 0 || this.host.isStressTest()) {
+            opCount = 1;
+        }
+
+        // Perform some operations on all the services. This will cause some services to get stopped
+        // due to high memory pressure.
+        this.host.doPutPerService(opCount, EnumSet.of(TestProperty.FORCE_REMOTE), services);
+
+        long expectedStopTime = Utils.getNowMicrosUtc() + this.host.getMaintenanceIntervalMicros() * 5;
+        while (this.host.getState().lastMaintenanceTimeUtcMicros < expectedStopTime) {
+            // memory limits are applied during maintenance, so wait for a few intervals.
+            Thread.sleep(this.host.getMaintenanceIntervalMicros() / 1000);
+        }
+
+        // restore memory limit so we don't keep re-pausing/resuming services every time we talk to them.
+        this.host.setServiceMemoryLimit(ServiceHost.ROOT_PATH, ServiceHost.DEFAULT_PCT_MEMORY_LIMIT);
+
+        // Let's verify now that at-least some of the services got stopped.
+        int stoppedCount = 0;
+        for (Service svc : services) {
+            MinimalTestService service = (MinimalTestService)svc;
+            if (service.gotStopped) {
+                stoppedCount++;
+            }
+        }
+
+        assertTrue("None of the ON_DEMAND_LOAD services got stopped", stoppedCount > 0);
+        this.host.log("Total services stopped:" + stoppedCount);
+    }
+
+    private void setupForMemoryPressureTests() throws Throwable {
+        setUp(true);
+
+        if (this.serviceCount >= 1000) {
+            this.host.setStressTest(true);
+        }
+
+        // Set the threshold low to induce it during this test, several times. This will
+        // verify that refreshing the index writer does not break the index semantics
+        LuceneDocumentIndexService
+                .setIndexFileCountThresholdForWriterRefresh(this.indexFileThreshold);
+
+        // set memory limit low to force service pause
+        this.host.setServiceMemoryLimit(ServiceHost.ROOT_PATH, 0.00001);
+        beforeHostStart(this.host);
+
+        this.host.setPort(0);
+        long delayMicros = TimeUnit.SECONDS
+                .toMicros(this.serviceCacheClearDelaySeconds);
+        this.host.setServiceCacheClearDelayMicros(delayMicros);
+
+        // disable auto sync since it might cause a false negative (skipped pauses) when
+        // it kicks in within a few milliseconds from host start, during induced pause
+        this.host.setPeerSynchronizationEnabled(false);
+        long delayMicrosAfter = this.host.getServiceCacheClearDelayMicros();
+        assertTrue(delayMicros == delayMicrosAfter);
+        this.host.start();
     }
 
     private void patchExampleServices(Map<URI, ExampleServiceState> states, int count)
