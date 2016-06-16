@@ -93,24 +93,12 @@ public class TestSwaggerDescriptorService {
     public void getDescriptionInJson() throws Throwable {
         host.testStart(1);
 
-        try {
-            Operation op = Operation
-                    .createGet(UriUtils.buildUri(host, SwaggerDescriptorService.SELF_LINK))
-                    .setReferer(host.getUri())
-                    .setCompletion(host.getSafeHandler(this::assertDescriptorJson));
+        Operation op = Operation
+                .createGet(UriUtils.buildUri(host, SwaggerDescriptorService.SELF_LINK))
+                .setReferer(host.getUri())
+                .setCompletion(host.getSafeHandler(this::assertDescriptorJson));
 
-            host.sendRequest(op);
-        } catch (Exception e) {
-            if (e.getMessage().contains("Unparseable JSON body")) {
-                // Ignore failure
-                // Expecting GSON classloading issue to be fixed:
-                //  - https://github.com/google/gson/issues/764
-                //  - https://www.pivotaltracker.com/story/show/120885303
-                Utils.logWarning("GSON initialization failure: %s", e);
-            } else {
-                throw e;
-            }
-        }
+        host.sendRequest(op);
 
         host.testWait();
     }
@@ -165,7 +153,16 @@ public class TestSwaggerDescriptorService {
     private void assertDescriptorJson(Operation o, Throwable e) {
         if (e != null) {
             e.printStackTrace();
-            fail(e.getMessage());
+
+            if (e.getMessage().contains("Unparseable JSON body")) {
+                // Ignore failure
+                // Expecting GSON classloading issue to be fixed:
+                //  - https://github.com/google/gson/issues/764
+                //  - https://www.pivotaltracker.com/story/show/120885303
+                Utils.logWarning("GSON initialization failure: %s", e);
+            } else {
+                fail(e.getMessage());
+            }
         }
 
         try {
