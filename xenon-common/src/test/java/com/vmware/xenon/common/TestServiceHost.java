@@ -1462,6 +1462,52 @@ public class TestServiceHost {
         }
     }
 
+    @Test
+    public void serviceStopDueToMemoryPressure() throws Throwable {
+        setUp(true);
+
+        long maintenanceIntervalMillis = 100;
+        long maintenanceIntervalMicros = TimeUnit.MILLISECONDS
+                .toMicros(maintenanceIntervalMillis);
+
+        // induce host to clear service state cache by setting mem limit low
+        this.host.setServiceMemoryLimit(ServiceHost.ROOT_PATH, 0.0001);
+        this.host.setServiceMemoryLimit(LuceneDocumentIndexService.SELF_LINK, 0.0001);
+        this.host.setMaintenanceIntervalMicros(maintenanceIntervalMicros);
+        this.host.setServiceCacheClearDelayMicros(maintenanceIntervalMicros / 2);
+        this.host.start();
+
+        verifyMaintenanceDelayStat(maintenanceIntervalMicros);
+
+        // Start some test services with ServiceOption.ON_DEMAND_LOAD
+        EnumSet<ServiceOption> caps = EnumSet.of(ServiceOption.PERSISTENCE,
+                ServiceOption.INSTRUMENTATION, ServiceOption.ON_DEMAND_LOAD, ServiceOption.FACTORY_ITEM);
+        List<Service> services = this.host.doThroughputServiceStart(this.serviceCount,
+                MinimalTestService.class, this.host.buildMinimalTestState(), caps, null);
+
+        // Also, start the factory service. it will need it to start services on-demand
+        MinimalFactoryTestService factoryService = new MinimalFactoryTestService();
+        factoryService.setChildServiceCaps(caps);
+        this.host.startServiceAndWait(factoryService, "service", null);
+
+        // Perform some operations on all the services. This will cause some services to get stopped
+        // due to high memory pressure.
+        long opCount = 2;
+        this.host.doPutPerService(opCount, EnumSet.of(TestProperty.FORCE_REMOTE), services);
+
+        // Let's verify now that at-least some of the services got stopped.
+        int stoppedCount = 0;
+        for (Service svc : services) {
+            MinimalTestService service = (MinimalTestService)svc;
+            if (service.gotStopped) {
+                stoppedCount++;
+            }
+        }
+
+        assertTrue("None of the ON_DEMAND_LOAD services got stopped", stoppedCount > 0);
+        this.host.log("Total services stopped:" + stoppedCount);
+    }
+
     private void patchExampleServices(Map<URI, ExampleServiceState> states, int count)
             throws Throwable {
         this.host.testStart(states.size() * count);
