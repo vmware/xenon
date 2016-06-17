@@ -157,6 +157,8 @@ public class VerificationHost extends ExampleServiceHost {
 
     private TemporaryFolder temporaryFolder;
 
+    private String authToken;
+
     public static class ProcessInfo {
         public Long parentPid;
         public String name;
@@ -361,8 +363,15 @@ public class VerificationHost extends ExampleServiceHost {
     }
 
     public void send(Operation op) {
+        populateAuthToken(op);
         op.setReferer(getReferer());
         super.sendRequest(op);
+    }
+
+    private void populateAuthToken(Operation op) {
+        if (this.authToken != null) {
+            op.addRequestHeader(Operation.REQUEST_AUTH_TOKEN_HEADER, this.authToken);
+        }
     }
 
     /**
@@ -1211,6 +1220,7 @@ public class VerificationHost extends ExampleServiceHost {
                 getCompletion());
 
         updateOp.setAction(action);
+        populateAuthToken(updateOp);
 
         if (properties.contains(TestProperty.FORCE_REMOTE)) {
             updateOp.forceRemote();
@@ -1630,6 +1640,7 @@ public class VerificationHost extends ExampleServiceHost {
             }
 
             Operation post = createServiceStartPost(ctx);
+            populateAuthToken(post);
             if (initialState != null) {
                 post.setBody(initialState);
             }
@@ -1670,6 +1681,8 @@ public class VerificationHost extends ExampleServiceHost {
                 .createPost(u)
                 .setBody(body)
                 .setCompletion(ctx.getCompletion());
+        populateAuthToken(post);
+
         startService(post, s);
         ctx.await();
         return s;
@@ -2945,6 +2958,8 @@ public class VerificationHost extends ExampleServiceHost {
      * @param userServicePath user document link
      * @param properties custom properties in claims
      * @throws GeneralSecurityException any generic security exception
+     *
+     * @see #setIdentity(String, String)
      */
     public AuthorizationContext assumeIdentity(String userServicePath,
             Map<String, String> properties) throws GeneralSecurityException {
@@ -2962,6 +2977,28 @@ public class VerificationHost extends ExampleServiceHost {
         AuthorizationContext authContext = ab.getResult();
         setAuthorizationContext(authContext);
         return authContext;
+    }
+
+    /**
+     * Once proper identity is set, subsequent {@link #send(Operation)} will set auth token.
+     * @return auth token
+     */
+    public String setIdentity(String email, String password) throws Throwable {
+        AuthorizationHelper authHelper = new AuthorizationHelper(this);
+        String authToken = authHelper.login(email, password);
+        setIdentity(authToken);
+        return authToken;
+    }
+
+    /**
+     * Once authToken is set, subsequent {@link #send(Operation)} will set auth token.
+     */
+    public void setIdentity(String authToken) throws Throwable {
+        this.authToken = authToken;
+    }
+
+    public void clearIdentity() {
+        this.authToken = null;
     }
 
     public void deleteAllChildServices(URI factoryURI) throws Throwable {

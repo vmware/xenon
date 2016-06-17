@@ -16,21 +16,18 @@ package com.vmware.xenon.common;
 import static org.junit.Assert.assertTrue;
 
 import java.net.URI;
-import java.util.Base64;
 import java.util.UUID;
 
 import org.junit.Test;
 
 import com.vmware.xenon.common.ServiceHost.ServiceHostState;
 import com.vmware.xenon.common.http.netty.NettyHttpServiceClient;
+import com.vmware.xenon.common.test.AuthorizationHelper;
 import com.vmware.xenon.common.test.VerificationHost;
 import com.vmware.xenon.services.common.AuthorizationContextService;
 import com.vmware.xenon.services.common.ExampleService;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
 import com.vmware.xenon.services.common.ServiceHostManagementService;
-import com.vmware.xenon.services.common.ServiceUriPaths;
-import com.vmware.xenon.services.common.authn.AuthenticationRequest;
-import com.vmware.xenon.services.common.authn.BasicAuthenticationService;
 
 // Note that we can't use BasicReusableHostTestCase here because we need to enable
 // authorization on the host before it's started, and BasicReusableHostTestCase
@@ -58,15 +55,17 @@ public class TestAuthSetupHelper extends BasicTestCase {
         OperationContext.setAuthorizationContext(this.host.getSystemAuthorizationContext());
         makeUsersWithAuthSetupHelper();
 
+        AuthorizationHelper authHelper = new AuthorizationHelper(this.host);
+
         // Make sure the following tests don't automatically set the authorization
         // context: we explicitly set the auth token to make sure it's acting as
         // expected.
         OperationContext.setAuthorizationContext(null);
 
         // Step 2: Have each user login and get a token
-        String adminAuthToken = loginUser(this.adminUser, this.adminUser);
-        String exampleAuthToken = loginUser(this.exampleUser, this.exampleUser);
-        String exampleWithMgmtAuthToken = loginUser(this.exampleWithManagementServiceUser,
+        String adminAuthToken = authHelper.login(this.adminUser, this.adminUser);
+        String exampleAuthToken = authHelper.login(this.exampleUser, this.exampleUser);
+        String exampleWithMgmtAuthToken = authHelper.login(this.exampleWithManagementServiceUser,
                 this.exampleWithManagementServiceUser);
 
         // Step 3: Have each user create an example document
@@ -130,46 +129,6 @@ public class TestAuthSetupHelper extends BasicTestCase {
                 .start();
 
         this.host.testWait();
-    }
-
-    /**
-     * Supports testAuthSetupHelper() by logging in a single user and returning the auth
-     * token it gets upon login
-     */
-    private String loginUser(String user, String password) throws Throwable {
-        String basicAuth = constructBasicAuth(user, password);
-        URI loginUri = UriUtils.buildUri(this.host, ServiceUriPaths.CORE_AUTHN_BASIC);
-        AuthenticationRequest login = new AuthenticationRequest();
-        login.requestType = AuthenticationRequest.AuthenticationRequestType.LOGIN;
-
-        String[] authToken = new String[1];
-
-        Operation loginPost = Operation.createPost(loginUri)
-                .setBody(login)
-                .addRequestHeader(BasicAuthenticationService.AUTHORIZATION_HEADER_NAME,
-                        basicAuth)
-                .forceRemote()
-                .setCompletion((op, ex) -> {
-                    if (ex != null) {
-                        this.host.failIteration(ex);
-                        return;
-                    }
-                    authToken[0] = op.getResponseHeader(Operation.REQUEST_AUTH_TOKEN_HEADER);
-                    if (authToken[0] == null) {
-                        this.host.failIteration(
-                                new IllegalStateException("Missing auth token in login response"));
-                        return;
-                    }
-                    this.host.completeIteration();
-                });
-
-        this.host.testStart(1);
-        this.host.send(loginPost);
-        this.host.testWait();
-
-        assertTrue(authToken[0] != null);
-
-        return authToken[0];
     }
 
     /**
@@ -251,16 +210,6 @@ public class TestAuthSetupHelper extends BasicTestCase {
         this.host.testWait();
     }
 
-    /**
-     * Supports testAuthSetupHelper() by creating a Basic Auth header
-     */
-    private String constructBasicAuth(String name, String password) {
-        String userPass = String.format("%s:%s", name, password);
-        String encodedUserPass = new String(Base64.getEncoder().encode(userPass.getBytes()));
-        String basicAuth = "Basic " + encodedUserPass;
-        return basicAuth;
-
-    }
 
     /**
      * Clear NettyHttpServiceClient's cookie jar

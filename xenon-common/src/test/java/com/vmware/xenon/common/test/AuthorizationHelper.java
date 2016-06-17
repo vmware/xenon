@@ -13,8 +13,11 @@
 
 package com.vmware.xenon.common.test;
 
+import static org.junit.Assert.assertTrue;
+
 import java.net.URI;
 import java.util.Arrays;
+import java.util.Base64;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
@@ -37,6 +40,8 @@ import com.vmware.xenon.services.common.ServiceUriPaths;
 import com.vmware.xenon.services.common.UserGroupService;
 import com.vmware.xenon.services.common.UserGroupService.UserGroupState;
 import com.vmware.xenon.services.common.UserService.UserState;
+import com.vmware.xenon.services.common.authn.AuthenticationRequest;
+import com.vmware.xenon.services.common.authn.BasicAuthenticationService;
 
 public class AuthorizationHelper {
 
@@ -87,6 +92,56 @@ public class AuthorizationHelper {
                     this.host.completeIteration();
                 }));
         this.host.testWait();
+    }
+
+    /**
+     * Call BasicAuthenticationService and returns auth token.
+     */
+    public String login(String email, String password) throws Throwable {
+        String basicAuth = constructBasicAuth(email, password);
+        URI loginUri = UriUtils.buildUri(this.host, ServiceUriPaths.CORE_AUTHN_BASIC);
+        AuthenticationRequest login = new AuthenticationRequest();
+        login.requestType = AuthenticationRequest.AuthenticationRequestType.LOGIN;
+
+        String[] authToken = new String[1];
+
+        TestContext ctx = this.host.testCreate(1);
+
+        Operation loginPost = Operation.createPost(loginUri)
+                .setBody(login)
+                .addRequestHeader(BasicAuthenticationService.AUTHORIZATION_HEADER_NAME,
+                        basicAuth)
+                .forceRemote()
+                .setCompletion((op, ex) -> {
+                    if (ex != null) {
+                        ctx.failIteration(ex);
+                        return;
+                    }
+                    authToken[0] = op.getResponseHeader(Operation.REQUEST_AUTH_TOKEN_HEADER);
+                    if (authToken[0] == null) {
+                        ctx.failIteration(
+                                new IllegalStateException("Missing auth token in login response"));
+                        return;
+                    }
+                    ctx.completeIteration();
+                });
+
+        this.host.send(loginPost);
+        this.host.testWait(ctx);
+
+        assertTrue(authToken[0] != null);
+
+        return authToken[0];
+
+    }
+
+    /**
+     * Supports testAuthSetupHelper() by creating a Basic Auth header
+     */
+    private String constructBasicAuth(String name, String password) {
+        String userPass = String.format("%s:%s", name, password);
+        String encodedUserPass = new String(Base64.getEncoder().encode(userPass.getBytes()));
+        return "Basic " + encodedUserPass;
     }
 
     public void setUserGroupLink(String userGroupLink) {
