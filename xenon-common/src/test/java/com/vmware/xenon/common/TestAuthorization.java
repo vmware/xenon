@@ -133,7 +133,7 @@ public class TestAuthorization extends BasicTestCase {
         };
 
         // assume authorized user identity
-        this.host.assumeIdentity(this.userServicePath, null);
+        this.host.assumeIdentity(this.userServicePath);
 
         // Verify startService
         Operation post = Operation.createPost(UriUtils.buildUri(this.host, serviceLink));
@@ -159,7 +159,7 @@ public class TestAuthorization extends BasicTestCase {
         this.host.testWait();
 
         // assume authorized user identity
-        this.host.assumeIdentity(this.userServicePath, null);
+        this.host.assumeIdentity(this.userServicePath);
 
         // restart service
         post = Operation.createPost(UriUtils.buildUri(this.host, serviceLink));
@@ -189,7 +189,7 @@ public class TestAuthorization extends BasicTestCase {
 
     @Test
     public void queryWithDocumentAuthPrincipal() throws Throwable {
-        this.host.assumeIdentity(this.userServicePath, null);
+        this.host.assumeIdentity(this.userServicePath);
         createExampleServices("jane");
 
         // do a direct, simple query first
@@ -232,7 +232,7 @@ public class TestAuthorization extends BasicTestCase {
 
     @Test
     public void contextPropagationOnScheduleAndRunContext() throws Throwable {
-        this.host.assumeIdentity(this.userServicePath, null);
+        this.host.assumeIdentity(this.userServicePath);
 
         AuthorizationContext callerAuthContext = OperationContext.getAuthorizationContext();
         Runnable task = () -> {
@@ -317,7 +317,7 @@ public class TestAuthorization extends BasicTestCase {
     public void actionBasedAuthorization() throws Throwable {
 
         // Assume Jane's identity
-        this.host.assumeIdentity(this.userServicePath, null);
+        this.host.assumeIdentity(this.userServicePath);
 
         // add docs accessible by jane
         Map<URI, ExampleServiceState> exampleServices = createExampleServices("jane");
@@ -432,7 +432,7 @@ public class TestAuthorization extends BasicTestCase {
         this.host.testWait();
 
         // Assume Jane's identity
-        this.host.assumeIdentity(this.userServicePath, null);
+        this.host.assumeIdentity(this.userServicePath);
         // add docs accessible by jane
         exampleServices.putAll(createExampleServices("jane"));
 
@@ -509,7 +509,7 @@ public class TestAuthorization extends BasicTestCase {
         this.host.resetSystemAuthorizationContext();
         // assume identity as foo@foo.com, invoke a GET on a factory to populate
         // the authz cache
-        AuthorizationContext fooAuthContext = this.host.assumeIdentity(fooUserLink, null);
+        AuthorizationContext fooAuthContext = this.host.assumeIdentity(fooUserLink);
         this.host.sendAndWaitExpectSuccess(
                 Operation.createGet(UriUtils.buildUri(this.host, ExampleService.FACTORY_LINK)));
         AuthorizationContext authContextFromCache = this.host.getAuthorizationContext(s, fooAuthContext.getToken());
@@ -522,7 +522,7 @@ public class TestAuthorization extends BasicTestCase {
         authContextFromCache = this.host.getAuthorizationContext(s, fooAuthContext.getToken());
         assertNull(authContextFromCache);
         // next, assume identity as bar@foo.com
-        AuthorizationContext barAuthContext = this.host.assumeIdentity(barUserLink, null);
+        AuthorizationContext barAuthContext = this.host.assumeIdentity(barUserLink);
         this.host.sendAndWaitExpectSuccess(
                 Operation.createGet(UriUtils.buildUri(this.host, ExampleService.FACTORY_LINK)));
         authContextFromCache = this.host.getAuthorizationContext(s, barAuthContext.getToken());
@@ -551,7 +551,7 @@ public class TestAuthorization extends BasicTestCase {
         authContextFromCache = this.host.getAuthorizationContext(s, barAuthContext.getToken());
         assertNull(authContextFromCache);
         // login as as bar@bar.com once more
-        barAuthContext = this.host.assumeIdentity(barUserLink, null);
+        barAuthContext = this.host.assumeIdentity(barUserLink);
         this.host.sendAndWaitExpectSuccess(
                 Operation.createGet(UriUtils.buildUri(this.host, ExampleService.FACTORY_LINK)));
         authContextFromCache = this.host.getAuthorizationContext(s, barAuthContext.getToken());
@@ -573,7 +573,7 @@ public class TestAuthorization extends BasicTestCase {
         authContextFromCache = this.host.getAuthorizationContext(s, barAuthContext.getToken());
         assertNull(authContextFromCache);
         // assume identity as foo again
-        fooAuthContext = this.host.assumeIdentity(fooUserLink, null);
+        fooAuthContext = this.host.assumeIdentity(fooUserLink);
         this.host.sendAndWaitExpectSuccess(
                 Operation.createGet(UriUtils.buildUri(this.host, ExampleService.FACTORY_LINK)));
         authContextFromCache = this.host.getAuthorizationContext(s, fooAuthContext.getToken());

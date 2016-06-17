@@ -45,7 +45,7 @@ public class TestAuthWebSocketService extends AbstractWebSocketServiceTest {
         authHelper.createRoles(this.host, "jane@doe.com");
         super.setUp();
         this.host.resetSystemAuthorizationContext();
-        this.host.assumeIdentity(this.userServicePath, null);
+        this.host.assumeIdentity(this.userServicePath);
     }
 
     @Test

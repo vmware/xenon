@@ -142,7 +142,7 @@ public class TestServiceHost {
         String userPath = AuthorizationHelper.createUserService(this.host, this.host, "someone@example.org");
         this.host.resetAuthorizationContext();
 
-        this.host.assumeIdentity(userPath, null);
+        this.host.assumeIdentity(userPath);
 
         // set limit for this user to 1 request / second
         this.host.setRequestRateLimit(userPath, 1.0);

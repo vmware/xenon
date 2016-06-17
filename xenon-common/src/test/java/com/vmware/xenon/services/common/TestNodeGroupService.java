@@ -2336,7 +2336,7 @@ public class TestNodeGroupService {
 
         String userLink = UriUtils.buildUriPath(ServiceUriPaths.CORE_AUTHZ_USERS, "jane@doe.com");
         // Verify we can assert identity and make a request to every host
-        this.host.assumeIdentity(userLink, null);
+        this.host.assumeIdentity(userLink);
 
         // Sample body that this user is authorized to create
         ExampleServiceState exampleServiceState = new ExampleServiceState();

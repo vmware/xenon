@@ -1670,6 +1670,7 @@ public class VerificationHost extends ExampleServiceHost {
                 .createPost(u)
                 .setBody(body)
                 .setCompletion(ctx.getCompletion());
+
         startService(post, s);
         ctx.await();
         return s;
@@ -2937,6 +2938,15 @@ public class VerificationHost extends ExampleServiceHost {
 
     public void resetAuthorizationContext() {
         super.setAuthorizationContext(null);
+    }
+
+    /**
+     * Inject user identity into operation context.
+     *
+     * @param userServicePath user document link
+     */
+    public AuthorizationContext assumeIdentity(String userServicePath) throws GeneralSecurityException {
+        return assumeIdentity(userServicePath, null);
     }
 
     /**
