@@ -123,7 +123,8 @@ public class BroadcastQueryPageService extends StatelessService {
 
         boolean isAscOrder = this.spec.sortOrder == null
                 || this.spec.sortOrder == QueryTask.QuerySpecification.SortOrder.ASC;
-        ServiceDocumentQueryResult mergeResults = Utils.mergeQueryResults(queryResults, isAscOrder,
+        ServiceDocumentQueryResult mergeResults = QueryTaskUtils.mergeQueryResults(queryResults,
+                isAscOrder,
                 options);
 
         if (!nextPageLinks.isEmpty()) {

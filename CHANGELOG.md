@@ -1,6 +1,11 @@
 # CHANGELOG
 
 ## 0.8.2-SNAPSHOT
+
+* Move a few infrastructure query related helper methods from Utils class
+  to QueryTaskUtils. The mergeQueryResults family of methods are used by
+  core services, so this should have minimal impact
+
 * Add PropertyUsageOption.REQUIRED to describe fields that are required.
 
 * Add validateState(description, state) to Utils to validate fields that

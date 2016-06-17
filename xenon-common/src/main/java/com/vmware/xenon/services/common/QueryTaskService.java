@@ -234,7 +234,7 @@ public class QueryTaskService extends StatefulService {
             boolean isAscOrder = queryTask.querySpec.sortOrder == null
                     || queryTask.querySpec.sortOrder == QuerySpecification.SortOrder.ASC;
 
-            queryTask.results = Utils.mergeQueryResults(queryResults, isAscOrder,
+            queryTask.results = QueryTaskUtils.mergeQueryResults(queryResults, isAscOrder,
                     queryTask.querySpec.options);
         } else {
             URI broadcastPageServiceUri = UriUtils.buildUri(this.getHost(), UriUtils.buildUriPath(ServiceUriPaths.CORE,
