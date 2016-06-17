@@ -986,15 +986,16 @@ public class Utils {
     }
 
     /**
-     * Merges {@code patch} object into the {@code source} object by replacing all {@code source} fields with non-null
-     * {@code patch} fields. Only fields with specified merge policy are merged.
+     * Merges {@code patch} object into the {@code source} object by replacing or updating all {@code source}
+     *  fields with non-null {@code patch} fields. Only fields with specified merge policy are merged.
      *
      * @param desc Service document description.
      * @param source Source object.
      * @param patch  Patch object.
      * @param <T>    Object type.
-     * @return {@code true} in case there was at least one update. Updates of fields to same values are not considered
-     *      as updates).
+     * @return {@code true} in case there was at least one update. For objects that are not collections
+     *  or maps, updates of fields to same values are not considered as updates. New elements are always
+     *  added to collections/maps. Elements may replace existing entries based on the collection type
      * @see ServiceDocumentDescription.PropertyUsageOption
      */
     public static <T extends ServiceDocument> boolean mergeWithState(
@@ -1010,9 +1011,15 @@ public class Utils {
                     prop.usageOptions.contains(PropertyUsageOption.AUTO_MERGE_IF_NOT_NULL)) {
                 Object o = ReflectionUtils.getPropertyValue(prop, patch);
                 if (o != null) {
-                    if (!o.equals(ReflectionUtils.getPropertyValue(prop, source))) {
-                        ReflectionUtils.setPropertyValue(prop, source, o);
+                    if ((prop.typeName == TypeName.COLLECTION  && !o.getClass().isArray())
+                            || prop.typeName == TypeName.MAP) {
+                        ReflectionUtils.setOrUpdatePropertyValue(prop, source, o);
                         modified = true;
+                    } else {
+                        if (!o.equals(ReflectionUtils.getPropertyValue(prop, source))) {
+                            ReflectionUtils.setPropertyValue(prop, source, o);
+                            modified = true;
+                        }
                     }
                 }
             }
