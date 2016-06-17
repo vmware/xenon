@@ -21,8 +21,12 @@ import static org.junit.Assert.assertNull;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.math.RoundingMode;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.EnumSet;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -64,10 +68,18 @@ public class TestServiceDocument {
         source.x = SOME_INT_VALUE;
         source.ignore = SOME_IGNORE_VALUE;
         source.documentExpirationTimeMicros = SOME_EXPIRATION_VALUE;
+        source.listOfStrings = new ArrayList<String>();
+        source.listOfStrings.add(SOME_STRING_VALUE);
+        source.mapOfStrings = new HashMap<String, String>();
+        source.mapOfStrings.put(SOME_STRING_VALUE, SOME_STRING_VALUE);
         MergeTest patch = new MergeTest();
         patch.s = SOME_OTHER_STRING_VALUE;
         patch.x = SOME_OTHER_INT_VALUE;
         patch.ignore = SOME_OTHER_IGNORE_VALUE;
+        patch.listOfStrings = new ArrayList<String>();
+        patch.listOfStrings.add(SOME_OTHER_STRING_VALUE);
+        patch.mapOfStrings = new HashMap<String, String>();
+        patch.mapOfStrings.put(SOME_OTHER_STRING_VALUE, SOME_OTHER_STRING_VALUE);
         patch.documentExpirationTimeMicros = SOME_OTHER_EXPIRATION_VALUE;
 
         ServiceDocumentDescription d = ServiceDocumentDescription.Builder.create()
@@ -78,6 +90,12 @@ public class TestServiceDocument {
         Assert.assertEquals("Non-annotated ignore field", source.ignore, SOME_IGNORE_VALUE);
         Assert.assertEquals("Auto-annotated expiration field", source.documentExpirationTimeMicros,
                 SOME_OTHER_EXPIRATION_VALUE);
+        Assert.assertEquals("Number of list elements", 2, source.listOfStrings.size());
+        Assert.assertTrue("Check existence of element", source.listOfStrings.contains(SOME_STRING_VALUE));
+        Assert.assertTrue("Check existence of element", source.listOfStrings.contains(SOME_OTHER_STRING_VALUE));
+        Assert.assertEquals("Number of map elements", 2, source.mapOfStrings.size());
+        Assert.assertTrue("Check existence of element", source.mapOfStrings.containsKey(SOME_STRING_VALUE));
+        Assert.assertTrue("Check existence of element", source.mapOfStrings.containsKey(SOME_OTHER_STRING_VALUE));
     }
 
     /**
@@ -89,6 +107,10 @@ public class TestServiceDocument {
         MergeTest patch = new MergeTest();
         patch.s = SOME_OTHER_STRING_VALUE;
         patch.x = SOME_OTHER_INT_VALUE;
+        patch.listOfStrings = new ArrayList<String>();
+        patch.listOfStrings.add(SOME_OTHER_STRING_VALUE);
+        patch.mapOfStrings = new HashMap<String, String>();
+        patch.mapOfStrings.put(SOME_OTHER_STRING_VALUE, SOME_OTHER_STRING_VALUE);
         patch.ignore = SOME_OTHER_IGNORE_VALUE;
         ServiceDocumentDescription d = ServiceDocumentDescription.Builder.create()
                 .buildDescription(MergeTest.class);
@@ -96,6 +118,10 @@ public class TestServiceDocument {
         Assert.assertEquals("Annotated s field", source.s, SOME_OTHER_STRING_VALUE);
         Assert.assertEquals("Annotated x field", source.x, SOME_OTHER_INT_VALUE);
         Assert.assertNull("Non-annotated ignore field", source.ignore);
+        Assert.assertEquals("Number of list elements", 1, source.listOfStrings.size());
+        Assert.assertTrue("Check existence of element", source.listOfStrings.contains(SOME_OTHER_STRING_VALUE));
+        Assert.assertEquals("Number of map elements", 1, source.mapOfStrings.size());
+        Assert.assertTrue("Check existence of element", source.mapOfStrings.containsKey(SOME_OTHER_STRING_VALUE));
     }
 
     @Test
@@ -215,6 +241,10 @@ public class TestServiceDocument {
         @UsageOption(option = ServiceDocumentDescription.PropertyUsageOption.AUTO_MERGE_IF_NOT_NULL)
         public String s;
         public String ignore;
+        @UsageOption(option = ServiceDocumentDescription.PropertyUsageOption.AUTO_MERGE_IF_NOT_NULL)
+        public List<String> listOfStrings;
+        @UsageOption(option = ServiceDocumentDescription.PropertyUsageOption.AUTO_MERGE_IF_NOT_NULL)
+        public Map<String, String> mapOfStrings;
     }
 
 

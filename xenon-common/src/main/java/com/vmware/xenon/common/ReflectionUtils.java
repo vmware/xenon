@@ -19,6 +19,7 @@ import static java.util.stream.Collectors.toMap;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -58,6 +59,31 @@ public class ReflectionUtils {
         }
     }
 
+    @SuppressWarnings("unchecked")
+    public static void setOrUpdatePropertyValue(PropertyDescription pd, Object instance,
+            Object value) {
+        try {
+            Object currentObj = pd.accessor.get(instance);
+            if (currentObj != null) {
+                if (currentObj instanceof Collection) {
+                    Collection<Object> existingCollection = (Collection<Object>) currentObj;
+                    existingCollection.addAll((Collection<Object>) value);
+                    pd.accessor.set(instance, existingCollection);
+                } else if (currentObj instanceof Map) {
+                    Map<Object, Object> existingMap = (Map<Object, Object>) currentObj;
+                    existingMap.putAll((Map<Object, Object>) value);
+                    pd.accessor.set(instance, existingMap);
+                } else {
+                    throw new RuntimeException("Merge not supported for specified data type");
+                }
+            } else {
+                pd.accessor.set(instance, value);
+            }
+        } catch (Throwable e) {
+            throw new RuntimeException(e);
+        }
+    }
+
     /**
      * Checks if fieldName is present and accessible in service type
      */
@@ -76,9 +102,9 @@ public class ReflectionUtils {
     public static Field getField(Class<?> clazz, String name) {
 
         Map<String, Field> fieldMap = DECLARED_FIELDS_CACHE.computeIfAbsent(clazz, key ->
-                        Arrays.stream(key.getDeclaredFields())
-                                .collect(toMap(Field::getName, identity()))
-        );
+                Arrays.stream(key.getDeclaredFields())
+                        .collect(toMap(Field::getName, identity()))
+                );
 
         Field field = fieldMap.get(name);
         if (field == null) {
