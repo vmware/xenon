@@ -40,6 +40,7 @@ import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
+import com.vmware.xenon.common.AuthorizationSetupHelper;
 import com.vmware.xenon.common.CommandLineArgumentParser;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Operation.CompletionHandler;
@@ -66,6 +67,11 @@ public class NettyHttpServiceClientTest {
 
     private static VerificationHost HOST;
 
+    private static final boolean ENABLE_AUTH = false;
+
+    private static final String SAMPLE_EMAIL = "sample@vmware.com";
+    private static final String SAMPLE_PASSWORD = "password";
+
     private VerificationHost host;
 
     public String testURI;
@@ -80,11 +86,13 @@ public class NettyHttpServiceClientTest {
     public int operationTimeout = 5;
 
     @BeforeClass
-    public static void setUpOnce() throws Exception {
+    public static void setUpOnce() throws Throwable {
         NettyHttpServiceClient.setRequestPayloadSizeLimit(1024 * 512);
         NettyHttpListener.setResponsePayloadSizeLimit(1024 * 512);
 
         HOST = VerificationHost.create(0);
+        HOST.setAuthorizationEnabled(ENABLE_AUTH);
+
         CommandLineArgumentParser.parseFromProperties(HOST);
         HOST.setMaintenanceIntervalMicros(
                 TimeUnit.MILLISECONDS.toMicros(VerificationHost.FAST_MAINT_INTERVAL_MILLIS));
@@ -109,6 +117,31 @@ public class NettyHttpServiceClientTest {
         } catch (Throwable e) {
             throw new RuntimeException(e);
         }
+
+        if (ENABLE_AUTH) {
+            // Create example user auth related objects
+            AuthorizationSetupHelper.AuthSetupCompletion authCompletion = (ex) -> {
+                if (ex == null) {
+                    HOST.completeIteration();
+                } else {
+                    HOST.failIteration(ex);
+                }
+            };
+
+            HOST.setSystemAuthorizationContext();
+            HOST.testStart(1);
+            AuthorizationSetupHelper.create()
+                    .setHost(HOST)
+                    .setUserEmail(SAMPLE_EMAIL)
+                    .setUserPassword(SAMPLE_PASSWORD)
+                    .setUserSelfLink(SAMPLE_EMAIL)
+                    .setIsAdmin(true)
+                    .setCompletion(authCompletion)
+                    .start();
+            HOST.testWait();
+            HOST.resetAuthorizationContext();
+        }
+
     }
 
     @AfterClass
@@ -121,17 +154,25 @@ public class NettyHttpServiceClientTest {
     }
 
     @Before
-    public void setUp() {
+    public void setUp() throws Throwable {
         CommandLineArgumentParser.parseFromProperties(this);
         this.host = HOST;
         this.host.log("restoring operation timeout");
         this.host.setOperationTimeOutMicros(TimeUnit.SECONDS.toMicros(this.operationTimeout));
+
+        if (ENABLE_AUTH) {
+            this.host.setIdentity(SAMPLE_EMAIL, SAMPLE_PASSWORD);
+        }
     }
 
     @After
     public void cleanUp() {
         this.host.log("cleanup");
         this.host.getClient().setConnectionLimitPerHost(NettyHttpServiceClient.DEFAULT_CONNECTIONS_PER_HOST);
+
+        if (ENABLE_AUTH) {
+            this.host.clearIdentity();
+        }
     }
 
     @Test
@@ -273,13 +314,14 @@ public class NettyHttpServiceClientTest {
                 .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_QUEUE_FOR_SERVICE_AVAILABILITY)
                 .setCompletion(
                         (op, ex) -> {
-                            if (op.getStatusCode() == Operation.STATUS_CODE_OK) {
+                            int statusCode = op.getStatusCode();
+                            if (statusCode == Operation.STATUS_CODE_OK) {
                                 this.host.completeIteration();
                                 return;
                             }
 
                             this.host.failIteration(new Throwable(
-                                    "Expected Operation.STATUS_CODE_OK"));
+                                    "Expected Operation.STATUS_CODE_OK but was " + statusCode));
                         });
 
         this.host.send(get);
@@ -1040,7 +1082,10 @@ public class NettyHttpServiceClientTest {
         MinimalTestServiceState initialState = new MinimalTestServiceState();
         initialState.id = "";
         initialState.stringValue = "";
+
+        this.host.setSystemAuthorizationContext();
         this.host.startServiceAndWait(service, UUID.randomUUID().toString(), initialState);
+        this.host.resetAuthorizationContext();
 
         Map<String, String> headers;
 
