@@ -386,12 +386,24 @@ public class MigrationTaskService extends StatefulService {
     }
 
     private void resolveNodeGroupReferences(State currentState) {
+        logInfo("resolveNodeGroupReferences: [sourceNG=%s] [destNG=%s]", currentState.sourceNodeGroupReference, currentState.destinationNodeGroupReference);
         Operation sourceGet = Operation.createGet(currentState.sourceNodeGroupReference);
         Operation destinationGet = Operation.createGet(currentState.destinationNodeGroupReference);
 
         OperationJoin.create(sourceGet, destinationGet)
             .setCompletion((os, ts) -> {
                 if (ts != null && !ts.isEmpty()) {
+                    Throwable sourceErr = ts.get(sourceGet.getId());
+                    if (sourceErr != null) {
+                        logWarning("sourceGet failed!");
+                        logSevere(sourceErr);
+                    }
+                    Throwable destErr = ts.get(destinationGet.getId());
+                    if (destErr != null) {
+                        logWarning("destinationGet failed!");
+                        logSevere(destErr);
+                    }
+
                     failTask(ts.values());
                     return;
                 }
@@ -399,10 +411,14 @@ public class MigrationTaskService extends StatefulService {
                 NodeGroupState sourceGroup = os.get(sourceGet.getId()).getBody(NodeGroupState.class);
                 List<URI> sourceURIs = sourceGroup.nodes.entrySet().stream()
                         .map(e -> extractBaseUri(e.getValue())).collect(Collectors.toList());
+                sourceGroup.nodes.values().stream()
+                        .forEach(nodeState -> logInfo("sourceNG: [nodeId=%s] [status=%s]", nodeState.id, nodeState.status));
 
                 NodeGroupState destinationGroup = os.get(destinationGet.getId()).getBody(NodeGroupState.class);
                 List<URI> destinationURIs = destinationGroup.nodes.entrySet().stream()
                         .map(e -> extractBaseUri(e.getValue())).collect(Collectors.toList());
+                destinationGroup.nodes.values().stream()
+                        .forEach(nodeState -> logInfo("destNG: [nodeId=%s] [status=%s]", nodeState.id, nodeState.status));
 
                 waitUntilNodeGroupsAreStable(
                         currentState,
@@ -415,17 +431,23 @@ public class MigrationTaskService extends StatefulService {
     private void waitUntilNodeGroupsAreStable(State currentState, int allowedConvergenceChecks, Runnable onSuccess) {
         Operation.CompletionHandler destinationCheckHandler = (o, t) -> {
             if (t != null) {
+                logWarning("destinationNodeGroup not stable! [allowedConvergenceChecks=%d]", allowedConvergenceChecks);
+                logSevere(t);
                 scheduleWaitUntilNodeGroupsAreStable(currentState, allowedConvergenceChecks, onSuccess);
                 return;
             }
+            logInfo("destinationNodeGroup IS stable");
             onSuccess.run();
         };
 
         Operation.CompletionHandler sourceCheckHandler = (o, t) -> {
             if (t != null) {
+                logWarning("sourceNodeGroup not stable! [allowedConvergenceChecks=%d]", allowedConvergenceChecks);
+                logSevere(t);
                 scheduleWaitUntilNodeGroupsAreStable(currentState, allowedConvergenceChecks, onSuccess);
                 return;
             }
+            logInfo("sourceNodeGroup IS stable. checkConvergence ");
             Operation destinationOp = new Operation()
                     .setReferer(getUri())
                     .setCompletion(destinationCheckHandler);
