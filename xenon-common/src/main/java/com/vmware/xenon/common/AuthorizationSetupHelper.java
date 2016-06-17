@@ -121,6 +121,11 @@ public class AuthorizationSetupHelper {
         return this;
     }
 
+    public AuthorizationSetupHelper setUserSelfLink(String userSelfLink) {
+        this.userSelfLink = userSelfLink;
+        return this;
+    }
+
     public AuthorizationSetupHelper setIsAdmin(boolean isAdmin) {
         this.isAdmin = isAdmin;
         return this;
@@ -258,6 +263,9 @@ public class AuthorizationSetupHelper {
     private void makeUser() {
         UserState user = new UserState();
         user.email = this.userEmail;
+        if (this.userSelfLink != null) {
+            user.documentSelfLink = this.userSelfLink;
+        }
 
         URI userFactoryUri = UriUtils.buildUri(this.host, ServiceUriPaths.CORE_AUTHZ_USERS);
         Operation postUser = Operation.createPost(userFactoryUri)
