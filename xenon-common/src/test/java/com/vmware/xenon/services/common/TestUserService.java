@@ -89,6 +89,8 @@ public class TestUserService extends BasicReusableHostTestCase {
         assertEquals(state.email,responseState.email);
 
         state.email = "john@doe.com";
+        state.firstName = "john";
+        state.lastName = "doe";
 
         responseState = (UserState) this.host.verifyPost(UserState.class,
                 ServiceUriPaths.CORE_AUTHZ_USERS,
@@ -96,6 +98,8 @@ public class TestUserService extends BasicReusableHostTestCase {
                 Operation.STATUS_CODE_OK);
 
         assertEquals(state.email, responseState.email);
+        assertEquals(state.firstName, responseState.firstName);
+        assertEquals(state.lastName, responseState.lastName);
     }
 
     @Test
@@ -132,6 +136,8 @@ public class TestUserService extends BasicReusableHostTestCase {
     public void testPatch() throws Throwable {
         UserState state = new UserState();
         state.email = "jane@doe.com";
+        state.firstName = "jane";
+        state.lastName = "doe";
         state.documentSelfLink = UUID.randomUUID().toString();
         state.userGroupLinks = new HashSet<String>();
         state.userGroupLinks.add("link1");
@@ -147,6 +153,8 @@ public class TestUserService extends BasicReusableHostTestCase {
         assertEquals(state.userGroupLinks.size(),state.userGroupLinks.size());
 
         state.email = "john@doe.com";
+        state.firstName = "john";
+        state.lastName = "doe";
         state.userGroupLinks.clear();
         state.userGroupLinks.add("link2");
         state.userGroupLinks.add("link3");
@@ -159,6 +167,8 @@ public class TestUserService extends BasicReusableHostTestCase {
                         }
                         UserState patchedState = op.getBody(UserState.class);
                         assertEquals(state.email, patchedState.email);
+                        assertEquals(state.firstName, patchedState.firstName);
+                        assertEquals(state.lastName, patchedState.lastName);
                         assertEquals(3, patchedState.userGroupLinks.size());
                         this.host.completeIteration();
                     }));

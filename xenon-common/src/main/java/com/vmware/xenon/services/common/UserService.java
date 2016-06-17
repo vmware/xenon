@@ -22,7 +22,9 @@ import com.vmware.xenon.common.Service;
 import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.ServiceDocumentDescription;
 import com.vmware.xenon.common.ServiceDocumentDescription.PropertyIndexingOption;
+import com.vmware.xenon.common.ServiceDocumentDescription.PropertyUsageOption;
 import com.vmware.xenon.common.StatefulService;
+import com.vmware.xenon.common.Utils;
 
 public class UserService extends StatefulService {
     public static final String FACTORY_LINK = ServiceUriPaths.CORE_AUTHZ_USERS;
@@ -37,7 +39,13 @@ public class UserService extends StatefulService {
     public static class UserState extends ServiceDocument {
         public static final String FIELD_NAME_EMAIL = "email";
         public static final String FIELD_NAME_USER_GROUP_LINKS = "userGroupLinks";
+
+        @UsageOption(option = PropertyUsageOption.AUTO_MERGE_IF_NOT_NULL)
         public String email;
+        @UsageOption(option = PropertyUsageOption.AUTO_MERGE_IF_NOT_NULL)
+        public String firstName;
+        @UsageOption(option = PropertyUsageOption.AUTO_MERGE_IF_NOT_NULL)
+        public String lastName;
         public Set<String> userGroupLinks;
     }
 
@@ -69,19 +77,14 @@ public class UserService extends StatefulService {
             return;
         }
 
-        UserState newState = op.getBody(UserState.class);
+        UserState newState = getBody(op);
         if (!validate(op, newState)) {
             return;
         }
 
         UserState currentState = getState(op);
-        // if the email field has not changed and the userGroupsLinks field is either null
-        // or the same in both the current state and the state passed in return a 304
-        // response
-        if (currentState.email.equals(newState.email)
-                && ((currentState.userGroupLinks == null && newState.userGroupLinks == null)
-                || (currentState.userGroupLinks != null && newState.userGroupLinks != null
-                    && currentState.userGroupLinks.equals(newState.userGroupLinks)))) {
+        ServiceDocumentDescription documentDescription = getStateDescription();
+        if (ServiceDocument.equals(documentDescription, currentState, newState)) {
             op.setStatusCode(Operation.STATUS_CODE_NOT_MODIFIED);
         } else {
             setState(op, newState);
@@ -96,10 +99,9 @@ public class UserService extends StatefulService {
             return;
         }
         UserState currentState = getState(op);
-        UserState newState = op.getBody(UserState.class);
-        if (newState.email != null) {
-            currentState.email = newState.email;
-        }
+        UserState newState = getBody(op);
+        ServiceDocumentDescription documentDescription = getStateDescription();
+        Utils.mergeWithState(documentDescription, currentState, newState);
         if (newState.userGroupLinks != null) {
             if (currentState.userGroupLinks == null) {
                 currentState.userGroupLinks = newState.userGroupLinks;
