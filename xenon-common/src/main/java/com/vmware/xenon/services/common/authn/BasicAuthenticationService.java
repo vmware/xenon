@@ -31,7 +31,7 @@ import com.vmware.xenon.services.common.authn.AuthenticationRequest.Authenticati
 
 public class BasicAuthenticationService extends StatelessService {
 
-    public static String SELF_LINK = ServiceUriPaths.CORE_AUTHN_BASIC;
+    public static final String SELF_LINK = ServiceUriPaths.CORE_AUTHN_BASIC;
 
     public static final String WWW_AUTHENTICATE_HEADER_NAME = "WWW-Authenticate";
     public static final String WWW_AUTHENTICATE_HEADER_VALUE = "Basic realm=\"xenon\"";
