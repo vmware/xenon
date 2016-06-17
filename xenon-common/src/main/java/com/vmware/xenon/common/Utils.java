@@ -986,8 +986,8 @@ public class Utils {
     }
 
     /**
-     * Merges {@code patch} object into the {@code source} object by replacing all {@code source} fields with non-null
-     * {@code patch} fields. Only fields with specified merge policy are merged.
+     * Merges {@code patch} object into the {@code source} object by replacing or updating all {@code source}
+     *  fields with non-null {@code patch} fields. Only fields with specified merge policy are merged.
      *
      * @param desc Service document description.
      * @param source Source object.
@@ -1010,9 +1010,14 @@ public class Utils {
                     prop.usageOptions.contains(PropertyUsageOption.AUTO_MERGE_IF_NOT_NULL)) {
                 Object o = ReflectionUtils.getPropertyValue(prop, patch);
                 if (o != null) {
-                    if (!o.equals(ReflectionUtils.getPropertyValue(prop, source))) {
-                        ReflectionUtils.setPropertyValue(prop, source, o);
+                    if (prop.typeName == TypeName.COLLECTION || prop.typeName == TypeName.MAP) {
+                        ReflectionUtils.setOrUpdatePropertyValue(prop, source, o);
                         modified = true;
+                    } else {
+                        if (!o.equals(ReflectionUtils.getPropertyValue(prop, source))) {
+                            ReflectionUtils.setPropertyValue(prop, source, o);
+                            modified = true;
+                        }
                     }
                 }
             }
