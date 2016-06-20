@@ -27,9 +27,8 @@ import com.vmware.xenon.services.common.QueryTask.QuerySpecification;
 import com.vmware.xenon.services.common.ResourceGroupService.ResourceGroupState;
 import com.vmware.xenon.services.common.RoleService.RoleState;
 import com.vmware.xenon.services.common.UserGroupService.UserGroupState;
-import com.vmware.xenon.services.common.UserService.UserState;
 
-class AuthorizationCacheUtils {
+public class AuthorizationCacheUtils {
 
     /**
      * Helper method that clears the service host authz cache for the specified user service
@@ -37,8 +36,8 @@ class AuthorizationCacheUtils {
      * @param op Operation to mark completion/failure
      * @param userState UserService state
      */
-    static void clearAuthzCacheForUser(StatefulService s, Operation op, UserState userState) {
-        s.getHost().clearAuthorizationContext(s, userState.documentSelfLink);
+    public static void clearAuthzCacheForUser(StatefulService s, Operation op, String userLink) {
+        s.getHost().clearAuthorizationContext(s, userLink);
         op.complete();
     }
 
@@ -49,7 +48,7 @@ class AuthorizationCacheUtils {
      * @param op Operation to mark completion/failure
      * @param userGroupState UserGroup service state
      */
-    static void clearAuthzCacheForUserGroup(StatefulService s, Operation op, UserGroupState userGroupState) {
+    public static void clearAuthzCacheForUserGroup(StatefulService s, Operation op, UserGroupState userGroupState) {
         QueryTask queryTask = new QueryTask();
         queryTask.querySpec = new QuerySpecification();
         queryTask.querySpec.query = userGroupState.query;
@@ -85,7 +84,7 @@ class AuthorizationCacheUtils {
      * @param op Operation to mark completion/failure
      * @param roleState Role service state
      */
-    static void clearAuthzCacheForRole(StatefulService s, Operation op, RoleState roleState) {
+    public static void clearAuthzCacheForRole(StatefulService s, Operation op, RoleState roleState) {
         Operation parentOp = Operation.createGet(s.getHost(), roleState.userGroupLink)
                 .setCompletion((getOp, getEx) -> {
                     // the userGroup link might not be valid; just mark the operation complete
@@ -113,7 +112,7 @@ class AuthorizationCacheUtils {
      * @param op Operation to mark completion/failure
      * @param resourceGroupState ResourceGroup service state
      */
-    static void clearAuthzCacheForResourceGroup(StatefulService s, Operation op, ResourceGroupState resourceGroupState) {
+    public static void clearAuthzCacheForResourceGroup(StatefulService s, Operation op, ResourceGroupState resourceGroupState) {
         QueryTask queryTask = new QueryTask();
         queryTask.querySpec = new QuerySpecification();
         Query resourceGroupQuery = Builder.create()
