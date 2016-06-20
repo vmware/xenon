@@ -120,7 +120,7 @@ public class NettyWebSocketRequestHandler extends SimpleChannelInboundHandler<Ob
             String frameText = ((TextWebSocketFrame) frame).text();
             this.host.run(() -> {
                 if (this.authToken != null) {
-                    Operation dummyOp = new Operation();
+                    Operation dummyOp = Operation.createGet(this.host.getUri());
                     dummyOp.addRequestHeader(Operation.REQUEST_AUTH_TOKEN_HEADER, this.authToken);
                     dummyOp.setUri(
                             UriUtils.buildUri(this.host, ServiceUriPaths.CORE_WEB_SOCKET_ENDPOINT));
