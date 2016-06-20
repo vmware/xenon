@@ -82,28 +82,35 @@ public class BasicAuthenticationService extends StatelessService {
     }
 
     private void handleLogin(Operation op) {
+        // Attempt to fetch and use userInfo, if AUTHORIZATION_HEADER_NAME is null.
         String authHeader = op.getRequestHeader(AUTHORIZATION_HEADER_NAME);
+        String userInfo = op.getUri().getUserInfo();
+        String authString;
+        if (authHeader != null) {
+            String[] authHeaderParts = authHeader.split(BASIC_AUTH_SEPERATOR);
+            // malformed header; send a 400 response
+            if (authHeaderParts.length != 2 || !authHeaderParts[0].equalsIgnoreCase(BASIC_AUTH_NAME)) {
+                op.fail(Operation.STATUS_CODE_BAD_REQUEST);
+                return;
+            }
 
-        // if no header specified, send a 401 response and a header asking for basic auth
-        if (authHeader == null) {
+            try {
+                authString = new String(Base64.getDecoder().decode(authHeaderParts[1]), Utils.CHARSET);
+            } catch (UnsupportedEncodingException e) {
+                logWarning("Exception decoding auth header: %s", Utils.toString(e));
+                op.setStatusCode(Operation.STATUS_CODE_BAD_REQUEST).complete();
+                return;
+            }
+
+        } else if (userInfo != null) {
+            authString = userInfo;
+        } else {
+            // if no header or userInfo is specified, send a 401 response and a header asking for basic auth
             op.addResponseHeader(WWW_AUTHENTICATE_HEADER_NAME, WWW_AUTHENTICATE_HEADER_VALUE);
             op.fail(Operation.STATUS_CODE_UNAUTHORIZED);
             return;
         }
-        String[] authHeaderParts = authHeader.split(BASIC_AUTH_SEPERATOR);
-        // malformed header; send a 400 response
-        if (authHeaderParts.length != 2 || !authHeaderParts[0].equalsIgnoreCase(BASIC_AUTH_NAME)) {
-            op.fail(Operation.STATUS_CODE_BAD_REQUEST);
-            return;
-        }
-        String authString;
-        try {
-            authString = new String(Base64.getDecoder().decode(authHeaderParts[1]), Utils.CHARSET);
-        } catch (UnsupportedEncodingException e) {
-            logWarning("Exception decoding auth header: %s", Utils.toString(e));
-            op.setStatusCode(Operation.STATUS_CODE_BAD_REQUEST).complete();
-            return;
-        }
+
         String[] userNameAndPassword = authString.split(BASIC_AUTH_USER_SEPERATOR);
         if (userNameAndPassword.length != 2) {
             op.fail(Operation.STATUS_CODE_BAD_REQUEST);

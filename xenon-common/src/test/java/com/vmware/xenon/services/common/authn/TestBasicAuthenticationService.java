@@ -490,6 +490,70 @@ public class TestBasicAuthenticationService extends BasicTestCase {
         this.host.testWait();
     }
 
+    @Test
+    public void testAuthWithUserInfo() throws Throwable {
+        this.host.resetAuthorizationContext();
+        String userPassStr = new StringBuffer(USER).append(BASIC_AUTH_USER_SEPERATOR).append(PASSWORD)
+                        .toString();
+        URI authServiceUri = UriUtils.buildUri(this.host, BasicAuthenticationService.SELF_LINK, null, userPassStr);
+
+        this.host.testStart(1);
+        this.host.send(Operation
+                .createPost(authServiceUri)
+                .setBody(new Object())
+                .setCompletion(
+                        (o, e) -> {
+                            if (e != null) {
+                                this.host.failIteration(e);
+                                return;
+                            }
+                            if (o.getStatusCode() != Operation.STATUS_CODE_OK) {
+                                this.host.failIteration(new IllegalStateException(
+                                        "Invalid status code returned"));
+                                return;
+                            }
+                            if (o.getAuthorizationContext() == null) {
+                                this.host.failIteration(new IllegalStateException(
+                                        "Authorization context not set"));
+                                return;
+                            }
+                            // now issue a logout
+                            AuthenticationRequest request = new AuthenticationRequest();
+                            request.requestType = AuthenticationRequestType.LOGOUT;
+                            Operation logoutOp = Operation
+                                    .createPost(authServiceUri)
+                                    .setBody(request)
+                                    .forceRemote()
+                                    .setCompletion(
+                                            (oo, ee) -> {
+                                                if (ee != null) {
+                                                    this.host.failIteration(ee);
+                                                    return;
+                                                }
+                                                if (oo.getStatusCode() != Operation.STATUS_CODE_OK) {
+                                                    this.host.failIteration(new IllegalStateException(
+                                                            "Invalid status code returned"));
+                                                    return;
+                                                }
+                                                String cookieHeader = oo.getResponseHeader(SET_COOKIE_HEADER);
+                                                if (cookieHeader == null) {
+                                                    this.host.failIteration(new IllegalStateException(
+                                                            "Cookie is null"));
+                                                }
+                                                Map<String, String> cookieElements = CookieJar.decodeCookies(cookieHeader);
+                                                if (!cookieElements.get("Max-Age").equals("0")) {
+                                                    this.host.failIteration(new IllegalStateException(
+                                                            "Max-Age for cookie is not zero"));
+                                                }
+                                                this.host.resetAuthorizationContext();
+                                                this.host.completeIteration();
+                                            });
+                            this.host.setAuthorizationContext(o.getAuthorizationContext());
+                            this.host.send(logoutOp);
+                        }));
+        this.host.testWait();
+    }
+
     private boolean validateAuthToken(Operation op) {
         String cookieHeader = op.getResponseHeader(SET_COOKIE_HEADER);
         if (cookieHeader == null) {

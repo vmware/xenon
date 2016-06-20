@@ -316,11 +316,13 @@ public class Operation implements Cloneable {
         public EnumSet<OperationOption> options;
         public String contextId;
         public String transactionId;
+        public String userInfo;
 
         public static final ServiceDocumentDescription DESCRIPTION = Operation.SerializedOperation
                 .buildDescription();
 
         public static final String KIND = Utils.buildKind(Operation.SerializedOperation.class);
+
 
         public static SerializedOperation create(Operation op) {
             SerializedOperation ctx = new SerializedOperation();
@@ -335,6 +337,7 @@ public class Operation implements Cloneable {
                 ctx.port = op.uri.getPort();
                 ctx.path = op.uri.getPath();
                 ctx.query = op.uri.getQuery();
+                ctx.userInfo = op.uri.getUserInfo();
             }
 
             Object body = op.getBodyRaw();
@@ -563,7 +566,7 @@ public class Operation implements Cloneable {
         op.expirationMicrosUtc = ctx.documentExpirationTimeMicros;
         op.setContextId(ctx.id.toString());
         op.referer = ctx.referer;
-        op.uri = UriUtils.buildUri(host, ctx.path, ctx.query);
+        op.uri = UriUtils.buildUri(host, ctx.path, ctx.query, ctx.userInfo);
         op.transactionId = ctx.transactionId;
         return op;
     }
