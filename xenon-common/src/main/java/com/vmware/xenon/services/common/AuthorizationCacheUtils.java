@@ -20,6 +20,7 @@ import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Operation.CompletionHandler;
 import com.vmware.xenon.common.ServiceDocumentQueryResult;
 import com.vmware.xenon.common.StatefulService;
+import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
 import com.vmware.xenon.services.common.QueryTask.Query;
 import com.vmware.xenon.services.common.QueryTask.Query.Builder;
@@ -34,7 +35,7 @@ public class AuthorizationCacheUtils {
      * Helper method that clears the service host authz cache for the specified user service
      * @param s service context to invoke the operation
      * @param op Operation to mark completion/failure
-     * @param userState UserService state
+     * @param userLink UserService state
      */
     public static void clearAuthzCacheForUser(StatefulService s, Operation op, String userLink) {
         s.getHost().clearAuthorizationContext(s, userLink);
@@ -152,7 +153,8 @@ public class AuthorizationCacheUtils {
                     };
                     for (Object doc : result.documents.values()) {
                         RoleState roleState = Utils.fromJson(doc, RoleState.class);
-                        Operation roleOp = new Operation();
+                        // use dummy URL to create roleOp
+                        Operation roleOp = Operation.createGet(UriUtils.buildUri(""));
                         roleOp.setCompletion(handler);
                         clearAuthzCacheForRole(s, roleOp, roleState);
                     }

@@ -426,13 +426,15 @@ public class MigrationTaskService extends StatefulService {
                 scheduleWaitUntilNodeGroupsAreStable(currentState, allowedConvergenceChecks, onSuccess);
                 return;
             }
-            Operation destinationOp = new Operation()
+            // create op with dummy url to use operation callback mechanism
+            Operation destinationOp = Operation.createGet(getHost().getUri())
                     .setReferer(getUri())
                     .setCompletion(destinationCheckHandler);
             NodeGroupUtils.checkConvergence(getHost(), currentState.sourceNodeGroupReference, destinationOp);
         };
 
-        Operation sourceOp = new Operation()
+        // create op with dummy url to use operation callback mechanism
+        Operation sourceOp = Operation.createGet(getHost().getUri())
                 .setCompletion(sourceCheckHandler)
                 .setReferer(getUri());
         NodeGroupUtils.checkConvergence(getHost(), currentState.sourceNodeGroupReference, sourceOp);
