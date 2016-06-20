@@ -2,6 +2,10 @@
 
 ## 0.9.0-SNAPSHOT
 
+* Change scope of Operation constructor from public to protected. To create a
+  new Operation, Operation.createXXX methods or newly added Operation(Action, URI)
+  should be used.
+
 ## 0.8.2
 
 * Add global stats for total service pauses, resumes, cache clears

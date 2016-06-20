@@ -568,6 +568,16 @@ public class Operation implements Cloneable {
         return op;
     }
 
+    /**
+     * {@code new Operation()} is prohibited. use Operation.createXXX methods.
+     */
+    protected Operation() {
+    }
+
+    public Operation(Action action, URI uri) {
+        createOperation(action, uri);
+    }
+
     static Operation createOperation(Action action, URI uri) {
         Operation op = new Operation();
         op.uri = uri;
