@@ -59,7 +59,7 @@ public class UserService extends StatefulService {
         if (!validate(op, state)) {
             return;
         }
-        AuthorizationCacheUtils.clearAuthzCacheForUser(this, op, state);
+        AuthorizationCacheUtils.clearAuthzCacheForUser(this, op, state.documentSelfLink);
     }
 
     @Override
@@ -86,7 +86,7 @@ public class UserService extends StatefulService {
         } else {
             setState(op, newState);
         }
-        AuthorizationCacheUtils.clearAuthzCacheForUser(this, op, newState);
+        AuthorizationCacheUtils.clearAuthzCacheForUser(this, op, newState.documentSelfLink);
     }
 
     @Override
@@ -108,13 +108,13 @@ public class UserService extends StatefulService {
             }
         }
         op.setBody(currentState);
-        AuthorizationCacheUtils.clearAuthzCacheForUser(this, op, currentState);
+        AuthorizationCacheUtils.clearAuthzCacheForUser(this, op, currentState.documentSelfLink);
     }
 
     @Override
     public void handleDelete(Operation op) {
         UserState currentState = getState(op);
-        AuthorizationCacheUtils.clearAuthzCacheForUser(this, op, currentState);
+        AuthorizationCacheUtils.clearAuthzCacheForUser(this, op, currentState.documentSelfLink);
     }
 
     private boolean validate(Operation op, UserState state) {

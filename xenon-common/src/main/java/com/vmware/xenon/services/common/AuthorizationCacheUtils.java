@@ -27,9 +27,8 @@ import com.vmware.xenon.services.common.QueryTask.QuerySpecification;
 import com.vmware.xenon.services.common.ResourceGroupService.ResourceGroupState;
 import com.vmware.xenon.services.common.RoleService.RoleState;
 import com.vmware.xenon.services.common.UserGroupService.UserGroupState;
-import com.vmware.xenon.services.common.UserService.UserState;
 
-class AuthorizationCacheUtils {
+public class AuthorizationCacheUtils {
 
     /**
      * Helper method that clears the service host authz cache for the specified user service
@@ -37,8 +36,8 @@ class AuthorizationCacheUtils {
      * @param op Operation to mark completion/failure
      * @param userState UserService state
      */
-    static void clearAuthzCacheForUser(StatefulService s, Operation op, UserState userState) {
-        s.getHost().clearAuthorizationContext(s, userState.documentSelfLink);
+    static void clearAuthzCacheForUser(StatefulService s, Operation op, String userLink) {
+        s.getHost().clearAuthorizationContext(s, userLink);
         op.complete();
     }
 
