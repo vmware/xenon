@@ -191,12 +191,16 @@ public class UriUtils {
         return buildUri(host, path, null);
     }
 
-    public static URI buildUri(ServiceHost host, String path, String query) {
+    public static URI buildUri(ServiceHost host, String path, String query, String userInfo) {
         URI base = host.getUri();
-        return UriUtils.buildUri(base.getScheme(), base.getHost(), base.getPort(), path, query);
+        return UriUtils.buildUri(base.getScheme(), base.getHost(), base.getPort(), path, query, userInfo);
     }
 
-    public static URI buildUri(String scheme, String host, int port, String path, String query) {
+    public static URI buildUri(ServiceHost host, String path, String query) {
+        return buildUri(host, path, query, null);
+    }
+
+    public static URI buildUri(String scheme, String host, int port, String path, String query, String userInfo) {
         try {
             if (path != null) {
                 final int indexOfFirstQueryChar = path.indexOf(UriUtils.URI_QUERY_CHAR);
@@ -208,7 +212,7 @@ public class UriUtils {
                 }
             }
             path = normalizeUriPath(path);
-            return new URI(scheme, null, host, port, path, query, null).normalize();
+            return new URI(scheme, userInfo, host, port, path, query, null).normalize();
         } catch (URISyntaxException e) {
             Utils.log(UriUtils.class, Utils.class.getSimpleName(), Level.SEVERE, "%s",
                     Utils.toString(e));
@@ -216,6 +220,9 @@ public class UriUtils {
         }
     }
 
+    public static URI buildUri(String scheme, String host, int port, String path, String query) {
+        return buildUri(scheme, host, port, path, query, null);
+    }
 
     public static String normalizeUriPath(String path) {
         if (path == null) {
