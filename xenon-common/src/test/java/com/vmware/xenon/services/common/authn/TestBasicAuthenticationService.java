@@ -123,10 +123,10 @@ public class TestBasicAuthenticationService extends BasicTestCase {
                                     }
                                     String authHeader = o
                                             .getResponseHeader(
-                                                    BasicAuthenticationService.WWW_AUTHENTICATE_HEADER_NAME);
+                                                    BasicAuthenticationUtils.WWW_AUTHENTICATE_HEADER_NAME);
                                     if (authHeader == null
                                             || !authHeader
-                                                    .equals(BasicAuthenticationService.WWW_AUTHENTICATE_HEADER_VALUE)) {
+                                                    .equals(BasicAuthenticationUtils.WWW_AUTHENTICATE_HEADER_VALUE)) {
                                         this.host.failIteration(new IllegalStateException(
                                                 "Invalid status code returned"));
                                         return;
@@ -144,7 +144,7 @@ public class TestBasicAuthenticationService extends BasicTestCase {
         this.host.send(Operation
                 .createPost(authServiceUri)
                 .setBody(new Object())
-                .addRequestHeader(BasicAuthenticationService.AUTHORIZATION_HEADER_NAME, headerVal)
+                .addRequestHeader(BasicAuthenticationUtils.AUTHORIZATION_HEADER_NAME, headerVal)
                 .setCompletion(
                         (o, e) -> {
                             if (e == null) {
@@ -169,7 +169,7 @@ public class TestBasicAuthenticationService extends BasicTestCase {
         this.host.send(Operation
                 .createPost(authServiceUri)
                 .setBody(new Object())
-                .addRequestHeader(BasicAuthenticationService.AUTHORIZATION_HEADER_NAME, headerVal)
+                .addRequestHeader(BasicAuthenticationUtils.AUTHORIZATION_HEADER_NAME, headerVal)
                 .setCompletion(
                         (o, e) -> {
                             if (e == null) {
@@ -195,7 +195,7 @@ public class TestBasicAuthenticationService extends BasicTestCase {
         this.host.send(Operation
                 .createPost(authServiceUri)
                 .setBody(new Object())
-                .addRequestHeader(BasicAuthenticationService.AUTHORIZATION_HEADER_NAME, headerVal)
+                .addRequestHeader(BasicAuthenticationUtils.AUTHORIZATION_HEADER_NAME, headerVal)
                 .setCompletion(
                         (o, e) -> {
                             if (e == null) {
@@ -221,7 +221,7 @@ public class TestBasicAuthenticationService extends BasicTestCase {
         this.host.send(Operation
                 .createPost(authServiceUri)
                 .setBody(new Object())
-                .addRequestHeader(BasicAuthenticationService.AUTHORIZATION_HEADER_NAME, headerVal)
+                .addRequestHeader(BasicAuthenticationUtils.AUTHORIZATION_HEADER_NAME, headerVal)
                 .setCompletion(
                         (o, e) -> {
                             if (e != null) {
@@ -280,7 +280,7 @@ public class TestBasicAuthenticationService extends BasicTestCase {
                 .createPost(authServiceUri)
                 .setBody(new Object())
                 .forceRemote()
-                .addRequestHeader(BasicAuthenticationService.AUTHORIZATION_HEADER_NAME, headerVal)
+                .addRequestHeader(BasicAuthenticationUtils.AUTHORIZATION_HEADER_NAME, headerVal)
                 .setCompletion(
                         (o, e) -> {
                             if (e != null) {
@@ -320,7 +320,7 @@ public class TestBasicAuthenticationService extends BasicTestCase {
         this.host.send(Operation
                 .createPost(authServiceUri)
                 .setBody(authReq)
-                .addRequestHeader(BasicAuthenticationService.AUTHORIZATION_HEADER_NAME, headerVal)
+                .addRequestHeader(BasicAuthenticationUtils.AUTHORIZATION_HEADER_NAME, headerVal)
                 .setCompletion(
                         (o, e) -> {
                             if (e != null) {
@@ -347,7 +347,7 @@ public class TestBasicAuthenticationService extends BasicTestCase {
         this.host.send(Operation
                 .createPost(authServiceUri)
                 .setBody(authReq)
-                .addRequestHeader(BasicAuthenticationService.AUTHORIZATION_HEADER_NAME, headerVal)
+                .addRequestHeader(BasicAuthenticationUtils.AUTHORIZATION_HEADER_NAME, headerVal)
                 .setCompletion(
                         (o, e) -> {
                             if (e != null) {
@@ -374,7 +374,7 @@ public class TestBasicAuthenticationService extends BasicTestCase {
         this.host.send(Operation
                 .createPost(authServiceUri)
                 .setBody(authReq)
-                .addRequestHeader(BasicAuthenticationService.AUTHORIZATION_HEADER_NAME, headerVal)
+                .addRequestHeader(BasicAuthenticationUtils.AUTHORIZATION_HEADER_NAME, headerVal)
                 .setCompletion(
                         (o, e) -> {
                             if (e != null) {
@@ -398,7 +398,7 @@ public class TestBasicAuthenticationService extends BasicTestCase {
         this.host.send(Operation
                 .createPost(authServiceUri)
                 .setBody(authReq)
-                .addRequestHeader(BasicAuthenticationService.AUTHORIZATION_HEADER_NAME, headerVal)
+                .addRequestHeader(BasicAuthenticationUtils.AUTHORIZATION_HEADER_NAME, headerVal)
                 .setCompletion(
                         (o, e) -> {
                             if (e != null) {
