@@ -147,6 +147,40 @@ public class TestServiceDocument {
         Assert.assertEquals("Number of Array elements", 2, source.intArray.length);
     }
 
+    /**
+     * Test merging where patch updates map values. Test if old values are preserved,
+     * new values are added, modify values are updated and null values are deleted.
+     */
+    @Test
+    public void testMapMerge() {
+        MergeTest source = new MergeTest();
+        MergeTest patch = new MergeTest();
+
+        patch.mapOfStrings = new HashMap<String, String>();
+        patch.mapOfStrings.put("key-1", "value-1");
+        patch.mapOfStrings.put("key-2", "value-2");
+        patch.mapOfStrings.put("key-3", "value-3");
+
+        ServiceDocumentDescription d = ServiceDocumentDescription.Builder.create()
+                .buildDescription(MergeTest.class);
+        Assert.assertTrue("There should be changes", Utils.mergeWithState(d, source, patch));
+        Assert.assertEquals("Check new map size", source.mapOfStrings.size(), 3);
+        Assert.assertEquals("Check new map value 1.", source.mapOfStrings.get("key-1"), "value-1");
+        Assert.assertEquals("Check new map value 2.", source.mapOfStrings.get("key-2"), "value-2");
+        Assert.assertEquals("Check new map value 3.", source.mapOfStrings.get("key-3"), "value-3");
+
+        patch.mapOfStrings = new HashMap<String, String>();
+        patch.mapOfStrings.put("key-2", "value-2-patched");
+        patch.mapOfStrings.put("key-3", null);
+        patch.mapOfStrings.put("key-4", "value-4-new");
+
+        Assert.assertTrue("There should be changes. One deleted and one added.", Utils.mergeWithState(d, source, patch));
+        Assert.assertEquals("Check map size. One deleted and one added value.", source.mapOfStrings.size(), 3);
+        Assert.assertEquals("Check unmodified key/value is preserved.", source.mapOfStrings.get("key-1"), "value-1");
+        Assert.assertEquals("Check modified key/value is changed as intended.", source.mapOfStrings.get("key-2"), "value-2-patched");
+        Assert.assertEquals("Check new key/value is added.", source.mapOfStrings.get("key-4"), "value-4-new");
+    }
+
     @Test
     public void testSerializeClassesWithoutDefaultConstructor() {
         Range range = new Range(0, 100);
