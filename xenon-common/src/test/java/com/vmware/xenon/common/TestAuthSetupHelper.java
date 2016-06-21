@@ -13,9 +13,11 @@
 
 package com.vmware.xenon.common;
 
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
 import java.net.URI;
+import java.util.EnumSet;
 import java.util.UUID;
 
 import org.junit.Test;
@@ -27,12 +29,23 @@ import com.vmware.xenon.common.test.VerificationHost;
 import com.vmware.xenon.services.common.AuthorizationContextService;
 import com.vmware.xenon.services.common.ExampleService;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
+import com.vmware.xenon.services.common.QueryTask;
+import com.vmware.xenon.services.common.QueryTask.Query;
+import com.vmware.xenon.services.common.QueryTask.Query.Occurance;
+import com.vmware.xenon.services.common.ResourceGroupService.ResourceGroupState;
+import com.vmware.xenon.services.common.RoleService.RoleState;
 import com.vmware.xenon.services.common.ServiceHostManagementService;
+import com.vmware.xenon.services.common.ServiceUriPaths;
+import com.vmware.xenon.services.common.UserGroupService.UserGroupState;
 
 // Note that we can't use BasicReusableHostTestCase here because we need to enable
 // authorization on the host before it's started, and BasicReusableHostTestCase
 // doesn't have authorization enabled.
 public class TestAuthSetupHelper extends BasicTestCase {
+
+    private static final String GUEST_ROLE = "guest-role";
+    private static final String GUEST_USER_GROUP = "guest-user-group";
+    private static final String GUEST_RESOURCE_GROUP = "guest-resource-group";
 
     @Override
     public void beforeHostStart(VerificationHost host) {
@@ -86,6 +99,110 @@ public class TestAuthSetupHelper extends BasicTestCase {
         getManagementState(exampleAuthToken, false);
 
         this.host.log("AuthorizationSetupHelper is working");
+    }
+
+    @Test
+    public void testRoleSetupWithLinks() throws Throwable {
+        this.host.waitForServiceAvailable(ServiceHostManagementService.SELF_LINK);
+        OperationContext.setAuthorizationContext(this.host.getSystemAuthorizationContext());
+
+        AuthorizationSetupHelper.AuthSetupCompletion authCompletion = (ex) -> {
+            if (ex == null) {
+                this.host.completeIteration();
+            } else {
+                this.host.failIteration(ex);
+            }
+        };
+
+        this.host.testStart(1);
+        AuthorizationSetupHelper.create()
+                .setHost(this.host)
+                .setUserLink(ServiceUriPaths.CORE_AUTHZ_GUEST_USER)
+                .setDocumentLink(ServiceUriPaths.SWAGGER)
+                .setUserGroupName(GUEST_USER_GROUP)
+                .setResourceGroupName(GUEST_RESOURCE_GROUP)
+                .setRoleName(GUEST_ROLE)
+                .setCompletion(authCompletion)
+                .setupRole();
+
+        this.host.testWait();
+
+        ServiceDocumentQueryResult result = queryDocuments(Utils.buildKind(UserGroupState.class),
+                1);
+        UserGroupState userGroupState = Utils
+                .fromJson(result.documents.values().iterator().next(), UserGroupState.class);
+        assertEquals(GUEST_USER_GROUP,
+                UriUtils.getLastPathSegment(userGroupState.documentSelfLink));
+
+        result = queryDocuments(Utils.buildKind(ResourceGroupState.class), 1);
+        ResourceGroupState resourceGroupState = Utils
+                .fromJson(result.documents.values().iterator().next(), ResourceGroupState.class);
+        assertEquals(GUEST_RESOURCE_GROUP,
+                UriUtils.getLastPathSegment(resourceGroupState.documentSelfLink));
+
+        result = queryDocuments(Utils.buildKind(RoleState.class), 1);
+        RoleState roleState = Utils
+                .fromJson(result.documents.values().iterator().next(), RoleState.class);
+        assertEquals(GUEST_ROLE, UriUtils.getLastPathSegment(roleState.documentSelfLink));
+    }
+
+    @Test
+    public void testRoleSetupWithQueries() throws Throwable {
+        this.host.waitForServiceAvailable(ServiceHostManagementService.SELF_LINK);
+        OperationContext.setAuthorizationContext(this.host.getSystemAuthorizationContext());
+
+        AuthorizationSetupHelper.AuthSetupCompletion authCompletion = (ex) -> {
+            if (ex == null) {
+                this.host.completeIteration();
+            } else {
+                this.host.failIteration(ex);
+            }
+        };
+
+        this.host.testStart(1);
+
+        Query userQuery = Query.Builder.create()
+                .addFieldClause(
+                        ServiceDocument.FIELD_NAME_SELF_LINK,
+                        ServiceUriPaths.CORE_AUTHZ_GUEST_USER)
+                .build();
+
+        Query resourceQuery = Query.Builder.create()
+                .addFieldClause(ServiceDocument.FIELD_NAME_SELF_LINK,
+                        ServiceUriPaths.SWAGGER, Occurance.SHOULD_OCCUR)
+                .build();
+
+        AuthorizationSetupHelper.create()
+                .setHost(this.host)
+                .setUserGroupQuery(userQuery)
+                .setResourceQuery(resourceQuery)
+                .setRoleName(GUEST_ROLE)
+                .setCompletion(authCompletion)
+                .setupRole();
+
+        this.host.testWait();
+
+        ServiceDocumentQueryResult result = queryDocuments(Utils.buildKind(UserGroupState.class),
+                1);
+        UserGroupState userGroupState = Utils
+                .fromJson(result.documents.values().iterator().next(), UserGroupState.class);
+        assertEquals(userQuery.booleanClauses.get(0).term.propertyName,
+                userGroupState.query.booleanClauses.get(0).term.propertyName);
+        assertEquals(userQuery.booleanClauses.get(0).term.matchValue,
+                userGroupState.query.booleanClauses.get(0).term.matchValue);
+
+        result = queryDocuments(Utils.buildKind(ResourceGroupState.class), 1);
+        ResourceGroupState resourceGroupState = Utils
+                .fromJson(result.documents.values().iterator().next(), ResourceGroupState.class);
+        assertEquals(resourceQuery.booleanClauses.get(0).term.propertyName,
+                resourceGroupState.query.booleanClauses.get(0).term.propertyName);
+        assertEquals(resourceQuery.booleanClauses.get(0).term.matchValue,
+                resourceGroupState.query.booleanClauses.get(0).term.matchValue);
+
+        result = queryDocuments(Utils.buildKind(RoleState.class), 1);
+        RoleState roleState = Utils
+                .fromJson(result.documents.values().iterator().next(), RoleState.class);
+        assertEquals(GUEST_ROLE, UriUtils.getLastPathSegment(roleState.documentSelfLink));
     }
 
     /**
@@ -224,5 +341,16 @@ public class TestAuthSetupHelper extends BasicTestCase {
     private void clearClientCookieJar() {
         NettyHttpServiceClient client = (NettyHttpServiceClient) this.host.getClient();
         client.clearCookieJar();
+    }
+
+    private ServiceDocumentQueryResult queryDocuments(String documentKind, int desiredCount)
+            throws Throwable {
+        QueryTask.QuerySpecification q = new QueryTask.QuerySpecification();
+        q.query.setTermPropertyName(ServiceDocument.FIELD_NAME_KIND)
+                .setTermMatchValue(documentKind);
+        q.options = EnumSet
+                .of(QueryTask.QuerySpecification.QueryOption.EXPAND_CONTENT);
+        return this.host
+                .createAndWaitSimpleDirectQuery(this.host.getUri(), q, desiredCount, desiredCount);
     }
 }
