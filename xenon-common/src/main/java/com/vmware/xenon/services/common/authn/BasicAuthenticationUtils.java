@@ -125,6 +125,7 @@ public class BasicAuthenticationUtils {
 
     /**
      * This method invokes the query specified by the service to check if the user is
+     * valid
      * @param service service invoking this method
      * @param op Operation context of the login request
      * @param authContext authContext to perform the login checks
