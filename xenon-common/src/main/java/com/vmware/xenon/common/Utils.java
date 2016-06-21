@@ -32,6 +32,7 @@ import java.util.EnumSet;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
+import java.util.Map.Entry;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -74,6 +75,7 @@ public class Utils {
     public static final String PROPERTY_NAME_PREFIX = "xenon.";
     public static final String CHARSET = CHARSET_UTF_8;
     public static final String UI_DIRECTORY_NAME = "ui";
+    public static final String MAP_DELETE_SPECIAL_VALUE = "__null";
 
     private static final char[] HEX_CHARS = "0123456789abcdef".toCharArray();
 
@@ -1025,6 +1027,29 @@ public class Utils {
             }
         }
         return modified;
+    }
+
+    /**
+     * A help method which update maps in a service.
+     * It add the new key-values pairs.
+     * Update the value for those keys which are already set.
+     * If the value in key-value pair is set to special string "__null" the pair will be deleted.
+     *
+     * @param sourceMap The map from the service state before it is patched.
+     * @param patchMap Map with values which will be patched.
+     */
+    public static void mergeMapField(
+            Map<String,String> sourceMap, Map<String,String> patchMap) {
+        if(patchMap == null || patchMap.isEmpty()) {
+            return;
+        }
+        for (Entry<String, String> e : patchMap.entrySet()) {
+            if(e.getValue().equals(MAP_DELETE_SPECIAL_VALUE)) {
+                sourceMap.remove(e.getKey());
+            } else {
+                sourceMap.put(e.getKey(), e.getValue());
+            }
+        }
     }
 
     /**
