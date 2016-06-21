@@ -18,6 +18,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.EnumSet;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -307,8 +308,14 @@ public class QueryTaskService extends StatefulService {
         if (r.documents != null) {
             currentState.results.documents = new HashMap<>(r.documents);
         }
+        if (r.selectedLinksPerDocument != null) {
+            currentState.results.selectedLinksPerDocument = new HashMap<>(r.selectedLinksPerDocument);
+        }
         if (r.selectedLinks != null) {
-            currentState.results.selectedLinks = new HashMap<>(r.selectedLinks);
+            currentState.results.selectedLinks = new HashSet<>(r.selectedLinks);
+        }
+        if (r.selectedDocuments != null) {
+            currentState.results.selectedDocuments = new HashMap<>(r.selectedDocuments);
         }
 
         get.setBodyNoCloning(currentState).complete();

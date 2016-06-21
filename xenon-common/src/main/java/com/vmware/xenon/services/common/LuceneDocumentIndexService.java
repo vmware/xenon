@@ -1171,8 +1171,8 @@ public class LuceneDocumentIndexService extends StatelessService {
                     if (rsp.documents != null) {
                         rsp.documents.remove(link);
                     }
-                    if (rsp.selectedLinks != null) {
-                        rsp.selectedLinks.remove(link);
+                    if (rsp.selectedLinksPerDocument != null) {
+                        rsp.selectedLinksPerDocument.remove(link);
                     }
                 }
                 continue;
@@ -1266,19 +1266,21 @@ public class LuceneDocumentIndexService extends StatelessService {
             QuerySpecification qs, ServiceDocumentQueryResult rsp, Document d, int docId,
             String link,
             ServiceDocument state) throws Throwable {
-        if (rsp.selectedLinks == null) {
-            rsp.selectedLinks = new HashMap<>();
+        if (rsp.selectedLinksPerDocument == null) {
+            rsp.selectedLinksPerDocument = new HashMap<>();
+            rsp.selectedLinks = new HashSet<>();
         }
-        Map<String, String> linksPerDocument = rsp.selectedLinks.get(link);
+        Map<String, String> linksPerDocument = rsp.selectedLinksPerDocument.get(link);
         if (linksPerDocument == null) {
             linksPerDocument = new HashMap<>();
-            rsp.selectedLinks.put(link, linksPerDocument);
+            rsp.selectedLinksPerDocument.put(link, linksPerDocument);
         }
 
         for (QueryTask.QueryTerm qt : qs.linkTerms) {
             String linkValue = d.get(qt.propertyName);
             if (linkValue != null) {
                 linksPerDocument.put(qt.propertyName, linkValue);
+                rsp.selectedLinks.add(linkValue);
                 continue;
             }
 
@@ -1312,6 +1314,7 @@ public class LuceneDocumentIndexService extends StatelessService {
                 linksPerDocument.put(
                         QuerySpecification.buildLinkCollectionItemName(qt.propertyName, index++),
                         item);
+                rsp.selectedLinks.add(item);
             }
         }
         return state;

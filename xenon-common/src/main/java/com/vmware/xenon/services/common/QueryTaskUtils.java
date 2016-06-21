@@ -175,13 +175,13 @@ public class QueryTaskUtils {
     public static void expandLinks(ServiceHost host, QueryTask task, Operation op) {
         ServiceDocumentQueryResult result = task.results;
         if (!task.querySpec.options.contains(QueryOption.EXPAND_LINKS) || result == null
-                || result.selectedLinks == null || result.selectedLinks.isEmpty()) {
+                || result.selectedLinksPerDocument == null || result.selectedLinksPerDocument.isEmpty()) {
             op.setBodyNoCloning(task).complete();
             return;
         }
 
         Map<String, String> uniqueLinkToState = new ConcurrentSkipListMap<>();
-        for (Map<String, String> selectedLinksPerDocument : result.selectedLinks.values()) {
+        for (Map<String, String> selectedLinksPerDocument : result.selectedLinksPerDocument.values()) {
             for (Entry<String, String> en : selectedLinksPerDocument.entrySet()) {
                 uniqueLinkToState.put(en.getValue(), "");
             }
@@ -219,18 +219,7 @@ public class QueryTaskUtils {
                 return;
             }
 
-            Map<String, String> updatedLinkValues = new HashMap<>();
-
-            for (Map<String, String> selectedLinks : result.selectedLinks.values()) {
-                for (Entry<String, String> en : selectedLinks.entrySet()) {
-                    String state = uniqueLinkToState.get(en.getValue());
-                    updatedLinkValues.put(en.getKey(), state);
-                }
-                for (Entry<String, String> en : updatedLinkValues.entrySet()) {
-                    selectedLinks.put(en.getKey(), en.getValue());
-                }
-            }
-
+            result.selectedDocuments = uniqueLinkToState;
             op.setBodyNoCloning(task).complete();
         };
 

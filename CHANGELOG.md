@@ -2,6 +2,12 @@
 
 ## 0.9.0-SNAPSHOT
 
+* Modify new QueryOption.SELECT_LINKS and QueryOption.EXPAND_LINKS behavior
+  to properly de-duplicate expanded state for selected links and make the
+  selection results similar to the existing documentLinks and documents,
+  in usage and behavior.
+  The selectedLinks map is now called selectedLinksPerDocument.
+
 ## 0.8.2
 
 * Add global stats for total service pauses, resumes, cache clears

@@ -96,7 +96,7 @@ public class QueryTask extends ServiceDocument {
             /**
              * Query execution will issue GET requests to the document links in each document in
              * the results. The content will be placed in the
-             * {@code ServiceDocumentQueryResult#selectedLinks} map.
+             * {@code ServiceDocumentQueryResult#selectedDocuments} map.
              * This option must be combined with SELECT_LINKS
              */
             EXPAND_LINKS,
