@@ -501,6 +501,11 @@ public class StatefulService implements Service {
             return false;
         }
 
+        if (request.getRequestHeader(Operation.TRANSACTION_HEADER) != null) {
+            // Skip update in case of a transaction control operation
+            return false;
+        }
+
         if (!hasOption(ServiceOption.STRICT_UPDATE_CHECKING)) {
             return false;
         }
@@ -511,6 +516,7 @@ public class StatefulService implements Service {
             body = request.getBody(ServiceDocument.class);
         } else if (!(body instanceof ServiceDocument)) {
             // we can't compare requests that do not derive from ServiceDocument
+            this.logWarning("Action: %s, Body: %s", request.getAction(), body);
             request.fail(new IllegalArgumentException(
                     "request body must derive from ServiceDocument"));
             return true;
@@ -907,7 +913,8 @@ public class StatefulService implements Service {
         }
 
         if (latestState.documentVersion < this.context.version
-                || (latestState.documentEpoch != null && latestState.documentEpoch < this.context.epoch)) {
+                || (latestState.documentEpoch != null
+                        && latestState.documentEpoch < this.context.epoch)) {
             return;
         }
 

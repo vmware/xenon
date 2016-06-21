@@ -491,6 +491,68 @@ public class TestSimpleTransactionService extends BasicReusableHostTestCase {
         countAccounts(null, 0);
     }
 
+    @Test
+    public void testStrictUpdateCheck() throws Throwable {
+        // start a factory with ServiceOption.STRICT_UPDATE_CHECK
+        this.defaultHost.startServiceAndWait(StrictUpdateCheckFactoryService.class,
+                StrictUpdateCheckFactoryService.SELF_LINK);
+
+        // create a document in the transaction
+        String txid = newTransaction();
+        StrictUpdateCheckService.StrictUpdateCheckServiceState initialState = new StrictUpdateCheckService.StrictUpdateCheckServiceState();
+        String id = UUID.randomUUID().toString();
+        initialState.documentSelfLink = id;
+        this.defaultHost.testStart(1);
+        Operation post = Operation.createPost(
+                UriUtils.buildUri(this.defaultHost, StrictUpdateCheckFactoryService.SELF_LINK))
+                .setBody(initialState).setTransactionId(txid)
+                .setCompletion((o, e) -> {
+                    if (e != null) {
+                        this.defaultHost.failIteration(e);
+                        return;
+                    }
+
+                    this.defaultHost.completeIteration();
+                });
+        this.defaultHost.send(post);
+        this.defaultHost.testWait();
+
+        // get and patch with same version
+        URI childUri = UriUtils.buildUri(this.defaultHost,
+                StrictUpdateCheckFactoryService.SELF_LINK + "/" + id);
+        StrictUpdateCheckService.StrictUpdateCheckServiceState[] state = new StrictUpdateCheckService.StrictUpdateCheckServiceState[1];
+        this.defaultHost.testStart(1);
+        Operation get = Operation.createGet(childUri).setTransactionId(txid)
+                .setCompletion((o, e) -> {
+                    if (e != null) {
+                        this.defaultHost.failIteration(e);
+                        return;
+                    }
+
+                    state[0] = o
+                            .getBody(StrictUpdateCheckService.StrictUpdateCheckServiceState.class);
+                    this.defaultHost.completeIteration();
+                });
+        this.defaultHost.send(get);
+        this.defaultHost.testWait();
+
+        this.defaultHost.testStart(1);
+        Operation patch = Operation.createPatch(childUri).setTransactionId(txid).setBody(state[0])
+                .setCompletion((o, e) -> {
+                    if (e != null) {
+                        this.defaultHost.failIteration(e);
+                        return;
+                    }
+
+                    this.defaultHost.completeIteration();
+                });
+        this.defaultHost.send(patch);
+        this.defaultHost.testWait();
+
+        // finally, commit transaction
+        commit(txid);
+    }
+
     private void sendWithdrawDepositOperationPairs(String[] txids, int numOfTransfers,
             boolean independentTest) throws Throwable {
         Collection<Operation> requests = new ArrayList<Operation>(numOfTransfers);
@@ -1055,4 +1117,64 @@ public class TestSimpleTransactionService extends BasicReusableHostTestCase {
 
     }
 
+    public static class StrictUpdateCheckFactoryService extends FactoryService {
+
+        public static final String SELF_LINK = ServiceUriPaths.SAMPLES + "/strict-updates";
+
+        public StrictUpdateCheckFactoryService() {
+            super(StrictUpdateCheckService.StrictUpdateCheckServiceState.class);
+        }
+
+        @Override
+        public Service createServiceInstance() throws Throwable {
+            return new StrictUpdateCheckService();
+        }
+
+        @Override
+        public OperationProcessingChain getOperationProcessingChain() {
+            if (super.getOperationProcessingChain() != null) {
+                return super.getOperationProcessingChain();
+            }
+
+            OperationProcessingChain opProcessingChain = new OperationProcessingChain(this);
+            opProcessingChain.add(new TransactionalRequestFilter(this));
+            setOperationProcessingChain(opProcessingChain);
+            return opProcessingChain;
+        }
+    }
+
+    public static class StrictUpdateCheckService extends StatefulService {
+
+        public static class StrictUpdateCheckServiceState extends ServiceDocument {
+
+        }
+
+        public StrictUpdateCheckService() {
+            super(StrictUpdateCheckServiceState.class);
+            super.toggleOption(ServiceOption.PERSISTENCE, true);
+            super.toggleOption(ServiceOption.REPLICATION, true);
+            super.toggleOption(ServiceOption.OWNER_SELECTION, true);
+            super.toggleOption(ServiceOption.CONCURRENT_GET_HANDLING, false);
+            super.toggleOption(ServiceOption.STRICT_UPDATE_CHECKING, true);
+        }
+
+        @Override
+        public OperationProcessingChain getOperationProcessingChain() {
+            if (super.getOperationProcessingChain() != null) {
+                return super.getOperationProcessingChain();
+            }
+
+            OperationProcessingChain opProcessingChain = new OperationProcessingChain(this);
+            opProcessingChain.add(new TransactionalRequestFilter(this));
+            setOperationProcessingChain(opProcessingChain);
+            return opProcessingChain;
+        }
+
+        @Override
+        public void handlePatch(Operation patch) {
+            StrictUpdateCheckServiceState newState = getBody(patch);
+            setState(patch, newState);
+            patch.complete();
+        }
+    }
 }
