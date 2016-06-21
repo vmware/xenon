@@ -16,7 +16,6 @@ package com.vmware.xenon.services.common;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
-import java.util.Map.Entry;
 import java.util.Set;
 
 import com.vmware.xenon.common.FactoryService;
@@ -56,6 +55,7 @@ public class ExampleService extends StatefulService {
         @UsageOption(option = PropertyUsageOption.OPTIONAL)
         @PropertyOptions(indexing = { PropertyIndexingOption.EXPAND,
                 PropertyIndexingOption.FIXED_ITEM_NAME })
+        @UsageOption(option = PropertyUsageOption.AUTO_MERGE_IF_NOT_NULL)
         public Map<String, String> keyValues = new HashMap<>();
         public Long counter;
         @PropertyOptions(indexing = PropertyIndexingOption.SORT)
@@ -139,12 +139,6 @@ public class ExampleService extends StatefulService {
                 currentState, body);
 
         updateCounter(body, currentState, hasStateChanged);
-
-        if (body.keyValues != null && !body.keyValues.isEmpty()) {
-            for (Entry<String, String> e : body.keyValues.entrySet()) {
-                currentState.keyValues.put(e.getKey(), e.getValue());
-            }
-        }
 
         if (body.documentExpirationTimeMicros != currentState.documentExpirationTimeMicros) {
             currentState.documentExpirationTimeMicros = body.documentExpirationTimeMicros;
