@@ -29,7 +29,7 @@ import com.vmware.xenon.services.common.ExampleServiceHost;
 import com.vmware.xenon.services.common.ServiceUriPaths;
 import com.vmware.xenon.services.common.UserService;
 import com.vmware.xenon.services.common.authn.AuthenticationRequest;
-import com.vmware.xenon.services.common.authn.BasicAuthenticationService;
+import com.vmware.xenon.services.common.authn.BasicAuthenticationUtils;
 
 public class TestExampleServiceHost extends BasicReusableHostTestCase {
 
@@ -98,7 +98,7 @@ public class TestExampleServiceHost extends BasicReusableHostTestCase {
         while (new Date().before(exp)) {
             Operation loginPost = Operation.createPost(loginUri)
                     .setBody(login)
-                    .addRequestHeader(BasicAuthenticationService.AUTHORIZATION_HEADER_NAME,
+                    .addRequestHeader(BasicAuthenticationUtils.AUTHORIZATION_HEADER_NAME,
                             basicAuth)
                     .forceRemote()
                     .setCompletion((op, ex) -> {
