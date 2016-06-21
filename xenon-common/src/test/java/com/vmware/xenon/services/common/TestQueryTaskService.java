@@ -2712,19 +2712,55 @@ public class TestQueryTaskService {
         this.host.send(get);
     }
 
+    private void validateSelectLinksQueryResults(QueryTask.QuerySpecification q, QueryTask task) {
+        assertTrue(!task.results.selectedLinksPerDocument.isEmpty());
+        assertTrue(!task.results.selectedLinks.isEmpty());
+
+        Set<String> uniqueLinks = new HashSet<>();
+
+        for (QueryTerm link : task.querySpec.linkTerms) {
+            for (String selflink : task.results.documentLinks) {
+                Map<String, String> selectedLinks = task.results.selectedLinksPerDocument.get(selflink);
+                assertTrue(!selectedLinks.isEmpty());
+
+                if (QueryValidationServiceState.FIELD_NAME_SERVICE_LINK
+                        .equals(link.propertyName)) {
+                    String linkValue = selectedLinks.get(link.propertyName);
+                    assertEquals(SERVICE_LINK_VALUE, linkValue);
+                    uniqueLinks.add(linkValue);
+                } else if (QueryValidationServiceState.FIELD_NAME_SERVICE_LINKS
+                        .equals(link.propertyName)) {
+                    for (Entry<String, String> e : selectedLinks.entrySet()) {
+                        assertTrue(e.getKey().startsWith(
+                                QueryValidationServiceState.FIELD_NAME_SERVICE_LINKS));
+                        uniqueLinks.add(e.getValue());
+                        assertTrue(e.getValue().startsWith(SERVICE_LINK_VALUE));
+                    }
+                } else {
+                    throw new IllegalStateException("Unexpected link property: "
+                            + Utils.toJsonHtml(task.results));
+                }
+            }
+        }
+        assertEquals(uniqueLinks.size(), task.results.selectedLinks.size());
+    }
+
     private void validateExpandLinksResults(QueryTask page) {
+        assertEquals(page.results.documentLinks.size(), page.results.selectedLinksPerDocument.size());
         assertEquals(page.results.documentLinks.size(), page.results.selectedLinks.size());
         // since QueryValidationServiceState contains a single "serviceLink" field, we expect
         // a single Map, per document. The map should contain the link property name, and the
         // expanded value of the link, in this case a ExampleService state instance.
         int linksFound = 0;
-        for (Map<String, String> selectedLinksPerDocument : page.results.selectedLinks.values()) {
+        for (Map<String, String> selectedLinksPerDocument : page.results.selectedLinksPerDocument.values()) {
             for (Entry<String, String> entry : selectedLinksPerDocument.entrySet()) {
                 if (!QueryValidationServiceState.FIELD_NAME_SERVICE_LINK.equals(entry.getKey())) {
                     continue;
                 }
                 linksFound++;
-                ExampleServiceState expandedState = Utils.fromJson(entry.getValue(),
+                String link = entry.getValue();
+                String jsonState = page.results.selectedDocuments.get(link);
+                ExampleServiceState expandedState = Utils.fromJson(jsonState,
                         ExampleServiceState.class);
                 assertEquals(Utils.buildKind(ExampleServiceState.class), expandedState.documentKind);
             }
@@ -2734,17 +2770,18 @@ public class TestQueryTaskService {
 
     private void validatedExpandLinksResultsWithBogusLink(QueryTask queryTask,
             URI queryValidationServiceWithBrokenServiceLink) {
-        assertEquals(this.serviceCount, queryTask.results.selectedLinks.size());
-        for (Entry<String, Map<String, String>> e : queryTask.results.selectedLinks.entrySet()) {
+        assertEquals(this.serviceCount, queryTask.results.selectedLinksPerDocument.size());
+        for (Entry<String, Map<String, String>> e : queryTask.results.selectedLinksPerDocument.entrySet()) {
             for (Entry<String, String> linkToExpandedState : e.getValue().entrySet()) {
+                String link = linkToExpandedState.getValue();
+                String jsonState = queryTask.results.selectedDocuments.get(link);
                 if (!e.getKey().equals(queryValidationServiceWithBrokenServiceLink.getPath())) {
-                    ExampleServiceState st = Utils.fromJson(linkToExpandedState.getValue(),
-                            ExampleServiceState.class);
+
+                    ExampleServiceState st = Utils.fromJson(jsonState, ExampleServiceState.class);
                     assertEquals(Utils.buildKind(ExampleServiceState.class), st.documentKind);
                     continue;
                 }
-                ServiceErrorResponse error = Utils.fromJson(linkToExpandedState.getValue(),
-                        ServiceErrorResponse.class);
+                ServiceErrorResponse error = Utils.fromJson(jsonState, ServiceErrorResponse.class);
                 assertEquals(Operation.STATUS_CODE_NOT_FOUND, error.statusCode);
             }
         }
@@ -2911,32 +2948,6 @@ public class TestQueryTaskService {
             validateSelectLinksQueryResults(q, task);
         }
 
-    }
-
-    private void validateSelectLinksQueryResults(QueryTask.QuerySpecification q, QueryTask task) {
-        assertTrue(!task.results.selectedLinks.isEmpty());
-        for (QueryTerm link : task.querySpec.linkTerms) {
-            for (String selflink : task.results.documentLinks) {
-                Map<String, String> selectedLinks = task.results.selectedLinks.get(selflink);
-                assertTrue(!selectedLinks.isEmpty());
-
-                if (QueryValidationServiceState.FIELD_NAME_SERVICE_LINK
-                        .equals(link.propertyName)) {
-                    String linkValue = selectedLinks.get(link.propertyName);
-                    assertEquals(SERVICE_LINK_VALUE, linkValue);
-                } else if (QueryValidationServiceState.FIELD_NAME_SERVICE_LINKS
-                        .equals(link.propertyName)) {
-                    for (Entry<String, String> e : selectedLinks.entrySet()) {
-                        assertTrue(e.getKey().startsWith(
-                                QueryValidationServiceState.FIELD_NAME_SERVICE_LINKS));
-                        assertTrue(e.getValue().startsWith(SERVICE_LINK_VALUE));
-                    }
-                } else {
-                    throw new IllegalStateException("Unexpected link property: "
-                            + Utils.toJsonHtml(task.results));
-                }
-            }
-        }
     }
 
     @Test

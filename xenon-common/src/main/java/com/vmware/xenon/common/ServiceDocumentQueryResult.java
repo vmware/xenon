@@ -16,6 +16,7 @@ package com.vmware.xenon.common;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 public class ServiceDocumentQueryResult extends ServiceDocument {
 
@@ -39,6 +40,14 @@ public class ServiceDocumentQueryResult extends ServiceDocument {
     public Map<String, Object> documents;
 
     /**
+     * If the query included QueryOption.SELECT_LINKS, this set is populated with the
+     * unique link values, selected across all documents in the results. The {@link #selectedLinksPerDocument}
+     * is structured around the document self link and link field names, so it will contain
+     * keys with the same link value. This field, given it is a set, contains the unique values
+     */
+    public Set<String> selectedLinks;
+
+    /**
      * If the query included QueryOption.SELECT_LINKS, this map is populated with the link
      * names and values, for each link in the results. For example, if the query results
      * include a document link /services/one, with a document that has a field "parentLink"
@@ -51,7 +60,14 @@ public class ServiceDocumentQueryResult extends ServiceDocument {
      *    "parentLinks.item.0" : "parents/two", "parentLinks.item.1" : "parents/three" }
      *   } }
      */
-    public Map<String, Map<String, String>> selectedLinks;
+    public Map<String, Map<String, String>> selectedLinksPerDocument;
+
+    /**
+     * If the query included QueryOption.EXPAND_LINKS, this map is populated with the JSON
+     * serialized service state for all unique selected link values.
+     */
+    public Map<String, String> selectedDocuments;
+
 
     /**
      * Set to the number of documents that satisfy the query.
@@ -84,7 +100,7 @@ public class ServiceDocumentQueryResult extends ServiceDocument {
             ServiceDocumentQueryResult sdqr = (ServiceDocumentQueryResult) target;
             sdqr.documentLinks = this.documentLinks;
             sdqr.documents = this.documents;
-            sdqr.selectedLinks = this.selectedLinks;
+            sdqr.selectedLinksPerDocument = this.selectedLinksPerDocument;
             sdqr.documentCount = this.documentCount;
             sdqr.prevPageLink = this.prevPageLink;
             sdqr.nextPageLink = this.nextPageLink;
