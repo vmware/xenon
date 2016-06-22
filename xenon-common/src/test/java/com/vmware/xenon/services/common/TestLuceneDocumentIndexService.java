@@ -43,6 +43,8 @@ import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import java.util.logging.Level;
+import java.util.logging.Logger;
+
 import javax.xml.bind.DatatypeConverter;
 
 import org.junit.After;
@@ -171,6 +173,11 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
      * Parameter that specifies long running test duration in seconds
      */
     public long testDurationSeconds;
+
+    /**
+     * Parameter that specifies iterations per test method
+     */
+    public long iterationCount = 1;
 
     private final String EXAMPLES_BODIES_FILE = "example_bodies.json";
     private final String INDEX_DIR_NAME = "lucene510";
@@ -1485,6 +1492,14 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
 
     @Test
     public void serviceVersionRetentionAndGrooming() throws Throwable {
+        for (int i = 0; i < this.iterationCount; i++) {
+            Logger.getAnonymousLogger().info("Iteration: " + i);
+            verifyServiceVersionRetentionAndGrooming();
+            tearDown();
+        }
+    }
+
+    public void verifyServiceVersionRetentionAndGrooming() throws Throwable {
         EnumSet<ServiceOption> caps = EnumSet.of(ServiceOption.PERSISTENCE);
         doServiceVersionGroomingValidation(caps);
     }
