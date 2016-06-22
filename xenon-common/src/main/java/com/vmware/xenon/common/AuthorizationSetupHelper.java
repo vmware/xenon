@@ -335,6 +335,9 @@ public class AuthorizationSetupHelper {
                     }
                     this.host.log(Level.INFO, "User %s already exists, skipping setup of user",
                             this.userEmail);
+                    if (this.completion != null) {
+                        this.completion.handle(null);
+                    }
                 });
         this.host.sendRequest(postQuery);
     }

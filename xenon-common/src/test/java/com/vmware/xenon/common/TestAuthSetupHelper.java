@@ -25,6 +25,7 @@ import org.junit.Test;
 import com.vmware.xenon.common.ServiceHost.ServiceHostState;
 import com.vmware.xenon.common.http.netty.NettyHttpServiceClient;
 import com.vmware.xenon.common.test.AuthorizationHelper;
+import com.vmware.xenon.common.test.TestContext;
 import com.vmware.xenon.common.test.VerificationHost;
 import com.vmware.xenon.services.common.AuthorizationContextService;
 import com.vmware.xenon.services.common.ExampleService;
@@ -353,4 +354,41 @@ public class TestAuthSetupHelper extends BasicTestCase {
         return this.host
                 .createAndWaitSimpleDirectQuery(this.host.getUri(), q, desiredCount, desiredCount);
     }
+
+    @Test
+    public void testCompletionHandlerWhenUserExists() throws Throwable {
+        this.host.waitForServiceAvailable(ServiceHostManagementService.SELF_LINK);
+        OperationContext.setAuthorizationContext(this.host.getSystemAuthorizationContext());
+
+        // create users
+        makeUsersWithAuthSetupHelper();
+
+        boolean[] isCalled = new boolean[1];
+
+        TestContext testContext = this.host.testCreate(1);
+
+        AuthorizationSetupHelper.AuthSetupCompletion authCompletion = (ex) -> {
+            if (ex == null) {
+                isCalled[0] = true;
+                testContext.completeIteration();
+            } else {
+                testContext.failIteration(ex);
+            }
+        };
+
+        // try to create existing user
+        AuthorizationSetupHelper.create()
+                .setHost(this.host)
+                .setUserEmail(this.adminUser)
+                .setUserPassword(this.adminUser)
+                .setIsAdmin(true)
+                .setCompletion(authCompletion)
+                .start();
+
+        testContext.await();
+
+        assertTrue("completion handler must be called when trying to create an existing user",
+                isCalled[0]);
+    }
+
 }
