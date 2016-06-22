@@ -286,6 +286,29 @@ public class TestOperation extends BasicReusableHostTestCase {
     }
 
     @Test
+    public void getHeaders() {
+        Operation op = Operation.createGet(this.host.getUri());
+
+        // check request header
+        op.getRequestHeaders().put("foo-request", "FOO-REQUEST");
+        assertEquals("FOO-REQUEST", op.getRequestHeader("foo-request"));
+        assertEquals("FOO-REQUEST", op.getRequestHeaders().get("foo-request"));
+
+        op.addRequestHeader("bar-request", "BAR-REQUEST");
+        assertEquals("BAR-REQUEST", op.getRequestHeader("bar-request"));
+        assertEquals("BAR-REQUEST", op.getRequestHeaders().get("bar-request"));
+
+        // check response header
+        op.getResponseHeaders().put("foo-response", "FOO-RESPONSE");
+        assertEquals("FOO-RESPONSE", op.getResponseHeader("foo-response"));
+        assertEquals("FOO-RESPONSE", op.getResponseHeaders().get("foo-response"));
+
+        op.addResponseHeader("bar-response", "BAR-RESPONSE");
+        assertEquals("BAR-RESPONSE", op.getResponseHeader("bar-response"));
+        assertEquals("BAR-RESPONSE", op.getResponseHeaders().get("bar-response"));
+    }
+
+    @Test
     public void operationDoubleCompletion() throws Throwable {
         AtomicInteger completionCount = new AtomicInteger();
         CompletionHandler c = (o, e) -> {

@@ -1398,17 +1398,13 @@ public class Operation implements Cloneable {
     }
 
     public Map<String, String> getRequestHeaders() {
-        if (this.remoteCtx == null) {
-            return new HashMap<>();
-        }
+        allocateRemoteContext();
         allocateRequestHeaders();
         return this.remoteCtx.requestHeaders;
     }
 
     public Map<String, String> getResponseHeaders() {
-        if (this.remoteCtx == null) {
-            return new HashMap<>();
-        }
+        allocateRemoteContext();
         allocateResponseHeaders();
         return this.remoteCtx.responseHeaders;
     }
