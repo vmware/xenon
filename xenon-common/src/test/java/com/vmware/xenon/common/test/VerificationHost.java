@@ -375,13 +375,23 @@ public class VerificationHost extends ExampleServiceHost {
     /**
      * Creates a test wait context that can be nested and isolated from other wait contexts
      */
+    public TestContext testCreate(int c, int timeoutSeconds) {
+        return TestContext.create(c, TimeUnit.SECONDS.toMicros(timeoutSeconds));
+    }
+
+    /**
+     * Creates a test wait context that can be nested and isolated from other wait contexts
+     */
     public TestContext testCreate(long c) {
         return testCreate((int) c);
     }
 
     /**
      * Starts a test context used for a single synchronous test execution for the entire host
+     *
+     * @deprecated use {@link #testCreate(int)}
      */
+    @Deprecated
     public void testStart(long c) {
         if (this.isSingleton) {
             throw new IllegalStateException("Use testCreate on singleton, shared host instances");
@@ -463,15 +473,30 @@ public class VerificationHost extends ExampleServiceHost {
         ctx.await();
     }
 
+    /**
+     * @deprecated use {@link TestContext#await()}
+     * @see {@link #testCreate(int)}
+     */
+    @Deprecated
     public void testWait() throws Throwable {
         testWait(new Exception().getStackTrace()[1].getMethodName(),
                 this.timeoutSeconds);
     }
 
+    /**
+     * @deprecated use {@link TestContext#await()}
+     * @see {@link #testCreate(int, int)}
+     */
+    @Deprecated
     public void testWait(int timeoutSeconds) throws Throwable {
         testWait(new Exception().getStackTrace()[1].getMethodName(), timeoutSeconds);
     }
 
+    /**
+     * @deprecated use {@link TestContext#await()}
+     * @see {@link #testCreate(int, int)}
+     */
+    @Deprecated
     public void testWait(String testName, int timeoutSeconds) throws Throwable {
         if (this.isSingleton) {
             throw new IllegalStateException("Use startTest on singleton, shared host instances");

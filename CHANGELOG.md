@@ -2,6 +2,9 @@
 
 ## 0.9.0-SNAPSHOT
 
+* Deprecate testStart and testWait in VerificationHost. Prefer using TestContext
+  via VerificationHost#testCreate.
+
 * Modify new QueryOption.SELECT_LINKS and QueryOption.EXPAND_LINKS behavior
   to properly de-duplicate expanded state for selected links and make the
   selection results similar to the existing documentLinks and documents,
