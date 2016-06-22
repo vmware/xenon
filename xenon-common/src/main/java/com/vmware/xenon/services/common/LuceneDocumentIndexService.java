@@ -1855,23 +1855,99 @@ public class LuceneDocumentIndexService extends StatelessService {
             return;
         }
 
+        int totalHits = hits.length;
+
         hitDoc = s.doc(hits[hits.length - 1].doc);
-        long versionLowerBound = Long.parseLong(hitDoc.get(ServiceDocument.FIELD_NAME_VERSION));
+        long oldestVersion = Long.parseLong(hitDoc.get(ServiceDocument.FIELD_NAME_VERSION));
+
+        hitDoc = s.doc(hits[0].doc);
+        long latestVersion = Long.parseLong(hitDoc.get(ServiceDocument.FIELD_NAME_VERSION));
+
+        if (latestVersion - oldestVersion + 1 != totalHits) {
+            logWarning("Race detected for %s. Document versions returned are less than expected.");
+
+            Set<Long> missingVersions = new HashSet<>();
+            long expectedVersion = latestVersion - 1;
+
+            // Some of the document Versions are missing. Let's find out which one:
+            for (int i = 1; i < hits.length; i++) {
+                Document d = s.doc(hits[i].doc);
+                long v = Long.parseLong(d.get(ServiceDocument.FIELD_NAME_VERSION));
+                if (v != expectedVersion) {
+                    missingVersions.add(v);
+                    logWarning("Version %d is missing", v);
+                    expectedVersion = v;
+                }
+                expectedVersion--;
+            }
+
+            // Let's do another query and see if we get the same results
+            TopDocs raceResults = s.search(linkQuery, Integer.MAX_VALUE, this.versionSort, false, false);
+            ScoreDoc[] raceHits = raceResults.scoreDocs;
+
+            // find out totalHits, oldestVersion and latestVersion
+            totalHits = raceHits.length;
+            Document d = s.doc(raceHits[raceHits.length - 1].doc);
+            oldestVersion = Long.parseLong(d.get(ServiceDocument.FIELD_NAME_VERSION));
+            d = s.doc(raceHits[0].doc);
+            latestVersion = Long.parseLong(d.get(ServiceDocument.FIELD_NAME_VERSION));
+
+            if (latestVersion - oldestVersion + 1 != totalHits) {
+                logWarning("It is still showing as one of the version is missing. " +
+                        "Let's again try to find out which version it is");
+                expectedVersion = latestVersion - 1;
+                for (int i = 1; i < raceHits.length; i++) {
+                    d = s.doc(raceHits[i].doc);
+                    long v = Long.parseLong(d.get(ServiceDocument.FIELD_NAME_VERSION));
+                    if (v != expectedVersion) {
+                        missingVersions.add(v);
+                        logWarning("Version %d is missing", v);
+                        expectedVersion = v;
+                    }
+                    expectedVersion--;
+                }
+
+                // Let's do a range query now without sorting
+                Query versionQuery = LongPoint.newRangeQuery(
+                        ServiceDocument.FIELD_NAME_VERSION, oldestVersion, latestVersion);
+                BooleanQuery.Builder builder = new BooleanQuery.Builder();
+                builder.add(versionQuery, Occur.MUST);
+                builder.add(linkQuery, Occur.MUST);
+                BooleanQuery bq = builder.build();
+
+                results = s.search(bq, Integer.MAX_VALUE);
+                if (results.scoreDocs.length == latestVersion - oldestVersion + 1) {
+                    logWarning("Ok. the range query returned the correct results");
+                } else {
+                    logWarning("Even the range query returned less results");
+                }
+
+                // Let's now try to actually query the document.
+                for (Long missingVersion : missingVersions) {
+                    TopDocs missingVersionHits = searchByVersion(link, s, missingVersion);
+                    if (missingVersionHits.totalHits == 0) {
+                        logWarning("We did not find version %d for selfLink %s", missingVersion, link);
+                    } else {
+                        Document doc = s.doc(missingVersionHits.scoreDocs[0].doc);
+                        if (doc != null) {
+                            logWarning("We did find the missing version %d for selfLink %s", missingVersion, link);
+                            logWarning(doc.toString());
+                        } else {
+                            logWarning("We did not find version %d for selfLink %s", missingVersion, link);
+                        }
+                    }
+                }
+            } else {
+                logWarning("Ok. This time we got the correct result. " +
+                        "Which means there is something wrong with s.search.");
+            }
+        }
 
         // if the number of documents found for the passed self-link are already less than the
         // version limit, then skip version retention.
         if (hits.length <= versionsToKeep) {
-            hitDoc = s.doc(hits[0].doc);
-            long versionUpperBound = Long.parseLong(hitDoc.get(ServiceDocument.FIELD_NAME_VERSION));
             logWarning("Skipping index trimming for %s from %d to %d. query returned :%d",
-                    link, versionLowerBound, versionUpperBound, hits.length);
-
-            // Let's make sure the documentSelfLink is registered for retention so that
-            // in-case we missed an update because the searcher was stale, we will perform
-            // the clean-up in the next handleMaintenance cycle.
-            synchronized (this.linkDocumentRetentionEstimates) {
-                this.linkDocumentRetentionEstimates.put(link, versionsToKeep);
-            }
+                    link, oldestVersion, latestVersion, totalHits);
             return;
         }
 
@@ -1881,10 +1957,10 @@ public class LuceneDocumentIndexService extends StatelessService {
         // that will delete all documents from that document up to the version at the
         // retention limit
         hitDoc = s.doc(hits[(int) versionsToKeep].doc);
-        long versionUpperBound = Long.parseLong(hitDoc.get(ServiceDocument.FIELD_NAME_VERSION));
+        long latestVersionBeingTrimmed = Long.parseLong(hitDoc.get(ServiceDocument.FIELD_NAME_VERSION));
 
         Query versionQuery = LongPoint.newRangeQuery(
-                ServiceDocument.FIELD_NAME_VERSION, versionLowerBound, versionUpperBound);
+                ServiceDocument.FIELD_NAME_VERSION, oldestVersion, latestVersionBeingTrimmed);
 
         builder.add(versionQuery, Occur.MUST);
         builder.add(linkQuery, Occur.MUST);
@@ -1892,8 +1968,9 @@ public class LuceneDocumentIndexService extends StatelessService {
 
         results = s.search(bq, Integer.MAX_VALUE);
 
-        logInfo("trimming index for %s from %d to %d, query returned %d", link, hits.length,
-                versionsToKeep, results.totalHits);
+        logInfo("Version grooming for %s found %d versions from %d to %d. Trimming %d versions from %d to %d",
+                link, totalHits, oldestVersion, latestVersion,
+                results.scoreDocs.length, oldestVersion, latestVersionBeingTrimmed);
 
         wr.deleteDocuments(bq);
         long now = Utils.getNowMicrosUtc();
