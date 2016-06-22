@@ -26,6 +26,7 @@ import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
 import java.util.function.Consumer;
+
 import javax.security.cert.X509Certificate;
 
 import com.vmware.xenon.common.Service.Action;
@@ -238,7 +239,8 @@ public class Operation implements Cloneable {
                 return this;
             }
 
-            public Builder setResourceQueryFilterMap(Map<Action, QueryFilter> resourceQueryFiltersMap) {
+            public Builder setResourceQueryFilterMap(
+                    Map<Action, QueryFilter> resourceQueryFiltersMap) {
                 this.authorizationContext.resourceQueryFiltersMap = resourceQueryFiltersMap;
                 return this;
             }
@@ -368,6 +370,7 @@ public class Operation implements Cloneable {
     // HTTP Header definitions
     public static final String REFERER_HEADER = "referer";
     public static final String CONTENT_TYPE_HEADER = "content-type";
+    public static final String CONTENT_ENCODING_HEADER = "content-encoding";
     public static final String CONTENT_LENGTH_HEADER = "content-length";
     public static final String CONTENT_RANGE_HEADER = "content-range";
     public static final String RANGE_HEADER = "range";
@@ -505,6 +508,8 @@ public class Operation implements Cloneable {
     public static final String MEDIA_TYPE_APPLICATION_JAVASCRIPT = "application/javascript";
     public static final String MEDIA_TYPE_IMAGE_SVG_XML = "image/svg+xml";
     public static final String MEDIA_TYPE_APPLICATION_FONT_WOFF2 = "application/font-woff2";
+
+    public static final String CONTENT_ENCODING_GZIP = "gzip";
 
     public static final int STATUS_CODE_SERVER_FAILURE_THRESHOLD = HttpURLConnection.HTTP_INTERNAL_ERROR;
     public static final int STATUS_CODE_FAILURE_THRESHOLD = HttpURLConnection.HTTP_BAD_REQUEST;

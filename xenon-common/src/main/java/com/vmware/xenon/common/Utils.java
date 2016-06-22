@@ -13,6 +13,7 @@
 
 package com.vmware.xenon.common;
 
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.io.PrintWriter;
@@ -41,6 +42,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Supplier;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.zip.GZIPInputStream;
 
 import com.esotericsoftware.kryo.Kryo;
 import com.esotericsoftware.kryo.KryoException;
@@ -321,7 +323,8 @@ public class Utils {
             throws IllegalArgumentException {
         if (body instanceof String) {
             if (hideSensitiveFields) {
-                throw new IllegalArgumentException("Body is already a string, sensitive fields cannot be discovered");
+                throw new IllegalArgumentException(
+                        "Body is already a string, sensitive fields cannot be discovered");
             }
             return (String) body;
         }
@@ -735,7 +738,7 @@ public class Utils {
                     "-n", "1",
                     "-w", Long.toString(timeoutMs),
                     getNormalizedHostAddress(systemInfo, addr))
-                            .start();
+                    .start();
             boolean completed = process.waitFor(
                     PING_LAUNCH_TOLERANCE_MS + timeoutMs,
                     TimeUnit.MILLISECONDS);
@@ -867,6 +870,12 @@ public class Utils {
         }
 
         try {
+            if (Operation.CONTENT_ENCODING_GZIP.equals(op
+                    .getResponseHeader(Operation.CONTENT_ENCODING_HEADER))) {
+                buffer = decompressGZip(buffer);
+                op.getResponseHeaders().remove(Operation.CONTENT_ENCODING_HEADER);
+            }
+
             String contentType = op.getContentType();
             Object body = decodeIfText(buffer, contentType);
             if (body != null) {
@@ -911,6 +920,23 @@ public class Utils {
         }
 
         return body;
+    }
+
+    private static ByteBuffer decompressGZip(ByteBuffer bb) throws Exception {
+        GZIPInputStream zis = new GZIPInputStream(new ByteBufferInputStream(bb));
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+
+        try {
+            byte[] buffer = Utils.getBuffer(1024);
+            int len;
+            while ((len = zis.read(buffer)) > 0) {
+                out.write(buffer, 0, len);
+            }
+        } finally {
+            zis.close();
+            out.close();
+        }
+        return ByteBuffer.wrap(out.toByteArray());
     }
 
     private static boolean isContentTypeText(String contentType) {
@@ -1011,7 +1037,7 @@ public class Utils {
                     prop.usageOptions.contains(PropertyUsageOption.AUTO_MERGE_IF_NOT_NULL)) {
                 Object o = ReflectionUtils.getPropertyValue(prop, patch);
                 if (o != null) {
-                    if ((prop.typeName == TypeName.COLLECTION  && !o.getClass().isArray())
+                    if ((prop.typeName == TypeName.COLLECTION && !o.getClass().isArray())
                             || prop.typeName == TypeName.MAP) {
                         ReflectionUtils.setOrUpdatePropertyValue(prop, source, o);
                         modified = true;

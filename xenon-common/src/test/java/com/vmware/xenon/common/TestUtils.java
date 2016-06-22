@@ -18,6 +18,7 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
+import java.io.ByteArrayOutputStream;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
 import java.net.URLEncoder;
@@ -39,6 +40,7 @@ import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Logger;
+import java.util.zip.GZIPOutputStream;
 
 import com.google.gson.reflect.TypeToken;
 
@@ -715,5 +717,47 @@ public class TestUtils {
         state.required = null;
         ServiceDocumentDescription desc = buildStateDescription(ExampleServiceState.class, null);
         Utils.validateState(desc, state);
+    }
+
+    @Test
+    public void testDecodeGzipedBody() throws Exception {
+        String body = "This is the original body content, bot gzipped";
+        byte[] gzippedBody = compress(body);
+
+        Operation op = Operation
+                .createGet(null)
+                .setContentLength(gzippedBody.length)
+                .addResponseHeader(Operation.CONTENT_ENCODING_HEADER,
+                        Operation.CONTENT_ENCODING_GZIP)
+                .addResponseHeader(Operation.CONTENT_TYPE_HEADER, Operation.MEDIA_TYPE_TEXT_PLAIN);
+
+        Utils.decodeBody(op, ByteBuffer.wrap(gzippedBody));
+
+        assertEquals(body, op.getBody(String.class));
+
+        // Content encoding header is removed as the body is already decoded
+        assertNull(op.getResponseHeader(Operation.CONTENT_ENCODING_HEADER));
+    }
+
+    @Test
+    public void testFailsDecodeGzipedBodyWithoutContentEncoding() throws Exception {
+        byte[] gzippedBody = compress("test");
+
+        Operation op = Operation
+                .createGet(null)
+                .setContentLength(gzippedBody.length)
+                .addResponseHeader(Operation.CONTENT_TYPE_HEADER, Operation.MEDIA_TYPE_TEXT_PLAIN);
+
+        Utils.decodeBody(op, ByteBuffer.wrap(gzippedBody));
+
+        assertEquals(Operation.STATUS_CODE_SERVER_FAILURE_THRESHOLD, op.getStatusCode());
+    }
+
+    private static byte[] compress(String str) throws Exception {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        GZIPOutputStream gzip = new GZIPOutputStream(out);
+        gzip.write(str.getBytes(Utils.CHARSET));
+        gzip.close();
+        return out.toByteArray();
     }
 }
