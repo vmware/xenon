@@ -33,7 +33,6 @@ import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Service;
 import com.vmware.xenon.common.ServiceClient;
 import com.vmware.xenon.common.ServiceHost;
-import com.vmware.xenon.common.ServiceRequestListener;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
 import com.vmware.xenon.common.test.MinimalTestServiceState;
@@ -63,10 +62,9 @@ public class NettyHttp2Test {
 
     @BeforeClass
     public static void setUpOnce() throws Exception {
-        NettyHttpServiceClient.setRequestPayloadSizeLimit(1024 * 512);
-        NettyHttpListener.setResponsePayloadSizeLimit(1024 * 512);
-
         HOST = VerificationHost.create(0);
+        HOST.setRequestPayloadSizeLimit(1024 * 512);
+        HOST.setResponsePayloadSizeLimit(1024 * 512);
         CommandLineArgumentParser.parseFromProperties(HOST);
         HOST.setMaintenanceIntervalMicros(
                 TimeUnit.MILLISECONDS.toMicros(VerificationHost.FAST_MAINT_INTERVAL_MILLIS));
@@ -90,9 +88,6 @@ public class NettyHttp2Test {
     @AfterClass
     public static void tearDown() {
         HOST.tearDown();
-
-        NettyHttpServiceClient.setRequestPayloadSizeLimit(ServiceClient.REQUEST_PAYLOAD_SIZE_LIMIT);
-        NettyHttpListener.setResponsePayloadSizeLimit(ServiceRequestListener.RESPONSE_PAYLOAD_SIZE_LIMIT);
     }
 
     @After
@@ -156,7 +151,6 @@ public class NettyHttp2Test {
 
         this.host.send(put);
         this.host.testWait();
-
 
         // Part 2: GET the large state and ensure it is correct.
         Operation get = Operation.createGet(u)
@@ -249,7 +243,6 @@ public class NettyHttp2Test {
         this.host.log("Test passed: validateHttp2Multiplexing");
     }
 
-
     /**
      * Validate that when we have a request that times out, everything proceeds as expected.
      *
@@ -332,7 +325,6 @@ public class NettyHttp2Test {
         initialState.id = "";
         initialState.stringValue = UUID.randomUUID().toString();
         this.host.startServiceAndWait(service, UUID.randomUUID().toString(), initialState);
-
 
         // While it's sufficient to test with a much smaller number (this used to be 9)
         // this helps us verify that we're not hitting an old Netty bug (found in Netty 4.1b8)

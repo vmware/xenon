@@ -49,8 +49,7 @@ public class NettyHttpListener implements ServiceRequestListener {
     private SslContext sslContext;
     private ChannelHandler childChannelHandler;
     private boolean isListening;
-
-    private static int responsePayloadSizeLimit = RESPONSE_PAYLOAD_SIZE_LIMIT;
+    private int responsePayloadSizeLimit = RESPONSE_PAYLOAD_SIZE_LIMIT;
 
     public NettyHttpListener(ServiceHost host) {
         this.host = host;
@@ -80,7 +79,8 @@ public class NettyHttpListener implements ServiceRequestListener {
 
         this.eventLoopGroup = new NioEventLoopGroup(EVENT_LOOP_THREAD_COUNT, this.nettyExecutorService);
         if (this.childChannelHandler == null) {
-            this.childChannelHandler = new NettyHttpServerInitializer(this.host, this.sslContext);
+            this.childChannelHandler = new NettyHttpServerInitializer(this.host, this.sslContext,
+                    this.responsePayloadSizeLimit);
         }
 
         ServerBootstrap b = new ServerBootstrap();
@@ -164,12 +164,14 @@ public class NettyHttpListener implements ServiceRequestListener {
         return this.isListening;
     }
 
-    public static int getResponsePayloadSizeLimit() {
-        return responsePayloadSizeLimit;
+    public void setResponsePayloadSizeLimit(int responsePayloadSizeLimit) {
+        if (isListening()) {
+            throw new IllegalStateException("Already started listening");
+        }
+        this.responsePayloadSizeLimit = responsePayloadSizeLimit;
     }
 
-    // Used for unit-testing
-    public static void setResponsePayloadSizeLimit(int limit) {
-        responsePayloadSizeLimit = limit;
+    public int getResponsePayloadSizeLimit() {
+        return this.responsePayloadSizeLimit;
     }
 }

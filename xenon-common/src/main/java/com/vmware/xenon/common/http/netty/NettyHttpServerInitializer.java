@@ -51,11 +51,13 @@ public class NettyHttpServerInitializer extends ChannelInitializer<SocketChannel
 
     private final SslContext sslContext;
     private ServiceHost host;
+    private int responsePayloadSizeLimit;
     private static final boolean debugLogging = false;
 
-    public NettyHttpServerInitializer(ServiceHost host, SslContext sslContext) {
+    public NettyHttpServerInitializer(ServiceHost host, SslContext sslContext, int responsePayloadSizeLimit) {
         this.sslContext = sslContext;
         this.host = host;
+        this.responsePayloadSizeLimit = responsePayloadSizeLimit;
         NettyLoggingUtil.setupNettyLogging();
     }
 
@@ -123,11 +125,12 @@ public class NettyHttpServerInitializer extends ChannelInitializer<SocketChannel
         }
 
         p.addLast(AGGREGATOR_HANDLER,
-                new HttpObjectAggregator(NettyHttpListener.getResponsePayloadSizeLimit()));
+                new HttpObjectAggregator(this.responsePayloadSizeLimit));
         p.addLast(WEBSOCKET_HANDLER, new NettyWebSocketRequestHandler(this.host,
                 ServiceUriPaths.CORE_WEB_SOCKET_ENDPOINT,
                 ServiceUriPaths.WEB_SOCKET_SERVICE_PREFIX));
-        p.addLast(HTTP_REQUEST_HANDLER, new NettyHttpClientRequestHandler(this.host, sslHandler));
+        p.addLast(HTTP_REQUEST_HANDLER, new NettyHttpClientRequestHandler(this.host, sslHandler,
+                this.responsePayloadSizeLimit));
     }
 
     /**
@@ -140,7 +143,7 @@ public class NettyHttpServerInitializer extends ChannelInitializer<SocketChannel
         // DefaultHttp2Connection is for client or server. True means "server".
         Http2Connection connection = new DefaultHttp2Connection(true);
         InboundHttp2ToHttpAdapter inboundAdapter = new InboundHttp2ToHttpAdapterBuilder(connection)
-                .maxContentLength(NettyHttpListener.getResponsePayloadSizeLimit())
+                .maxContentLength(this.responsePayloadSizeLimit)
                 .propagateSettings(false)
                 .build();
         DelegatingDecompressorFrameListener frameListener = new DelegatingDecompressorFrameListener(
