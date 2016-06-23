@@ -39,16 +39,24 @@ import com.vmware.xenon.services.common.NodeGroupService.NodeGroupState;
 public class NodeGroupUtils {
 
     /**
-     * Issues a broadcast GET to service/available on all nodes and returns success if at least one
-     * service replied with status OK
+     * Issues a GET to service/stats and looks for {@link Service#STAT_NAME_AVAILABLE}
+     * The request is issued on the node selected as owner, by the node selector co-located
+     * with the service. The stat must have been modified after the most recent node group
+     * change
+     *
+     * This method should be used only on replicated, owner selected factory services
      */
     public static void checkServiceAvailability(CompletionHandler ch, Service s) {
         checkServiceAvailability(ch, s.getHost(), s.getSelfLink(), s.getPeerNodeSelectorPath());
     }
 
     /**
-     * Issues a broadcast GET to service/available on all nodes and returns success if at least one
-     * service replied with status OK
+     * Issues a GET to service/stats and looks for {@link Service#STAT_NAME_AVAILABLE}
+     * The request is issued on the node selected as owner, by the node selector co-located
+     * with the service. The stat must have been modified after the most recent node group
+     * change
+     *
+     * This method should be used only on replicated, owner selected factory services
      */
     public static void checkServiceAvailability(CompletionHandler ch, ServiceHost host,
             String link, String selectorPath) {
