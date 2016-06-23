@@ -48,7 +48,6 @@ import com.vmware.xenon.common.Operation.OperationOption;
 import com.vmware.xenon.common.Service;
 import com.vmware.xenon.common.ServiceClient;
 import com.vmware.xenon.common.ServiceDocument;
-import com.vmware.xenon.common.ServiceRequestListener;
 import com.vmware.xenon.common.StatefulService;
 import com.vmware.xenon.common.StatelessService;
 import com.vmware.xenon.common.UriUtils;
@@ -88,11 +87,10 @@ public class NettyHttpServiceClientTest {
 
     @BeforeClass
     public static void setUpOnce() throws Throwable {
-        NettyHttpServiceClient.setRequestPayloadSizeLimit(1024 * 512);
-        NettyHttpListener.setResponsePayloadSizeLimit(1024 * 512);
-
         HOST = VerificationHost.create(0);
         HOST.setAuthorizationEnabled(ENABLE_AUTH);
+        HOST.setRequestPayloadSizeLimit(1024 * 512);
+        HOST.setResponsePayloadSizeLimit(1024 * 512);
 
         CommandLineArgumentParser.parseFromProperties(HOST);
         HOST.setMaintenanceIntervalMicros(
@@ -149,9 +147,6 @@ public class NettyHttpServiceClientTest {
     public static void tearDown() {
         HOST.log("final teardown");
         HOST.tearDown();
-
-        NettyHttpServiceClient.setRequestPayloadSizeLimit(ServiceClient.REQUEST_PAYLOAD_SIZE_LIMIT);
-        NettyHttpListener.setResponsePayloadSizeLimit(ServiceRequestListener.RESPONSE_PAYLOAD_SIZE_LIMIT);
     }
 
     @Before
@@ -173,7 +168,6 @@ public class NettyHttpServiceClientTest {
     @After
     public void cleanUp() {
         this.host.log("cleanup");
-        this.host.getClient().setConnectionLimitPerHost(NettyHttpServiceClient.DEFAULT_CONNECTIONS_PER_HOST);
 
         if (ENABLE_AUTH) {
             this.host.resetAuthorizationContext();
@@ -580,7 +574,7 @@ public class NettyHttpServiceClientTest {
 
         // create a PUT request larger than the allowed size of a request and verify that it fails.
         ServiceDocument largeState = this.host.buildMinimalTestState(
-                NettyHttpServiceClient.getRequestPayloadSizeLimit() + 100);
+                this.host.getClient().getRequestPayloadSizeLimit() + 100);
         this.host.testStart(1);
         Operation put = Operation.createPut(services.get(0).getUri())
                 .forceRemote()
@@ -931,7 +925,6 @@ public class NettyHttpServiceClientTest {
                         return;
                     }
 
-
                     if (!props.contains(TestProperty.TEXT_RESPONSE)) {
                         if (!o.hasBody()) {
                             this.host.failIteration(new IllegalStateException("no body"));
@@ -1140,7 +1133,7 @@ public class NettyHttpServiceClientTest {
             return null;
         }
         String[] headerLines = headersRaw[0].split("\\n");
-        Map <String, String> headers = new HashMap<>();
+        Map<String, String> headers = new HashMap<>();
         for (String headerLine : headerLines) {
             String[] splitHeader = headerLine.split(":", 2);
             if (splitHeader.length == 2) {
@@ -1164,7 +1157,7 @@ public class NettyHttpServiceClientTest {
         this.host.testStart(2);
         noUriOp.setCompletion((op, ex) -> {
             if (ex == null) {
-                this.host.failIteration(ex);;
+                this.host.failIteration(ex);
                 return;
             }
             if (!ex.getMessage().contains("Uri is required")) {

@@ -61,7 +61,6 @@ import com.vmware.xenon.common.ServiceDocumentDescription.TypeName;
 import com.vmware.xenon.common.ServiceDocumentQueryResult;
 import com.vmware.xenon.common.ServiceErrorResponse;
 import com.vmware.xenon.common.ServiceHost.ServiceNotFoundException;
-import com.vmware.xenon.common.ServiceRequestListener;
 import com.vmware.xenon.common.ServiceStats;
 import com.vmware.xenon.common.ServiceStats.ServiceStat;
 import com.vmware.xenon.common.ServiceSubscriptionState.ServiceSubscriber;
@@ -69,7 +68,6 @@ import com.vmware.xenon.common.TaskState;
 import com.vmware.xenon.common.TaskState.TaskStage;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
-import com.vmware.xenon.common.http.netty.NettyHttpListener;
 import com.vmware.xenon.common.test.MinimalTestServiceState;
 import com.vmware.xenon.common.test.TestContext;
 import com.vmware.xenon.common.test.VerificationHost;
@@ -97,11 +95,18 @@ public class TestQueryTaskService {
     private VerificationHost host;
 
     private void setUpHost() throws Throwable {
+        setUpHost(0);
+    }
+
+    private void setUpHost(int responsePayloadSizeLimit) throws Throwable {
         if (this.host != null) {
             return;
         }
 
         this.host = VerificationHost.create(0);
+        if (responsePayloadSizeLimit > 0) {
+            this.host.setResponsePayloadSizeLimit(responsePayloadSizeLimit);
+        }
         CommandLineArgumentParser.parseFromProperties(this.host);
         CommandLineArgumentParser.parseFromProperties(this);
         try {
@@ -132,9 +137,6 @@ public class TestQueryTaskService {
         }
         this.host.tearDownInProcessPeers();
         this.host.tearDown();
-
-        NettyHttpListener.setResponsePayloadSizeLimit(
-                ServiceRequestListener.RESPONSE_PAYLOAD_SIZE_LIMIT);
     }
 
     @Test
@@ -172,7 +174,7 @@ public class TestQueryTaskService {
                 sdd);
         assertTrue(descriptionsPerType.get(TypeName.BOOLEAN) == 1L);
         assertTrue(descriptionsPerType.get(TypeName.MAP) == 8L);
-        assertEquals(descriptionsPerType.get(TypeName.LONG), (Long)(1L + 4L + 3L));
+        assertEquals(descriptionsPerType.get(TypeName.LONG), (Long) (1L + 4L + 3L));
         assertTrue(descriptionsPerType.get(TypeName.PODO) == 3L);
         assertTrue(descriptionsPerType.get(TypeName.COLLECTION) == 8L);
         assertTrue(descriptionsPerType.get(TypeName.STRING) == 5L + 5L);
@@ -521,7 +523,7 @@ public class TestQueryTaskService {
                     ExampleServiceState initialState = new ExampleServiceState();
                     initialState.name = UUID.randomUUID().toString();
                     o.setBody(initialState);
-                } ,
+                },
                 UriUtils.buildFactoryUri(this.host, ExampleService.class));
 
         Query kindClause = Query.Builder.create()
@@ -1555,7 +1557,8 @@ public class TestQueryTaskService {
 
     @Test
     public void verifyResponsePayloadSizeLimitChecks() throws Throwable {
-        setUpHost();
+        // set response payload limit to a small number to force error
+        setUpHost(1024 * 50);
         int sc = this.serviceCount * 2;
         int versionCount = 2;
         List<URI> services = createQueryTargetServices(sc);
@@ -1572,15 +1575,10 @@ public class TestQueryTaskService {
 
         boolean limitChecked = false;
         try {
-            // set limit to a small number to force error
-            NettyHttpListener.setResponsePayloadSizeLimit(1024 * 50);
             createWaitAndValidateQueryTask(versionCount, services, q, true, true);
         } catch (ProtocolException ex) {
             assertTrue(ex.getMessage().contains("/core/query-tasks returned error 500 for POST"));
             limitChecked = true;
-        } finally {
-            NettyHttpListener.setResponsePayloadSizeLimit(
-                    ServiceRequestListener.RESPONSE_PAYLOAD_SIZE_LIMIT);
         }
         assertTrue("Expected QueryTask failure with INTERNAL_SERVER_ERROR because" +
                 "response payload size was over limit.", limitChecked);

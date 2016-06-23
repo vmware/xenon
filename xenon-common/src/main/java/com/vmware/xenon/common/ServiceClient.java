@@ -112,4 +112,14 @@ public interface ServiceClient extends ServiceRequestSender {
      * Returns the maximum number of connections for the given tag
      */
     int getConnectionLimitPerTag(String connectionTag);
+
+    /**
+     * Sets the maximum size of a request payload in bytes, that can be sent from the client.
+     */
+    ServiceClient setRequestPayloadSizeLimit(int limit);
+
+    /**
+     * Returns the maximum size of a request payload in bytes.
+     */
+    int getRequestPayloadSizeLimit();
 }

@@ -43,4 +43,8 @@ public interface ServiceRequestListener {
     boolean isSSLConfigured();
 
     boolean isListening();
+
+    void setResponsePayloadSizeLimit(int responsePayloadSizeLimit);
+
+    int getResponsePayloadSizeLimit();
 }

@@ -62,12 +62,15 @@ public class NettyHttpClientRequestInitializer extends ChannelInitializer<Socket
     private final NettyChannelPool pool;
     private boolean isHttp2Only = false;
     private boolean debugLogging = false;
+    private int requestPayloadSizeLimit;
 
     public NettyHttpClientRequestInitializer(
             NettyChannelPool nettyChannelPool,
-            boolean isHttp2Only) {
+            boolean isHttp2Only,
+            int requestPayloadSizeLimit) {
         this.pool = nettyChannelPool;
         this.isHttp2Only = isHttp2Only;
+        this.requestPayloadSizeLimit = requestPayloadSizeLimit;
         NettyLoggingUtil.setupNettyLogging();
     }
 
@@ -106,7 +109,7 @@ public class NettyHttpClientRequestInitializer extends ChannelInitializer<Socket
                 HttpClientUpgradeHandler upgradeHandler = new HttpClientUpgradeHandler(
                         http1_codec,
                         upgradeCodec,
-                        NettyHttpServiceClient.getRequestPayloadSizeLimit());
+                        this.requestPayloadSizeLimit);
 
                 p.addLast(UPGRADE_HANDLER, upgradeHandler);
                 p.addLast(UPGRADE_REQUEST, new UpgradeRequestHandler());
@@ -127,7 +130,7 @@ public class NettyHttpClientRequestInitializer extends ChannelInitializer<Socket
             // The HttpObjectAggregator is not needed for HTTP/2. For HTTP/1.1 it
             // aggregates the HttpMessage and HttpContent into the FullHttpResponse
             p.addLast(AGGREGATOR_HANDLER,
-                    new HttpObjectAggregator(NettyHttpServiceClient.getRequestPayloadSizeLimit()));
+                    new HttpObjectAggregator(this.requestPayloadSizeLimit));
         }
         p.addLast(XENON_HANDLER, new NettyHttpServerResponseHandler(this.pool));
     }
@@ -158,7 +161,7 @@ public class NettyHttpClientRequestInitializer extends ChannelInitializer<Socket
         // DefaultHttp2Connection is for client or server. False means "client".
         Http2Connection connection = new DefaultHttp2Connection(false);
         InboundHttp2ToHttpAdapter inboundAdapter = new InboundHttp2ToHttpAdapterBuilder(connection)
-                .maxContentLength(NettyHttpServiceClient.getRequestPayloadSizeLimit())
+                .maxContentLength(this.requestPayloadSizeLimit)
                 .propagateSettings(true)
                 .build();
         DelegatingDecompressorFrameListener frameListener = new DelegatingDecompressorFrameListener(

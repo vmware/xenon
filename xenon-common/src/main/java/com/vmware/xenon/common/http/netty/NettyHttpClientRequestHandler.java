@@ -65,9 +65,13 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
 
     private final SslHandler sslHandler;
 
-    public NettyHttpClientRequestHandler(ServiceHost host, SslHandler sslHandler) {
+    private int responsePayloadSizeLimit;
+
+    public NettyHttpClientRequestHandler(ServiceHost host, SslHandler sslHandler,
+            int responsePayloadSizeLimit) {
         this.host = host;
         this.sslHandler = sslHandler;
+        this.responsePayloadSizeLimit = responsePayloadSizeLimit;
     }
 
     @Override
@@ -345,9 +349,9 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
 
             // if some service returns a response that is greater than the maximum allowed size,
             // we return an INTERNAL_SERVER_ERROR.
-            if (request.getContentLength() > NettyHttpListener.getResponsePayloadSizeLimit()) {
+            if (request.getContentLength() > this.responsePayloadSizeLimit) {
                 String errorMessage = "Content-Length " + request.getContentLength()
-                        + " is greater than max size allowed " + NettyHttpListener.getResponsePayloadSizeLimit();
+                        + " is greater than max size allowed " + this.responsePayloadSizeLimit;
                 this.host.log(Level.SEVERE, errorMessage);
                 writeInternalServerError(ctx, request, streamId, errorMessage);
                 return;
