@@ -408,7 +408,8 @@ public class NettyHttpServiceClient implements ServiceClient {
         final Object originalBody = op.getBodyRaw();
         try {
             byte[] body = Utils.encodeBody(op);
-            if (op.getContentLength() > NettyHttpServiceClient.getRequestPayloadSizeLimit()) {
+            if (!op.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_NO_OUTBOUND_PAYLOAD_SIZE_LIMIT)
+                    && op.getContentLength() > NettyHttpServiceClient.getRequestPayloadSizeLimit()) {
                 stopTracking(op);
                 Exception e = new IllegalArgumentException(
                         "Content-Length " + op.getContentLength() +

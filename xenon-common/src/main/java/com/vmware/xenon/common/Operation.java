@@ -486,6 +486,11 @@ public class Operation implements Cloneable {
     public static final String PRAGMA_DIRECTIVE_NO_INDEX_UPDATE = "xn-no-index-update";
 
     /**
+     * Instructs the HTTP client not to restrict an operation if it's payload size exceeds the maximum defined in {@link ServiceClient#REQUEST_PAYLOAD_SIZE_LIMIT}
+     */
+    public static final String PRAGMA_DIRECTIVE_NO_OUTBOUND_PAYLOAD_SIZE_LIMIT = "xn-no-outbound-payload-size-limit";
+
+    /**
      * Infrastructure use only. Debugging only. Indicates this operation was converted from POST to PUT
      * due to {@link com.vmware.xenon.common.Service.ServiceOption#IDEMPOTENT_POST}
      */
