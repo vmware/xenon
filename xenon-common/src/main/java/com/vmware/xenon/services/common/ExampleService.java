@@ -140,11 +140,7 @@ public class ExampleService extends StatefulService {
 
         updateCounter(body, currentState, hasStateChanged);
 
-        if (body.keyValues != null && !body.keyValues.isEmpty()) {
-            for (Entry<String, String> e : body.keyValues.entrySet()) {
-                currentState.keyValues.put(e.getKey(), e.getValue());
-            }
-        }
+        Utils.mergeMapField(currentState.keyValues, body.keyValues);
 
         if (body.documentExpirationTimeMicros != currentState.documentExpirationTimeMicros) {
             currentState.documentExpirationTimeMicros = body.documentExpirationTimeMicros;
