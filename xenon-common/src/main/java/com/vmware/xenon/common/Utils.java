@@ -279,10 +279,6 @@ public class Utils {
         return k.readClassAndObject(in);
     }
 
-    public static void performMaintenance() {
-
-    }
-
     public static String computeHash(String content) {
         byte[] source = content.getBytes(Charset.forName(CHARSET_UTF_8));
         return computeHash(source, 0, source.length);

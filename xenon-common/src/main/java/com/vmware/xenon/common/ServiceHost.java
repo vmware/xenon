@@ -4241,7 +4241,6 @@ public class ServiceHost implements ServiceRequestSender {
 
             switch (stage) {
             case UTILS:
-                Utils.performMaintenance();
                 stage = MaintenanceStage.MEMORY;
                 break;
             case MEMORY:
