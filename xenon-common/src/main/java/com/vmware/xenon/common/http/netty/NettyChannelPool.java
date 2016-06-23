@@ -146,6 +146,8 @@ public class NettyChannelPool {
 
     private SSLContext sslContext;
 
+    private int requestPayloadSizeLimit;
+
     public NettyChannelPool() {
     }
 
@@ -195,7 +197,8 @@ public class NettyChannelPool {
         this.bootStrap = new Bootstrap();
         this.bootStrap.group(this.eventGroup)
                 .channel(NioSocketChannel.class)
-                .handler(new NettyHttpClientRequestInitializer(this, this.isHttp2Only));
+                .handler(new NettyHttpClientRequestInitializer(this, this.isHttp2Only,
+                        this.requestPayloadSizeLimit));
     }
 
     public boolean isStarted() {
@@ -218,6 +221,14 @@ public class NettyChannelPool {
     public int getConnectionLimitPerTag(String tag) {
         return this.connectionLimitsPerTag.getOrDefault(tag,
                 ServiceClient.DEFAULT_CONNECTION_LIMIT_PER_TAG);
+    }
+
+    public void setRequestPayloadSizeLimit(int requestPayloadSizeLimit) {
+        this.requestPayloadSizeLimit = requestPayloadSizeLimit;
+    }
+
+    public int getRequestPayloadSizeLimit() {
+        return this.requestPayloadSizeLimit;
     }
 
     private NettyChannelGroup getChannelGroup(String tag, String host, int port) {

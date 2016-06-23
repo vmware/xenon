@@ -93,8 +93,6 @@ public class NettyHttpServiceClient implements ServiceClient {
 
     private boolean isStarted;
 
-    private static int requestPayloadSizeLimit = ServiceClient.REQUEST_PAYLOAD_SIZE_LIMIT;
-
     private boolean warnHttp2ConversionToCallbacks = false;
 
     public static ServiceClient create(String userAgent,
@@ -125,6 +123,7 @@ public class NettyHttpServiceClient implements ServiceClient {
                 DEFAULT_CONNECTIONS_PER_HOST);
         sc.setConnectionLimitPerTag(ServiceClient.CONNECTION_TAG_HTTP2_DEFAULT,
                 DEFAULT_CONNECTION_LIMIT_PER_TAG);
+        sc.setRequestPayloadSizeLimit(ServiceClient.REQUEST_PAYLOAD_SIZE_LIMIT);
 
         return sc;
     }
@@ -408,11 +407,11 @@ public class NettyHttpServiceClient implements ServiceClient {
         final Object originalBody = op.getBodyRaw();
         try {
             byte[] body = Utils.encodeBody(op);
-            if (op.getContentLength() > NettyHttpServiceClient.getRequestPayloadSizeLimit()) {
+            if (op.getContentLength() > getRequestPayloadSizeLimit()) {
                 stopTracking(op);
                 Exception e = new IllegalArgumentException(
                         "Content-Length " + op.getContentLength() +
-                        " is greater than max size allowed " + NettyHttpServiceClient.getRequestPayloadSizeLimit());
+                        " is greater than max size allowed " + getRequestPayloadSizeLimit());
                 op.setBody(ServiceErrorResponse.create(e, Operation.STATUS_CODE_BAD_REQUEST));
                 op.fail(e);
                 return;
@@ -837,12 +836,18 @@ public class NettyHttpServiceClient implements ServiceClient {
         this.cookieJar = new CookieJar();
     }
 
-    public static int getRequestPayloadSizeLimit() {
-        return requestPayloadSizeLimit;
+    public int getRequestPayloadSizeLimit() {
+        return this.channelPool.getRequestPayloadSizeLimit();
     }
 
-    // Used for unit-testing
-    public static void setRequestPayloadSizeLimit(int limit) {
-        requestPayloadSizeLimit = limit;
+    public ServiceClient setRequestPayloadSizeLimit(int limit) {
+        this.channelPool.setRequestPayloadSizeLimit(limit);
+        if (this.sslChannelPool != null) {
+            this.sslChannelPool.setRequestPayloadSizeLimit(limit);
+        }
+        if (this.http2ChannelPool != null) {
+            this.http2ChannelPool.setRequestPayloadSizeLimit(limit);
+        }
+        return this;
     }
 }

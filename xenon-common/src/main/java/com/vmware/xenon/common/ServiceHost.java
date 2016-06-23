@@ -63,6 +63,7 @@ import java.util.logging.ConsoleHandler;
 import java.util.logging.FileHandler;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManagerFactory;
 
@@ -505,6 +506,9 @@ public class ServiceHost implements ServiceRequestSender {
 
     private AuthorizationContext systemAuthorizationContext;
     private AuthorizationContext guestAuthorizationContext;
+
+    private int responsePayloadSizeLimit;
+    private int requestPayloadSizeLimit;
 
     protected ServiceHost() {
         this.state = new ServiceHostState();
@@ -1146,6 +1150,10 @@ public class ServiceHost implements ServiceRequestSender {
                 this.httpListener = new NettyHttpListener(this);
             }
 
+            if (this.responsePayloadSizeLimit > 0) {
+                this.httpListener.setResponsePayloadSizeLimit(this.responsePayloadSizeLimit);
+            }
+
             this.httpListener.start(getPort(), this.state.bindAddress);
         }
 
@@ -1164,6 +1172,10 @@ public class ServiceHost implements ServiceRequestSender {
                     this.httpsListener.setSSLContextFiles(this.state.certificateFileReference,
                             this.state.privateKeyFileReference, this.state.privateKeyPassphrase);
                 }
+                if (this.responsePayloadSizeLimit > 0) {
+                    this.httpsListener.setResponsePayloadSizeLimit(this.responsePayloadSizeLimit);
+                }
+
                 this.httpsListener.start(getSecurePort(), this.state.bindAddress);
             }
         }
@@ -1208,6 +1220,10 @@ public class ServiceHost implements ServiceRequestSender {
             trustManagerFactory.init((KeyStore) null);
             clientContext.init(null, trustManagerFactory.getTrustManagers(), null);
             this.client.setSSLContext(clientContext);
+        }
+
+        if (this.requestPayloadSizeLimit > 0) {
+            this.client.setRequestPayloadSizeLimit(this.requestPayloadSizeLimit);
         }
 
         // Start client as system user; it starts a callback service
@@ -4888,6 +4904,20 @@ public class ServiceHost implements ServiceRequestSender {
                     : this.state.bindAddress;
         }
         return this.info.ipAddresses.get(0);
+    }
+
+    public void setRequestPayloadSizeLimit(int limit) {
+        if (isStarted()) {
+            throw new IllegalStateException("Already started");
+        }
+        this.requestPayloadSizeLimit = limit;
+    }
+
+    public void setResponsePayloadSizeLimit(int limit) {
+        if (isStarted()) {
+            throw new IllegalStateException("Already started");
+        }
+        this.responsePayloadSizeLimit = limit;
     }
 
     /**

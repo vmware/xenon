@@ -1242,10 +1242,10 @@ public class VerificationHost extends ExampleServiceHost {
         final int maxByteCount = 256 * 1024;
         if (properties.contains(TestProperty.LARGE_PAYLOAD)) {
             Random r = new Random();
-            int byteCount = NettyHttpServiceClient.getRequestPayloadSizeLimit() / 4;
+            int byteCount = getClient().getRequestPayloadSizeLimit() / 4;
             if (properties.contains(TestProperty.BINARY_PAYLOAD)) {
                 if (properties.contains(TestProperty.FORCE_FAILURE)) {
-                    byteCount = NettyHttpServiceClient.getRequestPayloadSizeLimit() * 2;
+                    byteCount = getClient().getRequestPayloadSizeLimit() * 2;
                 } else {
                     // make sure we do not blow memory if max request size is high
                     byteCount = Math.min(maxByteCount, byteCount);
@@ -1481,7 +1481,7 @@ public class VerificationHost extends ExampleServiceHost {
     }
 
     public void waitForServiceAvailable(String... links) throws Throwable {
-        for (String link: links) {
+        for (String link : links) {
             TestContext ctx = testCreate(1);
             this.registerForServiceAvailability(ctx.getCompletion(), link);
             ctx.await();
