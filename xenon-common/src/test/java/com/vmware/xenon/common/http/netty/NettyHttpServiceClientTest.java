@@ -598,6 +598,41 @@ public class NettyHttpServiceClientTest {
         this.host.send(put);
         this.host.testWait();
     }
+    
+    @Test
+    public void putOverMaxRequestLimitPassing() throws Throwable {
+        this.host.setOperationTimeOutMicros(TimeUnit.SECONDS.toMicros(1));
+        List<Service> services = this.host.doThroughputServiceStart(
+                2, MinimalTestService.class, this.host.buildMinimalTestState(), null,
+                null);
+
+        this.host.doPutPerService(1,
+                EnumSet.of(TestProperty.FORCE_REMOTE, TestProperty.LARGE_PAYLOAD,
+                        TestProperty.BINARY_PAYLOAD),
+                services);
+
+        // create a PUT request larger than the allowed size of a request
+        ServiceDocument largeState = this.host.buildMinimalTestState(
+                NettyHttpServiceClient.getRequestPayloadSizeLimit() + 100);
+        this.host.testStart(1);
+        Operation put = Operation.createPut(services.get(0).getUri())
+                .forceRemote()
+                .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_NO_OUTBOUND_PAYLOAD_SIZE_LIMIT)
+                .setBody(largeState)
+                .setCompletion((o, e) -> {
+                    if (e != null && e instanceof IllegalArgumentException &&
+                            e.getMessage().contains("is greater than max size allowed")) {
+                        this.host.failIteration(
+                                new IllegalStateException("Operation was not expected to fail because " +
+                                        "op.getContentLength(), but " + 
+                                        "PRAGMA_DIRECTIVE_NO_OUTBOUND_PAYLOAD_SIZE_LIMIT is added"));
+                        return;
+                    }
+                    this.host.completeIteration();
+                });
+        this.host.send(put);
+        this.host.testWait();
+    }
 
     @Test
     public void putSingleWithFailure() throws Throwable {
