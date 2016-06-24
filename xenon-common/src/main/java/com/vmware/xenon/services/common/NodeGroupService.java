@@ -115,9 +115,30 @@ public class NodeGroupService extends StatefulService {
     }
 
     public static class NodeGroupState extends ServiceDocument {
+        /**
+         * The node group configuration
+         */
         public NodeGroupConfig config;
+        /**
+         * The map of peer nodes, updated through random probing of a limited number of peers and
+         * two way state merges
+         */
         public Map<String, NodeState> nodes = new ConcurrentSkipListMap<>();
+        /**
+         * The maximum value among all reported times from the peers. If one peer has significant
+         * time drift compared to others, this value will appears in the future or past, compared to local time.
+         * This value is updated during gossip and is considered a "global" field that settles to the same
+         * value across all peers, when gossip ahs converged
+         */
         public long membershipUpdateTimeMicros;
+
+        /**
+         * The local membership update time, as observed by each node. This value is only updated
+         * by the local node and not merged with other peer reported values. It is used to determine
+         * node group stability, a heuristic used in
+         * {@link NodeGroupUtils#isMembershipSettled(com.vmware.xenon.common.ServiceHost, long, NodeGroupState)}
+         */
+        public long localMembershipUpdateTimeMicros;
     }
 
     public static final int MIN_PEER_GOSSIP_COUNT = 10;
@@ -232,6 +253,7 @@ public class NodeGroupService extends StatefulService {
         self.documentVersion++;
         self.documentUpdateTimeMicros = Utils.getNowMicrosUtc();
         localState.membershipUpdateTimeMicros = self.documentUpdateTimeMicros;
+        localState.localMembershipUpdateTimeMicros = self.documentUpdateTimeMicros;
 
         if (!bd.isGroupUpdate) {
             patch.setBodyNoCloning(localState).complete();
@@ -850,6 +872,7 @@ public class NodeGroupService extends StatefulService {
                     remotePeerState.documentOwner,
                     localState.documentOwner,
                     localState.membershipUpdateTimeMicros);
+            localState.localMembershipUpdateTimeMicros = now;
         }
     }
 

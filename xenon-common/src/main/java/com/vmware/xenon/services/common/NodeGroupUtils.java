@@ -219,11 +219,11 @@ public class NodeGroupUtils {
 
     /**
      * Given a node group state, looks at the time the node group state changed. If
-     * the group was updated within a certain number of maintenance interval, we
+     * the group was updated within a certain number of maintenance intervals, we
      * consider it unstable. The interval count can be set through a PATCH to
      * core/node-groups/<group>/config.
      *
-     * See {@code NodeGroupConfig}
+     * See {@link NodeGroupService}
      */
     public static boolean isMembershipSettled(ServiceHost host, long maintIntervalMicros,
             NodeGroupState localState) {
@@ -237,7 +237,7 @@ public class NodeGroupUtils {
             return true;
         }
 
-        long threshold = localState.membershipUpdateTimeMicros
+        long threshold = localState.localMembershipUpdateTimeMicros
                 + localState.config.stableGroupMaintenanceIntervalCount
                         * maintIntervalMicros;
 
