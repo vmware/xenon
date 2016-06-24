@@ -1717,8 +1717,8 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
                         String documentSelfLink = aggregate.getKey();
                         Integer lowerVersion = aggregate.getValue().first();
                         Integer upperVersion = aggregate.getValue().last();
-                        this.host.log("Failed documentSelfLink:%s. lowerVersion:%d, upperVersion:%d",
-                                documentSelfLink, lowerVersion, upperVersion);
+                        this.host.log("Failed documentSelfLink:%s. lowerVersion:%d, upperVersion:%d, count:%d",
+                                documentSelfLink, lowerVersion, upperVersion, aggregate.getValue().size());
                     });
         }
 

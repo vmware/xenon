@@ -1855,14 +1855,17 @@ public class LuceneDocumentIndexService extends StatelessService {
             return;
         }
 
+        int versionCount = hits.length;
+
         hitDoc = s.doc(hits[hits.length - 1].doc);
         long versionLowerBound = Long.parseLong(hitDoc.get(ServiceDocument.FIELD_NAME_VERSION));
 
+        hitDoc = s.doc(hits[0].doc);
+        long versionUpperBound = Long.parseLong(hitDoc.get(ServiceDocument.FIELD_NAME_VERSION));
+
         // if the number of documents found for the passed self-link are already less than the
         // version limit, then skip version retention.
-        if (hits.length <= versionsToKeep) {
-            hitDoc = s.doc(hits[0].doc);
-            long versionUpperBound = Long.parseLong(hitDoc.get(ServiceDocument.FIELD_NAME_VERSION));
+        if (versionCount <= versionsToKeep) {
             logWarning("Skipping index trimming for %s from %d to %d. query returned :%d",
                     link, versionLowerBound, versionUpperBound, hits.length);
 
@@ -1881,10 +1884,10 @@ public class LuceneDocumentIndexService extends StatelessService {
         // that will delete all documents from that document up to the version at the
         // retention limit
         hitDoc = s.doc(hits[(int) versionsToKeep].doc);
-        long versionUpperBound = Long.parseLong(hitDoc.get(ServiceDocument.FIELD_NAME_VERSION));
+        long cutOffVersion = Long.parseLong(hitDoc.get(ServiceDocument.FIELD_NAME_VERSION));
 
         Query versionQuery = LongPoint.newRangeQuery(
-                ServiceDocument.FIELD_NAME_VERSION, versionLowerBound, versionUpperBound);
+                ServiceDocument.FIELD_NAME_VERSION, versionLowerBound, cutOffVersion);
 
         builder.add(versionQuery, Occur.MUST);
         builder.add(linkQuery, Occur.MUST);
@@ -1892,8 +1895,12 @@ public class LuceneDocumentIndexService extends StatelessService {
 
         results = s.search(bq, Integer.MAX_VALUE);
 
-        logInfo("trimming index for %s from %d to %d, query returned %d", link, hits.length,
-                versionsToKeep, results.totalHits);
+        logInfo("trimming index for %s from %d to %d, query returned %d", link, versionLowerBound,
+                versionUpperBound, results.totalHits);
+
+        logInfo("Version grooming for %s found %d versions from %d to %d. Trimming %d versions from %d to %d",
+                link, versionCount, versionLowerBound, versionUpperBound,
+                results.scoreDocs.length, versionLowerBound, cutOffVersion);
 
         wr.deleteDocuments(bq);
         long now = Utils.getNowMicrosUtc();
