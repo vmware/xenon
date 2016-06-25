@@ -60,6 +60,7 @@
     <module>xenon-slf4j</module>
     <module>xenon-ui</module>
     <module>xenon-swagger</module>
+    <module>xenon-loader-test</module>
     <module>xenon-dns</module>
   </modules>
 
@@ -111,7 +112,6 @@
         <module>xenon-host</module>
         <module>xenon-samples</module>
         <module>xenon-dns</module>
-        <module>xenon-loader-test</module>
         <module>xenon-websocket-test</module>
         <module>xenon-client</module>
       </modules>
@@ -126,7 +126,6 @@
         <module>xenon-host</module>
         <module>xenon-samples</module>
         <module>xenon-dns</module>
-        <module>xenon-loader-test</module>
         <module>xenon-websocket-test</module>
         <module>xenon-client</module>
       </modules>
@@ -434,7 +433,6 @@
           </dependency>
         </dependencies>
       </plugin>
-
     </plugins>
     <pluginManagement>
       <plugins>
