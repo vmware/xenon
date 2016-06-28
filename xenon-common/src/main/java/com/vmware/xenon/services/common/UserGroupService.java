@@ -26,7 +26,25 @@ public class UserGroupService extends StatefulService {
     public static final String FACTORY_LINK = ServiceUriPaths.CORE_AUTHZ_USER_GROUPS;
 
     public static Service createFactory() {
-        return FactoryService.createIdempotent(UserGroupService.class);
+        FactoryService fs = new FactoryService(UserGroupState.class) {
+
+            @Override
+            public Service createServiceInstance() throws Throwable {
+                return new UserGroupService();
+            }
+
+            @Override
+            public void handlePost(Operation request) {
+                UserGroupState userGroupState =
+                        AuthorizationCacheUtils.extractBody(request, this, UserGroupState.class);
+                if (userGroupState != null) {
+                    AuthorizationCacheUtils.clearAuthzCacheForUserGroup(this, request, userGroupState);
+                }
+                super.handlePost(request);
+            }
+        };
+        fs.toggleOption(ServiceOption.IDEMPOTENT_POST, true);
+        return fs;
     }
 
     /**
@@ -44,6 +62,16 @@ public class UserGroupService extends StatefulService {
     }
 
     @Override
+    public void handleRequest(Operation request, OperationProcessingStage opProcessingStage) {
+        UserGroupState userGroupState =
+                AuthorizationCacheUtils.extractBody(request, this, UserGroupState.class);
+        if (userGroupState != null) {
+            AuthorizationCacheUtils.clearAuthzCacheForUserGroup(this, request, userGroupState);
+        }
+        super.handleRequest(request, opProcessingStage);
+    }
+
+    @Override
     public void handleStart(Operation op) {
         if (!op.hasBody()) {
             op.fail(new IllegalArgumentException("body is required"));
@@ -54,7 +82,7 @@ public class UserGroupService extends StatefulService {
         if (!validate(op, newState)) {
             return;
         }
-        AuthorizationCacheUtils.clearAuthzCacheForUserGroup(this, op, newState);
+        op.complete();
     }
 
     @Override
@@ -76,13 +104,7 @@ public class UserGroupService extends StatefulService {
         } else {
             setState(op, newState);
         }
-        AuthorizationCacheUtils.clearAuthzCacheForUserGroup(this, op, newState);
-    }
-
-    @Override
-    public void handleDelete(Operation op) {
-        UserGroupState currentState = getState(op);
-        AuthorizationCacheUtils.clearAuthzCacheForUserGroup(this, op, currentState);
+        op.complete();
     }
 
     private boolean validate(Operation op, UserGroupState state) {

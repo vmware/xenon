@@ -49,6 +49,23 @@ public class UserService extends StatefulService {
     }
 
     @Override
+    public void handleRequest(Operation request, OperationProcessingStage opProcessingStage) {
+        if (request.getAction() == Action.DELETE || request.getAction() == Action.PUT ||
+                request.getAction() == Action.PATCH) {
+            UserState userState = null;
+            if (request.isFromReplication() && request.hasBody()) {
+                userState = getBody(request);
+            } else {
+                userState = getState(request);
+            }
+            if (userState != null) {
+                AuthorizationCacheUtils.clearAuthzCacheForUser(this, request, userState.documentSelfLink);
+            }
+        }
+        super.handleRequest(request, opProcessingStage);
+    }
+
+    @Override
     public void handleStart(Operation op) {
         if (!op.hasBody()) {
             op.fail(new IllegalArgumentException("body is required"));
@@ -59,7 +76,7 @@ public class UserService extends StatefulService {
         if (!validate(op, state)) {
             return;
         }
-        AuthorizationCacheUtils.clearAuthzCacheForUser(this, op, state.documentSelfLink);
+        op.complete();
     }
 
     @Override
@@ -86,7 +103,7 @@ public class UserService extends StatefulService {
         } else {
             setState(op, newState);
         }
-        AuthorizationCacheUtils.clearAuthzCacheForUser(this, op, newState.documentSelfLink);
+        op.complete();
     }
 
     @Override
@@ -108,13 +125,7 @@ public class UserService extends StatefulService {
             }
         }
         op.setBody(currentState);
-        AuthorizationCacheUtils.clearAuthzCacheForUser(this, op, currentState.documentSelfLink);
-    }
-
-    @Override
-    public void handleDelete(Operation op) {
-        UserState currentState = getState(op);
-        AuthorizationCacheUtils.clearAuthzCacheForUser(this, op, currentState.documentSelfLink);
+        op.complete();
     }
 
     private boolean validate(Operation op, UserState state) {

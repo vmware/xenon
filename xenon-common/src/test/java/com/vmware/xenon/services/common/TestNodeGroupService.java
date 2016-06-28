@@ -18,6 +18,7 @@ import static org.junit.Assert.assertTrue;
 
 import java.net.URI;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Date;
@@ -54,6 +55,7 @@ import com.vmware.xenon.common.NodeSelectorService.SelectAndForwardRequest;
 import com.vmware.xenon.common.NodeSelectorService.SelectOwnerResponse;
 import com.vmware.xenon.common.NodeSelectorState;
 import com.vmware.xenon.common.Operation;
+import com.vmware.xenon.common.Operation.AuthorizationContext;
 import com.vmware.xenon.common.Operation.CompletionHandler;
 import com.vmware.xenon.common.OperationJoin;
 import com.vmware.xenon.common.Service;
@@ -88,10 +90,13 @@ import com.vmware.xenon.services.common.NodeGroupService.NodeGroupConfig;
 import com.vmware.xenon.services.common.NodeGroupService.NodeGroupState;
 import com.vmware.xenon.services.common.NodeState.NodeOption;
 import com.vmware.xenon.services.common.QueryTask.Query;
+import com.vmware.xenon.services.common.QueryTask.Query.Builder;
 import com.vmware.xenon.services.common.QueryTask.QueryTerm.MatchType;
 import com.vmware.xenon.services.common.ReplicationTestService.ReplicationTestServiceErrorResponse;
 import com.vmware.xenon.services.common.ReplicationTestService.ReplicationTestServiceState;
+import com.vmware.xenon.services.common.ResourceGroupService.ResourceGroupState;
 import com.vmware.xenon.services.common.RoleService.RoleState;
+import com.vmware.xenon.services.common.UserService.UserState;
 
 public class TestNodeGroupService {
 
@@ -1767,6 +1772,169 @@ public class TestNodeGroupService {
         factorySynchronizationNoChildren();
 
         factoryDuplicatePost();
+    }
+
+    @Test
+    public void replicationWithAuthzCacheClear() throws Throwable {
+        // create users and roles for a users 'foo@foo.com' and 'bar@foo.com', 'foobar@bar.com'
+        this.isAuthorizationEnabled = true;
+        setUp(this.nodeCount);
+        this.host.joinNodesAndVerifyConvergence(this.nodeCount);
+        this.host.setNodeGroupQuorum(this.nodeCount);
+
+        VerificationHost groupHost = this.host.getPeerHost();
+        groupHost.setSystemAuthorizationContext();
+        AuthorizationHelper authHelperForFoo = new AuthorizationHelper(groupHost);
+        String email = "foo@foo.com";
+        String fooUserLink = authHelperForFoo.createUserService(groupHost, email);
+        UserState patchState = new UserState();
+        patchState.userGroupLinks = new HashSet<String>();
+        patchState.userGroupLinks.add(UriUtils.buildUriPath(
+                UserGroupService.FACTORY_LINK, authHelperForFoo.getUserGroupName(email)));
+        authHelperForFoo.patchUserService(groupHost, fooUserLink, patchState);
+        // create a user group based on a query for userGroupLink
+        authHelperForFoo.createRoles(groupHost, email, false);
+        AuthorizationHelper authHelperForBar = new AuthorizationHelper(groupHost);
+        email = "bar@foo.com";
+        String barUserLink = authHelperForBar.createUserService(groupHost, email);
+        // create a user group based on the UserService email field
+        authHelperForBar.createRoles(groupHost, email);
+        AuthorizationHelper authHelperForFooBar = new AuthorizationHelper(groupHost);
+        email = "foobar@foo.com";
+        authHelperForFooBar.createUserService(groupHost, email);
+        authHelperForFooBar.createRoles(groupHost, email);
+        groupHost.resetSystemAuthorizationContext();
+        // delete the role associated with user foo; this should clear out the authz cache entry
+        Collection<VerificationHost> peerHosts = this.host.getInProcessHostMap().values();
+        invokeOperation(peerHosts, fooUserLink,
+                (opHost) -> {
+                    try {
+                    opHost.sendAndWaitExpectSuccess(
+                            Operation.createDelete(UriUtils.buildUri(opHost, authHelperForFoo.getRoleLink())));
+                    } catch (Throwable t) {
+                        return t;
+                    }
+                    return null;
+                });
+        // delete the user group associated with the user
+        invokeOperation(peerHosts, fooUserLink,
+                (opHost) -> {
+                    try {
+                    opHost.sendAndWaitExpectSuccess(
+                            Operation.createDelete(UriUtils.buildUri(opHost, authHelperForFoo.getUserGroupLink())));
+                    } catch (Throwable t) {
+                        return t;
+                    }
+                    return null;
+                });
+
+        // next, assume identity as bar@foo.com, create a new role and associate it with the user bar
+        invokeOperation(peerHosts, barUserLink,
+                (opHost) -> {
+                    try {
+                        Query q = Builder.create()
+                                .addFieldClause(
+                                        ExampleServiceState.FIELD_NAME_KIND,
+                                        Utils.buildKind(ExampleServiceState.class))
+                                .build();
+                        String newResourceGroupLink = authHelperForBar.createResourceGroup(opHost, "new-rg", q);
+                        Set<Service.Action> actions = new HashSet<Service.Action>(Arrays.asList(Action.GET, Action.POST));
+                        authHelperForBar.createRole(opHost, authHelperForBar.getUserGroupLink(), newResourceGroupLink, actions);
+                        authHelperForBar.createRole(opHost, authHelperForFooBar.getUserGroupLink(), newResourceGroupLink, actions);
+                    } catch (Throwable t) {
+                        return t;
+                    }
+                    return null;
+                });
+        // delete the user group for foobar@foo.com.
+        // Updating the resource group should be able to handle the fact that the user group does not exist
+        invokeOperation(peerHosts, barUserLink,
+                (opHost) -> {
+                    try {
+                        String newResourceGroupLink = UriUtils.buildUriPath(ResourceGroupService.FACTORY_LINK, "new-rg");
+                        Query updateResourceGroupQuery = Builder.create()
+                                .addFieldClause(
+                                        ExampleServiceState.FIELD_NAME_NAME,
+                                        "bar")
+                                .build();
+                        opHost.sendAndWaitExpectSuccess(
+                                Operation.createDelete(UriUtils.buildUri(opHost, authHelperForFooBar.getUserGroupLink())));
+                        ResourceGroupState resourceGroupState = new ResourceGroupState();
+                        resourceGroupState.query = updateResourceGroupQuery;
+                        opHost.sendAndWaitExpectSuccess(
+                                Operation.createPut(UriUtils.buildUri(opHost, newResourceGroupLink))
+                                .setBody(resourceGroupState));
+                        opHost.sendAndWaitExpectSuccess(
+                                Operation.createDelete(UriUtils.buildUri(opHost, newResourceGroupLink)));
+                    } catch (Throwable t) {
+                        return t;
+                    }
+                    return null;
+                });
+        // patch the userservice
+        invokeOperation(peerHosts, fooUserLink,
+                (opHost) -> {
+                    try {
+                        UserState userState = new UserState();
+                        userState.userGroupLinks = new HashSet<String>();
+                        userState.userGroupLinks.add("foo");
+                        opHost.sendAndWaitExpectSuccess(
+                                Operation.createPatch(UriUtils.buildUri(groupHost, fooUserLink))
+                                .setBody(userState));
+                    } catch (Throwable t) {
+                        return t;
+                    }
+                    return null;
+                });
+        // finally, delete the user service; the authz cache should be cleared
+        invokeOperation(peerHosts, fooUserLink,
+                (opHost) -> {
+                    try {
+                        opHost.sendAndWaitExpectSuccess(
+                                Operation.createDelete(UriUtils.buildUri(groupHost, fooUserLink)));
+                    } catch (Throwable t) {
+                        return t;
+                    }
+                    return null;
+                });
+    }
+
+    // helper method to invoke the specified Function object as the system user and
+    // validate if the authz caches have been invalidated after
+    private void invokeOperation(Collection<VerificationHost> peerHosts, String userLink,
+            Function<VerificationHost, Throwable> func) throws Throwable {
+        VerificationHost groupHost = peerHosts.iterator().next();
+        AuthorizationContext authContext = groupHost.assumeIdentity(userLink);
+        groupHost.sendAndWaitExpectSuccess(
+                Operation.createGet(UriUtils.buildUri(groupHost, ExampleService.FACTORY_LINK)));
+        checkCache(peerHosts, authContext.getToken(), true);
+        groupHost.setSystemAuthorizationContext();
+        Throwable result = func.apply(groupHost);
+        if (result != null) {
+            throw result;
+        }
+        groupHost.resetSystemAuthorizationContext();
+        checkCache(this.host.getInProcessHostMap().values(), authContext.getToken(), false);
+    }
+
+    // helper method to check if the authz cache is in the expected state
+    private void checkCache(Collection<VerificationHost> peerHosts, String token, boolean expectEntries) throws Throwable {
+        boolean contextFound = false;
+        for (VerificationHost host : peerHosts) {
+            host.setSystemAuthorizationContext();
+            MinimalTestService s = new MinimalTestService();
+            host.addPrivilegedService(MinimalTestService.class);
+            host.startServiceAndWait(s, UUID.randomUUID().toString(), null);
+            host.resetSystemAuthorizationContext();
+            if (host.getAuthorizationContext(s, token) != null) {
+                contextFound = true;
+            }
+        }
+        if (expectEntries) {
+            assertTrue(contextFound);
+        } else {
+            assertTrue(!contextFound);
+        }
     }
 
     private void factoryDuplicatePost() throws Throwable, InterruptedException, TimeoutException {

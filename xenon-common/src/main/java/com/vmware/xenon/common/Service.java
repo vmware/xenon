@@ -17,6 +17,7 @@ import java.net.URI;
 import java.util.EnumSet;
 import java.util.concurrent.TimeUnit;
 
+import com.vmware.xenon.common.Operation.AuthorizationContext;
 import com.vmware.xenon.common.ServiceStats.ServiceStat;
 
 public interface Service extends ServiceRequestSender {
@@ -75,7 +76,8 @@ public interface Service extends ServiceRequestSender {
          * The runtime will route requests to the owner, regardless to which node receives a client
          * request.
          *
-         * These service handlers are invoked only on the service instance on the owner node:
+         * These service handlers are invoked only
+         * on the service instance on the owner node:
          * handleStart, handleMaintenance, handleGet, handleDelete, handlePut, handlePatch
          *
          * Service instances (replicas) on the other nodes will see replicated updates, as part of the
@@ -492,4 +494,7 @@ public interface Service extends ServiceRequestSender {
 
     ServiceDocument getDocumentTemplate();
 
+    AuthorizationContext getSystemAuthorizationContext();
+
+    void setAuthorizationContext(Operation op, AuthorizationContext ctx);
 }

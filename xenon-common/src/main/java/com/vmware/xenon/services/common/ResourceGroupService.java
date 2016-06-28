@@ -26,7 +26,6 @@ public class ResourceGroupService extends StatefulService {
     public static final String FACTORY_LINK = ServiceUriPaths.CORE_AUTHZ_RESOURCE_GROUPS;
 
     public static Service createFactory() {
-
         // workaround for GSON issue https://github.com/google/gson/issues/764
         // We serialize the complex type once, on service creation, to avoid possible GSON race
         ResourceGroupState st = new ResourceGroupState();
@@ -62,6 +61,22 @@ public class ResourceGroupService extends StatefulService {
     }
 
     @Override
+    public void handleRequest(Operation request, OperationProcessingStage opProcessingStage) {
+        if (request.getAction() == Action.DELETE || request.getAction() == Action.PUT) {
+            ResourceGroupState resourceGroupState = null;
+            if (request.isFromReplication() && request.hasBody()) {
+                resourceGroupState = getBody(request);
+            } else {
+                resourceGroupState = getState(request);
+            }
+            if (resourceGroupState != null) {
+                AuthorizationCacheUtils.clearAuthzCacheForResourceGroup(this, request, resourceGroupState);
+            }
+        }
+        super.handleRequest(request, opProcessingStage);
+    }
+
+    @Override
     public void handleStart(Operation op) {
         if (!op.hasBody()) {
             op.fail(new IllegalArgumentException("body is required"));
@@ -72,7 +87,7 @@ public class ResourceGroupService extends StatefulService {
         if (!validate(op, state)) {
             return;
         }
-        AuthorizationCacheUtils.clearAuthzCacheForResourceGroup(this, op, state);
+        op.complete();
     }
 
     @Override
@@ -94,13 +109,7 @@ public class ResourceGroupService extends StatefulService {
         } else {
             setState(op, newState);
         }
-        AuthorizationCacheUtils.clearAuthzCacheForResourceGroup(this, op, currentState);
-    }
-
-    @Override
-    public void handleDelete(Operation op) {
-        ResourceGroupState currentState = getState(op);
-        AuthorizationCacheUtils.clearAuthzCacheForResourceGroup(this, op, currentState);
+        op.complete();
     }
 
     private boolean validate(Operation op, ResourceGroupState state) {
@@ -108,7 +117,6 @@ public class ResourceGroupService extends StatefulService {
             op.fail(new IllegalArgumentException("query is required"));
             return false;
         }
-
         return true;
     }
 }

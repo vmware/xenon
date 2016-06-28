@@ -2,6 +2,9 @@
 
 ## 0.9.0-SNAPSHOT
 
+* Clear the authz cache maintained in ServiceHost on all nodes in a multi-node
+  deployment.
+
 * Add support for graph queries. The new GraphQueryTaskService, listening on
   /core/graph-queries enables multi stage queries that can traverse linked
   documents. Each stage uses the QueryTask specification, to select the documents
