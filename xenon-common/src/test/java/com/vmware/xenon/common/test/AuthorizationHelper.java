@@ -231,9 +231,6 @@ public class AuthorizationHelper {
     }
 
     public Collection<String> createRoles(ServiceHost target, String email, boolean createUserGroupByEmail) throws Throwable {
-        final Integer concurrentTasks = 6;
-        this.host.testStart(concurrentTasks);
-
         String emailPrefix = email.substring(0, email.indexOf("@"));
         String userGroupLink = null;
         // Create user group
@@ -291,13 +288,10 @@ public class AuthorizationHelper {
         // Create role authorizing access to the user's own query tasks
         paths.add(createRole(target, userGroupLink, queryTaskResourceGroupLink,
                 new HashSet<>(Arrays.asList(Action.GET, Action.POST, Action.PATCH, Action.DELETE))));
-
-        this.host.testWait();
-
         return paths;
     }
 
-    public String createUserGroup(ServiceHost target, String name, Query q) {
+    public String createUserGroup(ServiceHost target, String name, Query q) throws Throwable {
         URI postUserGroupsUri =
                 UriUtils.buildUri(target, ServiceUriPaths.CORE_AUTHZ_USER_GROUPS);
         String selfLink =
@@ -308,14 +302,13 @@ public class AuthorizationHelper {
         userGroupState.documentSelfLink = selfLink;
         userGroupState.query = q;
 
-        this.host.send(Operation
+        this.host.sendAndWaitExpectSuccess(Operation
                 .createPost(postUserGroupsUri)
-                .setBody(userGroupState)
-                .setCompletion(this.host.getCompletion()));
+                .setBody(userGroupState));
         return selfLink;
     }
 
-    public String createResourceGroup(ServiceHost target, String name, Query q) {
+    public String createResourceGroup(ServiceHost target, String name, Query q) throws Throwable {
         URI postResourceGroupsUri =
                 UriUtils.buildUri(target, ServiceUriPaths.CORE_AUTHZ_RESOURCE_GROUPS);
         String selfLink =
@@ -324,15 +317,13 @@ public class AuthorizationHelper {
         ResourceGroupState resourceGroupState = new ResourceGroupState();
         resourceGroupState.documentSelfLink = selfLink;
         resourceGroupState.query = q;
-
-        this.host.send(Operation
+        this.host.sendAndWaitExpectSuccess(Operation
                 .createPost(postResourceGroupsUri)
-                .setBody(resourceGroupState)
-                .setCompletion(this.host.getCompletion()));
+                .setBody(resourceGroupState));
         return selfLink;
     }
 
-    public String createRole(ServiceHost target, String userGroupLink, String resourceGroupLink, Set<Action> verbs) {
+    public String createRole(ServiceHost target, String userGroupLink, String resourceGroupLink, Set<Action> verbs) throws Throwable {
         // Build selfLink from user group, resource group, and verbs
         String userGroupSegment = userGroupLink.substring(userGroupLink.lastIndexOf('/') + 1);
         String resourceGroupSegment = resourceGroupLink.substring(resourceGroupLink.lastIndexOf('/') + 1);
@@ -352,12 +343,9 @@ public class AuthorizationHelper {
         roleState.resourceGroupLink = resourceGroupLink;
         roleState.verbs = verbs;
         roleState.policy = Policy.ALLOW;
-
-        this.host.send(Operation
+        this.host.sendAndWaitExpectSuccess(Operation
                 .createPost(UriUtils.buildUri(target, ServiceUriPaths.CORE_AUTHZ_ROLES))
-                .setBody(roleState)
-                .setCompletion(this.host.getCompletion()));
-
+                .setBody(roleState));
         return roleState.documentSelfLink;
     }
 }

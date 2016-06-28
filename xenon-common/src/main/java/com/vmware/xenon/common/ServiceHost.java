@@ -1293,12 +1293,16 @@ public class ServiceHost implements ServiceRequestSender {
 
         // Start persisted factories here, after document index is added
         coreServices.add(AuthCredentialsService.createFactory());
+        Service userGroupFactory = UserGroupService.createFactory();
+        addPrivilegedService(userGroupFactory.getClass());
         addPrivilegedService(UserGroupService.class);
-        coreServices.add(UserGroupService.createFactory());
+        coreServices.add(userGroupFactory);
         addPrivilegedService(ResourceGroupService.class);
         coreServices.add(ResourceGroupService.createFactory());
+        Service roleFactory = RoleService.createFactory();
         addPrivilegedService(RoleService.class);
-        coreServices.add(RoleService.createFactory());
+        addPrivilegedService(roleFactory.getClass());
+        coreServices.add(roleFactory);
         addPrivilegedService(UserService.class);
         coreServices.add(UserService.createFactory());
         coreServices.add(TenantService.createFactory());
