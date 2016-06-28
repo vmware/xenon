@@ -893,6 +893,18 @@ public class TestFactoryService extends BasicReusableHostTestCase {
                 ExampleService.createFactory());
         this.host.waitForServiceAvailable(ExampleService.FACTORY_LINK);
 
+        Supplier<Stream<ExampleServiceState>> emptySupplier = () -> LongStream.range(0, 0).mapToObj(i -> {
+            return new ExampleServiceState();
+        });
+
+        validateCount(emptySupplier, true);
+        validateCount(emptySupplier, false);
+        validateLimit(emptySupplier, 1, true);
+        validateLimit(emptySupplier, 5, false);
+        validateOrderBy(emptySupplier, "counter", true, true);
+        validateLimitAndOrderBy(emptySupplier, 1, true, "counter", true, true);
+        validateLimitAndOrderBy(emptySupplier, 5, false, "counter", false, true);
+
         Supplier<Stream<ExampleServiceState>> stateSupplier = () -> LongStream.range(0, 5).mapToObj(i -> {
             ExampleServiceState state = new ExampleServiceState();
             state.counter = i;
@@ -920,14 +932,11 @@ public class TestFactoryService extends BasicReusableHostTestCase {
 
         validateCount(stateSupplier, true);
         validateCount(stateSupplier, false);
-
         validateLimit(stateSupplier, 1, true);
         validateLimit(stateSupplier, 5, false);
         validateLimit(stateSupplier, 10, true);
-
         validateOrderBy(stateSupplier, "counter", true, true);
         validateOrderBy(stateSupplier, "name", false, false);
-
         validateLimitAndOrderBy(stateSupplier, 1, true, "counter", true, true);
         validateLimitAndOrderBy(stateSupplier, 5, false, "counter", false, true);
         validateLimitAndOrderBy(stateSupplier, 10, false, "name", true, false);

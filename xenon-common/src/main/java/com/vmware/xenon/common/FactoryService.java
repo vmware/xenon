@@ -771,6 +771,7 @@ public abstract class FactoryService extends StatelessService {
                 if (queryResult.nextPageLink == null) {
                     ODataFactoryQueryResult odataResult = new ODataFactoryQueryResult();
                     queryResult.copyTo(odataResult);
+                    odataResult.totalCount = countResult.documentCount;
                     op.setBodyNoCloning(odataResult).complete();
                     return;
                 }
@@ -791,6 +792,7 @@ public abstract class FactoryService extends StatelessService {
                     if (result.nextPageLink == null) {
                         ODataFactoryQueryResult odataResult = new ODataFactoryQueryResult();
                         result.copyTo(odataResult);
+                        odataResult.totalCount = result.documentCount;
                         op.setBodyNoCloning(odataResult).complete();
                         return;
                     }
