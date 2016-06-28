@@ -27,7 +27,24 @@ public class RoleService extends StatefulService {
     public static final String FACTORY_LINK = ServiceUriPaths.CORE_AUTHZ_ROLES;
 
     public static Service createFactory() {
-        return FactoryService.createIdempotent(RoleService.class);
+        FactoryService fs = new FactoryService(RoleState.class) {
+
+            @Override
+            public Service createServiceInstance() throws Throwable {
+                return new RoleService();
+            }
+
+            @Override
+            public void handlePost(Operation request) {
+                RoleState roleState = AuthorizationCacheUtils.extractBody(request, this, RoleState.class);
+                if (roleState != null) {
+                    AuthorizationCacheUtils.clearAuthzCacheForRole(this, request, roleState);
+                }
+                super.handlePost(request);
+            }
+        };
+        fs.toggleOption(ServiceOption.IDEMPOTENT_POST, true);
+        return fs;
     }
 
     public enum Policy {
@@ -59,6 +76,15 @@ public class RoleService extends StatefulService {
     }
 
     @Override
+    public void handleRequest(Operation request, OperationProcessingStage opProcessingStage) {
+        RoleState roleState = AuthorizationCacheUtils.extractBody(request, this, RoleState.class);
+        if (roleState != null) {
+            AuthorizationCacheUtils.clearAuthzCacheForRole(this, request, roleState);
+        }
+        super.handleRequest(request, opProcessingStage);
+    }
+
+    @Override
     public void handleStart(Operation op) {
         if (!op.hasBody()) {
             op.fail(new IllegalArgumentException("body is required"));
@@ -69,7 +95,7 @@ public class RoleService extends StatefulService {
         if (!validate(op, state)) {
             return;
         }
-        AuthorizationCacheUtils.clearAuthzCacheForRole(this, op, state);
+        op.complete();
     }
 
     @Override
@@ -91,13 +117,7 @@ public class RoleService extends StatefulService {
         } else {
             setState(op, newState);
         }
-        AuthorizationCacheUtils.clearAuthzCacheForRole(this, op, currentState);
-    }
-
-    @Override
-    public void handleDelete(Operation op) {
-        RoleState currentState = getState(op);
-        AuthorizationCacheUtils.clearAuthzCacheForRole(this, op, currentState);
+        op.complete();
     }
 
     private boolean validate(Operation op, RoleState state) {

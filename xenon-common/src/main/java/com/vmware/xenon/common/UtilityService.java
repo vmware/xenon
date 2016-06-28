@@ -27,6 +27,7 @@ import java.util.Map.Entry;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.logging.Level;
 
+import com.vmware.xenon.common.Operation.AuthorizationContext;
 import com.vmware.xenon.common.Operation.CompletionHandler;
 import com.vmware.xenon.common.ServiceStats.ServiceStat;
 import com.vmware.xenon.common.ServiceStats.TimeSeriesStats;
@@ -781,5 +782,15 @@ public class UtilityService implements Service {
     @Override
     public Class<? extends ServiceDocument> getStateType() {
         return null;
+    }
+
+    @Override
+    public final void setAuthorizationContext(Operation op, AuthorizationContext ctx) {
+        throw new RuntimeException("Service not allowed to set authorization context");
+    }
+
+    @Override
+    public final AuthorizationContext getSystemAuthorizationContext() {
+        throw new RuntimeException("Service not allowed to get system authorization context");
     }
 }
