@@ -2376,8 +2376,9 @@ public class ServiceHost implements ServiceRequestSender {
                             hasClientSuppliedInitialState);
                 });
 
-                if (!isDocumentOwner(s)) {
-                    // bypass handleStart on nodes that do not own the service
+                if (!isDocumentOwner(s) && !s.hasOption(ServiceOption.INVOKE_HANDLERS_ON_ALL_NODES)) {
+                    // bypass handleStart on nodes that do not own the service unless the service
+                    // explicitly asks to
                     post.complete();
                     break;
                 }

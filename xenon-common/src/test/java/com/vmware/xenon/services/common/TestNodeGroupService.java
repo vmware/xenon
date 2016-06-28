@@ -1769,6 +1769,65 @@ public class TestNodeGroupService {
         factoryDuplicatePost();
     }
 
+    public static class OwnerSelectedAllNodesService extends StatefulService {
+        public static final String FACTORY_LINK = UUID.randomUUID().toString();
+        public static AtomicInteger startInvocationCount = new AtomicInteger(0);
+        public static AtomicInteger patchInvocationCount = new AtomicInteger(0);
+        public static AtomicInteger createInvocationCount = new AtomicInteger(0);
+
+        public OwnerSelectedAllNodesService() {
+            super(ServiceDocument.class);
+            super.toggleOption(ServiceOption.REPLICATION, true);
+            super.toggleOption(ServiceOption.OWNER_SELECTION, true);
+            super.toggleOption(ServiceOption.INVOKE_HANDLERS_ON_ALL_NODES, true);
+        }
+
+        @Override
+        public void handleStart(Operation start) {
+            startInvocationCount.incrementAndGet();
+            start.complete();
+        }
+
+        @Override
+        public void handlePatch(Operation patch) {
+            patchInvocationCount.incrementAndGet();
+            patch.complete();
+        }
+
+        @Override
+        public void handleCreate(Operation create) {
+            createInvocationCount.incrementAndGet();
+            create.complete();
+        }
+    }
+
+    @Test
+    public void ownerSelectionWithInvokeHandlerOnAllNodes() throws Throwable {
+        setUp(this.nodeCount);
+        this.host.joinNodesAndVerifyConvergence(this.nodeCount);
+        for (VerificationHost h : this.host.getInProcessHostMap().values()) {
+            h.startFactory(new OwnerSelectedAllNodesService());
+        }
+        ServiceDocument serviceState = new ServiceDocument();
+        String serviceId = UUID.randomUUID().toString();
+        serviceState.documentSelfLink = serviceId;
+        this.host.sendAndWaitExpectSuccess(
+                Operation.createPost(UriUtils.buildUri(this.host.getPeerHost(), OwnerSelectedAllNodesService.FACTORY_LINK))
+                .setBody(serviceState));
+        this.host.sendAndWaitExpectSuccess(Operation.createPatch(
+                UriUtils.buildUri(this.host.getPeerHost(),
+                        UriUtils.buildUriPath(OwnerSelectedAllNodesService.FACTORY_LINK, serviceId)))
+                .setBody(new ServiceDocument()));
+        this.host.waitFor("timeout waiting for start and patch count", () -> {
+            if ((OwnerSelectedAllNodesService.patchInvocationCount.get() == this.nodeCount)
+                    && (OwnerSelectedAllNodesService.startInvocationCount.get() == this.nodeCount)
+                    && (OwnerSelectedAllNodesService.createInvocationCount.get() == 1)) {
+                return true;
+            }
+            return false;
+        });
+    }
+
     private void factoryDuplicatePost() throws Throwable, InterruptedException, TimeoutException {
         // pick one host to post to
         VerificationHost serviceHost = this.host.getPeerHost();

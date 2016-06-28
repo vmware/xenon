@@ -308,9 +308,9 @@ public class StatefulService implements Service {
                     return;
                 }
 
-                if (hasOption(ServiceOption.OWNER_SELECTION) && request.isFromReplication()) {
-                    // bypass service up call on replicas. We can offer a ServiceOption to alter
-                    // this behavior, per service
+                if (hasOption(ServiceOption.OWNER_SELECTION) && request.isFromReplication()
+                        && !hasOption(ServiceOption.INVOKE_HANDLERS_ON_ALL_NODES)) {
+                    // bypass service up call on replicas unless explicitly instructed not to
                     request.complete();
                     return;
                 }
