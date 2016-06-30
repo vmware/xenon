@@ -1107,6 +1107,10 @@ public class Operation implements Cloneable {
     }
 
     public void fail(Throwable e, Object failureBody) {
+        if (e != null) {
+            Utils.logWarning("%s:%s", Utils.toString(e), toString());
+        }
+
         if (this.statusCode < STATUS_CODE_FAILURE_THRESHOLD) {
             this.statusCode = STATUS_CODE_SERVER_FAILURE_THRESHOLD;
         }
