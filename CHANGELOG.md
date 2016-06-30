@@ -2,6 +2,9 @@
 
 ## 0.9.0-SNAPSHOT
 
+* Add sample code for Bootstrap Service Tutorial.
+  https://github.com/vmware/xenon/wiki/Bootstrap-Service-Tutorial
+
 * Clear the authz cache maintained in ServiceHost on all nodes in a multi-node
   deployment.
 

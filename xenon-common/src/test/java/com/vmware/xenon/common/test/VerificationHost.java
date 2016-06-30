@@ -1938,14 +1938,17 @@ public class VerificationHost extends ExampleServiceHost {
 
     public URI getPeerServiceUri(String link) {
         if (!this.localPeerHosts.isEmpty()) {
-            List<URI> localPeerList = new ArrayList<URI>(this.localPeerHosts.keySet());
+            List<URI> localPeerList = new ArrayList<>(this.localPeerHosts.keySet());
             return getUriFromList(link, localPeerList);
         } else {
-            List<URI> peerList = new ArrayList<URI>(this.peerNodeGroups.keySet());
+            List<URI> peerList = new ArrayList<>(this.peerNodeGroups.keySet());
             return getUriFromList(link, peerList);
         }
     }
 
+    /**
+     * Randomly choose one uri from uriList and extend with the link
+     */
     private URI getUriFromList(String link, List<URI> uriList) {
         if (!uriList.isEmpty()) {
             Collections.shuffle(uriList, new Random(System.nanoTime()));
