@@ -1,0 +1,88 @@
+/*
+ * Copyright (c) 2014-2016 VMware, Inc. All Rights Reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not
+ * use this file except in compliance with the License.  You may obtain a copy of
+ * the License at http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed
+ * under the License is distributed on an "AS IS" BASIS, without warranties or
+ * conditions of any kind, EITHER EXPRESS OR IMPLIED.  See the License for the
+ * specific language governing permissions and limitations under the License.
+ */
+
+package com.vmware.dcp.services.samples;
+
+import java.util.ArrayList;
+import java.util.List;
+
+import org.junit.Before;
+import org.junit.Test;
+
+import com.vmware.xenon.common.BasicTestCase;
+import com.vmware.xenon.common.Operation;
+import com.vmware.xenon.common.ServiceDocument;
+import com.vmware.xenon.common.UriUtils;
+import com.vmware.xenon.common.test.VerificationHost;
+import com.vmware.xenon.services.common.ServiceUriPaths;
+import com.vmware.xenon.services.samples.SampleBootstrapService;
+
+public class TestSampleBootstrapService extends BasicTestCase {
+
+    private VerificationHost peer;
+
+    @Before
+    public void setUp() throws Throwable {
+
+        // setup peer
+        this.host.setUpPeerHosts(3);
+        this.peer = this.host.getInProcessHostMap().values().stream().findFirst().get();
+
+        // create a nodegroup with peers. HOST will NOT join the node group.
+        this.host.joinNodesAndVerifyConvergence(3);
+        this.host.waitForNodeGroupConvergence(3);
+
+        List<VerificationHost> peers = new ArrayList<>(this.host.getInProcessHostMap().values());
+
+        for (VerificationHost h : peers) {
+            h.startServiceAndWait(SampleBootstrapService.createFactory(),
+                    SampleBootstrapService.FACTORY_LINK, null);
+        }
+
+        this.peer.waitForReplicatedFactoryServiceAvailable(
+                UriUtils.buildUri(this.peer, SampleBootstrapService.FACTORY_LINK));
+
+        // triggering(creating) the service to all nodes.
+        // only one will be created on owner node, and rest will be ignored after converted to PUT
+        for (VerificationHost h : peers) {
+            SampleBootstrapService.startTask(h, ServiceUriPaths.DEFAULT_NODE_SELECTOR,
+                    SampleBootstrapService.FACTORY_LINK);
+        }
+    }
+
+    @Override
+    public void beforeHostTearDown(VerificationHost host) {
+        this.peer = null;
+        this.host.tearDownInProcessPeers();
+    }
+
+    @Test
+    public void taskCreation() throws Throwable {
+
+        this.peer.sendAndWaitExpectSuccess(
+                Operation.createGet(this.peer, "/core/bootstrap/preparation-task"));
+
+        // admin@vmware.com must be created
+        this.peer.sendAndWaitExpectSuccess(
+                Operation.createGet(this.peer, "/core/authz/users/admin@vmware.com"));
+    }
+
+    @Test
+    public void put() throws Throwable {
+        // direct put should fail
+        Operation op = Operation.createPut(this.peer, "/core/bootstrap/preparation-task")
+                .setBody(new ServiceDocument());
+        this.peer.sendAndWaitExpectFailure(op);
+    }
+
+}
