@@ -576,8 +576,7 @@ public abstract class FactoryService extends StatelessService {
         // was fixed up by this instance. Restore self link to be just the child suffix "hint", removing the
         // factory prefix added upstream.
         String originalLink = clonedInitState.documentSelfLink;
-        clonedInitState.documentSelfLink = clonedInitState.documentSelfLink.replace(getSelfLink(),
-                "");
+        clonedInitState.documentSelfLink = clonedInitState.documentSelfLink.replace(getSelfLink(),"");
         op.nestCompletion((replicatedOp) -> {
             clonedInitState.documentSelfLink = originalLink;
             op.linkState(null).setBodyNoCloning(clonedInitState).complete();
