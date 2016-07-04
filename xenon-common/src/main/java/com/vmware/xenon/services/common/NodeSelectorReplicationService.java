@@ -87,6 +87,8 @@ public class NodeSelectorReplicationService extends StatelessService {
             try {
                 if (Operation.REPLICATION_QUORUM_HEADER_VALUE_ALL.equals(rplQuorumValue)) {
                     successThreshold = eligibleMemberCount;
+                    outboundOp.addRequestHeader(Operation.REPLICATION_PHASE_HEADER,
+                            Operation.REPLICATION_PHASE_COMMIT);
                 } else {
                     successThreshold = Integer.parseInt(rplQuorumValue);
                 }

@@ -905,6 +905,13 @@ public class StatefulService implements Service {
             }
         }
 
+        String replQuorum = op.getRequestHeader(Operation.REPLICATION_QUORUM_HEADER);
+        if (Operation.REPLICATION_QUORUM_HEADER_VALUE_ALL.equals(replQuorum)) {
+            // Skip commit since replication request was sent to all peers and all must have
+            // accepted it. The replication service added the commit header as part of the proposal
+            return;
+        }
+
         ServiceDocument latestState = op.getLinkedState();
         long delta = latestState.documentUpdateTimeMicros - this.context.lastCommitTimeMicros;
         if (delta < getHost().getMaintenanceIntervalMicros()) {
