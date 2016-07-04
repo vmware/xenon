@@ -708,21 +708,23 @@ public class StatefulService implements Service {
                     linkedState.documentKind = Utils.buildKind(this.context.stateType);
                 }
 
-                if (replicateRequest(op)) {
+                if (processCompletionStageReplicationProposal(op)) {
                     processPending = false;
                     return;
                 }
 
-                saveState(op);
+                // next stage will process pending operations, disable finally clause from
+                // duplicating work
+                processPending = false;
+                processCompletionStageIndexing(op);
             } else {
-                completeRequest(op);
+                processCompletionStagePublishAndComplete(op);
             }
         } finally {
-            if (processPending) {
-                // this must always be called after state is saved / cloned (for SYNCHRONIZED
-                // services
-                processPending(op);
+            if (!processPending) {
+                return;
             }
+            processPending(op);
         }
     }
 
@@ -730,7 +732,7 @@ public class StatefulService implements Service {
         if (!options.hasBody()) {
             options.setBodyNoCloning(getDocumentTemplate());
         }
-        completeRequest(options);
+        processCompletionStagePublishAndComplete(options);
     }
 
     private void failRequest(Operation op, Throwable e) {
@@ -781,7 +783,13 @@ public class StatefulService implements Service {
         op.complete();
     }
 
-    private boolean replicateRequest(Operation op) {
+    /**
+     * Part of operation completion processing. If the service requires replication, we ask
+     * the host to invoke the proper node selector service to replicate the update to peers.
+     * On completion, we determine if we need to issue a commit. Then we invoke the next stage,
+     * indexing of state.
+     */
+    private boolean processCompletionStageReplicationProposal(Operation op) {
         if (!hasOption(ServiceOption.REPLICATION)) {
             return false;
         }
@@ -820,11 +828,7 @@ public class StatefulService implements Service {
                 return;
             }
             op.setReplicationDisabled(true);
-            try {
-                saveState(op);
-            } finally {
-                processPending(op);
-            }
+            processCompletionStageCommit(op);
         });
 
         getHost().replicateRequest(this.context.options, op.getLinkedState(),
@@ -832,20 +836,128 @@ public class StatefulService implements Service {
         return true;
     }
 
-    private void saveState(Operation op) {
-        op.nestCompletion((o, e) -> {
-            if (e != null) {
-                failRequest(op, e);
+    /**
+     * Part of operation completion processing. If the service is about to idle, advertise last
+     * request, as a commit, to all peers.
+     * Only applies to services with {@link ServiceOption#OWNER_SELECTION}
+     */
+    private void processCompletionStageCommit(Operation op) {
+        boolean indexState = true;
+        try {
+            if (op.getStatusCode() >= Operation.STATUS_CODE_FAILURE_THRESHOLD) {
+                // we only commit updates that were accepted by the owner, so ignore this
+                // failed update
                 return;
             }
-            completeRequest(op);
-        });
 
-        ServiceDocument mergedState = op.getLinkedState();
-        this.context.host.saveServiceState(this, op, mergedState);
+            if (op.isFromReplication() || op.getAction() == Action.GET) {
+                // only owners advertise commits, on updates
+                return;
+            }
+
+            if (!hasOption(ServiceOption.DOCUMENT_OWNER)) {
+                // Explicit commit messages are only sent from this instance on the owner node
+                return;
+            }
+
+            // The owner has the responsibility to advertise the most recent committed state
+            // to all the peers. If operations are flowing, operation at version N, informs services to
+            // commit proposal at N-1. However, if no new operations occur, the owner
+            // must still communicate the last commit in a timely fashion otherwise the replicas
+            // will be behind. Here we re-issue the current state (committed) when we notice the
+            // pending operation queue is empty
+            if (op.getAction() != Action.DELETE) {
+                if (!this.context.operationQueue.isEmpty()) {
+                    return;
+                }
+            } else {
+                if (op.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_NO_INDEX_UPDATE)) {
+                    // Directive indicates this update should have no persistence side-effects. Do not
+                    // forward to peers. This is often due to local stop from host shutting down.
+                    return;
+                }
+            }
+
+            ServiceDocument latestState = op.getLinkedState();
+            long delta = latestState.documentUpdateTimeMicros - this.context.lastCommitTimeMicros;
+            if (delta < getHost().getMaintenanceIntervalMicros()) {
+                return;
+            }
+
+            if (latestState.documentVersion < this.context.version
+                    || (latestState.documentEpoch != null
+                            && latestState.documentEpoch < this.context.epoch)) {
+                return;
+            }
+
+            this.context.lastCommitTimeMicros = latestState.documentUpdateTimeMicros;
+
+            URI u = getUri();
+            Operation commitOp = Operation
+                    .createPut(u)
+                    .addRequestHeader(Operation.REPLICATION_PHASE_HEADER,
+                            Operation.REPLICATION_PHASE_COMMIT)
+                    .setReferer(u)
+                    .setExpiration(getHost().getOperationTimeoutMicros() + Utils.getNowMicrosUtc());
+
+            if (op.getAction() == Action.DELETE) {
+                commitOp.setAction(op.getAction());
+            }
+
+            commitOp.linkState(latestState);
+
+            String replQuorum = op.getRequestHeader(Operation.REPLICATION_QUORUM_HEADER);
+            if (Operation.REPLICATION_QUORUM_HEADER_VALUE_ALL.equals(replQuorum)) {
+                // skip next processing stage until we get commit completion
+                indexState = false;
+                // Do not complete request until commit is done. Client will see completion after
+                // replicas have committed
+                commitOp.addRequestHeader(Operation.REPLICATION_QUORUM_HEADER, replQuorum);
+                commitOp.setCompletion((o, e) -> {
+                    // regardless of commit success, we need to proceed with operation processing
+                    processCompletionStageIndexing(op);
+                });
+            }
+
+            getHost().replicateRequest(this.context.options, latestState, getPeerNodeSelectorPath(),
+                    getSelfLink(),
+                    commitOp);
+            return;
+        } finally {
+            if (!indexState) {
+                return;
+            }
+            processCompletionStageIndexing(op);
+        }
     }
 
-    private void completeRequest(Operation op) {
+    /**
+     * Part of operation completion processing. Issues request to indexing service, through the host
+     * and kicks of pending request processing. On indexing completion, it continues with next stage
+     * of operation completion
+     */
+    private void processCompletionStageIndexing(Operation op) {
+        try {
+            op.nestCompletion((o, e) -> {
+                if (e != null) {
+                    failRequest(op, e);
+                    return;
+                }
+                processCompletionStagePublishAndComplete(op);
+            });
+
+            ServiceDocument mergedState = op.getLinkedState();
+            this.context.host.saveServiceState(this, op, mergedState);
+        } finally {
+            processPending(op);
+        }
+    }
+
+    /**
+     * Final stage of operation completion processing. Notifications will be published and client
+     * will receive operation response
+     */
+    private void processCompletionStagePublishAndComplete(Operation op) {
         if (hasOption(ServiceOption.INSTRUMENTATION)) {
             updatePerOperationStats(op);
         }
@@ -864,77 +976,6 @@ public class StatefulService implements Service {
             op.setBodyNoCloning(null);
         }
         op.complete();
-    }
-
-    /**
-     * If the service is about to idle, advertise last request, as a commit, to all peers.
-     * Only applies to services with ServiceOption.ENFORCE_QUORUM
-     */
-    private void commitLastProposalIfIdle(Operation op) {
-        if (op.getStatusCode() >= Operation.STATUS_CODE_FAILURE_THRESHOLD) {
-            // we only commit updates that were accepted by the owner, so ignore this
-            // failed update
-            return;
-        }
-
-        if (op.isFromReplication() || op.getAction() == Action.GET) {
-            // only owners advertise commits, on updates
-            return;
-        }
-
-        if (!hasOption(ServiceOption.DOCUMENT_OWNER)) {
-            // Explicit commit messages are only sent from this instance on the owner node
-            return;
-        }
-
-        // The owner has the responsibility to advertise the most recent committed state
-        // to all the peers. If operations are flowing, operation at version N, informs services to
-        // commit proposal at N-1. However, if no new operations occur, the owner
-        // must still communicate the last commit in a timely fashion otherwise the replicas
-        // will be behind. Here we re-issue the current state (committed) when we notice the
-        // pending operation queue is empty
-        if (op.getAction() != Action.DELETE) {
-            if (!this.context.operationQueue.isEmpty()) {
-                return;
-            }
-        } else {
-            if (op.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_NO_INDEX_UPDATE)) {
-                // Directive indicates this update should have no persistence side-effects. Do not
-                // forward to peers. This is often due to local stop from host shutting down.
-                return;
-            }
-        }
-
-        ServiceDocument latestState = op.getLinkedState();
-        long delta = latestState.documentUpdateTimeMicros - this.context.lastCommitTimeMicros;
-        if (delta < getHost().getMaintenanceIntervalMicros()) {
-            return;
-        }
-
-        if (latestState.documentVersion < this.context.version
-                || (latestState.documentEpoch != null
-                        && latestState.documentEpoch < this.context.epoch)) {
-            return;
-        }
-
-        this.context.lastCommitTimeMicros = latestState.documentUpdateTimeMicros;
-
-        URI u = getUri();
-        Operation commitOp = Operation
-                .createPut(u)
-                .addRequestHeader(Operation.REPLICATION_PHASE_HEADER,
-                        Operation.REPLICATION_PHASE_COMMIT)
-                .setReferer(u)
-                .setExpiration(getHost().getOperationTimeoutMicros() + Utils.getNowMicrosUtc());
-
-        if (op.getAction() == Action.DELETE) {
-            commitOp.setAction(op.getAction());
-        }
-
-        commitOp.linkState(latestState);
-        getHost().replicateRequest(this.context.options, latestState, getPeerNodeSelectorPath(),
-                getSelfLink(),
-                commitOp);
     }
 
     private void publish(Operation op) {
@@ -1029,7 +1070,6 @@ public class StatefulService implements Service {
             synchronized (this.context) {
                 this.context.isUpdateActive = false;
             }
-            commitLastProposalIfIdle(op);
         }
 
         if (op.getAction() == Action.GET) {
