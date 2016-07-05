@@ -84,6 +84,7 @@ import com.vmware.xenon.common.TaskState;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
 import com.vmware.xenon.common.http.netty.NettyHttpServiceClient;
+import com.vmware.xenon.common.test.SystemUtils.ProcessInfo;
 import com.vmware.xenon.services.common.AuthorizationContextService;
 import com.vmware.xenon.services.common.ConsistentHashingNodeSelectorService;
 import com.vmware.xenon.services.common.ExampleService;
@@ -157,74 +158,28 @@ public class VerificationHost extends ExampleServiceHost {
 
     private TemporaryFolder temporaryFolder;
 
-    public static class ProcessInfo {
-        public Long parentPid;
-        public String name;
-        public Long pid;
-
-        @Override
-        public String toString() {
-            return "ProcessInfo{" +
-                    "this.parentPid=" + this.parentPid +
-                    ", this.name='" + this.name + '\'' +
-                    ", this.pid=" + this.pid +
-                    '}';
-        }
-    }
-
+    /**
+     * @deprecated use {@link SystemUtils#findUnixProcessInfoByName(String)}
+     */
+    @Deprecated
     public static List<ProcessInfo> findUnixProcessInfoByName(String name) {
-        return findUnixProcessInfo("-e", name);
+        return SystemUtils.findUnixProcessInfoByName(name);
     }
 
+    /**
+     * @deprecated use {@link SystemUtils#findUnixProcessInfoByPid(Long)}
+     */
+    @Deprecated
     public static ProcessInfo findUnixProcessInfoByPid(Long pid) {
-        List<ProcessInfo> parent = findUnixProcessInfo(String.format("-p %d", pid), null);
-        if (parent.size() != 1) {
-            return null;
-        }
-        return parent.get(0);
+        return SystemUtils.findUnixProcessInfoByPid(pid);
     }
 
-    private static List<ProcessInfo> findUnixProcessInfo(String filter, String name) {
-        List<ProcessInfo> processes = new ArrayList<>();
-
-        try {
-            String line;
-            String cmd = String.format("ps -o ppid,pid,ucomm %s", filter);
-            Process p = Runtime.getRuntime().exec(cmd);
-            BufferedReader input = new BufferedReader(
-                    new InputStreamReader(p.getInputStream(), Utils.CHARSET));
-            input.readLine(); // skip header
-            while ((line = input.readLine()) != null) {
-                String[] columns = line.trim().split("\\s+", 3);
-                String ucomm = columns[2].trim();
-                if (name != null && !ucomm.equalsIgnoreCase(name)) {
-                    continue;
-                }
-
-                ProcessInfo info = new ProcessInfo();
-                try {
-                    info.parentPid = Long.parseLong(columns[0].trim());
-                    info.pid = Long.parseLong(columns[1].trim());
-                    info.name = ucomm;
-                    processes.add(info);
-                } catch (Throwable e) {
-                    continue;
-                }
-            }
-            input.close();
-        } catch (Throwable err) {
-            // ignore
-        }
-
-        return processes;
-    }
-
+    /**
+     * @deprecated use {@link SystemUtils#killUnixProcess(Long)}
+     */
+    @Deprecated
     public static void killUnixProcess(Long pid) {
-        try {
-            Runtime.getRuntime().exec("kill " + pid);
-        } catch (Throwable e) {
-
-        }
+        SystemUtils.killUnixProcess(pid);
     }
 
     public static AtomicInteger hostNumber = new AtomicInteger();

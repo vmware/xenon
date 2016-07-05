@@ -2,6 +2,9 @@
 
 ## 0.9.0-SNAPSHOT
 
+* Deprecate VerificationHost#findUnixProcessInfoByXxx,killUnixProcess.
+  All methods and referenced class(ProcessInfo) are moved to SystemUtils class.
+
 * Clear the authz cache maintained in ServiceHost on all nodes in a multi-node
   deployment.
 
