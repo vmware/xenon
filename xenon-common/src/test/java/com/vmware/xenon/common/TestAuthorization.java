@@ -485,6 +485,36 @@ public class TestAuthorization extends BasicTestCase {
     }
 
     @Test
+    public void authCacheClearToken() throws Throwable {
+        this.host.setSystemAuthorizationContext();
+        AuthorizationHelper authHelperForFoo = new AuthorizationHelper(this.host);
+        String email = "foo@foo.com";
+        String fooUserLink = authHelperForFoo.createUserService(this.host, email);
+        // spin up a privileged service to query for auth context
+        MinimalTestService s = new MinimalTestService();
+        this.host.addPrivilegedService(MinimalTestService.class);
+        this.host.startServiceAndWait(s, UUID.randomUUID().toString(), null);
+        this.host.resetSystemAuthorizationContext();
+
+        AuthorizationContext authContext1 = assumeIdentityAndGetContext(fooUserLink, s, true);
+        AuthorizationContext authContext2 = assumeIdentityAndGetContext(fooUserLink, s, true);
+        assertNotNull(authContext1);
+        assertNotNull(authContext2);
+
+        this.host.setSystemAuthorizationContext();
+        Operation clearAuthOp = new Operation();
+        TestContext ctx = this.host.testCreate(1);
+        clearAuthOp.setCompletion(ctx.getCompletion());
+        AuthorizationCacheUtils.clearAuthzCacheForUser(s, clearAuthOp, fooUserLink);
+        clearAuthOp.complete();
+        this.host.testWait(ctx);
+        this.host.resetSystemAuthorizationContext();
+
+        assertNull(this.host.getAuthorizationContext(s, authContext1.getToken()));
+        assertNull(this.host.getAuthorizationContext(s, authContext2.getToken()));
+    }
+
+    @Test
     public void testAuthzUtils() throws Throwable {
         this.host.setSystemAuthorizationContext();
         AuthorizationHelper authHelperForFoo = new AuthorizationHelper(this.host);

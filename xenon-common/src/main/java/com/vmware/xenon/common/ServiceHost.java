@@ -458,7 +458,7 @@ public class ServiceHost implements ServiceRequestSender {
     private FileHandler handler;
 
     private Map<String, AuthorizationContext> authorizationContextCache = new ConcurrentHashMap<>();
-    private Map<String, String> userLinktoTokenMap = new ConcurrentHashMap<>();
+    private Map<String, Set<String>> userLinktoTokenMap = new ConcurrentHashMap<>();
 
     private final Map<String, ServiceDocumentDescription> descriptionCache = new HashMap<>();
     private final ServiceDocumentDescription.Builder descriptionBuilder = Builder.create();
@@ -3046,7 +3046,7 @@ public class ServiceHost implements ServiceRequestSender {
             ctx = b.getResult();
             synchronized (this.state) {
                 this.authorizationContextCache.put(token, ctx);
-                this.userLinktoTokenMap.put(claims.getSubject(), token);
+                addUserToken(this.userLinktoTokenMap, claims.getSubject(), token);
             }
             return ctx;
         } catch (TokenException | GeneralSecurityException e) {
@@ -3054,6 +3054,22 @@ public class ServiceHost implements ServiceRequestSender {
         }
 
         return null;
+    }
+
+
+    /**
+     * Helper method to associate a token with a userServiceLink
+     * @param userLinktoTokenMap map to add the entry to
+     * @param userServiceLink the user service reference
+     * @param token user token
+     */
+    private void addUserToken(Map<String, Set<String>> userLinktoTokenMap, String userServiceLink, String token) {
+        Set<String> tokenSet = userLinktoTokenMap.get(userServiceLink);
+        if (tokenSet == null) {
+            tokenSet = new HashSet<String>();
+        }
+        tokenSet.add(token);
+        userLinktoTokenMap.put(userServiceLink, tokenSet);
     }
 
     void failRequestServiceNotFound(Operation inboundOp) {
@@ -4969,7 +4985,7 @@ public class ServiceHost implements ServiceRequestSender {
         }
         synchronized (this.state) {
             this.authorizationContextCache.put(token, ctx);
-            this.userLinktoTokenMap.put(ctx.getClaims().getSubject(), token);
+            addUserToken(this.userLinktoTokenMap, ctx.getClaims().getSubject(), token);
         }
     }
 
@@ -4981,9 +4997,11 @@ public class ServiceHost implements ServiceRequestSender {
             throw new RuntimeException("Service not allowed to clear authorization token");
         }
         synchronized (this.state) {
-            String token = this.userLinktoTokenMap.get(userLink);
-            if (token != null) {
-                this.authorizationContextCache.remove(token);
+            Set<String> tokenSet = this.userLinktoTokenMap.get(userLink);
+            if (tokenSet != null) {
+                for (String token :tokenSet) {
+                    this.authorizationContextCache.remove(token);
+                }
             }
             this.userLinktoTokenMap.remove(userLink);
         }
