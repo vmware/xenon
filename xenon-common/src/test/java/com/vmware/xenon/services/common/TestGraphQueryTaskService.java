@@ -24,6 +24,7 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentSkipListSet;
 
 import org.junit.Before;
+import org.junit.Ignore;
 import org.junit.Test;
 
 import com.vmware.xenon.common.BasicTestCase;
@@ -40,7 +41,15 @@ import com.vmware.xenon.services.common.QueryValidationTestService.QueryValidati
 public class TestGraphQueryTaskService extends BasicTestCase {
     private URI factoryUri;
 
+    /**
+     * Number of services in the top tier of the graph
+     */
     public int serviceCount = 10;
+
+    /**
+     * Number of links to peer services, per service
+     */
+    public int linkCount = 2;
 
     @Before
     public void setUp() {
@@ -90,23 +99,71 @@ public class TestGraphQueryTaskService extends BasicTestCase {
     public void twoStage() throws Throwable {
         String name = UUID.randomUUID().toString();
 
-        createQueryTargetServices(name);
+        createQueryTargetServices(name, 0);
 
         GraphQueryTask initialState = createTwoStageTask(name);
         GraphQueryTask finalState = waitForTask(initialState);
 
-        verifyTwoStageResult(finalState);
+        verifyNStageResult(finalState, this.serviceCount, this.serviceCount);
 
         finalState = createTwoStageTask(name, true);
-        verifyTwoStageResult(finalState);
+        verifyNStageResult(finalState, this.serviceCount, this.serviceCount);
     }
 
-    private void verifyTwoStageResult(GraphQueryTask finalState) {
-        ServiceDocumentQueryResult stageOneResults = finalState.stages.get(0).results;
-        verifyStageResults(stageOneResults, this.serviceCount, false);
+    @Test
+    public void twoStageNoResultsFinalStage() throws Throwable {
+        String name = UUID.randomUUID().toString();
 
-        ServiceDocumentQueryResult stageTwoResults = finalState.stages.get(1).results;
-        verifyStageResults(stageTwoResults, this.serviceCount, true);
+        createQueryTargetServices(name, 0);
+
+        // delete the linked services, so our final stage produces zero results
+        this.host.deleteAllChildServices(UriUtils.buildUri(this.host, ExampleService.FACTORY_LINK));
+
+        GraphQueryTask initialState = createTwoStageTask(name);
+        GraphQueryTask finalState = waitForTask(initialState);
+
+        verifyNStageResult(finalState, this.serviceCount, 0);
+
+        finalState = createTwoStageTask(name, true);
+        verifyNStageResult(finalState, this.serviceCount, 0);
+    }
+
+    @Ignore // remove before CHECK IN
+    @Test
+    public void threeStageRecursive() throws Throwable {
+        String name = UUID.randomUUID().toString();
+
+        int stageCount = 3;
+        // We will create a graph with N layers of the same services, each layer pointing to instances
+        // to the next layer. They are all services of the same type. Its like a graph of
+        // friend relationships: each document has a field, called friendLinks, pointing to
+        // other instances of itself. In our case, we use QueryValidationServiceState.serviceLinks.
+        // The query will essentially be a friends of friends graph query, 4 deep
+        int recursionDepth = stageCount - 1;
+        createQueryTargetServices(name, recursionDepth);
+
+        GraphQueryTask initialState = createMultiStageRecursiveTask(name, stageCount, false);
+        GraphQueryTask finalState = waitForTask(initialState);
+
+        int firstTierServiceCount = this.serviceCount * this.linkCount;
+        verifyNStageResult(finalState, this.serviceCount,
+                firstTierServiceCount,
+                firstTierServiceCount * firstTierServiceCount);
+
+        finalState = createMultiStageRecursiveTask(name, stageCount, true);
+        verifyNStageResult(finalState, this.serviceCount,
+                firstTierServiceCount,
+                firstTierServiceCount * firstTierServiceCount);
+
+    }
+
+    private void verifyNStageResult(GraphQueryTask finalState, int... expectedCounts) {
+        for (int i = 0; i < expectedCounts.length; i++) {
+            int expectedCount = expectedCounts == null ? this.serviceCount : expectedCounts[i];
+            ServiceDocumentQueryResult stageOneResults = finalState.stages.get(i).results;
+            boolean isFinalStage = i == expectedCounts.length - 1;
+            verifyStageResults(stageOneResults, expectedCount, isFinalStage);
+        }
     }
 
     private void verifyStageResults(ServiceDocumentQueryResult stage,
@@ -170,6 +227,24 @@ public class TestGraphQueryTaskService extends BasicTestCase {
         return initialState;
     }
 
+    private GraphQueryTask createMultiStageRecursiveTask(String name, int stageCount,
+            boolean isDirect) throws Throwable {
+        GraphQueryTask.Builder builder = GraphQueryTask.Builder.create(stageCount);
+        for (int i = 0; i < stageCount; i++) {
+            QueryTask stage = QueryTask.Builder.create()
+                    .addLinkTerm(QueryValidationServiceState.FIELD_NAME_SERVICE_LINKS)
+                    .setQuery(Query.Builder.create()
+                            .addKindFieldClause(QueryValidationServiceState.class)
+                            .build())
+                    .build();
+            builder.addQueryStage(stage);
+        }
+
+        GraphQueryTask initialState = builder.build();
+        initialState = createTask(initialState, isDirect);
+        return initialState;
+    }
+
     private GraphQueryTask createTask(GraphQueryTask initialState, boolean isDirect)
             throws Throwable {
         Operation post = Operation.createPost(this.factoryUri);
@@ -199,7 +274,7 @@ public class TestGraphQueryTaskService extends BasicTestCase {
         return this.host.waitForFinishedTask(GraphQueryTask.class, initialState.documentSelfLink);
     }
 
-    private void createQueryTargetServices(String name) throws Throwable {
+    private void createQueryTargetServices(String name, int recursionDepth) throws Throwable {
         Map<URI, ExampleServiceState> exampleStates = this.host.doFactoryChildServiceStart(null,
                 this.serviceCount, ExampleServiceState.class,
                 (o) -> {
@@ -209,7 +284,7 @@ public class TestGraphQueryTaskService extends BasicTestCase {
                     o.setBody(s);
                 }, UriUtils.buildUri(this.host, ExampleService.FACTORY_LINK));
 
-        startLinkedQueryTargetServices(exampleStates);
+        startLinkedQueryTargetServices(exampleStates, recursionDepth);
     }
 
     /**
@@ -217,7 +292,7 @@ public class TestGraphQueryTaskService extends BasicTestCase {
      * These two sets of service documents form the document graph we will traverse during tests
      */
     private Collection<URI> startLinkedQueryTargetServices(
-            Map<URI, ExampleServiceState> exampleStates)
+            Map<URI, ExampleServiceState> exampleStates, int recursionDepth)
             throws Throwable {
         Set<URI> uris = new ConcurrentSkipListSet<>();
         TestContext ctx = testCreate(exampleStates.size());
