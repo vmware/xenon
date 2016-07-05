@@ -254,9 +254,11 @@ public class StatelessService implements Service {
     @Override
     public void handleMaintenance(Operation post) {
         ServiceMaintenanceRequest request = post.getBody(ServiceMaintenanceRequest.class);
-        if (request.reasons.contains(ServiceMaintenanceRequest.MaintenanceReason.PERIODIC_SCHEDULE)) {
+        if (request.reasons
+                .contains(ServiceMaintenanceRequest.MaintenanceReason.PERIODIC_SCHEDULE)) {
             this.handlePeriodicMaintenance(post);
-        } else if (request.reasons.contains(ServiceMaintenanceRequest.MaintenanceReason.NODE_GROUP_CHANGE)) {
+        } else if (request.reasons
+                .contains(ServiceMaintenanceRequest.MaintenanceReason.NODE_GROUP_CHANGE)) {
             this.handleNodeGroupMaintenance(post);
         } else {
             post.complete();
@@ -328,6 +330,9 @@ public class StatelessService implements Service {
                 throw new IllegalArgumentException("Option is not supported");
             }
             if (option == ServiceOption.OWNER_SELECTION) {
+                throw new IllegalArgumentException("Option is not supported");
+            }
+            if (option == ServiceOption.LOCAL_DATACENTER_QUORUM) {
                 throw new IllegalArgumentException("Option is not supported");
             }
             if (option == ServiceOption.IDEMPOTENT_POST) {
@@ -589,7 +594,8 @@ public class StatelessService implements Service {
 
         if (micros > 0 && micros < Service.MIN_MAINTENANCE_INTERVAL_MICROS) {
             logWarning("Maintenance interval %d is less than the minimum interval %d"
-                    + ", reducing to min interval", micros, Service.MIN_MAINTENANCE_INTERVAL_MICROS);
+                    + ", reducing to min interval", micros,
+                    Service.MIN_MAINTENANCE_INTERVAL_MICROS);
             micros = Service.MIN_MAINTENANCE_INTERVAL_MICROS;
         }
 

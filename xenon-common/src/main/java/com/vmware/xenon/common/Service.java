@@ -94,6 +94,19 @@ public interface Service extends ServiceRequestSender {
         OWNER_SELECTION,
 
         /**
+         * Quorum is required only among the hosts in the same datacenter as the owner.
+         *
+         * This option helps with multi-datacenter scenarios, where strong consensus
+         * among hosts in the same datacenter is required but eventual consistency
+         * across datacenters is desired. The service author should take into account
+         * that state divergence might arise, for example due to network partitioning,
+         * at least until conflicts are resolved during synchronization.
+         *
+         * Requires: OWNER_SELECTION
+         */
+        LOCAL_DATACENTER_QUORUM,
+
+        /**
          * Document update operations are conditional: the client must provide the expected
          * signature and/or version.
          *
