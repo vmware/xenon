@@ -255,6 +255,11 @@ public class ServiceHost implements ServiceRequestSender {
          */
         public Path resourceSandbox;
 
+        /**
+         * The logical location of this host, if any
+         */
+        public String location;
+
     }
 
     private static final LogFormatter LOG_FORMATTER = new LogFormatter();
@@ -411,6 +416,7 @@ public class ServiceHost implements ServiceRequestSender {
         public boolean isServiceStateCaching = true;
         public Properties codeProperties;
         public long serviceCount;
+        public String location;
 
         /**
          * Relative memory limit per service path. The limit is expressed as
@@ -569,7 +575,7 @@ public class ServiceHost implements ServiceRequestSender {
             }
         }
 
-        if (args.bindAddress != null && args.bindAddress.equals("")) {
+        if (args.bindAddress != null && args.bindAddress.isEmpty()) {
             throw new IllegalArgumentException(
                     "bindAddress should be a non empty valid IP address");
         }
@@ -696,6 +702,10 @@ public class ServiceHost implements ServiceRequestSender {
         }
 
         this.state.initialPeerNodes = args.peerNodes;
+
+        if (args.location != null) {
+            this.state.location = args.location;
+        }
     }
 
     protected void configureLogging(File storageSandboxDir) throws IOException {
@@ -1173,7 +1183,8 @@ public class ServiceHost implements ServiceRequestSender {
                             this.state.privateKeyFileReference, this.state.privateKeyPassphrase);
                 }
                 if (this.state.responsePayloadSizeLimit > 0) {
-                    this.httpsListener.setResponsePayloadSizeLimit(this.state.responsePayloadSizeLimit);
+                    this.httpsListener
+                            .setResponsePayloadSizeLimit(this.state.responsePayloadSizeLimit);
                 }
 
                 this.httpsListener.start(getSecurePort(), this.state.bindAddress);
@@ -4415,7 +4426,7 @@ public class ServiceHost implements ServiceRequestSender {
                     // if the service we are trying to DELETE never existed, we swallow the 404 error.
                     // This is for consistency in behavior with non ON_DEMAND_LOAD services.
                     if (inboundOp.getAction() == Action.DELETE &&
-                                response.statusCode == Operation.STATUS_CODE_NOT_FOUND) {
+                            response.statusCode == Operation.STATUS_CODE_NOT_FOUND) {
                         inboundOp.complete();
                         return;
                     }
