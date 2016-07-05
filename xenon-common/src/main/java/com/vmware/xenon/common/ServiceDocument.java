@@ -270,6 +270,7 @@ public class ServiceDocument {
 
         boolean preferred = false;
         EnumSet<DocumentRelationship> results = EnumSet.noneOf(DocumentRelationship.class);
+        long timeDifference;
 
         if (stateB == null) {
             results.add(DocumentRelationship.PREFERRED);
@@ -283,9 +284,10 @@ public class ServiceDocument {
             results.add(DocumentRelationship.EQUAL_VERSION);
         }
 
-        if (stateA.documentUpdateTimeMicros == stateB.documentUpdateTimeMicros) {
+        timeDifference = stateA.documentUpdateTimeMicros - stateB.documentUpdateTimeMicros;
+        if (timeDifference == 0) {
             results.add(DocumentRelationship.EQUAL_TIME);
-        } else if (stateA.documentUpdateTimeMicros > stateB.documentUpdateTimeMicros) {
+        } else if (timeDifference > 0) {
             results.add(DocumentRelationship.NEWER_UPDATE_TIME);
         }
 
@@ -295,15 +297,14 @@ public class ServiceDocument {
         // vectors and other schemes are relatively easy to implement using our existing tracking
         // data
         if (results.contains(DocumentRelationship.EQUAL_VERSION)) {
-            if (results.contains(DocumentRelationship.NEWER_UPDATE_TIME)) {
-                preferred = true;
-            } else if (Math.abs(stateA.documentUpdateTimeMicros
-                    - stateB.documentUpdateTimeMicros) < timeEpsilon) {
+            if (Math.abs(timeDifference) < timeEpsilon) {
                 // documents changed within time epsilon so we can not safely determine which one
                 // is newer.
                 if (!ServiceDocument.equals(desc, stateA, stateB)) {
                     results.add(DocumentRelationship.IN_CONFLICT);
                 }
+            } else if (results.contains(DocumentRelationship.NEWER_UPDATE_TIME)) {
+                preferred = true;
             }
         }
 

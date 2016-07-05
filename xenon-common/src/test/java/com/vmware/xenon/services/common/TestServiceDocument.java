@@ -174,7 +174,7 @@ public class TestServiceDocument {
         assertTrue(!results.contains(DocumentRelationship.PREFERRED));
         assertTrue(!results.contains(DocumentRelationship.IN_CONFLICT));
 
-        // equal versions, time within epsilon, states NOT equal, in conflict
+        // equal versions, time within epsilon (B newer), states NOT equal, in conflict
         stateB.counter = Long.MAX_VALUE;
         stateA.documentVersion = 1;
         stateB.documentVersion = 1;
@@ -190,5 +190,23 @@ public class TestServiceDocument {
         assertTrue(!results.contains(DocumentRelationship.EQUAL_TIME));
         assertTrue(!results.contains(DocumentRelationship.PREFERRED));
         assertTrue(results.contains(DocumentRelationship.IN_CONFLICT));
+
+        // equal versions, time within epsilon (A newer), states NOT equal, in conflict
+        stateB.counter = Long.MAX_VALUE;
+        stateA.documentVersion = 1;
+        stateB.documentVersion = 1;
+        stateA.documentUpdateTimeMicros = Utils.getNowMicrosUtc()
+                + Utils.getTimeComparisonEpsilonMicros() / 2;
+        stateB.documentUpdateTimeMicros = Utils.getNowMicrosUtc();
+
+        results = ServiceDocument.compare(stateA, stateB,
+                description, Utils.getTimeComparisonEpsilonMicros());
+        assertTrue(!results.contains(DocumentRelationship.NEWER_VERSION));
+        assertTrue(results.contains(DocumentRelationship.EQUAL_VERSION));
+        assertTrue(results.contains(DocumentRelationship.NEWER_UPDATE_TIME));
+        assertTrue(!results.contains(DocumentRelationship.EQUAL_TIME));
+        assertTrue(!results.contains(DocumentRelationship.PREFERRED));
+        assertTrue(results.contains(DocumentRelationship.IN_CONFLICT));
+
     }
 }
