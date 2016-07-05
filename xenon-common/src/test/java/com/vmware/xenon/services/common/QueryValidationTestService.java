@@ -44,6 +44,7 @@ public class QueryValidationTestService extends StatefulService {
         public static final String FIELD_NAME_IGNORED_STRING_VALUE = "ignoredStringValue";
         public static final String FIELD_NAME_SERVICE_LINK = "serviceLink";
         public static final String FIELD_NAME_SERVICE_LINKS = "serviceLinks";
+        public static final String FIELD_NAME_LONG_VALUE = "longValue";
         public String id;
         @Documentation(description = "a Long value")
         @PropertyOptions(usage = PropertyUsageOption.OPTIONAL)
