@@ -95,18 +95,37 @@ public class TestGraphQueryTaskService extends BasicTestCase {
         GraphQueryTask initialState = createTwoStageTask(name);
         GraphQueryTask finalState = waitForTask(initialState);
 
-        verifyTwoStageResult(finalState);
+        verifyNStageResult(finalState, this.serviceCount, this.serviceCount);
 
         finalState = createTwoStageTask(name, true);
-        verifyTwoStageResult(finalState);
+        verifyNStageResult(finalState, this.serviceCount, this.serviceCount);
     }
 
-    private void verifyTwoStageResult(GraphQueryTask finalState) {
-        ServiceDocumentQueryResult stageOneResults = finalState.stages.get(0).results;
-        verifyStageResults(stageOneResults, this.serviceCount, false);
+    @Test
+    public void twoStageNoResultsFinalStage() throws Throwable {
+        String name = UUID.randomUUID().toString();
 
-        ServiceDocumentQueryResult stageTwoResults = finalState.stages.get(1).results;
-        verifyStageResults(stageTwoResults, this.serviceCount, true);
+        createQueryTargetServices(name);
+
+        // delete the linked services, so our final stage produces zero results
+        this.host.deleteAllChildServices(UriUtils.buildUri(this.host, ExampleService.FACTORY_LINK));
+
+        GraphQueryTask initialState = createTwoStageTask(name);
+        GraphQueryTask finalState = waitForTask(initialState);
+
+        verifyNStageResult(finalState, this.serviceCount, 0);
+
+        finalState = createTwoStageTask(name, true);
+        verifyNStageResult(finalState, this.serviceCount, 0);
+    }
+
+    private void verifyNStageResult(GraphQueryTask finalState, int... expectedCounts) {
+        for (int i = 0; i < expectedCounts.length; i++) {
+            int expectedCount = expectedCounts == null ? this.serviceCount : expectedCounts[i];
+            ServiceDocumentQueryResult stageOneResults = finalState.stages.get(i).results;
+            boolean isFinalStage = i == expectedCounts.length - 1;
+            verifyStageResults(stageOneResults, expectedCount, isFinalStage);
+        }
     }
 
     private void verifyStageResults(ServiceDocumentQueryResult stage,
