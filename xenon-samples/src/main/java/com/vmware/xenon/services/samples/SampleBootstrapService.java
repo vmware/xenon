@@ -14,7 +14,6 @@
 package com.vmware.xenon.services.samples;
 
 import java.net.URI;
-import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 
 import com.vmware.xenon.common.FactoryService;
@@ -25,7 +24,6 @@ import com.vmware.xenon.common.ServiceHost;
 import com.vmware.xenon.common.StatefulService;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
-import com.vmware.xenon.services.common.NodeGroupUtils;
 import com.vmware.xenon.services.common.QueryTask;
 import com.vmware.xenon.services.common.QueryTask.Query;
 import com.vmware.xenon.services.common.ServiceUriPaths;
@@ -52,34 +50,39 @@ public class SampleBootstrapService extends StatefulService {
      *
      * If the task is already in progress, or it has completed, the POST will be ignored.
      *
-     * This method can be called at your {@link ServiceHost#start()} to trigger the task
-     * at node start up.
+     * This callback can be registered to
+     *   {@link ServiceHost#registerForServiceAvailability(CompletionHandler, boolean, String...)}.
+     *
+     *
      * The call will happen in every node start, but service options and implementation guarantees
      * actual logic will be performed only once within entire node group.
      *
-     * Example how to call this method:
+     * Example how to register this callback in ServiceHost:
      * <pre>
      * {@code
-     *     SampleBootstrapService.startTask(this, ServiceUriPaths.DEFAULT_NODE_SELECTOR,
-     *                                        SampleBootstrapService.FACTORY_LINK);
+     *   @Override
+     *   public ServiceHost start() throws Throwable {
+     *     super.start();
+     *     // starts other services
+     *
+     *     registerForServiceAvailability(SampleBootstrapService.startTask(h), true,
+     *                                      SampleBootstrapService.FACTORY_LINK);
+     *     // ...
+     *   }
      * }
      * </pre>
      *
      * @param host a service host
-     * @param selectorPath node selector url path
-     * @param factoryLink url path to check the service availability in node group
      */
-    public static void startTask(ServiceHost host, String selectorPath, String factoryLink) {
-        CompletionHandler ch = (o, e) -> {
+    public static CompletionHandler startTask(ServiceHost host) {
+        return (o, e) -> {
             if (e != null) {
-                // service is not yet available, reschedule
-                host.schedule(() -> {
-                    startTask(host, selectorPath, factoryLink);
-                }, host.getMaintenanceIntervalMicros(), TimeUnit.MICROSECONDS);
+                host.log(Level.SEVERE, Utils.toString(e));
                 return;
             }
 
             // create service with fixed link
+            // POST will be issued multiple times but will be converted to PUT after the first one.
             ServiceDocument doc = new ServiceDocument();
             doc.documentSelfLink = "preparation-task";
             Operation.createPost(host, SampleBootstrapService.FACTORY_LINK)
@@ -95,8 +98,6 @@ public class SampleBootstrapService extends StatefulService {
                     .sendWith(host);
 
         };
-
-        NodeGroupUtils.checkServiceAvailability(ch, host, factoryLink, selectorPath);
     }
 
     public SampleBootstrapService() {

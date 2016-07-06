@@ -20,6 +20,8 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.logging.Level;
 
 import com.vmware.xenon.common.NodeSelectorService.SelectAndForwardRequest;
@@ -45,6 +47,9 @@ public class NodeGroupUtils {
      * change
      *
      * This method should be used only on replicated, owner selected factory services
+     *
+     * For xenon based applications, use {@link ServiceHost#registerForServiceAvailability(CompletionHandler, boolean, String...)}
+     * with boolean set to true.
      */
     public static void checkServiceAvailability(CompletionHandler ch, Service s) {
         checkServiceAvailability(ch, s.getHost(), s.getSelfLink(), s.getPeerNodeSelectorPath());
@@ -57,6 +62,9 @@ public class NodeGroupUtils {
      * change
      *
      * This method should be used only on replicated, owner selected factory services
+     *
+     * For xenon based applications, use {@link ServiceHost#registerForServiceAvailability(CompletionHandler, boolean, String...)}
+     * with boolean set to true.
      */
     public static void checkServiceAvailability(CompletionHandler ch, ServiceHost host,
             String link, String selectorPath) {
@@ -75,6 +83,9 @@ public class NodeGroupUtils {
      * change
      *
      * This method should be used only on replicated, owner selected factory services
+     *
+     * For xenon based applications, use {@link ServiceHost#registerForServiceAvailability(CompletionHandler, boolean, String...)}
+     * with boolean set to true.
      */
     public static void checkServiceAvailability(CompletionHandler ch, ServiceHost host,
             URI service,
@@ -295,6 +306,36 @@ public class NodeGroupUtils {
             return true;
         }
         return false;
+    }
+
+    /**
+     * Complete operation when target service for the given path becomes available in node group
+     *
+     * @see ServiceHost#registerForServiceAvailability(CompletionHandler, boolean, String...)
+     * @see #checkServiceAvailability(CompletionHandler, ServiceHost, URI, String)
+     */
+    public static void registerForReplicatedServiceAvailability(ServiceHost host, Operation op,
+            String servicePath, String nodeSelectorPath) {
+
+        CompletionHandler ch = (o, e) -> {
+            if (e != null) {
+
+                if (op.getExpirationMicrosUtc() < Utils.getNowMicrosUtc()) {
+                    String msg = "Failed to check replicated service availability";
+                    op.fail(new TimeoutException(msg));
+                    return;
+                }
+
+                // service is not yet available, reschedule
+                host.schedule(() -> {
+                    registerForReplicatedServiceAvailability(host, op, servicePath, nodeSelectorPath);
+                }, host.getMaintenanceIntervalMicros(), TimeUnit.MICROSECONDS);
+                return;
+            }
+            op.complete();
+        };
+
+        host.checkReplicatedServiceAvailable(ch, servicePath, nodeSelectorPath);
     }
 
 }

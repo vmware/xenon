@@ -21,7 +21,6 @@ import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.test.VerificationHost;
-import com.vmware.xenon.services.common.ServiceUriPaths;
 import com.vmware.xenon.services.samples.SampleBootstrapService;
 
 public class TestSampleBootstrapService extends BasicTestCase {
@@ -39,8 +38,6 @@ public class TestSampleBootstrapService extends BasicTestCase {
         this.host.joinNodesAndVerifyConvergence(this.nodeCount);
         this.host.waitForNodeGroupConvergence(this.nodeCount);
 
-        this.host.getPeerHost();
-
         for (VerificationHost h : this.host.getInProcessHostMap().values()) {
             h.startServiceAndWait(SampleBootstrapService.createFactory(),
                     SampleBootstrapService.FACTORY_LINK, null);
@@ -49,10 +46,10 @@ public class TestSampleBootstrapService extends BasicTestCase {
         peer.waitForReplicatedFactoryServiceAvailable(
                 UriUtils.buildUri(peer, SampleBootstrapService.FACTORY_LINK));
 
-        // triggering(creating) the service to all nodes.
+        // register callback. triggered when service become available in cluster.
         // only one will be created on owner node, and rest will be ignored after converted to PUT
         for (VerificationHost h : this.host.getInProcessHostMap().values()) {
-            SampleBootstrapService.startTask(h, ServiceUriPaths.DEFAULT_NODE_SELECTOR,
+            h.registerForServiceAvailability(SampleBootstrapService.startTask(h), true,
                     SampleBootstrapService.FACTORY_LINK);
         }
 
