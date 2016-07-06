@@ -63,7 +63,6 @@ import java.util.logging.ConsoleHandler;
 import java.util.logging.FileHandler;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManagerFactory;
 
@@ -3890,32 +3889,87 @@ public class ServiceHost implements ServiceRequestSender {
      * available stage. If service start fails for any one, the completion will be called with a
      * failure argument.
      *
+     * When {@code checkReplica} flag is on(see other overloading methods), this method checks not
+     * only the local node, but also checks the service availability in node group for factory links
+     * that produce replicated services.
+     *
      * Note that supplying multiple self links will result in multiple completion invocations. The
      * handler provided must track how many times it has been called
+     *
+     * @see #checkReplicatedServiceAvailable(CompletionHandler, String)
+     * @see NodeGroupUtils#registerForReplicatedServiceAvailability(ServiceHost, Operation, String)
+     * @see NodeGroupUtils#checkServiceAvailability(CompletionHandler, Service)
      */
-    public void registerForServiceAvailability(
-            CompletionHandler completion, String... servicePaths) {
+    public void registerForServiceAvailability(CompletionHandler completion,
+            String... servicePaths) {
+        registerForServiceAvailability(completion, false, servicePaths);
+    }
+
+    public void registerForServiceAvailability(CompletionHandler completion, boolean checkReplica,
+            String... servicePaths) {
         if (servicePaths == null || servicePaths.length == 0) {
             throw new IllegalArgumentException("selfLinks are required");
         }
         Operation op = Operation.createPost(null)
                 .setCompletion(completion)
                 .setExpiration(getOperationTimeoutMicros() + Utils.getNowMicrosUtc());
-        registerForServiceAvailability(op, servicePaths);
+        registerForServiceAvailability(op, checkReplica, servicePaths);
     }
 
-    void registerForServiceAvailability(
-            Operation opTemplate, String... servicePaths) {
+    void registerForServiceAvailability(Operation opTemplate, String... servicePaths) {
+        registerForServiceAvailability(opTemplate, false, servicePaths);
+    }
+
+    void registerForServiceAvailability(Operation opTemplate, boolean checkReplica,
+            String... servicePaths) {
         final boolean doOpClone = servicePaths.length > 1;
         // clone client supplied array since this method mutates it
         final String[] clonedLinks = Arrays.copyOf(servicePaths, servicePaths.length);
+
+        List<String> replicatedServiceLinks = new ArrayList<>();
 
         synchronized (this.state) {
             for (int i = 0; i < clonedLinks.length; i++) {
                 String link = clonedLinks[i];
                 Service s = findService(link);
-                if (s != null && s.getProcessingStage() == Service.ProcessingStage.AVAILABLE) {
-                    continue;
+
+                // service is null if this method is called before even the service is registered
+                if (s != null) {
+                    if (checkReplica &&
+                            s.hasOption(ServiceOption.FACTORY) &&
+                            s.hasOption(ServiceOption.REPLICATION)) {
+                        // null the link so we do not attempt to invoke the completion below
+                        clonedLinks[i] = null;
+                        replicatedServiceLinks.add(link);
+                        continue;
+                    }
+
+                    if (s.getProcessingStage() == Service.ProcessingStage.AVAILABLE) {
+                        continue;
+                    }
+                } else {
+
+                    if (checkReplica) {
+                        // when local service is not yet started and required to check replicated
+                        // service, delay the node-group-service-availability-check until local
+                        // service becomes available by nesting the logic to the opTemplate.
+                        opTemplate.nestCompletion(op -> {
+                            Service service = findService(op.getUri().getPath());
+                            if (service != null
+                                    && service.hasOption(ServiceOption.FACTORY)
+                                    && service.hasOption(ServiceOption.REPLICATION)) {
+                                Operation o = getOperationForServiceAvailability(opTemplate, link,
+                                        doOpClone);
+                                run(() -> {
+                                    NodeGroupUtils
+                                            .registerForReplicatedServiceAvailability(this, o,
+                                                    link);
+                                });
+                            } else {
+                                opTemplate.complete();
+                            }
+                        });
+                    }
                 }
 
                 this.operationTracker
@@ -3931,16 +3985,29 @@ public class ServiceHost implements ServiceRequestSender {
             }
 
             run(() -> {
-                Operation o = opTemplate;
-                if (doOpClone) {
-                    o = opTemplate.clone().setUri(UriUtils.buildUri(this, link));
-                }
-                if (o.getUri() == null) {
-                    o.setUri(UriUtils.buildUri(this, link));
-                }
+                Operation o = getOperationForServiceAvailability(opTemplate, link, doOpClone);
                 o.complete();
             });
         }
+
+        for (String link : replicatedServiceLinks) {
+            Operation o = getOperationForServiceAvailability(opTemplate, link, doOpClone);
+            run(() -> {
+                NodeGroupUtils.registerForReplicatedServiceAvailability(this, o, link);
+            });
+        }
+    }
+
+    private Operation getOperationForServiceAvailability(Operation op, String link,
+            boolean doClone) {
+        Operation o = op;
+        if (doClone) {
+            o = op.clone().setUri(UriUtils.buildUri(this, link));
+        }
+        if (o.getUri() == null) {
+            o.setUri(UriUtils.buildUri(this, link));
+        }
+        return o;
     }
 
     /**

@@ -39,8 +39,6 @@ public class TestSampleBootstrapService extends BasicTestCase {
         this.host.joinNodesAndVerifyConvergence(this.nodeCount);
         this.host.waitForNodeGroupConvergence(this.nodeCount);
 
-        this.host.getPeerHost();
-
         for (VerificationHost h : this.host.getInProcessHostMap().values()) {
             h.startServiceAndWait(SampleBootstrapService.createFactory(),
                     SampleBootstrapService.FACTORY_LINK, null);
