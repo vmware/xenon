@@ -63,7 +63,6 @@ import java.util.logging.ConsoleHandler;
 import java.util.logging.FileHandler;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManagerFactory;
 
@@ -3258,7 +3257,7 @@ public class ServiceHost implements ServiceRequestSender {
         op.nestCompletion((avop) -> {
             handleRequest(null, op);
         });
-        registerForServiceAvailability(op, path);
+        registerForServiceAvailability(op, false, path);
         return;
     }
 
@@ -3384,7 +3383,7 @@ public class ServiceHost implements ServiceRequestSender {
                 handleRequest(null, inboundOp);
             });
 
-            registerForServiceAvailability(inboundOp, path);
+            registerForServiceAvailability(inboundOp, false, path);
             return true;
         }
 
@@ -3893,29 +3892,73 @@ public class ServiceHost implements ServiceRequestSender {
      * Note that supplying multiple self links will result in multiple completion invocations. The
      * handler provided must track how many times it has been called
      */
-    public void registerForServiceAvailability(
-            CompletionHandler completion, String... servicePaths) {
+    public void registerForServiceAvailability(CompletionHandler completion,
+            String... servicePaths) {
+        registerForServiceAvailability(completion, false, servicePaths);
+    }
+
+    public void registerForServiceAvailability(CompletionHandler completion, boolean checkReplica,
+            String... servicePaths) {
         if (servicePaths == null || servicePaths.length == 0) {
             throw new IllegalArgumentException("selfLinks are required");
         }
         Operation op = Operation.createPost(null)
                 .setCompletion(completion)
                 .setExpiration(getOperationTimeoutMicros() + Utils.getNowMicrosUtc());
-        registerForServiceAvailability(op, servicePaths);
+        registerForServiceAvailability(op, checkReplica, servicePaths);
     }
 
-    void registerForServiceAvailability(
-            Operation opTemplate, String... servicePaths) {
+    void registerForServiceAvailability(Operation opTemplate, String... servicePaths) {
+        registerForServiceAvailability(opTemplate, false, servicePaths);
+    }
+
+    void registerForServiceAvailability(Operation opTemplate, boolean checkReplica,
+            String... servicePaths) {
         final boolean doOpClone = servicePaths.length > 1;
         // clone client supplied array since this method mutates it
         final String[] clonedLinks = Arrays.copyOf(servicePaths, servicePaths.length);
+
+        List<String> replicatedServiceLinks = new ArrayList<>();
 
         synchronized (this.state) {
             for (int i = 0; i < clonedLinks.length; i++) {
                 String link = clonedLinks[i];
                 Service s = findService(link);
-                if (s != null && s.getProcessingStage() == Service.ProcessingStage.AVAILABLE) {
-                    continue;
+
+                // service is null if this method is called before even the service is registered
+                if (s != null) {
+                    if (checkReplica &&
+                            s.hasOption(ServiceOption.FACTORY) &&
+                            s.hasOption(ServiceOption.REPLICATION)) {
+                        // null the link so we do not attempt to invoke the completion below
+                        clonedLinks[i] = null;
+                        replicatedServiceLinks.add(link);
+                        continue;
+                    }
+
+                    if (s.getProcessingStage() == Service.ProcessingStage.AVAILABLE) {
+                        continue;
+                    }
+                } else {
+
+                    if (checkReplica) {
+                        // when local service is not yet started and required to check replicated
+                        // service, delay the node-group-service-availability-check until local
+                        // service becomes available by nesting the logic to the opTemplate.
+                        opTemplate.nestCompletion(op -> {
+                            Service service = findService(op.getUri().getPath());
+                            if (service != null
+                                    && service.hasOption(ServiceOption.FACTORY)
+                                    && service.hasOption(ServiceOption.REPLICATION)) {
+                                run(() -> {
+                                    this.completeWhenReplicatedServiceBecomesAvailable(link,
+                                            opTemplate, doOpClone);
+                                });
+                            } else {
+                                opTemplate.complete();
+                            }
+                        });
+                    }
                 }
 
                 this.operationTracker
@@ -3941,6 +3984,37 @@ public class ServiceHost implements ServiceRequestSender {
                 o.complete();
             });
         }
+
+        for (String link : replicatedServiceLinks) {
+            run(() -> {
+                this.completeWhenReplicatedServiceBecomesAvailable(link, opTemplate, doOpClone);
+            });
+        }
+    }
+
+    private void completeWhenReplicatedServiceBecomesAvailable(String link, Operation opTemplate,
+            boolean doOpClone) {
+        CompletionHandler ch = (op, ex) -> {
+            if (ex != null) {
+                // service is not yet available, reschedule
+                schedule(() -> {
+                    this.completeWhenReplicatedServiceBecomesAvailable(link, opTemplate, doOpClone);
+                }, getMaintenanceIntervalMicros(), TimeUnit.MICROSECONDS);
+                return;
+            }
+
+            Operation o = opTemplate;
+            if (doOpClone) {
+                o = opTemplate.clone().setUri(UriUtils.buildUri(this, link));
+            }
+            if (o.getUri() == null) {
+                o.setUri(UriUtils.buildUri(this, link));
+            }
+            o.complete();
+        };
+
+        this.checkReplicatedServiceAvailable(ch, link);
+
     }
 
     /**
