@@ -32,6 +32,11 @@ import com.vmware.xenon.services.common.ExampleService;
 import com.vmware.xenon.services.common.ServiceUriPaths;
 import com.vmware.xenon.services.common.TaskService;
 
+/**
+ * Base class that reuse the same HOST during test cycle.
+ *
+ * Be aware, peers added to the HOST will not cleared automatically in each test.
+ */
 public class BasicReusableHostTestCase {
 
     private static final int MAINTENANCE_INTERVAL_MILLIS = 250;

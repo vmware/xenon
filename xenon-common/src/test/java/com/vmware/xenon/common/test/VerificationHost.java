@@ -1858,6 +1858,9 @@ public class VerificationHost extends ExampleServiceHost {
         return null;
     }
 
+    /**
+     * Randomly returns one of peer hosts.
+     */
     public VerificationHost getPeerHost() {
         URI hostUri = getPeerServiceUri(null);
         if (hostUri != null) {
