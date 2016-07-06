@@ -73,13 +73,9 @@ public class SampleBootstrapService extends StatefulService {
         CompletionHandler ch = (o, e) -> {
             if (e != null) {
                 // service is not yet available, reschedule
-                try {
-                    TimeUnit.SECONDS.sleep(1);
-                } catch (InterruptedException e1) {
-                    throw new IllegalStateException("interrupted", e1);
-                }
-
-                startTask(host, selectorPath, factoryLink);
+                host.schedule(() -> {
+                    startTask(host, selectorPath, factoryLink);
+                }, host.getMaintenanceIntervalMicros(), TimeUnit.MICROSECONDS);
                 return;
             }
 
