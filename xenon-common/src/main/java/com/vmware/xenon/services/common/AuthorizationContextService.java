@@ -333,17 +333,23 @@ public class AuthorizationContextService extends StatelessService {
                 return;
             }
 
-            // Add every resource group state to every role that references it
-            for (Operation op : ops.values()) {
-                ResourceGroupState resourceGroupState = op.getBody(ResourceGroupState.class);
-                Collection<Role> rolesForResourceGroup =
-                        rolesByResourceGroup.get(resourceGroupState.documentSelfLink);
-                for (Role role : rolesForResourceGroup) {
-                    role.setResourceGroupState(resourceGroupState);
+            try {
+                // Add every resource group state to every role that references it
+                for (Operation op : ops.values()) {
+                    ResourceGroupState resourceGroupState = op.getBody(ResourceGroupState.class);
+                    Collection<Role> rolesForResourceGroup = rolesByResourceGroup
+                            .get(resourceGroupState.documentSelfLink);
+                    if (rolesForResourceGroup != null) {
+                        for (Role role : rolesForResourceGroup) {
+                            role.setResourceGroupState(resourceGroupState);
+                        }
+                    }
                 }
+                populateAuthorizationContext(ctx, claims, roles);
+            } catch (Throwable e) {
+                failThrowable(claims.getSubject(), e);
+                return;
             }
-
-            populateAuthorizationContext(ctx, claims, roles);
         };
 
         // Fire off GET for every resource group
@@ -359,57 +365,67 @@ public class AuthorizationContextService extends StatelessService {
         join.sendWith(getHost());
     }
 
-    private void populateAuthorizationContext(AuthorizationContext ctx, Claims claims, Collection<Role> roles) {
+    private void populateAuthorizationContext(AuthorizationContext ctx, Claims claims,
+            Collection<Role> roles) {
         if (roles == null) {
             roles = Collections.emptyList();
         }
+        try {
 
-        AuthorizationContext.Builder builder = AuthorizationContext.Builder.create();
-        builder.setClaims(ctx.getClaims());
-        builder.setToken(ctx.getToken());
+            AuthorizationContext.Builder builder = AuthorizationContext.Builder.create();
+            builder.setClaims(ctx.getClaims());
+            builder.setToken(ctx.getToken());
 
-        if (!roles.isEmpty()) {
-            Map<Action, Collection<Role>> roleListByAction = new HashMap<>(Action.values().length);
-            for (Role role : roles) {
-                for (Action action : role.roleState.verbs) {
-                    Collection<Role> roleList = roleListByAction.get(action);
-                    if (roleList == null) {
-                        roleList = new LinkedList<>();
-                        roleListByAction.put(action, roleList);
+            if (!roles.isEmpty()) {
+                Map<Action, Collection<Role>> roleListByAction = new HashMap<>(
+                        Action.values().length);
+                for (Role role : roles) {
+                    for (Action action : role.roleState.verbs) {
+                        Collection<Role> roleList = roleListByAction.get(action);
+                        if (roleList == null) {
+                            roleList = new LinkedList<>();
+                            roleListByAction.put(action, roleList);
+                        }
+
+                        roleList.add(role);
+                    }
+                }
+
+                Map<Action, QueryFilter> queryFilterByAction = new HashMap<>(
+                        Action.values().length);
+                Map<Action, Query> queryByAction = new HashMap<>(Action.values().length);
+                for (Map.Entry<Action, Collection<Role>> entry : roleListByAction.entrySet()) {
+                    Query q = new Query();
+                    q.occurance = Occurance.MUST_OCCUR;
+                    for (Role role : entry.getValue()) {
+                        if (role.resourceGroupState == null) {
+                            continue;
+                        }
+                        Query resourceGroupQuery = role.resourceGroupState.query;
+                        resourceGroupQuery.occurance = Occurance.SHOULD_OCCUR;
+                        q.addBooleanClause(resourceGroupQuery);
                     }
 
-                    roleList.add(role);
+                    try {
+                        queryFilterByAction.put(entry.getKey(), QueryFilter.create(q));
+                        queryByAction.put(entry.getKey(), q);
+                    } catch (QueryFilterException qfe) {
+                        logWarning("Error creating query filter: %s", qfe.toString());
+                        failThrowable(claims.getSubject(), qfe);
+                        return;
+                    }
                 }
+
+                builder.setResourceQueryMap(queryByAction);
+                builder.setResourceQueryFilterMap(queryFilterByAction);
             }
 
-            Map<Action, QueryFilter> queryFilterByAction = new HashMap<>(Action.values().length);
-            Map<Action, Query> queryByAction = new HashMap<>(Action.values().length);
-            for (Map.Entry<Action, Collection<Role>> entry : roleListByAction.entrySet()) {
-                Query q = new Query();
-                q.occurance = Occurance.MUST_OCCUR;
-                for (Role role : entry.getValue()) {
-                    Query resourceGroupQuery = role.resourceGroupState.query;
-                    resourceGroupQuery.occurance = Occurance.SHOULD_OCCUR;
-                    q.addBooleanClause(resourceGroupQuery);
-                }
-
-                try {
-                    queryFilterByAction.put(entry.getKey(), QueryFilter.create(q));
-                    queryByAction.put(entry.getKey(), q);
-                } catch (QueryFilterException qfe) {
-                    logWarning("Error creating query filter: %s", qfe.toString());
-                    failThrowable(claims.getSubject(), qfe);
-                    return;
-                }
-            }
-
-            builder.setResourceQueryMap(queryByAction);
-            builder.setResourceQueryFilterMap(queryFilterByAction);
+            AuthorizationContext newContext = builder.getResult();
+            getHost().cacheAuthorizationContext(this, newContext);
+            completePendingOperations(claims.getSubject(), newContext);
+        } catch (Throwable e) {
+            failThrowable(claims.getSubject(), e);
         }
-
-        AuthorizationContext newContext = builder.getResult();
-        getHost().cacheAuthorizationContext(this, newContext);
-        completePendingOperations(claims.getSubject(), newContext);
     }
 
     private Collection<Operation> getPendingOperations(String subject) {
