@@ -21,6 +21,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.logging.Level;
 
 import com.vmware.xenon.common.NodeSelectorService.SelectAndForwardRequest;
@@ -314,19 +315,27 @@ public class NodeGroupUtils {
      * @see #checkServiceAvailability(CompletionHandler, ServiceHost, URI, String)
      */
     public static void registerForReplicatedServiceAvailability(ServiceHost host, Operation op,
-            String servicePath) {
+            String servicePath, String nodeSelectorPath) {
+
         CompletionHandler ch = (o, e) -> {
             if (e != null) {
+
+                if (op.getExpirationMicrosUtc() < Utils.getNowMicrosUtc()) {
+                    String msg = "Failed to check replicated service availability";
+                    op.fail(new TimeoutException(msg));
+                    return;
+                }
+
                 // service is not yet available, reschedule
                 host.schedule(() -> {
-                    registerForReplicatedServiceAvailability(host, op, servicePath);
+                    registerForReplicatedServiceAvailability(host, op, servicePath, nodeSelectorPath);
                 }, host.getMaintenanceIntervalMicros(), TimeUnit.MICROSECONDS);
                 return;
             }
             op.complete();
         };
 
-        host.checkReplicatedServiceAvailable(ch, servicePath);
+        host.checkReplicatedServiceAvailable(ch, servicePath, nodeSelectorPath);
     }
 
 }

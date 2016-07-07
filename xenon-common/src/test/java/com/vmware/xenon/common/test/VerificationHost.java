@@ -1424,22 +1424,29 @@ public class VerificationHost extends ExampleServiceHost {
 
     public void waitForReplicatedFactoryServiceAvailable(URI u, String nodeSelectorPath)
             throws Throwable {
-        waitFor("replicated available check time out for " + u, () -> {
-            boolean[] isReady = new boolean[1];
-            TestContext ctx = testCreate(1);
-            NodeGroupUtils.checkServiceAvailability((o, e) -> {
-                if (e != null) {
-                    isReady[0] = false;
-                    ctx.completeIteration();
-                    return;
-                }
 
-                isReady[0] = true;
-                ctx.completeIteration();
-            }, this, u, nodeSelectorPath);
-            ctx.await();
-            return isReady[0];
-        });
+        VerificationHost host = this;
+        if (!UriUtils.isHostEqual(this, u)) {
+            URI peerUri = UriUtils.buildUri(u.toString().replace(u.getPath(), ""));
+
+            VerificationHost peer = this.getInProcessHostMap().get(peerUri);
+            if (peer != null) {
+                host = peer;
+            }
+        }
+
+        TestContext ctx = testCreate(1);
+        CompletionHandler ch = (o, e) -> {
+            if (e != null) {
+                String msg = "Failed to check replicated factory service availability";
+                ctx.failIteration(new RuntimeException(msg, e));
+                return;
+            }
+            ctx.completeIteration();
+        };
+
+        host.registerForServiceAvailabilityWithSelector(ch, true, nodeSelectorPath, u.getPath());
+        ctx.await();
     }
 
     public void waitForServiceAvailable(URI u) throws Throwable {
