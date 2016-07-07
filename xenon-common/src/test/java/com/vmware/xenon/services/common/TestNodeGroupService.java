@@ -1907,18 +1907,20 @@ public class TestNodeGroupService {
         AuthorizationContext authContext = groupHost.assumeIdentity(userLink);
         groupHost.sendAndWaitExpectSuccess(
                 Operation.createGet(UriUtils.buildUri(groupHost, ExampleService.FACTORY_LINK)));
-        checkCache(peerHosts, authContext.getToken(), true);
+        this.host.waitFor("Timeout waiting for correct auth cache state",
+                () -> checkCache(peerHosts, authContext.getToken(), true));
         groupHost.setSystemAuthorizationContext();
         Throwable result = func.apply(groupHost);
         if (result != null) {
             throw result;
         }
         groupHost.resetSystemAuthorizationContext();
-        checkCache(this.host.getInProcessHostMap().values(), authContext.getToken(), false);
+        this.host.waitFor("Timeout waiting for correct auth cache state",
+                () -> checkCache(peerHosts, authContext.getToken(), false));
     }
 
     // helper method to check if the authz cache is in the expected state
-    private void checkCache(Collection<VerificationHost> peerHosts, String token, boolean expectEntries) throws Throwable {
+    private boolean checkCache(Collection<VerificationHost> peerHosts, String token, boolean expectEntries) throws Throwable {
         boolean contextFound = false;
         for (VerificationHost host : peerHosts) {
             host.setSystemAuthorizationContext();
@@ -1930,11 +1932,12 @@ public class TestNodeGroupService {
                 contextFound = true;
             }
         }
-        if (expectEntries) {
-            assertTrue(contextFound);
-        } else {
-            assertTrue(!contextFound);
+        if (expectEntries && contextFound) {
+            return true;
+        } else if (!expectEntries && !contextFound) {
+            return true;
         }
+        return false;
     }
 
     private void factoryDuplicatePost() throws Throwable, InterruptedException, TimeoutException {
