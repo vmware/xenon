@@ -129,13 +129,45 @@ public class ServiceStats extends ServiceDocument {
 
     public static class ServiceStat {
         public static final String KIND = Utils.buildKind(ServiceStat.class);
+        /**
+         * Name of the stat.
+         */
         public String name;
+
+        /**
+         * Latest value of the stat.
+         */
         public double latestValue;
+
+        /**
+         * The value accumulated over time for the stat.
+         */
         public double accumulatedValue;
+
+        /**
+         * The stat document version.
+         */
         public long version;
+
+        /**
+         * Time, in microseconds since UNIX epoch, the stat was received at the service.
+         */
         public long lastUpdateMicrosUtc;
+
+        /**
+         * The kind of document, in this case the ServiceStat kind.
+         */
         public String kind = KIND;
+
+        /**
+         * The unit of measurement associated with the stat.
+         */
         public String unit;
+
+        /**
+         * Time, in microseconds since UNIX epoch, the data value was acquired at the source.
+         */
+        public Long sourceTimeMicrosUtc;
 
         /**
          * Source (provider) for this stat
