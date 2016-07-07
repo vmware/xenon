@@ -123,10 +123,11 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
         this.exampleDestinationFactory = UriUtils.buildUri(getDestinationHost(),
                 ExampleService.FACTORY_LINK);
 
-        this.host.waitForReplicatedFactoryServiceAvailable(this.destinationFactoryUri);
-        this.host.waitForReplicatedFactoryServiceAvailable(this.sourceFactoryUri);
-        this.host.waitForReplicatedFactoryServiceAvailable(this.exampleSourceFactory);
-        this.host.waitForReplicatedFactoryServiceAvailable(this.exampleDestinationFactory);
+        VerificationHost peer = this.host.getPeerHost();
+        peer.waitForReplicatedFactoryServiceAvailable(this.destinationFactoryUri);
+        peer.waitForReplicatedFactoryServiceAvailable(this.sourceFactoryUri);
+        peer.waitForReplicatedFactoryServiceAvailable(this.exampleSourceFactory);
+        peer.waitForReplicatedFactoryServiceAvailable(this.exampleDestinationFactory);
     }
 
     private VerificationHost getDestinationHost() {

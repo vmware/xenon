@@ -3897,31 +3897,40 @@ public class ServiceHost implements ServiceRequestSender {
      * handler provided must track how many times it has been called
      *
      * @see #checkReplicatedServiceAvailable(CompletionHandler, String)
-     * @see NodeGroupUtils#registerForReplicatedServiceAvailability(ServiceHost, Operation, String)
+     * @see NodeGroupUtils#registerForReplicatedServiceAvailability(ServiceHost, Operation, String, String)
      * @see NodeGroupUtils#checkServiceAvailability(CompletionHandler, Service)
      */
     public void registerForServiceAvailability(CompletionHandler completion,
             String... servicePaths) {
-        registerForServiceAvailability(completion, false, servicePaths);
+        registerForServiceAvailabilityWithSelector(completion, false,
+                ServiceUriPaths.DEFAULT_NODE_SELECTOR, servicePaths);
     }
 
     public void registerForServiceAvailability(CompletionHandler completion, boolean checkReplica,
             String... servicePaths) {
+        registerForServiceAvailabilityWithSelector(completion, checkReplica,
+                ServiceUriPaths.DEFAULT_NODE_SELECTOR, servicePaths);
+    }
+
+    public void registerForServiceAvailabilityWithSelector(CompletionHandler completion,
+            boolean checkReplica, String nodeSelectorPath, String... servicePaths) {
         if (servicePaths == null || servicePaths.length == 0) {
             throw new IllegalArgumentException("selfLinks are required");
         }
         Operation op = Operation.createPost(null)
                 .setCompletion(completion)
                 .setExpiration(getOperationTimeoutMicros() + Utils.getNowMicrosUtc());
-        registerForServiceAvailability(op, checkReplica, servicePaths);
+
+        registerForServiceAvailability(op, checkReplica, nodeSelectorPath, servicePaths);
     }
 
     void registerForServiceAvailability(Operation opTemplate, String... servicePaths) {
-        registerForServiceAvailability(opTemplate, false, servicePaths);
+        registerForServiceAvailability(opTemplate, false, ServiceUriPaths.DEFAULT_NODE_SELECTOR,
+                servicePaths);
     }
 
     void registerForServiceAvailability(Operation opTemplate, boolean checkReplica,
-            String... servicePaths) {
+            String nodeSelectorPath, String... servicePaths) {
         final boolean doOpClone = servicePaths.length > 1;
         // clone client supplied array since this method mutates it
         final String[] clonedLinks = Arrays.copyOf(servicePaths, servicePaths.length);
@@ -3963,7 +3972,7 @@ public class ServiceHost implements ServiceRequestSender {
                                 run(() -> {
                                     NodeGroupUtils
                                             .registerForReplicatedServiceAvailability(this, o,
-                                                    link);
+                                                    link, nodeSelectorPath);
                                 });
                             } else {
                                 opTemplate.complete();
@@ -3993,7 +4002,8 @@ public class ServiceHost implements ServiceRequestSender {
         for (String link : replicatedServiceLinks) {
             Operation o = getOperationForServiceAvailability(opTemplate, link, doOpClone);
             run(() -> {
-                NodeGroupUtils.registerForReplicatedServiceAvailability(this, o, link);
+                NodeGroupUtils
+                        .registerForReplicatedServiceAvailability(this, o, link, nodeSelectorPath);
             });
         }
     }
@@ -4109,12 +4119,16 @@ public class ServiceHost implements ServiceRequestSender {
      * See {@link NodeGroupUtils}
      */
     public void checkReplicatedServiceAvailable(CompletionHandler ch, String servicePath) {
+        checkReplicatedServiceAvailable(ch, servicePath, ServiceUriPaths.DEFAULT_NODE_SELECTOR);
+    }
+
+    public void checkReplicatedServiceAvailable(CompletionHandler ch, String servicePath, String nodeSelectorPath) {
         Service s = this.findService(servicePath, true);
         if (s == null) {
             ch.handle(null, new IllegalStateException("service not found"));
             return;
         }
-        NodeGroupUtils.checkServiceAvailability(ch, s);
+        NodeGroupUtils.checkServiceAvailability(ch, s.getHost(), s.getSelfLink(), nodeSelectorPath);
     }
 
     public SystemHostInfo getSystemInfo() {
