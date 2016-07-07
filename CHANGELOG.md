@@ -2,6 +2,8 @@
 
 ## 0.9.1-SNAPSHOT
 
+* Add a new field *sourceTimeMicrosUtc* to ServiceStat to capture the
+  time the data value was acquired at the source.
 
 ## 0.9.0
 
