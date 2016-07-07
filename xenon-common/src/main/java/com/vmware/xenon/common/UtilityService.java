@@ -520,6 +520,7 @@ public class UtilityService implements Service {
                         newValue.timeSeriesStats.bucketDurationMillis, newValue.timeSeriesStats.aggregationType);
             }
             stat.unit = newValue.unit;
+            stat.sourceTimeMicrosUtc = newValue.sourceTimeMicrosUtc;
             setStat(stat, newValue.latestValue);
         }
     }

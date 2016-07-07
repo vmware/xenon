@@ -209,10 +209,14 @@ public class TestUtilityService extends BasicReusableHostTestCase {
         assertTrue(retStatEntry.latestValue == 100);
         assertTrue(retStatEntry.version == 1);
         assertTrue(retStatEntry.unit.equals("unit"));
+        assertTrue(retStatEntry.sourceTimeMicrosUtc == null);
+
         // Step 3 - POST a stat with the same key again and verify that the
         // version and accumulated value are updated
         stat.latestValue = 50;
         stat.unit = "unit1";
+        Long updatedMicrosUtc1 = Utils.getNowMicrosUtc();
+        stat.sourceTimeMicrosUtc = updatedMicrosUtc1;
         this.host.sendAndWaitExpectSuccess(Operation.createPost(UriUtils.buildStatsUri(
                 this.host, exampleServiceState.documentSelfLink)).setBody(stat));
         allStats = this.host.getServiceState(null, ServiceStats.class, UriUtils.buildStatsUri(
@@ -222,11 +226,15 @@ public class TestUtilityService extends BasicReusableHostTestCase {
         assertTrue(retStatEntry.latestValue == 50);
         assertTrue(retStatEntry.version == 2);
         assertTrue(retStatEntry.unit.equals("unit1"));
+        assertTrue(retStatEntry.sourceTimeMicrosUtc == updatedMicrosUtc1);
+
         // Step 4 - POST a stat with a new key and verify that the
         // previously posted stat is not updated
         stat.name = "key2";
         stat.latestValue = 50;
         stat.unit = "unit2";
+        Long updatedMicrosUtc2 = Utils.getNowMicrosUtc();
+        stat.sourceTimeMicrosUtc = updatedMicrosUtc2;
         this.host.sendAndWaitExpectSuccess(Operation.createPost(UriUtils.buildStatsUri(
                 this.host, exampleServiceState.documentSelfLink)).setBody(stat));
         allStats = this.host.getServiceState(null, ServiceStats.class, UriUtils.buildStatsUri(
@@ -236,16 +244,20 @@ public class TestUtilityService extends BasicReusableHostTestCase {
         assertTrue(retStatEntry.latestValue == 50);
         assertTrue(retStatEntry.version == 2);
         assertTrue(retStatEntry.unit.equals("unit1"));
+        assertTrue(retStatEntry.sourceTimeMicrosUtc == updatedMicrosUtc1);
+
         retStatEntry = allStats.entries.get("key2");
         assertTrue(retStatEntry.accumulatedValue == 50);
         assertTrue(retStatEntry.latestValue == 50);
         assertTrue(retStatEntry.version == 1);
         assertTrue(retStatEntry.unit.equals("unit2"));
+        assertTrue(retStatEntry.sourceTimeMicrosUtc == updatedMicrosUtc2);
 
         // Step 5 - Issue a PUT for the first stat key and verify that the doc state is replaced
         stat.name = "key1";
         stat.latestValue = 75;
         stat.unit = "replaceUnit";
+        stat.sourceTimeMicrosUtc = null;
         this.host.sendAndWaitExpectSuccess(Operation.createPut(UriUtils.buildStatsUri(
                 this.host, exampleServiceState.documentSelfLink)).setBody(stat));
         allStats = this.host.getServiceState(null, ServiceStats.class, UriUtils.buildStatsUri(
@@ -255,6 +267,8 @@ public class TestUtilityService extends BasicReusableHostTestCase {
         assertTrue(retStatEntry.latestValue == 75);
         assertTrue(retStatEntry.version == 1);
         assertTrue(retStatEntry.unit.equals("replaceUnit"));
+        assertTrue(retStatEntry.sourceTimeMicrosUtc == null);
+
         // Step 6 - Issue a bulk PUT and verify that the complete set of stats is updated
         ServiceStats stats = new ServiceStats();
         stat.name = "key3";
@@ -280,6 +294,7 @@ public class TestUtilityService extends BasicReusableHostTestCase {
         assertTrue(retStatEntry.latestValue == 200);
         assertTrue(retStatEntry.version == 1);
         assertTrue(retStatEntry.unit.equals("unit3"));
+
         // Step 7 - Issue a PATCH and verify that the latestValue is updated
         stat.latestValue = 25;
         this.host.sendAndWaitExpectSuccess(Operation.createPatch(UriUtils.buildStatsUri(
