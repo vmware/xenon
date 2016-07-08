@@ -157,9 +157,9 @@ public class TestUtils {
 
         long start = Utils.getNowMicrosUtc();
         for (int i = 0; i < count; i++) {
-            s = Utils.cloneObject(s);
+            s = Utils.clone(s);
             Object foo = s;
-            foo = Utils.cloneObject(foo);
+            foo = Utils.clone(foo);
         }
 
         long end = Utils.getNowMicrosUtc();

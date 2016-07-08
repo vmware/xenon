@@ -5,6 +5,10 @@
 * Add a new field *sourceTimeMicrosUtc* to ServiceStat to capture the
   time the data value was acquired at the source.
 
+* Removed Utils.cloneObject(). Use Utils.clone() as a drop-in replacement.
+
+* Utils.clone() will not clone transient fields anymore.
+
 ## 0.9.0
 
 * Add sample code for Bootstrap Service Tutorial.

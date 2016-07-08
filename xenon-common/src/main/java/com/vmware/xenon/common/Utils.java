@@ -158,16 +158,17 @@ public class Utils {
         CUSTOM_JSON.putIfAbsent(clazz, mapper);
     }
 
-    public static <T> T clone(T t) {
+    /**
+     * Create a deep clone of the given object. References are preserved. Transient fields are
+     * not cloned.
+     * To customize cloning for a type let it implement {@link com.esotericsoftware.kryo.KryoCopyable}
+     * @param object
+     * @param <T>
+     * @return
+     */
+    public static <T> T clone(T object) {
         Kryo k = kryoForDocumentPerThread.get();
-        T clone = k.copy(t);
-        return clone;
-    }
-
-    public static <T> T cloneObject(T t) {
-        Kryo k = kryoForObjectPerThread.get();
-        T clone = k.copy(t);
-        k.reset();
+        T clone = k.copy(object);
         return clone;
     }
 
