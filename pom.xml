@@ -331,6 +331,7 @@
         <configuration>
           <skip>${skipAnalysis}</skip>
           <configLocation>checkstyle.xml</configLocation>
+          <headerLocation>contrib/header.regexp</headerLocation>
           <encoding>UTF-8</encoding>
           <consoleOutput>true</consoleOutput>
           <failsOnError>true</failsOnError>
@@ -381,7 +382,7 @@
           <skip>${skipAnalysis}</skip>
           <effort>Max</effort>
           <xmlOutput>true</xmlOutput>
-          <excludeFilterFile>findbugs-exclude.xml</excludeFilterFile>
+          <excludeFilterFile>${project.parent.basedir}/findbugs-exclude.xml</excludeFilterFile>
         </configuration>
         <executions>
           <execution>

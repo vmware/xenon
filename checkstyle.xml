@@ -69,7 +69,7 @@
     </module>
 
     <module name="RegexpHeader">
-        <property name="headerFile" value="contrib/header.regexp"/>
+        <property name="headerFile" value="${checkstyle.header.file}"/>
         <property name="fileExtensions" value="java"/>
     </module>
 
