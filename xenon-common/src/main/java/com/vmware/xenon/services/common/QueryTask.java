@@ -18,6 +18,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.Set;
 
 import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.ServiceDocumentDescription.TypeName;
@@ -57,6 +58,11 @@ public class QueryTask extends ServiceDocument {
             public transient Object nativeSearcher;
             public transient Object nativeSort;
             public transient QueryFilter filter;
+            /**
+             * Set of document links that should be considered in query execution. Any document not
+             * in the list must be discarded. This is an implementation specific hint
+             */
+            public transient Set<String> documentLinkWhiteList;
         }
 
         public enum QueryOption {

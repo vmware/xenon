@@ -133,12 +133,6 @@ public abstract class TaskService<T extends TaskService.TaskServiceState>
             return task;
         }
 
-        if (task.taskInfo != null) {
-            taskOperation.fail(new IllegalArgumentException(
-                    "Do not specify taskInfo: internal use only"));
-            return null;
-        }
-
         // Subclasses might also want to ensure that their "SubStage" is not specified also
         return task;
     }
@@ -148,9 +142,12 @@ public abstract class TaskService<T extends TaskService.TaskServiceState>
      * implementation to initialize their {@code SubStage}
      */
     protected void initializeState(T task, Operation taskOperation) {
-        task.taskInfo = new TaskState();
+        if (task.taskInfo == null) {
+            task.taskInfo = new TaskState();
+        }
+        task.taskInfo.failure = null;
+        task.taskInfo.durationMicros = null;
         task.taskInfo.stage = TaskState.TaskStage.STARTED;
-
         // Put in some default expiration time if it hasn't been provided yet.
         if (task.documentExpirationTimeMicros == 0) {
             setExpiration(task, DEFAULT_EXPIRATION_MINUTES, TimeUnit.MINUTES);

@@ -50,11 +50,13 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+
 import javax.net.ssl.SSLContext;
 import javax.xml.bind.DatatypeConverter;
 
 import io.netty.handler.ssl.util.InsecureTrustManagerFactory;
 import io.netty.handler.ssl.util.SelfSignedCertificate;
+
 import org.apache.lucene.store.LockObtainFailedException;
 import org.junit.rules.TemporaryFolder;
 
@@ -3199,6 +3201,7 @@ public class VerificationHost extends ExampleServiceHost {
      * @param <T>           the type that represent's the task's state
      * @return the state of the task once it's {@link TaskState.TaskStage} == {@code expectedStage}
      */
+    @SuppressWarnings("unchecked")
     public <T extends TaskService.TaskServiceState> T waitForTask(Class<T> type, String taskUri,
             TaskState.TaskStage expectedStage) throws Throwable {
         URI uri = UriUtils.buildUri(this, taskUri);
@@ -3208,18 +3211,19 @@ public class VerificationHost extends ExampleServiceHost {
                 .asList(TaskState.TaskStage.CANCELLED, TaskState.TaskStage.FAILED,
                         TaskState.TaskStage.FINISHED, expectedStage);
 
-        T state = null;
-        for (int i = 0; i < 20; i++) {
-            state = this.getServiceState(null, type, uri);
+        String error = String.format("Task did not reach expected state %s", expectedStage);
+        Object[] r = new Object[1];
+        waitFor(error, () -> {
+            T state = this.getServiceState(null, type, uri);
+            r[0] = state;
             if (state.taskInfo != null) {
                 if (finalTaskStages.contains(state.taskInfo.stage)) {
-                    break;
+                    return true;
                 }
             }
-            Thread.sleep(250);
-        }
-        assertEquals("Task did not reach expected state", state.taskInfo.stage, expectedStage);
-        return state;
+            return false;
+        });
+        return (T) r[0];
     }
 
     @FunctionalInterface
