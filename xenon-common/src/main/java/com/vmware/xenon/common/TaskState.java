@@ -73,6 +73,13 @@ public class TaskState {
         return state;
     }
 
+    public static TaskState createDirect() {
+        TaskState state = new TaskState();
+        state.stage = TaskStage.CREATED;
+        state.isDirect = true;
+        return state;
+    }
+
     public static TaskState createAsStarted() {
         TaskState state = new TaskState();
         state.stage = TaskStage.STARTED;

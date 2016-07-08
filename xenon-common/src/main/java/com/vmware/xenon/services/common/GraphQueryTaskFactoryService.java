@@ -60,8 +60,6 @@ public class GraphQueryTaskFactoryService extends FactoryService {
         Operation clonedPost = post.clone();
         // do not replicate direct queries
         clonedPost.setReplicationDisabled(true);
-        // reset task info since the child service does not expect it as initial state
-        initState.taskInfo = null;
 
         clonedPost.setCompletion((o, e) -> {
             if (e != null) {

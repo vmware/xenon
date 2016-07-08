@@ -33,6 +33,7 @@ import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.ServiceDocumentQueryResult;
 import com.vmware.xenon.common.TaskState;
 import com.vmware.xenon.common.UriUtils;
+import com.vmware.xenon.common.Utils;
 import com.vmware.xenon.common.test.TestContext;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
 import com.vmware.xenon.services.common.QueryTask.NumericRange;
@@ -51,6 +52,10 @@ public class TestGraphQueryTaskService extends BasicTestCase {
      * Number of links to peer services, per service
      */
     public int linkCount = 2;
+
+    private long taskCreationTimeMicros;
+
+    private long taskCompletionTimeMicros;
 
     @Before
     public void setUp() {
@@ -130,7 +135,7 @@ public class TestGraphQueryTaskService extends BasicTestCase {
     }
 
     @Test
-    public void threeStageRecursive() throws Throwable {
+    public void threeStageTreeGraph() throws Throwable {
         String name = UUID.randomUUID().toString();
 
         int stageCount = 3;
@@ -144,6 +149,7 @@ public class TestGraphQueryTaskService extends BasicTestCase {
 
         GraphQueryTask initialState = createMultiStageRecursiveTask(stageCount, false);
         GraphQueryTask finalState = waitForTask(initialState);
+        logGraphQueryThroughput(finalState);
 
         int[] resultCounts = {
                 this.serviceCount,
@@ -153,8 +159,8 @@ public class TestGraphQueryTaskService extends BasicTestCase {
         verifyNStageResult(finalState, true, resultCounts);
 
         finalState = createMultiStageRecursiveTask(stageCount, true);
+        logGraphQueryThroughput(finalState);
         verifyNStageResult(finalState, true, resultCounts);
-
     }
 
     private void verifyNStageResult(GraphQueryTask finalState, int... expectedCounts) {
@@ -263,6 +269,7 @@ public class TestGraphQueryTaskService extends BasicTestCase {
         }
 
         GraphQueryTask initialState = builder.build();
+        this.taskCreationTimeMicros = Utils.getNowMicrosUtc();
         initialState = createTask(initialState, isDirect);
         return initialState;
     }
@@ -273,8 +280,7 @@ public class TestGraphQueryTaskService extends BasicTestCase {
         GraphQueryTask[] rsp = new GraphQueryTask[1];
 
         if (isDirect) {
-            initialState.taskInfo = new TaskState();
-            initialState.taskInfo.isDirect = isDirect;
+            initialState.taskInfo = TaskState.createDirect();
         }
 
         TestContext ctx = testCreate(1);
@@ -285,15 +291,44 @@ public class TestGraphQueryTaskService extends BasicTestCase {
             }
             GraphQueryTask r = o.getBody(GraphQueryTask.class);
             rsp[0] = r;
+            if (isDirect) {
+                this.taskCompletionTimeMicros = Utils.getNowMicrosUtc();
+            }
             ctx.completeIteration();
         });
         this.host.send(post);
         testWait(ctx);
+
+        assertEquals(isDirect, rsp[0].taskInfo.isDirect);
         return rsp[0];
     }
 
     private GraphQueryTask waitForTask(GraphQueryTask initialState) throws Throwable {
-        return this.host.waitForFinishedTask(GraphQueryTask.class, initialState.documentSelfLink);
+        GraphQueryTask t = this.host.waitForFinishedTask(GraphQueryTask.class,
+                initialState.documentSelfLink);
+        this.taskCompletionTimeMicros = Utils.getNowMicrosUtc();
+        return t;
+    }
+
+    private void logGraphQueryThroughput(GraphQueryTask finalState) {
+        double timeDelta = this.taskCompletionTimeMicros - this.taskCreationTimeMicros;
+        timeDelta = timeDelta / 1000000;
+        double edgeCount = 0;
+        double nodeCount = 0;
+        for (QueryTask stage : finalState.stages) {
+            if (stage.results != null && stage.results.selectedLinks != null) {
+                edgeCount += stage.results.selectedLinks.size();
+            }
+            nodeCount += stage.results.documentCount;
+        }
+        double edgeTraversalThroughput = edgeCount / timeDelta;
+        double nodeProcessingThroughput = nodeCount / timeDelta;
+        this.host
+                .log("IsDirect:%s, Edge count: %f, Node count: %f, Edge throughput: %f, Node throughput %f",
+                        finalState.taskInfo.isDirect,
+                        edgeCount, nodeCount,
+                        edgeTraversalThroughput,
+                        nodeProcessingThroughput);
     }
 
     private void createQueryTargetServices(String name, int recursionDepth) throws Throwable {
@@ -307,6 +342,17 @@ public class TestGraphQueryTaskService extends BasicTestCase {
                 }, UriUtils.buildUri(this.host, ExampleService.FACTORY_LINK));
 
         startLinkedQueryTargetServices(exampleStates, recursionDepth);
+
+        // to verify we do not include services NOT linked, create additional services not refered to
+        // by the query validation service instances
+        this.host.doFactoryChildServiceStart(null,
+                this.serviceCount, ExampleServiceState.class,
+                (o) -> {
+                    ExampleServiceState s = new ExampleServiceState();
+                    s.name = name;
+                    s.id = UUID.randomUUID().toString();
+                    o.setBody(s);
+                }, UriUtils.buildUri(this.host, ExampleService.FACTORY_LINK));
     }
 
     /**

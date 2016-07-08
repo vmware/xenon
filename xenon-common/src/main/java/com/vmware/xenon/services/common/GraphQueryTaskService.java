@@ -16,16 +16,12 @@ package com.vmware.xenon.services.common;
 import java.util.ArrayList;
 
 import com.vmware.xenon.common.Operation;
-import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.ServiceDocumentQueryResult;
 import com.vmware.xenon.common.ServiceHost;
 import com.vmware.xenon.common.TaskState;
 import com.vmware.xenon.common.TaskState.TaskStage;
 import com.vmware.xenon.common.Utils;
-import com.vmware.xenon.services.common.QueryTask.Query;
-import com.vmware.xenon.services.common.QueryTask.Query.Occurance;
 import com.vmware.xenon.services.common.QueryTask.QuerySpecification.QueryOption;
-import com.vmware.xenon.services.common.QueryTask.QueryTerm.MatchType;
 
 /**
  * Implements a multistage query pipeline, modeled as a task, that supports graph traversal queries
@@ -295,22 +291,13 @@ public class GraphQueryTaskService extends TaskService<GraphQueryTask> {
             // we must be in initial stage, otherwise termination checks would have kicked in
             return;
         }
-        // augment query specification for current depth, using the selected links from the last
-        // stage results. This restricts the query scope to only documents that are "linked" from
+        // Use query context white list, using the selected links from the last
+        // stage results. This restricts the query scope to only documents that are "linked"
         // from the current stage to the next, effectively guiding our search of the index, across
-        // the graph edges (links) specified in each traversal specification
-        Query selfLinkClause = new Query();
-        selfLinkClause.setOccurance(Occurance.MUST_OCCUR);
-
-        for (String link : lastResults.selectedLinks) {
-            Query clause = new Query()
-                    .setTermPropertyName(ServiceDocument.FIELD_NAME_SELF_LINK)
-                    .setTermMatchValue(link)
-                    .setTermMatchType(MatchType.TERM)
-                    .setOccurance(Occurance.SHOULD_OCCUR);
-            selfLinkClause.addBooleanClause(clause);
-        }
-        task.querySpec.query.addBooleanClause(selfLinkClause);
+        // the graph edges (links) specified in each traversal specification.
+        // This is a performance optimization: the alternative would have been a massive boolean
+        // clause with SHOULD_OCCUR child clauses for each link
+        task.querySpec.context.documentLinkWhiteList = lastResults.selectedLinks;
     }
 
     @Override

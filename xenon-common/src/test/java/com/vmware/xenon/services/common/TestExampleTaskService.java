@@ -29,7 +29,6 @@ import com.vmware.xenon.common.BasicReusableHostTestCase;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Operation.CompletionHandler;
 import com.vmware.xenon.common.ServiceDocumentQueryResult;
-import com.vmware.xenon.common.TaskState;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.test.VerificationHost;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
@@ -41,7 +40,7 @@ import com.vmware.xenon.services.common.ExampleTaskService.ExampleTaskServiceSta
  */
 public class TestExampleTaskService extends BasicReusableHostTestCase {
 
-    public int numServices = 10;
+    public int serviceCount = 10;
 
     @Before
     public void prepare() throws Throwable {
@@ -78,15 +77,6 @@ public class TestExampleTaskService extends BasicReusableHostTestCase {
 
         updateTaskExpirationAndValidate(state);
         validateNoServices();
-    }
-
-    @Test
-    public void handleStartError_taskBody() throws Throwable {
-        ExampleTaskServiceState badState = new ExampleTaskServiceState();
-        badState.taskInfo = new TaskState();
-        badState.taskInfo.stage = TaskState.TaskStage.CREATED;
-        testExpectedHandleStartError(badState, IllegalArgumentException.class,
-                "Do not specify taskInfo: internal use only");
     }
 
     @Test
@@ -129,8 +119,8 @@ public class TestExampleTaskService extends BasicReusableHostTestCase {
     private void createExampleServices() throws Throwable {
         URI exampleFactoryUri = UriUtils.buildFactoryUri(this.host, ExampleService.class);
 
-        this.host.testStart(this.numServices);
-        for (int i = 0; i < this.numServices; i++) {
+        this.host.testStart(this.serviceCount);
+        for (int i = 0; i < this.serviceCount; i++) {
             ExampleServiceState example = new ExampleServiceState();
             example.name = String.format("example-%s", i);
             Operation createPost = Operation.createPost(exampleFactoryUri)
