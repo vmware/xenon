@@ -155,6 +155,14 @@ public class ServiceHost implements ServiceRequestSender {
 
     public static class ServiceNotFoundException extends IllegalStateException {
         private static final long serialVersionUID = 663670123267539178L;
+
+        public ServiceNotFoundException() {
+            super();
+        }
+
+        public ServiceNotFoundException(String servicePath) {
+            super("Service not found: " + servicePath);
+        }
     }
 
     public static class Arguments {
@@ -3073,7 +3081,8 @@ public class ServiceHost implements ServiceRequestSender {
     }
 
     void failRequestServiceNotFound(Operation inboundOp) {
-        failRequest(inboundOp, Operation.STATUS_CODE_NOT_FOUND, new ServiceNotFoundException());
+        failRequest(inboundOp, Operation.STATUS_CODE_NOT_FOUND,
+                new ServiceNotFoundException(inboundOp.getUri().toString()));
     }
 
     /**
