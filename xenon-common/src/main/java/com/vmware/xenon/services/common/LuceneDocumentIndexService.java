@@ -1140,6 +1140,10 @@ public class LuceneDocumentIndexService extends StatelessService {
         // Keep duplicates out
         Set<String> uniques = new LinkedHashSet<>(rsp.documentLinks);
         final boolean hasCountOption = options.contains(QueryOption.COUNT);
+        Set<String> linkWhiteList = null;
+        if (qs != null && qs.context != null && qs.context.documentLinkWhiteList != null) {
+            linkWhiteList = qs.context.documentLinkWhiteList;
+        }
 
         Map<String, Long> latestVersions = new HashMap<>();
         for (ScoreDoc sd : hits) {
@@ -1150,6 +1154,12 @@ public class LuceneDocumentIndexService extends StatelessService {
             lastDocVisited = sd;
             Document d = s.getIndexReader().document(sd.doc, fieldsToLoad);
             String link = d.get(ServiceDocument.FIELD_NAME_SELF_LINK);
+
+            // ignore results not in supplied white list
+            if (linkWhiteList != null && !linkWhiteList.contains(link)) {
+                continue;
+            }
+
             IndexableField versionField = d.getField(ServiceDocument.FIELD_NAME_VERSION);
             Long documentVersion = versionField.numericValue().longValue();
 
