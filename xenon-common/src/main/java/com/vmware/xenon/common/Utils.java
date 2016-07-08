@@ -164,12 +164,6 @@ public class Utils {
         return clone;
     }
 
-    public static <T> T cloneObject(T t) {
-        Kryo k = kryoForObjectPerThread.get();
-        T clone = k.copy(t);
-        k.reset();
-        return clone;
-    }
 
     public static String computeSignature(ServiceDocument s,
             ServiceDocumentDescription description) {

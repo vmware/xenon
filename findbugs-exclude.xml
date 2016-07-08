@@ -25,4 +25,9 @@
        <Class name="com.vmware.xenon.services.common.ServiceHostManagementService"/>
        <Method name="handleDelete"/>
      </Match>
+
+     <Match>
+       <Bug pattern="SE_COMPARATOR_SHOULD_BE_SERIALIZABLE" />
+       <Class name="com.vmware.xenon.common.serialization.KryoSerializers$NonCopyingVersionFieldSerializer"/>
+     </Match>
 </FindBugsFilter>

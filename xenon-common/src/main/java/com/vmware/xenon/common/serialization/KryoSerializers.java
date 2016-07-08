@@ -25,6 +25,15 @@ import com.esotericsoftware.kryo.serializers.VersionFieldSerializer;
 import org.objenesis.strategy.StdInstantiatorStrategy;
 
 public final class KryoSerializers {
+
+    public static class NonCopyingVersionFieldSerializer<T> extends VersionFieldSerializer<T> {
+
+        public NonCopyingVersionFieldSerializer(Kryo kryo, Class<T> type) {
+            super(kryo, type);
+            setCopyTransient(false);
+        }
+    }
+
     /**
      * Binary serialization thread local instances that track object references
      */
@@ -53,8 +62,6 @@ public final class KryoSerializers {
         Kryo k = new Kryo();
         // handle classes with missing default constructors
         k.setInstantiatorStrategy(new DefaultInstantiatorStrategy(new StdInstantiatorStrategy()));
-        // supports addition of fields if the @since annotation is used
-        k.setDefaultSerializer(VersionFieldSerializer.class);
         // Custom serializers for Java 8 date/time
         k.addDefaultSerializer(ZonedDateTime.class, ZonedDateTimeSerializer.INSTANCE);
         k.addDefaultSerializer(Instant.class, InstantSerializer.INSTANCE);
@@ -62,15 +69,17 @@ public final class KryoSerializers {
         // Add non-cloning serializers for all immutable types bellow
         k.addDefaultSerializer(UUID.class, UUIDSerializer.INSTANCE);
         k.addDefaultSerializer(URI.class, URISerializer.INSTANCE);
-
         if (!isObjectSerializer) {
             // For performance reasons, and to avoid memory use, assume documents do not
             // require object graph serialization with duplicate or recursive references
             k.setReferences(false);
+            // supports addition of fields if the @since annotation is used
+            k.setDefaultSerializer(VersionFieldSerializer.class);
         } else {
             // To avoid monotonic increase of memory use, due to reference tracking, we must
             // reset after each use.
             k.setAutoReset(true);
+            k.setDefaultSerializer(NonCopyingVersionFieldSerializer.class);
         }
         return k;
     }
