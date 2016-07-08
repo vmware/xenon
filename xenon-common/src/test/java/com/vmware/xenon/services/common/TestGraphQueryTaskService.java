@@ -154,7 +154,6 @@ public class TestGraphQueryTaskService extends BasicTestCase {
 
         finalState = createMultiStageRecursiveTask(stageCount, true);
         verifyNStageResult(finalState, true, resultCounts);
-
     }
 
     private void verifyNStageResult(GraphQueryTask finalState, int... expectedCounts) {
@@ -307,6 +306,17 @@ public class TestGraphQueryTaskService extends BasicTestCase {
                 }, UriUtils.buildUri(this.host, ExampleService.FACTORY_LINK));
 
         startLinkedQueryTargetServices(exampleStates, recursionDepth);
+
+        // to verify we do not include services NOT linked, create additional services not refered to
+        // by the query validation service instances
+        this.host.doFactoryChildServiceStart(null,
+                this.serviceCount, ExampleServiceState.class,
+                (o) -> {
+                    ExampleServiceState s = new ExampleServiceState();
+                    s.name = name;
+                    s.id = UUID.randomUUID().toString();
+                    o.setBody(s);
+                }, UriUtils.buildUri(this.host, ExampleService.FACTORY_LINK));
     }
 
     /**
