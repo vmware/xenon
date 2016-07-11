@@ -64,6 +64,9 @@ public class ResourceGroupService extends StatefulService {
     public void handleRequest(Operation request, OperationProcessingStage opProcessingStage) {
         if (request.getAction() == Action.DELETE || request.getAction() == Action.PUT) {
             ResourceGroupState resourceGroupState = null;
+            if (request.getAction() == Action.DELETE) {
+                System.out.println("delete request received from: " + request.getUri());
+            }
             if (request.isFromReplication() && request.hasBody()) {
                 resourceGroupState = getBody(request);
             } else {
