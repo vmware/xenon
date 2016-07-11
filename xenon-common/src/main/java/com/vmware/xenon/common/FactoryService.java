@@ -357,7 +357,8 @@ public abstract class FactoryService extends StatelessService {
         CompletionHandler c = (so, se) -> {
             int r = pendingStarts.decrementAndGet();
             if (se != null && !getHost().isStopping()) {
-                logWarning("Restart for children failed: %s", se.getMessage());
+                String host = "id=" + getHost().getId() + " port=" + getHost().getPort();
+                logWarning("Restart for children failed(%s): %s", host, se.getMessage());
             }
 
             if (getHost().isStopping()) {
