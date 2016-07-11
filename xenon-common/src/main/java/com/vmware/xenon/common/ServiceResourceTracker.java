@@ -115,25 +115,23 @@ class ServiceResourceTracker {
 
     public void updateCachedServiceState(Service s, ServiceDocument st, Operation op) {
         if (!isTransactional(op)) {
-            synchronized (s.getSelfLink()) {
-                ServiceDocument cachedState = this.cachedServiceStates.put(s.getSelfLink(), st);
-                if (cachedState != null && cachedState.documentVersion > st.documentVersion) {
+            if (!isTransactional(op)) {
+                this.cachedServiceStates.compute(s.getSelfLink(), (k, cache) -> {
                     // restore cached state, discarding update, if the existing version is higher
-                    this.cachedServiceStates.put(s.getSelfLink(), cachedState);
-                }
+                    boolean useCache = cache != null && cache.documentVersion > st.documentVersion;
+                    return useCache ? cache : st;
+                });
             }
             return;
         }
 
         CachedServiceStateKey key = new CachedServiceStateKey(s.getSelfLink(),
                 op.getTransactionId());
-        synchronized (key.toString()) {
-            ServiceDocument cachedState = this.cachedTransactionalServiceStates.put(key, st);
-            if (cachedState != null && cachedState.documentVersion > st.documentVersion) {
-                // restore cached state, discarding update, if the existing version is higher
-                this.cachedTransactionalServiceStates.put(key, cachedState);
-            }
-        }
+        this.cachedTransactionalServiceStates.compute(key, (k, cache) -> {
+            // restore cached state, discarding update, if the existing version is higher
+            boolean useCache = cache != null && cache.documentVersion > st.documentVersion;
+            return useCache ? cache : st;
+        });
     }
 
     public ServiceDocument getCachedServiceState(String servicePath, Operation op) {
