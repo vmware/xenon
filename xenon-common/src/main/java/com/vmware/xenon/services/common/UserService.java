@@ -13,6 +13,7 @@
 
 package com.vmware.xenon.services.common;
 
+import java.net.URI;
 import java.util.EnumSet;
 import java.util.Set;
 
@@ -28,7 +29,26 @@ public class UserService extends StatefulService {
     public static final String FACTORY_LINK = ServiceUriPaths.CORE_AUTHZ_USERS;
 
     public static Service createFactory() {
-        return FactoryService.createIdempotent(UserService.class);
+        FactoryService fs = new FactoryService(UserState.class) {
+
+            @Override
+            public Service createServiceInstance() throws Throwable {
+                return new UserService();
+            }
+
+            @Override
+            public void handlePost(Operation request) {
+                UserState userState = AuthorizationCacheUtils.extractBody(request, this, UserState.class);
+                if (userState != null) {
+                    System.out.println("POST received for: " + userState.documentSelfLink);
+                } else {
+                    System.out.println("POST received with no body");
+                }
+                super.handlePost(request);
+            }
+        };
+        fs.toggleOption(ServiceOption.IDEMPOTENT_POST, true);
+        return fs;
     }
 
     /**
@@ -52,6 +72,14 @@ public class UserService extends StatefulService {
     public void handleRequest(Operation request, OperationProcessingStage opProcessingStage) {
         if (request.getAction() == Action.DELETE || request.getAction() == Action.PUT ||
                 request.getAction() == Action.PATCH) {
+
+            boolean isFromReplication = request.isFromReplication();
+
+            if (request.getAction() == Action.DELETE) {
+                URI referer = request.getReferer();
+                logInfo("Delete request received: host=%s, uri=%s, referer=%s, isReplication=%s",
+                        getHost().getId(), request.getUri(), referer, isFromReplication);
+            }
             UserState userState = null;
             if (request.isFromReplication() && request.hasBody()) {
                 userState = getBody(request);
@@ -59,10 +87,24 @@ public class UserService extends StatefulService {
                 userState = getState(request);
             }
             if (userState != null) {
+                logInfo("AA: calling clear id = " + this.getHost().getId() + " stage="
+                        + opProcessingStage + " isFromReplication=" + isFromReplication);
                 AuthorizationCacheUtils.clearAuthzCacheForUser(this, request, userState.documentSelfLink);
             }
         }
         super.handleRequest(request, opProcessingStage);
+    }
+
+    @Override
+    public void handleDelete(Operation delete) {
+        logInfo("AA: handleDelete is called on %s, replicated=%s: %s", this.getHost().getId(), delete.isFromReplication(), delete.getUri());
+        super.handleDelete(delete);
+    }
+
+    @Override
+    public void handleGet(Operation get) {
+        logInfo("AA: GET received on %s: %s", this.getHost().getId(), get.getUri());
+        super.handleGet(get);
     }
 
     @Override
@@ -73,6 +115,7 @@ public class UserService extends StatefulService {
         }
 
         UserState state = op.getBody(UserState.class);
+        System.out.println("Start request received on " + getHost().getId() + " for:" + state.documentSelfLink);
         if (!validate(op, state)) {
             return;
         }

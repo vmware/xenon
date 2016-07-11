@@ -281,6 +281,9 @@ class ServiceSynchronizationTracker {
                         "Document marked deleted by peers: " + s.getSelfLink()));
                 selectedState.documentSelfLink = s.getSelfLink();
                 selectedState.documentUpdateAction = Action.DELETE.toString();
+
+                this.host.log(Level.INFO, "AA: deleting local index on %s", s.getHost().getId());
+
                 // delete local version
                 this.host.saveServiceState(s, Operation.createDelete(UriUtils.buildUri(this.host,
                         s.getSelfLink())).setReferer(s.getUri()),
