@@ -28,7 +28,26 @@ public class UserService extends StatefulService {
     public static final String FACTORY_LINK = ServiceUriPaths.CORE_AUTHZ_USERS;
 
     public static Service createFactory() {
-        return FactoryService.createIdempotent(UserService.class);
+        FactoryService fs = new FactoryService(UserState.class) {
+
+            @Override
+            public Service createServiceInstance() throws Throwable {
+                return new UserService();
+            }
+
+            @Override
+            public void handlePost(Operation request) {
+                UserState userState = AuthorizationCacheUtils.extractBody(request, this, UserState.class);
+                if (userState != null) {
+                    System.out.println("POST received for: " + userState.documentSelfLink);
+                } else {
+                    System.out.println("POST received with no body");
+                }
+                super.handlePost(request);
+            }
+        };
+        fs.toggleOption(ServiceOption.IDEMPOTENT_POST, true);
+        return fs;
     }
 
     /**
@@ -52,6 +71,12 @@ public class UserService extends StatefulService {
     public void handleRequest(Operation request, OperationProcessingStage opProcessingStage) {
         if (request.getAction() == Action.DELETE || request.getAction() == Action.PUT ||
                 request.getAction() == Action.PATCH) {
+
+            boolean isFromReplication = request.isFromReplication();
+
+            if (request.getAction() == Action.DELETE) {
+                logInfo("Delete request received for(%s) %s", getHost().getId(), request.getUri());
+            }
             UserState userState = null;
             if (request.isFromReplication() && request.hasBody()) {
                 userState = getBody(request);
@@ -59,6 +84,8 @@ public class UserService extends StatefulService {
                 userState = getState(request);
             }
             if (userState != null) {
+                logInfo("AA: calling clear id = " + this.getHost().getId() + " stage="
+                        + opProcessingStage + " isFromReplication=" + isFromReplication);
                 AuthorizationCacheUtils.clearAuthzCacheForUser(this, request, userState.documentSelfLink);
             }
         }
@@ -73,6 +100,7 @@ public class UserService extends StatefulService {
         }
 
         UserState state = op.getBody(UserState.class);
+        System.out.println("Start request received for:" + state.documentSelfLink);
         if (!validate(op, state)) {
             return;
         }

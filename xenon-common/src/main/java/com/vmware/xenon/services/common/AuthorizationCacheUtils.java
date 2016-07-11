@@ -46,6 +46,7 @@ public class AuthorizationCacheUtils {
                 return;
             }
             if (userLink != null) {
+                System.out.println("Clearing authz cache for userLink:" + userLink);
                 s.getHost().clearAuthorizationContext(s, userLink);
             }
             op.complete();
@@ -89,6 +90,7 @@ public class AuthorizationCacheUtils {
                             return;
                         }
                         for (String userLink : result.documentLinks) {
+                            System.out.println("Clearing authz cache for userLink(UserGroup):" + userLink);
                             s.getHost().clearAuthorizationContext(s, userLink);
                         }
                         op.complete();
@@ -131,6 +133,7 @@ public class AuthorizationCacheUtils {
                             return;
                         }
                         UserGroupState userGroupState = getOp.getBody(UserGroupState.class);
+                        System.out.println("Clearing userGroup: " + userGroupState.documentSelfLink);
                         clearAuthzCacheForUserGroup(s, op, userGroupState);
                         op.complete();
                     });
@@ -197,6 +200,7 @@ public class AuthorizationCacheUtils {
                             RoleState roleState = Utils.fromJson(doc, RoleState.class);
                             Operation roleOp = new Operation();
                             roleOp.setCompletion(handler);
+                            System.out.println("Clearing role: " + roleState.documentSelfLink);
                             clearAuthzCacheForRole(s, roleOp, roleState);
                             roleOp.complete();
                         }
@@ -225,6 +229,7 @@ public class AuthorizationCacheUtils {
             break;
         case DELETE:
             // for deletes, a replicated request has the body passed in as part of the request
+            System.out.println("received delete request for: " + request.getUri());
             if (request.isFromReplication() && request.hasBody()) {
                 state = request.getBody(clazz);
             } else {
