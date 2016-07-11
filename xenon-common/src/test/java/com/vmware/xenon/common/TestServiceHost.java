@@ -1406,6 +1406,8 @@ public class TestServiceHost {
                     ServiceStat pauseStat = statsPerInstance.entries.get(Service.STAT_NAME_PAUSE_COUNT);
                     ServiceStat resumeStat = statsPerInstance.entries.get(Service.STAT_NAME_RESUME_COUNT);
                     if (pauseStat == null || resumeStat == null) {
+                        this.host.log("pauseStat is %s. resumeStat is %s",
+                                String.valueOf(pauseStat), String.valueOf(resumeStat));
                         return false;
                     }
                 }
@@ -1416,6 +1418,10 @@ public class TestServiceHost {
                 if (mgmtPauseStat == null || mgmtResumeStat == null ||
                         (int)mgmtPauseStat.latestValue < states.size() ||
                         (int)mgmtPauseStat.latestValue < states.size()) {
+                    this.host.log("mgmtPauseStat is %s. mgmtResumeStat is %s, states %s",
+                            mgmtPauseStat != null ? String.valueOf((int)mgmtPauseStat.latestValue) : "null",
+                            mgmtResumeStat != null ? String.valueOf((int)mgmtResumeStat.latestValue) : "null",
+                            String.valueOf(states.size()));
                     return false;
                 }
 

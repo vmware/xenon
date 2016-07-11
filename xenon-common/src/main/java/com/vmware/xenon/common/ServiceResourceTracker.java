@@ -321,6 +321,8 @@ class ServiceResourceTracker {
                 }
             }
 
+            this.host.log(Level.INFO, "Registering service to be paused %s", service.getSelfLink());
+
             Service existing = this.pendingPauseServices.put(service.getSelfLink(), service);
             if (existing == null) {
                 pauseServiceCount++;
@@ -346,6 +348,8 @@ class ServiceResourceTracker {
             hostState.serviceCount = this.attachedServices.size();
         }
 
+        this.host.log(Level.INFO, "Total services supposed to be paused: %d",
+                this.pendingPauseServices.size());
         pauseServices();
     }
 
@@ -362,7 +366,9 @@ class ServiceResourceTracker {
             }
 
             try {
+                this.host.log(Level.INFO, "Pausing service: %s", s.getSelfLink());
                 s.setProcessingStage(ProcessingStage.PAUSED);
+                this.host.log(Level.INFO, "Paused service successfully: %s", s.getSelfLink());
             } catch (Throwable e) {
                 this.host.log(Level.INFO, "Failure setting stage to %s for %s: %s",
                         ProcessingStage.PAUSED,
