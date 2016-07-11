@@ -1058,9 +1058,7 @@ public class LuceneDocumentIndexService extends StatelessService {
             String indexLink,
             boolean hasPage) {
 
-        URI u = UriUtils.buildUri(getHost(), UriUtils.buildUriPath(
-                ServiceUriPaths.CORE,
-                "query-page",
+        URI u = UriUtils.buildUri(getHost(), UriUtils.buildUriPath(ServiceUriPaths.CORE_QUERY_PAGE,
                 Utils.getNowMicrosUtc() + ""));
 
         // the page link must point to this node, since the index searcher and results have been

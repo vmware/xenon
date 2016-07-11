@@ -69,8 +69,10 @@ public class ODataQueryService extends StatelessService {
                             UriUtils.URI_PARAM_ODATA_NODE)));
             return;
         }
+
         URI u = UriUtils.buildUri(getHost(),
-                UriUtils.buildUriPath(ServiceUriPaths.CORE, "query-page", skipTo + ""));
+                UriUtils.buildUriPath(ServiceUriPaths.CORE_QUERY_PAGE, skipTo + ""));
+
         URI forwarderUri = UriUtils.buildForwardToPeerUri(u, node,
                 ServiceUriPaths.DEFAULT_NODE_SELECTOR, EnumSet.noneOf(ServiceOption.class));
         String nextLink = forwarderUri.getPath() + UriUtils.URI_QUERY_CHAR

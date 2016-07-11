@@ -66,6 +66,9 @@ public class ServiceUriPaths {
     public static final String CORE_QUERY_TASKS = UriUtils.buildUriPath(ServiceUriPaths.CORE,
             "query-tasks");
 
+    public static final String CORE_QUERY_PAGE = UriUtils.buildUriPath(ServiceUriPaths.CORE,
+            "query-page");
+
     public static final String CORE_GRAPH_QUERIES = UriUtils.buildUriPath(ServiceUriPaths.CORE,
             "graph-queries");
 
