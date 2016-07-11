@@ -5095,9 +5095,17 @@ public class ServiceHost implements ServiceRequestSender {
         }
         synchronized (this.state) {
             Set<String> tokenSet = this.userLinktoTokenMap.get(userLink);
+
+            log(Level.INFO,
+                    "AA: clear called: id=" + this.getId() + " port=" + this.getPort() + " tokenSize="
+                            + (tokenSet == null ? -99 : tokenSet.size()));
+
             if (tokenSet != null) {
-                for (String token :tokenSet) {
-                    this.authorizationContextCache.remove(token);
+                for (String token : tokenSet) {
+                    AuthorizationContext removed = this.authorizationContextCache.remove(token);
+                    if (removed != null) {
+                        log(Level.INFO, "AA: token deleted on " + this.getId());
+                    }
                 }
             }
             this.userLinktoTokenMap.remove(userLink);
