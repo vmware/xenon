@@ -40,6 +40,7 @@ import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
+import java.util.logging.Logger;
 
 import io.netty.handler.ssl.util.SelfSignedCertificate;
 import org.junit.After;
@@ -93,6 +94,8 @@ public class TestServiceHost {
     public int indexFileThreshold = 100;
 
     public long serviceCacheClearDelaySeconds = 2;
+
+    public long iterationCount = 1;
 
     @Rule
     public TemporaryFolder tmpFolder = new TemporaryFolder();
@@ -1293,6 +1296,14 @@ public class TestServiceHost {
     }
 
     @Test
+    public void verifyMemoryPressure() throws Throwable {
+        for (int i = 0; i < this.iterationCount; i++) {
+            Logger.getAnonymousLogger().info("Iteration: " + i);
+            servicePauseDueToMemoryPressure();
+            tearDown();
+        }
+    }
+
     public void servicePauseDueToMemoryPressure() throws Throwable {
         setUp(true);
 
@@ -1402,12 +1413,20 @@ public class TestServiceHost {
 
         if (this.testDurationSeconds == 0) {
             this.host.waitFor("Service stats did not get updated", () -> {
-                for (ServiceStats statsPerInstance : stats.values()) {
-                    ServiceStat pauseStat = statsPerInstance.entries.get(Service.STAT_NAME_PAUSE_COUNT);
-                    ServiceStat resumeStat = statsPerInstance.entries.get(Service.STAT_NAME_RESUME_COUNT);
+                boolean missing = false;
+                for (Entry<String, ServiceStats> statsPerInstance : stats.entrySet()) {
+                    ServiceStat pauseStat = statsPerInstance.getValue().entries.get(Service.STAT_NAME_PAUSE_COUNT);
+                    ServiceStat resumeStat = statsPerInstance.getValue().entries.get(Service.STAT_NAME_RESUME_COUNT);
                     if (pauseStat == null || resumeStat == null) {
-                        return false;
+                        this.host.log("pauseStat is %s. resumeStat is %s. ServiceLink: ",
+                                String.valueOf(pauseStat), String.valueOf(resumeStat),
+                                statsPerInstance.getKey());
+                        missing = true;
                     }
+                }
+
+                if (missing) {
+                    return false;
                 }
 
                 Map<String, ServiceStat> mgmtStats = getManagementServiceStats();
@@ -1416,6 +1435,10 @@ public class TestServiceHost {
                 if (mgmtPauseStat == null || mgmtResumeStat == null ||
                         (int)mgmtPauseStat.latestValue < states.size() ||
                         (int)mgmtPauseStat.latestValue < states.size()) {
+                    this.host.log("mgmtPauseStat is %s. mgmtResumeStat is %s, states %s",
+                            mgmtPauseStat != null ? String.valueOf((int)mgmtPauseStat.latestValue) : "null",
+                            mgmtResumeStat != null ? String.valueOf((int)mgmtResumeStat.latestValue) : "null",
+                            String.valueOf(states.size()));
                     return false;
                 }
 
