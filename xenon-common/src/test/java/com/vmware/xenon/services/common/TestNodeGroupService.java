@@ -1806,6 +1806,17 @@ public class TestNodeGroupService {
         groupHost.resetSystemAuthorizationContext();
         // delete the role associated with user foo; this should clear out the authz cache entry
         Collection<VerificationHost> peerHosts = this.host.getInProcessHostMap().values();
+        Function<VerificationHost, Throwable> errorFunc = (opHost) -> {
+            try {
+                opHost.sendAndWaitExpectSuccess(
+                        Operation.createGet(UriUtils.buildUri(opHost, authHelperForFoo.getRoleLink())));
+            } catch (Throwable t) {
+                System.out.println("Service does not exist");
+                return null;
+            }
+            System.out.println("Service " + authHelperForFoo.getRoleLink() + "exists");
+            return null;
+        };
         invokeOperation(peerHosts, fooUserLink,
                 (opHost) -> {
                     try {
@@ -1815,8 +1826,19 @@ public class TestNodeGroupService {
                         return t;
                     }
                     return null;
-                });
+                }, errorFunc);
         // delete the user group associated with the user
+        errorFunc = (opHost) -> {
+            try {
+                opHost.sendAndWaitExpectSuccess(
+                        Operation.createGet(UriUtils.buildUri(opHost, authHelperForFoo.getUserGroupLink())));
+            } catch (Throwable t) {
+                System.out.println("Service does not exist");
+                return null;
+            }
+            System.out.println("Service " + authHelperForFoo.getRoleLink() + "exists");
+            return null;
+        };
         invokeOperation(peerHosts, fooUserLink,
                 (opHost) -> {
                     try {
@@ -1826,7 +1848,7 @@ public class TestNodeGroupService {
                         return t;
                     }
                     return null;
-                });
+                }, errorFunc);
 
         // next, assume identity as bar@foo.com, create a new role and associate it with the user bar
         invokeOperation(peerHosts, barUserLink,
@@ -1845,7 +1867,7 @@ public class TestNodeGroupService {
                         return t;
                     }
                     return null;
-                });
+                }, null);
         // delete the user group for foobar@foo.com.
         // Updating the resource group should be able to handle the fact that the user group does not exist
         invokeOperation(peerHosts, barUserLink,
@@ -1870,7 +1892,7 @@ public class TestNodeGroupService {
                         return t;
                     }
                     return null;
-                });
+                }, null);
         // patch the userservice
         invokeOperation(peerHosts, fooUserLink,
                 (opHost) -> {
@@ -1885,8 +1907,19 @@ public class TestNodeGroupService {
                         return t;
                     }
                     return null;
-                });
+                }, null);
         // finally, delete the user service; the authz cache should be cleared
+        errorFunc = (opHost) -> {
+            try {
+                opHost.sendAndWaitExpectSuccess(
+                        Operation.createGet(UriUtils.buildUri(groupHost, fooUserLink)));
+            } catch (Throwable t) {
+                System.out.println("Service does not exist");
+                return null;
+            }
+            System.out.println("Service " + authHelperForFoo.getRoleLink() + "exists");
+            return null;
+        };
         invokeOperation(peerHosts, fooUserLink,
                 (opHost) -> {
                     try {
@@ -1896,19 +1929,19 @@ public class TestNodeGroupService {
                         return t;
                     }
                     return null;
-                });
+                }, errorFunc);
     }
 
     // helper method to invoke the specified Function object as the system user and
     // validate if the authz caches have been invalidated after
     private void invokeOperation(Collection<VerificationHost> peerHosts, String userLink,
-            Function<VerificationHost, Throwable> func) throws Throwable {
+            Function<VerificationHost, Throwable> func, Function<VerificationHost, Throwable> checkOnError) throws Throwable {
         VerificationHost groupHost = peerHosts.iterator().next();
         AuthorizationContext authContext = groupHost.assumeIdentity(userLink);
         groupHost.sendAndWaitExpectSuccess(
                 Operation.createGet(UriUtils.buildUri(groupHost, ExampleService.FACTORY_LINK)));
         this.host.waitFor("Timeout waiting for correct auth cache state",
-                () -> checkCache(peerHosts, authContext.getToken(), true));
+                () -> checkCache(peerHosts, authContext.getToken(), true, checkOnError));
         groupHost.setSystemAuthorizationContext();
         Throwable result = func.apply(groupHost);
         if (result != null) {
@@ -1916,11 +1949,13 @@ public class TestNodeGroupService {
         }
         groupHost.resetSystemAuthorizationContext();
         this.host.waitFor("Timeout waiting for correct auth cache state",
-                () -> checkCache(peerHosts, authContext.getToken(), false));
+                () -> checkCache(peerHosts, authContext.getToken(), false, checkOnError));
     }
 
     // helper method to check if the authz cache is in the expected state
-    private boolean checkCache(Collection<VerificationHost> peerHosts, String token, boolean expectEntries) throws Throwable {
+    private boolean checkCache(Collection<VerificationHost> peerHosts, String token, boolean expectEntries,
+            Function<VerificationHost, Throwable> checkOnError) throws Throwable {
+        VerificationHost groupHost = peerHosts.iterator().next();
         boolean contextFound = false;
         for (VerificationHost host : peerHosts) {
             host.setSystemAuthorizationContext();
@@ -1935,6 +1970,9 @@ public class TestNodeGroupService {
         if (expectEntries && contextFound) {
             return true;
         } else if (!expectEntries && !contextFound) {
+            if (checkOnError != null) {
+                checkOnError.apply(groupHost);
+            }
             return true;
         }
         return false;

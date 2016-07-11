@@ -52,6 +52,9 @@ public class UserService extends StatefulService {
     public void handleRequest(Operation request, OperationProcessingStage opProcessingStage) {
         if (request.getAction() == Action.DELETE || request.getAction() == Action.PUT ||
                 request.getAction() == Action.PATCH) {
+            if (request.getAction() == Action.DELETE) {
+                System.out.println("Delete request received for " + request.getUri());
+            }
             UserState userState = null;
             if (request.isFromReplication() && request.hasBody()) {
                 userState = getBody(request);
