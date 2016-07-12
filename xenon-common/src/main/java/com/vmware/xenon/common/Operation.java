@@ -1156,6 +1156,15 @@ public class Operation implements Cloneable {
                     Operation.MEDIA_TYPE_APPLICATION_JSON);
         }
 
+        if (this.statusCode > STATUS_CODE_SERVER_FAILURE_THRESHOLD) {
+            // log server failures
+            if (e != null) {
+                Utils.logWarning("%s:%s", Utils.toString(e), toString());
+            } else {
+                Utils.logWarning("No Exception provided:%s", toString());
+            }
+        }
+
         completeOrFail(e);
     }
 
