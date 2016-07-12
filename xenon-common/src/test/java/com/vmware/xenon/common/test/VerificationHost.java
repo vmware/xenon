@@ -956,6 +956,24 @@ public class VerificationHost extends ExampleServiceHost {
         return this.getServiceState(null, ServiceDocumentQueryResult.class, factoryUri);
     }
 
+    public Map<String, ServiceStat> getServiceStats(URI serviceUri) throws Throwable {
+        Map<String, ServiceStat> stats = Collections.synchronizedMap(new HashMap<>());
+        this.testStart(1);
+        Operation getStats = Operation.createGet(UriUtils.buildStatsUri(serviceUri))
+                .setCompletion((o, e) -> {
+                    if (e != null) {
+                        this.failIteration(e);
+                        return;
+                    }
+                    ServiceStats response = o.getBody(ServiceStats.class);
+                    stats.putAll(response.entries);
+                    this.completeIteration();
+                });
+        this.send(getStats);
+        this.testWait();
+        return stats;
+    }
+
     public void doExampleServiceUpdateAndQueryByVersion(URI hostUri, int serviceCount)
             throws Throwable {
         Consumer<Operation> bodySetter = (o) -> {
