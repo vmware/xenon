@@ -94,6 +94,10 @@ public class ServiceUriPaths {
     public static final String CORE_AUTHN = UriUtils.buildUriPath(ServiceUriPaths.CORE, "authn");
     public static final String CORE_AUTHN_BASIC = UriUtils.buildUriPath(ServiceUriPaths.CORE_AUTHN,
             "basic");
+    public static final String CORE_AUTHN_VERIFY = UriUtils.buildUriPath(ServiceUriPaths.CORE_AUTHN,
+            "verify");
+    public static final String CORE_AUTHN_CONFIG = UriUtils.buildUriPath(ServiceUriPaths.CORE_AUTHN,
+            "config");
 
     public static final String CORE_TRANSACTIONS = UriUtils.buildUriPath(ServiceUriPaths.CORE,
             "transactions");

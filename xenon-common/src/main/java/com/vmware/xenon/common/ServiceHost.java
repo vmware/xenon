@@ -518,6 +518,8 @@ public class ServiceHost implements ServiceRequestSender {
     private AuthorizationContext systemAuthorizationContext;
     private AuthorizationContext guestAuthorizationContext;
 
+    protected Claims externalClaimsData ;
+
     protected ServiceHost() {
         this.state = new ServiceHostState();
         this.state.id = UUID.randomUUID().toString();
@@ -3005,7 +3007,65 @@ public class ServiceHost implements ServiceRequestSender {
         return;
     }
 
+    /**
+     * doVerification creates a POST request to the respective auth verifier service
+     * and sends the auth token as a header. Since we need the operation to be run synchronously,
+     * we add a CountDownLatch.
+     *
+     * NOTE : Currently the verification service is completely synchronous hence this logic works.
+     *        When a support for new auth provider is added, ensure that its verification service
+     *        is also synchronous else this will simply return back a null claims data.
+     */
+    public void doVerificationSynchronously(String authToken , String authProvider) {
+        String targetURI = UriUtils.buildUriPath(
+                ServiceUriPaths.CORE_AUTHN_VERIFY, authProvider);
+        CountDownLatch verificationComplete = new CountDownLatch(1);
+        Operation postRequest = Operation.createPost(UriUtils.buildUri(this , targetURI))
+                .setReferer(this.getUri())
+                .setBody(new Object())
+                .addRequestHeader("token" , authToken)
+                .setCompletion((authOp ,authEx) -> {
+                    if (authEx != null) {
+                        log(Level.WARNING, "Error verifying the token : %s" ,
+                                Utils.toString(authEx));
+                        this.externalClaimsData = null;
+                        verificationComplete.countDown();
+                        return ;
+                    }
+                    if (authOp.getStatusCode() != Operation.STATUS_CODE_OK) {
+                        this.externalClaimsData = null;
+                        verificationComplete.countDown();
+                        return;
+                    }
+                    this.externalClaimsData = authOp.getBody(Claims.class);
+                    verificationComplete.countDown();
+                    return ;
+                });
+        sendRequest(postRequest);
+
+        try {
+            verificationComplete.await();
+        } catch (InterruptedException e) {
+            log(Level.INFO, "Timeout waiting for verification request to %s",
+                    postRequest.getUri().getPath());
+        }
+    }
+
+    /**
+     * Using doVerificationSynchronously method we get the claims data from the verifier service
+     * If any error occurred while verifying the token and getting required
+     * data, simply return null.
+     * @return Claims
+     */
+    public Claims externalProviderVerification(String authToken, String authProvider) {
+
+        this.externalClaimsData = null ;
+        doVerificationSynchronously(authToken , authProvider);
+        return this.externalClaimsData;
+    }
+
     AuthorizationContext getAuthorizationContext(Operation op) {
+        String authType = op.getRequestHeader(Operation.AUTH_TYPE_HEADER);
         String token = op.getRequestHeader(Operation.REQUEST_AUTH_TOKEN_HEADER);
         if (token == null) {
             Map<String, String> cookies = op.getCookies();
@@ -3015,6 +3075,9 @@ public class ServiceHost implements ServiceRequestSender {
             token = cookies.get(AuthenticationConstants.REQUEST_AUTH_TOKEN_COOKIE);
         }
 
+        if (authType == null) {
+            authType = "Basic" ;
+        }
         if (token == null) {
             return null;
         }
@@ -3024,7 +3087,11 @@ public class ServiceHost implements ServiceRequestSender {
         try {
             Claims claims = null;
             if (ctx == null) {
-                claims = this.getTokenVerifier().verify(token, Claims.class);
+                if (!authType.matches("Basic")) {
+                    claims = externalProviderVerification(token , authType.toLowerCase());
+                } else {
+                    claims = this.getTokenVerifier().verify(token, Claims.class);
+                }
             } else {
                 claims = ctx.getClaims();
             }
