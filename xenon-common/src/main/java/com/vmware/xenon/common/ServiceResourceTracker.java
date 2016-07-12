@@ -93,6 +93,11 @@ class ServiceResourceTracker {
     private final Map<String, ServiceDocument> cachedServiceStates = new ConcurrentHashMap<>();
 
     /**
+     * TODO: document
+     */
+    private final ConcurrentHashMap<String, Long> lastAccessTimes = new ConcurrentHashMap<>();
+
+    /**
      * Tracks cached service state. Cleared periodically during maintenance
      */
     private final Map<CachedServiceStateKey, ServiceDocument> cachedTransactionalServiceStates = new ConcurrentHashMap<>();
@@ -114,6 +119,9 @@ class ServiceResourceTracker {
     }
 
     public void updateCachedServiceState(Service s, ServiceDocument st, Operation op) {
+
+        updateLastAccessTime(s);
+
         if (!isTransactional(op)) {
             synchronized (s.getSelfLink()) {
                 ServiceDocument cachedState = this.cachedServiceStates.put(s.getSelfLink(), st);
@@ -134,6 +142,14 @@ class ServiceResourceTracker {
                 this.cachedTransactionalServiceStates.put(key, cachedState);
             }
         }
+    }
+
+    public void updateLastAccessTime(Service s) {
+        String servicePath = s.getSelfLink();
+        if (servicePath == null) {
+            return;
+        }
+        this.lastAccessTimes.put(servicePath, Utils.getNowMicrosUtc());
     }
 
     public ServiceDocument getCachedServiceState(String servicePath, Operation op) {
@@ -193,6 +209,9 @@ class ServiceResourceTracker {
     }
 
     public void clearCachedServiceState(String servicePath, Operation op) {
+
+        this.lastAccessTimes.remove(servicePath);
+
         if (!isTransactional(op)) {
             ServiceDocument doc = this.cachedServiceStates.remove(servicePath);
             Service s = this.host.findService(servicePath, true);
@@ -272,13 +291,17 @@ class ServiceResourceTracker {
                     continue;
                 }
 
-                if ((hostState.serviceCacheClearDelayMicros + s.documentUpdateTimeMicros) < now) {
+                Long lastAccessTime = this.lastAccessTimes.get(s.documentSelfLink);
+                if (lastAccessTime == null) {
+                    lastAccessTime = s.documentUpdateTimeMicros;
+                }
+
+                if ((hostState.serviceCacheClearDelayMicros + lastAccessTime) < now) {
                     clearCachedServiceState(service.getSelfLink(), null);
                     cacheCleared = true;
                 }
 
-                if (hostState.lastMaintenanceTimeUtcMicros
-                        - s.documentUpdateTimeMicros < service
+                if (hostState.lastMaintenanceTimeUtcMicros - lastAccessTime < service
                                 .getMaintenanceIntervalMicros() * 2) {
                     // Skip pause for services that have been active within a maintenance interval
                     continue;

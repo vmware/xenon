@@ -3478,6 +3478,8 @@ public class ServiceHost implements ServiceRequestSender {
 
             if (!s.queueRequest(op)) {
                 Runnable r = () -> {
+                    this.serviceResourceTracker.updateLastAccessTime(s);
+
                     OperationContext opCtx = extractAndApplyContext(op);
                     try {
                         s.handleRequest(op);
