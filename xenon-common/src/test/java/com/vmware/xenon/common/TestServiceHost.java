@@ -1625,6 +1625,111 @@ public class TestServiceHost {
     }
 
     @Test
+    public void onDemandServiceStopCheckWithReadAndWriteAccess() throws Throwable {
+        setUp(true);
+
+        long maintenanceIntervalMicros = TimeUnit.MILLISECONDS.toMicros(100);
+
+        // induce host to stop ON_DEMAND_SERVICE more often by setting maintenance interval short
+        this.host.setMaintenanceIntervalMicros(maintenanceIntervalMicros);
+        this.host.setServiceCacheClearDelayMicros(maintenanceIntervalMicros / 2);
+        this.host.start();
+
+        // Start some test services with ServiceOption.ON_DEMAND_LOAD
+        EnumSet<ServiceOption> caps = EnumSet.of(ServiceOption.PERSISTENCE,
+                ServiceOption.INSTRUMENTATION, ServiceOption.ON_DEMAND_LOAD,
+                ServiceOption.FACTORY_ITEM);
+
+        MinimalFactoryTestService factoryService = new MinimalFactoryTestService();
+        factoryService.setChildServiceCaps(caps);
+        this.host.startServiceAndWait(factoryService, "/service", null);
+
+        // create a ON_DEMAND_LOAD
+        MinimalTestServiceState initialState = new MinimalTestServiceState();
+        initialState.id = "foo";
+        initialState.documentSelfLink = "/foo";
+        Operation startPost = Operation
+                .createPost(UriUtils.buildUri(this.host, "/service"))
+                .setBody(initialState);
+        this.host.sendAndWaitExpectSuccess(startPost);
+
+        String servicePath = "/service/foo";
+
+        // wait for the service to be paused
+        // This also verifies that ON_DEMAND_LOAD service will stop while it is idle for some duration
+        this.host.waitFor("Waiting ON_DEMAND_SERVICE to be stopped",
+                () -> this.host.getServiceStage(servicePath) == null
+        );
+
+        int requestCount = 10;
+        int requestDelay = 50;
+        TimeUnit delayUnit = TimeUnit.MILLISECONDS;
+
+        // send 10 GET request 50ms apart to make service receive GET request during a couple
+        // of maintenance windows
+        long estimatedGetRequestFinishTime =
+                Utils.getNowMicrosUtc() + delayUnit.toMicros(requestDelay * requestCount);
+        TestContext testContestForGet = this.host.testCreate(requestCount);
+        for (int i = 0; i < requestCount; i++) {
+            this.host.schedule(() -> {
+                Operation get = Operation.createGet(this.host, servicePath)
+                        .setCompletion(this.host.getSafeHandler(testContestForGet, (o, e) -> {
+                        }));
+                try {
+                    this.host.send(get);
+                } catch (Throwable t) {
+                    fail("Received throwable: %s" + Utils.toString(t));
+                }
+            }, i * requestDelay, delayUnit);
+        }
+
+        testContestForGet.await();
+        this.host.waitFor("Waiting ON_DEMAND_SERVICE to be stopped",
+                () -> this.host.getServiceStage(servicePath) == null
+        );
+
+        URI managementServiceUri = this.host.getManagementServiceUri();
+        ServiceStat stopCount = this.host.getServiceStats(managementServiceUri)
+                .get(Service.STAT_NAME_ODL_STOP_COUNT);
+        assertTrue("ON_DEMAND_SERVICE should be stopped after GET requests",
+                estimatedGetRequestFinishTime < stopCount.lastUpdateMicrosUtc);
+
+        // send 10 update request 50ms apart to make service receive PATCH request during a couple
+        // of maintenance windows
+        long estimatedPatchRequestFinishTime =
+                Utils.getNowMicrosUtc() + delayUnit.toMicros(requestDelay * requestCount);
+        TestContext testContestForPatch = this.host.testCreate(requestCount);
+        for (int i = 0; i < requestCount; i++) {
+            String id = "foo-" + i;
+            this.host.schedule(() -> {
+                MinimalTestServiceState body = new MinimalTestServiceState();
+                body.id = id;
+                Operation patch = Operation
+                        .createPatch(UriUtils.buildUri(this.host, servicePath))
+                        .setBody(body)
+                        .setCompletion(this.host.getSafeHandler(testContestForPatch, (o, e) -> {
+                        }));
+                try {
+                    this.host.send(patch);
+                } catch (Throwable t) {
+                    fail("Received throwable: %s" + Utils.toString(t));
+                }
+            }, i * requestDelay, delayUnit);
+        }
+
+        testContestForPatch.await();
+        // wait for the service to be stopped
+        this.host.waitFor("Waiting ON_DEMAND_SERVICE to be stopped",
+                () -> this.host.getServiceStage(servicePath) == null
+        );
+
+        stopCount = this.host.getServiceStats(managementServiceUri)
+                .get(Service.STAT_NAME_ODL_STOP_COUNT);
+        assertTrue("ON_DEMAND_SERVICE should be stopped after UPDATE requests",
+                estimatedPatchRequestFinishTime < stopCount.lastUpdateMicrosUtc);
+    }
+
+    @Test
     public void thirdPartyClientPost() throws Throwable {
         setUp(false);
         this.host.waitForServiceAvailable(ExampleService.FACTORY_LINK);
