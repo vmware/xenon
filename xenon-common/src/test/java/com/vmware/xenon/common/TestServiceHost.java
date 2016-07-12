@@ -1625,6 +1625,118 @@ public class TestServiceHost {
     }
 
     @Test
+    public void onDemandServiceStopCheckWithReadAndWriteAccess() throws Throwable {
+        setUp(true);
+
+        long maintenanceIntervalMicros = TimeUnit.MILLISECONDS.toMicros(100);
+
+        // induce host to stop ON_DEMAND_SERVICE more often by setting maintenance interval short
+        this.host.setMaintenanceIntervalMicros(maintenanceIntervalMicros);
+        this.host.setServiceCacheClearDelayMicros(maintenanceIntervalMicros / 2);
+        this.host.start();
+
+        // Start some test services with ServiceOption.ON_DEMAND_LOAD
+        EnumSet<ServiceOption> caps = EnumSet.of(ServiceOption.PERSISTENCE,
+                ServiceOption.INSTRUMENTATION, ServiceOption.ON_DEMAND_LOAD,
+                ServiceOption.FACTORY_ITEM);
+
+        MinimalFactoryTestService factoryService = new MinimalFactoryTestService();
+        factoryService.setChildServiceCaps(caps);
+        this.host.startServiceAndWait(factoryService, "/service", null);
+
+        // create a ON_DEMAND_LOAD
+        MinimalTestServiceState initialState = new MinimalTestServiceState();
+        initialState.id = "foo";
+        initialState.documentSelfLink = "/foo";
+        Operation startPost = Operation
+                .createPost(UriUtils.buildUri(this.host, "/service"))
+                .setBody(initialState);
+        this.host.sendAndWaitExpectSuccess(startPost);
+
+        String servicePath = "/service/foo";
+
+        // wait for the service to be paused and stat to be populated
+        // This also verifies that ON_DEMAND_LOAD service will stop while it is idle for some duration
+        this.host.waitFor("Waiting ON_DEMAND_LOAD service to be stopped",
+                () -> this.host.getServiceStage(servicePath) == null
+                        && getLastODLStopUpdateTime() != null
+        );
+        long lastODLStopTime = getLastODLStopUpdateTime().lastUpdateMicrosUtc;
+
+        int requestCount = 10;
+        int requestDelayMills = 40;
+
+        // Keep the time right before sending the last request.
+        // Use this time to check the service was not stopped at this moment. Since we keep
+        // sending the request with 40ms apart, when last request has sent, service should not
+        // be stopped(within maintenance window and cacheclear delay).
+        long beforeLastRequestSentTime = 0;
+
+        // send 10 GET request 40ms apart to make service receive GET request during a couple
+        // of maintenance windows
+        TestContext testContextForGet = this.host.testCreate(requestCount);
+        for (int i = 0; i < requestCount; i++) {
+            Operation get = Operation.createGet(this.host, servicePath)
+                    .setCompletion(this.host.getSafeHandler(testContextForGet, (o, e) -> {
+                    }));
+            beforeLastRequestSentTime = Utils.getNowMicrosUtc();
+            this.host.send(get);
+            Thread.sleep(requestDelayMills);
+        }
+
+        testContextForGet.await();
+        this.host.waitFor("Waiting ON_DEMAND_LOAD service to be stopped",
+                () -> {
+                    long currentStopTime = getLastODLStopUpdateTime().lastUpdateMicrosUtc;
+                    return lastODLStopTime < currentStopTime
+                            && this.host.getServiceStage(servicePath) == null;
+                }
+        );
+
+        long afterGetODLStopTime = getLastODLStopUpdateTime().lastUpdateMicrosUtc;
+        long delta = afterGetODLStopTime - beforeLastRequestSentTime;
+        assertTrue("ON_DEMAND_LOAD service should be stopped after GET requests. delta=" + delta,
+                beforeLastRequestSentTime < afterGetODLStopTime);
+
+        // send 10 update request 40ms apart to make service receive PATCH request during a couple
+        // of maintenance windows
+        TestContext testContextForPatch = this.host.testCreate(requestCount);
+        for (int i = 0; i < requestCount; i++) {
+            MinimalTestServiceState body = new MinimalTestServiceState();
+            body.id = "foo-" + i;
+            Operation patch = Operation
+                    .createPatch(UriUtils.buildUri(this.host, servicePath))
+                    .setBody(body)
+                    .setCompletion(this.host.getSafeHandler(testContextForPatch, (o, e) -> {
+                    }));
+            beforeLastRequestSentTime = Utils.getNowMicrosUtc();
+            this.host.send(patch);
+            Thread.sleep(requestDelayMills);
+        }
+
+        testContextForPatch.await();
+        // wait for the service to be stopped
+        this.host.waitFor("Waiting ON_DEMAND_LOAD service to be stopped",
+                () -> {
+                    long currentStopTime = getLastODLStopUpdateTime().lastUpdateMicrosUtc;
+                    return afterGetODLStopTime < currentStopTime
+                            && this.host.getServiceStage(servicePath) == null;
+                }
+        );
+
+        long afterPatchODLStopTime = getLastODLStopUpdateTime().lastUpdateMicrosUtc;
+        delta = afterPatchODLStopTime - beforeLastRequestSentTime;
+        assertTrue("ON_DEMAND_LOAD service should be stopped after UPDATE requests. delta=" + delta,
+                beforeLastRequestSentTime < afterPatchODLStopTime);
+    }
+
+    private ServiceStat getLastODLStopUpdateTime() throws Throwable {
+        URI managementServiceUri = this.host.getManagementServiceUri();
+        return this.host.getServiceStats(managementServiceUri)
+                .get(Service.STAT_NAME_ODL_STOP_COUNT);
+    }
+
+    @Test
     public void thirdPartyClientPost() throws Throwable {
         setUp(false);
         this.host.waitForServiceAvailable(ExampleService.FACTORY_LINK);

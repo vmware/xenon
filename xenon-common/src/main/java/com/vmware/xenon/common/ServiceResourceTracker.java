@@ -16,6 +16,7 @@ package com.vmware.xenon.common;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
@@ -93,6 +94,11 @@ class ServiceResourceTracker {
     private final Map<String, ServiceDocument> cachedServiceStates = new ConcurrentHashMap<>();
 
     /**
+     * Tracks last access time for non active transactional stateful services
+     */
+    private final ConcurrentMap<String, Long> statefulServiceLastAccessTimes = new ConcurrentHashMap<>();
+
+    /**
      * Tracks cached service state. Cleared periodically during maintenance
      */
     private final Map<CachedServiceStateKey, ServiceDocument> cachedTransactionalServiceStates = new ConcurrentHashMap<>();
@@ -136,12 +142,22 @@ class ServiceResourceTracker {
         }
     }
 
+    /**
+     * called only for stateful services
+     */
     public ServiceDocument getCachedServiceState(String servicePath, Operation op) {
+
         ServiceDocument state = null;
         if (isTransactional(op)) {
             CachedServiceStateKey key = new CachedServiceStateKey(servicePath,
                     op.getTransactionId());
             state = this.cachedTransactionalServiceStates.get(key);
+        } else {
+            // update lastAccessTime for get/put/patch/... except POST.
+            // If service has only had POST called, the entry will not be populated in this map, but
+            // eviction logic fallbacks to check service.documentUpdateTimeMicros as lastAccessTime.
+            // This cache is only for nonactive transactions.
+            this.statefulServiceLastAccessTimes.put(servicePath, Utils.getNowMicrosUtc());
         }
 
         if (state == null) {
@@ -193,7 +209,11 @@ class ServiceResourceTracker {
     }
 
     public void clearCachedServiceState(String servicePath, Operation op) {
+
         if (!isTransactional(op)) {
+            // lastAccessTime cache is only used for non active transactions
+            this.statefulServiceLastAccessTimes.remove(servicePath);
+
             ServiceDocument doc = this.cachedServiceStates.remove(servicePath);
             Service s = this.host.findService(servicePath, true);
             if (s == null) {
@@ -272,13 +292,17 @@ class ServiceResourceTracker {
                     continue;
                 }
 
-                if ((hostState.serviceCacheClearDelayMicros + s.documentUpdateTimeMicros) < now) {
+                Long lastAccessTime = this.statefulServiceLastAccessTimes.get(s.documentSelfLink);
+                if (lastAccessTime == null) {
+                    lastAccessTime = s.documentUpdateTimeMicros;
+                }
+
+                if ((hostState.serviceCacheClearDelayMicros + lastAccessTime) < now) {
                     clearCachedServiceState(service.getSelfLink(), null);
                     cacheCleared = true;
                 }
 
-                if (hostState.lastMaintenanceTimeUtcMicros
-                        - s.documentUpdateTimeMicros < service
+                if (hostState.lastMaintenanceTimeUtcMicros - lastAccessTime < service
                                 .getMaintenanceIntervalMicros() * 2) {
                     // Skip pause for services that have been active within a maintenance interval
                     continue;
