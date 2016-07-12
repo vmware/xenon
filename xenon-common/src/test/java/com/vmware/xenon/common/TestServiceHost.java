@@ -1379,37 +1379,35 @@ public class TestServiceHost {
             o.setBody(s);
         };
 
+        // Create a number of child services.
         URI factoryURI = UriUtils.buildFactoryUri(this.host, ExampleService.class);
-
         Map<URI, ExampleServiceState> states = this.host.doFactoryChildServiceStart(null,
                 this.serviceCount,
                 ExampleServiceState.class, bodySetter, factoryURI);
 
-        // while pausing, issue updates to verify behavior under load. Services should either abort pause,
-        // or be ignored due to recent update
+        // Wait for the next maintenance interval to trigger. This will pause all the services
+        // we just created since the memory limit was set so low.
+        long expectedPauseTime = Utils.getNowMicrosUtc() + this.host.getMaintenanceIntervalMicros() * 5;
+        while (this.host.getState().lastMaintenanceTimeUtcMicros < expectedPauseTime) {
+            // memory limits are applied during maintenance, so wait for a few intervals.
+            Thread.sleep(this.host.getMaintenanceIntervalMicros() / 1000);
+        }
+
+        // Let's now issue some updates to verify paused services get resumed.
         int updateCount = 100;
         if (this.testDurationSeconds > 0 || this.host.isStressTest()) {
             updateCount = 1;
         }
         patchExampleServices(states, updateCount);
 
-        long expectedPauseTime = Utils.getNowMicrosUtc() + this.host.getMaintenanceIntervalMicros()
-                * 5;
-        while (this.host.getState().lastMaintenanceTimeUtcMicros < expectedPauseTime) {
-            // memory limits are applied during maintenance, so wait for a few intervals.
-            Thread.sleep(this.host.getMaintenanceIntervalMicros() / 1000);
-        }
-
-        // restore memory limit so we don't keep re-pausing/resuming services every time we talk to them.
-        // In addition, if we try to get the stats from a service that was just scheduled for pause, the pause will
-        // be cancelled, causing a test false negative (no pauses observed)
+        // Let's set the service memory limit back to normal and issue more updates to ensure
+        // that the services still continue to operate as expected.
         this.host
                 .setServiceMemoryLimit(ServiceHost.ROOT_PATH, ServiceHost.DEFAULT_PCT_MEMORY_LIMIT);
+        patchExampleServices(states, updateCount);
 
-        // services should all be paused now since we set the host memory limit so low. Send requests to
-        // prove resume worked. We will then verify the per stats to make sure both pause and resume actually occurred
-        patchExampleServices(states, 1);
-
+        // Let's now query stats for each service. We will use these stats to verify that the
+        // services did get paused and resumed.
         Map<String, ServiceStats> stats = Collections.synchronizedMap(new HashMap<>());
         this.host.testStart(states.size() * 2);
         for (ExampleServiceState st : states.values()) {
@@ -1449,26 +1447,27 @@ public class TestServiceHost {
         this.host.testWait();
 
         if (this.testDurationSeconds == 0) {
-            this.host.waitFor("Service stats did not get updated", () -> {
-                for (ServiceStats statsPerInstance : stats.values()) {
-                    ServiceStat pauseStat = statsPerInstance.entries.get(Service.STAT_NAME_PAUSE_COUNT);
-                    ServiceStat resumeStat = statsPerInstance.entries.get(Service.STAT_NAME_RESUME_COUNT);
-                    if (pauseStat == null || resumeStat == null) {
-                        return false;
-                    }
-                }
+            for (Entry<String, ServiceStats> statsPerInstance : stats.entrySet()) {
+                Map<String, ServiceStat> serviceStats = statsPerInstance.getValue().entries;
 
-                Map<String, ServiceStat> mgmtStats = getManagementServiceStats();
-                ServiceStat mgmtPauseStat = mgmtStats.get(Service.STAT_NAME_SERVICE_PAUSE_COUNT);
-                ServiceStat mgmtResumeStat = mgmtStats.get(Service.STAT_NAME_SERVICE_RESUME_COUNT);
-                if (mgmtPauseStat == null || mgmtResumeStat == null ||
-                        (int)mgmtPauseStat.latestValue < states.size() ||
-                        (int)mgmtPauseStat.latestValue < states.size()) {
-                    return false;
-                }
+                ServiceStat pauseStat = serviceStats.get(Service.STAT_NAME_PAUSE_COUNT);
+                assertNotNull(String.format("pauseStat was null for %s", statsPerInstance.getKey()), pauseStat);
 
-                return true;
-            });
+                ServiceStat resumeStat = serviceStats.get(Service.STAT_NAME_RESUME_COUNT);
+                assertNotNull(String.format("resumeStat was null for %s", statsPerInstance.getKey()), resumeStat);
+            }
+
+            Map<String, ServiceStat> mgmtStats = getManagementServiceStats();
+
+            ServiceStat mgmtPauseStat = mgmtStats.get(Service.STAT_NAME_SERVICE_PAUSE_COUNT);
+            assertTrue(String.format("ManagementSvc pauseStat was not set as expected %s",
+                            mgmtPauseStat == null ? "null" : String.valueOf(mgmtPauseStat.latestValue)),
+                    mgmtPauseStat != null && (int) mgmtPauseStat.latestValue >= states.size());
+
+            ServiceStat mgmtResumeStat = mgmtStats.get(Service.STAT_NAME_SERVICE_PAUSE_COUNT);
+            assertTrue(String.format("ManagementSvc resumeStat was not set as expected %s",
+                            mgmtResumeStat == null ? "null" : String.valueOf(mgmtResumeStat.latestValue)),
+                    mgmtResumeStat != null && (int)mgmtResumeStat.latestValue >= states.size());
         }
 
         states.clear();
