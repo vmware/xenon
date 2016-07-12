@@ -1620,6 +1620,82 @@ public class TestServiceHost {
     }
 
     @Test
+    public void onDemandServiceStopCheckWithReadAndWriteAccess() throws Throwable {
+        setUp(true);
+
+        long maintenanceIntervalMicros = TimeUnit.MILLISECONDS.toMicros(100);
+
+        // induce host to stop ON_DEMAND_SERVICE more often by setting maintenance interval short
+        this.host.setMaintenanceIntervalMicros(maintenanceIntervalMicros);
+        this.host.setServiceCacheClearDelayMicros(maintenanceIntervalMicros / 2);
+        this.host.start();
+
+        // Start some test services with ServiceOption.ON_DEMAND_LOAD
+        EnumSet<ServiceOption> caps = EnumSet.of(ServiceOption.PERSISTENCE,
+                ServiceOption.INSTRUMENTATION, ServiceOption.ON_DEMAND_LOAD,
+                ServiceOption.FACTORY_ITEM);
+
+        MinimalFactoryTestService factoryService = new MinimalFactoryTestService();
+        factoryService.setChildServiceCaps(caps);
+        this.host.startServiceAndWait(factoryService, "/service", null);
+
+        // create a ON_DEMAND_SERVICE
+        MinimalTestServiceState initialState = new MinimalTestServiceState();
+        initialState.id = "foo";
+        initialState.documentSelfLink = "/foo";
+        Operation startPost = Operation
+                .createPost(UriUtils.buildUri(this.host, "/service"))
+                .setBody(initialState);
+        this.host.sendAndWaitExpectSuccess(startPost);
+
+        // wait for the service to be paused
+        long expectedPauseTime = Utils.getNowMicrosUtc() + maintenanceIntervalMicros * 5;
+        while (this.host.getState().lastMaintenanceTimeUtcMicros < expectedPauseTime) {
+            Thread.sleep(this.host.getMaintenanceIntervalMicros() / 1000);
+        }
+
+        URI managementServiceUri = this.host.getManagementServiceUri();
+        ServiceStat stopCount = this.host.getServiceStats(managementServiceUri)
+                .get(Service.STAT_NAME_ODL_STOP_COUNT);
+
+        assertNotNull("ON_DEMAND_LOAD service should have stopped", stopCount);
+        assertEquals("ON_DEMAND_LOAD service should have stopped only once", 1,
+                (int) stopCount.latestValue);
+
+        // keep hitting the service for the duration that service will stop if no activities happen
+        expectedPauseTime = Utils.getNowMicrosUtc() + maintenanceIntervalMicros * 5;
+        while (this.host.getState().lastMaintenanceTimeUtcMicros < expectedPauseTime) {
+            this.host.getServiceState(null, ExampleServiceState.class,
+                    UriUtils.buildUri(this.host, "/service/foo"));
+        }
+
+        stopCount = this.host.getServiceStats(managementServiceUri)
+                .get(Service.STAT_NAME_ODL_STOP_COUNT);
+        assertEquals(
+                "While ON_DEMAND_SERVICE is getting READ access, service should not be stopped", 1,
+                (int) stopCount.latestValue);
+
+        // keep updating the service for the duration that service will stop if no activities happen
+        expectedPauseTime = Utils.getNowMicrosUtc() + maintenanceIntervalMicros * 5;
+        int i = 0;
+        while (this.host.getState().lastMaintenanceTimeUtcMicros < expectedPauseTime) {
+            MinimalTestServiceState body = new MinimalTestServiceState();
+            body.id = "foo-" + i++;
+
+            Operation patch = Operation
+                    .createPatch(UriUtils.buildUri(this.host, "/service/foo"))
+                    .setBody(body);
+            this.host.sendAndWaitExpectSuccess(patch);
+        }
+
+        stopCount = this.host.getServiceStats(managementServiceUri)
+                .get(Service.STAT_NAME_ODL_STOP_COUNT);
+
+        assertEquals("While ON_DEMAND_SERVICE is getting UPDATE, service should not be stopped", 1,
+                (int) stopCount.latestValue);
+    }
+
+    @Test
     public void thirdPartyClientPost() throws Throwable {
         setUp(false);
         this.host.waitForServiceAvailable(ExampleService.FACTORY_LINK);
