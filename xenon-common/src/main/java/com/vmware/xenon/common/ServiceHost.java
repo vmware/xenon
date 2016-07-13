@@ -87,6 +87,7 @@ import com.vmware.xenon.common.jwt.JWTUtils;
 import com.vmware.xenon.common.jwt.Signer;
 import com.vmware.xenon.common.jwt.Verifier;
 import com.vmware.xenon.common.jwt.Verifier.TokenException;
+import com.vmware.xenon.common.net.Request;
 import com.vmware.xenon.services.common.AuthCredentialsService;
 import com.vmware.xenon.services.common.AuthorizationContextService;
 import com.vmware.xenon.services.common.ConsistentHashingNodeSelectorService;
@@ -3807,14 +3808,14 @@ public class ServiceHost implements ServiceRequestSender {
         }
     }
 
-    public static boolean isServiceCreate(Operation op) {
-        return op.getAction() == Action.POST
-                && op.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_CREATED);
+    public static boolean isServiceCreate(Request request) {
+        return request.getAction() == Action.POST
+                && request.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_CREATED);
     }
 
-    public static boolean isServiceStop(Operation op) {
-        return op.getAction() == Action.DELETE
-                && op.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_NO_INDEX_UPDATE);
+    public static boolean isServiceStop(Request request) {
+        return request.getAction() == Action.DELETE
+                && request.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_NO_INDEX_UPDATE);
     }
 
     /**

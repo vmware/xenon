@@ -25,4 +25,12 @@
        <Class name="com.vmware.xenon.services.common.ServiceHostManagementService"/>
        <Method name="handleDelete"/>
      </Match>
+
+     <!-- Findbugs reports that we pass null value here, while it is expected to be non-null -->
+     <!-- We do it intentionally as the type of the attribute is Void -->
+     <Match>
+       <Bug pattern="NP_NULL_PARAM_DEREF_NONVIRTUAL"/>
+       <Class name="com.vmware.xenon.common.EmptyPromise"/>
+       <Method name="complete"/>
+     </Match>
 </FindBugsFilter>

@@ -13,16 +13,18 @@
 
 package com.vmware.xenon.services.samples;
 
+import com.vmware.xenon.common.DefaultPromise;
 import com.vmware.xenon.common.FactoryService;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.OperationProcessingChain;
+import com.vmware.xenon.common.Promise;
 import com.vmware.xenon.common.RequestRouter;
 import com.vmware.xenon.common.Service;
 import com.vmware.xenon.common.ServiceDocument;
-import com.vmware.xenon.common.StatefulService;
+import com.vmware.xenon.common.SimpleStateAwareRequestsHandler;
 import com.vmware.xenon.services.common.ServiceUriPaths;
 
-public class BankAccountService extends StatefulService {
+public class BankAccountService extends SimpleStateAwareRequestsHandler<BankAccountService.BankAccountServiceState> {
 
     public static final String FACTORY_LINK = ServiceUriPaths.SAMPLES + "/bank-accounts";
 
@@ -76,13 +78,8 @@ public class BankAccountService extends StatefulService {
     }
 
     @Override
-    public void handleStart(Operation start) {
-        try {
-            validateState(start);
-            start.complete();
-        } catch (Exception e) {
-            start.fail(e);
-        }
+    public Promise<BankAccountServiceState> handleStart(BankAccountServiceState initialState) {
+        return DefaultPromise.completed(initialState).thenApply(this::validateState);
     }
 
     void handlePatchForDeposit(Operation patch) {
@@ -111,15 +108,15 @@ public class BankAccountService extends StatefulService {
         patch.complete();
     }
 
-    private void validateState(Operation start) {
-        if (!start.hasBody()) {
+    private BankAccountServiceState validateState(BankAccountServiceState state) {
+        if (state == null) {
             throw new IllegalArgumentException("attempt to initialize service with an empty state");
         }
 
-        BankAccountServiceState state = start.getBody(BankAccountServiceState.class);
         if (state.balance < 0) {
             throw new IllegalArgumentException("balance cannot be negative");
         }
+        return state;
     }
 
 }

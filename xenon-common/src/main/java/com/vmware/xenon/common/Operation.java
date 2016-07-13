@@ -31,6 +31,8 @@ import javax.security.cert.X509Certificate;
 
 import com.vmware.xenon.common.Service.Action;
 import com.vmware.xenon.common.ServiceDocumentDescription.Builder;
+import com.vmware.xenon.common.net.Request;
+import com.vmware.xenon.common.net.Response;
 import com.vmware.xenon.services.common.QueryFilter;
 import com.vmware.xenon.services.common.QueryTask.Query;
 import com.vmware.xenon.services.common.SystemUserService;
@@ -39,7 +41,7 @@ import com.vmware.xenon.services.common.SystemUserService;
  * Service operation container. Encapsulates the request / response pattern of client to service and
  * service to service asynchronous communication
  */
-public class Operation implements Cloneable {
+public class Operation implements Cloneable, Request, Response {
 
     /**
      * Portion of serialized JSON body string to include in {@code toString}
@@ -749,6 +751,7 @@ public class Operation implements Cloneable {
         }
     }
 
+    @Override
     public boolean isRemote() {
         return this.remoteCtx != null && this.remoteCtx.socketCtx != null;
     }
@@ -759,6 +762,7 @@ public class Operation implements Cloneable {
         return this;
     }
 
+    @Override
     public AuthorizationContext getAuthorizationContext() {
         return this.authorizationCtx;
     }
@@ -777,6 +781,7 @@ public class Operation implements Cloneable {
         return this;
     }
 
+    @Override
     public String getTransactionId() {
         return this.transactionId;
     }
@@ -786,10 +791,12 @@ public class Operation implements Cloneable {
         return this;
     }
 
+    @Override
     public boolean isWithinTransaction() {
         return this.transactionId != null;
     }
 
+    @Override
     public String getContextId() {
         return this.contextId;
     }
@@ -823,25 +830,18 @@ public class Operation implements Cloneable {
      * @param body
      * @return
      */
+    // @Override -- This is from XenonResponse
     public Operation setBodyNoCloning(Object body) {
         this.body = body;
         return this;
     }
 
-    /**
-     * Deserializes the body associated with the operation, given the type.
-     *
-     * Note: This method is *not* idempotent. It will modify the body contents
-     * so subsequent calls will not have access to the original instance. This
-     * occurs only for local operations, not operations that have a serialized
-     * body already attached (in the form of a JSON string).
-     *
-     * If idempotent behavior is desired, use {@link #getBodyRaw}
-     */
-    @SuppressWarnings("unchecked")
+    @Override
     public <T> T getBody(Class<T> type) {
         if (this.body != null && this.body.getClass() == type) {
-            return (T) this.body;
+            @SuppressWarnings("unchecked")
+            T typedBody = (T) this.body;
+            return typedBody;
         }
 
         if (this.body != null && !(this.body instanceof String)) {
@@ -876,38 +876,49 @@ public class Operation implements Cloneable {
                         "Unrecognized Content-Type for parsing request body: " +
                                 this.contentType);
             }
-            return (T) this.body;
+
+            @SuppressWarnings("unchecked")
+            T typedBody = (T) this.body;
+            return typedBody;
         }
 
         throw new IllegalStateException();
     }
 
+    @Override
     public Object getBodyRaw() {
         return this.body;
     }
 
+    @Override
     public long getContentLength() {
         return this.contentLength;
     }
 
+    @Override
     public Operation setContentLength(long l) {
         this.contentLength = l;
         return this;
     }
 
+    @Override
     public String getContentType() {
         return this.contentType;
     }
 
+    @Override
     public Operation setContentType(String type) {
         this.contentType = type;
         return this;
     }
 
-    public void setCookies(Map<String, String> cookies) {
+    @Override
+    public Operation setCookies(Map<String, String> cookies) {
         this.cookies = cookies;
+        return this;
     }
 
+    @Override
     public Map<String, String> getCookies() {
         return this.cookies;
     }
@@ -967,11 +978,13 @@ public class Operation implements Cloneable {
         return this.completion;
     }
 
+    @Override
     public Operation setUri(URI uri) {
         this.uri = uri;
         return this;
     }
 
+    @Override
     public URI getUri() {
         return this.uri;
     }
@@ -1002,11 +1015,13 @@ public class Operation implements Cloneable {
         return this.linkedSerializedState != null;
     }
 
+    @Override
     public Operation setReferer(URI uri) {
         this.referer = uri;
         return this;
     }
 
+    @Override
     public Operation setReferer(String uri) {
         this.referer = uri;
         return this;
@@ -1017,10 +1032,12 @@ public class Operation implements Cloneable {
         return this;
     }
 
+    @Override
     public boolean hasReferer() {
         return this.referer != null;
     }
 
+    @Override
     public URI getReferer() {
         if (this.referer == null) {
             return null;
@@ -1035,6 +1052,7 @@ public class Operation implements Cloneable {
         return (URI) this.referer;
     }
 
+    @Override
     public String getRefererAsString() {
         if (this.referer == null) {
             return null;
@@ -1046,15 +1064,18 @@ public class Operation implements Cloneable {
         }
     }
 
+    @Override
     public Operation setAction(Action action) {
         this.action = action;
         return this;
     }
 
+    @Override
     public Action getAction() {
         return this.action;
     }
 
+    @Override
     public long getId() {
         return this.id;
     }
@@ -1187,6 +1208,7 @@ public class Operation implements Cloneable {
         OperationContext.setFrom(originalContext);
     }
 
+    @Override
     public boolean hasBody() {
         return this.body != null;
     }
@@ -1239,6 +1261,7 @@ public class Operation implements Cloneable {
         return this;
     }
 
+    @Override
     public Operation addRequestHeader(String name, String value) {
         allocateRemoteContext();
         allocateRequestHeaders();
@@ -1247,6 +1270,7 @@ public class Operation implements Cloneable {
         return this;
     }
 
+    @Override
     public Operation addResponseHeader(String name, String value) {
         allocateRemoteContext();
         allocateResponseHeaders();
@@ -1264,6 +1288,7 @@ public class Operation implements Cloneable {
         return this;
     }
 
+    @Override
     public Operation addPragmaDirective(String directive) {
         allocateRemoteContext();
         directive = directive.toLowerCase();
@@ -1279,9 +1304,7 @@ public class Operation implements Cloneable {
         return this;
     }
 
-    /**
-     * Checks if a directive is present. Lower case strings must be used.
-     */
+    @Override
     public boolean hasPragmaDirective(String directive) {
         String existingDirectives = getRequestHeader(PRAGMA_HEADER);
         if (existingDirectives != null
@@ -1291,9 +1314,7 @@ public class Operation implements Cloneable {
         return false;
     }
 
-    /**
-     * Removes a directive. Lower case strings must be used
-     */
+    @Override
     public Operation removePragmaDirective(String directive) {
         allocateRemoteContext();
         String existingDirectives = getRequestHeader(PRAGMA_HEADER);
@@ -1403,9 +1424,9 @@ public class Operation implements Cloneable {
     }
 
     /**
-     * Prefer using {@link #getRequestHeader(String)} for retrieving entries
-     * and {@link #addRequestHeader(String, String)} for adding entries.
+     * @see Request#getRequestHeaders
      */
+    @Override
     public Map<String, String> getRequestHeaders() {
         allocateRemoteContext();
         allocateRequestHeaders();
@@ -1416,20 +1437,24 @@ public class Operation implements Cloneable {
      * Prefer using {@link #getResponseHeader(String)} for retrieving entries
      * and {@link #addResponseHeader(String, String)} for adding entries.
      */
+    @Override
     public Map<String, String> getResponseHeaders() {
         allocateRemoteContext();
         allocateResponseHeaders();
         return this.remoteCtx.responseHeaders;
     }
 
+    @Override
     public boolean hasResponseHeaders() {
         return this.remoteCtx != null && this.remoteCtx.responseHeaders != null;
     }
 
+    @Override
     public boolean hasRequestHeaders() {
         return this.remoteCtx != null && this.remoteCtx.requestHeaders != null;
     }
 
+    @Override
     public String getRequestHeader(String headerName) {
         if (this.remoteCtx == null) {
             return null;
@@ -1464,19 +1489,23 @@ public class Operation implements Cloneable {
         return value;
     }
 
+    @Override
     public Principal getPeerPrincipal() {
         return this.remoteCtx == null ? null : this.remoteCtx.peerPrincipal;
     }
 
+    @Override
     public X509Certificate[] getPeerCertificateChain() {
         return this.remoteCtx == null ? null : this.remoteCtx.peerCertificateChain;
     }
 
-    public void setPeerCertificates(Principal peerPrincipal, X509Certificate[] certificates) {
+    @Override
+    public Operation setPeerCertificates(Principal peerPrincipal, X509Certificate[] certificates) {
         if (this.remoteCtx != null) {
             this.remoteCtx.peerPrincipal = peerPrincipal;
             this.remoteCtx.peerCertificateChain = certificates;
         }
+        return this;
     }
 
     /**
@@ -1519,39 +1548,20 @@ public class Operation implements Cloneable {
         return this;
     }
 
-    /**
-     * Infrastructure use only.
-     *
-     * Value indicating whether this operation was created to apply locally a remote update
-     */
+    @Override
     public boolean isFromReplication() {
         return hasOption(OperationOption.REPLICATED);
     }
 
-    /**
-     * Infrastructure use only
-     */
+    @Override
     public Operation setConnectionSharing(boolean enable) {
         toggleOption(OperationOption.CONNECTION_SHARING, enable);
         return this;
     }
 
-    /**
-     * Infrastructure use only.
-     *
-     * Value indicating whether this operation is sharing a connection
-     */
+    @Override
     public boolean isConnectionSharing() {
         return hasOption(OperationOption.CONNECTION_SHARING);
-    }
-
-    /**
-     * Infrastructure use only.
-     *
-     * Value indicating whether this operation was forwarded from a peer node
-     */
-    public boolean isForwarded() {
-        return this.hasPragmaDirective(PRAGMA_DIRECTIVE_FORWARDED);
     }
 
     public String getRequestCallbackLocation() {
@@ -1561,14 +1571,6 @@ public class Operation implements Cloneable {
 
         return this.remoteCtx.requestHeaders
                 .get(REQUEST_CALLBACK_LOCATION_HEADER);
-    }
-
-    public String getResponseCallbackStatus() {
-        if (this.remoteCtx == null || this.remoteCtx.responseHeaders == null) {
-            return null;
-        }
-        return this.remoteCtx.requestHeaders
-                .get(RESPONSE_CALLBACK_STATUS_HEADER);
     }
 
     public Operation removeRequestCallbackLocation() {
@@ -1584,14 +1586,6 @@ public class Operation implements Cloneable {
         allocateRequestHeaders();
         this.remoteCtx.requestHeaders.put(REQUEST_CALLBACK_LOCATION_HEADER,
                 location == null ? null : location);
-        return this;
-    }
-
-    public Operation setResponseCallbackStatus(int status) {
-        allocateRemoteContext();
-        allocateRequestHeaders();
-        this.remoteCtx.requestHeaders.put(RESPONSE_CALLBACK_STATUS_HEADER,
-                Integer.toString(status));
         return this;
     }
 
@@ -1659,6 +1653,7 @@ public class Operation implements Cloneable {
         return this;
     }
 
+    @Override
     public boolean isNotification() {
         return hasPragmaDirective(PRAGMA_DIRECTIVE_NOTIFICATION);
     }
@@ -1690,5 +1685,53 @@ public class Operation implements Cloneable {
      */
     void linkSerializedState(byte[] data) {
         this.linkedSerializedState = data;
+    }
+
+    /**
+     * Infrastructure use only.
+     * Returns the operation associated with this request.
+     * @param request
+     * @return
+     */
+    static Operation fromRequest(Request request) {
+        Operation operation;
+        if (request instanceof Operation) {
+            operation = (Operation) request;
+        } else {
+            // TODO
+            throw new IllegalStateException("Not supported for now ...");
+        }
+        return operation;
+    }
+
+    /**
+     * Infrastructure use only.
+     * Applies the response to this operation.
+     * @param response
+     * @return
+     */
+    void applyResponse(Response response) {
+        if (this == response) {
+            return;
+        }
+        Response r = this;
+        r.setBody(response.getBodyRaw());
+        r.setContentLength(response.getContentLength());
+        r.setContentType(response.getContentType());
+        if (response.hasResponseHeaders()) {
+            r.getResponseHeaders().clear();
+            r.getResponseHeaders().putAll(response.getResponseHeaders());
+        }
+    }
+
+    @Override
+    public Response createResponse() {
+        return this;
+    }
+
+    @Override
+    public <T extends ServiceDocument> StatefulResponse<T> createResponse(T state) {
+        Response response = createResponse();
+        return new StatefulResponse<T>(state, response);
     }
 }
