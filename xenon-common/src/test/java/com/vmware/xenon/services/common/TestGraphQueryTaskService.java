@@ -190,8 +190,20 @@ public class TestGraphQueryTaskService extends BasicTestCase {
         };
         verifyNStageResult(finalState, true, resultCounts);
 
-        // test direct task, same parameters
+        // direct task, same parameters
         finalState = createMultiStageRecursiveTask(stageCount, true);
+        logGraphQueryThroughput(finalState);
+        verifyNStageResult(finalState, true, resultCounts);
+
+        QueryTask finishedFirstStage = Utils.clone(finalState.stages.get(0));
+        // indirect task, same parameters, initial stage has results
+        initialState = createMultiStageRecursiveTask(stageCount, finishedFirstStage, false);
+        finalState = waitForTask(initialState);
+        logGraphQueryThroughput(finalState);
+        verifyNStageResult(finalState, true, resultCounts);
+
+        // direct task, same parameters, initial stage has results
+        finalState = createMultiStageRecursiveTask(stageCount, finishedFirstStage, true);
         logGraphQueryThroughput(finalState);
         verifyNStageResult(finalState, true, resultCounts);
     }
