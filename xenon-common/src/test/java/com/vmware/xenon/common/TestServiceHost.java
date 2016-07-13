@@ -43,7 +43,6 @@ import java.util.function.Consumer;
 
 import io.netty.handler.ssl.util.SelfSignedCertificate;
 import org.junit.After;
-import org.junit.Ignore;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
@@ -1537,7 +1536,6 @@ public class TestServiceHost {
         }
     }
 
-    @Ignore("https://www.pivotaltracker.com/story/show/121861443")
     @Test
     public void maintenanceForOnDemandLoadServices() throws Throwable {
         setUp(true);
@@ -1551,56 +1549,63 @@ public class TestServiceHost {
         this.host.setServiceCacheClearDelayMicros(maintenanceIntervalMicros / 2);
         this.host.start();
 
-        // Start some test services with ServiceOption.ON_DEMAND_LOAD
         EnumSet<ServiceOption> caps = EnumSet.of(ServiceOption.PERSISTENCE,
                 ServiceOption.INSTRUMENTATION, ServiceOption.ON_DEMAND_LOAD, ServiceOption.FACTORY_ITEM);
-        List<Service> services = this.host.doThroughputServiceStart(this.serviceCount,
-                MinimalTestService.class, this.host.buildMinimalTestState(), caps, null);
 
-        // Also, start the factory service. it will need it to start services on-demand
+        // Start the factory service. it will be needed to start services on-demand
         MinimalFactoryTestService factoryService = new MinimalFactoryTestService();
         factoryService.setChildServiceCaps(caps);
         this.host.startServiceAndWait(factoryService, "service", null);
 
-        // guarantee at least a few intervals have passed.
+        // Start some test services with ServiceOption.ON_DEMAND_LOAD
+        List<Service> services = this.host.doThroughputServiceStart(this.serviceCount,
+                MinimalTestService.class, this.host.buildMinimalTestState(), caps, null);
+
+        // guarantee at least a few maintenance intervals have passed.
         Thread.sleep(maintenanceIntervalMillis * 10);
 
         // Let's verify now that all of the services have stopped by now.
-        int stoppedCount = 0;
-        Date exp = this.host.getTestExpiration();
-        while (new Date().before(exp)) {
-            stoppedCount = 0;
+        this.host.waitFor("Service stats did not get updated", () -> {
+            int stoppedCount = 0;
             for (Service svc : services) {
                 MinimalTestService service = (MinimalTestService) svc;
                 if (service.gotStopped) {
                     stoppedCount++;
                 }
             }
+
             if (stoppedCount < this.serviceCount) {
-                Thread.sleep(maintenanceIntervalMillis / 2);
-                continue;
+                this.host.log("StoppedCount %d is less than expected %d", stoppedCount, this.serviceCount);
+                return false;
             }
 
             Map<String, ServiceStat> stats = this.host.getServiceStats(this.host.getManagementServiceUri());
             ServiceStat odlStops = stats.get(Service.STAT_NAME_ODL_STOP_COUNT);
-            ServiceStat odlCacheClears = stats.get(Service.STAT_NAME_ODL_CACHE_CLEAR_COUNT);
-            ServiceStat cacheClears = stats.get(Service.STAT_NAME_SERVICE_CACHE_CLEAR_COUNT);
-            if (odlStops == null || odlStops.latestValue != this.serviceCount) {
-                Thread.sleep(maintenanceIntervalMillis / 2);
-                continue;
+            if (odlStops == null || odlStops.latestValue < this.serviceCount) {
+                this.host.log("ODL Service Stops %s were less than expected %d",
+                        odlStops == null ? "null" : String.valueOf(odlStops.latestValue),
+                        this.serviceCount);
+                return false;
             }
-            if (odlCacheClears == null || odlStops.latestValue != this.serviceCount) {
-                Thread.sleep(maintenanceIntervalMillis / 2);
-                continue;
-            }
-            if (cacheClears == null || cacheClears.latestValue != this.serviceCount) {
-                Thread.sleep(maintenanceIntervalMillis / 2);
-                continue;
-            }
-            return;
-        }
 
-        throw new TimeoutException();
+            ServiceStat odlCacheClears = stats.get(Service.STAT_NAME_ODL_CACHE_CLEAR_COUNT);
+            if (odlCacheClears == null || odlCacheClears.latestValue < this.serviceCount) {
+                this.host.log("ODL Service Cache Clears %s were less than expected %d",
+                        odlCacheClears == null ? "null" : String.valueOf(odlCacheClears.latestValue),
+                        this.serviceCount);
+                return false;
+            }
+
+            ServiceStat cacheClears = stats.get(Service.STAT_NAME_SERVICE_CACHE_CLEAR_COUNT);
+            if (cacheClears == null || cacheClears.latestValue < this.serviceCount) {
+                this.host.log("Service Cache Clears %s were less than expected %d",
+                        cacheClears == null ? "null" : String.valueOf(cacheClears.latestValue),
+                        this.serviceCount);
+                return false;
+            }
+
+            return true;
+        });
     }
 
     private void patchExampleServices(Map<URI, ExampleServiceState> states, int count)
