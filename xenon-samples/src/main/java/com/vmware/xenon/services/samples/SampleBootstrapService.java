@@ -14,6 +14,8 @@
 package com.vmware.xenon.services.samples;
 
 import java.net.URI;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.logging.Level;
 
 import com.vmware.xenon.common.FactoryService;
@@ -85,17 +87,17 @@ public class SampleBootstrapService extends StatefulService {
             // POST will be issued multiple times but will be converted to PUT after the first one.
             ServiceDocument doc = new ServiceDocument();
             doc.documentSelfLink = "preparation-task";
-            Operation.createPost(host, SampleBootstrapService.FACTORY_LINK)
+            Operation prepareTask = Operation.createPost(host, SampleBootstrapService.FACTORY_LINK)
                     .setBody(doc)
-                    .setReferer(host.getUri())
-                    .setCompletion((oo, ee) -> {
-                        if (ee != null) {
-                            host.log(Level.SEVERE, Utils.toString(ee));
-                            return;
+                    .setReferer(host.getUri());
+            host.sendRequest(prepareTask, Void.class)
+                    .whenComplete((ignore, ex) -> {
+                        if (ex != null) {
+                            host.log(Level.SEVERE, Utils.toString(ex));
+                        } else {
+                            host.log(Level.INFO, "preparation-task triggered");
                         }
-                        host.log(Level.INFO, "preparation-task triggered");
-                    })
-                    .sendWith(host);
+                    });
 
         };
     }
@@ -117,7 +119,15 @@ public class SampleBootstrapService extends StatefulService {
             return;
         }
 
-        createAdminIfNotExist(getHost(), post);
+        checkIfAdminUserExists()
+                .thenCompose(this::createAdminUserIfNeeded)
+                .whenComplete((ignore, ex) -> {
+                    if (ex != null) {
+                        post.fail(ex instanceof CompletionException ? ex.getCause() : ex);
+                    } else {
+                        post.complete();
+                    }
+                });
     }
 
     @Override
@@ -134,8 +144,7 @@ public class SampleBootstrapService extends StatefulService {
         put.fail(Operation.STATUS_CODE_BAD_METHOD);
     }
 
-    private void createAdminIfNotExist(ServiceHost host, Operation post) {
-
+    private CompletableFuture<Boolean> checkIfAdminUserExists() {
         // Simple version of AuthorizationSetupHelper.
         // Prefer using TaskService for complex bootstrap logic.
 
@@ -148,55 +157,44 @@ public class SampleBootstrapService extends StatefulService {
                 .setQuery(userQuery)
                 .build();
 
-        URI queryTaskUri = UriUtils.buildUri(host, ServiceUriPaths.CORE_QUERY_TASKS);
+        URI queryTaskUri = UriUtils.buildUri(getHost(), ServiceUriPaths.CORE_QUERY_TASKS);
+        return sendRequest(Operation.createPost(queryTaskUri).setBody(queryTask), QueryTask.class)
+                .exceptionally(ex -> {
+                    String msg = String.format("Could not query user %s: %s", ADMIN_EMAIL, ex);
+                    throw new IllegalStateException(msg, ex);
+                })
+                .thenApply(queryResponse -> {
+                    boolean userExists = queryResponse.results.documentLinks != null
+                            && !queryResponse.results.documentLinks.isEmpty();
+                    if (userExists) {
+                        logInfo("User %s already exists, skipping setup of user", ADMIN_EMAIL);
+                    }
+                    return userExists;
+                });
+    }
 
-        CompletionHandler userCreationCallback = (op, ex) -> {
-            if (ex != null) {
-                String msg = String.format("Could not make user %s: %s", ADMIN_EMAIL, ex);
-                post.fail(new IllegalStateException(msg, ex));
-                return;
-            }
+    private CompletableFuture<Void> createAdminUserIfNeeded(boolean userExists) {
+        if (userExists) {
+            logInfo("User %s already exists, skipping setup of user", ADMIN_EMAIL);
+            return CompletableFuture.completedFuture(null); // NO-OP
+        }
 
-            host.log(Level.INFO, "User %s has been created", ADMIN_EMAIL);
-            post.complete();
-        };
+        // create user
+        UserState user = new UserState();
+        user.email = ADMIN_EMAIL;
+        user.documentSelfLink = ADMIN_EMAIL;
 
-        CompletionHandler queryUserCallback = (op, ex) -> {
-            if (ex != null) {
-                String msg = String.format("Could not query user %s: %s", ADMIN_EMAIL, ex);
-                post.fail(new IllegalStateException(msg, ex));
-                return;
-            }
-
-            QueryTask queryResponse = op.getBody(QueryTask.class);
-            boolean userExists = queryResponse.results.documentLinks != null
-                    && !queryResponse.results.documentLinks.isEmpty();
-
-            if (userExists) {
-                host.log(Level.INFO, "User %s already exists, skipping setup of user", ADMIN_EMAIL);
-                post.complete();
-                return;
-            }
-
-            // create user
-            UserState user = new UserState();
-            user.email = ADMIN_EMAIL;
-            user.documentSelfLink = ADMIN_EMAIL;
-
-            URI userFactoryUri = UriUtils.buildUri(host, ServiceUriPaths.CORE_AUTHZ_USERS);
-            Operation.createPost(userFactoryUri)
-                    .setBody(user)
-                    .addRequestHeader(Operation.REPLICATION_QUORUM_HEADER,
-                            Operation.REPLICATION_QUORUM_HEADER_VALUE_ALL)
-                    .setCompletion(userCreationCallback)
-                    .sendWith(this);
-        };
-
-        Operation.createPost(queryTaskUri)
-                .setBody(queryTask)
-                .setCompletion(queryUserCallback)
-                .sendWith(this);
-
+        URI userFactoryUri = UriUtils.buildUri(getHost(), ServiceUriPaths.CORE_AUTHZ_USERS);
+        Operation createUserOp = Operation.createPost(userFactoryUri)
+                .setBody(user)
+                .addRequestHeader(Operation.REPLICATION_QUORUM_HEADER,
+                        Operation.REPLICATION_QUORUM_HEADER_VALUE_ALL);
+        return sendRequest(createUserOp, UserState.class)
+                .exceptionally(ex -> {
+                    String msg = String.format("Could not make user %s: %s", ADMIN_EMAIL, ex);
+                    throw new IllegalStateException(msg, ex);
+                })
+                .thenRun(() -> logInfo("User %s has been created", ADMIN_EMAIL));
     }
 
 }

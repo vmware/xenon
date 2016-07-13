@@ -16,13 +16,13 @@ package com.vmware.xenon.services.samples;
 import com.vmware.xenon.common.FactoryService;
 import com.vmware.xenon.common.Service;
 import com.vmware.xenon.common.ServiceDocument;
-import com.vmware.xenon.common.StatefulService;
+import com.vmware.xenon.common.TypedStatefulService;
 import com.vmware.xenon.services.common.ServiceUriPaths;
 
 /**
  * Simplest version of echo service: Records a message (PUT); returns it when asked (GET).
  */
-public class SampleSimpleEchoService extends StatefulService {
+public class SampleSimpleEchoService extends TypedStatefulService<SampleSimpleEchoService.EchoServiceState> {
     public static final String FACTORY_LINK = ServiceUriPaths.SAMPLES + "/echoes";
 
     public static Service createFactory() {

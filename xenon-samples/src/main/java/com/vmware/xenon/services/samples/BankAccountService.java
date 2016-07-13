@@ -13,16 +13,18 @@
 
 package com.vmware.xenon.services.samples;
 
+import java.util.concurrent.CompletableFuture;
+
 import com.vmware.xenon.common.FactoryService;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.OperationProcessingChain;
 import com.vmware.xenon.common.RequestRouter;
 import com.vmware.xenon.common.Service;
 import com.vmware.xenon.common.ServiceDocument;
-import com.vmware.xenon.common.StatefulService;
+import com.vmware.xenon.common.TypedStatefulService;
 import com.vmware.xenon.services.common.ServiceUriPaths;
 
-public class BankAccountService extends StatefulService {
+public class BankAccountService extends TypedStatefulService<BankAccountService.BankAccountServiceState> {
 
     public static final String FACTORY_LINK = ServiceUriPaths.SAMPLES + "/bank-accounts";
 
@@ -76,13 +78,9 @@ public class BankAccountService extends StatefulService {
     }
 
     @Override
-    public void handleStart(Operation start) {
-        try {
-            validateState(start);
-            start.complete();
-        } catch (Exception e) {
-            start.fail(e);
-        }
+    public CompletableFuture<BankAccountServiceState> handleStart(BankAccountServiceState initialState) {
+        return CompletableFuture.completedFuture(initialState)
+                .thenApply(this::validateState);
     }
 
     void handlePatchForDeposit(Operation patch) {
@@ -111,15 +109,15 @@ public class BankAccountService extends StatefulService {
         patch.complete();
     }
 
-    private void validateState(Operation start) {
-        if (!start.hasBody()) {
+    private BankAccountServiceState validateState(BankAccountServiceState state) {
+        if (state == null) {
             throw new IllegalArgumentException("attempt to initialize service with an empty state");
         }
 
-        BankAccountServiceState state = start.getBody(BankAccountServiceState.class);
         if (state.balance < 0) {
             throw new IllegalArgumentException("balance cannot be negative");
         }
+        return state;
     }
 
 }

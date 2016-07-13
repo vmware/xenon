@@ -13,13 +13,14 @@
 
 package com.vmware.xenon.services.samples;
 
+import java.util.concurrent.CompletableFuture;
+
 import com.vmware.xenon.common.FactoryService;
-import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Service;
 import com.vmware.xenon.common.ServiceDocument;
-import com.vmware.xenon.common.StatefulService;
 import com.vmware.xenon.common.TaskState;
 import com.vmware.xenon.common.TaskState.TaskStage;
+import com.vmware.xenon.common.TypedStatefulService;
 import com.vmware.xenon.common.fsm.TaskFSMTracker;
 import com.vmware.xenon.services.common.ServiceUriPaths;
 
@@ -28,7 +29,7 @@ import com.vmware.xenon.services.common.ServiceUriPaths;
  * For simplicity, the same type is used to both manage the internal state as well as the state transferred through the REST calls.
  * State is updated synchronously in this sample.
  */
-public class FsmTaskService extends StatefulService {
+public class FsmTaskService extends TypedStatefulService<FsmTaskService.FsmTaskServiceState> {
 
     public static final String FACTORY_LINK = ServiceUriPaths.SAMPLES + "/fsmTask";
 
@@ -50,42 +51,27 @@ public class FsmTaskService extends StatefulService {
     }
 
     @Override
-    public void handleStart(Operation start) {
-        try {
-            validateAndFixInitialState(start);
-            start.complete();
-        } catch (Exception e) {
-            start.fail(e);
-        }
+    public CompletableFuture<FsmTaskServiceState> handleStart(FsmTaskServiceState initialState) {
+        return CompletableFuture.completedFuture(initialState)
+                .thenApply(this::validateAndFixInitialState);
     }
 
     @Override
-    public void handlePatch(Operation patch) {
-        FsmTaskServiceState currentState = getState(patch);
-        FsmTaskServiceState newState = patch.getBody(FsmTaskServiceState.class);
+    public CompletableFuture<FsmTaskServiceState> handlePatch(FsmTaskServiceState state, FsmTaskServiceState patch) {
+        validateStateTransitionAndInput(state, patch); // let it fail!
+        adjustState(state, patch.taskInfo.stage);
 
-        try {
-            validateStateTransitionAndInput(currentState, newState);
-        } catch (Exception e) {
-            patch.fail(e);
-            return;
+        if (TaskStage.STARTED.equals(state.taskInfo.stage)) {
+            // optionally schedule long-running operations
         }
 
-        adjustState(patch, currentState, newState.taskInfo.stage);
-        patch.complete();
-
-        if (TaskStage.STARTED.equals(newState.taskInfo.stage)) {
-            // optionally perform long-running operations, as we've already completed the client operation
-        }
+        return CompletableFuture.completedFuture(state);
     }
 
-    private void validateAndFixInitialState(Operation start) {
-        FsmTaskServiceState state = null;
-
+    private FsmTaskServiceState validateAndFixInitialState(FsmTaskServiceState state) {
         // client does not have to provide an initial state, but if it provides one it has to be valid
-        if (start.hasBody()) {
-            state = start.getBody(FsmTaskServiceState.class);
-            if (state == null || state.taskInfo == null) {
+        if (state != null) {
+            if (state.taskInfo == null) {
                 throw new IllegalArgumentException(
                         "attempt to initialize service with an empty state");
             }
@@ -99,10 +85,9 @@ public class FsmTaskService extends StatefulService {
             state.taskInfo = new TaskState();
             state.taskInfo.stage = TaskStage.CREATED;
         }
-
         state.fsmInfo = new TaskFSMTracker();
 
-        start.setBody(state);
+        return state;
     }
 
     private void validateStateTransitionAndInput(FsmTaskServiceState currentState,
@@ -119,11 +104,9 @@ public class FsmTaskService extends StatefulService {
         }
     }
 
-    private void adjustState(Operation o, FsmTaskServiceState currentState, TaskStage stage) {
+    private void adjustState(FsmTaskServiceState currentState, TaskStage stage) {
         currentState.fsmInfo.adjustState(stage);
         currentState.taskInfo.stage = stage;
-        super.setState(o, currentState);
-
     }
 
 }

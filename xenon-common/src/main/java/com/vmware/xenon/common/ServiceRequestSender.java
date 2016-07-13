@@ -11,8 +11,9 @@
  * specific language governing permissions and limitations under the License.
  */
 
-
 package com.vmware.xenon.common;
+
+import java.util.concurrent.CompletableFuture;
 
 /**
  * Sends {@link Operation}s.
@@ -23,4 +24,23 @@ package com.vmware.xenon.common;
  */
 public interface ServiceRequestSender {
     void sendRequest(Operation op);
+
+    /**
+     * Sends an asynchronous request and returns the eventual result as promise
+     * @param op
+     * @param resultType
+     * @return
+     */
+    default <T> CompletableFuture<T> sendRequest(Operation request, Class<T> resultType) {
+        CompletableFuture<T> promise = new CompletableFuture<T>();
+        request.nestCompletion((response, e) -> {
+            if (e != null) {
+                promise.completeExceptionally(e);
+            } else {
+                promise.complete(response.getBody(resultType));
+            }
+        });
+        sendRequest(request);
+        return promise;
+    }
 }
