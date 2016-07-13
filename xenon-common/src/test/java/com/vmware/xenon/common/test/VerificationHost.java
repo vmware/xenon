@@ -3188,6 +3188,32 @@ public class VerificationHost extends ExampleServiceHost {
     }
 
     /**
+     * Helper method that waits for a query task to reach the expected stage
+     */
+    public QueryTask waitForQueryTask(URI uri, TaskState.TaskStage expectedStage) throws Throwable {
+
+        // If the task's state ever reaches one of these "final" stages, we can stop waiting...
+        List<TaskState.TaskStage> finalTaskStages = Arrays
+                .asList(TaskState.TaskStage.CANCELLED, TaskState.TaskStage.FAILED,
+                        TaskState.TaskStage.FINISHED, expectedStage);
+
+        String error = String.format("Task did not reach expected state %s", expectedStage);
+        Object[] r = new Object[1];
+        final URI finalUri = uri;
+        waitFor(error, () -> {
+            QueryTask state = this.getServiceState(null, QueryTask.class, finalUri);
+            r[0] = state;
+            if (state.taskInfo != null) {
+                if (finalTaskStages.contains(state.taskInfo.stage)) {
+                    return true;
+                }
+            }
+            return false;
+        });
+        return (QueryTask) r[0];
+    }
+
+    /**
      * Helper method that waits for {@code taskUri} to have a {@link TaskState.TaskStage} == {@code
      * TaskStage.FINISHED}.
      *
@@ -3200,6 +3226,21 @@ public class VerificationHost extends ExampleServiceHost {
             String taskUri)
             throws Throwable {
         return waitForTask(type, taskUri, TaskState.TaskStage.FINISHED);
+    }
+
+    /**
+     * Helper method that waits for {@code taskUri} to have a {@link TaskState.TaskStage} == {@code
+     * TaskStage.FINISHED}.
+     *
+     * @param type    The class type that represent's the task's state
+     * @param taskUri the URI of the task to wait for
+     * @param <T>     the type that represent's the task's state
+     * @return the state of the task once's it's {@code FINISHED}
+     */
+    public <T extends TaskService.TaskServiceState> T waitForFinishedTask(Class<T> type,
+            URI taskUri)
+            throws Throwable {
+        return waitForTask(type, taskUri.toString(), TaskState.TaskStage.FINISHED);
     }
 
     /**

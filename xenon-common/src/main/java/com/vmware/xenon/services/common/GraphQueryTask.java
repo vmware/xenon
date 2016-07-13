@@ -36,7 +36,7 @@ public class GraphQueryTask extends TaskService.TaskServiceState {
      * list tracks the query task link for a given {@link GraphQueryTask#currentDepth} value.
      */
     @PropertyOptions(usage = { PropertyUsageOption.SERVICE_USE })
-    public List<String> resultLinks;
+    public List<String> resultLinks = new ArrayList<>();
 
     @PropertyOptions(usage = {
             PropertyUsageOption.SINGLE_ASSIGNMENT,

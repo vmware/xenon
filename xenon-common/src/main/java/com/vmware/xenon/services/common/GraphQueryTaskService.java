@@ -13,7 +13,7 @@
 
 package com.vmware.xenon.services.common;
 
-import java.util.ArrayList;
+import java.util.HashSet;
 
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.ServiceDocumentQueryResult;
@@ -87,7 +87,8 @@ public class GraphQueryTaskService extends TaskService<GraphQueryTask> {
             return null;
         }
 
-        for (QueryTask stage : task.stages) {
+        for (int i = 0; i < task.stages.size(); i++) {
+            QueryTask stage = task.stages.get(i);
             // basic validation of query specifications, per stage. The query task created
             // during the state machine operation will do deeper validation and the graph query
             // will self patch to failure if the stage query is invalid.
@@ -96,16 +97,80 @@ public class GraphQueryTaskService extends TaskService<GraphQueryTask> {
                         "Stage query specification is invalid: " + Utils.toJson(stage)));
                 return null;
             }
-            if (stage.querySpec.resultLimit != null) {
+
+            if (i != 0 || stage.results == null) {
+                if (stage.querySpec.resultLimit != null) {
+                    taskOperation.fail(new IllegalArgumentException(
+                            "Stage query specification resultLimit must be null: "
+                                    + Utils.toJson(stage)));
+                    return null;
+                }
+                continue;
+            }
+
+            if (stage.results.nextPageLink == null
+                    && !hasInlineResults(stage.results)) {
+                if (stage.results.documentLinks != null) {
+                    // if first stage did not have selected links, populate the set with the
+                    // document links
+                    stage.results.selectedLinks = new HashSet<>(stage.results.documentLinks);
+                    stage.results.documentCount = (long) stage.results.selectedLinks.size();
+                } else {
+                    taskOperation.fail(new IllegalArgumentException(
+                            "First stage has results instance but no actual results: "
+                                    + Utils.toJson(stage)));
+                    return null;
+                }
+            }
+
+            if (stage.documentSelfLink == null) {
                 taskOperation.fail(new IllegalArgumentException(
-                        "Stage query specification resultLimit must be null: "
+                        "First stage with results must have valid self link: "
                                 + Utils.toJson(stage)));
                 return null;
             }
-            stage.results = null;
         }
 
         return task;
+    }
+
+    @Override
+    protected void initializeState(GraphQueryTask task, Operation taskOperation) {
+        task.currentDepth = 0;
+        task.resultLinks.clear();
+
+        for (int i = 0; i < task.stages.size(); i++) {
+            QueryTask stageQueryTask = task.stages.get(i);
+            stageQueryTask.taskInfo = new TaskState();
+            // we use direct tasks, and HTTP/2 for each stage query, keeping things simple but
+            // without consuming connections while task is pending
+            stageQueryTask.taskInfo.isDirect = true;
+
+            if (i < task.stages.size() - 1) {
+                // stages other than the last one, must set select links, since we need to guide
+                // the query along the edges of the document graph.
+                stageQueryTask.querySpec.options.add(QueryOption.SELECT_LINKS);
+            }
+
+            if (i == 0) {
+                // a client can initiate a graph query by supplying a initial stage with results
+                if (hasInlineResults(stageQueryTask.results)) {
+                    logInfo("First stage has %d (page:%s) results, skipping query, moving to next stage",
+                            stageQueryTask.results.documentCount,
+                            stageQueryTask.results.nextPageLink);
+                    task.resultLinks.add(stageQueryTask.documentSelfLink);
+                    task.currentDepth = 1;
+                } else if (stageQueryTask.results != null) {
+                    // the results object is populated but there are no actual results, it just means we
+                    // need to fetch them as part of stage zero execution, by simply doing a GET
+                    logInfo("First stage result link %s, bypassing query execution will fetch results",
+                            stageQueryTask.results.nextPageLink);
+                }
+            } else {
+                stageQueryTask.results = null;
+            }
+        }
+        super.initializeState(task, taskOperation);
     }
 
     public void handlePatch(Operation patch) {
@@ -191,16 +256,6 @@ public class GraphQueryTaskService extends TaskService<GraphQueryTask> {
      *
      * If the task is just starting, the currentDepth will be zero. In this case
      * we will issue the first query in the  {@link GraphQueryTask#stages}.
-     *
-     * If the task is in process, it will call this method twice, per depth:
-     * 1) When a query for the current depth completes, it will self patch to STARTED
-     * but increment the depth. This will call this method with lastResults == null, but
-     * currentDepth > 0
-     * 2) We need to fetch the results from the previous stage, before we proceed to the
-     * next, so we call {@link GraphQueryTaskService#fetchLastStageResults(GraphQueryTask)}
-     * which will then call this method again, but with lastResults != null
-     *
-     * The termination conditions are applied only when lastResults != null
      */
     private void startOrContinueGraphQuery(GraphQueryTask currentState) {
         int previousStageIndex = Math.max(currentState.currentDepth - 1, 0);
@@ -218,15 +273,44 @@ public class GraphQueryTaskService extends TaskService<GraphQueryTask> {
 
         scopeNextStageQueryToSelectedLinks(lastResults, task);
 
-        // enable connection sharing (HTTP/2) since we want to use a direct task, but avoid
-        // holding up a connection
-        Operation createQueryOp = Operation.createPost(this, ServiceUriPaths.CORE_QUERY_TASKS)
-                .setBodyNoCloning(task)
-                .setConnectionSharing(true)
-                .setCompletion((o, e) -> {
-                    handleQueryStageCompletion(currentState, o, e);
-                });
-        sendRequest(createQueryOp);
+        Operation getResultsOrStartQueryOp = null;
+
+        if (currentState.currentDepth == 0 && lastResults != null) {
+            // We allow a first stage to come with results, either in-line, or through a link.
+            // If a result instance with empty document links but a page link was supplied,
+            // we stayed at currentDepth == 0 and we need to fetch the results, without executing
+            // the query
+            logInfo("Fetching initial stage results from %s", lastResults.nextPageLink);
+            getResultsOrStartQueryOp = Operation.createGet(this, lastResults.nextPageLink)
+                    .setCompletion((o, e) -> {
+                        handleQueryPageGetCompletion(currentState, o, e);
+                    });
+        } else {
+            // we need to execute a query for this stage
+            // enable connection sharing (HTTP/2) since we want to use a direct task, but avoid
+            // holding up a connection
+            getResultsOrStartQueryOp = Operation.createPost(this, ServiceUriPaths.CORE_QUERY_TASKS)
+                    .setBodyNoCloning(task)
+                    .setConnectionSharing(true)
+                    .setCompletion((o, e) -> {
+                        handleQueryStageCompletion(currentState, o, e);
+                    });
+        }
+        sendRequest(getResultsOrStartQueryOp);
+    }
+
+    private void scopeNextStageQueryToSelectedLinks(ServiceDocumentQueryResult lastResults,
+            QueryTask task) {
+        if (!hasInlineResults(lastResults)) {
+            return;
+        }
+        // Use query context white list, using the selected links, or documentLinks, from the last
+        // stage results. This restricts the query scope to only documents that are "linked"
+        // from the current stage to the next, effectively guiding our search of the index, across
+        // the graph edges (links) specified in each traversal specification.
+        // This is a performance optimization: the alternative would have been a massive boolean
+        // clause with SHOULD_OCCUR child clauses for each link
+        task.querySpec.context.documentLinkWhiteList = lastResults.selectedLinks;
     }
 
     private boolean checkAndPatchToFinished(GraphQueryTask currentState,
@@ -244,7 +328,7 @@ public class GraphQueryTaskService extends TaskService<GraphQueryTask> {
             return true;
         }
 
-        if (lastResults.documentCount == 0) {
+        if (lastResults.documentCount == null || lastResults.documentCount == 0) {
             sendSelfPatch(currentState, TaskStage.FINISHED, null);
             return true;
         }
@@ -261,6 +345,37 @@ public class GraphQueryTaskService extends TaskService<GraphQueryTask> {
         return false;
     }
 
+    private void handleQueryPageGetCompletion(GraphQueryTask currentState, Operation o,
+            Throwable e) {
+        if (e != null) {
+            handleQueryStageCompletion(currentState, o, e);
+            return;
+        }
+        QueryTask response = o.getBody(QueryTask.class);
+        if (response.results == null) {
+            handleQueryStageCompletion(currentState, o,
+                    new IllegalStateException("No results found for page in first stage results"));
+            return;
+        }
+        if (response.results.selectedLinks == null || response.results.selectedLinks.isEmpty()) {
+            if (response.results.documentLinks != null
+                    && !response.results.documentLinks.isEmpty()) {
+                // if first stage did not have selected links, populate the set with the
+                // document links
+                response.results.selectedLinks = new HashSet<>(response.results.documentLinks);
+                response.results.documentCount = (long) response.results.selectedLinks.size();
+            }
+        }
+
+        if (response.results.selectedLinks == null || response.results.selectedLinks.isEmpty()) {
+            sendSelfFailurePatch(currentState,
+                    "Paginated first stage with results had no actual results: "
+                            + Utils.toJsonHtml(response));
+            return;
+        }
+        handleQueryStageCompletion(currentState, o, null);
+    }
+
     private void handleQueryStageCompletion(GraphQueryTask currentState, Operation o, Throwable e) {
         if (e != null) {
             sendSelfFailurePatch(currentState, e.toString());
@@ -272,7 +387,10 @@ public class GraphQueryTaskService extends TaskService<GraphQueryTask> {
 
         int traversalSpecIndex = Math.min(currentState.stages.size() - 1,
                 currentState.currentDepth);
-        currentState.stages.get(traversalSpecIndex).results = response.results;
+        QueryTask stage = currentState.stages.get(traversalSpecIndex);
+        stage.results = response.results;
+        stage.documentSelfLink = response.documentSelfLink;
+        stage.documentOwner = response.documentOwner;
 
         // We increment the depth, moving to the next stage
         currentState.currentDepth++;
@@ -287,39 +405,10 @@ public class GraphQueryTaskService extends TaskService<GraphQueryTask> {
         sendSelfPatch(currentState, TaskStage.STARTED, null);
     }
 
-    private void scopeNextStageQueryToSelectedLinks(ServiceDocumentQueryResult lastResults,
-            QueryTask task) {
-        if (lastResults == null) {
-            // we must be in initial stage, otherwise termination checks would have kicked in
-            return;
-        }
-        // Use query context white list, using the selected links from the last
-        // stage results. This restricts the query scope to only documents that are "linked"
-        // from the current stage to the next, effectively guiding our search of the index, across
-        // the graph edges (links) specified in each traversal specification.
-        // This is a performance optimization: the alternative would have been a massive boolean
-        // clause with SHOULD_OCCUR child clauses for each link
-        task.querySpec.context.documentLinkWhiteList = lastResults.selectedLinks;
-    }
-
-    @Override
-    protected void initializeState(GraphQueryTask task, Operation taskOperation) {
-        task.currentDepth = 0;
-        task.resultLinks = new ArrayList<>();
-
-        for (int i = 0; i < task.stages.size(); i++) {
-            QueryTask stageQueryTask = task.stages.get(i);
-            stageQueryTask.taskInfo = new TaskState();
-            // we use direct tasks, and HTTP/2 for each stage query, keeping things simple but
-            // without consuming connections while task is pending
-            stageQueryTask.taskInfo.isDirect = true;
-
-            if (i < task.stages.size() - 1) {
-                // stages other than the last one, must set select links, since we need to guide
-                // the query along the edges of the document graph.
-                stageQueryTask.querySpec.options.add(QueryOption.SELECT_LINKS);
-            }
-        }
-        super.initializeState(task, taskOperation);
+    private static boolean hasInlineResults(ServiceDocumentQueryResult results) {
+        return results != null && results.documentCount != null
+                && results.documentCount > 0
+                && results.selectedLinks != null
+                && !results.selectedLinks.isEmpty();
     }
 }
