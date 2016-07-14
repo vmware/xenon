@@ -2421,7 +2421,8 @@ public class ServiceHost implements ServiceRequestSender {
 
 
                 if (post.hasBody()) {
-                    this.cacheServiceState(s, (ServiceDocument) post.getBodyRaw(), post);
+                    this.serviceResourceTracker.updateCachedServiceState(s,
+                            (ServiceDocument) post.getBodyRaw(), post);
                 }
 
                 if (!post.hasBody() || !needsIndexing) {
@@ -2646,7 +2647,7 @@ public class ServiceHost implements ServiceRequestSender {
     }
 
     void cacheServiceState(Service s, ServiceDocument st, Operation op) {
-        if (op != null && op.hasBody() && op.getAction() != Action.POST) {
+        if (op != null && op.hasBody()) {
             Object rsp = op.getBodyRaw();
             // if the response body is of type Document set its common
             // properties to that of the service state
