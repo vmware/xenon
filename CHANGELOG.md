@@ -1,6 +1,6 @@
 # CHANGELOG
 
-## 0.9.1-SNAPSHOT
+## 0.9.1
 
 * Add a new field *sourceTimeMicrosUtc* to ServiceStat to capture the
   time the data value was acquired at the source.
