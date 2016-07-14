@@ -756,7 +756,7 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
         this.host.sendAndWait(get);
 
         // do a PUT, expect 404
-        Operation put = Operation.createGet(serviceToDelete)
+        Operation put = Operation.createPut(serviceToDelete)
                 .setBody(st)
                 .setCompletion(
                         this.host.getExpectedFailureCompletion(Operation.STATUS_CODE_NOT_FOUND));
