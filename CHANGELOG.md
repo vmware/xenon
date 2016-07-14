@@ -1,5 +1,7 @@
 # CHANGELOG
 
+## 0.9.2-SNAPSHOT
+
 ## 0.9.1
 
 * Add a new field *sourceTimeMicrosUtc* to ServiceStat to capture the
