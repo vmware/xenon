@@ -391,7 +391,7 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
 
     @Test
     public void serviceHostRestartWithDurableServices() throws Throwable {
-        ExampleServiceHost h = new ExampleServiceHost();
+        VerificationHost h = VerificationHost.create();
         TemporaryFolder tmpFolder = new TemporaryFolder();
         tmpFolder.create();
         try {
@@ -456,7 +456,7 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
             // stop the host, create new one
             h.stop();
 
-            h = new ExampleServiceHost();
+            h = VerificationHost.create();
             args.port = 0;
             h.initialize(args);
 
