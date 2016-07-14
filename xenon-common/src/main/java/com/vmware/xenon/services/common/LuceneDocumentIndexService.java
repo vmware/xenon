@@ -1905,7 +1905,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         // equal to or more than the delta between the lower and upper versions. It can be more
         // because of duplicate document versions. If that's not the case, we add the
         // link back for retention so that the next grooming run can cleanup the missed document.
-        if (versionCount < versionLowerBound - versionUpperBound + 1) {
+        if (versionCount < versionUpperBound - versionLowerBound + 1) {
             logWarning("Adding %s back for version grooming since versionCount %d " +
                     "was lower than version delta from %d to %d.",
                     link, versionCount, versionLowerBound, versionUpperBound);
