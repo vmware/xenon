@@ -38,6 +38,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Objects;
 import java.util.Random;
 import java.util.Set;
 import java.util.UUID;
@@ -48,6 +49,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
+import java.util.logging.Handler;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -216,6 +218,21 @@ public class VerificationHost extends ExampleServiceHost {
         SelfSignedCertificate ssc = new SelfSignedCertificate();
         h.setCertificateFileReference(ssc.certificate().toURI());
         h.setPrivateKeyFileReference(ssc.privateKey().toURI());
+    }
+
+    @Override
+    protected void configureLoggerFormatter(Logger logger) {
+        super.configureLoggerFormatter(logger);
+
+        // override with formatters for VerificationHost
+        // if custom formatter has already set, do NOT replace it.
+        for (Handler h : logger.getParent().getHandlers()) {
+            if (Objects.equals(h.getFormatter(), LOG_FORMATTER)) {
+                h.setFormatter(VerificationHostLogFormatter.NORMAL_FORMAT);
+            } else if (Objects.equals(h.getFormatter(), COLOR_LOG_FORMATTER)) {
+                h.setFormatter(VerificationHostLogFormatter.COLORED_FORMAT);
+            }
+        }
     }
 
     public void tearDown() {

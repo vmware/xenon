@@ -73,9 +73,13 @@ public class ColorLogFormatter extends LogFormatter {
         }
     }
 
+    protected String getFormattedMessage(LogRecord record) {
+        return super.format(record);
+    }
+
     @Override
     public String format(LogRecord record) {
-        String formatted = super.format(record);
+        String formatted = getFormattedMessage(record);
         if (!this.colorsEnabled) {
             return formatted;
         } else {

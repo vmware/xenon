@@ -264,8 +264,8 @@ public class ServiceHost implements ServiceRequestSender {
 
     }
 
-    private static final LogFormatter LOG_FORMATTER = new LogFormatter();
-    private static final LogFormatter COLOR_LOG_FORMATTER = new ColorLogFormatter();
+    protected static final LogFormatter LOG_FORMATTER = new LogFormatter();
+    protected static final LogFormatter COLOR_LOG_FORMATTER = new ColorLogFormatter();
 
     public static final String SERVICE_HOST_STATE_FILE = "serviceHostState.json";
 
