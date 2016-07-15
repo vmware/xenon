@@ -207,7 +207,7 @@ public class VerificationHost extends ExampleServiceHost {
         // we create a random userAgent string to validate host to host communication when
         // the client appears to be from an external, non-Xenon source.
         ServiceClient client = NettyHttpServiceClient.create(UUID.randomUUID().toString(),
-                h.getExecutor(),
+                null,
                 h.getScheduledExecutor(), h);
 
         SSLContext clientContext = SSLContext.getInstance(ServiceClient.TLS_PROTOCOL_NAME);
