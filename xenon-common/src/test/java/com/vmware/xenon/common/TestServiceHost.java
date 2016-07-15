@@ -26,7 +26,6 @@ import java.net.URI;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.Date;
 import java.util.EnumSet;
 import java.util.HashMap;
@@ -1405,9 +1404,6 @@ public class TestServiceHost {
                 .setServiceMemoryLimit(ServiceHost.ROOT_PATH, ServiceHost.DEFAULT_PCT_MEMORY_LIMIT);
         patchExampleServices(states, updateCount);
 
-        // Let's now query stats for each service. We will use these stats to verify that the
-        // services did get paused and resumed.
-        Map<String, ServiceStats> stats = Collections.synchronizedMap(new HashMap<>());
         this.host.testStart(states.size());
         for (ExampleServiceState st : states.values()) {
             Operation get = Operation.createGet(UriUtils.buildUri(this.host, st.documentSelfLink))
@@ -1432,6 +1428,8 @@ public class TestServiceHost {
         this.host.testWait();
 
         if (this.testDurationSeconds == 0) {
+            // Let's now query stats for each service. We will use these stats to verify that the
+            // services did get paused and resumed.
             this.host.waitFor("Service stats did not get updated", () -> {
                 // Verify the stats for each service show that the service was paused and resumed
                 for (ExampleServiceState st : states.values()) {
