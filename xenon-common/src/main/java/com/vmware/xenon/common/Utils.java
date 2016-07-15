@@ -94,7 +94,7 @@ public class Utils {
      * operation processing throughput.
      */
     public static final int DEFAULT_THREAD_COUNT = Math.max(4, Runtime.getRuntime()
-            .availableProcessors() + (DEFAULT_IO_THREAD_COUNT * 2));
+            .availableProcessors());
 
     /**
      * {@link #isReachableByPing} launches a separate ping process to ascertain whether a given IP
