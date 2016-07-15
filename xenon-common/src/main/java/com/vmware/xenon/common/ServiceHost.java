@@ -2419,7 +2419,7 @@ public class ServiceHost implements ServiceRequestSender {
                             hasClientSuppliedInitialState);
                 });
 
-                if (post.hasBody()) {
+                if (post.hasBody() && this.state.isServiceStateCaching) {
                     this.serviceResourceTracker.updateCachedServiceState(s,
                             (ServiceDocument) post.getBodyRaw(), post);
                 }

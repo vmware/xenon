@@ -35,7 +35,6 @@ import java.util.stream.LongStream;
 import java.util.stream.Stream;
 
 import org.junit.Before;
-import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 
@@ -276,7 +275,6 @@ public class TestFactoryService extends BasicReusableHostTestCase {
         this.host.testWait();
     }
 
-    @Ignore("https://www.pivotaltracker.com/story/show/116217439")
     @Test
     public void factoryDurableServicePostWithDeleteRestart() throws Throwable {
         // first create the factory service
@@ -313,7 +311,6 @@ public class TestFactoryService extends BasicReusableHostTestCase {
                 factoryService.getUri());
     }
 
-    @Ignore("https://www.pivotaltracker.com/story/show/116217439")
     @Test
     public void factoryDurableServicePostNoCaching()
             throws Throwable {
@@ -324,7 +321,7 @@ public class TestFactoryService extends BasicReusableHostTestCase {
 
         long count = this.host.isStressTest() ? 1000 : 10;
         MinimalFactoryTestService f = new MinimalFactoryTestService();
-        // set a custom load query limit
+        // set a custom load query limit to verify setter/getter works
         f.setSelfQueryResultLimit(FactoryService.SELF_QUERY_RESULT_LIMIT / 10);
         assertEquals(FactoryService.SELF_QUERY_RESULT_LIMIT / 10, f.getSelfQueryResultLimit());
         f.toggleOption(ServiceOption.PERSISTENCE, true);
