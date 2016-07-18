@@ -28,6 +28,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+
 import javax.net.ssl.SSLContext;
 
 import io.netty.buffer.ByteBuf;
@@ -335,7 +336,8 @@ public class NettyHttpServiceClient implements ServiceClient {
             op.setRetryCount(0);
             fail(new IllegalArgumentException(
                     "HTTPS not enabled, set SSL context before starting client:"
-                            + op.getUri().getScheme()), op, op.getBodyRaw());
+                            + op.getUri().getScheme()),
+                    op, op.getBodyRaw());
             return;
         }
 
@@ -407,7 +409,8 @@ public class NettyHttpServiceClient implements ServiceClient {
                 stopTracking(op);
                 Exception e = new IllegalArgumentException(
                         "Content-Length " + op.getContentLength() +
-                        " is greater than max size allowed " + getRequestPayloadSizeLimit());
+                                " is greater than max size allowed "
+                                + getRequestPayloadSizeLimit());
                 op.setBody(ServiceErrorResponse.create(e, Operation.STATUS_CODE_BAD_REQUEST));
                 op.fail(e);
                 return;

@@ -290,6 +290,7 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
                             }
                             op.complete();
                         });
+        logInfo("op %d: forwarding clone (id %d) to %s", op.getId(), fwdOp.getId(), remoteService);
         getHost().getClient().send(fwdOp.setUri(remoteService));
     }
 
@@ -560,7 +561,8 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
                                     if (this.synchQuorumWarningCount < quorumWarningsBeforeQuiet) {
                                         logWarning("Synchronization quorum not met");
                                     } else if (this.synchQuorumWarningCount == quorumWarningsBeforeQuiet) {
-                                        logWarning("Synchronization quorum not met, warning will be silenced");
+                                        logWarning(
+                                                "Synchronization quorum not met, warning will be silenced");
                                     }
                                     this.synchQuorumWarningCount++;
                                     return;

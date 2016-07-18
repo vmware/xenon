@@ -215,7 +215,8 @@ public class NodeGroupUtils {
         OperationJoin.create(ops).setCompletion(joinedCompletion).sendWith(host);
     }
 
-    public static void checkConvergence(ServiceHost host, URI nodegroupReference, Operation parentOp) {
+    public static void checkConvergence(ServiceHost host, URI nodegroupReference,
+            Operation parentOp) {
         Operation.createGet(nodegroupReference)
                 .transferRefererFrom(parentOp)
                 .setCompletion((o, t) -> {
@@ -328,7 +329,8 @@ public class NodeGroupUtils {
 
                 // service is not yet available, reschedule
                 host.schedule(() -> {
-                    registerForReplicatedServiceAvailability(host, op, servicePath, nodeSelectorPath);
+                    registerForReplicatedServiceAvailability(host, op, servicePath,
+                            nodeSelectorPath);
                 }, host.getMaintenanceIntervalMicros(), TimeUnit.MICROSECONDS);
                 return;
             }

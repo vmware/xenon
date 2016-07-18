@@ -25,7 +25,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import com.vmware.xenon.common.NodeSelectorService.SelectOwnerResponse;
 import com.vmware.xenon.common.Operation.CompletionHandler;
-import com.vmware.xenon.common.Service.ServiceOption;
 import com.vmware.xenon.common.ServiceDocumentDescription.PropertyDescription;
 import com.vmware.xenon.common.UriUtils.ForwardingTarget;
 import com.vmware.xenon.services.common.NodeGroupService.NodeGroupState;
@@ -102,7 +101,8 @@ public abstract class FactoryService extends StatelessService {
 
     public static final Integer SELF_QUERY_RESULT_LIMIT = Integer.getInteger(
             Utils.PROPERTY_NAME_PREFIX
-                    + "FactoryService.SELF_QUERY_RESULT_LIMIT", 1000);
+                    + "FactoryService.SELF_QUERY_RESULT_LIMIT",
+            1000);
     private EnumSet<ServiceOption> childOptions;
     private String nodeSelectorLink = ServiceUriPaths.DEFAULT_NODE_SELECTOR;
     private int selfQueryResultLimit = SELF_QUERY_RESULT_LIMIT;
@@ -386,7 +386,8 @@ public abstract class FactoryService extends StatelessService {
         }
     }
 
-    private void startOrSynchChildService(String link, Operation post, ServiceMaintenanceRequest smr) {
+    private void startOrSynchChildService(String link, Operation post,
+            ServiceMaintenanceRequest smr) {
         try {
             Service child = createChildService();
             NodeGroupState ngs = smr != null ? smr.nodeGroupState : null;
@@ -576,7 +577,8 @@ public abstract class FactoryService extends StatelessService {
         // was fixed up by this instance. Restore self link to be just the child suffix "hint", removing the
         // factory prefix added upstream.
         String originalLink = clonedInitState.documentSelfLink;
-        clonedInitState.documentSelfLink = clonedInitState.documentSelfLink.replace(getSelfLink(),"");
+        clonedInitState.documentSelfLink = clonedInitState.documentSelfLink.replace(getSelfLink(),
+                "");
         op.nestCompletion((replicatedOp) -> {
             clonedInitState.documentSelfLink = originalLink;
             op.linkState(null).setBodyNoCloning(clonedInitState).complete();
@@ -638,11 +640,11 @@ public abstract class FactoryService extends StatelessService {
                                     true);
 
                             // fix up selfLink so it does not have factory prefix
-                        initialState.documentSelfLink = initialState.documentSelfLink
-                                .replace(getSelfLink(), "");
+                            initialState.documentSelfLink = initialState.documentSelfLink
+                                    .replace(getSelfLink(), "");
 
-                        getHost().sendRequest(forwardOp);
-                    });
+                            getHost().sendRequest(forwardOp);
+                        });
         getHost().selectOwner(getPeerNodeSelectorPath(),
                 o.getUri().getPath(), selectOp);
     }
@@ -689,8 +691,8 @@ public abstract class FactoryService extends StatelessService {
 
         if (task.querySpec.sortTerm != null) {
             String propertyName = task.querySpec.sortTerm.propertyName;
-            PropertyDescription propertyDescription = getChildTemplate()
-                    .documentDescription.propertyDescriptions.get(propertyName);
+            PropertyDescription propertyDescription = getChildTemplate().documentDescription.propertyDescriptions
+                    .get(propertyName);
             if (propertyDescription == null) {
                 op.fail(new IllegalArgumentException("Sort term is not a valid property: "
                         + propertyName));
@@ -725,16 +727,17 @@ public abstract class FactoryService extends StatelessService {
                 UriUtils.FORWARDING_URI_PARAM_NAME_PATH, UriUtils.getPathParamValue(op.getUri()),
                 UriUtils.FORWARDING_URI_PARAM_NAME_PEER, UriUtils.getPeerParamValue(op.getUri()),
                 UriUtils.FORWARDING_URI_PARAM_NAME_TARGET, ForwardingTarget.PEER_ID.toString());
-        sendRequest(Operation.createGet(UriUtils.buildUri(this.getHost(), path, query)).setCompletion((o, e) -> {
-            if (e != null) {
-                op.fail(e);
-                return;
-            }
+        sendRequest(Operation.createGet(UriUtils.buildUri(this.getHost(), path, query))
+                .setCompletion((o, e) -> {
+                    if (e != null) {
+                        op.fail(e);
+                        return;
+                    }
 
-            ServiceDocumentQueryResult result = o.getBody(QueryTask.class).results;
-            prepareNavigationResult(result);
-            op.setBodyNoCloning(result).complete();
-        }));
+                    ServiceDocumentQueryResult result = o.getBody(QueryTask.class).results;
+                    prepareNavigationResult(result);
+                    op.setBodyNoCloning(result).complete();
+                }));
     }
 
     private void handleODataLimitRequest(Operation op, QueryTask task) {
@@ -764,8 +767,10 @@ public abstract class FactoryService extends StatelessService {
                     return;
                 }
 
-                ServiceDocumentQueryResult countResult = os.get(count.getId()).getBody(QueryTask.class).results;
-                ServiceDocumentQueryResult queryResult = os.get(query.getId()).getBody(QueryTask.class).results;
+                ServiceDocumentQueryResult countResult = os.get(count.getId())
+                        .getBody(QueryTask.class).results;
+                ServiceDocumentQueryResult queryResult = os.get(query.getId())
+                        .getBody(QueryTask.class).results;
 
                 if (queryResult.nextPageLink == null) {
                     ODataFactoryQueryResult odataResult = new ODataFactoryQueryResult();
@@ -1062,7 +1067,8 @@ public abstract class FactoryService extends StatelessService {
                     }
 
                     if (rsp.isLocalHostOwner == false) {
-                        logWarning("No longer owner, aborting synch. New owner %s", rsp.ownerNodeId);
+                        logWarning("No longer owner, aborting synch. New owner %s",
+                                rsp.ownerNodeId);
                         ctx.maintOp.fail(new CancellationException("aborted due to owner change"));
                         return;
                     }
