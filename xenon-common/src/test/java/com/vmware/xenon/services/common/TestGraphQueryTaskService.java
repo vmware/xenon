@@ -59,6 +59,8 @@ public class TestGraphQueryTaskService extends BasicTestCase {
 
     private long taskCompletionTimeMicros;
 
+    private boolean isFailureExpected;
+
     @Before
     public void setUp() {
         this.factoryUri = UriUtils.buildUri(this.host, ServiceUriPaths.CORE_GRAPH_QUERIES);
@@ -210,15 +212,39 @@ public class TestGraphQueryTaskService extends BasicTestCase {
         verifyNStageResult(finalState, true, resultCounts);
 
         // direct task, same parameters, initial stage has paginated results. Task should
-        // process just a single page worth and progress the page link
+        // process just a single page worth and progress the page link.
+        // Initial stage specifies SELECT_LINKS
         QueryTask stageWithResults = createGraphQueryStage(0);
         stageWithResults.querySpec.resultLimit = this.serviceCount / 2;
+        createAndVerifyTreeGraphWithInitialStagePaginatedResults(stageCount, stageWithResults);
+
+        // direct task, same parameters, initial stage has paginated results.
+        // Initial stage does NOT specify QueryOption.SELECT_LINKS.
+        // Expected failure
+        this.isFailureExpected = true;
+        stageWithResults = createGraphQueryStage(0);
+        stageWithResults.querySpec.resultLimit = this.serviceCount / 2;
+        stageWithResults.querySpec.options.remove(QueryOption.SELECT_LINKS);
+        createAndVerifyTreeGraphWithInitialStagePaginatedResults(stageCount, stageWithResults);
+        this.isFailureExpected = false;
+    }
+
+    private void createAndVerifyTreeGraphWithInitialStagePaginatedResults(int stageCount,
+            QueryTask stageWithResults) throws Throwable {
+        GraphQueryTask finalState;
+        QueryTask finishedFirstStage;
         // wait for query task to finish. We will supply it in the *completed* stage, as part
         // of a graph query task, which will use its results (from the page link), instead
         // of executing its query
         URI firstStageTaskUri = this.host.createQueryTaskService(stageWithResults);
         finishedFirstStage = this.host.waitForQueryTask(firstStageTaskUri, TaskStage.FINISHED);
         finalState = createTreeGraphTask(stageCount, finishedFirstStage, true);
+
+        if (this.isFailureExpected) {
+            assertEquals(null, finalState);
+            return;
+        }
+
         logGraphQueryThroughput(finalState);
         // since the graph processed only a page worth, we expect less results per stage
         int pageLimit = stageWithResults.querySpec.resultLimit;
@@ -377,7 +403,11 @@ public class TestGraphQueryTaskService extends BasicTestCase {
         TestContext ctx = testCreate(1);
         post.setBody(initialState).setCompletion((o, e) -> {
             if (e != null) {
-                ctx.failIteration(e);
+                if (this.isFailureExpected) {
+                    ctx.completeIteration();
+                } else {
+                    ctx.failIteration(e);
+                }
                 return;
             }
             GraphQueryTask r = o.getBody(GraphQueryTask.class);
@@ -389,6 +419,9 @@ public class TestGraphQueryTaskService extends BasicTestCase {
         });
         this.host.send(post);
         testWait(ctx);
+        if (this.isFailureExpected) {
+            return null;
+        }
         this.host.log("Task created (isDirect:%s) (stage: %s)", isDirect, rsp[0].taskInfo.stage);
         assertEquals(isDirect, rsp[0].taskInfo.isDirect);
         return rsp[0];

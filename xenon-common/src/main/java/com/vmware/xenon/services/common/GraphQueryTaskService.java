@@ -13,8 +13,6 @@
 
 package com.vmware.xenon.services.common;
 
-import java.util.HashSet;
-
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.ServiceDocumentQueryResult;
 import com.vmware.xenon.common.ServiceHost;
@@ -110,17 +108,18 @@ public class GraphQueryTaskService extends TaskService<GraphQueryTask> {
 
             if (stage.results.nextPageLink == null
                     && !hasInlineResults(stage.results)) {
-                if (stage.results.documentLinks != null) {
-                    // if first stage did not have selected links, populate the set with the
-                    // document links
-                    stage.results.selectedLinks = new HashSet<>(stage.results.documentLinks);
-                    stage.results.documentCount = (long) stage.results.selectedLinks.size();
-                } else {
-                    taskOperation.fail(new IllegalArgumentException(
-                            "First stage has results instance but no actual results: "
-                                    + Utils.toJson(stage)));
-                    return null;
-                }
+                taskOperation.fail(new IllegalArgumentException(
+                        "First stage has results instance but no actual results: "
+                                + Utils.toJson(stage)));
+                return null;
+            }
+
+            if (stage.results.nextPageLink != null
+                    && !stage.querySpec.options.contains(QueryOption.SELECT_LINKS)) {
+                taskOperation.fail(new IllegalArgumentException(
+                        "First stage has paginated results but does not specify option "
+                                + QueryOption.SELECT_LINKS + " :" + Utils.toJson(stage)));
+                return null;
             }
 
             if (stage.documentSelfLink == null) {
@@ -357,19 +356,10 @@ public class GraphQueryTaskService extends TaskService<GraphQueryTask> {
                     new IllegalStateException("No results found for page in first stage results"));
             return;
         }
-        if (response.results.selectedLinks == null || response.results.selectedLinks.isEmpty()) {
-            if (response.results.documentLinks != null
-                    && !response.results.documentLinks.isEmpty()) {
-                // if first stage did not have selected links, populate the set with the
-                // document links
-                response.results.selectedLinks = new HashSet<>(response.results.documentLinks);
-                response.results.documentCount = (long) response.results.selectedLinks.size();
-            }
-        }
 
         if (response.results.selectedLinks == null || response.results.selectedLinks.isEmpty()) {
             sendSelfFailurePatch(currentState,
-                    "Paginated first stage with results had no actual results: "
+                    "Paginated first stage response had no selected link results: "
                             + Utils.toJsonHtml(response));
             return;
         }
