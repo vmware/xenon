@@ -143,6 +143,10 @@ public class VerificationHost extends ExampleServiceHost {
     public boolean isStressTest;
 
     /**
+     * Command line argument indicating this is a multi-location test
+     */
+    public boolean isMultiLocationTest;
+    /**
      * Command line argument for test duration, set for long running tests
      */
     public long testDurationSeconds;
@@ -1768,9 +1772,11 @@ public class VerificationHost extends ExampleServiceHost {
         }
         final long intervalMicros = TimeUnit.MILLISECONDS.toMicros(maintIntervalMillis);
         for (int i = 0; i < localHostCount; i++) {
+            String location = this.isMultiLocationTest ? ((i < localHostCount / 2) ? "L1" : "L2")
+                    : null;
             run(() -> {
                 try {
-                    this.setUpLocalPeerHost(null, intervalMicros);
+                    this.setUpLocalPeerHost(null, intervalMicros, location);
                 } catch (Throwable e) {
                     failIteration(e);
                 }
@@ -1794,8 +1800,19 @@ public class VerificationHost extends ExampleServiceHost {
         return setUpLocalPeerHost(0, maintIntervalMicros, hosts);
     }
 
+    public VerificationHost setUpLocalPeerHost(Collection<ServiceHost> hosts,
+            long maintIntervalMicros, String location) throws Throwable {
+        return setUpLocalPeerHost(0, maintIntervalMicros, hosts, location);
+    }
+
     public VerificationHost setUpLocalPeerHost(int port, long maintIntervalMicros,
             Collection<ServiceHost> hosts)
+            throws Throwable {
+        return setUpLocalPeerHost(port, maintIntervalMicros, hosts, null);
+    }
+
+    public VerificationHost setUpLocalPeerHost(int port, long maintIntervalMicros,
+            Collection<ServiceHost> hosts, String location)
             throws Throwable {
 
         VerificationHost h = VerificationHost.create(port);
@@ -1822,6 +1839,9 @@ public class VerificationHost extends ExampleServiceHost {
             h.setCertificateFileReference(this.getState().certificateFileReference);
             h.setPrivateKeyFileReference(this.getState().privateKeyFileReference);
             h.setPrivateKeyPassphrase(this.getState().privateKeyPassphrase);
+            if (location != null) {
+                h.setLocation(location);
+            }
 
             h.start();
             h.setMaintenanceIntervalMicros(maintIntervalMicros);
@@ -2548,6 +2568,14 @@ public class VerificationHost extends ExampleServiceHost {
         }
     }
 
+    public boolean isMultiLocationTest() {
+        return this.isMultiLocationTest;
+    }
+
+    public void setMultiLocationTest(boolean isMultiLocationTest) {
+        this.isMultiLocationTest = isMultiLocationTest;
+    }
+
     public void toggleServiceOptions(URI serviceUri, EnumSet<ServiceOption> optionsToEnable,
             EnumSet<ServiceOption> optionsToDisable) throws Throwable {
 
@@ -2908,7 +2936,8 @@ public class VerificationHost extends ExampleServiceHost {
      *
      * @param userServicePath user document link
      */
-    public AuthorizationContext assumeIdentity(String userServicePath) throws GeneralSecurityException {
+    public AuthorizationContext assumeIdentity(String userServicePath)
+            throws GeneralSecurityException {
         return assumeIdentity(userServicePath, null);
     }
 
