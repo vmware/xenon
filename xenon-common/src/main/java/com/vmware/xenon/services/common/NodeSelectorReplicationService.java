@@ -14,6 +14,10 @@
 package com.vmware.xenon.services.common;
 
 import java.net.URI;
+import java.util.Collection;
+import java.util.Objects;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.stream.Collectors;
 
 import com.vmware.xenon.common.NodeSelectorService;
 import com.vmware.xenon.common.NodeSelectorService.SelectAndForwardRequest;
@@ -33,7 +37,8 @@ public class NodeSelectorReplicationService extends StatelessService {
 
     public static final int BINARY_SERIALIZATION = Integer.getInteger(
             Utils.PROPERTY_NAME_PREFIX
-                    + "NodeSelectorReplicationService.BINARY_SERIALIZATION", 1);
+                    + "NodeSelectorReplicationService.BINARY_SERIALIZATION",
+            1);
 
     private Service parent;
 
@@ -65,25 +70,25 @@ public class NodeSelectorReplicationService extends StatelessService {
             return;
         }
 
-        int[] completionCounts = new int[2];
-
         // The eligible count can be less than the member count if the parent node selector has
         // a smaller replication factor than group size. We need to use the replication factor
         // as the upper bound for calculating success and failure thresholds
         int eligibleMemberCount = rsp.selectedNodes.size();
+        Collection<NodeState> selectedNodes = rsp.selectedNodes;
 
         // When quorum is not required, succeed when we replicate to at least one remote node,
         // or, if only local node is available, succeed immediately.
         int successThreshold = Math.min(2, eligibleMemberCount - 1);
-        int failureThreshold = eligibleMemberCount - successThreshold;
-
-        if (req.serviceOptions.contains(ServiceOption.OWNER_SELECTION)) {
-            successThreshold = Math.min(eligibleMemberCount, selfNode.membershipQuorum);
-            failureThreshold = eligibleMemberCount - successThreshold;
-        }
 
         String rplQuorumValue = outboundOp.getRequestHeader(Operation.REPLICATION_QUORUM_HEADER);
+        if (rplQuorumValue == null && !req.serviceOptions.contains(ServiceOption.OWNER_SELECTION)) {
+            // replicate using 'default' success threshold
+            replicateUpdateToNodes(outboundOp, selectedNodes, successThreshold);
+            return;
+        }
+
         if (rplQuorumValue != null) {
+            // replicate using success threshold based on request quorum header
             try {
                 if (Operation.REPLICATION_QUORUM_HEADER_VALUE_ALL.equals(rplQuorumValue)) {
                     successThreshold = eligibleMemberCount;
@@ -96,16 +101,98 @@ public class NodeSelectorReplicationService extends StatelessService {
                             successThreshold, eligibleMemberCount);
                     throw new IllegalArgumentException(errorMsg);
                 }
-                failureThreshold = eligibleMemberCount - successThreshold;
                 outboundOp.getRequestHeaders().remove(Operation.REPLICATION_QUORUM_HEADER);
             } catch (Throwable e) {
                 outboundOp.setRetryCount(0).fail(e);
                 return;
             }
+
+            replicateUpdateToNodes(outboundOp, selectedNodes, successThreshold);
+            return;
         }
 
+        // replicate using OWNER_SELECTION
+        String location = selfNode.customProperties.get(NodeState.PROPERTY_NAME_LOCATION);
+        if (location != null) {
+            // replicate using quorum among nodes in the same location
+            int localNodes = getNodesInLocation(location, selectedNodes);
+            int quorum = (localNodes / 2) + 1;
+            successThreshold = Math.min(eligibleMemberCount, quorum);
+            logInfo("replicating %s (op id %d) to %d nodes with location %s quorum %d",
+                    outboundOp.getAction(), outboundOp.getId(), selectedNodes.size(), location,
+                    successThreshold);
+            replicateUpdateToNodes(outboundOp, selectedNodes, successThreshold, location,
+                    localNodes);
+            return;
+        }
+
+        // no location - replicate using membership quorum
+        successThreshold = Math.min(eligibleMemberCount, selfNode.membershipQuorum);
+        replicateUpdateToNodes(outboundOp, selectedNodes, successThreshold);
+    }
+
+    /**
+     * Returns the number of nodes in the specified location
+     */
+    private int getNodesInLocation(String location,
+            Collection<NodeState> nodes) {
+        return (int) nodes.stream()
+                .filter(ns -> Objects.equals(location,
+                        ns.customProperties.get(NodeState.PROPERTY_NAME_LOCATION)))
+                .peek(ns -> logInfo("Node in location %s: %s (groupReference: %s)", location,
+                        ns.id, ns.groupReference))
+                .count();
+    }
+
+    /**
+     * Returns true if the specified response is from one of the specified nodes
+     * in the specified location
+     */
+    private boolean isResponseFromLocation(Operation remotePeerResponse, String location,
+            Collection<NodeState> nodes) {
+        if (remotePeerResponse == null) {
+            logInfo("isResponseFromLocation remotePeerService: null, location: %s, rc: true",
+                    location);
+            return true;
+        }
+
+        URI remotePeerService = remotePeerResponse.getUri();
+        boolean rc = !nodes.stream()
+                .filter(ns -> Objects.equals(location,
+                        ns.customProperties.get(NodeState.PROPERTY_NAME_LOCATION)))
+                .filter(ns -> ns.groupReference.getHost().equals(remotePeerService.getHost())
+                        && ns.groupReference.getPort() == remotePeerService.getPort())
+                .collect(Collectors.toList()).isEmpty();
+        logInfo("%s remotePeerService: %s (op id: %d), location: %s, rc: %b",
+                remotePeerResponse.getAction(), remotePeerService, remotePeerResponse.getId(),
+                location, rc);
+        return rc;
+    }
+
+    private void replicateUpdateToNodes(Operation outboundOp,
+            Collection<NodeState> nodes,
+            int successThreshold) {
+        replicateUpdateToNodes(outboundOp, nodes, successThreshold, null, 0);
+    }
+
+    /**
+     * Issues update to specified nodes and completes/fails the original
+     * operation based on the specified success threshold. If location
+     * is not null, then successThreshold applies to nodes within the same
+     * location as the owner.
+     */
+    private void replicateUpdateToNodes(Operation outboundOp,
+            Collection<NodeState> nodes,
+            int successThreshold,
+            String location,
+            int nodesInLocation) {
+        int eligibleMemberCount = nodes.size();
         final int successThresholdFinal = successThreshold;
-        final int failureThresholdFinal = failureThreshold;
+        boolean locationQuorum = location != null;
+        final int failureThresholdFinal = locationQuorum ? nodesInLocation - successThreshold
+                : eligibleMemberCount - successThreshold;
+        AtomicBoolean outboundOpCompleted = new AtomicBoolean(false);
+        int[] completionCounts = new int[4];
 
         CompletionHandler c = (o, e) -> {
             if (e == null && o != null
@@ -115,41 +202,60 @@ public class NodeSelectorReplicationService extends StatelessService {
 
             int sCount = completionCounts[0];
             int fCount = completionCounts[1];
+            int sLocationCount = completionCounts[2];
+            int fLocationCount = completionCounts[3];
             synchronized (outboundOp) {
                 if (e != null) {
                     completionCounts[1] = completionCounts[1] + 1;
                     fCount = completionCounts[1];
+                    if (locationQuorum && isResponseFromLocation(o, location, nodes)) {
+                        completionCounts[3] = completionCounts[3] + 1;
+                        fLocationCount = completionCounts[3];
+                    }
                 } else {
                     completionCounts[0] = completionCounts[0] + 1;
                     sCount = completionCounts[0];
+                    if (locationQuorum && isResponseFromLocation(o, location, nodes)) {
+                        completionCounts[2] = completionCounts[2] + 1;
+                        sLocationCount = completionCounts[2];
+                    }
                 }
             }
 
             if (e != null && o != null) {
-                logWarning("Replication request to %s failed with %d, %s",
-                        o.getUri(), o.getStatusCode(), e.getMessage());
+                logWarning("Replication request (id %d) to %s failed with %d, %s",
+                        o.getId(), o.getUri(), o.getStatusCode(), e.getMessage());
                 // Preserve the status code from latest failure. We do not have a mechanism
                 // to report different failure codes, per operation.
                 outboundOp.setStatusCode(o.getStatusCode());
             }
 
-            if (sCount == successThresholdFinal) {
-                outboundOp.setStatusCode(Operation.STATUS_CODE_OK).complete();
+            if ((!locationQuorum && sCount == successThresholdFinal)
+                    || (locationQuorum && sLocationCount == successThresholdFinal)) {
+                boolean shouldComplete = outboundOpCompleted.compareAndSet(false, true);
+                if (shouldComplete) {
+                    logInfo("Operation %d has reached quorum. Completing operation.",
+                            outboundOp.getId());
+                    outboundOp.setStatusCode(Operation.STATUS_CODE_OK).complete();
+                }
                 return;
             }
 
-            if (fCount == 0) {
+            if ((!locationQuorum && fCount == 0) || (locationQuorum && fLocationCount == 0)) {
                 return;
             }
 
-            if (fCount > failureThresholdFinal || ((fCount + sCount) == memberCount)) {
+            if (!locationQuorum && (fCount > failureThresholdFinal
+                    || ((fCount + sCount) == eligibleMemberCount)) ||
+                    (locationQuorum && (fLocationCount > failureThresholdFinal
+                            || ((fLocationCount + sLocationCount) == nodesInLocation)))) {
                 String error = String
-                        .format("%s to %s failed. Success: %d,  Fail: %d, quorum: %d, threshold: %d",
+                        .format("%s to %s failed. Success: %d,  Fail: %d, quorum: %d, failure threshold: %d",
                                 outboundOp.getAction(),
                                 outboundOp.getUri().getPath(),
-                                sCount,
-                                fCount,
-                                selfNode.membershipQuorum,
+                                locationQuorum ? sLocationCount : sCount,
+                                locationQuorum ? fLocationCount : fCount,
+                                successThresholdFinal,
                                 failureThresholdFinal);
                 logWarning("%s", error);
                 outboundOp.fail(new IllegalStateException(error));
@@ -161,10 +267,10 @@ public class NodeSelectorReplicationService extends StatelessService {
 
         Operation update = Operation.createPost(null)
                 .setAction(outboundOp.getAction())
-                .setCompletion(c)
                 .setRetryCount(1)
                 .setExpiration(outboundOp.getExpirationMicrosUtc())
                 .transferRefererFrom(outboundOp);
+        update.setCompletion(c);
 
         String pragmaHeader = outboundOp.getRequestHeader(Operation.PRAGMA_HEADER);
         if (pragmaHeader != null && !Operation.PRAGMA_DIRECTIVE_FORWARDED.equals(pragmaHeader)) {
@@ -196,7 +302,7 @@ public class NodeSelectorReplicationService extends StatelessService {
         // trigger completion once, for self node, since its part of our accounting
         c.handle(null, null);
 
-        for (NodeState m : rsp.selectedNodes) {
+        for (NodeState m : nodes) {
             if (m.id.equals(selfId)) {
                 continue;
             }
@@ -215,11 +321,15 @@ public class NodeSelectorReplicationService extends StatelessService {
             }
 
             if (NodeState.isUnAvailable(m)) {
+                int originalStatusCode = update.getStatusCode();
                 update.setStatusCode(Operation.STATUS_CODE_FAILURE_THRESHOLD);
                 c.handle(update, new IllegalStateException("node is not available"));
+                update.setStatusCode(originalStatusCode);
                 continue;
             }
 
+            logInfo("Node %s: Replicating %s (original op id: %d, replicated op id: %d) to node %s",
+                    selfId, update.getAction(), outboundOp.getId(), update.getId(), m.id);
             cl.send(update);
         }
     }

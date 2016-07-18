@@ -52,6 +52,7 @@ import java.util.function.Consumer;
 import java.util.logging.Handler;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.stream.Collectors;
 
 import javax.net.ssl.SSLContext;
 import javax.xml.bind.DatatypeConverter;
@@ -142,6 +143,10 @@ public class VerificationHost extends ExampleServiceHost {
      */
     public boolean isStressTest;
 
+    /**
+     * Command line argument indicating this is a multi-location test
+     */
+    public boolean isMultiLocationTest;
     /**
      * Command line argument for test duration, set for long running tests
      */
@@ -1768,9 +1773,11 @@ public class VerificationHost extends ExampleServiceHost {
         }
         final long intervalMicros = TimeUnit.MILLISECONDS.toMicros(maintIntervalMillis);
         for (int i = 0; i < localHostCount; i++) {
+            String location = this.isMultiLocationTest ? ((i < localHostCount / 2) ? "L1" : "L2")
+                    : null;
             run(() -> {
                 try {
-                    this.setUpLocalPeerHost(null, intervalMicros);
+                    this.setUpLocalPeerHost(null, intervalMicros, location);
                 } catch (Throwable e) {
                     failIteration(e);
                 }
@@ -1794,8 +1801,19 @@ public class VerificationHost extends ExampleServiceHost {
         return setUpLocalPeerHost(0, maintIntervalMicros, hosts);
     }
 
+    public VerificationHost setUpLocalPeerHost(Collection<ServiceHost> hosts,
+            long maintIntervalMicros, String location) throws Throwable {
+        return setUpLocalPeerHost(0, maintIntervalMicros, hosts, location);
+    }
+
     public VerificationHost setUpLocalPeerHost(int port, long maintIntervalMicros,
             Collection<ServiceHost> hosts)
+            throws Throwable {
+        return setUpLocalPeerHost(port, maintIntervalMicros, hosts, null);
+    }
+
+    public VerificationHost setUpLocalPeerHost(int port, long maintIntervalMicros,
+            Collection<ServiceHost> hosts, String location)
             throws Throwable {
 
         VerificationHost h = VerificationHost.create(port);
@@ -1822,6 +1840,9 @@ public class VerificationHost extends ExampleServiceHost {
             h.setCertificateFileReference(this.getState().certificateFileReference);
             h.setPrivateKeyFileReference(this.getState().privateKeyFileReference);
             h.setPrivateKeyPassphrase(this.getState().privateKeyPassphrase);
+            if (location != null) {
+                h.setLocation(location);
+            }
 
             h.start();
             h.setMaintenanceIntervalMicros(maintIntervalMicros);
@@ -1887,28 +1908,72 @@ public class VerificationHost extends ExampleServiceHost {
      * Randomly returns one of peer hosts.
      */
     public VerificationHost getPeerHost() {
-        URI hostUri = getPeerServiceUri(null);
+        return getPeerHost(null);
+    }
+
+    /**
+     * Randomly returns one of peer hosts.
+     * If location is not null, return a host in the specified location.
+     */
+    public VerificationHost getPeerHost(String location) {
+        URI hostUri = getPeerServiceUri(null, location);
         if (hostUri != null) {
             return this.localPeerHosts.get(hostUri);
         }
         return null;
     }
 
+    /**
+     * Randomly returns one of peer service instance URIs.
+     */
     public URI getPeerServiceUri(String link) {
+        return getPeerServiceUri(link, null);
+    }
+
+    /**
+     * Randomly returns one of peer service instance URIs.
+     * If location is not null, return an instance from a host in the specified
+     * location.
+     */
+    public URI getPeerServiceUri(String link, String location) {
         if (!this.localPeerHosts.isEmpty()) {
             List<URI> localPeerList = new ArrayList<>(this.localPeerHosts.keySet());
-            return getUriFromList(link, localPeerList);
+            return getUriFromList(link, localPeerList, location);
         } else {
             List<URI> peerList = new ArrayList<>(this.peerNodeGroups.keySet());
-            return getUriFromList(link, peerList);
+            return getUriFromList(link, peerList, location);
         }
     }
 
     /**
-     * Randomly choose one uri from uriList and extend with the link
+     * Randomly choose one uri from uriList and extend with the link.
      */
     private URI getUriFromList(String link, List<URI> uriList) {
+        return getUriFromList(link, uriList, null);
+    }
+
+    /**
+     * Randomly choose one uri from uriList and extend with the link.
+     * If location is not null, return a uri from a node with the specified
+     * location.
+     */
+    private URI getUriFromList(String link, List<URI> uriList, String location) {
         if (!uriList.isEmpty()) {
+            if (location != null) {
+                // narrow down the list to hosts in our location
+                Collection<NodeState> nodesInLocation = this.peerHostIdToNodeState.values()
+                        .stream()
+                        .filter(ns -> Objects.equals(location,
+                                ns.customProperties.get(NodeState.PROPERTY_NAME_LOCATION)))
+                        .collect(Collectors.toList());
+                uriList = uriList
+                        .stream().filter(uri -> nodesInLocation.stream()
+                                .filter(ns -> uri.getHost().equals(ns.groupReference.getHost())
+                                        && uri.getPort() == ns.groupReference.getPort())
+                                .count() > 0)
+                        .collect(Collectors.toList());
+                this.log("Narrowed down list to location %s: %s", location, uriList);
+            }
             Collections.shuffle(uriList, new Random(System.nanoTime()));
             URI baseUri = uriList.iterator().next();
             return UriUtils.extendUri(baseUri, link);
@@ -2548,6 +2613,14 @@ public class VerificationHost extends ExampleServiceHost {
         }
     }
 
+    public boolean isMultiLocationTest() {
+        return this.isMultiLocationTest;
+    }
+
+    public void setMultiLocationTest(boolean isMultiLocationTest) {
+        this.isMultiLocationTest = isMultiLocationTest;
+    }
+
     public void toggleServiceOptions(URI serviceUri, EnumSet<ServiceOption> optionsToEnable,
             EnumSet<ServiceOption> optionsToDisable) throws Throwable {
 
@@ -2908,7 +2981,8 @@ public class VerificationHost extends ExampleServiceHost {
      *
      * @param userServicePath user document link
      */
-    public AuthorizationContext assumeIdentity(String userServicePath) throws GeneralSecurityException {
+    public AuthorizationContext assumeIdentity(String userServicePath)
+            throws GeneralSecurityException {
         return assumeIdentity(userServicePath, null);
     }
 
