@@ -65,7 +65,7 @@ public class TestExampleTaskService extends BasicReusableHostTestCase {
 
         subscribeTask(taskLink[0], notificationTarget);
 
-        ExampleTaskServiceState state = waitForFinishedTask(initialState.getClass(), taskLink[0]);
+        waitForFinishedTask(initialState.getClass(), taskLink[0]);
 
         // stop the host, and verify task deals with restart
         this.host.stop();
@@ -73,7 +73,7 @@ public class TestExampleTaskService extends BasicReusableHostTestCase {
         VerificationHost.restartStatefulHost(this.host);
         this.host.waitForServiceAvailable(taskLink[0]);
         // verify service is re-started, and in FINISHED state
-        state = waitForFinishedTask(initialState.getClass(), taskLink[0]);
+        ExampleTaskServiceState state = waitForFinishedTask(initialState.getClass(), taskLink[0]);
 
         updateTaskExpirationAndValidate(state);
         validateNoServices();

@@ -3277,10 +3277,8 @@ public class VerificationHost extends ExampleServiceHost {
             uri = UriUtils.buildUri(this, taskUri);
         }
 
-        // If the task's state ever reaches one of these "final" stages, we can stop waiting...
         List<TaskState.TaskStage> finalTaskStages = Arrays
-                .asList(TaskState.TaskStage.CANCELLED, TaskState.TaskStage.FAILED,
-                        TaskState.TaskStage.FINISHED, expectedStage);
+                .asList(TaskState.TaskStage.CANCELLED, TaskState.TaskStage.FAILED, TaskState.TaskStage.FINISHED);
 
         String error = String.format("Task did not reach expected state %s", expectedStage);
         Object[] r = new Object[1];
@@ -3289,9 +3287,12 @@ public class VerificationHost extends ExampleServiceHost {
             T state = this.getServiceState(null, type, finalUri);
             r[0] = state;
             if (state.taskInfo != null) {
-                if (finalTaskStages.contains(state.taskInfo.stage)) {
+                if (expectedStage == state.taskInfo.stage) {
                     return true;
                 }
+                assertTrue("Task was expected to reach stage " + expectedStage +
+                        " but reached final stage " + state.taskInfo.stage,
+                        !finalTaskStages.contains(state.taskInfo.stage));
             }
             return false;
         });
