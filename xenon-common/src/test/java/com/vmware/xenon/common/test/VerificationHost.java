@@ -874,6 +874,22 @@ public class VerificationHost extends ExampleServiceHost {
         return getServiceState(props, type, array);
     }
 
+    public <T extends TaskService.TaskServiceState> T getServiceStateUsingQueryTask(
+            Class<T> type, String uri)
+            throws Throwable {
+        QueryTask.Query q = QueryTask.Query.Builder.create()
+                .setTerm(ServiceDocument.FIELD_NAME_SELF_LINK, uri)
+                .build();
+
+        QueryTask queryTask = new QueryTask();
+        queryTask.querySpec = new QueryTask.QuerySpecification();
+        queryTask.querySpec.query = q;
+        queryTask.querySpec.options.add(QueryOption.EXPAND_CONTENT);
+
+        this.createQueryTaskService(null, queryTask, false, true, queryTask, null);
+        return Utils.fromJson(queryTask.results.documents.get(uri), type);
+    }
+
     /**
      * Retrieve in parallel, state from N services. This method will block execution until responses
      * are received or a failure occurs. It is not optimized for throughput measurements
@@ -3263,15 +3279,32 @@ public class VerificationHost extends ExampleServiceHost {
      * Helper method that waits for {@code taskUri} to have a {@link TaskState.TaskStage} == {@code
      * expectedStage}.
      *
-     * @param type          The class type of that represent's the task's state
+     * @param type          The class type of that represents the task's state
      * @param taskUri       the URI of the task to wait for
      * @param expectedStage the stage we expect the task to eventually get to
-     * @param <T>           the type that represent's the task's state
+     * @param <T>           the type that represents the task's state
      * @return the state of the task once it's {@link TaskState.TaskStage} == {@code expectedStage}
      */
     @SuppressWarnings("unchecked")
     public <T extends TaskService.TaskServiceState> T waitForTask(Class<T> type, String taskUri,
             TaskState.TaskStage expectedStage) throws Throwable {
+        return waitForTask(type, taskUri, expectedStage, false);
+    }
+
+    /**
+     * Helper method that waits for {@code taskUri} to have a {@link TaskState.TaskStage} == {@code
+     * expectedStage}.
+     *
+     * @param type          The class type of that represents the task's state
+     * @param taskUri       the URI of the task to wait for
+     * @param expectedStage the stage we expect the task to eventually get to
+     * @param useQueryTask  Uses {@link QueryTask} to retrieve the current stage of the Task
+     * @param <T>           the type that represents the task's state
+     * @return the state of the task once it's {@link TaskState.TaskStage} == {@code expectedStage}
+     */
+    @SuppressWarnings("unchecked")
+    public <T extends TaskService.TaskServiceState> T waitForTask(Class<T> type, String taskUri,
+            TaskState.TaskStage expectedStage, boolean useQueryTask) throws Throwable {
         URI uri = UriUtils.buildUri(taskUri);
 
         if (!uri.isAbsolute()) {
@@ -3285,7 +3318,10 @@ public class VerificationHost extends ExampleServiceHost {
         Object[] r = new Object[1];
         final URI finalUri = uri;
         waitFor(error, () -> {
-            T state = this.getServiceState(null, type, finalUri);
+            T state = (useQueryTask)
+                    ? this.getServiceStateUsingQueryTask(type, taskUri)
+                    : this.getServiceState(null, type, finalUri);
+
             r[0] = state;
             if (state.taskInfo != null) {
                 if (expectedStage == state.taskInfo.stage) {

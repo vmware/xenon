@@ -205,10 +205,10 @@ public class BasicReusableHostTestCase {
         return HOST.waitForFailedTask(type, taskUri);
     }
 
-    /** @see VerificationHost#waitForTask(Class, String, TaskState.TaskStage) */
+    /** @see VerificationHost#waitForTask(Class, String, TaskState.TaskStage, boolean) */
     public static <T extends TaskService.TaskServiceState> T waitForTask(Class<T> type, String taskUri,
-            TaskState.TaskStage expectedStage) throws Throwable {
-        return HOST.waitForTask(type, taskUri, expectedStage);
+            TaskState.TaskStage expectedStage, boolean useQueryTask) throws Throwable {
+        return HOST.waitForTask(type, taskUri, expectedStage, useQueryTask);
     }
 
 }
