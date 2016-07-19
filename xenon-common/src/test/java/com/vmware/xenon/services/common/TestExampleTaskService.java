@@ -29,6 +29,7 @@ import com.vmware.xenon.common.BasicReusableHostTestCase;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Operation.CompletionHandler;
 import com.vmware.xenon.common.ServiceDocumentQueryResult;
+import com.vmware.xenon.common.TaskState;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.test.VerificationHost;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
@@ -64,8 +65,7 @@ public class TestExampleTaskService extends BasicReusableHostTestCase {
         assertNotNull(taskLink[0]);
 
         subscribeTask(taskLink[0], notificationTarget);
-
-        waitForFinishedTask(initialState.getClass(), taskLink[0]);
+        waitForTask(initialState.getClass(), taskLink[0], TaskState.TaskStage.FINISHED, true);
 
         // stop the host, and verify task deals with restart
         this.host.stop();
@@ -73,7 +73,8 @@ public class TestExampleTaskService extends BasicReusableHostTestCase {
         VerificationHost.restartStatefulHost(this.host);
         this.host.waitForServiceAvailable(taskLink[0]);
         // verify service is re-started, and in FINISHED state
-        ExampleTaskServiceState state = waitForFinishedTask(initialState.getClass(), taskLink[0]);
+        ExampleTaskServiceState state = waitForTask(
+                initialState.getClass(), taskLink[0], TaskState.TaskStage.FINISHED, true);
 
         updateTaskExpirationAndValidate(state);
         validateNoServices();
