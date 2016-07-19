@@ -114,6 +114,7 @@ public class SimpleTransactionService extends StatefulService {
             body.previousVersion = previousVersion;
             return Operation
                     .createPatch(buildTransactionUri(host, transactionId))
+                    .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_QUEUE_FOR_SERVICE_AVAILABILITY)
                     .setBody(body);
         }
 
@@ -122,6 +123,7 @@ public class SimpleTransactionService extends StatefulService {
             body.transactionOutcome = EndTransactionRequest.TransactionOutcome.COMMIT;
             return Operation
                     .createPatch(buildTransactionUri(host, transactionId))
+                    .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_QUEUE_FOR_SERVICE_AVAILABILITY)
                     .setBody(body);
         }
 
@@ -130,6 +132,7 @@ public class SimpleTransactionService extends StatefulService {
             body.transactionOutcome = EndTransactionRequest.TransactionOutcome.ABORT;
             return Operation
                     .createPatch(buildTransactionUri(host, transactionId))
+                    .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_QUEUE_FOR_SERVICE_AVAILABILITY)
                     .setBody(body);
         }
     }
@@ -371,8 +374,8 @@ public class SimpleTransactionService extends StatefulService {
                                     request.fail(e);
                                     return;
                                 }
-                                EnrollResponse enrollRespone = o.getBody(EnrollResponse.class);
-                                this.transactionExpirationTimeMicros = enrollRespone.transactionExpirationTimeMicros;
+                                EnrollResponse enrollResponse = o.getBody(EnrollResponse.class);
+                                this.transactionExpirationTimeMicros = enrollResponse.transactionExpirationTimeMicros;
                                 this.service.getOperationProcessingChain()
                                         .resumeProcessingRequest(request, this);
                             });
