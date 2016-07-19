@@ -3289,8 +3289,11 @@ public class VerificationHost extends ExampleServiceHost {
             T state = this.getServiceState(null, type, finalUri);
             r[0] = state;
             if (state.taskInfo != null) {
-                if (finalTaskStages.contains(state.taskInfo.stage)) {
+                if (expectedStage == state.taskInfo.stage) {
                     return true;
+                }
+                if (finalTaskStages.contains(state.taskInfo.stage)) {
+                    return false;
                 }
             }
             return false;
