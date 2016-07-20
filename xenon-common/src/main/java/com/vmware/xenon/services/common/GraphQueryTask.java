@@ -36,7 +36,7 @@ public class GraphQueryTask extends TaskService.TaskServiceState {
     /**
      * A list of authorization context links which can access this service.
      */
-    public Set<String> tenantLinks;
+    public Set<String> authContextLinks;
 
     /**
      * Links to the query task service instances with results for each query stage. The

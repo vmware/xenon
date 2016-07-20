@@ -42,7 +42,7 @@ public class QueryTask extends ServiceDocument {
     /**
      * A list of authorization context links which can access this service.
      */
-    public List<String> tenantLinks;
+    public Set<String> authContextLinks;
 
     public static class QuerySpecification {
         public static final String FIELD_NAME_CHARACTER = ".";

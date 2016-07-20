@@ -53,7 +53,7 @@ public class ServiceDocumentDescription {
      */
     public static final int DEFAULT_SERIALIZED_STATE_LIMIT = 4096 * 8;
 
-    public static final String FIELD_NAME_TENANT_LINKS = "tenantLinks";
+    public static final String FIELD_NAME_AUTH_CONTEXT_LINKS = "authContextLinks";
 
     public enum TypeName {
         LONG,
@@ -212,17 +212,17 @@ public class ServiceDocumentDescription {
 
     /**
      * Sets the indexing option {@link PropertyIndexingOption#EXPAND} for document fields named {@link
-     * #FIELD_NAME_TENANT_LINKS}.
+     * #FIELD_NAME_AUTH_CONTEXT_LINKS}.
      * @param description The service document description to apply indexing options.
      */
-    public static void expandTenantLinks(ServiceDocumentDescription description) {
-        ServiceDocumentDescription.PropertyDescription pdTenantLinks = description.propertyDescriptions
-                .get(FIELD_NAME_TENANT_LINKS);
-        if (pdTenantLinks == null) {
-            throw new IllegalStateException(FIELD_NAME_TENANT_LINKS
+    public static void expandAuthContextLinks(ServiceDocumentDescription description) {
+        ServiceDocumentDescription.PropertyDescription pdAuthContextLinks = description.propertyDescriptions
+                .get(FIELD_NAME_AUTH_CONTEXT_LINKS);
+        if (pdAuthContextLinks == null) {
+            throw new IllegalStateException(FIELD_NAME_AUTH_CONTEXT_LINKS
                     + " property is missing in the service document");
         }
-        pdTenantLinks.indexingOptions = EnumSet
+        pdAuthContextLinks.indexingOptions = EnumSet
                 .of(PropertyIndexingOption.EXPAND);
     }
 

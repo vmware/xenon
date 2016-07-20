@@ -15,8 +15,8 @@ package com.vmware.xenon.services.common;
 
 import java.net.URI;
 import java.util.EnumSet;
-import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import com.vmware.xenon.common.FactoryService;
 import com.vmware.xenon.common.Operation;
@@ -78,9 +78,9 @@ public class AuthCredentialsService extends StatefulService {
         public String type;
 
         /**
-         * A list of tenant links which can access this service.
+         * A list of auth context service links which can access this service.
          */
-        public List<String> tenantLinks;
+        public Set<String> authContextLinks;
 
         /**
          * Custom properties.
@@ -156,7 +156,7 @@ public class AuthCredentialsService extends StatefulService {
         pdCustomProperties.indexingOptions = EnumSet
                 .of(ServiceDocumentDescription.PropertyIndexingOption.EXPAND);
 
-        ServiceDocumentDescription.expandTenantLinks(td.documentDescription);
+        ServiceDocumentDescription.expandAuthContextLinks(td.documentDescription);
 
         AuthCredentialsServiceState template = (AuthCredentialsServiceState) td;
         return template;
