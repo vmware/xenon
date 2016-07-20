@@ -1,6 +1,9 @@
 # CHANGELOG
 
 ## 0.9.2-SNAPSHOT
+* Rename tenantLinks to authContextLinks - This field in some service
+   documents represents the auth context under which the service can be
+   accessed. The new name captures that intent better
 
 ## 0.9.1
 

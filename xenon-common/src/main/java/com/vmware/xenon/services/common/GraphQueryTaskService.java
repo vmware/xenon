@@ -13,7 +13,7 @@
 
 package com.vmware.xenon.services.common;
 
-import java.util.ArrayList;
+import java.util.HashSet;
 
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.ServiceDocumentQueryResult;
@@ -153,8 +153,8 @@ public class GraphQueryTaskService extends TaskService<GraphQueryTask> {
                 stageQueryTask.querySpec.options.add(QueryOption.SELECT_LINKS);
             }
 
-            if (task.tenantLinks != null && stageQueryTask.tenantLinks == null) {
-                stageQueryTask.tenantLinks = new ArrayList<>(task.tenantLinks);
+            if (task.authContextLinks != null && stageQueryTask.authContextLinks == null) {
+                stageQueryTask.authContextLinks = new HashSet<>(task.authContextLinks);
             }
 
             if (i == 0) {
