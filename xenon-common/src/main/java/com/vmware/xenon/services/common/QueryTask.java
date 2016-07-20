@@ -40,7 +40,7 @@ public class QueryTask extends ServiceDocument {
     public static final int DEFAULT_PRECISION_STEP = 16;
 
     /**
-     * A list of tenant links which can access this service.
+     * A list of authorization context links which can access this service.
      */
     public List<String> tenantLinks;
 

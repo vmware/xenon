@@ -33,6 +33,11 @@ public class GraphQueryTask extends TaskService.TaskServiceState {
     public List<QueryTask> stages;
 
     /**
+     * A list of authorization context links which can access this service.
+     */
+    public List<String> tenantLinks;
+
+    /**
      * Links to the query task service instances with results for each query stage. The
      * list tracks the query task link for a given {@link GraphQueryTask#currentDepth} value.
      */
