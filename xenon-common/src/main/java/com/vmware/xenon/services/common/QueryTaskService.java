@@ -298,6 +298,7 @@ public class QueryTaskService extends StatefulService {
         currentState.results = new ServiceDocumentQueryResult();
         r.copyTo(this.results);
 
+        resetQuerySpecNativeContext(currentState);
         currentState.results.documentCount = r.documentCount;
         currentState.results.nextPageLink = r.nextPageLink;
         currentState.results.prevPageLink = r.prevPageLink;
@@ -319,6 +320,13 @@ public class QueryTaskService extends StatefulService {
         }
 
         get.setBodyNoCloning(currentState).complete();
+    }
+
+    private void resetQuerySpecNativeContext(QueryTask currentState) {
+        currentState.querySpec.context.nativePage = null;
+        currentState.querySpec.context.nativeQuery = null;
+        currentState.querySpec.context.nativeSort = null;
+        currentState.querySpec.context.nativeSearcher = null;
     }
 
     @Override
@@ -549,6 +557,7 @@ public class QueryTaskService extends StatefulService {
 
             scheduleExpiration = !task.querySpec.options.contains(QueryOption.EXPAND_LINKS);
             if (directOp != null) {
+                resetQuerySpecNativeContext(task);
                 if (!task.querySpec.options.contains(QueryOption.EXPAND_LINKS)) {
                     directOp.setBodyNoCloning(task).complete();
                     return;

@@ -237,7 +237,7 @@ public class TestGraphQueryTaskService extends BasicTestCase {
         // wait for query task to finish. We will supply it in the *completed* stage, as part
         // of a graph query task, which will use its results (from the page link), instead
         // of executing its query
-        URI firstStageTaskUri = this.host.createQueryTaskService(stageWithResults);
+        URI firstStageTaskUri = this.host.createQueryTaskService(stageWithResults, true);
         finishedFirstStage = this.host.waitForQueryTask(firstStageTaskUri, TaskStage.FINISHED);
         finalState = createTreeGraphTask(stageCount, finishedFirstStage, true);
 
@@ -429,6 +429,9 @@ public class TestGraphQueryTaskService extends BasicTestCase {
             }
             ctx.completeIteration();
         });
+
+        // force remote to prove task results and response serialize properly
+        post.forceRemote();
         this.host.send(post);
         testWait(ctx);
         if (this.isFailureExpected) {
@@ -444,6 +447,22 @@ public class TestGraphQueryTaskService extends BasicTestCase {
         GraphQueryTask t = this.host.waitForFinishedTask(GraphQueryTask.class,
                 initialState.documentSelfLink);
         this.taskCompletionTimeMicros = Utils.getNowMicrosUtc();
+        TestContext ctx = testCreate(1);
+        Operation get = Operation.createGet(this.host, initialState.documentSelfLink)
+                .forceRemote().setCompletion((o, e) -> {
+                    if (e != null) {
+                        ctx.failIteration(e);
+                        return;
+                    }
+                    GraphQueryTask rsp = o.getBody(GraphQueryTask.class);
+                    if (rsp.stages == null) {
+                        ctx.failIteration(new IllegalStateException("missing stages"));
+                        return;
+                    }
+                    ctx.completeIteration();
+                });
+        this.host.send(get);
+        testWait(ctx);
         return t;
     }
 
