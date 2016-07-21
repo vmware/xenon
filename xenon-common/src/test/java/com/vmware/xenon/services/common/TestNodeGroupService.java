@@ -1864,29 +1864,35 @@ public class TestNodeGroupService {
                 .start();
         ctxToCreateBar.await();
 
+
+        AuthorizationContext fooAuthContext = groupHost.assumeIdentity(fooUserLink);
+        AuthorizationContext barAuthContext = groupHost.assumeIdentity(barUserLink);
+        String fooToken = fooAuthContext.getToken();
+        String barToken = barAuthContext.getToken();
+
         groupHost.resetSystemAuthorizationContext();
 
         // verify deleting role should clear the auth cache
-        populateAuthCacheInPeers(fooUserLink);
+        populateAuthCacheInPeer(fooAuthContext);
         groupHost.setSystemAuthorizationContext();
         this.host.sendAndWaitExpectSuccess(
                 Operation.createDelete(
                         UriUtils.buildUri(groupHost, "/core/authz/roles/foo-role-1")));
         groupHost.resetSystemAuthorizationContext();
-        verifyAuthCacheHasClearedInPeers(fooUserLink);
+        verifyAuthCacheHasClearedInPeers(fooToken);
 
         // verify deleting user-group should clear the auth cache
-        populateAuthCacheInPeers(fooUserLink);
+        populateAuthCacheInPeer(fooAuthContext);
         // delete the user group associated with the user
         groupHost.setSystemAuthorizationContext();
         this.host.sendAndWaitExpectSuccess(
                 Operation.createDelete(
                         UriUtils.buildUri(groupHost, "/core/authz/user-groups/foo-user-group")));
         groupHost.resetSystemAuthorizationContext();
-        verifyAuthCacheHasClearedInPeers(fooUserLink);
+        verifyAuthCacheHasClearedInPeers(fooToken);
 
         // verify creating new role should clear the auth cache (using bar@foo.com)
-        populateAuthCacheInPeers(barUserLink);
+        populateAuthCacheInPeer(barAuthContext);
         groupHost.setSystemAuthorizationContext();
         Query q = Builder.create()
                 .addFieldClause(
@@ -1911,10 +1917,10 @@ public class TestNodeGroupService {
         ctxToCreateAnotherRoleForBar.await();
         groupHost.resetSystemAuthorizationContext();
 
-        verifyAuthCacheHasClearedInPeers(barUserLink);
+        verifyAuthCacheHasClearedInPeers(barToken);
 
         //
-        populateAuthCacheInPeers(barUserLink);
+        populateAuthCacheInPeer(barAuthContext);
         groupHost.setSystemAuthorizationContext();
 
         // Updating the resource group should be able to handle the fact that the user group does not exist
@@ -1930,10 +1936,10 @@ public class TestNodeGroupService {
         this.host.sendAndWaitExpectSuccess(
                 Operation.createDelete(UriUtils.buildUri(groupHost, newResourceGroupLink)));
         groupHost.resetSystemAuthorizationContext();
-        verifyAuthCacheHasClearedInPeers(barUserLink);
+        verifyAuthCacheHasClearedInPeers(barToken);
 
         // verify patching user should clear the auth cache
-        populateAuthCacheInPeers(fooUserLink);
+        populateAuthCacheInPeer(fooAuthContext);
         groupHost.setSystemAuthorizationContext();
         UserState userState = new UserState();
         userState.userGroupLinks = new HashSet<>();
@@ -1942,36 +1948,33 @@ public class TestNodeGroupService {
                 Operation.createPatch(UriUtils.buildUri(groupHost, fooUserLink))
                         .setBody(userState));
         groupHost.resetSystemAuthorizationContext();
-        verifyAuthCacheHasClearedInPeers(fooUserLink);
+        verifyAuthCacheHasClearedInPeers(fooToken);
 
         // verify deleting user should clear the auth cache
-        populateAuthCacheInPeers(fooUserLink);
+        populateAuthCacheInPeer(fooAuthContext);
         groupHost.setSystemAuthorizationContext();
         this.host.sendAndWaitExpectSuccess(
                 Operation.createDelete(UriUtils.buildUri(groupHost, fooUserLink)));
         groupHost.resetSystemAuthorizationContext();
-        verifyAuthCacheHasClearedInPeers(fooUserLink);
+        verifyAuthCacheHasClearedInPeers(fooToken);
 
     }
 
-    private void populateAuthCacheInPeers(String userLink) throws Throwable {
+    private void populateAuthCacheInPeer(AuthorizationContext authContext) throws Throwable {
         VerificationHost groupHost = this.host.getPeerHost();
-        AuthorizationContext authContext = groupHost.assumeIdentity(userLink);
 
         // issue GET to populate authContext in one of the peer
-        groupHost.sendAndWaitExpectSuccess(
+        groupHost.setAuthorizationContext(authContext);
+        this.host.sendAndWaitExpectSuccess(
                 Operation.createGet(UriUtils.buildUri(groupHost, ExampleService.FACTORY_LINK)));
 
         this.host.waitFor("Timeout waiting for correct auth cache state",
                 () -> checkCache(authContext.getToken(), true));
     }
 
-    private void verifyAuthCacheHasClearedInPeers(String userLink) throws Throwable {
-        VerificationHost groupHost = this.host.getPeerHost();
-        AuthorizationContext authContext = groupHost.assumeIdentity(userLink);
-
+    private void verifyAuthCacheHasClearedInPeers(String userToken) throws Throwable {
         this.host.waitFor("Timeout waiting for correct auth cache state",
-                () -> checkCache(authContext.getToken(), false));
+                () -> checkCache(userToken, false));
     }
 
     private boolean checkCache(String token, boolean expectEntries) throws Throwable {
