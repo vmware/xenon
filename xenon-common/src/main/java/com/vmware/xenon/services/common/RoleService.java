@@ -14,6 +14,7 @@
 package com.vmware.xenon.services.common;
 
 import java.util.Set;
+import java.util.logging.Level;
 
 import com.vmware.xenon.common.FactoryService;
 import com.vmware.xenon.common.Operation;
@@ -79,6 +80,10 @@ public class RoleService extends StatefulService {
     public void handleRequest(Operation request, OperationProcessingStage opProcessingStage) {
         RoleState roleState = AuthorizationCacheUtils.extractBody(request, this, RoleState.class);
         if (roleState != null) {
+
+            log(Level.INFO, "AA: clearing cache for role. host=%s, repl=%s",
+                    getHost().getId(),
+                    request.isFromReplication());
             AuthorizationCacheUtils.clearAuthzCacheForRole(this, request, roleState);
         }
         super.handleRequest(request, opProcessingStage);
