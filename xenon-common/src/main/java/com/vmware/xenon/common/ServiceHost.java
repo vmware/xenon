@@ -5100,6 +5100,11 @@ public class ServiceHost implements ServiceRequestSender {
             Set<String> tokenSet = this.userLinktoTokenMap.get(userLink);
             if (tokenSet != null) {
                 for (String token :tokenSet) {
+
+                    if (this.authorizationContextCache.containsKey(token)) {
+                        log(Level.INFO, "AA: removing cache on %s", getId());
+                    }
+
                     this.authorizationContextCache.remove(token);
                 }
             }

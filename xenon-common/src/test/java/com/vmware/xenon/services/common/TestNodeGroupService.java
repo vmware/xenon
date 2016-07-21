@@ -1968,6 +1968,8 @@ public class TestNodeGroupService {
         this.host.sendAndWaitExpectSuccess(
                 Operation.createGet(UriUtils.buildUri(groupHost, ExampleService.FACTORY_LINK)));
 
+        this.host.log("AA: cache populated on %s", groupHost.getId());
+
         this.host.waitFor("Timeout waiting for correct auth cache state",
                 () -> checkCache(authContext.getToken(), true));
     }
@@ -1987,6 +1989,7 @@ public class TestNodeGroupService {
             peer.resetSystemAuthorizationContext();
             if (peer.getAuthorizationContext(s, token) != null) {
                 contextFound = true;
+                this.host.log("AA: cache found=%s, expected=%s", peer.getId(), expectEntries);
                 break;
             }
         }
