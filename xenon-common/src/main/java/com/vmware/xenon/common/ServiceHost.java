@@ -3040,6 +3040,9 @@ public class ServiceHost implements ServiceRequestSender {
             Long expirationTime = claims.getExpirationTime();
             if (expirationTime != null && expirationTime <= Utils.getNowMicrosUtc()) {
                 synchronized (this.state) {
+                    if (this.authorizationContextCache.containsKey(token)) {
+                        log(Level.INFO, "AA: expiring cache on %s", getId());
+                    }
                     this.authorizationContextCache.remove(token);
                     this.userLinktoTokenMap.remove(claims.getSubject());
                 }
@@ -3055,6 +3058,7 @@ public class ServiceHost implements ServiceRequestSender {
             b.setToken(token);
             ctx = b.getResult();
             synchronized (this.state) {
+                log(Level.INFO, "AA: putting1 to cache on %s", getId());
                 this.authorizationContextCache.put(token, ctx);
                 addUserToken(this.userLinktoTokenMap, claims.getSubject(), token);
             }
@@ -5084,6 +5088,7 @@ public class ServiceHost implements ServiceRequestSender {
             throw new RuntimeException("Service not allowed to cache authorization token");
         }
         synchronized (this.state) {
+            log(Level.INFO, "AA: putting2 to cache on %s", getId());
             this.authorizationContextCache.put(token, ctx);
             addUserToken(this.userLinktoTokenMap, ctx.getClaims().getSubject(), token);
         }
@@ -5100,6 +5105,11 @@ public class ServiceHost implements ServiceRequestSender {
             Set<String> tokenSet = this.userLinktoTokenMap.get(userLink);
             if (tokenSet != null) {
                 for (String token :tokenSet) {
+
+                    if (this.authorizationContextCache.containsKey(token)) {
+                        log(Level.INFO, "AA: removing cache on %s", getId());
+                    }
+
                     this.authorizationContextCache.remove(token);
                 }
             }

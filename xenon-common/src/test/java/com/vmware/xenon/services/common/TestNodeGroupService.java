@@ -1965,8 +1965,10 @@ public class TestNodeGroupService {
 
         // issue GET to populate authContext in one of the peer
         groupHost.setAuthorizationContext(authContext);
+        this.host.log("AA: before sending GET to populate cache on %s", groupHost.getId());
         this.host.sendAndWaitExpectSuccess(
                 Operation.createGet(UriUtils.buildUri(groupHost, ExampleService.FACTORY_LINK)));
+        this.host.log("AA: after sending GET to populate cache on %s", groupHost.getId());
 
         this.host.waitFor("Timeout waiting for correct auth cache state",
                 () -> checkCache(authContext.getToken(), true));
@@ -1979,20 +1981,24 @@ public class TestNodeGroupService {
 
     private boolean checkCache(String token, boolean expectEntries) throws Throwable {
         boolean contextFound = false;
+        UserService userService = new UserService();
         for (VerificationHost peer : this.host.getInProcessHostMap().values()) {
-            peer.setSystemAuthorizationContext();
-            MinimalTestService s = new MinimalTestService();
-            peer.addPrivilegedService(MinimalTestService.class);
-            peer.startServiceAndWait(s, UUID.randomUUID().toString(), null);
-            peer.resetSystemAuthorizationContext();
-            if (peer.getAuthorizationContext(s, token) != null) {
+//            peer.setSystemAuthorizationContext();
+//            MinimalTestService s = new MinimalTestService();
+//            peer.addPrivilegedService(MinimalTestService.class);
+//            peer.startServiceAndWait(s, UUID.randomUUID().toString(), null);
+//            peer.resetSystemAuthorizationContext();
+            if (peer.getAuthorizationContext(userService, token) != null) {
                 contextFound = true;
+                this.host.log("AA: cache found=%s, expected=%s", peer.getId(), expectEntries);
                 break;
             }
         }
         if ((expectEntries && contextFound) || (!expectEntries && !contextFound)) {
+            this.host.log("AA: checkCache=true. expect=%s", expectEntries);
             return true;
         }
+        this.host.log("AA: checkCache=false. expect=%s", expectEntries);
         return false;
     }
 
