@@ -119,7 +119,17 @@ class ServiceResourceTracker {
         this.host = host;
     }
 
-    public void updateCachedServiceState(Service s, ServiceDocument st, Operation op) {
+    public void updateCachedServiceState(Service s,
+             ServiceDocument st, Operation op, boolean isServiceStateCaching) {
+
+        if (ServiceHost.isServiceIndexed(s) && !isTransactional(op)) {
+            this.statefulServiceLastAccessTimes.put(s.getSelfLink(), Utils.getNowMicrosUtc());
+        }
+
+        if (ServiceHost.isServiceIndexed(s) && !isServiceStateCaching) {
+            return;
+        }
+
         if (!isTransactional(op)) {
             synchronized (s.getSelfLink()) {
                 ServiceDocument cachedState = this.cachedServiceStates.put(s.getSelfLink(), st);
@@ -152,12 +162,6 @@ class ServiceResourceTracker {
             CachedServiceStateKey key = new CachedServiceStateKey(servicePath,
                     op.getTransactionId());
             state = this.cachedTransactionalServiceStates.get(key);
-        } else {
-            // update lastAccessTime for get/put/patch/... except POST.
-            // If service has only had POST called, the entry will not be populated in this map, but
-            // eviction logic fallbacks to check service.documentUpdateTimeMicros as lastAccessTime.
-            // This cache is only for nonactive transactions.
-            this.statefulServiceLastAccessTimes.put(servicePath, Utils.getNowMicrosUtc());
         }
 
         if (state == null) {
@@ -175,6 +179,10 @@ class ServiceResourceTracker {
             // state expired, clear from cache
             stopService(servicePath, true, op);
             return null;
+        }
+
+        if (!isTransactional(op)) {
+            this.statefulServiceLastAccessTimes.put(servicePath, Utils.getNowMicrosUtc());
         }
 
         return state;
@@ -291,12 +299,10 @@ class ServiceResourceTracker {
                     // transactional cached state will be cleared at the end of transaction
                     continue;
                 }
+            }
 
-                Long lastAccessTime = this.statefulServiceLastAccessTimes.get(s.documentSelfLink);
-                if (lastAccessTime == null) {
-                    lastAccessTime = s.documentUpdateTimeMicros;
-                }
-
+            Long lastAccessTime = this.statefulServiceLastAccessTimes.get(service.getSelfLink());
+            if (lastAccessTime != null) {
                 if ((hostState.serviceCacheClearDelayMicros + lastAccessTime) < now) {
                     clearCachedServiceState(service.getSelfLink(), null);
                     cacheCleared = true;
