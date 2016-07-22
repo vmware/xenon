@@ -322,6 +322,7 @@ public class ServiceHost implements ServiceRequestSender {
     static final Path DEFAULT_SANDBOX = DEFAULT_TMPDIR.resolve("xenon");
     static final Path DEFAULT_RESOURCE_SANDBOX_DIR = Paths.get("resources");
 
+    static final String AUTH_TYPE_BASIC = "Basic";
     /**
      * Estimate for average service state memory cost, in bytes. This can be computed per
      * state cached, estimated per kind, or made tunable in the future. Its used solely for estimating
@@ -2067,11 +2068,14 @@ public class ServiceHost implements ServiceRequestSender {
         }
 
         if (this.isAuthorizationEnabled() && post.getAuthorizationContext() == null) {
-            populateAuthorizationContext(post);
+            populateAuthorizationContext(post, (postWithAuthContext, throwable) -> {
+                // kick off service start state machine
+                processServiceStart(ProcessingStage.INITIALIZING, service,
+                        postWithAuthContext, postWithAuthContext.hasBody());
+            });
+        } else {
+            processServiceStart(ProcessingStage.INITIALIZING, service, post, post.hasBody());
         }
-
-        // kick off service start state machine
-        processServiceStart(ProcessingStage.INITIALIZING, service, post, post.hasBody());
         return this;
     }
 
@@ -2942,18 +2946,25 @@ public class ServiceHost implements ServiceRequestSender {
 
         if (this.isAuthorizationEnabled()) {
             if (inboundOp.getAuthorizationContext() == null) {
-                populateAuthorizationContext(inboundOp);
-            }
-
-            if (this.authorizationService != null) {
+                populateAuthorizationContext(inboundOp,
+                        (inboundOpWithAuthContext, contextFailure) -> {
+                            if (this.authorizationService != null) {
+                                inboundOpWithAuthContext.nestCompletion(op -> {
+                                    handleRequestWithAuthContext(service, op);
+                                });
+                                queueOrScheduleRequest(this.authorizationService,
+                                        inboundOpWithAuthContext);
+                            }
+                    }
+                );
+            } else if (this.authorizationService != null) {
                 inboundOp.nestCompletion(op -> {
                     handleRequestWithAuthContext(service, op);
                 });
                 queueOrScheduleRequest(this.authorizationService, inboundOp);
-                return true;
             }
+            return true;
         }
-
         handleRequestWithAuthContext(service, inboundOp);
         return true;
     }
@@ -3007,65 +3018,113 @@ public class ServiceHost implements ServiceRequestSender {
         return;
     }
 
-    AuthorizationContext getAuthorizationContext(Operation op) {
+    public void authProviderVerification(String token, String authProvider, Operation op,
+            CompletionHandler verificationHandler) {
+        try {
+            Claims claims = null;
+            if (authProvider.equals("Basic")) {
+                claims = this.getTokenVerifier().verify(token, Claims.class);
+                op.setBody(claims);
+                verificationHandler.handle(op , null);
+            }
+        } catch (TokenException | GeneralSecurityException e) {
+            log(Level.INFO, "Error verifying token: %s", e);
+            op.setBody(null);
+            verificationHandler.handle(op , null);
+        }
+    }
+
+    void getAuthorizationContext(Operation op, CompletionHandler authHandler) {
+        Operation clone = op.clone();
         String token = op.getRequestHeader(Operation.REQUEST_AUTH_TOKEN_HEADER);
         if (token == null) {
             Map<String, String> cookies = op.getCookies();
             if (cookies == null) {
-                return null;
+                clone.setBody(null);
+                authHandler.handle(clone , null);
+                return;
             }
             token = cookies.get(AuthenticationConstants.REQUEST_AUTH_TOKEN_COOKIE);
         }
 
         if (token == null) {
-            return null;
+            clone.setBody(null);
+            authHandler.handle(clone , null);
+            return;
         }
 
         AuthorizationContext ctx = this.authorizationContextCache.get(token);
+        Claims claims = null;
 
-        try {
-            Claims claims = null;
-            if (ctx == null) {
-                claims = this.getTokenVerifier().verify(token, Claims.class);
-            } else {
-                claims = ctx.getClaims();
-            }
+        if (ctx == null) {
+            String tokenCopy = token;
+            authProviderVerification(token, AUTH_TYPE_BASIC, clone, (verifyOp , verifyFailure) -> {
+                Claims finalClaims ;
+                String finalToken = tokenCopy;
+                AuthorizationContext finalCtx ;
 
-            if (claims == null) {
-                log(Level.INFO, "Request to %s has no claims found with token: %s",
-                        op.getUri().getPath(), token);
-                return null;
-            }
-
-            Long expirationTime = claims.getExpirationTime();
-            if (expirationTime != null && expirationTime <= Utils.getNowMicrosUtc()) {
-                synchronized (this.state) {
-                    this.authorizationContextCache.remove(token);
-                    this.userLinktoTokenMap.remove(claims.getSubject());
+                if (verifyOp.hasBody()) {
+                    finalClaims = verifyOp.getBody(Claims.class);
+                } else {
+                    finalClaims = null ;
                 }
-                return null;
-            }
+                if (finalClaims == null) {
+                    log(Level.INFO, "Request to %s has no claims found with token: %s",
+                            op.getUri().getPath(), finalToken);
+                    clone.setBody(null);
+                    authHandler.handle(clone , null);
+                    return;
+                }
 
-            if (ctx != null) {
-                return ctx;
-            }
+                Long expirationTime = finalClaims.getExpirationTime();
+                if (expirationTime != null && expirationTime <= Utils.getNowMicrosUtc()) {
+                    synchronized (this.state) {
+                        this.authorizationContextCache.remove(finalToken);
+                        this.userLinktoTokenMap.remove(finalClaims.getSubject());
+                    }
+                    clone.setBody(null);
+                    authHandler.handle(clone , null);
+                    return;
+                }
 
-            AuthorizationContext.Builder b = AuthorizationContext.Builder.create();
-            b.setClaims(claims);
-            b.setToken(token);
-            ctx = b.getResult();
-            synchronized (this.state) {
-                this.authorizationContextCache.put(token, ctx);
-                addUserToken(this.userLinktoTokenMap, claims.getSubject(), token);
-            }
-            return ctx;
-        } catch (TokenException | GeneralSecurityException e) {
-            log(Level.INFO, "Error verifying token: %s", e);
+                AuthorizationContext.Builder b = AuthorizationContext.Builder.create();
+                b.setClaims(finalClaims);
+                b.setToken(finalToken);
+                finalCtx = b.getResult();
+                synchronized (this.state) {
+                    this.authorizationContextCache.put(finalToken, finalCtx);
+                    addUserToken(this.userLinktoTokenMap, finalClaims.getSubject(), finalToken);
+                }
+                clone.setBody(finalCtx);
+                authHandler.handle(clone , null);
+                return ;
+            });
+            return ;
+        } else {
+            claims = ctx.getClaims();
+        }
+        if (claims == null) {
+            log(Level.INFO, "Request to %s has no claims found with token: %s",
+                    op.getUri().getPath(), token);
+            clone.setBody(null);
+            authHandler.handle(clone , null);
+            return;
         }
 
-        return null;
-    }
+        Long expirationTime = claims.getExpirationTime();
+        if (expirationTime != null && expirationTime <= Utils.getNowMicrosUtc()) {
+            synchronized (this.state) {
+                this.authorizationContextCache.remove(token);
+                this.userLinktoTokenMap.remove(claims.getSubject());
+            }
+            clone.setBody(null);
+            authHandler.handle(clone , null);
+            return;
+        }
 
+        clone.setBody(ctx);
+        authHandler.handle(clone , null);
+    }
 
     /**
      * Helper method to associate a token with a userServiceLink
@@ -5117,14 +5176,21 @@ public class ServiceHost implements ServiceRequestSender {
         return this.authorizationContextCache.get(token);
     }
 
-    private void populateAuthorizationContext(Operation op) {
-        AuthorizationContext ctx = getAuthorizationContext(op);
-        if (ctx == null) {
-            // No (valid) authorization context, fall back to guest context
-            ctx = getGuestAuthorizationContext();
-        }
-
-        op.setAuthorizationContext(ctx);
+    private void populateAuthorizationContext(Operation op, CompletionHandler completion) {
+        getAuthorizationContext(op, (resultCtxOp , populateFailure) -> {
+            AuthorizationContext ctx ;
+            if (!resultCtxOp.hasBody()) {
+                ctx = null;
+            } else {
+                ctx = resultCtxOp.getBody(AuthorizationContext.class);
+            }
+            if (ctx == null) {
+                // No (valid) authorization context, fall back to guest context
+                ctx = getGuestAuthorizationContext();
+            }
+            op.setAuthorizationContext(ctx);
+            completion.handle(op , populateFailure);
+        });
     }
 
     /**
@@ -5173,7 +5239,6 @@ public class ServiceHost implements ServiceRequestSender {
             ctx = createAuthorizationContext(SystemUserService.SELF_LINK);
             this.systemAuthorizationContext = ctx;
         }
-
         return ctx;
     }
 
