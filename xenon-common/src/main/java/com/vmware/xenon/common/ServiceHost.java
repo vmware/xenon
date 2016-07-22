@@ -2422,9 +2422,9 @@ public class ServiceHost implements ServiceRequestSender {
                             hasClientSuppliedInitialState);
                 });
 
-                if (post.hasBody() && this.state.isServiceStateCaching) {
+                if (post.hasBody()) {
                     this.serviceResourceTracker.updateCachedServiceState(s,
-                            (ServiceDocument) post.getBodyRaw(), post);
+                            (ServiceDocument) post.getBodyRaw(), post, this.state.isServiceStateCaching);
                 }
 
                 if (!post.hasBody() || !needsIndexing) {
@@ -2659,15 +2659,11 @@ public class ServiceHost implements ServiceRequestSender {
             }
         }
 
-        if (!this.state.isServiceStateCaching && isServiceIndexed(s)) {
-            return;
-        }
-
         if (op != null && op.getAction() == Action.DELETE) {
             return;
         }
 
-        this.serviceResourceTracker.updateCachedServiceState(s, st, op);
+        this.serviceResourceTracker.updateCachedServiceState(s, st, op, this.isServiceStateCaching());
     }
 
     void clearTransactionalCachedServiceState(Service s, String transactionId) {
