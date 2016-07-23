@@ -285,7 +285,7 @@ public class GraphQueryTaskService extends TaskService<GraphQueryTask> {
             // If a result instance with empty document links but a page link was supplied,
             // we stayed at currentDepth == 0 and we need to fetch the results, without executing
             // the query
-            logInfo("Fetching initial stage results from %s", lastResults.nextPageLink);
+            logFine("Fetching initial stage results from %s", lastResults.nextPageLink);
             getResultsOrStartQueryOp = Operation.createGet(this, lastResults.nextPageLink)
                     .setCompletion((o, e) -> {
                         handleQueryPageGetCompletion(currentState, o, e);
@@ -315,6 +315,7 @@ public class GraphQueryTaskService extends TaskService<GraphQueryTask> {
         // the graph edges (links) specified in each traversal specification.
         // This is a performance optimization: the alternative would have been a massive boolean
         // clause with SHOULD_OCCUR child clauses for each link
+        logInfo("Setting whitelist to %d links", lastResults.selectedLinks.size());
         task.querySpec.context.documentLinkWhiteList = lastResults.selectedLinks;
     }
 
