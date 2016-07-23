@@ -24,6 +24,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
+import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -36,6 +37,7 @@ import com.vmware.xenon.common.TaskState.TaskStage;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
 import com.vmware.xenon.common.test.TestContext;
+import com.vmware.xenon.common.test.VerificationHost;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
 import com.vmware.xenon.services.common.QueryTask.NumericRange;
 import com.vmware.xenon.services.common.QueryTask.Query;
@@ -43,7 +45,8 @@ import com.vmware.xenon.services.common.QueryTask.QuerySpecification.QueryOption
 import com.vmware.xenon.services.common.QueryValidationTestService.QueryValidationServiceState;
 
 public class TestGraphQueryTaskService extends BasicTestCase {
-    private URI factoryUri;
+    private URI graphQueryFactoryUri;
+    private URI exampleFactoryUri;
 
     /**
      * Number of services in the top tier of the graph
@@ -55,24 +58,62 @@ public class TestGraphQueryTaskService extends BasicTestCase {
      */
     public int linkCount = 2;
 
+    public int nodeCount = 3;
+
     private long taskCreationTimeMicros;
 
     private long taskCompletionTimeMicros;
 
     private boolean isFailureExpected;
+    private URI queryTargetFactoryUri;
+    private URI queryFactoryUri;
 
     @Before
     public void setUp() {
-        this.factoryUri = UriUtils.buildUri(this.host, ServiceUriPaths.CORE_GRAPH_QUERIES);
+        this.graphQueryFactoryUri = UriUtils
+                .buildUri(this.host, ServiceUriPaths.CORE_GRAPH_QUERIES);
+        this.queryFactoryUri = UriUtils.buildUri(this.host, ServiceUriPaths.CORE_QUERY_TASKS);
+        this.exampleFactoryUri = UriUtils.buildUri(this.host, ExampleService.FACTORY_LINK);
+        this.queryTargetFactoryUri = UriUtils.buildUri(this.host,
+                GraphQueryValidationTestService.FACTORY_LINK);
+        this.host.startFactory(new GraphQueryValidationTestService());
         this.isFailureExpected = false;
         CommandLineArgumentParser.parseFromProperties(this);
+    }
+
+    private void setUpMultiNode() throws Throwable {
+        this.host.setUpPeerHosts(this.nodeCount);
+
+        for (VerificationHost h : this.host.getInProcessHostMap().values()) {
+            h.startFactory(new GraphQueryValidationTestService());
+        }
+
+        this.host.joinNodesAndVerifyConvergence(this.nodeCount);
+        this.graphQueryFactoryUri = UriUtils.buildUri(
+                this.host.getPeerServiceUri(ServiceUriPaths.CORE_GRAPH_QUERIES));
+        this.queryFactoryUri = this.host
+                .getPeerServiceUri(ServiceUriPaths.CORE_QUERY_TASKS);
+        this.exampleFactoryUri = UriUtils.buildUri(
+                this.host.getPeerServiceUri(ExampleService.FACTORY_LINK));
+        this.queryTargetFactoryUri = UriUtils.buildUri(
+                this.host.getPeerServiceUri(GraphQueryValidationTestService.FACTORY_LINK));
+        this.host.waitForReplicatedFactoryServiceAvailable(this.graphQueryFactoryUri);
+        this.host.waitForReplicatedFactoryServiceAvailable(this.exampleFactoryUri);
+        this.host.waitForReplicatedFactoryServiceAvailable(this.queryTargetFactoryUri);
+    }
+
+    @After
+    public void tearDown() {
+        this.host.tearDownInProcessPeers();
+        this.host.tearDown();
     }
 
     @Test
     public void initialStateValidation() throws Throwable {
         // invalid depth
         GraphQueryTask initialBrokenState = GraphQueryTask.Builder.create(0).build();
-        Operation post = Operation.createPost(this.factoryUri).setBody(initialBrokenState);
+        Operation post = Operation.createPost(this.graphQueryFactoryUri)
+                .setBody(initialBrokenState);
         this.host.sendAndWaitExpectFailure(post, Operation.STATUS_CODE_BAD_REQUEST);
         // valid depth, no stages
         initialBrokenState = GraphQueryTask.Builder.create(2).build();
@@ -172,52 +213,51 @@ public class TestGraphQueryTaskService extends BasicTestCase {
     }
 
     @Test
+    public void threeStageTreeGraphMultiNode() throws Throwable {
+        setUpMultiNode();
+        validateThreeStageTreeGraph();
+    }
+
+    @Test
     public void threeStageTreeGraph() throws Throwable {
+        validateThreeStageTreeGraph();
+    }
+
+    /**
+     * Test various combination of direct = {true | false} and initial stage with | without
+     *  computed results, on a three stage tree graph
+     */
+    public void validateThreeStageTreeGraph() throws Throwable {
         String name = UUID.randomUUID().toString();
 
         int stageCount = 3;
-        // We will create a graph with N layers of the same services, each layer pointing to instances
-        // to the next layer. They are all services of the same type. Its like a graph of
-        // friend relationships: each document has a field, called friendLinks, pointing to
-        // other instances of itself. In our case, we use QueryValidationServiceState.serviceLinks.
-        // The query will essentially be a friends of friends graph query, 4 deep
+
         int recursionDepth = stageCount - 1;
         createQueryTargetServices(name, recursionDepth);
 
-        GraphQueryTask initialState = createTreeGraphTask(stageCount, false);
-        GraphQueryTask finalState = waitForTask(initialState);
-        logGraphQueryThroughput(finalState);
-
+        GraphQueryTask finalState;
         int[] resultCounts = {
                 this.serviceCount,
                 this.serviceCount * this.linkCount,
                 this.serviceCount * this.linkCount * this.linkCount
         };
-        verifyNStageResult(finalState, true, resultCounts);
 
-        // direct task, same parameters
-        finalState = createTreeGraphTask(stageCount, true);
-        logGraphQueryThroughput(finalState);
-        verifyNStageResult(finalState, true, resultCounts);
+        createAndVerifyTreeGraph(resultCounts, stageCount);
 
+        finalState = createAndVerifyTreeGraphDirect(stageCount, resultCounts);
         QueryTask finishedFirstStage = Utils.clone(finalState.stages.get(0));
-        // indirect task, same parameters, initial stage has results
-        initialState = createTreeGraphTask(stageCount, finishedFirstStage, false);
-        finalState = waitForTask(initialState);
-        logGraphQueryThroughput(finalState);
-        verifyNStageResult(finalState, true, resultCounts);
 
-        // direct task, same parameters, initial stage has results
-        finalState = createTreeGraphTask(stageCount, finishedFirstStage, true);
-        logGraphQueryThroughput(finalState);
-        verifyNStageResult(finalState, true, resultCounts);
+        createAndVerifyTreeGraphWithZeroStageResults(
+                stageCount, finishedFirstStage, resultCounts);
+
+        createAndVerifyDirectTreeGraphZeroStageResults(stageCount, resultCounts, finishedFirstStage);
 
         // direct task, same parameters, initial stage has paginated results. Task should
         // process just a single page worth and progress the page link.
         // Initial stage specifies SELECT_LINKS
         QueryTask stageWithResults = createGraphQueryStage(0);
         stageWithResults.querySpec.resultLimit = this.serviceCount / 2;
-        createAndVerifyTreeGraphWithInitialStagePaginatedResults(stageCount, stageWithResults);
+        createAndVerifyDirectTreeGraphWithZeroStagePaginatedResults(stageCount, stageWithResults);
 
         // direct task, same parameters, initial stage has paginated results.
         // Initial stage does NOT specify QueryOption.SELECT_LINKS.
@@ -226,64 +266,114 @@ public class TestGraphQueryTaskService extends BasicTestCase {
         stageWithResults = createGraphQueryStage(0);
         stageWithResults.querySpec.resultLimit = this.serviceCount / 2;
         stageWithResults.querySpec.options.remove(QueryOption.SELECT_LINKS);
-        createAndVerifyTreeGraphWithInitialStagePaginatedResults(stageCount, stageWithResults);
+        createAndVerifyDirectTreeGraphWithZeroStagePaginatedResults(stageCount, stageWithResults);
         this.isFailureExpected = false;
     }
 
-    private void createAndVerifyTreeGraphWithInitialStagePaginatedResults(int stageCount,
+    private void createAndVerifyTreeGraph(int[] resultCounts, int stageCount) throws Throwable {
+        this.host.waitFor("query result mismatch", () -> {
+            GraphQueryTask initialState = createTreeGraphTask(stageCount, false);
+            GraphQueryTask finalState = waitForTask(initialState);
+            logGraphQueryThroughput(finalState);
+            return verifyNStageResult(finalState, true, resultCounts);
+        });
+    }
+
+    private GraphQueryTask createAndVerifyTreeGraphDirect(int stageCount, int[] resultCounts)
+            throws Throwable {
+        GraphQueryTask[] finalState = new GraphQueryTask[1];
+        this.host.waitFor("query result mismatch", () -> {
+            finalState[0] = createTreeGraphTask(stageCount, true);
+            logGraphQueryThroughput(finalState[0]);
+            return verifyNStageResult(finalState[0], true, resultCounts);
+        });
+        return finalState[0];
+    }
+
+    private void createAndVerifyTreeGraphWithZeroStageResults(int stageCount,
+            QueryTask finishedFirstStage, int[] resultCounts) throws Throwable {
+        this.host.waitFor("query result mismatch", () -> {
+            GraphQueryTask initialState = createTreeGraphTask(stageCount,
+                    finishedFirstStage, false);
+            GraphQueryTask finalState = waitForTask(initialState);
+            logGraphQueryThroughput(finalState);
+            return verifyNStageResult(finalState, true, resultCounts);
+        });
+    }
+
+    private void createAndVerifyDirectTreeGraphZeroStageResults(int stageCount, int[] resultCounts,
+            QueryTask finishedFirstStage) throws Throwable {
+        this.host.waitFor("query result mismatch", () -> {
+            GraphQueryTask finalState = createTreeGraphTask(stageCount, finishedFirstStage, true);
+            logGraphQueryThroughput(finalState);
+            return verifyNStageResult(finalState, true, resultCounts);
+        });
+    }
+
+    private void createAndVerifyDirectTreeGraphWithZeroStagePaginatedResults(int stageCount,
             QueryTask stageWithResults) throws Throwable {
-        GraphQueryTask finalState;
-        QueryTask finishedFirstStage;
-        // wait for query task to finish. We will supply it in the *completed* stage, as part
-        // of a graph query task, which will use its results (from the page link), instead
-        // of executing its query
-        URI firstStageTaskUri = this.host.createQueryTaskService(stageWithResults, true);
-        finishedFirstStage = this.host.waitForQueryTask(firstStageTaskUri, TaskStage.FINISHED);
-        finalState = createTreeGraphTask(stageCount, finishedFirstStage, true);
 
-        if (this.isFailureExpected) {
-            assertEquals(null, finalState);
-            return;
-        }
+        this.host.waitFor("query result mismatch", () -> {
+            URI firstStageTaskUri = this.host.createQueryTaskService(this.queryFactoryUri,
+                    stageWithResults,
+                    true, false, stageWithResults, null);
 
-        logGraphQueryThroughput(finalState);
-        // since the graph processed only a page worth, we expect less results per stage
-        int pageLimit = stageWithResults.querySpec.resultLimit;
-        int[] pagedResultCounts = {
-                pageLimit,
-                pageLimit * this.linkCount,
-                pageLimit * this.linkCount * this.linkCount
-        };
+            QueryTask finishedFirstStage = this.host.waitForQueryTask(firstStageTaskUri,
+                    TaskStage.FINISHED);
+            GraphQueryTask finalState = createTreeGraphTask(stageCount, finishedFirstStage,
+                    true);
 
-        verifyNStageResult(finalState, true, pagedResultCounts);
+            if (this.isFailureExpected) {
+                assertEquals(null, finalState);
+                return true;
+            }
+
+            logGraphQueryThroughput(finalState);
+
+            int pageLimit = stageWithResults.querySpec.resultLimit;
+            int[] pagedResultCounts = {
+                    pageLimit,
+                    pageLimit * this.linkCount,
+                    pageLimit * this.linkCount * this.linkCount
+            };
+
+            return verifyNStageResult(finalState, true, pagedResultCounts);
+        });
     }
 
-    private void verifyNStageResult(GraphQueryTask finalState, int... expectedCounts) {
-        verifyNStageResult(finalState, false, expectedCounts);
+    private boolean verifyNStageResult(GraphQueryTask finalState, int... expectedCounts) {
+        return verifyNStageResult(finalState, false, expectedCounts);
     }
 
-    private void verifyNStageResult(GraphQueryTask finalState, boolean isRecursive,
+    private boolean verifyNStageResult(GraphQueryTask finalState, boolean isRecursive,
             int... expectedCounts) {
         for (int i = 0; i < expectedCounts.length; i++) {
             int expectedCount = expectedCounts == null ? this.serviceCount : expectedCounts[i];
             ServiceDocumentQueryResult stageOneResults = finalState.stages.get(i).results;
             boolean isFinalStage = i == expectedCounts.length - 1;
-            verifyStageResults(stageOneResults, i, expectedCount, isRecursive, isFinalStage);
+            if (!verifyStageResults(stageOneResults, i, expectedCount, isRecursive, isFinalStage)) {
+                return false;
+            }
         }
+        return true;
     }
 
-    private void verifyStageResults(ServiceDocumentQueryResult stage,
+    private boolean verifyStageResults(ServiceDocumentQueryResult stage,
             int expectedResultCount, boolean isFinalStage) {
-        verifyStageResults(stage, 0, expectedResultCount, false, isFinalStage);
+        return verifyStageResults(stage, 0, expectedResultCount, false, isFinalStage);
     }
 
-    private void verifyStageResults(ServiceDocumentQueryResult stage,
+    private boolean verifyStageResults(ServiceDocumentQueryResult stage,
             int stageIndex,
             int expectedResultCount, boolean isRecursive, boolean isFinalStage) {
         assertTrue(stage != null);
         assertTrue(stage.queryTimeMicros > 0);
-        assertTrue(stage.documentCount == expectedResultCount);
-        assertTrue(stage.documentLinks.size() == expectedResultCount);
+        if (stage.documentCount != expectedResultCount) {
+            return false;
+        }
+        if (stage.documentLinks.size() != expectedResultCount) {
+            return false;
+        }
         if (!isFinalStage && stage.selectedLinks == null) {
             if (expectedResultCount > 0) {
                 throw new IllegalStateException("null selectedLinks");
@@ -293,8 +383,11 @@ public class TestGraphQueryTaskService extends BasicTestCase {
             if (isRecursive) {
                 expectedLinkCount *= this.linkCount;
             }
-            assertTrue(stage.selectedLinks.size() == expectedLinkCount);
+            if (stage.selectedLinks.size() != expectedLinkCount) {
+                return false;
+            }
         }
+        return true;
     }
 
     private void verifyEmptyResultTask(GraphQueryTask finalState) {
@@ -407,7 +500,8 @@ public class TestGraphQueryTaskService extends BasicTestCase {
 
     private GraphQueryTask createTask(GraphQueryTask initialState)
             throws Throwable {
-        Operation post = Operation.createPost(this.factoryUri);
+
+        Operation post = Operation.createPost(this.graphQueryFactoryUri);
         GraphQueryTask[] rsp = new GraphQueryTask[1];
 
 
@@ -444,11 +538,14 @@ public class TestGraphQueryTaskService extends BasicTestCase {
     }
 
     private GraphQueryTask waitForTask(GraphQueryTask initialState) throws Throwable {
-        GraphQueryTask t = this.host.waitForFinishedTask(GraphQueryTask.class,
-                initialState.documentSelfLink);
+        URI taskUri = this.host.getPeerServiceUri(initialState.documentSelfLink);
+        if (taskUri == null) {
+            taskUri = UriUtils.buildUri(this.host, initialState.documentSelfLink);
+        }
+        GraphQueryTask t = this.host.waitForFinishedTask(GraphQueryTask.class, taskUri);
         this.taskCompletionTimeMicros = Utils.getNowMicrosUtc();
         TestContext ctx = testCreate(1);
-        Operation get = Operation.createGet(this.host, initialState.documentSelfLink)
+        Operation get = Operation.createGet(taskUri)
                 .forceRemote().setCompletion((o, e) -> {
                     if (e != null) {
                         ctx.failIteration(e);
@@ -495,7 +592,7 @@ public class TestGraphQueryTaskService extends BasicTestCase {
                     s.name = name;
                     s.id = UUID.randomUUID().toString();
                     o.setBody(s);
-                }, UriUtils.buildUri(this.host, ExampleService.FACTORY_LINK));
+                }, this.exampleFactoryUri);
 
         startLinkedQueryTargetServices(exampleStates, recursionDepth);
 
@@ -508,7 +605,7 @@ public class TestGraphQueryTaskService extends BasicTestCase {
                     s.name = name;
                     s.id = UUID.randomUUID().toString();
                     o.setBody(s);
-                }, UriUtils.buildUri(this.host, ExampleService.FACTORY_LINK));
+                }, this.exampleFactoryUri);
     }
 
     /**
@@ -530,7 +627,9 @@ public class TestGraphQueryTaskService extends BasicTestCase {
 
             nextLayerLinks.clear();
             for (int i = 0; i < this.serviceCount * Math.pow(this.linkCount, layer + 1); i++) {
-                nextLayerLinks.add(UUID.randomUUID().toString());
+                nextLayerLinks.add(UriUtils.buildUriPath(
+                        GraphQueryValidationTestService.FACTORY_LINK,
+                        UUID.randomUUID().toString()));
             }
 
             this.host.log(
@@ -540,7 +639,9 @@ public class TestGraphQueryTaskService extends BasicTestCase {
                     layer);
             if (previousLayerLinks.isEmpty()) {
                 for (int i = 0; i < this.serviceCount; i++) {
-                    previousLayerLinks.add(UUID.randomUUID().toString());
+                    previousLayerLinks.add(UriUtils.buildUriPath(
+                            GraphQueryValidationTestService.FACTORY_LINK,
+                            UUID.randomUUID().toString()));
                 }
             }
 
@@ -566,13 +667,14 @@ public class TestGraphQueryTaskService extends BasicTestCase {
             initState.longValue = (long) layer;
             initState.serviceLink = exampleStateIt.next().documentSelfLink;
             initState.serviceLinks = new ArrayList<>();
+            initState.documentSelfLink = link;
             for (int l = 0; l < this.linkCount; l++) {
                 initState.serviceLinks.add(UriUtils.normalizeUriPath(nextLayerLinkIt.next()));
             }
-            Operation post = Operation.createPost(this.host, link)
+            Operation post = Operation.createPost(this.queryTargetFactoryUri)
                     .setBody(initState)
                     .setCompletion(ctx.getCompletion());
-            this.host.startService(post, new QueryValidationTestService());
+            this.host.send(post);
         }
         testWait(ctx);
     }

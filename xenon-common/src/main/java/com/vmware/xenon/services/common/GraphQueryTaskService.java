@@ -315,6 +315,7 @@ public class GraphQueryTaskService extends TaskService<GraphQueryTask> {
         // the graph edges (links) specified in each traversal specification.
         // This is a performance optimization: the alternative would have been a massive boolean
         // clause with SHOULD_OCCUR child clauses for each link
+        logFine("Setting whitelist to %d links", lastResults.selectedLinks.size());
         task.querySpec.context.documentLinkWhiteList = lastResults.selectedLinks;
     }
 
