@@ -33,6 +33,8 @@ import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
  */
 public class QueryValidationTestService extends StatefulService {
 
+    public static final String FACTORY_LINK = "test/query-targets";
+
     public static class NestedType {
         public String id;
         public long longValue;
@@ -90,6 +92,8 @@ public class QueryValidationTestService extends StatefulService {
     public QueryValidationTestService() {
         super(QueryValidationServiceState.class);
         super.toggleOption(ServiceOption.PERSISTENCE, true);
+        super.toggleOption(ServiceOption.REPLICATION, true);
+        super.toggleOption(ServiceOption.OWNER_SELECTION, true);
     }
 
     @Override

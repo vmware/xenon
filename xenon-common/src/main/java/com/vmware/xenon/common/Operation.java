@@ -1672,7 +1672,7 @@ public class Operation implements Cloneable {
         return hasOption(OperationOption.NOTIFICATION_DISABLED);
     }
 
-    boolean isForwardingDisabled() {
+    public boolean isForwardingDisabled() {
         return hasPragmaDirective(PRAGMA_DIRECTIVE_NO_FORWARDING);
     }
 
