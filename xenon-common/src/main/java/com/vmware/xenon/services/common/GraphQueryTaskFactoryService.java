@@ -13,6 +13,7 @@
 
 package com.vmware.xenon.services.common;
 
+import java.net.URI;
 import java.util.function.Consumer;
 
 import com.vmware.xenon.common.FactoryService;
@@ -49,6 +50,13 @@ public class GraphQueryTaskFactoryService extends FactoryService {
             return;
         }
 
+        // handle only direct request from a client, not forwarded or replicated requests, to avoid
+        // duplicate processing
+        if (op.isFromReplication() || op.isForwarded()) {
+            super.handleRequest(op, opProcessingStage);
+            return;
+        }
+
         handleDirectTaskPost(op, initState);
     }
 
@@ -56,11 +64,7 @@ public class GraphQueryTaskFactoryService extends FactoryService {
         // Direct task handling. We want to keep the graph service simple and unaware of the
         // pending POST from the client. This keeps the child task a true finite state machine that
         // can PATCH itself, etc
-
         Operation clonedPost = post.clone();
-        // do not replicate direct queries
-        clonedPost.setReplicationDisabled(true);
-
         clonedPost.setCompletion((o, e) -> {
             if (e != null) {
                 post.setStatusCode(o.getStatusCode())
@@ -75,7 +79,9 @@ public class GraphQueryTaskFactoryService extends FactoryService {
     }
 
     private void subscribeToChildTask(Operation o, Operation post) {
-        Operation subscribe = Operation.createPost(o.getUri()).transferRefererFrom(post)
+        GraphQueryTask initState = o.getBody(GraphQueryTask.class);
+        Operation subscribe = Operation.createPost(this, initState.documentSelfLink)
+                .transferRefererFrom(post)
                 .setCompletion((so, e) -> {
                     if (e == null) {
                         return;
@@ -88,20 +94,23 @@ public class GraphQueryTaskFactoryService extends FactoryService {
 
         ServiceSubscriber sr = ServiceSubscriber.create(true).setUsePublicUri(true);
         Consumer<Operation> notifyC = (nOp) -> {
+            nOp.complete();
             switch (nOp.getAction()) {
             case PUT:
             case PATCH:
                 GraphQueryTask task = nOp.getBody(GraphQueryTask.class);
-                if (TaskState.isInProgress(task.taskInfo)) {
+                if (task.taskInfo == null || TaskState.isInProgress(task.taskInfo)) {
                     return;
                 }
                 // task is in final state (failed, or completed), complete original post
                 post.setBodyNoCloning(task).complete();
+                stopInDirectTaskSubscription(subscribe, nOp.getUri());
                 return;
             case DELETE:
                 // the task might have expired and self deleted, fail the client post
                 post.setStatusCode(Operation.STATUS_CODE_TIMEOUT)
                         .fail(new IllegalStateException("Task self deleted"));
+                stopInDirectTaskSubscription(subscribe, nOp.getUri());
                 return;
             default:
                 break;
@@ -113,6 +122,11 @@ public class GraphQueryTaskFactoryService extends FactoryService {
                 subscribe, sr, notifyC);
         getHost().startSubscriptionService(subscribe, notificationTarget, sr);
 
+    }
+
+    private void stopInDirectTaskSubscription(Operation sub, URI notificationTarget) {
+        getHost().stopSubscriptionService(sub.clone().setAction(Action.DELETE),
+                notificationTarget);
     }
 
     @Override
