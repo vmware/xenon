@@ -312,23 +312,25 @@ class ServiceResourceTracker {
                 }
             }
 
-            Long lastAccessTime = this.persistedServiceLastAccessTime.get(service.getSelfLink());
-            if (lastAccessTime == null) {
-                // There is a possibility that the service just got started and that's why
-                // it didn't show up in the persistedServiceLastAccessTime map. We will skip
-                // the service for now and let it be handled in the next performMaintenance run.
-                continue;
-            }
+            if (ServiceHost.isServiceIndexed(service)) {
+                Long lastAccessTime = this.persistedServiceLastAccessTime.get(service.getSelfLink());
+                if (lastAccessTime == null) {
+                    // There is a possibility that the service just got started and that's why
+                    // it didn't show up in the persistedServiceLastAccessTime map. We will skip
+                    // the service for now and let it be handled in the next performMaintenance run.
+                    continue;
+                }
 
-            if ((hostState.serviceCacheClearDelayMicros + lastAccessTime) < now) {
-                clearCachedServiceState(service.getSelfLink(), null);
-                cacheCleared = true;
-            }
+                if ((hostState.serviceCacheClearDelayMicros + lastAccessTime) < now) {
+                    clearCachedServiceState(service.getSelfLink(), null);
+                    cacheCleared = true;
+                }
 
-            if (hostState.lastMaintenanceTimeUtcMicros - lastAccessTime < service
-                            .getMaintenanceIntervalMicros() * 2) {
-                // Skip pause for services that have been active within a maintenance interval
-                continue;
+                if (hostState.lastMaintenanceTimeUtcMicros - lastAccessTime < service
+                        .getMaintenanceIntervalMicros() * 2) {
+                    // Skip pause for services that have been active within a maintenance interval
+                    continue;
+                }
             }
 
             // we still want to clear a cache for periodic services, so check here, after the cache clear
