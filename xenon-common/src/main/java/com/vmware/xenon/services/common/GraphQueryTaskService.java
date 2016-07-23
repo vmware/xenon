@@ -197,7 +197,7 @@ public class GraphQueryTaskService extends TaskService<GraphQueryTask> {
             logInfo("Task canceled: not implemented, ignoring");
             break;
         case FINISHED:
-            logFine("Task finished successfully");
+            logInfo("Task finished successfully");
             break;
         case FAILED:
             logWarning("Task failed: %s", (body.failureMessage == null ? "No reason given"
@@ -315,6 +315,7 @@ public class GraphQueryTaskService extends TaskService<GraphQueryTask> {
         // the graph edges (links) specified in each traversal specification.
         // This is a performance optimization: the alternative would have been a massive boolean
         // clause with SHOULD_OCCUR child clauses for each link
+        logInfo("Setting whitelist to %d links", lastResults.selectedLinks.size());
         task.querySpec.context.documentLinkWhiteList = lastResults.selectedLinks;
     }
 
