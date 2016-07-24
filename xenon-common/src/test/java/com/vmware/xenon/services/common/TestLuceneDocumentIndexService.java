@@ -461,6 +461,7 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
             h.initialize(args);
 
             if (!this.host.isStressTest()) {
+                h.setServiceStateCaching(false);
                 // set the index service memory use to be very low to cause pruning of any cached entries
                 h.setServiceMemoryLimit(ServiceUriPaths.CORE_DOCUMENT_INDEX, 0.0001);
                 h.setMaintenanceIntervalMicros(TimeUnit.MILLISECONDS.toMicros(100));
@@ -795,6 +796,7 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
         }
         this.host.testWait();
 
+        this.host.log("Trying GET on all the services.");
         // issue a GET per child link, which should force the on-demand load to take place, implicitly
         Map<URI, ExampleServiceState> childStates = this.host.getServiceState(null,
                 ExampleServiceState.class,
@@ -804,6 +806,7 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
             assertTrue(s.name != null);
             assertTrue(s.name.startsWith(prefix));
         }
+        this.host.log("Finished GET on all the services.");
 
         // mark a service for expiration, a few seconds in the future
         serviceToDelete = childUris.remove(0);
