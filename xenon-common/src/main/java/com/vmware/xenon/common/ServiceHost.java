@@ -828,6 +828,7 @@ public class ServiceHost implements ServiceRequestSender {
 
     public ServiceHost setServiceStateCaching(boolean enable) {
         this.state.isServiceStateCaching = enable;
+        this.serviceResourceTracker.setServiceStateCaching(enable);
         return this;
     }
 
@@ -2424,7 +2425,7 @@ public class ServiceHost implements ServiceRequestSender {
                             hasClientSuppliedInitialState);
                 });
 
-                if (post.hasBody() && this.state.isServiceStateCaching) {
+                if (post.hasBody()) {
                     this.serviceResourceTracker.updateCachedServiceState(s,
                             (ServiceDocument) post.getBodyRaw(), post);
                 }
@@ -2659,10 +2660,6 @@ public class ServiceHost implements ServiceRequestSender {
                 ServiceDocument r = (ServiceDocument) rsp;
                 st.copyTo(r);
             }
-        }
-
-        if (!this.state.isServiceStateCaching && isServiceIndexed(s)) {
-            return;
         }
 
         if (op != null && op.getAction() == Action.DELETE) {
@@ -4548,6 +4545,7 @@ public class ServiceHost implements ServiceRequestSender {
                 inboundOp.fail(e);
                 return;
             }
+            this.log(Level.INFO, "RUN ACTION %s Service %s", inboundOp.getAction(), inboundOp.getUri().toString());
             // proceed with handling original client request, service now started
             handleRequest(null, inboundOp);
         };
@@ -4573,6 +4571,7 @@ public class ServiceHost implements ServiceRequestSender {
             inboundOp.disableFailureLogging(true);
         }
 
+        this.log(Level.INFO, "START %s", childService.getSelfLink());
         // bypass the factory, directly start service on host. This avoids adding a new
         // version to the index and various factory processes that are invoked on new
         // service creation
