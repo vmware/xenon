@@ -2,6 +2,8 @@
 
 ## 0.9.2-SNAPSHOT
 
+* Using sourceTimeMicrosUtc field, if set, for time series aggregation.
+
 ## 0.9.1
 
 * Add a new field *sourceTimeMicrosUtc* to ServiceStat to capture the
