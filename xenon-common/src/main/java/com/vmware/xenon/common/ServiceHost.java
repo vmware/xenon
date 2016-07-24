@@ -828,6 +828,7 @@ public class ServiceHost implements ServiceRequestSender {
 
     public ServiceHost setServiceStateCaching(boolean enable) {
         this.state.isServiceStateCaching = enable;
+        this.serviceResourceTracker.setServiceStateCaching(enable);
         return this;
     }
 
@@ -2424,7 +2425,7 @@ public class ServiceHost implements ServiceRequestSender {
                             hasClientSuppliedInitialState);
                 });
 
-                if (post.hasBody() && this.state.isServiceStateCaching) {
+                if (post.hasBody()) {
                     this.serviceResourceTracker.updateCachedServiceState(s,
                             (ServiceDocument) post.getBodyRaw(), post);
                 }
@@ -2659,10 +2660,6 @@ public class ServiceHost implements ServiceRequestSender {
                 ServiceDocument r = (ServiceDocument) rsp;
                 st.copyTo(r);
             }
-        }
-
-        if (!this.state.isServiceStateCaching && isServiceIndexed(s)) {
-            return;
         }
 
         if (op != null && op.getAction() == Action.DELETE) {
