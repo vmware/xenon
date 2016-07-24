@@ -2424,9 +2424,9 @@ public class ServiceHost implements ServiceRequestSender {
                             hasClientSuppliedInitialState);
                 });
 
-                if (post.hasBody() && this.state.isServiceStateCaching) {
+                if (post.hasBody()) {
                     this.serviceResourceTracker.updateCachedServiceState(s,
-                            (ServiceDocument) post.getBodyRaw(), post);
+                            (ServiceDocument) post.getBodyRaw(), post, this.state.isServiceStateCaching);
                 }
 
                 if (!post.hasBody() || !needsIndexing) {
@@ -2661,15 +2661,12 @@ public class ServiceHost implements ServiceRequestSender {
             }
         }
 
-        if (!this.state.isServiceStateCaching && isServiceIndexed(s)) {
-            return;
-        }
-
         if (op != null && op.getAction() == Action.DELETE) {
             return;
         }
 
-        this.serviceResourceTracker.updateCachedServiceState(s, st, op);
+        this.serviceResourceTracker.updateCachedServiceState(s,
+                st, op, this.state.isServiceStateCaching);
     }
 
     void clearTransactionalCachedServiceState(Service s, String transactionId) {
@@ -2812,6 +2809,8 @@ public class ServiceHost implements ServiceRequestSender {
     private void stopService(String path) {
         synchronized (this.state) {
             Service existing = this.attachedServices.remove(path);
+            this.log(Level.INFO, "STOP: %s", path);
+
             if (existing == null) {
                 path = UriUtils.normalizeUriPath(path);
                 existing = this.attachedServices.remove(path);
