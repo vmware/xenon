@@ -543,7 +543,11 @@ public class UtilityService implements Service {
             }
             stat.lastUpdateMicrosUtc = Utils.getNowMicrosUtc();
             if (stat.timeSeriesStats != null) {
-                stat.timeSeriesStats.add(stat.lastUpdateMicrosUtc, newValue);
+                if (stat.sourceTimeMicrosUtc != null) {
+                    stat.timeSeriesStats.add(stat.sourceTimeMicrosUtc, newValue);
+                } else {
+                    stat.timeSeriesStats.add(stat.lastUpdateMicrosUtc, newValue);
+                }
             }
         }
     }
@@ -566,7 +570,11 @@ public class UtilityService implements Service {
             }
             stat.lastUpdateMicrosUtc = Utils.getNowMicrosUtc();
             if (stat.timeSeriesStats != null) {
-                stat.timeSeriesStats.add(stat.lastUpdateMicrosUtc, stat.latestValue);
+                if (stat.sourceTimeMicrosUtc != null) {
+                    stat.timeSeriesStats.add(stat.sourceTimeMicrosUtc, stat.latestValue);
+                } else {
+                    stat.timeSeriesStats.add(stat.lastUpdateMicrosUtc, stat.latestValue);
+                }
             }
         }
     }

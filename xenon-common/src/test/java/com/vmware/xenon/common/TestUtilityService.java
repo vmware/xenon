@@ -398,6 +398,42 @@ public class TestUtilityService extends BasicReusableHostTestCase {
         assertTrue(retStatEntry.latestValue == 100);
         assertTrue(retStatEntry.version == numBuckets + 1);
         assertTrue(retStatEntry.timeSeriesStats.dataPoints.size() == numBuckets);
+
+        // Step 3 - POST a stat to the service instance with sourceTimeMicrosUtc and verify we can fetch the stat just posted
+        String statName = UUID.randomUUID().toString();
+        ExampleServiceState exampleState = new ExampleServiceState();
+        exampleState.name = statName;
+        Consumer<Operation> setter = (o) -> {
+            o.setBody(exampleState);
+        };
+        Map<URI, ExampleServiceState> stateMap = this.host.doFactoryChildServiceStart(null, 1,
+                ExampleServiceState.class, setter,
+                UriUtils.buildFactoryUri(this.host, ExampleService.class));
+        ExampleServiceState returnExampleState = stateMap.values().iterator().next();
+        ServiceStats.ServiceStat sourceStat = new ServiceStat();
+        sourceStat.name = "sourceKey";
+        sourceStat.latestValue = 100;
+        Long sourceTimeMicrosUtc = Utils.getNowMicrosUtc();
+        sourceStat.sourceTimeMicrosUtc = sourceTimeMicrosUtc;
+        // set bucket size to 1ms
+        sourceStat.timeSeriesStats = new TimeSeriesStats(numBuckets, 1, EnumSet.allOf(AggregationType.class));
+        this.host.sendAndWaitExpectSuccess(Operation.createPost(UriUtils.buildStatsUri(
+                this.host, returnExampleState.documentSelfLink)).setBody(sourceStat));
+        for (int i = 0; i < numBuckets; i++) {
+            Thread.sleep(1);
+            this.host.sendAndWaitExpectSuccess(Operation.createPost(UriUtils.buildStatsUri(
+                    this.host, exampleServiceState.documentSelfLink)).setBody(sourceStat));
+        }
+        allStats = this.host.getServiceState(null, ServiceStats.class,
+                UriUtils.buildStatsUri(
+                        this.host, returnExampleState.documentSelfLink));
+        retStatEntry = allStats.entries.get(sourceStat.name);
+        assertTrue(retStatEntry.accumulatedValue == 100);
+        assertTrue(retStatEntry.latestValue == 100);
+        assertTrue(retStatEntry.version == 1);
+        assertTrue(retStatEntry.timeSeriesStats.dataPoints.size() == 1);
+        assertTrue(retStatEntry.timeSeriesStats.dataPoints.firstKey()
+                .equals(TimeUnit.MICROSECONDS.toMillis(sourceTimeMicrosUtc)));
     }
 
     public static class SetAvailableValidationService extends StatefulService {
