@@ -461,9 +461,10 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
             h.initialize(args);
 
             if (!this.host.isStressTest()) {
+                h.setServiceStateCaching(false);
                 // set the index service memory use to be very low to cause pruning of any cached entries
                 h.setServiceMemoryLimit(ServiceUriPaths.CORE_DOCUMENT_INDEX, 0.0001);
-                h.setMaintenanceIntervalMicros(TimeUnit.MILLISECONDS.toMicros(100));
+                h.setMaintenanceIntervalMicros(TimeUnit.MILLISECONDS.toMicros(250));
             }
 
             long start = Utils.getNowMicrosUtc();
