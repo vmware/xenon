@@ -66,7 +66,11 @@ public class UserGroupService extends StatefulService {
         UserGroupState userGroupState =
                 AuthorizationCacheUtils.extractBody(request, this, UserGroupState.class);
         if (userGroupState != null) {
-            AuthorizationCacheUtils.clearAuthzCacheForUserGroup(this, request, userGroupState);
+            // for replication, update is two phased. only clear the cache at commit phase.
+            boolean clearAuthzCache = !request.isFromReplication() || request.isCommit();
+            if (clearAuthzCache) {
+                AuthorizationCacheUtils.clearAuthzCacheForUserGroup(this, request, userGroupState);
+            }
         }
         super.handleRequest(request, opProcessingStage);
     }

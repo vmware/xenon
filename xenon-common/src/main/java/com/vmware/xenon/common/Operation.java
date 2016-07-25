@@ -1676,7 +1676,7 @@ public class Operation implements Cloneable {
         return hasPragmaDirective(PRAGMA_DIRECTIVE_NO_FORWARDING);
     }
 
-    boolean isCommit() {
+    public boolean isCommit() {
         String phase = getRequestHeader(Operation.REPLICATION_PHASE_HEADER);
         return Operation.REPLICATION_PHASE_COMMIT.equals(phase);
     }

@@ -79,7 +79,11 @@ public class RoleService extends StatefulService {
     public void handleRequest(Operation request, OperationProcessingStage opProcessingStage) {
         RoleState roleState = AuthorizationCacheUtils.extractBody(request, this, RoleState.class);
         if (roleState != null) {
-            AuthorizationCacheUtils.clearAuthzCacheForRole(this, request, roleState);
+            // for replication, update is two phased. only clear the cache at commit phase.
+            boolean clearAuthzCache = !request.isFromReplication() || request.isCommit();
+            if (clearAuthzCache) {
+                AuthorizationCacheUtils.clearAuthzCacheForRole(this, request, roleState);
+            }
         }
         super.handleRequest(request, opProcessingStage);
     }

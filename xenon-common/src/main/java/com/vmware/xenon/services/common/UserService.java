@@ -52,14 +52,19 @@ public class UserService extends StatefulService {
     public void handleRequest(Operation request, OperationProcessingStage opProcessingStage) {
         if (request.getAction() == Action.DELETE || request.getAction() == Action.PUT ||
                 request.getAction() == Action.PATCH) {
-            UserState userState = null;
+            UserState userState;
             if (request.isFromReplication() && request.hasBody()) {
                 userState = getBody(request);
             } else {
                 userState = getState(request);
             }
             if (userState != null) {
-                AuthorizationCacheUtils.clearAuthzCacheForUser(this, request, userState.documentSelfLink);
+                // for replication, update is two phased. only clear the cache at commit phase.
+                boolean clearAuthzCache = !request.isFromReplication() || request.isCommit();
+                if (clearAuthzCache) {
+                    AuthorizationCacheUtils
+                            .clearAuthzCacheForUser(this, request, userState.documentSelfLink);
+                }
             }
         }
         super.handleRequest(request, opProcessingStage);
