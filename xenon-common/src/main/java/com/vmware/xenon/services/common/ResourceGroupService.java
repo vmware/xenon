@@ -63,14 +63,15 @@ public class ResourceGroupService extends StatefulService {
     @Override
     public void handleRequest(Operation request, OperationProcessingStage opProcessingStage) {
         if (request.getAction() == Action.DELETE || request.getAction() == Action.PUT) {
-            ResourceGroupState resourceGroupState = null;
+            ResourceGroupState resourceGroupState;
             if (request.isFromReplication() && request.hasBody()) {
                 resourceGroupState = getBody(request);
             } else {
                 resourceGroupState = getState(request);
             }
             if (resourceGroupState != null) {
-                AuthorizationCacheUtils.clearAuthzCacheForResourceGroup(this, request, resourceGroupState);
+                AuthorizationCacheUtils
+                        .clearAuthzCacheForResourceGroup(this, request, resourceGroupState);
             }
         }
         super.handleRequest(request, opProcessingStage);

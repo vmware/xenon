@@ -545,9 +545,8 @@ public class AuthorizationSetupHelper {
         role.policy = Policy.ALLOW;
         role.documentSelfLink = this.roleSelfLink;
 
-        URI resourceGroupFactoryUri = UriUtils.buildUri(this.host,
-                ServiceUriPaths.CORE_AUTHZ_ROLES);
-        Operation postGroup = Operation.createPost(resourceGroupFactoryUri)
+        URI roleFactoryUri = UriUtils.buildUri(this.host, ServiceUriPaths.CORE_AUTHZ_ROLES);
+        Operation postRole = Operation.createPost(roleFactoryUri)
                 .setBody(role)
                 .setReferer(this.referer)
                 .setCompletion((op, ex) -> {
@@ -563,8 +562,8 @@ public class AuthorizationSetupHelper {
                     this.currentStep = UserCreationStep.SUCCESS;
                     setupUser();
                 });
-        addReplicationFactor(postGroup);
-        this.host.sendRequest(postGroup);
+        addReplicationFactor(postRole);
+        this.host.sendRequest(postRole);
     }
 
     /**

@@ -1793,21 +1793,22 @@ public class TestNodeGroupService {
         groupHost.waitForReplicatedFactoryServiceAvailable(
                 UriUtils.buildUri(groupHost, RoleService.FACTORY_LINK));
 
-        String fooUserLink = "/core/authz/users/foo@foo.com";
-        String barUserLink = "/core/authz/users/bar@foo.com";
+        String fooUserLink = "/core/authz/users/foo@vmware.com";
+        String barUserLink = "/core/authz/users/bar@vmware.com";
+        String bazUserLink = "/core/authz/users/baz@vmware.com";
 
         groupHost.setSystemAuthorizationContext();
 
-        // create user, user-group, resource-group, role for foo@foo.com
-        //   user: /core/authz/users/foo@foo.com
+        // create user, user-group, resource-group, role for foo@vmware.com
+        //   user: /core/authz/users/foo@vmware.com
         //   user-group: /core/authz/user-groups/foo-user-group
         //   resource-group:  (not important)
         //   role: /core/authz/role/foo-role-1
         TestContext testContext = this.host.testCreate(1);
         AuthorizationSetupHelper.create()
                 .setHost(groupHost)
-                .setUserSelfLink("foo@foo.com")
-                .setUserEmail("foo@foo.com")
+                .setUserSelfLink("foo@vmware.com")
+                .setUserEmail("foo@vmware.com")
                 .setUserPassword("password")
                 .setDocumentKind(Utils.buildKind(ExampleServiceState.class))
                 .setUserGroupName("foo-user-group")
@@ -1822,7 +1823,7 @@ public class TestNodeGroupService {
                 .start();
         testContext.await();
 
-        // create another user-group, resource-group, and role for foo@foo.com
+        // create another user-group, resource-group, and role for foo@vmware.com
         //   user-group: (not important)
         //   resource-group:  (not important)
         //   role: /core/authz/role/foo-role-2
@@ -1842,16 +1843,16 @@ public class TestNodeGroupService {
                 .setupRole();
         ctxToCreateAnotherRole.await();
 
-        // create user, user-group, resource-group, role for bar@foo.com
-        //   user: /core/authz/users/bar@foo.com
+        // create user, user-group, resource-group, role for bar@vmware.com
+        //   user: /core/authz/users/bar@vmware.com
         //   user-group: (not important)
         //   resource-group:  (not important)
         //   role: (not important)
         TestContext ctxToCreateBar = this.host.testCreate(1);
         AuthorizationSetupHelper.create()
                 .setHost(groupHost)
-                .setUserSelfLink("bar@foo.com")
-                .setUserEmail("bar@foo.com")
+                .setUserSelfLink("bar@vmware.com")
+                .setUserEmail("bar@vmware.com")
                 .setUserPassword("password")
                 .setDocumentKind(Utils.buildKind(ExampleServiceState.class))
                 .setCompletion(ex -> {
@@ -1864,11 +1865,35 @@ public class TestNodeGroupService {
                 .start();
         ctxToCreateBar.await();
 
+        // create user, user-group, resource-group, role for baz@vmware.com
+        //   user: /core/authz/users/baz@vmware.com
+        //   user-group: (not important)
+        //   resource-group:  (not important)
+        //   role: (not important)
+        TestContext ctxToCreateBaz = this.host.testCreate(1);
+        AuthorizationSetupHelper.create()
+                .setHost(groupHost)
+                .setUserSelfLink("baz@vmware.com")
+                .setUserEmail("baz@vmware.com")
+                .setUserPassword("password")
+                .setDocumentKind(Utils.buildKind(ExampleServiceState.class))
+                .setCompletion(ex -> {
+                    if (ex == null) {
+                        ctxToCreateBaz.completeIteration();
+                    } else {
+                        ctxToCreateBaz.failIteration(ex);
+                    }
+                })
+                .start();
+        ctxToCreateBaz.await();
+
 
         AuthorizationContext fooAuthContext = groupHost.assumeIdentity(fooUserLink);
         AuthorizationContext barAuthContext = groupHost.assumeIdentity(barUserLink);
+        AuthorizationContext bazAuthContext = groupHost.assumeIdentity(bazUserLink);
         String fooToken = fooAuthContext.getToken();
         String barToken = barAuthContext.getToken();
+        String bazToken = bazAuthContext.getToken();
 
         groupHost.resetSystemAuthorizationContext();
 
@@ -1891,7 +1916,7 @@ public class TestNodeGroupService {
         groupHost.resetSystemAuthorizationContext();
         verifyAuthCacheHasClearedInPeers(fooToken);
 
-        // verify creating new role should clear the auth cache (using bar@foo.com)
+        // verify creating new role should clear the auth cache (using bar@vmware.com)
         populateAuthCacheInPeer(barAuthContext);
         groupHost.setSystemAuthorizationContext();
         Query q = Builder.create()
@@ -1951,12 +1976,12 @@ public class TestNodeGroupService {
         verifyAuthCacheHasClearedInPeers(fooToken);
 
         // verify deleting user should clear the auth cache
-        populateAuthCacheInPeer(fooAuthContext);
+        populateAuthCacheInPeer(bazAuthContext);
         groupHost.setSystemAuthorizationContext();
         this.host.sendAndWaitExpectSuccess(
-                Operation.createDelete(UriUtils.buildUri(groupHost, fooUserLink)));
+                Operation.createDelete(UriUtils.buildUri(groupHost, bazUserLink)));
         groupHost.resetSystemAuthorizationContext();
-        verifyAuthCacheHasClearedInPeers(fooToken);
+        verifyAuthCacheHasClearedInPeers(bazToken);
 
     }
 
