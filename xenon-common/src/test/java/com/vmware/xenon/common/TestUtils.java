@@ -720,8 +720,8 @@ public class TestUtils {
     }
 
     @Test
-    public void testDecodeGzipedBody() throws Exception {
-        String body = "This is the original body content, bot gzipped";
+    public void testDecodeGzipedResponseBody() throws Exception {
+        String body = "This is the original body content, but gzipped";
         byte[] gzippedBody = compress(body);
 
         Operation op = Operation
@@ -737,6 +737,26 @@ public class TestUtils {
 
         // Content encoding header is removed as the body is already decoded
         assertNull(op.getResponseHeader(Operation.CONTENT_ENCODING_HEADER));
+    }
+
+    @Test
+    public void testDecodeGzipedRequestBody() throws Exception {
+        String body = "This is the original body content, but gzipped";
+        byte[] gzippedBody = compress(body);
+
+        Operation op = Operation
+                .createGet(null)
+                .setContentLength(gzippedBody.length)
+                .addRequestHeader(Operation.CONTENT_ENCODING_HEADER,
+                        Operation.CONTENT_ENCODING_GZIP)
+                .addRequestHeader(Operation.CONTENT_TYPE_HEADER, Operation.MEDIA_TYPE_TEXT_PLAIN);
+
+        Utils.decodeBody(op, ByteBuffer.wrap(gzippedBody));
+
+        assertEquals(body, op.getBody(String.class));
+
+        // Content encoding header is removed as the body is already decoded
+        assertNull(op.getRequestHeader(Operation.CONTENT_ENCODING_HEADER));
     }
 
     @Test

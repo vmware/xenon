@@ -864,16 +864,36 @@ public class Utils {
     }
 
     public static void decodeBody(Operation op, ByteBuffer buffer) {
+        boolean isRequest = false;
+        String contentEncodingHeader = op.getResponseHeader(Operation.CONTENT_ENCODING_HEADER);
+        if (contentEncodingHeader == null) {
+            contentEncodingHeader = op.getRequestHeader(Operation.CONTENT_ENCODING_HEADER);
+            isRequest = true;
+        }
+
+        boolean compressed = false;
+        if (contentEncodingHeader != null) {
+            compressed = Operation.CONTENT_ENCODING_GZIP.equals(contentEncodingHeader);
+        }
+
+        decodeBody(op, buffer, isRequest, compressed);
+    }
+
+    public static void decodeBody(
+            Operation op, ByteBuffer buffer, boolean isRequest, boolean compressed) {
         if (op.getContentLength() == 0) {
             op.setContentType(Operation.MEDIA_TYPE_APPLICATION_JSON).complete();
             return;
         }
 
         try {
-            if (Operation.CONTENT_ENCODING_GZIP.equals(op
-                    .getResponseHeader(Operation.CONTENT_ENCODING_HEADER))) {
+            if (compressed) {
                 buffer = decompressGZip(buffer);
-                op.getResponseHeaders().remove(Operation.CONTENT_ENCODING_HEADER);
+                if (isRequest) {
+                    op.getRequestHeaders().remove(Operation.CONTENT_ENCODING_HEADER);
+                } else {
+                    op.getResponseHeaders().remove(Operation.CONTENT_ENCODING_HEADER);
+                }
             }
 
             String contentType = op.getContentType();
