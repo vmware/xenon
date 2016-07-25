@@ -720,7 +720,7 @@ public class TestUtils {
     }
 
     @Test
-    public void testDecodeGzipedBody() throws Exception {
+    public void testDecodeGzipedResponseBody() throws Exception {
         String body = "This is the original body content, bot gzipped";
         byte[] gzippedBody = compress(body);
 
@@ -740,6 +740,26 @@ public class TestUtils {
     }
 
     @Test
+    public void testDecodeGzipedRequestBody() throws Exception {
+        String body = "This is the original body content, bot gzipped";
+        byte[] gzippedBody = compress(body);
+
+        Operation op = Operation
+                .createGet(null)
+                .setContentLength(gzippedBody.length)
+                .addRequestHeader(Operation.CONTENT_ENCODING_HEADER,
+                        Operation.CONTENT_ENCODING_GZIP)
+                .addRequestHeader(Operation.CONTENT_TYPE_HEADER, Operation.MEDIA_TYPE_TEXT_PLAIN);
+
+        Utils.decodeBody(op, ByteBuffer.wrap(gzippedBody));
+
+        assertEquals(body, op.getBody(String.class));
+
+        // Content encoding header is removed as the body is already decoded
+        assertNull(op.getRequestHeader(Operation.CONTENT_ENCODING_HEADER));
+    }
+
+    @Test
     public void testFailsDecodeGzipedBodyWithoutContentEncoding() throws Exception {
         byte[] gzippedBody = compress("test");
 
@@ -751,6 +771,26 @@ public class TestUtils {
         Utils.decodeBody(op, ByteBuffer.wrap(gzippedBody));
 
         assertEquals(Operation.STATUS_CODE_SERVER_FAILURE_THRESHOLD, op.getStatusCode());
+    }
+
+    @Test
+    public void testDecodeGzippedResponseBody() throws Exception {
+        String body = "This is the original body content, bot gzipped";
+        byte[] gzippedBody = compress(body);
+
+        Operation op = Operation
+                .createGet(null)
+                .setContentLength(gzippedBody.length)
+                .addResponseHeader(Operation.CONTENT_ENCODING_HEADER,
+                        Operation.CONTENT_ENCODING_GZIP)
+                .addResponseHeader(Operation.CONTENT_TYPE_HEADER, Operation.MEDIA_TYPE_TEXT_PLAIN);
+
+        Utils.decodeBody(op, ByteBuffer.wrap(gzippedBody), false, true);
+
+        assertEquals(body, op.getBody(String.class));
+
+        // Content encoding header is not removed
+        assertNull(op.getResponseHeader(Operation.CONTENT_ENCODING_HEADER));
     }
 
     private static byte[] compress(String str) throws Exception {

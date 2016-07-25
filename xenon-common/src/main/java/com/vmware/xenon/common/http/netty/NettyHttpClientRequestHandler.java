@@ -180,7 +180,6 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
         });
 
         Utils.decodeBody(request, content.nioBuffer());
-
     }
 
     private void parseRequestHeaders(ChannelHandlerContext ctx, Operation request,
