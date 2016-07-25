@@ -63,6 +63,7 @@ import java.util.logging.ConsoleHandler;
 import java.util.logging.FileHandler;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManagerFactory;
 
@@ -91,7 +92,7 @@ import com.vmware.xenon.services.common.AuthCredentialsService;
 import com.vmware.xenon.services.common.AuthorizationContextService;
 import com.vmware.xenon.services.common.ConsistentHashingNodeSelectorService;
 import com.vmware.xenon.services.common.FileContentService;
-import com.vmware.xenon.services.common.GraphQueryTaskFactoryService;
+import com.vmware.xenon.services.common.GraphQueryTaskService;
 import com.vmware.xenon.services.common.GuestUserService;
 import com.vmware.xenon.services.common.LocalQueryTaskFactoryService;
 import com.vmware.xenon.services.common.LuceneBlobIndexService;
@@ -113,6 +114,7 @@ import com.vmware.xenon.services.common.ServiceHostLogService;
 import com.vmware.xenon.services.common.ServiceHostManagementService;
 import com.vmware.xenon.services.common.ServiceUriPaths;
 import com.vmware.xenon.services.common.SystemUserService;
+import com.vmware.xenon.services.common.TaskFactoryService;
 import com.vmware.xenon.services.common.TenantService;
 import com.vmware.xenon.services.common.TransactionFactoryService;
 import com.vmware.xenon.services.common.UpdateIndexRequest;
@@ -1291,7 +1293,7 @@ public class ServiceHost implements ServiceRequestSender {
                         new ServiceContextIndexService(),
                         new QueryTaskFactoryService(),
                         new LocalQueryTaskFactoryService(),
-                        new GraphQueryTaskFactoryService() };
+                        TaskFactoryService.create(GraphQueryTaskService.class) };
                 startCoreServicesSynchronously(queryServiceArray);
             }
         }
