@@ -18,6 +18,7 @@ import static org.junit.Assert.assertTrue;
 
 import java.net.URI;
 import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Map;
@@ -39,6 +40,7 @@ import com.vmware.xenon.common.Utils;
 import com.vmware.xenon.common.test.TestContext;
 import com.vmware.xenon.common.test.VerificationHost;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
+import com.vmware.xenon.services.common.GraphQueryTask.GraphQueryOption;
 import com.vmware.xenon.services.common.QueryTask.NumericRange;
 import com.vmware.xenon.services.common.QueryTask.Query;
 import com.vmware.xenon.services.common.QueryTask.QuerySpecification.QueryOption;
@@ -170,13 +172,13 @@ public class TestGraphQueryTaskService extends BasicTestCase {
         // we do not expect results, since we never created any documents. But first stage
         // should have at least run and returned zero documents
         ServiceDocumentQueryResult stageOneResults = finalState.stages.get(0).results;
-        verifyStageResults(stageOneResults, 0, true);
+        validateStageResults(stageOneResults, 0, true);
 
-        verifyEmptyResultTask(finalState);
+        validateEmptyResultTask(finalState);
 
         // do the same for a direct task. Since its direct, creation should return final state
         initialState = createTwoStageTask(name, true);
-        verifyEmptyResultTask(finalState);
+        validateEmptyResultTask(finalState);
     }
 
     @Test
@@ -188,10 +190,10 @@ public class TestGraphQueryTaskService extends BasicTestCase {
         GraphQueryTask initialState = createTwoStageTask(name);
         GraphQueryTask finalState = waitForTask(initialState);
 
-        verifyNStageResult(finalState, this.serviceCount, this.serviceCount);
+        validateNStageResult(finalState, this.serviceCount, this.serviceCount);
 
         finalState = createTwoStageTask(name, true);
-        verifyNStageResult(finalState, this.serviceCount, this.serviceCount);
+        validateNStageResult(finalState, this.serviceCount, this.serviceCount);
     }
 
     @Test
@@ -206,28 +208,28 @@ public class TestGraphQueryTaskService extends BasicTestCase {
         GraphQueryTask initialState = createTwoStageTask(name);
         GraphQueryTask finalState = waitForTask(initialState);
 
-        verifyNStageResult(finalState, this.serviceCount, 0);
+        validateNStageResult(finalState, this.serviceCount, 0);
 
         finalState = createTwoStageTask(name, true);
-        verifyNStageResult(finalState, this.serviceCount, 0);
+        validateNStageResult(finalState, this.serviceCount, 0);
     }
 
     @Test
     public void threeStageTreeGraphMultiNode() throws Throwable {
         setUpMultiNode();
-        validateThreeStageTreeGraph();
+        verifyThreeStageTreeGraph();
     }
 
     @Test
     public void threeStageTreeGraph() throws Throwable {
-        validateThreeStageTreeGraph();
+        verifyThreeStageTreeGraph();
     }
 
     /**
      * Test various combination of direct = {true | false} and initial stage with | without
      *  computed results, on a three stage tree graph
      */
-    public void validateThreeStageTreeGraph() throws Throwable {
+    public void verifyThreeStageTreeGraph() throws Throwable {
         String name = UUID.randomUUID().toString();
 
         int stageCount = 3;
@@ -243,6 +245,8 @@ public class TestGraphQueryTaskService extends BasicTestCase {
         };
 
         createAndVerifyTreeGraph(resultCounts, stageCount);
+
+        createAndVerifyTreeGraphWithBackProp(stageCount);
 
         finalState = createAndVerifyTreeGraphDirect(stageCount, resultCounts);
         QueryTask finishedFirstStage = Utils.clone(finalState.stages.get(0));
@@ -275,7 +279,72 @@ public class TestGraphQueryTaskService extends BasicTestCase {
             GraphQueryTask initialState = createTreeGraphTask(stageCount, false);
             GraphQueryTask finalState = waitForTask(initialState);
             logGraphQueryThroughput(finalState);
-            return verifyNStageResult(finalState, true, resultCounts);
+            return validateNStageResult(finalState, true, resultCounts);
+        });
+    }
+
+    private void createAndVerifyTreeGraphWithBackProp(int stageCount) throws Throwable {
+        // QueryOption.BACK_PROPAGATE_RESULTS will prune all document links from
+        // stage N-1, that did not contribute to results in stage N
+        GraphQueryTask initialState = createGraphTaskState(stageCount,
+                EnumSet.of(GraphQueryOption.BACK_PROPAGATE_RESULTS), null);
+        initialState.taskInfo = new TaskState();
+        initialState.taskInfo.isDirect = true;
+
+        // The test code created a set of target service documents that form a fully
+        // connected tree: each layer N, is fully connected to layer N+1. To check if
+        // back propagation really works we need to have a last stage query specification that
+        // picks only a subset of the "leaf" nodes at the bottom layer, so only a subset of the
+        // parents are left after pruning.
+        // We first issue a query to find the documents at the leafs, then we choose only a few of them
+        QueryTask.QuerySpecification q = new QueryTask.QuerySpecification();
+        q.options.add(QueryOption.EXPAND_CONTENT);
+        q.query.setTermPropertyName(QueryValidationServiceState.FIELD_NAME_LONG_VALUE)
+                .setNumericRange(
+                        NumericRange.createLongRange((long) stageCount - 1, (long) stageCount - 1,
+                                true, true));
+
+
+        this.host.waitFor("query result mismatch", () -> {
+            QueryTask task = QueryTask.create(q);
+            this.host.createQueryTaskService(this.queryFactoryUri,
+                    task, false, true, task, null);
+            Object doc = task.results.documents.values().iterator().next();
+            QueryValidationServiceState st = Utils.fromJson(doc, QueryValidationServiceState.class);
+
+            // augment last stage query, in the graph, to restrict results to this specific document
+            Query specificDocClause = Query.Builder.create().addFieldClause(
+                    QueryValidationServiceState.FIELD_NAME_ID, st.id).build();
+            initialState.stages.get(initialState.stages.size() - 1).querySpec.query
+                    .addBooleanClause(specificDocClause);
+
+            GraphQueryTask finalState = this.createTask(initialState);
+            logGraphQueryThroughput(finalState);
+
+            // since the last stage contains a single result, and each parent points to N children,
+            // with no two parents pointing to the same children, back propagation should have
+            // pruned the results in stages 1 and 0 to just a single result each.
+            for (int i = 0; i < finalState.stages.size(); i++) {
+                QueryTask stage = finalState.stages.get(i);
+                if (1 != (long) stage.results.documentCount) {
+                    return false;
+                }
+                if (1 != stage.results.documentLinks.size()) {
+                    return false;
+                }
+                if (1 != stage.results.selectedLinksPerDocument.size()) {
+                    return false;
+                }
+
+                // the last stage might have multiple selected links since back propagation
+                // does not prune the last stage
+                if (i < (finalState.stages.size() - 1)
+                        && (1 != stage.results.selectedLinks.size())) {
+                    return false;
+                }
+            }
+
+            return true;
         });
     }
 
@@ -285,7 +354,7 @@ public class TestGraphQueryTaskService extends BasicTestCase {
         this.host.waitFor("query result mismatch", () -> {
             finalState[0] = createTreeGraphTask(stageCount, true);
             logGraphQueryThroughput(finalState[0]);
-            return verifyNStageResult(finalState[0], true, resultCounts);
+            return validateNStageResult(finalState[0], true, resultCounts);
         });
         return finalState[0];
     }
@@ -297,7 +366,7 @@ public class TestGraphQueryTaskService extends BasicTestCase {
                     finishedFirstStage, false);
             GraphQueryTask finalState = waitForTask(initialState);
             logGraphQueryThroughput(finalState);
-            return verifyNStageResult(finalState, true, resultCounts);
+            return validateNStageResult(finalState, true, resultCounts);
         });
     }
 
@@ -306,7 +375,7 @@ public class TestGraphQueryTaskService extends BasicTestCase {
         this.host.waitFor("query result mismatch", () -> {
             GraphQueryTask finalState = createTreeGraphTask(stageCount, finishedFirstStage, true);
             logGraphQueryThroughput(finalState);
-            return verifyNStageResult(finalState, true, resultCounts);
+            return validateNStageResult(finalState, true, resultCounts);
         });
     }
 
@@ -337,33 +406,33 @@ public class TestGraphQueryTaskService extends BasicTestCase {
                     pageLimit * this.linkCount * this.linkCount
             };
 
-            return verifyNStageResult(finalState, true, pagedResultCounts);
+            return validateNStageResult(finalState, true, pagedResultCounts);
         });
     }
 
-    private boolean verifyNStageResult(GraphQueryTask finalState, int... expectedCounts) {
-        return verifyNStageResult(finalState, false, expectedCounts);
+    private boolean validateNStageResult(GraphQueryTask finalState, int... expectedCounts) {
+        return validateNStageResult(finalState, false, expectedCounts);
     }
 
-    private boolean verifyNStageResult(GraphQueryTask finalState, boolean isRecursive,
+    private boolean validateNStageResult(GraphQueryTask finalState, boolean isRecursive,
             int... expectedCounts) {
         for (int i = 0; i < expectedCounts.length; i++) {
             int expectedCount = expectedCounts == null ? this.serviceCount : expectedCounts[i];
             ServiceDocumentQueryResult stageOneResults = finalState.stages.get(i).results;
             boolean isFinalStage = i == expectedCounts.length - 1;
-            if (!verifyStageResults(stageOneResults, i, expectedCount, isRecursive, isFinalStage)) {
+            if (!validateStageResults(stageOneResults, i, expectedCount, isRecursive, isFinalStage)) {
                 return false;
             }
         }
         return true;
     }
 
-    private boolean verifyStageResults(ServiceDocumentQueryResult stage,
+    private boolean validateStageResults(ServiceDocumentQueryResult stage,
             int expectedResultCount, boolean isFinalStage) {
-        return verifyStageResults(stage, 0, expectedResultCount, false, isFinalStage);
+        return validateStageResults(stage, 0, expectedResultCount, false, isFinalStage);
     }
 
-    private boolean verifyStageResults(ServiceDocumentQueryResult stage,
+    private boolean validateStageResults(ServiceDocumentQueryResult stage,
             int stageIndex,
             int expectedResultCount, boolean isRecursive, boolean isFinalStage) {
         assertTrue(stage != null);
@@ -390,7 +459,7 @@ public class TestGraphQueryTaskService extends BasicTestCase {
         return true;
     }
 
-    private void verifyEmptyResultTask(GraphQueryTask finalState) {
+    private void validateEmptyResultTask(GraphQueryTask finalState) {
         // second stage should not even have run, since first stage had zero results
         ServiceDocumentQueryResult stageTwoResults = finalState.stages.get(1).results;
         assertTrue(stageTwoResults == null);
@@ -456,15 +525,26 @@ public class TestGraphQueryTaskService extends BasicTestCase {
     private GraphQueryTask createTreeGraphTask(int stageCount,
             QueryTask initialStage,
             boolean isDirect) throws Throwable {
-        GraphQueryTask initialState = createGraphTaskState(stageCount, initialStage);
+        return createTreeGraphTask(stageCount, EnumSet.noneOf(GraphQueryOption.class), initialStage,
+                isDirect);
+    }
+
+    private GraphQueryTask createTreeGraphTask(int stageCount,
+            EnumSet<GraphQueryOption> options,
+            QueryTask initialStage,
+            boolean isDirect) throws Throwable {
+        GraphQueryTask initialState = createGraphTaskState(stageCount, options, initialStage);
         initialState.taskInfo = new TaskState();
         initialState.taskInfo.isDirect = isDirect;
         initialState = createTask(initialState);
         return initialState;
     }
 
-    private GraphQueryTask createGraphTaskState(int stageCount, QueryTask initialStage) {
+    private GraphQueryTask createGraphTaskState(int stageCount, EnumSet<GraphQueryOption> options,
+            QueryTask initialStage) {
         GraphQueryTask.Builder builder = GraphQueryTask.Builder.create(stageCount);
+        options.forEach((op) -> builder.addOption(op));
+
         for (int i = 0; i < stageCount; i++) {
             if (i == 0 && initialStage != null) {
                 builder.addQueryStage(initialStage);
@@ -629,7 +709,7 @@ public class TestGraphQueryTaskService extends BasicTestCase {
             for (int i = 0; i < this.serviceCount * Math.pow(this.linkCount, layer + 1); i++) {
                 nextLayerLinks.add(UriUtils.buildUriPath(
                         GraphQueryValidationTestService.FACTORY_LINK,
-                        UUID.randomUUID().toString()));
+                        "layer-" + (layer + 1) + "-" + UUID.randomUUID().toString()));
             }
 
             this.host.log(
@@ -641,7 +721,7 @@ public class TestGraphQueryTaskService extends BasicTestCase {
                 for (int i = 0; i < this.serviceCount; i++) {
                     previousLayerLinks.add(UriUtils.buildUriPath(
                             GraphQueryValidationTestService.FACTORY_LINK,
-                            UUID.randomUUID().toString()));
+                            "layer-" + layer + "-" + UUID.randomUUID().toString()));
                 }
             }
 
@@ -664,6 +744,7 @@ public class TestGraphQueryTaskService extends BasicTestCase {
             if (!exampleStateIt.hasNext()) {
                 exampleStateIt = exampleStates.values().iterator();
             }
+            initState.id = UUID.randomUUID().toString();
             initState.longValue = (long) layer;
             initState.serviceLink = exampleStateIt.next().documentSelfLink;
             initState.serviceLinks = new ArrayList<>();

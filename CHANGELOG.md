@@ -2,6 +2,12 @@
 
 ## 0.9.3-SNAPSHOT
 
+* Add support for new GraphQueryOption.BACK_PROPAGATE_RESULTS. The option
+  enables automatic filtering of results across query stages, only keeping
+  documents that contributed to results in the final stage. It essentially
+  walks the graph backwards and removes all edges and nodes that did not
+  lead to a graph node in the final stage
+
 * Support ODATA custom query options to specify tenantLinks. The
   query param will be used to populate the tenantLinks field of
   the underlying QueryTask

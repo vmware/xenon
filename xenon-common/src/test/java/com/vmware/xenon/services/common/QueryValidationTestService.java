@@ -45,6 +45,7 @@ public class QueryValidationTestService extends StatefulService {
         public static final String FIELD_NAME_SERVICE_LINK = "serviceLink";
         public static final String FIELD_NAME_SERVICE_LINKS = "serviceLinks";
         public static final String FIELD_NAME_LONG_VALUE = "longValue";
+        public static final String FIELD_NAME_ID = "id";
         public String id;
         @Documentation(description = "a Long value")
         @PropertyOptions(usage = PropertyUsageOption.OPTIONAL)
