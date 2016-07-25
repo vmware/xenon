@@ -727,7 +727,7 @@ public class TestUtils {
         Operation op = Operation
                 .createGet(null)
                 .setContentLength(gzippedBody.length)
-                .addResponseHeader(Operation.CONTENT_ENCODING_HEADER,
+                .addRequestHeader(Operation.CONTENT_ENCODING_HEADER,
                         Operation.CONTENT_ENCODING_GZIP)
                 .addResponseHeader(Operation.CONTENT_TYPE_HEADER, Operation.MEDIA_TYPE_TEXT_PLAIN);
 

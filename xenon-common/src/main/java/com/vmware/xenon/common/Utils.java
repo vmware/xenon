@@ -871,7 +871,7 @@ public class Utils {
 
         try {
             if (Operation.CONTENT_ENCODING_GZIP.equals(op
-                    .getResponseHeader(Operation.CONTENT_ENCODING_HEADER))) {
+                    .getRequestHeader(Operation.CONTENT_ENCODING_HEADER))) {
                 buffer = decompressGZip(buffer);
                 op.getResponseHeaders().remove(Operation.CONTENT_ENCODING_HEADER);
             }
