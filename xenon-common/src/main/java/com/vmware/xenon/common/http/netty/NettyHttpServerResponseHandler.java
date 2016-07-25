@@ -160,7 +160,10 @@ public class NettyHttpServerResponseHandler extends SimpleChannelInboundHandler<
             completeRequest(request);
         });
 
-        Utils.decodeBody(request, content.nioBuffer());
+        Utils.decodeBody(request, request.getResponseHeaders(), content.nioBuffer());
+
+        // Modify headers to remove the content type
+        request.getResponseHeaders().remove(Operation.CONTENT_ENCODING_HEADER);
     }
 
     private void completeRequest(Operation request) {

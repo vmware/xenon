@@ -179,8 +179,10 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
             submitRequest(ctx, request, streamId, callbackUri);
         });
 
-        Utils.decodeBody(request, content.nioBuffer());
+        Utils.decodeBody(request, request.getRequestHeaders(), content.nioBuffer());
 
+        // Modify headers to remove the content type
+        request.getRequestHeaders().remove(Operation.CONTENT_ENCODING_HEADER);
     }
 
     private void parseRequestHeaders(ChannelHandlerContext ctx, Operation request,

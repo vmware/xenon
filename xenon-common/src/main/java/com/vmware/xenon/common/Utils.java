@@ -864,16 +864,41 @@ public class Utils {
     }
 
     public static void decodeBody(Operation op, ByteBuffer buffer) {
+        // NOTE: Possible to have the following race conditions:
+        //       1. Both request and response content is compressed - Only response content
+        //          encoding header will be removed.
+        //       2. The request is not compressed but response is - Still the decompression is
+        //          attempted and response header content encoding is removed.
+        // Hence, it is safe to use the overloaded method that takes the appropriate headers and
+        // the content buffer as parameters.
+        if (Operation.CONTENT_ENCODING_GZIP.equals(
+                                 op.getResponseHeader(Operation.CONTENT_ENCODING_HEADER))) {
+            decodeBody(op, buffer, true);
+            op.getResponseHeaders().remove(Operation.CONTENT_ENCODING_HEADER);
+        } else if (Operation.CONTENT_ENCODING_GZIP.equals(
+                                 op.getRequestHeader(Operation.CONTENT_ENCODING_HEADER))) {
+            decodeBody(op, buffer, true);
+            op.getRequestHeaders().remove(Operation.CONTENT_ENCODING_HEADER);
+        } else {
+            decodeBody(op, buffer, false);
+        }
+    }
+
+    public static void decodeBody(Operation op, Map<String, String> headers, ByteBuffer buffer) {
+        boolean compressed = Operation.CONTENT_ENCODING_GZIP.equals(
+                headers.get(Operation.CONTENT_ENCODING_HEADER));
+        decodeBody(op, buffer, compressed);
+    }
+
+    private static void decodeBody(Operation op, ByteBuffer buffer, boolean compressed) {
         if (op.getContentLength() == 0) {
             op.setContentType(Operation.MEDIA_TYPE_APPLICATION_JSON).complete();
             return;
         }
 
         try {
-            if (Operation.CONTENT_ENCODING_GZIP.equals(op
-                    .getResponseHeader(Operation.CONTENT_ENCODING_HEADER))) {
+            if (compressed) {
                 buffer = decompressGZip(buffer);
-                op.getResponseHeaders().remove(Operation.CONTENT_ENCODING_HEADER);
             }
 
             String contentType = op.getContentType();
@@ -898,6 +923,7 @@ public class Utils {
             op.setBodyNoCloning(body).complete();
         } catch (Throwable e) {
             op.fail(e);
+            e.printStackTrace();
         }
     }
 
