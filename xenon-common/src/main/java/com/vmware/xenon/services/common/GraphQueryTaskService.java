@@ -14,6 +14,8 @@
 package com.vmware.xenon.services.common;
 
 import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.Set;
 
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.ServiceDocumentQueryResult;
@@ -21,6 +23,7 @@ import com.vmware.xenon.common.ServiceHost;
 import com.vmware.xenon.common.TaskState;
 import com.vmware.xenon.common.TaskState.TaskStage;
 import com.vmware.xenon.common.Utils;
+import com.vmware.xenon.services.common.GraphQueryTask.GraphQueryOption;
 import com.vmware.xenon.services.common.QueryTask.QuerySpecification.QueryOption;
 
 /**
@@ -330,12 +333,12 @@ public class GraphQueryTaskService extends TaskService<GraphQueryTask> {
         // 3) there are no selected links for the current depth
 
         if (currentState.currentDepth > currentState.depthLimit - 1) {
-            sendSelfPatch(currentState, TaskStage.FINISHED, null);
+            finishTask(currentState);
             return true;
         }
 
         if (lastResults.documentCount == null || lastResults.documentCount == 0) {
-            sendSelfPatch(currentState, TaskStage.FINISHED, null);
+            finishTask(currentState);
             return true;
         }
 
@@ -344,11 +347,47 @@ public class GraphQueryTaskService extends TaskService<GraphQueryTask> {
                 // this is either a client error, the query specified the wrong field for the link terms, or
                 // the documents had null link values. We can not proceed, since there are no edges to
                 // traverse.
-                sendSelfPatch(currentState, TaskStage.FINISHED, null);
+                finishTask(currentState);
                 return true;
             }
         }
         return false;
+    }
+
+    private void finishTask(GraphQueryTask currentState) {
+        if (currentState.options.contains(GraphQueryOption.BACK_PROPAGATE_RESULTS)) {
+            backPropagateResults(currentState);
+        }
+
+        sendSelfPatch(currentState, TaskStage.FINISHED, null);
+    }
+
+    /**
+     * Starting with the last stage (N):
+     * 1) for every document link in the results.documentLinks, find the selected link and document
+     * in the prior stage
+     * 2) remove all documents in stage N-1, not found in step 1
+     * 3) set stage to N-1, go to 1)
+     */
+    private void backPropagateResults(GraphQueryTask currentState) {
+        for (int i = currentState.stages.size() - 1; i <= 1; i--) {
+            QueryTask currentStage = currentState.stages.get(i);
+            QueryTask previousStage = currentState.stages.get(i - 1);
+            if (currentStage.results == null) {
+                break;
+            }
+            if (previousStage.results == null) {
+                break;
+            }
+            Set<String> unusedLinks = new HashSet<>();
+            for (String link : previousStage.results.selectedLinks) {
+                if (!currentStage.results.documentLinks.contains(link)) {
+                    unusedLinks.add(link);
+                }
+            }
+            previousStage.results.documentLinks.removeAll(unusedLinks);
+        }
+
     }
 
     private void handleQueryPageGetCompletion(GraphQueryTask currentState, Operation o,

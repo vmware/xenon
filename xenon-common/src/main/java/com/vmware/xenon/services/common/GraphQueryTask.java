@@ -14,6 +14,7 @@
 package com.vmware.xenon.services.common;
 
 import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Set;
 
@@ -25,6 +26,21 @@ import com.vmware.xenon.common.TaskState;
  * document graph
  */
 public class GraphQueryTask extends TaskService.TaskServiceState {
+
+    public enum GraphQueryOption {
+        /**
+         * Removes document links from stage N-1, if the link did not contribute to a result
+         * in stage N. For example, if in stage zero we find two documents, one (doc A) that has
+         * a link that produces a result in stage one, and another that does not (doc B), we
+         * will remove the result document B from stage zero.
+         * The logic is applied recursively starting at the final stage, and can result in
+         * modifications across all stages (except the final one)
+         */
+        BACK_PROPAGATE_RESULTS
+    }
+
+    public EnumSet<GraphQueryOption> options = EnumSet.noneOf(GraphQueryOption.class);
+
     /**
      * Specifies a sequence of query specifications that select the graph nodes
      * serving as the origin of the graph search, at a given depth/stage in the query.
