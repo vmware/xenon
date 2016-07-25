@@ -863,17 +863,16 @@ public class Utils {
         return data;
     }
 
-    public static void decodeBody(Operation op, ByteBuffer buffer) {
+    public static void decodeBody(Operation op, Map<String, String> headers, ByteBuffer buffer) {
         if (op.getContentLength() == 0) {
             op.setContentType(Operation.MEDIA_TYPE_APPLICATION_JSON).complete();
             return;
         }
 
         try {
-            if (Operation.CONTENT_ENCODING_GZIP.equals(op
-                    .getResponseHeader(Operation.CONTENT_ENCODING_HEADER))) {
+            if (Operation.CONTENT_ENCODING_GZIP.equals(
+                    headers.get(Operation.CONTENT_ENCODING_HEADER))) {
                 buffer = decompressGZip(buffer);
-                op.getResponseHeaders().remove(Operation.CONTENT_ENCODING_HEADER);
             }
 
             String contentType = op.getContentType();
