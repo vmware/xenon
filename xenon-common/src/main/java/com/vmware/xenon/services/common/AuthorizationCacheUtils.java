@@ -19,6 +19,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Operation.CompletionHandler;
 import com.vmware.xenon.common.Service;
+import com.vmware.xenon.common.Service.Action;
 import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.ServiceDocumentQueryResult;
 import com.vmware.xenon.common.Utils;
@@ -40,6 +41,11 @@ public class AuthorizationCacheUtils {
      * @param userLink UserService state
      */
     public static void clearAuthzCacheForUser(Service s, Operation op, String userLink) {
+
+        if (!isAuthzCacheClearApplicableOperation(op)) {
+            return;
+        }
+
         op.nestCompletion((o, e) -> {
             if (e != null) {
                 op.fail(e);
@@ -62,6 +68,11 @@ public class AuthorizationCacheUtils {
      * @param userGroupState UserGroup service state
      */
     public static void clearAuthzCacheForUserGroup(Service s, Operation op, UserGroupState userGroupState) {
+
+        if (!isAuthzCacheClearApplicableOperation(op)) {
+            return;
+        }
+
         op.nestCompletion((o, e) -> {
             if (e != null) {
                 op.fail(e);
@@ -110,6 +121,11 @@ public class AuthorizationCacheUtils {
      * @param roleState Role service state
      */
     public static void clearAuthzCacheForRole(Service s, Operation op, RoleState roleState) {
+
+        if (!isAuthzCacheClearApplicableOperation(op)) {
+            return;
+        }
+
         op.nestCompletion((o, e) -> {
             if (e != null) {
                 op.fail(e);
@@ -151,6 +167,11 @@ public class AuthorizationCacheUtils {
      * @param resourceGroupState ResourceGroup service state
      */
     public static void clearAuthzCacheForResourceGroup(Service s, Operation op, ResourceGroupState resourceGroupState) {
+
+        if (!isAuthzCacheClearApplicableOperation(op)) {
+            return;
+        }
+
         op.nestCompletion((o, e) -> {
             if (e != null) {
                 op.fail(e);
@@ -235,5 +256,25 @@ public class AuthorizationCacheUtils {
             break;
         }
         return state;
+    }
+
+    private static boolean isAuthzCacheClearApplicableOperation(Operation op) {
+        // For replication requests, create(POST) comes through factory service and it is not two
+        // phased. On the other hand, update(DELETE,PUT,PATCH) is two phased. Therefore, only clear
+        // the auth cache at commit phase.
+        if (op.isFromReplication()) {
+            if (op.getAction() == Action.POST) {
+                if (!op.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_CREATED)) {
+                    // do not clear at restart.
+                    return false;
+                }
+            } else {
+                if (!op.isCommit()) {
+                    return false;
+                }
+            }
+        }
+        return true;
+
     }
 }
