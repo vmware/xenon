@@ -77,6 +77,7 @@ public class ExampleService extends StatefulService {
         toggleOption(ServiceOption.REPLICATION, true);
         toggleOption(ServiceOption.INSTRUMENTATION, true);
         toggleOption(ServiceOption.OWNER_SELECTION, true);
+        toggleOption(ServiceOption.ON_DEMAND_LOAD, true);
     }
 
     @Override
