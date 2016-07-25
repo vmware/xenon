@@ -15,7 +15,7 @@ package com.vmware.xenon.common;
 
 import static com.vmware.xenon.common.TransactionServiceHelper.handleGetWithinTransaction;
 import static com.vmware.xenon.common.TransactionServiceHelper.handleOperationInTransaction;
-import static com.vmware.xenon.common.TransactionServiceHelper.notifyTransactionCoordinator;
+import static com.vmware.xenon.common.TransactionServiceHelper.notifyTransactionCoordinatorOp;
 
 import java.net.URI;
 import java.util.Collection;
@@ -671,9 +671,25 @@ public class StatefulService implements Service {
 
         if (op.isWithinTransaction() && this.getHost().getTransactionServiceUri() != null) {
             allocatePendingTransactions();
-            notifyTransactionCoordinator(this, op, e);
+            final Throwable e2 = e;
+            final boolean stateUpdated = isStateUpdated;
+            final ServiceDocument linkedDocumentState = linkedState;
+            notifyTransactionCoordinatorOp(this, op, e).setCompletion((notifyTxOp, notifyFailure) -> {
+                if (notifyFailure != null) {
+                    updateStatsAndProcessesRemaining(op, notifyFailure, stateUpdated, linkedDocumentState);
+                    return;
+                }
+                updateStatsAndProcessesRemaining(op, e2, stateUpdated, linkedDocumentState);
+            }).sendWith(this);
+            return;
         }
+        updateStatsAndProcessesRemaining(op, e, isStateUpdated, linkedState);
+    }
 
+    private void updateStatsAndProcessesRemaining(Operation op,
+                                                  Throwable e,
+                                                  boolean isStateUpdated,
+                                                  ServiceDocument linkedState) {
         if (e != null) {
             if (hasOption(Service.ServiceOption.INSTRUMENTATION)) {
                 adjustStat(op.getAction() + Service.STAT_NAME_FAILURE_COUNT, 1);

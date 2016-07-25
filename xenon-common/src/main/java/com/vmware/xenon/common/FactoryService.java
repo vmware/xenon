@@ -554,7 +554,16 @@ public abstract class FactoryService extends StatelessService {
 
             if (o.isWithinTransaction() && this.getHost().getTransactionServiceUri() != null) {
                 TransactionServiceHelper.notifyTransactionCoordinatorOfNewService(this,
-                        childService, o);
+                        childService, o).setCompletion((notifyTxOp, notifyFailure) -> {
+                            if (notifyFailure != null) {
+                                o.fail(notifyFailure);
+                                return;
+                            }
+                            o.setReplicationDisabled(true);
+                            o.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_VERSION_CHECK);
+                            getHost().startService(o, childService);
+                        }).sendWith(this);
+                return;
             }
         }
 
