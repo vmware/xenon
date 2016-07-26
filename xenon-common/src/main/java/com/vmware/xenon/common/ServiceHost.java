@@ -2152,7 +2152,7 @@ public class ServiceHost implements ServiceRequestSender {
     }
 
     private void restoreActionOnChildServiceToPostOnFactory(String link, Operation op) {
-        log(Level.INFO, "Changing URI for (id:%d) %s from %s to factory",
+        log(Level.FINE, "Changing URI for (id:%d) %s from %s to factory",
                 op.getId(), op.getAction(), link);
         // restart a PUT to a child service, to a POST to the factory
         op.removePragmaDirective(Operation.PRAGMA_DIRECTIVE_POST_TO_PUT);
@@ -2220,7 +2220,7 @@ public class ServiceHost implements ServiceRequestSender {
 
         if (existing.getProcessingStage() != ProcessingStage.AVAILABLE) {
             restoreActionOnChildServiceToPostOnFactory(servicePath, post);
-            log(Level.INFO, "Retrying (%d) POST to idempotent %s in stage %s",
+            log(Level.FINE, "Retrying (%d) POST to idempotent %s in stage %s",
                     post.getId(),
                     servicePath, existing.getProcessingStage());
             // Service is in the process of starting or stopping. Retry at a later time.
