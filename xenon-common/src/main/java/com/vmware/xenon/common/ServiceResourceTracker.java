@@ -325,6 +325,14 @@ class ServiceResourceTracker {
             }
 
             if (cacheCleared && service.hasOption(ServiceOption.ON_DEMAND_LOAD)) {
+                UtilityService us = (UtilityService) service
+                        .getUtilityService(ServiceHost.SERVICE_URI_SUFFIX_SUBSCRIPTIONS);
+                if (us.hasSubscribers()) {
+                    this.host.log(Level.INFO,
+                            "skipping stop for on demand service, it has subscribers: %s",
+                            service.getSelfLink());
+                    continue;
+                }
                 // instead of pausing on demand load services, simply stop them when they idle
                 stopService(service.getSelfLink(), false, null);
                 continue;

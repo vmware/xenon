@@ -206,13 +206,25 @@ public class UtilityService implements Service {
         op.complete();
     }
 
+    public boolean hasSubscribers() {
+        ServiceSubscriptionState subscribers = this.subscriptions;
+        if (subscribers == null || subscribers.subscribers == null
+                || this.subscriptions.subscribers.isEmpty()) {
+            return false;
+        } else {
+            return true;
+        }
+    }
+
     public void notifySubscribers(Operation op) {
         try {
-            if (this.subscriptions == null || this.subscriptions.subscribers == null) {
+            if (op.getAction() == Action.GET) {
                 return;
             }
 
-            if (op.getAction() == Action.GET) {
+            if (this.subscriptions == null
+                    || this.subscriptions.subscribers == null
+                    || this.subscriptions.subscribers.isEmpty()) {
                 return;
             }
 
