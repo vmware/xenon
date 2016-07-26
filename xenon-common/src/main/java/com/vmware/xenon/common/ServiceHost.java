@@ -2220,7 +2220,7 @@ public class ServiceHost implements ServiceRequestSender {
 
         if (existing.getProcessingStage() != ProcessingStage.AVAILABLE) {
             restoreActionOnChildServiceToPostOnFactory(servicePath, post);
-            log(Level.INFO, "Retrying (%d) POST to idempotent %s in stage %s",
+            log(Level.WARNING, "Retrying (%d) POST to idempotent %s in stage %s",
                     post.getId(),
                     servicePath, existing.getProcessingStage());
             // Service is in the process of starting or stopping. Retry at a later time.
