@@ -289,7 +289,7 @@ public class LuceneBlobIndexService extends StatelessService {
             doc.add(keyField);
 
             LuceneDocumentIndexService.addNumericField(
-                    doc, URI_PARAM_NAME_UPDATE_TIME, updateTime, true, false);
+                    doc, URI_PARAM_NAME_UPDATE_TIME, updateTime, true);
 
             wr.addDocument(doc);
             this.indexUpdateTimeMicros = Utils.getNowMicrosUtc();

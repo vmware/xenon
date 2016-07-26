@@ -1395,7 +1395,7 @@ public class TestNodeGroupService {
         Map<Action, Long> countPerAction = new HashMap<>();
 
         long totalOperations = 0;
-        boolean isFirstRun = true;
+        int iterationCount = 0;
         do {
             if (this.host == null) {
                 setUp(this.nodeCount);
@@ -1502,13 +1502,27 @@ public class TestNodeGroupService {
 
             totalOperations += this.serviceCount;
 
-            this.host.log("Total operations: %d", totalOperations);
+            // compute the binary serialized payload, and the JSON payload size
+            ExampleServiceState st = childStates.values().iterator().next();
+            String json = Utils.toJson(st);
+            int byteCount = Utils.toDocumentBytes(st, new byte[4096], 0);
+            int jsonByteCount = json.getBytes(Utils.CHARSET).length;
+            // estimate total bytes transferred between nodes. The owner receives JSON from the client
+            // but then uses binary serialization to the N-1 replicas
+            long totalBytes = jsonByteCount * totalOperations
+                    + (this.nodeCount - 1) * byteCount * totalOperations;
 
-            if (isFirstRun && this.testDurationSeconds > 0) {
-                // ignore data during JVM warm-up
+            this.host.log(
+                    "Bytes per json:%d, per binary: %d, Total operations: %d, Total bytes:%d",
+                    jsonByteCount,
+                    byteCount,
+                    totalOperations,
+                    totalBytes);
+
+            if (++iterationCount < 2 && this.testDurationSeconds > 0) {
+                // ignore data during JVM warm-up, first two iterations
                 countPerAction.clear();
                 elapsedTimePerAction.clear();
-                isFirstRun = false;
             }
 
         } while (new Date().before(expiration) && this.totalOperationLimit > totalOperations);

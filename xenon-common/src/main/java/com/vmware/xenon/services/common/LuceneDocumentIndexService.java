@@ -1483,15 +1483,15 @@ public class LuceneDocumentIndexService extends StatelessService {
         }
 
         addNumericField(doc, ServiceDocument.FIELD_NAME_UPDATE_TIME_MICROS,
-                s.documentUpdateTimeMicros, true, false);
+                s.documentUpdateTimeMicros, true);
 
         if (s.documentExpirationTimeMicros > 0) {
             addNumericField(doc, ServiceDocument.FIELD_NAME_EXPIRATION_TIME_MICROS,
-                    s.documentExpirationTimeMicros, true, false);
+                    s.documentExpirationTimeMicros, true);
         }
 
         addNumericField(doc, ServiceDocument.FIELD_NAME_VERSION,
-                s.documentVersion, true, true);
+                s.documentVersion, true);
 
         if (desc.propertyDescriptions == null
                 || desc.propertyDescriptions.isEmpty()) {
@@ -1617,14 +1617,14 @@ public class LuceneDocumentIndexService extends StatelessService {
             }
         } else if (pd.typeName.equals(TypeName.LONG)) {
             long value = ((Number) v).longValue();
-            addNumericField(doc, fieldName, value, isStored, isSorted);
+            addNumericField(doc, fieldName, value, isStored);
         } else if (pd.typeName.equals(TypeName.DATE)) {
             // Index as microseconds since UNIX epoch
             long value = ((Date) v).getTime() * 1000;
-            addNumericField(doc, fieldName, value, isStored, isSorted);
+            addNumericField(doc, fieldName, value, isStored);
         } else if (pd.typeName.equals(TypeName.DOUBLE)) {
             double value = ((Number) v).doubleValue();
-            addNumericField(doc, fieldName, value, isStored, isSorted);
+            addNumericField(doc, fieldName, value, isStored);
         } else if (pd.typeName.equals(TypeName.BOOLEAN)) {
             String booleanValue = QuerySpecification.toMatchValue((boolean) v);
             luceneField = new StringField(fieldName, booleanValue, fsv);
@@ -2374,7 +2374,7 @@ public class LuceneDocumentIndexService extends StatelessService {
     }
 
     public static Document addNumericField(Document doc, String propertyName, long propertyValue,
-            boolean stored, boolean sorted) {
+            boolean stored) {
         // StoredField is used if the property needs to be stored in the lucene document
         if (stored) {
             doc.add(new StoredField(propertyName, propertyValue));
@@ -2391,7 +2391,7 @@ public class LuceneDocumentIndexService extends StatelessService {
     }
 
     public static Document addNumericField(Document doc, String propertyName, double propertyValue,
-            boolean stored, boolean sorted) {
+            boolean stored) {
         long longPropertyValue = NumericUtils.doubleToSortableLong(propertyValue);
 
         // StoredField is used if the property needs to be stored in the lucene document
