@@ -15,7 +15,7 @@ package com.vmware.xenon.common;
 
 import static com.vmware.xenon.common.TransactionServiceHelper.handleGetWithinTransaction;
 import static com.vmware.xenon.common.TransactionServiceHelper.handleOperationInTransaction;
-import static com.vmware.xenon.common.TransactionServiceHelper.notifyTransactionCoordinator;
+import static com.vmware.xenon.common.TransactionServiceHelper.notifyTransactionCoordinatorOp;
 
 import java.net.URI;
 import java.util.Collection;
@@ -607,6 +607,22 @@ public class StatefulService implements Service {
     }
 
     /**
+     * Notifies the transaction coordinator
+     */
+    private void notifyTransactionCoOrdinator(Operation op, Throwable e) {
+        if (op.isWithinTransaction() && this.getHost().getTransactionServiceUri() != null) {
+            allocatePendingTransactions();
+            notifyTransactionCoordinatorOp(this, op, e).setCompletion((notifyOp, notifyFailure) -> {
+                if (notifyFailure != null) {
+                    op.fail(notifyFailure);
+                } else {
+                    op.complete();
+                }
+            });
+        }
+    }
+
+    /**
      * Performs a series of actions, based on service options, after the service code has called
      * operation.complete() but before the client sees request completion
      *
@@ -618,13 +634,11 @@ public class StatefulService implements Service {
      *
      * 3) Index (save state)
      *
-     * 4) Notify transaction coordinator
+     * 4) Update operation stats
      *
-     * 5) Update operation stats
+     * 5) Publish notification to subscribers
      *
-     * 6) Publish notification to subscribers
-     *
-     * 7) Complete request
+     * 6) Complete request
      *
      * Service options dictate the failure semantics at each stage, and if updates can be processed
      * concurrently with replication and indexing
@@ -667,11 +681,6 @@ public class StatefulService implements Service {
                 // set failure so we fail operation below
                 e = e1;
             }
-        }
-
-        if (op.isWithinTransaction() && this.getHost().getTransactionServiceUri() != null) {
-            allocatePendingTransactions();
-            notifyTransactionCoordinator(this, op, e);
         }
 
         if (e != null) {
@@ -1242,6 +1251,10 @@ public class StatefulService implements Service {
             processPending(request);
             request.complete();
             return;
+        }
+
+        if (request.isWithinTransaction() && this.getHost().getTransactionServiceUri() != null) {
+            request.nestCompletion(this::notifyTransactionCoOrdinator);
         }
 
         // proceed with normal completion pipeline, including indexing
