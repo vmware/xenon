@@ -19,9 +19,12 @@ import static org.junit.Assert.fail;
 
 import java.io.File;
 import java.net.URI;
+import java.util.Arrays;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.TimeoutException;
 
 import org.junit.Before;
@@ -31,6 +34,20 @@ import com.vmware.xenon.common.LoaderService.LoaderServiceState;
 import com.vmware.xenon.common.Operation.CompletionHandler;
 
 public class LoaderServiceTest extends BasicReusableHostTestCase {
+    /**
+     * The expected classes from xenon-loader-test to be dynamically loaded.
+     * Note:
+     * com.vmware.xenon.examples.classic.UnrelatedService and
+     * com.vmware.xenon.examples.ExampleFooService should not be dynamically
+     * loaded.
+     */
+    private static final Set<String> EXPECTED_CLASSES = new HashSet<>(
+            Arrays.asList(new String[] {
+                    "com.vmware.xenon.examples.ExampleWithFactoryLinkService",
+                    "com.vmware.xenon.examples.ExampleSingletonService",
+                    "com.vmware.xenon.examples.ExampleFooFactoryService",
+                    "com.vmware.xenon.examples.classic.EmptyService"})
+            );
 
     @Before
     public void setUp() throws Exception {
@@ -204,10 +221,11 @@ public class LoaderServiceTest extends BasicReusableHostTestCase {
             // Now there is one service package
             this.host.log("Verifying existence of loaded service packages");
             if (serviceState.servicePackages.size() == 1) {
-                // Expecting 4 test service classes in the package
+                // Expecting 5 test service classes in the package
                 this.host.log("Verifying loaded service classes");
-                if (serviceState.servicePackages.values().iterator()
-                        .next().serviceClasses.size() == 4) {
+                Set<String> loadedClasses = serviceState.servicePackages.values().iterator()
+                        .next().serviceClasses.keySet();
+                if (EXPECTED_CLASSES.equals(loadedClasses)) {
                     this.host.log("Found expected service classes");
                     break;
                 } else {

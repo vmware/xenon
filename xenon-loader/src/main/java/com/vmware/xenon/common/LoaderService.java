@@ -23,6 +23,7 @@ import java.net.URISyntaxException;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.Map;
 import java.util.jar.JarEntry;
 import java.util.jar.JarInputStream;
@@ -235,12 +236,16 @@ public class LoaderService extends StatefulService {
 
             for (LoaderServiceInfo packageInfo : services.values()) {
                 logFine("Processing package %s", packageInfo.name);
-                for (String serviceClass : packageInfo.serviceClasses.keySet()) {
+                for (Iterator<String> iterator = packageInfo.serviceClasses.keySet().iterator();
+                        iterator.hasNext(); ) {
+                    String serviceClass = iterator.next();
                     Class<?> clazz = cl.loadClass(serviceClass);
 
                     if (isValidDynamicService(clazz)) {
                         Service service = startDynamicService(clazz);
                         packageInfo.serviceClasses.put(serviceClass, service.getSelfLink());
+                    } else {
+                        iterator.remove();
                     }
                 }
             }
@@ -337,7 +342,7 @@ public class LoaderService extends StatefulService {
                     // Service classes
                     if (isValidServiceClassName(name)) {
                         logFine("Found service class %s", name);
-                        String className = name.replaceAll(".class", "").replaceAll("/", ".");
+                        String className = name.replaceAll("\\.class$", "").replaceAll("/", ".");
 
                         if (packageInfo == null) {
                             packageInfo = new LoaderServiceInfo();

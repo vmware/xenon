@@ -17,8 +17,8 @@ import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.StatefulService;
 
 /**
- * An example service instantiated by the {@link ExampleFooFactoryService}
- * dynamically loaded by the LoaderService.
+ * An example service. Although it is a Xenon service, it should not be
+ * dynamically loaded as it does not define a SELF_LINK or FACTORY_LINK.
  */
 public class ExampleFooService extends StatefulService {
     public static class ExampleFooServiceState extends ServiceDocument {
