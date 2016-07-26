@@ -325,8 +325,10 @@ class ServiceResourceTracker {
             }
 
             if (cacheCleared && service.hasOption(ServiceOption.ON_DEMAND_LOAD)) {
-                // instead of pausing on demand load services, simply stop them when they idle
-                stopService(service.getSelfLink(), false, null);
+                Service existing = this.pendingPauseServices.put(service.getSelfLink(), service);
+                if (existing == null) {
+                    pauseServiceCount++;
+                }
                 continue;
             }
 
@@ -339,8 +341,10 @@ class ServiceResourceTracker {
                 clearCachedServiceState(service.getSelfLink(), null);
                 // and check again if ON_DEMAND_LOAD then we need to stop
                 if (service.hasOption(ServiceOption.ON_DEMAND_LOAD)) {
-                    // instead of pausing on demand load services, simply stop them when they idle
-                    stopService(service.getSelfLink(), false, null);
+                    Service existing = this.pendingPauseServices.put(service.getSelfLink(), service);
+                    if (existing == null) {
+                        pauseServiceCount++;
+                    }
                     continue;
                 }
             }
@@ -381,6 +385,16 @@ class ServiceResourceTracker {
         ServiceHostState hostState = this.host.getStateNoCloning();
         int servicePauseCount = 0;
         for (Service s : this.pendingPauseServices.values()) {
+
+            String path = s.getSelfLink();
+
+            if (s.hasOption(ServiceOption.ON_DEMAND_LOAD)) {
+                // instead of pausing on demand load services, simply stop them when they are idle
+                this.pendingPauseServices.remove(path);
+                stopService(path, false, null);
+                continue;
+            }
+
             if (s.getProcessingStage() != ProcessingStage.AVAILABLE) {
                 continue;
             }
@@ -394,7 +408,6 @@ class ServiceResourceTracker {
                 continue;
             }
             servicePauseCount++;
-            String path = s.getSelfLink();
 
             // ask object index to store service object. It should be tiny since services
             // should hold no instanced fields. We avoid service stop/start by doing this
