@@ -60,6 +60,21 @@ public class BasicTestCase {
         }
     };
 
+    protected void before() throws Throwable {
+        CommandLineArgumentParser.parseFromProperties(BasicTestCase.this);
+        BasicTestCase.this.host = createHost();
+        CommandLineArgumentParser.parseFromProperties(BasicTestCase.this.host);
+        BasicTestCase.this.host.setStressTest(BasicTestCase.this.isStressTest);
+        initializeHost(BasicTestCase.this.host);
+        beforeHostStart(BasicTestCase.this.host);
+        BasicTestCase.this.host.start();
+    }
+
+    protected void after() throws Throwable {
+        beforeHostTearDown(BasicTestCase.this.host);
+        BasicTestCase.this.host.tearDown();
+    }
+
     protected TestRule watcher = new TestWatcher() {
         protected void starting(Description description) {
             BasicTestCase.this.host.log("Running test: " + description.getMethodName());

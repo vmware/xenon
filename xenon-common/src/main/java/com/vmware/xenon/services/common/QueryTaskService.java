@@ -277,8 +277,10 @@ public class QueryTaskService extends StatefulService {
         }
 
         long timeElapsed = Utils.getNowMicrosUtc() - startTime;
-        queryTask.taskInfo.durationMicros = timeElapsed + Collections.max(queryResults.stream().map(r -> r
-                .queryTimeMicros).collect(Collectors.toList()));
+        if (queryResults.size() > 0) {
+            queryTask.taskInfo.durationMicros = timeElapsed + Collections.max(queryResults.stream().map(r -> r
+                    .queryTimeMicros).collect(Collectors.toList()));
+        }
     }
 
     @Override

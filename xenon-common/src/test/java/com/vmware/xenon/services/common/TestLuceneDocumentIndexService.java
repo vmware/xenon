@@ -735,26 +735,6 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
         ExampleServiceState st = new ExampleServiceState();
         st.name = Utils.getNowMicrosUtc() + "";
 
-        // subscribe to some services
-        URI serviceToSubscribe = childUris.remove(0);
-        TestContext ctx = testCreate(1);
-        Operation subscribe = Operation.createPost(serviceToSubscribe)
-                .setCompletion(ctx.getCompletion())
-                .setReferer(this.host.getReferer());
-
-        TestContext notifyCtx = testCreate(1);
-        this.host.startReliableSubscriptionService(subscribe, (notifyOp) -> {
-            notifyOp.complete();
-            notifyCtx.completeIteration();
-        });
-        testWait(ctx);
-        // do a PATCH, to trigger a notification
-        Operation patch = Operation.createPatch(serviceToSubscribe)
-                .setBody(st);
-        this.host.send(patch);
-        // wait for completion triggered by notification
-        testWait(notifyCtx);
-
         // delete some of the services, not using a body, emulation DELETE through expiration
         URI serviceToDelete = childUris.remove(0);
         Operation delete = Operation.createDelete(serviceToDelete)
@@ -762,9 +742,8 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
         this.host.sendAndWait(delete);
 
         // attempt to use service we just deleted, we should get failure
-
         // do a PATCH, expect 404
-        patch = Operation.createPatch(serviceToDelete)
+        Operation patch = Operation.createPatch(serviceToDelete)
                 .setBody(st)
                 .setCompletion(
                         this.host.getExpectedFailureCompletion(Operation.STATUS_CODE_NOT_FOUND));
@@ -873,6 +852,92 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
 
 
         this.host.log("******************************* finished *******************************");
+    }
+
+    @Test
+    public void testLoop() throws Throwable {
+        for (int i = 0; i < 1000; i++) {
+            this.before();
+            this.host.log("iteration: " + i);
+            verifyOnDemandLoadServiceWithSubscribers();
+            this.after();
+        }
+    }
+
+    public void verifyOnDemandLoadServiceWithSubscribers() throws Throwable {
+        // Set memory limit very low to induce service pause/stop.
+        this.host.setServiceMemoryLimit(ServiceHost.ROOT_PATH, 0.00001);
+
+        // Increase the maintenance interval to delay service pause/ stop.
+        this.host.setMaintenanceIntervalMicros(TimeUnit.SECONDS.toMicros(5));
+
+        Consumer<Operation> bodySetter = (o) -> {
+            ExampleServiceState body = new ExampleServiceState();
+            body.name = "prefix-" + UUID.randomUUID();
+            o.setBody(body);
+        };
+
+        // Create one OnDemandLoad Service
+        String factoryLink = createOnDemandLoadFactoryService(this.host);
+        Map<URI, ExampleServiceState> states = this.host.doFactoryChildServiceStart(
+                null,
+                1,
+                ExampleServiceState.class,
+                bodySetter,
+                UriUtils.buildUri(this.host, factoryLink));
+
+        URI serviceUri = states.keySet().iterator().next();
+        ExampleServiceState st = new ExampleServiceState();
+        st.name = "firstPatch";
+
+        // Subscribe to created service
+        TestContext ctx = testCreate(1);
+        Operation subscribe = Operation.createPost(serviceUri)
+                .setCompletion(ctx.getCompletion())
+                .setReferer(this.host.getReferer());
+
+        TestContext notifyCtx = testCreate(2);
+        this.host.startReliableSubscriptionService(subscribe, (notifyOp) -> {
+            notifyOp.complete();
+            notifyCtx.completeIteration();
+        });
+        testWait(ctx);
+
+        // do a PATCH, to trigger a notification
+        TestContext patchCtx = testCreate(1);
+        Operation patch = Operation
+                .createPatch(serviceUri)
+                .setBody(st)
+                .setCompletion(patchCtx.getCompletion());
+        this.host.send(patch);
+        testWait(patchCtx);
+
+        // Let's change the maintenance interval to low so that the service pauses.
+        this.host.setMaintenanceIntervalMicros(TimeUnit.MILLISECONDS.toMicros(100));
+
+        // Wait for the service to get paused.
+        this.host.waitFor("Service failed to pause", () -> {
+            ProcessingStage stage = this.host.getServiceStage(serviceUri.getPath());
+            if (stage == null) {
+                return true;
+            }
+            this.host.log(Level.INFO, "processing stage is " + stage);
+            return false;
+        });
+
+        // Let's do a PATCH again
+        st.name = "secondPatch";
+        patchCtx = testCreate(1);
+        patch = Operation
+                .createPatch(serviceUri)
+                .setBody(st)
+                .setCompletion(patchCtx.getCompletion());
+        this.host.send(patch);
+        testWait(patchCtx);
+
+        // Wait for the patch notifications. This will exit only
+        // when both notifications have been received.
+        testWait(notifyCtx);
     }
 
     private void createOnDemandLoadServices(ServiceHost h, String factoryLink)
