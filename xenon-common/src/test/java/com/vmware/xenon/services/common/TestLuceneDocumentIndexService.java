@@ -1099,6 +1099,51 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
         testWait(ctx);
     }
 
+    @Test
+    public void throughputPost() throws Throwable {
+        int iterationCount = this.host.isStressTest() ? 5 : 1;
+        URI factoryUri = UriUtils.buildFactoryUri(this.host, ExampleService.class);
+
+        Consumer<Operation> setBody = (o) -> {
+            ExampleServiceState body = new ExampleServiceState();
+            body.name = "a name";
+            body.counter = Utils.getNowMicrosUtc();
+            o.setBody(body);
+        };
+
+
+        for (int ic = 0; ic < iterationCount; ic++) {
+            this.host.log("(%d) Starting POST send of %d operations", ic, this.serviceCount);
+            long startTimeMicros = System.nanoTime() / 1000;
+            TestContext ctx = testCreate((int) this.serviceCount);
+            for (int i = 0; i < this.serviceCount; i++) {
+                Operation createPost = Operation.createPost(factoryUri);
+                // call callback to set the body
+                setBody.accept(createPost);
+
+                // create a start service POST with an initial state
+                createPost.setCompletion(
+                        (o, e) -> {
+                            if (e != null) {
+                                ctx.failIteration(e);
+                                return;
+                            }
+
+                            ctx.completeIteration();
+                        });
+                this.host.send(createPost);
+            }
+            testWait(ctx);
+            long endTimeMicros = System.nanoTime() / 1000;
+            double deltaSeconds = (endTimeMicros - startTimeMicros) / 1000000.0;
+            double ioCount = this.serviceCount * iterationCount;
+            double throughput = ioCount / deltaSeconds;
+            this.host.log("Operation count: %f, throughput(ops/sec): %f", ioCount, throughput);
+            this.host.deleteAllChildServices(factoryUri);
+        }
+
+
+    }
 
     @Test
     public void throughputPut() throws Throwable {
