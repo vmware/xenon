@@ -33,6 +33,13 @@ import com.vmware.xenon.common.Utils;
 public class ServiceHostManagementService extends StatefulService {
     public static final String SELF_LINK = UriUtils.buildUriPath(ServiceUriPaths.CORE_MANAGEMENT);
 
+    public static final String STAT_NAME_SERVICE_PAUSE_COUNT = "servicePauseCount";
+    public static final String STAT_NAME_SERVICE_RESUME_COUNT = "serviceResumeCount";
+    public static final String STAT_NAME_SERVICE_CACHE_CLEAR_COUNT = "serviceCacheClearCount";
+    public static final String STAT_NAME_ODL_CACHE_CLEAR_COUNT = "onDemandLoadCacheClearCount";
+    public static final String STAT_NAME_ODL_STOP_COUNT = "onDemandLoadStopCount";
+    public static final String STAT_NAME_ODL_STOP_CONFLICT_COUNT = "onDemandLoadStopConflictCount";
+
     public ServiceHostManagementService() {
         super(ServiceHostState.class);
         super.toggleOption(ServiceOption.INSTRUMENTATION, true);

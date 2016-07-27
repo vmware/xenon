@@ -163,8 +163,12 @@ public class StatefulService implements Service {
 
         if (isAlreadyStopped) {
             if (op.getAction() != Action.DELETE) {
-                logWarning("Service is stopped, cancelling operation");
-                op.fail(new CancellationException());
+                if (hasOption(ServiceOption.ON_DEMAND_LOAD)) {
+                    getHost().retryOnDemandLoadStopConflict(this, op);
+                } else {
+                    logWarning("Service is stopped, cancelling operation");
+                    op.fail(new CancellationException());
+                }
             } else {
                 op.complete();
             }

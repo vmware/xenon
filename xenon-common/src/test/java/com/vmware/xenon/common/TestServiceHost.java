@@ -41,6 +41,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 
 import io.netty.handler.ssl.util.SelfSignedCertificate;
+
 import org.junit.After;
 import org.junit.Rule;
 import org.junit.Test;
@@ -60,6 +61,7 @@ import com.vmware.xenon.common.test.MinimalTestServiceState;
 import com.vmware.xenon.common.test.TestContext;
 import com.vmware.xenon.common.test.TestProperty;
 import com.vmware.xenon.common.test.VerificationHost;
+import com.vmware.xenon.common.test.VerificationHost.WaitHandler;
 import com.vmware.xenon.services.common.AuthorizationContextService;
 import com.vmware.xenon.services.common.ExampleService;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
@@ -905,7 +907,7 @@ public class TestServiceHost {
             }
 
             Map<String, ServiceStat> mgmtStats = this.host.getServiceStats(this.host.getManagementServiceUri());
-            cacheClearStat = mgmtStats.get(Service.STAT_NAME_SERVICE_CACHE_CLEAR_COUNT);
+            cacheClearStat = mgmtStats.get(ServiceHostManagementService.STAT_NAME_SERVICE_CACHE_CLEAR_COUNT);
             if (cacheClearStat == null || cacheClearStat.latestValue < 1) {
                 this.host.log("Cache clear stat on management service not seen");
                 Thread.sleep(maintIntervalMillis * 2);
@@ -1428,47 +1430,7 @@ public class TestServiceHost {
         this.host.testWait();
 
         if (this.testDurationSeconds == 0) {
-            // Let's now query stats for each service. We will use these stats to verify that the
-            // services did get paused and resumed.
-            this.host.waitFor("Service stats did not get updated", () -> {
-                // Verify the stats for each service show that the service was paused and resumed
-                for (ExampleServiceState st : states.values()) {
-                    URI serviceUri = UriUtils.buildUri(this.host, st.documentSelfLink);
-                    Map<String, ServiceStat> serviceStats = this.host.getServiceStats(serviceUri);
-
-                    ServiceStat pauseStat = serviceStats.get(Service.STAT_NAME_PAUSE_COUNT);
-                    if (pauseStat == null) {
-                        this.host.log("pauseStat was null for %s", st.documentSelfLink);
-                        return false;
-                    }
-
-                    ServiceStat resumeStat = serviceStats.get(Service.STAT_NAME_RESUME_COUNT);
-                    if (resumeStat == null) {
-                        this.host.log("resumeStat was null for %s", st.documentSelfLink);
-                        return false;
-                    }
-                }
-
-                // Verify the stats for the management service show that the pause and resume service count
-                // is as expected
-                Map<String, ServiceStat> mgmtStats = this.host.getServiceStats(this.host.getManagementServiceUri());
-                ServiceStat mgmtPauseStat = mgmtStats.get(Service.STAT_NAME_SERVICE_PAUSE_COUNT);
-
-                if (mgmtPauseStat == null || (int)mgmtPauseStat.latestValue < states.size()) {
-                    this.host.log("ManagementSvc pauseStat was not set as expected %s",
-                            mgmtPauseStat == null ? "null" : String.valueOf(mgmtPauseStat.latestValue));
-                    return false;
-                }
-
-                ServiceStat mgmtResumeStat = mgmtStats.get(Service.STAT_NAME_SERVICE_PAUSE_COUNT);
-                if (mgmtResumeStat == null || (int)mgmtResumeStat.latestValue < states.size()) {
-                    this.host.log("ManagementSvc resumeStat was not set as expected %s",
-                            mgmtResumeStat == null ? "null" : String.valueOf(mgmtResumeStat.latestValue));
-                    return false;
-                }
-
-                return true;
-            });
+            verifyPauseResumeStats(states);
         }
 
         states.clear();
@@ -1534,6 +1496,57 @@ public class TestServiceHost {
         }
     }
 
+    private void verifyPauseResumeStats(Map<URI, ExampleServiceState> states) throws Throwable {
+        // Let's now query stats for each service. We will use these stats to verify that the
+        // services did get paused and resumed.
+        WaitHandler wh = () -> {
+            // Verify the stats for each service show that the service was paused and resumed
+            for (ExampleServiceState st : states.values()) {
+                URI serviceUri = UriUtils.buildUri(this.host, st.documentSelfLink);
+                Map<String, ServiceStat> serviceStats = this.host.getServiceStats(serviceUri);
+
+                ServiceStat pauseStat = serviceStats.get(Service.STAT_NAME_PAUSE_COUNT);
+                if (pauseStat == null) {
+                    this.host.log("pauseStat was null for %s", st.documentSelfLink);
+                    return false;
+                }
+
+                ServiceStat resumeStat = serviceStats.get(Service.STAT_NAME_RESUME_COUNT);
+                if (resumeStat == null) {
+                    this.host.log("resumeStat was null for %s", st.documentSelfLink);
+                    return false;
+                }
+            }
+
+            // Verify the stats for the management service show that the pause and resume service count
+            // is as expected
+            Map<String, ServiceStat> mgmtStats = this.host.getServiceStats(this.host
+                    .getManagementServiceUri());
+
+            ServiceStat mgmtPauseStat = mgmtStats.get(
+                    ServiceHostManagementService.STAT_NAME_SERVICE_PAUSE_COUNT);
+
+            if (mgmtPauseStat == null || (int) mgmtPauseStat.latestValue < states.size()) {
+                this.host.log("ManagementSvc pauseStat was not set as expected %s",
+                        mgmtPauseStat == null ? "null" : String.valueOf(mgmtPauseStat.latestValue));
+                return false;
+            }
+
+            ServiceStat mgmtResumeStat = mgmtStats.get(
+                    ServiceHostManagementService.STAT_NAME_SERVICE_PAUSE_COUNT);
+            if (mgmtResumeStat == null || (int) mgmtResumeStat.latestValue < states.size()) {
+                this.host.log(
+                        "ManagementSvc resumeStat was not set as expected %s",
+                        mgmtResumeStat == null ? "null" : String
+                                .valueOf(mgmtResumeStat.latestValue));
+                return false;
+            }
+
+            return true;
+        };
+        this.host.waitFor("Service stats did not get updated", wh);
+    }
+
     @Test
     public void maintenanceForOnDemandLoadServices() throws Throwable {
         setUp(true);
@@ -1578,7 +1591,7 @@ public class TestServiceHost {
             }
 
             Map<String, ServiceStat> stats = this.host.getServiceStats(this.host.getManagementServiceUri());
-            ServiceStat odlStops = stats.get(Service.STAT_NAME_ODL_STOP_COUNT);
+            ServiceStat odlStops = stats.get(ServiceHostManagementService.STAT_NAME_ODL_STOP_COUNT);
             if (odlStops == null || odlStops.latestValue < this.serviceCount) {
                 this.host.log("ODL Service Stops %s were less than expected %d",
                         odlStops == null ? "null" : String.valueOf(odlStops.latestValue),
@@ -1586,7 +1599,7 @@ public class TestServiceHost {
                 return false;
             }
 
-            ServiceStat odlCacheClears = stats.get(Service.STAT_NAME_ODL_CACHE_CLEAR_COUNT);
+            ServiceStat odlCacheClears = stats.get(ServiceHostManagementService.STAT_NAME_ODL_CACHE_CLEAR_COUNT);
             if (odlCacheClears == null || odlCacheClears.latestValue < this.serviceCount) {
                 this.host.log("ODL Service Cache Clears %s were less than expected %d",
                         odlCacheClears == null ? "null" : String.valueOf(odlCacheClears.latestValue),
@@ -1594,7 +1607,7 @@ public class TestServiceHost {
                 return false;
             }
 
-            ServiceStat cacheClears = stats.get(Service.STAT_NAME_SERVICE_CACHE_CLEAR_COUNT);
+            ServiceStat cacheClears = stats.get(ServiceHostManagementService.STAT_NAME_SERVICE_CACHE_CLEAR_COUNT);
             if (cacheClears == null || cacheClears.latestValue < this.serviceCount) {
                 this.host.log("Service Cache Clears %s were less than expected %d",
                         cacheClears == null ? "null" : String.valueOf(cacheClears.latestValue),
@@ -1744,7 +1757,7 @@ public class TestServiceHost {
     private ServiceStat getODLStopCountStat() throws Throwable {
         URI managementServiceUri = this.host.getManagementServiceUri();
         return this.host.getServiceStats(managementServiceUri)
-                .get(Service.STAT_NAME_ODL_STOP_COUNT);
+                .get(ServiceHostManagementService.STAT_NAME_ODL_STOP_COUNT);
     }
 
     @Test

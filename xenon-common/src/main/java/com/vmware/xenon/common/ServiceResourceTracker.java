@@ -27,6 +27,7 @@ import com.vmware.xenon.common.Service.ServiceOption;
 import com.vmware.xenon.common.ServiceHost.ServiceHostState;
 import com.vmware.xenon.common.ServiceHost.ServiceHostState.MemoryLimitType;
 import com.vmware.xenon.services.common.ServiceContextIndexService;
+import com.vmware.xenon.services.common.ServiceHostManagementService;
 
 /**
  * Monitors service resources, and takes action, during periodic maintenance
@@ -225,7 +226,9 @@ class ServiceResourceTracker {
                 .setCompletion((o, e) -> {
                     if (s.hasOption(ServiceOption.ON_DEMAND_LOAD)) {
                         this.host.getManagementService()
-                                .adjustStat(Service.STAT_NAME_ODL_STOP_COUNT, 1);
+                                        .adjustStat(
+                                                ServiceHostManagementService.STAT_NAME_ODL_STOP_COUNT,
+                                                1);
                     }
                 });
         this.host.sendRequest(deleteExp);
@@ -274,10 +277,10 @@ class ServiceResourceTracker {
     private void updateCacheClearStats(Service s) {
         s.adjustStat(Service.STAT_NAME_CACHE_CLEAR_COUNT, 1);
         this.host.getManagementService().adjustStat(
-                Service.STAT_NAME_SERVICE_CACHE_CLEAR_COUNT, 1);
+                ServiceHostManagementService.STAT_NAME_SERVICE_CACHE_CLEAR_COUNT, 1);
         if (s.hasOption(ServiceOption.ON_DEMAND_LOAD)) {
             this.host.getManagementService().adjustStat(
-                    Service.STAT_NAME_ODL_CACHE_CLEAR_COUNT, 1);
+                    ServiceHostManagementService.STAT_NAME_ODL_CACHE_CLEAR_COUNT, 1);
         }
     }
 
@@ -465,7 +468,8 @@ class ServiceResourceTracker {
                             }
                         }
                         this.persistedServiceLastAccessTimes.remove(path);
-                        this.host.getManagementService().adjustStat(Service.STAT_NAME_SERVICE_PAUSE_COUNT, 1);
+                        this.host.getManagementService().adjustStat(
+                                ServiceHostManagementService.STAT_NAME_SERVICE_PAUSE_COUNT, 1);
                     }));
         }
         this.host.log(Level.INFO, "Paused %d services, attached: %d, cached: %d, persistedServiceLastAccessTimes: %d",
@@ -590,7 +594,8 @@ class ServiceResourceTracker {
                             Service resumedService = (Service) o.getBodyRaw();
                             resumeService(path, resumedService);
 
-                            this.host.getManagementService().adjustStat(Service.STAT_NAME_SERVICE_RESUME_COUNT, 1);
+                            this.host.getManagementService().adjustStat(
+                                    ServiceHostManagementService.STAT_NAME_SERVICE_RESUME_COUNT, 1);
                             this.host.handleRequest(null, inboundOp);
                         });
 

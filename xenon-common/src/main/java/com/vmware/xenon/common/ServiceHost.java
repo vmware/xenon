@@ -3434,7 +3434,6 @@ public class ServiceHost implements ServiceRequestSender {
     private void queueOrScheduleRequest(Service s, Operation op) {
         boolean processRequest = true;
         try {
-
             if (applyRequestRateLimit(op)) {
                 processRequest = false;
                 return;
@@ -3471,6 +3470,10 @@ public class ServiceHost implements ServiceRequestSender {
                     handleRequest(null, op);
                     return;
                 }
+                if (s.hasOption(ServiceOption.ON_DEMAND_LOAD)) {
+                    retryOnDemandLoadStopConflict(s, op);
+                    return;
+                }
                 op.setStatusCode(Operation.STATUS_CODE_NOT_FOUND);
             }
 
@@ -3494,6 +3497,16 @@ public class ServiceHost implements ServiceRequestSender {
                 this.executor.execute(r);
             }
         }
+    }
+
+    void retryOnDemandLoadStopConflict(Service statefulService, Operation op) {
+        log(Level.WARNING, "On demand conflict: retrying %s (%d %s) since it raced with a STOP",
+                op.getAction(), op.getId(), op.getContextId());
+        getManagementService().adjustStat(
+                ServiceHostManagementService.STAT_NAME_ODL_STOP_CONFLICT_COUNT, 1);
+        schedule(() -> {
+            handleRequest(null, op);
+        }, getMaintenanceIntervalMicros(), TimeUnit.MICROSECONDS);
     }
 
     private boolean applyRequestRateLimit(Operation op) {
