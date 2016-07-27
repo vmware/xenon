@@ -42,6 +42,8 @@ import com.vmware.xenon.services.common.ServiceUriPaths;
  */
 public class StatefulService implements Service {
 
+    private static boolean logAvailable = false;
+
     private static class RuntimeContext {
         public ProcessingStage processingStage = ProcessingStage.CREATED;
         public String selfLink;
@@ -79,6 +81,10 @@ public class StatefulService implements Service {
             this.context.operationQueue = OperationQueue
                     .createFifo(Service.OPERATION_QUEUE_DEFAULT_LIMIT);
         }
+    }
+
+    public static void setLogAvailable(boolean available) {
+        logAvailable = available;
     }
 
     @Override
@@ -1434,6 +1440,10 @@ public class StatefulService implements Service {
                 } else if (this.context.processingStage == ProcessingStage.PAUSED
                         && stage == ProcessingStage.AVAILABLE) {
                     statName = STAT_NAME_RESUME_COUNT;
+                    if (logAvailable) {
+                        this.getHost().log(Level.INFO, "resuming the service");
+                        Logger.getAnonymousLogger().warning(Utils.toString(new Exception()));
+                    }
                     this.context.isUpdateActive = false;
                 } else if (this.context.processingStage.ordinal() > stage.ordinal()) {
                     throw new IllegalArgumentException(this.context.processingStage
