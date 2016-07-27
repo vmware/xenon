@@ -369,8 +369,12 @@ class ServiceResourceTracker {
                 continue;
             }
 
-            if (cacheCleared && service.hasOption(ServiceOption.ON_DEMAND_LOAD)) {
-                // instead of pausing on demand load services, simply stop them when they idle
+            boolean odlWithNoSubscriptions = isOnDemandLoadWithNoSubscriptions(service);
+            if (cacheCleared && odlWithNoSubscriptions) {
+                // if it's an on-demand-load service with no subscribers, instead of pausing it,
+                // simply stop them when the service is idle.
+                // if the on-demand-load service does have subscribers, then continue with pausing
+                // so that we don't lose the subscriptions.
                 stopService(service.getSelfLink(), false, null);
                 continue;
             }
@@ -382,9 +386,8 @@ class ServiceResourceTracker {
             if (!cacheCleared) {
                 // if we're going to pause it, clear state from cache if not already cleared
                 clearCachedServiceState(service.getSelfLink(), null);
-                // and check again if ON_DEMAND_LOAD then we need to stop
-                if (service.hasOption(ServiceOption.ON_DEMAND_LOAD)) {
-                    // instead of pausing on demand load services, simply stop them when they idle
+                // and check again if ON_DEMAND_LOAD with no subscriptions, then we need to stop
+                if (odlWithNoSubscriptions) {
                     stopService(service.getSelfLink(), false, null);
                     continue;
                 }
@@ -614,4 +617,13 @@ class ServiceResourceTracker {
                 && this.host.getTransactionServiceUri() != null;
     }
 
+    private boolean isOnDemandLoadWithNoSubscriptions(Service service) {
+        if (!service.hasOption(ServiceOption.ON_DEMAND_LOAD)) {
+            return false;
+        }
+
+        UtilityService utilityService = (UtilityService) service
+                .getUtilityService(ServiceHost.SERVICE_URI_SUFFIX_SUBSCRIPTIONS);
+        return !utilityService.hasSubscribers();
+    }
 }
