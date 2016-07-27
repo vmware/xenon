@@ -2094,14 +2094,27 @@ public class ServiceHost implements ServiceRequestSender {
     }
 
     /**
-     * Starts a factory service for the given instance service class using the provided factory creator.
+     * Starts a factory service for the given instance service class using the provided factory creator
+     * on the factory's default URI path.
      * @param instServiceClass the class of the instance service
      * @param factoryCreator a function which creates a factory service
      * @return the service host
      */
     public ServiceHost startFactory(Class<? extends Service> instServiceClass,
             Supplier<FactoryService> factoryCreator) {
-        Operation post = Operation.createPost(UriUtils.buildFactoryUri(this, instServiceClass));
+        URI factoryUri = UriUtils.buildFactoryUri(this, instServiceClass);
+        return startFactory(factoryCreator, factoryUri);
+    }
+
+    /**
+     * Starts a factory service using the provided factory creator and the provided factory URI.
+     * This is helpful for starting a factory with a custom path.
+     * @param factoryCreator a function which creates a factory service
+     * @param factoryUri the uri to use for the factory
+     * @return the service host
+     */
+    public ServiceHost startFactory(Supplier<FactoryService> factoryCreator, URI factoryUri) {
+        Operation post = Operation.createPost(factoryUri);
         FactoryService factoryService = factoryCreator.get();
         return startService(post, factoryService);
     }
