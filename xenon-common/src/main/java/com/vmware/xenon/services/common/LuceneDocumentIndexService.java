@@ -78,6 +78,7 @@ import org.apache.lucene.search.SortField;
 import org.apache.lucene.search.SortedNumericSortField;
 import org.apache.lucene.search.TermQuery;
 import org.apache.lucene.search.TopDocs;
+import org.apache.lucene.search.grouping.GroupingSearch;
 import org.apache.lucene.store.AlreadyClosedException;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.MMapDirectory;
@@ -378,8 +379,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         Operation op = Operation.createGet(getUri());
         EnumSet<QueryOption> options = EnumSet.of(QueryOption.INCLUDE_ALL_VERSIONS);
         IndexSearcher s = new IndexSearcher(DirectoryReader.open(this.writer, true, true));
-        queryIndex(op, options, s, tq, null, null, Integer.MAX_VALUE, 0,
-                null, rsp, null);
+        queryIndex(op, options, s, tq, null, Integer.MAX_VALUE, 0, null, rsp, null);
     }
 
     private void handleBackup(Operation op, BackupRequest req) throws Throwable {
@@ -534,17 +534,10 @@ public class LuceneDocumentIndexService extends StatelessService {
         QueryTask.QuerySpecification qs = task.querySpec;
 
         Query luceneQuery = (Query) qs.context.nativeQuery;
-        Sort luceneSort = (Sort) qs.context.nativeSort;
 
         if (luceneQuery == null) {
             luceneQuery = LuceneQueryConverter.convertToLuceneQuery(task.querySpec.query);
             qs.context.nativeQuery = luceneQuery;
-        }
-
-        if (luceneSort == null && task.querySpec.options != null
-                && task.querySpec.options.contains(QuerySpecification.QueryOption.SORT)) {
-            luceneSort = LuceneQueryConverter.convertToLuceneSort(task.querySpec);
-            task.querySpec.context.nativeSort = luceneSort;
         }
 
         LuceneQueryPage lucenePage = (LuceneQueryPage) qs.context.nativePage;
@@ -587,7 +580,7 @@ public class LuceneDocumentIndexService extends StatelessService {
             s = createPaginatedQuerySearcher(task.documentExpirationTimeMicros, this.writer);
         }
 
-        if (!queryIndex(s, op, null, qs.options, luceneQuery, luceneSort, lucenePage,
+        if (!queryIndex(s, op, null, qs.options, luceneQuery, lucenePage,
                 qs.resultLimit,
                 task.documentExpirationTimeMicros, task.indexLink, rsp, qs)) {
             op.setBodyNoCloning(rsp).complete();
@@ -660,8 +653,7 @@ public class LuceneDocumentIndexService extends StatelessService {
 
         ServiceDocumentQueryResult rsp = new ServiceDocumentQueryResult();
         rsp.documentLinks = new ArrayList<>();
-        if (queryIndex(null, get, selfLink, options, tq,
-                null, null, resultLimit, 0, null, rsp, null)) {
+        if (queryIndex(null, get, selfLink, options, tq, null, resultLimit, 0, null, rsp, null)) {
             return;
         }
 
@@ -681,7 +673,6 @@ public class LuceneDocumentIndexService extends StatelessService {
             String selfLinkPrefix,
             EnumSet<QueryOption> options,
             Query tq,
-            Sort sort,
             LuceneQueryPage page,
             int count,
             long expiration,
@@ -704,7 +695,6 @@ public class LuceneDocumentIndexService extends StatelessService {
 
         if (options.contains(QueryOption.COUNT)) {
             rsp.documentCount = 0L;
-            sort = null;
         } else {
             rsp.documentLinks = new ArrayList<>();
         }
@@ -713,10 +703,6 @@ public class LuceneDocumentIndexService extends StatelessService {
         if (w == null) {
             op.fail(new CancellationException());
             return true;
-        }
-
-        if (sort == null) {
-            sort = this.versionSort;
         }
 
         if (s == null) {
@@ -731,7 +717,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         if (tq == null) {
             return false;
         }
-        ServiceDocumentQueryResult result = queryIndex(op, options, s, tq, sort, page,
+        ServiceDocumentQueryResult result = queryIndex(op, options, s, tq, page,
                 count, expiration, indexLink, rsp, qs);
         if (result != null) {
             result.documentOwner = getHost().getId();
@@ -876,7 +862,6 @@ public class LuceneDocumentIndexService extends StatelessService {
             EnumSet<QueryOption> options,
             IndexSearcher s,
             Query tq,
-            Sort sort,
             LuceneQueryPage page,
             int count,
             long expiration,
@@ -905,12 +890,36 @@ public class LuceneDocumentIndexService extends StatelessService {
             rsp.documentCount = 1L;
         }
 
+        Sort sort = this.versionSort;
+        if (qs != null && qs.sortTerm != null) {
+            // see if query is part of a task and already has a cached sort
+            if (qs.context != null) {
+                sort = (Sort) qs.context.nativeSort;
+            }
+
+            if (sort == null) {
+                sort = LuceneQueryConverter.convertToLuceneSort(qs);
+            }
+            if (qs.context != null) {
+                // update task context
+                qs.context.nativeSort = sort;
+            }
+        }
+        if (qs != null && qs.groupByTerm != null) {
+            GroupingSearch groupingSearch = new GroupingSearch("employeeId");
+            Sort groupSort = new Sort(new SortField("documentoId", SortField.Type.INT, true)); // in descending order
+            groupingSearch.setGroupSort(groupSort);
+            groupingSearch.setSortWithinGroup(groupSort);
+        }
+
         TopDocs results = null;
         rsp.queryTimeMicros = 0L;
         long queryStartTimeMicros = Utils.getNowMicrosUtc();
         long start = queryStartTimeMicros;
 
         do {
+
+
             if (sort == null) {
                 results = s.searchAfter(after, tq, count);
             } else {
@@ -1090,6 +1099,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         spec.context.nativeSort = sort;
         spec.resultLimit = count;
         spec.linkTerms = qs.linkTerms;
+        spec.groupByTerm = qs.groupByTerm;
 
         ServiceDocument body = new ServiceDocument();
         body.documentSelfLink = u.getPath();
