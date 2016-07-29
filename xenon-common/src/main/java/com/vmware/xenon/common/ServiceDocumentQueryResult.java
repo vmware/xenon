@@ -68,7 +68,6 @@ public class ServiceDocumentQueryResult extends ServiceDocument {
      */
     public Map<String, String> selectedDocuments;
 
-
     /**
      * Set to the number of documents that satisfy the query.
      */
@@ -89,6 +88,12 @@ public class ServiceDocumentQueryResult extends ServiceDocument {
     public String nextPageLink;
 
     /**
+     * Valid only on top level result for queries with QueryOption.GROUP_BY. Contains
+     * query pages with the first set of results for each group value.
+     */
+    public Map<String, String> nextPageLinksPerGroup;
+
+    /**
      * Duration of the query execution.
      */
     public Long queryTimeMicros;
@@ -101,9 +106,11 @@ public class ServiceDocumentQueryResult extends ServiceDocument {
             sdqr.documentLinks = this.documentLinks;
             sdqr.documents = this.documents;
             sdqr.selectedLinksPerDocument = this.selectedLinksPerDocument;
+            sdqr.selectedLinks = this.selectedLinks;
             sdqr.documentCount = this.documentCount;
             sdqr.prevPageLink = this.prevPageLink;
             sdqr.nextPageLink = this.nextPageLink;
+            sdqr.nextPageLinksPerGroup = this.nextPageLinksPerGroup;
             sdqr.queryTimeMicros = this.queryTimeMicros;
         }
     }

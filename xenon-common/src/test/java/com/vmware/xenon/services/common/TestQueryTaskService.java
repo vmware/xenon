@@ -77,6 +77,7 @@ import com.vmware.xenon.services.common.QueryTask.Query;
 import com.vmware.xenon.services.common.QueryTask.Query.Occurance;
 import com.vmware.xenon.services.common.QueryTask.QuerySpecification;
 import com.vmware.xenon.services.common.QueryTask.QuerySpecification.QueryOption;
+import com.vmware.xenon.services.common.QueryTask.QuerySpecification.SortOrder;
 import com.vmware.xenon.services.common.QueryTask.QueryTerm;
 import com.vmware.xenon.services.common.QueryTask.QueryTerm.MatchType;
 import com.vmware.xenon.services.common.QueryValidationTestService.QueryValidationServiceState;
@@ -1052,9 +1053,62 @@ public class TestQueryTaskService {
         verifyMultiNodeBroadcastQueries(targetHost);
     }
 
+    @Test
+    public void groupByQuery() throws Throwable {
+        setUpHost();
+        VerificationHost targetHost = this.host;
+        URI exampleFactoryURI = UriUtils.buildUri(targetHost, ExampleService.FACTORY_LINK);
+        String[] groupArray = new String[] { "one", "two", "three", "four" };
+        List<String> groups = Arrays.asList(groupArray);
+        List<URI> exampleServices = new ArrayList<>();
+
+        createGroupedExampleServices(groups, exampleFactoryURI, exampleServices);
+        // issue a query that matches kind for the query validation service
+        Query query = Query.Builder.create()
+                .addKindFieldClause(ExampleServiceState.class)
+                .build();
+        QueryTask queryTask = QueryTask.Builder.create()
+                .addOption(QueryOption.GROUP_BY)
+                .orderAscending(ExampleServiceState.FIELD_NAME_ID, TypeName.STRING)
+                .groupOrder(ExampleServiceState.FIELD_NAME_NAME, TypeName.STRING, SortOrder.ASC)
+                .setQuery(query).build();
+        URI queryTaskURI = this.host.createQueryTaskService(queryTask);
+        QueryTask finalState = this.host.waitForQueryTask(queryTaskURI, TaskStage.FINISHED);
+        assertTrue(finalState.results != null);
+        assertTrue(finalState.results.nextPageLinksPerGroup != null);
+        assertTrue(finalState.results.nextPageLinksPerGroup.size() == groups.size());
+        for (String g : groups) {
+            String pageLinkForGroup = finalState.results.nextPageLinksPerGroup.get(g);
+            assertTrue(pageLinkForGroup != null);
+            QueryTask perGroupFirstPage = this.host.getServiceState(null,
+                    QueryTask.class, UriUtils.buildUri(targetHost, pageLinkForGroup));
+            assertTrue(perGroupFirstPage.results != null);
+            // FIXME assertEquals(this.serviceCount, (long) perGroupFirstPage.results.documentCount);
+        }
+    }
+
+    private void createGroupedExampleServices(Collection<String> groups, URI exampleFactoryURI,
+            List<URI> exampleServices)
+            throws Throwable {
+        TestContext ctx = this.host.testCreate(this.serviceCount * groups.size());
+        for (String group : groups) {
+            for (int i = 0; i < this.serviceCount; i++) {
+                ExampleServiceState s = new ExampleServiceState();
+                s.name = group;
+                s.documentSelfLink = UUID.randomUUID().toString();
+                exampleServices.add(UriUtils.buildUri(this.host.getUri(),
+                        ExampleService.FACTORY_LINK, s.documentSelfLink));
+                this.host.send(Operation.createPost(exampleFactoryURI)
+                        .setBody(s)
+                        .setCompletion(ctx.getCompletion()));
+            }
+        }
+        this.host.testWait(ctx);
+    }
+
     private void createExampleServices(URI exampleFactoryURI, List<URI> exampleServices)
             throws Throwable {
-        this.host.testStart(this.serviceCount);
+        TestContext ctx = this.host.testCreate(this.serviceCount);
         for (int i = 0; i < this.serviceCount; i++) {
             ExampleServiceState s = new ExampleServiceState();
             s.name = "document" + i;
@@ -1063,9 +1117,9 @@ public class TestQueryTaskService {
                     ExampleService.FACTORY_LINK, s.documentSelfLink));
             this.host.send(Operation.createPost(exampleFactoryURI)
                     .setBody(s)
-                    .setCompletion(this.host.getCompletion()));
+                    .setCompletion(ctx.getCompletion()));
         }
-        this.host.testWait();
+        this.host.testWait(ctx);
     }
 
     private void verifyMultiNodeIndirectQueries(VerificationHost targetHost) throws Throwable {
