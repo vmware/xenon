@@ -78,6 +78,9 @@ import org.apache.lucene.search.SortField;
 import org.apache.lucene.search.SortedNumericSortField;
 import org.apache.lucene.search.TermQuery;
 import org.apache.lucene.search.TopDocs;
+import org.apache.lucene.search.grouping.GroupDocs;
+import org.apache.lucene.search.grouping.GroupingSearch;
+import org.apache.lucene.search.grouping.TopGroups;
 import org.apache.lucene.store.AlreadyClosedException;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.MMapDirectory;
@@ -106,9 +109,11 @@ import com.vmware.xenon.common.TaskState;
 import com.vmware.xenon.common.TaskState.TaskStage;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
+import com.vmware.xenon.services.common.QueryFilter.QueryFilterException;
 import com.vmware.xenon.services.common.QueryPageService.LuceneQueryPage;
 import com.vmware.xenon.services.common.QueryTask.QuerySpecification;
 import com.vmware.xenon.services.common.QueryTask.QuerySpecification.QueryOption;
+import com.vmware.xenon.services.common.QueryTask.QueryTerm.MatchType;
 
 public class LuceneDocumentIndexService extends StatelessService {
 
@@ -162,7 +167,11 @@ public class LuceneDocumentIndexService extends StatelessService {
 
     public static final String STAT_NAME_COMMIT_DURATION_MICROS = "commitDurationMicros";
 
+    public static final String STAT_NAME_GROUP_QUERY_COUNT = "groupQueryCount";
+
     public static final String STAT_NAME_QUERY_DURATION_MICROS = "queryDurationMicros";
+
+    public static final String STAT_NAME_GROUP_QUERY_DURATION_MICROS = "groupQueryDurationMicros";
 
     public static final String STAT_NAME_QUERY_SINGLE_DURATION_MICROS = "querySingleDurationMicros";
 
@@ -378,8 +387,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         Operation op = Operation.createGet(getUri());
         EnumSet<QueryOption> options = EnumSet.of(QueryOption.INCLUDE_ALL_VERSIONS);
         IndexSearcher s = new IndexSearcher(DirectoryReader.open(this.writer, true, true));
-        queryIndex(op, options, s, tq, null, null, Integer.MAX_VALUE, 0,
-                null, rsp, null);
+        queryIndex(op, options, s, tq, null, Integer.MAX_VALUE, 0, null, rsp, null);
     }
 
     private void handleBackup(Operation op, BackupRequest req) throws Throwable {
@@ -543,41 +551,25 @@ public class LuceneDocumentIndexService extends StatelessService {
 
         if (luceneSort == null && task.querySpec.options != null
                 && task.querySpec.options.contains(QuerySpecification.QueryOption.SORT)) {
-            luceneSort = LuceneQueryConverter.convertToLuceneSort(task.querySpec);
+            luceneSort = LuceneQueryConverter.convertToLuceneSort(task.querySpec, false);
             task.querySpec.context.nativeSort = luceneSort;
+        }
+
+        if (qs.options.contains(QueryOption.CONTINUOUS)) {
+            if (handleContinuousQueryTaskPatch(op, task, qs)) {
+                return;
+            }
+            // intentional fall through for tasks just starting and need to execute a query
+        }
+
+        if (qs.options.contains(QueryOption.GROUP_BY)) {
+            handleGroupByQueryTaskPatch(op, task);
+            return;
         }
 
         LuceneQueryPage lucenePage = (LuceneQueryPage) qs.context.nativePage;
         IndexSearcher s = (IndexSearcher) qs.context.nativeSearcher;
         ServiceDocumentQueryResult rsp = new ServiceDocumentQueryResult();
-
-        if (qs.options.contains(QueryOption.CONTINUOUS)) {
-            switch (task.taskInfo.stage) {
-            case CREATED:
-                logWarning("Task %s is in invalid state: %s", task.taskInfo.stage);
-                op.fail(new IllegalStateException("Stage not supported"));
-                return;
-            case STARTED:
-                QueryTask clonedTask = new QueryTask();
-                clonedTask.documentSelfLink = task.documentSelfLink;
-                clonedTask.querySpec = task.querySpec;
-                clonedTask.querySpec.context.filter = QueryFilter.create(qs.query);
-                this.activeQueries.put(task.documentSelfLink, clonedTask);
-                this.setStat(STAT_NAME_ACTIVE_QUERY_FILTERS, this.activeQueries.size());
-                logInfo("Activated continuous query task: %s", task.documentSelfLink);
-                break;
-            case CANCELLED:
-            case FAILED:
-            case FINISHED:
-                this.activeQueries.remove(task.documentSelfLink);
-                this.setStat(STAT_NAME_ACTIVE_QUERY_FILTERS, this.activeQueries.size());
-                op.complete();
-                return;
-            default:
-                break;
-
-            }
-        }
 
         if (s == null && qs.resultLimit != null && qs.resultLimit > 0
                 && qs.resultLimit != Integer.MAX_VALUE
@@ -587,11 +579,40 @@ public class LuceneDocumentIndexService extends StatelessService {
             s = createPaginatedQuerySearcher(task.documentExpirationTimeMicros, this.writer);
         }
 
-        if (!queryIndex(s, op, null, qs.options, luceneQuery, luceneSort, lucenePage,
+        if (!queryIndex(s, op, null, qs.options, luceneQuery, lucenePage,
                 qs.resultLimit,
                 task.documentExpirationTimeMicros, task.indexLink, rsp, qs)) {
             op.setBodyNoCloning(rsp).complete();
         }
+    }
+
+    private boolean handleContinuousQueryTaskPatch(Operation op, QueryTask task,
+            QueryTask.QuerySpecification qs) throws QueryFilterException {
+        switch (task.taskInfo.stage) {
+        case CREATED:
+            logWarning("Task %s is in invalid state: %s", task.taskInfo.stage);
+            op.fail(new IllegalStateException("Stage not supported"));
+            return true;
+        case STARTED:
+            QueryTask clonedTask = new QueryTask();
+            clonedTask.documentSelfLink = task.documentSelfLink;
+            clonedTask.querySpec = task.querySpec;
+            clonedTask.querySpec.context.filter = QueryFilter.create(qs.query);
+            this.activeQueries.put(task.documentSelfLink, clonedTask);
+            this.setStat(STAT_NAME_ACTIVE_QUERY_FILTERS, this.activeQueries.size());
+            logInfo("Activated continuous query task: %s", task.documentSelfLink);
+            break;
+        case CANCELLED:
+        case FAILED:
+        case FINISHED:
+            this.activeQueries.remove(task.documentSelfLink);
+            this.setStat(STAT_NAME_ACTIVE_QUERY_FILTERS, this.activeQueries.size());
+            op.complete();
+            return true;
+        default:
+            break;
+        }
+        return false;
     }
 
     private IndexSearcher createPaginatedQuerySearcher(long expirationMicros, IndexWriter w)
@@ -660,8 +681,7 @@ public class LuceneDocumentIndexService extends StatelessService {
 
         ServiceDocumentQueryResult rsp = new ServiceDocumentQueryResult();
         rsp.documentLinks = new ArrayList<>();
-        if (queryIndex(null, get, selfLink, options, tq,
-                null, null, resultLimit, 0, null, rsp, null)) {
+        if (queryIndex(null, get, selfLink, options, tq, null, resultLimit, 0, null, rsp, null)) {
             return;
         }
 
@@ -681,7 +701,6 @@ public class LuceneDocumentIndexService extends StatelessService {
             String selfLinkPrefix,
             EnumSet<QueryOption> options,
             Query tq,
-            Sort sort,
             LuceneQueryPage page,
             int count,
             long expiration,
@@ -692,19 +711,12 @@ public class LuceneDocumentIndexService extends StatelessService {
             options = EnumSet.noneOf(QueryOption.class);
         }
 
-        if (options.contains(QueryOption.COUNT) && options.contains(QueryOption.EXPAND_CONTENT)) {
-            op.fail(new IllegalArgumentException("COUNT can not be combined with EXPAND: %s"
-                    + options.toString()));
-            return true;
-        }
-
         if (options.contains(QueryOption.EXPAND_CONTENT)) {
             rsp.documents = new HashMap<>();
         }
 
         if (options.contains(QueryOption.COUNT)) {
             rsp.documentCount = 0L;
-            sort = null;
         } else {
             rsp.documentLinks = new ArrayList<>();
         }
@@ -713,10 +725,6 @@ public class LuceneDocumentIndexService extends StatelessService {
         if (w == null) {
             op.fail(new CancellationException());
             return true;
-        }
-
-        if (sort == null) {
-            sort = this.versionSort;
         }
 
         if (s == null) {
@@ -731,18 +739,14 @@ public class LuceneDocumentIndexService extends StatelessService {
         if (tq == null) {
             return false;
         }
-        ServiceDocumentQueryResult result = queryIndex(op, options, s, tq, sort, page,
+        ServiceDocumentQueryResult result = queryIndex(op, options, s, tq, page,
                 count, expiration, indexLink, rsp, qs);
-        if (result != null) {
-            result.documentOwner = getHost().getId();
-            if (!options.contains(QueryOption.COUNT) && result.documentLinks.isEmpty()) {
-                return false;
-            }
-            op.setBodyNoCloning(result).complete();
-            return true;
+        result.documentOwner = getHost().getId();
+        if (!options.contains(QueryOption.COUNT) && result.documentLinks.isEmpty()) {
+            return false;
         }
-
-        return false;
+        op.setBodyNoCloning(result).complete();
+        return true;
     }
 
     private void queryIndexSingle(String selfLink, Operation op, Long version)
@@ -872,11 +876,98 @@ public class LuceneDocumentIndexService extends StatelessService {
         return builder.build();
     }
 
+    private void handleGroupByQueryTaskPatch(Operation op, QueryTask task) throws IOException {
+        QuerySpecification qs = task.querySpec;
+        IndexSearcher s = (IndexSearcher) qs.context.nativeSearcher;
+        LuceneQueryPage page = (LuceneQueryPage) qs.context.nativePage;
+        Query tq = (Query) qs.context.nativeQuery;
+        Sort sort = (Sort) qs.context.nativeSort;
+        if (sort == null && qs.sortTerm != null) {
+            sort = LuceneQueryConverter.convertToLuceneSort(qs, false);
+        }
+
+        Sort groupSort = null;
+        if (qs.groupSortTerm != null) {
+            groupSort = LuceneQueryConverter.convertToLuceneSort(qs, true);
+        }
+
+        GroupingSearch groupingSearch = new GroupingSearch(qs.groupByTerm.propertyName);
+        groupingSearch.setGroupSort(groupSort);
+        groupingSearch.setSortWithinGroup(sort);
+
+        super.adjustStat(STAT_NAME_GROUP_QUERY_COUNT, 1);
+
+        int groupOffset = page != null ? page.groupOffset : 0;
+        int groupLimit = qs.groupResultLimit != null ? qs.groupResultLimit : 10000;
+
+        if (s == null && qs.groupResultLimit != null) {
+            s = createPaginatedQuerySearcher(task.documentExpirationTimeMicros, this.writer);
+        }
+
+        if (s == null) {
+            // If DO_NOT_REFRESH is set use the existing searcher.
+            s = this.searcher;
+            if (!qs.options.contains(QueryOption.DO_NOT_REFRESH) || s == null) {
+                s = updateSearcher(null, Integer.MAX_VALUE, this.writer);
+            }
+        }
+
+        ServiceDocumentQueryResult rsp = new ServiceDocumentQueryResult();
+        rsp.nextPageLinksPerGroup = new TreeMap<>();
+        long startTimeMicros = Utils.getNowMicrosUtc();
+        // perform the actual search
+        TopGroups<?> groups = groupingSearch.search(s, tq, groupOffset, groupLimit);
+        long endTimeMicros = Utils.getNowMicrosUtc();
+        String statName = STAT_NAME_GROUP_QUERY_DURATION_MICROS;
+        ServiceStat st = getHistogramStat(statName);
+        setStat(st, endTimeMicros - startTimeMicros);
+        // generate page links for each grouped result
+        for (GroupDocs<?> groupDocs : groups.groups) {
+            if (groupDocs.totalHits == 0) {
+                continue;
+            }
+            QueryTask.Query perGroupQuery = Utils.clone(qs.query);
+            String groupValue = ((BytesRef) groupDocs.groupValue).utf8ToString();
+
+            // we need to modify the query to include a top level clause that restricts scope
+            // to documents with the groupBy field and value
+            QueryTask.Query clause = new QueryTask.Query()
+                    .setTermPropertyName(qs.groupByTerm.propertyName)
+                    .setTermMatchValue(groupValue)
+                    .setTermMatchType(MatchType.TERM);
+            clause.occurance = QueryTask.Query.Occurance.MUST_OCCUR;
+            if (perGroupQuery.booleanClauses == null) {
+                QueryTask.Query topLevelClause = perGroupQuery;
+                perGroupQuery.addBooleanClause(topLevelClause);
+            }
+            perGroupQuery.addBooleanClause(clause);
+            Query lucenePerGroupQuery = LuceneQueryConverter.convertToLuceneQuery(perGroupQuery);
+
+            // for each group generate a query page link
+            String pageLink = createNextPage(op, s, qs, lucenePerGroupQuery, sort,
+                    null, null,
+                    task.documentExpirationTimeMicros, task.indexLink, false);
+
+            rsp.nextPageLinksPerGroup.put(groupValue, pageLink);
+        }
+
+        if (qs.groupResultLimit != null && groups.groups.length >= groupLimit) {
+            // check if we need to generate a next page for the next set of group results
+            groups = groupingSearch.search(s, tq, groupLimit + groupOffset, groupLimit);
+            if (groups.totalGroupedHitCount > 0) {
+                rsp.nextPageLink = createNextPage(op, s, qs, tq, sort,
+                        null, groupLimit + groupOffset,
+                        task.documentExpirationTimeMicros, task.indexLink, page != null);
+            }
+        }
+
+        op.setBodyNoCloning(rsp).complete();
+    }
+
     private ServiceDocumentQueryResult queryIndex(Operation op,
             EnumSet<QueryOption> options,
             IndexSearcher s,
             Query tq,
-            Sort sort,
             LuceneQueryPage page,
             int count,
             long expiration,
@@ -905,7 +996,20 @@ public class LuceneDocumentIndexService extends StatelessService {
             rsp.documentCount = 1L;
         }
 
+        Sort sort = this.versionSort;
+        if (qs != null && qs.sortTerm != null) {
+            // see if query is part of a task and already has a cached sort
+            if (qs.context != null) {
+                sort = (Sort) qs.context.nativeSort;
+            }
+
+            if (sort == null) {
+                sort = LuceneQueryConverter.convertToLuceneSort(qs, false);
+            }
+        }
+
         TopDocs results = null;
+
         rsp.queryTimeMicros = 0L;
         long queryStartTimeMicros = Utils.getNowMicrosUtc();
         long start = queryStartTimeMicros;
@@ -916,9 +1020,11 @@ public class LuceneDocumentIndexService extends StatelessService {
             } else {
                 results = s.searchAfter(after, tq, count, sort, false, false);
             }
+
             long end = Utils.getNowMicrosUtc();
+
             if (results == null) {
-                return null;
+                return rsp;
             }
 
             hits = results.scoreDocs;
@@ -972,7 +1078,7 @@ public class LuceneDocumentIndexService extends StatelessService {
 
                     if (createNextPageLink) {
                         expiration += queryTime;
-                        rsp.nextPageLink = createNextPage(op, s, qs, tq, sort, bottom, count,
+                        rsp.nextPageLink = createNextPage(op, s, qs, tq, sort, bottom, null,
                                 expiration,
                                 indexLink,
                                 hasPage);
@@ -1049,11 +1155,16 @@ public class LuceneDocumentIndexService extends StatelessService {
         return hasValidNextPageEntry;
     }
 
+    /**
+     * Starts a {@code QueryPageService} to track a partial search result set, associated with a
+     * index searcher and search pointers. The page can be used for both grouped queries or
+     * document queries
+     */
     private String createNextPage(Operation op, IndexSearcher s, QuerySpecification qs,
             Query tq,
             Sort sort,
             ScoreDoc after,
-            int count,
+            Integer groupOffset,
             long expiration,
             String indexLink,
             boolean hasPage) {
@@ -1076,20 +1187,30 @@ public class LuceneDocumentIndexService extends StatelessService {
                 + UriUtils.URI_QUERY_CHAR + forwarderUriOfPrevLinkForNewPage.getQuery();
 
         // Requests to core/query-page are forwarded to document-index (this service) and
-        // referer of that forwarded request is set to original query-page request.
+        // referrer of that forwarded request is set to original query-page request.
         // This method is called when query-page wants to create new page for a paginated query.
         // If a new page is going to be created then it is safe to use query-page link
-        // from referer as previous page link of this new page being created.
-        LuceneQueryPage page = new LuceneQueryPage(hasPage ? prevLinkForNewPage : null, after);
+        // from referrer as previous page link of this new page being created.
+        LuceneQueryPage page = null;
+        if (after != null || groupOffset == null) {
+            // page for documents
+            page = new LuceneQueryPage(hasPage ? prevLinkForNewPage : null, after);
+        } else {
+            // page for group results
+            page = new LuceneQueryPage(hasPage ? prevLinkForNewPage : null, groupOffset);
+        }
 
         QuerySpecification spec = new QuerySpecification();
-        spec.options = qs.options;
+        qs.copyTo(spec);
+
+        if (groupOffset == null) {
+            spec.options.remove(QueryOption.GROUP_BY);
+        }
+
         spec.context.nativeQuery = tq;
         spec.context.nativePage = page;
         spec.context.nativeSearcher = s;
         spec.context.nativeSort = sort;
-        spec.resultLimit = count;
-        spec.linkTerms = qs.linkTerms;
 
         ServiceDocument body = new ServiceDocument();
         body.documentSelfLink = u.getPath();

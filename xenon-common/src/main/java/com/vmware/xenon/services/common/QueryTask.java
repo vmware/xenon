@@ -39,11 +39,6 @@ public class QueryTask extends ServiceDocument {
      */
     public static final int DEFAULT_PRECISION_STEP = 16;
 
-    /**
-     * A list of authorization context links which can access this service.
-     */
-    public List<String> tenantLinks;
-
     public static class QuerySpecification {
         public static final String FIELD_NAME_CHARACTER = ".";
         public static final String FIELD_NAME_REGEXP = "\\" + FIELD_NAME_CHARACTER;
@@ -143,7 +138,12 @@ public class QueryTask extends ServiceDocument {
             /**
              * Query results include the values for all fields marked with {@code PropertyUsageOption#LINK}
              */
-            SELECT_LINKS
+            SELECT_LINKS,
+
+            /**
+             * Groups results using the {@link QuerySpecification#groupByTerms}
+             */
+            GROUP_BY
         }
 
         public enum SortOrder {
@@ -167,9 +167,24 @@ public class QueryTask extends ServiceDocument {
         public QueryTerm sortTerm;
 
         /**
+         * Property name to use for group sort. Used in combination with {@code QueryOption#GROUP_BY}
+         */
+        public QueryTerm groupSortTerm;
+
+        /**
+         * Property name to use for grouping. Used in combination with {@code QueryOption#GROUP_BY}
+         */
+        public QueryTerm groupByTerm;
+
+        /**
          * Primary sort order. Used in combination with {@code QueryOption#SORT}
          */
         public SortOrder sortOrder;
+
+        /**
+         * Group sort order. Used in combination with {@code QueryOption#GROUP_BY}
+         */
+        public SortOrder groupSortOrder;
 
         /**
          * Used for query results pagination. When specified,
@@ -179,6 +194,12 @@ public class QueryTask extends ServiceDocument {
          * have its nextPageLink set.
          */
         public Integer resultLimit;
+
+        /**
+         * Used for grouped result pagination, limiting the number of entries in
+         * {@link ServiceDocumentQueryResult#nextPageLink}
+         */
+        public Integer groupResultLimit;
 
         /**
          * The query is retried until the result count matches the
@@ -262,14 +283,22 @@ public class QueryTask extends ServiceDocument {
          * Performs shallow copy of this instance to the supplied instance
          */
         public void copyTo(QuerySpecification clonedSpec) {
-            clonedSpec.context = this.context;
+            clonedSpec.context.documentLinkWhiteList = this.context.documentLinkWhiteList;
+            clonedSpec.context.filter = this.context.filter;
+            clonedSpec.context.nativePage = this.context.nativePage;
+            clonedSpec.context.nativeQuery = this.context.nativeQuery;
+            clonedSpec.context.nativeSearcher = this.context.nativeSearcher;
+            clonedSpec.context.nativeSort = this.context.nativeSort;
             clonedSpec.expectedResultCount = this.expectedResultCount;
             clonedSpec.linkTerms = this.linkTerms;
-            clonedSpec.options = this.options;
+            clonedSpec.groupByTerm = this.groupByTerm;
+            clonedSpec.options = EnumSet.copyOf(this.options);
             clonedSpec.query = this.query;
             clonedSpec.resultLimit = this.resultLimit;
             clonedSpec.sortOrder = this.sortOrder;
             clonedSpec.sortTerm = this.sortTerm;
+            clonedSpec.groupSortTerm = this.groupSortTerm;
+            clonedSpec.groupSortOrder = this.groupSortOrder;
         }
     }
 
@@ -788,6 +817,14 @@ public class QueryTask extends ServiceDocument {
         }
     }
 
+    /**
+     * A list of authorization context links which can access this service.
+     */
+    public List<String> tenantLinks;
+
+    /**
+     * Task state
+     */
     public TaskState taskInfo = new TaskState();
 
     /**
@@ -795,6 +832,9 @@ public class QueryTask extends ServiceDocument {
      */
     public QuerySpecification querySpec;
 
+    /**
+     * Query results
+     */
     public ServiceDocumentQueryResult results;
 
     /**
@@ -860,6 +900,16 @@ public class QueryTask extends ServiceDocument {
         }
 
         /**
+         * Set the maximum number of groups to return.
+         * @param resultLimit the result limit.
+         * @return a reference to this object.
+         */
+        public Builder setGroupResultLimit(int resultLimit) {
+            this.querySpec.groupResultLimit = resultLimit;
+            return this;
+        }
+
+        /**
          * Set the expected number of results.
          * @param expectedResultCount the expected result count.
          * @return a reference to this object.
@@ -900,6 +950,23 @@ public class QueryTask extends ServiceDocument {
         }
 
         /**
+         * Order group results in specified order by the given {@code fieldName}.
+         * This method implicitly calls {@link #setGroupByTerm(String, TypeName)}
+         * @param fieldName the field name to order results by.
+         * @param fieldType the field type.
+         * @return a reference to this object.
+         */
+        public Builder groupOrder(String fieldName, TypeName fieldType, SortOrder sortOrder) {
+            QueryTerm sortTerm = new QueryTerm();
+            setGroupByTerm(fieldName, fieldType);
+            sortTerm.propertyName = fieldName;
+            sortTerm.propertyType = fieldType;
+            this.querySpec.groupSortTerm = sortTerm;
+            this.querySpec.groupSortOrder = sortOrder;
+            return this;
+        }
+
+        /**
          * Add the given {@linkplain QueryOption query option}.
          * @param queryOption the query option to add.
          * @return a reference to this object.
@@ -930,6 +997,24 @@ public class QueryTask extends ServiceDocument {
                 this.querySpec.linkTerms = new ArrayList<>();
             }
             this.querySpec.linkTerms.add(linkTerm);
+            return this;
+        }
+
+        /**
+         * Sets the {@code QuerySpecification#groupByTerm}
+         */
+        public Builder setGroupByTerm(String fieldName) {
+            return setGroupByTerm(fieldName, TypeName.STRING);
+        }
+
+        /**
+         * Sets the {@code QuerySpecification#groupByTerm}
+         */
+        public Builder setGroupByTerm(String fieldName, TypeName fieldType) {
+            QueryTerm term = new QueryTerm();
+            term.propertyName = fieldName;
+            term.propertyType = fieldType;
+            this.querySpec.groupByTerm = term;
             return this;
         }
 

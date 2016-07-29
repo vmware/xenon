@@ -22,6 +22,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.TreeMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.stream.Collectors;
@@ -110,6 +111,15 @@ public class QueryTaskService extends StatefulService {
             return true;
         }
 
+        if (initState.querySpec.options.contains(QueryOption.EXPAND_CONTENT)) {
+            final String errFmt = QueryOption.EXPAND_CONTENT + " is not compatible with %s";
+            if (initState.querySpec.options.contains(QueryOption.COUNT)) {
+                startPost.fail(new IllegalArgumentException(
+                        String.format(errFmt, QueryOption.COUNT)));
+                return false;
+            }
+        }
+
         if (initState.querySpec.options.contains(QueryOption.EXPAND_LINKS)) {
             if (!initState.querySpec.options.contains(QueryOption.SELECT_LINKS)) {
                 startPost.fail(new IllegalArgumentException(
@@ -118,6 +128,30 @@ public class QueryTaskService extends StatefulService {
             }
             // additional option combination validation will be done in the SELECT_LINKS
             // block, since that option must be combined with this one
+        }
+
+        if (initState.querySpec.options.contains(QueryOption.GROUP_BY)) {
+            final String errFmt = QueryOption.GROUP_BY + " is not compatible with %s";
+            if (initState.querySpec.options.contains(QueryOption.COUNT)) {
+                startPost.fail(new IllegalArgumentException(
+                        String.format(errFmt, QueryOption.COUNT)));
+                return false;
+            }
+            if (initState.querySpec.options.contains(QueryOption.CONTINUOUS)) {
+                startPost.fail(new IllegalArgumentException(
+                        String.format(errFmt, QueryOption.CONTINUOUS)));
+                return false;
+            }
+            if (initState.querySpec.groupByTerm == null) {
+                startPost.fail(new IllegalArgumentException(
+                        "querySpec.groupByTerm is required with " + QueryOption.GROUP_BY));
+                return false;
+            }
+            if (initState.querySpec.sortTerm == null) {
+                startPost.fail(new IllegalArgumentException(
+                        "querySpec.sortTerm is required with " + QueryOption.GROUP_BY));
+                return false;
+            }
         }
 
         if (initState.querySpec.options.contains(QueryOption.SELECT_LINKS)) {
@@ -298,12 +332,9 @@ public class QueryTaskService extends StatefulService {
         // should be doing but due to a unfortunate combination of KRYO and GSON, we cant
         // use results as the body, since it will not clone properly
         currentState.results = new ServiceDocumentQueryResult();
-        r.copyTo(this.results);
+        r.copyTo(currentState.results);
 
         resetQuerySpecNativeContext(currentState);
-        currentState.results.documentCount = r.documentCount;
-        currentState.results.nextPageLink = r.nextPageLink;
-        currentState.results.prevPageLink = r.prevPageLink;
 
         if (r.documentLinks != null) {
             currentState.results.documentLinks = new ArrayList<>(r.documentLinks);
@@ -319,6 +350,9 @@ public class QueryTaskService extends StatefulService {
         }
         if (r.selectedDocuments != null) {
             currentState.results.selectedDocuments = new HashMap<>(r.selectedDocuments);
+        }
+        if (r.nextPageLinksPerGroup != null) {
+            currentState.results.nextPageLinksPerGroup = new TreeMap<>(r.nextPageLinksPerGroup);
         }
 
         get.setBodyNoCloning(currentState).complete();

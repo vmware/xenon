@@ -651,6 +651,9 @@ public class VerificationHost extends ExampleServiceHost {
             });
         }
 
+        log("Starting query with options:%s, resultLimit: %d",
+                create.querySpec.options,
+                create.querySpec.resultLimit);
         send(startPost);
         ctx.await();
         return UriUtils.extendUri(factoryUri, create.documentSelfLink);
