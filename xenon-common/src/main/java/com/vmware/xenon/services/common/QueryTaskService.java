@@ -120,6 +120,25 @@ public class QueryTaskService extends StatefulService {
             // block, since that option must be combined with this one
         }
 
+        if (initState.querySpec.options.contains(QueryOption.GROUP_BY)) {
+            final String errFmt = QueryOption.GROUP_BY + " is not compatible with %s";
+            if (initState.querySpec.options.contains(QueryOption.COUNT)) {
+                startPost.fail(new IllegalArgumentException(
+                        String.format(errFmt, QueryOption.COUNT)));
+                return false;
+            }
+            if (initState.querySpec.options.contains(QueryOption.CONTINUOUS)) {
+                startPost.fail(new IllegalArgumentException(
+                        String.format(errFmt, QueryOption.CONTINUOUS)));
+                return false;
+            }
+            if (initState.querySpec.groupByTerm == null) {
+                startPost.fail(new IllegalArgumentException(
+                        "querySpec.groupByTerm is required with " + QueryOption.GROUP_BY));
+                return false;
+            }
+        }
+
         if (initState.querySpec.options.contains(QueryOption.SELECT_LINKS)) {
             final String errFmt = QueryOption.SELECT_LINKS + " is not compatible with %s";
             if (initState.querySpec.options.contains(QueryOption.COUNT)) {
