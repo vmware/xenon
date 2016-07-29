@@ -39,6 +39,7 @@ import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
+import java.util.logging.Level;
 
 import io.netty.handler.ssl.util.SelfSignedCertificate;
 
@@ -85,6 +86,8 @@ public class TestServiceHost {
     public int requestCount = 1000;
 
     public int connectionCount = 32;
+
+    public int iterationCount = 1;
 
     public long serviceCount = 10;
 
@@ -1636,6 +1639,14 @@ public class TestServiceHost {
     }
 
     @Test
+    public void runTestInLoop() throws Throwable {
+        for (int i = 0; i < this.iterationCount; i++) {
+            onDemandServiceStopCheckWithReadAndWriteAccess();
+            this.host.log(Level.INFO, "Iteration: %s", i);
+            tearDown();
+        }
+    }
+
     public void onDemandServiceStopCheckWithReadAndWriteAccess() throws Throwable {
         setUp(true);
 
@@ -1694,26 +1705,20 @@ public class TestServiceHost {
             this.host.send(get);
             Thread.sleep(requestDelayMills);
         }
-
         testContextForGet.await();
+
+        // wait for the service to be stopped
+        final long beforeLastGetSentTime = beforeLastRequestSentTime;
         this.host.waitFor("Waiting ON_DEMAND_LOAD service to be stopped",
                 () -> {
                     long currentStopTime = getODLStopCountStat().lastUpdateMicrosUtc;
                     return lastODLStopTime < currentStopTime
+                            && beforeLastGetSentTime < currentStopTime
                             && this.host.getServiceStage(servicePath) == null;
                 }
         );
 
         long afterGetODLStopTime = getODLStopCountStat().lastUpdateMicrosUtc;
-        boolean stoppedAfterActiveRequest = beforeLastRequestSentTime < afterGetODLStopTime;
-        if (!stoppedAfterActiveRequest) {
-            long delta = afterGetODLStopTime - beforeLastRequestSentTime;
-            String msg = String
-                    .format("ON_DEMAND_LOAD service should be stopped after GET requests. "
-                                    + "lastReq=%s, stop=%s, delta=%s",
-                            beforeLastRequestSentTime, afterGetODLStopTime, delta);
-            fail(msg);
-        }
 
         // send 10 update request 40ms apart to make service receive PATCH request during a couple
         // of maintenance windows
@@ -1730,28 +1735,18 @@ public class TestServiceHost {
             this.host.send(patch);
             Thread.sleep(requestDelayMills);
         }
-
         testContextForPatch.await();
+
         // wait for the service to be stopped
+        final long beforeLastPatchSentTime = beforeLastRequestSentTime;
         this.host.waitFor("Waiting ON_DEMAND_LOAD service to be stopped",
                 () -> {
                     long currentStopTime = getODLStopCountStat().lastUpdateMicrosUtc;
                     return afterGetODLStopTime < currentStopTime
+                            && beforeLastPatchSentTime < currentStopTime
                             && this.host.getServiceStage(servicePath) == null;
                 }
         );
-
-        long afterPatchODLStopTime = getODLStopCountStat().lastUpdateMicrosUtc;
-
-        stoppedAfterActiveRequest = beforeLastRequestSentTime < afterPatchODLStopTime;
-        if (!stoppedAfterActiveRequest) {
-            long delta = afterPatchODLStopTime - beforeLastRequestSentTime;
-            String msg = String
-                    .format("ON_DEMAND_LOAD service should be stopped after UPDATE requests. "
-                                    + "lastReq=%s, stop=%s, delta=%s",
-                            beforeLastRequestSentTime, afterPatchODLStopTime, delta);
-            fail(msg);
-        }
     }
 
     private ServiceStat getODLStopCountStat() throws Throwable {
