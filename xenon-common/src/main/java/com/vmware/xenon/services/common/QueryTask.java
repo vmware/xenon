@@ -143,7 +143,12 @@ public class QueryTask extends ServiceDocument {
             /**
              * Query results include the values for all fields marked with {@code PropertyUsageOption#LINK}
              */
-            SELECT_LINKS
+            SELECT_LINKS,
+
+            /**
+             * Groups results using the {@link QuerySpecification#groupByTerms}
+             */
+            GROUP_BY
         }
 
         public enum SortOrder {
@@ -165,6 +170,11 @@ public class QueryTask extends ServiceDocument {
          * Property name to use for primary sort. Used in combination with {@code QueryOption#SORT}
          */
         public QueryTerm sortTerm;
+
+        /**
+         * Property name to use for grouping. Used in combination with {@code QueryOption#GROUP_BY}
+         */
+        public QueryTerm groupByTerm;
 
         /**
          * Primary sort order. Used in combination with {@code QueryOption#SORT}
@@ -262,9 +272,15 @@ public class QueryTask extends ServiceDocument {
          * Performs shallow copy of this instance to the supplied instance
          */
         public void copyTo(QuerySpecification clonedSpec) {
-            clonedSpec.context = this.context;
+            clonedSpec.context.documentLinkWhiteList = this.context.documentLinkWhiteList;
+            clonedSpec.context.filter = this.context.filter;
+            clonedSpec.context.nativePage = this.context.nativePage;
+            clonedSpec.context.nativeQuery = this.context.nativeQuery;
+            clonedSpec.context.nativeSearcher = this.context.nativeSearcher;
+            clonedSpec.context.nativeSort = this.context.nativeSort;
             clonedSpec.expectedResultCount = this.expectedResultCount;
             clonedSpec.linkTerms = this.linkTerms;
+            clonedSpec.groupByTerm = this.groupByTerm;
             clonedSpec.options = this.options;
             clonedSpec.query = this.query;
             clonedSpec.resultLimit = this.resultLimit;
@@ -930,6 +946,17 @@ public class QueryTask extends ServiceDocument {
                 this.querySpec.linkTerms = new ArrayList<>();
             }
             this.querySpec.linkTerms.add(linkTerm);
+            return this;
+        }
+
+        /**
+         * Add the given field name to the {@code QuerySpecification#groupByTerms}
+         */
+        public Builder setGroupByTerm(String fieldName) {
+            QueryTerm term = new QueryTerm();
+            term.propertyName = fieldName;
+            term.propertyType = TypeName.STRING;
+            this.querySpec.groupByTerm = term;
             return this;
         }
 

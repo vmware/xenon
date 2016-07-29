@@ -78,6 +78,8 @@ import org.apache.lucene.search.SortField;
 import org.apache.lucene.search.SortedNumericSortField;
 import org.apache.lucene.search.TermQuery;
 import org.apache.lucene.search.TopDocs;
+import org.apache.lucene.search.grouping.GroupingSearch;
+import org.apache.lucene.search.grouping.TopGroups;
 import org.apache.lucene.store.AlreadyClosedException;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.MMapDirectory;
@@ -378,8 +380,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         Operation op = Operation.createGet(getUri());
         EnumSet<QueryOption> options = EnumSet.of(QueryOption.INCLUDE_ALL_VERSIONS);
         IndexSearcher s = new IndexSearcher(DirectoryReader.open(this.writer, true, true));
-        queryIndex(op, options, s, tq, null, null, Integer.MAX_VALUE, 0,
-                null, rsp, null);
+        queryIndex(op, options, s, tq, null, Integer.MAX_VALUE, 0, null, rsp, null);
     }
 
     private void handleBackup(Operation op, BackupRequest req) throws Throwable {
@@ -587,7 +588,7 @@ public class LuceneDocumentIndexService extends StatelessService {
             s = createPaginatedQuerySearcher(task.documentExpirationTimeMicros, this.writer);
         }
 
-        if (!queryIndex(s, op, null, qs.options, luceneQuery, luceneSort, lucenePage,
+        if (!queryIndex(s, op, null, qs.options, luceneQuery, lucenePage,
                 qs.resultLimit,
                 task.documentExpirationTimeMicros, task.indexLink, rsp, qs)) {
             op.setBodyNoCloning(rsp).complete();
@@ -660,8 +661,7 @@ public class LuceneDocumentIndexService extends StatelessService {
 
         ServiceDocumentQueryResult rsp = new ServiceDocumentQueryResult();
         rsp.documentLinks = new ArrayList<>();
-        if (queryIndex(null, get, selfLink, options, tq,
-                null, null, resultLimit, 0, null, rsp, null)) {
+        if (queryIndex(null, get, selfLink, options, tq, null, resultLimit, 0, null, rsp, null)) {
             return;
         }
 
@@ -681,7 +681,6 @@ public class LuceneDocumentIndexService extends StatelessService {
             String selfLinkPrefix,
             EnumSet<QueryOption> options,
             Query tq,
-            Sort sort,
             LuceneQueryPage page,
             int count,
             long expiration,
@@ -704,7 +703,6 @@ public class LuceneDocumentIndexService extends StatelessService {
 
         if (options.contains(QueryOption.COUNT)) {
             rsp.documentCount = 0L;
-            sort = null;
         } else {
             rsp.documentLinks = new ArrayList<>();
         }
@@ -713,10 +711,6 @@ public class LuceneDocumentIndexService extends StatelessService {
         if (w == null) {
             op.fail(new CancellationException());
             return true;
-        }
-
-        if (sort == null) {
-            sort = this.versionSort;
         }
 
         if (s == null) {
@@ -731,7 +725,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         if (tq == null) {
             return false;
         }
-        ServiceDocumentQueryResult result = queryIndex(op, options, s, tq, sort, page,
+        ServiceDocumentQueryResult result = queryIndex(op, options, s, tq, page,
                 count, expiration, indexLink, rsp, qs);
         if (result != null) {
             result.documentOwner = getHost().getId();
@@ -876,7 +870,6 @@ public class LuceneDocumentIndexService extends StatelessService {
             EnumSet<QueryOption> options,
             IndexSearcher s,
             Query tq,
-            Sort sort,
             LuceneQueryPage page,
             int count,
             long expiration,
@@ -905,18 +898,46 @@ public class LuceneDocumentIndexService extends StatelessService {
             rsp.documentCount = 1L;
         }
 
+        Sort sort = this.versionSort;
+        if (qs != null && qs.sortTerm != null) {
+            // see if query is part of a task and already has a cached sort
+            if (qs.context != null) {
+                sort = (Sort) qs.context.nativeSort;
+            }
+
+            if (sort == null) {
+                sort = LuceneQueryConverter.convertToLuceneSort(qs);
+            }
+        }
+
+        GroupingSearch groupingSearch = null;
+        if (qs != null && qs.groupByTerm != null) {
+            groupingSearch = new GroupingSearch(qs.groupByTerm.propertyName);
+            groupingSearch.setSortWithinGroup(sort);
+        }
+
         TopDocs results = null;
+        TopGroups<?> groupResults = null;
         rsp.queryTimeMicros = 0L;
         long queryStartTimeMicros = Utils.getNowMicrosUtc();
         long start = queryStartTimeMicros;
 
         do {
-            if (sort == null) {
-                results = s.searchAfter(after, tq, count);
+            if (groupingSearch != null) {
+                groupResults = groupingSearch.search(s, tq, 0, 0);
             } else {
-                results = s.searchAfter(after, tq, count, sort, false, false);
+                if (sort == null) {
+                    results = s.searchAfter(after, tq, count);
+                } else {
+                    results = s.searchAfter(after, tq, count, sort, false, false);
+                }
             }
             long end = Utils.getNowMicrosUtc();
+
+            if (groupingSearch != null && groupResults == null) {
+                return null;
+            }
+
             if (results == null) {
                 return null;
             }
@@ -972,7 +993,7 @@ public class LuceneDocumentIndexService extends StatelessService {
 
                     if (createNextPageLink) {
                         expiration += queryTime;
-                        rsp.nextPageLink = createNextPage(op, s, qs, tq, sort, bottom, count,
+                        rsp.nextPageLink = createNextPage(op, s, qs, tq, sort, bottom,
                                 expiration,
                                 indexLink,
                                 hasPage);
@@ -1053,7 +1074,6 @@ public class LuceneDocumentIndexService extends StatelessService {
             Query tq,
             Sort sort,
             ScoreDoc after,
-            int count,
             long expiration,
             String indexLink,
             boolean hasPage) {
@@ -1083,13 +1103,12 @@ public class LuceneDocumentIndexService extends StatelessService {
         LuceneQueryPage page = new LuceneQueryPage(hasPage ? prevLinkForNewPage : null, after);
 
         QuerySpecification spec = new QuerySpecification();
-        spec.options = qs.options;
+        qs.copyTo(spec);
+
         spec.context.nativeQuery = tq;
         spec.context.nativePage = page;
         spec.context.nativeSearcher = s;
         spec.context.nativeSort = sort;
-        spec.resultLimit = count;
-        spec.linkTerms = qs.linkTerms;
 
         ServiceDocument body = new ServiceDocument();
         body.documentSelfLink = u.getPath();
