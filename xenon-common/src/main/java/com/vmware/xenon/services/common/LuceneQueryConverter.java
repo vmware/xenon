@@ -180,9 +180,17 @@ class LuceneQueryConverter {
         }
     }
 
-    static Sort convertToLuceneSort(QueryTask.QuerySpecification querySpecification) {
+    static Sort convertToLuceneSort(QueryTask.QuerySpecification querySpecification,
+            boolean isGroupSort) {
 
-        validateSortTerm(querySpecification.sortTerm);
+        QueryTask.QueryTerm sortTerm = isGroupSort ? querySpecification.groupSortTerm
+                : querySpecification.sortTerm;
+
+        QueryTask.QuerySpecification.SortOrder sortOrder = isGroupSort
+                ? querySpecification.groupSortOrder
+                : querySpecification.sortOrder;
+
+        validateSortTerm(sortTerm);
 
         if (querySpecification.options.contains(QueryOption.TOP_RESULTS)) {
             if (querySpecification.resultLimit <= 0
@@ -192,25 +200,28 @@ class LuceneQueryConverter {
             }
         }
 
-        if (querySpecification.sortOrder == null) {
-            querySpecification.sortOrder = QueryTask.QuerySpecification.SortOrder.ASC;
+        if (sortOrder == null) {
+            if (isGroupSort) {
+                querySpecification.groupSortOrder = QueryTask.QuerySpecification.SortOrder.ASC;
+            } else {
+                querySpecification.sortOrder = QueryTask.QuerySpecification.SortOrder.ASC;
+            }
         }
 
-        boolean order =
-                querySpecification.sortOrder != QueryTask.QuerySpecification.SortOrder.ASC;
+        boolean order = sortOrder != QueryTask.QuerySpecification.SortOrder.ASC;
 
         SortField sortField = null;
-        SortField.Type type = convertToLuceneType(querySpecification.sortTerm.propertyType);
+        SortField.Type type = convertToLuceneType(sortTerm.propertyType);
 
         switch (type) {
         case LONG:
         case DOUBLE:
             sortField = new SortedNumericSortField(
-                    querySpecification.sortTerm.propertyName, type, order);
+                    sortTerm.propertyName, type, order);
             break;
         default:
             sortField = new SortField(
-                    querySpecification.sortTerm.propertyName, type, order);
+                    sortTerm.propertyName, type, order);
             break;
         }
         return new Sort(sortField);

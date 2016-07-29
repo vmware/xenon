@@ -2,6 +2,13 @@
 
 ## 0.9.3-SNAPSHOT
 
+* Add support for groupBy queries. The new QueryOption.GROUP_BY, in
+  combination with the QuerySpecification.groupByTerm, groupSortTem
+  and groupSortOrder, allow for grouping, by field values of document
+  results. The new ServiceDocumentQueryResult.nextPageLinksByGroup
+  map contains links to the per group results, returning a QueryTask,
+  similar to existing query pages, scoped to results for that group
+
 ## 0.9.2
 
 * Using sourceTimeMicrosUtc field, if set, for time series aggregation.
