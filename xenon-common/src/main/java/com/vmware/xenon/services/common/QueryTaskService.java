@@ -110,6 +110,15 @@ public class QueryTaskService extends StatefulService {
             return true;
         }
 
+        if (initState.querySpec.options.contains(QueryOption.EXPAND_CONTENT)) {
+            final String errFmt = QueryOption.EXPAND_CONTENT + " is not compatible with %s";
+            if (initState.querySpec.options.contains(QueryOption.COUNT)) {
+                startPost.fail(new IllegalArgumentException(
+                        String.format(errFmt, QueryOption.COUNT)));
+                return false;
+            }
+        }
+
         if (initState.querySpec.options.contains(QueryOption.EXPAND_LINKS)) {
             if (!initState.querySpec.options.contains(QueryOption.SELECT_LINKS)) {
                 startPost.fail(new IllegalArgumentException(
@@ -118,6 +127,25 @@ public class QueryTaskService extends StatefulService {
             }
             // additional option combination validation will be done in the SELECT_LINKS
             // block, since that option must be combined with this one
+        }
+
+        if (initState.querySpec.options.contains(QueryOption.GROUP_BY)) {
+            final String errFmt = QueryOption.GROUP_BY + " is not compatible with %s";
+            if (initState.querySpec.options.contains(QueryOption.COUNT)) {
+                startPost.fail(new IllegalArgumentException(
+                        String.format(errFmt, QueryOption.COUNT)));
+                return false;
+            }
+            if (initState.querySpec.options.contains(QueryOption.CONTINUOUS)) {
+                startPost.fail(new IllegalArgumentException(
+                        String.format(errFmt, QueryOption.CONTINUOUS)));
+                return false;
+            }
+            if (initState.querySpec.groupByTerm == null) {
+                startPost.fail(new IllegalArgumentException(
+                        "querySpec.groupByTerm is required with " + QueryOption.GROUP_BY));
+                return false;
+            }
         }
 
         if (initState.querySpec.options.contains(QueryOption.SELECT_LINKS)) {
