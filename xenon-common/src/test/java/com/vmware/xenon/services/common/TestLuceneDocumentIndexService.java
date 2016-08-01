@@ -1161,14 +1161,13 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
             o.setBody(body);
         };
 
-
         for (int ic = 0; ic < iterationCount; ic++) {
             this.host.log("(%d) Starting POST send of %d operations", ic, this.serviceCount);
-            doThroughputPost(iterationCount, factoryUri, setBody);
+            doThroughputPost(factoryUri, setBody);
         }
     }
 
-    private void doThroughputPost(int iterationCount, URI factoryUri, Consumer<Operation> setBody)
+    private void doThroughputPost(URI factoryUri, Consumer<Operation> setBody)
             throws Throwable {
         long startTimeMicros = System.nanoTime() / 1000;
         TestContext ctx = testCreate((int) this.serviceCount);
@@ -1192,7 +1191,7 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
         testWait(ctx);
         long endTimeMicros = System.nanoTime() / 1000;
         double deltaSeconds = (endTimeMicros - startTimeMicros) / 1000000.0;
-        double ioCount = this.serviceCount * iterationCount;
+        double ioCount = this.serviceCount;
         double throughput = ioCount / deltaSeconds;
         this.host.log("Operation count: %f, throughput(ops/sec): %f", ioCount, throughput);
         this.host.deleteAllChildServices(factoryUri);
