@@ -523,8 +523,8 @@ public class UtilityService implements Service {
     private void initializeOrSetStat(ServiceStat stat, ServiceStat newValue) {
         synchronized (stat) {
             if (stat.timeSeriesStats == null && newValue.timeSeriesStats != null) {
-                stat.timeSeriesStats = new TimeSeriesStats(newValue.timeSeriesStats.numBuckets,
-                        newValue.timeSeriesStats.bucketDurationMillis, newValue.timeSeriesStats.aggregationType);
+                stat.timeSeriesStats = new TimeSeriesStats(newValue.timeSeriesStats.numBins,
+                        newValue.timeSeriesStats.binDurationMillis, newValue.timeSeriesStats.aggregationType);
             }
             stat.unit = newValue.unit;
             stat.sourceTimeMicrosUtc = newValue.sourceTimeMicrosUtc;

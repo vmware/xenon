@@ -2,6 +2,8 @@
 
 ## 0.9.3-SNAPSHOT
 
+* Rename TimeSeriesStats DataPoint data structure to TimeBin
+
 * Add support for groupBy queries. The new QueryOption.GROUP_BY, in
   combination with the QuerySpecification.groupByTerm, groupSortTem
   and groupSortOrder, allow for grouping, by field values of document
