@@ -757,7 +757,6 @@ public class TestServiceModel extends BasicReusableHostTestCase {
         public PeriodicMaintenanceTestStatelessService() {
             this.setMaintenanceIntervalMicros(1);
             this.toggleOption(ServiceOption.INSTRUMENTATION, true);
-            this.toggleOption(ServiceOption.PERIODIC_MAINTENANCE, true);
         }
 
         @Override
@@ -771,7 +770,6 @@ public class TestServiceModel extends BasicReusableHostTestCase {
             super(ServiceDocument.class);
             this.setMaintenanceIntervalMicros(1);
             this.toggleOption(ServiceOption.INSTRUMENTATION, true);
-            this.toggleOption(ServiceOption.PERIODIC_MAINTENANCE, true);
         }
 
         @Override
@@ -809,7 +807,7 @@ public class TestServiceModel extends BasicReusableHostTestCase {
     private void doCheckPeriodicMaintenance(Service s) throws Throwable {
         // Start service
         this.host.startServiceAndWait(s, UUID.randomUUID().toString(), null);
-
+        this.host.toggleServiceOptions(s.getUri(), EnumSet.of(ServiceOption.PERIODIC_MAINTENANCE), null);
         ServiceStat stat = s.getStat(STAT_NAME_HANDLE_PERIODIC_MAINTENANCE);
 
         Date exp = this.host.getTestExpiration();
