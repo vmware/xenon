@@ -85,8 +85,11 @@ public class NodeState extends ServiceDocument {
     public int membershipQuorum;
 
     public static boolean isUnAvailable(NodeState ns) {
-        return ns.status == NodeStatus.UNAVAILABLE || ns.status == NodeStatus.REPLACED
-                || ns.options.contains(NodeOption.OBSERVER);
+        return ns.status == NodeStatus.UNAVAILABLE || ns.status == NodeStatus.REPLACED;
+    }
+
+    public static boolean isUnAvailableForReplication(NodeState ns) {
+        return isUnAvailable(ns) || ns.options.contains(NodeOption.OBSERVER);
     }
 
     public static boolean isAvailable(NodeState m, String hostId, boolean excludeThisHost) {

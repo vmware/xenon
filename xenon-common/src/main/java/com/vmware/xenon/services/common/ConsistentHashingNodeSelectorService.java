@@ -319,7 +319,7 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
                 response.key, 0, response.key.length(), seed);
 
         for (NodeState m : localState.nodes.values()) {
-            if (NodeState.isUnAvailable(m)) {
+            if (NodeState.isUnAvailableForReplication(m)) {
                 availableNodes--;
                 continue;
             }
@@ -396,7 +396,7 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
                 skipNode = true;
             }
 
-            skipNode = NodeState.isUnAvailable(m) | skipNode;
+            skipNode = NodeState.isUnAvailableForReplication(m) | skipNode;
 
             if (skipNode) {
                 c.handle(null, null);

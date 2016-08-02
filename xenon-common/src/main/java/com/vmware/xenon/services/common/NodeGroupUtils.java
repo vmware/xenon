@@ -198,7 +198,7 @@ public class NodeGroupUtils {
 
         List<Operation> ops = new ArrayList<>();
         for (NodeState ns : ngs.nodes.values()) {
-            if (NodeState.isUnAvailable(ns)) {
+            if (NodeState.isUnAvailableForReplication(ns)) {
                 continue;
             }
             Operation peerOp = Operation.createGet(ns.groupReference)

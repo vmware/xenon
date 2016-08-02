@@ -214,7 +214,7 @@ public class NodeSelectorReplicationService extends StatelessService {
             } catch (Throwable e1) {
             }
 
-            if (NodeState.isUnAvailable(m)) {
+            if (NodeState.isUnAvailableForReplication(m)) {
                 update.setStatusCode(Operation.STATUS_CODE_FAILURE_THRESHOLD);
                 c.handle(update, new IllegalStateException("node is not available"));
                 continue;

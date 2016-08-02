@@ -129,7 +129,7 @@ public class ReliableSubscriptionService extends StatelessService {
             if (isAvailable) {
                 healthyPeerUri = ns.groupReference;
             }
-            if (isAvailable || NodeState.isUnAvailable(ns)) {
+            if (isAvailable || NodeState.isUnAvailableForReplication(ns)) {
                 continue;
             }
             isConverged = false;
