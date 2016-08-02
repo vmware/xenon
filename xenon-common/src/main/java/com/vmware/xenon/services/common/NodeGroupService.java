@@ -762,7 +762,7 @@ public class NodeGroupService extends StatefulService {
             if (currentEntry == null) {
                 boolean hasExpired = remoteEntry.documentExpirationTimeMicros > 0
                         && remoteEntry.documentExpirationTimeMicros < now;
-                if (hasExpired || NodeState.isUnAvailable(remoteEntry)) {
+                if (hasExpired || NodeState.isUnAvailable(remoteEntry, false)) {
                     continue;
                 }
                 if (!isLocalNode) {
@@ -842,7 +842,7 @@ public class NodeGroupService extends StatefulService {
         List<String> missingNodes = new ArrayList<>();
         for (NodeState l : localState.nodes.values()) {
             NodeState r = remotePeerState.nodes.get(l.id);
-            if (!NodeState.isUnAvailable(l) || l.id.equals(getHost().getId())) {
+            if (!NodeState.isUnAvailable(l, false) || l.id.equals(getHost().getId())) {
                 continue;
             }
 

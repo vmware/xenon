@@ -542,6 +542,58 @@ public class TestNodeGroupService {
     }
 
     @Test
+    public void verifyGossipForObservers() throws Throwable {
+        setUp(this.nodeCount);
+
+        Iterator<Entry<URI, URI>> nodeGroupIterator = this.host.getNodeGroupMap().entrySet().iterator();
+        URI observerUri = nodeGroupIterator.next().getKey();
+        String observerId = this.host.getServiceState(null,
+                ServiceHostState.class,
+                UriUtils.buildUri(observerUri, ServiceUriPaths.CORE_MANAGEMENT)).id;
+
+        // Create a custom node group. Mark one node as OBSERVER and rest as PEER
+        Map<URI, NodeState> selfStatePerNode = new HashMap<>();
+        NodeState observerSelfState = new NodeState();
+        observerSelfState.id = observerId;
+        observerSelfState.options = EnumSet.of(NodeOption.OBSERVER);
+        selfStatePerNode.put(observerUri, observerSelfState);
+        this.host.createCustomNodeGroupOnPeers(CUSTOM_NODE_GROUP_NAME, selfStatePerNode);
+
+        // Pick a PEER and join it to each node in the node-group
+        URI peerUri = nodeGroupIterator.next().getKey();
+        URI peerCustomUri = UriUtils.buildUri(peerUri, CUSTOM_NODE_GROUP);
+
+        Map<URI, EnumSet<NodeOption>> expectedOptionsPerNode = new HashMap<>();
+        Set<URI> customNodeUris = new HashSet<>();
+
+        for (Entry<URI, URI> node : this.host.getNodeGroupMap().entrySet()) {
+            URI nodeUri = node.getKey();
+            URI nodeCustomUri = UriUtils.buildUri(nodeUri, CUSTOM_NODE_GROUP);
+
+            JoinPeerRequest request = new JoinPeerRequest();
+            request.memberGroupReference = nodeCustomUri;
+            TestContext ctx = this.host.testCreate(1);
+            Operation post = Operation
+                    .createPost(peerCustomUri)
+                    .setBody(request)
+                    .setReferer(this.host.getReferer())
+                    .setCompletion(ctx.getCompletion());
+            this.host.sendRequest(post);
+            ctx.await();
+
+            expectedOptionsPerNode.put(nodeCustomUri,
+                    EnumSet.of((nodeUri == observerUri)
+                            ? NodeOption.OBSERVER : NodeOption.PEER));
+            customNodeUris.add(nodeCustomUri);
+        }
+
+        // Verify that gossip will propagate the single OBSERVER and the PEER nodes
+        // to every node in the custom node-group.
+        this.host.waitForNodeGroupConvergence(
+                customNodeUris, this.nodeCount, this.nodeCount, expectedOptionsPerNode, false);
+    }
+
+    @Test
     public void synchronizationOneByOneWithAbruptNodeShutdown() throws Throwable {
         setUp(this.nodeCount);
 
