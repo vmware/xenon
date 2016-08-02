@@ -37,16 +37,16 @@ public class ServiceStats extends ServiceDocument {
 
     /**
      * Data structure representing time series data
-     * Users can specify the number of datapoints to be stored and the granularity of the datapoints
+     * Users can specify the number of bins to be stored and the granularity of the bins
      * Any data to be stored will be normalized to an UTC boundary based on the the data granularity
-     * If a bucket already exists for that timestamp, the existing value is updated based on the
+     * If a bin already exists for that timestamp, the existing value is updated based on the
      * specified AggregationType
-     * If the number of datapoints equals the number of buckets, the oldest datapoint will be dropped
+     * If the number of bins equals the configured number of bins, the oldest bin will be dropped
      * on any further insertion
      */
     public static class TimeSeriesStats {
 
-        public static class DataPoint {
+        public static class TimeBin {
             public Double avg;
             public Double min;
             public Double max;
@@ -57,59 +57,59 @@ public class ServiceStats extends ServiceDocument {
             AVG, MIN, MAX
         }
 
-        public SortedMap<Long, DataPoint> dataPoints;
-        public int numBuckets;
-        public long bucketDurationMillis;
+        public SortedMap<Long, TimeBin> bins;
+        public int numBins;
+        public long binDurationMillis;
         public EnumSet<AggregationType> aggregationType;
 
-        public TimeSeriesStats(int numBuckets, long bucketDurationMillis,
+        public TimeSeriesStats(int numBins, long binDurationMillis,
                 EnumSet<AggregationType> aggregationType) {
-            this.numBuckets = numBuckets;
-            this.bucketDurationMillis = bucketDurationMillis;
-            this.dataPoints = new TreeMap<Long, DataPoint>();
+            this.numBins = numBins;
+            this.binDurationMillis = binDurationMillis;
+            this.bins = new TreeMap<Long, TimeBin>();
             this.aggregationType = aggregationType;
         }
 
         public void add(long timestampMicros, double value) {
-            synchronized (this.dataPoints) {
-                long bucketId = normalizeTimestamp(timestampMicros, this.bucketDurationMillis);
-                DataPoint dataBucket = null;
-                if (this.dataPoints.containsKey(bucketId)) {
-                    dataBucket = this.dataPoints.get(bucketId);
+            synchronized (this.bins) {
+                long binId = normalizeTimestamp(timestampMicros, this.binDurationMillis);
+                TimeBin dataBin = null;
+                if (this.bins.containsKey(binId)) {
+                    dataBin = this.bins.get(binId);
                 } else {
-                    if (this.dataPoints.size() == this.numBuckets) {
-                        if (this.dataPoints.firstKey() > timestampMicros) {
+                    if (this.bins.size() == this.numBins) {
+                        if (this.bins.firstKey() > timestampMicros) {
                             // incoming data is too old; ignore
                             return;
                         }
                         // remove the oldest entry
-                        this.dataPoints.remove(this.dataPoints.firstKey());
+                        this.bins.remove(this.bins.firstKey());
                     }
-                    dataBucket = new DataPoint();
-                    this.dataPoints.put(bucketId, dataBucket);
+                    dataBin = new TimeBin();
+                    this.bins.put(binId, dataBin);
                 }
                 if (this.aggregationType.contains(AggregationType.AVG)) {
-                    if (dataBucket.avg == null) {
-                        dataBucket.avg = new Double(value);
-                        dataBucket.count = 1;
+                    if (dataBin.avg == null) {
+                        dataBin.avg = new Double(value);
+                        dataBin.count = 1;
                     } else {
-                        double newAvg = ((dataBucket.avg * dataBucket.count)  + value) / (dataBucket.count + 1);
-                        dataBucket.avg = newAvg;
-                        dataBucket.count++;
+                        double newAvg = ((dataBin.avg * dataBin.count)  + value) / (dataBin.count + 1);
+                        dataBin.avg = newAvg;
+                        dataBin.count++;
                     }
                 }
                 if (this.aggregationType.contains(AggregationType.MAX)) {
-                    if (dataBucket.max == null) {
-                        dataBucket.max = new Double(value);
-                    } else if (dataBucket.max < value) {
-                        dataBucket.max = value;
+                    if (dataBin.max == null) {
+                        dataBin.max = new Double(value);
+                    } else if (dataBin.max < value) {
+                        dataBin.max = value;
                     }
                 }
                 if (this.aggregationType.contains(AggregationType.MIN)) {
-                    if (dataBucket.min == null) {
-                        dataBucket.min = new Double(value);
-                    } else if (dataBucket.min > value) {
-                        dataBucket.min = value;
+                    if (dataBin.min == null) {
+                        dataBin.min = new Double(value);
+                    } else if (dataBin.min > value) {
+                        dataBin.min = value;
                     }
                 }
             }
@@ -117,11 +117,11 @@ public class ServiceStats extends ServiceDocument {
 
         /**
          * This method normalizes the input timestamp at UTC time boundaries
-         *  based on the bucket size, effectively creating time series that are comparable to each other
+         *  based on the bin size, effectively creating time series that are comparable to each other
          */
-        private long normalizeTimestamp(long timestampMicros, long bucketDurationMillis) {
+        private long normalizeTimestamp(long timestampMicros, long binDurationMillis) {
             long timeMillis = TimeUnit.MICROSECONDS.toMillis(timestampMicros);
-            timeMillis -= (timeMillis % bucketDurationMillis);
+            timeMillis -= (timeMillis % binDurationMillis);
             return timeMillis;
         }
 
