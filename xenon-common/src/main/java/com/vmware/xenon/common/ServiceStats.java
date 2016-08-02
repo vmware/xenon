@@ -37,16 +37,16 @@ public class ServiceStats extends ServiceDocument {
 
     /**
      * Data structure representing time series data
-     * Users can specify the number of datapoints to be stored and the granularity of the datapoints
+     * Users can specify the number of buckets to be stored and the granularity of the buckets
      * Any data to be stored will be normalized to an UTC boundary based on the the data granularity
      * If a bucket already exists for that timestamp, the existing value is updated based on the
      * specified AggregationType
-     * If the number of datapoints equals the number of buckets, the oldest datapoint will be dropped
+     * If the number of buckets equals the configured number of buckets, the oldest bucket will be dropped
      * on any further insertion
      */
     public static class TimeSeriesStats {
 
-        public static class DataPoint {
+        public static class Bucket {
             public Double avg;
             public Double min;
             public Double max;
@@ -57,7 +57,7 @@ public class ServiceStats extends ServiceDocument {
             AVG, MIN, MAX
         }
 
-        public SortedMap<Long, DataPoint> dataPoints;
+        public SortedMap<Long, Bucket> buckets;
         public int numBuckets;
         public long bucketDurationMillis;
         public EnumSet<AggregationType> aggregationType;
@@ -66,27 +66,27 @@ public class ServiceStats extends ServiceDocument {
                 EnumSet<AggregationType> aggregationType) {
             this.numBuckets = numBuckets;
             this.bucketDurationMillis = bucketDurationMillis;
-            this.dataPoints = new TreeMap<Long, DataPoint>();
+            this.buckets = new TreeMap<Long, Bucket>();
             this.aggregationType = aggregationType;
         }
 
         public void add(long timestampMicros, double value) {
-            synchronized (this.dataPoints) {
+            synchronized (this.buckets) {
                 long bucketId = normalizeTimestamp(timestampMicros, this.bucketDurationMillis);
-                DataPoint dataBucket = null;
-                if (this.dataPoints.containsKey(bucketId)) {
-                    dataBucket = this.dataPoints.get(bucketId);
+                Bucket dataBucket = null;
+                if (this.buckets.containsKey(bucketId)) {
+                    dataBucket = this.buckets.get(bucketId);
                 } else {
-                    if (this.dataPoints.size() == this.numBuckets) {
-                        if (this.dataPoints.firstKey() > timestampMicros) {
+                    if (this.buckets.size() == this.numBuckets) {
+                        if (this.buckets.firstKey() > timestampMicros) {
                             // incoming data is too old; ignore
                             return;
                         }
                         // remove the oldest entry
-                        this.dataPoints.remove(this.dataPoints.firstKey());
+                        this.buckets.remove(this.buckets.firstKey());
                     }
-                    dataBucket = new DataPoint();
-                    this.dataPoints.put(bucketId, dataBucket);
+                    dataBucket = new Bucket();
+                    this.buckets.put(bucketId, dataBucket);
                 }
                 if (this.aggregationType.contains(AggregationType.AVG)) {
                     if (dataBucket.avg == null) {

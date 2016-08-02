@@ -30,7 +30,7 @@ import com.vmware.xenon.common.Service.ServiceOption;
 import com.vmware.xenon.common.ServiceStats.ServiceStat;
 import com.vmware.xenon.common.ServiceStats.TimeSeriesStats;
 import com.vmware.xenon.common.ServiceStats.TimeSeriesStats.AggregationType;
-import com.vmware.xenon.common.ServiceStats.TimeSeriesStats.DataPoint;
+import com.vmware.xenon.common.ServiceStats.TimeSeriesStats.Bucket;
 import com.vmware.xenon.common.test.TestContext;
 import com.vmware.xenon.services.common.ExampleService;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
@@ -319,18 +319,18 @@ public class TestUtilityService extends BasicReusableHostTestCase {
             value += 1;
             timeSeriesStats.add(startTime, value);
         }
-        assertTrue(timeSeriesStats.dataPoints.size() == numBuckets);
+        assertTrue(timeSeriesStats.buckets.size() == numBuckets);
         // insert additional unique datapoints; the earliest entries should be dropped
         for (int i = 0; i < numBuckets / 2; i++) {
             startTime += TimeUnit.MILLISECONDS.toMicros(interval);
             value += 1;
             timeSeriesStats.add(startTime, value);
         }
-        assertTrue(timeSeriesStats.dataPoints.size() == numBuckets);
+        assertTrue(timeSeriesStats.buckets.size() == numBuckets);
         long timeMicros = startTime - TimeUnit.MILLISECONDS.toMicros(interval * (numBuckets - 1));
         long timeMillis = TimeUnit.MICROSECONDS.toMillis(timeMicros);
         timeMillis -= (timeMillis % interval);
-        assertTrue(timeSeriesStats.dataPoints.firstKey() == timeMillis);
+        assertTrue(timeSeriesStats.buckets.firstKey() == timeMillis);
 
         // insert additional datapoints for an existing bucket. The count should increase,
         // min, max, average computed appropriately
@@ -344,28 +344,28 @@ public class TestUtilityService extends BasicReusableHostTestCase {
             timeSeriesStats.add(startTime, newValue);
             accumulatedValue += newValue;
         }
-        DataPoint lastDatapoint = timeSeriesStats.dataPoints.get(timeSeriesStats.dataPoints.lastKey());
-        assertTrue(lastDatapoint.avg.equals(accumulatedValue / count));
-        assertTrue(lastDatapoint.count == count);
-        assertTrue(lastDatapoint.max.equals(newValue));
-        assertTrue(lastDatapoint.min.equals(origValue));
+        Bucket lastBucket = timeSeriesStats.buckets.get(timeSeriesStats.buckets.lastKey());
+        assertTrue(lastBucket.avg.equals(accumulatedValue / count));
+        assertTrue(lastBucket.count == count);
+        assertTrue(lastBucket.max.equals(newValue));
+        assertTrue(lastBucket.min.equals(origValue));
 
         // test with a subset of the aggregation types specified
         timeSeriesStats = new TimeSeriesStats(numBuckets, interval, EnumSet.of(AggregationType.AVG));
         timeSeriesStats.add(startTime, value);
-        lastDatapoint = timeSeriesStats.dataPoints.get(timeSeriesStats.dataPoints.lastKey());
-        assertTrue(lastDatapoint.avg != null);
-        assertTrue(lastDatapoint.count != 0);
-        assertTrue(lastDatapoint.max == null);
-        assertTrue(lastDatapoint.min == null);
+        lastBucket = timeSeriesStats.buckets.get(timeSeriesStats.buckets.lastKey());
+        assertTrue(lastBucket.avg != null);
+        assertTrue(lastBucket.count != 0);
+        assertTrue(lastBucket.max == null);
+        assertTrue(lastBucket.min == null);
 
         timeSeriesStats = new TimeSeriesStats(numBuckets, interval, EnumSet.of(AggregationType.MIN, AggregationType.MAX));
         timeSeriesStats.add(startTime, value);
-        lastDatapoint = timeSeriesStats.dataPoints.get(timeSeriesStats.dataPoints.lastKey());
-        assertTrue(lastDatapoint.avg == null);
-        assertTrue(lastDatapoint.count == 0);
-        assertTrue(lastDatapoint.max != null);
-        assertTrue(lastDatapoint.min != null);
+        lastBucket = timeSeriesStats.buckets.get(timeSeriesStats.buckets.lastKey());
+        assertTrue(lastBucket.avg == null);
+        assertTrue(lastBucket.count == 0);
+        assertTrue(lastBucket.max != null);
+        assertTrue(lastBucket.min != null);
 
         // Step 2 - POST a stat to the service instance and verify we can fetch the stat just posted
         String name = UUID.randomUUID().toString();
@@ -397,7 +397,7 @@ public class TestUtilityService extends BasicReusableHostTestCase {
         assertTrue(retStatEntry.accumulatedValue == 100 * (numBuckets + 1));
         assertTrue(retStatEntry.latestValue == 100);
         assertTrue(retStatEntry.version == numBuckets + 1);
-        assertTrue(retStatEntry.timeSeriesStats.dataPoints.size() == numBuckets);
+        assertTrue(retStatEntry.timeSeriesStats.buckets.size() == numBuckets);
 
         // Step 3 - POST a stat to the service instance with sourceTimeMicrosUtc and verify we can fetch the stat just posted
         String statName = UUID.randomUUID().toString();
@@ -436,16 +436,16 @@ public class TestUtilityService extends BasicReusableHostTestCase {
         assertTrue(retStatEntry.accumulatedValue == 100);
         assertTrue(retStatEntry.latestValue == 100);
         assertTrue(retStatEntry.version == 1);
-        assertTrue(retStatEntry.timeSeriesStats.dataPoints.size() == 1);
-        assertTrue(retStatEntry.timeSeriesStats.dataPoints.firstKey()
+        assertTrue(retStatEntry.timeSeriesStats.buckets.size() == 1);
+        assertTrue(retStatEntry.timeSeriesStats.buckets.firstKey()
                 .equals(TimeUnit.MICROSECONDS.toMillis(sourceTimeMicrosUtc1)));
 
         retStatEntry = allStats.entries.get(sourceStat2.name);
         assertTrue(retStatEntry.accumulatedValue == 100);
         assertTrue(retStatEntry.latestValue == 100);
         assertTrue(retStatEntry.version == 1);
-        assertTrue(retStatEntry.timeSeriesStats.dataPoints.size() == 1);
-        assertTrue(retStatEntry.timeSeriesStats.dataPoints.firstKey()
+        assertTrue(retStatEntry.timeSeriesStats.buckets.size() == 1);
+        assertTrue(retStatEntry.timeSeriesStats.buckets.firstKey()
                 .equals(TimeUnit.MICROSECONDS.toMillis(sourceTimeMicrosUtc2)));
     }
 
