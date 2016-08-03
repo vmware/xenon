@@ -13,7 +13,9 @@
 
 package com.vmware.xenon.common;
 
+import java.util.Arrays;
 import java.util.Collections;
+import java.util.List;
 import java.util.Set;
 
 import com.vmware.xenon.common.ServiceDocumentDescription.TypeName;
@@ -67,6 +69,12 @@ public class ODataUtils {
             if (q != null) {
                 task.querySpec.query.addBooleanClause(q);
             }
+        }
+
+        String commaSeparatedTenantLinks = UriUtils.getODataTenantLinksParamValue(op.getUri());
+        if (commaSeparatedTenantLinks != null) {
+            List<String> tenantLinks = Arrays.asList(commaSeparatedTenantLinks.trim().split("\\s*,\\s*"));
+            task.tenantLinks = tenantLinks;
         }
 
         UriUtils.ODataOrderByTuple orderBy = UriUtils.getODataOrderByParamValue(op.getUri());
