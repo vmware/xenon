@@ -18,9 +18,11 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.function.BiConsumer;
 
 import com.vmware.xenon.common.Operation.CompletionHandler;
 
@@ -154,6 +156,19 @@ public class TestContext {
             } else {
                 this.complete();
             }
+        };
+    }
+
+    public <T> BiConsumer<T, ? super Throwable> getCompletionDeferred() {
+        return (ignore, e) -> {
+            if (e != null) {
+                if (e instanceof CompletionException) {
+                    e = e.getCause();
+                }
+                failIteration(e);
+                return;
+            }
+            completeIteration();
         };
     }
 
