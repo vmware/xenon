@@ -2,6 +2,14 @@
 
 ## 0.9.4-SNAPSHOT
 
+* Add a new sendWithDeferredResult pair of methods to the request senders
+  The new sendWithDeferredResult set of methods return DeferredResult
+  instances to enable monadic style of chaining potentially asynchronous
+  code blocks. Check the refactored SamplePreviousEchoService and
+  SampleBootstrapService for usage examples.
+  The implementation of DeferredResult encapsulates CompletableFuture with
+  similar interface, excluding the blocking methods.
+
 * Improve QueryFilters to support numeric document properties
 
 ## 0.9.3
