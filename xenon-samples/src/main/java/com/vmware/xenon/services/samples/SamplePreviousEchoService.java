@@ -71,29 +71,28 @@ public class SamplePreviousEchoService extends StatefulService {
         URI uri = UriUtils.buildUri(getHost(), ServiceUriPaths.CORE_QUERY_TASKS);
         Operation startPost = Operation
                 .createPost(uri)
-                .setBody(task)
-                .setCompletion((o, f) -> handleQueryCompletion(o, f, get));
-        sendRequest(startPost);
+                .setBody(task);
+        sendWithDeferredResult(startPost, QueryTask.class)
+                .thenApply(this::getPenultimateResult)
+                .thenApply(prevState -> prevState != null
+                        ? get.setBody(prevState)
+                        : get.setBody(getState(get)))
+                .whenCompleteNotify(get);
     }
 
-    private void handleQueryCompletion(Operation o, Throwable f, Operation original) {
-        if (f != null) {
-            logInfo(f.toString());
-            original.fail(f);
-            return;
-        }
-        QueryTask response = o.getBody(QueryTask.class);
+    /**
+     * Get the penultimate result (N-1).
+     */
+    private EchoServiceState getPenultimateResult(QueryTask response) {
         // First check how many versions there are
         if (response.results.documentLinks.size() <= 1) {
-            //  If no more than a single version, handle as you would normally do.
-            super.handleGet(original);
-            return;
+            return null;
         }
         // Whereas, if more than a single version, fetch the previous one
         List<String> dl = response.results.documentLinks;
         String penultimate = dl.get(1);
         Object obj = response.results.documents.get(penultimate);
         EchoServiceState s = Utils.fromJson((String) obj, EchoServiceState.class);
-        original.setBody(s).complete();
+        return s;
     }
 }
