@@ -2,6 +2,14 @@
 
 ## 0.9.4-SNAPSHOT
 
+* Add a new sendWithDeferredResult pair of methods to the request senders
+  The new sendWithDeferredResult set of methods return DeferredResult
+  instances to enable monadic style of chaining potentially asynchronous
+  code blocks. Check the refactored SamplePreviousEchoService and
+  SampleBootstrapService for usage examples.
+  The implementation of DeferredResult encapsulates CompletableFuture with
+  similar interface, excluding the blocking methods.
+
 * Add support for per thread user defined kryo serializers. See method
   Utils#registerCustomKryoSerializers
 

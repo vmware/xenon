@@ -46,11 +46,13 @@ import java.util.Random;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.logging.Handler;
 import java.util.logging.Level;
@@ -67,6 +69,7 @@ import org.junit.rules.TemporaryFolder;
 
 import com.vmware.xenon.common.Claims;
 import com.vmware.xenon.common.CommandLineArgumentParser;
+import com.vmware.xenon.common.DeferredResult;
 import com.vmware.xenon.common.NodeSelectorState;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Operation.AuthorizationContext;
@@ -264,6 +267,19 @@ public class VerificationHost extends ExampleServiceHost {
         };
     }
 
+    public <T> BiConsumer<T, ? super Throwable> getCompletionDeferred() {
+        return (ignore, e) -> {
+            if (e != null) {
+                if (e instanceof CompletionException) {
+                    e = e.getCause();
+                }
+                failIteration(e);
+                return;
+            }
+            completeIteration();
+        };
+    }
+
     public CompletionHandler getExpectedFailureCompletion() {
         return getExpectedFailureCompletion(null);
     }
@@ -322,6 +338,18 @@ public class VerificationHost extends ExampleServiceHost {
         super.sendRequest(op);
     }
 
+    @Override
+    public DeferredResult<Operation> sendWithDeferredResult(Operation operation) {
+        operation.setReferer(getReferer());
+        return super.sendWithDeferredResult(operation);
+    }
+
+    @Override
+    public <T> DeferredResult<T> sendWithDeferredResult(Operation operation, Class<T> resultType) {
+        operation.setReferer(getReferer());
+        return super.sendWithDeferredResult(operation, resultType);
+    }
+
     /**
      * Creates a test wait context that can be nested and isolated from other wait contexts
      */
@@ -338,6 +366,7 @@ public class VerificationHost extends ExampleServiceHost {
 
     /**
      * Starts a test context used for a single synchronous test execution for the entire host
+     * @param c Expected completions
      */
     public void testStart(long c) {
         if (this.isSingleton) {
@@ -455,8 +484,6 @@ public class VerificationHost extends ExampleServiceHost {
             this.context = null;
             this.lastTestName = testName;
         }
-        return;
-
     }
 
     public double calculateThroughput() {

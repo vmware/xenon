@@ -16,6 +16,7 @@ package com.vmware.xenon.services.samples;
 import java.net.URI;
 import java.util.logging.Level;
 
+import com.vmware.xenon.common.DeferredResult;
 import com.vmware.xenon.common.FactoryService;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Operation.CompletionHandler;
@@ -117,7 +118,9 @@ public class SampleBootstrapService extends StatefulService {
             return;
         }
 
-        createAdminIfNotExist(getHost(), post);
+        checkIfAdminUserExists()
+                .thenCompose(this::createAdminUserIfNeeded)
+                .whenCompleteNotify(post);
     }
 
     @Override
@@ -134,8 +137,7 @@ public class SampleBootstrapService extends StatefulService {
         put.fail(Operation.STATUS_CODE_BAD_METHOD);
     }
 
-    private void createAdminIfNotExist(ServiceHost host, Operation post) {
-
+    private DeferredResult<Boolean> checkIfAdminUserExists() {
         // Simple version of AuthorizationSetupHelper.
         // Prefer using TaskService for complex bootstrap logic.
 
@@ -148,55 +150,43 @@ public class SampleBootstrapService extends StatefulService {
                 .setQuery(userQuery)
                 .build();
 
-        URI queryTaskUri = UriUtils.buildUri(host, ServiceUriPaths.CORE_QUERY_TASKS);
-
-        CompletionHandler userCreationCallback = (op, ex) -> {
-            if (ex != null) {
-                String msg = String.format("Could not make user %s: %s", ADMIN_EMAIL, ex);
-                post.fail(new IllegalStateException(msg, ex));
-                return;
-            }
-
-            host.log(Level.INFO, "User %s has been created", ADMIN_EMAIL);
-            post.complete();
-        };
-
-        CompletionHandler queryUserCallback = (op, ex) -> {
-            if (ex != null) {
-                String msg = String.format("Could not query user %s: %s", ADMIN_EMAIL, ex);
-                post.fail(new IllegalStateException(msg, ex));
-                return;
-            }
-
-            QueryTask queryResponse = op.getBody(QueryTask.class);
-            boolean userExists = queryResponse.results.documentLinks != null
-                    && !queryResponse.results.documentLinks.isEmpty();
-
-            if (userExists) {
-                host.log(Level.INFO, "User %s already exists, skipping setup of user", ADMIN_EMAIL);
-                post.complete();
-                return;
-            }
-
-            // create user
-            UserState user = new UserState();
-            user.email = ADMIN_EMAIL;
-            user.documentSelfLink = ADMIN_EMAIL;
-
-            URI userFactoryUri = UriUtils.buildUri(host, ServiceUriPaths.CORE_AUTHZ_USERS);
-            Operation.createPost(userFactoryUri)
-                    .setBody(user)
-                    .addRequestHeader(Operation.REPLICATION_QUORUM_HEADER,
-                            Operation.REPLICATION_QUORUM_HEADER_VALUE_ALL)
-                    .setCompletion(userCreationCallback)
-                    .sendWith(this);
-        };
-
-        Operation.createPost(queryTaskUri)
-                .setBody(queryTask)
-                .setCompletion(queryUserCallback)
-                .sendWith(this);
-
+        URI queryTaskUri = UriUtils.buildUri(getHost(), ServiceUriPaths.CORE_QUERY_TASKS);
+        return sendWithDeferredResult(Operation.createPost(queryTaskUri).setBody(queryTask), QueryTask.class)
+                .exceptionally(ex -> {
+                    String msg = String.format("Could not query user %s: %s", ADMIN_EMAIL, ex);
+                    throw new IllegalStateException(msg, ex);
+                })
+                .thenApply(queryResponse -> {
+                    boolean userExists = queryResponse.results.documentLinks != null
+                            && !queryResponse.results.documentLinks.isEmpty();
+                    if (userExists) {
+                        logInfo("User %s already exists, skipping setup of user", ADMIN_EMAIL);
+                    }
+                    return userExists;
+                });
     }
 
+    private DeferredResult<Void> createAdminUserIfNeeded(boolean userExists) {
+        if (userExists) {
+            logInfo("User %s already exists, skipping setup of user", ADMIN_EMAIL);
+            return DeferredResult.<Void>completed(null); // NO-OP
+        }
+
+        // create user
+        UserState user = new UserState();
+        user.email = ADMIN_EMAIL;
+        user.documentSelfLink = ADMIN_EMAIL;
+
+        URI userFactoryUri = UriUtils.buildUri(getHost(), ServiceUriPaths.CORE_AUTHZ_USERS);
+        Operation createUserOp = Operation.createPost(userFactoryUri)
+                .setBody(user)
+                .addRequestHeader(Operation.REPLICATION_QUORUM_HEADER,
+                        Operation.REPLICATION_QUORUM_HEADER_VALUE_ALL);
+        return sendWithDeferredResult(createUserOp, UserState.class)
+                .exceptionally(ex -> {
+                    String msg = String.format("Could not make user %s: %s", ADMIN_EMAIL, ex);
+                    throw new IllegalStateException(msg, ex);
+                })
+                .thenRun(() -> logInfo("User %s has been created", ADMIN_EMAIL));
+    }
 }
