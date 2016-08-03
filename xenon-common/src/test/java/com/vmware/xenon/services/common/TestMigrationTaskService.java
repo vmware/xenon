@@ -65,6 +65,7 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
     private static final int UNACCESSABLE_PORT = 123;
     private static final URI FAKE_URI = UriUtils.buildUri("127.0.0.1", UNACCESSABLE_PORT, null, null);
     private static final String TRANSFORMATION = "transformation";
+    private static final String TRANSFORMATION_V2 = "transformation-v2";
     private URI sourceFactoryUri;
     private URI destinationFactoryUri;
     private URI exampleSourceFactory;
@@ -600,12 +601,23 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
 
     @Test
     public void successMigrateTransformedDocuments() throws Throwable {
+        runSuccessfulTransformationTest(ExampleTranformationService.class, TRANSFORMATION,
+                EnumSet.noneOf(MigrationOption.class), "-transformed");
+    }
+
+    @Test
+    public void successMigrateTransformedDocumentsUsingTransformRequest() throws Throwable {
+        runSuccessfulTransformationTest(ExampleTransformationServiceV2.class, TRANSFORMATION_V2,
+                EnumSet.of(MigrationOption.USE_TRANSFORM_REQUEST), "-transformed-v2");
+    }
+
+    private void runSuccessfulTransformationTest(Class<? extends StatelessService> transformServiceClass, String transformPath, EnumSet<MigrationOption> migrationOptions, String expectedTransformedSuffix) throws Throwable {
         // start transformation service
-        URI u = UriUtils.buildUri(getDestinationHost(), TRANSFORMATION);
+        URI u = UriUtils.buildUri(getDestinationHost(), transformPath);
         Operation post = Operation.createPost(u);
         for (VerificationHost host : destinationHost.getInProcessHostMap().values()) {
-            host.startService(post, new ExampleTranformationService());
-            host.waitForServiceAvailable(TRANSFORMATION);
+            host.startService(post, transformServiceClass.newInstance());
+            host.waitForServiceAvailable(transformPath);
         }
 
         // create object in host
@@ -615,7 +627,8 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
         // start migration
         MigrationTaskService.State migrationState = validMigrationState(
                 ExampleService.FACTORY_LINK);
-        migrationState.transformationServiceLink = TRANSFORMATION;
+        migrationState.transformationServiceLink = transformPath;
+        migrationState.migrationOptions = migrationOptions;
 
         TestContext ctx = testCreate(1);
         String[] out = new String[1];
@@ -649,7 +662,7 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
                 .values()
                 .stream()
                 .forEach(state -> {
-                    assertTrue(state.name.endsWith("-transformed"));
+                    assertTrue(state.name.endsWith(expectedTransformedSuffix));
                 });
     }
 
@@ -773,6 +786,20 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
 
         State waitForServiceCompletion = waitForServiceCompletion(out[0], getDestinationHost());
         assertEquals(TaskStage.FAILED, waitForServiceCompletion.taskInfo.stage);
+    }
+
+    public static class ExampleTransformationServiceV2 extends StatelessService {
+
+        @Override
+        public void handlePost(Operation postOperation) {
+            MigrationTaskService.TransformRequest request = postOperation.getBody(MigrationTaskService.TransformRequest.class);
+            ExampleServiceState state = Utils.fromJson(request.originalDocument, ExampleServiceState.class);
+            state.name = state.name + "-transformed-v2";
+
+            request.destinationLinks = new HashMap<>();
+            request.destinationLinks.put(Utils.toJson(state), request.destinationLink);
+            postOperation.setBody(request).complete();
+        }
     }
 
     public static class ExampleTranformationService extends StatelessService {
