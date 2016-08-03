@@ -27,5 +27,6 @@ public class ExampleFooService extends StatefulService {
 
     public ExampleFooService() {
         super(ExampleFooServiceState.class);
+        toggleOption(ServiceOption.PERSISTENCE, true);
     }
 }
