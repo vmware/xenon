@@ -69,9 +69,14 @@ import com.vmware.xenon.services.common.QueryTask.QuerySpecification.QueryOption
  * after latestSourceUpdateTimeMicros.
  *
  * TransformationService expectations:
+ * Version 1 of TransformationService:
  *   We post a map of source document to destination factory to the transformation service and expect a map of
  *   String (json of transformed object) to destination factory (can be different than the posted destination
  *   factory) as a response.
+ *
+ * Version 2 of TransformationService:
+ *   We post a TransformRequest to the transformation service. The Transform state contains the source document,
+ *   destination factory and the response will include the transformed document.
  *
  * Suggested Use:
  *   For each service that needs to be migration start one MigrationTaskService instance. Common scenarios for the
@@ -95,7 +100,12 @@ public class MigrationTaskService extends StatefulService {
         /**
          * Enables delete post upgrade fall back if idempotent post does not work.
          */
-        DELETE_AFTER
+        DELETE_AFTER,
+
+        /**
+         * Enables v2 of TransformationService contract, which sends an object instead of a map.
+         */
+        USE_TRANSFORM_REQUEST
     }
 
     /**
@@ -183,6 +193,23 @@ public class MigrationTaskService extends StatefulService {
          * finished successfully.
          */
         public Long latestSourceUpdateTimeMicros = 0L;
+    }
+
+    public static class TransformRequest {
+
+        /** The original, untransformed document retrieved from the source node group. */
+        public Object originalDocument;
+
+        /** The original destination factory. */
+        public String destinationFactory;
+
+        /**
+         * This is set during the transform service's response. Key: transformed JSON, and Value:
+         * the target destination factory to send it to. We use a map to support the use case
+         * where we want to break down one object into multiple objects that need to be POSTed to
+         * different factories.
+         */
+        public Map<Object, String> responseMap;
     }
 
     private static final Integer DEFAULT_PAGE_SIZE = 500;
@@ -564,25 +591,17 @@ public class MigrationTaskService extends StatefulService {
             .sendWith(this);
     }
 
-    private void transformResults(State state, Collection<Object> results, Set<URI> nextPageLinks, List<URI> destinationURIs, Map<String, Long> lastUpdateTimesPerOwner) {
-        // scrub document self links
-        Collection<Object> cleanJson = results.stream()
-                .map(d -> {
-                    return removeFactoryPathFromSelfLink(d, state.sourceFactoryLink);
-                }).collect(Collectors.toList());
-
-        // post to transformation service
-        if (state.transformationServiceLink != null) {
-            Collection<Operation> transformations = cleanJson.stream()
-                    .map(doc -> {
-                        return Operation.createPost(
-                                UriUtils.buildUri(
-                                        selectRandomUri(destinationURIs),
-                                        state.transformationServiceLink))
-                                .setBody(Collections.singletonMap(doc, state.destinationFactoryLink));
-                    })
-                    .collect(Collectors.toList());
-            OperationJoin.create(transformations)
+    private void transformUsingMap(State state, Collection<Object> cleanJson, Set<URI> nextPageLinks, List<URI> destinationURIs, Map<String, Long> lastUpdateTimesPerOwner) {
+        Collection<Operation> transformations = cleanJson.stream()
+                .map(doc -> {
+                    return Operation.createPost(
+                            UriUtils.buildUri(
+                                    selectRandomUri(destinationURIs),
+                                    state.transformationServiceLink))
+                            .setBody(Collections.singletonMap(doc, state.destinationFactoryLink));
+                })
+                .collect(Collectors.toList());
+        OperationJoin.create(transformations)
                 .setCompletion((os, ts) -> {
                     if (ts != null && !ts.isEmpty()) {
                         failTask(ts.values());
@@ -601,6 +620,52 @@ public class MigrationTaskService extends StatefulService {
                     migrateEntities(transformedJson, state, nextPageLinks, destinationURIs, lastUpdateTimesPerOwner);
                 })
                 .sendWith(this);
+    }
+
+    private void transformUsingObject(State state, Collection<Object> cleanJson, Set<URI> nextPageLinks, List<URI> destinationURIs, Map<String, Long> lastUpdateTimesPerOwner) {
+        Collection<Operation> transformations = cleanJson.stream()
+                .map(doc -> {
+                    TransformRequest transformRequest = new TransformRequest();
+                    transformRequest.originalDocument = doc;
+                    transformRequest.destinationFactory = state.destinationFactoryLink;
+
+                    return Operation.createPost(UriUtils.buildUri(
+                                    selectRandomUri(destinationURIs),
+                                    state.transformationServiceLink))
+                            .setBody(transformRequest);
+                })
+                .collect(Collectors.toList());
+
+        OperationJoin.create(transformations)
+                .setCompletion((os, ts) -> {
+                    if (ts != null && !ts.isEmpty()) {
+                        failTask(ts.values());
+                        return;
+                    }
+                    Map<Object, String> transformedJson = new HashMap<>();
+                    for (Operation o : os.values()) {
+                        TransformRequest response = o.getBody(TransformRequest.class);
+                        transformedJson.putAll(response.responseMap);
+                    }
+                    migrateEntities(transformedJson, state, nextPageLinks, destinationURIs, lastUpdateTimesPerOwner);
+                })
+                .sendWith(this);
+    }
+
+    private void transformResults(State state, Collection<Object> results, Set<URI> nextPageLinks, List<URI> destinationURIs, Map<String, Long> lastUpdateTimesPerOwner) {
+        // scrub document self links
+        Collection<Object> cleanJson = results.stream()
+                .map(d -> {
+                    return removeFactoryPathFromSelfLink(d, state.sourceFactoryLink);
+                }).collect(Collectors.toList());
+
+        // post to transformation service
+        if (state.transformationServiceLink != null) {
+            if (state.migrationOptions.contains(MigrationOption.USE_TRANSFORM_REQUEST)) {
+                transformUsingObject(state, cleanJson, nextPageLinks, destinationURIs, lastUpdateTimesPerOwner);
+            } else {
+                transformUsingMap(state, cleanJson, nextPageLinks, destinationURIs, lastUpdateTimesPerOwner);
+            }
         } else {
             Map<Object, String> jsonMap = cleanJson.stream().collect(Collectors.toMap(e -> e, e -> state.destinationFactoryLink));
             migrateEntities(jsonMap, state, nextPageLinks, destinationURIs, lastUpdateTimesPerOwner);
