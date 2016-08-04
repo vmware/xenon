@@ -2,6 +2,9 @@
 
 ## 0.9.3-SNAPSHOT
 
+* Add time series stats for thread count, CPU, memory, disk in the
+  existing stats tracked by /core/management/stats
+
 * Add support for new GraphQueryOption.FILTER_STAGE_RESULTS. The option
   enables automatic filtering of results across query stages, only keeping
   documents that contributed to results in the final stage. It essentially

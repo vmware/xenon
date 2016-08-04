@@ -33,6 +33,15 @@ import com.vmware.xenon.common.Utils;
 public class ServiceHostManagementService extends StatefulService {
     public static final String SELF_LINK = UriUtils.buildUriPath(ServiceUriPaths.CORE_MANAGEMENT);
 
+    public static final String STAT_NAME_AVAILABLE_MEMORY_BYTES_PER_DAY = "availableMemoryBytesPerDay";
+    public static final String STAT_NAME_AVAILABLE_MEMORY_BYTES_PER_HOUR = "availableMemoryBytesPerHour";
+    public static final String STAT_NAME_AVAILABLE_DISK_BYTES_PER_DAY = "availableDiskBytesPerDay";
+    public static final String STAT_NAME_AVAILABLE_DISK_BYTES_PER_HOUR = "availableDiskBytesPerHour";
+    public static final String STAT_NAME_CPU_USAGE_PCT_PER_DAY = "cpuUsagePercentPerDay";
+    public static final String STAT_NAME_CPU_USAGE_PCT_PER_HOUR = "cpuUsagePercentPerHour";
+    public static final String STAT_NAME_THREAD_COUNT_PER_DAY = "threadCountPerDay";
+    public static final String STAT_NAME_THREAD_COUNT_PER_HOUR = "threadCountPerHour";
+
     public static final String STAT_NAME_SERVICE_PAUSE_COUNT = "servicePauseCount";
     public static final String STAT_NAME_SERVICE_RESUME_COUNT = "serviceResumeCount";
     public static final String STAT_NAME_SERVICE_CACHE_CLEAR_COUNT = "serviceCacheClearCount";

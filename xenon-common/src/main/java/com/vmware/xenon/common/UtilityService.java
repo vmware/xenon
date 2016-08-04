@@ -535,6 +535,8 @@ public class UtilityService implements Service {
     @Override
     public void setStat(ServiceStat stat, double newValue) {
         allocateStats();
+        findStat(stat.name, true, stat);
+
         synchronized (stat) {
             stat.version++;
             stat.accumulatedValue += newValue;
@@ -595,7 +597,7 @@ public class UtilityService implements Service {
         if (!allocateStats(true)) {
             return null;
         }
-        return findStat(name, create);
+        return findStat(name, create, null);
     }
 
     private void replaceSingleStat(ServiceStat stat) {
@@ -629,14 +631,14 @@ public class UtilityService implements Service {
         }
     }
 
-    private ServiceStat findStat(String name, boolean create) {
+    private ServiceStat findStat(String name, boolean create, ServiceStat initialStat) {
         synchronized (this.stats) {
             if (this.stats.entries == null) {
                 this.stats.entries = new HashMap<>();
             }
             ServiceStat st = this.stats.entries.get(name);
             if (st == null && create) {
-                st = new ServiceStat();
+                st = initialStat != null ? initialStat : new ServiceStat();
                 st.name = name;
                 this.stats.entries.put(name, st);
             }

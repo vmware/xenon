@@ -53,6 +53,7 @@ import com.vmware.xenon.common.ServiceHost.ServiceAlreadyStartedException;
 import com.vmware.xenon.common.ServiceHost.ServiceHostState;
 import com.vmware.xenon.common.ServiceHost.ServiceHostState.MemoryLimitType;
 import com.vmware.xenon.common.ServiceStats.ServiceStat;
+import com.vmware.xenon.common.ServiceStats.TimeSeriesStats.TimeBin;
 import com.vmware.xenon.common.jwt.Rfc7519Claims;
 import com.vmware.xenon.common.jwt.Signer;
 import com.vmware.xenon.common.jwt.Verifier;
@@ -993,36 +994,6 @@ public class TestServiceHost {
         }
         this.host.testWait();
 
-        // Test expiration: create N factory services, with expiration set in the initial state
-        this.host.waitForServiceAvailable(ExampleService.FACTORY_LINK);
-
-        List<URI> exampleURIs = new ArrayList<>();
-        this.host.createExampleServices(this.host, this.serviceCount, exampleURIs,
-                Utils.getNowMicrosUtc());
-
-        ServiceDocumentQueryResult rsp = new ServiceDocumentQueryResult();
-        exp = this.host.getTestExpiration();
-        while (new Date().before(exp)) {
-
-            // let maintenance run
-            Thread.sleep(maintIntervalMillis);
-            rsp = this.host.getFactoryState(UriUtils.buildFactoryUri(this.host,
-                    ExampleService.class));
-            if (rsp.documentLinks == null || rsp.documentLinks.size() == 0) {
-                break;
-            }
-        }
-
-        if (rsp.documentLinks != null && rsp.documentLinks.size() > 0) {
-            throw new IllegalStateException(
-                    "Services are not expired:" + Utils.toJson(rsp));
-        }
-
-        // also verify expiration induced DELETE has resulted in permanent removal of all versions
-        // of the document
-
-        this.host.validatePermanentServiceDocumentDeletion(ExampleService.FACTORY_LINK, 0,
-                true);
 
         // now validate that service handleMaintenance does not get called right after start, but at least
         // one interval later. We set the interval to 30 seconds so we can verify it did not get called within
@@ -1055,6 +1026,50 @@ public class TestServiceHost {
                 }
             }
         }
+
+        URI serviceHostMgmtURI = UriUtils.buildUri(this.host, ServiceUriPaths.CORE_MANAGEMENT);
+        // confirm host global time series stats have been created / updated
+        Map<String, ServiceStat> hostMgmtStats = this.host.getServiceStats(serviceHostMgmtURI);
+        ServiceStat freeMemDaily = hostMgmtStats
+                .get(ServiceHostManagementService.STAT_NAME_AVAILABLE_MEMORY_BYTES_PER_DAY);
+        ServiceStat freeMemHourly = hostMgmtStats
+                .get(ServiceHostManagementService.STAT_NAME_AVAILABLE_MEMORY_BYTES_PER_HOUR);
+        ServiceStat freeDiskDaily = hostMgmtStats
+                .get(ServiceHostManagementService.STAT_NAME_AVAILABLE_DISK_BYTES_PER_DAY);
+        ServiceStat freeDiskHourly = hostMgmtStats
+                .get(ServiceHostManagementService.STAT_NAME_AVAILABLE_DISK_BYTES_PER_HOUR);
+        ServiceStat cpuUsageDaily = hostMgmtStats
+                .get(ServiceHostManagementService.STAT_NAME_CPU_USAGE_PCT_PER_DAY);
+        ServiceStat cpuUsageHourly = hostMgmtStats
+                .get(ServiceHostManagementService.STAT_NAME_CPU_USAGE_PCT_PER_HOUR);
+        ServiceStat threadCountDaily = hostMgmtStats
+                .get(ServiceHostManagementService.STAT_NAME_THREAD_COUNT_PER_DAY);
+        ServiceStat threadCountHourly = hostMgmtStats
+                .get(ServiceHostManagementService.STAT_NAME_THREAD_COUNT_PER_HOUR);
+        validateTimeSeriesStat(freeMemDaily);
+        validateTimeSeriesStat(freeMemHourly);
+        validateTimeSeriesStat(freeDiskDaily);
+        validateTimeSeriesStat(freeDiskHourly);
+        validateTimeSeriesStat(cpuUsageDaily);
+        validateTimeSeriesStat(cpuUsageHourly);
+        validateTimeSeriesStat(threadCountDaily);
+        validateTimeSeriesStat(threadCountHourly);
+    }
+
+    private void validateTimeSeriesStat(ServiceStat stat) {
+        assertTrue(stat != null);
+        assertTrue(stat.timeSeriesStats != null);
+        assertTrue(stat.version > 1);
+        double maxAvg = 0;
+        double countPerMaxAvgBin = 0;
+        for (TimeBin bin : stat.timeSeriesStats.bins.values()) {
+            if (bin.avg != null && bin.avg > maxAvg) {
+                maxAvg = bin.avg;
+                countPerMaxAvgBin = bin.count;
+            }
+        }
+        assertTrue(maxAvg > 0);
+        assertTrue(countPerMaxAvgBin >= 1);
     }
 
     private void verifyMaintenanceDelayStat(long intervalMicros) throws Throwable {

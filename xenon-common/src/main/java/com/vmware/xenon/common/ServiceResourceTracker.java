@@ -13,6 +13,9 @@
 
 package com.vmware.xenon.common;
 
+import java.lang.management.ManagementFactory;
+import java.lang.management.ThreadMXBean;
+import java.util.EnumSet;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
@@ -26,6 +29,9 @@ import com.vmware.xenon.common.Service.ProcessingStage;
 import com.vmware.xenon.common.Service.ServiceOption;
 import com.vmware.xenon.common.ServiceHost.ServiceHostState;
 import com.vmware.xenon.common.ServiceHost.ServiceHostState.MemoryLimitType;
+import com.vmware.xenon.common.ServiceStats.ServiceStat;
+import com.vmware.xenon.common.ServiceStats.TimeSeriesStats;
+import com.vmware.xenon.common.ServiceStats.TimeSeriesStats.AggregationType;
 import com.vmware.xenon.services.common.ServiceContextIndexService;
 import com.vmware.xenon.services.common.ServiceHostManagementService;
 
@@ -115,6 +121,8 @@ class ServiceResourceTracker {
 
     private boolean isServiceStateCaching = true;
 
+    private long startTimeMicros;
+
     public static ServiceResourceTracker create(ServiceHost host, Map<String, Service> services,
             Map<String, Service> pendingPauseServices) {
         ServiceResourceTracker srt = new ServiceResourceTracker(host, services,
@@ -127,6 +135,133 @@ class ServiceResourceTracker {
         this.attachedServices = services;
         this.pendingPauseServices = pendingPauseServices;
         this.host = host;
+    }
+
+    private void checkAndInitializeStats() {
+        if (this.startTimeMicros > 0) {
+            return;
+        }
+        this.startTimeMicros = Utils.getNowMicrosUtc();
+        if (this.host.getManagementService() == null) {
+            this.host.log(Level.WARNING, "Management service not found, stats will not be available");
+            return;
+        }
+
+        long inUseMem = this.host.getState().systemInfo.totalMemoryByteCount
+                - this.host.getState().systemInfo.freeMemoryByteCount;
+        long freeMem = this.host.getState().systemInfo.maxMemoryByteCount - inUseMem;
+        long freeDisk = this.host.getState().systemInfo.freeDiskByteCount;
+
+        createHourTimeSeriesStat(
+                ServiceHostManagementService.STAT_NAME_AVAILABLE_MEMORY_BYTES_PER_HOUR,
+                freeMem);
+
+        createDayTimeSeriesStat(
+                ServiceHostManagementService.STAT_NAME_AVAILABLE_MEMORY_BYTES_PER_DAY,
+                freeMem);
+
+        createHourTimeSeriesStat(
+                ServiceHostManagementService.STAT_NAME_AVAILABLE_DISK_BYTES_PER_HOUR,
+                freeDisk);
+
+        createDayTimeSeriesStat(
+                ServiceHostManagementService.STAT_NAME_AVAILABLE_DISK_BYTES_PER_DAY,
+                freeDisk);
+
+        createDayTimeSeriesStat(
+                ServiceHostManagementService.STAT_NAME_CPU_USAGE_PCT_PER_DAY,
+                0);
+
+        createDayTimeSeriesStat(
+                ServiceHostManagementService.STAT_NAME_CPU_USAGE_PCT_PER_HOUR,
+                0);
+
+        // guess initial thread count
+        createDayTimeSeriesStat(
+                ServiceHostManagementService.STAT_NAME_THREAD_COUNT_PER_DAY,
+                Utils.DEFAULT_THREAD_COUNT);
+
+        createDayTimeSeriesStat(
+                ServiceHostManagementService.STAT_NAME_THREAD_COUNT_PER_HOUR,
+                Utils.DEFAULT_THREAD_COUNT);
+    }
+
+    private void createDayTimeSeriesStat(String name, double v) {
+        Service mgmtService = this.host.getManagementService();
+        ServiceStat st = new ServiceStat();
+        st.name = name;
+        st.timeSeriesStats = new TimeSeriesStats((int) TimeUnit.DAYS.toHours(1),
+                TimeUnit.HOURS.toMillis(1),
+                EnumSet.of(AggregationType.AVG));
+        mgmtService.setStat(st, v);
+    }
+
+    private void createHourTimeSeriesStat(String name, double v) {
+        Service mgmtService = this.host.getManagementService();
+        ServiceStat st = new ServiceStat();
+        st.name = name;
+        st.timeSeriesStats = new TimeSeriesStats((int) TimeUnit.HOURS.toMinutes(1),
+                TimeUnit.MINUTES.toMillis(1),
+                EnumSet.of(AggregationType.AVG));
+        mgmtService.setStat(st, v);
+    }
+
+    private void updateStats(long now) {
+        SystemHostInfo shi = this.host.updateSystemInfo(false);
+        Service mgmtService = this.host.getManagementService();
+        checkAndInitializeStats();
+
+        // The JVM reports free memory in a indirect way, relative to the current "total". But the
+        // true free memory is the estimated used memory subtracted from the JVM heap max limit
+        long freeMemory = shi.maxMemoryByteCount
+                - (shi.totalMemoryByteCount - shi.freeMemoryByteCount);
+        mgmtService.setStat(
+                ServiceHostManagementService.STAT_NAME_AVAILABLE_MEMORY_BYTES_PER_HOUR,
+                freeMemory);
+        mgmtService.setStat(
+                ServiceHostManagementService.STAT_NAME_AVAILABLE_MEMORY_BYTES_PER_DAY,
+                freeMemory);
+        mgmtService.setStat(
+                ServiceHostManagementService.STAT_NAME_AVAILABLE_DISK_BYTES_PER_HOUR,
+                shi.freeDiskByteCount);
+        mgmtService.setStat(
+                ServiceHostManagementService.STAT_NAME_AVAILABLE_DISK_BYTES_PER_DAY,
+                shi.freeDiskByteCount);
+
+        ThreadMXBean threadBean = ManagementFactory.getThreadMXBean();
+        if (!threadBean.isCurrentThreadCpuTimeSupported()) {
+            return;
+        }
+
+        long totalTime = 0;
+        // we assume a low number of threads since the runtime uses just a thread per core, plus
+        // a small multiple of that dedicated to I/O threads. So the thread CPU usage calculation
+        // should have a small overhead
+        long[] threadIds = threadBean.getAllThreadIds();
+        for (long threadId : threadIds) {
+            totalTime += threadBean.getThreadCpuTime(threadId);
+        }
+
+        double runningTime = now - this.startTimeMicros;
+        if (runningTime <= 0) {
+            return;
+        }
+
+        mgmtService.setStat(
+                ServiceHostManagementService.STAT_NAME_THREAD_COUNT_PER_DAY,
+                threadIds.length);
+        mgmtService.setStat(
+                ServiceHostManagementService.STAT_NAME_THREAD_COUNT_PER_HOUR,
+                threadIds.length);
+
+        totalTime = TimeUnit.NANOSECONDS.toMicros(totalTime);
+        double pctUse = totalTime / runningTime;
+        mgmtService.setStat(
+                ServiceHostManagementService.STAT_NAME_CPU_USAGE_PCT_PER_HOUR,
+                pctUse);
+        mgmtService.setStat(
+                ServiceHostManagementService.STAT_NAME_CPU_USAGE_PCT_PER_DAY,
+                pctUse);
     }
 
     public void setServiceStateCaching(boolean enable) {
@@ -289,6 +424,7 @@ class ServiceResourceTracker {
      * takes appropriate action: clears cached service state, temporarily stops services
      */
     public void performMaintenance(long now, long deadlineMicros) {
+        updateStats(now);
         ServiceHostState hostState = this.host.getStateNoCloning();
         long memoryLimitLowMB = this.host.getServiceMemoryLimitMB(ServiceHost.ROOT_PATH,
                 MemoryLimitType.HIGH_WATERMARK);
