@@ -76,7 +76,7 @@ public class ExampleTaskService
      * Create a default factory service that starts instances of this task service on POST.
      */
     public static FactoryService createFactory() {
-        return FactoryService.create(ExampleTaskService.class, ServiceOption.IDEMPOTENT_POST,
+        return TaskFactoryService.create(ExampleTaskService.class, ServiceOption.IDEMPOTENT_POST,
                 ServiceOption.INSTRUMENTATION);
     }
 
