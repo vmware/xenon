@@ -23,6 +23,7 @@ import com.vmware.xenon.common.ServiceHost;
 import com.vmware.xenon.services.common.ExampleService;
 import com.vmware.xenon.services.common.ExampleTaskService;
 import com.vmware.xenon.services.common.RootNamespaceService;
+import com.vmware.xenon.services.common.TaskFactoryService;
 import com.vmware.xenon.services.samples.SampleFactoryServiceWithCustomUi;
 import com.vmware.xenon.services.samples.SamplePreviousEchoService;
 import com.vmware.xenon.services.samples.SampleServiceWithSharedCustomUi;
@@ -74,7 +75,8 @@ public class SampleHost extends ServiceHost {
 
         // Start example tutorial services
         super.startFactory(new ExampleService());
-        super.startFactory(new ExampleTaskService());
+        super.startFactory(ExampleTaskService.class,
+                () -> TaskFactoryService.create(ExampleTaskService.class));
 
         // Start UI service
         super.startService(new UiService());
@@ -97,7 +99,8 @@ public class SampleHost extends ServiceHost {
         Info apiInfo = new Info();
         apiInfo.setVersion("1.0.0");
         apiInfo.setTitle("Xenon SampleHost");
-        apiInfo.setLicense(new License().name("Apache 2.0").url("https://github.com/vmware/xenon/blob/master/LICENSE"));
+        apiInfo.setLicense(new License().name("Apache 2.0")
+                .url("https://github.com/vmware/xenon/blob/master/LICENSE"));
         apiInfo.setContact(new Contact().url("https://github.com/vmware/xenon"));
         swagger.setInfo(apiInfo);
 

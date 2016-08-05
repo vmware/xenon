@@ -30,6 +30,7 @@ import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Operation.CompletionHandler;
 import com.vmware.xenon.common.ServiceDocumentQueryResult;
 import com.vmware.xenon.common.TaskState;
+import com.vmware.xenon.common.TaskState.TaskStage;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.test.VerificationHost;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
@@ -99,6 +100,24 @@ public class TestExampleTaskService extends BasicReusableHostTestCase {
         ExampleTaskServiceState badState = new ExampleTaskServiceState();
         badState.taskLifetime = -1L;
         testExpectedHandleStartError(badState, IllegalArgumentException.class, "taskLifetime must be positive");
+    }
+
+    @Test
+    public void testDirectTask() throws Throwable {
+        createExampleServices();
+
+        ExampleTaskServiceState state = new ExampleTaskServiceState();
+        state.taskInfo = TaskState.createDirect();
+
+        Operation response = host.waitForResponse(
+                Operation.createPost(this.host, ExampleTaskService.FACTORY_LINK)
+                        .setBody(state));
+
+        assertNotNull(response);
+        ExampleTaskServiceState body = response.getBody(ExampleTaskServiceState.class);
+        assertNotNull(body);
+        assertNotNull(body.taskInfo);
+        assertEquals(TaskStage.FINISHED, body.taskInfo.stage);
     }
 
     private void testExpectedHandleStartError(ExampleTaskServiceState badState,

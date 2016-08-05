@@ -84,7 +84,8 @@ public class ExampleServiceHost extends ServiceHost {
 
         // Start the example task service factory: when it receives a task, it will delete
         // all example services
-        super.startFactory(ExampleTaskService.class, ExampleTaskService::createFactory);
+        super.startFactory(ExampleTaskService.class,
+                () -> TaskFactoryService.create(ExampleTaskService.class));
 
         // Start the root namespace factory: this will respond to the root URI (/) and list all
         // the factory services.
