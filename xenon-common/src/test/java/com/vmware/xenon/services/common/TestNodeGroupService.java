@@ -1968,7 +1968,10 @@ public class TestNodeGroupService {
         groupHost.setSystemAuthorizationContext();
         this.host.sendAndWaitExpectSuccess(
                 Operation.createDelete(
-                        UriUtils.buildUri(groupHost, "/core/authz/roles/foo-role-1")));
+                        UriUtils.buildUri(groupHost, "/core/authz/roles/foo-role-1"))
+                        .addRequestHeader(Operation.REPLICATION_QUORUM_HEADER,
+                                Operation.REPLICATION_QUORUM_HEADER_VALUE_ALL)
+        );
         groupHost.resetSystemAuthorizationContext();
         verifyAuthCacheHasClearedInPeers(fooToken);
 
@@ -1978,7 +1981,10 @@ public class TestNodeGroupService {
         groupHost.setSystemAuthorizationContext();
         this.host.sendAndWaitExpectSuccess(
                 Operation.createDelete(
-                        UriUtils.buildUri(groupHost, "/core/authz/user-groups/foo-user-group")));
+                        UriUtils.buildUri(groupHost, "/core/authz/user-groups/foo-user-group"))
+                        .addRequestHeader(Operation.REPLICATION_QUORUM_HEADER,
+                                Operation.REPLICATION_QUORUM_HEADER_VALUE_ALL)
+        );
         groupHost.resetSystemAuthorizationContext();
         verifyAuthCacheHasClearedInPeers(fooToken);
 
@@ -2023,9 +2029,15 @@ public class TestNodeGroupService {
         resourceGroupState.query = updateResourceGroupQuery;
         this.host.sendAndWaitExpectSuccess(
                 Operation.createPut(UriUtils.buildUri(groupHost, newResourceGroupLink))
-                        .setBody(resourceGroupState));
+                        .setBody(resourceGroupState)
+                        .addRequestHeader(Operation.REPLICATION_QUORUM_HEADER,
+                                Operation.REPLICATION_QUORUM_HEADER_VALUE_ALL)
+        );
         this.host.sendAndWaitExpectSuccess(
-                Operation.createDelete(UriUtils.buildUri(groupHost, newResourceGroupLink)));
+                Operation.createDelete(UriUtils.buildUri(groupHost, newResourceGroupLink))
+                        .addRequestHeader(Operation.REPLICATION_QUORUM_HEADER,
+                                Operation.REPLICATION_QUORUM_HEADER_VALUE_ALL)
+        );
         groupHost.resetSystemAuthorizationContext();
         verifyAuthCacheHasClearedInPeers(barToken);
 
@@ -2037,7 +2049,10 @@ public class TestNodeGroupService {
         userState.userGroupLinks.add("foo");
         this.host.sendAndWaitExpectSuccess(
                 Operation.createPatch(UriUtils.buildUri(groupHost, fooUserLink))
-                        .setBody(userState));
+                        .setBody(userState)
+                        .addRequestHeader(Operation.REPLICATION_QUORUM_HEADER,
+                                Operation.REPLICATION_QUORUM_HEADER_VALUE_ALL)
+        );
         groupHost.resetSystemAuthorizationContext();
         verifyAuthCacheHasClearedInPeers(fooToken);
 
@@ -2045,7 +2060,10 @@ public class TestNodeGroupService {
         populateAuthCacheInPeer(bazAuthContext);
         groupHost.setSystemAuthorizationContext();
         this.host.sendAndWaitExpectSuccess(
-                Operation.createDelete(UriUtils.buildUri(groupHost, bazUserLink)));
+                Operation.createDelete(UriUtils.buildUri(groupHost, bazUserLink))
+                        .addRequestHeader(Operation.REPLICATION_QUORUM_HEADER,
+                                Operation.REPLICATION_QUORUM_HEADER_VALUE_ALL)
+        );
         groupHost.resetSystemAuthorizationContext();
         verifyAuthCacheHasClearedInPeers(bazToken);
 
