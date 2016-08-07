@@ -39,6 +39,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.logging.Level;
 
 import com.esotericsoftware.kryo.KryoException;
 import com.google.gson.JsonParser;
@@ -757,7 +758,7 @@ public class LuceneDocumentIndexService extends StatelessService {
             return;
         }
 
-        IndexSearcher s = updateSearcher(selfLink, 1, w);
+        IndexSearcher s = updateSearcher(selfLink, 1, w, true);
         long start = Utils.getNowMicrosUtc();
         TopDocs hits = searchByVersion(selfLink, s, version);
         long end = Utils.getNowMicrosUtc();
@@ -2042,7 +2043,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         // be reflected in the new searcher. If the start time would be used,
         // it is possible to race with updating the searcher and NOT have this
         // change be reflected in the searcher.
-        updateLinkAccessTime(now, link);
+        updateLinkAccessTime(now, link, -1);
 
         delete.complete();
     }
@@ -2064,7 +2065,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         // be reflected in the new searcher. If the start time would be used,
         // it is possible to race with updating the searcher and NOT have this
         // change be reflected in the searcher.
-        updateLinkAccessTime(end, sd.documentSelfLink);
+        updateLinkAccessTime(end, sd.documentSelfLink, sd.documentVersion);
 
         if (hasOption(ServiceOption.INSTRUMENTATION)) {
             ServiceStat s = getHistogramStat(STAT_NAME_INDEXING_DURATION_MICROS);
@@ -2076,16 +2077,22 @@ public class LuceneDocumentIndexService extends StatelessService {
         applyActiveQueries(sd, desc);
     }
 
-    private void updateLinkAccessTime(long t, String link) {
+    private void updateLinkAccessTime(long t, String link, long v) {
+        Long e;
         synchronized (this.searchSync) {
             // This map is cleared in applyMemoryLimit while holding this lock,
             // so it is added to here while also holding the lock for symmetry.
-            this.linkAccessTimes.put(link, t);
+            e = this.linkAccessTimes.put(link, t);
 
             // The index update time may only be increased.
             if (this.indexUpdateTimeMicros < t) {
                 this.indexUpdateTimeMicros = t;
             }
+        }
+
+        this.getHost().log(Level.INFO, "l: %s, v: %d, t: %d, e: %d", link, v, t, e);
+        if (e != null && e > t) {
+            this.getHost().log(Level.INFO, "RACE CONDITION");
         }
     }
 
@@ -2112,45 +2119,56 @@ public class LuceneDocumentIndexService extends StatelessService {
      */
     private IndexSearcher updateSearcher(String selfLink, int resultLimit, IndexWriter w)
             throws IOException {
+        return this.updateSearcher(selfLink, resultLimit, w, false);
+    }
+
+    private IndexSearcher updateSearcher(String selfLink, int resultLimit, IndexWriter w, boolean doLog)
+            throws IOException {
         IndexSearcher s;
         boolean needNewSearcher = false;
         long now = Utils.getNowMicrosUtc();
 
-        synchronized (this.searchSync) {
-            s = this.searcher;
-            if (s == null) {
-                needNewSearcher = true;
-            } else if (selfLink != null && resultLimit == 1) {
-                Long latestUpdate = this.linkAccessTimes.get(selfLink);
-                if (latestUpdate != null
-                        && latestUpdate.compareTo(this.searcherUpdateTimeMicros) >= 0) {
+        try {
+            synchronized (this.searchSync) {
+                s = this.searcher;
+                if (s == null) {
+                    needNewSearcher = true;
+                } else if (selfLink != null && resultLimit == 1) {
+                    Long latestUpdate = this.linkAccessTimes.get(selfLink);
+                    if (latestUpdate != null
+                            && latestUpdate.compareTo(this.searcherUpdateTimeMicros) >= 0) {
+                        needNewSearcher = true;
+                    }
+                } else if (this.searcherUpdateTimeMicros < this.indexUpdateTimeMicros) {
                     needNewSearcher = true;
                 }
-            } else if (this.searcherUpdateTimeMicros < this.indexUpdateTimeMicros) {
-                needNewSearcher = true;
+
+                if (!needNewSearcher) {
+                    return s;
+                }
             }
 
-            if (!needNewSearcher) {
+            // Create a new searcher outside the lock. Another thread might race us and
+            // also create a searcher, but that is OK: the most recent one will be used.
+            s = new IndexSearcher(DirectoryReader.open(w, true, true));
+
+            if (hasOption(ServiceOption.INSTRUMENTATION)) {
+                ServiceStat st = getStat(STAT_NAME_SEARCHER_UPDATE_COUNT);
+                adjustStat(st, 1);
+            }
+
+            synchronized (this.searchSync) {
+                this.searchersPendingClose.add(s);
+                if (this.searcherUpdateTimeMicros < now) {
+                    this.searcher = s;
+                    this.searcherUpdateTimeMicros = now;
+                }
                 return s;
             }
-        }
-
-        // Create a new searcher outside the lock. Another thread might race us and
-        // also create a searcher, but that is OK: the most recent one will be used.
-        s = new IndexSearcher(DirectoryReader.open(w, true, true));
-
-        if (hasOption(ServiceOption.INSTRUMENTATION)) {
-            ServiceStat st = getStat(STAT_NAME_SEARCHER_UPDATE_COUNT);
-            adjustStat(st, 1);
-        }
-
-        synchronized (this.searchSync) {
-            this.searchersPendingClose.add(s);
-            if (this.searcherUpdateTimeMicros < now) {
-                this.searcher = s;
-                this.searcherUpdateTimeMicros = now;
+        } finally {
+            if (selfLink != null && selfLink.contains("f-s-n-c")) {
+                this.getHost().log(Level.INFO, "u-s. l: %s, t: %d", selfLink, this.searcherUpdateTimeMicros);
             }
-            return s;
         }
     }
 

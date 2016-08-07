@@ -312,6 +312,18 @@ public class TestFactoryService extends BasicReusableHostTestCase {
     }
 
     @Test
+    public void runLoop()
+            throws Throwable {
+        for (int i = 0; i < 100; i++) {
+            BasicReusableHostTestCase.setUpOnce();
+            this.setUpPerMethod();
+            System.out.println("Iteration: " + i);
+            factoryDurableServicePostNoCaching();
+            this.tearDownPerMethod();
+            BasicReusableHostTestCase.tearDownOnce();
+        }
+    }
+
     public void factoryDurableServicePostNoCaching()
             throws Throwable {
 
@@ -327,7 +339,7 @@ public class TestFactoryService extends BasicReusableHostTestCase {
         f.toggleOption(ServiceOption.PERSISTENCE, true);
 
         MinimalFactoryTestService factoryService = (MinimalFactoryTestService) this.host
-                .startServiceAndWait(f, UUID.randomUUID().toString(), null);
+                .startServiceAndWait(f, "f-s-n-c", null);
 
         factoryService.setChildServiceCaps(EnumSet.of(ServiceOption.PERSISTENCE));
         doFactoryServiceChildCreation(EnumSet.of(ServiceOption.PERSISTENCE),
