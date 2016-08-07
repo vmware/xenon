@@ -153,6 +153,7 @@ class ServiceResourceTracker {
                     // restore cached state, discarding update, if the existing version is higher
                     this.cachedServiceStates.put(s.getSelfLink(), cachedState);
                 }
+                this.host.log(Level.INFO, "c-s-s: %s", s.getSelfLink());
             }
             return;
         }
