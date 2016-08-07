@@ -18,6 +18,7 @@ import java.util.Map.Entry;
 import java.util.Set;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 
 import com.vmware.xenon.common.Service.ProcessingStage;
@@ -28,6 +29,15 @@ import com.vmware.xenon.common.ServiceMaintenanceRequest.MaintenanceReason;
  * Sequences service periodic maintenance
  */
 class ServiceMaintenanceTracker {
+    /**
+     * Simple epsilon that is subtracted from absolute future expiration time. Maintenance
+     * task scheduling is prone to JVM and OS thread scheduling variance, in addition to
+     * misbehaving service handlers.
+     * in the future, if more accuracy is required, a predictive scheme can be used
+     */
+    public static final long SCHEDULING_EPSILON_MICROS =
+            TimeUnit.MILLISECONDS.toMicros(10);
+
     public static ServiceMaintenanceTracker create(ServiceHost host) {
         ServiceMaintenanceTracker smt = new ServiceMaintenanceTracker();
         smt.host = host;
@@ -37,13 +47,14 @@ class ServiceMaintenanceTracker {
     private ServiceHost host;
     private ConcurrentSkipListMap<Long, Set<String>> nextExpiration = new ConcurrentSkipListMap<>();
 
-    public void schedule(Service s) {
+    public void schedule(Service s, long now) {
         long interval = s.getMaintenanceIntervalMicros();
         if (interval == 0) {
             interval = this.host.getMaintenanceIntervalMicros();
         }
 
-        long nextExpirationMicros = Utils.getNowMicrosUtc() + interval;
+        long nextExpirationMicros = Math.max(now, now + interval - SCHEDULING_EPSILON_MICROS);
+
         synchronized (this) {
             Set<String> services = this.nextExpiration.get(nextExpirationMicros);
             if (services == null) {
@@ -114,7 +125,8 @@ class ServiceMaintenanceTracker {
                 .setCompletion(
                         (o, ex) -> {
 
-                            long actual = Utils.getNowMicrosUtc() - start[0];
+                            long now = Utils.getNowMicrosUtc();
+                            long actual = now - start[0];
                             long limit = Math.max(this.host.getMaintenanceIntervalMicros(),
                                     s.getMaintenanceIntervalMicros());
 
@@ -127,13 +139,13 @@ class ServiceMaintenanceTracker {
                             }
 
                             // schedule again, for next maintenance interval
-                            schedule(s);
+                        schedule(s, now);
                             if (ex != null) {
                                 this.host.log(Level.WARNING, "Service %s failed maintenance: %s",
                                         servicePath, Utils.toString(ex));
                             }
                         });
-        this.host.run(() -> {
+        this.host.schedule(() -> {
             try {
                 OperationContext.setAuthorizationContext(this.host
                         .getSystemAuthorizationContext());
@@ -145,7 +157,7 @@ class ServiceMaintenanceTracker {
             } catch (Throwable ex) {
                 servicePost.fail(ex);
             }
-        });
+        }, SCHEDULING_EPSILON_MICROS, TimeUnit.MICROSECONDS);
     }
 
     public synchronized void close() {

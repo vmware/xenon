@@ -2468,7 +2468,7 @@ public class ServiceHost implements ServiceRequestSender {
                     startUiFileContentServices(s);
                 }
                 if (s.hasOption(ServiceOption.PERIODIC_MAINTENANCE)) {
-                    this.serviceMaintTracker.schedule(s);
+                    this.serviceMaintTracker.schedule(s, Utils.getNowMicrosUtc());
                 }
 
                 s.setProcessingStage(Service.ProcessingStage.AVAILABLE);
