@@ -259,17 +259,10 @@ public class AuthorizationCacheUtils {
     }
 
     private static boolean isAuthzCacheClearApplicableOperation(Operation op) {
-        // For replication requests, create(POST) comes through factory service and it is not two
-        // phased. On the other hand, update(DELETE,PUT,PATCH) is two phased. Therefore, only clear
-        // the auth cache at commit phase.
         if (op.isFromReplication()) {
             if (op.getAction() == Action.POST) {
                 if (!op.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_CREATED)) {
                     // do not clear at restart.
-                    return false;
-                }
-            } else {
-                if (!op.isCommit()) {
                     return false;
                 }
             }
