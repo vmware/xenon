@@ -2951,8 +2951,13 @@ public class TestQueryTaskService {
             this.host.testWait();
         } finally {
             // restore large numbers for remainder
-            LuceneDocumentIndexService.setSearcherCountThreshold(1000);
-            LuceneDocumentIndexService.setIndexFileCountThresholdForWriterRefresh(10000);
+            LuceneDocumentIndexService.setSearcherCountThreshold(
+                    LuceneDocumentIndexService
+                        .DEFAULT_INDEX_SEARCHER_COUNT_THRESHOLD);
+
+            LuceneDocumentIndexService.setIndexFileCountThresholdForWriterRefresh(
+                    LuceneDocumentIndexService
+                            .DEFAULT_INDEX_FILE_COUNT_THRESHOLD_FOR_WRITER_REFRESH);
         }
     }
 

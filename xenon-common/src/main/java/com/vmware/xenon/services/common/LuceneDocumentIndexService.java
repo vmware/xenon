@@ -121,11 +121,11 @@ public class LuceneDocumentIndexService extends StatelessService {
 
     public static final String FILE_PATH_LUCENE = "lucene";
 
+    public static final int DEFAULT_INDEX_FILE_COUNT_THRESHOLD_FOR_WRITER_REFRESH = 10000;
+
+    public static final int DEFAULT_INDEX_SEARCHER_COUNT_THRESHOLD = 200;
+
     private String indexDirectory;
-
-    private static final int DEFAULT_INDEX_FILE_COUNT_THRESHOLD_FOR_WRITER_REFRESH = 10000;
-
-    private static final int DEFAULT_INDEX_SEARCHER_COUNT_THRESHOLD = 200;
 
     private static int EXPIRED_DOCUMENT_SEARCH_THRESHOLD = 1000;
 

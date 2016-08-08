@@ -1952,6 +1952,10 @@ public class TestServiceHost {
 
     @After
     public void tearDown() {
+        LuceneDocumentIndexService.setIndexFileCountThresholdForWriterRefresh(
+                LuceneDocumentIndexService
+                        .DEFAULT_INDEX_FILE_COUNT_THRESHOLD_FOR_WRITER_REFRESH);
+
         if (this.host == null) {
             return;
         }
