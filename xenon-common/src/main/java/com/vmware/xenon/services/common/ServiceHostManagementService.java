@@ -22,6 +22,7 @@ import com.vmware.xenon.common.FileUtils;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Operation.CompletionHandler;
 import com.vmware.xenon.common.ServiceHost.ServiceHostState;
+import com.vmware.xenon.common.ServiceStats;
 import com.vmware.xenon.common.StatefulService;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
@@ -33,14 +34,27 @@ import com.vmware.xenon.common.Utils;
 public class ServiceHostManagementService extends StatefulService {
     public static final String SELF_LINK = UriUtils.buildUriPath(ServiceUriPaths.CORE_MANAGEMENT);
 
-    public static final String STAT_NAME_AVAILABLE_MEMORY_BYTES_PER_DAY = "availableMemoryBytesPerDay";
-    public static final String STAT_NAME_AVAILABLE_MEMORY_BYTES_PER_HOUR = "availableMemoryBytesPerHour";
-    public static final String STAT_NAME_AVAILABLE_DISK_BYTES_PER_DAY = "availableDiskBytesPerDay";
-    public static final String STAT_NAME_AVAILABLE_DISK_BYTES_PER_HOUR = "availableDiskBytesPerHour";
-    public static final String STAT_NAME_CPU_USAGE_PCT_PER_DAY = "cpuUsagePercentPerDay";
-    public static final String STAT_NAME_CPU_USAGE_PCT_PER_HOUR = "cpuUsagePercentPerHour";
-    public static final String STAT_NAME_THREAD_COUNT_PER_DAY = "threadCountPerDay";
-    public static final String STAT_NAME_THREAD_COUNT_PER_HOUR = "threadCountPerHour";
+    public static final String STAT_NAME_AVAILABLE_MEMORY_BYTES_PREFIX = "availableMemoryBytes";
+    public static final String STAT_NAME_AVAILABLE_MEMORY_BYTES_PER_DAY = STAT_NAME_AVAILABLE_MEMORY_BYTES_PREFIX
+            + ServiceStats.STAT_NAME_SUFFIX_PER_DAY;
+    public static final String STAT_NAME_AVAILABLE_MEMORY_BYTES_PER_HOUR = STAT_NAME_AVAILABLE_MEMORY_BYTES_PREFIX
+            + ServiceStats.STAT_NAME_SUFFIX_PER_HOUR;
+    public static final String STAT_NAME_AVAILABLE_DISK_BYTES_PREFIX = "availableDiskByte";
+    public static final String STAT_NAME_AVAILABLE_DISK_BYTES_PER_DAY = STAT_NAME_AVAILABLE_DISK_BYTES_PREFIX
+            + ServiceStats.STAT_NAME_SUFFIX_PER_DAY;
+    public static final String STAT_NAME_AVAILABLE_DISK_BYTES_PER_HOUR = STAT_NAME_AVAILABLE_DISK_BYTES_PREFIX
+            + ServiceStats.STAT_NAME_SUFFIX_PER_HOUR;
+    public static final String STAT_NAME_CPU_USAGE_PCT_PREFIX = "cpuUsagePercent";
+    public static final String STAT_NAME_CPU_USAGE_PCT_PER_DAY = STAT_NAME_CPU_USAGE_PCT_PREFIX
+            + ServiceStats.STAT_NAME_SUFFIX_PER_DAY;
+    public static final String STAT_NAME_CPU_USAGE_PCT_PER_HOUR = STAT_NAME_CPU_USAGE_PCT_PREFIX
+            + ServiceStats.STAT_NAME_SUFFIX_PER_HOUR;
+
+    public static final String STAT_NAME_THREAD_COUNT_PREFIX = "threadCount";
+    public static final String STAT_NAME_THREAD_COUNT_PER_DAY = STAT_NAME_THREAD_COUNT_PREFIX
+            + ServiceStats.STAT_NAME_SUFFIX_PER_DAY;
+    public static final String STAT_NAME_THREAD_COUNT_PER_HOUR = STAT_NAME_THREAD_COUNT_PREFIX
+            + ServiceStats.STAT_NAME_SUFFIX_PER_HOUR;
 
     public static final String STAT_NAME_SERVICE_PAUSE_COUNT = "servicePauseCount";
     public static final String STAT_NAME_SERVICE_RESUME_COUNT = "serviceResumeCount";

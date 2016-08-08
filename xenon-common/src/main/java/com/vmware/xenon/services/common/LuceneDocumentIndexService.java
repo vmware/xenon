@@ -38,6 +38,7 @@ import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Semaphore;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import com.esotericsoftware.kryo.KryoException;
@@ -103,7 +104,10 @@ import com.vmware.xenon.common.ServiceDocumentDescription.TypeName;
 import com.vmware.xenon.common.ServiceDocumentQueryResult;
 import com.vmware.xenon.common.ServiceHost.ServiceHostState.MemoryLimitType;
 import com.vmware.xenon.common.ServiceMaintenanceRequest;
+import com.vmware.xenon.common.ServiceStats;
 import com.vmware.xenon.common.ServiceStats.ServiceStat;
+import com.vmware.xenon.common.ServiceStats.TimeSeriesStats;
+import com.vmware.xenon.common.ServiceStats.TimeSeriesStats.AggregationType;
 import com.vmware.xenon.common.StatelessService;
 import com.vmware.xenon.common.TaskState;
 import com.vmware.xenon.common.TaskState.TaskStage;
@@ -291,6 +295,8 @@ public class LuceneDocumentIndexService extends StatelessService {
             }
         }
 
+        initializeStats();
+
         post.complete();
     }
 
@@ -312,6 +318,48 @@ public class LuceneDocumentIndexService extends StatelessService {
         this.fieldsToLoadWithExpand = new HashSet<>(this.fieldsToLoadNoExpand);
         this.fieldsToLoadWithExpand.add(LUCENE_FIELD_NAME_JSON_SERIALIZED_STATE);
         this.fieldsToLoadWithExpand.add(LUCENE_FIELD_NAME_BINARY_SERIALIZED_STATE);
+    }
+
+    private void initializeStats() {
+        IndexWriter w = this.writer;
+        createTimeSeriesStat(STAT_NAME_ACTIVE_PAGINATED_QUERIES, 0);
+        createTimeSeriesStat(STAT_NAME_ACTIVE_QUERY_FILTERS, 0);
+        createTimeSeriesStat(STAT_NAME_COMMIT_COUNT, 0);
+        createTimeSeriesStat(STAT_NAME_DOCUMENT_EXPIRATION_COUNT, 0);
+        createTimeSeriesStat(STAT_NAME_DOCUMENT_EXPIRATION_FORCED_MAINTENANCE_COUNT, 0);
+        createTimeSeriesStat(STAT_NAME_GROUP_QUERY_COUNT, 0);
+        createTimeSeriesStat(STAT_NAME_GROUP_QUERY_DURATION_MICROS, 0);
+        createTimeSeriesStat(STAT_NAME_INDEXED_DOCUMENT_COUNT, w != null ? w.numDocs() : 0);
+        // simple estimate on field count, just so our first bin does not have a completely bogus
+        // number
+        createTimeSeriesStat(STAT_NAME_INDEXED_FIELD_COUNT, w != null ? w.numDocs() * 10 : 0);
+        createTimeSeriesStat(STAT_NAME_INDEXING_DURATION_MICROS, 0);
+        createTimeSeriesStat(STAT_NAME_QUERY_DURATION_MICROS, 0);
+        createTimeSeriesStat(STAT_NAME_QUERY_SINGLE_DURATION_MICROS, 0);
+        createTimeSeriesStat(STAT_NAME_SEARCHER_UPDATE_COUNT, 0);
+    }
+
+    private void createTimeSeriesStat(String name, double v) {
+        createDayTimeSeriesStat(name, v);
+        createHourTimeSeriesStat(name, v);
+    }
+
+    private void createDayTimeSeriesStat(String name, double v) {
+        ServiceStat st = new ServiceStat();
+        st.name = name + ServiceStats.STAT_NAME_SUFFIX_PER_DAY;
+        st.timeSeriesStats = new TimeSeriesStats((int) TimeUnit.DAYS.toHours(1),
+                TimeUnit.HOURS.toMillis(1),
+                EnumSet.of(AggregationType.AVG));
+        super.setStat(st, v);
+    }
+
+    private void createHourTimeSeriesStat(String name, double v) {
+        ServiceStat st = new ServiceStat();
+        st.name = name + ServiceStats.STAT_NAME_SUFFIX_PER_HOUR;
+        st.timeSeriesStats = new TimeSeriesStats((int) TimeUnit.HOURS.toMinutes(1),
+                TimeUnit.MINUTES.toMillis(1),
+                EnumSet.of(AggregationType.AVG));
+        super.setStat(st, v);
     }
 
     public IndexWriter createWriter(File directory, boolean doUpgrade) throws Exception {
@@ -2201,6 +2249,8 @@ public class LuceneDocumentIndexService extends StatelessService {
 
             applyMemoryLimit();
 
+            applyTimeSeriesStatsUpdates();
+
             boolean reOpenWriter = applyIndexSearcherAndFileLimit();
 
             if (!forceMerge && !reOpenWriter) {
@@ -2215,6 +2265,34 @@ public class LuceneDocumentIndexService extends StatelessService {
             reOpenWriterSynchronously();
             throw e;
         }
+    }
+
+    private void applyTimeSeriesStatsUpdates() {
+        // read the point value stats and update the corresponding time series stats. We only
+        // do this once per maintenance, to reduce overhead in the fast path
+        updateTimeSeriesStat(STAT_NAME_ACTIVE_PAGINATED_QUERIES);
+        updateTimeSeriesStat(STAT_NAME_ACTIVE_QUERY_FILTERS);
+        updateTimeSeriesStat(STAT_NAME_COMMIT_COUNT);
+        updateTimeSeriesStat(STAT_NAME_DOCUMENT_EXPIRATION_COUNT);
+        updateTimeSeriesStat(STAT_NAME_DOCUMENT_EXPIRATION_FORCED_MAINTENANCE_COUNT);
+        updateTimeSeriesStat(STAT_NAME_GROUP_QUERY_COUNT);
+        updateTimeSeriesStat(STAT_NAME_GROUP_QUERY_DURATION_MICROS);
+        updateTimeSeriesStat(STAT_NAME_INDEXED_DOCUMENT_COUNT);
+        updateTimeSeriesStat(STAT_NAME_INDEXED_FIELD_COUNT);
+        updateTimeSeriesStat(STAT_NAME_INDEXING_DURATION_MICROS);
+        updateTimeSeriesStat(STAT_NAME_QUERY_DURATION_MICROS);
+        updateTimeSeriesStat(STAT_NAME_QUERY_SINGLE_DURATION_MICROS);
+        updateTimeSeriesStat(STAT_NAME_SEARCHER_UPDATE_COUNT);
+
+    }
+
+    private void updateTimeSeriesStat(String name) {
+        ServiceStat st = getStat(name);
+        if (st == null) {
+            return;
+        }
+        super.setStat(name + ServiceStats.STAT_NAME_SUFFIX_PER_DAY, st.latestValue);
+        super.setStat(name + ServiceStats.STAT_NAME_SUFFIX_PER_HOUR, st.latestValue);
     }
 
     private boolean applyIndexSearcherAndFileLimit() {

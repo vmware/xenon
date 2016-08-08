@@ -26,6 +26,8 @@ import java.util.concurrent.TimeUnit;
  */
 public class ServiceStats extends ServiceDocument {
     public static final String KIND = Utils.buildKind(ServiceStats.class);
+    public static final String STAT_NAME_SUFFIX_PER_DAY = "PerDay";
+    public static final String STAT_NAME_SUFFIX_PER_HOUR = "PerHour";
 
     public static class ServiceStatLogHistogram {
         /**

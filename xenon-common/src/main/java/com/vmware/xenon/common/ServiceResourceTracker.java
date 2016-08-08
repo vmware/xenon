@@ -152,44 +152,33 @@ class ServiceResourceTracker {
         long freeMem = this.host.getState().systemInfo.maxMemoryByteCount - inUseMem;
         long freeDisk = this.host.getState().systemInfo.freeDiskByteCount;
 
-        createHourTimeSeriesStat(
-                ServiceHostManagementService.STAT_NAME_AVAILABLE_MEMORY_BYTES_PER_HOUR,
+        createTimeSeriesStat(
+                ServiceHostManagementService.STAT_NAME_AVAILABLE_MEMORY_BYTES_PREFIX,
                 freeMem);
 
-        createDayTimeSeriesStat(
-                ServiceHostManagementService.STAT_NAME_AVAILABLE_MEMORY_BYTES_PER_DAY,
-                freeMem);
-
-        createHourTimeSeriesStat(
-                ServiceHostManagementService.STAT_NAME_AVAILABLE_DISK_BYTES_PER_HOUR,
+        createTimeSeriesStat(
+                ServiceHostManagementService.STAT_NAME_AVAILABLE_DISK_BYTES_PREFIX,
                 freeDisk);
 
-        createDayTimeSeriesStat(
-                ServiceHostManagementService.STAT_NAME_AVAILABLE_DISK_BYTES_PER_DAY,
-                freeDisk);
-
-        createDayTimeSeriesStat(
-                ServiceHostManagementService.STAT_NAME_CPU_USAGE_PCT_PER_DAY,
-                0);
-
-        createHourTimeSeriesStat(
-                ServiceHostManagementService.STAT_NAME_CPU_USAGE_PCT_PER_HOUR,
+        createTimeSeriesStat(
+                ServiceHostManagementService.STAT_NAME_CPU_USAGE_PCT_PREFIX,
                 0);
 
         // guess initial thread count
-        createDayTimeSeriesStat(
-                ServiceHostManagementService.STAT_NAME_THREAD_COUNT_PER_DAY,
+        createTimeSeriesStat(
+                ServiceHostManagementService.STAT_NAME_THREAD_COUNT_PREFIX,
                 Utils.DEFAULT_THREAD_COUNT);
+    }
 
-        createHourTimeSeriesStat(
-                ServiceHostManagementService.STAT_NAME_THREAD_COUNT_PER_HOUR,
-                Utils.DEFAULT_THREAD_COUNT);
+    private void createTimeSeriesStat(String name, double v) {
+        createDayTimeSeriesStat(name, v);
+        createHourTimeSeriesStat(name, v);
     }
 
     private void createDayTimeSeriesStat(String name, double v) {
         Service mgmtService = this.host.getManagementService();
         ServiceStat st = new ServiceStat();
-        st.name = name;
+        st.name = name + ServiceStats.STAT_NAME_SUFFIX_PER_DAY;
         st.timeSeriesStats = new TimeSeriesStats((int) TimeUnit.DAYS.toHours(1),
                 TimeUnit.HOURS.toMillis(1),
                 EnumSet.of(AggregationType.AVG));
@@ -199,7 +188,7 @@ class ServiceResourceTracker {
     private void createHourTimeSeriesStat(String name, double v) {
         Service mgmtService = this.host.getManagementService();
         ServiceStat st = new ServiceStat();
-        st.name = name;
+        st.name = name + ServiceStats.STAT_NAME_SUFFIX_PER_HOUR;
         st.timeSeriesStats = new TimeSeriesStats((int) TimeUnit.HOURS.toMinutes(1),
                 TimeUnit.MINUTES.toMillis(1),
                 EnumSet.of(AggregationType.AVG));

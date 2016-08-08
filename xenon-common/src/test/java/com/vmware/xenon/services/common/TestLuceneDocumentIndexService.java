@@ -1497,7 +1497,14 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
                     Utils.toJsonHtml(s));
 
             assertEquals(0, r.documentLinks.size());
+
+            validateTimeSeriesStats();
         }
+    }
+
+    private void validateTimeSeriesStats() throws Throwable {
+        Map<String, ServiceStat> indexServiceStats = this.host.getServiceStats(this.host.getDocumentIndexServiceUri());
+        assertTrue(indexServiceStats.size() > 0);
     }
 
     private void patchOrDeleteWithExpiration(URI factoryUri, Map<URI, ExampleServiceState> services,
