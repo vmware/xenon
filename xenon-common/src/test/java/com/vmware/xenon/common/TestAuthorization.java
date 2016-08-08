@@ -18,6 +18,7 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 import java.net.URI;
 import java.security.GeneralSecurityException;
@@ -79,6 +80,7 @@ public class TestAuthorization extends BasicTestCase {
 
     @Override
     public void beforeHostStart(VerificationHost host) {
+        fail("failure injection");
         // Enable authorization service; this is an end to end test
         host.setAuthorizationService(new AuthorizationContextService());
         host.setAuthorizationEnabled(true);
