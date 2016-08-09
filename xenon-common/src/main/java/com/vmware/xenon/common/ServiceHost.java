@@ -2468,6 +2468,7 @@ public class ServiceHost implements ServiceRequestSender {
                     startUiFileContentServices(s);
                 }
                 if (s.hasOption(ServiceOption.PERIODIC_MAINTENANCE)) {
+                    log(Level.INFO, "AAA: HOST scheduling maintenance for service=%s:%s", s, s.getSelfLink());
                     this.serviceMaintTracker.schedule(s, Utils.getNowMicrosUtc());
                 }
 
@@ -4398,29 +4399,83 @@ public class ServiceHost implements ServiceRequestSender {
      * state machine must be active per host, at any time. Maintenance is re-scheduled
      * when the final stage is complete.
      */
+
+    Map<MaintenanceStage, Integer> stats;
+
     void performMaintenanceStage(Operation post, MaintenanceStage stage, long deadline) {
+
+        if (this.stats == null) {
+            this.stats = new ConcurrentHashMap<>();
+            synchronized (this.stats) {
+                for (MaintenanceStage maintenanceStage : MaintenanceStage.values()) {
+                    this.stats.put(maintenanceStage, 0);
+                }
+            }
+        }
 
         try {
             long now = Utils.getNowMicrosUtc();
 
+            long begin = now / 1000;
+            boolean skipped = now >= deadline;
+
             switch (stage) {
             case UTILS:
+                if (skipped) {
+                    this.stats.compute(MaintenanceStage.UTILS, (k, v) -> v += 1);
+                }
+
                 Utils.performMaintenance();
                 stage = MaintenanceStage.MEMORY;
                 break;
             case MEMORY:
+                if (skipped) {
+                    this.stats.compute(MaintenanceStage.MEMORY, (k, v) -> v += 1);
+                }
+
                 this.serviceResourceTracker.performMaintenance(now, deadline);
                 stage = MaintenanceStage.IO;
                 break;
             case IO:
+                if (skipped) {
+                    this.stats.compute(MaintenanceStage.IO, (k, v) -> v += 1);
+                }
+
+                log(Level.INFO, "AAA: performingIO now=%s, deadline=%s, now<deadline=%s, diff=%s",
+                        now, deadline, now < deadline, deadline - now);
                 performIOMaintenance(post, now, MaintenanceStage.NODE_SELECTORS, deadline);
                 return;
             case NODE_SELECTORS:
+                if (skipped) {
+                    this.stats.compute(MaintenanceStage.NODE_SELECTORS, (k, v) -> v += 1);
+                }
+
+                log(Level.INFO, "AAA: performingNODE_SELECTORS now=%s, deadline=%s, now<deadline=%s, diff=%s",
+                        now, deadline, now < deadline, deadline - now);
                 performNodeSelectorChangeMaintenance(post, now, MaintenanceStage.SERVICE, true,
                         deadline);
                 return;
             case SERVICE:
+                if (skipped) {
+                    this.stats.compute(MaintenanceStage.SERVICE, (k, v) -> v += 1);
+                }
+
+                log(Level.INFO, "AAA: performingSERVICE now=%s, deadline=%s, now<deadline=%s, diff=%s",
+                        now, deadline, now < deadline, deadline - now);
                 this.serviceMaintTracker.performMaintenance(post, deadline);
+
+                if (!skipped) {
+                    log(Level.INFO, "AAA: skip stats: UTILS=%d, MEMORY=%d, IO=%d, NODE_SELECTORS=%d, SERVICE=%d",
+                            this.stats.get(MaintenanceStage.UTILS),
+                            this.stats.get(MaintenanceStage.MEMORY),
+                            this.stats.get(MaintenanceStage.IO),
+                            this.stats.get(MaintenanceStage.NODE_SELECTORS),
+                            this.stats.get(MaintenanceStage.SERVICE)
+                    );
+                    this.stats = null;
+                }
+
+
                 stage = null;
                 break;
             default:
@@ -4428,7 +4483,12 @@ public class ServiceHost implements ServiceRequestSender {
                 break;
             }
 
+            long end = System.currentTimeMillis();
+            log(Level.INFO, "AAA: performMaintenanceStage %s: took=%s, now=%s, deadline=%s, now<deadline=%s, diff=%s",
+                    stage, end - begin, end, deadline, now < deadline, deadline - now);
+
             if (stage == null) {
+
                 post.complete();
                 scheduleMaintenance();
                 return;
