@@ -60,6 +60,11 @@ public class ResourceGroupService extends StatefulService {
         super.toggleOption(ServiceOption.OWNER_SELECTION, true);
     }
 
+    public static class PatchQueryRequest {
+        public Query clause;
+        public boolean removeClause = false;
+    }
+
     @Override
     public void handleRequest(Operation request, OperationProcessingStage opProcessingStage) {
         if (request.getAction() == Action.DELETE || request.getAction() == Action.PUT) {
@@ -110,6 +115,27 @@ public class ResourceGroupService extends StatefulService {
         } else {
             setState(op, newState);
         }
+        op.complete();
+    }
+
+    @Override
+    public void handlePatch(Operation op) {
+        if (!op.hasBody()) {
+            op.fail(new IllegalArgumentException("body is required"));
+            return;
+        }
+        ResourceGroupState currentState = getState(op);
+        PatchQueryRequest patchQuery = op.getBody(PatchQueryRequest.class);
+        if (patchQuery.clause == null) {
+            op.fail(new IllegalArgumentException("clause is required"));
+            return;
+        }
+        if (patchQuery.removeClause) {
+            AuthorizationCacheUtils.removeBooleanClause(currentState.query, patchQuery.clause);
+        } else {
+            currentState.query.addBooleanClause(patchQuery.clause);
+        }
+        op.setBody(currentState);
         op.complete();
     }
 

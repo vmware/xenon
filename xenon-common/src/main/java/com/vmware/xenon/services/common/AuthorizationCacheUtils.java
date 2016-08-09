@@ -14,6 +14,7 @@
 package com.vmware.xenon.services.common;
 
 import java.util.EnumSet;
+import java.util.Objects;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import com.vmware.xenon.common.Operation;
@@ -279,4 +280,28 @@ public class AuthorizationCacheUtils {
         }
         return true;
     }
+
+    /**
+     * Method to remove a clause from a query. This method bases
+     * an equality check of the clause on the term and occurance
+     * fields in the query. Any boolean clauses in the query are
+     * not considered
+     * @param inputQuery The input query to remove the clause
+     * @param clause The clause to remove
+     * @return
+     */
+    public static Query removeBooleanClause(Query inputQuery, Query inputClause) {
+        if (inputQuery.booleanClauses == null || inputClause == null) {
+            return inputQuery;
+        }
+        for (Query clause : inputQuery.booleanClauses) {
+            if (Objects.equals(clause.term, inputClause.term)
+                    && Objects.equals(clause.occurance, inputClause.occurance)) {
+                inputQuery.booleanClauses.remove(clause);
+                break;
+            }
+        }
+        return inputQuery;
+    }
+
 }
