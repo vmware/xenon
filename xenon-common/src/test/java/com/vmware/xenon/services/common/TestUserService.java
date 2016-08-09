@@ -26,14 +26,17 @@ import org.junit.Test;
 import com.vmware.xenon.common.BasicReusableHostTestCase;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.UriUtils;
+import com.vmware.xenon.common.test.TestRequestSender;
 import com.vmware.xenon.services.common.UserService.UserState;
 
 public class TestUserService extends BasicReusableHostTestCase {
     private URI factoryUri;
+    private TestRequestSender sender;
 
     @Before
     public void setUp() {
         this.factoryUri = UriUtils.buildUri(this.host, ServiceUriPaths.CORE_AUTHZ_USERS);
+        this.sender = new TestRequestSender(this.host);
     }
 
     @After
@@ -46,25 +49,10 @@ public class TestUserService extends BasicReusableHostTestCase {
         UserState state = new UserState();
         state.email = "jane@doe.com";
 
-        final UserState[] outState = new UserState[1];
+        UserState outState = this.sender.postThenGetBody(ServiceUriPaths.CORE_AUTHZ_USERS,
+                UserState.class, op -> op.setBody(state));
 
-        Operation op = Operation.createPost(this.factoryUri)
-                .setBody(state)
-                .setCompletion((o, e) -> {
-                    if (e != null) {
-                        this.host.failIteration(e);
-                        return;
-                    }
-
-                    outState[0] = o.getBody(UserState.class);
-                    this.host.completeIteration();
-                });
-
-        this.host.testStart(1);
-        this.host.send(op);
-        this.host.testWait();
-
-        assertEquals(state.email, outState[0].email);
+        assertEquals(state.email, outState.email);
     }
 
 
@@ -106,23 +94,11 @@ public class TestUserService extends BasicReusableHostTestCase {
         Operation[] outOp = new Operation[1];
         Throwable[] outEx = new Throwable[1];
 
-        Operation op = Operation.createPost(this.factoryUri)
-                .setBody(state)
-                .setCompletion((o, e) -> {
-                    if (e != null) {
-                        outOp[0] = o;
-                        outEx[0] = e;
-                        this.host.completeIteration();
-                        return;
-                    }
-
-                    // No exception, fail test
-                    this.host.failIteration(new IllegalStateException("expected failure"));
-                });
-
-        this.host.testStart(1);
-        this.host.send(op);
-        this.host.testWait();
+        Operation op = Operation.createPost(this.factoryUri).setBody(state);
+        this.sender.sendExpectFailure(op, (o, e)-> {
+            outOp[0] = o;
+            outEx[0] = e;
+        });
 
         assertEquals(Operation.STATUS_CODE_FAILURE_THRESHOLD, outOp[0].getStatusCode());
         assertEquals("email is invalid", outEx[0].getMessage());
@@ -150,17 +126,12 @@ public class TestUserService extends BasicReusableHostTestCase {
         state.userGroupLinks.clear();
         state.userGroupLinks.add("link2");
         state.userGroupLinks.add("link3");
-        this.host.sendAndWait(Operation.createPatch(this.host,
-                UriUtils.buildUriPath(ServiceUriPaths.CORE_AUTHZ_USERS, state.documentSelfLink))
-                    .setBody(state)
-                    .setCompletion((op, ex) -> {
-                        if (ex != null) {
-                            this.host.failIteration(ex);
-                        }
-                        UserState patchedState = op.getBody(UserState.class);
-                        assertEquals(state.email, patchedState.email);
-                        assertEquals(3, patchedState.userGroupLinks.size());
-                        this.host.completeIteration();
-                    }));
+
+        String path = UriUtils.buildUriPath(ServiceUriPaths.CORE_AUTHZ_USERS, state.documentSelfLink);
+
+        UserState patchedState = this.sender.patchThenGetBody(path, UserState.class, op -> op.setBody(state));
+        assertEquals(state.email, patchedState.email);
+        assertEquals(3, patchedState.userGroupLinks.size());
+
     }
 }
