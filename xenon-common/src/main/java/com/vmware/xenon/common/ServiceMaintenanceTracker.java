@@ -13,6 +13,7 @@
 
 package com.vmware.xenon.common;
 
+import java.time.LocalDateTime;
 import java.util.HashSet;
 import java.util.Map.Entry;
 import java.util.Set;
@@ -66,6 +67,8 @@ class ServiceMaintenanceTracker {
     }
 
     public void performMaintenance(Operation op, long deadline) {
+        this.host.log(Level.INFO, "AAAT1: tracker#performMaintenance: " + op.getUri());
+
         long now = Utils.getNowMicrosUtc();
         while (now < deadline) {
             if (this.host.isStopping()) {
@@ -88,6 +91,10 @@ class ServiceMaintenanceTracker {
                 this.nextExpiration.remove(e.getKey());
             }
 
+            this.host.log(Level.INFO, "AAA: services size=%s, entry=%s", services.size(), services);
+            this.host.log(Level.INFO, "AAA: nextExpiration size=%s, entry=%s",
+                    this.nextExpiration.size(), this.nextExpiration);
+
             for (String servicePath : services) {
                 Service s = this.host.findService(servicePath);
 
@@ -108,6 +115,7 @@ class ServiceMaintenanceTracker {
                     continue;
                 }
 
+                this.host.log(Level.INFO, "AAAT2: tracker#performMaintenance for %s", servicePath);
                 performServiceMaintenance(servicePath, s);
             }
             now = Utils.getNowMicrosUtc();
@@ -115,6 +123,8 @@ class ServiceMaintenanceTracker {
     }
 
     private void performServiceMaintenance(String servicePath, Service s) {
+        this.host.log(Level.INFO, "AAA: Host performServiceMaintenance for " + s + ":" + servicePath);
+
         long[] start = new long[1];
         ServiceMaintenanceRequest body = ServiceMaintenanceRequest.create();
         body.reasons.add(MaintenanceReason.PERIODIC_SCHEDULE);
@@ -146,6 +156,10 @@ class ServiceMaintenanceTracker {
                             }
                         });
         this.host.schedule(() -> {
+
+            long startTime = System.currentTimeMillis();
+            this.host.log(Level.INFO, "AAA: Host schedule started %s for " + s + ":" + servicePath, LocalDateTime.now());
+
             try {
                 OperationContext.setAuthorizationContext(this.host
                         .getSystemAuthorizationContext());
@@ -163,6 +177,11 @@ class ServiceMaintenanceTracker {
                         servicePath, Utils.toString(ex));
                 servicePost.fail(ex);
             }
+
+            long duration = System.currentTimeMillis() - startTime;
+            this.host.log(Level.INFO, "AAA: Host schedule finished(%d) %s for %s:%s",
+                    duration, LocalDateTime.now(), s, servicePath);
+
         }, SCHEDULING_EPSILON_MICROS, TimeUnit.MICROSECONDS);
     }
 
