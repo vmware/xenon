@@ -3313,6 +3313,34 @@ public class TestQueryTaskService {
         assertEquals(uriStr, QuerySpecification.toMatchValue(uriV));
     }
 
+    @Test
+    public void removeBooleanClause() throws Throwable {
+        Query origClause = Query.Builder.create(Occurance.MUST_OCCUR).setTerm("foo", "bar").build();
+        Query mainQuery = Query.Builder.create().addClause(origClause).build();
+        assertEquals(mainQuery.booleanClauses.size(), 1);
+        mainQuery.removeBooleanClause(origClause);
+        assertEquals(mainQuery.booleanClauses.size(), 0);
+        mainQuery = Query.Builder.create().addClause(origClause).build();
+        assertEquals(mainQuery.booleanClauses.size(), 1);
+        Query newClause = Query.Builder.create(Occurance.SHOULD_OCCUR).addFieldClause("foo", "bar").build();
+        mainQuery.removeBooleanClause(newClause);
+        assertEquals(mainQuery.booleanClauses.size(), 1);
+        newClause = Query.Builder.create(Occurance.MUST_OCCUR).addFieldClause("foo", "bar1").build();
+        mainQuery.removeBooleanClause(newClause);
+        assertEquals(mainQuery.booleanClauses.size(), 1);
+        // create a range clause and add it to the query
+        Query rangeClause = Query.Builder.create(Occurance.MUST_OCCUR).addRangeClause("foo",
+                NumericRange.createEqualRange(1L)).build();
+        mainQuery = mainQuery.addBooleanClause(rangeClause);
+        assertEquals(mainQuery.booleanClauses.size(), 2);
+        Query rangeClauseNoMatch = Query.Builder.create(Occurance.MUST_OCCUR).addRangeClause("foo",
+                NumericRange.createEqualRange(2L)).build();
+        mainQuery.removeBooleanClause(rangeClauseNoMatch);
+        assertEquals(mainQuery.booleanClauses.size(), 2);
+        mainQuery.removeBooleanClause(rangeClause);
+        assertEquals(mainQuery.booleanClauses.size(), 1);
+    }
+
     private void verifyTaskAutoExpiration(URI u) throws Throwable {
         // test task expiration
         Date exp = this.host.getTestExpiration();
