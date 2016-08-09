@@ -18,6 +18,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 
 import com.vmware.xenon.common.ServiceDocument;
@@ -393,6 +394,27 @@ public class QueryTask extends ServiceDocument {
             }
             return createLongRange((Long) num, (Long) num, true, true);
         }
+
+        @Override
+        public boolean equals(Object obj) {
+            if (obj != null && obj instanceof NumericRange<?>) {
+                NumericRange<?> nObj = (NumericRange<?>)obj;
+                if ((this.isMaxInclusive == nObj.isMaxInclusive)
+                        && (this.isMinInclusive == nObj.isMinInclusive)
+                        && Objects.equals(this.max, nObj.max)
+                        && Objects.equals(this.min, nObj.min)
+                        && Objects.equals(this.precisionStep, nObj.precisionStep)
+                        && Objects.equals(this.type, nObj.type)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(this.max, this.min, this.precisionStep, this.type);
+        }
     }
 
     public static class QueryTerm {
@@ -405,6 +427,26 @@ public class QueryTask extends ServiceDocument {
         public String matchValue;
         public MatchType matchType;
         public NumericRange<?> range;
+
+        @Override
+        public boolean equals(Object obj) {
+            if (obj != null && obj instanceof QueryTerm) {
+                QueryTerm qObj = (QueryTerm)obj;
+                if (Objects.equals(this.propertyName, qObj.propertyName)
+                        && Objects.equals(this.propertyType, qObj.propertyType)
+                        && Objects.equals(this.matchType, qObj.matchType)
+                        && Objects.equals(this.matchValue, qObj.matchValue)
+                        && Objects.equals(this.range, qObj.range)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(this.propertyName, this.propertyType, this.matchType, this.matchValue, this.range);
+        }
     }
 
     public static class Query {

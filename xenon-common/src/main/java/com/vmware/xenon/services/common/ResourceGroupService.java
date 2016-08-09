@@ -13,6 +13,8 @@
 
 package com.vmware.xenon.services.common;
 
+import java.util.Objects;
+
 import com.vmware.xenon.common.FactoryService;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Service;
@@ -58,6 +60,23 @@ public class ResourceGroupService extends StatefulService {
         super.toggleOption(ServiceOption.PERSISTENCE, true);
         super.toggleOption(ServiceOption.REPLICATION, true);
         super.toggleOption(ServiceOption.OWNER_SELECTION, true);
+    }
+
+    public static class PatchQueryRequest {
+        public static final String KIND = Utils.buildKind(PatchQueryRequest.class);
+        public Query clause;
+        public boolean removeClause = false;
+        public String kind;
+
+        private PatchQueryRequest(Query clause, boolean removeClause) {
+            this.clause = clause;
+            this.removeClause = removeClause;
+            this.kind = KIND;
+        }
+
+        public static PatchQueryRequest create(Query clause, boolean removeClause) {
+            return new PatchQueryRequest(clause, removeClause);
+        }
     }
 
     @Override
@@ -110,6 +129,31 @@ public class ResourceGroupService extends StatefulService {
         } else {
             setState(op, newState);
         }
+        op.complete();
+    }
+
+    @Override
+    public void handlePatch(Operation op) {
+        if (!op.hasBody()) {
+            op.fail(new IllegalArgumentException("body is required"));
+            return;
+        }
+        ResourceGroupState currentState = getState(op);
+        PatchQueryRequest patchQuery = op.getBody(PatchQueryRequest.class);
+        if (!Objects.equals(patchQuery.kind, PatchQueryRequest.KIND)) {
+            op.fail(new IllegalArgumentException("kind should be : " + PatchQueryRequest.KIND));
+            return;
+        }
+        if (patchQuery.clause == null) {
+            op.fail(new IllegalArgumentException("clause is required"));
+            return;
+        }
+        if (patchQuery.removeClause) {
+            AuthorizationCacheUtils.removeBooleanClause(currentState.query, patchQuery.clause);
+        } else {
+            currentState.query.addBooleanClause(patchQuery.clause);
+        }
+        op.setBody(currentState);
         op.complete();
     }
 

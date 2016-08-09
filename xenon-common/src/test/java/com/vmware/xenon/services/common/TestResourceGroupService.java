@@ -24,8 +24,11 @@ import org.junit.Test;
 
 import com.vmware.xenon.common.BasicReusableHostTestCase;
 import com.vmware.xenon.common.Operation;
+import com.vmware.xenon.common.Service.Action;
 import com.vmware.xenon.common.UriUtils;
+import com.vmware.xenon.services.common.QueryTask.NumericRange;
 import com.vmware.xenon.services.common.QueryTask.Query;
+import com.vmware.xenon.services.common.ResourceGroupService.PatchQueryRequest;
 import com.vmware.xenon.services.common.ResourceGroupService.ResourceGroupState;
 
 public class TestResourceGroupService extends BasicReusableHostTestCase {
@@ -63,6 +66,35 @@ public class TestResourceGroupService extends BasicReusableHostTestCase {
         state.query.setTermPropertyName("new-name");
         state.query.setTermMatchValue("new-value");
         postHelper(state);
+    }
+
+    @Test
+    public void testPatch() throws Throwable {
+        ResourceGroupState state = new ResourceGroupState();
+        state.documentSelfLink = "test-patch";
+        state.query = new Query();
+        state.query.setTermPropertyName("name");
+        state.query.setTermMatchValue("value");
+        ResourceGroupState returnState = this.postOrPatchHelper(state, Action.POST, this.factoryUri);
+
+        // issue a PATCH with a query clause to add
+        Query clause =  new Query();
+        clause.setTermPropertyName("patch-name");
+        clause.setTermMatchValue("patch-value");
+        clause.setNumericRange(NumericRange.createEqualRange(1L));
+        PatchQueryRequest queryPatch = PatchQueryRequest.create(clause, false);
+        returnState = this.postOrPatchHelper(queryPatch, Action.PATCH, UriUtils.buildUri(this.host, returnState.documentSelfLink));
+        assertEquals(returnState.query.booleanClauses.size(), 1);
+
+        // issue a PATCH with a query clause to remove an entry that does not exist
+        queryPatch.clause.setNumericRange(NumericRange.createEqualRange(2L));
+        queryPatch.removeClause = true;
+        returnState = this.postOrPatchHelper(queryPatch, Action.PATCH, UriUtils.buildUri(this.host, returnState.documentSelfLink));
+        assertEquals(returnState.query.booleanClauses.size(), 1);
+
+        queryPatch.clause.setNumericRange(NumericRange.createEqualRange(1L));
+        returnState = this.postOrPatchHelper(queryPatch, Action.PATCH, UriUtils.buildUri(this.host, returnState.documentSelfLink));
+        assertEquals(returnState.query.booleanClauses.size(), 0);
     }
 
     @Test
@@ -131,16 +163,26 @@ public class TestResourceGroupService extends BasicReusableHostTestCase {
     }
 
     private void postHelper(ResourceGroupState state) throws Throwable {
+        ResourceGroupState returnState = postOrPatchHelper(state, Action.POST, this.factoryUri);
+        assertEquals(state.query.term.propertyName, returnState.query.term.propertyName);
+        assertEquals(state.query.term.matchValue, returnState.query.term.matchValue);
+    }
+
+    private ResourceGroupState postOrPatchHelper(Object state, Action action, URI uri) throws Throwable {
         ResourceGroupState[] outState = new ResourceGroupState[1];
 
-        Operation op = Operation.createPost(this.factoryUri)
-                .setBody(state)
+        Operation op = null;
+        if (action.equals(Action.PATCH)) {
+            op = Operation.createPatch(uri);
+        } else {
+            op = Operation.createPost(uri);
+        }
+        op.setBody(state)
                 .setCompletion((o, e) -> {
                     if (e != null) {
                         this.host.failIteration(e);
                         return;
                     }
-
                     outState[0] = o.getBody(ResourceGroupState.class);
                     this.host.completeIteration();
                 });
@@ -149,7 +191,6 @@ public class TestResourceGroupService extends BasicReusableHostTestCase {
         this.host.send(op);
         this.host.testWait();
 
-        assertEquals(state.query.term.propertyName, outState[0].query.term.propertyName);
-        assertEquals(state.query.term.matchValue, outState[0].query.term.matchValue);
+        return outState[0];
     }
 }
