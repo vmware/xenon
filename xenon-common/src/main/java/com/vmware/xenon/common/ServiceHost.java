@@ -2468,6 +2468,7 @@ public class ServiceHost implements ServiceRequestSender {
                     startUiFileContentServices(s);
                 }
                 if (s.hasOption(ServiceOption.PERIODIC_MAINTENANCE)) {
+                    log(Level.INFO, "AAA: HOST scheduling maintenance for service=%s:%s", s, s.getSelfLink());
                     this.serviceMaintTracker.schedule(s, Utils.getNowMicrosUtc());
                 }
 
