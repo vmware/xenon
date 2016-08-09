@@ -139,7 +139,7 @@ class ServiceMaintenanceTracker {
                             }
 
                             // schedule again, for next maintenance interval
-                        schedule(s, now);
+                            schedule(s, now);
                             if (ex != null) {
                                 this.host.log(Level.WARNING, "Service %s failed maintenance: %s",
                                         servicePath, Utils.toString(ex));
@@ -155,7 +155,13 @@ class ServiceMaintenanceTracker {
                 start[0] = Utils.getNowMicrosUtc();
                 s.handleMaintenance(servicePost);
             } catch (Throwable ex) {
+                // Mostly at this point, CompletionHandler for servicePost has already consumed in
+                // "s.handleMaintenance()" and have set null (based on the handleMaintenance impl).
+                // Calling fail() will not trigger any CompletionHandler, therefore explicitly
+                // write log here as well.
                 servicePost.fail(ex);
+                this.host.log(Level.WARNING, "Service %s failed to perform maintenance: %s",
+                        servicePath, Utils.toString(ex));
             }
         }, SCHEDULING_EPSILON_MICROS, TimeUnit.MICROSECONDS);
     }
