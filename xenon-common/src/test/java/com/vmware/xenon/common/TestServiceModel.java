@@ -27,6 +27,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.TimeoutException;
+import java.util.logging.Level;
 
 import org.junit.Test;
 
@@ -791,6 +792,9 @@ public class TestServiceModel extends BasicReusableHostTestCase {
         post.complete();
 
         ServiceStat stat = s.getStat(STAT_NAME_HANDLE_PERIODIC_MAINTENANCE);
+
+        s.getHost().log(Level.INFO, "A: STAT=%s", stat);
+
         s.adjustStat(stat, 1);
         if (stat.latestValue >= PERIODIC_MAINTENANCE_MAX) {
             s.toggleOption(ServiceOption.PERIODIC_MAINTENANCE, false);
@@ -811,12 +815,13 @@ public class TestServiceModel extends BasicReusableHostTestCase {
         this.host.startServiceAndWait(s, UUID.randomUUID().toString(), null);
 
         ServiceStat stat = s.getStat(STAT_NAME_HANDLE_PERIODIC_MAINTENANCE);
+        s.getHost().log(Level.INFO, "B: STAT=%s", stat);
 
         Date exp = this.host.getTestExpiration();
         while (stat.latestValue < PERIODIC_MAINTENANCE_MAX) {
             Thread.sleep(100);
-            this.host.log("Handled %d periodic maintenance events, expecting %d",
-                    (int)stat.latestValue, PERIODIC_MAINTENANCE_MAX);
+            this.host.log("Handled %d periodic maintenance events for %s, expecting %d",
+                    (int)stat.latestValue, s.getClass().getSimpleName(), PERIODIC_MAINTENANCE_MAX);
             if (new Date().after(exp)) {
                 throw new TimeoutException();
             }
