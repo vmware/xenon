@@ -115,6 +115,8 @@ class ServiceMaintenanceTracker {
     }
 
     private void performServiceMaintenance(String servicePath, Service s) {
+        this.host.log(Level.INFO, "AAA: Host performServiceMaintenance for " + s + ":" + servicePath);
+
         long[] start = new long[1];
         ServiceMaintenanceRequest body = ServiceMaintenanceRequest.create();
         body.reasons.add(MaintenanceReason.PERIODIC_SCHEDULE);
