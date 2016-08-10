@@ -15,7 +15,7 @@ package com.vmware.xenon.common;
 
 import static com.vmware.xenon.common.TransactionServiceHelper.handleGetWithinTransaction;
 import static com.vmware.xenon.common.TransactionServiceHelper.handleOperationInTransaction;
-import static com.vmware.xenon.common.TransactionServiceHelper.notifyTransactionCoordinator;
+import static com.vmware.xenon.common.TransactionServiceHelper.notifyTransactionCoordinatorOp;
 
 import java.net.URI;
 import java.util.Collection;
@@ -675,7 +675,7 @@ public class StatefulService implements Service {
 
         if (op.isWithinTransaction() && this.getHost().getTransactionServiceUri() != null) {
             allocatePendingTransactions();
-            notifyTransactionCoordinator(this, op, e);
+            notifyTransactionCoordinatorOp(this, op, e).sendWith(this);
         }
 
         if (e != null) {
