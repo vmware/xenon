@@ -207,6 +207,26 @@ public class TestOperation extends BasicReusableHostTestCase {
     }
 
     @Test
+    public void nestCompletionWithEmptyCompletionHandler() throws Throwable {
+        List<Integer> list = new ArrayList<>();
+        Operation op = Operation.createGet(this.host.getUri());
+        // not calling setCompletion()
+        op.nestCompletion((o, e) -> {
+            list.add(1);
+            o.complete();
+            list.add(10);
+        });
+        op.nestCompletion((o, e) -> {
+            list.add(2);
+            o.complete();
+            list.add(20);
+        });
+        op.complete();
+
+        assertArrayEquals(new Integer[]{2, 1, 10, 20}, list.toArray(new Integer[list.size()]));
+    }
+
+    @Test
     public void appendCompletionCheckOrderAndOperationIdentity() throws Throwable {
 
         List<Integer> list = new ArrayList<>();
@@ -287,6 +307,27 @@ public class TestOperation extends BasicReusableHostTestCase {
 
         assertArrayEquals(new Integer[]{1, 2, 10}, list.toArray(new Integer[list.size()]));
     }
+
+    @Test
+    public void appendCompletionWithEmptyCompletionHanlder() throws Throwable {
+        List<Integer> list = new ArrayList<>();
+        Operation op = Operation.createGet(this.host.getUri());
+        // not calling setCompletion()
+        op.appendCompletion((o, e) -> {
+            list.add(1);
+            o.complete();
+            list.add(10);
+        });
+        op.appendCompletion((o, e) -> {
+            list.add(2);
+            o.complete();
+            list.add(20);
+        });
+        op.complete();
+
+        assertArrayEquals(new Integer[]{1, 2, 20, 10}, list.toArray(new Integer[list.size()]));
+    }
+
 
     @Test
     public void completion() throws Throwable {

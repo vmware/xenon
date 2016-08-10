@@ -1247,10 +1247,14 @@ public class Operation implements Cloneable {
      */
     public Operation appendCompletion(CompletionHandler h) {
         CompletionHandler existing = this.completion;
-        setCompletion((o, e) -> {
-            o.nestCompletion(h);
-            existing.handle(o, e);
-        });
+        if (existing == null) {
+            setCompletion(h);
+        } else {
+            setCompletion((o, e) -> {
+                o.nestCompletion(h);
+                existing.handle(o, e);
+            });
+        }
         return this;
     }
 
