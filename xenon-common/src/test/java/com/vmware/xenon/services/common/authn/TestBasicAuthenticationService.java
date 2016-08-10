@@ -19,8 +19,11 @@ import static org.junit.Assert.assertNotNull;
 import static com.vmware.xenon.services.common.authn.BasicAuthenticationUtils.constructBasicAuth;
 
 import java.net.URI;
+import java.util.ArrayList;
 import java.util.Base64;
+import java.util.Collection;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
@@ -30,6 +33,7 @@ import org.junit.Test;
 import com.vmware.xenon.common.BasicTestCase;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Operation.AuthorizationContext;
+import com.vmware.xenon.common.ServiceStateCollectionUpdateRequest;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
 import com.vmware.xenon.common.http.netty.CookieJar;
@@ -429,7 +433,7 @@ public class TestBasicAuthenticationService extends BasicTestCase {
     }
 
     @Test
-    public void testCustomProperties() throws Throwable {
+    public void testCustomPropertiesAndTenantLinks() throws Throwable {
         String firstProperty = "Property1";
         String firstValue = "Value1";
         String secondProperty = "Property2";
@@ -474,6 +478,46 @@ public class TestBasicAuthenticationService extends BasicTestCase {
                     assertEquals("There should be two custom properties", state.customProperties.size(), 2);
                     assertEquals(state.customProperties.get(firstProperty), updatedValue);
                     assertEquals(state.customProperties.get(secondProperty), secondValue);
+                    this.host.completeIteration();
+                });
+        this.host.testStart(1);
+        this.host.send(updateProperies);
+        this.host.testWait();
+
+        // update tenantLinks via a CollectionsPatchRequest
+        List<String> tenantLinks = new ArrayList<>();
+        tenantLinks.add("foo");
+        Map<String, Collection<Object>> itemsToAdd = new HashMap<>();
+        itemsToAdd.put("tenantLinks", new ArrayList<>(tenantLinks));
+        ServiceStateCollectionUpdateRequest patchRequest = ServiceStateCollectionUpdateRequest.create(itemsToAdd, null) ;
+        updateProperies = Operation.createPatch(authUri)
+                .setBody(patchRequest)
+                .setCompletion((o, e) -> {
+                    if (e != null) {
+                        this.host.failIteration(e);
+                        return;
+                    }
+                    AuthCredentialsServiceState state = o.getBody(AuthCredentialsServiceState.class);
+                    assertEquals("There should be one tenantLink", state.tenantLinks.size(), 1);
+                    this.host.completeIteration();
+                });
+        this.host.testStart(1);
+        this.host.send(updateProperies);
+        this.host.testWait();
+
+        // remove the tenantLink
+        Map<String, Collection<Object>> itemsToRemove = new HashMap<>();
+        itemsToRemove.put("tenantLinks", new ArrayList<>(tenantLinks));
+        patchRequest = ServiceStateCollectionUpdateRequest.create(null, itemsToRemove) ;
+        updateProperies = Operation.createPatch(authUri)
+                .setBody(patchRequest)
+                .setCompletion((o, e) -> {
+                    if (e != null) {
+                        this.host.failIteration(e);
+                        return;
+                    }
+                    AuthCredentialsServiceState state = o.getBody(AuthCredentialsServiceState.class);
+                    assertEquals("There should be no tenantLink", state.tenantLinks.size(), 0);
                     this.host.completeIteration();
                 });
         this.host.testStart(1);

@@ -19,6 +19,7 @@ import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.io.UnsupportedEncodingException;
+import java.lang.reflect.Field;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 import java.net.Inet6Address;
@@ -29,9 +30,11 @@ import java.nio.charset.CharacterCodingException;
 import java.nio.charset.Charset;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.Collection;
 import java.util.EnumSet;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.UUID;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
@@ -1074,6 +1077,25 @@ public class Utils {
     }
 
     /**
+     * Update the state of collections that are part of the service state
+     * @param currentState The current state
+     * @param op Operation with the patch request
+     * @return
+     * @throws IllegalAccessException
+     * @throws NoSuchFieldException
+     */
+    public static <T extends ServiceDocument> boolean mergeWithState(T currentState, Operation op)
+            throws NoSuchFieldException, IllegalAccessException {
+        ServiceStateCollectionUpdateRequest requestBody =
+                op.getBody(ServiceStateCollectionUpdateRequest.class);
+        if (ServiceStateCollectionUpdateRequest.KIND.equals(requestBody.kind)) {
+            Utils.updateCollections(currentState, requestBody);
+            return true;
+        }
+        return false;
+    }
+
+    /**
      * Validates {@code state} object by checking for null value fields.
      *
      * @param desc Service document description.
@@ -1136,5 +1158,61 @@ public class Utils {
     public static StringBuilder getBuilder() {
         return builderPerThread.get();
 
+    }
+
+    /**
+     * add/remove elements from specified collections; If both are specified elements are removed
+     * before new elements added
+     *
+     * @param currentState currentState of the service
+     * @param patchBody request of processing collections
+     * @throws NoSuchFieldException
+     * @throws IllegalAccessException
+     */
+    public static <T extends ServiceDocument> void updateCollections(T currentState, ServiceStateCollectionUpdateRequest patchBody)
+            throws NoSuchFieldException, IllegalAccessException {
+        if (patchBody.itemsToRemove != null) {
+            for (Entry<String, Collection<Object>> collectionItem : patchBody.itemsToRemove.entrySet()) {
+                processCollection(collectionItem.getValue(), collectionItem.getKey(), currentState, CollectionOperation.REMOVE);
+            }
+        }
+        if (patchBody.itemsToAdd != null) {
+            for (Entry<String, Collection<Object>> collectionItem : patchBody.itemsToAdd.entrySet()) {
+                processCollection(collectionItem.getValue(), collectionItem.getKey(), currentState, CollectionOperation.ADD);
+            }
+        }
+    }
+
+    private static enum CollectionOperation {
+        ADD, REMOVE
+    }
+
+    @SuppressWarnings("unchecked")
+    private static <T extends ServiceDocument> void processCollection(Collection<Object> inputCollection, String collectionName,
+            T currentState, CollectionOperation operation) throws NoSuchFieldException, IllegalAccessException {
+        if (inputCollection != null && !inputCollection.isEmpty()) {
+            Class<? extends ServiceDocument> clazz = currentState.getClass();
+            Field field = clazz.getField(collectionName);
+            if (field != null && Collection.class.isAssignableFrom(field.getType())) {
+                @SuppressWarnings("rawtypes")
+                Collection collObj = (Collection) field.get(currentState);
+                switch (operation) {
+                case ADD:
+                    if (collObj == null) {
+                        field.set(currentState, inputCollection);
+                    } else {
+                        collObj.addAll(inputCollection);
+                    }
+                    break;
+                case REMOVE:
+                    if (collObj != null) {
+                        collObj.removeAll(inputCollection);
+                    }
+                    break;
+                default:
+                    break;
+                }
+            }
+        }
     }
 }

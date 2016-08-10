@@ -2,6 +2,10 @@
 
 ## 0.9.3-SNAPSHOT
 
+* Add a flavor of mergeWithState() that processes a
+  ServiceStateCollectionUpdateRequest object to add and remove
+  elements from a collection
+
 * Add time series stats for thread count, CPU, memory, disk in the
   existing stats tracked by /core/management/stats
 

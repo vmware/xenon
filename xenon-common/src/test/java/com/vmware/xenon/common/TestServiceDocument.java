@@ -22,6 +22,8 @@ import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.math.RoundingMode;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
 import java.util.Date;
 import java.util.EnumSet;
 import java.util.HashMap;
@@ -179,6 +181,24 @@ public class TestServiceDocument {
         Assert.assertEquals("Check unmodified key/value is preserved.", source.mapOfStrings.get("key-1"), "value-1");
         Assert.assertEquals("Check modified key/value is changed as intended.", source.mapOfStrings.get("key-2"), "value-2-patched");
         Assert.assertEquals("Check new key/value is added.", source.mapOfStrings.get("key-4"), "value-4-new");
+    }
+
+    @Test
+    public void testCollectionsUpdate() throws Throwable {
+        MergeTest state = new MergeTest();
+        state.listOfStrings = new ArrayList<String>();
+        state.listOfStrings.add(SOME_STRING_VALUE);
+        state.listOfStrings.add(SOME_OTHER_STRING_VALUE);
+        state.setOfStrings = new HashSet<String>();
+        Map<String, Collection<Object>> collectionsToRemove = new HashMap<>();
+        collectionsToRemove.put("listOfStrings", new ArrayList<>(state.listOfStrings));
+        Map<String, Collection<Object>> collectionsToAdd = new HashMap<>();
+        collectionsToRemove.put("listOfStrings", new ArrayList<>(state.listOfStrings));
+        collectionsToAdd.put("setOfStrings", new ArrayList<>(Arrays.asList(SOME_STRING_VALUE)));
+        ServiceStateCollectionUpdateRequest request = ServiceStateCollectionUpdateRequest.create(collectionsToAdd, collectionsToRemove);
+        Utils.updateCollections(state, request);
+        assertEquals(state.listOfStrings.size(), 0);
+        assertEquals(state.setOfStrings.size(), 1);
     }
 
     @Test
