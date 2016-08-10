@@ -213,12 +213,14 @@ public class TestServiceHost {
         ExampleServiceHost h = new ExampleServiceHost();
         try {
             String bindAddress = "127.0.0.1";
+            URI publicUri = new URI("http://somehost.com:1234");
             String hostId = UUID.randomUUID().toString();
 
             String[] args = {
                     "--sandbox=" + this.tmpFolder.getRoot().toURI(),
                     "--port=0",
                     "--bindAddress=" + bindAddress,
+                    "--publicUri=" + publicUri.toString(),
                     "--id=" + hostId
             };
 
@@ -240,20 +242,22 @@ public class TestServiceHost {
 
             h.start();
 
+            assertTrue(UriUtils.isHostEqual(h, publicUri));
+
             assertEquals(bindAddress, h.getPreferredAddress());
 
             assertEquals(bindAddress, h.getUri().getHost());
 
             assertEquals(hostId, h.getId());
-            assertEquals(h.getUri(), h.getPublicUri());
+            assertEquals(publicUri, h.getPublicUri());
 
             // confirm the node group self node entry uses the public URI for the bind address
             NodeGroupState ngs = this.host.getServiceState(null, NodeGroupState.class,
                     UriUtils.buildUri(h.getUri(), ServiceUriPaths.DEFAULT_NODE_GROUP));
 
             NodeState selfEntry = ngs.nodes.get(h.getId());
-            assertEquals(bindAddress, selfEntry.groupReference.getHost());
-            assertEquals(h.getUri().getPort(), selfEntry.groupReference.getPort());
+            assertEquals(publicUri.getHost(), selfEntry.groupReference.getHost());
+            assertEquals(publicUri.getPort(), selfEntry.groupReference.getPort());
 
             // validate memory limits per service
             long maxMemory = Runtime.getRuntime().maxMemory() / (1024 * 1024);
