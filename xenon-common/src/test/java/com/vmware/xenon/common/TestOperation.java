@@ -13,10 +13,14 @@
 
 package com.vmware.xenon.common;
 
+import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
+import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.UUID;
@@ -180,6 +184,108 @@ public class TestOperation extends BasicReusableHostTestCase {
         Operation clone = opWithFailImplicitNestAndClone.clone();
         clone.fail(new IllegalStateException("induced failure"));
         ctx.await();
+    }
+
+    @Test
+    public void nestCompletionOrder() throws Throwable {
+        List<Integer> list = new ArrayList<>();
+        Operation op = Operation.createGet(this.host.getUri());
+        op.setCompletion((o, e) -> list.add(0));
+        op.nestCompletion((o, e) -> {
+            list.add(1);
+            o.complete();
+            list.add(10);
+        });
+        op.nestCompletion((o, e) -> {
+            list.add(2);
+            o.complete();
+            list.add(20);
+        });
+        op.complete();
+
+        assertArrayEquals(new Integer[]{2, 1, 0, 10, 20}, list.toArray(new Integer[list.size()]));
+    }
+
+    @Test
+    public void appendCompletionCheckOrderAndOperationIdentity() throws Throwable {
+
+        List<Integer> list = new ArrayList<>();
+        Operation op = Operation.createGet(this.host.getUri());
+        op.setCompletion((o, e) -> {
+            list.add(1);
+            op.complete();
+            list.add(10);
+        });
+        op.appendCompletion((o, e) -> {
+            list.add(2);
+            assertSame(op, o);
+            op.complete();
+            list.add(20);
+        });
+        op.appendCompletion((o, e) -> {
+            list.add(3);
+            assertSame(op, o);
+            op.complete();
+            list.add(30);
+        });
+        op.complete();
+
+        assertArrayEquals(new Integer[]{1, 2, 3, 30, 20, 10}, list.toArray(new Integer[list.size()]));
+    }
+
+    @Test
+    public void appendCompletionCheckOrderAndExceptionIdentity() throws Throwable {
+        Exception ex1 = new RuntimeException();
+        Exception ex2 = new RuntimeException();
+        Exception ex3 = new RuntimeException();
+
+        List<Integer> list = new ArrayList<>();
+        Operation op = Operation.createGet(this.host.getUri());
+        op.setCompletion((o, e) -> {
+            list.add(1);
+            assertSame(op, o);
+            assertSame(ex1, e);
+            op.fail(ex2);
+            list.add(10);
+        });
+        op.appendCompletion((o, e) -> {
+            list.add(2);
+            assertSame(op, o);
+            assertSame(ex2, e);
+            op.fail(ex3);
+            list.add(20);
+        });
+        op.appendCompletion((o, e) -> {
+            list.add(3);
+            assertSame(op, o);
+            assertSame(ex3, e);
+        });
+
+        op.fail(ex1);
+
+        assertArrayEquals(new Integer[]{1, 2, 3, 20, 10}, list.toArray(new Integer[list.size()]));
+    }
+
+    @Test
+    public void appendCompletionNoComplete() throws Throwable {
+
+        List<Integer> list = new ArrayList<>();
+        Operation op = Operation.createGet(this.host.getUri());
+        op.setCompletion((o, e) -> {
+            list.add(1);
+            o.complete();
+            list.add(10);
+        });
+        op.appendCompletion((o, e) -> {
+            list.add(2);
+            // DO NOT CALL complete()
+        });
+        op.appendCompletion((o, e) -> {
+            fail("Should not be called");
+        });
+        op.complete();
+
+        assertArrayEquals(new Integer[]{1, 2, 10}, list.toArray(new Integer[list.size()]));
     }
 
     @Test
