@@ -19,6 +19,7 @@ import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.io.UnsupportedEncodingException;
+import java.lang.reflect.Field;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 import java.net.Inet6Address;
@@ -29,7 +30,9 @@ import java.nio.charset.CharacterCodingException;
 import java.nio.charset.Charset;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.Collection;
 import java.util.EnumSet;
+import java.util.Iterator;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
@@ -1136,5 +1139,69 @@ public class Utils {
     public static StringBuilder getBuilder() {
         return builderPerThread.get();
 
+    }
+
+    /**
+     * Request used for removing elements from a collection
+     */
+    public static class CollectionsRemovalRequest {
+        public static final String KIND = Utils.buildKind(CollectionsRemovalRequest.class);
+        /**
+         * Key is the field name of the collection
+         * Value is the elements of the collection that need to be removed.
+         */
+        public Map<String, Collection<Object>> collectionsMap;
+
+        public String kind;
+
+        private CollectionsRemovalRequest(Map<String, Collection<Object>> collectionsMap) {
+            this.collectionsMap = collectionsMap;
+            this.kind = KIND;
+        }
+
+        public static CollectionsRemovalRequest create(Map<String, Collection<Object>> collectionsMap) {
+            return new CollectionsRemovalRequest(collectionsMap);
+        }
+    }
+
+    /**
+     * Remove elements from specified collections
+     *
+     * @param currentState currentState of the service
+     * @param removalBody request of removing elements
+     * @return true current state has been updated, false otherwise
+     * @throws NoSuchFieldException
+     * @throws IllegalAccessException
+     */
+    public static <T extends ServiceDocument> boolean removeFromCollections(T currentState, CollectionsRemovalRequest removalBody)
+            throws NoSuchFieldException, IllegalAccessException {
+        boolean isChanged = false;
+
+        Class<? extends ServiceDocument> clazz = currentState.getClass();
+
+        for (String collectionName : removalBody.collectionsMap.keySet()) {
+            Collection<Object> elementsToBeRemoved = removalBody.collectionsMap.get(collectionName);
+
+            if (elementsToBeRemoved != null && !elementsToBeRemoved.isEmpty()) {
+                Field field = clazz.getField(collectionName);
+
+                if (field != null && Collection.class.isAssignableFrom(field.getType())) {
+                    // get target collection
+                    @SuppressWarnings("rawtypes")
+                    Collection collObj = (Collection) field.get(currentState);
+                    @SuppressWarnings("rawtypes")
+                    Iterator iterator = collObj.iterator();
+                    // delete elements from collection
+                    while (iterator.hasNext()) {
+                        Object currentElement = iterator.next();
+                        if (elementsToBeRemoved.contains(currentElement)) {
+                            iterator.remove();
+                            isChanged = true;
+                        }
+                    }
+                }
+            }
+        }
+        return isChanged;
     }
 }
