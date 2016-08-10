@@ -204,6 +204,10 @@ public class NodeGroupUtils {
             Operation peerOp = Operation.createGet(ns.groupReference)
                     .transferRefererFrom(parentOp)
                     .setExpiration(parentOp.getExpirationMicrosUtc());
+            if (host.getId().equals(ns.id)) {
+                // optimization, use in process fast path for self host
+                peerOp.setUri(UriUtils.buildUri(host.getUri(), ns.groupReference.getPath()));
+            }
             ops.add(peerOp);
         }
 
