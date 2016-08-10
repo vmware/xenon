@@ -31,6 +31,7 @@ import org.junit.Test;
 import com.vmware.xenon.common.Service.Action;
 import com.vmware.xenon.common.ServiceSubscriptionState.ServiceSubscriber;
 import com.vmware.xenon.common.http.netty.NettyHttpServiceClient;
+import com.vmware.xenon.common.test.TestContext;
 import com.vmware.xenon.common.test.VerificationHost;
 import com.vmware.xenon.services.common.ExampleService;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
@@ -423,10 +424,10 @@ public class TestSubscriptions extends BasicReportTestCase {
     private void deleteNotificationTarget(AtomicInteger deletesRemainingCount,
             ServiceSubscriber sr) throws Throwable {
         deletesRemainingCount.set(1);
-        this.host.testStart(1);
+        TestContext ctx = testCreate(1);
         this.host.send(Operation.createDelete(sr.reference)
-                .setCompletion(this.host.getCompletion()));
-        this.host.testWait();
+                .setCompletion((o, e) -> ctx.completeIteration()));
+        testWait(ctx);
     }
 
     private void doNotificationsWithFailure(URI[] childUris) throws Throwable, InterruptedException {
@@ -645,14 +646,13 @@ public class TestSubscriptions extends BasicReportTestCase {
     private void unsubscribeFromChildren(URI[] uris, URI targetUri,
             boolean useServiceHostStopSubscription) throws Throwable {
         int count = uris.length;
-        this.host.testStart(count);
+        TestContext ctx = testCreate(count);
         for (int i = 0; i < count; i++) {
             if (useServiceHostStopSubscription) {
                 // stop the subscriptions using the service host API
                 host.stopSubscriptionService(
                         Operation.createDelete(uris[i])
-                                .setReferer(this.host.getReferer())
-                                .setCompletion(this.host.getCompletion()),
+                                .setCompletion(ctx.getCompletion()),
                         targetUri);
                 continue;
             }
@@ -661,11 +661,10 @@ public class TestSubscriptions extends BasicReportTestCase {
 
             URI subUri = UriUtils.buildSubscriptionUri(uris[i]);
             this.host.send(Operation.createDelete(subUri)
-                    .setCompletion(this.host.getCompletion())
-                    .setReferer(this.host.getReferer())
+                    .setCompletion(ctx.getCompletion())
                     .setBody(unsubscribeBody));
         }
-        this.host.testWait();
+        testWait(ctx);
     }
 
     private boolean verifySubscriberCount(URI[] uris, int subscriberCount) throws Throwable {
