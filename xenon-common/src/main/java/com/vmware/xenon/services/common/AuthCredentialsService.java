@@ -24,6 +24,8 @@ import com.vmware.xenon.common.Service;
 import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.ServiceDocumentDescription;
 import com.vmware.xenon.common.StatefulService;
+import com.vmware.xenon.common.Utils;
+import com.vmware.xenon.common.Utils.CollectionsPatchRequest;
 
 /**
  * Describes the authentication credentials to authenticate with internal/external APIs.
@@ -99,9 +101,24 @@ public class AuthCredentialsService extends StatefulService {
     @Override
     public void handlePatch(Operation patch) {
         AuthCredentialsServiceState currentState = getState(patch);
-        AuthCredentialsServiceState patchBody = patch.getBody(AuthCredentialsServiceState.class);
-
-        updateState(patchBody, currentState);
+        CollectionsPatchRequest removalBody =
+                patch.getBody(CollectionsPatchRequest.class);
+        if (removalBody != null && removalBody.kind != null &&
+                removalBody.kind.equals(CollectionsPatchRequest.KIND)) {
+            try {
+                Utils.updateCollections(currentState, removalBody);
+            } catch (NoSuchFieldException | IllegalAccessException e) {
+                patch.fail(e);
+                return;
+            }
+        } else {
+            AuthCredentialsServiceState patchBody = patch.getBody(AuthCredentialsServiceState.class);
+            if (patchBody == null) {
+                patch.fail(new IllegalArgumentException("body is required"));
+                return;
+            }
+            updateState(patchBody, currentState);
+        }
         patch.setBody(currentState).complete();
     }
 
