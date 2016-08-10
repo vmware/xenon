@@ -1219,6 +1219,29 @@ public class Operation implements Cloneable {
         });
     }
 
+    /**
+     * Add CompletionHandler in FIFO style.
+     *
+     * This is symmetric to {@link #nestCompletion(CompletionHandler)}.
+     * <pre>
+     * {@code
+     *   op.setCompletion(ORG);
+     *   op.addCompletion(A);
+     *   op.addCompletion(B);
+     *   // complete() will trigger: ORG -> A -> B
+     * }
+     * </pre>
+     */
+    public Operation appendCompletion(CompletionHandler h) {
+        CompletionHandler existing = this.completion;
+        setCompletion((o, e) -> {
+            this.statusCode = o.statusCode;
+            o.nestCompletion(h);
+            existing.handle(o, e);
+        });
+        return this;
+    }
+
     Operation addHeader(String headerLine, boolean isResponse) {
         if (headerLine == null) {
             throw new IllegalArgumentException("headerLine is required");
