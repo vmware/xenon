@@ -77,6 +77,18 @@ public class TestRequestSender {
         return (T) body[0];
     }
 
+    /**
+     * Perform given {@link Operation} and return {@link OperationResponse}.
+     */
+    public OperationResponse sendThenGetResponse(Operation op) {
+        OperationResponse response = new OperationResponse();
+        sendThen(op, (o, e) -> {
+            response.operation = o;
+            response.failure = e;
+        });
+        return response;
+    }
+
     public String sendThenGetSelfLink(Operation post) {
         // TODO: impl
         return null;
