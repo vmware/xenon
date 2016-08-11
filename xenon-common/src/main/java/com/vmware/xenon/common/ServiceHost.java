@@ -2203,7 +2203,8 @@ public class ServiceHost implements ServiceRequestSender {
 
                 if (service.hasOption(ServiceOption.REPLICATION)
                         && service.hasOption(ServiceOption.FACTORY)) {
-                    this.serviceSynchTracker.addService(servicePath, 0L);
+                    this.serviceSynchTracker.addService(
+                            service.getPeerNodeSelectorPath(), servicePath, 0L);
                 }
                 this.state.serviceCount++;
                 return false;
@@ -2836,7 +2837,14 @@ public class ServiceHost implements ServiceRequestSender {
                 }
             }
 
-            this.serviceSynchTracker.removeService(path);
+            String nodeSelectorPath = null;
+            if (existing != null &&
+                    existing.hasOption(ServiceOption.FACTORY) &&
+                    existing.hasOption(ServiceOption.REPLICATION)) {
+                nodeSelectorPath = existing.getPeerNodeSelectorPath();
+            }
+
+            this.serviceSynchTracker.removeService(nodeSelectorPath, path);
             this.serviceResourceTracker.clearCachedServiceState(path, null);
             this.pendingPauseServices.remove(path);
 

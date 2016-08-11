@@ -42,6 +42,12 @@ import com.vmware.xenon.services.common.ServiceUriPaths;
  * Sequences service periodic maintenance
  */
 class ServiceSynchronizationTracker {
+
+    public static class NodeSelectorSynchState {
+        public Long lastSynchTime;
+        public Set<String> factoryPaths = new HashSet<>();
+    }
+
     public static ServiceSynchronizationTracker create(ServiceHost host) {
         ServiceSynchronizationTracker sst = new ServiceSynchronizationTracker();
         sst.host = host;
@@ -50,16 +56,28 @@ class ServiceSynchronizationTracker {
 
     private ServiceHost host;
 
-    private final ConcurrentSkipListMap<String, Long> synchronizationTimes = new ConcurrentSkipListMap<>();
+    private final ConcurrentSkipListMap<String, NodeSelectorSynchState> nodeSelectorSynchStates = new ConcurrentSkipListMap<>();
     private final ConcurrentSkipListMap<String, Long> synchronizationRequiredServices = new ConcurrentSkipListMap<>();
     private final ConcurrentSkipListMap<String, Long> synchronizationActiveServices = new ConcurrentSkipListMap<>();
     private final ConcurrentSkipListMap<String, NodeGroupState> pendingNodeSelectorsForFactorySynch = new ConcurrentSkipListMap<>();
 
-    public void addService(String servicePath, long timeMicros) {
+    public void addService(String nodeSelectorPath, String servicePath, long timeMicros) {
+        NodeSelectorSynchState synchState = this.nodeSelectorSynchStates.get(nodeSelectorPath);
+        if (synchState == null) {
+            synchState = new NodeSelectorSynchState();
+            this.nodeSelectorSynchStates.put(nodeSelectorPath, synchState);
+        }
+        synchState.factoryPaths.add(servicePath);
         this.synchronizationRequiredServices.put(servicePath, timeMicros);
     }
 
-    public void removeService(String path) {
+    public void removeService(String nodeSelectorPath, String path) {
+        if (nodeSelectorPath != null) {
+            NodeSelectorSynchState synchState = this.nodeSelectorSynchStates.get(nodeSelectorPath);
+            if (synchState != null) {
+                synchState.factoryPaths.remove(path);
+            }
+        }
         this.synchronizationActiveServices.remove(path);
         this.synchronizationRequiredServices.remove(path);
     }
@@ -310,7 +328,7 @@ class ServiceSynchronizationTracker {
     public void scheduleNodeGroupChangeMaintenance(String nodeSelectorPath) {
         long now = Utils.getNowMicrosUtc();
         this.host.log(Level.INFO, "%s %d", nodeSelectorPath, now);
-        this.synchronizationTimes.put(nodeSelectorPath, now);
+        this.nodeSelectorSynchStates.get(nodeSelectorPath).lastSynchTime = now;
         scheduleNodeGroupChangeMaintenance(nodeSelectorPath, null);
     }
 
@@ -338,7 +356,8 @@ class ServiceSynchronizationTracker {
     private boolean checkAndScheduleNodeSelectorSynch(Operation post, MaintenanceStage nextStage,
             long deadline) {
         boolean hasSynchOccuredAtLeastOnce = false;
-        for (Long synchTime : this.synchronizationTimes.values()) {
+        for (NodeSelectorSynchState syncState : this.nodeSelectorSynchStates.values()) {
+            Long synchTime = syncState.lastSynchTime;
             if (synchTime != null && synchTime > 0) {
                 hasSynchOccuredAtLeastOnce = true;
             }
@@ -359,7 +378,7 @@ class ServiceSynchronizationTracker {
                 continue;
             }
             String selectorPath = s.getPeerNodeSelectorPath();
-            Long selectorSynchTime = this.synchronizationTimes.get(selectorPath);
+            Long selectorSynchTime = this.nodeSelectorSynchStates.get(selectorPath).lastSynchTime;
             if (selectorSynchTime == null) {
                 continue;
             }
@@ -403,19 +422,27 @@ class ServiceSynchronizationTracker {
 
     private void performNodeSelectorChangeMaintenance(Entry<String, NodeGroupState> entry) {
         String nodeSelectorPath = entry.getKey();
-        Long selectorSynchTime = this.synchronizationTimes.get(nodeSelectorPath);
+
+        NodeSelectorSynchState state = this.nodeSelectorSynchStates.get(nodeSelectorPath);
+        long selectorSynchTime = state.lastSynchTime;
+        Set<String> factoryPaths = state.factoryPaths;
+
         NodeGroupState ngs = entry.getValue();
         long now = Utils.getNowMicrosUtc();
 
-        for (Entry<String, Long> en : this.synchronizationActiveServices.entrySet()) {
-            String link = en.getKey();
+        for (String link : factoryPaths) {
+            Long lastSynchTime = this.synchronizationActiveServices.get(link);
+            if (lastSynchTime == null) {
+                continue;
+            }
+
             Service s = this.host.findService(link, true);
             if (s == null) {
                 continue;
             }
 
             ServiceHostState hostState = this.host.getStateNoCloning();
-            long delta = now - en.getValue();
+            long delta = now - lastSynchTime;
             boolean shouldLog = false;
             if (delta > hostState.operationTimeoutMicros) {
                 s.toggleOption(ServiceOption.INSTRUMENTATION, true);
@@ -439,15 +466,16 @@ class ServiceSynchronizationTracker {
             }
         }
 
-        for (Entry<String, Long> en : this.synchronizationRequiredServices
-                .entrySet()) {
+        for (String link : factoryPaths) {
+            Long lastSynchTime = this.synchronizationRequiredServices.get(link);
+            if (lastSynchTime == null) {
+                continue;
+            }
+
             now = Utils.getNowMicrosUtc();
             if (this.host.isStopping()) {
                 return;
             }
-
-            String link = en.getKey();
-            Long lastSynchTime = en.getValue();
 
             if (lastSynchTime >= selectorSynchTime) {
                 continue;
@@ -472,11 +500,6 @@ class ServiceSynchronizationTracker {
             }
 
             if (!s.hasOption(ServiceOption.REPLICATION)) {
-                continue;
-            }
-
-            String serviceSelectorPath = s.getPeerNodeSelectorPath();
-            if (!nodeSelectorPath.equals(serviceSelectorPath)) {
                 continue;
             }
 
@@ -517,7 +540,7 @@ class ServiceSynchronizationTracker {
     }
 
     public void close() {
-        this.synchronizationTimes.clear();
+        this.nodeSelectorSynchStates.clear();
         this.synchronizationRequiredServices.clear();
         this.synchronizationActiveServices.clear();
         this.pendingNodeSelectorsForFactorySynch.clear();
