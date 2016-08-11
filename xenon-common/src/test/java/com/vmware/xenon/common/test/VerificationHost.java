@@ -2971,34 +2971,26 @@ public class VerificationHost extends ExampleServiceHost {
     }
 
     public <T extends ServiceDocument> ServiceDocument verifyPost(Class<T> documentType,
-            String factoryLink,
+            String factoryServicePath,
             T state,
-            int expectedStatusCode) throws Throwable {
-        final ServiceDocument[] outState = new ServiceDocument[1];
-        URI uri = UriUtils.buildUri(this, factoryLink);
+            int expectedStatusCode) {
+        URI uri = UriUtils.buildUri(this, factoryServicePath);
 
-        TestContext ctx = testCreate(1);
-        Operation op = Operation.createPost(uri)
-                .setBody(state)
-                .setCompletion((o, e) -> {
-                    if (e != null) {
-                        failIteration(e);
-                        return;
-                    }
-                    if (o.getStatusCode() == expectedStatusCode) {
-                        outState[0] = o.getBody(documentType);
-                        ctx.completeIteration();
-                        return;
-                    }
-                    ctx.failIteration(new IllegalStateException(
-                            String.format("Status code expected: %s, actual: %s",
-                                    expectedStatusCode, o.getStatusCode())));
-                });
+        TestRequestSender sender = new TestRequestSender(this);
+        Operation op = Operation.createPost(uri).setBody(state);
 
-        send(op);
-        testWait(ctx);
+        OperationResponse response = sender.sendThenGetResponse(op);
+        if (response.isFailure()) {
+            throw ExceptionTestUtils.throwAsUnchecked(response.failure);
+        }
 
-        return outState[0];
+        int statusCode = response.operation.getStatusCode();
+        if (statusCode != expectedStatusCode) {
+            throw new IllegalStateException(
+                    String.format("Status code expected: %s, actual: %s",
+                            expectedStatusCode, statusCode));
+        }
+        return response.getBody(documentType);
     }
 
     protected TemporaryFolder getTemporaryFolder() {

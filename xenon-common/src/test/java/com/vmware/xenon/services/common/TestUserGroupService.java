@@ -14,6 +14,7 @@
 package com.vmware.xenon.services.common;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.fail;
 
 import java.net.URI;
 import java.util.UUID;
@@ -25,20 +26,24 @@ import org.junit.Test;
 import com.vmware.xenon.common.BasicReusableHostTestCase;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.UriUtils;
+import com.vmware.xenon.common.test.OperationResponse;
+import com.vmware.xenon.common.test.TestRequestSender;
 import com.vmware.xenon.services.common.QueryTask.Query;
 import com.vmware.xenon.services.common.UserGroupService.UserGroupState;
 
 public class TestUserGroupService extends BasicReusableHostTestCase {
-    private URI factoryUri;
+
+    private TestRequestSender sender;
 
     @Before
     public void setUp() {
-        this.factoryUri = UriUtils.buildUri(this.host, ServiceUriPaths.CORE_AUTHZ_USER_GROUPS);
+        this.sender = new TestRequestSender(this.host);
     }
 
     @After
     public void cleanUp() throws Throwable {
-        this.host.deleteAllChildServices(this.factoryUri);
+        URI factoryUri = UriUtils.buildUri(this.host, ServiceUriPaths.CORE_AUTHZ_USER_GROUPS);
+        this.host.deleteAllChildServices(factoryUri);
     }
 
     @Test
@@ -48,26 +53,11 @@ public class TestUserGroupService extends BasicReusableHostTestCase {
         state.query.setTermPropertyName("name");
         state.query.setTermMatchValue("value");
 
-        final UserGroupState[] outState = new UserGroupState[1];
+        UserGroupState outState = this.sender.postThenGetBody(ServiceUriPaths.CORE_AUTHZ_USER_GROUPS,
+                UserGroupState.class, op -> op.setBody(state));
 
-        Operation op = Operation.createPost(this.factoryUri)
-                .setBody(state)
-                .setCompletion((o, e) -> {
-                    if (e != null) {
-                        this.host.failIteration(e);
-                        return;
-                    }
-
-                    outState[0] = o.getBody(UserGroupState.class);
-                    this.host.completeIteration();
-                });
-
-        this.host.testStart(1);
-        this.host.send(op);
-        this.host.testWait();
-
-        assertEquals(state.query.term.propertyName, outState[0].query.term.propertyName);
-        assertEquals(state.query.term.matchValue, outState[0].query.term.matchValue);
+        assertEquals(state.query.term.propertyName, outState.query.term.propertyName);
+        assertEquals(state.query.term.matchValue, outState.query.term.matchValue);
     }
 
     @Test
@@ -110,28 +100,15 @@ public class TestUserGroupService extends BasicReusableHostTestCase {
         UserGroupState state = new UserGroupState();
         state.query = null;
 
-        Operation[] outOp = new Operation[1];
-        Throwable[] outEx = new Throwable[1];
+        URI uri = UriUtils.buildUri(this.host, ServiceUriPaths.CORE_AUTHZ_USER_GROUPS);
+        Operation op = Operation.createPost(uri).setBody(state);
 
-        Operation op = Operation.createPost(this.factoryUri)
-                .setBody(state)
-                .setCompletion((o, e) -> {
-                    if (e != null) {
-                        outOp[0] = o;
-                        outEx[0] = e;
-                        this.host.completeIteration();
-                        return;
-                    }
+        OperationResponse response = this.sender.sendThenGetResponse(op);
+        if (response.isSuccess()) {
+            fail("expected failure");
+        }
 
-                    // No exception, fail test
-                    this.host.failIteration(new IllegalStateException("expected failure"));
-                });
-
-        this.host.testStart(1);
-        this.host.send(op);
-        this.host.testWait();
-
-        assertEquals(Operation.STATUS_CODE_FAILURE_THRESHOLD, outOp[0].getStatusCode());
-        assertEquals("query is required", outEx[0].getMessage());
+        assertEquals(Operation.STATUS_CODE_FAILURE_THRESHOLD, response.operation.getStatusCode());
+        assertEquals("query is required", response.failure.getMessage());
     }
 }
