@@ -331,6 +331,7 @@ public class Operation implements Cloneable {
             ctx.action = op.action;
             ctx.referer = op.getReferer();
             ctx.id = op.id;
+            ctx.statusCode = op.statusCode;
             ctx.options = op.options.clone();
             ctx.transactionId = op.getTransactionId();
             if (op.uri != null) {
