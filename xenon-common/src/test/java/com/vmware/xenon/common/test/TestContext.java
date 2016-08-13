@@ -14,7 +14,9 @@
 package com.vmware.xenon.common.test;
 
 import java.time.Duration;
+import java.time.Instant;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -38,6 +40,8 @@ public class TestContext {
 
     private boolean started;
 
+    private int initialCount;
+
     /**
      * Consider using {@link #TestContext(int, Duration)}
      * This method exists for backward compatibility, and may be deprecated/deleted in future.
@@ -49,6 +53,7 @@ public class TestContext {
     public TestContext(int count, Duration duration) {
         this.latch = new CountDownLatch(count);
         this.duration = duration;
+        this.initialCount = count;
     }
 
     public void complete() {
@@ -90,21 +95,31 @@ public class TestContext {
                 throw new IllegalStateException("This context is already used");
             }
 
-            LocalDateTime expireAt = LocalDateTime.now().plus(this.duration);
+            Instant startAt = Instant.now();
+            Instant expireAt = startAt.plus(this.duration);
+            long countAtAwait = this.latch.getCount();
+
             // keep polling latch every interval
-            while (expireAt.isAfter(LocalDateTime.now())) {
+            while (expireAt.isAfter(Instant.now())) {
                 if (this.latch.await(this.interval.toNanos(), TimeUnit.NANOSECONDS)) {
                     break;
                 }
             }
 
-            LocalDateTime now = LocalDateTime.now();
+            Instant now = Instant.now();
             if (expireAt.isBefore(now)) {
-                Duration difference = Duration.between(expireAt, now);
+                LocalDateTime startAtLocal = LocalDateTime.ofInstant(startAt, ZoneId.systemDefault());
+                LocalDateTime expireAtLocal = LocalDateTime.ofInstant(expireAt, ZoneId.systemDefault());
 
-                throw new TimeoutException(String.format(
-                        "%s has expired. [duration=%s, count=%d]", getClass().getSimpleName(), difference,
-                        this.latch.getCount()));
+                Duration actualDuration = Duration.between(startAt, now);
+                String msg = String.format("%s has expired. [start=%s(%s), expire=%s(%s), " +
+                                "durationGiven=%s, durationActual=%s, " +
+                                "countAtInit=%d, countAtAwait=%d, countNow=%d]",
+                        getClass().getSimpleName(),
+                        startAt.toEpochMilli(), startAtLocal, expireAt.toEpochMilli(), expireAtLocal,
+                        this.duration, actualDuration,
+                        this.initialCount, countAtAwait, this.latch.getCount());
+                throw new TimeoutException(msg);
             }
 
             // prevent this latch from being reused
