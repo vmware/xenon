@@ -31,6 +31,7 @@ import java.util.Date;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -77,6 +78,7 @@ import com.vmware.xenon.common.test.TestContext;
 import com.vmware.xenon.common.test.TestProperty;
 import com.vmware.xenon.common.test.VerificationHost;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
+import com.vmware.xenon.services.common.QueryTask.Query;
 import com.vmware.xenon.services.common.QueryTask.Query.Occurance;
 import com.vmware.xenon.services.common.QueryTask.QuerySpecification.QueryOption;
 
@@ -1251,6 +1253,105 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
             }
         }
 
+    }
+
+    /**
+     * Tests the following edge scenario:
+     * User creates document with expiration set in the future (version 0)
+     * User deletes document, before expiration (version 1)
+     * User uses same self link, recreates the document, sets new expiration,
+     * uses PRAGMA_FORCE_INDEX_UPDATE
+     *
+     * @throws Throwable
+     */
+    @Test
+    public void deleteWithExpirationAndPostWithPragmaForceUpdate() throws Throwable {
+
+        URI factoryUri = UriUtils.buildFactoryUri(this.host, ExampleService.class);
+        long originalExpMicros = Utils.getNowMicrosUtc() + TimeUnit.MINUTES.toMicros(1);
+        Consumer<Operation> setBody = (o) -> {
+            ExampleServiceState body = new ExampleServiceState();
+            body.name = UUID.randomUUID().toString();
+            body.documentExpirationTimeMicros = originalExpMicros;
+            o.setBody(body);
+        };
+
+        // create N documents with expiration set to future time
+        Map<URI, ExampleServiceState> services = this.host.doFactoryChildServiceStart(
+                null,
+                this.serviceCount, ExampleServiceState.class,
+                setBody, factoryUri);
+
+        // delete all documents
+        this.host.deleteAllChildServices(factoryUri);
+
+        // get all versions
+        QueryTask qt = QueryTask.Builder
+                .createDirectTask()
+                .addOption(QueryOption.INCLUDE_ALL_VERSIONS)
+                .addOption(QueryOption.INCLUDE_DELETED)
+                .addOption(QueryOption.EXPAND_CONTENT)
+                .setQuery(
+                        Query.Builder.create().addKindFieldClause(ExampleServiceState.class)
+                                .build()).build();
+        this.host.createQueryTaskService(qt, false, true, qt, null);
+        this.host.log("Results before expiration: %s", Utils.toJsonHtml(qt.results));
+
+        // verify we have a version = 0 per document, with original expiration
+        // verify we have a version = 1 per document, with updateAction = DELETE
+        Map<Long, Set<String>> linksPerVersion = new HashMap<>();
+        for (long l = 0; l < 2; l++) {
+            linksPerVersion.put(l, new HashSet<>());
+        }
+        for (String linkWithVersion : qt.results.documentLinks) {
+            URI u = UriUtils.buildUri(this.host, linkWithVersion);
+            Map<String, String> params = UriUtils.parseUriQueryParams(u);
+            String documentVersion = params.get(ServiceDocument.FIELD_NAME_VERSION);
+            long v = Long.parseLong(documentVersion);
+            ExampleServiceState stForVersion = Utils.fromJson(
+                    qt.results.documents.get(linkWithVersion),
+                    ExampleServiceState.class);
+            if (v == 0) {
+                assertEquals(originalExpMicros, stForVersion.documentExpirationTimeMicros);
+            } else if (v == 1) {
+                assertEquals(Action.DELETE.toString(), stForVersion.documentUpdateAction);
+            }
+            Set<String> linksForVersion = linksPerVersion.get(v);
+            linksForVersion.add(u.getPath());
+        }
+
+        for (Set<String> links : linksPerVersion.values()) {
+            assertEquals(this.serviceCount, links.size());
+        }
+
+        // recreate the documents, use same self links, set for short expiration in future,
+        long recreateExpMicros = Utils.getNowMicrosUtc() + this.host.getMaintenanceIntervalMicros();
+        Iterator<URI> uris = services.keySet().iterator();
+        Consumer<Operation> setBodyReUseLinks = (o) -> {
+            o.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_FORCE_INDEX_UPDATE);
+            ExampleServiceState body = new ExampleServiceState();
+            body.documentSelfLink = uris.next().getPath();
+            body.name = UUID.randomUUID().toString();
+            body.documentExpirationTimeMicros = recreateExpMicros;
+            o.setBody(body);
+        };
+        services = this.host.doFactoryChildServiceStart(
+                null,
+                this.serviceCount, ExampleServiceState.class,
+                setBodyReUseLinks, factoryUri);
+
+        this.host.waitFor("links versions did not expire", () -> {
+            QueryTask t = QueryTask.Builder
+                    .createDirectTask()
+                    .addOption(QueryOption.INCLUDE_ALL_VERSIONS)
+                    .addOption(QueryOption.INCLUDE_DELETED)
+                    .setQuery(
+                            Query.Builder.create().addKindFieldClause(ExampleServiceState.class)
+                                    .build()).build();
+            this.host.createQueryTaskService(t, false, true, t, null);
+            this.host.log("Results AFTER expiration: %s", Utils.toJsonHtml(t.results));
+            return 0 == t.results.documentLinks.size();
+        });
     }
 
     @Test
