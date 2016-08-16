@@ -755,7 +755,7 @@ public class TestServiceModel extends BasicReusableHostTestCase {
 
     public static class PeriodicMaintenanceTestStatelessService extends StatelessService {
         public PeriodicMaintenanceTestStatelessService() {
-            this.setMaintenanceIntervalMicros(1);
+            this.setMaintenanceIntervalMicros(VerificationHost.FAST_MAINT_INTERVAL_MILLIS * 3);
             this.toggleOption(ServiceOption.INSTRUMENTATION, true);
             this.toggleOption(ServiceOption.PERIODIC_MAINTENANCE, true);
         }
@@ -769,7 +769,7 @@ public class TestServiceModel extends BasicReusableHostTestCase {
     public static class PeriodicMaintenanceTestStatefulService extends StatefulService {
         public PeriodicMaintenanceTestStatefulService() {
             super(ServiceDocument.class);
-            this.setMaintenanceIntervalMicros(1);
+            this.setMaintenanceIntervalMicros(VerificationHost.FAST_MAINT_INTERVAL_MILLIS * 3);
             this.toggleOption(ServiceOption.INSTRUMENTATION, true);
             this.toggleOption(ServiceOption.PERIODIC_MAINTENANCE, true);
         }
