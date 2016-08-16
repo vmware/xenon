@@ -4413,10 +4413,11 @@ public class ServiceHost implements ServiceRequestSender {
                 stage = MaintenanceStage.IO;
                 break;
             case IO:
-                performIOMaintenance(post, now, MaintenanceStage.NODE_SELECTORS, deadline);
-                return;
+                performIOMaintenance(now);
+                stage = MaintenanceStage.NODE_SELECTORS;
+                break;
             case NODE_SELECTORS:
-                performNodeSelectorChangeMaintenance(post, now, MaintenanceStage.SERVICE, true,
+                performNodeSelectorChangeMaintenance(post, MaintenanceStage.SERVICE, true,
                         deadline);
                 return;
             case SERVICE:
@@ -4440,14 +4441,13 @@ public class ServiceHost implements ServiceRequestSender {
         }
     }
 
-    private void performNodeSelectorChangeMaintenance(Operation post, long now,
+    private void performNodeSelectorChangeMaintenance(Operation post,
             MaintenanceStage nextStage, boolean isCheckRequired, long deadline) {
-        this.serviceSynchTracker.performNodeSelectorChangeMaintenance(post, now, nextStage,
+        this.serviceSynchTracker.performNodeSelectorChangeMaintenance(post, nextStage,
                 isCheckRequired, deadline);
     }
 
-    private void performIOMaintenance(Operation post, long now, MaintenanceStage nextStage,
-            long deadline) {
+    private void performIOMaintenance(long now) {
         try {
             performPendingOperationMaintenance();
 
@@ -4481,7 +4481,6 @@ public class ServiceHost implements ServiceRequestSender {
                 if (r != 0) {
                     return;
                 }
-                performMaintenanceStage(post, nextStage, deadline);
             });
 
             if (c != null) {
@@ -4497,7 +4496,6 @@ public class ServiceHost implements ServiceRequestSender {
             }
         } catch (Throwable e) {
             log(Level.WARNING, "Exception: %s", Utils.toString(e));
-            performMaintenanceStage(post, nextStage, deadline);
         }
     }
 

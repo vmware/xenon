@@ -314,7 +314,7 @@ class ServiceSynchronizationTracker {
         scheduleNodeGroupChangeMaintenance(nodeSelectorPath, null);
     }
 
-    public void performNodeSelectorChangeMaintenance(Operation post, long now,
+    public void performNodeSelectorChangeMaintenance(Operation post,
             MaintenanceStage nextStage, boolean isCheckRequired, long deadline) {
 
         if (isCheckRequired && checkAndScheduleNodeSelectorSynch(post, nextStage, deadline)) {
@@ -390,8 +390,7 @@ class ServiceSynchronizationTracker {
             }
 
             // we refreshed the pending selector list, now ready to do kick of synchronization
-            performNodeSelectorChangeMaintenance(post, Utils.getNowMicrosUtc(), nextStage, false,
-                    deadline);
+            performNodeSelectorChangeMaintenance(post, nextStage, false, deadline);
         };
 
         for (String path : selectorPathsToSynch) {
