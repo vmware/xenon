@@ -2,6 +2,12 @@
 
 ## 0.9.4-SNAPSHOT
 
+* Add TestRequestSender to provide synchronous API for writing unit tests.
+  This class is recommended for sending operations instead of sendXxx() method
+  variants in VerificationHost. All synchronous methods return response operation
+  or body document which eliminates the use of TestContext in test code.
+  Please reference the TestExampleService for usage.
+
 ## 0.9.3
 
 * Add a flavor of mergeWithState() that processes a
