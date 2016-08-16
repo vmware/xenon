@@ -26,6 +26,7 @@ import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
 import org.junit.Test;
@@ -755,7 +756,7 @@ public class TestServiceModel extends BasicReusableHostTestCase {
 
     public static class PeriodicMaintenanceTestStatelessService extends StatelessService {
         public PeriodicMaintenanceTestStatelessService() {
-            this.setMaintenanceIntervalMicros(1);
+            this.setMaintenanceIntervalMicros(TimeUnit.MILLISECONDS.toMicros(300));
             this.toggleOption(ServiceOption.INSTRUMENTATION, true);
             this.toggleOption(ServiceOption.PERIODIC_MAINTENANCE, true);
         }
@@ -769,7 +770,7 @@ public class TestServiceModel extends BasicReusableHostTestCase {
     public static class PeriodicMaintenanceTestStatefulService extends StatefulService {
         public PeriodicMaintenanceTestStatefulService() {
             super(ServiceDocument.class);
-            this.setMaintenanceIntervalMicros(1);
+            this.setMaintenanceIntervalMicros(TimeUnit.MILLISECONDS.toMicros(300));
             this.toggleOption(ServiceOption.INSTRUMENTATION, true);
             this.toggleOption(ServiceOption.PERIODIC_MAINTENANCE, true);
         }
