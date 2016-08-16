@@ -17,6 +17,8 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
 import java.net.URI;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -33,16 +35,18 @@ import com.vmware.xenon.common.ServiceDocumentQueryResult;
 import com.vmware.xenon.common.ServiceHost;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
-import com.vmware.xenon.common.test.TestContext;
+import com.vmware.xenon.common.test.TestRequestSender;
+import com.vmware.xenon.common.test.TestRequestSender.FailureResponse;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
 
 public class TestExampleService extends BasicReusableHostTestCase {
 
     public int serviceCount = 100;
-    URI factoryUri;
-    final Long counterValue = Long.MAX_VALUE;
-    final String prefix = "example-";
-    URI[] childURIs;
+    private URI factoryUri;
+    private final Long counterValue = Long.MAX_VALUE;
+    private final String prefix = "example-";
+    private URI[] childURIs;
+    private TestRequestSender sender;
 
     @Before
     public void prepare() throws Throwable {
@@ -51,15 +55,14 @@ public class TestExampleService extends BasicReusableHostTestCase {
         // this is all asynchronous, you should not block and wait, just pass a
         // completion
         this.host.waitForServiceAvailable(ExampleService.FACTORY_LINK);
-        this.factoryUri = UriUtils.buildFactoryUri(this.host,
-                ExampleService.class);
+        this.factoryUri = UriUtils.buildFactoryUri(this.host, ExampleService.class);
+        this.sender = new TestRequestSender(this.host);
     }
 
     @Test
     public void factoryPost() throws Throwable {
-        final TestContext testCtx = host.testCreate(this.serviceCount);
-        postExampleServices("factory-post", testCtx);
-        testCtx.await();
+        postExampleServices("factory-post");
+
         // do GET on all child URIs
         Map<URI, ExampleServiceState> childStates = this.host.getServiceState(null,
                 ExampleServiceState.class, this.childURIs);
@@ -100,10 +103,9 @@ public class TestExampleService extends BasicReusableHostTestCase {
 
     @Test
     public void factoryPatchMap() throws Throwable {
-        final TestContext testCtx1 = host.testCreate(this.serviceCount);
         //create example services
-        postExampleServices("patch-map", testCtx1);
-        testCtx1.await();
+        postExampleServices("patch-map");
+
         //test that example services are created correctly
         Map<URI, ExampleServiceState> childStates = this.host.getServiceState(null,
                 ExampleServiceState.class, this.childURIs);
@@ -119,29 +121,20 @@ public class TestExampleService extends BasicReusableHostTestCase {
         }
 
         //patch example services
-        final TestContext testCtx2 = host.testCreate(this.serviceCount);
+        List<Operation> patches = new ArrayList<>();
         for (ExampleServiceState s : childStates.values()) {
             s.keyValues.put("test-key-1", "test-value-1-patch-1");
             s.keyValues.put("test-key-2", "test-value-2-patch-1");
             s.keyValues.put("test-key-3", "test-value-3-patch-1");
             Operation createPatch = Operation
-                    .createPatch(UriUtils.buildUri(this.host,
-                            s.documentSelfLink))
-                    .setBody(s)
-                    .setCompletion((o, e) -> {
-                        if (e != null) {
-                            this.host.failIteration(e);
-                            return;
-                        }
-                        testCtx2.completeIteration();
-                    });
-            this.host.send(createPatch);
+                    .createPatch(UriUtils.buildUri(this.host, s.documentSelfLink))
+                    .setBody(s);
+            patches.add(createPatch);
         }
+        this.sender.sendAndWait(patches);
 
-        testCtx2.await();
         //test that example services are patched correctly
-        childStates = this.host.getServiceState(null,
-                ExampleServiceState.class, this.childURIs);
+        childStates = this.host.getServiceState(null, ExampleServiceState.class, this.childURIs);
         for (ExampleServiceState s : childStates.values()) {
             assertEquals(this.counterValue, s.counter);
             assertTrue(s.name.startsWith(this.prefix));
@@ -154,26 +147,18 @@ public class TestExampleService extends BasicReusableHostTestCase {
         }
 
         //patch example services when deleting some values in the keyValues map
-        final TestContext testCtx3 = host.testCreate(this.serviceCount);
+        List<Operation> patchesToSetNull = new ArrayList<>();
         for (ExampleServiceState s : childStates.values()) {
             s.keyValues.put("test-key-1", "test-value-1-patch-1");
             s.keyValues.put("test-key-2", null);
             s.keyValues.put("test-key-3", null);
             Operation createPatch = Operation
-                    .createPatch(UriUtils.buildUri(this.host,
-                            s.documentSelfLink))
-                    .setBody(s)
-                    .setCompletion((o, e) -> {
-                        if (e != null) {
-                            this.host.failIteration(e);
-                            return;
-                        }
-                        testCtx3.completeIteration();
-                    });
-            this.host.send(createPatch);
+                    .createPatch(UriUtils.buildUri(this.host, s.documentSelfLink))
+                    .setBody(s);
+            patchesToSetNull.add(createPatch);
         }
+        this.sender.sendAndWait(patchesToSetNull);
 
-        testCtx3.await();
         //test that deleted values in the keyValues map are gone
         childStates = this.host.getServiceState(null,
                 ExampleServiceState.class, this.childURIs);
@@ -195,43 +180,29 @@ public class TestExampleService extends BasicReusableHostTestCase {
         // completion
         this.host.waitForServiceAvailable(ExampleService.FACTORY_LINK);
 
-        this.host.testStart(1);
-        URI[] childURI = new URI[1];
         ExampleServiceState initialState = new ExampleServiceState();
         initialState.name = UUID.randomUUID().toString();
         initialState.counter = Long.MAX_VALUE;
 
         // create an example service
-        Operation createPost = Operation
-                .createPost(this.factoryUri)
-                .setBody(initialState)
-                .setCompletion((o, e) -> {
-                    if (e != null) {
-                        this.host.failIteration(e);
-                        return;
-                    }
-                    ServiceDocument rsp = o.getBody(ServiceDocument.class);
-                    childURI[0] = UriUtils.buildUri(this.host, rsp.documentSelfLink);
-                    this.host.completeIteration();
-                });
-        this.host.send(createPost);
+        Operation createPost = Operation.createPost(this.factoryUri).setBody(initialState);
+        ServiceDocument rsp = this.sender.sendAndWait(createPost, ServiceDocument.class);
+        URI childURI = UriUtils.buildUri(this.host, rsp.documentSelfLink);
 
-        this.host.testWait();
 
         host.toggleNegativeTestMode(true);
         // issue a PUT that we expect it to fail.
         ExampleServiceState emptyBody = new ExampleServiceState();
-        this.host.testStart(1);
-        Operation put = Operation.createPut(childURI[0])
-                .setCompletion(host.getExpectedFailureCompletion())
-                .setBody(emptyBody);
-        host.send(put);
-        host.testWait();
+        Operation put = Operation.createPut(childURI).setBody(emptyBody);
+
+        FailureResponse failureResponse = this.sender.sendAndWaitFailure(put);
+        assertEquals("name must be set", failureResponse.failure.getMessage());
+
         host.toggleNegativeTestMode(false);
     }
 
-    private void postExampleServices(String suffix, TestContext testCtx) throws Throwable {
-        this.childURIs = new URI[this.serviceCount];
+    private void postExampleServices(String suffix) {
+        List<Operation> ops = new ArrayList<>();
         for (int i = 0; i < this.serviceCount; i++) {
             ExampleServiceState initialState = new ExampleServiceState();
             initialState.name = initialState.documentSelfLink = this.prefix + i + suffix;
@@ -239,21 +210,13 @@ public class TestExampleService extends BasicReusableHostTestCase {
             initialState.keyValues.put("test-key-1", "test-value-1");
             initialState.keyValues.put("test-key-2", "test-value-2");
             initialState.keyValues.put("test-key-3", "test-value-3");
-            final int finalI = i;
             // create an example service
-            Operation createPost = Operation
-                    .createPost(this.factoryUri)
-                    .setBody(initialState)
-                    .setCompletion((o, e) -> {
-                        if (e != null) {
-                            this.host.failIteration(e);
-                            return;
-                        }
-                        ServiceDocument rsp = o.getBody(ServiceDocument.class);
-                        this.childURIs[finalI] = UriUtils.buildUri(this.host, rsp.documentSelfLink);
-                        testCtx.completeIteration();
-                    });
-            this.host.send(createPost);
+            Operation createPost = Operation.createPost(this.factoryUri).setBody(initialState);
+            ops.add(createPost);
         }
+        List<ServiceDocument> results = this.sender.sendAndWait(ops, ServiceDocument.class);
+        this.childURIs = results.stream()
+                .map(doc -> UriUtils.buildUri(this.host, doc.documentSelfLink))
+                .toArray(URI[]::new);
     }
 }

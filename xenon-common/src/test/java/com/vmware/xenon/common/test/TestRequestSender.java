@@ -13,21 +13,23 @@
 
 package com.vmware.xenon.common.test;
 
+import static java.util.stream.Collectors.toList;
+
 import java.net.URI;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Optional;
 
 import com.vmware.xenon.common.Operation;
-import com.vmware.xenon.common.Service;
 import com.vmware.xenon.common.ServiceDocument;
-import com.vmware.xenon.common.ServiceHost;
 import com.vmware.xenon.common.ServiceRequestSender;
 
 /**
  * Provides synchronous/asynchronous send operations for test.
  */
-public class TestRequestSender {
+public class TestRequestSender implements ServiceRequestSender {
 
     public static class FailureResponse {
         public Operation op;
@@ -49,31 +51,36 @@ public class TestRequestSender {
     /**
      * Asynchronously perform operation
      */
+    @Override
     public void sendRequest(Operation op) {
         // TODO: populate caller stack information to op, when op fails, add it to suppressed exception
 
         URI referer = this.referer;
         if (referer == null) {
-            // populate referer from current stack information
-            Optional<StackTraceElement> stackElement = Arrays.stream(Thread.currentThread().getStackTrace())
-                    .filter(elem -> {
-                        // filter out Thread and this class
-                        String className = elem.getClassName();
-                        return !(Thread.class.getName().equals(className) || getClass().getName().equals(className));
-                    }).findFirst();
-
-            String refererString;
-            if (stackElement.isPresent()) {
-                StackTraceElement elem = stackElement.get();
-                refererString = String.format("http://localhost/%s?line=%s&class=%s&method=%s",
-                        getClass().getSimpleName(), elem.getLineNumber(), elem.getClassName(), elem.getMethodName());
-            } else {
-                refererString = String.format("http://localhost/%s@%s", getClass().getSimpleName(), this.hashCode());
-            }
-            referer = URI.create(refererString);
+            referer = getDefaultReferer();
         }
         op.setReferer(referer);
         this.sender.sendRequest(op);
+    }
+
+    private URI getDefaultReferer() {
+        // populate referer from current stack information
+        Optional<StackTraceElement> stackElement = Arrays.stream(Thread.currentThread().getStackTrace())
+                .filter(elem -> {
+                    // filter out Thread and this class
+                    String className = elem.getClassName();
+                    return !(Thread.class.getName().equals(className) || getClass().getName().equals(className));
+                }).findFirst();
+
+        String refererString;
+        if (stackElement.isPresent()) {
+            StackTraceElement elem = stackElement.get();
+            refererString = String.format("http://localhost/%s?line=%s&class=%s&method=%s",
+                    getClass().getSimpleName(), elem.getLineNumber(), elem.getClassName(), elem.getMethodName());
+        } else {
+            refererString = String.format("http://localhost/%s@%s", getClass().getSimpleName(), this.hashCode());
+        }
+        return URI.create(refererString);
     }
 
     /**
@@ -93,6 +100,21 @@ public class TestRequestSender {
     }
 
     /**
+     * Perform given operations in parallel, then wait all ops to finish with success.
+     *
+     * Expecting all {@link Operation} to be successful.
+     * The order of result corresponds to the input order.
+     *
+     * @param ops       operations to perform
+     * @param bodyType returned body type
+     * @param <T>      ServiceDocument
+     * @return body documents
+     */
+    public <T extends ServiceDocument> List<T> sendAndWait(List<Operation> ops, Class<T> bodyType) {
+        return sendAndWait(ops).stream().map(op -> op.getBody(bodyType)).collect(toList());
+    }
+
+    /**
      * Synchronously perform operation.
      *
      * Expecting provided operation to be successful.
@@ -102,22 +124,68 @@ public class TestRequestSender {
      * @return callback operation
      */
     public Operation sendAndWait(Operation op) {
-        Operation[] response = new Operation[1];
+        List<Operation> ops = new ArrayList<>();
+        ops.add(op);
+        return sendAndWait(ops).get(0);
+    }
 
-        TestContext waitContext = new TestContext(1, this.timeout);
-        op.appendCompletion((o, e) -> {
-            if (e != null) {
-                waitContext.fail(e);
-                return;
-            }
-            response[0] = o;
-            waitContext.complete();
-        });
-        sendRequest(op);
+    /**
+     * Perform given operations in parallel, then wait all ops to finish with success.
+     * The order of result corresponds to the input order.
+     *
+     * @param ops operations to perform
+     * @return callback operations
+     */
+    public List<Operation> sendAndWait(List<Operation> ops) {
+        Operation[] response = new Operation[ops.size()];
+
+        TestContext waitContext = new TestContext(ops.size(), this.timeout);
+        for (int i = 0; i < ops.size(); i++) {
+            int index = i;
+            Operation op = ops.get(i);
+            op.appendCompletion((o, e) -> {
+                if (e != null) {
+                    waitContext.fail(e);
+                    return;
+                }
+                response[index] = o;
+                waitContext.complete();
+            });
+            sendRequest(op);
+        }
         waitContext.await();
 
-        return response[0];
+        return Arrays.asList(response);
     }
+
+    /**
+     * Synchronously perform GET to given url.
+     *
+     * Expecting GET to be successful.
+     *
+     * @param url      URL
+     * @param bodyType returned body type
+     * @param <T>      ServiceDocument
+     * @return body document
+     */
+    public <T extends ServiceDocument> T sendGetAndWait(String url, Class<T> bodyType) {
+        return sendAndWait(Operation.createGet(URI.create(url)), bodyType);
+    }
+
+    /**
+     * Synchronously perform POST to given url.
+     *
+     * Expecting POST to be successful.
+     *
+     * @param url      URL
+     * @param bodyType returned body type
+     * @param <T>      ServiceDocument
+     * @return body document
+     */
+    public <T extends ServiceDocument> T sendPostAndWait(String url, Class<T> bodyType) {
+        return sendAndWait(Operation.createPost(URI.create(url)), bodyType);
+    }
+
 
     /**
      * Synchronously perform operation.
@@ -145,17 +213,6 @@ public class TestRequestSender {
         waitContext.await();
 
         return response;
-    }
-
-    public ServiceHost getHostSender() {
-
-        if (this.sender instanceof ServiceHost) {
-            return (ServiceHost) this.sender;
-        } else if (this.sender instanceof Service) {
-            return ((Service) this.sender).getHost();
-        }
-
-        throw new UnsupportedOperationException("Not supported for instance: " + this.sender);
     }
 
     public Duration getTimeout() {
