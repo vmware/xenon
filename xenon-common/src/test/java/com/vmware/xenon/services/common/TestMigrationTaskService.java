@@ -531,6 +531,14 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
 
     @Test
     public void successMigrateSameDocumentsTwiceUsingFallback() throws Throwable {
+
+        this.host.getInProcessHostMap().forEach((k, v) -> {
+            this.host.log("AAA sourceHost=%s", k);
+        });
+        this.destinationHost.getInProcessHostMap().forEach((k, v) -> {
+            this.host.log("AAA destinationHost=%s", k);
+        });
+
         // disable idempotent post on destination
         for (VerificationHost host : destinationHost.getInProcessHostMap().values()) {
             host.toggleServiceOptions(UriUtils.buildUri(host, ExampleService.FACTORY_LINK),
@@ -564,6 +572,9 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
         State waitForServiceCompletion = waitForServiceCompletion(out[0], getDestinationHost());
         ServiceStats stats = getStats(out[0], getDestinationHost());
         Long processedDocuments = Long.valueOf((long) stats.entries.get(MigrationTaskService.STAT_NAME_PROCESSED_DOCUMENTS).latestValue);
+
+        System.out.println("processed doc 1=" + processedDocuments);
+
         assertEquals(TaskStage.FINISHED, waitForServiceCompletion.taskInfo.stage);
         assertEquals(Long.valueOf(this.serviceCount), processedDocuments);
 
@@ -584,9 +595,16 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
         testWait(ctx2);
 
         waitForServiceCompletion = waitForServiceCompletion(out[0], getDestinationHost());
+
+        if (TaskStage.FAILED == waitForServiceCompletion.taskInfo.stage) {
+            this.host.log("AAA FAILED=%s", waitForServiceCompletion.taskInfo.failure);
+        }
+
         assertEquals(waitForServiceCompletion.taskInfo.stage, TaskStage.FINISHED);
         stats = getStats(out[0], getDestinationHost());
         processedDocuments = Long.valueOf((long) stats.entries.get(MigrationTaskService.STAT_NAME_PROCESSED_DOCUMENTS).latestValue);
+        System.out.println("processed doc 2=" + processedDocuments);
+
         assertEquals(Long.valueOf(this.serviceCount), processedDocuments);
         stats = getStats(out[0], getDestinationHost());
         processedDocuments = Long.valueOf((long) stats.entries.get(MigrationTaskService.STAT_NAME_PROCESSED_DOCUMENTS).latestValue);

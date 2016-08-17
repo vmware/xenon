@@ -706,9 +706,17 @@ public class MigrationTaskService extends StatefulService {
                 })
                 .collect(Collectors.toMap(e -> e.getKey(), e -> e.getValue()));
 
+        System.out.println("AAA uris=" + destinationURIs);
+
         OperationJoin.create(posts.keySet())
             .setCompletion((os, ts) -> {
                 if (ts != null && !ts.isEmpty()) {
+
+                    logInfo("AAA fallback size=%s", ts.values().size());
+                    for (Throwable throwable : ts.values()) {
+                        logInfo("AAA fallback due to %s", throwable.getMessage());
+                    }
+
                     if (state.migrationOptions.contains(MigrationOption.DELETE_AFTER)) {
                         useFallBack(state, posts, ts, nextPageLinks, destinationURIs, lastUpdateTimesPerOwner);
                     } else {
@@ -733,7 +741,15 @@ public class MigrationTaskService extends StatefulService {
                     failTask(ts.values());
                     return;
                 }
+
+                System.out.println("AAA size=" + entityDestinationUriTofailedOps.size());
+
+                URI key = new ArrayList<>(entityDestinationUriTofailedOps.keySet()).get(0);
+                entityDestinationUriTofailedOps.remove(key);
+
                 Collection<Operation> postOperations = createPostOperations(entityDestinationUriTofailedOps, posts);
+
+
 
                 OperationJoin
                     .create(postOperations)
@@ -851,7 +867,7 @@ public class MigrationTaskService extends StatefulService {
     }
 
     private void failTask(Collection<Throwable> t) {
-        logWarning("%s", t.iterator().next());
+        logWarning("migration task failure: %s", t.iterator().next());
         failTask(t.iterator().next());
     }
 }
