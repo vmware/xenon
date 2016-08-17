@@ -821,6 +821,9 @@ public class QueryTask extends ServiceDocument {
 
         public Query setTermMatchValue(String matchValue) {
             allocateTerm();
+            if (this.term.matchType == null) {
+                this.term.matchType = MatchType.TERM;
+            }
             this.term.matchValue = matchValue;
             return this;
         }

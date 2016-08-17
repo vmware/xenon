@@ -26,6 +26,7 @@ import com.vmware.xenon.services.common.QueryTask;
 import com.vmware.xenon.services.common.QueryTask.NumericRange;
 import com.vmware.xenon.services.common.QueryTask.Query;
 import com.vmware.xenon.services.common.QueryTask.Query.Occurance;
+import com.vmware.xenon.services.common.QueryTask.QueryTerm.MatchType;
 
 public class TestOdataFilter {
 
@@ -40,6 +41,8 @@ public class TestOdataFilter {
         Query actual = toQuery(odataFilter);
 
         assertQueriesEqual(actual, expected);
+        // MatchType must be set
+        assertEquals(MatchType.TERM, actual.term.matchType);
     }
 
     @Test
