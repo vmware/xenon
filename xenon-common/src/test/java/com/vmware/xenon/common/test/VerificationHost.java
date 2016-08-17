@@ -28,6 +28,8 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URL;
 import java.security.GeneralSecurityException;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -3345,18 +3347,34 @@ public class VerificationHost extends ExampleServiceHost {
         boolean isReady() throws Throwable;
     }
 
-    public void waitFor(String timeoutMsg, WaitHandler wh) throws Throwable {
-        Date exp = getTestExpiration();
-        while (new Date().before(exp)) {
-            if (wh.isReady()) {
-                return;
+    // TODO: move this to TestContext
+    public void waitFor(String timeoutMsg, WaitHandler wh) {
+
+        Duration duration = Duration.between(Instant.now(), getTestExpiration().toInstant());
+        TestContext waitContext = new TestContext(1, duration);
+
+        // sleep for a tenth of the maintenance interval
+        long millis = getMaintenanceIntervalMicros() / 1000 / 10;
+        waitContext.setCheckInterval(Duration.ofMillis(millis));
+
+        try {
+            waitContext.await(() -> {
+                if (wh.isReady()) {
+                    waitContext.complete();
+                }
+            });
+        } catch (Exception ex) {
+            Exception exceptionToThrow;
+            if (ex instanceof TimeoutException) {
+                // add original exception as suppressed exception to provide more context
+                exceptionToThrow = new TimeoutException(timeoutMsg);
+            } else {
+                String msg = "waitFor check logic raised exception";
+                exceptionToThrow = new IllegalStateException(msg);
             }
-            long millis = getMaintenanceIntervalMicros() / 1000;
-            // sleep for a tenth of the maintenance interval
-            millis /= 10;
-            Thread.sleep(millis);
+            exceptionToThrow.addSuppressed(ex);
+            throw ExceptionTestUtils.throwAsUnchecked(exceptionToThrow);
         }
-        throw new TimeoutException(timeoutMsg);
     }
 
     public void setSingleton(boolean enable) {

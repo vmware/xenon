@@ -88,6 +88,11 @@ public class TestContext {
     }
 
     public void await() {
+        await(() -> {
+        });
+    }
+
+    public void await(ExecutableBlock beforeCheck) {
 
         ExceptionTestUtils.executeSafely(() -> {
 
@@ -101,6 +106,7 @@ public class TestContext {
 
             // keep polling latch every interval
             while (expireAt.isAfter(Instant.now())) {
+                beforeCheck.execute();
                 if (this.latch.await(this.interval.toNanos(), TimeUnit.NANOSECONDS)) {
                     break;
                 }
