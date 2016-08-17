@@ -34,6 +34,7 @@ import com.vmware.xenon.common.ServiceDocumentDescription.Builder;
 import com.vmware.xenon.services.common.QueryFilter.Conjunction;
 import com.vmware.xenon.services.common.QueryFilter.QueryFilterException;
 import com.vmware.xenon.services.common.QueryFilter.UnsupportedMatchTypeException;
+import com.vmware.xenon.services.common.QueryTask.NumericRange;
 import com.vmware.xenon.services.common.QueryTask.Query;
 import com.vmware.xenon.services.common.QueryTask.Query.Occurance;
 import com.vmware.xenon.services.common.QueryTask.QueryTerm.MatchType;
@@ -51,6 +52,8 @@ public class TestQueryFilter {
         public String c6;
         public String c7;
         public String c8;
+
+        public int numeric;
 
         public Color e1;
         public URI u1;
@@ -191,6 +194,52 @@ public class TestQueryFilter {
         q.addBooleanClause(t1);
         q.addBooleanClause(t2);
         return q;
+    }
+
+    @Test
+    public void evaluateWithEqualRange() throws QueryFilterException {
+        QueryFilter filter = QueryFilter.create(createWithEqualRangeQuery());
+        QueryFilterDocument document;
+
+        document = new QueryFilterDocument();
+        document.numeric = 315;
+        assertFalse(filter.evaluate(document, this.description));
+
+        document = new QueryFilterDocument();
+        document.numeric = 314;
+        assertTrue(filter.evaluate(document, this.description));
+    }
+
+    Query createWithEqualRangeQuery() {
+        Query query = new Query();
+        query.setTermPropertyName("numeric");
+        query.setNumericRange(NumericRange.createEqualRange(314L));
+        return query;
+    }
+
+    @Test
+    public void evaluateWithLessThanRange() throws QueryFilterException {
+        QueryFilter filter = QueryFilter.create(createWithLessThanRangeQuery());
+        QueryFilterDocument document;
+
+        document = new QueryFilterDocument();
+        document.numeric = 315;
+        assertFalse(filter.evaluate(document, this.description));
+
+        document = new QueryFilterDocument();
+        document.numeric = 314;
+        assertFalse(filter.evaluate(document, this.description));
+
+        document = new QueryFilterDocument();
+        document.numeric = 313;
+        assertTrue(filter.evaluate(document, this.description));
+    }
+
+    Query createWithLessThanRangeQuery() {
+        Query query = new Query();
+        query.setTermPropertyName("numeric");
+        query.setNumericRange(NumericRange.createLessThanRange(314L));
+        return query;
     }
 
     @Test

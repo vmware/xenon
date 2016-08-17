@@ -61,7 +61,7 @@ public class QueryFilter {
         private static final String FORMAT = "Unsupported matchType: %s";
 
         UnsupportedMatchTypeException(Term term) {
-            super(String.format(FORMAT, term.term.matchType.toString()));
+            super(String.format(FORMAT, String.valueOf(term.term.matchType)));
         }
     }
 
@@ -262,6 +262,7 @@ public class QueryFilter {
             }
         }
 
+        @Override
         public String toString() {
             class TermByPropertyNameComparator implements Comparator<Term> {
                 @Override
@@ -429,6 +430,24 @@ public class QueryFilter {
             return o.equals(term.term.matchValue);
         }
 
+        private boolean evaluateNumber(Term term, Number o) {
+            if (term.term.range == null) {
+                return false;
+            }
+
+            double max = term.term.range.max.doubleValue();
+            double min = term.term.range.min.doubleValue();
+            double val = o.doubleValue();
+
+            if (term.term.range.isMaxInclusive && val == max
+                    || term.term.range.isMinInclusive && val == min
+                    || (min < val && val < max)) {
+                return true;
+            } else {
+                return false;
+            }
+        }
+
         @SuppressWarnings("unchecked")
         private boolean evaluateTerm(Term term, Object o, PropertyDescription pd, int depth) {
             if (o == null) {
@@ -446,6 +465,20 @@ public class QueryFilter {
                     }
                 } else {
                     if (!evaluateString(term, (String) o)) {
+                        return false;
+                    }
+                }
+            } else if (pd.typeName == TypeName.LONG || pd.typeName == TypeName.DOUBLE) {
+                if (!(o instanceof Number)) {
+                    return term.negate;
+                }
+
+                if (term.negate) {
+                    if (evaluateNumber(term, (Number) o)) {
+                        return false;
+                    }
+                } else {
+                    if (!evaluateNumber(term, (Number) o)) {
                         return false;
                     }
                 }
@@ -518,7 +551,8 @@ public class QueryFilter {
         static Evaluator create(Conjunction conjunction) throws QueryFilterException {
             ArrayList<Term> terms = new ArrayList<>();
             for (Term term : conjunction) {
-                if (term.term.matchType != MatchType.TERM &&
+                if (term.term.range == null &&
+                        term.term.matchType != MatchType.TERM &&
                         term.term.matchType != MatchType.WILDCARD) {
                     throw new UnsupportedMatchTypeException(term);
                 }
@@ -715,6 +749,7 @@ public class QueryFilter {
         }
 
         class ElemComparator implements Comparator<Elem> {
+            @Override
             public int compare(Elem o1, Elem o2) {
                 return o1.count - o2.count;
             }
