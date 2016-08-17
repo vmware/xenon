@@ -101,7 +101,7 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
                 query = QueryStringDecoder.decodeComponent(targetUri.getQuery());
             }
 
-            URI uri = new URI(UriUtils.HTTP_SCHEME, null, ServiceHost.LOCAL_HOST,
+            URI uri = new URI(UriUtils.HTTP_SCHEME, targetUri.getUserInfo(), ServiceHost.LOCAL_HOST,
                     this.host.getPort(), targetUri.getPath(), query, null);
             request.setUri(uri);
 
