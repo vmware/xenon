@@ -416,6 +416,7 @@ public class NettyHttpServiceClient implements ServiceClient {
             String pathAndQuery;
             String path = op.getUri().getPath();
             String query = op.getUri().getRawQuery();
+            String userInfo = op.getUri().getRawUserInfo();
             path = path == null || path.isEmpty() ? "/" : path;
             if (query != null) {
                 pathAndQuery = path + "?" + query;
@@ -431,7 +432,7 @@ public class NettyHttpServiceClient implements ServiceClient {
              */
             boolean hasRequestHeaders = op.hasRequestHeaders();
             boolean useHttp2 = op.isConnectionSharing();
-            if (this.httpProxy != null || useHttp2) {
+            if (this.httpProxy != null || useHttp2 || userInfo != null) {
                 pathAndQuery = op.getUri().toString();
             }
 

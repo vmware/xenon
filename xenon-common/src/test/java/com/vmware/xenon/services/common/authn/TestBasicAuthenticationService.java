@@ -535,6 +535,7 @@ public class TestBasicAuthenticationService extends BasicTestCase {
         this.host.testStart(1);
         this.host.send(Operation
                 .createPost(authServiceUri)
+                .forceRemote()
                 .setBody(new Object())
                 .setCompletion(
                         (o, e) -> {
@@ -547,7 +548,7 @@ public class TestBasicAuthenticationService extends BasicTestCase {
                                         "Invalid status code returned"));
                                 return;
                             }
-                            if (o.getAuthorizationContext() == null) {
+                            if (!o.isRemote() && o.getAuthorizationContext() == null) {
                                 this.host.failIteration(new IllegalStateException(
                                         "Authorization context not set"));
                                 return;
