@@ -4429,6 +4429,11 @@ public class ServiceHost implements ServiceRequestSender {
             }
 
             if (stage == null) {
+                // update the maintenance count stat for the ServiceHost before, completing
+                // the current maintenance run.
+                this.managementService.adjustStat(
+                        Service.STAT_NAME_SERVICE_HOST_MAINTENANCE_COUNT, 1);
+
                 post.complete();
                 scheduleMaintenance();
                 return;

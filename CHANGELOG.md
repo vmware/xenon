@@ -13,6 +13,8 @@
   or body document which eliminates the use of TestContext in test code.
   Please reference the TestExampleService for usage.
 
+* Add stat for tracking number of times maintenance was ran for the ServiceHost.
+
 ## 0.9.3
 
 * Add a flavor of mergeWithState() that processes a

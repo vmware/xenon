@@ -296,6 +296,7 @@ public interface Service extends ServiceRequestSender {
     static final String STAT_NAME_SERVICE_HANDLER_LATENCY = "operationHandlerProcessingLatencyMicros";
     static final String STAT_NAME_CREATE_COUNT = "createCount";
     static final String STAT_NAME_OPERATION_DURATION = "operationDuration";
+    static final String STAT_NAME_SERVICE_HOST_MAINTENANCE_COUNT = "hostMaintenanceCount";
     static final String STAT_NAME_MAINTENANCE_COUNT = "maintenanceCount";
     static final String STAT_NAME_NODE_GROUP_CHANGE_MAINTENANCE_COUNT = "maintenanceForNodeGroupChangeCount";
     static final String STAT_NAME_NODE_GROUP_SYNCH_DELAYED_COUNT = "maintenanceForNodeGroupDelayedCount";
