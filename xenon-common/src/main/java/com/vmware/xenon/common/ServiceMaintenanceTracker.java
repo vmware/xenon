@@ -14,6 +14,7 @@
 package com.vmware.xenon.common;
 
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
 import java.util.concurrent.CancellationException;
@@ -45,6 +46,8 @@ class ServiceMaintenanceTracker {
     }
 
     private ServiceHost host;
+
+    private Map<String, Long> trackedServices = new ConcurrentSkipListMap<>();
     private ConcurrentSkipListMap<Long, Set<String>> nextExpiration = new ConcurrentSkipListMap<>();
 
     public void schedule(Service s, long now) {
@@ -56,12 +59,25 @@ class ServiceMaintenanceTracker {
         long nextExpirationMicros = Math.max(now, now + interval - SCHEDULING_EPSILON_MICROS);
 
         synchronized (this) {
+            // To avoid double scheduling the same self-link
+            // we lookup the self-link in our trackedServices map and remove
+            // it before adding the new schedule.
+            String selfLink = s.getSelfLink();
+            Long expiration = this.trackedServices.get(selfLink);
+            if (expiration != null) {
+                Set<String> services = this.nextExpiration.get(expiration);
+                if (services != null) {
+                    services.remove(selfLink);
+                }
+            }
+
+            this.trackedServices.put(selfLink, nextExpirationMicros);
             Set<String> services = this.nextExpiration.get(nextExpirationMicros);
             if (services == null) {
                 services = new HashSet<>();
                 this.nextExpiration.put(nextExpirationMicros, services);
             }
-            services.add(s.getSelfLink());
+            services.add(selfLink);
         }
     }
 
@@ -73,6 +89,7 @@ class ServiceMaintenanceTracker {
                 return;
             }
 
+            Long expiration = null;
             Set<String> services = null;
 
             // the nextExpiration map is a concurrent data structure, but since each value is a Set, we want
@@ -84,27 +101,31 @@ class ServiceMaintenanceTracker {
                     // no service requires maintenance, yet
                     return;
                 }
+                expiration = e.getKey();
                 services = e.getValue();
-                this.nextExpiration.remove(e.getKey());
+                this.nextExpiration.remove(expiration);
             }
 
             for (String servicePath : services) {
                 Service s = this.host.findService(servicePath);
 
-                if (s == null) {
-                    continue;
-                }
-                if (s.getProcessingStage() != ProcessingStage.AVAILABLE) {
-                    continue;
-                }
+                boolean skipMaintenance =
+                        (s == null) ||
+                        (s.getProcessingStage() != ProcessingStage.AVAILABLE) ||
+                        (!s.hasOption(ServiceOption.PERIODIC_MAINTENANCE)) ||
+                        (s.hasOption(ServiceOption.OWNER_SELECTION) &&
+                                !s.hasOption(ServiceOption.DOCUMENT_OWNER));
 
-                if (!s.hasOption(ServiceOption.PERIODIC_MAINTENANCE)) {
-                    // maintenance was disabled on this service
-                    continue;
-                }
-
-                if (s.hasOption(ServiceOption.OWNER_SELECTION)
-                        && !s.hasOption(ServiceOption.DOCUMENT_OWNER)) {
+                if (skipMaintenance) {
+                    synchronized (this) {
+                        // Another request scheduling this service's maintenance could
+                        // have occurred. So double check the expiration time, if it
+                        // matches the current expiration window, then remove it.
+                        Long serviceExpiration = this.trackedServices.get(servicePath);
+                        if (serviceExpiration.equals(expiration)) {
+                            this.trackedServices.remove(servicePath);
+                        }
+                    }
                     continue;
                 }
 
@@ -167,6 +188,7 @@ class ServiceMaintenanceTracker {
     }
 
     public synchronized void close() {
+        this.trackedServices.clear();
         this.nextExpiration.clear();
     }
 }
