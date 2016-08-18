@@ -27,6 +27,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import org.junit.Test;
@@ -146,6 +147,33 @@ class MaintenanceTestService extends StatefulService {
     @Override
     public void handlePeriodicMaintenance(Operation post) {
         post.complete();
+    }
+}
+
+class MaintenanceVerificationService extends StatefulService {
+    /**
+     * See {@link TestStatefulService#periodicMaintenanceVerification()}
+     */
+    public AtomicBoolean delayMaintenance = new AtomicBoolean(false);
+
+    public MaintenanceVerificationService() {
+        super(ServiceDocument.class);
+        toggleOption(ServiceOption.PERIODIC_MAINTENANCE, true);
+        toggleOption(ServiceOption.IDEMPOTENT_POST, true);
+        toggleOption(ServiceOption.INSTRUMENTATION, true);
+        setMaintenanceIntervalMicros(TimeUnit.MILLISECONDS.toMicros(100));
+    }
+
+    @Override
+    public void handlePeriodicMaintenance(Operation op) {
+        while (this.delayMaintenance.get()) {
+            try {
+                Thread.sleep(this.getMaintenanceIntervalMicros() / 1000);
+            } catch (Exception e) {
+                op.fail(e);
+            }
+        }
+        op.complete();
     }
 }
 
@@ -410,7 +438,7 @@ public class TestStatefulService extends BasicReusableHostTestCase {
                     s.name = UUID.randomUUID().toString();
                     s.documentExpirationTimeMicros = Utils.getNowMicrosUtc();
                     o.setBody(s);
-                } , factoryService.getUri());
+                }, factoryService.getUri());
 
         // services should expire, and we will confirm the delete handler was called. We only expire when we try to access
         // a document, so do a factory get ...
@@ -616,6 +644,44 @@ public class TestStatefulService extends BasicReusableHostTestCase {
                 UriUtils.buildFactoryUri(host, MaintenanceTestService.class)), FactoryService
                 .create(MaintenanceTestService.class, MaintenanceTestService.MaintenanceTestState.class));
         this.host.waitForServiceAvailable(MaintenanceTestService.FACTORY_LINK);
+    }
+
+    @Test
+    public void periodicMaintenanceVerification() throws Throwable {
+
+        // This test verifies periodic maintenance tracking in Xenon.
+        // Since the tracking is based on documentSelfLinks, we want to
+        // make sure that the tracking logic can handle duplicate
+        // scheduling calls for the same documentSelfLink. This
+        // can happen if we try to start, stop and restart a service before
+        // it got scheduled the first time.
+
+        String documentSelfLink = UUID.randomUUID().toString();
+
+        // Start by creating a service and intentionally delay the first maintenance
+        // call. This is done to deterministically simulate the race condition.
+        MaintenanceVerificationService service1 = new MaintenanceVerificationService();
+        service1.delayMaintenance.set(true);
+
+        ServiceDocument state = new ServiceDocument();
+        state.documentSelfLink = documentSelfLink;
+
+        this.host.startServiceAndWait(service1, documentSelfLink, state);
+        this.host.stopService(service1);
+
+        // Start again without delaying maintenance. Note, we still haven't exited
+        // handleMaintenance for the previously created service object.
+        MaintenanceVerificationService service2 = new MaintenanceVerificationService();
+        this.host.startServiceAndWait(service2, documentSelfLink, state);
+
+        // Release the old service now to verify that we can handle duplicates.
+        service1.delayMaintenance.set(false);
+
+        // Wait for three maintenance intervals to elapse.
+        Thread.sleep(3 * this.host.maintenanceIntervalMillis);
+        double maintenanceCount = service2.getStat(Service.STAT_NAME_MAINTENANCE_COUNT).latestValue;
+        assertTrue(String.format("Maintenance count %f", maintenanceCount),
+                maintenanceCount > 0 && maintenanceCount <= 3);
     }
 
     @Test
