@@ -14,6 +14,7 @@
 package com.vmware.xenon.common;
 
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
 import java.util.concurrent.CancellationException;
@@ -45,6 +46,8 @@ class ServiceMaintenanceTracker {
     }
 
     private ServiceHost host;
+
+    private Map<String, Long> trackedServices = new ConcurrentSkipListMap<>();
     private ConcurrentSkipListMap<Long, Set<String>> nextExpiration = new ConcurrentSkipListMap<>();
 
     public void schedule(Service s, long now) {
@@ -56,6 +59,16 @@ class ServiceMaintenanceTracker {
         long nextExpirationMicros = Math.max(now, now + interval - SCHEDULING_EPSILON_MICROS);
 
         synchronized (this) {
+            String selfLink = s.getSelfLink();
+            Long expiration = trackedServices.get(selfLink);
+            if (expiration != null) {
+                Set<String> services = this.nextExpiration.get(expiration);
+                if (services != null) {
+                    services.remove(selfLink);
+                }
+            }
+
+            this.trackedServices.put(selfLink, nextExpirationMicros);
             Set<String> services = this.nextExpiration.get(nextExpirationMicros);
             if (services == null) {
                 services = new HashSet<>();
@@ -91,20 +104,17 @@ class ServiceMaintenanceTracker {
             for (String servicePath : services) {
                 Service s = this.host.findService(servicePath);
 
-                if (s == null) {
-                    continue;
-                }
-                if (s.getProcessingStage() != ProcessingStage.AVAILABLE) {
-                    continue;
-                }
+                boolean skipMaintenance =
+                        (s == null) ||
+                        (s.getProcessingStage() != ProcessingStage.AVAILABLE) ||
+                        (!s.hasOption(ServiceOption.PERIODIC_MAINTENANCE)) ||
+                        (s.hasOption(ServiceOption.OWNER_SELECTION) &&
+                                !s.hasOption(ServiceOption.DOCUMENT_OWNER));
 
-                if (!s.hasOption(ServiceOption.PERIODIC_MAINTENANCE)) {
-                    // maintenance was disabled on this service
-                    continue;
-                }
-
-                if (s.hasOption(ServiceOption.OWNER_SELECTION)
-                        && !s.hasOption(ServiceOption.DOCUMENT_OWNER)) {
+                if (skipMaintenance) {
+                    synchronized (this) {
+                        this.trackedServices.remove(servicePath);
+                    }
                     continue;
                 }
 

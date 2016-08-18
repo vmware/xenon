@@ -27,7 +27,9 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.logging.Level;
 
 import org.junit.Test;
 
@@ -146,6 +148,36 @@ class MaintenanceTestService extends StatefulService {
     @Override
     public void handlePeriodicMaintenance(Operation post) {
         post.complete();
+    }
+}
+
+class MaintenanceVerificationService extends StatefulService {
+    /**
+     * See {@link TestStatefulService#periodicMaintenanceVerification()}
+     */
+    public AtomicBoolean delayMaintenance = new AtomicBoolean(false);
+    public static class MaintenanceVerificationState extends ServiceDocument {
+        public String name;
+    }
+
+    public MaintenanceVerificationService() {
+        super(MaintenanceVerificationState.class);
+        toggleOption(ServiceOption.PERIODIC_MAINTENANCE, true);
+        toggleOption(ServiceOption.IDEMPOTENT_POST, true);
+        toggleOption(ServiceOption.INSTRUMENTATION, true);
+        setMaintenanceIntervalMicros(TimeUnit.MILLISECONDS.toMicros(100));
+    }
+
+    @Override
+    public void handlePeriodicMaintenance(Operation op) {
+        while (this.delayMaintenance.get()) {
+            try {
+               Thread.sleep(this.getHost().getMaintenanceIntervalMicros() / 1000);
+            } catch (Exception ex) {
+                op.fail(ex);
+            }
+        }
+        op.complete();
     }
 }
 
@@ -616,6 +648,46 @@ public class TestStatefulService extends BasicReusableHostTestCase {
                 UriUtils.buildFactoryUri(host, MaintenanceTestService.class)), FactoryService
                 .create(MaintenanceTestService.class, MaintenanceTestService.MaintenanceTestState.class));
         this.host.waitForServiceAvailable(MaintenanceTestService.FACTORY_LINK);
+    }
+
+    @Test
+    public void periodicMaintenanceVerification() throws Throwable {
+
+        // This test verifies periodic maintenance tracking in Xenon.
+        // Since the tracking is based on documentSelfLinks, we want to
+        // make sure that the tracking logic can handle duplicate
+        // scheduling calls for the same documentSelfLink. This
+        // can happen if we try to start, stop and restart a service before
+        // it got scheduled the first time.
+
+        String documentSelfLink = UUID.randomUUID().toString();
+
+        // Start by creating a service and intentionally delay the first maintenance
+        // call. This is done to deterministically simulate the race condition.
+        MaintenanceVerificationService service1 = new MaintenanceVerificationService();
+        service1.delayMaintenance.set(true);
+
+        MaintenanceVerificationService.MaintenanceVerificationState state =
+                new MaintenanceVerificationService.MaintenanceVerificationState();
+        state.documentSelfLink = documentSelfLink;
+        state.name = "verification-doc";
+
+        this.host.startServiceAndWait(service1, documentSelfLink, state);
+        this.host.stopService(service1);
+
+        // Start again without delaying maintenance. Note, we still haven't exited
+        // handleMaintenance for the previously created service object.
+        MaintenanceVerificationService service2 = new MaintenanceVerificationService();
+        this.host.startServiceAndWait(service2, documentSelfLink, state);
+
+        // Release the old service now to verify that we can handle duplicates.
+        service1.delayMaintenance.set(false);
+
+        // Wait for three maintenance intervals to elapse.
+        Thread.sleep(3 * this.host.maintenanceIntervalMillis);
+        double maintenanceCount = service2.getStat(Service.STAT_NAME_MAINTENANCE_COUNT).latestValue;
+        assertTrue(String.format("Maintenance count %f", maintenanceCount),
+                maintenanceCount > 0 && maintenanceCount <= 3);
     }
 
     @Test
