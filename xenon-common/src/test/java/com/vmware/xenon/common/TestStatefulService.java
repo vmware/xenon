@@ -27,7 +27,9 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.logging.Level;
 
 import org.junit.Test;
 
@@ -146,6 +148,34 @@ class MaintenanceTestService extends StatefulService {
     @Override
     public void handlePeriodicMaintenance(Operation post) {
         post.complete();
+    }
+}
+
+class MaintenanceVerificationService extends StatefulService {
+    /**
+     * See {@link TestStatefulService#periodicMaintenanceVerification()}
+     */
+    public AtomicBoolean delayMaintenance = new AtomicBoolean(false);
+
+    public MaintenanceVerificationService() {
+        super(ServiceDocument.class);
+        toggleOption(ServiceOption.PERIODIC_MAINTENANCE, true);
+        toggleOption(ServiceOption.IDEMPOTENT_POST, true);
+        toggleOption(ServiceOption.INSTRUMENTATION, true);
+        setMaintenanceIntervalMicros(TimeUnit.MILLISECONDS.toMicros(100));
+    }
+
+    @Override
+    public void handlePeriodicMaintenance(Operation op) {
+        while (this.delayMaintenance.get()) {
+            try {
+                Thread.sleep(this.getMaintenanceIntervalMicros() / 1000);
+            } catch (Exception e) {
+                op.fail(e);
+            }
+        }
+        this.log(Level.INFO, "periodicMaintenance");
+        op.complete();
     }
 }
 
@@ -410,7 +440,7 @@ public class TestStatefulService extends BasicReusableHostTestCase {
                     s.name = UUID.randomUUID().toString();
                     s.documentExpirationTimeMicros = Utils.getNowMicrosUtc();
                     o.setBody(s);
-                } , factoryService.getUri());
+                }, factoryService.getUri());
 
         // services should expire, and we will confirm the delete handler was called. We only expire when we try to access
         // a document, so do a factory get ...
@@ -616,6 +646,70 @@ public class TestStatefulService extends BasicReusableHostTestCase {
                 UriUtils.buildFactoryUri(host, MaintenanceTestService.class)), FactoryService
                 .create(MaintenanceTestService.class, MaintenanceTestService.MaintenanceTestState.class));
         this.host.waitForServiceAvailable(MaintenanceTestService.FACTORY_LINK);
+    }
+
+    @Test
+    public void testAggressively() throws Throwable {
+        for (int i = 0; i < 1000; i++) {
+            setUpOnce();
+            setUpPerMethod();
+            this.host.log(Level.INFO, "Iteration %d", i);
+            periodicMaintenanceVerification();
+            tearDownPerMethod();
+            tearDownOnce();
+        }
+    }
+
+    public void periodicMaintenanceVerification() throws Throwable {
+
+        // This test verifies periodic maintenance tracking in Xenon.
+        // Since the tracking is based on documentSelfLinks, we want to
+        // make sure that the tracking logic can handle duplicate
+        // scheduling calls for the same documentSelfLink. This
+        // can happen if we try to start, stop and restart a service before
+        // it got scheduled the first time.
+
+        String documentSelfLink = UUID.randomUUID().toString();
+
+        // Start by creating a service and intentionally delay the first maintenance
+        // call. This is done to deterministically simulate the race condition.
+        MaintenanceVerificationService service1 = new MaintenanceVerificationService();
+        service1.delayMaintenance.set(true);
+
+        ServiceDocument state = new ServiceDocument();
+        state.documentSelfLink = documentSelfLink;
+
+        this.host.startServiceAndWait(service1, documentSelfLink, state);
+        this.host.stopService(service1);
+
+        // Start again without delaying maintenance. Note, we still haven't exited
+        // handleMaintenance for the previously created service object.
+        MaintenanceVerificationService service2 = new MaintenanceVerificationService();
+        this.host.startServiceAndWait(service2, documentSelfLink, state);
+
+        // Release the old service now to verify that we can handle duplicates.
+        service1.delayMaintenance.set(false);
+
+        ServiceStat stat = this.host
+                .getServiceStats(this.host.getManagementServiceUri())
+                .get(Service.STAT_NAME_MAINTENANCE_COUNT);
+
+        // Wait for three maintenance intervals to elapse.
+        final double maintenanceCount = (stat != null) ? stat.latestValue : 0;
+        this.host.waitFor("Timeout waiting for the service host to elapse three maintenance intervals",
+                () -> {
+                    ServiceStat newStat = this.host
+                            .getServiceStats(this.host.getManagementServiceUri())
+                            .get(Service.STAT_NAME_MAINTENANCE_COUNT);
+                    if (newStat != null && newStat.latestValue >= 3.0 + maintenanceCount) {
+                        return true;
+                    }
+
+                    return false;
+                });
+        double serviceMaintenanceCount = service2.getStat(Service.STAT_NAME_MAINTENANCE_COUNT).latestValue;
+        assertTrue(String.format("Maintenance count %f", serviceMaintenanceCount),
+                serviceMaintenanceCount > 0 && serviceMaintenanceCount <= 3);
     }
 
     @Test

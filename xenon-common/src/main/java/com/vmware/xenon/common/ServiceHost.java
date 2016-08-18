@@ -4388,6 +4388,9 @@ public class ServiceHost implements ServiceRequestSender {
                     + this.state.maintenanceIntervalMicros;
             performMaintenanceStage(Operation.createPost(getUri()),
                     MaintenanceStage.UTILS, deadline);
+            this.managementService.adjustStat(
+                    Service.STAT_NAME_SERVICE_HOST_MAINTENANCE_COUNT, 1);
+            this.log(Level.INFO, "Maintenance");
         };
 
         this.maintenanceTask = schedule(r, getMaintenanceIntervalMicros(), TimeUnit.MICROSECONDS);
