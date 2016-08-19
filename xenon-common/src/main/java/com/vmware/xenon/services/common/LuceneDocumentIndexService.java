@@ -1670,7 +1670,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         if (s.documentTransactionId != null) {
             Field transactionField = new StringField(ServiceDocument.FIELD_NAME_TRANSACTION_ID,
                     s.documentTransactionId,
-                    Field.Store.NO);
+                    Field.Store.YES);
             doc.add(transactionField);
         }
 
@@ -1933,7 +1933,10 @@ public class LuceneDocumentIndexService extends StatelessService {
         boolean hasExpired = false;
         IndexableField expirationValue = doc
                 .getField(ServiceDocument.FIELD_NAME_EXPIRATION_TIME_MICROS);
-        if (expirationValue != null) {
+        IndexableField documentTransactionId = doc
+                .getField(ServiceDocument.FIELD_NAME_TRANSACTION_ID);
+
+        if (documentTransactionId == null && expirationValue != null) {
             expiration = expirationValue.numericValue().longValue();
             hasExpired = expiration <= now;
         }
