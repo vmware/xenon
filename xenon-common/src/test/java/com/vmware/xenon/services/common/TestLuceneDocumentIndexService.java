@@ -451,6 +451,7 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
             this.host.testWait();
 
             verifyDeleteRePost(h, exampleURIs);
+            verifyExpiryWithTransactions(exampleURIs);
 
             Map<URI, ExampleServiceState> beforeState = this.host.getServiceState(null,
                     ExampleServiceState.class, exampleURIs);
@@ -703,6 +704,32 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
                     .setCompletion(this.host.getCompletion()));
             this.host.testWait();
         }
+    }
+
+    private void verifyExpiryWithTransactions(List<URI> exampleURIs)
+            throws Throwable {
+        ExampleServiceState body;
+        // delete one of the services (with Expiry and transactionId set)
+        URI deletedService;
+        deletedService = exampleURIs.remove(0);
+        body = new ExampleServiceState();
+        body.documentExpirationTimeMicros =  Utils.getNowMicrosUtc();
+        // Set a random UUID as documentTransactionId
+        body.documentTransactionId = UUID.randomUUID().toString();
+        this.host.testStart(1);
+        this.host.send(Operation.createDelete(deletedService)
+                .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_FORCE_INDEX_UPDATE)
+                .setBody(body)
+                .setCompletion(this.host.getCompletion()));
+        this.host.testWait();
+        // Wait for a few seconds
+        Thread.sleep(TimeUnit.MICROSECONDS.toMillis(this.host.getMaintenanceIntervalMicros()) * 2);
+        // Verify that the document in question is not actually expired
+        this.host.testStart(1);
+        this.host.send(Operation.createGet(deletedService).setCompletion((o, e) -> {
+            this.host.completeIteration();
+        }));
+        this.host.testWait();
     }
 
     private void verifyOnDemandLoad(ServiceHost h, String onDemandFactoryLink) throws Throwable {
