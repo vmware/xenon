@@ -37,6 +37,7 @@ import com.vmware.xenon.common.OperationProcessingChain;
 import com.vmware.xenon.common.RequestRouter;
 import com.vmware.xenon.common.Service;
 import com.vmware.xenon.common.ServiceDocument;
+import com.vmware.xenon.common.ServiceStats;
 import com.vmware.xenon.common.StatefulService;
 import com.vmware.xenon.common.StatelessService;
 import com.vmware.xenon.common.UriUtils;
@@ -550,6 +551,73 @@ public class TestSimpleTransactionService extends BasicReusableHostTestCase {
         this.defaultHost.testWait();
 
         // finally, commit transaction
+        commit(txid);
+    }
+
+    @Test
+    public void testdocumentExpiry() throws Throwable {
+
+        String accountId1 = buildAccountId(51);
+        createAccount(null, accountId1, true);
+
+        String accountId2 = buildAccountId(52);
+        createAccount(null, accountId2, true);
+        // Send a patch with expiry under a transaction to account1, do not commit yet.
+        String txid = newTransaction();
+
+        this.defaultHost.testStart(1);
+
+        BankAccountServiceState body = new BankAccountServiceState();
+        body.documentExpirationTimeMicros = Utils.getNowMicrosUtc();
+        body.balance = 51.0;
+        Operation patchWithTx = Operation
+                .createPatch(buildAccountUri(accountId1))
+                .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_FORCE_INDEX_UPDATE)
+                .setBody(body)
+                .setTransactionId(txid)
+                .setCompletion(this.defaultHost.getCompletion());
+
+        this.defaultHost.send(patchWithTx);
+        this.defaultHost.testWait();
+
+        // send a patch with expiry with out a transaciton to document2
+        this.defaultHost.testStart(1);
+        body = new BankAccountServiceState();
+        body.documentExpirationTimeMicros = Utils.getNowMicrosUtc();
+        body.balance = 52.0;
+
+        Operation patchWithOutTx = Operation
+                .createPatch(buildAccountUri(accountId2))
+                .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_FORCE_INDEX_UPDATE)
+                .setBody(body)
+                .setCompletion(this.defaultHost.getCompletion());
+
+        this.defaultHost.send(patchWithOutTx);
+        this.defaultHost.testWait();
+
+        // wait for document expiry to be attempted
+        URI documentIndexServiceURI = UriUtils.buildUri(this.defaultHost, LuceneDocumentIndexService.SELF_LINK);
+        URI statsUri = UriUtils.buildStatsUri(documentIndexServiceURI);
+
+        ServiceStats stats = this.defaultHost.getServiceState(null, ServiceStats.class, statsUri);
+        ServiceStats.ServiceStat expiredCountBefore
+                = stats.entries.get(LuceneDocumentIndexService.STAT_NAME_DOCUMENT_EXPIRATION_COUNT);
+
+        // verify that documents expired are only one more than initial
+        this.defaultHost.waitFor("Expected only document2 to expire", () -> {
+
+            ServiceStats stats1 = this.defaultHost.getServiceState(null, ServiceStats.class, statsUri);
+
+            ServiceStats.ServiceStat expiredCountAfter
+                    = stats1.entries.get(LuceneDocumentIndexService.STAT_NAME_DOCUMENT_EXPIRATION_COUNT);
+
+            if (expiredCountAfter != null && expiredCountAfter.latestValue - expiredCountBefore.latestValue > 0 &&
+                    expiredCountAfter.latestValue - expiredCountBefore.latestValue < 2) {
+                return true;
+            }
+            return false;
+        });
+        // send a commit for document1 and expect it to pass
         commit(txid);
     }
 
@@ -1122,6 +1190,15 @@ public class TestSimpleTransactionService extends BasicReusableHostTestCase {
             } catch (Exception e) {
                 start.fail(e);
             }
+        }
+
+        @Override
+        public void handlePatch(Operation patch) {
+            BankAccountServiceState newState = getBody(patch);
+            BankAccountServiceState currentState = getState(patch);
+            Utils.mergeWithState(this.getDocumentTemplate().documentDescription, currentState, newState);
+            setState(patch, currentState);
+            patch.complete();
         }
 
         void handlePatchForDeposit(Operation patch) {

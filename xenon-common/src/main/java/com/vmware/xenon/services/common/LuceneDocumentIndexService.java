@@ -335,6 +335,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         this.fieldsToLoadNoExpand.add(ServiceDocument.FIELD_NAME_UPDATE_TIME_MICROS);
         this.fieldsToLoadNoExpand.add(ServiceDocument.FIELD_NAME_UPDATE_ACTION);
         this.fieldsToLoadNoExpand.add(ServiceDocument.FIELD_NAME_EXPIRATION_TIME_MICROS);
+        this.fieldsToLoadNoExpand.add(ServiceDocument.FIELD_NAME_TRANSACTION_ID);
         this.fieldsToLoadWithExpand = new HashSet<>(this.fieldsToLoadNoExpand);
         this.fieldsToLoadWithExpand.add(LUCENE_FIELD_NAME_JSON_SERIALIZED_STATE);
         this.fieldsToLoadWithExpand.add(LUCENE_FIELD_NAME_BINARY_SERIALIZED_STATE);
@@ -1670,7 +1671,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         if (s.documentTransactionId != null) {
             Field transactionField = new StringField(ServiceDocument.FIELD_NAME_TRANSACTION_ID,
                     s.documentTransactionId,
-                    Field.Store.NO);
+                    Field.Store.YES);
             doc.add(transactionField);
         }
 
@@ -1933,9 +1934,15 @@ public class LuceneDocumentIndexService extends StatelessService {
         boolean hasExpired = false;
         IndexableField expirationValue = doc
                 .getField(ServiceDocument.FIELD_NAME_EXPIRATION_TIME_MICROS);
+        IndexableField transactonId = doc
+                .getField(ServiceDocument.FIELD_NAME_TRANSACTION_ID);
         if (expirationValue != null) {
             expiration = expirationValue.numericValue().longValue();
             hasExpired = expiration <= now;
+        }
+
+        if (transactonId != null) {
+            hasExpired = hasExpired && transactonId.stringValue() == null;
         }
 
         if (!hasExpired) {
