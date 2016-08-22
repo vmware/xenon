@@ -65,6 +65,9 @@ public class TestServiceHostManagementService extends BasicTestCase {
         assertTrue(localRsp.systemInfo.usableDiskByteCount > 10000);
         assertTrue(localRsp.systemInfo.freeDiskByteCount > 10000);
 
+        assertTrue(localRsp.systemInfo.cpuUtilizationPercent > 0.0);
+        assertTrue(localRsp.systemInfo.cpuUtilizationPercent < 100.0);
+
         assertTrue(rsp.httpPort == localRsp.httpPort);
         assertTrue(rsp.systemInfo.availableProcessorCount == localRsp.systemInfo.availableProcessorCount);
         // we have seen, once, the maxMemoryByteCount change, during test execution, so here simply
