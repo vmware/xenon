@@ -16,6 +16,7 @@ package com.vmware.xenon.common;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.lang.management.ManagementFactory;
 import java.net.InetAddress;
 import java.net.NetworkInterface;
 import java.net.URI;
@@ -64,6 +65,13 @@ import java.util.logging.FileHandler;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+import javax.management.Attribute;
+import javax.management.AttributeList;
+import javax.management.InstanceNotFoundException;
+import javax.management.MBeanServer;
+import javax.management.MalformedObjectNameException;
+import javax.management.ObjectName;
+import javax.management.ReflectionException;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManagerFactory;
 
@@ -4206,6 +4214,21 @@ public class ServiceHost implements ServiceRequestSender {
         this.info.freeMemoryByteCount = r.freeMemory();
         this.info.totalMemoryByteCount = r.totalMemory();
         this.info.maxMemoryByteCount = r.maxMemory();
+
+        try {
+            MBeanServer mbs = ManagementFactory.getPlatformMBeanServer();
+            ObjectName name = ObjectName.getInstance(SystemHostInfo.OPERATING_SYSTEM_OBJECT_NAME);
+            AttributeList list = mbs.getAttributes(name, new String[]{SystemHostInfo.CPU_LOAD_ATTRIBUTE_KEY});
+
+            Attribute att = (Attribute)list.get(0);
+            Double value  = (Double)att.getValue();
+
+            // Gives a percentage value for CPU Utilization
+            this.info.cpuUtilizationPercent = (value * 100);
+        } catch (InstanceNotFoundException | ReflectionException |
+            MalformedObjectNameException | NullPointerException e) {
+            log(Level.WARNING, "Exception getting CPU Utilization: %s", Utils.toString(e));
+        }
 
         this.info.osName = Utils.getOsName(this.info);
         this.info.osFamily = Utils.determineOsFamily(this.info.osName);

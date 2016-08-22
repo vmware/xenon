@@ -29,6 +29,8 @@ public class SystemHostInfo {
     public static final String PROPERTY_JAVA_RUNTIME_VERSION = "java.runtime.version";
     public static final String PROPERTY_JAVA_VM_NAME = "java.vm.name";
     public static final String PROPERTY_JAVA_RUNTIME_NAME = "java.runtime.name";
+    public static final String OPERATING_SYSTEM_OBJECT_NAME = "java.lang:type=OperatingSystem";
+    public static final String CPU_LOAD_ATTRIBUTE_KEY = "ProcessCpuLoad";
     public Map<String, String> properties = new ConcurrentSkipListMap<>();
     public Map<String, String> environmentVariables = new ConcurrentSkipListMap<>();
     public long availableProcessorCount;
@@ -41,6 +43,7 @@ public class SystemHostInfo {
     public long totalDiskByteCount;
     public String osName;
     public OsFamily osFamily;
+    public Double cpuUtilizationPercent;
 
     public enum OsFamily {
         WINDOWS,
