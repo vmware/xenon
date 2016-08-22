@@ -42,10 +42,14 @@ import java.util.concurrent.TimeUnit;
 import java.util.logging.Logger;
 import java.util.zip.GZIPOutputStream;
 
+import com.esotericsoftware.kryo.Kryo;
+import com.esotericsoftware.kryo.Kryo.DefaultInstantiatorStrategy;
+import com.esotericsoftware.kryo.serializers.VersionFieldSerializer;
 import com.google.gson.reflect.TypeToken;
 
 import org.junit.Assert;
 import org.junit.Test;
+import org.objenesis.strategy.StdInstantiatorStrategy;
 
 import com.vmware.xenon.common.Service.ServiceOption;
 import com.vmware.xenon.common.ServiceDocumentDescription.Builder;
@@ -148,6 +152,101 @@ public class TestUtils {
         // check a value days from now
         l = Utils.getNowMicrosUtc() + TimeUnit.DAYS.toMicros(2);
         assertFalse(Utils.isWithinTimeComparisonEpsilon(l));
+    }
+
+    public static class CustomKryoForObjectThreadLocal extends ThreadLocal<Kryo> {
+        @Override
+        protected Kryo initialValue() {
+            return createKryo(true);
+        }
+    }
+
+    public static class CustomKryoForDocumentThreadLocal extends ThreadLocal<Kryo> {
+        @Override
+        protected Kryo initialValue() {
+            return createKryo(false);
+        }
+    }
+
+    private static final int EXAMPLE_SERVICE_CLASS_ID = 1234;
+
+    private static Kryo createKryo(boolean isObjectSerializer) {
+        Kryo k = new Kryo();
+        // handle classes with missing default constructors
+        k.setInstantiatorStrategy(new DefaultInstantiatorStrategy(new StdInstantiatorStrategy()));
+        // supports addition of fields if the @since annotation is used
+        k.setDefaultSerializer(VersionFieldSerializer.class);
+
+        if (!isObjectSerializer) {
+            // For performance reasons, and to avoid memory use, assume documents do not
+            // require object graph serialization with duplicate or recursive references
+            k.setReferences(false);
+        } else {
+            // To avoid monotonic increase of memory use, due to reference tracking, we must
+            // reset after each use.
+            k.setAutoReset(true);
+        }
+
+        k.register(ExampleServiceState.class, EXAMPLE_SERVICE_CLASS_ID);
+        HashMap<String, String> map = new HashMap<>();
+        k.register(map.getClass());
+        return k;
+    }
+
+    @Test
+    public void registerCustomKryoSerializer() {
+        try {
+
+            ExampleServiceState st = new ExampleServiceState();
+            st.id = UUID.randomUUID().toString();
+            st.counter = Utils.getNowMicrosUtc();
+            st.documentSelfLink = st.id;
+            st.keyValues = new HashMap<>();
+            st.keyValues.put(st.id, st.id);
+            // we need to prove that the default serializer, for both object and document is
+            // used and produces a different result, compared to the custom serializer. we first
+            // serialize with defaults, then with custom, and compare sizes
+
+            int byteCountToObjectDefault = Utils.toBytes(st, Utils.getBuffer(1024), 0);
+            int byteCountToDocumentImplicitDefault = Utils.toDocumentBytes((Object) st,
+                    Utils.getBuffer(1024), 0);
+            int byteCountToDocumentDefault = Utils.toDocumentBytes((Object) st,
+                    Utils.getBuffer(1024), 0);
+
+            Utils.registerCustomKryoSerializer(new CustomKryoForObjectThreadLocal(), false);
+            Utils.registerCustomKryoSerializer(new CustomKryoForDocumentThreadLocal(),
+                    true);
+
+            byte[] objectData = new byte[1024];
+            byte[] documentImplicitData = new byte[1024];
+            byte[] documentData = new byte[1024];
+            int byteCountToObjectCustom = Utils.toBytes((Object) st, objectData, 0);
+            int byteCountToDocumentImplicitCustom = Utils.toDocumentBytes((Object) st,
+                    documentImplicitData, 0);
+            int byteCountToDocumentCustom = Utils.toDocumentBytes((Object) st,
+                    documentData, 0);
+
+            assertTrue(byteCountToObjectCustom != byteCountToObjectDefault);
+            assertTrue(byteCountToDocumentImplicitCustom != byteCountToDocumentImplicitDefault);
+            assertTrue(byteCountToDocumentDefault != byteCountToDocumentCustom);
+
+            ExampleServiceState stDeserializedFromObject = (ExampleServiceState) Utils.fromBytes(
+                    objectData);
+            ExampleServiceState stDeserializedImplicit = (ExampleServiceState) Utils
+                    .fromDocumentBytes(
+                            documentImplicitData, 0, byteCountToDocumentImplicitCustom);
+            ExampleServiceState stDeserialized = (ExampleServiceState) Utils.fromDocumentBytes(
+                    documentData, 0, byteCountToDocumentCustom);
+            assertEquals(st.id, stDeserializedFromObject.id);
+            assertEquals(st.id, stDeserializedImplicit.id);
+            assertEquals(st.id, stDeserialized.id);
+            assertEquals(st.id, stDeserializedFromObject.keyValues.get(st.id));
+            assertEquals(st.id, stDeserializedImplicit.keyValues.get(st.id));
+            assertEquals(st.id, stDeserialized.keyValues.get(st.id));
+        } finally {
+            Utils.registerCustomKryoSerializer(null, false);
+            Utils.registerCustomKryoSerializer(null, true);
+        }
     }
 
     @Test
