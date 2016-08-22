@@ -33,7 +33,8 @@ public class NodeSelectorReplicationService extends StatelessService {
 
     public static final int BINARY_SERIALIZATION = Integer.getInteger(
             Utils.PROPERTY_NAME_PREFIX
-                    + "NodeSelectorReplicationService.BINARY_SERIALIZATION", 1);
+                    + "NodeSelectorReplicationService.BINARY_SERIALIZATION",
+            1);
 
     private Service parent;
 
@@ -215,8 +216,13 @@ public class NodeSelectorReplicationService extends StatelessService {
             }
 
             if (NodeState.isUnAvailable(m)) {
+                int originalStatusCode = update.getStatusCode();
                 update.setStatusCode(Operation.STATUS_CODE_FAILURE_THRESHOLD);
                 c.handle(update, new IllegalStateException("node is not available"));
+                // set status code to its original value, since we're using a
+                // shared update operation object, and the completion handler
+                // checks the status code.
+                update.setStatusCode(originalStatusCode);
                 continue;
             }
 
