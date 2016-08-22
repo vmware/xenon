@@ -2,6 +2,9 @@
 
 ## 0.9.4-SNAPSHOT
 
+* Add support for per thread user defined kryo serializers. See method
+  Utils#registerCustomKryoSerializers
+
 * Improve QueryFilters to support numeric document properties
 
 * Add TestRequestSender to provide synchronous API for writing unit tests.
