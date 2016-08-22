@@ -106,8 +106,11 @@ public class Utils {
      */
     private static final long PING_LAUNCH_TOLERANCE_MS = 50;
 
-    private static final KryoForObjectThreadLocal kryoForObjectPerThread = new KryoForObjectThreadLocal();
-    private static final KryoForDocumentThreadLocal kryoForDocumentPerThread = new KryoForDocumentThreadLocal();
+    private static final ThreadLocal<Kryo> kryoForObjectPerThread = new KryoForObjectThreadLocal();
+    private static final ThreadLocal<Kryo> kryoForDocumentPerThread = new KryoForDocumentThreadLocal();
+    private static ThreadLocal<Kryo> kryoForObjectPerThreadCustom;
+    private static ThreadLocal<Kryo> kryoForDocumentPerThreadCustom;
+
     private static final BufferThreadLocal bufferPerThread = new BufferThreadLocal();
 
     private static final JsonMapper JSON = new JsonMapper();
@@ -161,14 +164,36 @@ public class Utils {
         CUSTOM_JSON.putIfAbsent(clazz, mapper);
     }
 
+    /**
+     * Registers a thread local variable that supplies {@link Kryo} instances used to serialize
+     * documents or objects. The KRYO instance supplied must be identical across all nodes in
+     * a node group and behave exactly the same way regardless of service start order.
+     *
+     * This method must be called before any service host is created inside the process, to avoid
+     * non deterministic behavior, where some serialization actions use the build in instances,
+     * while others use the user supplied ones
+     * @param kryoThreadLocal Thread local variable that supplies the KRYO instance
+     * @param isDocumentSerializer True if instance should by used for
+     * {@link Utils#toDocumentBytes(Object, byte[], int)} and
+     * {@link Utils#fromDocumentBytes(byte[], int, int)}
+     */
+    public static void registerCustomKryoSerializer(ThreadLocal<Kryo> kryoThreadLocal,
+            boolean isDocumentSerializer) {
+        if (isDocumentSerializer) {
+            Utils.kryoForDocumentPerThreadCustom = kryoThreadLocal;
+        } else {
+            Utils.kryoForObjectPerThreadCustom = kryoThreadLocal;
+        }
+    }
+
     public static <T> T clone(T t) {
-        Kryo k = kryoForDocumentPerThread.get();
+        Kryo k = getKryoThreadLocalForDocuments();
         T clone = k.copy(t);
         return clone;
     }
 
     public static <T> T cloneObject(T t) {
-        Kryo k = kryoForObjectPerThread.get();
+        Kryo k = getKryoThreadLocalForObjects();
         T clone = k.copy(t);
         k.reset();
         return clone;
@@ -223,7 +248,7 @@ public class Utils {
      * Must be paired with {@code Utils#fromBytes(byte[], int, int)} or {@code Utils#fromBytes(byte[])}
      */
     public static int toBytes(Object o, byte[] buffer, int position) {
-        Kryo k = kryoForObjectPerThread.get();
+        Kryo k = getKryoThreadLocalForObjects();
         Output out = new Output(buffer);
         out.setPosition(position);
         k.writeClassAndObject(out, o);
@@ -236,7 +261,7 @@ public class Utils {
      * Must be paired with {@code Utils#fromDocumentBytes(byte[], int, int)}
      */
     public static int toDocumentBytes(Object o, byte[] buffer, int position) {
-        Kryo k = kryoForDocumentPerThread.get();
+        Kryo k = getKryoThreadLocalForDocuments();
         Output out = new Output(buffer);
         out.setPosition(position);
         k.writeClassAndObject(out, o);
@@ -247,7 +272,7 @@ public class Utils {
      * @see Utils#toDocumentBytes(Object, byte[], int)
      */
     public static int toBytes(ServiceDocument o, byte[] buffer, int position) {
-        Kryo k = kryoForDocumentPerThread.get();
+        Kryo k = getKryoThreadLocalForDocuments();
         Output out = new Output(buffer);
         out.setPosition(position);
         k.writeClassAndObject(out, o);
@@ -267,7 +292,7 @@ public class Utils {
      * Must be paired with {@code Utils#toBytes(Object, byte[], int)}
      */
     public static Object fromBytes(byte[] bytes, int offset, int length) {
-        Kryo k = kryoForObjectPerThread.get();
+        Kryo k = getKryoThreadLocalForObjects();
         Input in = new Input(bytes, offset, length);
         return k.readClassAndObject(in);
     }
@@ -277,9 +302,27 @@ public class Utils {
      * Must be paired with {@code Utils#toBytes(ServiceDocument, byte[], int)
      */
     public static Object fromDocumentBytes(byte[] bytes, int offset, int length) {
-        Kryo k = kryoForDocumentPerThread.get();
+        Kryo k = getKryoThreadLocalForDocuments();
         Input in = new Input(bytes, offset, length);
         return k.readClassAndObject(in);
+    }
+
+    private static Kryo getKryoThreadLocalForDocuments() {
+        ThreadLocal<Kryo> tl = kryoForDocumentPerThreadCustom;
+        if (tl == null) {
+            tl = kryoForDocumentPerThread;
+        }
+        Kryo k = tl.get();
+        return k;
+    }
+
+    private static Kryo getKryoThreadLocalForObjects() {
+        ThreadLocal<Kryo> tl = kryoForObjectPerThreadCustom;
+        if (tl == null) {
+            tl = kryoForObjectPerThread;
+        }
+        Kryo k = tl.get();
+        return k;
     }
 
     public static void performMaintenance() {
