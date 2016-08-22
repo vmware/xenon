@@ -142,7 +142,7 @@ public class TransactionServiceHelper {
     /**
      * Notify the transaction coordinator
      */
-    static void notifyTransactionCoordinator(StatefulService s, Operation op, Throwable e) {
+    static Operation notifyTransactionCoordinatorOp(StatefulService s, Operation op, Throwable e) {
         Operation.TransactionContext operationsLogRecord = new Operation.TransactionContext();
         operationsLogRecord.action = op.getAction();
         operationsLogRecord.coordinatorLinks = s.getPendingTransactions();
@@ -154,13 +154,13 @@ public class TransactionServiceHelper {
         // set the transaction id to null as this is a PUT on the transaction service
         // and we don't want a cycle of notifications - this method will be called
         // again when PUT operation completion handler runs resulting in a loop
-        s.sendRequest(Operation.createPut(txCoordinator).setBody(operationsLogRecord).setTransactionId(null));
+        return Operation.createPut(txCoordinator).setBody(operationsLogRecord).setTransactionId(null);
     }
 
     /**
      * Notify the transaction coordinator of a new service
      */
-    static void notifyTransactionCoordinatorOfNewService(FactoryService factoryService,
+    static Operation notifyTransactionCoordinatorOfNewServiceOp(FactoryService factoryService,
             Service childService, Operation op) {
         // some of the basic properties of the child service being created are not
         // yet set at the point we're intercepting the POST, so we need to set them here
@@ -170,7 +170,7 @@ public class TransactionServiceHelper {
         childService.setSelfLink(childServicePath);
 
         // TODO: remove cast by changing childService type at the origin (FactoryService)
-        notifyTransactionCoordinator((StatefulService) childService, op, null);
+        return notifyTransactionCoordinatorOp((StatefulService) childService, op, null);
     }
 
     /**
