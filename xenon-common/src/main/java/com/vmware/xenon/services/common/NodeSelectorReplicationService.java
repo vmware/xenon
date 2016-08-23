@@ -14,6 +14,7 @@
 package com.vmware.xenon.services.common;
 
 import java.net.URI;
+import java.util.Collection;
 
 import com.vmware.xenon.common.NodeSelectorService;
 import com.vmware.xenon.common.NodeSelectorService.SelectAndForwardRequest;
@@ -66,25 +67,21 @@ public class NodeSelectorReplicationService extends StatelessService {
             return;
         }
 
-        int[] completionCounts = new int[2];
-
         // The eligible count can be less than the member count if the parent node selector has
         // a smaller replication factor than group size. We need to use the replication factor
         // as the upper bound for calculating success and failure thresholds
-        int eligibleMemberCount = rsp.selectedNodes.size();
+        Collection<NodeState> selectedNodes = rsp.selectedNodes;
+        int eligibleMemberCount = selectedNodes.size();
 
-        // When quorum is not required, succeed when we replicate to at least one remote node,
-        // or, if only local node is available, succeed immediately.
-        int successThreshold = Math.min(2, eligibleMemberCount - 1);
-        int failureThreshold = eligibleMemberCount - successThreshold;
-
-        if (req.serviceOptions.contains(ServiceOption.OWNER_SELECTION)) {
-            successThreshold = Math.min(eligibleMemberCount, selfNode.membershipQuorum);
-            failureThreshold = eligibleMemberCount - successThreshold;
-        }
+        // success threshold is determined based on the following precedence:
+        // 1. request replication quorum header (if exists)
+        // 2. group membership quorum (in case of OWNER_SELECTION)
+        // 3. at least one remote node (in case one exists)
+        int successThreshold;
 
         String rplQuorumValue = outboundOp.getRequestHeader(Operation.REPLICATION_QUORUM_HEADER);
         if (rplQuorumValue != null) {
+            // replicate using success threshold based on request quorum header
             try {
                 if (Operation.REPLICATION_QUORUM_HEADER_VALUE_ALL.equals(rplQuorumValue)) {
                     successThreshold = eligibleMemberCount;
@@ -97,16 +94,36 @@ public class NodeSelectorReplicationService extends StatelessService {
                             successThreshold, eligibleMemberCount);
                     throw new IllegalArgumentException(errorMsg);
                 }
-                failureThreshold = eligibleMemberCount - successThreshold;
                 outboundOp.getRequestHeaders().remove(Operation.REPLICATION_QUORUM_HEADER);
             } catch (Throwable e) {
                 outboundOp.setRetryCount(0).fail(e);
                 return;
             }
+
+            replicateUpdateToNodes(outboundOp, selectedNodes, successThreshold);
+            return;
         }
 
+        if (req.serviceOptions.contains(ServiceOption.OWNER_SELECTION)) {
+            // replicate using group membership quorum
+            successThreshold = Math.min(eligibleMemberCount, selfNode.membershipQuorum);
+            replicateUpdateToNodes(outboundOp, selectedNodes, successThreshold);
+            return;
+        }
+
+        // When quorum is not required, succeed when we replicate to at least one remote node,
+        // or, if only local node is available, succeed immediately.
+        successThreshold = Math.min(2, eligibleMemberCount - 1);
+        replicateUpdateToNodes(outboundOp, selectedNodes, successThreshold);
+    }
+
+    private void replicateUpdateToNodes(Operation outboundOp,
+            Collection<NodeState> nodes,
+            int successThreshold) {
+        int eligibleMemberCount = nodes.size();
         final int successThresholdFinal = successThreshold;
-        final int failureThresholdFinal = failureThreshold;
+        final int failureThresholdFinal = eligibleMemberCount - successThreshold;
+        int[] completionCounts = new int[2];
 
         CompletionHandler c = (o, e) -> {
             if (e == null && o != null
@@ -143,14 +160,14 @@ public class NodeSelectorReplicationService extends StatelessService {
                 return;
             }
 
-            if (fCount > failureThresholdFinal || ((fCount + sCount) == memberCount)) {
+            if (fCount > failureThresholdFinal || ((fCount + sCount) == eligibleMemberCount)) {
                 String error = String
-                        .format("%s to %s failed. Success: %d,  Fail: %d, quorum: %d, threshold: %d",
+                        .format("%s to %s failed. Success: %d,  Fail: %d, quorum: %d, failure threshold: %d",
                                 outboundOp.getAction(),
                                 outboundOp.getUri().getPath(),
                                 sCount,
                                 fCount,
-                                selfNode.membershipQuorum,
+                                successThresholdFinal,
                                 failureThresholdFinal);
                 logWarning("%s", error);
                 outboundOp.fail(new IllegalStateException(error));
@@ -197,7 +214,7 @@ public class NodeSelectorReplicationService extends StatelessService {
         // trigger completion once, for self node, since its part of our accounting
         c.handle(null, null);
 
-        for (NodeState m : rsp.selectedNodes) {
+        for (NodeState m : nodes) {
             if (m.id.equals(selfId)) {
                 continue;
             }
