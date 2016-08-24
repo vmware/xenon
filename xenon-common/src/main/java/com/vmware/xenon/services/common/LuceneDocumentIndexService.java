@@ -1330,6 +1330,8 @@ public class LuceneDocumentIndexService extends StatelessService {
         // Keep duplicates out
         Set<String> uniques = new LinkedHashSet<>(rsp.documentLinks);
         final boolean hasCountOption = options.contains(QueryOption.COUNT);
+        final boolean hasIncludeAllVersionsOption = options
+                .contains(QueryOption.INCLUDE_ALL_VERSIONS);
         Set<String> linkWhiteList = null;
         if (qs != null && qs.context != null && qs.context.documentLinkWhiteList != null) {
             linkWhiteList = qs.context.documentLinkWhiteList;
@@ -1353,38 +1355,41 @@ public class LuceneDocumentIndexService extends StatelessService {
             IndexableField versionField = d.getField(ServiceDocument.FIELD_NAME_VERSION);
             Long documentVersion = versionField.numericValue().longValue();
 
-            // We first determine what is the latest document version.
-            // We then use the latest version to determine if the current document result is relevant.
-            Long latestVersion = latestVersions.get(link);
-            if (latestVersion == null) {
-                latestVersion = getLatestVersion(s, link);
-                latestVersions.put(link, latestVersion);
-            }
+            Long latestVersion = null;
 
-            boolean isDeleted = Action.DELETE.toString().equals(d
-                    .get(ServiceDocument.FIELD_NAME_UPDATE_ACTION));
-
-            if (isDeleted && !options.contains(QueryOption.INCLUDE_DELETED)) {
-                // ignore a document if its marked deleted and it has the latest version
-                if (documentVersion >= latestVersion) {
-                    uniques.remove(link);
-                    if (rsp.documents != null) {
-                        rsp.documents.remove(link);
-                    }
-                    if (rsp.selectedLinksPerDocument != null) {
-                        rsp.selectedLinksPerDocument.remove(link);
-                    }
+            if (hasIncludeAllVersionsOption) {
+                // Decorate link with version. If a document is marked deleted, at any version,
+                // we will include it in the results
+                link = UriUtils.buildPathWithVersion(link, documentVersion);
+            } else {
+                // We first determine what is the latest document version.
+                // We then use the latest version to determine if the current document result is relevant.
+                latestVersion = latestVersions.get(link);
+                if (latestVersion == null) {
+                    latestVersion = getLatestVersion(s, link);
+                    latestVersions.put(link, latestVersion);
                 }
-                continue;
-            }
 
-            if (!options.contains(QueryOption.INCLUDE_ALL_VERSIONS)) {
                 if (documentVersion < latestVersion) {
                     continue;
                 }
-            } else {
-                // decorate link with version
-                link = UriUtils.buildPathWithVersion(link, documentVersion);
+
+                boolean isDeleted = Action.DELETE.toString().equals(d
+                        .get(ServiceDocument.FIELD_NAME_UPDATE_ACTION));
+
+                if (isDeleted && !options.contains(QueryOption.INCLUDE_DELETED)) {
+                    // ignore a document if its marked deleted and it has the latest version
+                    if (documentVersion >= latestVersion) {
+                        uniques.remove(link);
+                        if (rsp.documents != null) {
+                            rsp.documents.remove(link);
+                        }
+                        if (rsp.selectedLinksPerDocument != null) {
+                            rsp.selectedLinksPerDocument.remove(link);
+                        }
+                    }
+                    continue;
+                }
             }
 
             if (checkAndDeleteExpiratedDocuments(link, s, sd.doc, d, queryStartTimeMicros)) {
