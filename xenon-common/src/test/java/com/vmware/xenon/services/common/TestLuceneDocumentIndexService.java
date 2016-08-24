@@ -1289,7 +1289,6 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
         QueryTask qt = QueryTask.Builder
                 .createDirectTask()
                 .addOption(QueryOption.INCLUDE_ALL_VERSIONS)
-                .addOption(QueryOption.INCLUDE_DELETED)
                 .addOption(QueryOption.EXPAND_CONTENT)
                 .setQuery(
                         Query.Builder.create().addKindFieldClause(ExampleServiceState.class)

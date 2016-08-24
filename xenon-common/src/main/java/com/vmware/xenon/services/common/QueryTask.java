@@ -104,7 +104,8 @@ public class QueryTask extends ServiceDocument {
 
             /**
              * The query will execute over all document versions, not just the latest per self link. Each
-             * document self link will be annotated with the version
+             * document self link will be annotated with the version. Document versions marked
+             * deleted will also be included
              */
             INCLUDE_ALL_VERSIONS,
 
