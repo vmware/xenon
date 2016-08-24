@@ -118,6 +118,8 @@ public class LuceneBlobIndexService extends StatelessService {
 
     private ExecutorService singleThreadedExecutor;
 
+    private byte[] buffer;
+
     public LuceneBlobIndexService() {
         this.indexDirectory = FILE_PATH;
         this.indexOptions = EnumSet.noneOf(BlobIndexOption.class);
@@ -175,11 +177,6 @@ public class LuceneBlobIndexService extends StatelessService {
     @Override
     public void handleRequest(Operation op) {
         Action a = op.getAction();
-        if (a == Action.PUT || a == Action.PATCH) {
-            getHost().failRequestActionNotSupported(op);
-            return;
-        }
-
         this.singleThreadedExecutor.execute(() -> {
             try {
                 switch (a) {
@@ -192,8 +189,8 @@ public class LuceneBlobIndexService extends StatelessService {
                 case POST:
                     handlePost(op);
                     break;
-                case PUT:
                 default:
+                    getHost().failRequestActionNotSupported(op);
                     break;
                 }
             } catch (Throwable e) {
@@ -277,7 +274,8 @@ public class LuceneBlobIndexService extends StatelessService {
                 post.fail(new IllegalArgumentException("service instance is required"));
                 return;
             }
-            byte[] binaryContent = new byte[this.maxBinaryContextSizeBytes];
+
+            byte[] binaryContent = getBuffer();
             int count = Utils.toBytes(content, binaryContent, 0);
             Document doc = new Document();
             Field binaryContentField = new StoredField(LUCENE_FIELD_NAME_BINARY_CONTENT,
@@ -298,6 +296,18 @@ public class LuceneBlobIndexService extends StatelessService {
             logSevere(e);
             post.fail(e);
         }
+    }
+
+    /**
+     * Allocates the buffer used to binary serialize blobs. It assumes a single threaded executor
+     * so it does not use locking
+     */
+    private byte[] getBuffer() {
+        if (this.buffer != null) {
+            return this.buffer;
+        }
+        this.buffer = new byte[this.maxBinaryContextSizeBytes];
+        return this.buffer;
     }
 
     @Override
@@ -322,6 +332,7 @@ public class LuceneBlobIndexService extends StatelessService {
             }
             wr.commit();
             wr.close();
+            this.buffer = null;
         } catch (Throwable e) {
 
         }
@@ -401,6 +412,11 @@ public class LuceneBlobIndexService extends StatelessService {
                 closeSearcherSafe();
                 w.deleteUnusedFiles();
             }
+
+            // Periodically free the buffer. If we are busy serializing requests, they will be ahead of
+            // maintenance in the single threaded executor queue, so they will get to re-use the existing
+            // allocation
+            this.buffer = null;
             post.complete();
         } catch (Throwable e) {
             logSevere(e);
