@@ -346,6 +346,7 @@ public class TestUtilityService extends BasicReusableHostTestCase {
         }
         TimeBin lastBin = timeSeriesStats.bins.get(timeSeriesStats.bins.lastKey());
         assertTrue(lastBin.avg.equals(accumulatedValue / count));
+        assertTrue(lastBin.sum.equals(accumulatedValue));
         assertTrue(lastBin.count == count);
         assertTrue(lastBin.max.equals(newValue));
         assertTrue(lastBin.min.equals(origValue));

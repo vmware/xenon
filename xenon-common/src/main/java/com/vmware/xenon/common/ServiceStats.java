@@ -52,11 +52,12 @@ public class ServiceStats extends ServiceDocument {
             public Double avg;
             public Double min;
             public Double max;
+            public Double sum;
             public double count;
         }
 
         public static enum AggregationType {
-            AVG, MIN, MAX
+            AVG, MIN, MAX, SUM
         }
 
         public SortedMap<Long, TimeBin> bins;
@@ -98,6 +99,13 @@ public class ServiceStats extends ServiceDocument {
                         double newAvg = ((dataBin.avg * dataBin.count)  + value) / (dataBin.count + 1);
                         dataBin.avg = newAvg;
                         dataBin.count++;
+                    }
+                }
+                if (this.aggregationType.contains(AggregationType.SUM)) {
+                    if (dataBin.sum == null) {
+                        dataBin.sum = new Double(value);
+                    } else {
+                        dataBin.sum += value;
                     }
                 }
                 if (this.aggregationType.contains(AggregationType.MAX)) {
