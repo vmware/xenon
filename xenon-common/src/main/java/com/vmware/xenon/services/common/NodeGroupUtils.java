@@ -172,6 +172,10 @@ public class NodeGroupUtils {
 
     private static void checkConvergenceAcrossPeers(ServiceHost host, NodeGroupState ngs,
             Operation parentOp) {
+
+        // send get requests to nodegroup services which are currently available to the supplied host
+        // check uniqueness of membershipUpdateTimes
+
         JoinedCompletionHandler joinedCompletion = (ops, failures) -> {
             if (failures != null) {
                 parentOp.fail(new IllegalStateException("At least one peer failed convergence"));

@@ -23,14 +23,18 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.BiConsumer;
+import java.util.function.Supplier;
 
 import com.vmware.xenon.common.Operation.CompletionHandler;
+import com.vmware.xenon.common.test.VerificationHost.WaitHandler;
 
 /**
  * Test context used for synchronous tests. Provides an isolated version of the
  * {@code VerificationHost} testStart and testWait methods and allows nesting
  */
 public class TestContext {
+
+    public static final Duration DEFAULT_WAIT_DURATION = Duration.ofSeconds(30);
 
     private CountDownLatch latch;
 
@@ -51,6 +55,39 @@ public class TestContext {
     public static TestContext create(int count, long expIntervalMicros) {
         return new TestContext(count, Duration.of(expIntervalMicros, ChronoUnit.MICROS));
     }
+
+    public static void waitFor(Duration waitDuration, WaitHandler wh) {
+        waitFor(waitDuration, wh, () -> "waitFor timed out");
+    }
+
+    public static void waitFor(Duration waitDuration, WaitHandler wh, String timeoutMessage) {
+        waitFor(waitDuration, wh, () -> timeoutMessage);
+    }
+
+    public static void waitFor(Duration waitDuration, WaitHandler wh, Supplier<String> timeoutMessageSupplier) {
+        TestContext waitContext = new TestContext(1, waitDuration);
+
+        try {
+            waitContext.await(() -> {
+                if (wh.isReady()) {
+                    waitContext.complete();
+                }
+            });
+        } catch (Exception ex) {
+            Exception exceptionToThrow;
+            if (ex instanceof TimeoutException) {
+                // add original exception as suppressed exception to provide more context
+                String timeoutMessage = timeoutMessageSupplier.get();
+                exceptionToThrow = new TimeoutException(timeoutMessage);
+            } else {
+                String msg = "waitFor check logic raised exception";
+                exceptionToThrow = new IllegalStateException(msg);
+            }
+            exceptionToThrow.addSuppressed(ex);
+            throw ExceptionTestUtils.throwAsUnchecked(exceptionToThrow);
+        }
+    }
+
 
     public TestContext(int count, Duration duration) {
         this.latch = new CountDownLatch(count);
@@ -90,6 +127,11 @@ public class TestContext {
     }
 
     public void await() {
+        await(() -> {
+        });
+    }
+
+    public void await(ExecutableBlock beforeCheck) {
 
         ExceptionTestUtils.executeSafely(() -> {
 
@@ -103,6 +145,7 @@ public class TestContext {
 
             // keep polling latch every interval
             while (expireAt.isAfter(Instant.now())) {
+                beforeCheck.execute();
                 if (this.latch.await(this.interval.toNanos(), TimeUnit.NANOSECONDS)) {
                     break;
                 }

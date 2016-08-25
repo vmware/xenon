@@ -16,6 +16,7 @@ package com.vmware.xenon.common.test;
 import static java.util.function.Function.identity;
 import static java.util.stream.Collectors.toList;
 import static java.util.stream.Collectors.toMap;
+import static java.util.stream.Collectors.toSet;
 import static javax.xml.bind.DatatypeConverter.printBase64Binary;
 
 import static org.junit.Assert.assertEquals;
@@ -32,6 +33,7 @@ import java.net.URI;
 import java.net.URL;
 import java.security.GeneralSecurityException;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -43,7 +45,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.Random;
 import java.util.Set;
 import java.util.UUID;
@@ -2063,20 +2064,19 @@ public class VerificationHost extends ExampleServiceHost {
     /**
      * Check node group convergence.
      *
-     * logic:
-     * 1) NodeGroupUtils.checkForConvergence
-     * 2) Once 1) is true, use NodeGroupUtils.isNodeGroupAvailable()
-     *
      * Due to the implementation of {@link NodeGroupUtils#isNodeGroupAvailable}, quorum needs to
      * be set less than the available node counts.
-     * Also, since "isNodeGroupAvailable" method requires ServiceHost, when specified URI in
-     * nodeGroupUris doesn't have corresponding ServiceHost in in-memory host
-     * map({@code this.localPeerHosts}), it skips "isNodeGroupAvailable" check.
      *
-     * For existing API compatibility, keeping unused variables in signature
+     * Since {@link TestNodeGroupManager} requires all passing nodes to be in a same nodegroup,
+     * hosts in in-memory host map({@code this.localPeerHosts}) that do not match with the given
+     * nodegroup will be skipped for check.
+     *
+     * For existing API compatibility, keeping unused variables in signature.
      * Only {@code nodeGroupUris} parameter is used.
      *
      * Sample node group URI: http://127.0.0.1:8000/core/node-groups/default
+     *
+     * @see TestNodeGroupManager#waitForConvergence()
      */
     public void waitForNodeGroupConvergence(Collection<URI> nodeGroupUris,
                                             int healthyMemberCount,
@@ -2084,72 +2084,51 @@ public class VerificationHost extends ExampleServiceHost {
                                             Map<URI, EnumSet<NodeOption>> expectedOptionsPerNodeGroupUri,
                                             boolean waitForTimeSync) {
 
-        Duration timeout = Duration.ofMillis(FAST_MAINT_INTERVAL_MILLIS * 2);
-        Duration checkInterval = Duration.ofMillis(FAST_MAINT_INTERVAL_MILLIS * 2);
 
-        waitFor("Step 1: NodeGroupUtils.checkConvergenceFromAnyHost failed", () -> {
-            List<Operation> nodeGroupGetOps = nodeGroupUris.stream()
-                    .map(UriUtils::buildExpandLinksQueryUri)
-                    .map(Operation::createGet)
-                    .collect(toList());
-            List<NodeGroupState> nodeGroupStats = this.sender.sendAndWait(nodeGroupGetOps, NodeGroupState.class);
+        Set<String> nodeGroupNames = nodeGroupUris.stream()
+                .map(URI::getPath)
+                .map(UriUtils::getLastPathSegment)
+                .collect(toSet());
+        if (nodeGroupNames.size() != 1) {
+            throw new RuntimeException("Multiple nodegroups are not supported. " + nodeGroupNames);
+        }
+        String nodeGroupName = nodeGroupNames.iterator().next();
 
-            for (NodeGroupState nodeGroupState : nodeGroupStats) {
-                TestContext testContext = new TestContext(1, timeout);
-                testContext.setCheckInterval(checkInterval);
+        Date exp = getTestExpiration();
+        Duration timeout = Duration.between(Instant.now(), exp.toInstant());
 
-                // placeholder operation
-                Operation parentOp = Operation.createGet(this, "/")
-                        .setReferer(this.getUri())
-                        .setCompletion(testContext.getCompletion());
+        // Convert "http://127.0.0.1:1234/core/node-groups/default" to "http://127.0.0.1:1234"
+        Set<URI> baseUris = nodeGroupUris.stream()
+                .map(uri -> uri.toString().replace(uri.getPath(), ""))
+                .map(URI::create)
+                .collect(toSet());
 
-                try {
-                    NodeGroupUtils.checkConvergenceFromAnyHost(this, nodeGroupState, parentOp);
-                    testContext.await();
-                } catch (Exception e) {
-                    return false;
+        // pick up hosts that match with the base uris of given node group uris
+        Set<ServiceHost> hosts = getInProcessHostMap().values().stream()
+                .filter(host -> baseUris.contains(host.getPublicUri()))
+                .collect(toSet());
+
+        // perform "waitForConvergence()"
+        TestNodeGroupManager manager = new TestNodeGroupManager(nodeGroupName);
+        manager.addHosts(hosts);
+        manager.setTimeout(timeout);
+        manager.waitForConvergence();
+
+
+        // To be compatible with old behavior, populate peerHostIdToNodeState same way as before
+        List<Operation> nodeGroupGetOps = nodeGroupUris.stream()
+                .map(UriUtils::buildExpandLinksQueryUri)
+                .map(Operation::createGet)
+                .collect(toList());
+        List<NodeGroupState> nodeGroupStats = this.sender.sendAndWait(nodeGroupGetOps, NodeGroupState.class);
+
+        for (NodeGroupState nodeGroupStat : nodeGroupStats) {
+            for (NodeState nodeState : nodeGroupStat.nodes.values()) {
+                if (nodeState.status == NodeStatus.AVAILABLE) {
+                    this.peerHostIdToNodeState.put(nodeState.id, nodeState);
                 }
             }
-
-
-            // To be compatible with old behavior, populate peerHostIdToNodeState same way as before
-            for (NodeGroupState nodeGroupStat : nodeGroupStats) {
-                for (NodeState nodeState : nodeGroupStat.nodes.values()) {
-                    if (nodeState.status == NodeStatus.AVAILABLE) {
-                        this.peerHostIdToNodeState.put(nodeState.id, nodeState);
-                    }
-                }
-            }
-
-            return true;
-        });
-
-        waitFor("Step 2: NodeGroupUtils.isNodeGroupAvailable check failed", () -> {
-
-            List<Operation> ops = nodeGroupUris.stream()
-                    .map(Operation::createGet)
-                    .collect(toList());
-            List<NodeGroupState> stats = this.sender.sendAndWait(ops, NodeGroupState.class);
-
-            for (NodeGroupState nodeGroupState : stats) {
-                String hostId = nodeGroupState.documentOwner;
-                Optional<VerificationHost> host = this.localPeerHosts.values().stream()
-                        .filter(node -> node.getId().equals(hostId))
-                        .findFirst();
-
-                // perform "NodeGroupUtils.isNodeGroupAvailable" only when host is available in
-                // in-memory nodes since this method requires ServiceHost.
-                // This is a limitation converting VerificationHost to use NodeGroupUtils
-                if (host.isPresent()) {
-                    boolean isAvailable = NodeGroupUtils.isNodeGroupAvailable(host.get(), nodeGroupState);
-                    if (!isAvailable) {
-                        return false;
-                    }
-                }
-            }
-
-            return true;
-        });
+        }
     }
 
     public int calculateHealthyNodeCount(NodeGroupState r) {
@@ -2887,7 +2866,6 @@ public class VerificationHost extends ExampleServiceHost {
      *                <b>IMPORTANT</b>: This handler must properly call {@code host.failIteration()}
      *                or {@code host.completeIteration()}.
      * @param <T>     the state that represents the service instance
-     * @see com.vmware.xenon.services.common.TestExampleTaskService#testExampleTestServices()
      */
     public <T extends ServiceDocument> void sendFactoryPost(Class<? extends Service> service,
             T state, CompletionHandler handler) {
