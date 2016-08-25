@@ -20,6 +20,7 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import com.vmware.xenon.common.Operation.AuthorizationContext;
+import com.vmware.xenon.common.ServiceHost.ServiceNotFoundException;
 import com.vmware.xenon.common.ServiceStats.ServiceStat;
 import com.vmware.xenon.common.ServiceStats.ServiceStatLogHistogram;
 import com.vmware.xenon.common.jwt.Signer;
@@ -680,8 +681,8 @@ public class StatelessService implements Service {
      * @param get
      */
     protected void handleUiGet(String selfLink, Service ownerService, Operation get) {
-        String requestUri = get.getUri().getPath();
-
+        URI uri = get.getUri();
+        String requestUri = uri.getPath();
         String uiResourcePath;
 
         ServiceDocumentDescription desc = ownerService.getDocumentTemplate().documentDescription;
@@ -692,14 +693,28 @@ public class StatelessService implements Service {
             uiResourcePath = Utils.buildUiResourceUriPrefixPath(ownerService);
         }
 
-        if (selfLink.equals(requestUri)) {
+        if (requestUri.startsWith(uiResourcePath)) {
+            Exception e = new ServiceNotFoundException(UriUtils.buildUri(uri.getScheme(), uri.getHost(),
+                    uri.getPort(), uri.getPath().substring(uiResourcePath.length()), uri.getQuery()).toString());
+            ServiceErrorResponse r = Utils.toServiceErrorResponse(e);
+            r.statusCode = Operation.STATUS_CODE_NOT_FOUND;
+            r.stackTrace = null;
+
+            get.setStatusCode(Operation.STATUS_CODE_NOT_FOUND)
+                    .setContentType(Operation.MEDIA_TYPE_APPLICATION_JSON)
+                    .fail(e, r);
+            return;
+        }
+
+        if (selfLink.equals(requestUri) && !UriUtils.URI_PATH_CHAR.equals(requestUri)) {
             // no trailing /, redirect to a location with trailing /
             get.setStatusCode(Operation.STATUS_CODE_MOVED_TEMP);
             get.addResponseHeader(Operation.LOCATION_HEADER, selfLink + UriUtils.URI_PATH_CHAR);
             get.complete();
             return;
         } else {
-            String relativeToSelfUri = requestUri.substring(selfLink.length());
+            String relativeToSelfUri = UriUtils.URI_PATH_CHAR.equals(selfLink) ?
+                    requestUri : requestUri.substring(selfLink.length());
             if (relativeToSelfUri.equals(UriUtils.URI_PATH_CHAR)) {
                 // serve the index.html
                 uiResourcePath += UriUtils.URI_PATH_CHAR + ServiceUriPaths.UI_RESOURCE_DEFAULT_FILE;
@@ -711,12 +726,16 @@ public class StatelessService implements Service {
 
         // Forward request to the /user-interface service
         Operation operation = get.clone();
-        operation.setUri(UriUtils.buildUri(getHost(), uiResourcePath))
+        operation.setUri(UriUtils.buildUri(getHost(), uiResourcePath, uri.getQuery()))
                 .setCompletion((o, e) -> {
                     get.setBody(o.getBodyRaw())
                             .setStatusCode(o.getStatusCode())
-                            .setContentType(o.getContentType())
-                            .complete();
+                            .setContentType(o.getContentType());
+                    if (e != null) {
+                        get.fail(e);
+                    } else {
+                        get.complete();
+                    }
                 });
 
         getHost().sendRequest(operation);
