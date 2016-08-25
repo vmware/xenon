@@ -53,7 +53,6 @@ import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 
 import com.vmware.xenon.common.BasicReportTestCase;
-import com.vmware.xenon.common.FactoryService;
 import com.vmware.xenon.common.FileUtils;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Service;
@@ -103,63 +102,6 @@ class FaultInjectionLuceneDocumentIndexService extends LuceneDocumentIndexServic
 }
 
 public class TestLuceneDocumentIndexService extends BasicReportTestCase {
-
-    public static class OnDemandLoadService extends StatefulService {
-
-        public static final int MAX_STATE_SIZE = 1024 * 1024;
-
-        public OnDemandLoadService() {
-            super(ExampleServiceState.class);
-            super.toggleOption(ServiceOption.ON_DEMAND_LOAD, true);
-        }
-
-        @Override
-        public void handlePatch(Operation op) {
-            ExampleServiceState state = getState(op);
-            ExampleServiceState body = getBody(op);
-            Utils.mergeWithState(getStateDescription(), state, body);
-            state.keyValues = body.keyValues;
-            op.complete();
-        }
-
-        @Override
-        public ServiceDocument getDocumentTemplate() {
-            ServiceDocument template = super.getDocumentTemplate();
-            template.documentDescription.serializedStateSizeLimit = MAX_STATE_SIZE;
-            return template;
-        }
-    }
-
-    public static class OnDemandLoadFactoryService extends FactoryService {
-        public static final String SELF_LINK = "test/on-demand-load-services";
-
-        public OnDemandLoadFactoryService() {
-            super(ExampleServiceState.class);
-            super.toggleOption(ServiceOption.REPLICATION, true);
-            super.toggleOption(ServiceOption.ON_DEMAND_LOAD, true);
-        }
-
-        private EnumSet<ServiceOption> childServiceCaps;
-
-        /**
-         * Test use only.
-         */
-        public void setChildServiceCaps(EnumSet<ServiceOption> caps) {
-            this.childServiceCaps = caps;
-        }
-
-        @Override
-        public Service createServiceInstance() throws Throwable {
-            Service s = new OnDemandLoadService();
-            if (this.childServiceCaps != null) {
-                for (ServiceOption c : this.childServiceCaps) {
-                    s.toggleOption(c, true);
-                }
-            }
-
-            return s;
-        }
-    }
 
     /**
      * Parameter that specifies number of durable service instances to create
@@ -779,7 +721,8 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
 
         // do a DELETE for a completely unknown service, expect 200
         delete = Operation.createDelete(new URI(factoryUri.toString() + "/unknown"))
-                .setCompletion(this.host.getCompletion());
+                .setCompletion(
+                        this.host.getExpectedFailureCompletion(Operation.STATUS_CODE_NOT_FOUND));
         this.host.sendAndWait(delete);
 
         // verify that attempting to start a service, through factory POST, that was previously created,
