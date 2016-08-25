@@ -14,6 +14,7 @@
 package com.vmware.xenon.services.common;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
 import java.net.URI;
@@ -41,6 +42,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiPredicate;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import org.junit.After;
@@ -376,6 +378,75 @@ public class TestNodeGroupService {
                 nodeA.stop();
                 tmpFolderA.delete();
             }
+        }
+    }
+
+    @Test
+    public void verifyOdlServiceSynchronization() throws Throwable {
+        // Setup peer nodes
+        setUp(this.nodeCount);
+
+        EnumSet<ServiceOption> caps = EnumSet.of(
+                ServiceOption.PERSISTENCE,
+                ServiceOption.REPLICATION,
+                ServiceOption.OWNER_SELECTION,
+                ServiceOption.INSTRUMENTATION);
+
+        // Start the ODL Factory service on all the peers.
+        for (VerificationHost h : this.host.getInProcessHostMap().values()) {
+            // create an on demand load factory and services
+            this.host.testStart(1);
+            OnDemandLoadFactoryService s = new OnDemandLoadFactoryService();
+            s.setChildServiceCaps(caps);
+            Operation factoryPost = Operation
+                    .createPost(UriUtils.buildUri(h, OnDemandLoadFactoryService.class))
+                    .setCompletion(this.host.getCompletion());
+            h.startService(factoryPost, s);
+            this.host.testWait();
+        }
+
+        // join the nodes and set full quorum.
+        this.host.joinNodesAndVerifyConvergence(this.host.getPeerCount());
+        this.host.setNodeGroupQuorum(this.nodeCount);
+        this.host.waitForNodeGroupConvergence(this.nodeCount);
+
+        waitForReplicatedFactoryServiceAvailable(
+                this.host.getPeerServiceUri(OnDemandLoadFactoryService.SELF_LINK),
+                this.replicationNodeSelector);
+
+        // Create a few child-services.
+        VerificationHost h = this.host.getPeerHost();
+        Map<URI, ExampleServiceState> childServices = this.host.doFactoryChildServiceStart(
+                null,
+                this.serviceCount,
+                ExampleServiceState.class,
+                (o) -> {
+                    ExampleServiceState initialState = new ExampleServiceState();
+                    initialState.name = UUID.randomUUID().toString();
+                    o.setBody(initialState);
+                },
+                UriUtils.buildFactoryUri(h, OnDemandLoadFactoryService.class));
+
+        // Add a new host to the cluster.
+        VerificationHost newHost = this.host.setUpLocalPeerHost(0, h.maintenanceIntervalMillis, null);
+        this.host.testStart(1);
+        OnDemandLoadFactoryService s = new OnDemandLoadFactoryService();
+        s.setChildServiceCaps(caps);
+        Operation factoryPost = Operation
+                .createPost(UriUtils.buildUri(newHost, s.getClass()))
+                .setCompletion(this.host.getCompletion());
+        newHost.startService(factoryPost, s);
+        this.host.testWait();
+        this.host.joinNodesAndVerifyConvergence(this.nodeCount + 1);
+
+        // Do GETs on each previously created child services by calling the newly added host.
+        // This will trigger synchronization for the child services.
+        this.host.log(Level.INFO, "Verifying synchronization for ODL services");
+        for (Entry<URI, ExampleServiceState> childService : childServices.entrySet()) {
+            String childServicePath = childService.getKey().getPath();
+            ExampleServiceState state = this.host.getServiceState(null,
+                    ExampleServiceState.class, UriUtils.buildUri(newHost, childServicePath));
+            assertNotNull(state);
         }
     }
 

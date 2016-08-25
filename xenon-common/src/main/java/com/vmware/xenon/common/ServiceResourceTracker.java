@@ -355,6 +355,16 @@ class ServiceResourceTracker {
                                                 1);
                     }
                 });
+
+        // If this is an ODL service, we do not want to forward the request.
+        // If the request got forwarded and the service was stopped on the
+        // owner node, the owner will start the service and invoke on-demand
+        // synchronization. Synchronization will again start the service on
+        // the peer replicas thus creating a recursive call pattern.
+        if (s.hasOption(ServiceOption.ON_DEMAND_LOAD)) {
+            deleteExp.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_NO_FORWARDING);
+        }
+
         this.host.sendRequest(deleteExp);
 
         clearCachedServiceState(servicePath, op);
@@ -638,10 +648,16 @@ class ServiceResourceTracker {
         }
         if (factoryService != null
                 && !this.serviceFactoriesUnderMemoryPressure.contains(factoryPath)) {
-            if (!factoryService.hasOption(ServiceOption.ON_DEMAND_LOAD)) {
-                // minor optimization: if the service factory has never experienced a pause for one of the child
-                // services, do not bother querying the blob index. A node might never come under memory
-                // pressure so this lookup avoids the index query.
+            // minor optimization: if the service factory has never experienced a pause for one of the child
+            // services, do not bother querying the blob index. A node might never come under memory
+            // pressure so this lookup avoids the index query.
+
+            // Also, skip querying the blob index, if this request is for an ODL service
+            // and it is also OWNER_SELECTED. For such ODL services, we will instead route the
+            // request to the owner node.
+            if (!factoryService.hasOption(ServiceOption.ON_DEMAND_LOAD) ||
+                    (factoryService.hasOption(ServiceOption.ON_DEMAND_LOAD) &&
+                    factoryService.hasOption(ServiceOption.OWNER_SELECTION)) ) {
                 return false;
             }
         }
