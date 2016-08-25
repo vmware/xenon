@@ -59,15 +59,10 @@ public class TestDeferredResult {
     }
 
     private <T> BiConsumer<T, ? super Throwable> getExpectedExceptionCompletion(TestContext ctx) {
-        return getExpectedExceptionCompletion(ctx, true);
-    }
-
-    private <T> BiConsumer<T, ? super Throwable> getExpectedExceptionCompletion(TestContext ctx, boolean wrapped) {
         return (ignore, ex) -> {
             try {
                 Assert.assertNotNull(ex);
-                if (wrapped) {
-                    Assert.assertEquals(CompletionException.class, ex.getClass());
+                if (ex instanceof CompletionException) {
                     Assert.assertNotNull(ex.getCause());
                     ex = ex.getCause();
                 }
@@ -511,7 +506,7 @@ public class TestDeferredResult {
         TestContext ctx = TestContext.create(1, TimeUnit.SECONDS.toMicros(1));
         int defaultValue = 0;
         DeferredResult<Integer> deferredResult = new DeferredResult<>();
-        deferredResult.whenComplete(getExpectedExceptionCompletion(ctx, false));
+        deferredResult.whenComplete(getExpectedExceptionCompletion(ctx));
         runAfter(10, () -> deferredResult.fail(new TestException()));
         Assert.assertEquals(defaultValue, deferredResult.getNow(defaultValue).intValue());
         ctx.await();
@@ -545,7 +540,7 @@ public class TestDeferredResult {
     public void testGetNowFailed() throws Throwable {
         TestContext ctx = TestContext.create(1, TimeUnit.SECONDS.toMicros(1));
         DeferredResult<Integer> deferredResult = new DeferredResult<>();
-        deferredResult.whenComplete(getExpectedExceptionCompletion(ctx, false));
+        deferredResult.whenComplete(getExpectedExceptionCompletion(ctx));
         runAfter(10, () -> deferredResult.fail(new TestException()));
         try {
             deferredResult.getNow(exceptionSupplier("expected"));
