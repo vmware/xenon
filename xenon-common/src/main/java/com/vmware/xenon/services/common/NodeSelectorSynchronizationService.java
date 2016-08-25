@@ -247,6 +247,16 @@ public class NodeSelectorSynchronizationService extends StatelessService {
                     bestPeerRsp, request.stateDescription, Utils.getTimeComparisonEpsilonMicros());
         }
 
+        if (bestPeerRsp == null &&
+                request.options.contains(ServiceOption.ON_DEMAND_LOAD)) {
+            // if we did not get back any response from peer nodes and the
+            // synchronizing service is ODL, then return HTTP 404.
+            post.setStatusCode(Operation.STATUS_CODE_NOT_FOUND);
+            post.setBody(null);
+            post.complete();
+            return;
+        }
+
         if (results.contains(DocumentRelationship.IN_CONFLICT)) {
             markServiceInConflict(request.state, bestPeerRsp);
             // if we detect conflict, we will synchronize local service with selected peer state

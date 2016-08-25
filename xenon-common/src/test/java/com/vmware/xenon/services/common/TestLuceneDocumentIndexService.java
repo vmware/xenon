@@ -779,7 +779,8 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
 
         // do a DELETE for a completely unknown service, expect 200
         delete = Operation.createDelete(new URI(factoryUri.toString() + "/unknown"))
-                .setCompletion(this.host.getCompletion());
+                .setCompletion(
+                        this.host.getExpectedFailureCompletion(Operation.STATUS_CODE_NOT_FOUND));
         this.host.sendAndWait(delete);
 
         // verify that attempting to start a service, through factory POST, that was previously created,

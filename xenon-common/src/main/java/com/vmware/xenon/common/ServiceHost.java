@@ -2715,16 +2715,6 @@ public class ServiceHost implements ServiceRequestSender {
             return;
         }
 
-        if (s.hasOption(ServiceOption.ON_DEMAND_LOAD)
-                && !hasClientSuppliedState
-                && stateFromStore == null) {
-            // We converted a request to a POST, to load a on demand service. However, it does
-            // not exist in the index, nothing to load or start, so we must fail the request
-            serviceStartPost.setStatusCode(Operation.STATUS_CODE_NOT_FOUND)
-                    .fail(new IllegalStateException("Service not found: " + s.getSelfLink()));
-            return;
-        }
-
         if (hasClientSuppliedState && stateFromStore != null) {
             // initial state counts as new version
             stateFromStore.documentVersion++;
@@ -3198,6 +3188,9 @@ public class ServiceHost implements ServiceRequestSender {
         op.setStatusCode(Operation.STATUS_CODE_OK);
 
         String servicePath = path;
+        final List<EnumSet<ServiceOption>> serviceOptions = Arrays.asList(options);
+        final List<Service> factoryService = Arrays.asList(parent);
+
         CompletionHandler ch = (o, e) -> {
             if (e != null) {
                 log(Level.SEVERE, "Owner selection failed for service %s, op %d. Error: %s", op
@@ -3238,9 +3231,19 @@ public class ServiceHost implements ServiceRequestSender {
             };
 
             Operation forwardOp = op.clone().setCompletion(fc);
+            EnumSet<ServiceOption> opts = serviceOptions.get(0);
+            Service factory = factoryService.get(0);
+
             if (rsp.isLocalHostOwner) {
                 if (s == null) {
-                    queueOrFailRequestForServiceNotFoundOnOwner(servicePath, op);
+                    if (opts.contains(ServiceOption.ON_DEMAND_LOAD)) {
+                        // If the incoming request is for an ON_DEMAND_LOAD
+                        // service, that we could not locate among paused services
+                        // then it must be stopped. Check and start the ODL service.
+                        checkAndOnDemandStartService(op, factory);
+                    } else {
+                        queueOrFailRequestForServiceNotFoundOnOwner(servicePath, op);
+                    }
                     return;
                 }
                 queueOrScheduleRequest(s, forwardOp);
@@ -4605,7 +4608,7 @@ public class ServiceHost implements ServiceRequestSender {
 
         // bypass the factory, directly start service on host. This avoids adding a new
         // version to the index and various factory processes that are invoked on new
-        // service creation
+        // service creation.
         this.startService(onDemandPost, childService);
         return true;
     }

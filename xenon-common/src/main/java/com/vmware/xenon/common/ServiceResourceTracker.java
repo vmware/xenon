@@ -638,10 +638,16 @@ class ServiceResourceTracker {
         }
         if (factoryService != null
                 && !this.serviceFactoriesUnderMemoryPressure.contains(factoryPath)) {
-            if (!factoryService.hasOption(ServiceOption.ON_DEMAND_LOAD)) {
-                // minor optimization: if the service factory has never experienced a pause for one of the child
-                // services, do not bother querying the blob index. A node might never come under memory
-                // pressure so this lookup avoids the index query.
+            // minor optimization: if the service factory has never experienced a pause for one of the child
+            // services, do not bother querying the blob index. A node might never come under memory
+            // pressure so this lookup avoids the index query.
+
+            // Also, skip querying the blob index, if this request is for an ODL service
+            // that is also OWNER_SELECTED. For such ODL services, we will instead route the
+            // request to the owner node.
+            if (!factoryService.hasOption(ServiceOption.ON_DEMAND_LOAD) ||
+                    (factoryService.hasOption(ServiceOption.ON_DEMAND_LOAD) &&
+                    factoryService.hasOption(ServiceOption.OWNER_SELECTION)) ) {
                 return false;
             }
         }

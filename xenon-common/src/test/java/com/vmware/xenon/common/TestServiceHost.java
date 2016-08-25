@@ -1657,6 +1657,8 @@ public class TestServiceHost {
         factoryService.setChildServiceCaps(caps);
         this.host.startServiceAndWait(factoryService, "/service", null);
 
+        final double stopCount = getODLStopCountStat() != null ? getODLStopCountStat().latestValue : 0;
+
         // create a ON_DEMAND_LOAD
         MinimalTestServiceState initialState = new MinimalTestServiceState();
         initialState.id = "foo";
@@ -1668,11 +1670,12 @@ public class TestServiceHost {
 
         String servicePath = "/service/foo";
 
-        // wait for the service to be paused and stat to be populated
+        // wait for the service to be stopped and stat to be populated
         // This also verifies that ON_DEMAND_LOAD service will stop while it is idle for some duration
         this.host.waitFor("Waiting ON_DEMAND_LOAD service to be stopped",
                 () -> this.host.getServiceStage(servicePath) == null
                         && getODLStopCountStat() != null
+                        && getODLStopCountStat().latestValue > stopCount
         );
         long lastODLStopTime = getODLStopCountStat().lastUpdateMicrosUtc;
 
@@ -1689,9 +1692,9 @@ public class TestServiceHost {
         // of maintenance windows
         TestContext testContextForGet = this.host.testCreate(requestCount);
         for (int i = 0; i < requestCount; i++) {
-            Operation get = Operation.createGet(this.host, servicePath)
-                    .setCompletion(this.host.getSafeHandler(testContextForGet, (o, e) -> {
-                    }));
+            Operation get = Operation
+                    .createGet(this.host, servicePath)
+                    .setCompletion(testContextForGet.getCompletion());
             beforeLastRequestSentTime = Utils.getNowMicrosUtc();
             this.host.send(get);
             Thread.sleep(requestDelayMills);
