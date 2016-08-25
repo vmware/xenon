@@ -2,6 +2,9 @@
 
 ## 0.9.5-SNAPSHOT
 
+* Revert changes on VerificationHost that caused time out in tests when combination of
+  "getCompletionWithSelflink" and "sendFactoryPost" are used.
+
 * Add a new sendWithDeferredResult pair of methods to the request senders
   The new sendWithDeferredResult set of methods return DeferredResult
   instances to enable monadic style of chaining potentially asynchronous
