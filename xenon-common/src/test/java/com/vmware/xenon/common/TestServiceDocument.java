@@ -275,11 +275,11 @@ public class TestServiceDocument {
 
         QueryValidationTestService.QueryValidationServiceState document = new QueryValidationTestService.QueryValidationServiceState();
         document.documentSelfLink = "testComputeSignatureChange";
-        document.stringValue = "valueA";
+        document.textValue = "valueA";
         document.documentExpirationTimeMicros = 1;
         String initialSignature = Utils.computeSignature(document, description);
 
-        document.stringValue = "valueB";
+        document.textValue = "valueB";
         String valueChangedSignature = Utils.computeSignature(document, description);
 
         assertNotEquals(initialSignature, valueChangedSignature);
@@ -298,7 +298,7 @@ public class TestServiceDocument {
 
         QueryValidationTestService.QueryValidationServiceState document = new QueryValidationTestService.QueryValidationServiceState();
         document.documentSelfLink = "testComputeSignatureChange";
-        document.stringValue = "valueA";
+        document.textValue = "valueA";
         document.documentUpdateTimeMicros = 1;
         String initialSignature = Utils.computeSignature(document, description);
 

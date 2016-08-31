@@ -150,6 +150,13 @@ public class ServiceDocumentDescription {
         TEXT,
 
         /**
+         * Directs the indexing service to index the field so queries converted to lower case,
+         * can find values originally in any case. The index will index the field content in lower
+         * case, but the original content will be preserved as part of the service document
+         */
+        CASE_INSENSITIVE,
+
+        /**
          * Directs the indexing service to exclude the field from the content signature calculation.
          */
         EXCLUDE_FROM_SIGNATURE,
@@ -157,7 +164,7 @@ public class ServiceDocumentDescription {
         /**
          * Directs the indexing service to add DocValues field to enable sorting.
          */
-        SORT,
+        SORT
     }
 
     public static class PropertyDescription {

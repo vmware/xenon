@@ -400,7 +400,7 @@ public class TestUtils {
         assertTrue(false == ServiceDocument.equals(desc, original, changed));
 
         changed = Utils.clone(original);
-        changed.stringValue = UUID.randomUUID().toString();
+        changed.textValue = UUID.randomUUID().toString();
         assertTrue(false == ServiceDocument.equals(desc, original, changed));
 
         changed = Utils.clone(original);

@@ -1789,14 +1789,22 @@ public class LuceneDocumentIndexService extends StatelessService {
         boolean isStored = fsv == Field.Store.YES;
 
         if (v instanceof String) {
-            if (opts != null && opts.contains(PropertyIndexingOption.TEXT)) {
-                luceneField = new TextField(fieldName, v.toString(), fsv);
+            String stringValue = v.toString();
+            if (opts == null) {
+                luceneField = new StringField(fieldName, stringValue, fsv);
             } else {
-                luceneField = new StringField(fieldName, v.toString(), fsv);
+                if (opts.contains(PropertyIndexingOption.CASE_INSENSITIVE)) {
+                    stringValue = stringValue.toLowerCase();
+                }
+                if (opts.contains(PropertyIndexingOption.TEXT)) {
+                    luceneField = new TextField(fieldName, stringValue, fsv);
+                } else {
+                    luceneField = new StringField(fieldName, stringValue, fsv);
+                }
             }
             if (isSorted) {
                 luceneDocValuesField = new SortedDocValuesField(fieldName, new BytesRef(
-                        v.toString()));
+                        stringValue));
             }
         } else if (v instanceof URI) {
             String uriValue = QuerySpecification.toMatchValue((URI) v);
