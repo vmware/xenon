@@ -85,6 +85,7 @@ import com.vmware.xenon.services.common.TenantService.TenantState;
 
 public class TestQueryTaskService {
     private static final String TEXT_VALUE = "the decentralized control plane is a nice framework for queries";
+    private static final String STRING_VALUE = "First@Last.com";
     private static final String SERVICE_LINK_VALUE = "provisioning/dhcp-subnets/192.4.0.0/16";
     private static final long LONG_START_VALUE = -10;
     private static final double DOUBLE_MIN_OFFSET = -2.0;
@@ -149,7 +150,7 @@ public class TestQueryTaskService {
         ServiceDocumentDescription sdd = b.buildDescription(s.getClass(),
                 EnumSet.of(ServiceOption.PERSISTENCE));
 
-        final int expectedCustomFields = 35;
+        final int expectedCustomFields = 36;
         final int expectedBuiltInFields = 10;
         // Verify the reflection of the root document
         assertTrue(sdd.propertyDescriptions != null && !sdd.propertyDescriptions.isEmpty());
@@ -178,7 +179,7 @@ public class TestQueryTaskService {
         assertEquals(descriptionsPerType.get(TypeName.LONG), (Long) (1L + 4L + 3L));
         assertTrue(descriptionsPerType.get(TypeName.PODO) == 3L);
         assertTrue(descriptionsPerType.get(TypeName.COLLECTION) == 8L);
-        assertTrue(descriptionsPerType.get(TypeName.STRING) == 5L + 5L);
+        assertTrue(descriptionsPerType.get(TypeName.STRING) == 6L + 5L);
         assertTrue(descriptionsPerType.get(TypeName.DATE) == 1L);
         assertTrue(descriptionsPerType.get(TypeName.DOUBLE) == 4L);
         assertTrue(descriptionsPerType.get(TypeName.BYTES) == 1L);
@@ -371,12 +372,13 @@ public class TestQueryTaskService {
 
         // Create services before we create the query
         QueryValidationServiceState newState = new QueryValidationServiceState();
-        newState.stringValue = UUID.randomUUID().toString();
+        newState.textValue = UUID.randomUUID().toString();
         startQueryTargetServices(1, newState);
 
         // Create query task
         Query query = Query.Builder.create()
-                .addFieldClause("stringValue", "*", MatchType.WILDCARD)
+                .addFieldClause(QueryValidationServiceState.FIELD_NAME_TEXT_VALUE,
+                        "*", MatchType.WILDCARD)
                 .build();
         QueryTask task = QueryTask.Builder.create()
                 .addOptions(EnumSet.of(QueryOption.CONTINUOUS, QueryOption.EXPAND_CONTENT))
@@ -441,11 +443,11 @@ public class TestQueryTaskService {
             CountDownLatch stateUpdates)
             throws Throwable, InterruptedException {
         QueryValidationServiceState newState = new QueryValidationServiceState();
-        final String stringValue = UUID.randomUUID().toString();
+        final String textValue = UUID.randomUUID().toString();
         Query query = Query.Builder.create()
-                .addFieldClause("stringValue", stringValue)
+                .addFieldClause(QueryValidationServiceState.FIELD_NAME_TEXT_VALUE, textValue)
                 .build();
-        newState.stringValue = stringValue;
+        newState.textValue = textValue;
 
         QueryTask task = QueryTask.Builder.create()
                 .addOptions(EnumSet.of(QueryOption.CONTINUOUS, QueryOption.EXPAND_CONTENT))
@@ -460,7 +462,7 @@ public class TestQueryTaskService {
                 UriUtils.buildUri(this.host.getUri(), ServiceUriPaths.CORE_QUERY_TASKS),
                 task, false, false, task, null);
 
-        newState.stringValue = stringValue;
+        newState.textValue = textValue;
 
         this.host.testStart(1);
         Operation post = Operation.createPost(updateQueryTask)
@@ -481,7 +483,7 @@ public class TestQueryTaskService {
                             QueryValidationServiceState state = Utils.fromJson(doc,
                                     QueryValidationServiceState.class);
 
-                            if (!stringValue.equals(state.stringValue)) {
+                            if (!textValue.equals(state.textValue)) {
                                 failure[0] = new IllegalStateException(
                                         "Unexpected document:" + Utils.toJsonHtml(state));
                                 return;
@@ -622,7 +624,7 @@ public class TestQueryTaskService {
         setUpHost();
         List<URI> services = createQueryTargetServices(this.serviceCount);
         QueryValidationServiceState newState = new QueryValidationServiceState();
-        newState.stringValue = "now";
+        newState.textValue = "now";
         newState = putSimpleStateOnQueryTargetServices(services, newState);
         Query q = Query.Builder.create()
                 .addFieldClause("id", newState.id, MatchType.PHRASE, Occurance.MUST_OCCUR)
@@ -672,7 +674,7 @@ public class TestQueryTaskService {
                             return;
                         }
 
-                        template.stringValue = "bla";
+                        template.textValue = "bla";
                         Operation put = Operation.createPut(
                                 UriUtils.buildUri(this.host, rsp.results.documentLinks.get(0)))
                                 .setBody(template);
@@ -706,10 +708,12 @@ public class TestQueryTaskService {
         }
 
         // all expected as results
-        newState.stringValue = "hello";
+        newState.textValue = "hello";
         newState = putSimpleStateOnQueryTargetServices(services, newState);
         for (int i = 0; i < 5; i++) {
-            this.host.createAndWaitSimpleDirectQuery("stringValue", newState.stringValue,
+            this.host.createAndWaitSimpleDirectQuery(
+                    QueryValidationServiceState.FIELD_NAME_TEXT_VALUE,
+                    newState.textValue,
                     services.size(),
                     services.size());
         }
@@ -804,7 +808,7 @@ public class TestQueryTaskService {
 
             // query for a field that SHOULD be ignored. We should get zero links back
             this.host.createAndWaitSimpleDirectQuery(
-                    "ignoredStringValue",
+                    QueryValidationServiceState.FIELD_NAME_IGNORED_STRING_VALUE,
                     newState.ignoredStringValue, services.size(), 0);
 
             this.host.createAndWaitSimpleDirectQuery(
@@ -1879,8 +1883,8 @@ public class TestQueryTaskService {
         // than the allowed size limit.
         QueryTask.QuerySpecification q = new QueryTask.QuerySpecification();
         q.options = EnumSet.of(QueryOption.EXPAND_CONTENT);
-        q.query.setTermPropertyName("stringValue")
-                .setTermMatchValue(newState.stringValue)
+        q.query.setTermPropertyName(QueryValidationServiceState.FIELD_NAME_TEXT_VALUE)
+                .setTermMatchValue(newState.textValue)
                 .setTermMatchType(MatchType.PHRASE);
 
         boolean limitChecked = false;
@@ -2402,20 +2406,20 @@ public class TestQueryTaskService {
 
     @Test
     public void testTextMatch() throws Throwable {
-        doTextMatchTest(false, false);
+        doStringAndTextMatchTest(false, false);
     }
 
     @Test
     public void testTextMatchRemote() throws Throwable {
-        doTextMatchTest(true, false);
+        doStringAndTextMatchTest(true, false);
     }
 
     @Test
     public void testTextMatchRemoteDirect() throws Throwable {
-        doTextMatchTest(true, true);
+        doStringAndTextMatchTest(true, true);
     }
 
-    public void doTextMatchTest(boolean forceRemote, boolean isDirect) throws Throwable {
+    public void doStringAndTextMatchTest(boolean forceRemote, boolean isDirect) throws Throwable {
         setUpHost();
         int sc = this.serviceCount;
         int versionCount = 2;
@@ -2431,20 +2435,38 @@ public class TestQueryTaskService {
         QueryTask.QuerySpecification q = new QueryTask.QuerySpecification();
         q.options = EnumSet.of(QueryOption.EXPAND_CONTENT);
 
-        q.query.setTermPropertyName("stringValue")
-                .setTermMatchValue(newState.stringValue)
+        q.query.setTermPropertyName(QueryValidationServiceState.FIELD_NAME_TEXT_VALUE)
+                .setTermMatchValue(newState.textValue)
                 .setTermMatchType(MatchType.PHRASE);
 
         createWaitAndValidateQueryTask(versionCount, services, q, forceRemote, isDirect);
 
+        // to an a lower case conversion then do a term query. Since the field is marked with
+        // IndexingOption.CASE_INSENSITIVE, we must convert the query value to lower case
+        q = new QueryTask.QuerySpecification();
+        q.query = Query.Builder.create().addCaseInsensitiveFieldClause(
+                QueryValidationServiceState.FIELD_NAME_STRING_VALUE,
+                newState.stringValue, MatchType.TERM, Occurance.MUST_OCCUR).build();
+        q.options = EnumSet.of(QueryOption.EXPAND_CONTENT);
+
+        QueryTask taskResult = createWaitAndValidateQueryTask(
+                versionCount, services, q, forceRemote, isDirect);
+        for (Object doc : taskResult.results.documents.values()) {
+            QueryValidationServiceState state = Utils.fromJson(doc,
+                    QueryValidationServiceState.class);
+            // verify original case is preserved
+            assertTrue(state.stringValue.equals(STRING_VALUE));
+        }
+
         // now do a "contains" search on terms using wild cards, although this
         // will be much slower
-        String term = newState.stringValue.split(" ")[1];
+        String term = newState.textValue.split(" ")[1];
         term = term.substring(1, term.length() - 2);
         term = UriUtils.URI_WILDCARD_CHAR + term + UriUtils.URI_WILDCARD_CHAR;
 
         q.query = new QueryTask.Query();
-        q.query.setTermPropertyName("stringValue").setTermMatchValue(term)
+        q.query.setTermPropertyName(QueryValidationServiceState.FIELD_NAME_TEXT_VALUE)
+                .setTermMatchValue(term)
                 .setTermMatchType(MatchType.WILDCARD);
         createWaitAndValidateQueryTask(versionCount, services, q, forceRemote);
         // now do a "contains" search without using wild cards, just a plain
@@ -2454,7 +2476,8 @@ public class TestQueryTaskService {
         String word = TEXT_VALUE.split(" ")[1];
 
         q.query = new QueryTask.Query();
-        q.query.setTermPropertyName("stringValue").setTermMatchValue(word)
+        q.query.setTermPropertyName(QueryValidationServiceState.FIELD_NAME_TEXT_VALUE)
+                .setTermMatchValue(word)
                 .setTermMatchType(MatchType.TERM);
 
         createWaitAndValidateQueryTask(versionCount, services, q, forceRemote);
@@ -2472,7 +2495,8 @@ public class TestQueryTaskService {
                 .build();
 
         Query termClause = Query.Builder.create()
-                .addFieldClause("stringValue", TEXT_VALUE.split(" ")[1])
+                .addFieldClause(QueryValidationServiceState.FIELD_NAME_TEXT_VALUE,
+                        TEXT_VALUE.split(" ")[1])
                 .build();
 
         // Create and populate services using another test
@@ -2640,7 +2664,7 @@ public class TestQueryTaskService {
         // Create a query task with isDirect=false, testing that LuceneQueryTaskService
         // expires the task and sends a DELETE request.
         QueryTask.QuerySpecification q = new QueryTask.QuerySpecification();
-        q.query.setTermPropertyName("stringValue")
+        q.query.setTermPropertyName(QueryValidationServiceState.FIELD_NAME_TEXT_VALUE)
                 .setTermMatchValue(TEXT_VALUE)
                 .setTermMatchType(MatchType.PHRASE);
 
@@ -2676,7 +2700,7 @@ public class TestQueryTaskService {
 
         q.expectedResultCount = Long.valueOf(expectedCount);
 
-        q.query.setTermPropertyName("stringValue")
+        q.query.setTermPropertyName(QueryValidationServiceState.FIELD_NAME_TEXT_VALUE)
                 .setTermMatchValue(TEXT_VALUE)
                 .setTermMatchType(MatchType.PHRASE);
 
@@ -2761,8 +2785,8 @@ public class TestQueryTaskService {
 
         task.querySpec.resultLimit = resultLimit;
 
-        task.querySpec.query.setTermPropertyName("stringValue")
-                .setTermMatchValue(newState.stringValue)
+        task.querySpec.query.setTermPropertyName(QueryValidationServiceState.FIELD_NAME_TEXT_VALUE)
+                .setTermMatchValue(newState.textValue)
                 .setTermMatchType(MatchType.PHRASE);
 
         if (task.documentExpirationTimeMicros != 0) {
@@ -3194,7 +3218,7 @@ public class TestQueryTaskService {
         int counter = 0;
 
         for (int i = 0; i < iter; i++) {
-            newState.stringValue = "current";
+            newState.textValue = "current";
             newState = putSimpleStateOnQueryTargetServices(services, newState);
             QueryTask.QuerySpecification q = new QueryTask.QuerySpecification();
             Query kindClause = new Query();
@@ -3204,7 +3228,7 @@ public class TestQueryTaskService {
             QueryTask task = QueryTask.create(q);
             task.setDirect(true);
             this.host.createQueryTaskService(task, false, task.taskInfo.isDirect, task, null);
-            newState.stringValue = "new";
+            newState.textValue = "new";
             newState = putSimpleStateOnQueryTargetServices(services, newState);
 
             URI luceneStatsUri = UriUtils.buildStatsUri(this.host.getDocumentIndexServiceUri());
@@ -3237,7 +3261,7 @@ public class TestQueryTaskService {
                 counter > 0);
     }
 
-    private void createWaitAndValidateQueryTask(long versionCount,
+    private QueryTask createWaitAndValidateQueryTask(long versionCount,
             List<URI> services, QueryTask.QuerySpecification q, boolean forceRemote,
             boolean isDirect)
             throws Throwable {
@@ -3259,7 +3283,7 @@ public class TestQueryTaskService {
         if (q.options.contains(QueryOption.COUNT)) {
             assertTrue(task.results.documentCount != null);
             assertTrue(task.results.documentCount == services.size() * (versionCount + 1));
-            return;
+            return task;
         }
 
         validateFinishedQueryTask(services, task);
@@ -3275,13 +3299,14 @@ public class TestQueryTaskService {
 
         if (q.options.contains(QueryOption.EXPAND_LINKS)) {
             validateExpandLinksResults(task);
-            return;
+            return task;
         }
 
         if (q.options.contains(QueryOption.SELECT_LINKS)) {
             validateSelectLinksQueryResults(q, task);
         }
 
+        return task;
     }
 
     @Test
@@ -3373,7 +3398,7 @@ public class TestQueryTaskService {
     private QueryValidationServiceState putStateOnQueryTargetServices(
             List<URI> services, int versionsPerService) throws Throwable {
         QueryValidationServiceState newState = new QueryValidationServiceState();
-        newState.stringValue = TEXT_VALUE;
+        newState.textValue = TEXT_VALUE;
         return putStateOnQueryTargetServices(services, versionsPerService,
                 newState);
     }
@@ -3394,7 +3419,8 @@ public class TestQueryTaskService {
             templateState.doubleValue += DOUBLE_MIN_OFFSET;
             templateState.mapOfLongs.put("long", templateState.longValue);
             templateState.mapOfDoubles.put("double", templateState.doubleValue);
-            templateState.stringValue = TEXT_VALUE;
+            templateState.stringValue = STRING_VALUE;
+            templateState.textValue = TEXT_VALUE;
             templateState.serviceLink = SERVICE_LINK_VALUE;
 
             templateState.serviceLinks = new ArrayList<>();

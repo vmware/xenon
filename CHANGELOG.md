@@ -2,6 +2,12 @@
 
 ## 0.9.5-SNAPSHOT
 
+* Add support for case insensitive queries. New PropertyIndexingOption.CASE_INSENSITIVE
+  instructs the index service to index the field in lower case. The original field
+  content is preserved in original case. At query time, the field match value
+  must be converted to lower case. New helper methods added to hide the toLower()
+  conversion when using the Query.Builder().
+
 * Add a new sendWithDeferredResult pair of methods to the request senders
   The new sendWithDeferredResult set of methods return DeferredResult
   instances to enable monadic style of chaining potentially asynchronous

@@ -42,6 +42,8 @@ public class QueryValidationTestService extends StatefulService {
 
     public static class QueryValidationServiceState extends ServiceDocument {
         public static final String FIELD_NAME_IGNORED_STRING_VALUE = "ignoredStringValue";
+        public static final String FIELD_NAME_TEXT_VALUE = "textValue";
+        public static final String FIELD_NAME_STRING_VALUE = "stringValue";
         public static final String FIELD_NAME_SERVICE_LINK = "serviceLink";
         public static final String FIELD_NAME_SERVICE_LINKS = "serviceLinks";
         public static final String FIELD_NAME_LONG_VALUE = "longValue";
@@ -59,6 +61,7 @@ public class QueryValidationTestService extends StatefulService {
         public byte bytePrimitive;
         public Date dateValue;
         public String stringValue;
+        public String textValue;
         @PropertyOptions(usage = { PropertyUsageOption.OPTIONAL, PropertyUsageOption.LINK })
         public String serviceLink;
         @PropertyOptions(usage = { PropertyUsageOption.OPTIONAL, PropertyUsageOption.LINKS })
@@ -116,9 +119,12 @@ public class QueryValidationTestService extends StatefulService {
     @Override
     public ServiceDocument getDocumentTemplate() {
         ServiceDocument d = super.getDocumentTemplate();
+        PropertyDescription pdTextValue = d.documentDescription.propertyDescriptions
+                .get(QueryValidationServiceState.FIELD_NAME_TEXT_VALUE);
+        pdTextValue.indexingOptions.add(PropertyIndexingOption.TEXT);
         PropertyDescription pdStringValue = d.documentDescription.propertyDescriptions
-                .get("stringValue");
-        pdStringValue.indexingOptions.add(PropertyIndexingOption.TEXT);
+                .get(QueryValidationServiceState.FIELD_NAME_STRING_VALUE);
+        pdStringValue.indexingOptions.add(PropertyIndexingOption.CASE_INSENSITIVE);
 
         PropertyDescription pdExample = d.documentDescription.propertyDescriptions
                 .get("exampleValue");

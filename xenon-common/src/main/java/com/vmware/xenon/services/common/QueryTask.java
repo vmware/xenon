@@ -696,6 +696,27 @@ public class QueryTask extends ServiceDocument {
             }
 
             /**
+             * Add a clause which matches a top level field name with the provided {@link MatchType} and
+             * {@link Occurance}.
+             * @param fieldName the top level field name.
+             * @param fieldValue the field value to match, first converted so it can match in a case insensitive way
+             * @param matchType the match type.
+             * @param occurance the {@link Occurance} for this clause.
+             * @return a reference to this object.
+             */
+            public Builder addCaseInsensitiveFieldClause(String fieldName, String fieldValue,
+                    MatchType matchType,
+                    Occurance occurance) {
+                Query clause = new Query()
+                        .setTermPropertyName(fieldName)
+                        .setCaseInsensitiveTermMatchValue(fieldValue)
+                        .setTermMatchType(matchType);
+                clause.occurance = occurance;
+                this.query.addBooleanClause(clause);
+                return this;
+            }
+
+            /**
              * Set the term.
              *
              * This is only appropriate if you need to query on exactly a single clause and
@@ -818,6 +839,10 @@ public class QueryTask extends ServiceDocument {
             allocateTerm();
             this.term.propertyName = name;
             return this;
+        }
+
+        public Query setCaseInsensitiveTermMatchValue(String matchValue) {
+            return setTermMatchValue(matchValue.toLowerCase());
         }
 
         public Query setTermMatchValue(String matchValue) {
