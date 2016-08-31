@@ -392,8 +392,15 @@ public class TestNodeGroupService {
                 ServiceOption.OWNER_SELECTION,
                 ServiceOption.INSTRUMENTATION);
 
+        long intervalMicros = TimeUnit.MILLISECONDS.toMicros(200);
+
         // Start the ODL Factory service on all the peers.
         for (VerificationHost h : this.host.getInProcessHostMap().values()) {
+            // Reduce the maintenance interval and cache clear delay to short durations
+            // to cause ODL service stops.
+            h.setMaintenanceIntervalMicros(intervalMicros);
+            h.setServiceCacheClearDelayMicros(intervalMicros);
+
             // create an on demand load factory and services
             this.host.testStart(1);
             OnDemandLoadFactoryService s = new OnDemandLoadFactoryService();
@@ -427,8 +434,31 @@ public class TestNodeGroupService {
                 },
                 UriUtils.buildFactoryUri(h, OnDemandLoadFactoryService.class));
 
+        // Verify that each peer host reports the correct value for ODL stop count.
+        long svcCount = this.serviceCount;
+        for (VerificationHost vh : this.host.getInProcessHostMap().values()) {
+            this.host.waitFor("ODL services did not stop as expected", () -> {
+                ServiceStat stopCount = vh
+                        .getServiceStats(vh.getManagementServiceUri())
+                        .get(ServiceHostManagementService.STAT_NAME_ODL_STOP_COUNT);
+                if (stopCount != null && stopCount.latestValue == svcCount) {
+                    return true;
+                }
+
+                ServiceStat cacheClientCount = vh
+                        .getServiceStats(vh.getManagementServiceUri())
+                        .get(ServiceHostManagementService.STAT_NAME_ODL_CACHE_CLEAR_COUNT);
+                if (cacheClientCount != null && cacheClientCount.latestValue == svcCount) {
+                    return true;
+                }
+
+                return false;
+            });
+        }
+
         // Add a new host to the cluster.
         VerificationHost newHost = this.host.setUpLocalPeerHost(0, h.maintenanceIntervalMillis, null);
+        newHost.setServiceCacheClearDelayMicros(intervalMicros);
         this.host.testStart(1);
         OnDemandLoadFactoryService s = new OnDemandLoadFactoryService();
         s.setChildServiceCaps(caps);
@@ -448,6 +478,32 @@ public class TestNodeGroupService {
                     ExampleServiceState.class, UriUtils.buildUri(newHost, childServicePath));
             assertNotNull(state);
         }
+
+        // Wait for a few maintenance intervals to elapse to make sure
+        // ODL services have stopped
+        newHost.waitForMaintenanceIntervals(3);
+
+        // Because the services are owner selected, the new host will not be an
+        // owner for all the services. Since GET requests only start the service
+        // on the Owner node, the new host should report a stop count of services
+        // lesser than total service count.
+        this.host.waitFor("ODL services did not stop as expected", () -> {
+            ServiceStat stopCount = this.host
+                    .getServiceStats(newHost.getManagementServiceUri())
+                    .get(ServiceHostManagementService.STAT_NAME_ODL_STOP_COUNT);
+            if (stopCount != null && stopCount.latestValue < svcCount) {
+                return true;
+            }
+
+            ServiceStat cacheClientCount = this.host
+                    .getServiceStats(newHost.getManagementServiceUri())
+                    .get(ServiceHostManagementService.STAT_NAME_ODL_CACHE_CLEAR_COUNT);
+            if (cacheClientCount != null && cacheClientCount.latestValue < svcCount) {
+                return true;
+            }
+
+            return false;
+        });
     }
 
     @Test

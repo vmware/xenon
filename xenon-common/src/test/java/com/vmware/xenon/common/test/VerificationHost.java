@@ -859,6 +859,25 @@ public class VerificationHost extends ExampleServiceHost {
         return responses.get(0);
     }
 
+    public void waitForMaintenanceIntervals(int count) {
+        ServiceStat hostStat = this
+                .getServiceStats(this.getManagementServiceUri())
+                .get(Service.STAT_NAME_SERVICE_HOST_MAINTENANCE_COUNT);
+
+        final double currentCount = (hostStat != null) ? hostStat.latestValue : 0;
+        this.waitFor("Timeout waiting for the service host to elapse maintenance intervals",
+                () -> {
+                    ServiceStat newHostStat = this
+                            .getServiceStats(this.getManagementServiceUri())
+                            .get(Service.STAT_NAME_SERVICE_HOST_MAINTENANCE_COUNT);
+
+                    if (newHostStat != null && newHostStat.latestValue >= count + currentCount) {
+                        return true;
+                    }
+                    return false;
+                });
+    }
+
     public <T extends ServiceDocument> T getServiceState(EnumSet<TestProperty> props, Class<T> type, URI uri) {
         Map<URI, T> r = getServiceState(props, type, new URI[] { uri });
         return r.values().iterator().next();
