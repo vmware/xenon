@@ -392,8 +392,15 @@ public class TestNodeGroupService {
                 ServiceOption.OWNER_SELECTION,
                 ServiceOption.INSTRUMENTATION);
 
+        long intervalMicros = TimeUnit.MILLISECONDS.toMicros(200);
+
         // Start the ODL Factory service on all the peers.
         for (VerificationHost h : this.host.getInProcessHostMap().values()) {
+            // Reduce the maintenance interval and cache clear delay to short durations
+            // to cause ODL service stops.
+            h.setMaintenanceIntervalMicros(intervalMicros);
+            h.setServiceCacheClearDelayMicros(intervalMicros);
+
             // create an on demand load factory and services
             this.host.testStart(1);
             OnDemandLoadFactoryService s = new OnDemandLoadFactoryService();
@@ -427,8 +434,15 @@ public class TestNodeGroupService {
                 },
                 UriUtils.buildFactoryUri(h, OnDemandLoadFactoryService.class));
 
+        // Verify that each peer host reports the correct value for ODL stop count.
+        for (VerificationHost vh : this.host.getInProcessHostMap().values()) {
+            this.host.waitFor("ODL services did not stop as expected", () ->
+                    checkOdlServiceStopCount(vh, this.serviceCount));
+        }
+
         // Add a new host to the cluster.
         VerificationHost newHost = this.host.setUpLocalPeerHost(0, h.maintenanceIntervalMillis, null);
+        newHost.setServiceCacheClearDelayMicros(intervalMicros);
         this.host.testStart(1);
         OnDemandLoadFactoryService s = new OnDemandLoadFactoryService();
         s.setChildServiceCaps(caps);
@@ -448,6 +462,28 @@ public class TestNodeGroupService {
                     ExampleServiceState.class, UriUtils.buildUri(newHost, childServicePath));
             assertNotNull(state);
         }
+
+        // Verify that the new peer host reports the correct value for ODL stop count.
+        this.host.waitFor("ODL services did not stop as expected", () ->
+            checkOdlServiceStopCount(newHost, this.serviceCount));
+    }
+
+    private boolean checkOdlServiceStopCount(VerificationHost host, int serviceCount) throws Throwable {
+        ServiceStat stopCount = host
+                .getServiceStats(host.getManagementServiceUri())
+                .get(ServiceHostManagementService.STAT_NAME_ODL_STOP_COUNT);
+        if (stopCount == null || stopCount.latestValue != serviceCount) {
+            return false;
+        }
+
+        ServiceStat cacheClientCount = host
+                .getServiceStats(host.getManagementServiceUri())
+                .get(ServiceHostManagementService.STAT_NAME_ODL_CACHE_CLEAR_COUNT);
+        if (cacheClientCount == null || cacheClientCount.latestValue != serviceCount) {
+            return false;
+        }
+
+        return true;
     }
 
     @Test
