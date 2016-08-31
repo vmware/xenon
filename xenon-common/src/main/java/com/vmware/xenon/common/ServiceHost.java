@@ -3224,6 +3224,12 @@ public class ServiceHost implements ServiceRequestSender {
                     return;
                 }
 
+                // Now this service is the owner service. Toggle the option and trigger an event
+                s.toggleOption(ServiceOption.DOCUMENT_OWNER, true);
+                scheduleServiceOptionToggleMaintenance(s.getSelfLink(),
+                        EnumSet.of(ServiceOption.DOCUMENT_OWNER), null);
+
+
                 queueOrScheduleRequest(s, op);
                 return;
             }

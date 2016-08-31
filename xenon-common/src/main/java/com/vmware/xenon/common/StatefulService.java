@@ -1219,12 +1219,6 @@ public class StatefulService implements Service {
 
         completeSynchronizationRequest(request, failure, isStateUpdated);
 
-        if (wasOwner) {
-            return;
-        }
-
-        getHost().scheduleServiceOptionToggleMaintenance(getSelfLink(),
-                EnumSet.of(ServiceOption.DOCUMENT_OWNER), null);
     }
 
     private void completeSynchronizationRequest(Operation request, Throwable failure,
