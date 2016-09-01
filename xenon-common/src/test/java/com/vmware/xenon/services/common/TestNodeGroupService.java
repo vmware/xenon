@@ -1024,12 +1024,16 @@ public class TestNodeGroupService {
     @Test
     public void nodeRestartWithSameAddressDifferentId() throws Throwable {
         int failedNodeCount = 1;
+        int afterFailureQuorum = this.nodeCount - failedNodeCount;
 
         setUp(this.nodeCount);
         setOperationTimeoutMicros(TimeUnit.SECONDS.toMicros(5));
 
         this.host.joinNodesAndVerifyConvergence(this.nodeCount);
         this.host.log("Stopping node");
+
+        // relax quorum for convergence check
+        this.host.setNodeGroupQuorum(afterFailureQuorum);
 
         // we should now have N nodes, that see each other. Stop one of the
         // nodes, and verify the other host's node group deletes the entry
