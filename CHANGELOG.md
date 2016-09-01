@@ -20,6 +20,13 @@
   The implementation of DeferredResult encapsulates CompletableFuture with
   similar interface, excluding the blocking methods.
 
+* Update "VerificationHost#waitForNodeGroupConvergence" logic to use "NodeGroupUtils"
+  instead of own implementation to check the network convergence. This change makes check
+  logic in test to align with production code.
+  To keep the existing code to work, API signature was kept same but most of the parameters
+  are now unused.
+
+
 ## 0.9.4
 
 * QueryOption.INCLUDE_ALL_VERSIONS now includes deleted versions,
