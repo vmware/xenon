@@ -473,16 +473,11 @@ public class TestNodeGroupService {
                 .getServiceStats(host.getManagementServiceUri())
                 .get(ServiceHostManagementService.STAT_NAME_ODL_STOP_COUNT);
         if (stopCount == null || stopCount.latestValue != serviceCount) {
+            this.host.log(Level.INFO,
+                    "Current stopCount is %s",
+                    (stopCount != null) ? String.valueOf(stopCount.latestValue) : "null");
             return false;
         }
-
-        ServiceStat cacheClientCount = host
-                .getServiceStats(host.getManagementServiceUri())
-                .get(ServiceHostManagementService.STAT_NAME_ODL_CACHE_CLEAR_COUNT);
-        if (cacheClientCount == null || cacheClientCount.latestValue != serviceCount) {
-            return false;
-        }
-
         return true;
     }
 
