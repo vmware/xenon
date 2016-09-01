@@ -1222,9 +1222,6 @@ public class StatefulService implements Service {
         if (wasOwner) {
             return;
         }
-
-        getHost().scheduleServiceOptionToggleMaintenance(getSelfLink(),
-                EnumSet.of(ServiceOption.DOCUMENT_OWNER), null);
     }
 
     private void completeSynchronizationRequest(Operation request, Throwable failure,
@@ -1383,6 +1380,11 @@ public class StatefulService implements Service {
             } else {
                 this.context.options.remove(option);
             }
+        }
+
+        if (enable && option == ServiceOption.DOCUMENT_OWNER) {
+            getHost().scheduleServiceOptionToggleMaintenance(getSelfLink(),
+                    EnumSet.of(ServiceOption.DOCUMENT_OWNER), null);
         }
     }
 
