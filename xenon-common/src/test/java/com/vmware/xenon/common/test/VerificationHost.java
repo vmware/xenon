@@ -14,6 +14,7 @@
 package com.vmware.xenon.common.test;
 
 import static java.util.function.Function.identity;
+import static java.util.stream.Collectors.toList;
 import static java.util.stream.Collectors.toMap;
 import static javax.xml.bind.DatatypeConverter.printBase64Binary;
 
@@ -30,6 +31,7 @@ import java.net.HttpURLConnection;
 import java.net.URI;
 import java.net.URL;
 import java.security.GeneralSecurityException;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -37,7 +39,6 @@ import java.util.Collections;
 import java.util.Date;
 import java.util.EnumSet;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -57,13 +58,11 @@ import java.util.function.Consumer;
 import java.util.logging.Handler;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-
 import javax.net.ssl.SSLContext;
 import javax.xml.bind.DatatypeConverter;
 
 import io.netty.handler.ssl.util.InsecureTrustManagerFactory;
 import io.netty.handler.ssl.util.SelfSignedCertificate;
-
 import org.apache.lucene.store.LockObtainFailedException;
 import org.junit.rules.TemporaryFolder;
 
@@ -2060,143 +2059,62 @@ public class VerificationHost extends ExampleServiceHost {
                 new HashMap<>(), waitForTimeSync);
     }
 
+    // for existing API compatibility, keeping unused variables in signature
     public void waitForNodeGroupConvergence(Collection<URI> nodeGroupUris, int healthyMemberCount,
             Integer totalMemberCount,
             Map<URI, EnumSet<NodeOption>> expectedOptionsPerNodeGroupUri,
             boolean waitForTimeSync)
             throws Throwable {
 
-        if (expectedOptionsPerNodeGroupUri == null) {
-            expectedOptionsPerNodeGroupUri = new HashMap<>();
-        }
+        // convergence check logic:
+        // 1) NodeGroupUtils.checkForConvergence
+        // 2) Once 1) is true, use NodeGroupUtils.isNodeGroupAvailable()
 
-        final int sleepTimeMillis = FAST_MAINT_INTERVAL_MILLIS * 2;
-        Date now = null;
-        Date expiration = getTestExpiration();
-        assertTrue(!nodeGroupUris.isEmpty());
-        Map<URI, NodeGroupState> nodesPerHost = new HashMap<>();
-        Set<Long> updateTime = new HashSet<>();
-        do {
-            nodesPerHost.clear();
-            updateTime.clear();
-            TestContext ctx = testCreate(nodeGroupUris.size());
-            for (URI nodeGroup : nodeGroupUris) {
-                getNodeState(nodeGroup, nodesPerHost, ctx);
-                EnumSet<NodeOption> expectedOptions = expectedOptionsPerNodeGroupUri.get(nodeGroup);
-                if (expectedOptions == null) {
-                    expectedOptionsPerNodeGroupUri.put(nodeGroup, NodeState.DEFAULT_OPTIONS);
+        // get NodeGroupStates
+        List<Operation> nodeGroupGetOps = nodeGroupUris.stream()
+                .map(Operation::createGet)
+                .collect(toList());
+        List<NodeGroupState> nodeGroupStats = this.sender.sendAndWait(nodeGroupGetOps, NodeGroupState.class);
+
+        Duration timeout = Duration.ofSeconds(getTimeoutSeconds());
+        Duration checkInterval = Duration.ofMillis(FAST_MAINT_INTERVAL_MILLIS * 2);
+
+        TestContext testContext = new TestContext(nodeGroupGetOps.size(), timeout);
+        testContext.setCheckInterval(checkInterval);
+
+        // placeholder operation
+        Operation parentOp = Operation.createGet(this, "/")
+                .setCompletion(testContext.getCompletion());
+
+        for (NodeGroupState nodeGroupState : nodeGroupStats) {
+            NodeGroupUtils.checkConvergenceFromAnyHost(this, nodeGroupState, parentOp);
+        }
+        testContext.await();
+
+        waitFor("NodeGroupAvailable check failed", () -> {
+
+            List<Operation> ops = nodeGroupUris.stream()
+                    .map(Operation::createGet)
+                    .collect(toList());
+            List<NodeGroupState> stats = this.sender.sendAndWait(ops, NodeGroupState.class);
+
+            for (NodeGroupState nodeGroupState : stats) {
+                String hostId = nodeGroupState.documentOwner;
+                VerificationHost host = this.localPeerHosts.values().stream()
+                        .filter(node -> node.getId().equals(hostId))
+                        .findFirst()
+                        .orElseThrow(() -> new RuntimeException(
+                                String.format("Could not find %s in localPeerHosts", hostId)));
+
+                boolean isAvailable = NodeGroupUtils.isNodeGroupAvailable(host, nodeGroupState);
+                if (!isAvailable) {
+                    return false;
                 }
             }
-            testWait(ctx);
 
-            boolean isConverged = true;
-            for (Entry<URI, NodeGroupState> entry : nodesPerHost
-                    .entrySet()) {
+            return true;
+        });
 
-                NodeGroupState nodeGroupState = entry.getValue();
-                updateTime.add(nodeGroupState.membershipUpdateTimeMicros);
-                int healthyNodeCount = calculateHealthyNodeCount(nodeGroupState);
-
-                if (totalMemberCount != null
-                        && nodeGroupState.nodes.size() != totalMemberCount.intValue()) {
-                    log("Host %s is reporting %d healthy members %d total, expected %d total",
-                            entry.getKey(), healthyNodeCount, nodesPerHost.size(),
-                            healthyMemberCount, totalMemberCount);
-                    isConverged = false;
-                    break;
-                }
-
-                if (healthyNodeCount != healthyMemberCount) {
-                    log("Host %s is reporting %d healthy members, expected %d",
-                            entry.getKey(), healthyNodeCount, healthyMemberCount);
-                    isConverged = false;
-                    break;
-                }
-
-                validateNodes(entry.getValue(), healthyMemberCount, expectedOptionsPerNodeGroupUri);
-            }
-
-            now = new Date();
-
-            if (waitForTimeSync && updateTime.size() != 1) {
-                log("Update times did not converge: %s", updateTime.toString());
-                isConverged = false;
-            }
-
-            if (isConverged) {
-                break;
-            }
-
-            Thread.sleep(sleepTimeMillis);
-        } while (now.before(expiration));
-
-        boolean log = true;
-        updateTime.clear();
-        for (Entry<URI, NodeGroupState> entry : nodesPerHost
-                .entrySet()) {
-            updateTime.add(entry.getValue().membershipUpdateTimeMicros);
-            for (NodeState n : entry.getValue().nodes.values()) {
-                if (log) {
-                    log("%s:%s %s, (time) %d, (version) %d", n.groupReference, n.id, n.status,
-                            n.documentUpdateTimeMicros, n.documentVersion);
-                    log = false;
-                }
-                if (n.status == NodeStatus.AVAILABLE) {
-                    this.peerHostIdToNodeState.put(n.id, n);
-                }
-            }
-        }
-
-        try {
-            if (waitForTimeSync && updateTime.size() != 1) {
-                throw new IllegalStateException("Update time did not converge");
-            }
-
-            if (now.after(expiration)) {
-                throw new TimeoutException();
-            }
-        } catch (Throwable e) {
-            for (Entry<URI, NodeGroupState> entry : nodesPerHost
-                    .entrySet()) {
-                log("%s reports %s", entry.getKey(), Utils.toJsonHtml(entry.getValue()));
-            }
-            throw e;
-        }
-
-        if (!waitForTimeSync) {
-            return;
-        }
-
-        // additional check using convergence utility
-        Date exp = getTestExpiration();
-        while (new Date().before(exp)) {
-            boolean[] isConverged = new boolean[1];
-            NodeGroupState ngs = nodesPerHost.values().iterator().next();
-
-            testStart(1);
-            Operation op = Operation.createPost(null)
-                    .setReferer(getReferer())
-                    .setExpiration(Utils.getNowMicrosUtc() + getOperationTimeoutMicros());
-            NodeGroupUtils.checkConvergenceFromAnyHost(this, ngs, op.setCompletion((o, e) -> {
-                if (e != null && waitForTimeSync) {
-                    log(Level.INFO, "Convergence failure, will retry: %s", e.getMessage());
-                    isConverged[0] = false;
-                } else {
-                    isConverged[0] = true;
-                }
-                completeIteration();
-            }));
-            testWait();
-            if (!isConverged[0]) {
-                Thread.sleep(sleepTimeMillis);
-                continue;
-            }
-            break;
-        }
-
-        if (new Date().after(exp)) {
-            throw new TimeoutException();
-        }
     }
 
     public int calculateHealthyNodeCount(NodeGroupState r) {
