@@ -2475,11 +2475,6 @@ public class ServiceHost implements ServiceRequestSender {
 
                 log(Level.FINEST, "Started %s", s.getSelfLink());
                 post.complete();
-
-                if (s.hasOption(ServiceOption.DOCUMENT_OWNER)) {
-                    scheduleServiceOptionToggleMaintenance(s.getSelfLink(),
-                            EnumSet.of(ServiceOption.DOCUMENT_OWNER), null);
-                }
                 break;
 
             default:
@@ -5276,10 +5271,12 @@ public class ServiceHost implements ServiceRequestSender {
         body.reasons.add(MaintenanceReason.SERVICE_OPTION_TOGGLE);
         if (newOptions != null && newOptions.contains(ServiceOption.DOCUMENT_OWNER)) {
             body.reasons.add(MaintenanceReason.NODE_GROUP_CHANGE);
+            s.adjustStat(Service.STAT_NAME_DOCUMENT_OWNER_TOGGLE_ON_MAINT_COUNT, 1);
         }
 
         if (removedOptions != null && removedOptions.contains(ServiceOption.DOCUMENT_OWNER)) {
             body.reasons.add(MaintenanceReason.NODE_GROUP_CHANGE);
+            s.adjustStat(Service.STAT_NAME_DOCUMENT_OWNER_TOGGLE_OFF_MAINT_COUNT, 1);
         }
 
         if (body.reasons.contains(MaintenanceReason.NODE_GROUP_CHANGE)) {

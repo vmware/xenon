@@ -706,7 +706,8 @@ public class TestNodeGroupService {
 
         // On one host, add some services. They exist only on this host and we expect them to synchronize
         // across all hosts once this one joins with the group
-        URI hostUriWithInitialState = this.host.getPeerHostUri();
+        VerificationHost initialHost = this.host.getPeerHost();
+        URI hostUriWithInitialState = initialHost.getUri();
         Map<String, ExampleServiceState> exampleStatesPerSelfLink =
                 createExampleServices(hostUriWithInitialState);
 
@@ -762,6 +763,10 @@ public class TestNodeGroupService {
             doExampleServicePatch(exampleStatesPerSelfLink,
                     joinedHosts.get(0));
 
+
+            Set<String> ownerIds = this.host.getNodeStateMap().keySet();
+            verifyDocumentOwnerAndEpoch(exampleStatesPerSelfLink, initialHost, joinedHosts, 0, 1,
+                    ownerIds.size() - 1);
         }
 
         doNodeStopWithUpdates(exampleStatesPerSelfLink);
@@ -811,6 +816,13 @@ public class TestNodeGroupService {
         // nodes are stopped, do updates again, quorum is relaxed, they should work
         doExampleServicePatch(exampleStatesPerSelfLink, remainingHost.getUri());
         this.host.log("Done with stop nodes and send updates");
+
+        Set<String> ownerIds = this.host.getNodeStateMap().keySet();
+        List<URI> remainingHosts = new ArrayList<>(this.host.getNodeGroupMap().keySet());
+        verifyDocumentOwnerAndEpoch(exampleStatesPerSelfLink,
+                this.host.getInProcessHostMap().values().iterator().next(),
+                remainingHosts, 0, 1,
+                ownerIds.size() - 1);
     }
 
     private Map<String, ExampleServiceState> createExampleServices(URI hostUri) throws Throwable {
@@ -3018,14 +3030,10 @@ public class TestNodeGroupService {
         this.host.testWait();
     }
 
-    public Map<String, Set<String>> computeOwnerIdsPerLink(Collection<String> links)
+    public Map<String, Set<String>> computeOwnerIdsPerLink(VerificationHost joinedHost,
+            Collection<String> links)
             throws Throwable {
         Map<String, Set<String>> expectedOwnersPerLink = new ConcurrentSkipListMap<>();
-        // we need to independently verify which host should have been assigned the service links
-        VerificationHost h = this.host.getPeerHost();
-        if (h == null) {
-            return expectedOwnersPerLink;
-        }
         CompletionHandler c = (o, e) -> {
             if (e != null) {
                 this.host.failIteration(e);
@@ -3047,25 +3055,35 @@ public class TestNodeGroupService {
                     .setCompletion(c)
                     .setExpiration(this.host.getOperationTimeoutMicros() + Utils.getNowMicrosUtc());
 
-            h.selectOwner(this.replicationNodeSelector, link, selectOp);
+            joinedHost.selectOwner(this.replicationNodeSelector, link, selectOp);
         }
         this.host.testWait();
         return expectedOwnersPerLink;
     }
 
     public <T extends ServiceDocument> void verifyDocumentOwnerAndEpoch(Map<String, T> childStates,
-            Set<String> ownerIds, int minExpectedEpochRetries,
+            VerificationHost joinedHost,
+            List<URI> joinedHostUris,
+            int minExpectedEpochRetries,
             int maxExpectedEpochRetries, int expectedOwnerChanges)
             throws Throwable, InterruptedException, TimeoutException {
 
-        Map<String, Set<String>> ownerIdsPerLink = computeOwnerIdsPerLink(childStates.keySet());
+        Map<URI, NodeGroupState> joinedHostNodeGroupStates =
+                this.host.getServiceState(null, NodeGroupState.class, joinedHostUris);
+        Set<String> joinedHostOwnerIds = new HashSet<>();
+        for (NodeGroupState st : joinedHostNodeGroupStates.values()) {
+            joinedHostOwnerIds.add(st.documentOwner);
+        }
+
+        Map<String, Set<String>> ownerIdsPerLink = computeOwnerIdsPerLink(joinedHost,
+                childStates.keySet());
         Date exp = this.host.getTestExpiration();
         while (new Date().before(exp)) {
             boolean isConverged = true;
             Map<String, Set<Long>> epochsPerLink = new HashMap<>();
             List<URI> nodeSelectorStatsUris = new ArrayList<>();
 
-            for (URI baseNodeUri : this.host.getNodeGroupMap().keySet()) {
+            for (URI baseNodeUri : joinedHostUris) {
                 nodeSelectorStatsUris.add(UriUtils.buildUri(baseNodeUri,
                         ServiceUriPaths.DEFAULT_NODE_SELECTOR,
                         ServiceHost.SERVICE_URI_SUFFIX_STATS));
@@ -3107,23 +3125,23 @@ public class TestNodeGroupService {
                     epochs.add(state.documentEpoch);
                     Set<String> eligibleNodeIds = ownerIdsPerLink.get(state.documentSelfLink);
 
-                    if (!ownerIds.contains(state.documentOwner)) {
+                    if (!joinedHostOwnerIds.contains(state.documentOwner)) {
                         this.host.log("Owner id for %s not expected: %s, valid ids: %s",
-                                state.documentSelfLink, state.documentOwner, ownerIds);
+                                state.documentSelfLink, state.documentOwner, joinedHostOwnerIds);
                         isConverged = false;
                         break;
                     }
 
                     if (eligibleNodeIds != null && !eligibleNodeIds.contains(state.documentOwner)) {
                         this.host.log("Owner id for %s not eligible: %s, eligible ids: %s",
-                                state.documentSelfLink, state.documentOwner, ownerIds);
+                                state.documentSelfLink, state.documentOwner, joinedHostOwnerIds);
                         isConverged = false;
                         break;
                     }
                 }
 
                 int nodeGroupMaintCount = 0;
-                int missingDocOwnerToggleCount = 0;
+                int docOwnerToggleOffCount = 0;
                 int docOwnerToggleCount = 0;
                 // verify stats were reported by owner node, not a random peer
                 Map<URI, ServiceStats> allChildStats = this.host.getServiceState(null,
@@ -3139,17 +3157,17 @@ public class TestNodeGroupService {
                         break;
                     }
                     ServiceStat maintStat = childStats.entries
-                            .get(ReplicationTestService.STAT_NAME_HANDLE_NODE_GROUP_MAINTENANCE_COUNT);
+                            .get(Service.STAT_NAME_NODE_GROUP_CHANGE_MAINTENANCE_COUNT);
                     if (maintStat != null) {
                         nodeGroupMaintCount++;
                     }
-                    ServiceStat missingToggleStat = childStats.entries
-                            .get(ReplicationTestService.STAT_NAME_MISSING_SERVICE_OPTION_TOGGLE_COUNT);
-                    if (missingToggleStat != null) {
-                        missingDocOwnerToggleCount++;
+                    ServiceStat docOwnerToggleOffStat = childStats.entries
+                            .get(Service.STAT_NAME_DOCUMENT_OWNER_TOGGLE_OFF_MAINT_COUNT);
+                    if (docOwnerToggleOffStat != null) {
+                        docOwnerToggleOffCount++;
                     }
                     ServiceStat docOwnerToggleStat = childStats.entries
-                            .get(ReplicationTestService.STAT_NAME_SERVICE_OPTION_TOGGLE_COUNT);
+                            .get(Service.STAT_NAME_DOCUMENT_OWNER_TOGGLE_ON_MAINT_COUNT);
                     if (docOwnerToggleStat != null) {
                         docOwnerToggleCount++;
                     }
@@ -3160,15 +3178,10 @@ public class TestNodeGroupService {
                     isConverged = false;
                 }
 
-                this.host.log("Failed doc owner count: %d, toggle count: %d",
-                        missingDocOwnerToggleCount, docOwnerToggleCount);
-                if (docOwnerToggleCount < expectedOwnerChanges) {
+                this.host.log("Toggled off doc owner count: %d, toggle on count: %d",
+                        docOwnerToggleOffCount, docOwnerToggleCount);
+                if (docOwnerToggleCount < childStates.size()) {
                     isConverged = false;
-                }
-
-                if (missingDocOwnerToggleCount > 0) {
-                    throw new IllegalStateException(
-                            "Missing service option config details in maintenance for service");
                 }
 
                 // verify epochs

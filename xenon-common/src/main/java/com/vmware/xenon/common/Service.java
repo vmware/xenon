@@ -301,6 +301,8 @@ public interface Service extends ServiceRequestSender {
     static final String STAT_NAME_NODE_GROUP_CHANGE_MAINTENANCE_COUNT = "maintenanceForNodeGroupChangeCount";
     static final String STAT_NAME_NODE_GROUP_SYNCH_DELAYED_COUNT = "maintenanceForNodeGroupDelayedCount";
     static final String STAT_NAME_MAINTENANCE_COMPLETION_DELAYED_COUNT = "maintenanceCompletionDelayedCount";
+    static final String STAT_NAME_DOCUMENT_OWNER_TOGGLE_ON_MAINT_COUNT = "maintenanceDocumentOwnerToggleOnCount";
+    static final String STAT_NAME_DOCUMENT_OWNER_TOGGLE_OFF_MAINT_COUNT = "maintenanceDocumentOwnerToggleOffCount";
     static final String STAT_NAME_CACHE_MISS_COUNT = "stateCacheMissCount";
     static final String STAT_NAME_CACHE_CLEAR_COUNT = "stateCacheClearCount";
     static final String STAT_NAME_VERSION_CONFLICT_COUNT = "stateVersionConflictCount";
