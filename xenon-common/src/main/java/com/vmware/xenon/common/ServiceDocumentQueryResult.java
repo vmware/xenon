@@ -66,7 +66,7 @@ public class ServiceDocumentQueryResult extends ServiceDocument {
      * If the query included QueryOption.EXPAND_LINKS, this map is populated with the JSON
      * serialized service state for all unique selected link values.
      */
-    public Map<String, String> selectedDocuments;
+    public Map<String, Object> selectedDocuments;
 
     /**
      * Set to the number of documents that satisfy the query.
