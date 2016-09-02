@@ -35,7 +35,6 @@ import com.vmware.xenon.common.ServiceMaintenanceRequest.MaintenanceReason;
 import com.vmware.xenon.common.ServiceStats.ServiceStat;
 import com.vmware.xenon.services.common.NodeGroupService.NodeGroupState;
 import com.vmware.xenon.services.common.NodeSelectorSynchronizationService.SynchronizePeersRequest;
-import com.vmware.xenon.services.common.NodeState;
 import com.vmware.xenon.services.common.ServiceUriPaths;
 
 /**
@@ -109,12 +108,7 @@ class ServiceSynchronizationTracker {
         Service s = this.host.findService(path);
 
         boolean skipSynch = false;
-        if (ngs != null) {
-            NodeState self = ngs.nodes.get(this.host.getId());
-            if (self.membershipQuorum == 1 && ngs.nodes.size() == 1) {
-                skipSynch = true;
-            }
-        } else {
+        if (ngs == null) {
             // Only replicated services will supply node group state. Others do not need to
             // synchronize
             skipSynch = true;

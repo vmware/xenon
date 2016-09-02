@@ -387,6 +387,7 @@ public abstract class FactoryService extends StatelessService {
                 ctx.maintOp.fail(new CancellationException());
                 return;
             }
+
             Operation post = Operation.createPost(this, link)
                     .setCompletion(c)
                     .setReferer(getUri());
@@ -1061,6 +1062,8 @@ public abstract class FactoryService extends StatelessService {
                     }
 
                     SelectOwnerResponse rsp = o.getBody(SelectOwnerResponse.class);
+
+
                     if (rsp.availableNodeCount != ctx.originalSelection.availableNodeCount
                             || rsp.membershipUpdateTimeMicros != ctx.originalSelection.membershipUpdateTimeMicros) {
                         logWarning("Membership changed, aborting synch");
