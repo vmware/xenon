@@ -53,8 +53,6 @@ public class ServiceDocumentDescription {
      */
     public static final int DEFAULT_SERIALIZED_STATE_LIMIT = 4096 * 8;
 
-    public static final String FIELD_NAME_TENANT_LINKS = "tenantLinks";
-
     public enum TypeName {
         LONG,
         STRING,
@@ -103,12 +101,14 @@ public class ServiceDocumentDescription {
         ID,
 
         /**
-         * Property is a link (relative URI path) to another indexed document
+         * Property is a link (relative URI path) to another indexed document. Implicitly added
+         * for fields which name ends with "{@code Link}"
          */
         LINK,
 
         /**
-         * Property is a collection of links (relative URI paths) to other indexed documents
+         * Property is a collection of links (relative URI paths) to other indexed documents.
+         * Implicitly added for fields which name ends with "{@code Links}"
          */
         LINKS,
 
@@ -127,7 +127,8 @@ public class ServiceDocumentDescription {
     public enum PropertyIndexingOption {
         /**
          * Directs the indexing service to fully index a PODO. all fields will be indexed using the
-         * field name as the prefix to each child field.
+         * field name as the prefix to each child field. Implicitly added for
+         * {@link PropertyUsageOption#LINKS} fields.
          *
          * If the field is a collection of PODOs each item will be fully indexed.
          */
@@ -218,22 +219,6 @@ public class ServiceDocumentDescription {
     public int serializedStateSizeLimit = DEFAULT_SERIALIZED_STATE_LIMIT;
 
     /**
-     * Sets the indexing option {@link PropertyIndexingOption#EXPAND} for document fields named {@link
-     * #FIELD_NAME_TENANT_LINKS}.
-     * @param description The service document description to apply indexing options.
-     */
-    public static void expandTenantLinks(ServiceDocumentDescription description) {
-        ServiceDocumentDescription.PropertyDescription pdTenantLinks = description.propertyDescriptions
-                .get(FIELD_NAME_TENANT_LINKS);
-        if (pdTenantLinks == null) {
-            throw new IllegalStateException(FIELD_NAME_TENANT_LINKS
-                    + " property is missing in the service document");
-        }
-        pdTenantLinks.indexingOptions = EnumSet
-                .of(PropertyIndexingOption.EXPAND);
-    }
-
-    /**
      * Builder is a parameterized factory for ServiceDocumentDescription instances.
      */
     public static class Builder {
@@ -320,8 +305,14 @@ public class ServiceDocumentDescription {
                 if (ServiceDocument.isLink(f.getName())) {
                     fd.usageOptions.add(PropertyUsageOption.LINK);
                 }
+                if (ServiceDocument.isLinks(f.getName())) {
+                    fd.usageOptions.add(PropertyUsageOption.LINKS);
+                }
                 if (f.getName().equals(ServiceDocument.FIELD_NAME_OWNER)) {
                     fd.usageOptions.add(PropertyUsageOption.ID);
+                }
+                if (fd.usageOptions.contains(PropertyUsageOption.LINKS)) {
+                    fd.indexingOptions.add(PropertyIndexingOption.EXPAND);
                 }
                 buildPropertyDescription(fd, f.getType(), f.getGenericType(), f.getAnnotations(),
                         visited, depth);

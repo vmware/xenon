@@ -144,6 +144,7 @@ public class TestQueryTaskService {
     @Test
     public void complexDocumentReflection() {
         PropertyDescription pd;
+        PropertyDescription nestedPd;
         ServiceDocumentDescription.Builder b = ServiceDocumentDescription.Builder.create();
 
         QueryValidationServiceState s = new QueryValidationServiceState();
@@ -195,7 +196,7 @@ public class TestQueryTaskService {
         assertTrue(pd != null);
         assertTrue(pd.typeName.equals(TypeName.PODO));
         assertTrue(pd.fieldDescriptions != null);
-        assertTrue(pd.fieldDescriptions.size() == 3);
+        assertTrue(pd.fieldDescriptions.size() == 4);
         assertTrue(pd.fieldDescriptions.get("link") != null);
 
         // Verify the reflection of generic types
@@ -250,9 +251,12 @@ public class TestQueryTaskService {
         assertTrue(pd != null);
         assertTrue(pd.typeName.equals(TypeName.PODO));
         assertEquals(EnumSet.of(PropertyIndexingOption.EXPAND), pd.indexingOptions);
-        pd = pd.fieldDescriptions.get("link");
-        assertEquals(EnumSet.of(PropertyUsageOption.LINK), pd.usageOptions);
-        assertEquals("some/service", pd.exampleValue);
+        nestedPd = pd.fieldDescriptions.get("link");
+        assertEquals(EnumSet.of(PropertyUsageOption.LINK), nestedPd.usageOptions);
+        assertEquals("some/service", nestedPd.exampleValue);
+        nestedPd = pd.fieldDescriptions.get("anotherLink");
+        assertEquals(EnumSet.of(PropertyUsageOption.LINK), nestedPd.usageOptions);
+        assertEquals("some/service", nestedPd.exampleValue);
 
         // Verify Documentation annotation
         pd = sdd.propertyDescriptions.get("longValue");
@@ -262,12 +266,21 @@ public class TestQueryTaskService {
         assertEquals("a Long value", pd.propertyDocumentation);
 
         // Verify multiple Usage annotations are processed correctly
-        pd = sdd.propertyDescriptions.get("serviceLink");
+        pd = sdd.propertyDescriptions.get(QueryValidationServiceState.FIELD_NAME_SERVICE_LINK);
         assertTrue(pd != null);
         assertTrue(pd.typeName.equals(TypeName.STRING));
-        assertEquals(EnumSet.of(PropertyUsageOption.OPTIONAL, PropertyUsageOption.LINK),
+        assertEquals(EnumSet.of(PropertyUsageOption.OPTIONAL,
+                PropertyUsageOption.AUTO_MERGE_IF_NOT_NULL, PropertyUsageOption.LINK),
                 pd.usageOptions);
         assertEquals("some/service", pd.exampleValue);
+
+        // Verify implicit Usage and Indexing annotations are added correctly
+        pd = sdd.propertyDescriptions.get(QueryValidationServiceState.FIELD_NAME_SERVICE_LINKS);
+        assertTrue(pd != null);
+        assertTrue(pd.typeName.equals(TypeName.COLLECTION));
+        assertEquals(EnumSet.of(PropertyUsageOption.OPTIONAL, PropertyUsageOption.LINKS),
+                pd.usageOptions);
+        assertEquals(EnumSet.of(PropertyIndexingOption.EXPAND), pd.indexingOptions);
     }
 
     private Map<ServiceDocumentDescription.TypeName, Long> countReflectedFieldTypes(
@@ -2575,7 +2588,7 @@ public class TestQueryTaskService {
         // Another two clause boolean query with kind and string match
         query = Query.Builder.create()
                 .addClause(kindClause)
-                .addFieldClause("serviceLink", SERVICE_LINK_VALUE)
+                .addFieldClause(QueryValidationServiceState.FIELD_NAME_SERVICE_LINK, SERVICE_LINK_VALUE)
                 .build();
 
         queryTask = QueryTask.Builder.create()

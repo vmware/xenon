@@ -29,6 +29,9 @@
   To keep the existing code to work, API signature was kept same but most of the parameters
   are now unused.
 
+* Implicitly add PropertyUsageOption.LINKS and PropertyIndexingOption.EXPAND annotations
+  on service document fields which name ends with "Links".
+  Remove the ServiceDocumentDescription.expandTenantLinks() method as it is no longer needed.
 
 ## 0.9.4
 
