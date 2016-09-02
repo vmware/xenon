@@ -72,26 +72,30 @@ public class ReflectionUtils {
      * @param pd
      * @param instance
      * @param value
+     * @return {@code true} if the property value was changed
      */
-    public static void setOrUpdatePropertyValue(PropertyDescription pd, Object instance,
+    public static boolean setOrUpdatePropertyValue(PropertyDescription pd, Object instance,
             Object value) {
         try {
+            boolean hasValueChanged = false;
             Object currentObj = pd.accessor.get(instance);
             if (currentObj != null) {
                 if (currentObj instanceof Collection) {
                     Collection<Object> existingCollection = (Collection<Object>) currentObj;
-                    existingCollection.addAll((Collection<Object>) value);
+                    hasValueChanged = existingCollection.addAll((Collection<Object>) value);
                     pd.accessor.set(instance, existingCollection);
                 } else if (currentObj instanceof Map) {
                     Map<Object, Object> existingMap = (Map<Object, Object>) currentObj;
-                    mergeMapField(existingMap, (Map<Object, Object>) value);
+                    hasValueChanged = mergeMapField(existingMap, (Map<Object, Object>) value);
                     pd.accessor.set(instance, existingMap);
                 } else {
                     throw new RuntimeException("Merge not supported for specified data type");
                 }
             } else {
                 pd.accessor.set(instance, value);
+                hasValueChanged = value != null;
             }
+            return hasValueChanged;
         } catch (Throwable e) {
             throw new RuntimeException(e);
         }
@@ -105,19 +109,23 @@ public class ReflectionUtils {
      *
      * @param sourceMap The map from the service state before it is patched.
      * @param patchMap Map with values which will be patched.
+     * @return whether the source map was changed or not
      */
-    private static void mergeMapField(
+    private static boolean mergeMapField(
             Map<Object,Object> sourceMap, Map<Object,Object> patchMap) {
         if (patchMap == null || patchMap.isEmpty()) {
-            return;
+            return false;
         }
+        boolean hasChanged = false;
         for (Entry<Object, Object> e : patchMap.entrySet()) {
             if (e.getValue() == null) {
-                sourceMap.remove(e.getKey());
+                hasChanged |= sourceMap.remove(e.getKey()) != null;
             } else {
-                sourceMap.put(e.getKey(), e.getValue());
+                Object oldValue = sourceMap.put(e.getKey(), e.getValue());
+                hasChanged = hasChanged || !e.getValue().equals(oldValue);
             }
         }
+        return hasChanged;
     }
 
     /**

@@ -1105,8 +1105,7 @@ public class Utils {
                 if (o != null) {
                     if ((prop.typeName == TypeName.COLLECTION && !o.getClass().isArray())
                             || prop.typeName == TypeName.MAP) {
-                        ReflectionUtils.setOrUpdatePropertyValue(prop, source, o);
-                        modified = true;
+                        modified |= ReflectionUtils.setOrUpdatePropertyValue(prop, source, o);
                     } else {
                         if (!o.equals(ReflectionUtils.getPropertyValue(prop, source))) {
                             ReflectionUtils.setPropertyValue(prop, source, o);
