@@ -474,13 +474,18 @@ public class StatefulService implements Service {
             return true;
         }
 
-        if (hasOption(ServiceOption.DOCUMENT_OWNER)
-                && !stateFromOwner.documentOwner.equals(getHost().getId())) {
+        if (stateFromOwner.documentOwner.equals(getHost().getId())) {
+            if (request.isSynchronize()) {
+                // a request can be marked replicated AND synchronize, if its a synchronization attempt
+                // from a remote node, that was not owner for the service. Enable the DOCUMENT_OWNER
+                // option since we agree on who the owner is
+                toggleOption(ServiceOption.DOCUMENT_OWNER, true);
+            }
+        } else {
             // The local host is no longer the owner. The service host would have failed the
             // request if we disagreed with the sender, on who the owner is. Here we simply
             // toggle the owner option off
             toggleOption(ServiceOption.DOCUMENT_OWNER, false);
-            return false;
         }
 
         return false;
@@ -1374,15 +1379,16 @@ public class StatefulService implements Service {
                     "ON_DEMAND_LOAD cannot co-exists.");
         }
 
+        boolean optionsChanged = false;
         synchronized (this.context) {
             if (enable) {
-                this.context.options.add(option);
+                optionsChanged = this.context.options.add(option);
             } else {
-                this.context.options.remove(option);
+                optionsChanged = this.context.options.remove(option);
             }
         }
 
-        if (option == ServiceOption.DOCUMENT_OWNER) {
+        if (optionsChanged && option == ServiceOption.DOCUMENT_OWNER) {
             EnumSet<ServiceOption> addedOptions = null;
             EnumSet<ServiceOption> removedOptions = null;
             EnumSet<ServiceOption> docOwner =

@@ -755,9 +755,11 @@ public class TestNodeGroupService {
                     this.exampleStateConvergenceChecker, exampleStatesPerSelfLink.size(),
                     0);
 
+            // Do updates, which will verify that the services are converged in terms of ownership.
+            // Since we also synchronize on demand, if there was any discrepancy, after updates, the
+            // services will converge
             doExampleServicePatch(exampleStatesPerSelfLink,
                     joinedHosts.get(0));
-
 
             Set<String> ownerIds = this.host.getNodeStateMap().keySet();
             verifyDocumentOwnerAndEpoch(exampleStatesPerSelfLink, initialHost, joinedHosts, 0, 1,
@@ -808,16 +810,20 @@ public class TestNodeGroupService {
 
         stopHostsAndVerifyQueuing(hostsToStop, remainingHost, targetServices);
 
-        // nodes are stopped, do updates again, quorum is relaxed, they should work
-        doExampleServicePatch(exampleStatesPerSelfLink, remainingHost.getUri());
-        this.host.log("Done with stop nodes and send updates");
-
+        // its important to verify document ownership before we do any updates on the services.
+        // This is because we verify, that even without any on demand synchronization,
+        // the factory driven synchronization set the services in the proper state
         Set<String> ownerIds = this.host.getNodeStateMap().keySet();
         List<URI> remainingHosts = new ArrayList<>(this.host.getNodeGroupMap().keySet());
         verifyDocumentOwnerAndEpoch(exampleStatesPerSelfLink,
                 this.host.getInProcessHostMap().values().iterator().next(),
                 remainingHosts, 0, 1,
                 ownerIds.size() - 1);
+
+        // nodes are stopped, do updates again, quorum is relaxed, they should work
+        doExampleServicePatch(exampleStatesPerSelfLink, remainingHost.getUri());
+
+        this.host.log("Done with stop nodes and send updates");
     }
 
     private Map<String, ExampleServiceState> createExampleServices(URI hostUri) throws Throwable {
@@ -914,7 +920,7 @@ public class TestNodeGroupService {
             // now start a new Host and supply the already created peer, then observe the automatic
             // join
             h = new ExampleServiceHost();
-            int quorum = this.host.getPeerCount();
+            int quorum = this.host.getPeerCount() + 1;
 
             String mainHostId = "main-" + VerificationHost.hostNumber.incrementAndGet();
             String[] args = {
@@ -3083,12 +3089,12 @@ public class TestNodeGroupService {
                         ServiceUriPaths.DEFAULT_NODE_SELECTOR,
                         ServiceHost.SERVICE_URI_SUFFIX_STATS));
 
-                URI factoryUri = UriUtils.buildExpandLinksQueryUri(UriUtils.buildUri(
-                        baseNodeUri, this.replicationTargetFactoryLink));
+                URI factoryUri = UriUtils.buildUri(
+                        baseNodeUri, this.replicationTargetFactoryLink);
                 ServiceDocumentQueryResult factoryRsp = this.host
                         .getFactoryState(factoryUri);
-                if (factoryRsp.documents == null
-                        || factoryRsp.documents.size() != childStates.size()) {
+                if (factoryRsp.documentLinks == null
+                        || factoryRsp.documentLinks.size() != childStates.size()) {
                     isConverged = false;
                     // services not all started in new nodes yet;
                     this.host.log("Node %s does not have all services: %s", baseNodeUri,
@@ -3096,13 +3102,21 @@ public class TestNodeGroupService {
                     break;
                 }
 
+                List<URI> childUris = new ArrayList<>();
+                for (String link : childStates.keySet()) {
+                    childUris.add(UriUtils.buildUri(baseNodeUri, link));
+                }
+
+                // retrieve the document state directly from each service
+                Map<URI, ServiceDocument> childDocs =
+                        this.host.getServiceState(null, ServiceDocument.class, childUris);
+
                 List<URI> childStatUris = new ArrayList<>();
-                for (Object s : factoryRsp.documents.values()) {
-                    ServiceDocument state = Utils.fromJson(s, ServiceDocument.class);
+                for (ServiceDocument state : childDocs.values()) {
 
                     if (state.documentOwner == null) {
                         this.host.log("Owner not set in service on new node: %s",
-                                Utils.toJsonHtml(s));
+                                Utils.toJsonHtml(state));
                         isConverged = false;
                         break;
                     }
