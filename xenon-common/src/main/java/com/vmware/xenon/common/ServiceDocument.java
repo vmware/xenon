@@ -139,6 +139,7 @@ public class ServiceDocument {
      * Field names ending with this suffix will be indexed as URI paths
      */
     public static final String FIELD_NAME_SUFFIX_LINK = "Link";
+    public static final String FIELD_NAME_SUFFIX_LINKS = "Links";
 
     /**
      * Field names ending in Address will be indexed as StringFields.
@@ -475,4 +476,7 @@ public class ServiceDocument {
         return name.endsWith(FIELD_NAME_SUFFIX_LINK);
     }
 
+    public static boolean isLinks(String name) {
+        return name.endsWith(FIELD_NAME_SUFFIX_LINKS);
+    }
 }

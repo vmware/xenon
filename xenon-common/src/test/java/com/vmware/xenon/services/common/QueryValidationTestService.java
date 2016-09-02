@@ -38,6 +38,7 @@ public class QueryValidationTestService extends StatefulService {
         public long longValue;
         @ServiceDocument.PropertyOptions(usage = PropertyUsageOption.LINK)
         public String link;
+        public String anotherLink;
     }
 
     public static class QueryValidationServiceState extends ServiceDocument {
@@ -62,9 +63,10 @@ public class QueryValidationTestService extends StatefulService {
         public Date dateValue;
         public String stringValue;
         public String textValue;
-        @PropertyOptions(usage = { PropertyUsageOption.OPTIONAL, PropertyUsageOption.LINK })
+        @PropertyOptions(usage = { PropertyUsageOption.OPTIONAL,
+                PropertyUsageOption.AUTO_MERGE_IF_NOT_NULL })
         public String serviceLink;
-        @PropertyOptions(usage = { PropertyUsageOption.OPTIONAL, PropertyUsageOption.LINKS })
+        @PropertyOptions(usage = { PropertyUsageOption.OPTIONAL })
         public List<String> serviceLinks;
         public URI referenceValue;
         public Boolean booleanValue;

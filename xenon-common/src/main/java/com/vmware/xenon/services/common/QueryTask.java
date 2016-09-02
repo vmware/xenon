@@ -145,7 +145,10 @@ public class QueryTask extends ServiceDocument {
             OWNER_SELECTION,
 
             /**
-             * Query results include the values for all fields marked with {@code PropertyUsageOption#LINK}
+             * Query results include the values for all link fields included in
+             * {@link QuerySpecification#linkTerms}. The links are then available through
+             * {@link ServiceDocumentQueryResult#selectedLinks} and
+             * {@link ServiceDocumentQueryResult#selectedLinksPerDocument}
              */
             SELECT_LINKS,
 

@@ -167,8 +167,6 @@ public class AuthCredentialsService extends StatefulService {
         pdCustomProperties.indexingOptions = EnumSet
                 .of(ServiceDocumentDescription.PropertyIndexingOption.EXPAND);
 
-        ServiceDocumentDescription.expandTenantLinks(td.documentDescription);
-
         AuthCredentialsServiceState template = (AuthCredentialsServiceState) td;
         return template;
     }
