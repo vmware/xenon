@@ -45,7 +45,7 @@ angular.module('dcpDefault').service('ManageService', ['$http', 'UtilService', '
         this.patchService = function (service) {
             var req = {
                 method: 'PATCH',
-                url: UtilService.getBaseUrl() + $routeParams.selfLink,
+                url: UtilService.getBaseUrl() + '/' + $routeParams.selfLink,
                 data: service,
                 headers: {
                     'Content-Type': CONSTANTS.CONTENT_TYPE.JSON
@@ -57,7 +57,7 @@ angular.module('dcpDefault').service('ManageService', ['$http', 'UtilService', '
         this.deleteService = function (callBody) {
             var req = {
                 method: 'DELETE',
-                url: UtilService.getBaseUrl() + $routeParams.serviceName
+                url: UtilService.getBaseUrl() + '/' + $routeParams.selfLink
             };
 
             if (callBody) {
