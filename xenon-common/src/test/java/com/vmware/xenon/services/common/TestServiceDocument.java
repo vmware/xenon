@@ -33,7 +33,7 @@ public class TestServiceDocument {
     public void copyTo() throws Throwable {
         // if a field is added to ServiceDocument, this method must be updated.
         // Also, methods ServiceDocument.isBuiltInFieldXXX() must be updated as well
-        assertEquals(26, ServiceDocument.class.getFields().length);
+        assertEquals(27, ServiceDocument.class.getFields().length);
         ServiceDocument one = new ServiceDocument();
         one.documentAuthPrincipalLink = UUID.randomUUID().toString();
         one.documentDescription = null;
