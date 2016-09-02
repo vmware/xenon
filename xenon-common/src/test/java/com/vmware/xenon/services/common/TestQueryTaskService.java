@@ -937,7 +937,7 @@ public class TestQueryTaskService {
                 .addLinkTerm(QueryValidationServiceState.FIELD_NAME_SERVICE_LINK)
                 .setQuery(query).build();
 
-        createWaitAndValidateQueryTask(1, services, queryTask.querySpec, false);
+        createWaitAndValidateQueryTask(1, services, queryTask.querySpec, true);
 
         // update one of the links to a bogus link value (pointing to a non existent document)
         // and verify the expanded link, for that document with the broken service link, contains
@@ -3117,8 +3117,8 @@ public class TestQueryTaskService {
                 }
                 linksFound++;
                 String link = entry.getValue();
-                String jsonState = page.results.selectedDocuments.get(link);
-                ExampleServiceState expandedState = Utils.fromJson(jsonState,
+                Object doc = page.results.selectedDocuments.get(link);
+                ExampleServiceState expandedState = Utils.fromJson(doc,
                         ExampleServiceState.class);
                 assertEquals(Utils.buildKind(ExampleServiceState.class), expandedState.documentKind);
             }
@@ -3132,14 +3132,13 @@ public class TestQueryTaskService {
         for (Entry<String, Map<String, String>> e : queryTask.results.selectedLinksPerDocument.entrySet()) {
             for (Entry<String, String> linkToExpandedState : e.getValue().entrySet()) {
                 String link = linkToExpandedState.getValue();
-                String jsonState = queryTask.results.selectedDocuments.get(link);
+                Object doc = queryTask.results.selectedDocuments.get(link);
                 if (!e.getKey().equals(queryValidationServiceWithBrokenServiceLink.getPath())) {
-
-                    ExampleServiceState st = Utils.fromJson(jsonState, ExampleServiceState.class);
+                    ExampleServiceState st = Utils.fromJson(doc, ExampleServiceState.class);
                     assertEquals(Utils.buildKind(ExampleServiceState.class), st.documentKind);
                     continue;
                 }
-                ServiceErrorResponse error = Utils.fromJson(jsonState, ServiceErrorResponse.class);
+                ServiceErrorResponse error = Utils.fromJson(doc, ServiceErrorResponse.class);
                 assertEquals(Operation.STATUS_CODE_NOT_FOUND, error.statusCode);
             }
         }

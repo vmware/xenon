@@ -37,7 +37,6 @@ import com.vmware.xenon.common.ServiceDocumentDescription.TypeName;
 import com.vmware.xenon.common.ServiceDocumentQueryResult;
 import com.vmware.xenon.common.ServiceHost;
 import com.vmware.xenon.common.UriUtils;
-import com.vmware.xenon.common.Utils;
 import com.vmware.xenon.services.common.QueryTask.QuerySpecification;
 import com.vmware.xenon.services.common.QueryTask.QuerySpecification.QueryOption;
 
@@ -180,7 +179,7 @@ public class QueryTaskUtils {
             return;
         }
 
-        Map<String, String> uniqueLinkToState = new ConcurrentSkipListMap<>();
+        Map<String, Object> uniqueLinkToState = new ConcurrentSkipListMap<>();
         for (Map<String, String> selectedLinksPerDocument : result.selectedLinksPerDocument.values()) {
             for (Entry<String, String> en : selectedLinksPerDocument.entrySet()) {
                 uniqueLinkToState.put(en.getValue(), "");
@@ -205,15 +204,7 @@ public class QueryTaskUtils {
             }
 
             Object body = o.getBodyRaw();
-
-            try {
-                String json = Utils.toJson(body);
-                uniqueLinkToState.put(link, json);
-            } catch (Throwable ex) {
-                host.log(Level.WARNING, "Failure serializing response for %s: %s", link,
-                        ex.getMessage());
-            }
-
+            uniqueLinkToState.put(link, body);
             int r = remaining.decrementAndGet();
             if (r != 0) {
                 return;

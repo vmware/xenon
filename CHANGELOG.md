@@ -2,6 +2,10 @@
 
 ## 0.9.5-SNAPSHOT
 
+* Change ServiceDocumentQueryResult.selectedDocuments from Map<String,String> to
+  Map<String,Object> making it the same as the Map<String,Object> documents field.
+  This avoid ugly escaping of the document content which was already JSON
+
 * Add support for case insensitive queries. New PropertyIndexingOption.CASE_INSENSITIVE
   instructs the index service to index the field in lower case. The original field
   content is preserved in original case. At query time, the field match value
