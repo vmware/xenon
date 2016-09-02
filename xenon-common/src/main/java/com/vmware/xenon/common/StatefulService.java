@@ -474,16 +474,32 @@ public class StatefulService implements Service {
             return true;
         }
 
-        if (hasOption(ServiceOption.DOCUMENT_OWNER)
-                && !stateFromOwner.documentOwner.equals(getHost().getId())) {
+        if (stateFromOwner.documentOwner.equals(getHost().getId())) {
+            if (request.isSynchronize()) {
+                if (hasOption(ServiceOption.DOCUMENT_OWNER)) {
+                    logInfo("toggling owner on");
+                }
+                // a request can be marked replicated AND synchronize, if its a synchronization attempt
+                // from a remote node, that was not owner for the service. Enable the DOCUMENT_OWNER
+                // option since we agree on who the owner is
+                toggleOption(ServiceOption.DOCUMENT_OWNER, true);
+                return false;
+            } else {
+                // we got a replicated, non synchronize request. but we are not the owner. We will not
+                // attempt synchronization, since it will initiated at a different code path
+                logWarning("Received replicated request %s from %s but we are owner (%s",
+                        request.getAction(),
+                        request.getReferer(),
+                        getHost().getId());
+                return false;
+            }
+        } else {
             // The local host is no longer the owner. The service host would have failed the
             // request if we disagreed with the sender, on who the owner is. Here we simply
             // toggle the owner option off
             toggleOption(ServiceOption.DOCUMENT_OWNER, false);
             return false;
         }
-
-        return false;
     }
 
     /**
