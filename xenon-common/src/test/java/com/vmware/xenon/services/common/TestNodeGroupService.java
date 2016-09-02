@@ -755,9 +755,11 @@ public class TestNodeGroupService {
                     this.exampleStateConvergenceChecker, exampleStatesPerSelfLink.size(),
                     0);
 
+            // Do updates, which will verify that the services are converged in terms of ownership.
+            // Since we also synchronize on demand, if there was any discrepancy, after updates, the
+            // services will converge
             doExampleServicePatch(exampleStatesPerSelfLink,
                     joinedHosts.get(0));
-
 
             Set<String> ownerIds = this.host.getNodeStateMap().keySet();
             verifyDocumentOwnerAndEpoch(exampleStatesPerSelfLink, initialHost, joinedHosts, 0, 1,
@@ -810,14 +812,20 @@ public class TestNodeGroupService {
 
         // nodes are stopped, do updates again, quorum is relaxed, they should work
         doExampleServicePatch(exampleStatesPerSelfLink, remainingHost.getUri());
-        this.host.log("Done with stop nodes and send updates");
 
+        // FIXME above above before checkin
+        // its important to verify document ownership before we do any updates on the services.
+        // This is because we verify, that even without any on demand synchronization,
+        // the factory driven synchronization set the services in the proper state
         Set<String> ownerIds = this.host.getNodeStateMap().keySet();
         List<URI> remainingHosts = new ArrayList<>(this.host.getNodeGroupMap().keySet());
         verifyDocumentOwnerAndEpoch(exampleStatesPerSelfLink,
                 this.host.getInProcessHostMap().values().iterator().next(),
                 remainingHosts, 0, 1,
                 ownerIds.size() - 1);
+
+
+        this.host.log("Done with stop nodes and send updates");
     }
 
     private Map<String, ExampleServiceState> createExampleServices(URI hostUri) throws Throwable {
