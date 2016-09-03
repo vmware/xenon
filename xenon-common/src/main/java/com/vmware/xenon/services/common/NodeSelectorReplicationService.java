@@ -144,8 +144,8 @@ public class NodeSelectorReplicationService extends StatelessService {
             }
 
             if (e != null && o != null) {
-                logWarning("Replication request to %s failed with %d, %s",
-                        o.getUri(), o.getStatusCode(), e.getMessage());
+                logWarning("Replication request %s (id: %d) to %s failed with %d, %s",
+                        o.getAction(), o.getId(), o.getUri(), o.getStatusCode(), e.getMessage());
                 // Preserve the status code from latest failure. We do not have a mechanism
                 // to report different failure codes, per operation.
                 outboundOp.setStatusCode(o.getStatusCode());
@@ -210,6 +210,10 @@ public class NodeSelectorReplicationService extends StatelessService {
 
         ServiceClient cl = getHost().getClient();
         String selfId = getHost().getId();
+
+        logInfo("Created replication update opreation %s (id: %d) for outboundOp %s (id: %d), targetPath: %s",
+                update.getAction(), update.getId(), outboundOp.getAction(), outboundOp.getId(),
+                outboundOp.getUri().getPath());
 
         // trigger completion once, for self node, since its part of our accounting
         c.handle(null, null);
