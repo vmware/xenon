@@ -15,7 +15,7 @@ package com.vmware.xenon.common;
 
 import static com.vmware.xenon.common.TransactionServiceHelper.handleGetWithinTransaction;
 import static com.vmware.xenon.common.TransactionServiceHelper.handleOperationInTransaction;
-import static com.vmware.xenon.common.TransactionServiceHelper.notifyTransactionCoordinator;
+import static com.vmware.xenon.common.TransactionServiceHelper.notifyTransactionCoordinatorOp;
 
 import java.net.URI;
 import java.util.Collection;
@@ -301,6 +301,7 @@ public class StatefulService implements Service {
                 }
 
                 request.nestCompletion(this::handleRequestCompletion);
+
                 isCompletionNested = true;
 
                 if (handleOperationInTransaction(this, this.context.stateType,
@@ -610,6 +611,24 @@ public class StatefulService implements Service {
         get.setBodyNoCloning(d).complete();
     }
 
+    private void handlePendingTransactions(Operation op, Throwable e) {
+        allocatePendingTransactions();
+        notifyTransactionCoordinatorOp(this, op, e)
+                .setCompletion((txOp, txE) -> {
+                    if (txE != null) {
+                        op.fail(txE);
+                        return;
+                    }
+
+                    if (e != null) {
+                        op.fail(e);
+                        return;
+                    }
+
+                    op.complete();
+                }).sendWith(this);
+    }
+
     /**
      * Performs a series of actions, based on service options, after the service code has called
      * operation.complete() but before the client sees request completion
@@ -622,7 +641,7 @@ public class StatefulService implements Service {
      *
      * 3) Index (save state)
      *
-     * 4) Notify transaction coordinator
+     * 4) When under a transaction, nest completion on operation to notify the transaction coordinator
      *
      * 5) Update operation stats
      *
@@ -674,8 +693,7 @@ public class StatefulService implements Service {
         }
 
         if (op.isWithinTransaction() && this.getHost().getTransactionServiceUri() != null) {
-            allocatePendingTransactions();
-            notifyTransactionCoordinator(this, op, e);
+            op.nestCompletion(this::handlePendingTransactions);
         }
 
         if (e != null) {
