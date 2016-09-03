@@ -112,7 +112,7 @@ public class NettyChannelContext extends SocketContext {
             if (this.isPoolStopping) {
                 return;
             }
-            logger.info("Channel closed" +
+            logger.fine("Channel closed" +
                     ", ChannelId:" + this.channel.id() +
                     ", Protocol:" + this.protocol +
                     ", NodeChannelGroupKey:" + this.key);
