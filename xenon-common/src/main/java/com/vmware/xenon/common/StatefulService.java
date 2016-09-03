@@ -15,7 +15,7 @@ package com.vmware.xenon.common;
 
 import static com.vmware.xenon.common.TransactionServiceHelper.handleGetWithinTransaction;
 import static com.vmware.xenon.common.TransactionServiceHelper.handleOperationInTransaction;
-import static com.vmware.xenon.common.TransactionServiceHelper.notifyTransactionCoordinator;
+import static com.vmware.xenon.common.TransactionServiceHelper.notifyTransactionCoordinatorOp;
 
 import java.net.URI;
 import java.util.Collection;
@@ -301,6 +301,7 @@ public class StatefulService implements Service {
                 }
 
                 request.nestCompletion(this::handleRequestCompletion);
+
                 isCompletionNested = true;
 
                 if (handleOperationInTransaction(this, this.context.stateType,
@@ -622,7 +623,7 @@ public class StatefulService implements Service {
      *
      * 3) Index (save state)
      *
-     * 4) Notify transaction coordinator
+     * 4) When under a transaction, notify the coordinator before the client receives the response
      *
      * 5) Update operation stats
      *
@@ -673,17 +674,26 @@ public class StatefulService implements Service {
             }
         }
 
-        if (op.isWithinTransaction() && this.getHost().getTransactionServiceUri() != null) {
-            allocatePendingTransactions();
-            notifyTransactionCoordinator(this, op, e);
-        }
-
         if (e != null) {
             if (hasOption(Service.ServiceOption.INSTRUMENTATION)) {
                 adjustStat(op.getAction() + Service.STAT_NAME_FAILURE_COUNT, 1);
             }
             // operation has failed, complete and process any queued operations
-            failRequest(op, e);
+            // If the request is in a transaction, notify the coordinator first.
+            final Throwable finalE = e;
+            if (op.isWithinTransaction() && this.getHost().getTransactionServiceUri() != null) {
+                allocatePendingTransactions();
+                notifyTransactionCoordinatorOp(this, op, e)
+                        .setCompletion((txOp, txE) -> {
+                            if (txE != null) {
+                                failRequest(op, txE);
+                                return;
+                            }
+                            failRequest(op, finalE);
+                        }).sendWith(this);
+                return;
+            }
+            failRequest(op, finalE);
             return;
         }
 
@@ -720,7 +730,7 @@ public class StatefulService implements Service {
                 // next stage will process pending operations, disable finally clause from
                 // duplicating work
                 processPending = false;
-                processCompletionStageIndexing(op);
+                processCompletionStageIndexing(op, null);
             } else {
                 processCompletionStagePublishAndComplete(op);
             }
@@ -919,7 +929,7 @@ public class StatefulService implements Service {
                 commitOp.addRequestHeader(Operation.REPLICATION_QUORUM_HEADER, replQuorum);
                 commitOp.setCompletion((o, e) -> {
                     // regardless of commit success, we need to proceed with operation processing
-                    processCompletionStageIndexing(op);
+                    processCompletionStageIndexing(op, null);
                 });
             }
 
@@ -931,7 +941,7 @@ public class StatefulService implements Service {
             if (!indexState) {
                 return;
             }
-            processCompletionStageIndexing(op);
+            processCompletionStageIndexing(op, null);
         }
     }
 
@@ -940,11 +950,25 @@ public class StatefulService implements Service {
      * and kicks of pending request processing. On indexing completion, it continues with next stage
      * of operation completion
      */
-    private void processCompletionStageIndexing(Operation op) {
+    private void processCompletionStageIndexing(Operation op, Throwable e) {
         try {
-            op.nestCompletion((o, e) -> {
-                if (e != null) {
-                    failRequest(op, e);
+            op.nestCompletion((o, failure) -> {
+                if (failure != null) {
+                    failRequest(op, failure);
+                    return;
+                }
+
+                // Notify transaction coordinator before completing the operation
+                if (op.isWithinTransaction() && this.getHost().getTransactionServiceUri() != null) {
+                    allocatePendingTransactions();
+                    notifyTransactionCoordinatorOp(this, op, e)
+                            .setCompletion((txOp, txE) -> {
+                                if (txE != null) {
+                                    failRequest(op, txE);
+                                    return;
+                                }
+                                processCompletionStagePublishAndComplete(op);
+                            }).sendWith(this);
                     return;
                 }
                 processCompletionStagePublishAndComplete(op);

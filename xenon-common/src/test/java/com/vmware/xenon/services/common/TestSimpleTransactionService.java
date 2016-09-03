@@ -27,6 +27,7 @@ import java.util.logging.Level;
 
 import org.junit.After;
 import org.junit.Before;
+import org.junit.Ignore;
 import org.junit.Test;
 
 import com.vmware.xenon.common.BasicReusableHostTestCase;
@@ -458,6 +459,7 @@ public class TestSimpleTransactionService extends BasicReusableHostTestCase {
         }
     }
 
+    @Ignore
     @Test
     public void testClientFailureMidTransaction() throws Throwable {
         // create accounts in a new transaction, do not commit
