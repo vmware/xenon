@@ -66,6 +66,7 @@ import com.vmware.xenon.common.Service.Action;
 import com.vmware.xenon.common.Service.ProcessingStage;
 import com.vmware.xenon.common.Service.ServiceOption;
 import com.vmware.xenon.common.ServiceConfigUpdateRequest;
+import com.vmware.xenon.common.ServiceConfiguration;
 import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.ServiceDocumentDescription;
 import com.vmware.xenon.common.ServiceDocumentQueryResult;
@@ -103,9 +104,24 @@ import com.vmware.xenon.services.common.UserService.UserState;
 
 public class TestNodeGroupService {
 
-    public static class CustomNodeGroupService extends StatefulService {
+    public static class PeriodicExampleFactoryService extends FactoryService {
+        public static final String SELF_LINK = "test/examples-periodic";
 
-        public CustomNodeGroupService() {
+        public PeriodicExampleFactoryService() {
+            super(ExampleServiceState.class);
+        }
+
+        @Override
+        public Service createServiceInstance() throws Throwable {
+            ExampleService s = new ExampleService();
+            s.toggleOption(ServiceOption.PERIODIC_MAINTENANCE, true);
+            return s;
+        }
+    }
+
+    public static class ExampleServiceWithCustomSelector extends StatefulService {
+
+        public ExampleServiceWithCustomSelector() {
             super(ExampleServiceState.class);
             super.toggleOption(ServiceOption.REPLICATION, true);
             super.toggleOption(ServiceOption.OWNER_SELECTION, true);
@@ -114,16 +130,16 @@ public class TestNodeGroupService {
 
     }
 
-    public static class CustomNodeGroupFactoryService extends FactoryService {
+    public static class ExampleFactoryServiceWithCustomSelector extends FactoryService {
 
-        public CustomNodeGroupFactoryService() {
+        public ExampleFactoryServiceWithCustomSelector() {
             super(ExampleServiceState.class);
             super.setPeerNodeSelectorPath(CUSTOM_GROUP_NODE_SELECTOR);
         }
 
         @Override
         public Service createServiceInstance() throws Throwable {
-            return new CustomNodeGroupService();
+            return new ExampleServiceWithCustomSelector();
         }
 
     }
@@ -516,7 +532,7 @@ public class TestNodeGroupService {
             h.startServiceAndWait(new ConsistentHashingNodeSelectorService(),
                     CUSTOM_GROUP_NODE_SELECTOR, initialState);
             // start the factory that is attached to the custom group selector
-            h.startServiceAndWait(CustomNodeGroupFactoryService.class, customFactoryLink);
+            h.startServiceAndWait(ExampleFactoryServiceWithCustomSelector.class, customFactoryLink);
         }
 
         URI customNodeGroupServiceOnObserver = UriUtils
@@ -701,6 +717,13 @@ public class TestNodeGroupService {
     public void synchronizationOneByOneWithAbruptNodeShutdown() throws Throwable {
         setUp(this.nodeCount);
 
+        this.replicationTargetFactoryLink = PeriodicExampleFactoryService.SELF_LINK;
+        // start the periodic example service factory on each node
+        for (VerificationHost h : this.host.getInProcessHostMap().values()) {
+            h.startServiceAndWait(PeriodicExampleFactoryService.class,
+                    PeriodicExampleFactoryService.SELF_LINK);
+        }
+
         // On one host, add some services. They exist only on this host and we expect them to synchronize
         // across all hosts once this one joins with the group
         VerificationHost initialHost = this.host.getPeerHost();
@@ -713,7 +736,9 @@ public class TestNodeGroupService {
 
         // before start joins, verify isolated factory synchronization is done
         for (URI hostUri : this.host.getNodeGroupMap().keySet()) {
-            waitForReplicatedFactoryServiceAvailable(UriUtils.buildUri(hostUri, ExampleService.FACTORY_LINK), ServiceUriPaths.DEFAULT_NODE_SELECTOR);
+            waitForReplicatedFactoryServiceAvailable(
+                    UriUtils.buildUri(hostUri, this.replicationTargetFactoryLink),
+                    ServiceUriPaths.DEFAULT_NODE_SELECTOR);
         }
 
         // join a node, with no state, one by one, to the host with state.
@@ -726,7 +751,7 @@ public class TestNodeGroupService {
         List<URI> joinedHosts = new ArrayList<>();
         Map<URI, URI> factories = new HashMap<>();
         factories.put(hostWithStateNodeGroup, UriUtils.buildUri(hostWithStateNodeGroup,
-                ExampleService.FACTORY_LINK));
+                this.replicationTargetFactoryLink));
         joinedHosts.add(hostWithStateNodeGroup);
         int fullQuorum = 1;
 
@@ -747,7 +772,7 @@ public class TestNodeGroupService {
             this.host.testWait();
             joinedHosts.add(nodeGroupUri);
             factories.put(nodeGroupUri, UriUtils.buildUri(nodeGroupUri,
-                    ExampleService.FACTORY_LINK));
+                    this.replicationTargetFactoryLink));
             this.host.waitForNodeGroupConvergence(joinedHosts, fullQuorum, fullQuorum, true);
             this.host.waitForNodeGroupIsAvailableConvergence(nodeGroupUri.getPath(), joinedHosts);
 
@@ -803,12 +828,18 @@ public class TestNodeGroupService {
         hostsToStop.remove(remainingHost);
         List<URI> targetServices = new ArrayList<>();
         for (String link : exampleStatesPerSelfLink.keySet()) {
+            // build the URIs using the host we plan to keep, so the maps we use below to lookup
+            // stats from URIs, work before and after node stop
             targetServices.add(UriUtils.buildUri(remainingHost, link));
         }
 
         for (VerificationHost h : this.host.getInProcessHostMap().values()) {
             h.setPeerSynchronizationTimeLimitSeconds(this.host.getTimeoutSeconds() / 3);
         }
+
+        // capture current stats from each service
+        Map<URI, ServiceStats> prevStats = verifyMaintStatsAfterSynchronization(targetServices,
+                null);
 
         stopHostsAndVerifyQueuing(hostsToStop, remainingHost, targetServices);
 
@@ -822,14 +853,84 @@ public class TestNodeGroupService {
                 remainingHosts, 0, 1,
                 ownerIds.size() - 1);
 
+        // confirm maintenance is back up and running on all services
+        verifyMaintStatsAfterSynchronization(targetServices, prevStats);
+
         // nodes are stopped, do updates again, quorum is relaxed, they should work
         doExampleServicePatch(exampleStatesPerSelfLink, remainingHost.getUri());
 
         this.host.log("Done with stop nodes and send updates");
     }
 
+    private void verifyDynamicMaintOptionToggle(Map<String, ExampleServiceState> childStates) {
+
+        List<URI> targetServices = new ArrayList<>();
+        childStates.keySet().forEach((l) -> targetServices.add(this.host.getPeerServiceUri(l)));
+
+        List<URI> targetServiceStats = new ArrayList<>();
+        List<URI> targetServiceConfig = new ArrayList<>();
+        for (URI child : targetServices) {
+            targetServiceStats.add(UriUtils.buildStatsUri(child));
+            targetServiceConfig.add(UriUtils.buildConfigUri(child));
+        }
+
+        Map<URI, ServiceConfiguration> configPerService = this.host.getServiceState(
+                null, ServiceConfiguration.class, targetServiceConfig);
+        for (ServiceConfiguration cfg : configPerService.values()) {
+            assertTrue(!cfg.options.contains(ServiceOption.PERIODIC_MAINTENANCE));
+        }
+
+        for (URI child : targetServices) {
+            this.host.toggleServiceOptions(child,
+                    EnumSet.of(ServiceOption.PERIODIC_MAINTENANCE),
+                    null);
+        }
+
+        verifyMaintStatsAfterSynchronization(targetServices, null);
+    }
+
+    private Map<URI, ServiceStats> verifyMaintStatsAfterSynchronization(List<URI> targetServices,
+            Map<URI, ServiceStats> statsPerService) {
+
+        List<URI> targetServiceStats = new ArrayList<>();
+        List<URI> targetServiceConfig = new ArrayList<>();
+        for (URI child : targetServices) {
+            targetServiceStats.add(UriUtils.buildStatsUri(child));
+            targetServiceConfig.add(UriUtils.buildConfigUri(child));
+        }
+
+        if (statsPerService == null) {
+            statsPerService = new HashMap<>();
+        }
+        final Map<URI, ServiceStats> previousStatsPerService = statsPerService;
+        this.host.waitFor(
+                "maintenance not enabled",
+                () -> {
+                    Map<URI, ServiceStats> stats = this.host.getServiceState(null,
+                            ServiceStats.class, targetServiceStats);
+                    for (Entry<URI, ServiceStats> currentEntry : stats.entrySet()) {
+                        ServiceStats previousStats = previousStatsPerService.get(currentEntry
+                                .getKey());
+                        ServiceStats currentStats = currentEntry.getValue();
+                        ServiceStat previousMaintStat = previousStats == null ? new ServiceStat()
+                                : previousStats.entries
+                                .get(Service.STAT_NAME_MAINTENANCE_COUNT);
+                        double previousValue = previousMaintStat == null ? 0L
+                                : previousMaintStat.latestValue;
+                        ServiceStat maintStat = currentStats.entries
+                                .get(Service.STAT_NAME_MAINTENANCE_COUNT);
+                        if (maintStat == null || maintStat.latestValue <= previousValue) {
+                            return false;
+                        }
+                    }
+                    previousStatsPerService.putAll(stats);
+                    return true;
+                });
+        return statsPerService;
+    }
+
     private Map<String, ExampleServiceState> createExampleServices(URI hostUri) throws Throwable {
-        URI factoryUri = UriUtils.buildUri(hostUri, ExampleService.FACTORY_LINK);
+        URI factoryUri = UriUtils.buildUri(hostUri, this.replicationTargetFactoryLink);
         this.host.log("POSTing children to %s", hostUri);
 
         // add some services on one of the peers, so we can verify the get synchronized after they all join
@@ -1606,6 +1707,7 @@ public class TestNodeGroupService {
                 verifyReplicatedForcedPostAfterDelete(childStates);
                 verifyInstantNotFoundFailureOnBadLinks();
                 verifyReplicatedIdempotentPost(childStates);
+                verifyDynamicMaintOptionToggle(childStates);
             }
 
             totalOperations += this.serviceCount;
