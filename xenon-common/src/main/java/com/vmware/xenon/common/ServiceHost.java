@@ -2467,9 +2467,7 @@ public class ServiceHost implements ServiceRequestSender {
                 if (s.hasOption(ServiceOption.HTML_USER_INTERFACE)) {
                     startUiFileContentServices(s);
                 }
-                if (s.hasOption(ServiceOption.PERIODIC_MAINTENANCE)) {
-                    this.serviceMaintTracker.schedule(s, Utils.getNowMicrosUtc());
-                }
+                scheduleServiceMaintenance(s);
 
                 s.setProcessingStage(Service.ProcessingStage.AVAILABLE);
 
@@ -4399,6 +4397,16 @@ public class ServiceHost implements ServiceRequestSender {
         };
 
         this.maintenanceTask = schedule(r, getMaintenanceIntervalMicros(), TimeUnit.MICROSECONDS);
+    }
+
+    /**
+     * Initiates periodic maintenance for a service. Called on service start or when maintenance is
+     * dynamically toggled on
+     */
+    void scheduleServiceMaintenance(Service s) {
+        if (s.hasOption(ServiceOption.PERIODIC_MAINTENANCE)) {
+            this.serviceMaintTracker.schedule(s, Utils.getNowMicrosUtc());
+        }
     }
 
     /**

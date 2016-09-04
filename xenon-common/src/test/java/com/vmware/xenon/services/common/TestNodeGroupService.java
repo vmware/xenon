@@ -66,6 +66,7 @@ import com.vmware.xenon.common.Service.Action;
 import com.vmware.xenon.common.Service.ProcessingStage;
 import com.vmware.xenon.common.Service.ServiceOption;
 import com.vmware.xenon.common.ServiceConfigUpdateRequest;
+import com.vmware.xenon.common.ServiceConfiguration;
 import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.ServiceDocumentDescription;
 import com.vmware.xenon.common.ServiceDocumentQueryResult;
@@ -810,6 +811,10 @@ public class TestNodeGroupService {
             h.setPeerSynchronizationTimeLimitSeconds(this.host.getTimeoutSeconds() / 3);
         }
 
+        // enable periodic maintenance on all owner node child services. We will then verify
+        // that the child services, on the single remaining node, still have maintenance triggered
+        verifyDynamicMaintOptionToggle(targetServices);
+
         stopHostsAndVerifyQueuing(hostsToStop, remainingHost, targetServices);
 
         // its important to verify document ownership before we do any updates on the services.
@@ -826,6 +831,43 @@ public class TestNodeGroupService {
         doExampleServicePatch(exampleStatesPerSelfLink, remainingHost.getUri());
 
         this.host.log("Done with stop nodes and send updates");
+    }
+
+    private void verifyDynamicMaintOptionToggle(List<URI> targetServices) {
+
+        List<URI> targetServiceStats = new ArrayList<>();
+        List<URI> targetServiceConfig = new ArrayList<>();
+        for (URI child : targetServices) {
+            targetServiceStats.add(UriUtils.buildStatsUri(child));
+            targetServiceConfig.add(UriUtils.buildConfigUri(child));
+        }
+
+        Map<URI, ServiceConfiguration> configPerService = this.host.getServiceState(
+                null, ServiceConfiguration.class, targetServiceConfig);
+        for (ServiceConfiguration cfg : configPerService.values()) {
+            assertTrue(!cfg.options.contains(ServiceOption.PERIODIC_MAINTENANCE));
+        }
+
+        for (URI child : targetServices) {
+            this.host.toggleServiceOptions(child,
+                    EnumSet.of(ServiceOption.PERIODIC_MAINTENANCE),
+                    null);
+        }
+
+        this.host.waitFor(
+                "maintenance not enabled",
+                () -> {
+                    Map<URI, ServiceStats> stats = this.host.getServiceState(null,
+                            ServiceStats.class, targetServiceStats);
+                    for (ServiceStats statsPerChild : stats.values()) {
+                        ServiceStat maintStat = statsPerChild.entries
+                                .get(Service.STAT_NAME_MAINTENANCE_COUNT);
+                        if (maintStat == null || maintStat.latestValue < 2) {
+                            return false;
+                        }
+                    }
+                    return true;
+                });
     }
 
     private Map<String, ExampleServiceState> createExampleServices(URI hostUri) throws Throwable {
