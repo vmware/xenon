@@ -1388,6 +1388,10 @@ public class StatefulService implements Service {
             }
         }
 
+        if (this.context.host == null) {
+            return;
+        }
+
         if (optionsChanged && option == ServiceOption.DOCUMENT_OWNER) {
             EnumSet<ServiceOption> addedOptions = null;
             EnumSet<ServiceOption> removedOptions = null;
@@ -1400,6 +1404,17 @@ public class StatefulService implements Service {
             }
             getHost().scheduleServiceOptionToggleMaintenance(getSelfLink(),
                     addedOptions, removedOptions);
+
+            if (enable && hasOption(ServiceOption.PERIODIC_MAINTENANCE)) {
+                // kick off maintenance cycle, service is on the new owner node
+                getHost().scheduleServiceMaintenance(this);
+            }
+        }
+
+        if (enable && optionsChanged
+                && option == ServiceOption.PERIODIC_MAINTENANCE
+                && this.context.processingStage == ProcessingStage.AVAILABLE) {
+            getHost().scheduleServiceMaintenance(this);
         }
     }
 

@@ -55,6 +55,7 @@ public final class WebSocketService extends StatelessService {
     public WebSocketService(ChannelHandlerContext ctx, URI uri) {
         this.ctx = ctx;
         this.uri = uri;
+        super.toggleOption(ServiceOption.HTML_USER_INTERFACE, true);
     }
 
     public void handleWebSocketMessage(String body) {

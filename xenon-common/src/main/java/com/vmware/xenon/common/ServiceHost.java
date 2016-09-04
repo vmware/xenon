@@ -1401,6 +1401,9 @@ public class ServiceHost implements ServiceRequestSender {
     }
 
     private void startUiFileContentServices(Service s) throws Throwable {
+        if (!s.hasOption(ServiceOption.HTML_USER_INTERFACE)) {
+            return;
+        }
         Map<Path, String> pathToURIPath = new HashMap<>();
         ServiceDocumentDescription sdd = s.getDocumentTemplate().documentDescription;
 
@@ -2464,12 +2467,9 @@ public class ServiceHost implements ServiceRequestSender {
                     return;
                 }
 
-                if (s.hasOption(ServiceOption.HTML_USER_INTERFACE)) {
-                    startUiFileContentServices(s);
-                }
-                if (s.hasOption(ServiceOption.PERIODIC_MAINTENANCE)) {
-                    this.serviceMaintTracker.schedule(s, Utils.getNowMicrosUtc());
-                }
+                startUiFileContentServices(s);
+
+                scheduleServiceMaintenance(s);
 
                 s.setProcessingStage(Service.ProcessingStage.AVAILABLE);
 
@@ -4399,6 +4399,17 @@ public class ServiceHost implements ServiceRequestSender {
         };
 
         this.maintenanceTask = schedule(r, getMaintenanceIntervalMicros(), TimeUnit.MICROSECONDS);
+    }
+
+    /**
+     * Initiates periodic maintenance for a service. Called on service start or when maintenance is
+     * dynamically toggled on
+     */
+    void scheduleServiceMaintenance(Service s) {
+        if (!s.hasOption(ServiceOption.PERIODIC_MAINTENANCE)) {
+            return;
+        }
+        this.serviceMaintTracker.schedule(s, Utils.getNowMicrosUtc());
     }
 
     /**
