@@ -2,6 +2,13 @@
 
 ## 0.9.5-SNAPSHOT
 
+* Optimize persisted factory POST (service start) when PRAGMA_FORCE_INDEX_UPDATE
+  is specified. We now skip checking with the index if previous state exists.
+  The new behavior however has a side-effect: Clients must set the version in the
+  POST body, it a new, higher version than any possible prior version IF they
+  also plan to rely on documentExpirationTimeMicros. This is because the index
+  service will ignore expirations set on versions other than the highest version
+
 * Change ServiceDocumentQueryResult.selectedDocuments from Map<String,String> to
   Map<String,Object> making it the same as the Map<String,Object> documents field.
   This avoid ugly escaping of the document content which was already JSON

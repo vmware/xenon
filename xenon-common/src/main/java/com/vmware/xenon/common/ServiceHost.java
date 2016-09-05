@@ -2314,7 +2314,8 @@ public class ServiceHost implements ServiceRequestSender {
                 processServiceStart(nextStage, s, post, hasClientSuppliedInitialState);
                 break;
             case LOADING_INITIAL_STATE:
-                if (isServiceIndexed(s) && !post.isFromReplication()) {
+                if (isServiceIndexed(s) && !post.isFromReplication()
+                        && !post.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_FORCE_INDEX_UPDATE)) {
                     // we load state from the local index if the service is indexed and this is NOT
                     // a replication POST that came from another node. If its a replicated POST we
                     // use the body as is

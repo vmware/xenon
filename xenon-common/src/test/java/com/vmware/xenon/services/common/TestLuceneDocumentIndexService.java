@@ -1108,9 +1108,21 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
             o.setBody(body);
         };
 
+        Consumer<Operation> setBodyWithForceUpdatePragma = (o) -> {
+            ExampleServiceState body = new ExampleServiceState();
+            body.name = "a name";
+            body.counter = Utils.getNowMicrosUtc();
+            o.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_FORCE_INDEX_UPDATE);
+            o.setBody(body);
+        };
+
         for (int ic = 0; ic < iterationCount; ic++) {
-            this.host.log("(%d) Starting POST send of %d operations", ic, this.serviceCount);
+            this.host.log("(%d) Starting service factory POST, count:%d", ic, this.serviceCount);
             doThroughputPost(factoryUri, setBody);
+            this.host.log("(%d) (FORCE_INDEX_UPDATE) Starting service factory POST, count:%d", ic,
+                    this.serviceCount);
+            doThroughputPost(factoryUri, setBodyWithForceUpdatePragma);
+            this.host.deleteAllChildServices(factoryUri);
         }
     }
 
@@ -1275,6 +1287,10 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
             body.documentSelfLink = uris.next().getPath();
             body.name = UUID.randomUUID().toString();
             body.documentExpirationTimeMicros = recreateExpMicros;
+            // documents will NOT expire unless we make sure the version is higher than previous versions
+            // FORCE_INDEX_UPDATE has the side effect of not checking the index for previous version and
+            // expiration is valid only on highest version
+            body.documentVersion = 100;
             o.setBody(body);
         };
         services = this.host.doFactoryChildServiceStart(
