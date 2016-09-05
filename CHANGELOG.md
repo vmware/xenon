@@ -2,6 +2,9 @@
 
 ## 0.9.5-SNAPSHOT
 
+* Add QueryOption.EXPAND_BUILTIN_CONTENT_ONLY, used by synchronization code for
+  state comparison
+
 * Change ServiceDocumentQueryResult.selectedDocuments from Map<String,String> to
   Map<String,Object> making it the same as the Map<String,Object> documents field.
   This avoid ugly escaping of the document content which was already JSON

@@ -1109,8 +1109,9 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
         };
 
         for (int ic = 0; ic < iterationCount; ic++) {
-            this.host.log("(%d) Starting POST send of %d operations", ic, this.serviceCount);
+            this.host.log("(%d) Starting service factory POST, count:%d", ic, this.serviceCount);
             doThroughputPost(factoryUri, setBody);
+            this.host.deleteAllChildServices(factoryUri);
         }
     }
 

@@ -95,6 +95,13 @@ public class QueryTask extends ServiceDocument {
             EXPAND_CONTENT,
 
             /**
+             * Infrastructure use only. Modifier option on EXPAND_CONTENT:
+             * Selects and expands only the the built-in document fields
+             * See {@link ServiceDocument}
+             */
+            EXPAND_BUILTIN_CONTENT_ONLY,
+
+            /**
              * Query execution will issue GET requests to the document links in each document in
              * the results. The content will be placed in the
              * {@code ServiceDocumentQueryResult#selectedDocuments} map.

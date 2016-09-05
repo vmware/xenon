@@ -533,12 +533,9 @@ public class TestQueryTaskService {
                 .addKindFieldClause(ExampleServiceState.class)
                 .build();
 
-        QueryTask.Builder queryTaskBuilder = QueryTask.Builder.createDirectTask();
-        queryTaskBuilder
+        QueryTask task = QueryTask.Builder.createDirectTask()
                 .setQuery(kindClause)
-                .addOption(QueryOption.EXPAND_CONTENT);
-
-        QueryTask task = queryTaskBuilder.build();
+                .addOption(QueryOption.EXPAND_CONTENT).build();
 
         if (task.documentExpirationTimeMicros != 0) {
             // the value was set as an interval by the calling test. Make absolute here so
@@ -601,6 +598,24 @@ public class TestQueryTaskService {
 
         taskResult = task.results;
         validateExpandedResults(taskResult, states.size(), count, Action.PATCH);
+
+        task = QueryTask.Builder.createDirectTask()
+                .setQuery(kindClause)
+                .addOption(QueryOption.EXPAND_CONTENT)
+                .addOption(QueryOption.EXPAND_BUILTIN_CONTENT_ONLY)
+                .build();
+
+        this.host.createQueryTaskService(task, false,
+                task.taskInfo.isDirect, task, null);
+        // confirm that only the built in fields were in the expanded results
+        for (Object o : task.results.documents.values()) {
+            String json = Utils.toJson(o);
+            ExampleServiceState st = Utils.fromJson(json, ExampleServiceState.class);
+            assertTrue(st.counter == null);
+            assertTrue(st.name == null);
+            assertTrue(st.keyValues.isEmpty());
+        }
+
     }
 
     private void validateExpandedResults(ServiceDocumentQueryResult taskResult, int expectedCount,

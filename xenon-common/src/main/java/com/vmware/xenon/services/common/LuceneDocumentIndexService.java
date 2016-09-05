@@ -42,6 +42,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import com.esotericsoftware.kryo.KryoException;
+import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
 import org.apache.lucene.analysis.Analyzer;
@@ -1429,9 +1430,14 @@ public class LuceneDocumentIndexService extends StatelessService {
                 }
             }
 
-            if (options.contains(QueryOption.EXPAND_CONTENT)) {
-                if (!rsp.documents.containsKey(link)) {
-                    rsp.documents.put(link, new JsonParser().parse(json).getAsJsonObject());
+            if (options.contains(QueryOption.EXPAND_CONTENT) && !rsp.documents.containsKey(link)) {
+                if (options.contains(QueryOption.EXPAND_BUILTIN_CONTENT_ONLY)) {
+                    ServiceDocument stateClone = new ServiceDocument();
+                    state.copyTo(stateClone);
+                    rsp.documents.put(link, stateClone);
+                } else {
+                    JsonObject jo = new JsonParser().parse(json).getAsJsonObject();
+                    rsp.documents.put(link, jo);
                 }
             }
 
