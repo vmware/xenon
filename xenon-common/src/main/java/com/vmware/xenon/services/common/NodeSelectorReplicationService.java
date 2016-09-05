@@ -123,7 +123,10 @@ public class NodeSelectorReplicationService extends StatelessService {
         int eligibleMemberCount = nodes.size();
         final int successThresholdFinal = successThreshold;
         final int failureThresholdFinal = eligibleMemberCount - successThreshold;
-        int[] completionCounts = new int[2];
+        // Index 0 - success cound
+        // index 1 - failure count
+        // index 2 - most recent failure status
+        int[] countsAndStatus = new int[3];
 
         CompletionHandler c = (o, e) -> {
             if (e == null && o != null
@@ -131,29 +134,30 @@ public class NodeSelectorReplicationService extends StatelessService {
                 e = new IllegalStateException("Request failed: " + o.toString());
             }
 
-            int sCount = completionCounts[0];
-            int fCount = completionCounts[1];
+            int sCount = countsAndStatus[0];
+            int fCount = countsAndStatus[1];
             synchronized (outboundOp) {
                 if (e != null) {
-                    completionCounts[1] = completionCounts[1] + 1;
-                    fCount = completionCounts[1];
+                    countsAndStatus[1] = countsAndStatus[1] + 1;
+                    fCount = countsAndStatus[1];
                 } else {
-                    completionCounts[0] = completionCounts[0] + 1;
-                    sCount = completionCounts[0];
+                    countsAndStatus[0] = countsAndStatus[0] + 1;
+                    sCount = countsAndStatus[0];
                 }
+            }
+
+            if (sCount >= successThresholdFinal) {
+                if (sCount == successThresholdFinal) {
+                    outboundOp.setStatusCode(Operation.STATUS_CODE_OK).complete();
+                }
+                // stop further processing, request is complete
+                return;
             }
 
             if (e != null && o != null) {
                 logWarning("Replication request to %s failed with %d, %s",
                         o.getUri(), o.getStatusCode(), e.getMessage());
-                // Preserve the status code from latest failure. We do not have a mechanism
-                // to report different failure codes, per operation.
-                outboundOp.setStatusCode(o.getStatusCode());
-            }
-
-            if (sCount == successThresholdFinal) {
-                outboundOp.setStatusCode(Operation.STATUS_CODE_OK).complete();
-                return;
+                countsAndStatus[2] = o.getStatusCode();
             }
 
             if (fCount == 0) {
@@ -170,7 +174,7 @@ public class NodeSelectorReplicationService extends StatelessService {
                                 successThresholdFinal,
                                 failureThresholdFinal);
                 logWarning("%s", error);
-                outboundOp.fail(new IllegalStateException(error));
+                outboundOp.setStatusCode(countsAndStatus[2]).fail(new IllegalStateException(error));
             }
         };
 
