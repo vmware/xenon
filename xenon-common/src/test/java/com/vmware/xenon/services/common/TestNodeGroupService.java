@@ -3241,6 +3241,8 @@ public class TestNodeGroupService {
             List<URI> nodeSelectorStatsUris = new ArrayList<>();
 
             for (URI baseNodeUri : joinedHostUris) {
+                this.host.log(Level.INFO, "Checking ownership convergence");
+
                 nodeSelectorStatsUris.add(UriUtils.buildUri(baseNodeUri,
                         ServiceUriPaths.DEFAULT_NODE_SELECTOR,
                         ServiceHost.SERVICE_URI_SUFFIX_STATS));
