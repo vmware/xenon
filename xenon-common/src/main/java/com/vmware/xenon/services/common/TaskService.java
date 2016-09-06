@@ -206,16 +206,26 @@ public abstract class TaskService<T extends TaskService.TaskServiceState>
     }
 
     /**
+     * Send ourselves a PATCH to indicate successful completion of task
+     */
+    protected void sendSelfFinishedPatch(T task) {
+        sendSelfPatch(task, TaskState.TaskStage.FINISHED, null);
+    }
+
+    /**
      * Send ourselves a PATCH that will indicate failure
      */
     protected void sendSelfFailurePatch(T task, String failureMessage) {
-        task.failureMessage = failureMessage;
+        sendSelfPatch(task, TaskState.TaskStage.FAILED,
+                (s) -> s.failureMessage = failureMessage);
+    }
 
-        if (task.taskInfo == null) {
-            task.taskInfo = new TaskState();
-        }
-        task.taskInfo.stage = TaskState.TaskStage.FAILED;
-        sendSelfPatch(task);
+    /**
+     * Send ourselves a PATCH that will indicate cancellation
+     */
+    protected void sendSelfCancellationPatch(T task, String cancellationMessage) {
+        sendSelfPatch(task, TaskState.TaskStage.CANCELLED,
+                (s) -> s.failureMessage = cancellationMessage);
     }
 
     /**
