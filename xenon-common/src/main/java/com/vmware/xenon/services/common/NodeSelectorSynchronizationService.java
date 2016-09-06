@@ -68,8 +68,7 @@ public class NodeSelectorSynchronizationService extends StatelessService {
 
     private Service parent;
 
-    private boolean isDetailedLoggingEnabled = Boolean
-            .getBoolean(PROPERTY_NAME_SYNCHRONIZATION_LOGGING);
+    private boolean isDetailedLoggingEnabled = true;
 
     public NodeSelectorSynchronizationService(Service parent) {
         super(NodeGroupSynchronizationState.class);

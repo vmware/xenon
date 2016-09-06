@@ -52,6 +52,7 @@ public class ServiceUriPaths {
             + DEFAULT_NODE_SELECTOR_NAME;
     public static final String DEFAULT_3X_NODE_SELECTOR = NODE_SELECTOR_PREFIX + "/"
             + DEFAULT_NODE_SELECTOR_NAME + "-3x";
+    public static final String SYNCHRONIZATION_TASKS = CORE + "/synch-tasks";
 
     public static final String CORE_AUTH = CORE + "/auth";
     public static final String CORE_CREDENTIALS = CORE_AUTH + "/credentials";
