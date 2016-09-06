@@ -40,14 +40,7 @@ public interface ServiceRequestSender {
      * @return
      */
     default DeferredResult<Operation> sendWithDeferredResult(Operation op) {
-        DeferredResult<Operation> deferred = new DeferredResult<Operation>();
-        op.nestCompletion((response, e) -> {
-            if (e != null) {
-                deferred.fail(e);
-            } else {
-                deferred.complete(response);
-            }
-        });
+        DeferredResult<Operation> deferred = op.createDeferredResult();
         sendRequest(op);
         return deferred;
     }

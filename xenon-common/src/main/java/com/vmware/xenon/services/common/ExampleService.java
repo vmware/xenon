@@ -18,6 +18,7 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 
+import com.vmware.xenon.common.DeferredResult;
 import com.vmware.xenon.common.FactoryService;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.ServiceDocument;
@@ -122,7 +123,23 @@ public class ExampleService extends StatefulService {
     public void handlePatch(Operation patch) {
         updateState(patch);
         // updateState method already set the response body with the merged state
+
+        patch.createDeferredResult()
+                .whenComplete((o, f) -> {
+                    // patch indexed
+                    logInfo("** nested complete %s", o.getId());
+                })
+                .exceptionally((failure) -> {
+                    // catch indexing issues, like large document size
+                    logInfo("** nested failure %s", patch.getId());
+                    return null;
+                });
+
+        logInfo("** before complete %s", patch.getId());
+
         patch.complete();
+
+        logInfo("** after complete %s", patch.getId());
     }
 
     private ExampleServiceState updateState(Operation update) {

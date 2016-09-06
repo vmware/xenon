@@ -22,6 +22,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
@@ -548,6 +549,7 @@ public class Operation implements Cloneable {
     private ServiceDocument linkedState;
     private byte[] linkedSerializedState;
     private volatile CompletionHandler completion;
+    private volatile CompletableFuture<Operation> completableFuture;
     private String contextId;
     private String transactionId;
     private long expirationMicrosUtc;
@@ -693,6 +695,7 @@ public class Operation implements Cloneable {
         clone.options = EnumSet.copyOf(this.options);
         clone.action = this.action;
         clone.completion = this.completion;
+        clone.completableFuture = completableFuture;
         clone.expirationMicrosUtc = this.expirationMicrosUtc;
         clone.referer = this.referer;
         clone.uri = this.uri;
@@ -747,6 +750,12 @@ public class Operation implements Cloneable {
     private void allocateResponseHeaders() {
         if (this.remoteCtx.responseHeaders == null) {
             this.remoteCtx.responseHeaders = new HashMap<>();
+        }
+    }
+
+    private void allocateCompletableFuture() {
+        if (this.completableFuture == null) {
+            this.completableFuture = new CompletableFuture<>();
         }
     }
 
@@ -1087,6 +1096,16 @@ public class Operation implements Cloneable {
         return this.statusCode;
     }
 
+    public DeferredResult<Operation> createDeferredResult() {
+        allocateCompletableFuture();
+        return new DeferredResult<>(this.completableFuture);
+    }
+
+    public <T> DeferredResult<T> createDeferredResult(Class<T> resultType) {
+        return createDeferredResult()
+                .thenApply(response -> response.getBody(resultType));
+    }
+
     public void complete() {
         completeOrFail(null);
     }
@@ -1182,6 +1201,20 @@ public class Operation implements Cloneable {
             c.handle(this, e);
         } catch (Throwable outer) {
             Utils.logWarning("Uncaught failure inside completion: %s", Utils.toString(outer));
+        } finally {
+            if (this.completableFuture != null && this.completion == null) {
+                try {
+                    if (e != null) {
+                        completableFuture.completeExceptionally(e);
+                    } else {
+                        completableFuture.complete(this);
+                    }
+                } catch (Throwable outer) {
+                    Utils.logWarning("Uncaught failure inside completable future future: %s",
+                            Utils.toString(outer));
+
+                }
+            }
         }
 
         // Restore original context
