@@ -305,6 +305,7 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
             response.isLocalHostOwner = true;
             response.ownerNodeGroupReference = self.groupReference;
             response.selectedNodes = localState.nodes.values();
+            response.membershipUpdateTimeMicros = localState.membershipUpdateTimeMicros;
             return;
         }
 

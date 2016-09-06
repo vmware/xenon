@@ -728,12 +728,16 @@ public class TestNodeGroupService {
                     PeriodicExampleFactoryService.SELF_LINK);
         }
 
+        this.host.log(Level.INFO, "####### Started %s Factory service on each node", PeriodicExampleFactoryService.SELF_LINK);
+
         // On one host, add some services. They exist only on this host and we expect them to synchronize
         // across all hosts once this one joins with the group
         VerificationHost initialHost = this.host.getPeerHost();
         URI hostUriWithInitialState = initialHost.getUri();
         Map<String, ExampleServiceState> exampleStatesPerSelfLink = createExampleServices(
                 hostUriWithInitialState);
+        this.host.log(Level.INFO, "####### Created example services on %s", initialHost.getId());
+
 
         URI hostWithStateNodeGroup = UriUtils.buildUri(hostUriWithInitialState,
                 ServiceUriPaths.DEFAULT_NODE_GROUP);
@@ -744,6 +748,8 @@ public class TestNodeGroupService {
                     UriUtils.buildUri(hostUri, this.replicationTargetFactoryLink),
                     ServiceUriPaths.DEFAULT_NODE_SELECTOR);
         }
+        this.host.log(Level.INFO, "####### Verified each node reports factory is available");
+
 
         // join a node, with no state, one by one, to the host with state.
         // The steps are:
@@ -774,23 +780,28 @@ public class TestNodeGroupService {
             // join empty node, with node with state
             this.host.joinNodeGroup(hostWithStateNodeGroup, nodeGroupUri, fullQuorum);
             this.host.testWait();
+            this.host.log(Level.INFO, "####### Joined %s to the cluster", nodeGroupUri.toString());
+
             joinedHosts.add(nodeGroupUri);
             factories.put(nodeGroupUri, UriUtils.buildUri(nodeGroupUri,
                     this.replicationTargetFactoryLink));
             this.host.waitForNodeGroupConvergence(joinedHosts, fullQuorum, fullQuorum, true);
             this.host.waitForNodeGroupIsAvailableConvergence(nodeGroupUri.getPath(), joinedHosts);
+            this.host.log(Level.INFO, "####### Node-Group converged %s", nodeGroupUri.toString());
 
             this.waitForReplicatedFactoryChildServiceConvergence(
                     factories,
                     exampleStatesPerSelfLink,
                     this.exampleStateConvergenceChecker, exampleStatesPerSelfLink.size(),
                     0);
+            this.host.log(Level.INFO, "####### Child services converged %s", nodeGroupUri.toString());
 
             // Do updates, which will verify that the services are converged in terms of ownership.
             // Since we also synchronize on demand, if there was any discrepancy, after updates, the
             // services will converge
             doExampleServicePatch(exampleStatesPerSelfLink,
                     joinedHosts.get(0));
+            this.host.log(Level.INFO, "####### Example Service Patches are done %s", nodeGroupUri.toString());
 
             Set<String> ownerIds = this.host.getNodeStateMap().keySet();
             verifyDocumentOwnerAndEpoch(exampleStatesPerSelfLink, initialHost, joinedHosts, 0, 1,
@@ -3203,6 +3214,9 @@ public class TestNodeGroupService {
             for (NodeState ns : rsp.selectedNodes) {
                 eligibleNodeIds.add(ns.id);
             }
+
+            this.host.log(Level.INFO, "####### NodeIds for %s are: ", rsp.key, eligibleNodeIds);
+
             expectedOwnersPerLink.put(rsp.key, eligibleNodeIds);
             this.host.completeIteration();
         };
@@ -3228,6 +3242,8 @@ public class TestNodeGroupService {
 
         Map<URI, NodeGroupState> joinedHostNodeGroupStates = this.host.getServiceState(null,
                 NodeGroupState.class, joinedHostUris);
+        this.host.log(Level.INFO, "####### Retrieved nodeGroupStates");
+
         Set<String> joinedHostOwnerIds = new HashSet<>();
         for (NodeGroupState st : joinedHostNodeGroupStates.values()) {
             joinedHostOwnerIds.add(st.documentOwner);
@@ -3236,11 +3252,15 @@ public class TestNodeGroupService {
         this.host.waitFor("ownership did not converge", () -> {
             Map<String, Set<String>> ownerIdsPerLink = computeOwnerIdsPerLink(joinedHost,
                     childStates.keySet());
+            this.host.log(Level.INFO, "####### Computed OwnerIds per link");
+
             boolean isConverged = true;
             Map<String, Set<Long>> epochsPerLink = new HashMap<>();
             List<URI> nodeSelectorStatsUris = new ArrayList<>();
 
             for (URI baseNodeUri : joinedHostUris) {
+                this.host.log(Level.INFO, "Checking ownership convergence");
+
                 nodeSelectorStatsUris.add(UriUtils.buildUri(baseNodeUri,
                         ServiceUriPaths.DEFAULT_NODE_SELECTOR,
                         ServiceHost.SERVICE_URI_SUFFIX_STATS));
@@ -3257,6 +3277,7 @@ public class TestNodeGroupService {
                             Utils.toJsonHtml(factoryRsp));
                     break;
                 }
+                this.host.log(Level.INFO, "####### Passed test for GET on factory link");
 
                 List<URI> childUris = new ArrayList<>();
                 for (String link : childStates.keySet()) {
@@ -3266,6 +3287,7 @@ public class TestNodeGroupService {
                 // retrieve the document state directly from each service
                 Map<URI, ServiceDocument> childDocs =
                         this.host.getServiceState(null, ServiceDocument.class, childUris);
+                this.host.log(Level.INFO, "####### Retrieved childDoc on each node");
 
                 List<URI> childStatUris = new ArrayList<>();
                 for (ServiceDocument state : childDocs.values()) {
