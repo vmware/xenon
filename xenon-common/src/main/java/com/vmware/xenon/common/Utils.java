@@ -49,8 +49,6 @@ import java.util.zip.GZIPInputStream;
 
 import com.esotericsoftware.kryo.Kryo;
 import com.esotericsoftware.kryo.KryoException;
-import com.esotericsoftware.kryo.io.Input;
-import com.esotericsoftware.kryo.io.Output;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
@@ -65,10 +63,8 @@ import com.vmware.xenon.common.ServiceDocumentDescription.TypeName;
 import com.vmware.xenon.common.ServiceHost.ServiceHostState;
 import com.vmware.xenon.common.SystemHostInfo.OsFamily;
 import com.vmware.xenon.common.logging.StackAwareLogRecord;
-import com.vmware.xenon.common.serialization.BufferThreadLocal;
 import com.vmware.xenon.common.serialization.JsonMapper;
-import com.vmware.xenon.common.serialization.KryoSerializers.KryoForDocumentThreadLocal;
-import com.vmware.xenon.common.serialization.KryoSerializers.KryoForObjectThreadLocal;
+import com.vmware.xenon.common.serialization.KryoSerializers;
 import com.vmware.xenon.services.common.ServiceUriPaths;
 
 /**
@@ -105,13 +101,6 @@ public class Utils {
      * check to account for the start-up overhead of that process.
      */
     private static final long PING_LAUNCH_TOLERANCE_MS = 50;
-
-    private static final ThreadLocal<Kryo> kryoForObjectPerThread = new KryoForObjectThreadLocal();
-    private static final ThreadLocal<Kryo> kryoForDocumentPerThread = new KryoForDocumentThreadLocal();
-    private static ThreadLocal<Kryo> kryoForObjectPerThreadCustom;
-    private static ThreadLocal<Kryo> kryoForDocumentPerThreadCustom;
-
-    private static final BufferThreadLocal bufferPerThread = new BufferThreadLocal();
 
     private static final JsonMapper JSON = new JsonMapper();
     private static final ConcurrentMap<Class<?>, JsonMapper> CUSTOM_JSON = new ConcurrentHashMap<>();
@@ -179,24 +168,15 @@ public class Utils {
      */
     public static void registerCustomKryoSerializer(ThreadLocal<Kryo> kryoThreadLocal,
             boolean isDocumentSerializer) {
-        if (isDocumentSerializer) {
-            Utils.kryoForDocumentPerThreadCustom = kryoThreadLocal;
-        } else {
-            Utils.kryoForObjectPerThreadCustom = kryoThreadLocal;
-        }
+        KryoSerializers.register(kryoThreadLocal, isDocumentSerializer);
     }
 
     public static <T> T clone(T t) {
-        Kryo k = getKryoThreadLocalForDocuments();
-        T clone = k.copy(t);
-        return clone;
+        return KryoSerializers.clone(t);
     }
 
     public static <T> T cloneObject(T t) {
-        Kryo k = getKryoThreadLocalForObjects();
-        T clone = k.copy(t);
-        k.reset();
-        return clone;
+        return KryoSerializers.cloneObject(t);
     }
 
     public static String computeSignature(ServiceDocument s,
@@ -228,97 +208,57 @@ public class Utils {
         return computeHash(buffer, 0, position);
     }
 
+    /**
+     * See {@link KryoSerializers#getBuffer(int)}
+     */
     public static byte[] getBuffer(int capacity) {
-        byte[] buffer = bufferPerThread.get();
-        if (buffer.length < capacity) {
-            buffer = new byte[capacity];
-            bufferPerThread.set(buffer);
-        }
-
-        if (buffer.length > capacity * 10) {
-            buffer = new byte[capacity];
-            bufferPerThread.set(buffer);
-        }
-        return buffer;
+        return KryoSerializers.getBuffer(capacity);
     }
 
+
     /**
-     * Serializes an arbitrary object into a binary representation, using full
-     * reference tracking and the object graph serializer.
-     * Must be paired with {@code Utils#fromBytes(byte[], int, int)} or {@code Utils#fromBytes(byte[])}
+     * See {@link KryoSerializers#serializeObject(Object, byte[], int)}
      */
     public static int toBytes(Object o, byte[] buffer, int position) {
-        Kryo k = getKryoThreadLocalForObjects();
-        Output out = new Output(buffer);
-        out.setPosition(position);
-        k.writeClassAndObject(out, o);
-        return out.position();
+        return KryoSerializers.serializeObject(o, buffer, position);
     }
 
+
     /**
-     * Serializes a PODO into a binary representation. The object instance should
-     * not contain circular references.
-     * Must be paired with {@code Utils#fromDocumentBytes(byte[], int, int)}
+     * See {@link KryoSerializers#serializeDocument(ServiceDocument, byte[], int)}
      */
     public static int toDocumentBytes(Object o, byte[] buffer, int position) {
-        Kryo k = getKryoThreadLocalForDocuments();
-        Output out = new Output(buffer);
-        out.setPosition(position);
-        k.writeClassAndObject(out, o);
-        return out.position();
+        return KryoSerializers.serializeAsDocument(o, buffer, position);
     }
 
     /**
-     * @see Utils#toDocumentBytes(Object, byte[], int)
+     * See {@link KryoSerializers#serializeDocument(ServiceDocument, byte[], int)}
      */
     public static int toBytes(ServiceDocument o, byte[] buffer, int position) {
-        return toDocumentBytes(o, buffer, position);
+        return KryoSerializers.serializeDocument(o, buffer, position);
     }
 
+
     /**
-     * Deserializes into a native object, using the object graph serializer.
-     * Must be paired with {@code Utils#toBytes(Object, byte[], int)}
+     * See {@link KryoSerializers#deserializeObject(byte[], int, int)}
      */
     public static Object fromBytes(byte[] bytes) {
-        return fromBytes(bytes, 0, bytes.length);
+        return KryoSerializers.deserializeObject(bytes, 0, bytes.length);
     }
 
     /**
-     * Deserializes into a native object, using the object graph serializer.
-     * Must be paired with {@code Utils#toBytes(Object, byte[], int)}
+     * See {@link KryoSerializers#deserializeObject(byte[], int, int)}
      */
-    public static Object fromBytes(byte[] bytes, int offset, int length) {
-        Kryo k = getKryoThreadLocalForObjects();
-        Input in = new Input(bytes, offset, length);
-        return k.readClassAndObject(in);
+    public static Object fromBytes(byte[] bytes, int position, int length) {
+        return KryoSerializers.deserializeObject(bytes, position, length);
     }
 
     /**
-     * Deserializes into a native ServiceDocument derived type, using the document serializer.
-     * Must be paired with {@code Utils#toBytes(ServiceDocument, byte[], int)
+     * See {@link KryoSerializers#deserializeDocument(byte[], int, int)}
      */
-    public static Object fromDocumentBytes(byte[] bytes, int offset, int length) {
-        Kryo k = getKryoThreadLocalForDocuments();
-        Input in = new Input(bytes, offset, length);
-        return k.readClassAndObject(in);
-    }
+    public static Object fromDocumentBytes(byte[] bytes, int position, int length) {
+        return KryoSerializers.deserializeDocument(bytes, position, length);
 
-    private static Kryo getKryoThreadLocalForDocuments() {
-        ThreadLocal<Kryo> tl = kryoForDocumentPerThreadCustom;
-        if (tl == null) {
-            tl = kryoForDocumentPerThread;
-        }
-        Kryo k = tl.get();
-        return k;
-    }
-
-    private static Kryo getKryoThreadLocalForObjects() {
-        ThreadLocal<Kryo> tl = kryoForObjectPerThreadCustom;
-        if (tl == null) {
-            tl = kryoForObjectPerThread;
-        }
-        Kryo k = tl.get();
-        return k;
     }
 
     public static void performMaintenance() {
