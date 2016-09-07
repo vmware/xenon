@@ -59,6 +59,16 @@ public class UserService extends StatefulService {
                 userState = getState(request);
             }
             if (userState != null) {
+
+                String hostId = getHost().getId();
+                String userLink = userState.documentSelfLink;
+                Action action = request.getAction();
+                boolean isRepl = request.isFromReplication();
+                boolean isCommit = request.isCommit();
+
+                logInfo("AAA calling clear for user. host=%s, action=%s, isRepl=%s, isCommit=%s, userLink=%s",
+                        hostId, action, isRepl, isCommit, userLink);
+
                 AuthorizationCacheUtils
                         .clearAuthzCacheForUser(this, request, userState.documentSelfLink);
             }
