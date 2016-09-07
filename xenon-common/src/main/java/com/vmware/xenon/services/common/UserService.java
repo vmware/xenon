@@ -53,12 +53,26 @@ public class UserService extends StatefulService {
         if (request.getAction() == Action.DELETE || request.getAction() == Action.PUT ||
                 request.getAction() == Action.PATCH) {
             UserState userState;
+            boolean fromBody = false;
+            boolean fromState = false;
             if (request.isFromReplication() && request.hasBody()) {
                 userState = getBody(request);
+                fromBody = true;
             } else {
                 userState = getState(request);
+                fromState = true;
             }
             if (userState != null) {
+
+                String hostId = getHost().getId();
+                String userLink = userState.documentSelfLink;
+                Action action = request.getAction();
+                boolean isRepl = request.isFromReplication();
+                boolean isCommit = request.isCommit();
+
+                logInfo("AAA calling clear for user. host=%s, action=%s, stage=%s, isRepl=%s, isCommit=%s, fromBody=%s, fromState=%s, userLink=%s",
+                        hostId, action, opProcessingStage, isRepl, isCommit, fromBody, fromState, userLink);
+
                 AuthorizationCacheUtils
                         .clearAuthzCacheForUser(this, request, userState.documentSelfLink);
             }

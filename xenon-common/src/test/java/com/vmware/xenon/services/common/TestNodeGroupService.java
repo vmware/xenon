@@ -84,6 +84,7 @@ import com.vmware.xenon.common.test.MinimalTestServiceState;
 import com.vmware.xenon.common.test.RoundRobinIterator;
 import com.vmware.xenon.common.test.TestContext;
 import com.vmware.xenon.common.test.TestProperty;
+import com.vmware.xenon.common.test.TestRequestSender;
 import com.vmware.xenon.common.test.VerificationHost;
 import com.vmware.xenon.common.test.VerificationHost.WaitHandler;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
@@ -98,9 +99,9 @@ import com.vmware.xenon.services.common.QueryTask.Query.Builder;
 import com.vmware.xenon.services.common.QueryTask.QueryTerm.MatchType;
 import com.vmware.xenon.services.common.ReplicationTestService.ReplicationTestServiceErrorResponse;
 import com.vmware.xenon.services.common.ReplicationTestService.ReplicationTestServiceState;
+import com.vmware.xenon.services.common.ResourceGroupService.PatchQueryRequest;
 import com.vmware.xenon.services.common.ResourceGroupService.ResourceGroupState;
 import com.vmware.xenon.services.common.RoleService.RoleState;
-import com.vmware.xenon.services.common.UserService.UserState;
 
 public class TestNodeGroupService {
 
@@ -2241,12 +2242,23 @@ public class TestNodeGroupService {
 
         groupHost.resetSystemAuthorizationContext();
 
+        this.host.log("AAA: TEST START");
+        this.host.log("AAA fooToken=%s", fooToken);
+        this.host.log("AAA barToken=%s", barToken);
+        this.host.log("AAA bazToken=%s", bazToken);
+
+        printAuthInfo("AAA: TEST START");
+
         // verify deleting role should clear the auth cache
         populateAuthCacheInPeer(fooAuthContext);
         groupHost.setSystemAuthorizationContext();
+
+        printAuthInfo("AAA - 1: BEFORE DELETE /core/authz/roles/foo-role-1");
         this.host.sendAndWaitExpectSuccess(
                 Operation.createDelete(
                         UriUtils.buildUri(groupHost, "/core/authz/roles/foo-role-1")));
+        printAuthInfo("AAA - 1: AFTER DELETE /core/authz/roles/foo-role-1");
+
         groupHost.resetSystemAuthorizationContext();
         verifyAuthCacheHasClearedInPeers(fooToken);
 
@@ -2254,9 +2266,13 @@ public class TestNodeGroupService {
         populateAuthCacheInPeer(fooAuthContext);
         // delete the user group associated with the user
         groupHost.setSystemAuthorizationContext();
+
+        printAuthInfo("AAA - 2: BEFORE DELETE /core/authz/user-groups/foo-user-group");
         this.host.sendAndWaitExpectSuccess(
                 Operation.createDelete(
                         UriUtils.buildUri(groupHost, "/core/authz/user-groups/foo-user-group")));
+        printAuthInfo("AAA - 2: AFTER DELETE /core/authz/user-groups/foo-user-group");
+
         groupHost.resetSystemAuthorizationContext();
         verifyAuthCacheHasClearedInPeers(fooToken);
 
@@ -2269,6 +2285,8 @@ public class TestNodeGroupService {
                         Utils.buildKind(ExampleServiceState.class))
                 .build();
         TestContext ctxToCreateAnotherRoleForBar = this.host.testCreate(1);
+
+        printAuthInfo("AAA: 3 - BEFORE /core/authz/resource-groups/new-rg");
         AuthorizationSetupHelper.create()
                 .setHost(groupHost)
                 .setUserSelfLink(barUserLink)
@@ -2287,6 +2305,7 @@ public class TestNodeGroupService {
         groupHost.resetSystemAuthorizationContext();
 
         verifyAuthCacheHasClearedInPeers(barToken);
+        printAuthInfo("AAA: 3 - AFTER /core/authz/resource-groups/new-rg");
 
         //
         populateAuthCacheInPeer(barAuthContext);
@@ -2299,34 +2318,90 @@ public class TestNodeGroupService {
                 .build();
         ResourceGroupState resourceGroupState = new ResourceGroupState();
         resourceGroupState.query = updateResourceGroupQuery;
+
+        printAuthInfo("AAA: 4 - BEFORE PUT for newResourceGroupLink");
         this.host.sendAndWaitExpectSuccess(
                 Operation.createPut(UriUtils.buildUri(groupHost, newResourceGroupLink))
                         .setBody(resourceGroupState));
-        this.host.sendAndWaitExpectSuccess(
-                Operation.createDelete(UriUtils.buildUri(groupHost, newResourceGroupLink)));
+        printAuthInfo("AAA: 4 - AFTER PUT for newResourceGroupLink");
+
+//        printAuthInfo("AAA: 5 - BEFORE DELETE for newResourceGroupLink");
+//        this.host.sendAndWaitExpectSuccess(
+//                Operation.createDelete(UriUtils.buildUri(groupHost, newResourceGroupLink)));
+//        printAuthInfo("AAA: 5 - AFTER DELETE for newResourceGroupLink");
+
         groupHost.resetSystemAuthorizationContext();
         verifyAuthCacheHasClearedInPeers(barToken);
 
-        // verify patching user should clear the auth cache
-        populateAuthCacheInPeer(fooAuthContext);
-        groupHost.setSystemAuthorizationContext();
-        UserState userState = new UserState();
-        userState.userGroupLinks = new HashSet<>();
-        userState.userGroupLinks.add("foo");
-        this.host.sendAndWaitExpectSuccess(
-                Operation.createPatch(UriUtils.buildUri(groupHost, fooUserLink))
-                        .setBody(userState));
-        groupHost.resetSystemAuthorizationContext();
-        verifyAuthCacheHasClearedInPeers(fooToken);
 
-        // verify deleting user should clear the auth cache
-        populateAuthCacheInPeer(bazAuthContext);
+        // verify patching ResourceGroup should clear the auth cache
+        TestRequestSender sender = new TestRequestSender(this.host.getPeerHost());
         groupHost.setSystemAuthorizationContext();
-        this.host.sendAndWaitExpectSuccess(
-                Operation.createDelete(UriUtils.buildUri(groupHost, bazUserLink)));
+        Operation newResourceGroupGetOp = Operation.createGet(groupHost, newResourceGroupLink);
+        ResourceGroupState newResourceGroupState = sender.sendAndWait(newResourceGroupGetOp, ResourceGroupState.class);
         groupHost.resetSystemAuthorizationContext();
-        verifyAuthCacheHasClearedInPeers(bazToken);
 
+        // THIS SHOULD FAIL when cache is created on OWNER node
+        PatchQueryRequest patchBody = PatchQueryRequest.create(newResourceGroupState.query, false);
+
+
+        populateAuthCacheInPeer(barAuthContext);
+        groupHost.setSystemAuthorizationContext();
+        this.host.log("AAA doc=%s, owner=%s", newResourceGroupState.documentSelfLink, newResourceGroupState.documentOwner);
+        printAuthInfo("AAA: 5 - BEFORE PATCH for newResourceGroupLink");
+        this.host.sendAndWaitExpectSuccess(
+                Operation.createPatch(UriUtils.buildUri(groupHost, newResourceGroupLink))
+                        .setBody(patchBody));
+        printAuthInfo("AAA: 5 - AFTER PATCH for newResourceGroupLink");
+        groupHost.resetSystemAuthorizationContext();
+        verifyAuthCacheHasClearedInPeers(barToken);
+
+
+//        // verify patching user should clear the auth cache
+//        populateAuthCacheInPeer(fooAuthContext);
+//        groupHost.setSystemAuthorizationContext();
+//        UserState userState = new UserState();
+//        userState.userGroupLinks = new HashSet<>();
+//        userState.userGroupLinks.add("foo");
+//
+//        printAuthInfo("AAA: 6 - BEFORE PATCH fooUserLink");
+//        this.host.sendAndWaitExpectSuccess(
+//                Operation.createPatch(UriUtils.buildUri(groupHost, fooUserLink))
+//                        .setBody(userState));
+//        printAuthInfo("AAA: 6 - AFTER PATCH fooUserLink");
+//        groupHost.resetSystemAuthorizationContext();
+//        verifyAuthCacheHasClearedInPeers(fooToken);
+//
+//        // verify deleting user should clear the auth cache
+//        populateAuthCacheInPeer(bazAuthContext);
+//        groupHost.setSystemAuthorizationContext();
+//        printAuthInfo("AAA: 7 - BEFORE DELETE bazUserLink");
+//        this.host.sendAndWaitExpectSuccess(
+//                Operation.createDelete(UriUtils.buildUri(groupHost, bazUserLink)));
+//        printAuthInfo("AAA: 7 - AFTER DELETE bazUserLink");
+//        groupHost.resetSystemAuthorizationContext();
+//        verifyAuthCacheHasClearedInPeers(bazToken);
+//
+    }
+
+    private void printAuthInfo(String header) {
+        this.host.log("AAA == AuthInfo START ==: %s", header);
+        for (VerificationHost peer : this.host.getInProcessHostMap().values()) {
+            Map<String, Set<String>> tokenMap = peer.getUserLinktoTokenMap();
+
+            boolean contains = false;
+            for (String token : tokenMap.keySet()) {
+                if (token.endsWith("vmware.com")) {
+                    contains = true;
+                    break;
+                }
+            }
+
+            Map<String, AuthorizationContext> authCache = peer.getAuthorizationContextCache();
+            String peerId = peer.getId();
+            this.host.log("AAA peer=%s, contains=%s, tokenSize=%s, token=%s", peerId, contains, tokenMap.size(), tokenMap.keySet());
+        }
+        this.host.log("AAA == AuthInfo END ==: %s", header);
     }
 
     private void populateAuthCacheInPeer(AuthorizationContext authContext) throws Throwable {

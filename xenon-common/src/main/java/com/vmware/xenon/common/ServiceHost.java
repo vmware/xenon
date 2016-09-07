@@ -5160,7 +5160,23 @@ public class ServiceHost implements ServiceRequestSender {
                 }
             }
             this.userLinktoTokenMap.remove(userLink);
+
+            String hostId = s.getHost().getId();
+            String service = s.getSelfLink();
+            boolean isRemoved = tokenSet != null;
+
+            s.getHost().log(Level.INFO, "AAA clearing cache. host=%s, isRemoved=%s, userLink=%s, service=%s, token=%s",
+                    hostId, isRemoved, userLink, service, tokenSet
+            );
         }
+    }
+
+    public Map<String, Set<String>> getUserLinktoTokenMap() {
+        return this.userLinktoTokenMap;
+    }
+
+    public Map<String, AuthorizationContext> getAuthorizationContextCache() {
+        return this.authorizationContextCache;
     }
 
     /**
