@@ -55,7 +55,6 @@ import com.vmware.xenon.services.common.MinimalTestService;
 import com.vmware.xenon.services.common.QueryTask;
 import com.vmware.xenon.services.common.QueryTask.Query;
 import com.vmware.xenon.services.common.QueryTask.Query.Builder;
-import com.vmware.xenon.services.common.ResourceGroupService.ResourceGroupState;
 import com.vmware.xenon.services.common.RoleService.RoleState;
 import com.vmware.xenon.services.common.UserGroupService;
 import com.vmware.xenon.services.common.UserGroupService.UserGroupState;
@@ -503,9 +502,10 @@ public class TestAuthorization extends BasicTestCase {
 
         this.host.setSystemAuthorizationContext();
         Operation clearAuthOp = new Operation();
+        clearAuthOp.setUri(UriUtils.buildUri(this.host, fooUserLink));
         TestContext ctx = this.host.testCreate(1);
         clearAuthOp.setCompletion(ctx.getCompletion());
-        AuthorizationCacheUtils.clearAuthzCacheForUser(s, clearAuthOp, fooUserLink);
+        AuthorizationCacheUtils.nestClearAuthzCacheForUser(s, clearAuthOp);
         clearAuthOp.complete();
         this.host.testWait(ctx);
         this.host.resetSystemAuthorizationContext();
@@ -533,17 +533,22 @@ public class TestAuthorization extends BasicTestCase {
         this.host.startServiceAndWait(s, UUID.randomUUID().toString(), null);
         this.host.resetSystemAuthorizationContext();
 
+        String userGroupLink = authHelperForFoo.getUserGroupLink();
+        String resourceGroupLink = authHelperForFoo.getResourceGroupLink();
+        String roleLink = authHelperForFoo.getRoleLink();
+
+
         // get the user group service and clear the authz cache
         assertNotNull(assumeIdentityAndGetContext(fooUserLink, s, true));
         this.host.setSystemAuthorizationContext();
         Operation getUserGroupStateOp =
-                Operation.createGet(UriUtils.buildUri(this.host, authHelperForFoo.getUserGroupLink()));
+                Operation.createGet(UriUtils.buildUri(this.host, userGroupLink));
         Operation resultOp = this.host.waitForResponse(getUserGroupStateOp);
         UserGroupState userGroupState = resultOp.getBody(UserGroupState.class);
         Operation clearAuthOp = new Operation();
         TestContext ctx = this.host.testCreate(1);
         clearAuthOp.setCompletion(ctx.getCompletion());
-        AuthorizationCacheUtils.clearAuthzCacheForUserGroup(s, clearAuthOp, userGroupState);
+        AuthorizationCacheUtils.nestClearAuthzCacheForUserGroup(s, clearAuthOp, userGroupState);
         clearAuthOp.complete();
         this.host.testWait(ctx);
         this.host.resetSystemAuthorizationContext();
@@ -552,14 +557,11 @@ public class TestAuthorization extends BasicTestCase {
         // get the resource group and clear the authz cache
         assertNotNull(assumeIdentityAndGetContext(fooUserLink, s, true));
         this.host.setSystemAuthorizationContext();
-        Operation getResourceGroupStateOp =
-                Operation.createGet(UriUtils.buildUri(this.host, authHelperForFoo.getResourceGroupLink()));
-        resultOp = this.host.waitForResponse(getResourceGroupStateOp);
-        ResourceGroupState resourceGroupState = resultOp.getBody(ResourceGroupState.class);
         clearAuthOp = new Operation();
         ctx = this.host.testCreate(1);
         clearAuthOp.setCompletion(ctx.getCompletion());
-        AuthorizationCacheUtils.clearAuthzCacheForResourceGroup(s, clearAuthOp, resourceGroupState);
+        clearAuthOp.setUri(UriUtils.buildUri(this.host, resourceGroupLink));
+        AuthorizationCacheUtils.nestClearAuthzCacheForResourceGroup(s, clearAuthOp);
         clearAuthOp.complete();
         this.host.testWait(ctx);
         this.host.resetSystemAuthorizationContext();
@@ -569,13 +571,13 @@ public class TestAuthorization extends BasicTestCase {
         assertNotNull(assumeIdentityAndGetContext(fooUserLink, s, true));
         this.host.setSystemAuthorizationContext();
         Operation getRoleStateOp =
-                Operation.createGet(UriUtils.buildUri(this.host, authHelperForFoo.getRoleLink()));
+                Operation.createGet(UriUtils.buildUri(this.host, roleLink));
         resultOp = this.host.waitForResponse(getRoleStateOp);
         RoleState roleState = resultOp.getBody(RoleState.class);
         clearAuthOp = new Operation();
         ctx = this.host.testCreate(1);
         clearAuthOp.setCompletion(ctx.getCompletion());
-        AuthorizationCacheUtils.clearAuthzCacheForRole(s, clearAuthOp, roleState);
+        AuthorizationCacheUtils.nestClearAuthzCacheForRole(s, clearAuthOp, roleState);
         clearAuthOp.complete();
         this.host.testWait(ctx);
         this.host.resetSystemAuthorizationContext();
@@ -584,14 +586,11 @@ public class TestAuthorization extends BasicTestCase {
         // finally, get the user service and clear the authz cache
         assertNotNull(assumeIdentityAndGetContext(fooUserLink, s, true));
         this.host.setSystemAuthorizationContext();
-        Operation getUserStateOp =
-                Operation.createGet(UriUtils.buildUri(this.host, fooUserLink));
-        resultOp = this.host.waitForResponse(getUserStateOp);
-        UserState userState = resultOp.getBody(UserState.class);
         clearAuthOp = new Operation();
+        clearAuthOp.setUri(UriUtils.buildUri(this.host, fooUserLink));
         ctx = this.host.testCreate(1);
         clearAuthOp.setCompletion(ctx.getCompletion());
-        AuthorizationCacheUtils.clearAuthzCacheForUser(s, clearAuthOp, userState.documentSelfLink);
+        AuthorizationCacheUtils.nestClearAuthzCacheForUser(s, clearAuthOp);
         clearAuthOp.complete();
         this.host.testWait(ctx);
         this.host.resetSystemAuthorizationContext();

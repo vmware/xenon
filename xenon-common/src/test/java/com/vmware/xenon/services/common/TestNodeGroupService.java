@@ -84,6 +84,7 @@ import com.vmware.xenon.common.test.MinimalTestServiceState;
 import com.vmware.xenon.common.test.RoundRobinIterator;
 import com.vmware.xenon.common.test.TestContext;
 import com.vmware.xenon.common.test.TestProperty;
+import com.vmware.xenon.common.test.TestRequestSender;
 import com.vmware.xenon.common.test.VerificationHost;
 import com.vmware.xenon.common.test.VerificationHost.WaitHandler;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
@@ -98,6 +99,7 @@ import com.vmware.xenon.services.common.QueryTask.Query.Builder;
 import com.vmware.xenon.services.common.QueryTask.QueryTerm.MatchType;
 import com.vmware.xenon.services.common.ReplicationTestService.ReplicationTestServiceErrorResponse;
 import com.vmware.xenon.services.common.ReplicationTestService.ReplicationTestServiceState;
+import com.vmware.xenon.services.common.ResourceGroupService.PatchQueryRequest;
 import com.vmware.xenon.services.common.ResourceGroupService.ResourceGroupState;
 import com.vmware.xenon.services.common.RoleService.RoleState;
 import com.vmware.xenon.services.common.UserService.UserState;
@@ -2302,8 +2304,25 @@ public class TestNodeGroupService {
         this.host.sendAndWaitExpectSuccess(
                 Operation.createPut(UriUtils.buildUri(groupHost, newResourceGroupLink))
                         .setBody(resourceGroupState));
+        groupHost.resetSystemAuthorizationContext();
+        verifyAuthCacheHasClearedInPeers(barToken);
+
+
+        // verify patching ResourceGroup should clear the auth cache
+        // uses "new-rg" resource group that has associated to user bar
+        TestRequestSender sender = new TestRequestSender(this.host.getPeerHost());
+        groupHost.setSystemAuthorizationContext();
+        Operation newResourceGroupGetOp = Operation.createGet(groupHost, newResourceGroupLink);
+        ResourceGroupState newResourceGroupState = sender.sendAndWait(newResourceGroupGetOp, ResourceGroupState.class);
+        groupHost.resetSystemAuthorizationContext();
+
+        PatchQueryRequest patchBody = PatchQueryRequest.create(newResourceGroupState.query, false);
+
+        populateAuthCacheInPeer(barAuthContext);
+        groupHost.setSystemAuthorizationContext();
         this.host.sendAndWaitExpectSuccess(
-                Operation.createDelete(UriUtils.buildUri(groupHost, newResourceGroupLink)));
+                Operation.createPatch(UriUtils.buildUri(groupHost, newResourceGroupLink))
+                        .setBody(patchBody));
         groupHost.resetSystemAuthorizationContext();
         verifyAuthCacheHasClearedInPeers(barToken);
 
