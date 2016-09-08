@@ -105,7 +105,7 @@ public class AuthCredentialsService extends StatefulService {
         }
         AuthCredentialsServiceState currentState = getState(patch);
         try {
-            if (!Utils.mergeWithState(currentState, patch)) {
+            if (!Utils.mergeWithSpecialUpdateRequests(currentState, patch).merged) {
                 AuthCredentialsServiceState patchBody = patch.getBody(AuthCredentialsServiceState.class);
                 updateState(patchBody, currentState);
             }

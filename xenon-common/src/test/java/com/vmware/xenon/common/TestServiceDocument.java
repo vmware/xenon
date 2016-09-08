@@ -14,9 +14,11 @@
 package com.vmware.xenon.common;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
 
 import java.math.BigDecimal;
 import java.math.BigInteger;
@@ -206,9 +208,14 @@ public class TestServiceDocument {
         collectionsToRemove.put("listOfStrings", new ArrayList<>(state.listOfStrings));
         collectionsToAdd.put("setOfStrings", new ArrayList<>(Arrays.asList(SOME_STRING_VALUE)));
         ServiceStateCollectionUpdateRequest request = ServiceStateCollectionUpdateRequest.create(collectionsToAdd, collectionsToRemove);
-        Utils.updateCollections(state, request);
+        boolean changed = Utils.updateCollections(state, request);
+        assertTrue(changed);
         assertEquals(state.listOfStrings.size(), 0);
         assertEquals(state.setOfStrings.size(), 1);
+
+        // repeating the update should not change the state anymore
+        changed = Utils.updateCollections(state, request);
+        assertFalse(changed);
     }
 
     @Test

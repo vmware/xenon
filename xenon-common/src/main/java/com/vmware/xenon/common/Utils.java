@@ -1055,22 +1055,39 @@ public class Utils {
     }
 
     /**
-     * Update the state of collections that are part of the service state
-     * @param currentState The current state
+     * Result of applying special update request patches through the
+     * {@link Utils#mergeWithSpecialUpdateRequests} method.
+     */
+    public static class UpdateRequestMergeResult {
+        public boolean merged;       // whether the operation represented a special update request
+        public boolean stateChanged; // whether the service state was changed by the merge
+    }
+
+    /**
+     * Checks whether the provided operation represents a special update request (such as
+     * {@link ServiceStateCollectionUpdateRequest} or others in the future) and if so, applies it
+     * to the provided service state.
+     * @param currentState The current service state
      * @param op Operation with the patch request
-     * @return
+     * @return an UpdateRequestMergeResult instance with information whether the operation
+     *         represented an update request, and if so, whether the merge changed the state
      * @throws IllegalAccessException
      * @throws NoSuchFieldException
      */
-    public static <T extends ServiceDocument> boolean mergeWithState(T currentState, Operation op)
-            throws NoSuchFieldException, IllegalAccessException {
+    public static <T extends ServiceDocument> UpdateRequestMergeResult mergeWithSpecialUpdateRequests(
+            T currentState, Operation op) throws NoSuchFieldException, IllegalAccessException {
+        UpdateRequestMergeResult result = new UpdateRequestMergeResult();
+        result.stateChanged = false;
+        result.merged = false;
+
         ServiceStateCollectionUpdateRequest requestBody =
                 op.getBody(ServiceStateCollectionUpdateRequest.class);
         if (ServiceStateCollectionUpdateRequest.KIND.equals(requestBody.kind)) {
-            Utils.updateCollections(currentState, requestBody);
-            return true;
+            result.stateChanged = Utils.updateCollections(currentState, requestBody);
+            result.merged = true;
         }
-        return false;
+
+        return result;
     }
 
     /**
@@ -1144,21 +1161,29 @@ public class Utils {
      *
      * @param currentState currentState of the service
      * @param patchBody request of processing collections
+     * @return {@code true} if the currentState has changed as a result of the call
      * @throws NoSuchFieldException
      * @throws IllegalAccessException
      */
-    public static <T extends ServiceDocument> void updateCollections(T currentState, ServiceStateCollectionUpdateRequest patchBody)
+    public static <T extends ServiceDocument> boolean updateCollections(T currentState,
+            ServiceStateCollectionUpdateRequest patchBody)
             throws NoSuchFieldException, IllegalAccessException {
+        boolean hasChanged = false;
         if (patchBody.itemsToRemove != null) {
-            for (Entry<String, Collection<Object>> collectionItem : patchBody.itemsToRemove.entrySet()) {
-                processCollection(collectionItem.getValue(), collectionItem.getKey(), currentState, CollectionOperation.REMOVE);
+            for (Entry<String, Collection<Object>> collectionItem :
+                    patchBody.itemsToRemove.entrySet()) {
+                hasChanged |= processCollection(collectionItem.getValue(), collectionItem.getKey(),
+                        currentState, CollectionOperation.REMOVE);
             }
         }
         if (patchBody.itemsToAdd != null) {
-            for (Entry<String, Collection<Object>> collectionItem : patchBody.itemsToAdd.entrySet()) {
-                processCollection(collectionItem.getValue(), collectionItem.getKey(), currentState, CollectionOperation.ADD);
+            for (Entry<String, Collection<Object>> collectionItem :
+                    patchBody.itemsToAdd.entrySet()) {
+                hasChanged |= processCollection(collectionItem.getValue(), collectionItem.getKey(),
+                        currentState, CollectionOperation.ADD);
             }
         }
+        return hasChanged;
     }
 
     private static enum CollectionOperation {
@@ -1166,8 +1191,11 @@ public class Utils {
     }
 
     @SuppressWarnings("unchecked")
-    private static <T extends ServiceDocument> void processCollection(Collection<Object> inputCollection, String collectionName,
-            T currentState, CollectionOperation operation) throws NoSuchFieldException, IllegalAccessException {
+    private static <T extends ServiceDocument> boolean processCollection(
+            Collection<Object> inputCollection, String collectionName,
+            T currentState, CollectionOperation operation)
+            throws NoSuchFieldException, IllegalAccessException {
+        boolean hasChanged = false;
         if (inputCollection != null && !inputCollection.isEmpty()) {
             Class<? extends ServiceDocument> clazz = currentState.getClass();
             Field field = clazz.getField(collectionName);
@@ -1178,13 +1206,14 @@ public class Utils {
                 case ADD:
                     if (collObj == null) {
                         field.set(currentState, inputCollection);
+                        hasChanged = true;
                     } else {
-                        collObj.addAll(inputCollection);
+                        hasChanged = collObj.addAll(inputCollection);
                     }
                     break;
                 case REMOVE:
                     if (collObj != null) {
-                        collObj.removeAll(inputCollection);
+                        hasChanged = collObj.removeAll(inputCollection);
                     }
                     break;
                 default:
@@ -1192,5 +1221,6 @@ public class Utils {
                 }
             }
         }
+        return hasChanged;
     }
 }
