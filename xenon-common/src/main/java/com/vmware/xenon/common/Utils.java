@@ -1055,6 +1055,9 @@ public class Utils {
     }
 
     /**
+     * This method is deprecated in favor of isSpecialUpdateRequest() + applySpecialUpdateRequest()
+     * which together provide "hasChanged" support.
+     *
      * Update the state of collections that are part of the service state
      * @param currentState The current state
      * @param op Operation with the patch request
@@ -1062,6 +1065,7 @@ public class Utils {
      * @throws IllegalAccessException
      * @throws NoSuchFieldException
      */
+    @Deprecated
     public static <T extends ServiceDocument> boolean mergeWithState(T currentState, Operation op)
             throws NoSuchFieldException, IllegalAccessException {
         ServiceStateCollectionUpdateRequest requestBody =
@@ -1071,6 +1075,53 @@ public class Utils {
             return true;
         }
         return false;
+    }
+
+    /**
+     * Checks whether the given operation represents a special update request patch such as
+     * {@link ServiceStateCollectionUpdateRequest} (or other in the future).
+     * @param op Operation with the patch request
+     * @return {@code true} if the operation represents a special update request
+     */
+    public static boolean isSpecialUpdateRequest(Operation op) {
+        return tryGetCollectionUpdateRequestFromPatch(op) != null;
+    }
+
+    /**
+     * Applies a special update request on the given service state.
+     * @param currentState The current service state to modify
+     * @param op Operation with the patch request
+     * @return {@code true} if the service state has changed as a result of this call
+     * @throws NoSuchFieldException
+     * @throws IllegalAccessException
+     */
+    public static <T extends ServiceDocument> boolean applySpecialUpdateRequest(
+            T currentState, Operation op) throws NoSuchFieldException, IllegalAccessException {
+        // check for collection update request first
+        ServiceStateCollectionUpdateRequest collectionUpdateRequest =
+                tryGetCollectionUpdateRequestFromPatch(op);
+        if (collectionUpdateRequest != null) {
+            return Utils.updateCollections(currentState, collectionUpdateRequest);
+        }
+
+        // no other supported update requests for now
+        return false;
+    }
+
+    /**
+     * Checks whether the given operation represents a {@link ServiceStateCollectionUpdateRequest}
+     * request.
+     * @param op Operation with the patch request
+     * @return the represented {@link ServiceStateCollectionUpdateRequest} object, or {@code null}
+     */
+    private static ServiceStateCollectionUpdateRequest tryGetCollectionUpdateRequestFromPatch(
+            Operation op) {
+        ServiceStateCollectionUpdateRequest requestBody =
+                op.getBody(ServiceStateCollectionUpdateRequest.class);
+        if (ServiceStateCollectionUpdateRequest.KIND.equals(requestBody.kind)) {
+            return requestBody;
+        }
+        return null;
     }
 
     /**
@@ -1144,21 +1195,29 @@ public class Utils {
      *
      * @param currentState currentState of the service
      * @param patchBody request of processing collections
+     * @return {@code true} if the currentState has changed as a result of the call
      * @throws NoSuchFieldException
      * @throws IllegalAccessException
      */
-    public static <T extends ServiceDocument> void updateCollections(T currentState, ServiceStateCollectionUpdateRequest patchBody)
+    public static <T extends ServiceDocument> boolean updateCollections(T currentState,
+            ServiceStateCollectionUpdateRequest patchBody)
             throws NoSuchFieldException, IllegalAccessException {
+        boolean hasChanged = false;
         if (patchBody.itemsToRemove != null) {
-            for (Entry<String, Collection<Object>> collectionItem : patchBody.itemsToRemove.entrySet()) {
-                processCollection(collectionItem.getValue(), collectionItem.getKey(), currentState, CollectionOperation.REMOVE);
+            for (Entry<String, Collection<Object>> collectionItem :
+                    patchBody.itemsToRemove.entrySet()) {
+                hasChanged |= processCollection(collectionItem.getValue(), collectionItem.getKey(),
+                        currentState, CollectionOperation.REMOVE);
             }
         }
         if (patchBody.itemsToAdd != null) {
-            for (Entry<String, Collection<Object>> collectionItem : patchBody.itemsToAdd.entrySet()) {
-                processCollection(collectionItem.getValue(), collectionItem.getKey(), currentState, CollectionOperation.ADD);
+            for (Entry<String, Collection<Object>> collectionItem :
+                    patchBody.itemsToAdd.entrySet()) {
+                hasChanged |= processCollection(collectionItem.getValue(), collectionItem.getKey(),
+                        currentState, CollectionOperation.ADD);
             }
         }
+        return hasChanged;
     }
 
     private static enum CollectionOperation {
@@ -1166,8 +1225,11 @@ public class Utils {
     }
 
     @SuppressWarnings("unchecked")
-    private static <T extends ServiceDocument> void processCollection(Collection<Object> inputCollection, String collectionName,
-            T currentState, CollectionOperation operation) throws NoSuchFieldException, IllegalAccessException {
+    private static <T extends ServiceDocument> boolean processCollection(
+            Collection<Object> inputCollection, String collectionName,
+            T currentState, CollectionOperation operation)
+            throws NoSuchFieldException, IllegalAccessException {
+        boolean hasChanged = false;
         if (inputCollection != null && !inputCollection.isEmpty()) {
             Class<? extends ServiceDocument> clazz = currentState.getClass();
             Field field = clazz.getField(collectionName);
@@ -1178,13 +1240,14 @@ public class Utils {
                 case ADD:
                     if (collObj == null) {
                         field.set(currentState, inputCollection);
+                        hasChanged = true;
                     } else {
-                        collObj.addAll(inputCollection);
+                        hasChanged = collObj.addAll(inputCollection);
                     }
                     break;
                 case REMOVE:
                     if (collObj != null) {
-                        collObj.removeAll(inputCollection);
+                        hasChanged = collObj.removeAll(inputCollection);
                     }
                     break;
                 default:
@@ -1192,5 +1255,6 @@ public class Utils {
                 }
             }
         }
+        return hasChanged;
     }
 }
