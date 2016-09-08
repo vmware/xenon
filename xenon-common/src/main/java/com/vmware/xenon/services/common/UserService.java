@@ -50,18 +50,8 @@ public class UserService extends StatefulService {
 
     @Override
     public void handleRequest(Operation request, OperationProcessingStage opProcessingStage) {
-        if (request.getAction() == Action.DELETE || request.getAction() == Action.PUT ||
-                request.getAction() == Action.PATCH) {
-            UserState userState;
-            if (request.isFromReplication() && request.hasBody()) {
-                userState = getBody(request);
-            } else {
-                userState = getState(request);
-            }
-            if (userState != null) {
-                AuthorizationCacheUtils
-                        .clearAuthzCacheForUser(this, request, userState.documentSelfLink);
-            }
+        if (AuthorizationCacheUtils.isAuthzCacheClearApplicableOperation(request)) {
+            AuthorizationCacheUtils.clearAuthzCacheForUser(this, request);
         }
         super.handleRequest(request, opProcessingStage);
     }

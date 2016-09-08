@@ -36,15 +36,21 @@ public class RoleService extends StatefulService {
 
             @Override
             public void handlePost(Operation request) {
-                RoleState roleState = AuthorizationCacheUtils.extractBody(request, this, RoleState.class);
-                if (roleState != null) {
-                    AuthorizationCacheUtils.clearAuthzCacheForRole(this, request, roleState);
-                }
+                checkAndNestCompletionForAuthzCacheClear(this, request);
                 super.handlePost(request);
             }
         };
         fs.toggleOption(ServiceOption.IDEMPOTENT_POST, true);
         return fs;
+    }
+
+    private static void checkAndNestCompletionForAuthzCacheClear(Service s, Operation op) {
+        if (AuthorizationCacheUtils.isAuthzCacheClearApplicableOperation(op)) {
+            RoleState state = AuthorizationCacheUtils.extractBody(op, s, RoleState.class);
+            if (state != null) {
+                AuthorizationCacheUtils.clearAuthzCacheForRole(s, op, state);
+            }
+        }
     }
 
     public enum Policy {
@@ -77,10 +83,7 @@ public class RoleService extends StatefulService {
 
     @Override
     public void handleRequest(Operation request, OperationProcessingStage opProcessingStage) {
-        RoleState roleState = AuthorizationCacheUtils.extractBody(request, this, RoleState.class);
-        if (roleState != null) {
-            AuthorizationCacheUtils.clearAuthzCacheForRole(this, request, roleState);
-        }
+        checkAndNestCompletionForAuthzCacheClear(this, request);
         super.handleRequest(request, opProcessingStage);
     }
 
