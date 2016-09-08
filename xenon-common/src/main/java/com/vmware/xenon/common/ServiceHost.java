@@ -63,7 +63,6 @@ import java.util.logging.ConsoleHandler;
 import java.util.logging.FileHandler;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManagerFactory;
 
@@ -5153,13 +5152,12 @@ public class ServiceHost implements ServiceRequestSender {
             throw new RuntimeException("Service not allowed to clear authorization token");
         }
         synchronized (this.state) {
-            Set<String> tokenSet = this.userLinktoTokenMap.get(userLink);
+            Set<String> tokenSet = this.userLinktoTokenMap.remove(userLink);
             if (tokenSet != null) {
                 for (String token :tokenSet) {
                     this.authorizationContextCache.remove(token);
                 }
             }
-            this.userLinktoTokenMap.remove(userLink);
         }
     }
 

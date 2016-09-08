@@ -84,6 +84,7 @@ import com.vmware.xenon.common.test.MinimalTestServiceState;
 import com.vmware.xenon.common.test.RoundRobinIterator;
 import com.vmware.xenon.common.test.TestContext;
 import com.vmware.xenon.common.test.TestProperty;
+import com.vmware.xenon.common.test.TestRequestSender;
 import com.vmware.xenon.common.test.VerificationHost;
 import com.vmware.xenon.common.test.VerificationHost.WaitHandler;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
@@ -98,6 +99,7 @@ import com.vmware.xenon.services.common.QueryTask.Query.Builder;
 import com.vmware.xenon.services.common.QueryTask.QueryTerm.MatchType;
 import com.vmware.xenon.services.common.ReplicationTestService.ReplicationTestServiceErrorResponse;
 import com.vmware.xenon.services.common.ReplicationTestService.ReplicationTestServiceState;
+import com.vmware.xenon.services.common.ResourceGroupService.PatchQueryRequest;
 import com.vmware.xenon.services.common.ResourceGroupService.ResourceGroupState;
 import com.vmware.xenon.services.common.RoleService.RoleState;
 import com.vmware.xenon.services.common.UserService.UserState;
@@ -2242,26 +2244,26 @@ public class TestNodeGroupService {
         groupHost.resetSystemAuthorizationContext();
 
         // verify deleting role should clear the auth cache
-        populateAuthCacheInPeer(fooAuthContext);
+        populateAuthCacheInAllPeers(fooAuthContext);
         groupHost.setSystemAuthorizationContext();
         this.host.sendAndWaitExpectSuccess(
                 Operation.createDelete(
                         UriUtils.buildUri(groupHost, "/core/authz/roles/foo-role-1")));
         groupHost.resetSystemAuthorizationContext();
-        verifyAuthCacheHasClearedInPeers(fooToken);
+        verifyAuthCacheHasClearedInAllPeers(fooToken);
 
         // verify deleting user-group should clear the auth cache
-        populateAuthCacheInPeer(fooAuthContext);
+        populateAuthCacheInAllPeers(fooAuthContext);
         // delete the user group associated with the user
         groupHost.setSystemAuthorizationContext();
         this.host.sendAndWaitExpectSuccess(
                 Operation.createDelete(
                         UriUtils.buildUri(groupHost, "/core/authz/user-groups/foo-user-group")));
         groupHost.resetSystemAuthorizationContext();
-        verifyAuthCacheHasClearedInPeers(fooToken);
+        verifyAuthCacheHasClearedInAllPeers(fooToken);
 
         // verify creating new role should clear the auth cache (using bar@vmware.com)
-        populateAuthCacheInPeer(barAuthContext);
+        populateAuthCacheInAllPeers(barAuthContext);
         groupHost.setSystemAuthorizationContext();
         Query q = Builder.create()
                 .addFieldClause(
@@ -2286,10 +2288,10 @@ public class TestNodeGroupService {
         ctxToCreateAnotherRoleForBar.await();
         groupHost.resetSystemAuthorizationContext();
 
-        verifyAuthCacheHasClearedInPeers(barToken);
+        verifyAuthCacheHasClearedInAllPeers(barToken);
 
         //
-        populateAuthCacheInPeer(barAuthContext);
+        populateAuthCacheInAllPeers(barAuthContext);
         groupHost.setSystemAuthorizationContext();
 
         // Updating the resource group should be able to handle the fact that the user group does not exist
@@ -2302,13 +2304,30 @@ public class TestNodeGroupService {
         this.host.sendAndWaitExpectSuccess(
                 Operation.createPut(UriUtils.buildUri(groupHost, newResourceGroupLink))
                         .setBody(resourceGroupState));
-        this.host.sendAndWaitExpectSuccess(
-                Operation.createDelete(UriUtils.buildUri(groupHost, newResourceGroupLink)));
         groupHost.resetSystemAuthorizationContext();
-        verifyAuthCacheHasClearedInPeers(barToken);
+        verifyAuthCacheHasClearedInAllPeers(barToken);
+
+
+        // verify patching ResourceGroup should clear the auth cache
+        // uses "new-rg" resource group that has associated to user bar
+        TestRequestSender sender = new TestRequestSender(this.host.getPeerHost());
+        groupHost.setSystemAuthorizationContext();
+        Operation newResourceGroupGetOp = Operation.createGet(groupHost, newResourceGroupLink);
+        ResourceGroupState newResourceGroupState = sender.sendAndWait(newResourceGroupGetOp, ResourceGroupState.class);
+        groupHost.resetSystemAuthorizationContext();
+
+        PatchQueryRequest patchBody = PatchQueryRequest.create(newResourceGroupState.query, false);
+
+        populateAuthCacheInAllPeers(barAuthContext);
+        groupHost.setSystemAuthorizationContext();
+        this.host.sendAndWaitExpectSuccess(
+                Operation.createPatch(UriUtils.buildUri(groupHost, newResourceGroupLink))
+                        .setBody(patchBody));
+        groupHost.resetSystemAuthorizationContext();
+        verifyAuthCacheHasClearedInAllPeers(barToken);
 
         // verify patching user should clear the auth cache
-        populateAuthCacheInPeer(fooAuthContext);
+        populateAuthCacheInAllPeers(fooAuthContext);
         groupHost.setSystemAuthorizationContext();
         UserState userState = new UserState();
         userState.userGroupLinks = new HashSet<>();
@@ -2317,52 +2336,53 @@ public class TestNodeGroupService {
                 Operation.createPatch(UriUtils.buildUri(groupHost, fooUserLink))
                         .setBody(userState));
         groupHost.resetSystemAuthorizationContext();
-        verifyAuthCacheHasClearedInPeers(fooToken);
+        verifyAuthCacheHasClearedInAllPeers(fooToken);
 
         // verify deleting user should clear the auth cache
-        populateAuthCacheInPeer(bazAuthContext);
+        populateAuthCacheInAllPeers(bazAuthContext);
         groupHost.setSystemAuthorizationContext();
         this.host.sendAndWaitExpectSuccess(
                 Operation.createDelete(UriUtils.buildUri(groupHost, bazUserLink)));
         groupHost.resetSystemAuthorizationContext();
-        verifyAuthCacheHasClearedInPeers(bazToken);
+        verifyAuthCacheHasClearedInAllPeers(bazToken);
 
     }
 
-    private void populateAuthCacheInPeer(AuthorizationContext authContext) throws Throwable {
-        VerificationHost groupHost = this.host.getPeerHost();
+    private void populateAuthCacheInAllPeers(AuthorizationContext authContext) throws Throwable {
 
-        // issue GET to populate authContext in one of the peer
-        groupHost.setAuthorizationContext(authContext);
-        this.host.sendAndWaitExpectSuccess(
-                Operation.createGet(UriUtils.buildUri(groupHost, ExampleService.FACTORY_LINK)));
+        // send a GET request to the ExampleService factory to populate auth cache on each peer.
+        // since factory is not OWNER_SELECTION service, request goes to the specified node.
+        for (VerificationHost peer : this.host.getInProcessHostMap().values()) {
+            peer.setAuthorizationContext(authContext);
+
+            // based on the role created in test, all users have access to ExampleService
+            this.host.sendAndWaitExpectSuccess(
+                    Operation.createGet(UriUtils.buildStatsUri(peer, ExampleService.FACTORY_LINK)));
+        }
 
         this.host.waitFor("Timeout waiting for correct auth cache state",
-                () -> checkCache(authContext.getToken(), true));
+                () -> checkCacheInAllPeers(authContext.getToken(), true));
     }
 
-    private void verifyAuthCacheHasClearedInPeers(String userToken) throws Throwable {
+    private void verifyAuthCacheHasClearedInAllPeers(String userToken) {
         this.host.waitFor("Timeout waiting for correct auth cache state",
-                () -> checkCache(userToken, false));
+                () -> checkCacheInAllPeers(userToken, false));
     }
 
-    private boolean checkCache(String token, boolean expectEntries) throws Throwable {
-        boolean contextFound = false;
+    private boolean checkCacheInAllPeers(String token, boolean expectEntries) throws Throwable {
         for (VerificationHost peer : this.host.getInProcessHostMap().values()) {
             peer.setSystemAuthorizationContext();
             MinimalTestService s = new MinimalTestService();
             peer.addPrivilegedService(MinimalTestService.class);
             peer.startServiceAndWait(s, UUID.randomUUID().toString(), null);
             peer.resetSystemAuthorizationContext();
-            if (peer.getAuthorizationContext(s, token) != null) {
-                contextFound = true;
-                break;
+
+            boolean contextFound = peer.getAuthorizationContext(s, token) != null;
+            if ((expectEntries && !contextFound) || (!expectEntries && contextFound)) {
+                return false;
             }
         }
-        if ((expectEntries && contextFound) || (!expectEntries && !contextFound)) {
-            return true;
-        }
-        return false;
+        return true;
     }
 
     private void factoryDuplicatePost() throws Throwable, InterruptedException, TimeoutException {
