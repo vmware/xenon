@@ -35,16 +35,21 @@ public class UserGroupService extends StatefulService {
 
             @Override
             public void handlePost(Operation request) {
-                UserGroupState userGroupState =
-                        AuthorizationCacheUtils.extractBody(request, this, UserGroupState.class);
-                if (userGroupState != null) {
-                    AuthorizationCacheUtils.clearAuthzCacheForUserGroup(this, request, userGroupState);
-                }
+                checkAndNestCompletionForAuthzCacheClear(this, request);
                 super.handlePost(request);
             }
         };
         fs.toggleOption(ServiceOption.IDEMPOTENT_POST, true);
         return fs;
+    }
+
+    private static void checkAndNestCompletionForAuthzCacheClear(Service s, Operation op) {
+        if (AuthorizationCacheUtils.isAuthzCacheClearApplicableOperation(op)) {
+            UserGroupState state = AuthorizationCacheUtils.extractBody(op, s, UserGroupState.class);
+            if (state != null) {
+                AuthorizationCacheUtils.clearAuthzCacheForUserGroup(s, op, state);
+            }
+        }
     }
 
     /**
@@ -63,11 +68,7 @@ public class UserGroupService extends StatefulService {
 
     @Override
     public void handleRequest(Operation request, OperationProcessingStage opProcessingStage) {
-        UserGroupState userGroupState =
-                AuthorizationCacheUtils.extractBody(request, this, UserGroupState.class);
-        if (userGroupState != null) {
-            AuthorizationCacheUtils.clearAuthzCacheForUserGroup(this, request, userGroupState);
-        }
+        checkAndNestCompletionForAuthzCacheClear(this, request);
         super.handleRequest(request, opProcessingStage);
     }
 

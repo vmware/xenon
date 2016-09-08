@@ -27,52 +27,41 @@ import com.vmware.xenon.common.Utils;
 import com.vmware.xenon.services.common.QueryTask.Query;
 import com.vmware.xenon.services.common.QueryTask.Query.Builder;
 import com.vmware.xenon.services.common.QueryTask.QuerySpecification;
-import com.vmware.xenon.services.common.ResourceGroupService.ResourceGroupState;
 import com.vmware.xenon.services.common.RoleService.RoleState;
 import com.vmware.xenon.services.common.UserGroupService.UserGroupState;
 
 public class AuthorizationCacheUtils {
 
     /**
-     * Helper method that nests a completion to clear the service host authz cache for the specified user service
+     * Helper method that nests a completion to clear the service host authz cache for the specified user service.
+     * {@code userPath} is retrieved from provided operation. {@code op.getUri().getPath();}
      * The nested completion will run after the operation passed in has been marked complete outside of this
-     * method
+     * method.
      * @param s service context to invoke the operation
      * @param op Operation to mark completion/failure
-     * @param userLink UserService state
      */
-    public static void clearAuthzCacheForUser(Service s, Operation op, String userLink) {
-
-        if (!isAuthzCacheClearApplicableOperation(op)) {
-            return;
-        }
-
+    public static void clearAuthzCacheForUser(Service s, Operation op) {
+        String userPath = op.getUri().getPath();
         op.nestCompletion((o, e) -> {
             if (e != null) {
                 op.fail(e);
                 return;
             }
-            if (userLink != null) {
-                s.getHost().clearAuthorizationContext(s, userLink);
-            }
+            s.getHost().clearAuthorizationContext(s, userPath);
             op.complete();
         });
     }
 
     /**
      * Helper method that nests a completion to clear the service host authz cache for all
-     * services that a UserGroup service query resolves to
+     * services that a UserGroup service query resolves to.
      * The nested completion will run after the operation passed in has been marked complete outside of this
-     * method
+     * method.
      * @param s service context to invoke the operation
      * @param op Operation to mark completion/failure
      * @param userGroupState UserGroup service state
      */
     public static void clearAuthzCacheForUserGroup(Service s, Operation op, UserGroupState userGroupState) {
-
-        if (!isAuthzCacheClearApplicableOperation(op)) {
-            return;
-        }
 
         op.nestCompletion((o, e) -> {
             if (e != null) {
@@ -114,18 +103,14 @@ public class AuthorizationCacheUtils {
     /**
      * Helper method that nests a completion to clear the service host authz cache for all
      * services that a Role service resolves to. A Role has a reference
-     * to a UserGroup instance which instance points to users
+     * to a UserGroup instance which points to users.
      * The nested completion will run after the operation passed in has been marked complete outside of this
-     * method
+     * method.
      * @param s service context to invoke the operation
      * @param op Operation to mark completion/failure
      * @param roleState Role service state
      */
     public static void clearAuthzCacheForRole(Service s, Operation op, RoleState roleState) {
-
-        if (!isAuthzCacheClearApplicableOperation(op)) {
-            return;
-        }
 
         op.nestCompletion((o, e) -> {
             if (e != null) {
@@ -161,17 +146,15 @@ public class AuthorizationCacheUtils {
      * services that a ResourceGroup service resolves to. A Role has a reference
      * to a ResourceGroup instance and a UserGroup instance. A single ResourceGroup
      * can be referenced by multiple Roles (and hence UserGroup instances)
+     * {@code resourceGroupPath} is retrieved from provided operation. {@code op.getUri().getPath();}
      * The nested completion will run after the operation passed in has been marked complete outside of this
      * method
      * @param s service context to invoke the operation
      * @param op Operation to mark completion/failure
-     * @param resourceGroupState ResourceGroup service state
      */
-    public static void clearAuthzCacheForResourceGroup(Service s, Operation op, ResourceGroupState resourceGroupState) {
+    public static void clearAuthzCacheForResourceGroup(Service s, Operation op) {
 
-        if (!isAuthzCacheClearApplicableOperation(op)) {
-            return;
-        }
+        String resourceGroupPath = op.getUri().getPath();
 
         op.nestCompletion((o, e) -> {
             if (e != null) {
@@ -181,14 +164,11 @@ public class AuthorizationCacheUtils {
             QueryTask queryTask = new QueryTask();
             queryTask.querySpec = new QuerySpecification();
             Query resourceGroupQuery = Builder.create()
-                    .addFieldClause(
-                            RoleState.FIELD_NAME_RESOURCE_GROUP_LINK,
-                            resourceGroupState.documentSelfLink)
+                    .addFieldClause(RoleState.FIELD_NAME_RESOURCE_GROUP_LINK, resourceGroupPath)
                     .addKindFieldClause(RoleState.class)
                     .build();
             queryTask.querySpec.options =
                     EnumSet.of(QueryTask.QuerySpecification.QueryOption.EXPAND_CONTENT);
-            queryTask.setDirect(true);
             queryTask.querySpec.query = resourceGroupQuery;
             queryTask.setDirect(true);
             Operation postOp = Operation.createPost(s, ServiceUriPaths.CORE_LOCAL_QUERY_TASKS)
@@ -232,10 +212,12 @@ public class AuthorizationCacheUtils {
     /**
      * Helper method to extract the service payload based on the type of the request and whether it
      * is replicated
+     * For PATCH request, this method does NOT provide any implementation. The caller should decide
+     * how to handle PATCH request.
+     *
      * @param request input request operation
      * @param s service against which the operation is invoked
      * @param clazz service state class
-     * @return
      */
     public static <T extends ServiceDocument> T extractBody(Operation request, Service s, Class<T> clazz) {
         T state = null;
@@ -259,7 +241,13 @@ public class AuthorizationCacheUtils {
         return state;
     }
 
-    private static boolean isAuthzCacheClearApplicableOperation(Operation op) {
+    public static boolean isAuthzCacheClearApplicableOperation(Operation op) {
+
+        // do not clear cache for GET request
+        if (op.getAction() == Action.GET) {
+            return false;
+        }
+
         // For replication requests, create(POST) comes through factory service and it is not two
         // phased.
         // For PUT/PATCH, when requests are pending, it does NOT issue explicit commit.
@@ -287,8 +275,7 @@ public class AuthorizationCacheUtils {
      * fields in the query. Any boolean clauses in the query are
      * not considered
      * @param inputQuery The input query to remove the clause
-     * @param clause The clause to remove
-     * @return
+     * @param inputClause The clause to remove
      */
     public static Query removeBooleanClause(Query inputQuery, Query inputClause) {
         if (inputQuery.booleanClauses == null || inputClause == null) {
