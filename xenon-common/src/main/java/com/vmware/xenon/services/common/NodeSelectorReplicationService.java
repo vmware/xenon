@@ -136,6 +136,8 @@ public class NodeSelectorReplicationService extends StatelessService {
 
             int sCount = countsAndStatus[0];
             int fCount = countsAndStatus[1];
+            boolean completeWithSuccess = false;
+            boolean completeWithFailure = false;
             synchronized (outboundOp) {
                 if (e != null) {
                     countsAndStatus[1] = countsAndStatus[1] + 1;
@@ -144,10 +146,17 @@ public class NodeSelectorReplicationService extends StatelessService {
                     countsAndStatus[0] = countsAndStatus[0] + 1;
                     sCount = countsAndStatus[0];
                 }
+                // to avoid a AtomicBoolean and additional allocations, and make the completion
+                // check atomic, do the count checks inside the synchronized block
+                completeWithSuccess = (sCount >= successThresholdFinal)
+                        && sCount == successThresholdFinal;
+                completeWithFailure = fCount > failureThresholdFinal
+                        || (fCount + sCount) == eligibleMemberCount;
             }
 
             if (sCount >= successThresholdFinal) {
-                if (sCount == successThresholdFinal) {
+                if (completeWithSuccess) {
+                    // this code must only be called once.
                     outboundOp.setStatusCode(Operation.STATUS_CODE_OK).complete();
                 }
                 // stop further processing, request is complete
@@ -164,7 +173,7 @@ public class NodeSelectorReplicationService extends StatelessService {
                 return;
             }
 
-            if (fCount > failureThresholdFinal || ((fCount + sCount) == eligibleMemberCount)) {
+            if (completeWithFailure) {
                 String error = String
                         .format("%s to %s failed. Success: %d,  Fail: %d, quorum: %d, failure threshold: %d",
                                 outboundOp.getAction(),
