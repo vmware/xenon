@@ -114,6 +114,7 @@ import com.vmware.xenon.common.TaskState;
 import com.vmware.xenon.common.TaskState.TaskStage;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
+import com.vmware.xenon.common.serialization.KryoSerializers;
 import com.vmware.xenon.services.common.QueryFilter.QueryFilterException;
 import com.vmware.xenon.services.common.QueryPageService.LuceneQueryPage;
 import com.vmware.xenon.services.common.QueryTask.QuerySpecification;
@@ -1538,9 +1539,15 @@ public class LuceneDocumentIndexService extends StatelessService {
             return null;
         }
 
-        ServiceDocument state = (ServiceDocument) Utils.fromDocumentBytes(
+        ServiceDocument state = (ServiceDocument) KryoSerializers.deserializeDocument(
                 binaryStateField.bytes,
                 binaryStateField.offset, binaryStateField.length);
+        if (state.documentSelfLink == null) {
+            state.documentSelfLink = link;
+        }
+        if (state.documentKind == null) {
+            state.documentKind = Utils.buildKind(state.getClass());
+        }
         return state;
     }
 
@@ -1721,8 +1728,16 @@ public class LuceneDocumentIndexService extends StatelessService {
         try {
             int count = 0;
             if (serializedDocument == null) {
-                serializedDocument = Utils.getBuffer(desc.serializedStateSizeLimit);
-                count = Utils.toBytes(s, serializedDocument, 0);
+                // avoid serialization of fields that can be reconstructed from other stored
+                // fields
+                serializedDocument = KryoSerializers.getBuffer(desc.serializedStateSizeLimit);
+                String l = s.documentSelfLink;
+                String k = s.documentKind;
+                s.documentSelfLink = null;
+                s.documentKind = null;
+                count = KryoSerializers.serializeDocument(s, serializedDocument, 0);
+                s.documentSelfLink = l;
+                s.documentKind = k;
             } else {
                 count = serializedDocument.length;
             }
