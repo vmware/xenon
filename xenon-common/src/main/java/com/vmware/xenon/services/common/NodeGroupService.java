@@ -111,7 +111,8 @@ public class NodeGroupService extends StatefulService {
          * so we have the chance to mark a non responsive peer as unavailable, and retry pending operations
          * before they expire.
          */
-        public long peerRequestTimeoutMicros = ServiceHostState.DEFAULT_OPERATION_TIMEOUT_MICROS / 3;
+        public long peerRequestTimeoutMicros = ServiceHostState.DEFAULT_OPERATION_TIMEOUT_MICROS
+                / 3;
     }
 
     public static class NodeGroupState extends ServiceDocument {
@@ -334,7 +335,8 @@ public class NodeGroupService extends StatefulService {
         if (joinBody != null && joinBody.memberGroupReference != null) {
             // set a short join operation timeout so that join retries will occur in any environment
             long joinTimeOutMicrosUtc = Utils.getNowMicrosUtc() +
-                    Math.max(TimeUnit.SECONDS.toMicros(1), getHost().getOperationTimeoutMicros() / 10);
+                    Math.max(TimeUnit.SECONDS.toMicros(1),
+                            getHost().getOperationTimeoutMicros() / 10);
             handleJoinPost(joinBody, post, joinTimeOutMicrosUtc, getState(post), null);
             return;
         }
@@ -441,7 +443,7 @@ public class NodeGroupService extends StatefulService {
                             }
                             // we will restart services to synchronize with peers on the next
                             // maintenance interval with a stable group membership
-                    });
+                        });
         sendRequest(insertSelfToPeer);
     }
 
@@ -465,7 +467,7 @@ public class NodeGroupService extends StatefulService {
                     e.toString());
             handleJoinPost(joinBody, null, expirationMicros, localState, null);
             adjustStat(STAT_NAME_JOIN_RETRY_COUNT, 1);
-        } , getHost().getMaintenanceIntervalMicros(), TimeUnit.MICROSECONDS);
+        }, getHost().getMaintenanceIntervalMicros(), TimeUnit.MICROSECONDS);
 
     }
 
@@ -512,6 +514,11 @@ public class NodeGroupService extends StatefulService {
             int total = getHost().getInitialPeerHosts().size() + 1;
             int quorum = (total / 2) + 1;
             body.membershipQuorum = Math.max(1, quorum);
+        }
+        if (getHost().getLocation() != null) {
+            logInfo("Setting node %s location to %s", body.id, getHost().getLocation());
+            body.customProperties.put(NodeState.PROPERTY_NAME_LOCATION,
+                    getHost().getLocation());
         }
         body.groupReference = UriUtils.buildPublicUri(getHost(), getSelfLink());
         body.documentSelfLink = UriUtils.buildUriPath(getSelfLink(), body.id);
