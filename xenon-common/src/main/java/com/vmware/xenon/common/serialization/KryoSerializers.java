@@ -60,6 +60,7 @@ public final class KryoSerializers {
     private static ThreadLocal<Kryo> kryoForObjectPerThreadCustom;
     private static ThreadLocal<Kryo> kryoForDocumentPerThreadCustom;
 
+    public static final long THREAD_LOCAL_BUFFER_LIMIT_BYTES = 1024 * 1024;
     private static final BufferThreadLocal bufferPerThread = new BufferThreadLocal();
 
     public static Kryo create(boolean isObjectSerializer) {
@@ -162,6 +163,10 @@ public final class KryoSerializers {
     }
 
     public static byte[] getBuffer(int capacity) {
+        if (capacity > THREAD_LOCAL_BUFFER_LIMIT_BYTES) {
+            // do not cache larger buffers
+            return new byte[capacity];
+        }
         byte[] buffer = bufferPerThread.get();
         if (buffer.length < capacity) {
             buffer = new byte[capacity];

@@ -769,8 +769,16 @@ public class Utils {
             boolean useBinary) {
         if (useBinary && source.getAction() != Action.POST) {
             try {
+                ServiceDocument s = source.getLinkedState();
+                // do not binary serialize fields that can be reconstructed on demand
+                String l = s.documentSelfLink;
+                String k = s.documentKind;
+                s.documentKind = null;
+                s.documentSelfLink = null;
                 byte[] encodedBody = Utils.encodeBody(source, source.getLinkedState(),
                         Operation.MEDIA_TYPE_APPLICATION_KRYO_OCTET_STREAM);
+                s.documentKind = k;
+                s.documentSelfLink = l;
                 source.linkSerializedState(encodedBody);
             } catch (Throwable e2) {
                 Utils.logWarning("Failure binary serializing, will fallback to JSON: %s",
@@ -891,6 +899,13 @@ public class Utils {
             if (Operation.MEDIA_TYPE_APPLICATION_KRYO_OCTET_STREAM.equals(contentType)) {
                 body = Utils.fromDocumentBytes(data, 0, data.length);
                 if (op.isFromReplication()) {
+                    ServiceDocument st = (ServiceDocument) body;
+                    if (st.documentKind == null) {
+                        st.documentKind = Utils.buildKind(st.getClass());
+                    }
+                    if (st.documentSelfLink == null) {
+                        st.documentSelfLink = op.getUri().getPath();
+                    }
                     // optimization to avoid having to serialize state again, during indexing
                     op.linkSerializedState(data);
                 }
