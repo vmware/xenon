@@ -124,6 +124,9 @@ public class VerificationHost extends ExampleServiceHost {
 
     public static final int FAST_MAINT_INTERVAL_MILLIS = 100;
 
+    public static final String LOCATION1 = "L1";
+    public static final String LOCATION2 = "L2";
+
     private volatile TestContext context;
 
     private int timeoutSeconds = 30;
@@ -148,6 +151,11 @@ public class VerificationHost extends ExampleServiceHost {
      * Command line argument indicating this is a stress test
      */
     public boolean isStressTest;
+
+    /**
+     * Command line argument indicating this is a multi-location test
+     */
+    public boolean isMultiLocationTest;
 
     /**
      * Command line argument for test duration, set for long running tests
@@ -779,8 +787,9 @@ public class VerificationHost extends ExampleServiceHost {
 
         QueryTask resultTask = tasks[0];
 
-        assertTrue(String.format("Got %d links, expected %d", resultTask.results.documentLinks.size(),
-                expectedResultCount),
+        assertTrue(
+                String.format("Got %d links, expected %d", resultTask.results.documentLinks.size(),
+                        expectedResultCount),
                 resultTask.results.documentLinks.size() == expectedResultCount);
         long end = Utils.getNowMicrosUtc();
         double delta = (end - start) / 1000000.0;
@@ -862,7 +871,8 @@ public class VerificationHost extends ExampleServiceHost {
         return responses.get(0);
     }
 
-    public <T extends ServiceDocument> T getServiceState(EnumSet<TestProperty> props, Class<T> type, URI uri) {
+    public <T extends ServiceDocument> T getServiceState(EnumSet<TestProperty> props, Class<T> type,
+            URI uri) {
         Map<URI, T> r = getServiceState(props, type, new URI[] { uri });
         return r.values().iterator().next();
     }
@@ -943,7 +953,8 @@ public class VerificationHost extends ExampleServiceHost {
      * Retrieve in parallel, state from N services. This method will block execution until responses
      * are received or a failure occurs. It is not optimized for throughput measurements
      */
-    public <T extends ServiceDocument> Map<URI, T> getServiceState(EnumSet<TestProperty> props, Class<T> type,
+    public <T extends ServiceDocument> Map<URI, T> getServiceState(EnumSet<TestProperty> props,
+            Class<T> type,
             List<Service> services) {
         URI[] uris = new URI[services.size()];
         int i = 0;
@@ -1028,7 +1039,8 @@ public class VerificationHost extends ExampleServiceHost {
         }
     }
 
-    private void doServiceUpdates(Collection<URI> serviceUris, Action action, ServiceDocument body) {
+    private void doServiceUpdates(Collection<URI> serviceUris, Action action,
+            ServiceDocument body) {
         List<Operation> ops = new ArrayList<>();
         for (URI u : serviceUris) {
             Operation update = Operation.createPost(u)
@@ -1069,7 +1081,8 @@ public class VerificationHost extends ExampleServiceHost {
         assertEquals("Invalid document version returned", doc.documentVersion, expectedVersion);
 
         String action = doc.documentUpdateAction;
-        assertEquals("Invalid document update action returned:" + action, expectedAction.name(), action);
+        assertEquals("Invalid document update action returned:" + action, expectedAction.name(),
+                action);
 
     }
 
@@ -1474,7 +1487,8 @@ public class VerificationHost extends ExampleServiceHost {
         }
 
         List<T> responses = this.sender.sendAndWait(ops, bodyType);
-        Map<URI, T> docByChildURI = responses.stream().collect(toMap(doc -> UriUtils.buildUri(factoryURI, doc.documentSelfLink), identity()));
+        Map<URI, T> docByChildURI = responses.stream().collect(
+                toMap(doc -> UriUtils.buildUri(factoryURI, doc.documentSelfLink), identity()));
         initialStates.putAll(docByChildURI);
         log("Done with %d POST requests to %s", c, factoryURI);
         return initialStates;
@@ -1669,7 +1683,7 @@ public class VerificationHost extends ExampleServiceHost {
         return this.peerHostIdToNodeState;
     }
 
-    public void scheduleSynchronizationIfAutoSyncDisabled(String selectorPath)  {
+    public void scheduleSynchronizationIfAutoSyncDisabled(String selectorPath) {
         if (this.isPeerSynchronizationEnabled()) {
             return;
         }
@@ -1685,7 +1699,7 @@ public class VerificationHost extends ExampleServiceHost {
         }
     }
 
-    public void setUpPeerHosts(int localHostCount)  {
+    public void setUpPeerHosts(int localHostCount) {
         CommandLineArgumentParser.parseFromProperties(this);
         if (this.peerNodes == null) {
             this.setUpLocalPeersHosts(localHostCount, null);
@@ -1701,9 +1715,12 @@ public class VerificationHost extends ExampleServiceHost {
         }
         final long intervalMicros = TimeUnit.MILLISECONDS.toMicros(maintIntervalMillis);
         for (int i = 0; i < localHostCount; i++) {
+            String location = this.isMultiLocationTest
+                    ? ((i < localHostCount / 2) ? LOCATION1 : LOCATION2)
+                    : null;
             run(() -> {
                 try {
-                    this.setUpLocalPeerHost(null, intervalMicros);
+                    this.setUpLocalPeerHost(null, intervalMicros, location);
                 } catch (Throwable e) {
                     failIteration(e);
                 }
@@ -1730,6 +1747,17 @@ public class VerificationHost extends ExampleServiceHost {
     public VerificationHost setUpLocalPeerHost(int port, long maintIntervalMicros,
             Collection<ServiceHost> hosts)
             throws Throwable {
+        return setUpLocalPeerHost(port, maintIntervalMicros, hosts, null);
+    }
+
+    public VerificationHost setUpLocalPeerHost(Collection<ServiceHost> hosts,
+            long maintIntervalMicros, String location) throws Throwable {
+        return setUpLocalPeerHost(0, maintIntervalMicros, hosts, location);
+    }
+
+    public VerificationHost setUpLocalPeerHost(int port, long maintIntervalMicros,
+            Collection<ServiceHost> hosts, String location)
+            throws Throwable {
 
         VerificationHost h = VerificationHost.create(port);
 
@@ -1755,6 +1783,9 @@ public class VerificationHost extends ExampleServiceHost {
             h.setCertificateFileReference(this.getState().certificateFileReference);
             h.setPrivateKeyFileReference(this.getState().privateKeyFileReference);
             h.setPrivateKeyPassphrase(this.getState().privateKeyPassphrase);
+            if (location != null) {
+                h.setLocation(location);
+            }
 
             h.start();
             h.setMaintenanceIntervalMicros(maintIntervalMicros);
@@ -1853,7 +1884,8 @@ public class VerificationHost extends ExampleServiceHost {
         createCustomNodeGroupOnPeers(customGroupName, null);
     }
 
-    public void createCustomNodeGroupOnPeers(String customGroupName, Map<URI, NodeState> selfState) {
+    public void createCustomNodeGroupOnPeers(String customGroupName,
+            Map<URI, NodeState> selfState) {
         if (selfState == null) {
             selfState = new HashMap<>();
         }
@@ -1869,7 +1901,8 @@ public class VerificationHost extends ExampleServiceHost {
         this.sender.sendAndWait(ops);
     }
 
-    private Operation getCreateCustomNodeGroupOperation(String customGroupName, URI nodeGroupFactoryUri,
+    private Operation getCreateCustomNodeGroupOperation(String customGroupName,
+            URI nodeGroupFactoryUri,
             NodeState selfState) {
         NodeGroupState body = new NodeGroupState();
         body.documentSelfLink = customGroupName;
@@ -2020,7 +2053,7 @@ public class VerificationHost extends ExampleServiceHost {
     }
 
     public void waitForNodeGroupIsAvailableConvergence(String nodeGroupPath,
-            Collection<URI> nodeGroupUris)  {
+            Collection<URI> nodeGroupUris) {
         if (nodeGroupPath == null) {
             nodeGroupPath = ServiceUriPaths.DEFAULT_NODE_GROUP;
         }
@@ -2079,10 +2112,10 @@ public class VerificationHost extends ExampleServiceHost {
      * Sample node group URI: http://127.0.0.1:8000/core/node-groups/default
      */
     public void waitForNodeGroupConvergence(Collection<URI> nodeGroupUris,
-                                            int healthyMemberCount,
-                                            Integer totalMemberCount,
-                                            Map<URI, EnumSet<NodeOption>> expectedOptionsPerNodeGroupUri,
-                                            boolean waitForTimeSync) {
+            int healthyMemberCount,
+            Integer totalMemberCount,
+            Map<URI, EnumSet<NodeOption>> expectedOptionsPerNodeGroupUri,
+            boolean waitForTimeSync) {
 
         Duration timeout = Duration.ofMillis(FAST_MAINT_INTERVAL_MILLIS * 2);
         Duration checkInterval = Duration.ofMillis(FAST_MAINT_INTERVAL_MILLIS * 2);
@@ -2092,7 +2125,8 @@ public class VerificationHost extends ExampleServiceHost {
                     .map(UriUtils::buildExpandLinksQueryUri)
                     .map(Operation::createGet)
                     .collect(toList());
-            List<NodeGroupState> nodeGroupStats = this.sender.sendAndWait(nodeGroupGetOps, NodeGroupState.class);
+            List<NodeGroupState> nodeGroupStats = this.sender.sendAndWait(nodeGroupGetOps,
+                    NodeGroupState.class);
 
             for (NodeGroupState nodeGroupState : nodeGroupStats) {
                 TestContext testContext = new TestContext(1, timeout);
@@ -2110,7 +2144,6 @@ public class VerificationHost extends ExampleServiceHost {
                     return false;
                 }
             }
-
 
             // To be compatible with old behavior, populate peerHostIdToNodeState same way as before
             for (NodeGroupState nodeGroupStat : nodeGroupStats) {
@@ -2141,7 +2174,8 @@ public class VerificationHost extends ExampleServiceHost {
                 // in-memory nodes since this method requires ServiceHost.
                 // This is a limitation converting VerificationHost to use NodeGroupUtils
                 if (host.isPresent()) {
-                    boolean isAvailable = NodeGroupUtils.isNodeGroupAvailable(host.get(), nodeGroupState);
+                    boolean isAvailable = NodeGroupUtils.isNodeGroupAvailable(host.get(),
+                            nodeGroupState);
                     if (!isAvailable) {
                         return false;
                     }
@@ -2315,7 +2349,7 @@ public class VerificationHost extends ExampleServiceHost {
 
     public <T extends ServiceDocument> void validateDocumentPartitioning(
             Map<URI, T> provisioningTasks,
-            Class<T> type)  {
+            Class<T> type) {
         Map<String, Map<String, Long>> taskToOwnerCount = new HashMap<>();
 
         for (URI baseHostURI : getNodeGroupMap().keySet()) {
@@ -2399,6 +2433,14 @@ public class VerificationHost extends ExampleServiceHost {
         }
     }
 
+    public boolean isMultiLocationTest() {
+        return this.isMultiLocationTest;
+    }
+
+    public void setMultiLocationTest(boolean isMultiLocationTest) {
+        this.isMultiLocationTest = isMultiLocationTest;
+    }
+
     public void toggleServiceOptions(URI serviceUri, EnumSet<ServiceOption> optionsToEnable,
             EnumSet<ServiceOption> optionsToDisable) {
 
@@ -2418,8 +2460,10 @@ public class VerificationHost extends ExampleServiceHost {
         this.sender.sendAndWait(Operation.createPatch(configUri).setBody(body));
 
         // verify new operation limit is set
-        ServiceConfiguration config = this.sender.sendAndWait(Operation.createGet(configUri), ServiceConfiguration.class);
-        assertEquals("Invalid queue limit", body.operationQueueLimit, (Integer) config.operationQueueLimit);
+        ServiceConfiguration config = this.sender.sendAndWait(Operation.createGet(configUri),
+                ServiceConfiguration.class);
+        assertEquals("Invalid queue limit", body.operationQueueLimit,
+                (Integer) config.operationQueueLimit);
     }
 
     public void toggleNegativeTestMode(boolean enable) {
@@ -2639,7 +2683,7 @@ public class VerificationHost extends ExampleServiceHost {
     }
 
     public void updateServiceOptions(Collection<String> selfLinks,
-                                     ServiceConfigUpdateRequest cfgBody) {
+            ServiceConfigUpdateRequest cfgBody) {
 
         List<Operation> ops = new ArrayList<>();
         for (String link : selfLinks) {
@@ -2718,7 +2762,8 @@ public class VerificationHost extends ExampleServiceHost {
      *
      * @param userServicePath user document link
      */
-    public AuthorizationContext assumeIdentity(String userServicePath) throws GeneralSecurityException {
+    public AuthorizationContext assumeIdentity(String userServicePath)
+            throws GeneralSecurityException {
         return assumeIdentity(userServicePath, null);
     }
 
@@ -3076,7 +3121,8 @@ public class VerificationHost extends ExampleServiceHost {
         }
 
         List<TaskState.TaskStage> finalTaskStages = Arrays
-                .asList(TaskState.TaskStage.CANCELLED, TaskState.TaskStage.FAILED, TaskState.TaskStage.FINISHED);
+                .asList(TaskState.TaskStage.CANCELLED, TaskState.TaskStage.FAILED,
+                        TaskState.TaskStage.FINISHED);
 
         String error = String.format("Task did not reach expected state %s", expectedStage);
         Object[] r = new Object[1];

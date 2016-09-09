@@ -223,6 +223,7 @@ public class TestNodeGroupService {
     private boolean isAuthorizationEnabled = false;
     private HttpScheme replicationUriScheme;
     private boolean skipAvailabilityChecks = false;
+    private boolean isMultiLocationTest = false;
 
     private void setUp(int localHostCount) throws Throwable {
         if (this.host != null) {
@@ -258,6 +259,7 @@ public class TestNodeGroupService {
         CommandLineArgumentParser.parseFromProperties(this.host);
         this.host.setStressTest(this.host.isStressTest);
         this.host.setPeerSynchronizationEnabled(this.isPeerSynchronizationEnabled);
+        this.host.setMultiLocationTest(this.isMultiLocationTest);
         this.host.setUpPeerHosts(localHostCount);
 
         for (VerificationHost h1 : this.host.getInProcessHostMap().values()) {
@@ -918,7 +920,7 @@ public class TestNodeGroupService {
                         ServiceStats currentStats = currentEntry.getValue();
                         ServiceStat previousMaintStat = previousStats == null ? new ServiceStat()
                                 : previousStats.entries
-                                .get(Service.STAT_NAME_MAINTENANCE_COUNT);
+                                        .get(Service.STAT_NAME_MAINTENANCE_COUNT);
                         double previousValue = previousMaintStat == null ? 0L
                                 : previousMaintStat.latestValue;
                         ServiceStat maintStat = currentStats.entries
@@ -1163,6 +1165,49 @@ public class TestNodeGroupService {
         }
 
         // do some updates with strong quorum enabled
+        int expectedVersion = this.updateCount;
+        childStates = doStateUpdateReplicationTest(Action.PATCH, this.serviceCount,
+                this.updateCount,
+                expectedVersion,
+                this.exampleStateUpdateBodySetter,
+                this.exampleStateConvergenceChecker,
+                childStates);
+    }
+
+    @Test
+    public void replicationWithQuorumAfterAbruptNodeStopMultiLocation()
+            throws Throwable {
+        // we need 6 nodes, 3 in each location
+        this.nodeCount = 6;
+
+        // TODO disable automatic synchronization until
+        // https://www.pivotaltracker.com/story/show/126248293 is fixed
+        this.isPeerSynchronizationEnabled = false;
+        this.skipAvailabilityChecks = true;
+        this.isMultiLocationTest = true;
+
+        if (this.host == null) {
+            // create node group, join nodes and set local majority quorum
+            setUp(this.nodeCount);
+            this.host.joinNodesAndVerifyConvergence(this.host.getPeerCount());
+            this.host.setNodeGroupQuorum(2);
+        }
+
+        // create some documents
+        Map<String, ExampleServiceState> childStates = doExampleFactoryPostReplicationTest(
+                this.serviceCount, null, null);
+        updateExampleServiceOptions(childStates);
+
+        // stop hosts in location "L2"
+        for (Entry<URI, VerificationHost> e : this.host.getInProcessHostMap().entrySet()) {
+            VerificationHost h = e.getValue();
+            if (h.getLocation().equals(VerificationHost.LOCATION2)) {
+                this.expectedFailedHosts.add(e.getKey());
+                this.host.stopHost(h);
+            }
+        }
+
+        // do some updates
         int expectedVersion = this.updateCount;
         childStates = doStateUpdateReplicationTest(Action.PATCH, this.serviceCount,
                 this.updateCount,
@@ -3264,8 +3309,8 @@ public class TestNodeGroupService {
                 }
 
                 // retrieve the document state directly from each service
-                Map<URI, ServiceDocument> childDocs =
-                        this.host.getServiceState(null, ServiceDocument.class, childUris);
+                Map<URI, ServiceDocument> childDocs = this.host.getServiceState(null,
+                        ServiceDocument.class, childUris);
 
                 List<URI> childStatUris = new ArrayList<>();
                 for (ServiceDocument state : childDocs.values()) {

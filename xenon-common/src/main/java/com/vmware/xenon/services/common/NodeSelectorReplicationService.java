@@ -15,6 +15,8 @@ package com.vmware.xenon.services.common;
 
 import java.net.URI;
 import java.util.Collection;
+import java.util.Objects;
+import java.util.stream.Collectors;
 
 import com.vmware.xenon.common.NodeSelectorService;
 import com.vmware.xenon.common.NodeSelectorService.SelectAndForwardRequest;
@@ -73,11 +75,15 @@ public class NodeSelectorReplicationService extends StatelessService {
         Collection<NodeState> selectedNodes = rsp.selectedNodes;
         int eligibleMemberCount = selectedNodes.size();
 
+        // location is usually null, unless set explicitly
+        String location = getHost().getLocation();
+
         // success threshold is determined based on the following precedence:
         // 1. request replication quorum header (if exists)
         // 2. group membership quorum (in case of OWNER_SELECTION)
         // 3. at least one remote node (in case one exists)
         int successThreshold;
+        int failureThreshold;
 
         String rplQuorumValue = outboundOp.getRequestHeader(Operation.REPLICATION_QUORUM_HEADER);
         if (rplQuorumValue != null) {
@@ -100,35 +106,86 @@ public class NodeSelectorReplicationService extends StatelessService {
                 return;
             }
 
-            replicateUpdateToNodes(outboundOp, selectedNodes, successThreshold);
+            failureThreshold = (eligibleMemberCount - successThreshold) + 1;
+            replicateUpdateToNodes(outboundOp, selectedNodes, successThreshold, failureThreshold,
+                    location);
             return;
         }
 
         if (req.serviceOptions.contains(ServiceOption.OWNER_SELECTION)) {
             // replicate using group membership quorum
-            successThreshold = Math.min(eligibleMemberCount, selfNode.membershipQuorum);
-            replicateUpdateToNodes(outboundOp, selectedNodes, successThreshold);
+            if (location == null) {
+                successThreshold = Math.min(eligibleMemberCount, selfNode.membershipQuorum);
+                failureThreshold = (eligibleMemberCount - successThreshold) + 1;
+            } else {
+                int localNodeCount = getNodeCountInLocation(location, selectedNodes);
+                successThreshold = Math.min(localNodeCount, selfNode.membershipQuorum);
+                failureThreshold = (localNodeCount - successThreshold) + 1;
+            }
+            replicateUpdateToNodes(outboundOp, selectedNodes, successThreshold, failureThreshold,
+                    location);
             return;
         }
 
         // When quorum is not required, succeed when we replicate to at least one remote node,
         // or, if only local node is available, succeed immediately.
         successThreshold = Math.min(2, eligibleMemberCount - 1);
-        replicateUpdateToNodes(outboundOp, selectedNodes, successThreshold);
+        failureThreshold = (eligibleMemberCount - successThreshold) + 1;
+        replicateUpdateToNodes(outboundOp, selectedNodes, successThreshold, failureThreshold,
+                location);
+    }
+
+    /**
+     * Returns the number of nodes in the specified location
+     */
+    private int getNodeCountInLocation(String location,
+            Collection<NodeState> nodes) {
+        return (int) nodes.stream()
+                .filter(ns -> Objects.equals(location,
+                        ns.customProperties.get(NodeState.PROPERTY_NAME_LOCATION)))
+                .peek(ns -> logInfo("Node in location %s: %s (groupReference: %s)", location,
+                        ns.id, ns.groupReference))
+                .count();
+    }
+
+    /**
+     * Returns true if the specified response is from one of the specified nodes
+     * in the specified location
+     */
+    private boolean isResponseFromLocation(Operation remotePeerResponse, String location,
+            Collection<NodeState> nodes) {
+        if (remotePeerResponse == null) {
+            return true;
+        }
+
+        URI remotePeerService = remotePeerResponse.getUri();
+        return !nodes.stream()
+                .filter(ns -> Objects.equals(location,
+                        ns.customProperties.get(NodeState.PROPERTY_NAME_LOCATION)))
+                .filter(ns -> ns.groupReference.getHost().equals(remotePeerService.getHost())
+                        && ns.groupReference.getPort() == remotePeerService.getPort())
+                .collect(Collectors.toList()).isEmpty();
     }
 
     private void replicateUpdateToNodes(Operation outboundOp,
             Collection<NodeState> nodes,
-            int successThreshold) {
-        int eligibleMemberCount = nodes.size();
+            int successThreshold,
+            int failureThreshold,
+            String location) {
         final int successThresholdFinal = successThreshold;
-        final int failureThresholdFinal = (eligibleMemberCount - successThreshold) + 1;
+        final int failureThresholdFinal = failureThreshold;
         // Index 0 - success count
         // index 1 - failure count
         // index 2 - most recent failure status
         int[] countsAndStatus = new int[3];
 
         CompletionHandler c = (o, e) -> {
+            // if location is set we require success from nodes in the same location;
+            // all other responses are ignored for success calculation purposes
+            if (location != null && !isResponseFromLocation(o, location, nodes)) {
+                return;
+            }
+
             if (e == null && o != null
                     && o.getStatusCode() >= Operation.STATUS_CODE_FAILURE_THRESHOLD) {
                 e = new IllegalStateException("Request failed: " + o.toString());
