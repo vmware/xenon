@@ -2,6 +2,12 @@
 
 ## 0.9.5-SNAPSHOT
 
+* Add host "location" property, set via system property xenon.NodeState.location.
+  In case of OWNER_SELECTION, if the owning node is part of a location, quorum
+  is required among hosts in the same location. This is helpful in multi-geo
+  deployment, where strong consistency within a region (with eventual consistency
+  across regions) is required.
+   
 * Add QueryOption.EXPAND_BUILTIN_CONTENT_ONLY, used by synchronization code for
   state comparison
 

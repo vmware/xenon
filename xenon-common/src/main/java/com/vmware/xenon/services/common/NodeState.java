@@ -15,6 +15,8 @@ package com.vmware.xenon.services.common;
 
 import java.net.URI;
 import java.util.EnumSet;
+import java.util.HashMap;
+import java.util.Map;
 
 import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.Utils;
@@ -22,6 +24,8 @@ import com.vmware.xenon.common.Utils;
 public class NodeState extends ServiceDocument {
     public static final String PROPERTY_NAME_MEMBERSHIP_QUORUM = Utils.PROPERTY_NAME_PREFIX
             + "NodeState.membershipQuorum";
+    public static final String PROPERTY_NAME_LOCATION = Utils.PROPERTY_NAME_PREFIX
+            + "NodeState.location";
 
     public enum NodeStatus {
         /**
@@ -83,6 +87,11 @@ public class NodeState extends ServiceDocument {
      * and synchronization
      */
     public int membershipQuorum;
+
+    /**
+     * Bag of additional properties, like {@link #PROPERTY_NAME_LOCATION}
+     */
+    public Map<String, String> customProperties = new HashMap<>();
 
     public static boolean isUnAvailable(NodeState ns) {
         return isUnAvailable(ns, NodeOption.OBSERVER);
