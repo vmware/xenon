@@ -206,9 +206,13 @@ public class NodeGroupUtils {
             if (NodeState.isUnAvailable(ns)) {
                 continue;
             }
+
+            long expirationMicros = Math.min(
+                    Utils.getNowMicrosUtc() + ngs.config.peerRequestTimeoutMicros,
+                    parentOp.getExpirationMicrosUtc());
             Operation peerOp = Operation.createGet(ns.groupReference)
                     .transferRefererFrom(parentOp)
-                    .setExpiration(parentOp.getExpirationMicrosUtc());
+                    .setExpiration(expirationMicros);
             if (host.getId().equals(ns.id)) {
                 // optimization, use in process fast path for self host
                 peerOp.setUri(UriUtils.buildUri(host.getUri(), ns.groupReference.getPath()));
