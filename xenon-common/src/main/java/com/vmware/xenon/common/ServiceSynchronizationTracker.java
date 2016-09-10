@@ -102,26 +102,14 @@ class ServiceSynchronizationTracker {
      * Infrastructure use only. Invoked by a factory service to either start or synchronize
      * a child service
      */
-    void startOrSynchService(Operation post, Service child, NodeGroupState ngs) {
+    void startOrSynchService(Operation post, Service child) {
         String path = post.getUri().getPath();
         // not a thread safe check, but startService() will do the right thing
         Service s = this.host.findService(path);
 
-        boolean skipSynch = false;
-        if (ngs == null) {
-            // Only replicated services will supply node group state. Others do not need to
-            // synchronize
-            skipSynch = true;
-        }
-
         if (s == null) {
             post.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_VERSION_CHECK);
             this.host.startService(post, child);
-            return;
-        }
-
-        if (skipSynch) {
-            post.complete();
             return;
         }
 
