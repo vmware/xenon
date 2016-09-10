@@ -19,16 +19,12 @@ import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.CancellationException;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
 
 import com.vmware.xenon.common.NodeSelectorService.SelectOwnerResponse;
 import com.vmware.xenon.common.Operation.CompletionHandler;
-import com.vmware.xenon.common.Service.ServiceOption;
 import com.vmware.xenon.common.ServiceDocumentDescription.PropertyDescription;
 import com.vmware.xenon.common.UriUtils.ForwardingTarget;
-import com.vmware.xenon.services.common.NodeGroupService.NodeGroupState;
+import com.vmware.xenon.services.common.NodeGroupBroadcastResponse;
 import com.vmware.xenon.services.common.QueryTask;
 import com.vmware.xenon.services.common.QueryTask.QuerySpecification.QueryOption;
 import com.vmware.xenon.services.common.QueryTaskUtils;
@@ -41,13 +37,6 @@ import com.vmware.xenon.services.common.ServiceUriPaths;
  * respond to the sender
  */
 public abstract class FactoryService extends StatelessService {
-
-    static class SynchronizationContext {
-        SelectOwnerResponse originalSelection;
-        QueryTask queryTask;
-        Operation maintOp;
-        public URI nextPageReference;
-    }
 
     /**
      * Creates a factory service instance that starts the specified child service
@@ -184,226 +173,53 @@ public abstract class FactoryService extends StatelessService {
             return;
         }
 
-        if (!ServiceHost.isServiceIndexed(this)) {
-            setAvailable(true);
-            startPost.complete();
-            return;
-        }
+        String path = UriUtils.buildUriPath(
+                SynchronizationTaskService.FACTORY_LINK, this.getSelfLink());
 
-        // complete factory start POST immediately. Asynchronously query the index and start
-        // child services. Requests to a child not yet loaded will be queued by the framework.
-        Operation clonedOp = startPost.clone();
-        startPost.complete();
-
-        clonedOp.setCompletion((o, e) -> {
-            if (e != null && !getHost().isStopping()) {
-                logWarning("Failure querying index for all child services: %s", e.getMessage());
-                return;
-            }
-            setAvailable(true);
-            logFine("Finished self query for child services");
-        });
-
-        if (!this.childOptions.contains(ServiceOption.REPLICATION)) {
-            SynchronizationContext ctx = new SynchronizationContext();
-            ctx.originalSelection = null;
-            ctx.maintOp = clonedOp;
-            startOrSynchronizeChildServices(ctx);
-            return;
-        }
-        // when the node group becomes available, the maintenance handler will initiate
-        // service start and synchronization
-    }
-
-    private void startOrSynchronizeChildServices(SynchronizationContext ctx) {
-        if (this.childOptions.contains(ServiceOption.ON_DEMAND_LOAD)) {
-            ctx.maintOp.complete();
-            return;
-        }
-
-        QueryTask queryTask = buildChildQueryTask();
-        ctx.queryTask = queryTask;
-        queryForChildren(ctx);
-    }
-
-    protected void queryForChildren(SynchronizationContext ctx) {
-        URI queryFactoryUri = UriUtils.buildUri(this.getHost(), ServiceUriPaths.CORE_QUERY_TASKS);
-        // check with the document store if any documents exist for services
-        // under our URI name space. If they do, we need to re-instantiate these
-        // services by issuing self posts
-        Operation queryPost = Operation
-                .createPost(queryFactoryUri)
-                .setBody(ctx.queryTask)
+        // Create a place-holder Synchronization-Task for this factory service
+        Operation post = Operation
+                .createPost(UriUtils.buildUri(this.getHost(), path))
+                .setBody(createSynchronizationTaskState(null))
                 .setCompletion((o, e) -> {
-                    if (getHost().isStopping()) {
-                        ctx.maintOp.fail(new CancellationException("host is stopping"));
-                        return;
-                    }
-
                     if (e != null) {
-                        if (!getHost().isStopping()) {
-                            logWarning("Query failed with %s", e.toString());
-                        }
-                        ctx.maintOp.fail(e);
+                        logSevere(e);
+                        startPost.fail(e);
                         return;
                     }
 
-                    ServiceDocumentQueryResult rsp = o.getBody(QueryTask.class).results;
-
-                    if (rsp == null || rsp.nextPageLink == null) {
-                        ctx.maintOp.complete();
+                    if (!ServiceHost.isServiceIndexed(this)) {
+                        setAvailable(true);
+                        startPost.complete();
                         return;
                     }
 
-                    ctx.nextPageReference = UriUtils.buildUri(queryFactoryUri, rsp.nextPageLink);
-                    processChildQueryPage(ctx, true);
+                    // complete factory start POST immediately. Asynchronously
+                    // kick-off the synchronization-task to load all child
+                    // services. Requests to a child not yet loaded will be
+                    // queued by the framework.
+                    Operation clonedOp = startPost.clone();
+                    startPost.complete();
+
+                    if (!this.childOptions.contains(ServiceOption.REPLICATION)) {
+                        clonedOp.setCompletion((op, t) -> {
+                            if (t != null && !getHost().isStopping()) {
+                                logWarning("Failure in kicking-off synchronization-task: %s", t.getMessage());
+                                return;
+                            }
+                            setAvailable(true);
+                            logFine("Synchronization-task completed for child services");
+                        });
+
+                        startFactorySynchronizationTask(clonedOp, null);
+                        return;
+                    }
+                    // when the node group becomes available, the maintenance handler will initiate
+                    // service start and synchronization
                 });
 
-        sendRequest(queryPost);
-    }
-
-    private QueryTask buildChildQueryTask() {
-        /*
-        Use QueryTask to compute all the documents that match
-        1) documentSelfLink to <FactorySelfLink>/*
-        2) documentKind to <stateType>
-        */
-        QueryTask queryTask = new QueryTask();
-        queryTask.querySpec = new QueryTask.QuerySpecification();
-
-        queryTask.taskInfo.isDirect = true;
-
-        QueryTask.Query kindClause;
-        QueryTask.Query uriPrefixClause;
-
-        uriPrefixClause = new QueryTask.Query()
-                .setTermPropertyName(ServiceDocument.FIELD_NAME_SELF_LINK)
-                .setTermMatchType(QueryTask.QueryTerm.MatchType.WILDCARD)
-                .setTermMatchValue(
-                        getSelfLink() + UriUtils.URI_PATH_CHAR + UriUtils.URI_WILDCARD_CHAR);
-        queryTask.querySpec.query.addBooleanClause(uriPrefixClause);
-
-        kindClause = new QueryTask.Query()
-                .setTermPropertyName(ServiceDocument.FIELD_NAME_KIND)
-                .setTermMatchValue(Utils.buildKind(this.getStateType()));
-
-        queryTask.querySpec.query.addBooleanClause(kindClause);
-
-        // set timeout based on peer synchronization upper limit
-        long timeoutMicros = TimeUnit.SECONDS.toMicros(
-                getHost().getPeerSynchronizationTimeLimitSeconds());
-        timeoutMicros = Math.max(timeoutMicros, getHost().getOperationTimeoutMicros());
-        queryTask.documentExpirationTimeMicros = Utils.getNowMicrosUtc() + timeoutMicros;
-
-        // The factory instance on this host is owner, so its responsible for getting the child links
-        // from all peers. Use the broadcast query task to achieve this, since it will join
-        // results
-        queryTask.querySpec.options = EnumSet.of(QueryOption.BROADCAST);
-
-        // use the same selector as the one we are associated with so it goes to the
-        // proper node group
-        queryTask.nodeSelectorLink = getPeerNodeSelectorPath();
-
-        // process child services in limited numbers, set query result limit
-        queryTask.querySpec.resultLimit = this.selfQueryResultLimit;
-        return queryTask;
-    }
-
-    /**
-     * Retrieves a page worth of results for child service links and restarts them
-     */
-    private void processChildQueryPage(SynchronizationContext ctx, boolean verifyOwner) {
-        if (ctx.nextPageReference == null) {
-            ctx.maintOp.complete();
-            return;
-        }
-
-        if (getHost().isStopping()) {
-            ctx.maintOp.fail(new CancellationException());
-            return;
-        }
-
-        if (verifyOwner && hasOption(ServiceOption.REPLICATION)) {
-            verifySynchronizationOwner(ctx);
-            return;
-        }
-
-        CompletionHandler c = (o, e) -> {
-            if (e != null) {
-                if (!getHost().isStopping()) {
-                    logWarning("Failure retrieving query results from %s: %s",
-                            ctx.nextPageReference,
-                            e.toString());
-                }
-                ctx.maintOp.fail(new IllegalStateException(
-                        "failure retrieving query page results"));
-                return;
-            }
-
-            ServiceDocumentQueryResult rsp = o.getBody(QueryTask.class).results;
-            if (rsp.documentCount == 0 || rsp.documentLinks.isEmpty()) {
-                ctx.maintOp.complete();
-                return;
-            }
-            synchronizeChildrenInQueryPage(ctx, rsp);
-        };
-        sendRequest(Operation.createGet(ctx.nextPageReference).setCompletion(c));
-    }
-
-    private void synchronizeChildrenInQueryPage(SynchronizationContext ctx,
-            ServiceDocumentQueryResult rsp) {
-        if (getProcessingStage() == ProcessingStage.STOPPED) {
-            ctx.maintOp.fail(new CancellationException());
-            return;
-        }
-        ServiceMaintenanceRequest smr = null;
-        if (ctx.maintOp.hasBody()) {
-            smr = ctx.maintOp.getBody(ServiceMaintenanceRequest.class);
-        }
-        AtomicInteger pendingStarts = new AtomicInteger(rsp.documentLinks.size());
-        // track child service request in parallel, passing a single parent operation
-        CompletionHandler c = (so, se) -> {
-            int r = pendingStarts.decrementAndGet();
-            if (se != null && !getHost().isStopping()) {
-                logWarning("Restart for children failed: %s", se.getMessage());
-            }
-
-            if (getHost().isStopping()) {
-                ctx.maintOp.fail(new CancellationException());
-                return;
-            }
-
-            if (r != 0) {
-                return;
-            }
-
-            ctx.nextPageReference = rsp.nextPageLink == null ? null : UriUtils.buildUri(
-                    ctx.nextPageReference, rsp.nextPageLink);
-            processChildQueryPage(ctx, true);
-        };
-
-        for (String link : rsp.documentLinks) {
-            if (getHost().isStopping()) {
-                ctx.maintOp.fail(new CancellationException());
-                return;
-            }
-
-            Operation post = Operation.createPost(this, link)
-                    .setCompletion(c)
-                    .setReferer(getUri());
-            startOrSynchChildService(link, post, smr);
-        }
-    }
-
-    private void startOrSynchChildService(String link, Operation post, ServiceMaintenanceRequest smr) {
-        try {
-            Service child = createChildService();
-            NodeGroupState ngs = smr != null ? smr.nodeGroupState : null;
-            getHost().startOrSynchService(post, child, ngs);
-        } catch (Throwable e1) {
-            logSevere(e1);
-            post.fail(e1);
-        }
+        SynchronizationTaskService service = SynchronizationTaskService
+                .create(() -> createChildServiceSafe());
+        this.getHost().startService(post, service);
     }
 
     /**
@@ -982,7 +798,7 @@ public abstract class FactoryService extends StatelessService {
 
     @Override
     public void handleNodeGroupMaintenance(Operation maintOp) {
-        if (!hasOption(ServiceOption.REPLICATION)) {
+        if (!this.childOptions.contains(ServiceOption.REPLICATION)) {
             maintOp.complete();
             return;
         }
@@ -1011,80 +827,25 @@ public abstract class FactoryService extends StatelessService {
                 return;
             }
             SelectOwnerResponse rsp = o.getBody(SelectOwnerResponse.class);
-            if (rsp.isLocalHostOwner == false) {
+            if (!rsp.isLocalHostOwner) {
                 // We do not need to do anything
                 maintOp.complete();
                 return;
             }
 
             if (rsp.availableNodeCount > 1) {
-                logInfo("Elected owner on %s, starting synch (%d)", getHost().getId(),
-                        rsp.availableNodeCount);
+                verifyFactoryOwnership(maintOp, rsp);
+                return;
             }
 
-            SynchronizationContext ctx = new SynchronizationContext();
-            ctx.originalSelection = rsp;
-            ctx.maintOp = maintOp;
-            synchronizeChildServicesAsOwner(ctx);
+            synchronizeChildServicesAsOwner(maintOp, rsp.membershipUpdateTimeMicros);
         });
 
         getHost().selectOwner(this.nodeSelectorLink, this.getSelfLink(), selectOwnerOp);
     }
 
-    /**
-     * Invoked per query result page to check if should continue with synchronization.
-     * Node group might have changed and we might no longer be the owner.
-     *
-     * This check is mostly for optimization: By interrupting synchronization
-     * when a new owner is selected for this factory self link we avoid collision of PUT/POSTs
-     * on the child service, from two different factories synchronizing it. In theory, its benign, since
-     * the child should reject anything with the wrong epoch.
-     *
-     * The correctness issue is that the stateless factory is not using the default consensus approach
-     * of propose, learn, decide before it kicks of synchronization. It relies on the node group selection
-     * to produce the same owner, across all nodes, which happens only when the group is stable
-     * This should be replaced with a "synchronization" task and a POST to a dedicated synchronization
-     * factory in the future
-     *
-     * https://www.pivotaltracker.com/story/show/116784577
-     *
-     */
-    private void verifySynchronizationOwner(SynchronizationContext ctx) {
-        OperationContext opContext = OperationContext.getOperationContext();
-        Operation selectOwnerOp = ctx.maintOp.clone().setExpiration(Utils.getNowMicrosUtc()
-                + getHost().getOperationTimeoutMicros());
-        selectOwnerOp
-                .setCompletion((o, e) -> {
-                    OperationContext.restoreOperationContext(opContext);
-                    if (e != null) {
-                        ctx.maintOp.fail(e);
-                        return;
-                    }
-
-                    SelectOwnerResponse rsp = o.getBody(SelectOwnerResponse.class);
-
-
-                    if (rsp.availableNodeCount != ctx.originalSelection.availableNodeCount
-                            || rsp.membershipUpdateTimeMicros != ctx.originalSelection.membershipUpdateTimeMicros) {
-                        logWarning("Membership changed, aborting synch");
-                        ctx.maintOp.fail(new CancellationException(
-                                "aborted due to node group change"));
-                        return;
-                    }
-
-                    if (rsp.isLocalHostOwner == false) {
-                        logWarning("No longer owner, aborting synch. New owner %s", rsp.ownerNodeId);
-                        ctx.maintOp.fail(new CancellationException("aborted due to owner change"));
-                        return;
-                    }
-                    processChildQueryPage(ctx, false);
-                });
-
-        getHost().selectOwner(this.nodeSelectorLink, this.getSelfLink(), selectOwnerOp);
-    }
-
-    private void synchronizeChildServicesAsOwner(SynchronizationContext ctx) {
-        ctx.maintOp.nestCompletion((o, e) -> {
+    private void synchronizeChildServicesAsOwner(Operation maintOp, long membershipUpdateTimeMicros) {
+        maintOp.nestCompletion((o, e) -> {
             if (e != null) {
                 logWarning("synch failed: %s", e.toString());
             } else {
@@ -1093,9 +854,92 @@ public abstract class FactoryService extends StatelessService {
                 // the available stat does not prevent the runtime from routing requests to this service
                 setAvailable(true);
             }
-            ctx.maintOp.complete();
+            maintOp.complete();
         });
-        startOrSynchronizeChildServices(ctx);
+        startFactorySynchronizationTask(maintOp, membershipUpdateTimeMicros);
+    }
+
+    private void startFactorySynchronizationTask(Operation parentOp, Long membershipUpdateTimeMicros) {
+        if (this.childOptions.contains(ServiceOption.ON_DEMAND_LOAD)) {
+            parentOp.complete();
+            return;
+        }
+
+        SynchronizationTaskService.State task = createSynchronizationTaskState(
+                membershipUpdateTimeMicros);
+        Operation post = Operation
+                .createPost(this, ServiceUriPaths.SYNCHRONIZATION_TASKS)
+                .setBody(task)
+                .setCompletion((o, e) -> {
+                    if (e != null) {
+                        parentOp.fail(e);
+                        return;
+                    }
+                    parentOp.complete();
+                });
+        sendRequest(post);
+    }
+
+    private SynchronizationTaskService.State createSynchronizationTaskState(
+            Long membershipUpdateTimeMicros) {
+        SynchronizationTaskService.State task = new SynchronizationTaskService.State();
+        task.documentSelfLink = this.getSelfLink();
+        task.factorySelfLink = this.getSelfLink();
+        task.factoryStateKind = Utils.buildKind(this.getStateType());
+        task.membershipUpdateTimeMicros = membershipUpdateTimeMicros;
+        task.nodeSelectorLink = this.nodeSelectorLink;
+        task.queryResultLimit = SELF_QUERY_RESULT_LIMIT;
+        task.taskInfo = TaskState.create();
+        task.taskInfo.isDirect = true;
+        return task;
+    }
+
+    private void verifyFactoryOwnership(Operation maintOp, SelectOwnerResponse ownerResponse) {
+        // Local node thinks it's the owner. Let's confirm that
+        // majority of the nodes in the node-group
+        NodeSelectorService.SelectAndForwardRequest request =
+                new NodeSelectorService.SelectAndForwardRequest();
+        request.key = this.getSelfLink();
+
+        Operation broadcastSelectOp = Operation
+                .createPost(UriUtils.buildUri(this.getHost(), this.nodeSelectorLink))
+                .setReferer(this.getHost().getUri())
+                .setBody(request)
+                .setCompletion((op, t) -> {
+                    if (t != null) {
+                        logWarning("owner selection failed: %s", t.toString());
+                        maintOp.fail(t);
+                        return;
+                    }
+
+                    // counting local node
+                    int consensusCount = 1;
+                    NodeGroupBroadcastResponse response = op.getBody(NodeGroupBroadcastResponse.class);
+                    for (String json : response.jsonResponses.values()) {
+                        NodeSelectorService.SelectOwnerResponse rsp = null;
+                        try {
+                            rsp = Utils.fromJson(json, NodeSelectorService.SelectOwnerResponse.class);
+                        } catch (Throwable e) {
+                            logWarning("Exception thrown in de-serializing json response. %s", e.toString());
+                        }
+                        if (rsp != null && rsp.ownerNodeId.equals(this.getHost().getId())) {
+                            consensusCount++;
+                        }
+                    }
+
+                    if (consensusCount < (ownerResponse.availableNodeCount / 2) + 1) {
+                        logWarning("Majority nodes do not consider current node %s owner for factory %s",
+                                this.getHost().getId(), this.getSelfLink());
+                        maintOp.complete();
+                        return;
+                    }
+
+                    logInfo("Elected owner on %s based on majority consensus %d. Starting synch ...",
+                            getHost().getId(), consensusCount);
+                    synchronizeChildServicesAsOwner(maintOp, ownerResponse.membershipUpdateTimeMicros);
+                });
+
+        getHost().broadcastRequest(this.nodeSelectorLink, this.getSelfLink(), true, broadcastSelectOp);
     }
 
     public abstract Service createServiceInstance() throws Throwable;
