@@ -98,7 +98,6 @@ import com.vmware.xenon.services.common.LuceneBlobIndexService;
 import com.vmware.xenon.services.common.LuceneDocumentIndexService;
 import com.vmware.xenon.services.common.NodeGroupFactoryService;
 import com.vmware.xenon.services.common.NodeGroupService.JoinPeerRequest;
-import com.vmware.xenon.services.common.NodeGroupService.NodeGroupState;
 import com.vmware.xenon.services.common.NodeGroupUtils;
 import com.vmware.xenon.services.common.ODataQueryService;
 import com.vmware.xenon.services.common.OperationIndexService;
@@ -1296,7 +1295,8 @@ public class ServiceHost implements ServiceRequestSender {
                         new ServiceContextIndexService(),
                         new QueryTaskFactoryService(),
                         new LocalQueryTaskFactoryService(),
-                        TaskFactoryService.create(GraphQueryTaskService.class) };
+                        TaskFactoryService.create(GraphQueryTaskService.class),
+                        TaskFactoryService.create(SynchronizationTaskService.class) };
                 startCoreServicesSynchronously(queryServiceArray);
             }
         }
@@ -4747,8 +4747,8 @@ public class ServiceHost implements ServiceRequestSender {
      * Infrastructure use only. Invoked by a factory service to either start or synchronize
      * a child service
      */
-    void startOrSynchService(Operation post, Service child, NodeGroupState ngs) {
-        this.serviceSynchTracker.startOrSynchService(post, child, ngs);
+    void startOrSynchService(Operation post, Service child) {
+        this.serviceSynchTracker.startOrSynchService(post, child);
     }
 
     /**
