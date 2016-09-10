@@ -69,6 +69,7 @@ import com.vmware.xenon.common.ServiceHost.ServiceHostState;
 import com.vmware.xenon.common.ServiceStats;
 import com.vmware.xenon.common.ServiceStats.ServiceStat;
 import com.vmware.xenon.common.StatefulService;
+import com.vmware.xenon.common.SynchronizationTaskService;
 import com.vmware.xenon.common.TestUtilityService;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
@@ -930,7 +931,8 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
                     ServiceDocumentQueryResult r = o.getBody(ServiceDocumentQueryResult.class);
                     int count = 0;
                     for (String u : r.documentLinks) {
-                        if (u.contains(ExampleService.FACTORY_LINK)) {
+                        if (u.contains(ExampleService.FACTORY_LINK)
+                                && !u.contains(SynchronizationTaskService.FACTORY_LINK)) {
                             count++;
                         }
                     }

@@ -66,7 +66,10 @@ public class TaskFactoryService extends FactoryService {
     public void handleRequest(Operation op, OperationProcessingStage opProcessingStage) {
         opProcessingStage = OperationProcessingStage.EXECUTING_SERVICE_HANDLER;
 
-        if (op.getAction() != Action.POST) {
+        boolean isIdempotentPut = (op.getAction() == Action.PUT) &&
+                op.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_POST_TO_PUT);
+
+        if (op.getAction() != Action.POST && !isIdempotentPut) {
             super.handleRequest(op, opProcessingStage);
             return;
         }
@@ -154,10 +157,15 @@ public class TaskFactoryService extends FactoryService {
             }
         };
 
-        ReliableSubscriptionService notificationTarget = ReliableSubscriptionService.create(
-                subscribe, sr, notifyC);
-        getHost().startSubscriptionService(subscribe, notificationTarget, sr);
-
+        // Only if this is an owner-selected service, we create a reliable subscription.
+        // Otherwise for non-replicated services, we just create a normal subscription.
+        if (this.hasChildOption(ServiceOption.OWNER_SELECTION)) {
+            ReliableSubscriptionService notificationTarget = ReliableSubscriptionService.create(
+                    subscribe, sr, notifyC);
+            getHost().startSubscriptionService(subscribe, notificationTarget, sr);
+        } else {
+            getHost().startSubscriptionService(subscribe, notifyC);
+        }
     }
 
     private void stopInDirectTaskSubscription(Operation sub, URI notificationTarget) {
