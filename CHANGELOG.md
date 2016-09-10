@@ -1,6 +1,11 @@
 # CHANGELOG
 
 ## 0.9.5-SNAPSHOT
+* Add new SynchronizationTaskService. An instance of this task is created per
+  FactoryService that acts as a dedicated task synchronizing child-services of
+  the associated factory. This also simplifies the FactoryService by moving
+  synchronization functionality to the new task. No functional change, since
+  synchronization still works the same way.
 
 * Add QueryOption.EXPAND_BUILTIN_CONTENT_ONLY, used by synchronization code for
   state comparison
