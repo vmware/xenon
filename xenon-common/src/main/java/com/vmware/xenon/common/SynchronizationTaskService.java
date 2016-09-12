@@ -35,6 +35,9 @@ public class SynchronizationTaskService
     public static final String PROPERTY_NAME_SYNCHRONIZATION_LOGGING = Utils.PROPERTY_NAME_PREFIX
             + "SynchronizationTaskService.isDetailedLoggingEnabled";
 
+    public static final String OUTDATED_SYNCH_REQUEST_ERROR =
+            "Passed membershipUpdateTimeMicros is outdated";
+
     public static SynchronizationTaskService create(Supplier<Service> childServiceInstantiator) {
         if (childServiceInstantiator.get() == null) {
             throw new IllegalArgumentException("childServiceInstantiator created null child service");
@@ -215,17 +218,6 @@ public class SynchronizationTaskService
             return;
         }
 
-        // This POST could be for an older node-group change notification.
-        // If so, don't bother restarting synchronization.
-        if (task.membershipUpdateTimeMicros != null &&
-                task.membershipUpdateTimeMicros > body.membershipUpdateTimeMicros) {
-            logWarning("Ignoring synch-task request because of stale " +
-                            "membershipUpdateTimeMicros. currentTime %d, newTime %d",
-                    task.membershipUpdateTimeMicros, body.membershipUpdateTimeMicros);
-            put.complete();
-            return;
-        }
-
         boolean startStateMachine = false;
 
         switch (task.taskInfo.stage) {
@@ -265,8 +257,9 @@ public class SynchronizationTaskService
         }
 
         if (this.isDetailedLoggingEnabled) {
-            logInfo("Transitioning task from %s-%s to %s-%s",
-                    currentStage, currentSubStage, task.taskInfo.stage, task.subStage);
+            logInfo("Transitioning task from %s-%s to %s-%s. Time %d",
+                    currentStage, currentSubStage, task.taskInfo.stage,
+                    task.subStage, task.membershipUpdateTimeMicros);
         }
 
         put.complete();
@@ -296,7 +289,16 @@ public class SynchronizationTaskService
             put.fail(new IllegalArgumentException("ON_DEMAND_LOAD services must synchronize on-demand."));
             return null;
         }
-
+        if (currentTask.membershipUpdateTimeMicros != null &&
+                currentTask.membershipUpdateTimeMicros > putTask.membershipUpdateTimeMicros) {
+            // This request could be for an older node-group change notification.
+            // If so, don't bother restarting synchronization.
+            String msg = String.format(
+                    "%s, Passed %d, Current %d", OUTDATED_SYNCH_REQUEST_ERROR,
+                    putTask.membershipUpdateTimeMicros, currentTask.membershipUpdateTimeMicros);
+            put.fail(new IllegalArgumentException(msg));
+            return null;
+        }
         return putTask;
     }
 

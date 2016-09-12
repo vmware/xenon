@@ -137,6 +137,17 @@ public class TestRequestSender implements ServiceRequestSender {
      * @return callback operations
      */
     public List<Operation> sendAndWait(List<Operation> ops) {
+        return sendAndWait(ops, true);
+    }
+
+    /**
+     * Perform given operations in parallel, then wait all ops to finish with success.
+     * The order of result corresponds to the input order.
+     *
+     * @param ops operations to perform
+     * @return callback operations
+     */
+    public List<Operation> sendAndWait(List<Operation> ops, boolean checkResponse) {
         Operation[] response = new Operation[ops.size()];
 
         TestContext waitContext = new TestContext(ops.size(), this.timeout);
@@ -144,7 +155,7 @@ public class TestRequestSender implements ServiceRequestSender {
             int index = i;
             Operation op = ops.get(i);
             op.appendCompletion((o, e) -> {
-                if (e != null) {
+                if (e != null && checkResponse) {
                     waitContext.fail(e);
                     return;
                 }

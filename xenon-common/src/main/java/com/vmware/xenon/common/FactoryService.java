@@ -872,6 +872,16 @@ public abstract class FactoryService extends StatelessService {
                 .createPost(this, ServiceUriPaths.SYNCHRONIZATION_TASKS)
                 .setBody(task)
                 .setCompletion((o, e) -> {
+                    // Ignore if the request failed because the current synch-request
+                    // was considered out-dated by the synchronization-task.
+                    if (o.getStatusCode() == Operation.STATUS_CODE_BAD_REQUEST) {
+                        ServiceErrorResponse rsp = o.getBody(ServiceErrorResponse.class);
+                        if (rsp.message.contains(
+                                    SynchronizationTaskService.OUTDATED_SYNCH_REQUEST_ERROR)) {
+                            parentOp.complete();
+                            return;
+                        }
+                    }
                     if (e != null) {
                         parentOp.fail(e);
                         return;
