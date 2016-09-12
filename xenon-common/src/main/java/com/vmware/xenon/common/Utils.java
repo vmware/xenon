@@ -31,13 +31,13 @@ import java.nio.charset.Charset;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.EnumSet;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.UUID;
 import java.util.concurrent.Callable;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.TimeUnit;
@@ -103,9 +103,15 @@ public class Utils {
     private static final long PING_LAUNCH_TOLERANCE_MS = 50;
 
     private static final JsonMapper JSON = new JsonMapper();
-    private static final ConcurrentMap<Class<?>, JsonMapper> CUSTOM_JSON = new ConcurrentHashMap<>();
+    private static final ConcurrentMap<Class<?>, JsonMapper> CUSTOM_JSON = new ConcurrentSkipListMap<>(
+            new Comparator<Class<?>>() {
+                @Override
+                public int compare(Class<?> c1, Class<?> c2) {
+                    return c1.getCanonicalName().compareTo(c2.getCanonicalName());
+                }
+            });
 
-    private static final Map<String, String> KINDS = new ConcurrentSkipListMap<>();
+    private static final ConcurrentMap<String, String> KINDS = new ConcurrentSkipListMap<>();
 
     private static final StringBuilderThreadLocal builderPerThread = new StringBuilderThreadLocal();
 

@@ -76,6 +76,20 @@ public class TestUtils {
     }
 
     @Test
+    public void buildKind() {
+        CommandLineArgumentParser.parseFromProperties(this);
+        String kind = Utils.buildKind(ExampleServiceState.class);
+        long s = Utils.getNowMicrosUtc();
+        for (int i = 0; i < this.iterationCount; i++) {
+            String k = Utils.buildKind(ExampleServiceState.class);
+            assertTrue(kind.hashCode() == k.hashCode());
+        }
+        long e = Utils.getNowMicrosUtc();
+        double thpt = this.iterationCount / ((e - s) / 1000000.0);
+        Logger.getAnonymousLogger().info("Throughput: " + thpt);
+    }
+
+    @Test
     public void toHexString() {
         byte[] bytes = new byte[4];
         bytes[0] = 0x12;
