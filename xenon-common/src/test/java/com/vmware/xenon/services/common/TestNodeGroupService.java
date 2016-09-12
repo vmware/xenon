@@ -1897,7 +1897,7 @@ public class TestNodeGroupService {
                     totalOperations,
                     totalBytes);
 
-            if (++iterationCount < 2 && this.testDurationSeconds > 0) {
+            if (iterationCount++ < 2 && this.testDurationSeconds > 0) {
                 // ignore data during JVM warm-up, first two iterations
                 countPerAction.clear();
                 elapsedTimePerAction.clear();
