@@ -684,7 +684,13 @@ public class VerificationHost extends ExampleServiceHost {
                 create.querySpec.options,
                 create.querySpec.resultLimit);
 
-        QueryTask result = this.sender.sendAndWait(startPost, QueryTask.class);
+        QueryTask result;
+        try {
+            result = this.sender.sendAndWait(startPost, QueryTask.class);
+        } catch (RuntimeException e) {
+            // throw original exception
+            throw ExceptionTestUtils.throwAsUnchecked(e.getSuppressed()[0]);
+        }
 
         if (isDirect) {
             taskResult.results = result.results;
