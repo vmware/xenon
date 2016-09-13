@@ -211,6 +211,7 @@ public abstract class FactoryService extends StatelessService {
                             logFine("Synchronization-task completed for child services");
                         });
 
+                        logInfo("Heating up for %s", this.getSelfLink());
                         startFactorySynchronizationTask(clonedOp, null);
                         return;
                     }
@@ -218,6 +219,7 @@ public abstract class FactoryService extends StatelessService {
                     // service start and synchronization
                 });
 
+        logInfo("Starting task for %s", this.getSelfLink());
         SynchronizationTaskService service = SynchronizationTaskService
                 .create(() -> createChildServiceSafe());
         this.getHost().startService(post, service);
@@ -867,6 +869,7 @@ public abstract class FactoryService extends StatelessService {
             }
             maintOp.complete();
         });
+        logInfo("Synchronizing for %s", this.getSelfLink());
         startFactorySynchronizationTask(maintOp, membershipUpdateTimeMicros);
     }
 
