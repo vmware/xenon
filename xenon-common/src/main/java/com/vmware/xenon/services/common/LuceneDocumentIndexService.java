@@ -21,6 +21,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Date;
+import java.util.Deque;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -33,6 +34,7 @@ import java.util.Queue;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.CancellationException;
+import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.ExecutorService;
@@ -223,9 +225,8 @@ public class LuceneDocumentIndexService extends StatelessService {
             STAT_NAME_DOCUMENT_EXPIRATION_FORCED_MAINTENANCE_COUNT
     };
 
-    protected static final int UPDATE_THREAD_COUNT = 4;
-
-    protected static final int QUERY_THREAD_COUNT = 2;
+    protected static final int UPDATE_THREAD_COUNT = Utils.DEFAULT_THREAD_COUNT / 2;
+    protected static final int QUERY_THREAD_COUNT = Utils.DEFAULT_THREAD_COUNT;
 
     protected Object searchSync;
     protected Queue<IndexSearcher> searchersPendingClose = new ConcurrentLinkedQueue<>();
@@ -255,6 +256,11 @@ public class LuceneDocumentIndexService extends StatelessService {
 
     private Set<String> fieldsToLoadNoExpand;
     private Set<String> fieldsToLoadWithExpand;
+
+    private Object queryQueueSync;
+    private Map<String, Deque<Operation>> queryQueuesPerSubject = new ConcurrentSkipListMap<>();
+    private Map<String, Deque<Operation>> activeQueryQueuesPerSubject = new ConcurrentSkipListMap<>();
+    private Iterator<String> querySubjectIterator;
 
     private URI uri;
 
@@ -323,10 +329,14 @@ public class LuceneDocumentIndexService extends StatelessService {
     }
 
     private void initializeInstance() {
+
         this.searchSync = new Object();
+        this.queryQueueSync = new Object();
         this.searcher = null;
         this.searchersForPaginatedQueries.clear();
         this.searchersPendingClose.clear();
+
+        queryOpEnqueue(SystemUserService.SELF_LINK, null);
 
         this.versionSort = new Sort(new SortedNumericSortField(ServiceDocument.FIELD_NAME_VERSION,
                 SortField.Type.LONG, true));
@@ -556,59 +566,146 @@ public class LuceneDocumentIndexService extends StatelessService {
             getHost().failRequestActionNotSupported(op);
             return;
         }
+        ExecutorService exec = null;
+        if (a == Action.GET) {
+            exec = this.privateQueryExecutor;
+            String subject = null;
+            if (!getHost().isAuthorizationEnabled() || op.getAuthorizationContext().isSystemUser()) {
+                subject = SystemUserService.SELF_LINK;
+            } else {
+                subject = op.getAuthorizationContext().getClaims().getSubject();
+            }
+            queryOpEnqueue(subject, op);
+            op = null;
+        } else {
+            exec = this.privateIndexingExecutor;
+        }
 
-        ExecutorService exec = a == Action.GET ? this.privateQueryExecutor
-                : this.privateIndexingExecutor;
         if (exec.isShutdown()) {
             op.fail(new CancellationException());
             return;
         }
-        exec.execute(() -> {
-            try {
-                this.writerAvailable.acquire();
-                switch (a) {
-                case DELETE:
-                    handleDeleteImpl(op);
-                    break;
-                case GET:
-                    handleGetImpl(op);
-                    break;
-                case PATCH:
-                    ServiceDocument sd = (ServiceDocument) op.getBodyRaw();
-                    if (sd.documentKind != null) {
-                        if (sd.documentKind.equals(QueryTask.KIND)) {
-                            QueryTask task = (QueryTask) op.getBodyRaw();
-                            handleQueryTaskPatch(op, task);
-                            break;
-                        }
-                        if (sd.documentKind.equals(BackupRequest.KIND)) {
-                            BackupRequest backupRequest = (BackupRequest) op.getBodyRaw();
-                            handleBackup(op, backupRequest);
-                            break;
-                        }
-                        if (sd.documentKind.equals(RestoreRequest.KIND)) {
-                            RestoreRequest backupRequest = (RestoreRequest) op.getBodyRaw();
-                            handleRestore(op, backupRequest);
-                            break;
-                        }
-                    }
 
-                    getHost().failRequestActionNotSupported(op);
-                    break;
-                case POST:
-                    updateIndex(op);
-                    break;
-                default:
-                    getHost().failRequestActionNotSupported(op);
-                    break;
-                }
-            } catch (Throwable e) {
-                checkFailureAndRecover(e);
-                op.fail(e);
-            } finally {
-                this.writerAvailable.release();
+        Operation finalOp = op;
+        exec.execute(() -> handleRequestImpl(finalOp));
+    }
+
+    private void handleRequestImpl(Operation op) {
+        if (op == null) {
+            op = queryOpDequeue();
+            if (op == null) {
+                return;
             }
-        });
+        }
+        try {
+            this.writerAvailable.acquire();
+            switch (op.getAction()) {
+            case DELETE:
+                handleDeleteImpl(op);
+                break;
+            case GET:
+                handleGetImpl(op);
+                break;
+            case PATCH:
+                ServiceDocument sd = (ServiceDocument) op.getBodyRaw();
+                if (sd.documentKind != null) {
+                    if (sd.documentKind.equals(QueryTask.KIND)) {
+                        QueryTask task = (QueryTask) op.getBodyRaw();
+                        handleQueryTaskPatch(op, task);
+                        break;
+                    }
+                    if (sd.documentKind.equals(BackupRequest.KIND)) {
+                        BackupRequest backupRequest = (BackupRequest) op.getBodyRaw();
+                        handleBackup(op, backupRequest);
+                        break;
+                    }
+                    if (sd.documentKind.equals(RestoreRequest.KIND)) {
+                        RestoreRequest backupRequest = (RestoreRequest) op.getBodyRaw();
+                        handleRestore(op, backupRequest);
+                        break;
+                    }
+                }
+
+                getHost().failRequestActionNotSupported(op);
+                break;
+            case POST:
+                updateIndex(op);
+                break;
+            default:
+                getHost().failRequestActionNotSupported(op);
+                break;
+            }
+        } catch (Throwable e) {
+            checkFailureAndRecover(e);
+            op.fail(e);
+        } finally {
+            this.writerAvailable.release();
+        }
+    }
+
+    /**
+     * Queue the query operation on the queue associated with the authorization
+     * subject
+     */
+    private void queryOpEnqueue(String subject, Operation op) {
+        Deque<Operation> q = this.queryQueuesPerSubject.get(subject);
+        try {
+            if (q != null) {
+                return;
+            }
+            synchronized (this.queryQueueSync) {
+                q = this.queryQueuesPerSubject.get(subject);
+                if (q != null) {
+                    return;
+                }
+
+                q = new ConcurrentLinkedDeque<>();
+                this.queryQueuesPerSubject.put(subject, q);
+            }
+            logInfo("Created queue for %s", subject);
+        } finally {
+            if (op == null) {
+                return;
+            }
+
+            this.activeQueryQueuesPerSubject.put(subject, q);
+            if (!q.offer(op)) {
+                getHost().failRequestLimitExceeded(op);
+                return;
+            }
+        }
+    }
+
+    /**
+     * Searches the active query queues per subject for a pending operation,
+     * removes it from the queue, and if the queue is empty, removes it from the active
+     * map
+     */
+    private Operation queryOpDequeue() {
+        int resetCount = 0;
+        do {
+            Deque<Operation> nextActiveQueue = null;
+            synchronized (this.queryQueueSync) {
+                if (this.querySubjectIterator == null ||
+                        !this.querySubjectIterator.hasNext()) {
+                    this.querySubjectIterator = this.activeQueryQueuesPerSubject.keySet()
+                            .iterator();
+                    resetCount++;
+                }
+                String activeSubject = this.querySubjectIterator.next();
+                nextActiveQueue = this.activeQueryQueuesPerSubject.get(activeSubject);
+                Operation op = nextActiveQueue.poll();
+                if (op == null) {
+                    this.activeQueryQueuesPerSubject.remove(activeSubject);
+                } else {
+                    return op;
+                }
+            }
+        } while (resetCount < 10);
+        // We want through the map of per subject queues at least once, and yet, found
+        // nothing. This is not expected.
+        logWarning("No available operations found across all query queues");
+        return null;
     }
 
     private void handleQueryTaskPatch(Operation op, QueryTask task) throws Throwable {
