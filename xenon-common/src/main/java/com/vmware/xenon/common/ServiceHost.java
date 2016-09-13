@@ -2580,9 +2580,8 @@ public class ServiceHost implements ServiceRequestSender {
             s.adjustStat(Service.STAT_NAME_CACHE_MISS_COUNT, 1);
         }
 
-        URI u = UriUtils.buildDocumentQueryUri(this, s.getSelfLink(), false, true, s.getOptions());
-        Operation loadGet = Operation
-                .createGet(u)
+        Operation getOp = Operation.createGet(op.getUri())
+                .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_INDEX_CHECK)
                 .transferRefererFrom(op)
                 .setCompletion((o, e) -> {
                     if (e != null) {
@@ -2613,7 +2612,7 @@ public class ServiceHost implements ServiceRequestSender {
             return;
         }
 
-        this.documentIndexService.handleRequest(loadGet);
+        indexService.handleRequest(getOp);
     }
 
     /**
@@ -2663,20 +2662,22 @@ public class ServiceHost implements ServiceRequestSender {
 
     void loadInitialServiceState(Service s, Operation serviceStartPost, ProcessingStage next,
             boolean hasClientSuppliedState) {
-        URI u = UriUtils.buildDocumentQueryUri(this,
-                serviceStartPost.getUri().getPath(),
-                false,
-                true,
-                s.getOptions());
-        Operation loadGet = Operation
-                .createGet(u)
-                .transferRefererFrom(serviceStartPost)
-                .setCompletion((indexQueryOperation, e) -> {
-                    handleLoadInitialStateCompletion(s, serviceStartPost, next,
-                            hasClientSuppliedState,
-                            indexQueryOperation, e);
-                });
-        sendRequest(loadGet);
+        Service indexService = this.documentIndexService;
+        if (indexService == null) {
+            serviceStartPost.fail(new CancellationException());
+            return;
+        }
+
+        Operation getLatestState = Operation.createGet(serviceStartPost.getUri())
+                .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_INDEX_CHECK)
+                .transferRefererFrom(serviceStartPost);
+
+        getLatestState.setCompletion((indexQueryOperation, e) -> {
+            handleLoadInitialStateCompletion(s, serviceStartPost, next,
+                    hasClientSuppliedState,
+                    indexQueryOperation, e);
+        });
+        indexService.handleRequest(getLatestState);
     }
 
     void cacheServiceState(Service s, ServiceDocument st, Operation op) {

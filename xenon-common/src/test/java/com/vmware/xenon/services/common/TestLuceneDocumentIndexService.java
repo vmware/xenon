@@ -53,6 +53,7 @@ import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 
 import com.vmware.xenon.common.BasicReportTestCase;
+import com.vmware.xenon.common.CommandLineArgumentParser;
 import com.vmware.xenon.common.FileUtils;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Service;
@@ -140,9 +141,14 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
 
     @Override
     public void beforeHostStart(VerificationHost host) {
+        CommandLineArgumentParser.parseFromProperties(host);
         host.setMaintenanceIntervalMicros(TimeUnit.MILLISECONDS.toMicros(100));
         this.indexService = new FaultInjectionLuceneDocumentIndexService();
-        this.indexService.toggleOption(ServiceOption.INSTRUMENTATION, true);
+        if (this.host.isStressTest) {
+            this.host.setStressTest(this.host.isStressTest);
+        } else {
+            this.indexService.toggleOption(ServiceOption.INSTRUMENTATION, true);
+        }
         host.setDocumentIndexingService(this.indexService);
         host.setPeerSynchronizationEnabled(false);
     }
@@ -1114,8 +1120,10 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
             this.host.log("(%d) Starting service factory POST, count:%d", ic, this.serviceCount);
             doThroughputPost(factoryUri, setBody);
             this.host.deleteAllChildServices(factoryUri);
+            logQuerySingleStat();
         }
     }
+
 
     private void doThroughputPost(URI factoryUri, Consumer<Operation> setBody)
             throws Throwable {
@@ -1959,6 +1967,7 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
         int repeat = 5;
         for (int i = 0; i < repeat; i++) {
             this.host.doServiceUpdates(action, count, props, services);
+            logQuerySingleStat();
         }
 
         // decrease maintenance, which will trigger cache clears
@@ -2086,6 +2095,17 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
         URL pathToOldLuceneDir = this.getClass().getResource(oldLuceneDirName);
 
         FileUtils.copyFiles(new File(pathToOldLuceneDir.toURI()), curLuceneIndexPath.toFile());
+    }
+
+    private void logQuerySingleStat() {
+        Map<String, ServiceStat> stats = this.host
+                .getServiceStats(this.host.getDocumentIndexServiceUri());
+        ServiceStat querySingleDurationStat = stats
+                .get(LuceneDocumentIndexService.STAT_NAME_QUERY_SINGLE_DURATION_MICROS);
+        if (querySingleDurationStat == null) {
+            return;
+        }
+        this.host.log("%s", Utils.toJsonHtml(querySingleDurationStat));
     }
 
     public static HashMap<String, ExampleServiceState> queryResultToExampleState(
