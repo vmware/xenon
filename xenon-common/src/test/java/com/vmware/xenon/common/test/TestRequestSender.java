@@ -105,7 +105,7 @@ public class TestRequestSender implements ServiceRequestSender {
      * Expecting all {@link Operation} to be successful.
      * The order of result corresponds to the input order.
      *
-     * @param ops       operations to perform
+     * @param ops      operations to perform
      * @param bodyType returned body type
      * @param <T>      ServiceDocument
      * @return body documents
@@ -150,13 +150,20 @@ public class TestRequestSender implements ServiceRequestSender {
     public List<Operation> sendAndWait(List<Operation> ops, boolean checkResponse) {
         Operation[] response = new Operation[ops.size()];
 
+        // Keep caller stack information for operation failure.
+        // Actual operation failure will be added to this exception as suppressed exception.
+        // This way, it'll display the original caller location in stacktrace
+        String callerStackMessage = "Received Failure response. (See suppressed exception for detail)";
+        Exception callerStack = new RuntimeException(callerStackMessage);
+
         TestContext waitContext = new TestContext(ops.size(), this.timeout);
         for (int i = 0; i < ops.size(); i++) {
             int index = i;
             Operation op = ops.get(i);
             op.appendCompletion((o, e) -> {
                 if (e != null && checkResponse) {
-                    waitContext.fail(e);
+                    callerStack.addSuppressed(e);
+                    waitContext.fail(callerStack);
                     return;
                 }
                 response[index] = o;
@@ -209,6 +216,10 @@ public class TestRequestSender implements ServiceRequestSender {
     public FailureResponse sendAndWaitFailure(Operation op) {
         FailureResponse response = new FailureResponse();
 
+        // Prepare caller stack information for operation success.
+        String msg = String.format("Expected operation failure but was successful. uri=%s ", op.getUri());
+        Exception callerStack = new RuntimeException(msg);
+
         TestContext waitContext = new TestContext(1, this.timeout);
         op.appendCompletion((o, e) -> {
             if (e != null) {
@@ -217,8 +228,7 @@ public class TestRequestSender implements ServiceRequestSender {
                 waitContext.complete();
                 return;
             }
-            String msg = String.format("Expected operation failure but was successful. uri=%s", o.getUri());
-            waitContext.fail(new RuntimeException(msg));
+            waitContext.fail(callerStack);
         });
         sendRequest(op);
         waitContext.await();
