@@ -3347,7 +3347,7 @@ public class ServiceHost implements ServiceRequestSender {
                 new IllegalArgumentException("Action not supported: " + request.getAction()));
     }
 
-    void failRequestLimitExceeded(Operation request) {
+    public void failRequestLimitExceeded(Operation request) {
         // Add a header indicating retry should be attempted after some interval.
         // Currently set to just one second, subject to change in the future
         request.addResponseHeader(Operation.RETRY_AFTER_HEADER, "1");
