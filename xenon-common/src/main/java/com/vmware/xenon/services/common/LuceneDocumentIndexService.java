@@ -29,6 +29,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.NavigableMap;
 import java.util.Queue;
 import java.util.Set;
 import java.util.TreeMap;
@@ -223,9 +224,8 @@ public class LuceneDocumentIndexService extends StatelessService {
             STAT_NAME_DOCUMENT_EXPIRATION_FORCED_MAINTENANCE_COUNT
     };
 
-    protected static final int UPDATE_THREAD_COUNT = 4;
-
-    protected static final int QUERY_THREAD_COUNT = 2;
+    protected static final int UPDATE_THREAD_COUNT = Utils.DEFAULT_THREAD_COUNT / 2;
+    protected static final int QUERY_THREAD_COUNT = Utils.DEFAULT_THREAD_COUNT;
 
     protected Object searchSync;
     protected Queue<IndexSearcher> searchersPendingClose = new ConcurrentLinkedQueue<>();
@@ -255,6 +255,10 @@ public class LuceneDocumentIndexService extends StatelessService {
 
     private Set<String> fieldsToLoadNoExpand;
     private Set<String> fieldsToLoadWithExpand;
+
+    private String queryActiveSubject;
+    private Object queryQueueSync;
+    private NavigableMap<String, Queue<Operation>> queryQueuesPerSubject = new ConcurrentSkipListMap<>();
 
     private URI uri;
 
@@ -323,10 +327,15 @@ public class LuceneDocumentIndexService extends StatelessService {
     }
 
     private void initializeInstance() {
+
+        this.queryActiveSubject = "";
+        this.queryQueueSync = new Object();
         this.searchSync = new Object();
         this.searcher = null;
         this.searchersForPaginatedQueries.clear();
         this.searchersPendingClose.clear();
+
+        queryOpEnqueue(SystemUserService.SELF_LINK, null);
 
         this.versionSort = new Sort(new SortedNumericSortField(ServiceDocument.FIELD_NAME_VERSION,
                 SortField.Type.LONG, true));
@@ -556,59 +565,130 @@ public class LuceneDocumentIndexService extends StatelessService {
             getHost().failRequestActionNotSupported(op);
             return;
         }
+        ExecutorService exec = null;
+        if (a == Action.GET) {
+            exec = this.privateQueryExecutor;
+            String subject = null;
+            if (!getHost().isAuthorizationEnabled() || op.getAuthorizationContext().isSystemUser()) {
+                subject = SystemUserService.SELF_LINK;
+            } else {
+                subject = op.getAuthorizationContext().getClaims().getSubject();
+            }
+            queryOpEnqueue(subject, op);
+            op = null;
+        } else {
+            exec = this.privateIndexingExecutor;
+        }
 
-        ExecutorService exec = a == Action.GET ? this.privateQueryExecutor
-                : this.privateIndexingExecutor;
         if (exec.isShutdown()) {
             op.fail(new CancellationException());
             return;
         }
-        exec.execute(() -> {
-            try {
-                this.writerAvailable.acquire();
-                switch (a) {
-                case DELETE:
-                    handleDeleteImpl(op);
-                    break;
-                case GET:
-                    handleGetImpl(op);
-                    break;
-                case PATCH:
-                    ServiceDocument sd = (ServiceDocument) op.getBodyRaw();
-                    if (sd.documentKind != null) {
-                        if (sd.documentKind.equals(QueryTask.KIND)) {
-                            QueryTask task = (QueryTask) op.getBodyRaw();
-                            handleQueryTaskPatch(op, task);
-                            break;
-                        }
-                        if (sd.documentKind.equals(BackupRequest.KIND)) {
-                            BackupRequest backupRequest = (BackupRequest) op.getBodyRaw();
-                            handleBackup(op, backupRequest);
-                            break;
-                        }
-                        if (sd.documentKind.equals(RestoreRequest.KIND)) {
-                            RestoreRequest backupRequest = (RestoreRequest) op.getBodyRaw();
-                            handleRestore(op, backupRequest);
-                            break;
-                        }
-                    }
 
-                    getHost().failRequestActionNotSupported(op);
-                    break;
-                case POST:
-                    updateIndex(op);
-                    break;
-                default:
-                    getHost().failRequestActionNotSupported(op);
-                    break;
-                }
-            } catch (Throwable e) {
-                checkFailureAndRecover(e);
-                op.fail(e);
-            } finally {
-                this.writerAvailable.release();
+        Operation finalOp = op;
+        exec.execute(() -> handleRequestImpl(finalOp));
+    }
+
+    private void handleRequestImpl(Operation op) {
+        if (op == null) {
+            op = queryOpDequeue();
+            if (op == null) {
+                return;
             }
-        });
+        }
+        try {
+            this.writerAvailable.acquire();
+            switch (op.getAction()) {
+            case DELETE:
+                handleDeleteImpl(op);
+                break;
+            case GET:
+                handleGetImpl(op);
+                break;
+            case PATCH:
+                ServiceDocument sd = (ServiceDocument) op.getBodyRaw();
+                if (sd.documentKind != null) {
+                    if (sd.documentKind.equals(QueryTask.KIND)) {
+                        QueryTask task = (QueryTask) op.getBodyRaw();
+                        handleQueryTaskPatch(op, task);
+                        break;
+                    }
+                    if (sd.documentKind.equals(BackupRequest.KIND)) {
+                        BackupRequest backupRequest = (BackupRequest) op.getBodyRaw();
+                        handleBackup(op, backupRequest);
+                        break;
+                    }
+                    if (sd.documentKind.equals(RestoreRequest.KIND)) {
+                        RestoreRequest backupRequest = (RestoreRequest) op.getBodyRaw();
+                        handleRestore(op, backupRequest);
+                        break;
+                    }
+                }
+
+                getHost().failRequestActionNotSupported(op);
+                break;
+            case POST:
+                updateIndex(op);
+                break;
+            default:
+                getHost().failRequestActionNotSupported(op);
+                break;
+            }
+        } catch (Throwable e) {
+            checkFailureAndRecover(e);
+            op.fail(e);
+        } finally {
+            this.writerAvailable.release();
+        }
+    }
+
+    /**
+     * Queue the query operation on the queue associated with the authorization
+     * subject
+     */
+    private void queryOpEnqueue(String subject, Operation op) {
+        Queue<Operation> q = null;
+        boolean failOp = false;
+        synchronized (this.queryQueueSync) {
+            q = this.queryQueuesPerSubject.computeIfAbsent(subject, (k) -> {
+                return new ConcurrentLinkedQueue<>();
+            });
+            if (op != null) {
+                failOp = !q.offer(op);
+            }
+        }
+
+        if (failOp) {
+            getHost().failRequestLimitExceeded(op);
+            return;
+        }
+    }
+
+    /**
+     * Searches the active query queues per subject for a pending operation,
+     * removes it from the queue, and if the queue is empty, removes it from the active
+     * map
+     */
+    private Operation queryOpDequeue() {
+        synchronized (this.queryQueueSync) {
+            do {
+                Entry<String, Queue<Operation>> nextActive = this.queryQueuesPerSubject
+                        .higherEntry(this.queryActiveSubject);
+                if (nextActive == null) {
+                    nextActive = this.queryQueuesPerSubject.firstEntry();
+                }
+                this.queryActiveSubject = nextActive.getKey();
+                Operation op = nextActive.getValue().poll();
+                if (op != null) {
+                    return op;
+                }
+                // queue is empty, remove from active map
+                this.queryQueuesPerSubject.remove(nextActive.getKey());
+            } while (!this.queryQueuesPerSubject.isEmpty());
+        }
+
+        logWarning("No available operations found across all query queues");
+        return null;
     }
 
     private void handleQueryTaskPatch(Operation op, QueryTask task) throws Throwable {
