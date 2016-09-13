@@ -2185,9 +2185,12 @@ public class TestNodeGroupService {
         groupHost.waitForReplicatedFactoryServiceAvailable(
                 UriUtils.buildUri(groupHost, RoleService.FACTORY_LINK));
 
-        String fooUserLink = "/core/authz/users/foo@vmware.com";
-        String barUserLink = "/core/authz/users/bar@vmware.com";
-        String bazUserLink = "/core/authz/users/baz@vmware.com";
+        String fooUserLink = UriUtils.buildUriPath(ServiceUriPaths.CORE_AUTHZ_USERS,
+                "foo@vmware.com");
+        String barUserLink = UriUtils.buildUriPath(ServiceUriPaths.CORE_AUTHZ_USERS,
+                "bar@vmware.com");
+        String bazUserLink = UriUtils.buildUriPath(ServiceUriPaths.CORE_AUTHZ_USERS,
+                "baz@vmware.com");
 
         groupHost.setSystemAuthorizationContext();
 

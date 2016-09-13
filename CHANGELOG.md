@@ -1,6 +1,12 @@
 # CHANGELOG
 
 ## 0.9.5-SNAPSHOT
+
+* Add query operation queues per authorized subject in the index service. New
+  scheme offers fair scheduling across users and mitigates head-of-line
+  queuing problems. The support is transparent to all existing code and works
+  with a single queue (for system context) if authorization is disabled.
+
 * Add new SynchronizationTaskService. An instance of this task is created per
   FactoryService that acts as a dedicated task synchronizing child-services of
   the associated factory. This also simplifies the FactoryService by moving

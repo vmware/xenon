@@ -73,9 +73,8 @@ class OperationQueue {
 
     /**
      * Adds an element to the queue if the limit has not been reached.
-     * If the queue is configured to evict queued operations, the operation
-     * will be added and the either the newest or oldest queued operation will
-     * be failed with {@code CancellationException}
+     * If the limit is reached the operation will not be queued and the
+     * method will return false
      */
     public boolean offer(Operation op) {
         if (op == null) {
@@ -83,7 +82,6 @@ class OperationQueue {
         }
 
         // we use non restricted queue so we do not check for offer failures
-
         if (this.limit < 0) {
             // LIFO queue
             if (this.elementCount >= -this.limit) {

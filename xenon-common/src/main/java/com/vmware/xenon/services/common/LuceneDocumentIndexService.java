@@ -20,7 +20,9 @@ import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.Date;
+import java.util.Deque;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -33,6 +35,7 @@ import java.util.Queue;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.CancellationException;
+import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.ExecutorService;
@@ -223,9 +226,8 @@ public class LuceneDocumentIndexService extends StatelessService {
             STAT_NAME_DOCUMENT_EXPIRATION_FORCED_MAINTENANCE_COUNT
     };
 
-    protected static final int UPDATE_THREAD_COUNT = 4;
-
-    protected static final int QUERY_THREAD_COUNT = 2;
+    protected static final int UPDATE_THREAD_COUNT = Utils.DEFAULT_THREAD_COUNT / 2;
+    protected static final int QUERY_THREAD_COUNT = Utils.DEFAULT_THREAD_COUNT;
 
     protected Object searchSync;
     protected Queue<IndexSearcher> searchersPendingClose = new ConcurrentLinkedQueue<>();
@@ -255,6 +257,10 @@ public class LuceneDocumentIndexService extends StatelessService {
 
     private Set<String> fieldsToLoadNoExpand;
     private Set<String> fieldsToLoadWithExpand;
+
+    private Map<String, Deque<Operation>> queryQueuesPerSubject = new ConcurrentSkipListMap<>();
+    private List<Deque<Operation>> queryRoundRobinQueues = Collections.synchronizedList(new ArrayList<>());
+    private AtomicInteger activeQueueIndex = new AtomicInteger();
 
     private URI uri;
 
@@ -323,10 +329,13 @@ public class LuceneDocumentIndexService extends StatelessService {
     }
 
     private void initializeInstance() {
+
         this.searchSync = new Object();
         this.searcher = null;
         this.searchersForPaginatedQueries.clear();
         this.searchersPendingClose.clear();
+
+        getOrCreateQueryQueue(SystemUserService.SELF_LINK);
 
         this.versionSort = new Sort(new SortedNumericSortField(ServiceDocument.FIELD_NAME_VERSION,
                 SortField.Type.LONG, true));
@@ -416,6 +425,26 @@ public class LuceneDocumentIndexService extends StatelessService {
         }
         return this.writer;
     }
+
+    private Deque<Operation> getOrCreateQueryQueue(String subject) {
+        Deque<Operation> q = this.queryQueuesPerSubject.get(subject);
+        if (q != null) {
+            return q;
+        }
+        synchronized (this.searchSync) {
+            q = this.queryQueuesPerSubject.get(subject);
+            if (q != null) {
+                return q;
+            }
+
+            q = new ConcurrentLinkedDeque<>();
+            this.queryQueuesPerSubject.put(subject, q);
+            this.queryRoundRobinQueues.add(q);
+            logInfo("%s", subject);
+            return q;
+        }
+    }
+
 
     private void upgradeIndex(Directory dir) throws IOException {
         boolean doUpgrade = false;
@@ -556,59 +585,111 @@ public class LuceneDocumentIndexService extends StatelessService {
             getHost().failRequestActionNotSupported(op);
             return;
         }
+        ExecutorService exec = null;
+        if (a == Action.GET) {
+            exec = this.privateQueryExecutor;
+            String subject = null;
+            if (!getHost().isAuthorizationEnabled() || op.getAuthorizationContext().isSystemUser()) {
+                subject = SystemUserService.SELF_LINK;
+            } else {
+                subject = op.getAuthorizationContext().getClaims().getSubject();
+            }
+            Deque<Operation> q = getOrCreateQueryQueue(subject);
+            if (!q.offer(op)) {
+                getHost().failRequestLimitExceeded(op);
+                return;
+            }
+            op = null;
+        } else {
+            exec = this.privateIndexingExecutor;
+        }
 
-        ExecutorService exec = a == Action.GET ? this.privateQueryExecutor
-                : this.privateIndexingExecutor;
         if (exec.isShutdown()) {
             op.fail(new CancellationException());
             return;
         }
-        exec.execute(() -> {
-            try {
-                this.writerAvailable.acquire();
-                switch (a) {
-                case DELETE:
-                    handleDeleteImpl(op);
-                    break;
-                case GET:
-                    handleGetImpl(op);
-                    break;
-                case PATCH:
-                    ServiceDocument sd = (ServiceDocument) op.getBodyRaw();
-                    if (sd.documentKind != null) {
-                        if (sd.documentKind.equals(QueryTask.KIND)) {
-                            QueryTask task = (QueryTask) op.getBodyRaw();
-                            handleQueryTaskPatch(op, task);
-                            break;
-                        }
-                        if (sd.documentKind.equals(BackupRequest.KIND)) {
-                            BackupRequest backupRequest = (BackupRequest) op.getBodyRaw();
-                            handleBackup(op, backupRequest);
-                            break;
-                        }
-                        if (sd.documentKind.equals(RestoreRequest.KIND)) {
-                            RestoreRequest backupRequest = (RestoreRequest) op.getBodyRaw();
-                            handleRestore(op, backupRequest);
-                            break;
-                        }
-                    }
 
-                    getHost().failRequestActionNotSupported(op);
-                    break;
-                case POST:
-                    updateIndex(op);
-                    break;
-                default:
-                    getHost().failRequestActionNotSupported(op);
-                    break;
-                }
-            } catch (Throwable e) {
-                checkFailureAndRecover(e);
-                op.fail(e);
-            } finally {
-                this.writerAvailable.release();
+        Operation finalOp = op;
+        exec.execute(() -> handleRequestImpl(finalOp));
+    }
+
+    private void handleRequestImpl(Operation op) {
+        if (op == null) {
+            op = findNextQueryOp();
+            if (op == null) {
+                return;
             }
-        });
+        }
+        try {
+            this.writerAvailable.acquire();
+            switch (op.getAction()) {
+            case DELETE:
+                handleDeleteImpl(op);
+                break;
+            case GET:
+                handleGetImpl(op);
+                break;
+            case PATCH:
+                ServiceDocument sd = (ServiceDocument) op.getBodyRaw();
+                if (sd.documentKind != null) {
+                    if (sd.documentKind.equals(QueryTask.KIND)) {
+                        QueryTask task = (QueryTask) op.getBodyRaw();
+                        handleQueryTaskPatch(op, task);
+                        break;
+                    }
+                    if (sd.documentKind.equals(BackupRequest.KIND)) {
+                        BackupRequest backupRequest = (BackupRequest) op.getBodyRaw();
+                        handleBackup(op, backupRequest);
+                        break;
+                    }
+                    if (sd.documentKind.equals(RestoreRequest.KIND)) {
+                        RestoreRequest backupRequest = (RestoreRequest) op.getBodyRaw();
+                        handleRestore(op, backupRequest);
+                        break;
+                    }
+                }
+
+                getHost().failRequestActionNotSupported(op);
+                break;
+            case POST:
+                updateIndex(op);
+                break;
+            default:
+                getHost().failRequestActionNotSupported(op);
+                break;
+            }
+        } catch (Throwable e) {
+            checkFailureAndRecover(e);
+            op.fail(e);
+        } finally {
+            this.writerAvailable.release();
+        }
+    }
+
+    private Operation findNextQueryOp() {
+        Operation op;
+        Deque<Operation> q = null;
+        int iterations = 0;
+        int queueCount = this.queryRoundRobinQueues.size();
+        do {
+            int index = this.activeQueueIndex.getAndIncrement() % queueCount;
+            // the queue never shrinks, so while we might skip a queue if it expanded
+            // we will never exceed the bound. Another thread should catch the expansion
+            q = this.queryRoundRobinQueues.get(index);
+            op = q.poll();
+            if (op != null) {
+                break;
+            }
+            iterations++;
+        } while (iterations < queueCount * 100);
+
+        if (op != null) {
+            return op;
+        }
+
+        logWarning("All queues empty, this is not expected:%s",
+                this.queryQueuesPerSubject.toString());
+        return null;
     }
 
     private void handleQueryTaskPatch(Operation op, QueryTask task) throws Throwable {
