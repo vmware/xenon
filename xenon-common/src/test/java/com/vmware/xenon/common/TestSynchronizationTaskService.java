@@ -25,7 +25,9 @@ import java.util.UUID;
 import java.util.function.Consumer;
 
 import org.junit.After;
+import org.junit.AfterClass;
 import org.junit.Before;
+import org.junit.BeforeClass;
 import org.junit.Test;
 
 import com.vmware.xenon.common.test.TestContext;
@@ -39,6 +41,18 @@ public class TestSynchronizationTaskService extends BasicTestCase {
     public int updateCount = 10;
     public int serviceCount = 10;
     public int nodeCount = 3;
+
+    @BeforeClass
+    public static void setUpClass() throws Exception {
+        System.setProperty(
+                SynchronizationTaskService.PROPERTY_NAME_SYNCHRONIZATION_LOGGING, "true");
+    }
+
+    @AfterClass
+    public static void tearDownClass() throws Exception {
+        System.setProperty(
+                SynchronizationTaskService.PROPERTY_NAME_SYNCHRONIZATION_LOGGING, "false");
+    }
 
     @Before
     public void setUp() {
@@ -120,7 +134,7 @@ public class TestSynchronizationTaskService extends BasicTestCase {
         long membershipUpdateTimeMicros = task.membershipUpdateTimeMicros;
 
         List<Operation> ops = new ArrayList<>();
-        for (int i = 0; i < this.updateCount; i++) {
+        for (int i = 0; i < this.updateCount * 100; i++) {
             membershipUpdateTimeMicros += 1;
             SynchronizationTaskService.State state =
                     createSynchronizationTaskState(membershipUpdateTimeMicros);
