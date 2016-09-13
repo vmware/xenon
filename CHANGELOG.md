@@ -2,6 +2,11 @@
 
 ## 0.9.6-SNAPSHOT
 
+* Add query operation queues per authorized subject in the index service. New
+  scheme offers fair scheduling across users and mitigates head-of-line
+  queuing problems. The support is transparent to all existing code and works
+  with a single queue (for system context) if authorization is disabled.
+
 ## 0.9.5
 
 * Add PREFIX option in QueryTerm.MatchType to support string prefix field queries
