@@ -39,6 +39,8 @@ import java.util.Random;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -48,14 +50,14 @@ import java.util.logging.Level;
 import javax.xml.bind.DatatypeConverter;
 
 import org.junit.After;
-import org.junit.Before;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 
-import com.vmware.xenon.common.BasicReportTestCase;
+import com.vmware.xenon.common.AuthorizationSetupHelper;
 import com.vmware.xenon.common.CommandLineArgumentParser;
 import com.vmware.xenon.common.FileUtils;
 import com.vmware.xenon.common.Operation;
+import com.vmware.xenon.common.OperationContext;
 import com.vmware.xenon.common.Service;
 import com.vmware.xenon.common.Service.Action;
 import com.vmware.xenon.common.Service.ProcessingStage;
@@ -103,7 +105,7 @@ class FaultInjectionLuceneDocumentIndexService extends LuceneDocumentIndexServic
 
 }
 
-public class TestLuceneDocumentIndexService extends BasicReportTestCase {
+public class TestLuceneDocumentIndexService {
 
     /**
      * Parameter that specifies number of durable service instances to create
@@ -114,6 +116,11 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
      * Parameter that specifies number of concurrent update requests
      */
     public int updateCount = 10;
+
+    /**
+     * Parameter that specifies authorized user count for auth enabled tests
+     */
+    public int authUserCount = Utils.DEFAULT_THREAD_COUNT;
 
     /**
      * Parameter that specifies long running test duration in seconds
@@ -127,34 +134,69 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
 
     private int expiredDocumentSearchThreshold;
 
-    @Before
-    public void setup() {
-        this.expiredDocumentSearchThreshold = LuceneDocumentIndexService
-                .getExpiredDocumentSearchThreshold();
+    private VerificationHost host;
+
+    private void setUpHost(boolean isAuthEnabled) throws Throwable {
+        if (this.host != null) {
+            return;
+        }
+
+        this.host = VerificationHost.create(0);
+        CommandLineArgumentParser.parseFromProperties(this.host);
+        CommandLineArgumentParser.parseFromProperties(this);
+        try {
+            this.host.setMaintenanceIntervalMicros(TimeUnit.MILLISECONDS
+                    .toMicros(VerificationHost.FAST_MAINT_INTERVAL_MILLIS));
+            // disable synchronization so it does not interfere with the various test assumptions
+            // on index stats.
+            this.host.setPeerSynchronizationEnabled(false);
+            this.indexService = new FaultInjectionLuceneDocumentIndexService();
+            if (this.host.isStressTest) {
+                this.host.setStressTest(this.host.isStressTest);
+            } else {
+                this.indexService.toggleOption(ServiceOption.INSTRUMENTATION, true);
+            }
+            this.host.setDocumentIndexingService(this.indexService);
+            this.host.setPeerSynchronizationEnabled(false);
+
+            if (isAuthEnabled) {
+                this.host.setAuthorizationService(new AuthorizationContextService());
+                this.host.setAuthorizationEnabled(true);
+            }
+
+            this.host.start();
+
+            if (isAuthEnabled) {
+                createUsersAndRoles();
+            }
+
+            this.expiredDocumentSearchThreshold = LuceneDocumentIndexService
+                    .getExpiredDocumentSearchThreshold();
+        } catch (Throwable e) {
+            throw new Exception(e);
+        }
     }
 
     @After
-    public void tearDown() throws Throwable {
+    public void tearDown() throws Exception {
+        if (this.host == null) {
+            return;
+        }
+        try {
+            this.host.setSystemAuthorizationContext();
+            this.host.logServiceStats(this.host.getDocumentIndexServiceUri());
+        } catch (Throwable e) {
+            this.host.log("Error logging stats: %s", e.toString());
+        }
+        this.host.tearDown();
         LuceneDocumentIndexService
                 .setExpiredDocumentSearchThreshold(this.expiredDocumentSearchThreshold);
     }
 
-    @Override
-    public void beforeHostStart(VerificationHost host) {
-        CommandLineArgumentParser.parseFromProperties(host);
-        host.setMaintenanceIntervalMicros(TimeUnit.MILLISECONDS.toMicros(100));
-        this.indexService = new FaultInjectionLuceneDocumentIndexService();
-        if (this.host.isStressTest) {
-            this.host.setStressTest(this.host.isStressTest);
-        } else {
-            this.indexService.toggleOption(ServiceOption.INSTRUMENTATION, true);
-        }
-        host.setDocumentIndexingService(this.indexService);
-        host.setPeerSynchronizationEnabled(false);
-    }
 
     @Test
     public void corruptedIndexRecovery() throws Throwable {
+        setUpHost(false);
         this.doDurableServiceUpdate(Action.PUT, 100, 2, null);
         Thread.sleep(this.host.getMaintenanceIntervalMicros() / 1000);
 
@@ -219,6 +261,7 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
 
     @Test
     public void corruptIndexWhileRunning() throws Throwable {
+        setUpHost(false);
         this.host.setOperationTimeOutMicros(TimeUnit.SECONDS.toMicros(5));
         this.host.setServiceStateCaching(false);
 
@@ -344,6 +387,7 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
 
     @Test
     public void serviceHostRestartWithDurableServices() throws Throwable {
+        setUpHost(false);
         VerificationHost h = VerificationHost.create();
         TemporaryFolder tmpFolder = new TemporaryFolder();
         tmpFolder.create();
@@ -815,7 +859,7 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
         // in parallel issue a GET to the yet to be created service, with a PRAGMA telling the
         // runtime to queue the request, until service start
         int getCount = 100;
-        TestContext ctx = testCreate(getCount + 1);
+        TestContext ctx = this.host.testCreate(getCount + 1);
         for (int gi = 0; gi < getCount; gi++) {
             get = Operation.createGet(yetToBeCreatedChildUri).setCompletion(ctx.getCompletion())
                     .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_QUEUE_FOR_SERVICE_AVAILABILITY);
@@ -828,7 +872,7 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
                 this.host.send(post);
             }
         }
-        testWait(ctx);
+        this.host.testWait(ctx);
 
 
         this.host.log("******************************* finished *******************************");
@@ -836,6 +880,7 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
 
     @Test
     public void verifyOnDemandLoadServiceWithSubscribers() throws Throwable {
+        setUpHost(false);
         // Set memory limit very low to induce service pause/stop.
         this.host.setServiceMemoryLimit(ServiceHost.ROOT_PATH, 0.00001);
 
@@ -862,26 +907,26 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
         st.name = "firstPatch";
 
         // Subscribe to created service
-        TestContext ctx = testCreate(1);
+        TestContext ctx = this.host.testCreate(1);
         Operation subscribe = Operation.createPost(serviceUri)
                 .setCompletion(ctx.getCompletion())
                 .setReferer(this.host.getReferer());
 
-        TestContext notifyCtx = testCreate(2);
+        TestContext notifyCtx = this.host.testCreate(2);
         this.host.startReliableSubscriptionService(subscribe, (notifyOp) -> {
             notifyOp.complete();
             notifyCtx.completeIteration();
         });
-        testWait(ctx);
+        this.host.testWait(ctx);
 
         // do a PATCH, to trigger a notification
-        TestContext patchCtx = testCreate(1);
+        TestContext patchCtx = this.host.testCreate(1);
         Operation patch = Operation
                 .createPatch(serviceUri)
                 .setBody(st)
                 .setCompletion(patchCtx.getCompletion());
         this.host.send(patch);
-        testWait(patchCtx);
+        this.host.testWait(patchCtx);
 
         // Let's change the maintenance interval to low so that the service pauses.
         this.host.setMaintenanceIntervalMicros(TimeUnit.MILLISECONDS.toMicros(100));
@@ -892,17 +937,17 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
 
         // Let's do a PATCH again
         st.name = "secondPatch";
-        patchCtx = testCreate(1);
+        patchCtx = this.host.testCreate(1);
         patch = Operation
                 .createPatch(serviceUri)
                 .setBody(st)
                 .setCompletion(patchCtx.getCompletion());
         this.host.send(patch);
-        testWait(patchCtx);
+        this.host.testWait(patchCtx);
 
         // Wait for the patch notifications. This will exit only
         // when both notifications have been received.
-        testWait(notifyCtx);
+        this.host.testWait(notifyCtx);
     }
 
     private void createOnDemandLoadServices(ServiceHost h, String factoryLink)
@@ -981,6 +1026,7 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
 
     @Test
     public void interleavedUpdatesWithQueries() throws Throwable {
+        setUpHost(false);
         this.host.waitForServiceAvailable(ExampleService.FACTORY_LINK);
         final String initialServiceNameValue = "initial-" + UUID.randomUUID().toString();
         URI factoryUri = UriUtils.buildUri(this.host, ExampleService.FACTORY_LINK);
@@ -1094,12 +1140,14 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
 
     @Test
     public void updateAndQueryByVersion() throws Throwable {
+        setUpHost(false);
         this.host.doExampleServiceUpdateAndQueryByVersion(this.host.getUri(),
                 (int) this.serviceCount);
     }
 
     @Test
     public void patchLargeServiceState() throws Throwable {
+        setUpHost(false);
         // create on demand load services
         String factoryLink = createOnDemandLoadFactoryService(this.host);
         createOnDemandLoadServices(this.host, factoryLink);
@@ -1120,18 +1168,19 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
         int byteCount = Utils.toBytes(patchBody, bufferNeededForBinaryState, 0);
         this.host.log("Expected binary serialized state size %d", byteCount);
 
-        TestContext ctx = testCreate(res.documentLinks.size());
+        TestContext ctx = this.host.testCreate(res.documentLinks.size());
         for (String link : res.documentLinks) {
             Operation patch = Operation.createPatch(this.host, link)
                     .setBody(patchBody)
                     .setCompletion(ctx.getCompletion());
             this.host.send(patch);
         }
-        testWait(ctx);
+        this.host.testWait(ctx);
     }
 
     @Test
     public void throughputPost() throws Throwable {
+        setUpHost(false);
         int iterationCount = this.host.isStressTest() ? 5 : 1;
         URI factoryUri = UriUtils.buildFactoryUri(this.host, ExampleService.class);
 
@@ -1150,11 +1199,122 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
         }
     }
 
+    @Test
+    public void throughputPostWithAuthz() throws Throwable {
+        setUpHost(true);
+        URI factoryUri = UriUtils.buildFactoryUri(this.host, ExampleService.class);
+        Consumer<Operation> setBody = (o) -> {
+            ExampleServiceState body = new ExampleServiceState();
+            body.name = "a name";
+            body.counter = Utils.getNowMicrosUtc();
+            o.setBody(body);
+        };
+
+        // assume system identity so we can create roles
+        this.host.setSystemAuthorizationContext();
+
+        List<String> userLinks = new ArrayList<>();
+        for (int i = 0; i < this.authUserCount; i++) {
+            userLinks.add(buildExampleUserLink(i));
+        }
+
+        // first test throughput sequentially, no contention among users
+        for (String userLink : userLinks) {
+            // assume authorized user identity
+            this.host.assumeIdentity(userLink);
+            this.host.log("(%d) (%s), Starting sequential factory POST, count:%d",
+                    0,
+                    OperationContext.getAuthorizationContext().getClaims().getSubject(),
+                    this.serviceCount);
+            doThroughputPost(factoryUri, setBody);
+            this.host.deleteAllChildServices(factoryUri);
+        }
+
+        // no test it in parallel, with contention
+        TestContext ctx = this.host.testCreate(userLinks.size());
+        Map<String, Runnable> postTasksPerSubject = new ConcurrentSkipListMap<>();
+        Map<String, Long> durationPerSubject = new ConcurrentSkipListMap<>();
+        for (String userLink : userLinks) {
+            Runnable r = () -> {
+                try {
+                    // assume authorized user identity
+                    this.host.assumeIdentity(userLink);
+                    this.host.log("(%d) (%s), Starting Factory POST, count:%d",
+                            0,
+                            OperationContext.getAuthorizationContext().getClaims().getSubject(),
+                            this.serviceCount);
+                    long start = Utils.getNowMicrosUtc();
+                    doThroughputPost(factoryUri, setBody);
+                    long end = Utils.getNowMicrosUtc();
+                    durationPerSubject.put(userLink, end - start);
+                    ctx.complete();
+                } catch (Throwable e) {
+                    ctx.fail(e);
+                }
+            };
+            postTasksPerSubject.put(userLink, r);
+        }
+
+
+        // Confirm fairness: Start one task before the two others, and see if the average throughput
+        // for the last N tasks is similar. The initial task has a head start with no content, so its
+        // expected that it has a higher throughput
+        Runnable firstTask = postTasksPerSubject.remove(userLinks.remove(0));
+        this.host.run(firstTask);
+        // add a fixed delay per 1000 services, to allow the queue / index service to see lots of concurrent
+        // requests for one subject, before others start in parallel
+        Thread.sleep(10 * (this.serviceCount / 1000));
+        for (Runnable r : postTasksPerSubject.values()) {
+            ForkJoinPool.commonPool().execute(r);
+        }
+        this.host.testWait(ctx);
+
+        // Until we confirm correctness, do not assert on durations. this will be enabled soon
+        for (Entry<String, Long> e : durationPerSubject.entrySet()) {
+            this.host.log("Subject: %s, duration(micros): %d", e.getKey(), e.getValue());
+        }
+    }
+
+    private String buildExampleUserEmail(int i) {
+        return "example-user-" + i + "@somewhere.com";
+    }
+
+    private String buildExampleUserLink(int i) {
+        return UriUtils.buildUriPath(ServiceUriPaths.CORE_AUTHZ_USERS, "example-user-" + i);
+    }
+
+    private void createUsersAndRoles() {
+
+        TestContext ctx = this.host.testCreate(this.authUserCount);
+        AuthorizationSetupHelper.AuthSetupCompletion authCompletion = (ex) -> {
+            if (ex == null) {
+                ctx.completeIteration();
+            } else {
+                ctx.failIteration(ex);
+            }
+        };
+
+        this.host.setSystemAuthorizationContext();
+        for (int i = 0; i < this.authUserCount; i++) {
+            AuthorizationSetupHelper.create()
+                    .setHost(this.host)
+                    .setUserEmail(buildExampleUserEmail(i))
+                    .setUserPassword(buildExampleUserEmail(i))
+                    .setUserSelfLink(buildExampleUserLink(i))
+                    .setIsAdmin(false)
+                    .setDocumentKind(Utils.buildKind(ExampleServiceState.class))
+                    .setCompletion(authCompletion)
+                    .start();
+        }
+        this.host.testWait(ctx);
+        this.host.resetAuthorizationContext();
+    }
+
 
     private void doThroughputPost(URI factoryUri, Consumer<Operation> setBody)
             throws Throwable {
         long startTimeMicros = System.nanoTime() / 1000;
-        TestContext ctx = testCreate((int) this.serviceCount);
+        TestContext ctx = this.host.testCreate((int) this.serviceCount);
         for (int i = 0; i < this.serviceCount; i++) {
             Operation createPost = Operation.createPost(factoryUri);
             // call callback to set the body
@@ -1172,22 +1332,29 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
                     });
             this.host.send(createPost);
         }
-        testWait(ctx);
+        this.host.testWait(ctx);
         long endTimeMicros = System.nanoTime() / 1000;
         double deltaSeconds = (endTimeMicros - startTimeMicros) / 1000000.0;
         double ioCount = this.serviceCount;
         double throughput = ioCount / deltaSeconds;
-        this.host.log("Operation count: %f, throughput(ops/sec): %f", ioCount, throughput);
-        this.host.deleteAllChildServices(factoryUri);
+        String subject = "(none)";
+        if (this.host.isAuthorizationEnabled()) {
+            subject = OperationContext.getAuthorizationContext().getClaims().getSubject();
+        }
+        this.host.log("(%s) Operation count: %f, throughput(ops/sec): %f",
+                subject,
+                ioCount, throughput);
     }
 
     @Test
     public void throughputPut() throws Throwable {
+        setUpHost(false);
         doDurableServiceUpdate(Action.PUT, this.serviceCount, this.updateCount, null);
     }
 
     @Test
     public void putWithFailureAndCacheValidation() throws Throwable {
+        setUpHost(false);
         List<Service> services = this.host.doThroughputServiceStart(
                 1, MinimalTestService.class, this.host.buildMinimalTestState(),
                 EnumSet.of(Service.ServiceOption.PERSISTENCE), null);
@@ -1246,7 +1413,7 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
      */
     @Test
     public void deleteWithExpirationAndPostWithPragmaForceUpdate() throws Throwable {
-
+        setUpHost(false);
         URI factoryUri = UriUtils.buildFactoryUri(this.host, ExampleService.class);
         long originalExpMicros = Utils.getNowMicrosUtc() + TimeUnit.MINUTES.toMicros(1);
         Consumer<Operation> setBody = (o) -> {
@@ -1335,6 +1502,7 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
 
     @Test
     public void serviceCreationAndDocumentExpirationLongRunning() throws Throwable {
+        setUpHost(false);
         this.host.waitForServiceAvailable(ExampleService.FACTORY_LINK);
 
         LuceneDocumentIndexService.setExpiredDocumentSearchThreshold(2);
@@ -1710,12 +1878,14 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
 
     @Test
     public void serviceVersionRetentionAndGrooming() throws Throwable {
+        setUpHost(false);
         EnumSet<ServiceOption> caps = EnumSet.of(ServiceOption.PERSISTENCE);
         doServiceVersionGroomingValidation(caps);
     }
 
     @Test
     public void testBackupAndRestoreFromZipFile() throws Throwable {
+        setUpHost(false);
         LuceneDocumentIndexService.BackupRequest b = new LuceneDocumentIndexService.BackupRequest();
         b.documentKind = LuceneDocumentIndexService.BackupRequest.KIND;
 
@@ -2020,6 +2190,7 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
      */
     @Test
     public void indexUpgrade() throws Throwable {
+        setUpHost(false);
         // Stop the host, without cleaning up storage.
         this.host.stop();
 
