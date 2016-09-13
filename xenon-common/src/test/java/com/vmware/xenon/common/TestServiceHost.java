@@ -39,6 +39,7 @@ import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
+import java.util.logging.Level;
 
 import io.netty.handler.ssl.util.SelfSignedCertificate;
 
@@ -1214,6 +1215,7 @@ public class TestServiceHost {
             links[i] = u.getPath();
             this.host.registerForServiceAvailability(ctx.getCompletion(),
                     u.getPath());
+            this.host.log(Level.INFO, "Starting example factory Service %s", u.toString());
             this.host.startService(Operation.createPost(u),
                     ExampleService.createFactory());
             this.host.registerForServiceAvailability(ctx.getCompletion(), true,

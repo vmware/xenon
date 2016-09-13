@@ -451,6 +451,10 @@ class ServiceSynchronizationTracker {
                 continue;
             }
 
+            if (s.getProcessingStage() != ProcessingStage.AVAILABLE) {
+                continue;
+            }
+
             if (!s.hasOption(ServiceOption.FACTORY)) {
                 continue;
             }
