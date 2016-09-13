@@ -706,32 +706,45 @@ public class LuceneDocumentIndexService extends StatelessService {
     }
 
     public void handleGetImpl(Operation get) throws Throwable {
-        Map<String, String> params = UriUtils.parseUriQueryParams(get.getUri());
-        String cap = params.get(UriUtils.URI_PARAM_CAPABILITY);
-        EnumSet<QueryOption> options = EnumSet.noneOf(QueryOption.class);
-        ServiceOption targetIndex = ServiceOption.NONE;
+        String selfLink = null;
         Long version = null;
+        ServiceOption targetIndex = ServiceOption.NONE;
 
-        if (cap != null) {
-            targetIndex = ServiceOption.valueOf(cap);
-        }
-
-        if (params.containsKey(UriUtils.URI_PARAM_INCLUDE_DELETED)) {
+        EnumSet<QueryOption> options = EnumSet.noneOf(QueryOption.class);
+        if (get.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_INDEX_CHECK)) {
+            // fast path for checking if a service exists, and loading its latest state
+            targetIndex = ServiceOption.PERSISTENCE;
+            // the GET operation URI is set to the service we want to load, not the self link
+            // of the index service. This is only possible when the operation was directly
+            // dispatched from the local host, on the index service
+            selfLink = get.getUri().getPath();
             options.add(QueryOption.INCLUDE_DELETED);
-        }
+        } else {
+            // REST API for loading service state, given a set of URI query parameters
+            Map<String, String> params = UriUtils.parseUriQueryParams(get.getUri());
+            String cap = params.get(UriUtils.URI_PARAM_CAPABILITY);
 
-        if (params.containsKey(ServiceDocument.FIELD_NAME_VERSION)) {
-            version = Long.parseLong(params.get(ServiceDocument.FIELD_NAME_VERSION));
-        }
+            if (cap != null) {
+                targetIndex = ServiceOption.valueOf(cap);
+            }
 
-        String selfLink = params.get(ServiceDocument.FIELD_NAME_SELF_LINK);
-        String fieldToExpand = params.get(UriUtils.URI_PARAM_ODATA_EXPAND);
-        if (fieldToExpand == null) {
-            fieldToExpand = params.get(UriUtils.URI_PARAM_ODATA_EXPAND_NO_DOLLAR_SIGN);
-        }
-        if (fieldToExpand != null
-                && fieldToExpand.equals(ServiceDocumentQueryResult.FIELD_NAME_DOCUMENT_LINKS)) {
-            options.add(QueryOption.EXPAND_CONTENT);
+            if (params.containsKey(UriUtils.URI_PARAM_INCLUDE_DELETED)) {
+                options.add(QueryOption.INCLUDE_DELETED);
+            }
+
+            if (params.containsKey(ServiceDocument.FIELD_NAME_VERSION)) {
+                version = Long.parseLong(params.get(ServiceDocument.FIELD_NAME_VERSION));
+            }
+
+            selfLink = params.get(ServiceDocument.FIELD_NAME_SELF_LINK);
+            String fieldToExpand = params.get(UriUtils.URI_PARAM_ODATA_EXPAND);
+            if (fieldToExpand == null) {
+                fieldToExpand = params.get(UriUtils.URI_PARAM_ODATA_EXPAND_NO_DOLLAR_SIGN);
+            }
+            if (fieldToExpand != null
+                    && fieldToExpand.equals(ServiceDocumentQueryResult.FIELD_NAME_DOCUMENT_LINKS)) {
+                options.add(QueryOption.EXPAND_CONTENT);
+            }
         }
 
         if (selfLink == null) {
@@ -831,17 +844,24 @@ public class LuceneDocumentIndexService extends StatelessService {
         }
 
         IndexSearcher s = updateSearcher(selfLink, 1, w);
-        long start = Utils.getNowMicrosUtc();
+        long start = 0;
+        long end = 0;
+        if (hasOption(ServiceOption.INSTRUMENTATION)) {
+            start = System.nanoTime();
+        }
         TopDocs hits = searchByVersion(selfLink, s, version);
-        long end = Utils.getNowMicrosUtc();
-        if (hits.totalHits == 0) {
-            op.complete();
-            return;
+        if (hasOption(ServiceOption.INSTRUMENTATION)) {
+            end = System.nanoTime();
         }
 
         if (hasOption(ServiceOption.INSTRUMENTATION)) {
             ServiceStat st = getHistogramStat(STAT_NAME_QUERY_SINGLE_DURATION_MICROS);
-            setStat(st, end - start);
+            setStat(st, (end - start) / 1000.0);
+        }
+
+        if (hits.totalHits == 0) {
+            op.complete();
+            return;
         }
 
         Document doc = s.getIndexReader().document(hits.scoreDocs[0].doc,
