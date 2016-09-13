@@ -43,6 +43,7 @@ public class TestSynchronizationTaskService extends BasicTestCase {
     @Before
     public void setUp() {
         CommandLineArgumentParser.parseFromProperties(this);
+        System.setProperty(SynchronizationTaskService.PROPERTY_NAME_SYNCHRONIZATION_LOGGING, "true");
 
         URI exampleFactoryUri = UriUtils.buildUri(
                 this.host.getUri(), ExampleService.FACTORY_LINK);
@@ -63,6 +64,7 @@ public class TestSynchronizationTaskService extends BasicTestCase {
     public void tearDown() {
         this.host.tearDownInProcessPeers();
         this.host.tearDown();
+        System.setProperty(SynchronizationTaskService.PROPERTY_NAME_SYNCHRONIZATION_LOGGING, "false");
     }
 
     @Test
