@@ -63,6 +63,7 @@ import java.util.logging.ConsoleHandler;
 import java.util.logging.FileHandler;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManagerFactory;
 
@@ -4411,6 +4412,7 @@ public class ServiceHost implements ServiceRequestSender {
      */
     private void scheduleMaintenance() {
         Runnable r = () -> {
+            OperationContext.setAuthorizationContext(this.getSystemAuthorizationContext());
             this.state.lastMaintenanceTimeUtcMicros = Utils.getNowMicrosUtc();
             long deadline = this.state.lastMaintenanceTimeUtcMicros
                     + this.state.maintenanceIntervalMicros;

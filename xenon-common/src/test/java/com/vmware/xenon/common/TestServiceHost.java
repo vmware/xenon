@@ -1345,6 +1345,8 @@ public class TestServiceHost {
     @Test
     public void servicePauseDueToMemoryPressure() throws Throwable {
         setUp(true);
+        this.host.setAuthorizationService(new AuthorizationContextService());
+        this.host.setAuthorizationEnabled(true);
 
         if (this.serviceCount >= 1000) {
             this.host.setStressTest(true);
@@ -1383,6 +1385,7 @@ public class TestServiceHost {
 
         // Create a number of child services.
         URI factoryURI = UriUtils.buildFactoryUri(this.host, ExampleService.class);
+        this.host.setSystemAuthorizationContext();
         Map<URI, ExampleServiceState> states = this.host.doFactoryChildServiceStart(null,
                 this.serviceCount,
                 ExampleServiceState.class, bodySetter, factoryURI);

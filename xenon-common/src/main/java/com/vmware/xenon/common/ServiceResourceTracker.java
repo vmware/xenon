@@ -713,11 +713,12 @@ class ServiceResourceTracker {
         }
 
         inboundOp.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_INDEX_CHECK);
-
+        OperationContext inputContext = OperationContext.getOperationContext();
         Operation query = ServiceContextIndexService
                 .createGet(this.host, path)
                 .setCompletion(
                         (o, e) -> {
+                            OperationContext.setFrom(inputContext);
                             if (e != null) {
                                 this.host.log(Level.WARNING,
                                         "Failure checking if service paused: " + Utils.toString(e));
@@ -738,7 +739,7 @@ class ServiceResourceTracker {
                                     ServiceHostManagementService.STAT_NAME_SERVICE_RESUME_COUNT, 1);
                             this.host.handleRequest(null, inboundOp);
                         });
-
+        OperationContext.setAuthorizationContext(this.host.getSystemAuthorizationContext());
         this.host.sendRequest(query.setReferer(this.host.getUri()));
         return true;
     }
