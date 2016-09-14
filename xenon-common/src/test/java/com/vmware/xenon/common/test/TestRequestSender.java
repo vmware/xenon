@@ -36,9 +36,24 @@ public class TestRequestSender implements ServiceRequestSender {
         public Throwable failure;
     }
 
+    private static ThreadLocal<String> authenticationToken = new ThreadLocal<>();
+
     private ServiceRequestSender sender;
     private Duration timeout = Duration.ofSeconds(30);
     private URI referer;
+
+
+    /**
+     * Set auth token to current thread. The token is used when this class sends a request.
+     */
+    public static void setAuthToken(String authToken) {
+        authenticationToken.set(authToken);
+    }
+
+    public static void clearAuthToken() {
+        authenticationToken.remove();
+    }
+
 
     public TestRequestSender(ServiceRequestSender sender) {
         this.sender = sender;
@@ -53,13 +68,17 @@ public class TestRequestSender implements ServiceRequestSender {
      */
     @Override
     public void sendRequest(Operation op) {
-        // TODO: populate caller stack information to op, when op fails, add it to suppressed exception
-
         URI referer = this.referer;
         if (referer == null) {
             referer = getDefaultReferer();
         }
         op.setReferer(referer);
+
+        String authToken = authenticationToken.get();
+        if (authToken != null) {
+            op.addRequestHeader(Operation.REQUEST_AUTH_TOKEN_HEADER, authToken);
+        }
+
         this.sender.sendRequest(op);
     }
 

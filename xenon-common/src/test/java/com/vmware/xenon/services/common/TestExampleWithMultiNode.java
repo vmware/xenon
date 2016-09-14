@@ -18,12 +18,17 @@ import static java.util.stream.Collectors.toSet;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
+import java.time.Duration;
 import java.util.Set;
 
 import org.junit.Test;
 
+import com.vmware.xenon.common.AuthorizationSetupHelper;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.ServiceHost;
+import com.vmware.xenon.common.Utils;
+import com.vmware.xenon.common.test.AuthTestUtils;
+import com.vmware.xenon.common.test.TestContext;
 import com.vmware.xenon.common.test.TestNodeGroupManager;
 import com.vmware.xenon.common.test.TestRequestSender;
 import com.vmware.xenon.common.test.TestRequestSender.FailureResponse;
@@ -164,5 +169,80 @@ public class TestExampleWithMultiNode {
 
         nodeGroupState.nodes.values().forEach(
                 nodeState -> assertEquals("quorum on host=" + nodeState.id, expectedQuorum, nodeState.membershipQuorum));
+    }
+
+
+    @Test
+    public void authorization() throws Throwable {
+        VerificationHost host = VerificationHost.create(0);
+        host.setAuthorizationEnabled(true);
+        host.start();
+
+        TestNodeGroupManager nodeGroup = new TestNodeGroupManager();
+        nodeGroup.addHost(host);
+
+        // perform lambda under system auth context
+        // see user creation below to perform logic under system auth context in descriptive way
+        AuthTestUtils.executeWithSystemAuthContext(nodeGroup, () -> {
+            nodeGroup.joinNodeGroupAndWaitForConvergence();
+            nodeGroup.waitForFactoryServiceAvailable("/core/examples");
+        });
+
+
+        // create user, user-group, resource-group, role for foo@vmware.com
+        //   user: /core/authz/users/foo@vmware.com
+        TestContext waitContext = new TestContext(1, Duration.ofSeconds(30));
+        AuthorizationSetupHelper userBuilder = AuthorizationSetupHelper.create()
+                .setHost(host)
+                .setUserSelfLink("foo@vmware.com")
+                .setUserEmail("foo@vmware.com")
+                .setUserPassword("password")
+                .setDocumentKind(Utils.buildKind(ExampleServiceState.class))
+                .setCompletion(ex -> {
+                    if (ex == null) {
+                        waitContext.complete();
+                    } else {
+                        waitContext.fail(ex);
+                    }
+                });
+
+        // descriptively execute code under system auth context
+        AuthTestUtils.setSystemAuthorizationContext(host);
+        userBuilder.start();
+        AuthTestUtils.resetAuthorizationContext(host);
+
+        waitContext.await();
+
+
+        // check login failure
+        AuthTestUtils.loginExpectFailure(nodeGroup, "foo@vmware.com", "wrong password");
+
+
+        // login and subsequent operations will be performed as foo@vmware.com
+        AuthTestUtils.loginAndSetToken(nodeGroup, "foo@vmware.com", "password");
+
+        // POST request
+        ExampleServiceState body = new ExampleServiceState();
+        body.documentSelfLink = "/foo";
+        body.name = "foo";
+        Operation post = Operation.createPost(host, "/core/examples").setBody(body);
+
+        // verify post response
+        TestRequestSender sender = new TestRequestSender(host);
+        ExampleServiceState postResult = sender.sendAndWait(post, ExampleServiceState.class);
+        assertEquals("foo", postResult.name);
+        assertEquals("/core/authz/users/foo@vmware.com", postResult.documentAuthPrincipalLink);
+
+        Operation get = Operation.createGet(host, "/core/examples/foo");
+        Operation getResponse = sender.sendAndWait(get);
+        assertEquals(200, getResponse.getStatusCode());
+
+
+        AuthTestUtils.logout(nodeGroup);
+
+        // after logout, request should fail
+        Operation getAfterLogout = Operation.createGet(host, "/core/examples/foo");
+        FailureResponse failureResponse = sender.sendAndWaitFailure(getAfterLogout);
+        assertEquals(403, failureResponse.op.getStatusCode());
     }
 }
