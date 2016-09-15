@@ -19,6 +19,7 @@ import org.apache.lucene.index.Term;
 import org.apache.lucene.search.BooleanClause;
 import org.apache.lucene.search.BooleanQuery;
 import org.apache.lucene.search.PhraseQuery;
+import org.apache.lucene.search.PrefixQuery;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.Sort;
 import org.apache.lucene.search.SortField;
@@ -63,6 +64,8 @@ class LuceneQueryConverter {
             return convertToLuceneWildcardTermQuery(query);
         } else if (query.term.matchType == QueryTask.QueryTerm.MatchType.PHRASE) {
             return convertToLucenePhraseQuery(query);
+        } else if (query.term.matchType == QueryTask.QueryTerm.MatchType.PREFIX) {
+            return convertToLucenePrefixQuery(query);
         } else {
             return convertToLuceneSingleTermQuery(query);
         }
@@ -83,6 +86,10 @@ class LuceneQueryConverter {
             builder.add(new Term(query.term.propertyName, token));
         }
         return builder.build();
+    }
+
+    static Query convertToLucenePrefixQuery(QueryTask.Query query) {
+        return new PrefixQuery(convertToLuceneTerm(query.term));
     }
 
     static Query convertToLuceneWildcardTermQuery(QueryTask.Query query) {

@@ -1,6 +1,9 @@
 # CHANGELOG
 
 ## 0.9.5-SNAPSHOT
+
+* Add PREFIX option in QueryTerm.MatchType to support string prefix field queries
+
 * Add new SynchronizationTaskService. An instance of this task is created per
   FactoryService that acts as a dedicated task synchronizing child-services of
   the associated factory. This also simplifies the FactoryService by moving

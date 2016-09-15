@@ -2519,6 +2519,14 @@ public class TestQueryTaskService {
                 .setTermMatchType(MatchType.TERM);
 
         createWaitAndValidateQueryTask(versionCount, services, q, forceRemote);
+
+        String prefix = word.substring(0, word.length() - 1);
+        // finally issue a prefix query
+        q.query = new QueryTask.Query();
+        q.query.setTermPropertyName(QueryValidationServiceState.FIELD_NAME_TEXT_VALUE)
+                .setTermMatchValue(prefix)
+                .setTermMatchType(MatchType.PREFIX);
+        createWaitAndValidateQueryTask(versionCount, services, q, forceRemote);
     }
 
     @Test
