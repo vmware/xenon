@@ -685,6 +685,7 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
         // verify that no attempts to start service occurred
         assertTrue(startCount == MinimalTestService.HANDLE_START_COUNT.get());
 
+
         ExampleServiceState st = new ExampleServiceState();
         st.name = Utils.getNowMicrosUtc() + "";
 
@@ -803,6 +804,31 @@ public class TestLuceneDocumentIndexService extends BasicReportTestCase {
             }
             return true;
         });
+
+        // verify request gets queued, for a ODL service, not YET created
+        // attempt to on demand load a service that *never* existed
+        body = new ExampleServiceState();
+        body.documentSelfLink = UUID.randomUUID().toString() + Utils.getNowMicrosUtc();
+        body.name = prefix + UUID.randomUUID().toString();
+        URI yetToBeCreatedChildUri = UriUtils.extendUri(factoryUri, body.documentSelfLink);
+
+        // in parallel issue a GET to the yet to be created service, with a PRAGMA telling the
+        // runtime to queue the request, until service start
+        int getCount = 100;
+        TestContext ctx = testCreate(getCount + 1);
+        for (int gi = 0; gi < getCount; gi++) {
+            get = Operation.createGet(yetToBeCreatedChildUri).setCompletion(ctx.getCompletion())
+                    .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_QUEUE_FOR_SERVICE_AVAILABILITY);
+            this.host.send(get);
+            if (gi == 10) {
+                // now issue the POST to create the service, in parallel with most of the GETs
+                post = Operation.createPost(factoryUri)
+                        .setCompletion(ctx.getCompletion())
+                        .setBody(body);
+                this.host.send(post);
+            }
+        }
+        testWait(ctx);
 
 
         this.host.log("******************************* finished *******************************");
