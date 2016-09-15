@@ -430,7 +430,7 @@ public class QueryTask extends ServiceDocument {
 
     public static class QueryTerm {
         public enum MatchType {
-            WILDCARD, TERM, PHRASE
+            WILDCARD, TERM, PHRASE, PREFIX
         }
 
         public String propertyName;
