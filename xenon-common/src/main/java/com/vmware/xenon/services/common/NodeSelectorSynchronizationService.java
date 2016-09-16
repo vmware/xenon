@@ -14,15 +14,12 @@
 package com.vmware.xenon.services.common;
 
 import java.net.URI;
-import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
-import java.util.TreeMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -166,66 +163,14 @@ public class NodeSelectorSynchronizationService extends StatelessService {
             return;
         }
 
-        ServiceDocument bestPeerRsp = null;
         boolean incrementEpoch = false;
-
-        TreeMap<Long, List<ServiceDocument>> syncRspsPerEpoch = new TreeMap<>();
         Map<URI, ServiceDocument> peerStates = new HashMap<>();
-
-        for (Entry<URI, String> e : rsp.jsonResponses.entrySet()) {
-            ServiceDocument peerState = Utils.fromJson(e.getValue(),
-                    request.state.getClass());
-
-            if (peerState.documentSelfLink == null
-                    || !peerState.documentSelfLink.equals(request.state.documentSelfLink)) {
-                logWarning("Invalid state from peer %s: %s", e.getKey(), e.getValue());
-                peerStates.put(e.getKey(), new ServiceDocument());
-                continue;
-            }
-
-            peerStates.put(e.getKey(), peerState);
-
-            if (peerState.documentEpoch == null) {
-                peerState.documentEpoch = 0L;
-            }
-            List<ServiceDocument> statesForEpoch = syncRspsPerEpoch.get(peerState.documentEpoch);
-            if (statesForEpoch == null) {
-                statesForEpoch = new ArrayList<>();
-                syncRspsPerEpoch.put(peerState.documentEpoch, statesForEpoch);
-            }
-            statesForEpoch.add(peerState);
-
-            if (!request.ownerNodeId.equals(peerState.documentOwner)) {
-                incrementEpoch = true;
-            }
-        }
-
-        // As part of synchronization we need to detect what peer services do not have the best state.
-        // A peer might have been missing this service instance, or it might be unavailable. Either way,
-        // when we attempt to broadcast the best state, we will use this map to determine if a peer
-        // should receive the best state we found.
-        for (URI remotePeerService : rsp.receivers) {
-            if (peerStates.containsKey(remotePeerService)) {
-                continue;
-            }
-            if (this.isDetailedLoggingEnabled) {
-                logInfo("No peer response for %s from %s", request.state.documentSelfLink,
-                        remotePeerService);
-            }
-            peerStates.put(remotePeerService, new ServiceDocument());
-        }
-
-        if (!syncRspsPerEpoch.isEmpty()) {
-            List<ServiceDocument> statesForHighestEpoch = syncRspsPerEpoch.get(syncRspsPerEpoch
-                    .lastKey());
-            long maxVersion = Long.MIN_VALUE;
-            for (ServiceDocument peerState : statesForHighestEpoch) {
-                if (peerState.documentVersion > maxVersion) {
-                    bestPeerRsp = peerState;
-                    maxVersion = peerState.documentVersion;
-                }
-            }
-        }
+        ServiceDocument bestPeerRsp = NodeGroupUtils.computeLatestVersion(
+                this.getHost(),
+                request.state.documentSelfLink,
+                request.state.getClass(),
+                rsp.jsonResponses,
+                peerStates);
 
         if (bestPeerRsp != null && bestPeerRsp.documentEpoch == null) {
             bestPeerRsp.documentEpoch = 0L;
@@ -233,6 +178,26 @@ public class NodeSelectorSynchronizationService extends StatelessService {
 
         if (request.state.documentEpoch == null) {
             request.state.documentEpoch = 0L;
+        }
+
+        // As part of synchronization we need to detect what peer services do not have the best state.
+        // A peer might have been missing this service instance, or it might be unavailable. Either way,
+        // when we attempt to broadcast the best state, we will use this map to determine if a peer
+        // should receive the best state we found.
+        for (URI remotePeerService : rsp.receivers) {
+            ServiceDocument state = peerStates.get(remotePeerService);
+            if (state != null) {
+                if (state.documentOwner != null &&
+                        request.ownerNodeId.equals((state.documentOwner))) {
+                    incrementEpoch = true;
+                }
+                continue;
+            }
+            if (this.isDetailedLoggingEnabled) {
+                logInfo("No peer response for %s from %s", request.state.documentSelfLink,
+                        remotePeerService);
+            }
+            peerStates.put(remotePeerService, new ServiceDocument());
         }
 
         EnumSet<DocumentRelationship> results = EnumSet.noneOf(DocumentRelationship.class);

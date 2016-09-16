@@ -31,6 +31,7 @@ import com.vmware.xenon.common.Operation.CompletionHandler;
 import com.vmware.xenon.common.OperationJoin;
 import com.vmware.xenon.common.OperationJoin.JoinedCompletionHandler;
 import com.vmware.xenon.common.Service;
+import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.ServiceHost;
 import com.vmware.xenon.common.ServiceStats;
 import com.vmware.xenon.common.ServiceStats.ServiceStat;
@@ -169,6 +170,53 @@ public class NodeGroupUtils {
         }
         checkConvergenceAcrossPeers(host, ngs, parentOp);
     }
+
+    /**
+     * Given a set of Json strings that represent the ServiceDocument of a
+     * documentSelfLink pick the latest document.
+     */
+    public static ServiceDocument computeLatestVersion(
+            ServiceHost host,
+            String documentSelfLink,
+            Class<? extends ServiceDocument> documentKind,
+            Map<URI, String> jsonResponses,
+            Map<URI, ServiceDocument> peerStates) {
+
+        ServiceDocument latest = null;
+        for (Map.Entry<URI, String> e : jsonResponses.entrySet()) {
+
+            ServiceDocument current = Utils.fromJson(e.getValue(), documentKind);
+            if (current.documentSelfLink == null
+                    || !current.documentSelfLink.equals(documentSelfLink)) {
+                host.log(Level.WARNING,
+                        "Invalid state from peer %s: %s", e.getKey(), e.getValue());
+                peerStates.put(e.getKey(), new ServiceDocument());
+                continue;
+            }
+
+            if (current.documentEpoch == null) {
+                current.documentEpoch = 0L;
+            }
+            peerStates.put(e.getKey(), current);
+
+            if (latest == null) {
+                latest = current;
+                continue;
+            }
+
+            long latestEpoch = latest.documentEpoch;
+            long currentEpoch = current.documentEpoch;
+
+            if (latestEpoch < currentEpoch ||
+                    (latestEpoch == currentEpoch &&
+                            latest.documentVersion < current.documentVersion)) {
+                latest = current;
+            }
+        }
+
+        return latest;
+    }
+
 
     private static void checkConvergenceAcrossPeers(ServiceHost host, NodeGroupState ngs,
             Operation parentOp) {
