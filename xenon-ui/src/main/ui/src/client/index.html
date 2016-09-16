@@ -3,21 +3,23 @@
 
 <head>
     <link rel="shortcut icon" href="assets/favicon.ico" />
-    <base href="">
+    <base href="<%= APP_BASE %>">
     <meta charset="utf-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <title>
-        Angular 2 Seed Advanced
+        <%= APP_TITLE %>
     </title>
     <meta name="description" content="">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <!-- inject:css -->
-    <link rel="stylesheet" href="css/main.css?1474063282959">
     <!-- endinject -->
 
-    
+    <% if (TARGET_DESKTOP) { %>
+    <!-- shims:js -->
+    <!-- endinject -->
+    <% } %>
 
-    
+    <% if (ENV === 'prod') { %>
         <!-- segment.io -->
         <script type="text/javascript">
             ! function() {
@@ -55,7 +57,7 @@
                     }
             }();
         </script>
-    
+    <% } %>
 
 </head>
 
@@ -68,24 +70,35 @@
         function module() {}
     </script>
 
-    
+    <% if (!TARGET_DESKTOP) { %>
     <!-- shims:js -->
     <!-- endinject -->
-    
+    <% } %>
 
-    
+    <% if (ENV === 'dev') { %>
+        <script src="<%= APP_BASE %>system-config.js"></script>
+    <% } %>
 
     <!-- libs:js -->
     <!-- endinject -->
 
     <!-- inject:js -->
-    <script src="js/shims.js?1474063282956"></script>
-    <script src="js/app.js?1474063282957"></script>
     <!-- endinject -->
 
-    
+    <% if (ENV === 'dev') { %>
+        <script>
+            System.import('<%= BOOTSTRAP_MODULE %>')
+                .catch(function(e) {
+                    console.error('System import error', e);
+                });
+        </script>
+    <% } %>
 
-    
+    <% if (TARGET_DESKTOP && ENV !== 'prod') { %>
+        <script>
+            require('electron-connect').client.create()
+        </script>
+    <% } %>
 
 </body>
 

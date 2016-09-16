@@ -1,0 +1,24 @@
+{
+  "extends": "stylelint-config-standard",
+  "rules": {
+    "indentation": 4,
+    "color-named": "never",
+    "block-no-empty": null,
+
+    "at-rule-empty-line-before": null,
+    "rule-non-nested-empty-line-before": null,
+    "selector-list-comma-newline-after": "always-multi-line",
+    "selector-list-comma-space-after": "always-single-line",
+    "selector-type-no-unknown": null,
+    "selector-pseudo-class-no-unknown" : [ true, {
+      "ignorePseudoClasses": [
+        "host"
+      ]
+    }],
+
+    "shorthand-property-no-redundant-values": null,
+
+    "string-quotes": "double",
+    "number-leading-zero": "never"
+  }
+}

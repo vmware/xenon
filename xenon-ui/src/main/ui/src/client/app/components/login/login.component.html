@@ -1,0 +1,25 @@
+<div class="login-wrapper">
+    <form class="login" autocomplete="on">
+        <label class="title">VMware XENON<span class="trademark">&#8482;</span>
+        </label>
+        <label class="subtitle">Decentralized Control Plane</label>
+        <div class="login-group" *ngIf="isLoading === false">
+            <input class="username form-control" type="text" name="username"
+                [placeholder]="'USERNAME' | translate" [(ngModel)]="username">
+            <input class="password form-control" type="password"  name="password"
+                [placeholder]="'PASSWORD' | translate" [(ngModel)]="password" >
+            <div class="error active" *ngIf="validationErrorMessage">
+                {{validationErrorMessage}}
+            </div>
+        </div>
+        <div class="loading-group" *ngIf="isLoading === true">
+            <div class="spinner">
+                {{ 'LOADING' | translate }}...
+            </div>
+        </div>
+        <button type="submit" class="btn btn-primary"
+            [disabled]="isLoading === true"
+            (click)="onLogin($event)">{{ 'LOG_IN' | translate }}</button>
+    </form>
+    <xe-star-canvas class="star-canvas"></xe-star-canvas>
+</div>

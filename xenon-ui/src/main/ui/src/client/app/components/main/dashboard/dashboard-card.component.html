@@ -1,0 +1,29 @@
+<div class="card">
+    <div class="card-block card-header-block">
+        <div class="card-header-with-badge">
+            <h4 class="card-title">
+                {{cardTitle}}
+            </h4>
+        </div>
+        <div class="card-badge">
+            <div class="dropdown">
+                <button id="filter" class="btn link-dropdown-toggle dropdown-toggle"
+                    type="button" data-toggle="dropdown"
+                    aria-haspopup="true" aria-expanded="false">
+                    {{getCurrentFilter().name}}
+                </button>
+                <ul class="dropdown-menu" aria-labelledby="filter">
+                    <a class="dropdown-item"
+                        *ngFor="let filter of getFilters()"
+                        (click)="onFilteredClicked($event, filter.value)"
+                        [class.active]="filter.value === getCurrentFilter().value">
+                        {{filter.name}}
+                    </a>
+                </ul>
+            </div>
+        </div>
+    </div>
+    <div class="card-content-block">
+        <canvas [id]="getCardId()" class="canvas"></canvas>
+    </div>
+</div>

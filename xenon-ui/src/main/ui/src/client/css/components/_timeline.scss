@@ -1,0 +1,54 @@
+@import "../colors";
+@import "../variables";
+
+.timeline {
+    @include flexbox();
+    flex-flow: column nowrap;
+    position: relative;
+
+    .timeline-connector {
+        position: absolute;
+        width: 0;
+        border: 1px solid $light-blue-400;
+        left: 5px;
+        top: baselinerem(1.5);
+        bottom: baselinerem(1.5);
+        z-index: 0;
+    }
+
+    .timeline-item {
+        @include flexbox();
+        flex-flow: row nowrap;
+        align-items: center;
+        z-index: 1;
+        padding: baselinerem(.5) 0;
+        height: baselinerem(3);
+
+        .timeline-dot {
+            @include flex(0 0 baselinerem(.5));
+            width: baselinerem(.5);
+            height: baselinerem(.5);
+            border-radius: 50%;
+            border: 2px solid $light-blue-400;
+            background: $white-base;
+            margin-right: baselinerem(.5);
+        }
+
+        .timeline-content {
+            @include flex(1 1 auto);
+
+            .title {
+                margin: 0;
+
+                small {
+                    font-weight: 500;
+                    color: $grey-500;
+                }
+            }
+
+            .timestamp {
+                color: $grey-500;
+            }
+        }
+    }
+}

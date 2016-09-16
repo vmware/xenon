@@ -1,0 +1,175 @@
+<div class="empty-message-container"
+    *ngIf="isNullOrUndefined(getSelectedServiceInstance()) === true">
+    <h4 class="title">{{ 'ERROR_NO_INSTANCE_SELECTED' | translate }}</h4>
+    <p class="message">{{ 'ERROR_NO_INSTANCE_SELECTED_HELPER' | translate }}</p>
+</div>
+<div id="service-instance-detail" class="content-area area info-panel"
+    *ngIf="isNullOrUndefined(getSelectedServiceInstance()) === false">
+    <form>
+        <div class="form-title">
+            <h4>
+                {{getSelectedServiceInstance().documentSelfLink}}
+            </h4>
+            <aside>
+                <button class="btn btn-sm btn-link" data-toggle="modal"
+                    data-target="#editServiceInstanceModal">
+                    <i class="fa fa-pencil-square-o"></i>
+                    {{ 'ACTION_EDIT' | translate}}
+                </button>
+                <button class="btn btn-sm btn-link" data-toggle="modal"
+                    data-target="#deleteServiceInstanceModal">
+                    <i class="fa fa-trash-o"></i>
+                    {{ 'ACTION_DELETE' | translate }}
+                </button>
+            </aside>
+        </div>
+        <small class="form-subtitle">
+            {{'LAST_UPDTED' | translate}}: <strong>{{getTimeStamp(getSelectedServiceInstance().documentUpdateTimeMicros)}}</strong>
+            <span class="separator">|</span>
+            {{'EXPIRES' | translate}}: <strong>{{getTimeStamp(getSelectedServiceInstance().documentExpirationTimeMicros)}}</strong>
+        </small>
+        <section class="charts">
+            <figure class="chart">
+                <figcaption class="title">{{ 'SERVICE_INSTANCE_DETAIL_OPERATION_COUNT_TITLE' | translate }}</figcaption>
+                <canvas id="operationCountChart" class="canvas"></canvas>
+            </figure>
+            <figure class="chart">
+                <figcaption class="title">{{ 'SERVICE_INSTANCE_DETAIL_OPERATION_DURATION_TITLE' | translate }}</figcaption>
+                <canvas id="operationDurationChart" class="canvas"></canvas>
+            </figure>
+        </section>
+        <section>
+            <h5 class="section-title">{{ 'SERVICE_INSTANCE_DETAIL_PROPERTIES' | translate }}</h5>
+            <table class="table table-of-properties">
+                <tbody>
+                    <tr *ngFor="let documentProperty of getPropertyArray(getSelectedServiceInstance())">
+                        <td class="name">{{documentProperty.name}}</td>
+                        <td class="value"><pre>{{documentProperty.value}}</pre></td>
+                    </tr>
+                </tbody>
+            </table>
+        </section>
+    </form>
+</div>
+<div id="service-instance-history" class="right-side-area area"
+    *ngIf="isNullOrUndefined(getSelectedServiceInstance()) === false">
+    <h4>
+        {{ 'SERVICE_INSTANCE_DETAIL_ACTIVITIES_TITLE' | translate }}
+    </h4>
+    <div class="timeline">
+        <div class="timeline-connector"></div>
+        <div class="timeline-item"
+            *ngFor="let timeline of getTimeline()">
+            <div class="timeline-dot"></div>
+            <div class="timeline-content">
+                <h5 class="title">{{timeline?.name}} <small>x {{timeline?.count}}</small></h5>
+                <small class="timestamp">
+                    {{ 'LAST_REQUESTED' | translate }}: <strong>{{getTimeStamp(timeline?.timestamp)}}</strong>
+                </small>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="editServiceInstanceModal" class="modal fade"
+    tabindex="-1" role="dialog"
+    aria-labelledby="editServiceInstanceLabel"
+    aria-hidden="true">
+    <div class="modal-dialog modal-lg" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                  <span aria-hidden="true">&times;</span>
+                </button>
+                <h4 id="editServiceInstanceLabel" class="modal-title">
+                    {{ 'ACTION_EDIT' | translate }} {{'INSTANCE' | translate: {plural: ''} }}
+                </h4>
+            </div>
+            <div class="modal-body">
+                <form>
+                    <div class="form-group row">
+                        <label for="address" class="col-sm-3 col-form-label">
+                            {{ 'SERVICE' | translate }} {{'INSTANCE' | translate: {plural: ''} }}
+                        </label>
+                        <div class="col-sm-9">
+                            <p class="form-control-static">
+                                <strong>{{editInstanceModalContext.data.documentSelfLink}}</strong>
+                            </p>
+                        </div>
+                    </div>
+                    <div class="form-group row">
+                        <label for="address" class="col-sm-3 col-form-label">
+                            {{ 'METHOD' | translate }}
+                        </label>
+                        <div class="col-sm-9">
+                            <div class="btn-group" data-toggle="buttons">
+                                <label class="btn btn-secondary"
+                                    [class.active]="editInstanceModalContext.data.method === 'PATCH'"
+                                    (click)="onEditInstanceMethodChanged($event, 'PATCH')">
+                                    <input type="radio" name="options" autocomplete="off"
+                                        [checked]="editInstanceModalContext.data.method === 'PATCH'"> PATCH
+                                </label>
+                                <label class="btn btn-secondary"
+                                    [class.active]="editInstanceModalContext.data.method === 'PUT'"
+                                    (click)="onEditInstanceMethodChanged($event, 'PUT')">
+                                    <input type="radio" name="options" autocomplete="off"
+                                        [checked]="editInstanceModalContext.data.method === 'PUT'"> PUT
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="form-group row">
+                        <label class="col-sm-3 col-form-label">{{ 'BODY' | translate }}</label>
+                        <div  class="col-sm-9">
+                            <textarea class="form-control" rows="12" name="body"
+                                placeholder="{{ 'SERVICE_INSTANCE_CREATE_MODAL_BODY_HELPER' | translate }}"
+                                [(ngModel)]="editInstanceModalContext.data.body"></textarea>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">
+                    {{ 'ACTION_CANCEL' | translate }}
+                </button>
+                <button type="button" class="btn btn-primary" data-dismiss="modal"
+                    (click)="onEditInstance($event)">
+                    {{ 'ACTION_EDIT' | translate }}
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="deleteServiceInstanceModal" class="modal fade"
+    tabindex="-1" role="dialog"
+    aria-labelledby="deleteServiceInstanceLabel"
+    aria-hidden="true">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                  <span aria-hidden="true">&times;</span>
+                </button>
+                <h4 id="deleteServiceInstanceLabel" class="modal-title">
+                    {{ 'ACTION_DELETE' | translate }} {{'INSTANCE' | translate: {plural: ''} }}
+                </h4>
+            </div>
+            <div class="modal-body">
+                <p>
+                    {{ 'SERVICE_INSTANCE_DELETE_MODAL_HELPER' | translate }}<br/>
+                    <strong>{{editInstanceModalContext.data.documentSelfLink}}</strong>
+                </p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">
+                    {{ 'ACTION_NO' | translate }}
+                </button>
+                <button type="button" class="btn btn-primary" data-dismiss="modal"
+                    (click)="onDeleteInstance($event)">
+                    {{ 'ACTION_YES' | translate }}
+                </button>
+            </div>
+        </div>
+    </div>
+</div>

@@ -1,0 +1,38 @@
+<div class="component-container vertical">
+    <nav class="nav-area">
+        <h4 class="title">{{ 'PROCESS_LOG_TITLE' | translate }}</h4>
+        <aside>
+            <button class="btn btn-sm btn-link"
+                [class.active]="activeFilter === 'all'"
+                (click)="onFilterApplied($event, 'all')">
+                {{ 'PROCESS_LOG_FILTER_ALL' | translate }}
+            </button>
+            <button [class]="getLogTypeClass('INFO', 'btn btn-sm btn-link')"
+                [class.active]="activeFilter === 'info'"
+                (click)="onFilterApplied($event, 'info')">
+                <i [class]="getLogTypeIconClass('INFO')"></i>
+                {{ 'PROCESS_LOG_FILTER_INFO' | translate }} ({{getLogItems('info').length}})
+            </button>
+            <button [class]="getLogTypeClass('WARNING', 'btn btn-sm btn-link')"
+                [class.active]="activeFilter === 'warning'"
+                (click)="onFilterApplied($event, 'warning')">
+                <i [class]="getLogTypeIconClass('WARNING')"></i>
+                {{ 'PROCESS_LOG_FILTER_WARNING' | translate }} ({{getLogItems('warning').length}})
+            </button>
+            <button [class]="getLogTypeClass('SEVERE', 'btn btn-sm btn-link')"
+                [class.active]="activeFilter === 'severe'"
+                (click)="onFilterApplied($event, 'severe')">
+                <i [class]="getLogTypeIconClass('SEVERE')"></i>
+                {{ 'PROCESS_LOG_FILTER_ERROR' | translate }} ({{getLogItems('severe').length}})
+            </button>
+        </aside>
+    </nav>
+    <main class="content-area">
+        <p class="log-item" *ngFor="let logItem of getLogItems(activeFilter)">
+            <span [class]="getLogItemTypeClass(logItem, 'log-type')">
+                <i [class]="getLogItemTypeIconClass(logItem)"></i>
+            </span>
+            {{logItem}}
+        </p>
+    </main>
+</div>

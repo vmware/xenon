@@ -1,0 +1,30 @@
+@import "colors";
+@import "variables";
+
+.card {
+    .card-block.card-header-block {
+        .card-badge {
+            .btn.link-dropdown-toggle {
+                padding: rem(.25) 5px rem(.25) 0;
+                opacity: .7;
+                @include transition(opacity);
+
+                &:hover, &:active, &[aria-expanded="true"] {
+                    opacity: 1;
+                }
+            }
+        }
+    }
+
+    .card-content-block {
+        min-height: 238px;
+        height: auto;
+        padding: baselinerem(1);
+        margin: 0;
+        color: $grey-600;
+
+        .canvas {
+            height: 190px;
+        }
+    }
+}

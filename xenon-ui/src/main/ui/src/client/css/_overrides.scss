@@ -1,0 +1,87 @@
+@import "./colors";
+@import "./variables";
+
+/* Override Font-awesome */
+$fa-font-path: "../assets/fonts";
+
+/* Override BS4 */
+$enable-flex: true;
+
+$font-family-base: $default-font-family;
+$body-color: $black-base;
+$headings-color: $black-base;
+
+$link-hover-decoration: none;
+
+// Colors
+$gray-dark: $grey-600;
+$gray: $grey-500;
+$gray-light: $grey-400;
+$gray-lighter: $grey-200;
+$gray-lightest: $grey-50;
+
+$brand-primary: $light-blue-400;
+$brand-success: $light-green-400;
+$brand-info: $light-blue-600;
+$brand-warning: $amber-400;
+$brand-danger: $red-400;
+
+// Input
+$input-border-focus: $light-blue-300;
+input.form-control-sm { height: 1.8125rem; }
+
+// Typography
+$font-size-h1: 2.1rem;
+$font-size-h2: 1.75rem;
+$font-size-h3: 1.5rem;
+$font-size-h4: 1.25rem;
+$font-size-h5: 1.1rem;
+$font-size-h6: 1rem;
+
+$display1-size: 5.5rem;
+$display2-size: 5rem;
+$display3-size: 4rem;
+$display4-size: 3rem;
+
+// Alert
+$alert-padding: baselinerem(.5);
+$alert-border-radius: rem(.25);
+$alert-border-width: 1px;
+
+$alert-success-bg: $light-green-50;
+$alert-success-text: $light-green-800;
+$alert-success-border: $light-green-800;
+
+$alert-info-bg: $light-blue-50;
+$alert-info-text: $light-blue-800;
+$alert-info-border: $light-blue-800;
+
+$alert-warning-bg: $amber-50;
+$alert-warning-text: $black-base;
+$alert-warning-border: $amber-800;
+
+$alert-danger-bg: $red-50;
+$alert-danger-text: $red-800;
+$alert-danger-border: $red-800;
+
+// Link
+$link-color: $light-blue-400;
+$link-hover-color: $light-blue-600;
+
+// Dropdown
+$dropdown-link-color: $grey-500;
+$dropdown-link-hover-color: $grey-600;
+$dropdown-link-hover-bg: $grey-50;
+
+$dropdown-link-active-color: $grey-600;
+$dropdown-link-active-bg: $grey-100;
+
+// List Group
+$list-group-hover-bg:           $grey-50;
+$list-group-active-color:       $black-base;
+$list-group-active-bg:          $grey-100;
+$list-group-active-text-color:  $grey-600;
+
+$list-group-link-color:         $black-base;
+$list-group-link-hover-color:   $black-base;
+$list-group-link-heading-color: $black-base;

@@ -1,0 +1,71 @@
+@import "colors";
+@import "variables";
+
+.component-container {
+    .nav-area {
+        aside {
+            .btn.btn-link {
+                color: $light-blue-700;
+
+                &:hover, &:active, &.active {
+                    color: $light-blue-900;
+                    background: $light-blue-300;
+                    border-color: $light-blue-300;
+                }
+
+                &.info {
+                    color: $light-blue-400;
+
+                    &:hover, &:active, &.active {
+                        color: $light-blue-600;
+                        background: $light-blue-100;
+                        border-color: $light-blue-100;
+                    }
+                }
+
+                &.warning {
+                    color: $amber-600;
+
+                    &:hover, &:active, &.active {
+                        color: $amber-800;
+                        background: $amber-100;
+                        border-color: $amber-100;
+                    }
+                }
+
+                &.severe {
+                    color: $red-400;
+
+                    &:hover, &:active, &.active {
+                        color: $red-600;
+                        background: $red-100;
+                        border-color: $red-100;
+                    }
+                }
+            }
+        }
+    }
+
+    .content-area {
+        .log-item {
+            margin: 0 0 baselinerem(1);
+
+            .log-type {
+                display: inline-block;
+                margin-right: 6px;
+
+                &.info {
+                    color: $light-blue-600;
+                }
+
+                &.warning {
+                    color: $amber-800;
+                }
+
+                &.severe {
+                    color: $red-600;
+                }
+            }
+        }
+    }
+}

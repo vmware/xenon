@@ -1,0 +1,33 @@
+<div class="component-container vertical">
+    <nav class="nav-area">
+        <h4 class="title">{{ 'DASHBOARD_TITLE' | translate }}</h4>
+    </nav>
+    <main class="content-area">
+        <div class="card-deck">
+            <xe-dashboard-card class="card-container col-sm-4"
+                [cardId]="'cpuUsagePercent'"
+                [cardTitle]="'CPU Usage'"
+                [chartData]="getSystemChartData('cpuUsagePercent')"
+                [chartOptions]="getChartOptions('cpuUsagePercent')">
+            </xe-dashboard-card>
+            <xe-dashboard-card class="card-container col-sm-4"
+                [cardId]="'availableMemoryBytes'"
+                [cardTitle]="'Available Memory'"
+                [chartData]="getSystemChartData('availableMemoryBytes')"
+                [chartOptions]="getChartOptions('availableMemoryBytes')">
+            </xe-dashboard-card>
+            <xe-dashboard-card class="card-container col-sm-4"
+                [cardId]="'availableDiskByte'"
+                [cardTitle]="'Available Disk Space'"
+                [chartData]="getSystemChartData('availableDiskByte')"
+                [chartOptions]="getChartOptions('availableDiskByte')">
+            </xe-dashboard-card>
+            <xe-dashboard-card class="card-container col-sm-4"
+                [cardId]="'log'"
+                [cardTitle]="'Process Logs'"
+                [chartData]="getLogChartData()"
+                [chartOptions]="getChartOptions('log')">
+            </xe-dashboard-card>
+        </div>
+    </main>
+</div>

@@ -1,0 +1,78 @@
+@import "colors";
+@import "variables";
+@import "components/status";
+
+.branding {
+    .logo {
+        width: baselinerem(1.5);
+        height: baselinerem(1.5);
+        border-radius: 3px;
+        margin: baselinerem(.5) baselinerem(.5) baselinerem(.5) 0;
+        display: block;
+        float: left;
+
+        img {
+            width: 32px;
+            height: 32px;
+            margin: 2px 0;
+            vertical-align: top;
+        }
+    }
+
+    .title {
+        display: block;
+        float: left;
+
+        .trademark {
+            line-height: baselinerem(2);
+        }
+    }
+}
+
+.header-nav {
+    @include flex(1 1 auto);
+}
+
+.settings {
+    @include flex(0 1 auto);
+
+    .nav-link {
+        cursor: pointer;
+        margin-left: 0;
+        margin-right: baselinerem(1);
+
+        &:active, &.active {
+            opacity: 1;
+
+            .nav-icon {
+                opacity: 1;
+            }
+        }
+
+        &.node-selector {
+            @include flexbox();
+            flex-flow: row nowrap;
+            align-items: center;
+            margin-left: baselinerem(1);
+            margin-right: 0;
+
+            .node-name {
+                max-width: baselinerem(9);
+                margin: 0 baselinerem(.5);
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
+
+            .status-indicator {
+                width: 16px;
+                height: 16px;
+                border-radius: 50%;
+                border-width: 4px;
+                border-style: solid;
+
+                @extend %status-indicator;
+            }
+        }
+    }
+}

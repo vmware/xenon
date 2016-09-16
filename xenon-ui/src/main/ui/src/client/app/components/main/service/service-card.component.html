@@ -1,0 +1,43 @@
+<div class="card">
+    <div [class]="getServiceAvailabilityClass('card-block status-block')">
+    </div>
+    <div class="card-block card-header-block">
+        <div class="card-header-with-badge">
+            <h4 class="card-title">
+                <a [routerLink]="['./', getRouterId(service.documentSelfLink)]"
+                    preserveQueryParams="true">
+                    {{service.documentSelfLink}}
+                </a>
+            </h4>
+            <p class="card-text">
+                {{'LAST_UPDTED' | translate}}: <strong>{{getTimeStamp(service.documentUpdateTimeMicros)}}</strong>
+                <span class="separator">|</span>
+                {{'EXPIRES' | translate}}: <strong>{{getTimeStamp(service.documentExpirationTimeMicros)}}</strong>
+            </p>
+        </div>
+    </div>
+    <div class="card-divider"></div>
+    <h6 class="card-text">{{'SERVICE_SERVICE_OPTIONS' | translate}}</h6>
+    <div class="card-content-block card-content-block-scroll">
+        <div class="tags-container">
+            <div class="tag" *ngFor="let option of getServiceConfiguration()?.options">
+                {{option}}
+            </div>
+        </div>
+    </div>
+    <div class="card-block card-header-block">
+        <div class="card-header-with-badge">
+            <a class="card-link" data-toggle="modal"
+                data-target="#createServiceInstanceModal"
+                (click)="onCreateInstanceClicked($event)">
+                <i class="fa fa-plus"></i>
+                {{'ACTION_CREATE' | translate}} {{'INSTANCE' | translate: {plural: ''} }}
+            </a>
+        </div>
+
+        <div class="stats stats-horizontal card-badge">
+            <span class="stats-number">{{getServiceInstanceCount()}}</span>
+            <span class="stats-label">{{'SERVICE' | translate}}<br>{{'INSTANCE' | translate:{plural: 's'} }}</span>
+        </div>
+    </div>
+</div>

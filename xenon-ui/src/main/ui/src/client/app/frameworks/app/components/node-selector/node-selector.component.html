@@ -1,0 +1,30 @@
+<div class="node-selector" [class.visible]="isViewVisible()">
+    <h4 class="node-selector-title">
+        <span>{{'NODE_SELECTOR_TITLE' | translate}}</span>
+        <button class="btn btn-link btn-secondary close"
+            (click)="onViewClosed($event)">
+            &times;
+        </button>
+    </h4>
+    <div class="component-container horizontal">
+        <main class="content-area area">
+            <xe-node-canvas
+                class="node-canvas"
+                [nodeGroups]="getNodeGroups()"
+                [selectedNodeId]="getSelectedNode()?.id"
+                [highlightedNodeId]="getHighlightedNode()?.id"
+                [hostNodeId]="getHostNode()?.id"
+                (highlightNode)="onNodeHighlighted($event)">
+            </xe-node-canvas>
+        </main>
+        <main class="right-side-area area">
+            <xe-node-info-panel
+                class="node-info-panel"
+                [selectedNodeId]="getSelectedNode()?.id"
+                [highlightedNodeId]="getHighlightedNode()?.id"
+                [hostNodeId]="getHostNode()?.id"
+                (selectNode)="onNodeSelectionConfirmed($event)">
+            </xe-node-info-panel>
+        </main>
+    </div>
+</div>

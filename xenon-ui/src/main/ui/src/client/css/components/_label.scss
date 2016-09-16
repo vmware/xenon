@@ -1,0 +1,19 @@
+@import "../colors";
+@import "../variables";
+
+.badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: rem(1);
+    background: $grey-600;
+    height: rem(1);
+    line-height: normal;
+    border-radius: rpx(10);
+    font-size: rem(10 / 16);
+    padding: 0 rpx(4);
+    margin-right: baselinerem(.25);
+    white-space: nowrap;
+    text-align: center;
+    color: $grey-200;
+}

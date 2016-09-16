@@ -1,0 +1,99 @@
+@import "../colors";
+@import "../variables";
+
+$default-status-color: $grey-100;
+
+$unknown-status-color-dark: $grey-900;
+$unknown-status-color: $grey-600;
+$unknown-status-color-light: $grey-300;
+
+$created-status-color-dark: $grey-700;
+$created-status-color: $grey-400;
+$created-status-color-light: $grey-100;
+
+$execute-status-color-dark: $light-blue-700;
+$execute-status-color: $light-blue-400;
+$execute-status-color-light: $light-blue-100;
+
+$failed-status-color-dark: $red-700;
+$failed-status-color: $red-400;
+$failed-status-color-light: $red-100;
+
+$canceled-status-color-dark: $orange-700;
+$canceled-status-color: $orange-400;
+$canceled-status-color-light: $orange-100;
+
+$skipped-status-color-dark: $amber-700;
+$skipped-status-color: $amber-400;
+$skipped-status-color-light: $amber-100;
+
+$finished-status-color-dark: $light-green-700;
+$finished-status-color: $light-green-400;
+$finished-status-color-light: $light-green-100;
+
+.created-status {
+    color: $created-status-color;
+}
+
+.execute-status {
+    color: $execute-status-color;
+}
+
+.failed-status {
+    color: $failed-status-color;
+}
+
+.canceled-status {
+    color: $canceled-status-color;
+}
+
+.skipped-status {
+    color: $skipped-status-color;
+}
+
+.finished-status {
+    color: $finished-status-color;
+}
+
+%status-indicator {
+    border-color: $unknown-status-color;
+    background: $default-status-color;
+
+    &.active {
+        background: $light-green-700 !important;
+    }
+
+    &.host {
+        background: $cyan-500 !important;
+    }
+
+    &.created-status {
+        border-color: $created-status-color;
+        background: $created-status-color-dark;
+    }
+
+    &.execute-status {
+        border-color: $execute-status-color;
+        background: $execute-status-color-dark;
+    }
+
+    &.failed-status {
+        border-color: $failed-status-color;
+        background: $failed-status-color-dark;
+    }
+
+    &.canceled-status {
+        border-color: $canceled-status-color;
+        background: $canceled-status-color-dark;
+    }
+
+    &.skipped-status {
+        border-color: $skipped-status-color;
+        background: $skipped-status-color-dark;
+    }
+
+    &.finished-status {
+        border-color: $finished-status-color;
+        background: $finished-status-color-dark;
+    }
+}

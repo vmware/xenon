@@ -1,0 +1,101 @@
+<div class="query-clause" [class.first-clause]="isFirst">
+    <div class="connector"></div>
+    <div class="occurance-group"
+        *ngIf="isFirst === false"
+        [ngSwitch]="type">
+        <div *ngSwitchCase="'sort'">
+            <span class="form-control static-control">
+                {{ 'QUERY_BUILDER_HELPER_SORT_BY' | translate }}
+            </span>
+        </div>
+        <div class="btn-group" data-toggle="buttons"
+            *ngSwitchDefault>
+            <label class="btn btn-sm btn-secondary active">
+                <input type="radio" name="occurance" autocomplete="off" checked/> AND
+            </label>
+            <label class="btn btn-sm btn-secondary">
+                <input type="radio" name="occurance" autocomplete="off"/> OR
+            </label>
+            <label class="btn btn-sm btn-secondary">
+                <input type="radio" name="occurance" autocomplete="off"/> NOT
+            </label>
+        </div>
+    </div>
+    <div class="term-group" [ngSwitch]="type">
+        <div *ngSwitchCase="'string'">
+            <input class="form-control form-control-sm"
+                type="text" name="propertyName" autocomplete="off"
+                placeholder="{{ 'QUERY_BUILDER_HELPER_PROPERTY_NAME' | translate }}"/>
+            <select class="form-control form-control-sm"
+                name="propertyMatchType">
+                <option value="TERM">
+                    {{ 'QUERY_BUILDER_OPTION_MATCH_TERM' | translate }}
+                </option>
+                <option value="PHRASE">
+                    {{ 'QUERY_BUILDER_OPTION_MATCH_PHRASE' | translate }}
+                </option>
+                <option value="WILDCARD">
+                    {{ 'QUERY_BUILDER_OPTION_MATCH_WILDCARD' | translate }}
+                </option>
+            </select>
+            <input class="form-control form-control-sm"
+                type="text" name="propertyValue" autocomplete="off"
+                placeholder="{{ 'QUERY_BUILDER_HELPER_PROPERTY_VALUE' | translate }}"/>
+        </div>
+        <div *ngSwitchCase="'range'">
+            <input class="form-control form-control-sm"
+                type="text" name="propertyName" autocomplete="off"
+                placeholder="{{ 'QUERY_BUILDER_HELPER_PROPERTY_NAME' | translate }}"/>
+            <span class="form-control static-control">
+                {{ 'QUERY_BUILDER_HELPER_IS_BETWEEN' | translate }}
+            </span>
+            <input class="form-control form-control-sm"
+                type="number" name="propertyValueMin" autocomplete="off" step=".01"
+                placeholder="{{ 'QUERY_BUILDER_HELPER_PROPERTY_VALUE_MIN' | translate }}"/>
+            <span class="form-control static-control">
+                {{ 'QUERY_BUILDER_HELPER_AND' | translate }}
+            </span>
+            <input class="form-control form-control-sm"
+                type="number" name="propertyValueMax" autocomplete="off" step=".01"
+                placeholder="{{ 'QUERY_BUILDER_HELPER_PROPERTY_VALUE_MAX' | translate }}"/>
+        </div>
+        <div *ngSwitchCase="'sort'">
+            <input class="form-control form-control-sm"
+                type="text" name="propertyName" autocomplete="off"
+                placeholder="{{ 'QUERY_BUILDER_HELPER_PROPERTY_NAME' | translate }}"/>
+            <span class="form-control static-control">
+                {{ 'QUERY_BUILDER_HELPER_IN' | translate }}
+            </span>
+            <select class="form-control form-control-sm"
+                name="propertyMatchType">
+                <option value="ASC">
+                    {{ 'QUERY_BUILDER_OPTION_ASC' | translate }}
+                </option>
+                <option value="DESC">
+                    {{ 'QUERY_BUILDER_OPTION_DESC' | translate }}
+                </option>
+            </select>
+        </div>
+    </div>
+    <div class="control-group">
+        <select class="form-control form-control-sm" name="queryClauseType"
+            (change)="onQueryClauseTypeChanged($event)">
+            <option value="string">
+                {{ 'QUERY_BUILDER_OPTION_STRING' | translate }}
+            </option>
+            <option value="range">
+                {{ 'QUERY_BUILDER_OPTION_RANGE' | translate }}
+            </option>
+            <option value="sort">
+                {{ 'QUERY_BUILDER_OPTION_SORT' | translate }}
+            </option>
+            <!-- <option disabled>──────</option>
+            <option value="nested">
+                {{ 'QUERY_BUILDER_HELPER_AND' | translate }}
+            </option> -->
+        </select>
+        <button class="btn btn-sm btn-link"
+            *ngIf="isFirst === false"
+            (click)="onDeleteClauseClicked($event)">&times;</button>
+    </div>
+</div>

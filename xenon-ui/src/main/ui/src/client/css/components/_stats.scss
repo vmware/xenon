@@ -1,0 +1,55 @@
+@import "../colors";
+@import "../variables";
+
+.stats {
+    margin: 0;
+    @include flexbox();
+
+    &.stats-horizontal {
+        flex-flow: row nowrap;
+        align-items: flex-start;
+        justify-content: flex-end;
+
+        .stats-number {
+            line-height: 30px;
+            font-size: 36px;
+            padding-right: 7px;
+        }
+
+        .stats-label {
+            line-height: 15px;
+            font-size: 12px;
+            text-align: left;
+        }
+    }
+
+    &.stats-vertical {
+        flex-flow: column nowrap;
+        align-items: flex-end;
+        justify-content: flex-start;
+
+        .stats-number {
+            line-height: 24px;
+            font-size: 24px;
+            text-align: right;
+        }
+
+        .stats-label {
+            line-height: 14px;
+            font-size: 12px;
+            text-align: right;
+        }
+    }
+
+    .stats-number {
+        color: $grey-500;
+        font-weight: bold;
+        text-align: right;
+        @include flex-order(0);
+    }
+
+    .stats-label {
+        color: $grey-400;
+        @include flex-order(1);
+    }
+}

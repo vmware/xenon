@@ -1,0 +1,85 @@
+<div class="component-container vertical">
+    <nav class="nav-area">
+        <h4 class="title">{{ 'SERVICE_FACTORY_SERVICES_TITLE' | translate }}</h4>
+    </nav>
+    <main class="content-area">
+        <section>
+            <h4 class="section-title">
+                {{ 'SERVICE_CORE_SERVICES_TITLE' | translate }}
+                <span class="badge">{{getCoreServices().length}}</span>
+            </h4>
+            <div class="card-deck">
+                <xe-service-card class="card-container col-sm-4"
+                    *ngFor="let coreService of getCoreServices()"
+                    [id]="getServiceId(coreService.documentSelfLink)"
+                    [service]="coreService"
+                    (createInstanceClicked)="onCreateInstanceClicked($event)">
+                </xe-service-card>
+            </div>
+        </section>
+        <hr class="content-divider">
+        <section>
+            <h4 class="section-title">
+                {{ 'SERVICE_COSTOM_SERVICES_TITLE' | translate }}
+                <span class="badge">{{getCustomServices().length}}</span>
+            </h4>
+            <div class="card-deck">
+                <xe-service-card class="card-container col-sm-4"
+                    *ngFor="let customService of getCustomServices()"
+                    [id]="getServiceId(customService.documentSelfLink)"
+                    [service]="customService"
+                    (createInstanceClicked)="onCreateInstanceClicked($event)">
+                </xe-service-card>
+            </div>
+        </section>
+    </main>
+</div>
+
+<div id="createServiceInstanceModal" class="modal fade"
+    tabindex="-1" role="dialog"
+    aria-labelledby="createServiceInstanceLabel"
+    aria-hidden="true">
+    <div class="modal-dialog modal-lg" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                  <span aria-hidden="true">&times;</span>
+                </button>
+                <h4 id="createServiceInstanceLabel" class="modal-title">
+                    {{ 'ACTION_CREATE' | translate }} {{'INSTANCE' | translate: {plural: ''} }}
+                </h4>
+            </div>
+            <div class="modal-body">
+                <form>
+                    <div class="form-group row">
+                        <label for="address" class="col-sm-3 col-form-label">
+                            {{ 'SERVICE' | translate }}
+                        </label>
+                        <div class="col-sm-9">
+                            <p class="form-control-static">
+                                <strong>{{createInstanceModalContext.data.documentSelfLink}}</strong>
+                            </p>
+                        </div>
+                    </div>
+                    <div class="form-group row">
+                        <label class="col-sm-3 col-form-label">{{ 'BODY' | translate }}</label>
+                        <div  class="col-sm-9">
+                            <textarea class="form-control" rows="12" name="body"
+                                placeholder="{{ 'SERVICE_INSTANCE_CREATE_MODAL_BODY_HELPER' | translate }}"
+                                [(ngModel)]="createInstanceModalContext.data.body"></textarea>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">
+                    {{ 'ACTION_CANCEL' | translate }}
+                </button>
+                <button type="button" class="btn btn-primary" data-dismiss="modal"
+                    (click)="onCreateInstance($event)">
+                    {{ 'ACTION_CREATE' | translate }}
+                </button>
+            </div>
+        </div>
+    </div>
+</div>

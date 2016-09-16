@@ -1,0 +1,53 @@
+@import "colors";
+@import "variables";
+
+#service-instance-detail.content-area.info-panel {
+    padding: baselinerem(1) baselinerem(1.5);
+
+    .form-title {
+        @include flexbox();
+        flex-flow: row nowrap;
+        margin-top: 0;
+
+        h4 {
+            @include flex(1 1 auto);
+            @include break-word();
+            margin: 0;
+        }
+
+        aside {
+            @include flexbox();
+            @include flex(1 0 auto);
+            justify-content: flex-end;
+        }
+    }
+
+    .form-subtitle {
+        font-size: 80%;
+        color: $grey-500;
+    }
+
+    section {
+        margin-top: baselinerem(1.5);
+
+        .section-title {
+            margin-bottom: baselinerem(.5);
+        }
+    }
+
+    table.table-of-properties {
+        table-layout: fixed;
+
+        pre {
+            font-size: $default-font-size;
+            line-height: $default-line-height;
+        }
+    }
+}
+
+#service-instance-history.right-side-area {
+    width: baselinerem(14);
+    padding: baselinerem(1) baselinerem(1.5);
+    border-left: none;
+    background: $grey-50;
+}

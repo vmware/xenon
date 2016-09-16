@@ -1,0 +1,121 @@
+<div class="component-container vertical">
+    <nav class="nav-area">
+        <ol class="title">
+            <li>
+                <a [routerLink]="['/main/service']" preserveQueryParams="true">
+                    {{ 'SERVICE_FACTORY_SERVICES_TITLE' | translate }}
+                </a>
+            </li>
+            <li>
+                <div class="dropdown">
+                    <a id="serviceList" class="link-dropdown-toggle dropdown-toggle"
+                        data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                        {{getSelectedServiceId()}}
+                    </a>
+                    <ul class="dropdown-menu" aria-labelledby="serviceList">
+                        <li class="dropdown-filter"
+                            (click)="$event.stopImmediatePropagation()">
+                            <input #filter class="form-control" type="text"
+                                placeholder="{{ 'SERVICE_INSTANCE_DROPDOWN_FILTER_HELPER' | translate }}"
+                                (keyup)="0"/>
+                        </li>
+                        <li class="dropdown-list">
+                            <a class="dropdown-item"
+                                *ngFor="let serviceLink of getServiceLinks() | filterByName: filter.value"
+                                [class.active]="getSelectedServiceId() === serviceLink"
+                                [routerLink]="['/main/service', getSelectedServiceRouterId(serviceLink)]"
+                                preserveQueryParams="true">
+                                {{serviceLink}}
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+            </li>
+        </ol>
+        <aside>
+            <button class="btn btn-sm btn-link" data-toggle="modal"
+                data-target="#createServiceInstanceModal">
+                <i class="fa fa-plus"></i>
+                {{ 'ACTION_CREATE' | translate}} {{'INSTANCE' | translate: {plural: ''} }}
+            </button>
+            <button class="btn btn-sm btn-link" (click)="onQueryClicked($event)">
+                <i class="fa fa-search"></i>
+                {{ 'ACTION_QUERY' | translate }}
+            </button>
+        </aside>
+    </nav>
+    <main class="content-area content-area-with-nested-container component-container horizontal">
+        <div class="empty-message-container"
+            *ngIf="getServiceInstanceLinks().length === 0">
+            <h4 class="title">{{ 'ERROR_NO_INSTANCE_AVAILABLE' | translate }}</h4>
+            <p class="message">{{ 'ERROR_NO_INSTANCE_AVAILABLE_HELPER' | translate }}</p>
+        </div>
+        <div class="left-side-area area"
+             *ngIf="getServiceInstanceLinks().length > 0">
+            <div class="list-group">
+                <a class="list-group-item list-group-item-action"
+                    *ngFor="let serviceInstanceLink of getServiceInstanceLinks()"
+                    [routerLink]="['/main/service', getSelectedServiceRouterId(getSelectedServiceId()), serviceInstanceLink]"
+                    preserveQueryParams="true" routerLinkActive="active">
+                    {{serviceInstanceLink}}
+                </a>
+            </div>
+        </div>
+        <div class="content-area area"
+             *ngIf="getServiceInstanceLinks().length > 0">
+            <xe-service-instance-detail class="component-container horizontal service-instance-detail-container"
+                [selectedServiceId]="getSelectedServiceId()"
+                [selectedServiceInstanceId]="getSelectedServiceInstanceId()">
+            </xe-service-instance-detail>
+        </div>
+    </main>
+</div>
+
+<div id="createServiceInstanceModal" class="modal fade"
+    tabindex="-1" role="dialog"
+    aria-labelledby="createServiceInstanceLabel"
+    aria-hidden="true">
+    <div class="modal-dialog modal-lg" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                  <span aria-hidden="true">&times;</span>
+                </button>
+                <h4 id="createServiceInstanceLabel" class="modal-title">
+                    {{ 'ACTION_CREATE' | translate }} {{'INSTANCE' | translate: {plural: ''} }}
+                </h4>
+            </div>
+            <div class="modal-body">
+                <form>
+                    <div class="form-group row">
+                        <label for="address" class="col-sm-3 col-form-label">
+                            {{ 'SERVICE' | translate }}
+                        </label>
+                        <div class="col-sm-9">
+                            <p class="form-control-static">
+                                <strong>{{createInstanceModalContext.data.documentSelfLink}}</strong>
+                            </p>
+                        </div>
+                    </div>
+                    <div class="form-group row">
+                        <label class="col-sm-3 col-form-label">{{ 'BODY' | translate }}</label>
+                        <div  class="col-sm-9">
+                            <textarea class="form-control" rows="12" name="body"
+                                placeholder="{{ 'SERVICE_INSTANCE_CREATE_MODAL_BODY_HELPER' | translate }}"
+                                [(ngModel)]="createInstanceModalContext.data.body"></textarea>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">
+                    {{ 'ACTION_CANCEL' | translate }}
+                </button>
+                <button type="button" class="btn btn-primary" data-dismiss="modal"
+                    (click)="onCreateInstance($event)">
+                    {{ 'ACTION_CREATE' | translate }}
+                </button>
+            </div>
+        </div>
+    </div>
+</div>

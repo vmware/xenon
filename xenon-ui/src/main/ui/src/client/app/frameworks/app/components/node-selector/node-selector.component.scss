@@ -1,0 +1,65 @@
+@import "colors";
+@import "variables";
+
+.node-selector {
+    background: transparentize($grey-100, .1);
+    color: $black-base;
+    z-index: $higher-z-index;
+    position: fixed;
+    top: baselinerem(2.5);
+    left: 0;
+    right: 0;
+    bottom: 0;
+    padding: baselinerem(1) baselinerem(1.5) 0 baselinerem(1.5);
+    overflow: hidden;
+    @include flexbox();
+    flex-flow: column nowrap;
+    visibility: hidden;
+
+    &.visible {
+        visibility: visible;
+    }
+
+    .node-selector-title {
+        margin: 0;
+        padding: 0 0 baselinerem(1);
+        border-bottom: 1px solid $grey-300;
+        @include flexbox();
+
+        span {
+            @include flex(1 1 auto);
+            line-height: 1.5;
+        }
+
+        button.close {
+            @include flex(0 0 auto);
+            background: transparent;
+            font-size: baselinerem(1.5);
+            line-height: baselinerem(1);
+            padding: 0;
+            margin: -3px 0 0 0;
+            opacity: .7;
+            color: $grey-700;
+            @include transition(opacity);
+
+            &:hover, &:active {
+                opacity: 1;
+            }
+        }
+    }
+
+    .component-container {
+        .area, [class*="-area"] {
+            background: transparent;
+
+            > * {
+                @include flexbox();
+                height: 100vh;
+            }
+        }
+
+        .right-side-area {
+            width: 50%;
+        }
+    }
+}

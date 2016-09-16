@@ -1,0 +1,47 @@
+@import "colors";
+@import "variables";
+
+.card {
+
+    h6.card-text {
+        background: $grey-50;
+        padding: rem(.5) rem(1.25);
+        margin: 0;
+    }
+
+    .card-content-block {
+        height: 126px;
+        color: $grey-600;
+        background: $grey-50;
+
+        .list-group {
+            .list-group-item {
+                .title {
+                    @include flex(0 0 50%);
+                    @include flex-order(0);
+                    padding-right: 10px;
+                    margin-bottom: 0;
+                    text-overflow: ellipsis;
+                    overflow: hidden;
+                    white-space: nowrap;
+                }
+
+                .value {
+                    @include flex(1 1 auto);
+                    @include flex-order(1);
+                    margin-bottom: 0;
+                    text-overflow: ellipsis;
+                    overflow: hidden;
+                    white-space: nowrap;
+                }
+            }
+        }
+
+        .no-property-container {
+            height: 100%;
+            @include flexbox();
+            flex-flow: column nowrap;
+            justify-content: center;
+        }
+    }
+}

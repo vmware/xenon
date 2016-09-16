@@ -1,0 +1,59 @@
+html, body, div {
+    border: 0;
+    margin: 0;
+    padding: 0;
+}
+
+/* Box-sizing border-box */
+* {
+    -moz-box-sizing: border-box;
+    -webkit-box-sizing: border-box;
+    box-sizing: border-box;
+}
+
+/* Reboot Clarity */
+.main-container {
+    overflow: hidden;
+
+    .content-container {
+        > * {
+            @include flex(1 0 auto);
+            width: 100%;
+        }
+
+        router-outlet {
+            @include flex(0 0 0);
+        }
+    }
+}
+
+table, .table {
+    pre {
+        margin: 0;
+        color: $black-base;
+        font-size: $table-font-size;
+        font-family: $default-font-family;
+        line-height: $table-line-height;
+        border: none;
+    }
+}
+
+.btn-group {
+    > .btn {
+        margin-right: 0;
+    }
+}
+
+.nav-item .nav-link {
+    cursor: pointer;
+
+    &[disabled="true"] {
+        color: $grey-400;
+        cursor: not-allowed;
+        box-shadow: none;
+    }
+}
+
+.modal {
+    z-index: $highest-z-index;
+}

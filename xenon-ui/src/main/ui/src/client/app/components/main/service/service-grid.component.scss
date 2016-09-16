@@ -1,0 +1,21 @@
+@import "colors";
+@import "variables";
+
+.component-container {
+    .content-area {
+        .section-title {
+            @include flexbox();
+            align-items: flex-end;
+
+            .badge {
+                margin: 0 6px;
+                height: 20px;
+                line-height: 20px;
+                min-width: 20px;
+                padding: 0 6px;
+                font-size: 12px;
+                font-weight: 200;
+            }
+        }
+    }
+}

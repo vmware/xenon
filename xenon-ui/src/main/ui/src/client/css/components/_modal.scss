@@ -1,0 +1,27 @@
+@import "../colors";
+@import "../variables";
+
+.modal {
+    .modal-body {
+        form, .form {
+            padding: 0;
+
+            .form-control-static {
+                padding: rem(.5) 0;
+                max-height: 72px;
+                text-overflow: ellipsis;
+                overflow: hidden;
+
+                &.form-control-static-multiline {
+                    display: -webkit-box;
+                    -webkit-line-clamp: 3;
+                    -webkit-box-orient: vertical;
+                }
+            }
+
+            table, .table {
+                margin: 24px 0;
+            }
+        }
+    }
+}

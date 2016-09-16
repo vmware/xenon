@@ -1,0 +1,33 @@
+@import "../colors";
+@import "../variables";
+
+/* Link Dropdown */
+.link-dropdown-toggle.dropdown-toggle {
+    color: $grey-600;
+    cursor: pointer;
+    background: transparent;
+
+    &:focus {
+        outline: none;
+    }
+
+    &::after {
+        font-family: $default-font-for-icons;
+        font-weight: 400;
+        color: transparentize($grey-600, .3);
+        display: inline-block;
+        margin-right: rem(.25);
+        margin-left: rem(.25);
+        vertical-align: top;
+        content: "\f107";
+        border: none;
+    }
+}
+
+.dropdown-menu {
+    .dropdown-item {
+        color: $grey-600;
+        padding: 0 baselinerem(1);
+        cursor: pointer;
+    }
+}

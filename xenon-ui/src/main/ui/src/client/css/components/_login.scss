@@ -1,0 +1,83 @@
+@import "../colors";
+@import "../variables";
+
+.login-wrapper {
+    display: flex;
+    background: $grey-200;
+    background-size: cover;
+    background-position: baselinerem(19) 0;
+    background-repeat: no-repeat;
+
+    .login {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        width: baselinerem(19);
+        height: auto;
+        min-height: 100vh;
+        padding: baselinerem(1) 0 baselinerem(1) baselinerem(3);
+        background: $white-base;
+
+        .title, .subtitle {
+            margin: 0 baselinerem(1) 0 0;
+        }
+
+        .title {
+            font-size: rem(30 / $rem-denominator);
+            line-height: baselinerem(1.5);
+        }
+
+        .subtitle {
+            font-size: rem(20 / $rem-denominator);
+            font-weight: 200;
+            line-height: baselinerem(1.5);
+        }
+
+        .login-group {
+            display: flex;
+            flex-direction: column;
+            padding: 0;
+            margin-right: baselinerem(3);
+
+            .username {
+                margin: baselinerem(3) 0 0 0;
+            }
+
+            .password {
+                margin: baselinerem(1) 0 0 0;
+            }
+
+            .checkbox {
+                margin-top: baselinerem(1);
+            }
+
+            .error {
+                display: none;
+                margin: baselinerem(.5) 0 0 0;
+                font-size: rem(14 / $rem-denominator);
+                padding: baselinerem(.375) baselinerem(.5);
+                background: $red-600;
+                color: $white-base;
+                border-radius: rem(.25);
+                line-height: baselinerem(.75);
+
+                &::before {
+                    font-family: $default-font-for-icons;
+                    display: inline-block; //needed for IE. display: none to display:flex on parent doesnt work
+                    content: "\f06a";
+                    margin: 0 baselinerem(.25) 0 0;
+                    height: 16px;
+                    width: 16px;
+                }
+
+                &.active {
+                    display: flex;
+
+                    &::before {
+                        flex: 0 0 16px;
+                    }
+                }
+            }
+        }
+    }
+}

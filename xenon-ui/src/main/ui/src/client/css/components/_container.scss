@@ -1,0 +1,216 @@
+@import "../colors";
+@import "../variables";
+
+.main-container {
+    @include flexbox();
+    flex-direction: column;
+    height: 100vh;
+    background: $white-base;
+
+    header, .header, .sub-nav {
+        overflow: hidden;
+    }
+
+    header, .header {
+        flex: 0 0 $default-navbar-height;
+    }
+
+    .sub-nav {
+        flex: 0 0 $default-subnav-height;
+    }
+
+    .content-container {
+        display: flex;
+        flex: 1 1 auto;
+
+        //needed for Firefox:
+        //http://stackoverflow.com/a/30580228/3538394
+        //http://stackoverflow.com/a/26916542/3538394
+        //min-height: 0px works in Firefox but not in IE. IE wants a positive value
+        //IE:
+        //http://stackoverflow.com/a/14964944/3538394
+        min-height: 1px;
+
+        .content-area {
+            flex: 1 1 auto;
+            overflow-y: scroll;
+            padding: baselinerem(1);
+        }
+
+        .sidenav {
+            flex: 0 0 auto;
+            order: -1;
+            overflow: hidden; //overflow-y enabled in .sidenav-content
+        }
+    }
+}
+
+.component-container {
+    height: 100%;
+    @include flexbox();
+
+    .nav-area {
+        padding: 0 baselinerem(1.5);
+        align-items: center;
+        background: $grey-50;
+        border-bottom: 1px solid $grey-300;
+        @include flex(0 0 baselinerem(1.5));
+        @include flexbox();
+        flex-flow: row nowrap;
+
+        .title {
+            @include flex(0 1 100%);
+            @include flex-order(0);
+            font-family: $default-font-family;
+            font-size: 18px;
+            font-weight: 400;
+            line-height: baselinerem(1.5);
+            margin: 0;
+            padding: 0;
+        }
+
+        ol.title {
+            list-style: none;
+
+            > li {
+                float: left;
+                height: baselinerem(1.5);
+
+                .dropdown {
+                    display: inline-block;
+                }
+
+                a {
+                    line-height: baselinerem(1.5);
+                    vertical-align: top;
+
+                    &.dropdown-toggle > i {
+                        vertical-align: text-top;
+                    }
+                }
+
+                &::before {
+                    padding: 0 .5rem 0 .75rem;
+                    font-family: $default-font-for-icons;
+                    font-weight: 400;
+                    content: "\f105";
+                    color: transparentize($grey-600, .3);
+                }
+
+                &:first-child::before {
+                    display: none;
+                }
+            }
+        }
+
+        aside {
+            @include flexbox();
+            @include flex(1 0 auto);
+            @include flex-order(1);
+            flex-flow: row nowrap;
+            line-height: baselinerem(1.5);
+
+            > * {
+                margin-right: baselinerem(.5);
+
+                &:last-child {
+                    margin-right: 0;
+                }
+            }
+        }
+
+        .nav {
+            @include flex(1 0 auto);
+            box-shadow: none;
+        }
+
+        .btn-sm.btn-link.dropdown-toggle {
+            &::after {
+                font-family: $default-font-for-icons;
+                font-weight: 400;
+                display: inline-block;
+                margin-left: .05rem;
+                vertical-align: top;
+                content: "\f107";
+                border: none;
+                font-size: 14px;
+                line-height: 22px;
+            }
+        }
+    }
+
+    .toolbar-area {
+        padding: baselinerem(.5) baselinerem(1.5);
+        align-items: center;
+        background: $grey-50;
+        border-top: 1px solid $grey-300;
+        @include flex(0 0 baselinerem(2.5));
+        @include flexbox();
+        flex-flow: row nowrap;
+        @include flex-order(2);
+    }
+
+    &.vertical {
+        flex-flow: column nowrap;
+
+        .content-area {
+            padding: baselinerem(1) baselinerem(1.5);
+
+            &.content-area-with-nested-container {
+                @include flex(1 1 auto);
+                padding: 0;
+            }
+
+            .content-divider {
+                display: block;
+                width: 100%;
+                margin: baselinerem(1) 0;
+            }
+        }
+    }
+
+    &.horizontal {
+        flex-flow: row nowrap;
+
+        .area {
+            padding: 0;
+            @include flexbox();
+            flex-flow: column nowrap;
+
+            .nav-area {
+                @include flex(0 0 baselinerem(1.5));
+            }
+
+            .content-area {
+                @include flex(1 1 auto);
+                padding: 0 baselinerem(1) baselinerem(1) baselinerem(1);
+            }
+        }
+
+        .left-side-area {
+            @include flex(0 0 auto);
+            @include flex-order(0);
+            flex-flow: column nowrap;
+            border-right: 1px solid $grey-300;
+        }
+
+        .content-area {
+            @include flex(1 1 auto);
+            @include flex-order(1);
+            flex-flow: column nowrap;
+
+            .content-divider {
+                display: block;
+                width: 100%;
+                margin: baselinerem(1) 0;
+            }
+        }
+
+        .right-side-area {
+            @include flex(0 0 auto);
+            @include flex-order(2);
+            border-left: 1px solid $grey-300;
+            flex-flow: column nowrap;
+        }
+    }
+}

@@ -1,0 +1,66 @@
+@import "colors";
+@import "variables";
+
+.component-container {
+    .nav-area {
+        ol.title {
+            .open > .dropdown-menu {
+                @include flexbox();
+                flex-flow: column nowrap;
+            }
+
+            .dropdown-menu {
+                max-height: 80vh;
+
+                .dropdown-filter {
+                    @include flex(0 0 56px);
+                    padding: baselinerem(.25) baselinerem(.5) baselinerem(.5);
+                }
+
+                .dropdown-list {
+                    @include flex(1 1 auto);
+                    overflow-x: hidden;
+                    overflow-y: scroll;
+                }
+            }
+        }
+    }
+
+    .content-area.component-container {
+        .area, [class*="-area"] {
+            background: transparent;
+            @include flexbox();
+        }
+
+        .left-side-area {
+            min-width: baselinerem(12);
+            width: 20%;
+            overflow-y: scroll;
+
+            .list-group-item {
+                border-left: none;
+                border-right: none;
+                padding-left: baselinerem(1.5);
+
+                &:first-child {
+                    border-radius: 0;
+                    border-top: none;
+                }
+
+                &:last-child {
+                    border-radius: 0;
+                    border-bottom: none;
+                }
+            }
+        }
+
+        .content-area {
+            padding: 0;
+
+            > .service-instance-detail-container {
+                @include flexbox();
+                @include flex(1 1 auto);
+            }
+        }
+    }
+}

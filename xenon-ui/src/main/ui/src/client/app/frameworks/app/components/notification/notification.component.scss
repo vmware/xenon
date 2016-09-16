@@ -1,0 +1,10 @@
+@import "colors";
+@import "variables";
+
+.notification-container {
+    position: absolute;
+    z-index: $highest-z-index;
+    left: baselinerem(1.5);
+    right: baselinerem(1.5);
+    top: baselinerem(4.5);
+}

@@ -1,0 +1,104 @@
+@import "../colors";
+@import "../variables";
+
+.info-panel {
+    padding: 0 baselinerem(1) baselinerem(1) baselinerem(1);
+
+    .collapse-title {
+        height: baselinerem(1.5);
+        line-height: baselinerem(1.5);
+        font-size: $default-font-size;
+        display: block;
+        border-bottom: 1px solid $grey-400;
+        margin: 0 baselinerem(-.75);
+        padding: 0;
+
+        &::before {
+            content: "";
+            float: left;
+            font-family: $default-font-for-icons;
+            font-size: rem(1);
+            font-weight: normal;
+            line-height: inherit;
+            height: 100%;
+            width: baselinerem(1);
+            margin-right: baselinerem(.25);
+            text-align: center;
+            @include transition(color);
+        }
+
+        &[aria-expanded="true"]::before {
+            content: "\f107";
+        }
+
+        &[aria-expanded="false"]::before {
+            content: "\f105";
+        }
+    }
+
+    .form-title {
+        margin: baselinerem(.5) 0;
+    }
+
+    .form-subtitle {
+        display: block;
+    }
+
+    .divider {
+        margin: baselinerem(1) 0;
+        border-top: 1px solid $grey-400;
+    }
+
+    .form-block {
+        > label {
+            color: $light-blue-600;
+            margin-bottom: 12px;
+        }
+    }
+
+    .form-group {
+        max-width: 100%;
+        margin-bottom: 0;
+
+        > label {
+            padding: baselinerem(.5) 15px;
+            @include break-word();
+        }
+
+        input[type=text],
+        input[type=password],
+        input[type=number],
+        input[type=email] {
+            margin-right: 0;
+        }
+
+        .form-control-static {
+            padding: baselinerem(.5) 0;
+            max-height: baselinerem(3);
+            @include break-word();
+
+            &.form-control-static-multiline {
+                @include text-multiline-ellipsis();
+            }
+        }
+    }
+
+    table, .table {
+        margin: 18px 0 0 0;
+        background: transparentize($white-base, .25);
+
+        &.table-of-properties {
+            td {
+                @include break-word();
+
+                &.name {
+                    width: 40%;
+                }
+
+                &.value {
+                    width: 60%;
+                }
+            }
+        }
+    }
+}

@@ -1,0 +1,181 @@
+@import "../colors";
+@import "../variables";
+@import "./status";
+
+%svg-status-indicator {
+    stroke: $unknown-status-color;
+    fill: $default-status-color;
+
+    &.created-status {
+        stroke: $created-status-color;
+        fill: $default-status-color;
+    }
+
+    &.execute-status {
+        stroke: $execute-status-color;
+        fill: $default-status-color;
+    }
+
+    &.failed-status {
+        stroke: $failed-status-color;
+        fill: $default-status-color;
+    }
+
+    &.canceled-status {
+        stroke: $canceled-status-color;
+        fill: $default-status-color;
+    }
+
+    &.skipped-status {
+        stroke: $skipped-status-color;
+        fill: $default-status-color;
+    }
+
+    &.finished-status {
+        stroke: $finished-status-color;
+        fill: $default-status-color;
+    }
+}
+
+%svg-status-highlight-indicator {
+    fill: $unknown-status-color-light;
+
+    &.created-status {
+        fill: $created-status-color-light;
+    }
+
+    &.execute-status {
+        fill: $execute-status-color-light;
+    }
+
+    &.failed-status {
+        fill: $failed-status-color-light;
+    }
+
+    &.canceled-status {
+        fill: $canceled-status-color-light;
+    }
+
+    &.skipped-status {
+        fill: $skipped-status-color-light;
+    }
+
+    &.finished-status {
+        fill: $finished-status-color-light;
+    }
+}
+
+%svg-status-active-indicator {
+    fill: $light-green-700 !important;
+}
+
+.chart-tooltip {
+    line-height: 1;
+    padding: baselinerem(.5);
+    background: transparentize($grey-900, .25);
+    color: $grey-100;
+    border-radius: rem(.25);
+    z-index: $highest-z-index;
+
+    strong {
+        color: $white-base;
+    }
+
+    &::after {
+        box-sizing: border-box;
+        display: inline-block;
+        font-size: $default-font-size;
+        width: 100%;
+        color: transparentize($grey-900, .25);
+        content: "\25BC";
+        position: absolute;
+        left: 0;
+        top: 100%;
+        text-align: center;
+        line-height: 10px;
+    }
+}
+
+.node-canvas {
+    .link {
+        stroke: $grey-400;
+        stroke-width: 2;
+        opacity: .7;
+    }
+
+    .node {
+        stroke-width: 8;
+        cursor: pointer;
+        opacity: .7;
+
+        &:hover {
+            opacity: 1;
+            @include transition(opacity);
+        }
+
+        @extend %svg-status-indicator;
+
+        &.highlight {
+            opacity: 1;
+            @include transition(opacity);
+            @extend %svg-status-highlight-indicator;
+        }
+
+        &.active {
+            @extend %svg-status-active-indicator;
+        }
+
+        &.host {
+            fill: $cyan-500 !important;
+        }
+
+        .label {
+            font-family: $default-font-family;
+            font-size: $default-font-size;
+            color: $black-base;
+        }
+    }
+}
+
+.charts {
+    @include flexbox();
+    flex-flow: row nowrap;
+    margin: baselinerem(1) 0;
+    overflow: visible;
+
+    .chart {
+        @include flexbox();
+        @include flex(1 1 auto);
+        @include flex-order(1);
+        flex-flow: column nowrap;
+        justify-content: flex-start;
+        align-items: center;
+        position: relative;
+        margin: 0;
+
+        .title {
+            margin-bottom: baselinerem(1);
+            color: $grey-600;
+        }
+
+        .doughnut-title {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            @include flexbox();
+            justify-content: center;
+            align-items: center;
+            z-index: -1;
+
+            label {
+                text-align: center;
+
+                strong {
+                    font-size: baselinerem(1);
+                }
+            }
+        }
+    }
+}

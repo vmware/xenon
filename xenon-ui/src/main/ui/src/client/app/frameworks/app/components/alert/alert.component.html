@@ -1,0 +1,11 @@
+<div *ngIf="isVisible" [class]="getAlertType('alert')" [class.global]="isGlobal" [class.alert-sm]="isSmall"
+    (mouseenter)="onMoustEnter($event)" (mouseleave)="onMouseLeave($event)">
+    <button type="button" class="close" aria-label="Close" *ngIf="closable" (click)="close()">
+        <span aria-hidden="true">&times;</span>
+    </button>
+    <div class="alert-item" *ngFor="let message of messages">
+        <span class="alert-text">
+            {{message}}
+        </span>
+    </div>
+</div>

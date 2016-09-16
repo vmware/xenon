@@ -1,0 +1,27 @@
+@import "colors";
+@import "variables";
+
+.login {
+    @include flex(0 0 baselinerem(19));
+
+    .login-group {
+        height: 220px;
+    }
+
+    .loading-group {
+        height: 220px;
+        margin-right: baselinerem(3);
+        padding: baselinerem(3) 0;
+        text-align: center;
+    }
+
+    .btn {
+        margin: baselinerem(.5) baselinerem(3) 0 0;
+    }
+}
+
+.star-canvas {
+    @include flexbox();
+    @include flex(1 1 auto);
+    @include gradient-background();
+}

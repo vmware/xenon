@@ -1,0 +1,64 @@
+@import "colors";
+@import "variables";
+
+.component-container {
+    .nav-area {
+        aside {
+            .btn.btn-link {
+                color: $light-blue-400;
+
+                &:hover, &:active, &.active {
+                    color: $light-blue-600;
+                    background: $light-blue-100;
+                    border-color: $light-blue-100;
+                }
+            }
+        }
+    }
+
+    .content-area {
+        .query-builder {
+            label {
+                margin-bottom: 0;
+            }
+
+            .query-clause-container {
+                position: relative;
+
+                > .connector {
+                    position: absolute;
+                    z-index: 1;
+                    left: 65px;
+                    top: 14px;
+                    width: 0;
+                    border-right: 1px dashed $grey-300;
+                    bottom: baselinerem(1);
+                }
+
+                .btn.btn-add-clause {
+                    border: 1px solid $light-blue-400;
+                    border-radius: 50%;
+                    background: $white-base;
+                    padding: 0;
+                    width: baselinerem(1);
+                    height: baselinerem(1);
+                    margin: baselinerem(.5) 0 0 53px;
+                    z-index: 2;
+
+                    &::before {
+                        content: "+";
+                        line-height: 1;
+                        font-size: 18px;
+                        display: inline-block;
+                        margin-top: 0;
+                        vertical-align: top;
+                    }
+
+                    &:hover, &:active {
+                        background: $light-blue-100;
+                    }
+                }
+            }
+        }
+    }
+}

@@ -1,0 +1,70 @@
+@import "colors";
+@import "variables";
+
+.query-clause {
+    @include flexbox();
+    flex-flow: row nowrap;
+    width: 80%;
+    margin-bottom: baselinerem(.75);
+    position: relative;
+
+    > .connector {
+        position: absolute;
+        z-index: 1;
+        left: 65px;
+        top: 14px;
+        height: 0;
+        border-bottom: 1px dashed $grey-300;
+        right: baselinerem(1.5);
+    }
+
+    &.first-clause {
+        padding-left: baselinerem(7);
+
+        .control-group {
+            padding-right: 30px;
+        }
+    }
+
+    .static-control {
+        height: rem(1.8125);
+        background-color: $grey-300;
+        border: 1px solid $grey-300;
+        color: $grey-600;
+        padding: rem(.3125) rem(.5);
+        font-size: rem(.875);
+        border-radius: rem(.2);
+    }
+
+    .occurance-group {
+        @include flex(0 0 baselinerem(7));
+        z-index: 2;
+
+        .static-control {
+            width: 130px;
+            text-align: center;
+        }
+
+        .btn {
+            height: rem(1.8125);
+            line-height: 19px;
+            vertical-align: middle;
+            margin-bottom: 0;
+        }
+    }
+
+    .term-group {
+        @include flex(1 1 auto);
+        z-index: 2;
+
+        .form-control {
+            margin-right: baselinerem(.5);
+        }
+    }
+
+    .control-group {
+        @include flex(1 0 baselinerem(5));
+        text-align: right;
+        z-index: 2;
+    }
+}

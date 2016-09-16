@@ -1,0 +1,262 @@
+@import "../colors";
+@import "../variables";
+
+.card-container {
+    padding: 12px;
+}
+
+.card-deck {
+    .card {
+        margin: 0;
+    }
+}
+
+.card {
+    margin-right: 0;
+    border: 1px solid $grey-300;
+
+    &.active {
+        box-shadow: 0 3px 10px 2px transparentize($black-base, .7);
+    }
+
+    .card-title {
+        &:last-child {
+            margin-bottom: 0;
+        }
+    }
+
+    .card-divider {
+        display: block;
+        width: 100%;
+        border-bottom: 1px solid $grey-300;
+    }
+
+    .card-block {
+        &.status-block {
+            height: rem(.35);
+            margin: -1px -1px 0 -1px;
+            padding: 0;
+            background: $grey-300;
+            border: 1px solid $grey-300;
+            border-radius: rem(.25) rem(.25) 0 0;
+
+            &.available-status {
+                background: $light-green-300;
+                border: 1px solid $light-green-300;
+            }
+
+            &.error-status {
+                background: $red-300;
+                border: 1px solid $red-300;
+            }
+        }
+
+        &.card-header-block {
+            @include flexbox();
+            flex-flow: row nowrap;
+
+            .card-header-with-badge {
+                @include flex(3 1 auto);
+                @include flex-order(0);
+                @include flexbox();
+                flex-flow: column nowrap;
+                justify-content: center;
+                max-width: 100%;
+                overflow: hidden;
+
+                .card-title {
+                    max-width: 100%;
+                    margin-bottom: 0;
+                    text-overflow: ellipsis;
+                    overflow: hidden;
+                    white-space: nowrap;
+                    line-height: $default-line-height;
+                }
+
+                .card-text {
+                    font-size: 80%;
+                    color: $grey-500;
+                    margin-bottom: 0;
+                    margin-top: baselinerem(.5);
+                    text-overflow: ellipsis;
+                    overflow: hidden;
+                    white-space: nowrap;
+                }
+            }
+
+            .card-badge {
+                @include flex(1 0 auto);
+                @include flex-order(1);
+                font-size: 22px;
+                text-align: right;
+            }
+        }
+
+        .card-link {
+            color: $light-blue-400;
+            cursor: pointer;
+
+            &:hover, &:active {
+                color: $light-blue-600;
+            }
+        }
+    }
+
+    .card-header.card-header-block {
+        padding-right: 0;
+        @include flexbox();
+        flex-flow: row nowrap;
+        align-items: center;
+        justify-content: flex-end;
+
+        .card-header-with-badge {
+            @include flex(1 1 auto);
+            @include flex-order(0);
+            @include flexbox();
+            flex-flow: column nowrap;
+            justify-content: center;
+            text-align: left;
+            border: none;
+            order: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+
+            &:hover, &:active {
+                color: $grey-600;
+            }
+        }
+
+        .action-btn {
+            @include flex(0 0 36px);
+            @include flex-order(1);
+            color: $grey-400;
+            font-size: 22px;
+            height: 24px;
+            padding-top: 1px;
+            text-align: center;
+            @include transition(color);
+
+            &:hover, &:active {
+                color: $grey-600;
+                cursor: pointer;
+            }
+        }
+
+        .card-badge {
+            @include flex(0 0 36px);
+            @include flex-order(1);
+            font-size: 22px;
+            height: 24px;
+            padding-top: 1px;
+            text-align: center;
+
+            i {
+                height: 22px;
+            }
+        }
+    }
+
+    .card-content-block {
+        border-top: 1px solid $grey-300;
+        border-bottom: 1px solid $grey-300;
+        height: 197px;
+        overflow: hidden;
+
+        &:last-child {
+            border-bottom: none;
+            margin-bottom: 24px;
+        }
+
+        &.card-content-block-scroll {
+            overflow-x: hidden;
+            overflow-y: scroll;
+        }
+
+        .list-group {
+            .list-group-item {
+                border-color: $grey-200;
+                border-left: none;
+                border-right: none;
+                @include flexbox();
+                flex-flow: row nowrap;
+
+                &:first-child {
+                    border-top: none;
+                }
+
+                &:last-child {
+                    border-bottom: none;
+                }
+            }
+        }
+
+        form, .form {
+            padding: 12px 18px;
+
+            .form-block {
+                margin: 0;
+
+                label {
+                    margin-bottom: 12px;
+                }
+            }
+
+            .form-group {
+                max-width: 100%;
+                padding-left: 126px;
+                margin-bottom: 0;
+
+                > label:first-of-type {
+                    width: 120px;
+                    white-space: nowrap;
+                    text-overflow: ellipsis;
+                    overflow: hidden;
+                }
+
+                .form-control-static {
+                    margin-top: 12px;
+                    padding: 0;
+                    max-height: 72px;
+                    text-overflow: ellipsis;
+                    overflow: hidden;
+
+                    &.form-control-static-multiline {
+                        display: -webkit-box;
+                        -webkit-line-clamp: 3;
+                        -webkit-box-orient: vertical;
+                    }
+                }
+            }
+
+            table, .table {
+                margin-top: 1px;
+
+                th, td {
+                    padding: .5rem;
+                }
+            }
+        }
+    }
+
+    .card-text-block {
+        padding: 12px 0;
+        height: 72px;
+        overflow: hidden;
+
+        .card-text {
+            max-height: 100%;
+            margin-bottom: 0;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            text-overflow: ellipsis;
+            overflow: hidden;
+        }
+    }
+
+    .card-stats-block {
+        @include flexbox();
+        flex-flow: row nowrap;
+    }
+}

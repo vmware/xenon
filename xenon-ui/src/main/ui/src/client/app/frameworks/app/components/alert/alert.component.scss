@@ -1,0 +1,39 @@
+@import "colors";
+@import "variables";
+
+.alert {
+    button.close {
+        line-height: baselinerem(.75);
+    }
+
+    > .alert-item > .alert-text {
+        @include flexbox();
+        align-items: center;
+        align-content: center;
+
+        &::before {
+            display: inline-block;
+            height: 16px;
+            width: 16px;
+            padding: 0;
+            margin-right: baselinerem(.5);
+            content: "";
+        }
+    }
+
+    &.alert-info > .alert-item > .alert-text::before {
+        background: url("assets/images/ic_info_16x.svg");
+    }
+
+    &.alert-warning > .alert-item > .alert-text::before {
+        background: url("assets/images/ic_warning_16x.svg");
+    }
+
+    &.alert-success > .alert-item > .alert-text::before {
+        background: url("assets/images/ic_success_16x.svg");
+    }
+
+    &.alert-danger > .alert-item > .alert-text::before {
+        background: url("assets/images/ic_error_red_16x.svg");
+    }
+}
