@@ -23,11 +23,15 @@ import com.vmware.xenon.services.common.AuthCredentialsService.AuthCredentialsSe
 import com.vmware.xenon.services.common.QueryTask;
 import com.vmware.xenon.services.common.QueryTask.Query;
 import com.vmware.xenon.services.common.QueryTask.QueryTerm;
+import com.vmware.xenon.services.common.ResourceGroupService;
 import com.vmware.xenon.services.common.ResourceGroupService.ResourceGroupState;
+import com.vmware.xenon.services.common.RoleService;
 import com.vmware.xenon.services.common.RoleService.Policy;
 import com.vmware.xenon.services.common.RoleService.RoleState;
 import com.vmware.xenon.services.common.ServiceUriPaths;
+import com.vmware.xenon.services.common.UserGroupService;
 import com.vmware.xenon.services.common.UserGroupService.UserGroupState;
+import com.vmware.xenon.services.common.UserService;
 import com.vmware.xenon.services.common.UserService.UserState;
 
 /**
@@ -372,7 +376,8 @@ public class AuthorizationSetupHelper {
                         return;
                     }
                     UserState userResponse = op.getBody(UserState.class);
-                    this.userSelfLink = userResponse.documentSelfLink;
+                    this.userSelfLink = normalizeLink(UserService.FACTORY_LINK,
+                            userResponse.documentSelfLink);
                     this.currentStep = UserCreationStep.MAKE_CREDENTIALS;
                     setupUser();
                 });
@@ -442,7 +447,8 @@ public class AuthorizationSetupHelper {
                         return;
                     }
                     UserGroupState groupResponse = op.getBody(UserGroupState.class);
-                    this.userGroupSelfLink = groupResponse.documentSelfLink;
+                    this.userGroupSelfLink = normalizeLink(UserGroupService.FACTORY_LINK,
+                            groupResponse.documentSelfLink);
                     this.currentStep = UserCreationStep.MAKE_RESOURCE_GROUP;
                     setupUser();
                 });
@@ -520,7 +526,8 @@ public class AuthorizationSetupHelper {
                         return;
                     }
                     ResourceGroupState groupResponse = op.getBody(ResourceGroupState.class);
-                    this.resourceGroupSelfLink = groupResponse.documentSelfLink;
+                    this.resourceGroupSelfLink = normalizeLink(ResourceGroupService.FACTORY_LINK,
+                            groupResponse.documentSelfLink);
                     this.currentStep = UserCreationStep.MAKE_ROLE;
                     setupUser();
                 });
@@ -558,7 +565,8 @@ public class AuthorizationSetupHelper {
                         return;
                     }
                     RoleState roleResponse = op.getBody(RoleState.class);
-                    this.roleSelfLink = roleResponse.documentSelfLink;
+                    this.roleSelfLink = normalizeLink(RoleService.FACTORY_LINK,
+                            roleResponse.documentSelfLink);
                     this.currentStep = UserCreationStep.SUCCESS;
                     setupUser();
                 });
@@ -576,6 +584,18 @@ public class AuthorizationSetupHelper {
     private void addReplicationFactor(Operation op) {
         op.addRequestHeader(Operation.REPLICATION_QUORUM_HEADER,
                 Operation.REPLICATION_QUORUM_HEADER_VALUE_ALL);
+    }
+
+    /**
+     * The method makes sure that the documentSelfLink always the associated factory as the prefix.
+     */
+    private String normalizeLink(String factoryLink, String documentLink) {
+        if (UriUtils.isChildPath(documentLink, factoryLink)) {
+            return documentLink;
+        }
+
+        String lastPathSegment = UriUtils.getLastPathSegment(documentLink);
+        return UriUtils.buildUriPath(factoryLink, lastPathSegment);
     }
 
     /**
