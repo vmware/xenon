@@ -34,10 +34,12 @@ import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
 import com.vmware.xenon.services.common.QueryTask;
 import com.vmware.xenon.services.common.QueryTask.Query;
 import com.vmware.xenon.services.common.QueryTask.Query.Occurance;
+import com.vmware.xenon.services.common.ResourceGroupService;
 import com.vmware.xenon.services.common.ResourceGroupService.ResourceGroupState;
 import com.vmware.xenon.services.common.RoleService.RoleState;
 import com.vmware.xenon.services.common.ServiceHostManagementService;
 import com.vmware.xenon.services.common.ServiceUriPaths;
+import com.vmware.xenon.services.common.UserGroupService;
 import com.vmware.xenon.services.common.UserGroupService.UserGroupState;
 
 // Note that we can't use BasicReusableHostTestCase here because we need to enable
@@ -148,6 +150,10 @@ public class TestAuthSetupHelper extends BasicTestCase {
         result = queryDocuments(Utils.buildKind(RoleState.class), 1);
         RoleState roleState = Utils
                 .fromJson(result.documents.values().iterator().next(), RoleState.class);
+        assertEquals(UriUtils.buildUriPath(UserGroupService.FACTORY_LINK, GUEST_USER_GROUP),
+                roleState.userGroupLink);
+        assertEquals(UriUtils.buildUriPath(ResourceGroupService.FACTORY_LINK, GUEST_RESOURCE_GROUP),
+                roleState.resourceGroupLink);
         assertEquals(GUEST_ROLE, UriUtils.getLastPathSegment(roleState.documentSelfLink));
         assertEquals(roleState.verbs, verbs);
     }
@@ -292,7 +298,8 @@ public class TestAuthSetupHelper extends BasicTestCase {
                         this.host.failIteration(ex);
                         return;
                     }
-                    ServiceDocumentQueryResult response = op.getBody(ServiceDocumentQueryResult.class);
+                    ServiceDocumentQueryResult response = op
+                            .getBody(ServiceDocumentQueryResult.class);
                     assertTrue(response != null && response.documentLinks != null);
                     numberDocuments[0] = response.documentLinks.size();
                     this.host.completeIteration();
@@ -332,7 +339,6 @@ public class TestAuthSetupHelper extends BasicTestCase {
         this.host.send(get);
         this.host.testWait();
     }
-
 
     /**
      * Clear NettyHttpServiceClient's cookie jar
