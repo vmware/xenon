@@ -1682,12 +1682,16 @@ public class VerificationHost extends ExampleServiceHost {
 
     private boolean isSingleton;
 
+    public Map<URI, VerificationHost> getInProcessHostMap() {
+        return new HashMap<>(this.localPeerHosts);
+    }
+
     public Map<URI, URI> getNodeGroupMap() {
-        return this.peerNodeGroups;
+        return new HashMap<>(this.peerNodeGroups);
     }
 
     public Map<String, NodeState> getNodeStateMap() {
-        return this.peerHostIdToNodeState;
+        return new HashMap<>(this.peerHostIdToNodeState);
     }
 
     public void scheduleSynchronizationIfAutoSyncDisabled(String selectorPath) {
@@ -2488,10 +2492,6 @@ public class VerificationHost extends ExampleServiceHost {
             }
             stopHost(h);
         }
-    }
-
-    public Map<URI, VerificationHost> getInProcessHostMap() {
-        return this.localPeerHosts;
     }
 
     public void stopHost(VerificationHost host) {
