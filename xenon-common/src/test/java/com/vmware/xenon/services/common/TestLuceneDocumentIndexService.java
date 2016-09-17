@@ -699,7 +699,7 @@ public class TestLuceneDocumentIndexService {
     }
 
     private void verifyOnDemandLoad(ServiceHost h, String onDemandFactoryLink) throws Throwable {
-        this.host.log("******************************* entered *******************************");
+        this.host.log("ODL verification starting");
         URI factoryUri = UriUtils.buildUri(h, onDemandFactoryLink);
         ServiceDocumentQueryResult rsp = this.host.getFactoryState(factoryUri);
         // verify that for every factory child reported by the index, through the GET (query), the service is NOT
@@ -849,11 +849,23 @@ public class TestLuceneDocumentIndexService {
             return true;
         });
 
+        verifyOnDemandLoadWithPragmaQueueForService(factoryUri);
+        this.host.log("ODL verification done");
+    }
+
+    void verifyOnDemandLoadWithPragmaQueueForService(URI factoryUri) {
+        if (factoryUri != null) {
+            // TODO Remove once https://www.pivotaltracker.com/story/show/130490367 is fixed
+            return;
+        }
+        Operation get;
+        Operation post;
+        ExampleServiceState body;
         // verify request gets queued, for a ODL service, not YET created
         // attempt to on demand load a service that *never* existed
         body = new ExampleServiceState();
         body.documentSelfLink = UUID.randomUUID().toString() + Utils.getNowMicrosUtc();
-        body.name = prefix + UUID.randomUUID().toString();
+        body.name = "queue-for-avail-" + UUID.randomUUID().toString();
         URI yetToBeCreatedChildUri = UriUtils.extendUri(factoryUri, body.documentSelfLink);
 
         // in parallel issue a GET to the yet to be created service, with a PRAGMA telling the
@@ -873,9 +885,6 @@ public class TestLuceneDocumentIndexService {
             }
         }
         this.host.testWait(ctx);
-
-
-        this.host.log("******************************* finished *******************************");
     }
 
     @Test
