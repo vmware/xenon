@@ -110,11 +110,6 @@ public class TransactionService extends StatefulService {
          * Commit or Abort
          */
         public ResolutionKind resolutionKind;
-        /**
-         * Number of operations the coordinator must know about -- if operations issued
-         * fully-asynchronously/concurrently.
-         */
-        public int pendingOperations;
     }
 
     /**
@@ -182,16 +177,6 @@ public class TransactionService extends StatefulService {
          * Keeps track of services that have failed.
          */
         public Set<String> failedLinks;
-
-        /**
-         * Number of received transactional operations sent by services participating in the transaction
-         */
-        public int pendingOperationCount;
-
-        /**
-         * Number of expected transactional operations to be sent by services participating in the transaction
-         */
-        public int expectedOperationCount;
     }
 
     /**
@@ -285,15 +270,8 @@ public class TransactionService extends StatefulService {
             }
             existing.failedLinks.add(put.getReferer().getPath());
         }
-        ++existing.pendingOperationCount;
         setState(put, existing);
         put.complete();
-
-        if (existing.taskSubStage == SubStage.RESOLVING
-                && existing.pendingOperationCount == existing.expectedOperationCount) {
-            // handle the case of pending operations received after transaction commit request
-            selfPatch(ResolutionKind.COMMIT, existing.expectedOperationCount);
-        }
     }
 
     /**
@@ -374,10 +352,9 @@ public class TransactionService extends StatefulService {
                 return;
             }
 
-            currentState.expectedOperationCount = resolution.pendingOperations;
             updateStage(patch, SubStage.RESOLVING);
             patch.complete();
-            handleCommitIfAllPendingOperationsReceived(currentState);
+            handleCommit(currentState);
         } else if (resolution.resolutionKind == ResolutionKind.COMMITTING) {
             if (currentState.taskSubStage == SubStage.ABORTED
                     || currentState.taskSubStage == SubStage.ABORTING) {
@@ -398,30 +375,6 @@ public class TransactionService extends StatefulService {
             patch.fail(new IllegalArgumentException(
                     "Unrecognized resolution kind: " + resolution.resolutionKind));
         }
-    }
-
-    /**
-     * Checks if all pending operations sent by participating services have
-     * been received by this coordinator, and if so proceeds with commit
-     */
-    private void handleCommitIfAllPendingOperationsReceived(TransactionServiceState currentState) {
-        if (currentState.pendingOperationCount == currentState.expectedOperationCount) {
-            logInfo("All operations have been received, proceeding with commit");
-            handleCommit(currentState);
-            return;
-        }
-
-        if (currentState.pendingOperationCount > currentState.expectedOperationCount) {
-            String errorMsg = String.format(
-                    "Illegal commit request: client provided pending operations %d is less than already received %d",
-                    currentState.expectedOperationCount, currentState.pendingOperationCount);
-            logWarning(errorMsg);
-            selfPatch(ResolutionKind.ABORT);
-            return;
-        }
-
-        // re-enter when the rest of the pending operations are received
-        logInfo("Suspending transaction until all operations have been received");
     }
 
     /**
@@ -448,19 +401,11 @@ public class TransactionService extends StatefulService {
     }
 
     /**
-     * Sends a selfPatch resolution request with zero pending operations
-     */
-    private void selfPatch(ResolutionKind resolution) {
-        selfPatch(resolution, 0);
-    }
-
-    /**
      * Sends a selfPatch resolution request
      */
-    private void selfPatch(ResolutionKind resolution, int pendingOperations) {
+    private void selfPatch(ResolutionKind resolution) {
         ResolutionRequest resolve = new ResolutionRequest();
         resolve.resolutionKind = resolution;
-        resolve.pendingOperations = pendingOperations;
         Operation operation = Operation
                 .createPatch(getUri())
                 .setCompletion((o, e) -> {
@@ -672,7 +617,7 @@ public class TransactionService extends StatefulService {
         }
 
         if (operations.isEmpty()) {
-            selfPatch(ResolutionKind.COMMITTING, state.pendingOperationCount);
+            selfPatch(ResolutionKind.COMMITTING);
             return;
         }
 
@@ -683,7 +628,7 @@ public class TransactionService extends StatefulService {
                 return;
             }
             if (continueWithCommit[0]) {
-                selfPatch(ResolutionKind.COMMITTING, state.pendingOperationCount);
+                selfPatch(ResolutionKind.COMMITTING);
             }
         }).sendWith(getHost());
     }
@@ -707,6 +652,7 @@ public class TransactionService extends StatefulService {
             state.modifiedLinks.remove(service);
         }
         for (String service : state.readLinks) {
+            state.modifiedLinks.remove(service);
             operations.add(createNotifyOp(service, Operation.TX_ABORT));
         }
         for (String service : state.modifiedLinks) {
