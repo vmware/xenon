@@ -579,44 +579,49 @@ public class LuceneDocumentIndexService extends StatelessService {
     }
 
     private void handleRequestImpl(Operation op) {
+        boolean checkQueues = false;
         try {
             this.writerAvailable.acquire();
-            switch (op.getAction()) {
-            case DELETE:
-                handleDeleteImpl(op);
-                break;
-            case GET:
-                handleGetImpl(op);
-                break;
-            case PATCH:
-                ServiceDocument sd = (ServiceDocument) op.getBodyRaw();
-                if (sd.documentKind != null) {
-                    if (sd.documentKind.equals(QueryTask.KIND)) {
-                        QueryTask task = (QueryTask) op.getBodyRaw();
-                        handleQueryTaskPatch(op, task);
-                        break;
+            do {
+
+                switch (op.getAction()) {
+                case DELETE:
+                    handleDeleteImpl(op);
+                    break;
+                case GET:
+                    checkQueues = handleGetImpl(op, !checkQueues);
+                    break;
+                case PATCH:
+                    ServiceDocument sd = (ServiceDocument) op.getBodyRaw();
+                    if (sd.documentKind != null) {
+                        if (sd.documentKind.equals(QueryTask.KIND)) {
+                            QueryTask task = (QueryTask) op.getBodyRaw();
+                            handleQueryTaskPatch(op, task);
+                            break;
+                        }
+                        if (sd.documentKind.equals(BackupRequest.KIND)) {
+                            BackupRequest backupRequest = (BackupRequest) op.getBodyRaw();
+                            handleBackup(op, backupRequest);
+                            break;
+                        }
+                        if (sd.documentKind.equals(RestoreRequest.KIND)) {
+                            RestoreRequest backupRequest = (RestoreRequest) op.getBodyRaw();
+                            handleRestore(op, backupRequest);
+                            break;
+                        }
                     }
-                    if (sd.documentKind.equals(BackupRequest.KIND)) {
-                        BackupRequest backupRequest = (BackupRequest) op.getBodyRaw();
-                        handleBackup(op, backupRequest);
-                        break;
-                    }
-                    if (sd.documentKind.equals(RestoreRequest.KIND)) {
-                        RestoreRequest backupRequest = (RestoreRequest) op.getBodyRaw();
-                        handleRestore(op, backupRequest);
-                        break;
-                    }
+
+                    getHost().failRequestActionNotSupported(op);
+                    break;
+                case POST:
+                    updateIndex(op);
+                    break;
+                default:
+                    getHost().failRequestActionNotSupported(op);
+                    break;
                 }
 
-                getHost().failRequestActionNotSupported(op);
-                break;
-            case POST:
-                updateIndex(op);
-                break;
-            default:
-                getHost().failRequestActionNotSupported(op);
-                break;
-            }
+            } while (checkQueues);
         } catch (Throwable e) {
             checkFailureAndRecover(e);
             op.fail(e);
@@ -719,10 +724,10 @@ public class LuceneDocumentIndexService extends StatelessService {
         return s;
     }
 
-    public void handleGetImpl(Operation get) throws Throwable {
-        get = offerAndPollQueryOp(get);
+    public boolean handleGetImpl(Operation get, boolean offer) throws Throwable {
+        get = offerAndPollQueryOp(get, offer);
         if (get == null) {
-            return;
+            return isQueryOpPending();
         }
 
         String selfLink = null;
@@ -769,13 +774,13 @@ public class LuceneDocumentIndexService extends StatelessService {
         if (selfLink == null) {
             get.fail(new IllegalArgumentException(
                     ServiceDocument.FIELD_NAME_SELF_LINK + " query parameter is required"));
-            return;
+            return isQueryOpPending();
         }
 
         if (!selfLink.endsWith(UriUtils.URI_WILDCARD_CHAR)) {
             // Most basic query is retrieving latest document at latest version for a specific link
             queryIndexSingle(selfLink, get, version);
-            return;
+            return isQueryOpPending();
         }
 
         // Self link prefix query, returns all self links with the same prefix. A GET on a
@@ -787,31 +792,38 @@ public class LuceneDocumentIndexService extends StatelessService {
         ServiceDocumentQueryResult rsp = new ServiceDocumentQueryResult();
         rsp.documentLinks = new ArrayList<>();
         if (queryIndex(null, get, selfLink, options, tq, null, resultLimit, 0, null, rsp, null)) {
-            return;
+            return isQueryOpPending();
         }
 
         if (targetIndex == ServiceOption.PERSISTENCE) {
             // specific index requested but no results, return empty response
             get.setBodyNoCloning(rsp).complete();
-            return;
+            return isQueryOpPending();
         }
 
         // no results in the index, search the service host started services
         queryServiceHost(selfLink + UriUtils.URI_WILDCARD_CHAR, options, get);
+        return isQueryOpPending();
     }
 
-    private Operation offerAndPollQueryOp(Operation get) {
-        String subject = null;
-        if (!getHost().isAuthorizationEnabled()
-                || get.getAuthorizationContext().isSystemUser()) {
-            subject = SystemUserService.SELF_LINK;
-        } else {
-            subject = get.getAuthorizationContext().getClaims().getSubject();
-        }
+    private boolean isQueryOpPending() {
+        return !this.queryQueue.get().isEmpty();
+    }
 
-        // first queue current operation, using the subject as the fairness key
-        if (!this.queryQueue.get().offer(subject, get)) {
-            return null;
+    private Operation offerAndPollQueryOp(Operation get, boolean offer) {
+        if (offer) {
+            String subject = null;
+            if (!getHost().isAuthorizationEnabled()
+                    || get.getAuthorizationContext().isSystemUser()) {
+                subject = SystemUserService.SELF_LINK;
+            } else {
+                subject = get.getAuthorizationContext().getClaims().getSubject();
+            }
+
+            // first queue current operation, using the subject as the fairness key
+            if (!this.queryQueue.get().offer(subject, get)) {
+                return null;
+            }
         }
 
         // dequeue the operation for the active subject
@@ -2583,7 +2595,8 @@ public class LuceneDocumentIndexService extends StatelessService {
     }
 
     private void applyDocumentExpirationPolicy(IndexWriter w) throws Throwable {
-        // its ok if we miss a document update, we will catch it, and refresh the searcher on the next update or maintenance
+        // if we miss a document update, we will catch it, and refresh the searcher on the
+        // next update or maintenance
         IndexSearcher s =
                 this.searcher != null ? this.searcher : updateSearcher(null, Integer.MAX_VALUE, w);
         if (s == null) {
@@ -2620,9 +2633,7 @@ public class LuceneDocumentIndexService extends StatelessService {
 
         // More documents to be expired trigger maintenance right away.
         if (results.totalHits > EXPIRED_DOCUMENT_SEARCH_THRESHOLD) {
-
             adjustStat(STAT_NAME_DOCUMENT_EXPIRATION_FORCED_MAINTENANCE_COUNT, 1);
-
             ServiceMaintenanceRequest body = ServiceMaintenanceRequest.create();
             Operation servicePost = Operation
                     .createPost(UriUtils.buildUri(getHost(), getSelfLink()))

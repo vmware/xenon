@@ -19,7 +19,6 @@ import java.util.NavigableMap;
 import java.util.Queue;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.ConcurrentSkipListMap;
-import java.util.logging.Logger;
 
 public class RoundRobinOperationQueue {
 
@@ -72,8 +71,6 @@ public class RoundRobinOperationQueue {
             // queue is empty, remove from active map
             this.queues.remove(nextActive.getKey());
         }
-        Logger.getAnonymousLogger()
-                .warning("No available operations found across all query queues");
         return null;
     }
 
