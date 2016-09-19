@@ -1,6 +1,8 @@
+// angular
 import { ChangeDetectionStrategy, Input, SimpleChange, OnChanges } from '@angular/core';
 import * as _ from 'lodash';
 
+// app
 import { BaseComponent }  from '../../../core/index';
 
 @BaseComponent({

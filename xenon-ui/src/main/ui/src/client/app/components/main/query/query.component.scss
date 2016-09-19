@@ -17,9 +17,37 @@
     }
 
     .content-area {
+        padding: 0;
+
         .query-builder {
-            label {
-                margin-bottom: 0;
+            padding: baselinerem(1) baselinerem(1.5);
+            border-bottom: 1px solid $grey-300;
+
+            .content-divider {
+                width: auto;
+                margin-left: baselinerem(-1.5);
+                margin-right: baselinerem(-1.5);
+            }
+
+            .option-container {
+                > label, > select, > input {
+                    margin-bottom: 0;
+                    margin-right: baselinerem(.25);
+                }
+
+                aside {
+                    display: inline-block;
+                    margin-left: baselinerem(1.75);
+                    padding-left: baselinerem(1);
+
+                    .form-check-inline {
+                        padding-left: baselinerem(1);
+
+                        & + .form-check-inline {
+                            margin-left: 0;
+                        }
+                    }
+                }
             }
 
             .query-clause-container {
@@ -35,10 +63,10 @@
                     bottom: baselinerem(1);
                 }
 
-                .btn.btn-add-clause {
+                // Style that applies to all the children components
+                /deep/ .btn.btn-add-clause {
                     border: 1px solid $light-blue-400;
                     border-radius: 50%;
-                    background: $white-base;
                     padding: 0;
                     width: baselinerem(1);
                     height: baselinerem(1);
@@ -57,6 +85,94 @@
                     &:hover, &:active {
                         background: $light-blue-100;
                     }
+                }
+            }
+
+            .query-spec-container {
+                @include flexbox();
+                flex-flow: row nowrap;
+                height: 346px;
+                margin-bottom: 0;
+
+                .form-control-code-editor {
+                    @include flex(1 1 auto);
+                    overflow: hidden;
+
+                    /deep/ .CodeMirror {
+                        height: 100%;
+                    }
+                }
+
+                .reference-panel {
+                    @include flex(0 0 45%);
+                    margin-left: baselinerem(1);
+                    overflow-y: scroll;
+                }
+            }
+        }
+
+        .action-bar {
+            padding: baselinerem(.5) baselinerem(1.5);
+            border-bottom: 1px solid $grey-300;
+            background: $grey-50;
+            @include flexbox();
+            @include flex(0 0 63px);
+
+            > .btn {
+                margin-right: baselinerem(.5);
+            }
+
+            .result-count {
+                margin-left: baselinerem(1);
+                display: inline-block;
+                padding: 4px 0;
+            }
+
+            aside {
+                flex: 1 1 auto;
+                text-align: right;
+            }
+        }
+
+        .content-area.component-container {
+            padding: 0;
+            min-height: baselinerem(18);
+            @include flex(1 1 auto);
+
+            .area, [class*="-area"] {
+                background: transparent;
+                @include flexbox();
+            }
+
+            .left-side-area {
+                min-width: baselinerem(12);
+                width: 35%;
+                overflow-y: scroll;
+
+                .list-group-item {
+                    border-left: none;
+                    border-right: none;
+                    padding-left: baselinerem(1.5);
+                    cursor: pointer;
+
+                    &:first-child {
+                        border-radius: 0;
+                        border-top: none;
+                    }
+
+                    &:last-child {
+                        border-radius: 0;
+                        border-bottom: none;
+                    }
+                }
+            }
+
+            .content-area {
+                padding: 0;
+
+                > .query-result-detail-container {
+                    @include flexbox();
+                    @include flex(1 1 auto);
                 }
             }
         }

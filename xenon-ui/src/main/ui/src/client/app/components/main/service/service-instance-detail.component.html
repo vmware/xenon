@@ -3,7 +3,7 @@
     <h4 class="title">{{ 'ERROR_NO_INSTANCE_SELECTED' | translate }}</h4>
     <p class="message">{{ 'ERROR_NO_INSTANCE_SELECTED_HELPER' | translate }}</p>
 </div>
-<div id="service-instance-detail" class="content-area area info-panel"
+<div id="serviceInstanceDetail" class="content-area area info-panel"
     *ngIf="isNullOrUndefined(getSelectedServiceInstance()) === false">
     <form>
         <div class="form-title">
@@ -39,19 +39,12 @@
             </figure>
         </section>
         <section>
-            <h5 class="section-title">{{ 'SERVICE_INSTANCE_DETAIL_PROPERTIES' | translate }}</h5>
-            <table class="table table-of-properties">
-                <tbody>
-                    <tr *ngFor="let documentProperty of getPropertyArray(getSelectedServiceInstance())">
-                        <td class="name">{{documentProperty.name}}</td>
-                        <td class="value"><pre>{{documentProperty.value}}</pre></td>
-                    </tr>
-                </tbody>
-            </table>
+            <h5 class="section-title">{{ 'PROPERTIES' | translate }}</h5>
+            <xe-property-table [properties]="getSelectedServiceInstance()"></xe-property-table>
         </section>
     </form>
 </div>
-<div id="service-instance-history" class="right-side-area area"
+<div id="serviceInstanceHistory" class="right-side-area area"
     *ngIf="isNullOrUndefined(getSelectedServiceInstance()) === false">
     <h4>
         {{ 'SERVICE_INSTANCE_DETAIL_ACTIVITIES_TITLE' | translate }}
@@ -121,9 +114,9 @@
                     <div class="form-group row">
                         <label class="col-sm-3 col-form-label">{{ 'BODY' | translate }}</label>
                         <div  class="col-sm-9">
-                            <textarea class="form-control" rows="12" name="body"
-                                placeholder="{{ 'SERVICE_INSTANCE_CREATE_MODAL_BODY_HELPER' | translate }}"
-                                [(ngModel)]="editInstanceModalContext.data.body"></textarea>
+                            <xe-code-editor name="body"
+                                [(ngModel)]="editInstanceModalContext.data.body">
+                            </xe-code-editor>
                         </div>
                     </div>
                 </form>

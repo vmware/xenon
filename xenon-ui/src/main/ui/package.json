@@ -1,7 +1,7 @@
 {
     "name": "xenon-ui",
-    "version": "0.0.5",
-    "description": "Xenon Developer Console",
+    "version": "0.1.0",
+    "description": "Xenon UI",
     "scripts": {
         "build.desktop.mac": "rimraf desktop/mac/* && gulp desktop.mac",
         "build.desktop.windows": "rimraf desktop/windows/* && gulp desktop.windows",
@@ -51,7 +51,7 @@
         "webdriver-start": "node_modules/protractor/bin/webdriver-manager start",
         "webdriver-update": "node_modules/protractor/bin/webdriver-manager update"
     },
-    "author": "Colin Gu <coling@vmware.com>",
+    "author": "VMware Inc.",
     "contributors": [{
         "name": "Colin Gu <coling@vmware.com>"
     }],
@@ -159,6 +159,7 @@
         "angular2-websocket": "^0.6.3",
         "bootstrap": "^4.0.0-alpha.3",
         "chart.js": "^2.2.1",
+        "codemirror": "^5.19.0",
         "core-js": "^2.4.1",
         "d3": "3.5.17",
         "d3-tip": "0.6.7",

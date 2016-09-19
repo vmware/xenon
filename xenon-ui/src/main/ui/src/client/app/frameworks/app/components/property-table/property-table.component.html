@@ -1,0 +1,22 @@
+<table class="table table-of-properties" [class.table-bordered]="bordered">
+    <thead *ngIf="hasHeader">
+        <tr>
+            <th class="name">{{ 'NAME' | translate }}</th>
+            <th class="value">{{ 'VALUE' | translate }}</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr *ngFor="let property of getPropertyArray()">
+            <td class="name">{{property.key}}</td>
+            <td class="value" *ngIf="property.valueType === 'object'">
+                <pre>{{property.value}}</pre>
+            </td>
+            <td class="value" *ngIf="property.valueType === 'date'">
+                {{property.value}} <small>// {{formatTimeStamp(property.value)}}</small>
+            </td>
+            <td class="value" *ngIf="property.valueType === 'string' || property.valueType === 'number'">
+                {{property.value}}
+            </td>
+        </tr>
+    </tbody>
+</table>

@@ -1,0 +1,115 @@
+<div class="query-clause" [class.first-clause]="isFirst">
+    <div class="occurance-group" *ngIf="isFirst === false">
+        <div class="btn-group" data-toggle="buttons">
+            <label class="btn btn-sm btn-secondary"
+                [class.active]="occurance === 'MUST_OCCUR'"
+                (click)="occurance = 'MUST_OCCUR'">
+                <input type="radio" name="occurance" autocomplete="off"
+                    [checked]="occurance === 'MUST_OCCUR'"/> AND
+            </label>
+            <label class="btn btn-sm btn-secondary"
+                [class.active]="occurance === 'SHOULD_OCCUR'"
+                (click)="occurance = 'SHOULD_OCCUR'">
+                <input type="radio" name="occurance" autocomplete="off"
+                    [checked]="occurance === 'SHOULD_OCCUR'"/> OR
+            </label>
+            <label class="btn btn-sm btn-secondary"
+                [class.active]="occurance === 'MUST_NOT_OCCUR'"
+                (click)="occurance = 'MUST_NOT_OCCUR'">
+                <input type="radio" name="occurance" autocomplete="off"
+                    [checked]="occurance === 'MUST_NOT_OCCUR'"/> NOT
+            </label>
+        </div>
+    </div>
+    <div class="clause-group">
+        <div class="term-group" [ngSwitch]="type">
+            <div *ngSwitchCase="'string'">
+                <input class="form-control form-control-sm"
+                    type="text" name="propertyName" autocomplete="off"
+                    placeholder="{{ 'QUERY_BUILDER_HELPER_PROPERTY_NAME' | translate }}"
+                    (change)="propertyName = $event.target['value']"/>
+                <select class="form-control form-control-sm" name="propertyMatchType"
+                    (change)="propertyMatchType = $event.target['value']">
+                    <option value="TERM">
+                        {{ 'QUERY_BUILDER_OPTION_MATCH_TERM' | translate }}
+                    </option>
+                    <option value="PHRASE">
+                        {{ 'QUERY_BUILDER_OPTION_MATCH_PHRASE' | translate }}
+                    </option>
+                    <option value="WILDCARD">
+                        {{ 'QUERY_BUILDER_OPTION_MATCH_WILDCARD' | translate }}
+                    </option>
+                    <option value="PREFIX">
+                        {{ 'QUERY_BUILDER_OPTION_MATCH_PREFIX' | translate }}
+                    </option>
+                </select>
+                <input class="form-control form-control-sm"
+                    type="text" name="propertyValue" autocomplete="off"
+                    placeholder="{{ 'QUERY_BUILDER_HELPER_PROPERTY_VALUE' | translate }}"
+                    (change)="propertyValue = $event.target['value']"/>
+            </div>
+            <div *ngSwitchCase="'range'">
+                <input class="form-control form-control-sm"
+                    type="text" name="propertyName" autocomplete="off"
+                    placeholder="{{ 'QUERY_BUILDER_HELPER_PROPERTY_NAME' | translate }}"
+                    (change)="propertyName = $event.target['value']"/>
+                <span class="form-control static-control">
+                    {{ 'QUERY_BUILDER_HELPER_IS_BETWEEN' | translate }}
+                </span>
+                <div class="form-control-group">
+                    <input class="form-control form-control-sm"
+                        type="number" name="propertyValueMin" autocomplete="off" step=".01"
+                        placeholder="{{ 'QUERY_BUILDER_HELPER_PROPERTY_VALUE_MIN' | translate }}"
+                        (change)="propertyValueRange.min = getAsNumber($event.target['value'])"/>
+                    <div class="form-control-select-wrapper">
+                        <select class="form-control form-control-sm"
+                            name="propertyValueMinInclusive"
+                            (change)="propertyValueRange.isMinInclusive = $event.target['value']">
+                            <option value="true">
+                                {{ 'QUERY_BUILDER_OPTION_RANGE_INCLUDE' | translate }}
+                            </option>
+                            <option value="false">
+                                {{ 'QUERY_BUILDER_OPTION_RANGE_EXCLUDE' | translate }}
+                            </option>
+                        </select>
+                    </div>
+                </div>
+                <span class="form-control static-control">
+                    {{ 'QUERY_BUILDER_HELPER_AND' | translate }}
+                </span>
+                <div class="form-control-group">
+                    <input class="form-control form-control-sm"
+                        type="number" name="propertyValueMax" autocomplete="off" step=".01"
+                        placeholder="{{ 'QUERY_BUILDER_HELPER_PROPERTY_VALUE_MAX' | translate }}"
+                        (change)="propertyValueRange.max = getAsNumber($event.target['value'])"/>
+                    <div class="form-control-select-wrapper">
+                        <select class="form-control form-control-sm"
+                            name="propertyValueMinInclusive"
+                            (change)="propertyValueRange.isMaxInclusive = $event.target['value']">
+                            <option value="true">
+                                {{ 'QUERY_BUILDER_OPTION_RANGE_INCLUDE' | translate }}
+                            </option>
+                            <option value="false">
+                                {{ 'QUERY_BUILDER_OPTION_RANGE_EXCLUDE' | translate }}
+                            </option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="control-group">
+            <select class="form-control form-control-sm" name="queryClauseType"
+                (change)="type = $event.target['value']">
+                <option value="string">
+                    {{ 'QUERY_BUILDER_OPTION_STRING' | translate }}
+                </option>
+                <option value="range">
+                    {{ 'QUERY_BUILDER_OPTION_RANGE' | translate }}
+                </option>
+            </select>
+            <button class="btn btn-sm btn-link"
+                *ngIf="isFirst === false"
+                (click)="onDeleteClauseClicked($event)">&times;</button>
+        </div>
+    </div>
+</div>

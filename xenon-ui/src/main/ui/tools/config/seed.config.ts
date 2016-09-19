@@ -165,7 +165,7 @@ export class SeedConfig {
      * `index.html`.
      * @type {string}
      */
-    APP_TITLE = 'Xenon';
+    APP_TITLE = 'Xenon | Decentralized Control Plane';
 
     /**
      * The base folder of the applications source files.
@@ -305,7 +305,7 @@ export class SeedConfig {
         { src: 'zone.js/dist/zone.js', inject: 'libs' },
         { src: 'core-js/client/shim.min.js', inject: 'shims' },
         { src: 'systemjs/dist/system.src.js', inject: 'shims', env: ENVIRONMENTS.DEVELOPMENT },
-        { src: 'rxjs/bundles/Rx.min.js', inject: 'libs', env: ENVIRONMENTS.DEVELOPMENT },
+        { src: 'rxjs/bundles/Rx.min.js', inject: 'libs', env: ENVIRONMENTS.DEVELOPMENT }
     ];
 
     /**
@@ -366,9 +366,6 @@ export class SeedConfig {
             'node_modules/@angular/platform-browser-dynamic/bundles/platform-browser-dynamic-testing.umd.js',
             '@angular/router/testing': 'node_modules/@angular/router/bundles/router-testing.umd.js',
 
-            'angular2-cookie': `node_modules/angular2-cookie`,
-            'moment': `node_modules/moment/moment.js`,
-            'numeral': `node_modules/numeral/numeral.js`,
             'rxjs/*': 'node_modules/rxjs/*',
             'app/*': '/app/*',
 
@@ -437,18 +434,6 @@ export class SeedConfig {
             },
             '@angular/router': {
                 main: 'index.js',
-                defaultExtension: 'js'
-            },
-            'angular2-cookie': {
-                main: 'core.js',
-                defaultExtension: 'js'
-            },
-            'moment': {
-                main: 'moment.js',
-                defaultExtension: 'js'
-            },
-            'numeral': {
-                main: 'numeral.js',
                 defaultExtension: 'js'
             },
             'rxjs': {

@@ -7,13 +7,10 @@ import * as _ from 'lodash';
 // app
 import { BaseComponent } from '../../../frameworks/core/index';
 
-import { ServiceInstanceDetailComponent } from './service-instance-detail.component';
-
 import { URL } from '../../../frameworks/app/enums/index';
 import { ModalContext, Node, ServiceDocument } from '../../../frameworks/app/interfaces/index';
 import { StringUtil } from '../../../frameworks/app/utils/index';
 
-import { FilterByNamePipe } from '../../../frameworks/app/pipes/index';
 import { BaseService, NodeSelectorService, NotificationService } from '../../../frameworks/app/services/index';
 
 @BaseComponent({
@@ -21,8 +18,6 @@ import { BaseService, NodeSelectorService, NotificationService } from '../../../
     moduleId: module.id,
     templateUrl: './service-detail.component.html',
     styleUrls: ['./service-detail.component.css'],
-    directives: [ServiceInstanceDetailComponent],
-    pipes: [FilterByNamePipe],
     changeDetection: ChangeDetectionStrategy.Default
 })
 
@@ -41,22 +36,22 @@ export class ServiceDetailComponent implements OnInit, OnDestroy {
     /**
      * links to all the available services.
      */
-    private _serviceLinks: string[];
+    private _serviceLinks: string[] = [];
 
     /**
      * links to all the available instances within the specified service.
      */
-    private _serviceInstancesLinks: string[];
+    private _serviceInstancesLinks: string[] = [];
 
     /**
      * Id for the selected service. E.g. /core/examples
      */
-    private _selectedServiceId: string;
+    private _selectedServiceId: string = '';
 
     /**
      * Id for the selected service instance.
      */
-    private _selectedServiceInstanceId: string;
+    private _selectedServiceInstanceId: string = '';
 
     /**
      * Subscriptions to services.
@@ -98,7 +93,7 @@ export class ServiceDetailComponent implements OnInit, OnDestroy {
                     // Set modal context
                     this.createInstanceModalContext.name = this._selectedServiceId;
                     this.createInstanceModalContext.data['documentSelfLink'] = this._selectedServiceId;
-                    this.createInstanceModalContext.data['body'] = null;
+                    this.createInstanceModalContext.data['body'] = '';
 
                     this._getData();
                 });
@@ -123,13 +118,13 @@ export class ServiceDetailComponent implements OnInit, OnDestroy {
     }
 
     getServiceLinks(): string[] {
-        return this._serviceLinks ? this._serviceLinks : [];
+        return this._serviceLinks;
     }
 
     getServiceInstanceLinks(): string[] {
-        return this._serviceInstancesLinks ? _.map(this._serviceInstancesLinks, (serviceInstanceLink: string) => {
+        return _.map(this._serviceInstancesLinks, (serviceInstanceLink: string) => {
             return StringUtil.parseDocumentLink(serviceInstanceLink).id;
-        }) : [];
+        });
     }
 
     getSelectedServiceId(): string {
@@ -162,7 +157,7 @@ export class ServiceDetailComponent implements OnInit, OnDestroy {
                 }]);
 
                 // Reset body
-                this.createInstanceModalContext.data['body'] = null;
+                this.createInstanceModalContext.data['body'] = '';
             },
             (error) => {
                 // TODO: Better error handling
@@ -175,9 +170,9 @@ export class ServiceDetailComponent implements OnInit, OnDestroy {
 
     private _getData(): void {
         // Only get _serviceLinks once
-        if (_.isUndefined(this._serviceLinks) || _.isEmpty(this._serviceLinks)) {
+        if (_.isEmpty(this._serviceLinks)) {
             // Reset _serviceInstancesLinks when the service itself changes
-            this._serviceInstancesLinks = null;
+            this._serviceInstancesLinks = [];
 
             this._baseServiceGetLinksSubscription =
                 this._baseService.getDocumentLinks(URL.Root).subscribe(
@@ -197,9 +192,7 @@ export class ServiceDetailComponent implements OnInit, OnDestroy {
         // - When switching between instances (thus _selectedServiceInstanceId is
         //      available), skip querying service instances since it will
         //      not change anyway
-        if (_.isUndefined(this._serviceInstancesLinks) || _.isNull(this._serviceInstancesLinks)
-                || _.isEmpty(this._serviceInstancesLinks)
-                || _.isUndefined(this._selectedServiceInstanceId) || _.isNull(this._selectedServiceInstanceId)) {
+        if (_.isEmpty(this._serviceInstancesLinks) || _.isNull(this._selectedServiceInstanceId)) {
             this._baseServiceGetServiceInstanceListSubscription =
                 this._baseService.getDocumentLinks(this._selectedServiceId).subscribe(
                     (serviceInstanceLinks: string[]) => {

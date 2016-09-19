@@ -1,0 +1,21 @@
+@import "colors";
+@import "variables";
+
+.nested-clause {
+    position: relative;
+    display: inline-block;
+    background: $grey-100;
+    padding: baselinerem(.5);
+    border-radius: rem(.2);
+    width: 100%;
+
+    .connector {
+        position: absolute;
+        z-index: 1;
+        left: 77px;
+        top: 14px;
+        width: 0;
+        border-right: 1px dashed $grey-300;
+        bottom: baselinerem(1.5);
+    }
+}

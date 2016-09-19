@@ -4,7 +4,6 @@
 .query-clause {
     @include flexbox();
     flex-flow: row nowrap;
-    width: 80%;
     margin-bottom: baselinerem(.75);
     position: relative;
 
@@ -21,12 +20,12 @@
     &.first-clause {
         padding-left: baselinerem(7);
 
-        .control-group {
+        /deep/ .control-group {
             padding-right: 30px;
         }
     }
 
-    .static-control {
+    /deep/ .static-control {
         height: rem(1.8125);
         background-color: $grey-300;
         border: 1px solid $grey-300;
@@ -53,17 +52,50 @@
         }
     }
 
-    .term-group {
+    /deep/ .term-group {
         @include flex(1 1 auto);
         z-index: 2;
 
         .form-control {
             margin-right: baselinerem(.5);
         }
+
+        .form-control-group {
+            margin-right: baselinerem(.5);
+            display: inline-table;
+
+            .form-control {
+                margin-right: 0;
+                display: table-cell;
+            }
+
+            .form-control:first-child {
+                border-top-right-radius: 0;
+                border-bottom-right-radius: 0;
+            }
+
+            // Hacks to fake a border for select, in order to fix select radius
+            // dictated by the border appearence.
+            .form-control-select-wrapper {
+                display: table-cell;
+                background: $grey-100;
+                border-radius: 0 rem(.2) rem(.2) 0;
+                box-shadow: rpx(-1) rpx(-1) 0 rgba(0, 0, 0, .15) inset, 0 rpx(1) 0 rgba(0, 0, 0, .15) inset;
+
+                &:focus, &:active {
+                    box-shadow: rpx(-1) rpx(-1) 0 $light-blue-300 inset, 0 rpx(1) 0 $light-blue-300 inset;
+                }
+
+                select {
+                    border: none;
+                    background: transparent;
+                }
+            }
+        }
     }
 
     .control-group {
-        @include flex(1 0 baselinerem(5));
+        @include flex(0 0 baselinerem(6));
         text-align: right;
         z-index: 2;
     }

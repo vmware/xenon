@@ -25,9 +25,9 @@ A developer-centric application that makes it easier to navigate around the xeno
 
 # Introduction
 
-Xenon UI is built for one purpose: make your Xenon development experience MUCH better. It provides a rich set of functionalities and visualizations that can help you:
-- Debug your Xenon-based system by organizing various documents and displaying them in a meaningful way.
-- Navigate to any node within the node group and get their document contents.
+Xenon UI is built for one purpose: make your Xenon development experience MUCH better. It provides a rich set of features that can help you:
+- Debug your Xenon-based system by organizing various documents and visualizations them in a meaningful way.
+- Navigate to any node within the node group and browse node-specific document contents.
 - Make REST calls with test payloads.
 - Generate query tasks interactively.
 - Trace operations.
@@ -46,19 +46,20 @@ Xenon UI comes as a web application with every Xenon jar after 0.9.5 and is avai
 - Lists all the available factory services and their status and options, as well as detailed information of service instances under the factory services.
 - Create, Edit(PATCH/PUT) and Delete instances.
 - Logs for each node.
+- Query UI that allows building queries using either the interactive "Query Builder" or JSON editor, and displays the results right below.
 - Login/logout mechanism.
 - Conceptual about page, we can either create a page like this with documentations or point the ? icon to xenon wiki (which would be easier).
 - (PARTIAL) i18n support
 
 #### Planned Improvements
 
-- Query and Operation Tracing, need to build UIs for these two features but may only have time for Query before 1.0.
+- Operation Tracing.
 - Pagination: not implemented for any of the lists, which will cause performance issue when it scales. Need some refactoring once having a clearer idea on how Xenon does it.
 - Reactive: right now data all come from one off http calls, no change will be reflected on the UI without page refresh. Need some work here.
-- Node Selector: Need to cover more complex topology scenarios and show info about quorums and options.
+- Node Selector: Need to cover more complex topology scenarios.
 - Dashboard improvements: Aggregated service instance stats and index usage stats needs to be added to the dashboard.
-- Form improvements: UX and validation on Create, Edit and Delete instance model forms.
-- System configuration: should allow edits of some system properties, but not very sure what items are editable and what are not.
+- Form improvements: UX revisit and validation on Create, Edit and Delete instance model forms.
+- System configuration: should allow edits of some system properties.
 - Performance: definitely need some tuning.
 - Improvements/fixes based on your feedback.
 
@@ -70,7 +71,7 @@ Xenon UI comes as a web application with every Xenon jar after 0.9.5 and is avai
 
 * To run the NativeScript app:
 
-```
+```bash
 npm install -g nativescript
 npm install -g typescript
 ```
@@ -94,7 +95,7 @@ npm run build.prod
 
 #### Setup
 
-```
+```bash
 npm install -g nativescript
 ```
 
@@ -208,7 +209,10 @@ npm start -- --port 8080 --reload-port 4000 --base /my-app/
 │       ├── testing
 │       ├── index.html
 │       ├── main.desktop.ts    <- main ts for building desktop application
+│       ├── main.web.prod.ts   <- main ts for building web application in production
 │       ├── main.web.ts        <- main ts for building web application
+│       ├── package.json       <- package.json for building desktop application
+│       ├── system.config.ts
 │       ├── tsconfig.json
 │       ├── typings.d.ts
 │       └── web.modules.ts
@@ -267,6 +271,7 @@ This is an [Angular 2](https://angular.io/) application built on top of [Nathan 
 - [jQuery](http://jquery.com/) 3
 - [Chart.js](http://www.chartjs.org/)
 - [D3](https://d3js.org/) 3
+- [CodeMirror](http://codemirror.net/) 5
 - [moment](http://momentjs.com/) 2.14
 - [Font Awesome](http://fontawesome.io/) 4.6
 
@@ -301,7 +306,7 @@ This is the default option which let Xenon to host the UI in /core/ui/default.
 
 In the current `ui` directory:
 
-```
+```bash
 npm run build.prod
 ```
 
@@ -311,7 +316,7 @@ It should generate a `prod` folder under `dist`.
 
 Go to `xenon/xenon-ui/src/main/resources/ui/com/vmware/xenon/ui/UiService`, run
 
-```
+```bash
 rm -r *
 rm -r .*
 ```
@@ -320,7 +325,7 @@ rm -r .*
 
 In the current `ui` directory:
 
-```
+```bash
 cp -a dist/prod/ ../resources/ui/com/vmware/xenon/ui/UiService
 ```
 

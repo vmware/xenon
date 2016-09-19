@@ -14,36 +14,103 @@
             </button>
         </aside>
     </nav>
-    <main class="content-area">
-        <section class="query-builder">
-            <form class="form-inline">
-                <div class="form-group">
-                    <label for="versionsOption">{{ 'ACTION_QUERY' | translate }}</label>&nbsp;
-                    <select class="form-control form-control-sm" id="queryVersionsOption">
-                        <option value="">{{ 'QUERY_BUILDER_OPTION_LATEST_VERSIONS' | translate }}</option>
-                        <option value="INCLUDE_ALL_VERSIONS">{{ 'QUERY_BUILDER_OPTION_ALL_VERSIONS' | translate }}</option>
-                    </select>&nbsp;
-                    <label for="deletedDocumentInclusionOption">{{ 'QUERY_BUILDER_TITLE_OF_DOCUMENTS' | translate }}</label>&nbsp;
-                    <select class="form-control form-control-sm" id="deletedDocumentInclusionOption">
-                        <option value="">{{ 'QUERY_BUILDER_OPTION_EXCLUDE_DELETED' | translate }}</option>
-                        <option value="INCLUDE_DELETED">{{ 'QUERY_BUILDER_OPTION_INCLUDE_DELETED' | translate }}</option>
-                    </select>&nbsp;
-                    <label for="continousQueryOption">{{ 'QUERY_BUILDER_TITLE_DELETE_ONES' | translate }}</label>&nbsp;
-                    <select class="form-control form-control-sm" id="continousQueryOption">
-                        <option value="CONTINUOUS">{{ 'QUERY_BUILDER_OPTION_CONTINOUS' | translate }}</option>
-                        <option value="DO_NOT_REFRESH">{{ 'QUERY_BUILDER_OPTION_WITHOUT_REFRESH' | translate }}</option>
-                    </select>
-                </div>
-                <hr class="content-divider">
-                <div class="query-clause-container">
-                    <div class="connector"></div>
-                    <xe-query-clause *ngFor="let clause of clauses"
-                        [id]="clause.id" [isFirst]="clause.id === 1"
-                        (deleteClause)="onDeleteClause($event)"></xe-query-clause>
-                    <button class="btn btn-link btn-add-clause"
-                        (click)="onAddClause($event)"></button>
-                </div>
-            </form>
+    <main class="content-area component-container vertical">
+        <section id="queryBuilderContainer" class="collapse in" aria-expanded="true">
+            <div class="query-builder">
+                <form class="form-inline" [class.hidden-xs-up]="queryBuilderMode !== 'interactive'">
+                    <div class="form-group option-container">
+                        <label for="versionsOption">{{ 'ACTION_QUERY' | translate }}</label>
+                        <select class="form-control form-control-sm" id="queryVersionsOption"
+                            (change)="onQueryVersionsOptionChanged($event)">
+                            <option value="">{{ 'QUERY_BUILDER_OPTION_LATEST_VERSIONS' | translate }}</option>
+                            <option value="INCLUDE_ALL_VERSIONS">{{ 'QUERY_BUILDER_OPTION_ALL_VERSIONS' | translate }}</option>
+                        </select>
+                        <label for="ownerSelectionOption">{{ 'QUERY_BUILDER_TITLE_OF_DOCUMENTS' | translate }}</label>
+                        <select class="form-control form-control-sm" id="ownerSelectionOption"
+                            (change)="onOwnerSelectionOptionChanged($event)">
+                            <option value="">{{ 'QUERY_BUILDER_OPTION_NO_OWNER_SELECTION' | translate }}</option>
+                            <option value="OWNER_SELECTION">{{ 'QUERY_BUILDER_OPTION_OWNER_SELECTION' | translate }}</option>
+                        </select>
+                        <label>{{ 'QUERY_BUILDER_TITLE_AND' | translate }}</label>
+                        <select class="form-control form-control-sm" id="deletedDocumentInclusionOption"
+                            (change)="onDeletedDocumentInclusionOptionChanged($event)">
+                            <option value="">{{ 'QUERY_BUILDER_OPTION_EXCLUDE_DELETED' | translate }}</option>
+                            <option value="INCLUDE_DELETED">{{ 'QUERY_BUILDER_OPTION_INCLUDE_DELETED' | translate }}</option>
+                        </select>
+                        <label for="deletedDocumentInclusionOption">{{ 'QUERY_BUILDER_TITLE_DELETE_ONES' | translate }}</label>
+
+                        <!-- <aside>
+                            <label class="form-check-inline">
+                                <input class="form-check-input" type="checkbox" id="expandContent" value="expandContent">
+                                &nbsp;{{ 'QUERY_BUILDER_OPTION_EXPAND_CONTENT' | translate }}
+                            </label>
+                            <label class="form-check-inline">
+                                <input class="form-check-input" type="checkbox" id="ownerSelection" value="ownerSelection"
+                                (click)="onOwnerSelectionOptionChanged($event)">
+                                &nbsp;{{ 'QUERY_BUILDER_OPTION_OWNER_SELECTION' | translate }}
+                            </label>
+                        </aside> -->
+                    </div>
+                    <hr class="content-divider">
+                    <div class="query-clause-container">
+                        <div class="connector"></div>
+                        <xe-query-clause *ngFor="let clause of interactiveQueryClauses"
+                            [id]="clause.id" [isFirst]="clause.id === 1"
+                            (deleteClause)="onDeleteClause($event)"></xe-query-clause>
+                        <button class="btn btn-link btn-add-clause"
+                            (click)="onAddClause($event)"></button>
+                    </div>
+                </form>
+                <form [class.hidden-xs-up]="queryBuilderMode !== 'advanced'">
+                    <div class="form-group query-spec-container">
+                        <xe-code-editor class="form-control-code-editor" name="advancedSpecInput"
+                            [(ngModel)]="advancedQueryTaskInput"></xe-code-editor>
+                        <xe-query-spec-reference class="reference-panel"></xe-query-spec-reference>
+                    </div>
+                </form>
+            </div>
         </section>
+        <div class="action-bar">
+            <button type="button" class="btn btn-primary"
+                (click)="onQuery($event)">
+                {{'ACTION_QUERY' | translate}}
+            </button>
+            <button type="button" class="btn btn-secondary"
+                (click)="onClearQuery($event)">
+                {{'ACTION_CLEAR' | translate}}
+            </button>
+            <div class="result-count">
+                <div class="stats stats-horizontal" *ngIf="getQueryResult().results">
+                    <span class="stats-number">{{getQueryResultCount()}}</span>
+                    <span class="stats-label">
+                        {{'RESULT' | translate}}<br>{{'AVAILABLE' | translate }}
+                    </span>
+                </div>
+            </div>
+            <aside>
+                <a class="btn btn-link btn-collapse-expand" data-toggle="collapse" href="#queryBuilderContainer"
+                    aria-expanded="true" aria-controls="queryBuilderContainer"
+                    title="{{ 'ACTION_COLLAPSE_HELP' | translate }}">
+                </a>
+            </aside>
+        </div>
+        <main class="content-area content-area-with-nested-container component-container horizontal"
+                *ngIf="getQueryResult().results?.documentLinks.length > 0">
+            <div class="left-side-area area">
+                <div class="list-group">
+                    <a class="list-group-item list-group-item-action"
+                        *ngFor="let queryResultLink of getQueryResult().results?.documentLinks"
+                        [class.active]="isResultLinkSelected(queryResultLink)"
+                        (click)="onSelectQueryResult($event, queryResultLink)">
+                        {{queryResultLink}}
+                    </a>
+                </div>
+            </div>
+            <div class="content-area area">
+                <xe-query-result-detail class="component-container horizontal query-result-detail-container"
+                    [selectedResultDocumentLink]="getSelectedResultDocumentLink()">
+                </xe-query-result-detail>
+            </div>
+        </main>
     </main>
 </div>

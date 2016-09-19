@@ -6,8 +6,6 @@ import * as _ from 'lodash';
 // app
 import { BaseComponent } from '../../../frameworks/core/index';
 
-import { DashboardCardComponent } from './dashboard-card.component';
-
 import { URL } from '../../../frameworks/app/enums/index';
 import { Node, ProcessLog, ServiceStats,
     ServiceStatsTimeSeries } from '../../../frameworks/app/interfaces/index';
@@ -23,7 +21,6 @@ const FILTER_LOG_ALL: string = 'All';
     moduleId: module.id,
     templateUrl: './dashboard-grid.component.html',
     styleUrls: ['./dashboard-grid.component.css'],
-    directives: [DashboardCardComponent],
     changeDetection: ChangeDetectionStrategy.Default
 })
 

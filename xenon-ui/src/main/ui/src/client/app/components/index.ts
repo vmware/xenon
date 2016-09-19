@@ -3,6 +3,5 @@
  */
 export * from './app.component';
 
-export * from './about/index';
 export * from './login/index';
 export * from './main/index';

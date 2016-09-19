@@ -78,3 +78,21 @@
 .modal .close {
     margin-top: 0;
 }
+
+/* Collapse button */
+.btn.btn-collapse-expand {
+    display: inline-block;
+    font: normal normal normal 14px/1 $default-font-for-icons;
+    font-size: inherit;
+    line-height: 1.25;
+    text-rendering: auto;
+    -webkit-font-smoothing: antialiased;
+
+    &[aria-expanded="true"]::before {
+        content: "\f066";
+    }
+
+    &[aria-expanded="false"]::before {
+        content: "\f065";
+    }
+}

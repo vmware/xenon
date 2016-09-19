@@ -12,15 +12,11 @@ import { NodeGroup, Node, ServiceDocumentQueryResult } from '../../interfaces/in
 import { BaseService, NodeSelectorService,
     NotificationService } from '../../services/index';
 
-import { NodeCanvasComponent } from './node-canvas.component';
-import { NodeInfoPanelComponent } from './node-info-panel.component';
-
 @BaseComponent({
     selector: 'xe-node-selector',
     moduleId: module.id,
     templateUrl: './node-selector.component.html',
     styleUrls: ['./node-selector.component.css'],
-    directives: [NodeCanvasComponent, NodeInfoPanelComponent],
     changeDetection: ChangeDetectionStrategy.Default
 })
 
@@ -33,7 +29,7 @@ export class NodeSelectorComponent implements OnInit, OnDestroy {
     /**
      * The id for the selected node.
      */
-    private _selectedNodeId: string;
+    private _selectedNodeId: string = '';
 
     /**
      * The node that hosts the current application.

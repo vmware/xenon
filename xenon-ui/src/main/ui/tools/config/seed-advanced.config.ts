@@ -31,7 +31,7 @@ export class SeedAdvancedConfig extends SeedConfig {
     this.BOOTSTRAP_PROD_MODULE = `${this.BOOTSTRAP_DIR}${bootstrap}`;
     this.BOOTSTRAP_FACTORY_PROD_MODULE = `${this.BOOTSTRAP_DIR}${bootstrap}.prod`;
 
-    this.APP_TITLE = 'Angular 2 Seed Advanced';
+    this.APP_TITLE = 'Xenon | Decentralized Control Plane';
     this.APP_BASE = ''; // paths must remain relative
 
     /** Development **/
@@ -55,7 +55,10 @@ export class SeedAdvancedConfig extends SeedConfig {
     this.SYSTEM_CONFIG.paths[this.BOOTSTRAP_MODULE] = `${this.APP_BASE}${this.BOOTSTRAP_MODULE}`;
     this.SYSTEM_CONFIG.paths['angulartics2'] = `${this.APP_BASE}node_modules/angulartics2/index`;
     this.SYSTEM_CONFIG.paths['angulartics2/*'] = `${this.APP_BASE}node_modules/angulartics2/*`;
+    this.SYSTEM_CONFIG.paths['angular2-cookie/*'] = `${this.APP_BASE}node_modules/angular2-cookie/*`;
     this.SYSTEM_CONFIG.paths['lodash'] = `${this.APP_BASE}node_modules/lodash/index`;
+    this.SYSTEM_CONFIG.paths['moment'] = `${this.APP_BASE}node_modules/moment/moment`;
+    this.SYSTEM_CONFIG.paths['numeral'] = `${this.APP_BASE}node_modules/numeral/numeral`;
 
     /** Production **/
 
@@ -66,6 +69,18 @@ export class SeedAdvancedConfig extends SeedConfig {
     };
     this.SYSTEM_BUILDER_CONFIG['packages']['@ngrx/store'] = {
       main: 'index.js',
+      defaultExtension: 'js'
+    };
+    this.SYSTEM_BUILDER_CONFIG['packages']['angular2-cookie'] = {
+      main: 'core.js',
+      defaultExtension: 'js'
+    };
+    this.SYSTEM_BUILDER_CONFIG['packages']['moment'] = {
+      main: 'moment.js',
+      defaultExtension: 'js'
+    };
+    this.SYSTEM_BUILDER_CONFIG['packages']['numeral'] = {
+      main: 'numeral.js',
       defaultExtension: 'js'
     };
     this.SYSTEM_BUILDER_CONFIG.paths['angulartics2'] = `node_modules/angulartics2/index.js`;

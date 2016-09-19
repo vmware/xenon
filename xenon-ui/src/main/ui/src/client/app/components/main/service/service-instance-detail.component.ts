@@ -1,5 +1,6 @@
 // angular
-import { AfterViewChecked, ChangeDetectionStrategy, Input, SimpleChange, OnChanges, OnDestroy } from '@angular/core';
+import { AfterViewChecked, ChangeDetectionStrategy, Input,
+    SimpleChange, OnChanges, OnDestroy } from '@angular/core';
 import { Subscription } from 'rxjs/Subscription';
 import * as _ from 'lodash';
 
@@ -14,7 +15,7 @@ import { StringUtil } from '../../../frameworks/app/utils/index';
 
 import { BaseService, NotificationService } from '../../../frameworks/app/services/index';
 
-const OPERATIONS: string[] = ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'];
+const OPERATIONS: string[] = ['GET', 'POST', 'PATCH', 'PUT', 'OPTIONS'];
 
 @BaseComponent({
     selector: 'xe-service-instance-detail',
@@ -154,18 +155,6 @@ export class ServiceInstanceDetailComponent implements AfterViewChecked, OnChang
 
     getSelectedServiceInstance(): ServiceDocumentQueryResult {
         return this._selectedServiceInstance;
-    }
-
-    getPropertyArray(properties: {[key: string]: any}): any[] {
-        var propertyArray: any[] = [];
-        _.each(properties, (property: any, key: string) => {
-            propertyArray.push({
-                name: key,
-                value: _.isObject(property) ? JSON.stringify(property, null, 2) : property
-            });
-        });
-
-        return propertyArray;
     }
 
     getTimeline(): any[] {

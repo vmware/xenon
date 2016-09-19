@@ -26,7 +26,14 @@ export class ProjectConfig extends SeedAdvancedConfig {
             { src: 'bootstrap/dist/js/bootstrap.min.js', inject: 'libs' },
             { src: 'd3/d3.min.js', inject: 'libs' },
             { src: 'd3-tip/index.js', inject: 'libs' },
-            { src: 'chart.js/dist/Chart.bundle.min.js', inject: 'libs' }
+            { src: 'chart.js/dist/Chart.bundle.min.js', inject: 'libs' },
+
+            { src: 'codemirror/lib/codemirror.js', inject: 'libs' },
+            { src: 'codemirror/addon/display/autorefresh.js', inject: 'libs' },
+            { src: 'codemirror/addon/edit/matchbrackets.js', inject: 'libs' },
+            { src: 'codemirror/addon/selection/active-line.js', inject: 'libs' },
+            { src: 'codemirror/mode/javascript/javascript.js', inject: 'libs' },
+            { src: 'codemirror/lib/codemirror.css', inject: true }
         ];
 
         // Add `local` third-party libraries to be injected/bundled.

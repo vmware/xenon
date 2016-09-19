@@ -7,8 +7,6 @@ import * as _ from 'lodash';
 // app
 import { BaseComponent } from '../../../frameworks/core/index';
 
-import { ServiceCardComponent } from './service-card.component';
-
 import { URL } from '../../../frameworks/app/enums/index';
 import { EventContext, ModalContext, Node, ServiceDocument } from '../../../frameworks/app/interfaces/index';
 import { StringUtil } from '../../../frameworks/app/utils/index';
@@ -20,7 +18,6 @@ import { BaseService, NodeSelectorService, NotificationService } from '../../../
     moduleId: module.id,
     templateUrl: './service-grid.component.html',
     styleUrls: ['./service-grid.component.css'],
-    directives: [ServiceCardComponent],
     changeDetection: ChangeDetectionStrategy.Default
 })
 
@@ -39,12 +36,12 @@ export class ServiceGridComponent implements OnInit, OnDestroy {
     /**
      * The core factory services in the view.
      */
-    private _coreServices: ServiceDocument[];
+    private _coreServices: ServiceDocument[] = [];
 
     /**
      * The custom factory services in the view.
      */
-    private _customServices: ServiceDocument[];
+    private _customServices: ServiceDocument[] = [];
 
     /**
      * The regexp for checking if one is a core service based on
@@ -91,11 +88,11 @@ export class ServiceGridComponent implements OnInit, OnDestroy {
     }
 
     getCoreServices(): ServiceDocument[] {
-        return this._coreServices ? this._coreServices : [];
+        return this._coreServices;
     }
 
     getCustomServices(): ServiceDocument[] {
-        return this._customServices ? this._customServices : [];
+        return this._customServices;
     }
 
     getServiceId(documentSelfLink: string): string {
@@ -105,7 +102,7 @@ export class ServiceGridComponent implements OnInit, OnDestroy {
     onCreateInstanceClicked(context: EventContext): void {
         this.createInstanceModalContext.name = context.data['documentSelfLink'];
         this.createInstanceModalContext.data['documentSelfLink'] = context.data['documentSelfLink'];
-        this.createInstanceModalContext.data['body'] = null;
+        this.createInstanceModalContext.data['body'] = '';
     }
 
     onCreateInstance(event: MouseEvent): void {

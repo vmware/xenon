@@ -1,0 +1,40 @@
+@import "colors";
+@import "variables";
+
+#queryResultDetail.content-area.info-panel {
+    padding: baselinerem(1) baselinerem(1.5);
+
+    .form-title {
+        @include flexbox();
+        flex-flow: row nowrap;
+        margin-top: 0;
+
+        h4 {
+            @include flex(1 1 auto);
+            @include break-word();
+            margin: 0;
+        }
+    }
+
+    .form-subtitle {
+        font-size: 80%;
+        color: $grey-500;
+    }
+
+    section {
+        margin-top: baselinerem(1.5);
+
+        .section-title {
+            margin-bottom: baselinerem(.5);
+        }
+    }
+
+    table.table-of-properties {
+        table-layout: fixed;
+
+        pre {
+            font-size: $default-font-size;
+            line-height: $default-line-height;
+        }
+    }
+}

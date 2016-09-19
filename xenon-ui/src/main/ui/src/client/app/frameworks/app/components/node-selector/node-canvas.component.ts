@@ -2,6 +2,7 @@
 import { AfterViewInit, ChangeDetectionStrategy, EventEmitter, Input,
     OnChanges, OnDestroy, Output, SimpleChange } from '@angular/core';
 
+// app
 import { BaseComponent } from '../../../core/index';
 
 import { Link, NodeGroup, Node } from '../../interfaces/index';
@@ -221,7 +222,7 @@ export class NodeCanvasComponent implements AfterViewInit, OnChanges, OnDestroy 
             .enter()
                 .append('g')
                     .append('circle')
-                        .attr('r', '1rem')
+                        .attr('r', '16px')
                         .attr('class', (node: Node) => {
                             return this._getNodeClassByStatus(node.status);
                         })

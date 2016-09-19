@@ -1,0 +1,24 @@
+<div class="empty-message-container"
+        *ngIf="isNullOrUndefined(getSelectedResultDocument()) === true">
+    <h4 class="title">{{ 'ERROR_NO_QUERY_RESULT_SELECTED' | translate }}</h4>
+    <p class="message">{{ 'ERROR_NO_QUERY_RESULT_SELECTED_HELPER' | translate }}</p>
+</div>
+<div id="queryResultDetail" class="content-area area info-panel"
+        *ngIf="isNullOrUndefined(getSelectedResultDocument()) === false">
+    <form>
+        <div class="form-title">
+            <h4>
+                {{getSelectedResultDocument().documentSelfLink}}
+            </h4>
+        </div>
+        <small class="form-subtitle">
+            {{'LAST_UPDTED' | translate}}: <strong>{{getTimeStamp(getSelectedResultDocument()?.documentUpdateTimeMicros)}}</strong>
+            <span class="separator">|</span>
+            {{'EXPIRES' | translate}}: <strong>{{getTimeStamp(getSelectedResultDocument()?.documentExpirationTimeMicros)}}</strong>
+        </small>
+        <section>
+            <h5 class="section-title">{{ 'PROPERTIES' | translate }}</h5>
+            <xe-property-table [properties]="getSelectedResultDocument()"></xe-property-table>
+        </section>
+    </form>
+</div>

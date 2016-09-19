@@ -6,16 +6,13 @@ import { Subscription } from 'rxjs/Subscription';
 // app
 import { BaseComponent } from '../../frameworks/core/index';
 
-import { StarCanvasComponent } from './star-canvas.component';
-
 import { AuthenticationService } from '../../frameworks/app/services/index';
 
 @BaseComponent({
     selector: 'xe-login',
     moduleId: module.id,
     templateUrl: './login.component.html',
-    styleUrls: ['./login.component.css'],
-    directives: [StarCanvasComponent]
+    styleUrls: ['./login.component.css']
 })
 
 export class LoginComponent implements OnDestroy {

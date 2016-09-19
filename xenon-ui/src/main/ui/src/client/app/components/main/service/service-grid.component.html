@@ -64,9 +64,9 @@
                     <div class="form-group row">
                         <label class="col-sm-3 col-form-label">{{ 'BODY' | translate }}</label>
                         <div  class="col-sm-9">
-                            <textarea class="form-control" rows="12" name="body"
-                                placeholder="{{ 'SERVICE_INSTANCE_CREATE_MODAL_BODY_HELPER' | translate }}"
-                                [(ngModel)]="createInstanceModalContext.data.body"></textarea>
+                            <xe-code-editor name="body"
+                                [(ngModel)]="createInstanceModalContext.data.body">
+                            </xe-code-editor>
                         </div>
                     </div>
                 </form>

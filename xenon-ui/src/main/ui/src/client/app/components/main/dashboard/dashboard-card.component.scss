@@ -3,6 +3,8 @@
 
 .card {
     .card-block.card-header-block {
+        position: relative;
+
         .card-badge {
             .btn.link-dropdown-toggle {
                 padding: rem(.25) 5px rem(.25) 0;
@@ -13,6 +15,17 @@
                     opacity: 1;
                 }
             }
+        }
+
+        .card-roll-up-stat {
+            position: absolute;
+            bottom: -48px;
+            right: 0;
+            padding: 0 rem(1.25);
+            font-size: 28px;
+            font-weight: bold;
+            line-height: 48px;
+            color: $grey-500;
         }
     }
 

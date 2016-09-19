@@ -145,7 +145,7 @@
 
     .chart {
         @include flexbox();
-        @include flex(1 1 auto);
+        @include flex(1 1 0);
         @include flex-order(1);
         flex-flow: column nowrap;
         justify-content: flex-start;

@@ -9,9 +9,9 @@ import { StoreModule } from '@ngrx/store';
 import { CookieService } from 'angular2-cookie/core';
 
 // app
-import { AlertComponent, NavbarComponent, NodeCanvasComponent,
-    NodeInfoPanelComponent, NodeSelectorComponent,
-    NotificationComponent } from './components/index';
+import { AlertComponent, CodeEditorComponent, NavbarComponent, NodeCanvasComponent,
+    NodeInfoPanelComponent, NodeSelectorComponent, NotificationComponent,
+    PropertyTableComponent } from './components/index';
 import { FilterByNamePipe } from './pipes/index';
 import { AuthenticationGuard, AuthenticationService, BASE_SERVICE_PROVIDERS,
     NodeSelectorService, NotificationService } from './services/index';
@@ -41,20 +41,24 @@ export interface AppStoreI {
     ],
     declarations: [
         AlertComponent,
+        CodeEditorComponent,
         NavbarComponent,
         NodeCanvasComponent,
         NodeInfoPanelComponent,
         NodeSelectorComponent,
         NotificationComponent,
+        PropertyTableComponent,
         FilterByNamePipe
     ],
     exports: [
         AlertComponent,
+        CodeEditorComponent,
         NavbarComponent,
         NodeCanvasComponent,
         NodeInfoPanelComponent,
         NodeSelectorComponent,
         NotificationComponent,
+        PropertyTableComponent,
         FilterByNamePipe
     ],
     providers: [

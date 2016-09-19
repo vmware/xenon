@@ -37,7 +37,7 @@ export class ServiceCardComponent implements OnChanges, OnDestroy {
     /**
      * Flag indicating whether the service is currently available.
      */
-    private _isServiceAvailable: boolean;
+    private _isServiceAvailable: boolean = false;
 
     /**
      * Stats of the service
@@ -60,18 +60,18 @@ export class ServiceCardComponent implements OnChanges, OnDestroy {
         private _notificationService: NotificationService) {}
 
     ngOnChanges(changes: {[propertyName: string]: SimpleChange}): void {
-            var serviceChanges = changes['service'];
+        var serviceChanges = changes['service'];
 
-            if (!serviceChanges
-                || _.isEqual(serviceChanges.currentValue, serviceChanges.previousValue)
-                || _.isEmpty(serviceChanges.currentValue)) {
-                return;
-            }
-
-            this.service = serviceChanges.currentValue;
-
-            this._getData();
+        if (!serviceChanges
+            || _.isEqual(serviceChanges.currentValue, serviceChanges.previousValue)
+            || _.isEmpty(serviceChanges.currentValue)) {
+            return;
         }
+
+        this.service = serviceChanges.currentValue;
+
+        this._getData();
+    }
 
     ngOnDestroy(): void {
         if (!_.isUndefined(this._baseServiceStatsSubscription)) {
@@ -85,6 +85,11 @@ export class ServiceCardComponent implements OnChanges, OnDestroy {
 
     getService(): string {
         return this.service ? this.service.documentSelfLink : '';
+    }
+
+    getServiceAvailabilityTitle(): string {
+        var availability: string = this._isServiceAvailable ? 'AVAILABLE' : 'UNAVAILABLE';
+        return `Status: ${availability}`;
     }
 
     getServiceAvailabilityClass(baseClasses: string): string {

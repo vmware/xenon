@@ -7,16 +7,13 @@ import { RouterModule } from '@angular/router';
 // app
 import { routes } from './app/components/app.routes';
 import { AppComponent,
-
-    // about
-    AboutDocumentComponent, AboutIntroComponent, AboutSubNavComponent, AboutComponent,
-
     // login
     StarCanvasComponent, LoginComponent,
 
     // main
-    DashboardCardComponent, DashboardGridComponent,
-    ProcessLogComponent, QueryClauseComponent, QueryComponent,
+    DashboardCardComponent, DashboardGridComponent, ProcessLogComponent,
+    QueryClauseNestedComponent, QueryClauseComponent, QueryNestedComponent,
+    QueryResultDetailComponent, QuerySpecReferenceComponent, QueryComponent,
     ServiceCardComponent, ServiceDetailComponent, ServiceGridComponent,
     ServiceInstanceDetailComponent, MainComponent } from './app/components/index/';
 
@@ -53,18 +50,9 @@ if (String('<%= TARGET_DESKTOP %>') === 'true') {
         AnalyticsModule,
         MultilingualModule,
 
-        // AboutModule,
-        // LoginModule,
-        // MainModule,
         AppModule
     ],
     declarations: [ AppComponent,
-        // about
-        AboutDocumentComponent,
-        AboutIntroComponent,
-        AboutSubNavComponent,
-        AboutComponent,
-
         // login
         StarCanvasComponent,
         LoginComponent,
@@ -73,7 +61,11 @@ if (String('<%= TARGET_DESKTOP %>') === 'true') {
         DashboardCardComponent,
         DashboardGridComponent,
         ProcessLogComponent,
+        QueryClauseNestedComponent,
         QueryClauseComponent,
+        QueryNestedComponent,
+        QueryResultDetailComponent,
+        QuerySpecReferenceComponent,
         QueryComponent,
         ServiceCardComponent,
         ServiceDetailComponent,

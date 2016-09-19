@@ -8,16 +8,29 @@
                 {{ 'QUERY_BUILDER_HELPER_SORT_BY' | translate }}
             </span>
         </div>
-        <div class="btn-group" data-toggle="buttons"
-            *ngSwitchDefault>
-            <label class="btn btn-sm btn-secondary active">
-                <input type="radio" name="occurance" autocomplete="off" checked/> AND
+        <div *ngSwitchCase="'group'">
+            <span class="form-control static-control">
+                {{ 'QUERY_BUILDER_HELPER_GROUP_BY' | translate }}
+            </span>
+        </div>
+        <div class="btn-group" data-toggle="buttons" *ngSwitchDefault>
+            <label class="btn btn-sm btn-secondary"
+                [class.active]="occurance === 'MUST_OCCUR'"
+                (click)="occurance = 'MUST_OCCUR'">
+                <input type="radio" name="occurance" autocomplete="off"
+                    [checked]="occurance === 'MUST_OCCUR'"/> AND
             </label>
-            <label class="btn btn-sm btn-secondary">
-                <input type="radio" name="occurance" autocomplete="off"/> OR
+            <label class="btn btn-sm btn-secondary"
+                [class.active]="occurance === 'SHOULD_OCCUR'"
+                (click)="occurance = 'SHOULD_OCCUR'">
+                <input type="radio" name="occurance" autocomplete="off"
+                    [checked]="occurance === 'SHOULD_OCCUR'"/> OR
             </label>
-            <label class="btn btn-sm btn-secondary">
-                <input type="radio" name="occurance" autocomplete="off"/> NOT
+            <label class="btn btn-sm btn-secondary"
+                [class.active]="occurance === 'MUST_NOT_OCCUR'"
+                (click)="occurance = 'MUST_NOT_OCCUR'">
+                <input type="radio" name="occurance" autocomplete="off"
+                    [checked]="occurance === 'MUST_NOT_OCCUR'"/> NOT
             </label>
         </div>
     </div>
@@ -25,9 +38,10 @@
         <div *ngSwitchCase="'string'">
             <input class="form-control form-control-sm"
                 type="text" name="propertyName" autocomplete="off"
-                placeholder="{{ 'QUERY_BUILDER_HELPER_PROPERTY_NAME' | translate }}"/>
-            <select class="form-control form-control-sm"
-                name="propertyMatchType">
+                placeholder="{{ 'QUERY_BUILDER_HELPER_PROPERTY_NAME' | translate }}"
+                (change)="propertyName = $event.target['value']"/>
+            <select class="form-control form-control-sm" name="propertyMatchType"
+                (change)="propertyMatchType = $event.target['value']">
                 <option value="TERM">
                     {{ 'QUERY_BUILDER_OPTION_MATCH_TERM' | translate }}
                 </option>
@@ -37,37 +51,74 @@
                 <option value="WILDCARD">
                     {{ 'QUERY_BUILDER_OPTION_MATCH_WILDCARD' | translate }}
                 </option>
+                <option value="PREFIX">
+                    {{ 'QUERY_BUILDER_OPTION_MATCH_PREFIX' | translate }}
+                </option>
             </select>
             <input class="form-control form-control-sm"
                 type="text" name="propertyValue" autocomplete="off"
-                placeholder="{{ 'QUERY_BUILDER_HELPER_PROPERTY_VALUE' | translate }}"/>
+                placeholder="{{ 'QUERY_BUILDER_HELPER_PROPERTY_VALUE' | translate }}"
+                (change)="propertyValue = $event.target['value']"/>
         </div>
         <div *ngSwitchCase="'range'">
             <input class="form-control form-control-sm"
                 type="text" name="propertyName" autocomplete="off"
-                placeholder="{{ 'QUERY_BUILDER_HELPER_PROPERTY_NAME' | translate }}"/>
+                placeholder="{{ 'QUERY_BUILDER_HELPER_PROPERTY_NAME' | translate }}"
+                (change)="propertyName = $event.target['value']"/>
             <span class="form-control static-control">
                 {{ 'QUERY_BUILDER_HELPER_IS_BETWEEN' | translate }}
             </span>
-            <input class="form-control form-control-sm"
-                type="number" name="propertyValueMin" autocomplete="off" step=".01"
-                placeholder="{{ 'QUERY_BUILDER_HELPER_PROPERTY_VALUE_MIN' | translate }}"/>
+            <div class="form-control-group">
+                <input class="form-control form-control-sm"
+                    type="number" name="propertyValueMin" autocomplete="off" step=".01"
+                    placeholder="{{ 'QUERY_BUILDER_HELPER_PROPERTY_VALUE_MIN' | translate }}"
+                    (change)="propertyValueRange.min = getAsNumber($event.target['value'])"/>
+                <div class="form-control-select-wrapper">
+                    <select class="form-control form-control-sm"
+                        name="propertyValueMinInclusive"
+                        (change)="propertyValueRange.isMinInclusive = $event.target['value']">
+                        <option value="true">
+                            {{ 'QUERY_BUILDER_OPTION_RANGE_INCLUDE' | translate }}
+                        </option>
+                        <option value="false">
+                            {{ 'QUERY_BUILDER_OPTION_RANGE_EXCLUDE' | translate }}
+                        </option>
+                    </select>
+                </div>
+            </div>
             <span class="form-control static-control">
                 {{ 'QUERY_BUILDER_HELPER_AND' | translate }}
             </span>
-            <input class="form-control form-control-sm"
-                type="number" name="propertyValueMax" autocomplete="off" step=".01"
-                placeholder="{{ 'QUERY_BUILDER_HELPER_PROPERTY_VALUE_MAX' | translate }}"/>
+            <div class="form-control-group">
+                <input class="form-control form-control-sm"
+                    type="number" name="propertyValueMax" autocomplete="off" step=".01"
+                    placeholder="{{ 'QUERY_BUILDER_HELPER_PROPERTY_VALUE_MAX' | translate }}"
+                    (change)="propertyValueRange.max = getAsNumber($event.target['value'])"/>
+                <div class="form-control-select-wrapper">
+                    <select class="form-control form-control-sm"
+                        name="propertyValueMinInclusive"
+                        (change)="propertyValueRange.isMaxInclusive = $event.target['value']">
+                        <option value="true">
+                            {{ 'QUERY_BUILDER_OPTION_RANGE_INCLUDE' | translate }}
+                        </option>
+                        <option value="false">
+                            {{ 'QUERY_BUILDER_OPTION_RANGE_EXCLUDE' | translate }}
+                        </option>
+                    </select>
+                </div>
+            </div>
         </div>
         <div *ngSwitchCase="'sort'">
             <input class="form-control form-control-sm"
                 type="text" name="propertyName" autocomplete="off"
-                placeholder="{{ 'QUERY_BUILDER_HELPER_PROPERTY_NAME' | translate }}"/>
+                placeholder="{{ 'QUERY_BUILDER_HELPER_PROPERTY_NAME' | translate }}"
+                (change)="propertyName = $event.target['value']"/>
             <span class="form-control static-control">
                 {{ 'QUERY_BUILDER_HELPER_IN' | translate }}
             </span>
             <select class="form-control form-control-sm"
-                name="propertyMatchType">
+                name="sortOrder"
+                (change)="sortOrder = $event.target['value']">
                 <option value="ASC">
                     {{ 'QUERY_BUILDER_OPTION_ASC' | translate }}
                 </option>
@@ -76,23 +127,36 @@
                 </option>
             </select>
         </div>
+        <div *ngSwitchCase="'group'">
+            <input class="form-control form-control-sm"
+                type="text" name="propertyName" autocomplete="off"
+                placeholder="{{ 'QUERY_BUILDER_HELPER_PROPERTY_NAME' | translate }}"
+                (change)="propertyName = $event.target['value']"/>
+        </div>
+        <div *ngSwitchCase="'nested'">
+            <xe-query-nested></xe-query-nested>
+        </div>
     </div>
     <div class="control-group">
         <select class="form-control form-control-sm" name="queryClauseType"
-            (change)="onQueryClauseTypeChanged($event)">
+            (change)="type = $event.target['value']">
             <option value="string">
                 {{ 'QUERY_BUILDER_OPTION_STRING' | translate }}
             </option>
             <option value="range">
                 {{ 'QUERY_BUILDER_OPTION_RANGE' | translate }}
             </option>
-            <option value="sort">
+            <option value="sort" *ngIf="isFirst === false">
                 {{ 'QUERY_BUILDER_OPTION_SORT' | translate }}
             </option>
-            <!-- <option disabled>──────</option>
-            <option value="nested">
-                {{ 'QUERY_BUILDER_HELPER_AND' | translate }}
+            <!-- TODO Temporary disable group until better understand how it works -->
+            <!-- <option value="group" *ngIf="isFirst === false">
+                {{ 'QUERY_BUILDER_OPTION_GROUP' | translate }}
             </option> -->
+            <option disabled>────</option>
+            <option value="nested">
+                {{ 'QUERY_BUILDER_OPTION_NESTED' | translate }}
+            </option>
         </select>
         <button class="btn btn-sm btn-link"
             *ngIf="isFirst === false"

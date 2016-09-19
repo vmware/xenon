@@ -130,6 +130,27 @@ export class DashboardCardComponent implements OnChanges, AfterViewChecked, OnDe
         return !_.isUndefined(this.chartOptions) ? this.chartOptions.filters : [];
     }
 
+    getRollUpStat(): string {
+        if (_.isUndefined(this.chartData) || _.isEmpty(this.chartData)
+            || _.isUndefined(this.chartOptions) || _.isEmpty(this.chartOptions)) {
+            return '';
+        }
+
+        var data: number[] = this.chartData[`${this._currentFilter.value}`].data;
+        var type: string = this.chartData[`${this._currentFilter.value}`].type;
+        var options: any = this.chartData[`${this._currentFilter.value}`].options
+            || this.chartOptions;
+
+        switch (type || options.type) {
+            case 'line':
+                return this._formatData(_.last(data), options.unit);
+            case 'bar':
+                return this._formatData(_.sum(data), options.unit);
+            default:
+                return '';
+        }
+    }
+
     onFilteredClicked(event: MouseEvent, value: string) {
         event.preventDefault();
 

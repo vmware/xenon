@@ -1,9 +1,9 @@
 {
-  "name": "angular2-seed-advanced",
+  "name": "Xenon UI",
   "main": "app.js",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "nativescript": {
-    "id": "com.yourdomain.appname",
+    "id": "com.vmware.xenon-ui",
     "tns-ios": {
       "version": "2.2.1"
     },

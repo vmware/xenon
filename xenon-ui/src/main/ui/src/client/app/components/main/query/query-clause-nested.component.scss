@@ -1,0 +1,38 @@
+@import "colors";
+@import "variables";
+
+.query-clause {
+    @include flexbox();
+    flex-flow: column nowrap;
+    margin-bottom: baselinerem(.75);
+    position: relative;
+
+    &.first-clause {
+        .control-group {
+            padding-right: 30px;
+        }
+    }
+
+    .occurance-group {
+        z-index: 2;
+        margin-bottom: baselinerem(.75);
+
+        .btn {
+            height: rem(1.8125);
+            line-height: 19px;
+            vertical-align: middle;
+            margin-bottom: 0;
+        }
+    }
+
+    .clause-group {
+        @include flexbox();
+        flex-flow: row nowrap;
+
+        .control-group {
+            @include flex(1 0 baselinerem(5));
+            text-align: right;
+            z-index: 2;
+        }
+    }
+}

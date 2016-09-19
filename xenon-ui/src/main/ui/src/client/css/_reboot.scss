@@ -11,7 +11,7 @@ html, body, div {
     box-sizing: border-box;
 }
 
-/* Reboot Clarity */
+/* Reboot Bootstrap */
 .main-container {
     overflow: hidden;
 
@@ -56,4 +56,8 @@ table, .table {
 
 .modal {
     z-index: $highest-z-index;
+}
+
+hr {
+    border-top: 1px solid $grey-300;
 }

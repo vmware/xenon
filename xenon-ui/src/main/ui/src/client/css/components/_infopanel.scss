@@ -74,30 +74,11 @@
 
         .form-control-static {
             padding: baselinerem(.5) 0;
-            max-height: baselinerem(3);
             @include break-word();
 
             &.form-control-static-multiline {
+                max-height: baselinerem(4);
                 @include text-multiline-ellipsis();
-            }
-        }
-    }
-
-    table, .table {
-        margin: 18px 0 0 0;
-        background: transparentize($white-base, .25);
-
-        &.table-of-properties {
-            td {
-                @include break-word();
-
-                &.name {
-                    width: 40%;
-                }
-
-                &.value {
-                    width: 60%;
-                }
             }
         }
     }

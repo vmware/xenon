@@ -13,4 +13,6 @@ export class URL {
     static CoreManagement: string = '/core/management';
     static NodeGroup: string = '/core/node-groups/';
     static Log: string = '/core/management/process-log';
+    static Query: string = '/core/query-tasks';
+    static DocumentIndex: string = '/core/document-index';
 }

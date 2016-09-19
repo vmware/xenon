@@ -1,10 +1,10 @@
+// angular
 import { ChangeDetectionStrategy, OnInit, OnDestroy } from '@angular/core';
 import { Subscription } from 'rxjs/Subscription';
 import * as _ from 'lodash';
 
+// app
 import { BaseComponent } from '../../../core/index';
-
-import { AlertComponent } from '../index';
 
 import { NotificationTypeUtil } from './notification-type.util';
 
@@ -16,7 +16,6 @@ import { NotificationService } from '../../services/index';
     moduleId: module.id,
     templateUrl: './notification.component.html',
     styleUrls: ['./notification.component.css'],
-    directives: [AlertComponent],
     changeDetection: ChangeDetectionStrategy.Default
 })
 
@@ -24,7 +23,7 @@ export class NotificationComponent implements OnInit, OnDestroy {
     /**
      * One or more notifications that need to be displayed.
      */
-    private _notifications: Notification[];
+    private _notifications: Notification[] = [];
 
     /**
      * Subscriptions to services.
@@ -47,7 +46,7 @@ export class NotificationComponent implements OnInit, OnDestroy {
     }
 
     getNotifications(): Notification[] {
-        return this._notifications ? this._notifications : [];
+        return this._notifications;
     }
 
     getNotificationTypeClass(notificationType: string): string {

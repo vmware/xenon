@@ -5,20 +5,20 @@ export interface ServiceDocument {
      *
      * Infrastructure use only
      */
-    documentVersion: number;
+    documentVersion?: number;
 
     /**
      * Document update time in microseconds since UNIX epoch
      *
      * Infrastructure use only
      */
-    documentUpdateTimeMicros: number;
+    documentUpdateTimeMicros?: number;
 
     /**
      * Expiration time in microseconds since UNIX epoch. If a document is found to be expired a
      * running service instance will be deleted and the document will be marked deleted in the index
      */
-    documentExpirationTimeMicros: number;
+    documentExpirationTimeMicros?: number;
 
     /**
      * Identity of the node that is assigned this document. Assignment is done through the node
@@ -26,7 +26,7 @@ export interface ServiceDocument {
      *
      * Infrastructure use only
      */
-    documentOwner: string;
+    documentOwner?: string;
 
     /**
      * The relative URI path of the service managing this document

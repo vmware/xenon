@@ -3,14 +3,15 @@ import { AfterViewInit, ChangeDetectionStrategy, EventEmitter, Input,
     OnChanges, OnDestroy, Output, SimpleChange } from '@angular/core';
 import { Subscription } from 'rxjs/Subscription';
 
-declare var Chart: any;
-
+// app
 import { BaseComponent } from '../../../core/index';
 
 import { URL } from '../../enums/index';
 import { ServiceHostState, SystemHostInfo } from '../../interfaces/index';
 import { OsUtil, StringUtil } from '../../utils/index';
 import { BaseService, NotificationService } from '../../services/index';
+
+declare var Chart: any;
 
 @BaseComponent({
     selector: 'xe-node-info-panel',
@@ -168,18 +169,6 @@ export class NodeInfoPanelComponent implements OnChanges, AfterViewInit, OnDestr
         var systemInfo: SystemHostInfo = this._highlightedNodeDetails.systemInfo;
 
         return ((1 - systemInfo.freeDiskByteCount / systemInfo.totalDiskByteCount) * 100).toPrecision(3);
-    }
-
-    getPropertyArray(properties: {[key: string]: any}): any[] {
-        var propertyArray: any[] = [];
-        _.each(properties, (property: any, key: string) => {
-            propertyArray.push({
-                name: key,
-                value: _.isObject(property) ? JSON.stringify(property) : property
-            });
-        });
-
-        return propertyArray;
     }
 
     getOsIconClass(osFamily: string): string {

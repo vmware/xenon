@@ -1,0 +1,33 @@
+@import "colors";
+@import "variables";
+
+.table {
+    margin: baselinerem(.75) 0 0 0;
+    background: transparentize($white-base, .25);
+    table-layout: fixed;
+
+    &.table-of-properties {
+        th, td {
+            @include break-word();
+
+            &.name {
+                width: 40%;
+            }
+
+            &.value {
+                width: 60%;
+            }
+
+            small {
+                color: $grey-400;
+                margin-left: baselinerem(.5);
+            }
+
+            pre {
+                font-size: $default-font-size;
+                line-height: $default-line-height;
+                @include break-word();
+            }
+        }
+    }
+}
