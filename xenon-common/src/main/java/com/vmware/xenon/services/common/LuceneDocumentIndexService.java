@@ -720,98 +720,109 @@ public class LuceneDocumentIndexService extends StatelessService {
     }
 
     public void handleGetImpl(Operation get) throws Throwable {
-        get = offerAndPollQueryOp(get);
-        if (get == null) {
-            return;
-        }
-
-        String selfLink = null;
-        Long version = null;
-        ServiceOption targetIndex = ServiceOption.NONE;
-
-        EnumSet<QueryOption> options = EnumSet.noneOf(QueryOption.class);
-        if (get.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_INDEX_CHECK)) {
-            // fast path for checking if a service exists, and loading its latest state
-            targetIndex = ServiceOption.PERSISTENCE;
-            // the GET operation URI is set to the service we want to load, not the self link
-            // of the index service. This is only possible when the operation was directly
-            // dispatched from the local host, on the index service
-            selfLink = get.getUri().getPath();
-            options.add(QueryOption.INCLUDE_DELETED);
-        } else {
-            // REST API for loading service state, given a set of URI query parameters
-            Map<String, String> params = UriUtils.parseUriQueryParams(get.getUri());
-            String cap = params.get(UriUtils.URI_PARAM_CAPABILITY);
-
-            if (cap != null) {
-                targetIndex = ServiceOption.valueOf(cap);
+        boolean checkQueues = false;
+        do {
+            get = offerAndPollQueryOp(get, !checkQueues);
+            if (get == null) {
+                continue;
             }
 
-            if (params.containsKey(UriUtils.URI_PARAM_INCLUDE_DELETED)) {
+            String selfLink = null;
+            Long version = null;
+            ServiceOption targetIndex = ServiceOption.NONE;
+
+            EnumSet<QueryOption> options = EnumSet.noneOf(QueryOption.class);
+            if (get.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_INDEX_CHECK)) {
+                // fast path for checking if a service exists, and loading its latest state
+                targetIndex = ServiceOption.PERSISTENCE;
+                // the GET operation URI is set to the service we want to load, not the self link
+                // of the index service. This is only possible when the operation was directly
+                // dispatched from the local host, on the index service
+                selfLink = get.getUri().getPath();
                 options.add(QueryOption.INCLUDE_DELETED);
+            } else {
+                // REST API for loading service state, given a set of URI query parameters
+                Map<String, String> params = UriUtils.parseUriQueryParams(get.getUri());
+                String cap = params.get(UriUtils.URI_PARAM_CAPABILITY);
+
+                if (cap != null) {
+                    targetIndex = ServiceOption.valueOf(cap);
+                }
+
+                if (params.containsKey(UriUtils.URI_PARAM_INCLUDE_DELETED)) {
+                    options.add(QueryOption.INCLUDE_DELETED);
+                }
+
+                if (params.containsKey(ServiceDocument.FIELD_NAME_VERSION)) {
+                    version = Long.parseLong(params.get(ServiceDocument.FIELD_NAME_VERSION));
+                }
+
+                selfLink = params.get(ServiceDocument.FIELD_NAME_SELF_LINK);
+                String fieldToExpand = params.get(UriUtils.URI_PARAM_ODATA_EXPAND);
+                if (fieldToExpand == null) {
+                    fieldToExpand = params.get(UriUtils.URI_PARAM_ODATA_EXPAND_NO_DOLLAR_SIGN);
+                }
+                if (fieldToExpand != null
+                        && fieldToExpand
+                                .equals(ServiceDocumentQueryResult.FIELD_NAME_DOCUMENT_LINKS)) {
+                    options.add(QueryOption.EXPAND_CONTENT);
+                }
             }
 
-            if (params.containsKey(ServiceDocument.FIELD_NAME_VERSION)) {
-                version = Long.parseLong(params.get(ServiceDocument.FIELD_NAME_VERSION));
+            if (selfLink == null) {
+                get.fail(new IllegalArgumentException(
+                        ServiceDocument.FIELD_NAME_SELF_LINK + " query parameter is required"));
+                continue;
             }
 
-            selfLink = params.get(ServiceDocument.FIELD_NAME_SELF_LINK);
-            String fieldToExpand = params.get(UriUtils.URI_PARAM_ODATA_EXPAND);
-            if (fieldToExpand == null) {
-                fieldToExpand = params.get(UriUtils.URI_PARAM_ODATA_EXPAND_NO_DOLLAR_SIGN);
+            if (!selfLink.endsWith(UriUtils.URI_WILDCARD_CHAR)) {
+                // Most basic query is retrieving latest document at latest version for a specific link
+                queryIndexSingle(selfLink, get, version);
+                continue;
             }
-            if (fieldToExpand != null
-                    && fieldToExpand.equals(ServiceDocumentQueryResult.FIELD_NAME_DOCUMENT_LINKS)) {
-                options.add(QueryOption.EXPAND_CONTENT);
+
+            // Self link prefix query, returns all self links with the same prefix. A GET on a
+            // factory translates to this query.
+            int resultLimit = Integer.MAX_VALUE;
+            selfLink = selfLink.substring(0, selfLink.length() - 1);
+            Query tq = new PrefixQuery(new Term(ServiceDocument.FIELD_NAME_SELF_LINK, selfLink));
+
+            ServiceDocumentQueryResult rsp = new ServiceDocumentQueryResult();
+            rsp.documentLinks = new ArrayList<>();
+            if (queryIndex(null, get, selfLink, options, tq, null, resultLimit, 0, null, rsp,
+                    null)) {
+                continue;
             }
-        }
 
-        if (selfLink == null) {
-            get.fail(new IllegalArgumentException(
-                    ServiceDocument.FIELD_NAME_SELF_LINK + " query parameter is required"));
-            return;
-        }
+            if (targetIndex == ServiceOption.PERSISTENCE) {
+                // specific index requested but no results, return empty response
+                get.setBodyNoCloning(rsp).complete();
+                continue;
+            }
 
-        if (!selfLink.endsWith(UriUtils.URI_WILDCARD_CHAR)) {
-            // Most basic query is retrieving latest document at latest version for a specific link
-            queryIndexSingle(selfLink, get, version);
-            return;
-        }
-
-        // Self link prefix query, returns all self links with the same prefix. A GET on a
-        // factory translates to this query.
-        int resultLimit = Integer.MAX_VALUE;
-        selfLink = selfLink.substring(0, selfLink.length() - 1);
-        Query tq = new PrefixQuery(new Term(ServiceDocument.FIELD_NAME_SELF_LINK, selfLink));
-
-        ServiceDocumentQueryResult rsp = new ServiceDocumentQueryResult();
-        rsp.documentLinks = new ArrayList<>();
-        if (queryIndex(null, get, selfLink, options, tq, null, resultLimit, 0, null, rsp, null)) {
-            return;
-        }
-
-        if (targetIndex == ServiceOption.PERSISTENCE) {
-            // specific index requested but no results, return empty response
-            get.setBodyNoCloning(rsp).complete();
-            return;
-        }
-
-        // no results in the index, search the service host started services
-        queryServiceHost(selfLink + UriUtils.URI_WILDCARD_CHAR, options, get);
+            // no results in the index, search the service host started services
+            queryServiceHost(selfLink + UriUtils.URI_WILDCARD_CHAR, options, get);
+        } while (checkQueues = this.isQueryOpPending());
     }
 
-    private Operation offerAndPollQueryOp(Operation get) {
-        String subject = null;
-        if (!getHost().isAuthorizationEnabled()
-                || get.getAuthorizationContext().isSystemUser()) {
-            subject = SystemUserService.SELF_LINK;
-        } else {
-            subject = get.getAuthorizationContext().getClaims().getSubject();
-        }
+    private boolean isQueryOpPending() {
+        return !this.queryQueue.get().isEmpty();
+    }
 
-        // first queue current operation, using the subject as the fairness key
-        if (!this.queryQueue.get().offer(subject, get)) {
-            return null;
+    private Operation offerAndPollQueryOp(Operation get, boolean offer) {
+        if (offer) {
+            String subject = null;
+            if (!getHost().isAuthorizationEnabled()
+                    || get.getAuthorizationContext().isSystemUser()) {
+                subject = SystemUserService.SELF_LINK;
+            } else {
+                subject = get.getAuthorizationContext().getClaims().getSubject();
+            }
+
+            // first queue current operation, using the subject as the fairness key
+            if (!this.queryQueue.get().offer(subject, get)) {
+                return null;
+            }
         }
 
         // dequeue the operation for the active subject
@@ -2583,7 +2594,8 @@ public class LuceneDocumentIndexService extends StatelessService {
     }
 
     private void applyDocumentExpirationPolicy(IndexWriter w) throws Throwable {
-        // its ok if we miss a document update, we will catch it, and refresh the searcher on the next update or maintenance
+        // if we miss a document update, we will catch it, and refresh the searcher on the
+        // next update or maintenance
         IndexSearcher s =
                 this.searcher != null ? this.searcher : updateSearcher(null, Integer.MAX_VALUE, w);
         if (s == null) {
@@ -2620,9 +2632,7 @@ public class LuceneDocumentIndexService extends StatelessService {
 
         // More documents to be expired trigger maintenance right away.
         if (results.totalHits > EXPIRED_DOCUMENT_SEARCH_THRESHOLD) {
-
             adjustStat(STAT_NAME_DOCUMENT_EXPIRATION_FORCED_MAINTENANCE_COUNT, 1);
-
             ServiceMaintenanceRequest body = ServiceMaintenanceRequest.create();
             Operation servicePost = Operation
                     .createPost(UriUtils.buildUri(getHost(), getSelfLink()))
