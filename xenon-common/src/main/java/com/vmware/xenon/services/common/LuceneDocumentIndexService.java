@@ -256,12 +256,7 @@ public class LuceneDocumentIndexService extends StatelessService {
     private Set<String> fieldsToLoadNoExpand;
     private Set<String> fieldsToLoadWithExpand;
 
-    private ThreadLocal<RoundRobinOperationQueue> queryQueue = new ThreadLocal<RoundRobinOperationQueue>() {
-        @Override
-        protected RoundRobinOperationQueue initialValue() {
-            return RoundRobinOperationQueue.create();
-        }
-    };
+    private RoundRobinOperationQueue queryQueue = RoundRobinOperationQueue.create();
 
     private URI uri;
 
@@ -563,27 +558,33 @@ public class LuceneDocumentIndexService extends StatelessService {
             getHost().failRequestActionNotSupported(op);
             return;
         }
-        ExecutorService exec = null;
-        if (a == Action.GET) {
+
+        ExecutorService exec = this.privateIndexingExecutor;
+        if (a == Action.GET || a == Action.PATCH) {
             exec = this.privateQueryExecutor;
-        } else {
-            exec = this.privateIndexingExecutor;
         }
+
+        offerOperation(op);
 
         if (exec.isShutdown()) {
             op.fail(new CancellationException());
             return;
         }
 
-        exec.execute(() -> handleRequestImpl(op));
+        exec.execute(this::handleRequestImpl);
     }
 
-    private void handleRequestImpl(Operation op) {
+    private void handleRequestImpl() {
+        Operation op = null;
         try {
             this.writerAvailable.acquire();
+            op = pollOperation();
             switch (op.getAction()) {
             case DELETE:
                 handleDeleteImpl(op);
+                break;
+            case POST:
+                updateIndex(op);
                 break;
             case GET:
                 handleGetImpl(op);
@@ -610,16 +611,14 @@ public class LuceneDocumentIndexService extends StatelessService {
 
                 getHost().failRequestActionNotSupported(op);
                 break;
-            case POST:
-                updateIndex(op);
-                break;
             default:
-                getHost().failRequestActionNotSupported(op);
                 break;
             }
         } catch (Throwable e) {
             checkFailureAndRecover(e);
-            op.fail(e);
+            if (op != null) {
+                op.fail(e);
+            }
         } finally {
             this.writerAvailable.release();
         }
@@ -720,11 +719,6 @@ public class LuceneDocumentIndexService extends StatelessService {
     }
 
     public void handleGetImpl(Operation get) throws Throwable {
-        get = offerAndPollQueryOp(get);
-        if (get == null) {
-            return;
-        }
-
         String selfLink = null;
         Long version = null;
         ServiceOption targetIndex = ServiceOption.NONE;
@@ -761,7 +755,8 @@ public class LuceneDocumentIndexService extends StatelessService {
                 fieldToExpand = params.get(UriUtils.URI_PARAM_ODATA_EXPAND_NO_DOLLAR_SIGN);
             }
             if (fieldToExpand != null
-                    && fieldToExpand.equals(ServiceDocumentQueryResult.FIELD_NAME_DOCUMENT_LINKS)) {
+                    && fieldToExpand
+                            .equals(ServiceDocumentQueryResult.FIELD_NAME_DOCUMENT_LINKS)) {
                 options.add(QueryOption.EXPAND_CONTENT);
             }
         }
@@ -786,7 +781,8 @@ public class LuceneDocumentIndexService extends StatelessService {
 
         ServiceDocumentQueryResult rsp = new ServiceDocumentQueryResult();
         rsp.documentLinks = new ArrayList<>();
-        if (queryIndex(null, get, selfLink, options, tq, null, resultLimit, 0, null, rsp, null)) {
+        if (queryIndex(null, get, selfLink, options, tq, null, resultLimit, 0, null, rsp,
+                null)) {
             return;
         }
 
@@ -800,22 +796,25 @@ public class LuceneDocumentIndexService extends StatelessService {
         queryServiceHost(selfLink + UriUtils.URI_WILDCARD_CHAR, options, get);
     }
 
-    private Operation offerAndPollQueryOp(Operation get) {
+    /**
+     * retrieves the next available operation given the fairness scheme
+     */
+    private Operation pollOperation() {
+        return this.queryQueue.poll();
+    }
+
+    /**
+     * Queues operation in a multi-queue that uses the subject as the key per queue
+     */
+    private void offerOperation(Operation op) {
         String subject = null;
         if (!getHost().isAuthorizationEnabled()
-                || get.getAuthorizationContext().isSystemUser()) {
+                || op.getAuthorizationContext().isSystemUser()) {
             subject = SystemUserService.SELF_LINK;
         } else {
-            subject = get.getAuthorizationContext().getClaims().getSubject();
+            subject = op.getAuthorizationContext().getClaims().getSubject();
         }
-
-        // first queue current operation, using the subject as the fairness key
-        if (!this.queryQueue.get().offer(subject, get)) {
-            return null;
-        }
-
-        // dequeue the operation for the active subject
-        return this.queryQueue.get().poll();
+        this.queryQueue.offer(subject, op);
     }
 
     private boolean queryIndex(
@@ -2583,7 +2582,8 @@ public class LuceneDocumentIndexService extends StatelessService {
     }
 
     private void applyDocumentExpirationPolicy(IndexWriter w) throws Throwable {
-        // its ok if we miss a document update, we will catch it, and refresh the searcher on the next update or maintenance
+        // if we miss a document update, we will catch it, and refresh the searcher on the
+        // next update or maintenance
         IndexSearcher s =
                 this.searcher != null ? this.searcher : updateSearcher(null, Integer.MAX_VALUE, w);
         if (s == null) {
@@ -2620,9 +2620,7 @@ public class LuceneDocumentIndexService extends StatelessService {
 
         // More documents to be expired trigger maintenance right away.
         if (results.totalHits > EXPIRED_DOCUMENT_SEARCH_THRESHOLD) {
-
             adjustStat(STAT_NAME_DOCUMENT_EXPIRATION_FORCED_MAINTENANCE_COUNT, 1);
-
             ServiceMaintenanceRequest body = ServiceMaintenanceRequest.create();
             Operation servicePost = Operation
                     .createPost(UriUtils.buildUri(getHost(), getSelfLink()))

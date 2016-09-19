@@ -1545,6 +1545,28 @@ public class TestLuceneDocumentIndexService {
 
         this.host.setTimeoutSeconds((int) TimeUnit.MICROSECONDS.toSeconds(opTimeoutMicros));
 
+        String minimalSelfLinkPrefix = "minimal";
+        Service minimalFactory = this.host.startServiceAndWait(
+                new MinimalFactoryTestService(), minimalSelfLinkPrefix, new ServiceDocument());
+
+        do {
+            this.host.log("Expiration: %s, now: %s", expiration, new Date());
+            File f = new File(this.host.getStorageSandbox());
+            this.host.log("Disk: free %d, usable: %d, total: %d", f.getFreeSpace(),
+                    f.getUsableSpace(),
+                    f.getTotalSpace());
+            this.host.log("Memory: free %d, total: %d, max: %d", Runtime.getRuntime()
+                    .freeMemory(),
+                    Runtime.getRuntime().totalMemory(),
+                    Runtime.getRuntime().maxMemory());
+            verifyDocumentExpiration(minimalFactory);
+        } while (this.testDurationSeconds > 0 && new Date().before(expiration));
+    }
+
+    private void verifyDocumentExpiration(Service minimalFactory)
+            throws Throwable, InterruptedException {
+
+
         URI factoryUri = UriUtils.buildFactoryUri(this.host, ExampleService.class);
         Consumer<Operation> setBody = (o) -> {
             ExampleServiceState body = new ExampleServiceState();
@@ -1557,229 +1579,202 @@ public class TestLuceneDocumentIndexService {
             o.setBody(body);
         };
 
-        String minimalSelfLinkPrefix = "minimal";
-        Service minimalFactory = this.host.startServiceAndWait(
-                new MinimalFactoryTestService(), minimalSelfLinkPrefix, new ServiceDocument());
+        Map<URI, ExampleServiceState> services = this.host.doFactoryChildServiceStart(
+                null,
+                this.serviceCount, ExampleServiceState.class,
+                setBody, factoryUri);
 
-        while (new Date().before(expiration)) {
+        Set<String> names = new HashSet<>();
+        this.host.testStart(services.size());
+        // patch services to a new version so we verify expiration across multiple versions
+        for (URI u : services.keySet()) {
+            ExampleServiceState s = new ExampleServiceState();
+            s.name = UUID.randomUUID().toString();
+            // set a very long expiration
+            s.documentExpirationTimeMicros = Utils.getNowMicrosUtc()
+                    + TimeUnit.DAYS.toMicros(1);
+            names.add(s.name);
+            this.host.send(Operation.createPatch(u).setBody(s)
+                    .setCompletion(this.host.getCompletion()));
+        }
+        this.host.testWait();
 
-            this.host.log("Expiration: %s, now: %s", expiration, new Date());
+        // verify state was saved by issuing a factory GET which goes to the index
+        Map<URI, ExampleServiceState> states = this.host.getServiceState(null,
+                ExampleServiceState.class, services.keySet());
+        for (ExampleServiceState st : states.values()) {
+            assertTrue(names.contains(st.name));
+        }
 
-            Map<URI, ExampleServiceState> services = this.host.doFactoryChildServiceStart(
-                    null,
-                    this.serviceCount, ExampleServiceState.class,
-                    setBody, factoryUri);
+        Map<String, ServiceStat> stats = this.host.getServiceStats(
+                this.host.getDocumentIndexServiceUri());
+        ServiceStat deletedCountBeforeExpiration = stats.get(
+                LuceneDocumentIndexService.STAT_NAME_SERVICE_DELETE_COUNT);
+        if (deletedCountBeforeExpiration == null) {
+            deletedCountBeforeExpiration = new ServiceStat();
+        }
 
-            Set<String> names = new HashSet<>();
-            this.host.testStart(services.size());
-            // patch services to a new version so we verify expiration across multiple versions
-            for (URI u : services.keySet()) {
-                ExampleServiceState s = new ExampleServiceState();
-                s.name = UUID.randomUUID().toString();
-                // set a very long expiration
-                s.documentExpirationTimeMicros = Utils.getNowMicrosUtc()
-                        + TimeUnit.DAYS.toMicros(1);
-                names.add(s.name);
-                this.host.send(Operation.createPatch(u).setBody(s)
-                        .setCompletion(this.host.getCompletion()));
+        stats = this.host.getServiceStats(
+                this.host.getDocumentIndexServiceUri());
+        ServiceStat expiredCountBeforeExpiration = stats.get(
+                LuceneDocumentIndexService.STAT_NAME_DOCUMENT_EXPIRATION_COUNT);
+
+        if (expiredCountBeforeExpiration == null) {
+            expiredCountBeforeExpiration = new ServiceStat();
+        }
+
+        long expTime = 0;
+        int expectedCount = services.size();
+
+        // first time, patch to zero, which means ignore expiration, and we should not
+        // observe any expired documents
+        patchOrDeleteWithExpiration(factoryUri, services, expTime, expectedCount);
+
+        // now set expiration to 1, which is definitely in the past, observe all documents expired
+        expTime = 1;
+        expectedCount = 0;
+        patchOrDeleteWithExpiration(factoryUri, services, expTime, expectedCount);
+        this.host.log("All example services expired");
+
+        ServiceStat deletedCountBaseline = expiredCountBeforeExpiration;
+
+        Map<URI, ExampleServiceState> servicesFinal = services;
+        this.host.waitFor("expiration stats did not converge", () -> {
+            boolean isConverged = true;
+            // confirm services are stopped
+            for (URI u : servicesFinal.keySet()) {
+                ProcessingStage s = this.host.getServiceStage(u.getPath());
+                if (s != null && s != ProcessingStage.STOPPED) {
+                    isConverged = false;
+                }
             }
-            this.host.testWait();
 
-            // verify state was saved by issuing a factory GET which goes to the index
-            Map<URI, ExampleServiceState> states = this.host.getServiceState(null,
-                    ExampleServiceState.class, services.keySet());
-            for (ExampleServiceState st : states.values()) {
-                assertTrue(names.contains(st.name));
+            if (!isConverged) {
+                return false;
             }
 
-            URI luceneStatsUri = UriUtils.buildStatsUri(this.host.getDocumentIndexServiceUri());
-            ServiceStats stats = this.host.getServiceState(null, ServiceStats.class,
-                    luceneStatsUri);
-            ServiceStat deletedCountBeforeExpiration = stats.entries
-                    .get(LuceneDocumentIndexService.STAT_NAME_SERVICE_DELETE_COUNT);
-            if (deletedCountBeforeExpiration == null) {
-                deletedCountBeforeExpiration = new ServiceStat();
+            Map<String, ServiceStat> stMap = this.host.getServiceStats(
+                    this.host.getDocumentIndexServiceUri());
+            ServiceStat deletedCountAfterExpiration = stMap.get(
+                    LuceneDocumentIndexService.STAT_NAME_SERVICE_DELETE_COUNT);
+            ServiceStat expiredDocumentForcedMaintenanceCount = stMap.get(
+                    LuceneDocumentIndexService.STAT_NAME_DOCUMENT_EXPIRATION_FORCED_MAINTENANCE_COUNT);
+
+            // in batch expiration mode, wait till at least first batch completes
+            if (servicesFinal.size() > LuceneDocumentIndexService
+                    .getExpiredDocumentSearchThreshold()
+                    && (expiredDocumentForcedMaintenanceCount == null
+                            || expiredDocumentForcedMaintenanceCount.latestValue < 2)) {
+                return false;
             }
 
-            stats = this.host.getServiceState(null, ServiceStats.class, luceneStatsUri);
-            ServiceStat expiredCountBeforeExpiration = stats.entries
+            if (deletedCountAfterExpiration == null) {
+                return false;
+            }
+
+            if (deletedCountBaseline.latestValue >= deletedCountAfterExpiration.latestValue) {
+                this.host.log("No service deletions seen, currently at %f",
+                        deletedCountAfterExpiration.latestValue);
+                return false;
+            }
+
+            stMap = this.host.getServiceStats(
+                    this.host.getDocumentIndexServiceUri());
+            ServiceStat expCountAfter = stMap.get(
+                    LuceneDocumentIndexService.STAT_NAME_DOCUMENT_EXPIRATION_COUNT);
+
+            if (deletedCountBaseline.latestValue >= expCountAfter.latestValue) {
+                this.host.log("No service expirations seen, currently at %f",
+                        expCountAfter.latestValue);
+                return false;
+            }
+
+            return true;
+        });
+
+        // do a more thorough check to ensure the services were removed from the index
+        this.host.validatePermanentServiceDocumentDeletion(ExampleService.FACTORY_LINK,
+                0, this.host.testDurationSeconds == 0);
+
+        // now create in memory, non indexed services
+        Map<URI, MinimalTestServiceState> minimalServices = this.host
+                .doFactoryChildServiceStart(null,
+                        this.serviceCount, MinimalTestServiceState.class,
+                        setBodyMinimal, minimalFactory.getUri());
+
+        this.host.testStart(minimalServices.size());
+        for (URI u : minimalServices.keySet()) {
+            this.host.send(Operation.createDelete(u)
+                    .setCompletion(this.host.getCompletion()));
+        }
+        this.host.testWait();
+        waitForFactoryResults(factoryUri, 0);
+        this.host.log("All minimal services deleted");
+
+        stats = this.host.getServiceStats(
+                this.host.getDocumentIndexServiceUri());
+        ServiceStat stAll = stats.get(
+                LuceneDocumentIndexService.STAT_NAME_INDEXED_DOCUMENT_COUNT);
+        if (stAll != null) {
+            this.host.log("total versions: %f", stAll.latestValue);
+        }
+
+        Consumer<Operation> maintExpSetBody = (o) -> {
+            ExampleServiceState body = new ExampleServiceState();
+            body.name = UUID.randomUUID().toString();
+            body.documentExpirationTimeMicros = Utils.getNowMicrosUtc()
+                    + this.host.getMaintenanceIntervalMicros();
+            o.setBody(body);
+        };
+
+        stats = this.host.getServiceStats(
+                this.host.getDocumentIndexServiceUri());
+        ServiceStat expCountBaseline = stats.get(
+                LuceneDocumentIndexService.STAT_NAME_DOCUMENT_EXPIRATION_COUNT);
+
+        // create a new set of services, meant to expire on their own, quickly
+        services = this.host.doFactoryChildServiceStart(
+                null,
+                this.serviceCount, ExampleServiceState.class,
+                maintExpSetBody, factoryUri);
+        // do not do anything on the services, rely on the maintenance interval to expire them
+        this.host.waitFor("Lucene service maintenanance never expired services", () -> {
+            Map<String, ServiceStat> statMap = this.host.getServiceStats(
+                    this.host.getDocumentIndexServiceUri());
+            ServiceStat maintExpiredCount = statMap
                     .get(LuceneDocumentIndexService.STAT_NAME_DOCUMENT_EXPIRATION_COUNT);
 
-            if (expiredCountBeforeExpiration == null) {
-                expiredCountBeforeExpiration = new ServiceStat();
-            }
-
-            long expTime = 0;
-            int expectedCount = services.size();
-
-            // first time, patch to zero, which means ignore expiration, and we should not
-            // observe any expired documents
-            patchOrDeleteWithExpiration(factoryUri, services, expTime, expectedCount);
-
-            // now set expiration to 1, which is definitely in the past, observe all documents expired
-            expTime = 1;
-            expectedCount = 0;
-            patchOrDeleteWithExpiration(factoryUri, services, expTime, expectedCount);
-            this.host.log("All example services expired");
-
-            ServiceStat expiredCountAfterExpiration = null;
-            Date exp = this.host.getTestExpiration();
-            while (exp.after(new Date())) {
-                boolean isConverged = true;
-                // confirm services are stopped
-                for (URI u : services.keySet()) {
-                    ProcessingStage s = this.host.getServiceStage(u.getPath());
-                    if (s != null && s != ProcessingStage.STOPPED) {
-                        isConverged = false;
-                    }
-                }
-
-                if (!isConverged) {
-                    Thread.sleep(250);
-                    continue;
-                }
-
-                stats = this.host.getServiceState(null, ServiceStats.class,
-                        luceneStatsUri);
-                ServiceStat deletedCountAfterExpiration = stats.entries
-                        .get(LuceneDocumentIndexService.STAT_NAME_SERVICE_DELETE_COUNT);
-
-                ServiceStat expiredDocumentForcedMaintenanceCount = stats.entries
-                        .get(LuceneDocumentIndexService.STAT_NAME_DOCUMENT_EXPIRATION_FORCED_MAINTENANCE_COUNT);
-
-                // in batch expiry mode wait till at least first batch completes
-                if (services.size() > LuceneDocumentIndexService.getExpiredDocumentSearchThreshold()
-                        && (expiredDocumentForcedMaintenanceCount == null
-                        || expiredDocumentForcedMaintenanceCount.latestValue < 2)) {
-                    Thread.sleep(250);
-                    continue;
-                }
-
-                if (deletedCountAfterExpiration == null) {
-                    Thread.sleep(250);
-                    continue;
-                }
-
-                if (deletedCountBeforeExpiration.latestValue >= deletedCountAfterExpiration.latestValue) {
-                    this.host.log("No service deletions seen, currently at %f",
-                            deletedCountAfterExpiration.latestValue);
-                    Thread.sleep(250);
-                    continue;
-                }
-
-                stats = this.host.getServiceState(null, ServiceStats.class, luceneStatsUri);
-                expiredCountAfterExpiration = stats.entries
-                        .get(LuceneDocumentIndexService.STAT_NAME_DOCUMENT_EXPIRATION_COUNT);
-
-                if (expiredCountBeforeExpiration.latestValue >= expiredCountAfterExpiration.latestValue) {
-                    this.host.log("No service expirations seen, currently at %f",
-                            expiredCountAfterExpiration.latestValue);
-                    Thread.sleep(250);
-                    continue;
-                }
-
-                break;
-            }
-
-            if (exp.before(new Date())) {
-                throw new TimeoutException();
-            }
-
-            // do a more thorough check to ensure the services were removed from the index
-            this.host.validatePermanentServiceDocumentDeletion(ExampleService.FACTORY_LINK,
-                    0, this.host.testDurationSeconds == 0);
-
-            // now create in memory, non indexed services
-            Map<URI, MinimalTestServiceState> minimalServices = this.host
-                    .doFactoryChildServiceStart(null,
-                            this.serviceCount, MinimalTestServiceState.class,
-                            setBodyMinimal, minimalFactory.getUri());
-
-            this.host.testStart(minimalServices.size());
-            for (URI u : minimalServices.keySet()) {
-                this.host.send(Operation.createDelete(u)
-                        .setCompletion(this.host.getCompletion()));
-            }
-            this.host.testWait();
-            waitForFactoryResults(factoryUri, 0);
-            this.host.log("All minimal services deleted");
-
-            File f = new File(this.host.getStorageSandbox());
-            this.host.log("Disk: free %d, usable: %d, total: %d", f.getFreeSpace(),
-                    f.getUsableSpace(),
-                    f.getTotalSpace());
-
-            this.host.log("Memory: free %d, total: %d, max: %d", Runtime.getRuntime()
-                    .freeMemory(),
-                    Runtime.getRuntime().totalMemory(),
-                    Runtime.getRuntime().maxMemory());
-
-            stats = this.host.getServiceState(null, ServiceStats.class,
-                    luceneStatsUri);
-            ServiceStat stAll = stats.entries
-                    .get(LuceneDocumentIndexService.STAT_NAME_INDEXED_DOCUMENT_COUNT);
-            if (stAll != null) {
-                this.host.log("total versions: %f", stAll.latestValue);
-            }
-
-            Consumer<Operation> maintExpSetBody = (o) -> {
-                ExampleServiceState body = new ExampleServiceState();
-                body.name = UUID.randomUUID().toString();
-                body.documentExpirationTimeMicros = Utils.getNowMicrosUtc()
-                        + this.host.getMaintenanceIntervalMicros();
-                o.setBody(body);
-            };
-
-            // create a new set of services, meant to expire on their own, quickly
-            services = this.host.doFactoryChildServiceStart(
-                    null,
-                    this.serviceCount, ExampleServiceState.class,
-                    maintExpSetBody, factoryUri);
-
-            // do not do anything on the services, rely on the maintenance interval to expire them
-            exp = this.host.getTestExpiration();
-            while (exp.after(new Date())) {
-                stats = this.host.getServiceState(null, ServiceStats.class, luceneStatsUri);
-                ServiceStat maintExpiredCount = stats.entries
-                        .get(LuceneDocumentIndexService.STAT_NAME_DOCUMENT_EXPIRATION_COUNT);
-
-                if (expiredCountAfterExpiration.latestValue >= maintExpiredCount.latestValue) {
-                    Thread.sleep(this.host.getMaintenanceIntervalMicros() / 1000);
-                    continue;
-                }
-
-                ServiceDocumentQueryResult r = this.host.getFactoryState(factoryUri);
-                if (r.documentLinks.size() > 0) {
-                    this.host.log("Documents not expired: %d", r.documentLinks.size());
-                    Thread.sleep(this.host.getMaintenanceIntervalMicros() / 1000);
-                    continue;
-                }
-
-                break;
-            }
-
-            this.host.log("Documents expired through maintenance");
-
-            if (new Date().after(exp)) {
-                throw new IllegalStateException(
-                        "Lucene service maintenanance never expired services");
-            }
-
-            if (this.host.isLongDurationTest()) {
-                Thread.sleep(1000);
-            } else {
-                break;
+            if (expCountBaseline.latestValue >= maintExpiredCount.latestValue) {
+                this.host.log("Documents expired before: %f, now: %f",
+                        expCountBaseline.latestValue,
+                        maintExpiredCount.latestValue);
+                return false;
             }
 
             ServiceDocumentQueryResult r = this.host.getFactoryState(factoryUri);
-            ServiceHostState s = this.host.getState();
-            this.host.log("number of documents: %d, host state: %s", r.documentLinks.size(),
-                    Utils.toJsonHtml(s));
+            if (r.documentLinks.size() > 0) {
+                this.host.log("Documents not expired: %d", r.documentLinks.size());
+                return false;
+            }
+            return true;
+        });
 
-            assertEquals(0, r.documentLinks.size());
+        this.host.log("Documents expired through maintenance");
 
-            validateTimeSeriesStats();
+        if (this.host.isLongDurationTest()) {
+            Thread.sleep(1000);
+        } else {
+            return;
         }
+
+        ServiceDocumentQueryResult r = this.host.getFactoryState(factoryUri);
+        ServiceHostState s = this.host.getState();
+        this.host.log("number of documents: %d, host state: %s", r.documentLinks.size(),
+                Utils.toJsonHtml(s));
+
+        assertEquals(0, r.documentLinks.size());
+
+        validateTimeSeriesStats();
     }
 
     private void validateTimeSeriesStats() throws Throwable {

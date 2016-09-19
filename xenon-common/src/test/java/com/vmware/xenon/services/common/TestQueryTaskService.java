@@ -118,6 +118,7 @@ public class TestQueryTaskService {
             // on index stats.
             this.host.setPeerSynchronizationEnabled(false);
             this.host.start();
+            this.host.setStressTest(this.host.isStressTest);
             this.host.toggleServiceOptions(this.host.getDocumentIndexServiceUri(),
                     EnumSet.of(ServiceOption.INSTRUMENTATION),
                     null);
@@ -671,16 +672,15 @@ public class TestQueryTaskService {
         // first do the test with no concurrent updates to the index, while we query
         boolean interleaveWrites = false;
         for (int i = 0; i < 3; i++) {
-            doThroughputQuery(q, 1, newState, interleaveWrites);
+            doThroughputQuery(services, q, 1, newState, interleaveWrites);
         }
-
         // now update the index, once for every N queries. This will have a significant
         // impact on performance
         interleaveWrites = true;
-        doThroughputQuery(q, 1, newState, interleaveWrites);
+        doThroughputQuery(services, q, 1, newState, interleaveWrites);
     }
 
-    public void doThroughputQuery(Query q, int expectedResults,
+    public void doThroughputQuery(List<URI> services, Query q, int expectedResults,
             QueryValidationServiceState template, boolean interleaveWrites)
             throws Throwable {
 
@@ -688,7 +688,9 @@ public class TestQueryTaskService {
                 "Starting QPS test, service count: %d, query count: %d, interleave writes: %s",
                 this.serviceCount, this.queryCount, interleaveWrites);
         QueryTask qt = QueryTask.Builder.createDirectTask().setQuery(q).build();
-        this.host.testStart(this.queryCount);
+        Random r = new Random();
+        double s = System.nanoTime();
+        TestContext ctx = this.host.testCreate(this.queryCount);
         for (int i = 0; i < this.queryCount; i++) {
             final int index = i;
             Operation post = Operation.createPost(
@@ -696,35 +698,35 @@ public class TestQueryTaskService {
                     .setBodyNoCloning(qt)
                     .setCompletion((o, e) -> {
                         if (e != null) {
-                            this.host.failIteration(e);
+                            ctx.fail(e);
                             return;
                         }
                         QueryTask rsp = o
                                 .getBody(QueryTask.class);
                         if (rsp.results.documentLinks.size() != expectedResults) {
-                            this.host.failIteration(
-                                    new IllegalStateException("Unexpected result count"));
+                            ctx.fail(new IllegalStateException("Unexpected result count"));
                             return;
                         }
 
                         if (!interleaveWrites || (index % 100) != 0) {
-                            this.host.completeIteration();
+                            ctx.complete();
                             return;
                         }
 
-                        template.textValue = "bla";
-                        Operation put = Operation.createPut(
-                                UriUtils.buildUri(this.host, rsp.results.documentLinks.get(0)))
+                        int ri = r.nextInt(services.size());
+                        Operation patch = Operation.createPatch(services.get(ri))
                                 .setBody(template);
-                        this.host.send(put);
-                        this.host.completeIteration();
+                        this.host.send(patch);
+                        ctx.complete();
 
                     });
             this.host.send(post);
 
         }
-        this.host.testWait();
-        this.host.logThroughput();
+        this.host.testWait(ctx);
+        double e = System.nanoTime();
+        double thpt = (this.queryCount * TimeUnit.SECONDS.toNanos(1)) / (e - s);
+        this.host.log("Queries per second: %f", thpt);
     }
 
     @Test
