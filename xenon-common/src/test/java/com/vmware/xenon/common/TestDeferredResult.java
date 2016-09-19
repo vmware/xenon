@@ -295,6 +295,9 @@ public class TestDeferredResult {
                 Assert.assertEquals(expected, x.intValue());
                 invocations.incrementAndGet();
             })
+            .thenRun(() -> {
+                Assert.assertFalse(originalFirst ? other.isDone() : original.isDone());
+            })
             .whenComplete(ctx.getCompletionDeferred());
         TestContext synchCtx = TestContext.create(1, TimeUnit.SECONDS.toMicros(1));
         if (originalFirst) {
@@ -305,7 +308,6 @@ public class TestDeferredResult {
             runAfterAndComplete(wait, () -> other.complete(otherValue), synchCtx);
         }
         ctx.await();
-        Assert.assertFalse(originalFirst ? other.isDone() : original.isDone());
         Assert.assertEquals(1, invocations.get());
     }
 
@@ -331,6 +333,9 @@ public class TestDeferredResult {
                 Assert.assertEquals(expectedOther, other.getNow(absentValue).intValue());
                 invocations.incrementAndGet();
             })
+            .thenRun(() -> {
+                Assert.assertFalse(originalFirst ? other.isDone() : original.isDone());
+            })
             .whenComplete(ctx.getCompletionDeferred());
         TestContext synchCtx = TestContext.create(1, TimeUnit.SECONDS.toMicros(1));
         if (originalFirst) {
@@ -341,7 +346,6 @@ public class TestDeferredResult {
             runAfterAndComplete(wait, () -> other.complete(otherValue), synchCtx);
         }
         ctx.await();
-        Assert.assertFalse(originalFirst ? other.isDone() : original.isDone());
         Assert.assertEquals(1, invocations.get());
     }
 
