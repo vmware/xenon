@@ -338,6 +338,9 @@ public class VerificationHost extends ExampleServiceHost {
 
     public VerificationHost setTimeoutSeconds(int seconds) {
         this.timeoutSeconds = seconds;
+        if (this.sender != null) {
+            this.sender.setTimeout(Duration.ofSeconds(seconds));
+        }
         return this;
     }
 
