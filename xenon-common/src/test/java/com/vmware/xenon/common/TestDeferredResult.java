@@ -305,7 +305,6 @@ public class TestDeferredResult {
             runAfterAndComplete(wait, () -> other.complete(otherValue), synchCtx);
         }
         ctx.await();
-        Assert.assertFalse(originalFirst ? other.isDone() : original.isDone());
         Assert.assertEquals(1, invocations.get());
     }
 
@@ -341,7 +340,6 @@ public class TestDeferredResult {
             runAfterAndComplete(wait, () -> other.complete(otherValue), synchCtx);
         }
         ctx.await();
-        Assert.assertFalse(originalFirst ? other.isDone() : original.isDone());
         Assert.assertEquals(1, invocations.get());
     }
 
