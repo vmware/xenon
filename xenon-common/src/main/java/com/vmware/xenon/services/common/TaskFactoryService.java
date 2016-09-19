@@ -131,7 +131,7 @@ public class TaskFactoryService extends FactoryService {
                             .fail(e);
                 });
 
-        ServiceSubscriber sr = ServiceSubscriber.create(true).setUsePublicUri(true).setReplayState(true);
+        ServiceSubscriber sr = ServiceSubscriber.create(true).setUsePublicUri(true);
         Consumer<Operation> notifyC = (nOp) -> {
             nOp.complete();
             switch (nOp.getAction()) {
@@ -164,7 +164,7 @@ public class TaskFactoryService extends FactoryService {
                     subscribe, sr, notifyC);
             getHost().startSubscriptionService(subscribe, notificationTarget, sr);
         } else {
-            getHost().startSubscriptionService(subscribe, notifyC);
+            getHost().startSubscriptionService(subscribe, notifyC, sr);
         }
     }
 
