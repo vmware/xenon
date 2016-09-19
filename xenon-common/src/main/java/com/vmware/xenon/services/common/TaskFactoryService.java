@@ -164,7 +164,7 @@ public class TaskFactoryService extends FactoryService {
                     subscribe, sr, notifyC);
             getHost().startSubscriptionService(subscribe, notificationTarget, sr);
         } else {
-            getHost().startSubscriptionService(subscribe, notifyC, sr);
+            getHost().startSubscriptionService(subscribe, notifyC);
         }
     }
 
