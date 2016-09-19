@@ -103,9 +103,11 @@ public class TaskFactoryService extends FactoryService {
         if (initState.taskInfo.stage == null) {
             initState.taskInfo.stage = TaskStage.CREATED;
         }
+
         Operation clonedPost = post.clone();
         clonedPost.setCompletion((o, e) -> {
             if (e != null) {
+                logInfo("Task completed f: %s", initState.documentSelfLink);
                 post.setStatusCode(o.getStatusCode())
                         .setBodyNoCloning(o.getBodyRaw())
                         .fail(e);
@@ -114,6 +116,7 @@ public class TaskFactoryService extends FactoryService {
             subscribeToChildTask(o, post);
         });
 
+        logInfo("Starting task: %s", initState.documentSelfLink);
         super.handleRequest(clonedPost, OperationProcessingStage.EXECUTING_SERVICE_HANDLER);
     }
 
@@ -143,12 +146,14 @@ public class TaskFactoryService extends FactoryService {
                 }
                 // task is in final state (failed, or completed), complete original post
                 post.setBodyNoCloning(task).complete();
+                logInfo("Task completed: %s", initState.documentSelfLink);
                 stopInDirectTaskSubscription(subscribe, nOp.getUri());
                 return;
             case DELETE:
                 // the task might have expired and self deleted, fail the client post
                 post.setStatusCode(Operation.STATUS_CODE_TIMEOUT)
                         .fail(new IllegalStateException("Task self deleted"));
+                logInfo("Task completed: %s", initState.documentSelfLink);
                 stopInDirectTaskSubscription(subscribe, nOp.getUri());
                 return;
             default:
@@ -164,7 +169,7 @@ public class TaskFactoryService extends FactoryService {
                     subscribe, sr, notifyC);
             getHost().startSubscriptionService(subscribe, notificationTarget, sr);
         } else {
-            getHost().startSubscriptionService(subscribe, notifyC, sr);
+            getHost().startSubscriptionService(subscribe, notifyC);
         }
     }
 

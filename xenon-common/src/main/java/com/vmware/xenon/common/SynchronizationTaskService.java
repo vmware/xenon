@@ -121,21 +121,26 @@ public class SynchronizationTaskService
      */
     @Override
     public void handleStart(Operation post) {
-        State initialState = validateStartPost(post);
-        if (initialState == null) {
-            return;
+        try {
+            State initialState = validateStartPost(post);
+            if (initialState == null) {
+                logWarning("handleStart validation failed");
+                return;
+            }
+
+            initializeState(initialState, post);
+
+            if (this.isDetailedLoggingEnabled) {
+                logInfo("Creating synchronization-task for factory %s",
+                        initialState.factorySelfLink);
+            }
+
+            post.setBody(initialState)
+                    .setStatusCode(Operation.STATUS_CODE_ACCEPTED)
+                    .complete();
+        } catch (Throwable t) {
+            logSevere("start failed with error: " + t.getMessage());
         }
-
-        initializeState(initialState, post);
-
-        if (this.isDetailedLoggingEnabled) {
-            logInfo("Creating synchronization-task for factory %s",
-                    initialState.factorySelfLink);
-        }
-
-        post.setBody(initialState)
-                .setStatusCode(Operation.STATUS_CODE_ACCEPTED)
-                .complete();
     }
 
     @Override
@@ -207,71 +212,76 @@ public class SynchronizationTaskService
      */
     @Override
     public void handlePut(Operation put) {
-        // Fail the request if this was not a POST converted to PUT.
-        if (!put.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_POST_TO_PUT)) {
-            put.fail(new IllegalStateException(
-                    "PUT not supported for SynchronizationTaskService"));
-            return;
-        }
+        try {
+            // Fail the request if this was not a POST converted to PUT.
+            if (!put.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_POST_TO_PUT)) {
+                put.fail(new IllegalStateException(
+                        "PUT not supported for SynchronizationTaskService"));
+                return;
+            }
 
-        State task = getState(put);
+            State task = getState(put);
 
-        TaskState.TaskStage currentStage = task.taskInfo.stage;
-        SubStage currentSubStage = task.subStage;
+            TaskState.TaskStage currentStage = task.taskInfo.stage;
+            SubStage currentSubStage = task.subStage;
 
-        State body = validatePutRequest(task, put);
-        if (body == null) {
-            return;
-        }
+            State body = validatePutRequest(task, put);
+            if (body == null) {
+                logWarning("handlePut validation failed");
+                return;
+            }
 
-        boolean startStateMachine = false;
+            boolean startStateMachine = false;
 
-        switch (task.taskInfo.stage) {
-        case CREATED:
-            // A synch-task is in CREATED state ONLY
-            // if it just got created by the FactoryService
-            // at startup time. Since handleStart does not
-            // start the task state-machine, we do that here.
-            startStateMachine = true;
-            break;
-        case STARTED:
-            // Task is already running. Set the substage
-            // of the task to RESTART, so that the executing
-            // thread resets the state-machine back to stage 1
-            // i.e. QUERY.
-            logInfo("Restarting SynchronizationTask");
-            task.subStage = SubStage.RESTART;
-            break;
-        case FAILED:
-        case CANCELLED:
-        case FINISHED:
-            // Task had previously finished processing. Set the
-            // taskStage back to STARTED, to restart the state-machine.
-            startStateMachine = true;
-            break;
-        default:
-            break;
-        }
+            switch (task.taskInfo.stage) {
+            case CREATED:
+                // A synch-task is in CREATED state ONLY
+                // if it just got created by the FactoryService
+                // at startup time. Since handleStart does not
+                // start the task state-machine, we do that here.
+                startStateMachine = true;
+                break;
+            case STARTED:
+                // Task is already running. Set the substage
+                // of the task to RESTART, so that the executing
+                // thread resets the state-machine back to stage 1
+                // i.e. QUERY.
+                logInfo("Restarting SynchronizationTask");
+                task.subStage = SubStage.RESTART;
+                break;
+            case FAILED:
+            case CANCELLED:
+            case FINISHED:
+                // Task had previously finished processing. Set the
+                // taskStage back to STARTED, to restart the state-machine.
+                startStateMachine = true;
+                break;
+            default:
+                break;
+            }
 
-        // We only set properties that are mutable.
-        // See documentation above for State class.
-        task.membershipUpdateTimeMicros = body.membershipUpdateTimeMicros;
-        task.queryResultLimit = body.queryResultLimit;
-        if (startStateMachine) {
-            task.taskInfo.stage = TaskState.TaskStage.STARTED;
-            task.subStage = SubStage.QUERY;
-        }
+            // We only set properties that are mutable.
+            // See documentation above for State class.
+            task.membershipUpdateTimeMicros = body.membershipUpdateTimeMicros;
+            task.queryResultLimit = body.queryResultLimit;
+            if (startStateMachine) {
+                task.taskInfo.stage = TaskState.TaskStage.STARTED;
+                task.subStage = SubStage.QUERY;
+            }
 
-        if (this.isDetailedLoggingEnabled) {
-            logInfo("Transitioning task from %s-%s to %s-%s. Time %d",
-                    currentStage, currentSubStage, task.taskInfo.stage,
-                    task.subStage, task.membershipUpdateTimeMicros);
-        }
+            if (this.isDetailedLoggingEnabled) {
+                logInfo("Transitioning task from %s-%s to %s-%s. Time %d",
+                        currentStage, currentSubStage, task.taskInfo.stage,
+                        task.subStage, task.membershipUpdateTimeMicros);
+            }
 
-        put.complete();
+            put.complete();
 
-        if (startStateMachine) {
-            handleSubStage(task);
+            if (startStateMachine) {
+                handleSubStage(task);
+            }
+        } catch (Throwable t) {
+            logSevere("handlePut failed with error: " + t.getMessage());
         }
     }
 
@@ -315,49 +325,54 @@ public class SynchronizationTaskService
      */
     @Override
     public void handlePatch(Operation patch) {
-        State task = getState(patch);
-        State body = getBody(patch);
+        try {
+            State task = getState(patch);
+            State body = getBody(patch);
 
-        if (!validateTransition(patch, task, body)) {
-            return;
-        }
+            if (!validateTransition(patch, task, body)) {
+                logWarning("handlePatch validation failed");
+                return;
+            }
 
-        TaskState.TaskStage currentStage = task.taskInfo.stage;
-        SubStage currentSubStage = task.subStage;
+            TaskState.TaskStage currentStage = task.taskInfo.stage;
+            SubStage currentSubStage = task.subStage;
 
-        if (task.subStage == SubStage.RESTART) {
-            // Synchronization-tasks can get preempted because of a newer
-            // node-group change event. When this happens, handlePut sets
-            // the task's stage to RESTART. In this case, we reset the task
-            // back to QUERY stage.
-            task.taskInfo.stage = TaskState.TaskStage.STARTED;
-            task.subStage = SubStage.QUERY;
-        } else {
-            updateState(task, body);
-        }
+            if (task.subStage == SubStage.RESTART) {
+                // Synchronization-tasks can get preempted because of a newer
+                // node-group change event. When this happens, handlePut sets
+                // the task's stage to RESTART. In this case, we reset the task
+                // back to QUERY stage.
+                task.taskInfo.stage = TaskState.TaskStage.STARTED;
+                task.subStage = SubStage.QUERY;
+            } else {
+                updateState(task, body);
+            }
 
-        if (this.isDetailedLoggingEnabled) {
-            logInfo("Transitioning task from %s-%s to %s-%s",
-                    currentStage, currentSubStage, task.taskInfo.stage, task.subStage);
-        }
+            if (this.isDetailedLoggingEnabled) {
+                logInfo("Transitioning task from %s-%s to %s-%s",
+                        currentStage, currentSubStage, task.taskInfo.stage, task.subStage);
+            }
 
-        patch.complete();
+            patch.complete();
 
-        switch (task.taskInfo.stage) {
-        case STARTED:
-            handleSubStage(task);
-            break;
-        case CANCELLED:
-            logInfo("Task canceled: not implemented, ignoring");
-            break;
-        case FINISHED:
-            break;
-        case FAILED:
-            logWarning("Task failed: %s",
-                    (task.failureMessage != null ? task.failureMessage : "No reason given"));
-            break;
-        default:
-            break;
+            switch (task.taskInfo.stage) {
+            case STARTED:
+                handleSubStage(task);
+                break;
+            case CANCELLED:
+                logInfo("Task canceled: not implemented, ignoring");
+                break;
+            case FINISHED:
+                break;
+            case FAILED:
+                logWarning("Task failed: %s",
+                        (task.failureMessage != null ? task.failureMessage : "No reason given"));
+                break;
+            default:
+                break;
+            }
+        } catch (Throwable t) {
+            logSevere("handlePut failed with error: " + t.getMessage());
         }
     }
 
