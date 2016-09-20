@@ -233,12 +233,18 @@ public class Utils {
     }
 
     /**
+     * See {@link KryoSerializers#serializeObjectForStorage(Object, byte[], int)}.
+     */
+    public static int toDocumentBytesForStorage(Object o, byte[] buffer, int position) {
+        return KryoSerializers.serializeObjectForStorage(o, buffer, position);
+    }
+
+    /**
      * See {@link KryoSerializers#serializeDocument(ServiceDocument, byte[], int)}
      */
     public static int toBytes(ServiceDocument o, byte[] buffer, int position) {
         return KryoSerializers.serializeDocument(o, buffer, position);
     }
-
 
     /**
      * See {@link KryoSerializers#deserializeObject(byte[], int, int)}
