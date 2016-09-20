@@ -13,6 +13,8 @@
 
 package com.vmware.xenon.common.test;
 
+import static com.vmware.xenon.common.ServiceHost.ServiceHostState.DEFAULT_MAINTENANCE_INTERVAL_MICROS;
+
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDateTime;
@@ -36,9 +38,12 @@ public class TestContext {
 
     public static final Duration DEFAULT_WAIT_DURATION = Duration.ofSeconds(30);
 
+    // default interval to perform waitFor logic. set a tenth of the default maintenance interval
+    public static final Duration DEFAULT_INTERVAL_DURATION = Duration.of(DEFAULT_MAINTENANCE_INTERVAL_MICROS / 10, ChronoUnit.MICROS);
+
     private CountDownLatch latch;
 
-    private Duration interval = Duration.ofSeconds(1);
+    private Duration interval = DEFAULT_INTERVAL_DURATION;
 
     private Duration duration;
 
@@ -47,6 +52,21 @@ public class TestContext {
     private boolean started;
 
     private int initialCount;
+
+    private static class WaitConfig {
+        private Duration interval = DEFAULT_INTERVAL_DURATION;
+        private Duration duration;
+
+        public WaitConfig setInterval(Duration interval) {
+            this.interval = interval;
+            return this;
+        }
+
+        public WaitConfig setDuration(Duration duration) {
+            this.duration = duration;
+            return this;
+        }
+    }
 
     /**
      * Consider using {@link #TestContext(int, Duration)}
@@ -57,15 +77,25 @@ public class TestContext {
     }
 
     public static void waitFor(Duration waitDuration, WaitHandler wh) {
-        waitFor(waitDuration, wh, () -> "waitFor timed out");
+        waitFor(new WaitConfig().setDuration(waitDuration), wh, () -> "waitFor timed out");
     }
 
     public static void waitFor(Duration waitDuration, WaitHandler wh, String timeoutMessage) {
-        waitFor(waitDuration, wh, () -> timeoutMessage);
+        waitFor(new WaitConfig().setDuration(waitDuration), wh, () -> timeoutMessage);
     }
 
     public static void waitFor(Duration waitDuration, WaitHandler wh, Supplier<String> timeoutMessageSupplier) {
-        TestContext waitContext = new TestContext(1, waitDuration);
+        waitFor(new WaitConfig().setDuration(waitDuration), wh, timeoutMessageSupplier);
+    }
+
+    public static void waitFor(WaitConfig waitConfig, WaitHandler wh, Supplier<String> timeoutMessageSupplier) {
+
+        if (waitConfig.duration == null) {
+            throw new RuntimeException("duration must be specified");
+        }
+
+        TestContext waitContext = new TestContext(1, waitConfig.duration);
+        waitContext.setCheckInterval(waitConfig.interval);
 
         try {
             waitContext.await(() -> {
