@@ -46,7 +46,6 @@ import com.esotericsoftware.kryo.Kryo;
 import com.esotericsoftware.kryo.Kryo.DefaultInstantiatorStrategy;
 import com.esotericsoftware.kryo.serializers.VersionFieldSerializer;
 import com.google.gson.reflect.TypeToken;
-
 import org.junit.Assert;
 import org.junit.Test;
 import org.objenesis.strategy.StdInstantiatorStrategy;

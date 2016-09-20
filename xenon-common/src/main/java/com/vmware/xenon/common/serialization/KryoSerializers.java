@@ -23,12 +23,11 @@ import com.esotericsoftware.kryo.Kryo;
 import com.esotericsoftware.kryo.Kryo.DefaultInstantiatorStrategy;
 import com.esotericsoftware.kryo.io.Input;
 import com.esotericsoftware.kryo.io.Output;
-import com.esotericsoftware.kryo.serializers.VersionFieldSerializer;
 
+import com.esotericsoftware.kryo.serializers.VersionFieldSerializer;
 import org.objenesis.strategy.StdInstantiatorStrategy;
 
 import com.vmware.xenon.common.ServiceDocument;
-
 
 public final class KryoSerializers {
     /**
@@ -82,6 +81,8 @@ public final class KryoSerializers {
             // require object graph serialization with duplicate or recursive references
             k.setReferences(false);
             k.setCopyReferences(false);
+            // documentSerialized must nullify certain fields.
+            k.setDefaultSerializer(FieldNullifyingVersionFieldSerializer.class);
         } else {
             // To avoid monotonic increase of memory use, due to reference tracking, we must
             // reset after each use.
@@ -136,6 +137,17 @@ public final class KryoSerializers {
         return out.position();
     }
 
+    /**
+     * Uses custom serialization that will write nulls for select built-in fields that can
+     * be reconstructed from other index data
+     */
+    public static int serializeObjectForIndexing(Object o, byte[] buffer, int position) {
+        Kryo k = getKryoThreadLocalForDocuments();
+        Output out = new OutputWithRoot(buffer, o);
+        out.setPosition(position);
+        k.writeClassAndObject(out, o);
+        return out.position();
+    }
     /**
      * Serializes an arbitrary object into a binary representation, using full
      * reference tracking and the object graph serializer.
