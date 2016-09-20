@@ -23,12 +23,10 @@ import com.esotericsoftware.kryo.Kryo;
 import com.esotericsoftware.kryo.Kryo.DefaultInstantiatorStrategy;
 import com.esotericsoftware.kryo.io.Input;
 import com.esotericsoftware.kryo.io.Output;
-import com.esotericsoftware.kryo.serializers.VersionFieldSerializer;
 
 import org.objenesis.strategy.StdInstantiatorStrategy;
 
 import com.vmware.xenon.common.ServiceDocument;
-
 
 public final class KryoSerializers {
     /**
@@ -68,7 +66,7 @@ public final class KryoSerializers {
         // handle classes with missing default constructors
         k.setInstantiatorStrategy(new DefaultInstantiatorStrategy(new StdInstantiatorStrategy()));
         // supports addition of fields if the @since annotation is used
-        k.setDefaultSerializer(VersionFieldSerializer.class);
+        k.setDefaultSerializer(FieldNullifyingVersionFieldSerializer.class);
         // Custom serializers for Java 8 date/time
         k.addDefaultSerializer(ZonedDateTime.class, ZonedDateTimeSerializer.INSTANCE);
         k.addDefaultSerializer(Instant.class, InstantSerializer.INSTANCE);
@@ -129,7 +127,7 @@ public final class KryoSerializers {
      */
     public static int serializeAsDocument(Object o, byte[] buffer, int position) {
         Kryo k = getKryoThreadLocalForDocuments();
-        Output out = new Output(buffer);
+        Output out = new OutputWithRoot(buffer, o);
         out.setPosition(position);
         k.writeClassAndObject(out, o);
         return out.position();
@@ -143,7 +141,7 @@ public final class KryoSerializers {
      */
     public static int serializeObject(Object o, byte[] buffer, int position) {
         Kryo k = getKryoThreadLocalForObjects();
-        Output out = new Output(buffer);
+        Output out = new OutputWithRoot(buffer, o);
         out.setPosition(position);
         k.writeClassAndObject(out, o);
         return out.position();
