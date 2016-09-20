@@ -15,6 +15,7 @@ package com.vmware.xenon.common.serialization;
 
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 import java.util.HashMap;
@@ -30,6 +31,21 @@ import com.vmware.xenon.services.common.ExampleService;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
 
 public class TestKryoSerializers {
+
+    @Test
+    public void serializeObjectForIndexing() {
+        ExampleServiceState state = new ExampleServiceState();
+        state.documentSelfLink = "selfLink";
+        state.documentKind = Utils.buildKind(ExampleServiceState.class);
+
+        byte[] buffer = KryoSerializers.getBuffer(2 * 1024);
+        KryoSerializers.serializeObjectForIndexing(state, buffer, 0);
+
+        ExampleServiceState deser = (ExampleServiceState) Utils.fromDocumentBytes(buffer, 0,
+                buffer.length);
+        assertNull(deser.documentSelfLink);
+        assertNull(deser.documentKind);
+    }
 
     @Test
     public void serializeDeserializeDocument() throws Throwable {

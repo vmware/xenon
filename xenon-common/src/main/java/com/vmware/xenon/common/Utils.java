@@ -239,7 +239,6 @@ public class Utils {
         return KryoSerializers.serializeDocument(o, buffer, position);
     }
 
-
     /**
      * See {@link KryoSerializers#deserializeObject(byte[], int, int)}
      */
