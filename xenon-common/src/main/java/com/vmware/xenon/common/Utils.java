@@ -232,6 +232,10 @@ public class Utils {
         return KryoSerializers.serializeAsDocument(o, buffer, position);
     }
 
+    public static int toDocumentBytesForReplication(Object o, byte[] buffer, int position) {
+        return KryoSerializers.serializeAsDocumentForReplication(o, buffer, position);
+    }
+
     /**
      * See {@link KryoSerializers#serializeDocument(ServiceDocument, byte[], int)}
      */
@@ -820,7 +824,7 @@ public class Utils {
             while (op.getContentLength() <= limit) {
                 try {
                     data = new byte[(int) op.getContentLength()];
-                    int count = Utils.toDocumentBytes(body, data, 0);
+                    int count = Utils.toDocumentBytesForReplication(body, data, 0);
                     op.setContentLength(count);
                     break;
                 } catch (KryoException e) {

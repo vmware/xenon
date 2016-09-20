@@ -1787,10 +1787,7 @@ public class LuceneDocumentIndexService extends StatelessService {
                 // avoid serialization of fields that can be reconstructed from other stored
                 // fields
                 serializedDocument = KryoSerializers.getBuffer(desc.serializedStateSizeLimit);
-                String k = s.documentKind;
-                s.documentKind = null;
                 count = KryoSerializers.serializeDocument(s, serializedDocument, 0);
-                s.documentKind = k;
             } else {
                 count = serializedDocument.length;
             }
