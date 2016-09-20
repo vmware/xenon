@@ -233,6 +233,13 @@ public class Utils {
     }
 
     /**
+     * See {@link KryoSerializers#serializeObjectForLucene(Object, byte[], int)}.
+     */
+    public static int toDocumentBytesForLucene(Object o, byte[] buffer, int position) {
+        return KryoSerializers.serializeObjectForLucene(o, buffer, position);
+    }
+
+    /**
      * See {@link KryoSerializers#serializeDocument(ServiceDocument, byte[], int)}
      */
     public static int toBytes(ServiceDocument o, byte[] buffer, int position) {
