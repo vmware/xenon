@@ -425,8 +425,9 @@ public class QueryFilter {
         private boolean evaluateString(Term term, String o) {
             if (term.term.matchType == MatchType.WILDCARD) {
                 return term.pattern.matcher(o).matches();
+            } else if (term.term.matchType == MatchType.PREFIX) {
+                return o.startsWith(term.term.matchValue);
             }
-
             return o.equals(term.term.matchValue);
         }
 
@@ -553,7 +554,8 @@ public class QueryFilter {
             for (Term term : conjunction) {
                 if (term.term.range == null &&
                         term.term.matchType != MatchType.TERM &&
-                        term.term.matchType != MatchType.WILDCARD) {
+                        term.term.matchType != MatchType.WILDCARD &&
+                        term.term.matchType != MatchType.PREFIX) {
                     throw new UnsupportedMatchTypeException(term);
                 }
 

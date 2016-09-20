@@ -658,6 +658,21 @@ public class TestQueryFilter {
         assertFalse(filter.evaluate(document, this.description));
     }
 
+    @Test()
+    public void matchTypePrefix() throws QueryFilterException {
+        Query q = createTerm(ServiceDocument.FIELD_NAME_SELF_LINK, "/test/");
+        q.term.matchType = MatchType.PREFIX;
+        QueryFilter filter = QueryFilter.create(q);
+        QueryFilterDocument document;
+
+        document = new QueryFilterDocument();
+        document.documentSelfLink = "/test/test.com";
+        assertTrue(filter.evaluate(document, this.description));
+
+        document.documentSelfLink = "foobar";
+        assertFalse(filter.evaluate(document, this.description));
+    }
+
     @Test(expected = UnsupportedMatchTypeException.class)
     public void unsupportedMatchTypePhrase() throws QueryFilterException {
         Query q = createTerm("c1", "v1");
