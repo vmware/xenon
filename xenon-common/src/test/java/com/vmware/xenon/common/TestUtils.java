@@ -46,7 +46,6 @@ import com.esotericsoftware.kryo.Kryo;
 import com.esotericsoftware.kryo.Kryo.DefaultInstantiatorStrategy;
 import com.esotericsoftware.kryo.serializers.VersionFieldSerializer;
 import com.google.gson.reflect.TypeToken;
-
 import org.junit.Assert;
 import org.junit.Test;
 import org.objenesis.strategy.StdInstantiatorStrategy;
@@ -55,6 +54,7 @@ import com.vmware.xenon.common.Service.ServiceOption;
 import com.vmware.xenon.common.ServiceDocumentDescription.Builder;
 import com.vmware.xenon.common.ServiceDocumentDescription.PropertyIndexingOption;
 import com.vmware.xenon.common.SystemHostInfo.OsFamily;
+import com.vmware.xenon.common.serialization.KryoSerializers;
 import com.vmware.xenon.common.test.VerificationHost;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
 import com.vmware.xenon.services.common.QueryValidationTestService.QueryValidationServiceState;
@@ -884,6 +884,20 @@ public class TestUtils {
         Utils.decodeBody(op, ByteBuffer.wrap(gzippedBody));
 
         assertEquals(Operation.STATUS_CODE_SERVER_FAILURE_THRESHOLD, op.getStatusCode());
+    }
+
+    @Test
+    public void writingToIndexMustNotSerializeSelfLink() {
+        ExampleServiceState state = new ExampleServiceState();
+        state.documentSelfLink = "selfLink";
+        state.documentKind = Utils.buildKind(ExampleServiceState.class);
+
+        byte[] buffer = KryoSerializers.getBuffer(2 * 1024);
+        Utils.toDocumentBytesForLucene(state, buffer, 0);
+
+        ExampleServiceState deser = (ExampleServiceState) Utils.fromDocumentBytes(buffer,0,buffer.length);
+        assertNull(deser.documentSelfLink);
+        assertNull(deser.documentKind);
     }
 
     private static byte[] compress(String str) throws Exception {
