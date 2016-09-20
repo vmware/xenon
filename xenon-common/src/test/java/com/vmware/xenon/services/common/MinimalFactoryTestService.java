@@ -46,7 +46,7 @@ public class MinimalFactoryTestService extends FactoryService {
     @Override
     public void handleStop(Operation op) {
         this.gotStopped = true;
-        op.complete();
+        super.handleStop(op);
     }
 
     @Override
@@ -57,7 +57,7 @@ public class MinimalFactoryTestService extends FactoryService {
             return;
         }
         this.gotDeleted = true;
-        op.complete();
+        super.handleDelete(op);
     }
 
     @Override

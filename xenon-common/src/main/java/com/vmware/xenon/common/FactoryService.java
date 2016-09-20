@@ -207,8 +207,6 @@ public abstract class FactoryService extends StatelessService {
                                 logWarning("Failure in kicking-off synchronization-task: %s", t.getMessage());
                                 return;
                             }
-                            setAvailable(true);
-                            logFine("Synchronization-task completed for child services");
                         });
 
                         startFactorySynchronizationTask(clonedOp, null);
@@ -859,11 +857,6 @@ public abstract class FactoryService extends StatelessService {
         maintOp.nestCompletion((o, e) -> {
             if (e != null) {
                 logWarning("synch failed: %s", e.toString());
-            } else {
-                // Update stat and /available so any service or client that cares, can notice this factory
-                // is done with synchronization and child restart. The status of /available and
-                // the available stat does not prevent the runtime from routing requests to this service
-                setAvailable(true);
             }
             maintOp.complete();
         });

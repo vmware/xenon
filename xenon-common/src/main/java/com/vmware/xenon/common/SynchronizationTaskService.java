@@ -271,7 +271,15 @@ public class SynchronizationTaskService
         put.complete();
 
         if (startStateMachine) {
-            handleSubStage(task);
+            // The synch-task makes sure that at any given time, there
+            // is only one active execution of the task per factory.
+            // Since this is where the state-machine starts,
+            // we set the factory to un-available. This could be
+            // redundant since the FactoryService may already have
+            // changed the status to un-available, but just for
+            // correctness we do it here again.
+            setFactoryAvailability(task, false,
+                    (o) -> handleSubStage(task));
         }
     }
 
@@ -302,7 +310,17 @@ public class SynchronizationTaskService
             String msg = String.format(
                     "%s, Passed %d, Current %d", OUTDATED_SYNCH_REQUEST_ERROR,
                     putTask.membershipUpdateTimeMicros, currentTask.membershipUpdateTimeMicros);
-            put.fail(new IllegalArgumentException(msg));
+            Exception e = new IllegalArgumentException(msg);
+
+            // Another corner case, if this was an outdated synch request and the task
+            // is not running anymore, we set the factory as Available. If the task
+            // was already running then the factory would become Available as soon
+            // as the task reached the FINISHED stage.
+            if (!TaskState.isInProgress(currentTask.taskInfo)) {
+                setFactoryAvailability(currentTask, true, (o) -> put.fail(e));
+            } else {
+                put.fail(e);
+            }
             return null;
         }
         return putTask;
@@ -351,6 +369,9 @@ public class SynchronizationTaskService
             logInfo("Task canceled: not implemented, ignoring");
             break;
         case FINISHED:
+            // Since the synch-task finished successfully, we will
+            // mark the factory as available here.
+            setFactoryAvailability(task, true, (o) -> { });
             break;
         case FAILED:
             logWarning("Task failed: %s",
@@ -585,6 +606,25 @@ public class SynchronizationTaskService
             logSevere(e);
             post.fail(e);
         }
+    }
+
+    private void setFactoryAvailability(
+            State task, boolean isAvailable, Consumer<Operation> action) {
+        ServiceStats.ServiceStat body = new ServiceStats.ServiceStat();
+        body.name = Service.STAT_NAME_AVAILABLE;
+        body.latestValue = isAvailable ? STAT_VALUE_TRUE : STAT_VALUE_FALSE;
+
+        Operation put = Operation.createPut(
+                UriUtils.buildAvailableUri(this.getHost(), task.factorySelfLink))
+                .setBody(body)
+                .setCompletion((o, e) -> {
+                    if (e != null) {
+                        sendSelfFailurePatch(task, "Failed to set Factory Availability");
+                        return;
+                    }
+                    action.accept(o);
+                });
+        sendRequest(put);
     }
 
     private Consumer<State> subStageSetter(SubStage subStage) {
