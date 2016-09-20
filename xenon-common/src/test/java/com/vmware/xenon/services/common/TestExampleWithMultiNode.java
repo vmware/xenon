@@ -18,9 +18,14 @@ import static java.util.stream.Collectors.toSet;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
+import static com.vmware.xenon.common.test.VerificationHost.FAST_MAINT_INTERVAL_MILLIS;
+
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Set;
 
+import org.junit.After;
 import org.junit.Test;
 
 import com.vmware.xenon.common.AuthorizationSetupHelper;
@@ -41,6 +46,29 @@ import com.vmware.xenon.services.common.NodeGroupService.NodeGroupState;
  */
 public class TestExampleWithMultiNode {
 
+    private List<VerificationHost> hostsToCleanup = new ArrayList<>();
+
+    private VerificationHost createAndStartHost(boolean enableAuth) throws Throwable {
+        VerificationHost host = VerificationHost.create(0);
+        host.setAuthorizationEnabled(enableAuth);
+
+        // to speed up tests, set short maintenance interval.
+        // it needs to "explicitly" set for VerificationHost instance
+        host.setMaintenanceIntervalMicros(FAST_MAINT_INTERVAL_MILLIS * 10);
+        host.start();
+
+        // add to the list for cleanup after each test run
+        this.hostsToCleanup.add(host);
+        return host;
+    }
+
+    @After
+    public void tearDown() {
+        this.hostsToCleanup.forEach(VerificationHost::tearDown);
+        this.hostsToCleanup.clear();
+    }
+
+
     @Test
     public void basicMultiNode() throws Throwable {
         // scenario:
@@ -48,10 +76,8 @@ public class TestExampleWithMultiNode {
         //   post & get example service
 
         // prepare multiple nodes (for simplicity, using VerificationHost)
-        VerificationHost host1 = VerificationHost.create(0);
-        VerificationHost host2 = VerificationHost.create(0);
-        host1.start();
-        host2.start();
+        VerificationHost host1 = createAndStartHost(false);
+        VerificationHost host2 = createAndStartHost(false);
 
         TestNodeGroupManager nodeGroup = new TestNodeGroupManager();
         nodeGroup.addHost(host1);
@@ -93,14 +119,10 @@ public class TestExampleWithMultiNode {
         //   change quorum in groupA
 
         // prepare multiple nodes (for simplicity, using VerificationHost
-        VerificationHost host1 = VerificationHost.create(0);  // will join groupA & groupB
-        VerificationHost host2 = VerificationHost.create(0);  // will join groupA only
-        VerificationHost host3 = VerificationHost.create(0);  // will join groupA only
-        VerificationHost host4 = VerificationHost.create(0);  // will join groupB only
-        host1.start();
-        host2.start();
-        host3.start();
-        host4.start();
+        VerificationHost host1 = createAndStartHost(false);  // will join groupA & groupB
+        VerificationHost host2 = createAndStartHost(false);  // will join groupA only
+        VerificationHost host3 = createAndStartHost(false);  // will join groupA only
+        VerificationHost host4 = createAndStartHost(false);  // will join groupB only
 
         // create a request sender which can be any host in this scenario
         TestRequestSender sender = new TestRequestSender(host1);
@@ -174,9 +196,7 @@ public class TestExampleWithMultiNode {
 
     @Test
     public void authorization() throws Throwable {
-        VerificationHost host = VerificationHost.create(0);
-        host.setAuthorizationEnabled(true);
-        host.start();
+        VerificationHost host = createAndStartHost(true);
 
         TestNodeGroupManager nodeGroup = new TestNodeGroupManager();
         nodeGroup.addHost(host);

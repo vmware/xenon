@@ -53,7 +53,7 @@ public class TestContext {
 
     private int initialCount;
 
-    private static class WaitConfig {
+    public static class WaitConfig {
         private Duration interval = DEFAULT_INTERVAL_DURATION;
         private Duration duration;
 

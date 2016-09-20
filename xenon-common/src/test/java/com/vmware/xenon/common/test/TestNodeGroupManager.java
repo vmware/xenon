@@ -39,6 +39,7 @@ import com.vmware.xenon.common.ServiceStats;
 import com.vmware.xenon.common.ServiceStats.ServiceStat;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
+import com.vmware.xenon.common.test.TestContext.WaitConfig;
 import com.vmware.xenon.services.common.NodeGroupService.JoinPeerRequest;
 import com.vmware.xenon.services.common.NodeGroupService.NodeGroupState;
 import com.vmware.xenon.services.common.NodeGroupService.UpdateQuorumRequest;
@@ -252,8 +253,10 @@ public class TestNodeGroupManager {
         Duration checkTimeout = Duration.ofMillis(FAST_MAINT_INTERVAL_MILLIS * 2);
         Duration checkInterval = Duration.ofMillis(FAST_MAINT_INTERVAL_MILLIS * 2);
 
+        WaitConfig waitConfig = new WaitConfig().setDuration(this.timeout).setInterval(checkInterval);
+
         // Step 1: NodeGroupUtils.checkConvergenceFromAnyHost
-        waitFor(this.timeout, () -> {
+        waitFor(waitConfig, () -> {
 
             List<NodeGroupState> nodeGroupStates = getNodeGroupStates();
 
@@ -279,7 +282,7 @@ public class TestNodeGroupManager {
 
 
         // Step 2: NodeGroupUtils.isNodeGroupAvailable
-        waitFor(this.timeout, () -> {
+        waitFor(waitConfig, () -> {
 
             for (ServiceHost host : this.hosts) {
 
