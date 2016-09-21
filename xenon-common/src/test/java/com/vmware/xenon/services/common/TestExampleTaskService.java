@@ -34,6 +34,7 @@ import com.vmware.xenon.common.ServiceDocumentQueryResult;
 import com.vmware.xenon.common.TaskState;
 import com.vmware.xenon.common.TaskState.TaskStage;
 import com.vmware.xenon.common.UriUtils;
+import com.vmware.xenon.common.test.TestNodeGroupManager;
 import com.vmware.xenon.common.test.TestRequestSender;
 import com.vmware.xenon.common.test.TestRequestSender.FailureResponse;
 import com.vmware.xenon.common.test.VerificationHost;
@@ -54,8 +55,9 @@ public class TestExampleTaskService extends BasicReusableHostTestCase {
         // Wait for the example and example task factories to start because the host does not
         // wait for them since since they are not core services. Note that production code
         // should be asynchronous and not wait like this
-        this.host.waitForServiceAvailable(ExampleService.FACTORY_LINK);
-        this.host.waitForServiceAvailable(ExampleTaskService.FACTORY_LINK);
+        TestNodeGroupManager nodeGroup = new TestNodeGroupManager().addHost(this.host);
+        nodeGroup.waitForFactoryServiceAvailable(ExampleService.FACTORY_LINK);
+        nodeGroup.waitForFactoryServiceAvailable(ExampleTaskService.FACTORY_LINK);
 
         this.sender = new TestRequestSender(this.host);
     }

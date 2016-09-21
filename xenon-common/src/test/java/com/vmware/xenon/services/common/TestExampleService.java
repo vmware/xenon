@@ -23,11 +23,12 @@ import java.net.URI;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 
 import org.junit.Before;
 import org.junit.Test;
 
-import com.vmware.xenon.common.BasicReusableHostTestCase;
+import com.vmware.xenon.common.CommandLineArgumentParser;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.ServiceDocumentDescription.PropertyDescription;
@@ -37,11 +38,13 @@ import com.vmware.xenon.common.ServiceDocumentQueryResult;
 import com.vmware.xenon.common.ServiceHost;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
+import com.vmware.xenon.common.test.TestNodeGroupManager;
 import com.vmware.xenon.common.test.TestRequestSender;
 import com.vmware.xenon.common.test.TestRequestSender.FailureResponse;
+import com.vmware.xenon.common.test.VerificationHost;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
 
-public class TestExampleService extends BasicReusableHostTestCase {
+public class TestExampleService {
 
     public int serviceCount = 100;
     private URI factoryUri;
@@ -49,8 +52,19 @@ public class TestExampleService extends BasicReusableHostTestCase {
     private final String prefix = "example-";
     private TestRequestSender sender;
 
+    private VerificationHost host;
+
     @Before
     public void prepare() throws Throwable {
+
+        // create host
+        this.host = VerificationHost.create(0);
+        CommandLineArgumentParser.parseFromProperties(this.host);
+        this.host.setMaintenanceIntervalMicros(TimeUnit.MILLISECONDS.toMicros(VerificationHost.FAST_MAINT_INTERVAL_MILLIS));
+        this.host.start();
+
+        // create node group
+        TestNodeGroupManager nodeGroup = new TestNodeGroupManager().addHost(this.host);
 
         this.factoryUri = UriUtils.buildFactoryUri(this.host, ExampleService.class);
 
@@ -58,19 +72,12 @@ public class TestExampleService extends BasicReusableHostTestCase {
         // to start since its not a core service. Note that in production code
         // this is all asynchronous, you should not block and wait, just pass a
         // completion
-
-        // Starting example factory is already done in ExampleServiceHost for this test.
-        // Here is an example how to start factory service:
-        //    this.host.startFactory(ExampleService.class, ExampleService::createFactory);
-
-
-        // Next, wait the factory service to be available in the node group (for this test, only
-        // one node is in the node group).
         // For multiple nodes in the node group, make sure all nodes have joined the node group
         // and wait for the node group convergence using following methods:
-        //   this.host.joinNodesAndVerifyConvergence(...);
-        //   this.host.waitForNodeGroupConvergence(...);
-        this.host.waitForReplicatedFactoryServiceAvailable(this.factoryUri);
+        // also see:
+        //   - VerificationHost#joinNodesAndVerifyConvergence(...);
+        //   - VerificationHost#waitForNodeGroupConvergence(...);
+        nodeGroup.waitForFactoryServiceAvailable(ExampleService.FACTORY_LINK);
 
         this.sender = new TestRequestSender(this.host);
     }
@@ -184,11 +191,6 @@ public class TestExampleService extends BasicReusableHostTestCase {
 
     @Test
     public void putExpectFailure() throws Throwable {
-        // make sure example factory is started. the host does not wait for it
-        // to start since its not a core service. Note that in production code
-        // this is all asynchronous, you should not block and wait, just pass a
-        // completion
-        this.host.waitForServiceAvailable(ExampleService.FACTORY_LINK);
 
         ExampleServiceState initialState = new ExampleServiceState();
         initialState.name = UUID.randomUUID().toString();
@@ -200,15 +202,12 @@ public class TestExampleService extends BasicReusableHostTestCase {
         URI childURI = UriUtils.buildUri(this.host, rsp.documentSelfLink);
 
 
-        host.toggleNegativeTestMode(true);
         // issue a PUT that we expect it to fail.
         ExampleServiceState emptyBody = new ExampleServiceState();
         Operation put = Operation.createPut(childURI).setBody(emptyBody);
 
         FailureResponse failureResponse = this.sender.sendAndWaitFailure(put);
         assertEquals("name must be set", failureResponse.failure.getMessage());
-
-        host.toggleNegativeTestMode(false);
     }
 
     private List<ExampleServiceState> postExampleServicesThenGetStates(String suffix) {
