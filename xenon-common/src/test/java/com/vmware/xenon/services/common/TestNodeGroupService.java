@@ -1139,9 +1139,7 @@ public class TestNodeGroupService {
         this.nodeCount = Math.max(5, this.nodeCount);
         int hostStopCount = 2;
 
-        // TODO disable automatic synchronization until
-        // https://www.pivotaltracker.com/story/show/126248293 is fixed
-        this.isPeerSynchronizationEnabled = false;
+        this.isPeerSynchronizationEnabled = true;
         this.skipAvailabilityChecks = true;
 
         if (this.host == null) {
@@ -1152,11 +1150,14 @@ public class TestNodeGroupService {
         }
 
         // create some documents
+        this.host.log(Level.INFO, "Creating some Example services...");
         Map<String, ExampleServiceState> childStates = doExampleFactoryPostReplicationTest(
                 this.serviceCount, null, null);
         updateExampleServiceOptions(childStates);
+        this.host.log(Level.INFO, "Example services created...");
 
         // stop minority number of hosts - quorum is still intact
+        this.host.log(Level.INFO, "Stopping hosts...");
         int i = 0;
         for (Entry<URI, VerificationHost> e : this.host.getInProcessHostMap().entrySet()) {
             this.expectedFailedHosts.add(e.getKey());
@@ -1165,15 +1166,18 @@ public class TestNodeGroupService {
                 break;
             }
         }
+        this.host.log(Level.INFO, "Done stopping hosts...");
 
         // do some updates with strong quorum enabled
         int expectedVersion = this.updateCount;
+        this.host.log(Level.INFO, "Start patching created examples services ...");
         childStates = doStateUpdateReplicationTest(Action.PATCH, this.serviceCount,
                 this.updateCount,
                 expectedVersion,
                 this.exampleStateUpdateBodySetter,
                 this.exampleStateConvergenceChecker,
                 childStates);
+        this.host.log(Level.INFO, "Done with patching the services ...");
     }
 
     @Test
@@ -3459,8 +3463,11 @@ public class TestNodeGroupService {
                 // confirm that /factory/available returns 200 across all nodes
                 waitForReplicatedFactoryServiceAvailable(fu, ServiceUriPaths.DEFAULT_NODE_SELECTOR);
             }
+
+            this.host.log(Level.INFO, "Factories are now available");
         }
 
+        this.host.log(Level.INFO, "Start updating the documents");
         long before = Utils.getNowMicrosUtc();
         AtomicInteger failedCount = new AtomicInteger();
         // issue an update to each child service and verify it was reflected
@@ -3516,6 +3523,7 @@ public class TestNodeGroupService {
         }
         this.host.testWait();
         this.host.logThroughput();
+        this.host.log(Level.INFO, "Done updating the documents");
 
         updatePerfDataPerAction(action, before, (long) (childCount * updateCount), countsPerAction,
                 elapsedTimePerAction);
@@ -3532,6 +3540,7 @@ public class TestNodeGroupService {
         // All updates sent to all children within one host, now wait for
         // convergence
         if (action != Action.DELETE) {
+            this.host.log(Level.INFO, "verifying child service convergence");
             return waitForReplicatedFactoryChildServiceConvergence(initialStatesPerChild,
                     convergenceChecker,
                     childCount,
