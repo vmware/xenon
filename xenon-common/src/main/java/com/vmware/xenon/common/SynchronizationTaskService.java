@@ -35,9 +35,6 @@ public class SynchronizationTaskService
     public static final String PROPERTY_NAME_SYNCHRONIZATION_LOGGING = Utils.PROPERTY_NAME_PREFIX
             + "SynchronizationTaskService.isDetailedLoggingEnabled";
 
-    public static final String OUTDATED_SYNCH_REQUEST_ERROR =
-            "Passed membershipUpdateTimeMicros is outdated";
-
     public static SynchronizationTaskService create(Supplier<Service> childServiceInstantiator) {
         if (childServiceInstantiator.get() == null) {
             throw new IllegalArgumentException("childServiceInstantiator created null child service");
@@ -308,18 +305,22 @@ public class SynchronizationTaskService
             // This request could be for an older node-group change notification.
             // If so, don't bother restarting synchronization.
             String msg = String.format(
-                    "%s, Passed %d, Current %d", OUTDATED_SYNCH_REQUEST_ERROR,
+                    "Passed membershipUpdateTimeMicros is outdated. Passed %d, Current %d",
                     putTask.membershipUpdateTimeMicros, currentTask.membershipUpdateTimeMicros);
             Exception e = new IllegalArgumentException(msg);
+
+            ServiceErrorResponse rsp = Utils.toServiceErrorResponse(e);
+            rsp.setXenonErrorCode(ServiceErrorResponse.OUTDATED_SYNCH_REQUEST);
 
             // Another corner case, if this was an outdated synch request and the task
             // is not running anymore, we set the factory as Available. If the task
             // was already running then the factory would become Available as soon
             // as the task reached the FINISHED stage.
             if (!TaskState.isInProgress(currentTask.taskInfo)) {
-                setFactoryAvailability(currentTask, true, (o) -> put.fail(e));
+                setFactoryAvailability(currentTask, true,
+                        (o) -> put.fail(Operation.STATUS_CODE_BAD_REQUEST, e, rsp));
             } else {
-                put.fail(e);
+                put.fail(Operation.STATUS_CODE_BAD_REQUEST, e, rsp);
             }
             return null;
         }

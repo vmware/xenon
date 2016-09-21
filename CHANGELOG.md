@@ -2,6 +2,11 @@
 
 ## 0.9.6-SNAPSHOT
 
+* Add errorCode property to ServiceErrorResponse to allow Xenon services
+  to indicate a specific error case that otherwise cannot be expressed
+  through the status code. For xenon's internal errors the range 0x8xxxxxxx
+  is reserved.
+
 * Add query operation queues per authorized subject in the index service. New
   scheme offers fair scheduling across users and mitigates head-of-line
   queuing problems. The support is transparent to all existing code and works

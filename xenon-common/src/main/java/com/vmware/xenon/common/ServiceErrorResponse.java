@@ -24,6 +24,10 @@ import java.util.List;
  * additional fields that communicate error details to the client.
  */
 public class ServiceErrorResponse {
+
+    public static final int XENON_ERROR_CODE_MASK = 0x80000000;
+    public static final int OUTDATED_SYNCH_REQUEST = 0x80000001;
+
     public static enum ErrorDetail {
         SHOULD_RETRY
     }
@@ -51,6 +55,10 @@ public class ServiceErrorResponse {
         return rsp;
     }
 
+    private static boolean isXenonErrorCode(int errorCode) {
+        return (errorCode & XENON_ERROR_CODE_MASK) != 0;
+    }
+
     public static final String KIND = Utils.buildKind(ServiceErrorResponse.class);
     public String message;
     public String messageId;
@@ -59,4 +67,26 @@ public class ServiceErrorResponse {
     public EnumSet<ErrorDetail> details;
 
     public String documentKind = KIND;
+
+    protected int errorCode;
+
+    public int getErrorCode() {
+        return this.errorCode;
+    }
+
+    public void setErrorCode(int errorCode) {
+        if (isXenonErrorCode(errorCode)) {
+            throw new IllegalArgumentException(
+                    "Error code must not use internal xenon errorCode range.");
+        }
+        this.errorCode = errorCode;
+    }
+
+    public void setXenonErrorCode(int errorCode) {
+        if (!isXenonErrorCode(errorCode)) {
+            throw new IllegalArgumentException(
+                    "Error code must use internal xenon errorCode range.");
+        }
+        this.errorCode = errorCode;
+    }
 }

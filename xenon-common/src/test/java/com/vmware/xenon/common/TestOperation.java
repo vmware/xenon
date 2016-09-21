@@ -653,6 +653,30 @@ public class TestOperation extends BasicReusableHostTestCase {
         verifyOp(op, sop);
     }
 
+    @Test
+    public void testErrorCodes() throws Throwable {
+        ServiceErrorResponse rsp = ServiceErrorResponse.create(
+                new IllegalArgumentException(), Operation.STATUS_CODE_BAD_REQUEST);
+        rsp.setErrorCode(123123);
+        assertEquals(rsp.getErrorCode(), 123123);
+        rsp.setXenonErrorCode(0x81234567);
+        assertEquals(rsp.getErrorCode(), 0x81234567);
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void testNonXenonErrorCode() throws Throwable {
+        ServiceErrorResponse rsp = ServiceErrorResponse.create(
+                new IllegalArgumentException(), Operation.STATUS_CODE_BAD_REQUEST);
+        rsp.setErrorCode(0x81234567);
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void testXenonErrorCode() throws Throwable {
+        ServiceErrorResponse rsp = ServiceErrorResponse.create(
+                new IllegalArgumentException(), Operation.STATUS_CODE_BAD_REQUEST);
+        rsp.setXenonErrorCode(123123);
+    }
+
     private void verifyOp(Operation op, SerializedOperation sop) {
         assertEquals(op.getAction(), sop.action);
         assertEquals(op.getUri().getHost(), sop.host);

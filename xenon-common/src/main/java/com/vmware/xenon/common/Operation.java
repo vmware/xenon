@@ -1107,6 +1107,11 @@ public class Operation implements Cloneable {
         }
     }
 
+    public void fail(int statusCode, Throwable e, Object failureBody) {
+        this.statusCode = statusCode;
+        fail(e, failureBody);
+    }
+
     public void fail(Throwable e, Object failureBody) {
         if (this.statusCode < STATUS_CODE_FAILURE_THRESHOLD) {
             this.statusCode = STATUS_CODE_SERVER_FAILURE_THRESHOLD;
