@@ -41,6 +41,16 @@ import com.vmware.xenon.services.common.SystemUserService;
  */
 public class Operation implements Cloneable {
 
+    private static boolean enableDetailedLogging = false;
+
+    public static boolean isEnableDetailedLogging() {
+        return enableDetailedLogging;
+    }
+
+    public static void setEnableDetailedLogging(boolean val) {
+        enableDetailedLogging = true;
+    }
+
     /**
      * Portion of serialized JSON body string to include in {@code toString}
      */
