@@ -172,6 +172,10 @@ public class NodeSelectorReplicationService extends StatelessService {
             int successThreshold,
             int failureThreshold,
             String location) {
+        if (Operation.enableDetailedLogging && outboundOp.getUri().getPath().contains("core/examples")) {
+            logInfo(outboundOp.getUri().getPath());
+        }
+
         final int successThresholdFinal = successThreshold;
         final int failureThresholdFinal = failureThreshold;
         // Index 0 - success count
@@ -220,6 +224,10 @@ public class NodeSelectorReplicationService extends StatelessService {
                         outboundOp.getId(),
                         o.getUri(), o.getStatusCode(), e.getMessage());
                 countsAndStatus[2] = o.getStatusCode();
+            } else {
+                if (o != null) {
+                    logInfo("R request to %s passed", o.getUri());
+                }
             }
 
             if (completeWithFailure) {
