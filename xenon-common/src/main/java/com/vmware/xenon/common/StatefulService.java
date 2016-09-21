@@ -424,6 +424,10 @@ public class StatefulService implements Service {
 
             if (hasOption(ServiceOption.OWNER_SELECTION)) {
                 if (!hasOption(ServiceOption.DOCUMENT_OWNER)) {
+                    if (Operation.isEnableDetailedLogging() && request.getUri().getPath().contains("core/examples")) {
+                        logInfo("1");
+                    }
+
                     synchronizeWithPeers(request, new IllegalStateException(
                             "not marked as owner"));
                     return true;
@@ -640,6 +644,10 @@ public class StatefulService implements Service {
      * concurrently with replication and indexing
      */
     private void handleRequestCompletion(Operation op, Throwable e) {
+        if (Operation.isEnableDetailedLogging() && op.getUri().getPath().contains("core/examples")) {
+            logInfo("1");
+        }
+
         if (hasOption(Service.ServiceOption.INSTRUMENTATION)) {
             op.setHandlerCompletionTime(Utils.getNowMicrosUtc());
         }
@@ -796,6 +804,10 @@ public class StatefulService implements Service {
      * indexing of state.
      */
     private boolean processCompletionStageReplicationProposal(Operation op) {
+//        if (Operation.isEnableDetailedLogging() && op.getUri().getPath().contains("core/examples")) {
+//            logInfo("1");
+//        }
+
         if (!hasOption(ServiceOption.REPLICATION)) {
             return false;
         }
@@ -848,6 +860,10 @@ public class StatefulService implements Service {
      * Only applies to services with {@link ServiceOption#OWNER_SELECTION}
      */
     private void processCompletionStageCommit(Operation op) {
+//        if (Operation.isEnableDetailedLogging() && op.getUri().getPath().contains("core/examples")) {
+//            logInfo("1");
+//        }
+
         boolean indexState = true;
         try {
             if (op.getStatusCode() >= Operation.STATUS_CODE_FAILURE_THRESHOLD) {
@@ -943,6 +959,10 @@ public class StatefulService implements Service {
      * of operation completion
      */
     private void processCompletionStageIndexing(Operation op) {
+//        if (Operation.isEnableDetailedLogging() && op.getUri().getPath().contains("core/examples")) {
+//            logInfo("1");
+//        }
+
         try {
             op.nestCompletion((o, failure) -> {
                 if (failure != null) {
@@ -998,6 +1018,10 @@ public class StatefulService implements Service {
      * will receive operation response
      */
     private void processCompletionStagePublishAndComplete(Operation op) {
+//        if (Operation.isEnableDetailedLogging() && op.getUri().getPath().contains("core/examples")) {
+//            logInfo("1");
+//        }
+
         if (hasOption(ServiceOption.INSTRUMENTATION)) {
             updatePerOperationStats(op);
         }
@@ -1245,6 +1269,10 @@ public class StatefulService implements Service {
             request.linkState(state);
         }
 
+        if (Operation.isEnableDetailedLogging() && request.getUri().getPath().contains("core/examples")) {
+            logInfo("wasOwner:%s, isOwner:%s, state: %s", wasOwner, isOwner, Utils.toJson(state));
+        }
+
         if (!wasOwner && isOwner) {
             isStateUpdated = true;
         }
@@ -1270,6 +1298,9 @@ public class StatefulService implements Service {
             failRequest(request, new IllegalStateException(
                     "Synchronization complete, original failure: " + failure.toString()), true);
             return;
+        }
+        if (Operation.isEnableDetailedLogging() && request.getUri().getPath().contains("core/examples")) {
+            logInfo("1");
         }
 
         // avoid replicating this synchronization request, on completion
