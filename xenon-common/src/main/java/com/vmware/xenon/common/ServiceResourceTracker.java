@@ -18,12 +18,14 @@ import java.lang.management.ThreadMXBean;
 import java.util.EnumSet;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 
+import com.vmware.xenon.common.Operation.CompletionHandler;
 import com.vmware.xenon.common.Service.Action;
 import com.vmware.xenon.common.Service.ProcessingStage;
 import com.vmware.xenon.common.Service.ServiceOption;
@@ -696,7 +698,7 @@ class ServiceResourceTracker {
 
             long pendingPauseCount = this.pendingPauseServices.size();
             if (pendingPauseCount == 0) {
-                return this.host.checkAndOnDemandStartService(inboundOp, factoryService);
+                return checkAndOnDemandStartService(inboundOp, factoryService);
             }
 
             // there is a small window between pausing a service, and the service being indexed in the
@@ -741,6 +743,114 @@ class ServiceResourceTracker {
                         });
         OperationContext.setAuthorizationContext(this.host.getSystemAuthorizationContext());
         this.host.sendRequest(query.setReferer(this.host.getUri()));
+        return true;
+    }
+
+    boolean checkAndOnDemandStartService(Operation inboundOp, Service parentService) {
+        if (!parentService.hasOption(ServiceOption.FACTORY)) {
+            this.host.failRequestServiceNotFound(inboundOp);
+            return true;
+        }
+
+        if (!parentService.hasOption(ServiceOption.ON_DEMAND_LOAD)) {
+            return false;
+        }
+
+        FactoryService factoryService = (FactoryService) parentService;
+
+        String servicePath = inboundOp.getUri().getPath();
+        if (ServiceHost.isHelperServicePath(servicePath)) {
+            servicePath = UriUtils.getParentPath(servicePath);
+        }
+        Operation onDemandPost = Operation.createPost(this.host, servicePath);
+
+        final String finalServicePath = servicePath;
+
+        CompletionHandler c = (o, e) -> {
+            if (e != null) {
+                if (e instanceof CancellationException) {
+                    // local stop of idle service raced with client request to load it. Retry.
+                    this.host.log(Level.WARNING, "Stop of idle service %s detected, retrying",
+                            inboundOp
+                                    .getUri().getPath());
+                    this.host.schedule(() -> {
+                        checkAndOnDemandStartService(inboundOp, parentService);
+                    }, 1, TimeUnit.SECONDS);
+                    return;
+                }
+
+                ServiceErrorResponse response = o.hasBody()
+                        ? o.getBody(ServiceErrorResponse.class)
+                        : null;
+
+                if (response != null) {
+                    // Since we do a POST first for services using ON_DEMAND_LOAD to start the service,
+                    // we can get back a 409 status code i.e. the service has already been started or was
+                    // deleted previously. We special case here by checking the the Action of the
+                    // original operation. If it was POST, we let the same error propagate to the caller.
+                    // If it was a DELETE, we swallow the 409 error because the service has already been
+                    // deleted. In other cases, we return a 404 - Service not found.
+                    if (response.statusCode == Operation.STATUS_CODE_CONFLICT) {
+                        if (inboundOp.getAction() == Action.DELETE) {
+                            inboundOp.complete();
+                            return;
+                        }
+
+                        if (inboundOp.getAction() != Action.POST) {
+                            this.host.failRequestServiceNotFound(inboundOp);
+                            return;
+                        }
+                    }
+
+                    if (response.statusCode == Operation.STATUS_CODE_NOT_FOUND) {
+                        if (inboundOp.getAction() == Action.DELETE) {
+                            // if the service we are trying to DELETE never existed, we swallow the 404 error.
+                            // This is for consistency in behavior with non ON_DEMAND_LOAD services.
+                        inboundOp.complete();
+                        return;
+                        }
+
+                    }
+                }
+
+                if (o.getStatusCode() == Operation.STATUS_CODE_NOT_FOUND) {
+                    this.host.checkPragmaAndRegisterForServiceAvailability(finalServicePath,
+                            inboundOp);
+                }
+
+                inboundOp.setBodyNoCloning(o.getBodyRaw()).setStatusCode(o.getStatusCode());
+                inboundOp.fail(e);
+                return;
+            }
+            // proceed with handling original client request, service now started
+            this.host.handleRequest(null, inboundOp);
+        };
+
+        onDemandPost.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_INDEX_CHECK)
+                .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_VERSION_CHECK)
+                .transferRefererFrom(inboundOp)
+                .setExpiration(inboundOp.getExpirationMicrosUtc())
+                .setReplicationDisabled(true)
+                .setCompletion(c);
+
+        Service childService;
+        try {
+            childService = factoryService.createServiceInstance();
+            childService.toggleOption(ServiceOption.FACTORY_ITEM, true);
+        } catch (Throwable e1) {
+            inboundOp.fail(e1);
+            return true;
+        }
+
+        if (inboundOp.getAction() == Action.DELETE) {
+            onDemandPost.disableFailureLogging(true);
+            inboundOp.disableFailureLogging(true);
+        }
+
+        // bypass the factory, directly start service on host. This avoids adding a new
+        // version to the index and various factory processes that are invoked on new
+        // service creation
+        this.host.startService(onDemandPost, childService);
         return true;
     }
 

@@ -3246,7 +3246,7 @@ public class ServiceHost implements ServiceRequestSender {
 
             CompletionHandler fc = (fo, fe) -> {
                 if (fe != null) {
-                    scheduleRetryOrFailRequest(op, fo, fe);
+                    scheduleRetryOrFailRequest(serviceOptions, op, fo, fe);
                     return;
                 }
 
@@ -3266,7 +3266,7 @@ public class ServiceHost implements ServiceRequestSender {
                         // If the incoming request is for an ON_DEMAND_LOAD
                         // service, that we could not locate among paused services
                         // then it must be stopped. Check and start the ODL service.
-                        checkAndOnDemandStartService(op, factory);
+                        this.serviceResourceTracker.checkAndOnDemandStartService(op, factory);
                     } else {
                         queueOrFailRequestForServiceNotFoundOnOwner(servicePath, op);
                     }
@@ -3318,6 +3318,10 @@ public class ServiceHost implements ServiceRequestSender {
             return;
         }
 
+        checkPragmaAndRegisterForServiceAvailability(path, op);
+    }
+
+    void checkPragmaAndRegisterForServiceAvailability(String path, Operation op) {
         if (!op.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_QUEUE_FOR_SERVICE_AVAILABILITY)) {
             this.failRequestServiceNotFound(op);
             return;
@@ -3329,7 +3333,6 @@ public class ServiceHost implements ServiceRequestSender {
             handleRequest(null, op);
         });
         registerForServiceAvailability(op, path);
-        return;
     }
 
     void failRequestOwnerMismatch(Operation op, String id, ServiceDocument body) {
@@ -3362,8 +3365,15 @@ public class ServiceHost implements ServiceRequestSender {
         op.setBodyNoCloning(fo.getBodyRaw()).fail(fe);
     }
 
-    private void scheduleRetryOrFailRequest(Operation op, Operation fo, Throwable fe) {
+    private void scheduleRetryOrFailRequest(EnumSet<ServiceOption> serviceOptions, Operation op,
+            Operation fo, Throwable fe) {
         boolean shouldRetry = false;
+
+        if (serviceOptions.contains(ServiceOption.ON_DEMAND_LOAD)
+                && fo.getStatusCode() == Operation.STATUS_CODE_NOT_FOUND) {
+            checkPragmaAndRegisterForServiceAvailability(op.getUri().getPath(), op);
+            return;
+        }
 
         if (fo.hasBody()) {
             ServiceErrorResponse rsp = fo.clone().getBody(ServiceErrorResponse.class);
@@ -3420,13 +3430,18 @@ public class ServiceHost implements ServiceRequestSender {
             if (factoryService != null) {
                 if (factoryService.hasOption(ServiceOption.FACTORY)) {
                     waitForService = isServiceStarting(factoryService, factoryPath);
+                    
+                    FactoryService factory = (FactoryService) factoryService;
+                    if (factory.hasChildOption(ServiceOption.OWNER_SELECTION)) {
+                        // registration for availability must happen after owner selection
+                        return false;
+                    }
                 }
-                if (!waitForService) {
-                    // the service might be paused (stopped due to memory pressure)
-                    if (factoryService.hasOption(ServiceOption.PERSISTENCE)) {
-                        if (this.serviceResourceTracker.checkAndResumePausedService(inboundOp)) {
-                            return true;
-                        }
+                
+                // the service might be paused (stopped due to memory pressure)
+                if (factoryService.hasOption(ServiceOption.PERSISTENCE)) {
+                    if (this.serviceResourceTracker.checkAndResumePausedService(inboundOp)) {
+                        return true;
                     }
                 }
             }
@@ -3436,6 +3451,7 @@ public class ServiceHost implements ServiceRequestSender {
                 .hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_QUEUE_FOR_SERVICE_AVAILABILITY)) {
             waitForService = true;
         }
+        
 
         if (waitForService || inboundOp.isFromReplication()) {
             if (inboundOp.getAction() == Action.DELETE) {
@@ -3454,6 +3470,7 @@ public class ServiceHost implements ServiceRequestSender {
                 handleRequest(null, inboundOp);
             });
 
+            log(Level.INFO, "Registering for %s to become available (%s)", path, getId());
             registerForServiceAvailability(inboundOp, path);
             return true;
         }
@@ -3542,7 +3559,9 @@ public class ServiceHost implements ServiceRequestSender {
     }
 
     void retryOnDemandLoadStopConflict(Service statefulService, Operation op) {
-        log(Level.WARNING, "On demand conflict: retrying %s (%d %s) since it raced with a STOP",
+        log(Level.WARNING,
+                "On demand conflict on %s: retrying %s (%d %s) since it raced with a STOP",
+                op.getUri().getPath(),
                 op.getAction(), op.getId(), op.getContextId());
         getManagementService().adjustStat(
                 ServiceHostManagementService.STAT_NAME_ODL_STOP_CONFLICT_COUNT, 1);
@@ -4553,104 +4572,6 @@ public class ServiceHost implements ServiceRequestSender {
         this.operationTracker.performMaintenance(now);
     }
 
-    boolean checkAndOnDemandStartService(Operation inboundOp, Service parentService) {
-        if (!parentService.hasOption(ServiceOption.FACTORY)) {
-            failRequestServiceNotFound(inboundOp);
-            return true;
-        }
-
-        if (!parentService.hasOption(ServiceOption.ON_DEMAND_LOAD)) {
-            return false;
-        }
-
-        FactoryService factoryService = (FactoryService) parentService;
-
-        String servicePath = inboundOp.getUri().getPath();
-        if (ServiceHost.isHelperServicePath(servicePath)) {
-            servicePath = UriUtils.getParentPath(servicePath);
-
-        }
-        Operation onDemandPost = Operation.createPost(this, servicePath);
-
-        CompletionHandler c = (o, e) -> {
-            if (e != null) {
-                if (e instanceof CancellationException) {
-                    // local stop of idle service raced with client request to load it. Retry.
-                    log(Level.WARNING, "Stop of idle service %s detected, retrying", inboundOp
-                            .getUri().getPath());
-                    schedule(() -> {
-                        checkAndOnDemandStartService(inboundOp, parentService);
-                    }, 1, TimeUnit.SECONDS);
-                    return;
-                }
-
-                ServiceErrorResponse response = o.hasBody()
-                        ? o.getBody(ServiceErrorResponse.class)
-                        : null;
-
-                if (response != null) {
-                    // Since we do a POST first for services using ON_DEMAND_LOAD to start the service,
-                    // we can get back a 409 status code i.e. the service has already been started or was
-                    // deleted previously. We special case here by checking the the Action of the
-                    // original operation. If it was POST, we let the same error propagate to the caller.
-                    // If it was a DELETE, we swallow the 409 error because the service has already been
-                    // deleted. In other cases, we return a 404 - Service not found.
-                    if (response.statusCode == Operation.STATUS_CODE_CONFLICT) {
-                        if (inboundOp.getAction() == Action.DELETE) {
-                            inboundOp.complete();
-                            return;
-                        }
-
-                        if (inboundOp.getAction() != Action.POST) {
-                            failRequestServiceNotFound(inboundOp);
-                            return;
-                        }
-                    }
-
-                    // if the service we are trying to DELETE never existed, we swallow the 404 error.
-                    // This is for consistency in behavior with non ON_DEMAND_LOAD services.
-                    if (inboundOp.getAction() == Action.DELETE &&
-                            response.statusCode == Operation.STATUS_CODE_NOT_FOUND) {
-                        inboundOp.complete();
-                        return;
-                    }
-                }
-
-                inboundOp.setBodyNoCloning(o.getBodyRaw()).setStatusCode(o.getStatusCode());
-                inboundOp.fail(e);
-                return;
-            }
-            // proceed with handling original client request, service now started
-            handleRequest(null, inboundOp);
-        };
-
-        onDemandPost.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_INDEX_CHECK)
-                .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_VERSION_CHECK)
-                .transferRefererFrom(inboundOp)
-                .setExpiration(inboundOp.getExpirationMicrosUtc())
-                .setReplicationDisabled(true)
-                .setCompletion(c);
-
-        Service childService;
-        try {
-            childService = factoryService.createServiceInstance();
-            childService.toggleOption(ServiceOption.FACTORY_ITEM, true);
-        } catch (Throwable e1) {
-            inboundOp.fail(e1);
-            return true;
-        }
-
-        if (inboundOp.getAction() == Action.DELETE) {
-            onDemandPost.disableFailureLogging(true);
-            inboundOp.disableFailureLogging(true);
-        }
-
-        // bypass the factory, directly start service on host. This avoids adding a new
-        // version to the index and various factory processes that are invoked on new
-        // service creation
-        this.startService(onDemandPost, childService);
-        return true;
-    }
 
     public ServiceHost setOperationTimeOutMicros(long timeoutMicros) {
         this.state.operationTimeoutMicros = timeoutMicros;

@@ -722,6 +722,7 @@ public class TestLuceneDocumentIndexService {
     private void verifyOnDemandLoad(ServiceHost h, String onDemandFactoryLink) throws Throwable {
         this.host.log("ODL verification starting");
         URI factoryUri = UriUtils.buildUri(h, onDemandFactoryLink);
+
         ServiceDocumentQueryResult rsp = this.host.getFactoryState(factoryUri);
         // verify that for every factory child reported by the index, through the GET (query), the service is NOT
         // started
@@ -731,6 +732,8 @@ public class TestLuceneDocumentIndexService {
             assertTrue(h.getServiceStage(childLink) == null);
             childUris.add(UriUtils.buildUri(h, childLink));
         }
+
+        verifyOnDemandLoadWithPragmaQueueForService(factoryUri);
 
         // explicitly trigger synchronization and verify on demand load services did NOT start
         this.host.log("Triggering synchronization to verify on demand load is not affected");
@@ -870,15 +873,10 @@ public class TestLuceneDocumentIndexService {
             return true;
         });
 
-        verifyOnDemandLoadWithPragmaQueueForService(factoryUri);
         this.host.log("ODL verification done");
     }
 
     void verifyOnDemandLoadWithPragmaQueueForService(URI factoryUri) {
-        if (factoryUri != null) {
-            // TODO Remove once https://www.pivotaltracker.com/story/show/130490367 is fixed
-            return;
-        }
         Operation get;
         Operation post;
         ExampleServiceState body;
@@ -891,17 +889,28 @@ public class TestLuceneDocumentIndexService {
 
         // in parallel issue a GET to the yet to be created service, with a PRAGMA telling the
         // runtime to queue the request, until service start
-        int getCount = 100;
+        long getCount = this.serviceCount * 10;
         TestContext ctx = this.host.testCreate(getCount + 1);
+        this.host.log("Issuing %d GETs on yet to be created %s", getCount, yetToBeCreatedChildUri);
         for (int gi = 0; gi < getCount; gi++) {
+            // use connection sharing to avoid deadlock (blocking all out bound connections on
+            // GET requests that will not be completed, unless the POST makes it through)
             get = Operation.createGet(yetToBeCreatedChildUri).setCompletion(ctx.getCompletion())
+                    .setConnectionSharing(true)
                     .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_QUEUE_FOR_SERVICE_AVAILABILITY);
             this.host.send(get);
-            if (gi == 10) {
+            if (gi == getCount / 2) {
                 // now issue the POST to create the service, in parallel with most of the GETs
                 post = Operation.createPost(factoryUri)
-                        .setCompletion(ctx.getCompletion())
-                        .setBody(body);
+                        .setConnectionSharing(true)
+                        .setBody(body)
+                        .setCompletion((o, e) -> {
+                            if (e != null) {
+                                ctx.fail(e);
+                                return;
+                            }
+                            this.host.log("POST done for %s", yetToBeCreatedChildUri);
+                        });
                 this.host.send(post);
             }
         }
