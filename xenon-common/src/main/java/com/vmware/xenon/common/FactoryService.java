@@ -879,7 +879,7 @@ public abstract class FactoryService extends StatelessService {
                     // was considered out-dated by the synchronization-task.
                     if (o.getStatusCode() == Operation.STATUS_CODE_BAD_REQUEST) {
                         ServiceErrorResponse rsp = o.getBody(ServiceErrorResponse.class);
-                        if (rsp.getErrorCode() == ServiceErrorResponse.OUTDATED_SYNCH_REQUEST) {
+                        if (rsp.getErrorCode() == ServiceErrorResponse.ERROR_CODE_OUTDATED_SYNCH_REQUEST) {
                             parentOp.complete();
                             return;
                         }

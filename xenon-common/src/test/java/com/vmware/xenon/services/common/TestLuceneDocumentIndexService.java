@@ -792,7 +792,7 @@ public class TestLuceneDocumentIndexService {
                 .setCompletion(this.host.getCompletion());
         this.host.sendAndWait(delete);
 
-        // do a DELETE for a completely unknown service, expect 200
+        // do a DELETE for a completely unknown service, expect 404
         delete = Operation.createDelete(new URI(factoryUri.toString() + "/unknown"))
                 .setCompletion(
                         this.host.getExpectedFailureCompletion(Operation.STATUS_CODE_NOT_FOUND));
@@ -862,8 +862,8 @@ public class TestLuceneDocumentIndexService {
         this.host.waitFor("on demand loaded services never stopped", () -> {
             for (URI u : childUris) {
                 ProcessingStage stg = h.getServiceStage(u.getPath());
-                this.host.log("%s %s", u.getPath(), stg);
                 if (stg != null) {
+                    this.host.log("%s %s", u.getPath(), stg);
                     return false;
                 }
             }
@@ -874,11 +874,8 @@ public class TestLuceneDocumentIndexService {
         this.host.log("ODL verification done");
     }
 
-    void verifyOnDemandLoadWithPragmaQueueForService(URI factoryUri) {
-        if (factoryUri != null) {
-            // TODO Remove once https://www.pivotaltracker.com/story/show/130490367 is fixed
-            return;
-        }
+    void verifyOnDemandLoadWithPragmaQueueForService(URI factoryUri) throws Throwable {
+
         Operation get;
         Operation post;
         ExampleServiceState body;
@@ -891,16 +888,33 @@ public class TestLuceneDocumentIndexService {
 
         // in parallel issue a GET to the yet to be created service, with a PRAGMA telling the
         // runtime to queue the request, until service start
-        int getCount = 100;
+        long getCount = this.serviceCount;
         TestContext ctx = this.host.testCreate(getCount + 1);
         for (int gi = 0; gi < getCount; gi++) {
-            get = Operation.createGet(yetToBeCreatedChildUri).setCompletion(ctx.getCompletion())
+            get = Operation.createGet(yetToBeCreatedChildUri)
+                    .setConnectionSharing(true)
+                    .setCompletion((o, e) -> {
+                        if (e != null) {
+                            ctx.fail(e);
+                            return;
+                        }
+                        ctx.complete();
+                    })
                     .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_QUEUE_FOR_SERVICE_AVAILABILITY);
+
             this.host.send(get);
-            if (gi == 10) {
+            if (gi == getCount / 2) {
                 // now issue the POST to create the service, in parallel with most of the GETs
                 post = Operation.createPost(factoryUri)
-                        .setCompletion(ctx.getCompletion())
+                        .setConnectionSharing(true)
+                        .setCompletion((o, e) -> {
+                            if (e != null) {
+                                ctx.fail(e);
+                                return;
+                            }
+                            this.host.log("POST for %s done", yetToBeCreatedChildUri);
+                            ctx.complete();
+                        })
                         .setBody(body);
                 this.host.send(post);
             }

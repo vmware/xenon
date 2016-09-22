@@ -25,8 +25,10 @@ import java.util.List;
  */
 public class ServiceErrorResponse {
 
-    public static final int XENON_ERROR_CODE_MASK = 0x80000000;
-    public static final int OUTDATED_SYNCH_REQUEST = 0x80000001;
+    public static final int ERROR_CODE_INTERNAL_MASK = 0x80000000;
+    public static final int ERROR_CODE_OUTDATED_SYNCH_REQUEST = 0x80000001;
+    public static final int ERROR_CODE_STATE_MARKED_DELETED = 0x80000002;
+    public static final int ERROR_CODE_SERVICE_ALREADY_EXISTS = 0x80000003;
 
     public static enum ErrorDetail {
         SHOULD_RETRY
@@ -55,8 +57,8 @@ public class ServiceErrorResponse {
         return rsp;
     }
 
-    private static boolean isXenonErrorCode(int errorCode) {
-        return (errorCode & XENON_ERROR_CODE_MASK) != 0;
+    private static boolean isInternalErrorCode(int errorCode) {
+        return (errorCode & ERROR_CODE_INTERNAL_MASK) != 0;
     }
 
     public static final String KIND = Utils.buildKind(ServiceErrorResponse.class);
@@ -75,15 +77,15 @@ public class ServiceErrorResponse {
     }
 
     public void setErrorCode(int errorCode) {
-        if (isXenonErrorCode(errorCode)) {
+        if (isInternalErrorCode(errorCode)) {
             throw new IllegalArgumentException(
                     "Error code must not use internal xenon errorCode range.");
         }
         this.errorCode = errorCode;
     }
 
-    public void setXenonErrorCode(int errorCode) {
-        if (!isXenonErrorCode(errorCode)) {
+    public void setInternalCode(int errorCode) {
+        if (!isInternalErrorCode(errorCode)) {
             throw new IllegalArgumentException(
                     "Error code must use internal xenon errorCode range.");
         }

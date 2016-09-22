@@ -626,7 +626,7 @@ class ServiceResourceTracker {
         }
     }
 
-    boolean checkAndResumePausedService(Operation inboundOp) {
+    boolean checkAndResumePausedServiceOnOwner(Operation inboundOp) {
         String key = inboundOp.getUri().getPath();
         if (ServiceHost.isHelperServicePath(key)) {
             key = UriUtils.getParentPath(key);
@@ -637,18 +637,15 @@ class ServiceResourceTracker {
         if (factoryPath != null) {
             factoryService = (FactoryService)this.host.findService(factoryPath);
         }
+
         if (factoryService != null
                 && !this.serviceFactoriesUnderMemoryPressure.contains(factoryPath)) {
             // minor optimization: if the service factory has never experienced a pause for one of the child
             // services, do not bother querying the blob index. A node might never come under memory
             // pressure so this lookup avoids the index query.
-
-            // Also, skip querying the blob index, if this request is for an ODL service
-            // and it is also OWNER_SELECTED. For such ODL services, we will instead route the
-            // request to the owner node.
-            if (!factoryService.hasOption(ServiceOption.ON_DEMAND_LOAD) ||
-                    (factoryService.hasOption(ServiceOption.ON_DEMAND_LOAD) &&
-                    factoryService.hasChildOption(ServiceOption.OWNER_SELECTION)) ) {
+            if (factoryService.hasOption(ServiceOption.ON_DEMAND_LOAD)) {
+                inboundOp.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_INDEX_CHECK);
+            } else {
                 return false;
             }
         }
@@ -707,7 +704,7 @@ class ServiceResourceTracker {
                         this.host.log(Level.INFO,
                                 "Retrying index lookup for %s, pending pause: %d",
                                 path, pendingPauseCount);
-                        checkAndResumePausedService(inboundOp);
+                        checkAndResumePausedServiceOnOwner(inboundOp);
                     }, 1, TimeUnit.SECONDS);
             return true;
         }
