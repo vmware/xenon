@@ -55,6 +55,8 @@ import com.vmware.xenon.common.Utils;
 import com.vmware.xenon.common.test.AuthorizationHelper;
 import com.vmware.xenon.common.test.MinimalTestServiceState;
 import com.vmware.xenon.common.test.TestProperty;
+import com.vmware.xenon.common.test.TestRequestSender;
+import com.vmware.xenon.common.test.TestRequestSender.FailureResponse;
 import com.vmware.xenon.common.test.VerificationHost;
 import com.vmware.xenon.services.common.ExampleService;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
@@ -1177,6 +1179,32 @@ public class NettyHttpServiceClientTest {
         cl.send(noHostOp);
         this.host.testWait();
         this.host.toggleNegativeTestMode(false);
+    }
+
+    @Test
+    public void keepAliveFalseInServer() throws Throwable {
+
+        // When keepAlive=false is set in server side and channels is closed, response was
+        // always code=400, message="Socket channel closed:..."
+
+        StatelessService failureService = new StatelessService() {
+            @Override
+            public void handleGet(Operation get) {
+                get.setStatusCode(Operation.STATUS_CODE_CONFLICT);
+                get.setContentType("text/xml");
+                get.setBody("<error>hello</error>");
+                get.setKeepAlive(false);
+                get.complete();
+            }
+        };
+        this.host.startServiceAndWait(failureService, "/keepAliveFalseInServer", null);
+
+        Operation put = Operation.createGet(this.host, "/keepAliveFalseInServer").forceRemote();
+        TestRequestSender sender = new TestRequestSender(this.host);
+        FailureResponse resp = sender.sendAndWaitFailure(put);
+
+        assertEquals(Operation.STATUS_CODE_CONFLICT, resp.op.getStatusCode());
+        assertEquals("<error>hello</error>", resp.op.getBodyRaw());
     }
 
 }
