@@ -167,7 +167,6 @@ public class NodeSelectorSynchronizationService extends StatelessService {
         }
 
         ServiceDocument bestPeerRsp = null;
-        boolean incrementEpoch = false;
 
         TreeMap<Long, List<ServiceDocument>> syncRspsPerEpoch = new TreeMap<>();
         Map<URI, ServiceDocument> peerStates = new HashMap<>();
@@ -194,10 +193,6 @@ public class NodeSelectorSynchronizationService extends StatelessService {
                 syncRspsPerEpoch.put(peerState.documentEpoch, statesForEpoch);
             }
             statesForEpoch.add(peerState);
-
-            if (!request.ownerNodeId.equals(peerState.documentOwner)) {
-                incrementEpoch = true;
-            }
         }
 
         // As part of synchronization we need to detect what peer services do not have the best state.
@@ -287,15 +282,13 @@ public class NodeSelectorSynchronizationService extends StatelessService {
 
         bestPeerRsp.documentOwner = request.ownerNodeId;
 
-        broadcastBestState(rsp.selectedNodes, peerStates, post, request, bestPeerRsp,
-                incrementEpoch);
+        broadcastBestState(rsp.selectedNodes, peerStates, post, request, bestPeerRsp);
     }
 
     private void broadcastBestState(Map<String, URI> selectedNodes,
             Map<URI, ServiceDocument> peerStates,
             Operation post, SynchronizePeersRequest request,
-            ServiceDocument bestPeerRsp,
-            boolean incrementEpoch) {
+            ServiceDocument bestPeerRsp) {
         try {
             post.setBodyNoCloning(null);
             if (peerStates.isEmpty()) {
@@ -345,11 +338,15 @@ public class NodeSelectorSynchronizationService extends StatelessService {
                 }
             });
 
-            if (incrementEpoch) {
-                logInfo("Incrementing epoch from %d to %d for %s", bestPeerRsp.documentEpoch,
-                        bestPeerRsp.documentEpoch + 1, bestPeerRsp.documentSelfLink);
-                bestPeerRsp.documentEpoch += 1;
-                bestPeerRsp.documentVersion++;
+            boolean incrementEpoch = false;
+            if (request.isOwner) {
+                if (!request.ownerNodeId.equals(bestPeerRsp.documentOwner)) {
+                    incrementEpoch = true;
+                    logInfo("Incrementing epoch from %d to %d for %s", bestPeerRsp.documentEpoch,
+                            bestPeerRsp.documentEpoch + 1, bestPeerRsp.documentSelfLink);
+                    bestPeerRsp.documentEpoch += 1;
+                    bestPeerRsp.documentVersion++;
+                }
             }
 
             post.setBody(bestPeerRsp);
