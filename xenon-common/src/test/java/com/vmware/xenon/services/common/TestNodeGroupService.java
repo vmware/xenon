@@ -47,7 +47,6 @@ import java.util.logging.Logger;
 
 import org.junit.After;
 import org.junit.Before;
-import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 
@@ -403,7 +402,6 @@ public class TestNodeGroupService {
         }
     }
 
-    @Ignore("https://www.pivotaltracker.com/story/show/129681537")
     @Test
     public void verifyOdlServiceSynchronization() throws Throwable {
         // Setup peer nodes
@@ -419,10 +417,9 @@ public class TestNodeGroupService {
 
         // Start the ODL Factory service on all the peers.
         for (VerificationHost h : this.host.getInProcessHostMap().values()) {
-            // Reduce the maintenance interval and cache clear delay to short durations
+            // Reduce cache clear delay to short duration
             // to cause ODL service stops.
-            h.setMaintenanceIntervalMicros(intervalMicros);
-            h.setServiceCacheClearDelayMicros(intervalMicros);
+            h.setServiceCacheClearDelayMicros(h.getMaintenanceIntervalMicros());
 
             // create an on demand load factory and services
             this.host.testStart(1);
@@ -464,7 +461,7 @@ public class TestNodeGroupService {
         }
 
         // Add a new host to the cluster.
-        VerificationHost newHost = this.host.setUpLocalPeerHost(0, h.maintenanceIntervalMillis,
+        VerificationHost newHost = this.host.setUpLocalPeerHost(0, h.getMaintenanceIntervalMicros(),
                 null);
         newHost.setServiceCacheClearDelayMicros(intervalMicros);
         this.host.testStart(1);
