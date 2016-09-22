@@ -254,29 +254,38 @@ public class NettyChannelContext extends SocketContext {
             }
         }
 
+        Operation op = getOperation();
+
+        boolean hasKeepAliveOp = op != null && op.isKeepAlive();
+        boolean hasStreamIdMapEntry = this.streamIdMap != null && !this.streamIdMap.isEmpty();
+
+        if (!hasKeepAliveOp && !hasStreamIdMapEntry) {
+            // no op with keep-alive=true, no entry in map, channel is closed as expected.
+            return;
+        }
+
         Throwable e = new IllegalStateException("Socket channel closed:" + this.key);
         ServiceErrorResponse body = ServiceErrorResponse.createWithShouldRetry(e);
 
-        Operation op = this.getOperation();
-        if (op != null) {
+        if (hasKeepAliveOp) {
+            // channel closed even though keep alive was set to true
             setOperation(null);
             op.setStatusCode(body.statusCode);
             op.fail(e, body);
-            return;
         }
 
-        if (this.streamIdMap == null || this.streamIdMap.isEmpty()) {
-            return;
+        if (hasStreamIdMapEntry) {
+            // channel closed even though ops still exist in streamIdMap
+            List<Operation> ops = new ArrayList<>();
+            synchronized (this.streamIdMap) {
+                ops.addAll(this.streamIdMap.values());
+                this.streamIdMap.clear();
+            }
+            for (Operation o : ops) {
+                o.setStatusCode(body.statusCode);
+                o.fail(e, body);
+            }
         }
 
-        List<Operation> ops = new ArrayList<>();
-        synchronized (this.streamIdMap) {
-            ops.addAll(this.streamIdMap.values());
-            this.streamIdMap.clear();
-        }
-        for (Operation o : ops) {
-            o.setStatusCode(body.statusCode);
-            o.fail(e, body);
-        }
     }
 }
