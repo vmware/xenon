@@ -155,7 +155,7 @@ public class TestSynchronizationTaskService extends BasicTestCase {
                 assertTrue(r.taskInfo.stage == TaskState.TaskStage.FINISHED);
             } else if (o.getStatusCode() == Operation.STATUS_CODE_BAD_REQUEST) {
                 ServiceErrorResponse r = o.getBody(ServiceErrorResponse.class);
-                assertTrue(r.getErrorCode() == ServiceErrorResponse.OUTDATED_SYNCH_REQUEST);
+                assertTrue(r.getErrorCode() == ServiceErrorResponse.ERROR_CODE_OUTDATED_SYNCH_REQUEST);
             } else {
                 throw new IllegalStateException("Unexpected operation response: "
                         + o.getStatusCode());
@@ -205,7 +205,7 @@ public class TestSynchronizationTaskService extends BasicTestCase {
         for (Operation op : results) {
             assertTrue(op.getStatusCode() == Operation.STATUS_CODE_BAD_REQUEST);
             ServiceErrorResponse body = op.getBody(ServiceErrorResponse.class);
-            assertTrue(body.getErrorCode() == ServiceErrorResponse.OUTDATED_SYNCH_REQUEST);
+            assertTrue(body.getErrorCode() == ServiceErrorResponse.ERROR_CODE_OUTDATED_SYNCH_REQUEST);
         }
     }
 
