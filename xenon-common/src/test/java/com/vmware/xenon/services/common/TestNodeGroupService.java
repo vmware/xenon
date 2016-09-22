@@ -1139,9 +1139,7 @@ public class TestNodeGroupService {
         this.nodeCount = Math.max(5, this.nodeCount);
         int hostStopCount = 2;
 
-        // TODO disable automatic synchronization until
-        // https://www.pivotaltracker.com/story/show/126248293 is fixed
-        this.isPeerSynchronizationEnabled = false;
+        this.isPeerSynchronizationEnabled = true;
         this.skipAvailabilityChecks = true;
 
         if (this.host == null) {
@@ -1182,9 +1180,7 @@ public class TestNodeGroupService {
         // we need 6 nodes, 3 in each location
         this.nodeCount = 6;
 
-        // TODO disable automatic synchronization until
-        // https://www.pivotaltracker.com/story/show/126248293 is fixed
-        this.isPeerSynchronizationEnabled = false;
+        this.isPeerSynchronizationEnabled = true;
         this.skipAvailabilityChecks = true;
         this.isMultiLocationTest = true;
 
