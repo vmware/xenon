@@ -21,6 +21,7 @@ import java.util.logging.Level;
 import com.vmware.xenon.common.FileUtils;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Operation.CompletionHandler;
+import com.vmware.xenon.common.OperationContext;
 import com.vmware.xenon.common.ServiceHost.ServiceHostState;
 import com.vmware.xenon.common.ServiceStats;
 import com.vmware.xenon.common.StatefulService;
@@ -223,14 +224,18 @@ public class ServiceHostManagementService extends StatefulService {
                 ServiceUriPaths.CORE_OPERATION_INDEX);
 
         CompletionHandler serviceCompletion = (o, e) -> {
+            logInfo("AAA ServiceHostManagementService#handleOperationTracingRequest completionHandler opId=%s, QUEUE=%s",
+                    o.getId(),
+                    MyDebugger.getQueueStat());
+
             if (e != null) {
                 op.fail(e);
                 return;
             }
 
             boolean start = req.enable == OperationTracingEnable.START;
-            this.logInfo("%s %s", start ? "Started" : "Stopped",
-                    operationTracingServiceUri.toString());
+            this.logInfo("%s %s. opId=%s, oId=%s", start ? "Started" : "Stopped",
+                    operationTracingServiceUri.toString(), op.getId(), o.getId());
 
             this.getHost().setOperationTracingLevel(start ? Level.ALL : Level.OFF);
             op.complete();
@@ -238,12 +243,18 @@ public class ServiceHostManagementService extends StatefulService {
 
         if ((req.enable == OperationTracingEnable.START)) {
             OperationIndexService operationService = new OperationIndexService();
+            MyDebugger.setQueueForOperation(operationService.queryQueue);
             this.getHost().startService(Operation.createPost(operationTracingServiceUri)
                     .setCompletion(serviceCompletion),
                     operationService);
         } else {
-            sendRequest(Operation.createDelete(operationTracingServiceUri).setCompletion(
-                    serviceCompletion));
+            Operation delete = Operation.createDelete(operationTracingServiceUri).setCompletion(
+                    serviceCompletion);
+            logInfo("AAA ServiceHostManagementService#handleOperationTracingRequest delete opId=%s, subject=%s, QUEUE=%s",
+                    delete.getId(), OperationContext.getAuthorizationContext().getClaims().getSubject(),
+                    MyDebugger.getQueueStat());
+
+            sendRequest(delete);
         }
     }
 

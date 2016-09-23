@@ -13,6 +13,8 @@
 
 package com.vmware.xenon.common;
 
+import java.util.concurrent.TimeUnit;
+
 import org.junit.Rule;
 import org.junit.rules.ExternalResource;
 import org.junit.rules.RuleChain;
@@ -23,6 +25,7 @@ import org.junit.runner.Description;
 import com.vmware.xenon.common.Operation.CompletionHandler;
 import com.vmware.xenon.common.test.TestContext;
 import com.vmware.xenon.common.test.VerificationHost;
+import com.vmware.xenon.services.common.MyDebugger;
 
 /**
  * BasicTestCase creates and starts a VerificationHost on a random port, using
@@ -55,8 +58,17 @@ public class BasicTestCase {
 
         @Override
         protected void after() {
+            try {
+                TimeUnit.SECONDS.sleep(5);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
             beforeHostTearDown(BasicTestCase.this.host);
+            BasicTestCase.this.host.log("AAA BasicTestCase#after START");
+            BasicTestCase.this.host.log("AAA QUEUE=%s", MyDebugger.getQueueStat());
             BasicTestCase.this.host.tearDown();
+            BasicTestCase.this.host.log("AAA QUEUE=%s", MyDebugger.getQueueStat());
+            BasicTestCase.this.host.log("AAA BasicTestCase#after END");
         }
     };
 

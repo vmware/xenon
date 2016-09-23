@@ -45,6 +45,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Random;
 import java.util.Set;
 import java.util.UUID;
@@ -76,6 +77,7 @@ import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Operation.AuthorizationContext;
 import com.vmware.xenon.common.Operation.CompletionHandler;
 import com.vmware.xenon.common.Operation.OperationOption;
+import com.vmware.xenon.common.OperationContext;
 import com.vmware.xenon.common.Service;
 import com.vmware.xenon.common.Service.Action;
 import com.vmware.xenon.common.Service.ServiceOption;
@@ -130,7 +132,8 @@ public class VerificationHost extends ExampleServiceHost {
 
     private volatile TestContext context;
 
-    private int timeoutSeconds = 30;
+//    private int timeoutSeconds = 30;
+    private int timeoutSeconds = 3000;
 
     private long testStartMicros;
 
@@ -1409,8 +1412,30 @@ public class VerificationHost extends ExampleServiceHost {
         if (this.referer == null) {
             this.referer = getUri();
         }
-        return this.referer;
+//        return this.referer;
+        return getDefaultReferer();
     }
+
+    private URI getDefaultReferer() {
+        // populate referer from current stack information
+        Optional<StackTraceElement> stackElement = Arrays.stream(Thread.currentThread().getStackTrace())
+                .filter(elem -> {
+                    // filter out Thread and this class
+                    String className = elem.getClassName();
+                    return !(Thread.class.getName().equals(className) || getClass().getName().equals(className));
+                }).findFirst();
+
+        String refererString;
+        if (stackElement.isPresent()) {
+            StackTraceElement elem = stackElement.get();
+            refererString = String.format("http://localhost/%s?line=%s&class=%s&method=%s",
+                    getClass().getSimpleName(), elem.getLineNumber(), elem.getClassName(), elem.getMethodName());
+        } else {
+            refererString = String.format("http://localhost/%s@%s", getClass().getSimpleName(), this.hashCode());
+        }
+        return URI.create(refererString);
+    }
+
 
     public void waitForServiceAvailable(String... links) {
         for (String link : links) {
@@ -2584,9 +2609,14 @@ public class VerificationHost extends ExampleServiceHost {
         r.kind = ServiceHostManagementService.ConfigureOperationTracingRequest.KIND;
 
         this.setSystemAuthorizationContext();
-        this.sender.sendAndWait(Operation.createPatch(
+        Operation patch = Operation.createPatch(
                 UriUtils.extendUri(baseHostURI, ServiceHostManagementService.SELF_LINK))
-                .setBody(r));
+                .setBody(r);
+        String subject = OperationContext.getAuthorizationContext().getClaims().getSubject();
+        log("AAA sending toggleOperationTracing. opId=%s, subject=%s, toggle=%s", patch.getId(), subject, enable);
+        // queue is empty
+//        log("AAA VerificationHost#toggleOperationTracing QUEUE=%s", LuceneDocumentIndexService.ROUND_ROBIN_QUEUE.getState());
+        this.sender.sendAndWait(patch);
         this.resetAuthorizationContext();
     }
 

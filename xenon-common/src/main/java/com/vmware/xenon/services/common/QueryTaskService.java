@@ -481,6 +481,8 @@ public class QueryTaskService extends StatefulService {
                         handleQueryCompletion(task, e, directOp);
                     });
 
+            logInfo("AAA QueryTaskService#forwardQueryToDocumentIndexService QUEUE=%s", MyDebugger.getQueueStat());
+            logInfo("AAA QueryTaskService#forwardQueryToDocumentIndexService localPatch opId=%s, path=%s", localPatch.getId(), localPatch.getUri().getPath());
             sendRequest(localPatch);
         } catch (Throwable e) {
             handleQueryCompletion(task, e, directOp);
@@ -498,7 +500,11 @@ public class QueryTaskService extends StatefulService {
         }
 
         Operation delete = Operation.createDelete(getUri()).setBody(new ServiceDocument());
+
+
         long delta = task.documentExpirationTimeMicros - Utils.getNowMicrosUtc();
+        logInfo("AAA QueryTaskService#scheduleTaskExpiration delete opId=%s, delta=%s, path=%s", delete.getId(), delta, delete.getUri().getPath());
+
         delta = Math.max(1, delta);
         getHost().schedule(() -> {
             if (task.querySpec.options.contains(QueryOption.CONTINUOUS)) {
@@ -601,6 +607,7 @@ public class QueryTaskService extends StatefulService {
                 directOp.nestCompletion((o, ex) -> {
                     directOp.setStatusCode(o.getStatusCode())
                             .setBodyNoCloning(o.getBodyRaw()).complete();
+                    logInfo("AAA scheduling task delete. directOpId=%s", directOp.getId());
                     scheduleTaskExpiration(task);
                 });
                 QueryTaskUtils.expandLinks(getHost(), task, directOp);

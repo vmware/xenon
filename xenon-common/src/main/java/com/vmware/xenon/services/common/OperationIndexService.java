@@ -29,6 +29,8 @@ public class OperationIndexService extends LuceneDocumentIndexService {
 
     public OperationIndexService() {
         super(FILE_PATH);
+
+        logInfo("AAA OperationIndexService construct. queue=%s", this.queryQueue);
     }
 
     @Override

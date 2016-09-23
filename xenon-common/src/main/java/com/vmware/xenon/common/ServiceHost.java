@@ -97,6 +97,7 @@ import com.vmware.xenon.services.common.GuestUserService;
 import com.vmware.xenon.services.common.LocalQueryTaskFactoryService;
 import com.vmware.xenon.services.common.LuceneBlobIndexService;
 import com.vmware.xenon.services.common.LuceneDocumentIndexService;
+import com.vmware.xenon.services.common.MyDebugger;
 import com.vmware.xenon.services.common.NodeGroupFactoryService;
 import com.vmware.xenon.services.common.NodeGroupService.JoinPeerRequest;
 import com.vmware.xenon.services.common.NodeGroupUtils;
@@ -608,6 +609,8 @@ public class ServiceHost implements ServiceRequestSender {
 
         LuceneDocumentIndexService documentIndexService = new LuceneDocumentIndexService();
         setDocumentIndexingService(documentIndexService);
+
+        MyDebugger.setQueueForDocument(documentIndexService.queryQueue);
 
         ServiceHostManagementService managementService = new ServiceHostManagementService();
         setManagementService(managementService);
@@ -3641,7 +3644,7 @@ public class ServiceHost implements ServiceRequestSender {
 
         Operation.SerializedOperation tracingOp = Operation.SerializedOperation.create(op);
         sendRequest(Operation.createPost(UriUtils.buildUri(this, OperationIndexService.class))
-                .setReferer(getUri())
+                .setReferer(UriUtils.buildUri(getUri(), "/tracingggg-" + op.getId() + "-" + op.getUri().getPath()))
                 .setBodyNoCloning(tracingOp));
     }
 
