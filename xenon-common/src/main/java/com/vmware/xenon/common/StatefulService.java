@@ -1959,7 +1959,7 @@ public class StatefulService implements Service {
      */
     Set<String> getPendingTransactions() {
         synchronized (this.context) {
-            return this.context.txCoordinatorLinks;
+            return new HashSet<>(this.context.txCoordinatorLinks);
         }
     }
 
