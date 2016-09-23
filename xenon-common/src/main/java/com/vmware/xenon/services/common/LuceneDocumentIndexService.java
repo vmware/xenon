@@ -256,7 +256,7 @@ public class LuceneDocumentIndexService extends StatelessService {
     private Set<String> fieldsToLoadNoExpand;
     private Set<String> fieldsToLoadWithExpand;
 
-    private RoundRobinOperationQueue queryQueue = RoundRobinOperationQueue.create();
+    public RoundRobinOperationQueue queryQueue = RoundRobinOperationQueue.create();
 
     private URI uri;
 
@@ -278,6 +278,9 @@ public class LuceneDocumentIndexService extends StatelessService {
         super(ServiceDocument.class);
         super.toggleOption(ServiceOption.PERIODIC_MAINTENANCE, true);
         this.indexDirectory = indexDirectory;
+
+        logInfo("AAA LuceneDocumentIndexService construct. queue=%s", this.queryQueue);
+
     }
 
     @Override
@@ -547,6 +550,7 @@ public class LuceneDocumentIndexService extends StatelessService {
 
     @Override
     public void handleRequest(Operation op) {
+        logInfo("AAA in LuceneDocumentIndexService queue=%s", this.queryQueue);
         Action a = op.getAction();
         if (a == Action.PUT) {
             getHost().failRequestActionNotSupported(op);
@@ -571,14 +575,51 @@ public class LuceneDocumentIndexService extends StatelessService {
             return;
         }
 
-        exec.execute(this::handleRequestImpl);
+
+//        if (op.getAction() == Action.DELETE && "/core/operation-index".equals(op.getUri().getPath())) {
+//            try {
+//                logInfo("AAA before sleep, opId=%s, auth=%s, QUEUE=%s", op.getId(), op.getAuthorizationContext().getClaims().getSubject(), MyDebugger.getQueueStat());
+//                TimeUnit.SECONDS.sleep(1);
+//            } catch (InterruptedException e) {
+//                logInfo("AAA queue.isEmpty(interruption)=%s, opId=%s, auth=%s", this.queryQueue.isEmpty(), op.getId(), op.getAuthorizationContext().getClaims().getSubject());
+//                logInfo("AAA exec shutdown: %s", exec.isShutdown());
+//                e.printStackTrace();
+//            }
+//        }
+
+        try {
+            Runnable r = () -> {
+                handleRequestImpl(op.getId());
+            };
+
+
+            exec.execute(r);
+//            exec.execute(this::handleRequestImpl);
+        } catch (Exception e) {
+            logInfo("AAA ERROR: class=%s, op=%s", this.getClass(), op.getId());
+            throw e;
+        }
     }
 
-    private void handleRequestImpl() {
+    private void handleRequestImpl(long orgOpId) {
         Operation op = null;
         try {
             this.writerAvailable.acquire();
             op = pollOperation();
+
+            boolean match = orgOpId == op.getId();
+
+            logInfo("AAA after offer, match=%s, orgOpId=%s, opId=%s, auth=%s, QUEUE=%s",
+                    match,
+                    orgOpId, op.getId(), op.getAuthorizationContext().getClaims().getSubject(), this.queryQueue.getState());
+
+            String path = op.getUri().getPath();
+
+//            if ("/core/operation-index".equals(path) || "/core/document-index".equals(path)) {
+//                logInfo("AAA polled operation. opId=%s, isEmpty=%s", op.getId(), this.queryQueue.isEmpty());
+//
+//            }
+
             switch (op.getAction()) {
             case DELETE:
                 handleDeleteImpl(op);
@@ -814,6 +855,8 @@ public class LuceneDocumentIndexService extends StatelessService {
         } else {
             subject = op.getAuthorizationContext().getClaims().getSubject();
         }
+
+        logInfo("AAA offering opId=%s, subject=%s", op.getId(), subject);
         this.queryQueue.offer(subject, op);
     }
 
@@ -1652,6 +1695,8 @@ public class LuceneDocumentIndexService extends StatelessService {
 
     public void handleDeleteImpl(Operation delete) throws Throwable {
         setProcessingStage(ProcessingStage.STOPPED);
+
+        logInfo("AAA shutting down. handleDeleteImpl class=%s, op=%s", this.getClass(), delete.getId());
 
         this.privateIndexingExecutor.shutdown();
         this.privateQueryExecutor.shutdown();

@@ -31,6 +31,29 @@ public class RoundRobinOperationQueue {
     private NavigableMap<String, Queue<Operation>> queues = new ConcurrentSkipListMap<>();
     private String activeKey = "";
 
+    public synchronized String getState() {
+        StringBuilder sb = new StringBuilder();
+        sb.append(" activeKey=" + this.activeKey);
+        sb.append(", ");
+        sb.append(" size=" + this.queues.size());
+        sb.append(", ");
+
+        for (Entry<String, Queue<Operation>> entry : this.queues.entrySet()) {
+            sb.append("{");
+            sb.append("key=" + entry.getKey());
+            sb.append(", size=" + entry.getValue().size());
+
+            sb.append(", op=[");
+            entry.getValue().forEach(op -> {
+                String s = "{id=" + op.getId() + " path=" + op.getUri().getPath() + " action=" + op.getAction() + " referer=" + op.getReferer() + "},";
+                sb.append(s);
+            });
+            sb.append("]}, ");
+        }
+        return sb.toString();
+    }
+
+
     /**
      * Queue the operation on the queue associated with the key
      */

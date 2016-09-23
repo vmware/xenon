@@ -21,6 +21,7 @@ import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.Map;
+import java.util.logging.Level;
 
 import com.vmware.xenon.common.Claims;
 import com.vmware.xenon.common.Operation;
@@ -118,6 +119,8 @@ public class AuthorizationContextService extends StatelessService {
 
         // Allow unconditionally if this is the system user
         if (subject.equals(SystemUserService.SELF_LINK)) {
+            log(Level.INFO, "AAA AuthorizationContextService#queueRequest opId=%s, path=%s, action=%s, ref=%s",
+                    op.getId(), op.getUri().getPath(), op.getAction(), op.getReferer());
             op.complete();
             return true;
         }
@@ -310,6 +313,9 @@ public class AuthorizationContextService extends StatelessService {
                 });
 
         setAuthorizationContext(post, getSystemAuthorizationContext());
+
+        logInfo("AAA AuthorizationContextService#loadRoles querying.(post) opId=%s, orgCtxClaimSubject=%s queue=%s",
+                post.getId(), ctx.getClaims().getSubject(), MyDebugger.getQueueStat());
         sendRequest(post);
     }
 
@@ -422,7 +428,10 @@ public class AuthorizationContextService extends StatelessService {
 
             AuthorizationContext newContext = builder.getResult();
             getHost().cacheAuthorizationContext(this, newContext);
+
+            logInfo("AAA AuthorizationContextService#populateAuthorizationContext before complete QUEUE=%s", MyDebugger.getQueueStat());
             completePendingOperations(claims.getSubject(), newContext);
+            logInfo("AAA AuthorizationContextService#populateAuthorizationContext after complete QUEUE=%s", MyDebugger.getQueueStat());
         } catch (Throwable e) {
             failThrowable(claims.getSubject(), e);
         }

@@ -38,7 +38,6 @@ import java.util.function.Consumer;
 
 import org.junit.After;
 import org.junit.Before;
-import org.junit.Ignore;
 import org.junit.Test;
 
 import com.vmware.xenon.common.Operation.AuthorizationContext;
@@ -53,6 +52,7 @@ import com.vmware.xenon.services.common.ExampleService;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
 import com.vmware.xenon.services.common.GuestUserService;
 import com.vmware.xenon.services.common.MinimalTestService;
+import com.vmware.xenon.services.common.MyDebugger;
 import com.vmware.xenon.services.common.QueryTask;
 import com.vmware.xenon.services.common.QueryTask.Query;
 import com.vmware.xenon.services.common.QueryTask.Query.Builder;
@@ -92,7 +92,14 @@ public class TestAuthorization extends BasicTestCase {
 
     @After
     public void disableTracing() throws Throwable {
+        String subject = OperationContext.getAuthorizationContext().getClaims().getSubject();
+        this.host.log("AAA DISABLE TRACING START. subject=%s", subject);
+        this.host.log("AAA document queue=%s", MyDebugger.QUEUE_FOR_DOCUMENT);
+        this.host.log("AAA operation queue=%s", MyDebugger.QUEUE_FOR_OPERATION);
+        this.host.log("AAA before toggle tracing. QUEUE=%s", MyDebugger.getQueueStat());
         this.host.toggleOperationTracing(this.host.getUri(), false);
+        this.host.log("AAA mark: after toggle tracing. QUEUE=%s", MyDebugger.getQueueStat());
+        this.host.log("AAA DISABLE TRACING DONE");
     }
 
     @Before
@@ -309,7 +316,7 @@ public class TestAuthorization extends BasicTestCase {
     }
 
     @Test
-    @Ignore("https://www.pivotaltracker.com/story/show/130803239")
+//    @Ignore("https://www.pivotaltracker.com/story/show/130803239")
     public void actionBasedAuthorization() throws Throwable {
 
         // Assume Jane's identity
