@@ -143,18 +143,15 @@ public class TransactionServiceHelper {
      * Notify the transaction coordinator
      */
     static Operation notifyTransactionCoordinatorOp(StatefulService s, Operation op, Throwable e) {
+        URI txCoordinator = UriUtils.buildTransactionUri(s.getHost(), op.getTransactionId());
+        s.addPendingTransaction(txCoordinator.getPath());
+
         Operation.TransactionContext operationsLogRecord = new Operation.TransactionContext();
         operationsLogRecord.action = op.getAction();
-        operationsLogRecord.coordinatorLinks = s.getPendingTransactions();
         operationsLogRecord.isSuccessful = e == null;
 
-        URI txCoordinator = UriUtils.buildTransactionUri(s.getHost(), op.getTransactionId());
-
-        s.addPendingTransaction(txCoordinator.getPath());
-        // set the transaction id to null as this is a PUT on the transaction service
-        // and we don't want a cycle of notifications - this method will be called
-        // again when PUT operation completion handler runs resulting in a loop
-        return Operation.createPut(txCoordinator).setBody(operationsLogRecord).setTransactionId(null);
+        Operation notifyCoordinatorOp = Operation.createPut(txCoordinator).setTransactionId(null);
+        return s.setPendingTransactionsAsBody(notifyCoordinatorOp, operationsLogRecord);
     }
 
     /**

@@ -1953,13 +1953,14 @@ public class StatefulService implements Service {
     }
 
     /**
-     * Return this service' pending transactions. The returned reference is an
-     * internal reference (to avoid cloning overhead) hence it should not
-     * be accessed outside the scope of the current request.
+     * Adds this service pending transaction links to the specified log record
+     * and sets it as the body of the specified operation. The log record
+     * is cloned and thus can be modified safely later on.
      */
-    Set<String> getPendingTransactions() {
+    Operation setPendingTransactionsAsBody(Operation op, Operation.TransactionContext opLogRecord) {
         synchronized (this.context) {
-            return this.context.txCoordinatorLinks;
+            opLogRecord.coordinatorLinks = this.context.txCoordinatorLinks;
+            return op.setBody(opLogRecord);
         }
     }
 
