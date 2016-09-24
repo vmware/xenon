@@ -33,6 +33,17 @@ public class OperationIndexService extends LuceneDocumentIndexService {
 
     @Override
     public void handleRequest(Operation op) {
+
+        if (op.getAction() == Action.DELETE) {
+            // by pass base class queuing and allow delete directly
+            try {
+                super.handleDeleteImpl(op);
+            } catch (Throwable e) {
+                op.fail(e);
+            }
+            return;
+        }
+
         if (!op.hasBody() || !op.getAction().equals(Action.POST)) {
             super.handleRequest(op);
             return;

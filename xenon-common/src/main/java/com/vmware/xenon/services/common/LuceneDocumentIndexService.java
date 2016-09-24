@@ -37,6 +37,7 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -560,12 +561,16 @@ public class LuceneDocumentIndexService extends StatelessService {
             return;
         }
 
-        if (a == Action.GET || a == Action.PATCH) {
-            offerQueryOperation(op);
-            this.privateQueryExecutor.execute(this::handleQueryRequest);
-        } else {
-            offerUpdateOperation(op);
-            this.privateIndexingExecutor.execute(this::handleUpdateRequest);
+        try {
+            if (a == Action.GET || a == Action.PATCH) {
+                offerQueryOperation(op);
+                this.privateQueryExecutor.execute(this::handleQueryRequest);
+            } else {
+                offerUpdateOperation(op);
+                this.privateIndexingExecutor.execute(this::handleUpdateRequest);
+            }
+        } catch (RejectedExecutionException e) {
+            op.fail(e);
         }
     }
 

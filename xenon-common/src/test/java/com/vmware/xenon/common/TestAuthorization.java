@@ -38,7 +38,6 @@ import java.util.function.Consumer;
 
 import org.junit.After;
 import org.junit.Before;
-import org.junit.Ignore;
 import org.junit.Test;
 
 import com.vmware.xenon.common.Operation.AuthorizationContext;
@@ -309,7 +308,6 @@ public class TestAuthorization extends BasicTestCase {
     }
 
     @Test
-    @Ignore("https://www.pivotaltracker.com/story/show/130803239")
     public void actionBasedAuthorization() throws Throwable {
 
         // Assume Jane's identity
