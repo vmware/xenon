@@ -2248,7 +2248,7 @@ public class ServiceHost implements ServiceRequestSender {
                 // re-start (a POST following a DELETE, with version > delete version) arrives and since
                 // the service is attached, can fail with conflict. To avoid this. retry. Retry is bounded
                 // since sync task will fail its attempt if the service is marked deleted
-                log(Level.FINE, "Retrying (%d) POST to %s in stage %s",
+                log(Level.INFO, "Retrying (%d) POST to %s in stage %s",
                         post.getId(),
                         servicePath, existing.getProcessingStage());
                 schedule(() -> {
@@ -3352,7 +3352,8 @@ public class ServiceHost implements ServiceRequestSender {
             return;
         }
 
-        log(Level.INFO, "Registering for %s to become available on owner (%s)", path, getId());
+        log(Level.INFO, "(%d) Registering for %s to become available on owner %s", op.getId(),
+                path, getId());
         // service not available, register, then retry
         op.nestCompletion((avop) -> {
             handleRequest(null, op);
@@ -4120,6 +4121,8 @@ public class ServiceHost implements ServiceRequestSender {
                 continue;
             }
 
+            log(Level.INFO, "%s in stage %s, completing %d (%s)", link, getServiceStage(link),
+                    opTemplate.getId(), opTemplate.getContextId());
             final Operation opFinal = opTemplate;
             run(() -> {
                 Operation o = getOperationForServiceAvailability(opFinal, link, doOpClone);

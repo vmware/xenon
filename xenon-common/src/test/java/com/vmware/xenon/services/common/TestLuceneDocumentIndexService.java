@@ -898,10 +898,11 @@ public class TestLuceneDocumentIndexService {
                             ctx.fail(e);
                             return;
                         }
+                        this.host.log("GET rsp from %s", o.getUri().getPath());
                         ctx.complete();
                     })
                     .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_QUEUE_FOR_SERVICE_AVAILABILITY);
-
+            this.host.log("sending GET to %s", get.getUri().getPath());
             this.host.send(get);
             if (gi == getCount / 2) {
                 // now issue the POST to create the service, in parallel with most of the GETs
