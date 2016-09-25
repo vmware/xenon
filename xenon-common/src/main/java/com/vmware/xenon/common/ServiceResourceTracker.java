@@ -622,6 +622,9 @@ class ServiceResourceTracker {
             this.persistedServiceLastAccessTimes.put(
                     resumedService.getSelfLink(), Utils.getNowMicrosUtc());
         }
+
+        this.host.getManagementService().adjustStat(
+                ServiceHostManagementService.STAT_NAME_SERVICE_RESUME_COUNT, 1);
     }
 
     boolean checkAndResumePausedServiceOnOwner(Operation inboundOp) {
@@ -729,9 +732,6 @@ class ServiceResourceTracker {
 
                             Service resumedService = (Service) o.getBodyRaw();
                             resumeService(path, resumedService);
-
-                            this.host.getManagementService().adjustStat(
-                                    ServiceHostManagementService.STAT_NAME_SERVICE_RESUME_COUNT, 1);
                             this.host.handleRequest(null, inboundOp);
                         });
         OperationContext.setAuthorizationContext(this.host.getSystemAuthorizationContext());

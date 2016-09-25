@@ -1531,19 +1531,30 @@ public class TestServiceHost {
             ServiceStat mgmtPauseStat = mgmtStats.get(
                     ServiceHostManagementService.STAT_NAME_SERVICE_PAUSE_COUNT);
 
-            if (mgmtPauseStat == null || (int) mgmtPauseStat.latestValue < states.size()) {
+            ServiceStat mgmtResumeStat = mgmtStats.get(
+                    ServiceHostManagementService.STAT_NAME_SERVICE_PAUSE_COUNT);
+
+            double totalPauseResumeCount = mgmtPauseStat != null ? mgmtPauseStat.latestValue : 0L;
+            totalPauseResumeCount += mgmtResumeStat != null ? mgmtResumeStat.latestValue : 0L;
+
+            if (mgmtPauseStat == null) {
                 this.host.log("ManagementSvc pauseStat was not set as expected %s",
                         mgmtPauseStat == null ? "null" : String.valueOf(mgmtPauseStat.latestValue));
                 return false;
             }
 
-            ServiceStat mgmtResumeStat = mgmtStats.get(
-                    ServiceHostManagementService.STAT_NAME_SERVICE_PAUSE_COUNT);
-            if (mgmtResumeStat == null || (int) mgmtResumeStat.latestValue < states.size()) {
+            if (mgmtResumeStat == null) {
                 this.host.log(
                         "ManagementSvc resumeStat was not set as expected %s",
                         mgmtResumeStat == null ? "null" : String
                                 .valueOf(mgmtResumeStat.latestValue));
+                return false;
+            }
+
+            if (totalPauseResumeCount < states.size()) {
+                this.host.log(
+                        "ManagementSvc total pause + resume was less than service count %f (%d)",
+                        totalPauseResumeCount, states.size());
                 return false;
             }
 
