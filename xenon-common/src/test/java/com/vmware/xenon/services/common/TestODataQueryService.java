@@ -506,6 +506,7 @@ public class TestODataQueryService extends BasicReusableHostTestCase {
         testOrWithNEQuery();
         testAndWithNestedORQuery();
         testOrWithNestedAndQuery();
+        testAndWithNestedANDQueryAndOutherORQuery();
         testNEAndNEQuery();
         testNEOrNEQuery();
         testANYQuery();
@@ -687,6 +688,59 @@ public class TestODataQueryService extends BasicReusableHostTestCase {
                 out2.get(document2.documentSelfLink), ExampleService.ExampleServiceState.class);
         assertTrue(outState3.name.equals(document2.name));
         assertTrue(outState3.keyValues.get("version").equals("8"));
+    }
+
+    private void testAndWithNestedANDQueryAndOutherORQuery() throws Throwable {
+        this.host.deleteAllChildServices(UriUtils.buildUri(this.host, ExampleService.FACTORY_LINK));
+        ExampleService.ExampleServiceState document1 = new ExampleService.ExampleServiceState();
+        document1.name = "Java";
+        document1.keyValues.put("version", "7");
+        document1.keyValues.put("arch", "arm32");
+        postExample(document1);
+
+        ExampleService.ExampleServiceState document2 = new ExampleService.ExampleServiceState();
+        document2.name = "Java";
+        document2.keyValues.put("version", "8");
+        document2.keyValues.put("arch", "arm64");
+        postExample(document2);
+
+        ExampleService.ExampleServiceState document3 = new ExampleService.ExampleServiceState();
+        document3.name = "GO";
+        document3.keyValues.put("version", "1.6");
+        document3.keyValues.put("arch", "arm64");
+        postExample(document3);
+
+        // works
+        String queryString2 = "$filter=(name eq Java and (keyValues.version ne '8')) or (name eq 'GO')";
+
+        Map<String, Object> out2 = doFactoryServiceQuery(queryString2, false);
+        assertNotNull(out2);
+        assertEquals(2, out2.keySet().size());
+        ExampleService.ExampleServiceState outState3 = Utils.fromJson(
+                out2.get(document1.documentSelfLink), ExampleService.ExampleServiceState.class);
+        assertTrue(outState3.name.equals(document1.name));
+        assertTrue(outState3.keyValues.get("version").equals("7"));
+
+        ExampleService.ExampleServiceState outState4 = Utils.fromJson(
+                out2.get(document3.documentSelfLink), ExampleService.ExampleServiceState.class);
+        assertTrue(outState4.name.equals(document3.name));
+        assertTrue(outState4.keyValues.get("version").equals("1.6"));
+
+        // doesnt't work
+        String queryString1 = "$filter=(name eq Java and (keyValues.version ne '8' and keyValues.arch eq '*')) or (name eq 'GO')";
+
+        Map<String, Object> out1 = doFactoryServiceQuery(queryString1, false);
+        assertNotNull(out1);
+        assertEquals(2, out1.keySet().size());
+        ExampleService.ExampleServiceState outState1 = Utils.fromJson(
+                out1.get(document1.documentSelfLink), ExampleService.ExampleServiceState.class);
+        assertTrue(outState1.name.equals(document1.name));
+        assertTrue(outState1.keyValues.get("version").equals("7"));
+
+        ExampleService.ExampleServiceState outState2 = Utils.fromJson(
+                out1.get(document3.documentSelfLink), ExampleService.ExampleServiceState.class);
+        assertTrue(outState2.name.equals(document3.name));
+        assertTrue(outState2.keyValues.get("version").equals("1.6"));
     }
 
     private void testOrWithNestedAndQuery() throws Throwable {
