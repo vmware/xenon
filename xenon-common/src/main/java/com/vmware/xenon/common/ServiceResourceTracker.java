@@ -493,6 +493,13 @@ class ServiceResourceTracker {
                 continue;
             }
 
+            if (this.host.hasPendingServiceAvailableCompletions(service.getSelfLink())) {
+                this.host.log(Level.INFO,
+                        "Pending available completions, skipping pause/stop on %s",
+                        service.getSelfLink());
+                continue;
+            }
+
             boolean odlWithNoSubscriptions = isOnDemandLoadWithNoSubscriptions(service);
             if (cacheCleared && odlWithNoSubscriptions) {
                 // if it's an on-demand-load service with no subscribers, instead of pausing it,

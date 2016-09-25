@@ -69,7 +69,7 @@ class OperationTracker {
         this.pendingStartOperations.remove(post);
     }
 
-    public SortedSet<Operation> trackServiceAvailableCompletion(String link,
+    public synchronized SortedSet<Operation> trackServiceAvailableCompletion(String link,
             Operation opTemplate, boolean doOpClone) {
         SortedSet<Operation> pendingOps = this.pendingServiceAvailableCompletions
                 .get(link);
@@ -79,6 +79,10 @@ class OperationTracker {
         }
         pendingOps.add(doOpClone ? opTemplate.clone() : opTemplate);
         return pendingOps;
+    }
+
+    public boolean hasPendingServiceAvailableCompletions(String link) {
+        return this.pendingServiceAvailableCompletions.containsKey(link);
     }
 
     public SortedSet<Operation> removeServiceAvailableCompletions(String link) {
