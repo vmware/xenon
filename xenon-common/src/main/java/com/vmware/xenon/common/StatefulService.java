@@ -417,7 +417,7 @@ public class StatefulService implements Service {
         // do basic version checking, regardless of service options
         ServiceDocument stateFromOwner = request.getLinkedState();
         if (!request.isFromReplication()) {
-            if (request.isSynchronize()) {
+            if (request.isSynchronizePost()) {
                 synchronizeWithPeers(request, null);
                 return true;
             }
@@ -476,7 +476,7 @@ public class StatefulService implements Service {
         }
 
         if (stateFromOwner.documentOwner.equals(getHost().getId())) {
-            if (request.isSynchronize()) {
+            if (request.isSynchronizeBcast()) {
                 // a request can be marked replicated AND synchronize, if its a synchronization attempt
                 // from a remote node, that was not owner for the service. Enable the DOCUMENT_OWNER
                 // option since we agree on who the owner is
@@ -1011,7 +1011,7 @@ public class StatefulService implements Service {
 
         publish(op);
 
-        if (op.isFromReplication() && !op.isSynchronize()) {
+        if (op.isFromReplication() && !op.isSynchronizePost()) {
             // avoid cost of sending the request body as a response
             op.setBodyNoCloning(null);
         }
@@ -1205,7 +1205,7 @@ public class StatefulService implements Service {
         });
 
         clonedRequest.setRetryCount(0);
-        clonedRequest.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_SYNCH);
+        clonedRequest.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_SYNCH_BCAST);
         boolean isFactorySync = request
                 .hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_NO_FORWARDING);
         getHost().selectServiceOwnerAndSynchState(this, clonedRequest, isFactorySync);
