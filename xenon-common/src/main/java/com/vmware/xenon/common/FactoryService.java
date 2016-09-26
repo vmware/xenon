@@ -297,7 +297,7 @@ public abstract class FactoryService extends StatelessService {
 
         // Request directly from clients must be marked with appropriate PRAGMA, so
         // the runtime knows this is not a restart of a service, but an original, create request
-        if (!o.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_SYNCH)) {
+        if (!o.isSynchronizePost() && !o.isSynchronizeBcast()) {
             o.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_CREATED);
         }
 
@@ -347,7 +347,7 @@ public abstract class FactoryService extends StatelessService {
 
         initialState.documentSelfLink = o.getUri().getPath();
         initialState.documentKind = Utils.buildKind(this.stateType);
-        initialState.documentTransactionId = o.getTransactionId();
+        initialState.documentTransactionId = o. getTransactionId();
         o.setBody(initialState);
 
         if (this.childOptions.contains(ServiceOption.REPLICATION) && !o.isFromReplication()
@@ -363,6 +363,15 @@ public abstract class FactoryService extends StatelessService {
     }
 
     private void completePostRequest(Operation o, Service childService) {
+        // A synch-post has an empty ServiceDocument with just the
+        // documentSelfLink property set. Since we have now updated
+        // the request URI, we can reset ServiceDocument to null.
+        // This allows ServiceHost to treat this request similar to
+        // a child-service restart.
+        if (o.isSynchronizePost()) {
+            o.setBody(null);
+        }
+
         if (!o.isFromReplication() && !o.isReplicationDisabled()) {
             o.nestCompletion(startOp -> {
                 publish(o);
