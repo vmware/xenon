@@ -919,7 +919,7 @@ public class TestNodeGroupService {
                         ServiceStats currentStats = currentEntry.getValue();
                         ServiceStat previousMaintStat = previousStats == null ? new ServiceStat()
                                 : previousStats.entries
-                                        .get(Service.STAT_NAME_MAINTENANCE_COUNT);
+                                .get(Service.STAT_NAME_MAINTENANCE_COUNT);
                         double previousValue = previousMaintStat == null ? 0L
                                 : previousMaintStat.latestValue;
                         ServiceStat maintStat = currentStats.entries
@@ -1136,9 +1136,7 @@ public class TestNodeGroupService {
         this.nodeCount = Math.max(5, this.nodeCount);
         int hostStopCount = 2;
 
-        // TODO disable automatic synchronization until
-        // https://www.pivotaltracker.com/story/show/126248293 is fixed
-        this.isPeerSynchronizationEnabled = false;
+        this.isPeerSynchronizationEnabled = true;
         this.skipAvailabilityChecks = true;
 
         if (this.host == null) {
@@ -1179,9 +1177,7 @@ public class TestNodeGroupService {
         // we need 6 nodes, 3 in each location
         this.nodeCount = 6;
 
-        // TODO disable automatic synchronization until
-        // https://www.pivotaltracker.com/story/show/126248293 is fixed
-        this.isPeerSynchronizationEnabled = false;
+        this.isPeerSynchronizationEnabled = true;
         this.skipAvailabilityChecks = true;
         this.isMultiLocationTest = true;
 

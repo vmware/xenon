@@ -39,6 +39,9 @@ public class SynchronizationTaskService
     public static final String PROPERTY_NAME_QUERY_GET_TIMEOUT_SECONDS = Utils.PROPERTY_NAME_PREFIX
             + "SynchronizationTaskService.queryGetTimeoutSeconds";
 
+    public static final String PROPERTY_NAME_SYNCH_POST_TIMEOUT_SECONDS = Utils.PROPERTY_NAME_PREFIX
+            + "SynchronizationTaskService.synchPostTimeoutSeconds";
+
     public static SynchronizationTaskService create(Supplier<Service> childServiceInstantiator) {
         if (childServiceInstantiator.get() == null) {
             throw new IllegalArgumentException("childServiceInstantiator created null child service");
@@ -106,9 +109,17 @@ public class SynchronizationTaskService
     private final boolean isDetailedLoggingEnabled = Boolean
             .getBoolean(PROPERTY_NAME_SYNCHRONIZATION_LOGGING);
 
-    private final long queryPageGetTimeoutSeconds = Long.getLong(
+    private final long queryTimeoutSeconds = Long.getLong(
             PROPERTY_NAME_QUERY_GET_TIMEOUT_SECONDS,
             TimeUnit.MICROSECONDS.toSeconds(ServiceHostState.DEFAULT_OPERATION_TIMEOUT_MICROS / 3));
+
+    private final long synchPostTimeoutSeconds = Long.getLong(
+            PROPERTY_NAME_SYNCH_POST_TIMEOUT_SECONDS,
+            TimeUnit.MICROSECONDS.toSeconds(ServiceHostState.DEFAULT_OPERATION_TIMEOUT_MICROS / 2));
+
+    private final long queryTimeoutMicros = TimeUnit.SECONDS.toMicros(this.queryTimeoutSeconds);
+
+    private final long synchPostTimeoutMicros = TimeUnit.SECONDS.toMicros(this.synchPostTimeoutSeconds);
 
     public SynchronizationTaskService() {
         super(State.class);
@@ -525,9 +536,8 @@ public class SynchronizationTaskService
             synchronizeChildrenInQueryPage(task, rsp);
         };
 
-        long timeOutMicros = TimeUnit.SECONDS.toMicros(this.queryPageGetTimeoutSeconds);
         sendRequest(Operation.createGet(task.queryPageReference)
-                .setExpiration(Utils.getNowMicrosUtc() + timeOutMicros)
+                .setExpiration(Utils.getNowMicrosUtc() + this.queryTimeoutMicros)
                 .setCompletion(c));
 
     }
@@ -572,10 +582,7 @@ public class SynchronizationTaskService
                 return;
             }
 
-            Operation post = Operation.createPost(this, link)
-                    .setCompletion(c)
-                    .setReferer(getUri());
-            startOrSynchChildService(post);
+            synchronizeChild(task, link, c);
         }
     }
 
@@ -615,13 +622,23 @@ public class SynchronizationTaskService
         return true;
     }
 
-    private void startOrSynchChildService(Operation post) {
+    private void synchronizeChild(State task, String link, Operation.CompletionHandler c) {
+        ServiceDocument d = new ServiceDocument();
+        d.documentSelfLink = UriUtils.getLastPathSegment(link);
+
+        Operation synchRequest = Operation.createPost(this, task.factorySelfLink)
+                .setBody(d)
+                .setCompletion(c)
+                .setReferer(getUri())
+                .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_SYNCH_POST)
+                .setExpiration(Utils.getNowMicrosUtc() + this.synchPostTimeoutMicros)
+                .setRetryCount(0);
+
         try {
-            Service childService = this.childServiceInstantiator.get();
-            getHost().startOrSynchService(post, childService);
+            sendRequest(synchRequest);
         } catch (Throwable e) {
             logSevere(e);
-            post.fail(e);
+            synchRequest.fail(e);
         }
     }
 

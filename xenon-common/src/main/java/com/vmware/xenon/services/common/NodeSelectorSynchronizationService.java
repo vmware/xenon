@@ -145,6 +145,7 @@ public class NodeSelectorSynchronizationService extends StatelessService {
 
         Operation remoteGet = Operation.createGet(localQueryUri)
                 .setReferer(getUri())
+                .setExpiration(Utils.getNowMicrosUtc() + TimeUnit.SECONDS.toMicros(10))
                 .setCompletion((o, e) -> {
                     if (e != null) {
                         post.fail(e);
@@ -428,8 +429,11 @@ public class NodeSelectorSynchronizationService extends StatelessService {
             ServiceDocument clonedState, URI peer) {
         URI targetFactoryUri = UriUtils.buildUri(peer, request.factoryLink);
         Operation peerOp = Operation.createPost(targetFactoryUri)
-                .transferRefererFrom(post).setExpiration(post.getExpirationMicrosUtc())
+                .transferRefererFrom(post)
                 .setCompletion(c);
+
+        peerOp.setExpiration(Utils.getNowMicrosUtc() + TimeUnit.SECONDS.toMicros(15));
+        peerOp.setRetryCount(0);
 
         peerOp.toggleOption(OperationOption.CONNECTION_SHARING, true);
 
@@ -441,7 +445,7 @@ public class NodeSelectorSynchronizationService extends StatelessService {
         peerOp.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_VERSION_CHECK);
 
         // indicate this is a synchronization request.
-        peerOp.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_SYNCH);
+        peerOp.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_SYNCH_BCAST);
 
         peerOp.addRequestHeader(Operation.REPLICATION_PHASE_HEADER,
                 Operation.REPLICATION_PHASE_COMMIT);
