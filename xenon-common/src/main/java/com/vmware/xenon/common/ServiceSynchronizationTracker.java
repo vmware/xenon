@@ -99,40 +99,6 @@ class ServiceSynchronizationTracker {
     }
 
     /**
-     * Infrastructure use only. Invoked by a factory service to either start or synchronize
-     * a child service
-     */
-    void startOrSynchService(Operation post, Service child) {
-        String path = post.getUri().getPath();
-        // not a thread safe check, but startService() will do the right thing
-        Service s = this.host.findService(path);
-
-        if (s == null) {
-            post.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_VERSION_CHECK);
-            this.host.startService(post, child);
-            return;
-        }
-
-        Operation synchPut = Operation.createPut(post.getUri())
-                .setBody(new ServiceDocument())
-                .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_NO_FORWARDING)
-                .setReplicationDisabled(true)
-                .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_SYNCH)
-                .transferRefererFrom(post)
-                .setCompletion((o, e) -> {
-                    if (e != null) {
-                        post.setStatusCode(o.getStatusCode()).setBodyNoCloning(o.getBodyRaw())
-                                .fail(e);
-                        return;
-                    }
-
-                    post.complete();
-                });
-
-        this.host.sendRequest(synchPut);
-    }
-
-    /**
      * Infrastructure use only.
      *
      * Determines the owner for the given service and if the local node is owner, proceeds
@@ -185,7 +151,7 @@ class ServiceSynchronizationTracker {
 
             // we are on owner node, proceed with synchronization logic that will discover
             // and push, latest, best state, to all peers
-            synchronizeWithPeers(s, op, rsp);
+            synchronizeWithPeers(s, op);
         };
 
         Operation selectOwnerOp = Operation.createPost(null)
@@ -195,17 +161,13 @@ class ServiceSynchronizationTracker {
         this.host.selectOwner(s.getPeerNodeSelectorPath(), s.getSelfLink(), selectOwnerOp);
     }
 
-    private void synchronizeWithPeers(Service s, Operation op, SelectOwnerResponse rsp) {
+    private void synchronizeWithPeers(Service s, Operation op) {
         // service is durable and replicated. We need to ask our peers if they
         // have more recent state version than we do, then pick the latest one
         // (or the most valid one, depending on peer consensus)
 
         SynchronizePeersRequest t = SynchronizePeersRequest.create();
         t.stateDescription = this.host.buildDocumentDescription(s);
-        t.wasOwner = s.hasOption(ServiceOption.DOCUMENT_OWNER);
-        t.isOwner = rsp.isLocalHostOwner;
-        t.ownerNodeReference = rsp.ownerNodeGroupReference;
-        t.ownerNodeId = rsp.ownerNodeId;
         t.options = s.getOptions();
         t.state = op.hasBody() ? op.getBody(s.getStateType()) : null;
         t.factoryLink = UriUtils.getParentPath(s.getSelfLink());
@@ -236,6 +198,8 @@ class ServiceSynchronizationTracker {
             template.documentVersion = -1;
             t.state = template;
         }
+
+        op.removePragmaDirective(Operation.PRAGMA_DIRECTIVE_SYNCH_POST);
 
         CompletionHandler c = (o, e) -> {
             ServiceDocument selectedState = null;
@@ -273,7 +237,7 @@ class ServiceSynchronizationTracker {
             }
 
             // indicate that synchronization occurred, we got an updated state from peers
-            op.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_SYNCH);
+            op.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_SYNCH_BCAST);
 
             // The remote peers have a more recent state than the one we loaded from the store.
             // Use the peer service state as the initial state.
@@ -286,6 +250,8 @@ class ServiceSynchronizationTracker {
         Operation synchPost = Operation
                 .createPost(synchServiceForGroup)
                 .setBodyNoCloning(t)
+                .setExpiration(op.getExpirationMicrosUtc())
+                .setRetryCount(0)
                 .setReferer(s.getUri())
                 .setCompletion(c);
         this.host.sendRequest(synchPost);

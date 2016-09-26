@@ -2209,7 +2209,7 @@ public class ServiceHost implements ServiceRequestSender {
     private boolean checkIfServiceExistsAndAttach(Service service, String servicePath,
             Operation post) {
         boolean isCreateOrSynchRequest = post.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_CREATED)
-                || post.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_SYNCH);
+                || post.isSynchronizePost() || post.isSynchronizeBcast();
         Service existing = null;
 
         synchronized (this.state) {
@@ -2246,7 +2246,7 @@ public class ServiceHost implements ServiceRequestSender {
                     && parent.hasOption(ServiceOption.IDEMPOTENT_POST);
         }
 
-        if (!isIdempotent && !post.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_SYNCH)) {
+        if (!isIdempotent && !post.isSynchronizePost() && !post.isSynchronizeBcast()) {
             if (ServiceHost.isServiceStarting(existing.getProcessingStage())) {
                 // there is a possibility of collision with a synchronization attempt: The sync task
                 // attaches a child it enumerated from a peer, starts in stage CREATED while loading
@@ -2472,7 +2472,7 @@ public class ServiceHost implements ServiceRequestSender {
                 if (isServiceIndexed(s) && !s.hasOption(ServiceOption.FACTORY)) {
                     // we only index if this is a synchronization request from a remote peer, or
                     // this is a new "create", brand new service start.
-                    if (post.isSynchronize() || hasClientSuppliedInitialState) {
+                    if (post.isSynchronizeBcast() || hasClientSuppliedInitialState) {
                         needsIndexing = true;
                     }
                 }
@@ -4872,14 +4872,6 @@ public class ServiceHost implements ServiceRequestSender {
         // normal processing path, to reduce latency. The call is still assumed to be asynchronous
         // and the request can be processed in arbitrary thread context.
         indexService.handleRequest(post);
-    }
-
-    /**
-     * Infrastructure use only. Invoked by a factory service to either start or synchronize
-     * a child service
-     */
-    void startOrSynchService(Operation post, Service child) {
-        this.serviceSynchTracker.startOrSynchService(post, child);
     }
 
     /**
