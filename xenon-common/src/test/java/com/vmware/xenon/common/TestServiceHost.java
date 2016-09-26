@@ -1298,7 +1298,7 @@ public class TestServiceHost {
         // we create the two persisted instances, and they started. Now stop the host and confirm restart occurs
         this.host.stop();
         this.host.setPort(0);
-        this.host.start();
+        VerificationHost.restartStatefulHost(this.host);
         this.host.startFactoryServicesSynchronously(ParentService.createFactory(),
                 ChildDependsOnParentService.createFactory());
 
