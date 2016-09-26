@@ -298,7 +298,7 @@ public abstract class FactoryService extends StatelessService {
 
         // Request directly from clients must be marked with appropriate PRAGMA, so
         // the runtime knows this is not a restart of a service, but an original, create request
-        if (!o.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_SYNCH)) {
+        if (!o.isSynchronize()) {
             o.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_CREATED);
         }
 
@@ -372,6 +372,17 @@ public abstract class FactoryService extends StatelessService {
     }
 
     private void completePostRequest(Operation o, Service childService) {
+        // A SYNCH_POST request has an empty ServiceDocument with just the
+        // documentSelfLink property set to allow the FactoryService to
+        // route the request to the owner node. Other than that the document
+        // is empty. The owner node is expected to compute the best state
+        // in the node-group and use that for starting the service locally.
+        // NOTE: if the service is already started on the owner node,
+        // Synchronization will update it.
+        if (o.isSynchronizePost()) {
+            o.setBody(null);
+        }
+
         if (!o.isFromReplication() && !o.isReplicationDisabled()) {
             o.nestCompletion(startOp -> {
                 publish(o);

@@ -39,6 +39,9 @@ public class SynchronizationTaskService
     public static final String PROPERTY_NAME_QUERY_TIMEOUT_SECONDS = Utils.PROPERTY_NAME_PREFIX
             + "SynchronizationTaskService.queryTimeoutSeconds";
 
+    public static final String PROPERTY_NAME_SYNCH_TIMEOUT_SECONDS = Utils.PROPERTY_NAME_PREFIX
+            + "SynchronizationTaskService.synchTimeoutSeconds";
+
     public static SynchronizationTaskService create(Supplier<Service> childServiceInstantiator) {
         if (childServiceInstantiator.get() == null) {
             throw new IllegalArgumentException("childServiceInstantiator created null child service");
@@ -110,7 +113,13 @@ public class SynchronizationTaskService
             PROPERTY_NAME_QUERY_TIMEOUT_SECONDS,
             TimeUnit.MICROSECONDS.toSeconds(ServiceHostState.DEFAULT_OPERATION_TIMEOUT_MICROS / 3));
 
+    private final long synchTimeoutSeconds = Long.getLong(
+            PROPERTY_NAME_SYNCH_TIMEOUT_SECONDS,
+            TimeUnit.MICROSECONDS.toSeconds(ServiceHostState.DEFAULT_OPERATION_TIMEOUT_MICROS / 2));
+
     private final long queryTimeoutMicros = TimeUnit.SECONDS.toMicros(this.queryTimeoutSeconds);
+
+    private final long synchTimeoutMicros = TimeUnit.SECONDS.toMicros(this.synchTimeoutSeconds);
 
     public SynchronizationTaskService() {
         super(State.class);
@@ -573,10 +582,7 @@ public class SynchronizationTaskService
                 return;
             }
 
-            Operation post = Operation.createPost(this, link)
-                    .setCompletion(c)
-                    .setReferer(getUri());
-            startOrSynchChildService(post);
+            synchronizeService(task, link, c);
         }
     }
 
@@ -616,13 +622,32 @@ public class SynchronizationTaskService
         return true;
     }
 
-    private void startOrSynchChildService(Operation post) {
+    private void synchronizeService(State task, String link, Operation.CompletionHandler c) {
+        // To trigger synchronization of the child-service, we make
+        // a SYNCH-POST request. The request body is an empty document
+        // with just the documentSelfLink property set to the link
+        // of the child-service. This is done so that the FactoryService
+        // routes the request to the DOCUMENT_OWNER.
+        ServiceDocument d = new ServiceDocument();
+        d.documentSelfLink = UriUtils.getLastPathSegment(link);
+
+        // Because the synchronization process is kicked-in when the
+        // node-group is going through changes, we explicitly set
+        // retryCount to 0, to avoid retrying on a node that is actually
+        // down. Not doing so will cause un-necessary operation-tracking
+        // that gets worse in conditions under heavy load.
+        Operation synchRequest = Operation.createPost(this, task.factorySelfLink)
+                .setBody(d)
+                .setCompletion(c)
+                .setReferer(getUri())
+                .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_SYNCH_POST)
+                .setExpiration(Utils.getNowMicrosUtc() + this.synchTimeoutMicros)
+                .setRetryCount(0);
         try {
-            Service childService = this.childServiceInstantiator.get();
-            getHost().startOrSynchService(post, childService);
+            sendRequest(synchRequest);
         } catch (Throwable e) {
             logSevere(e);
-            post.fail(e);
+            synchRequest.fail(e);
         }
     }
 
