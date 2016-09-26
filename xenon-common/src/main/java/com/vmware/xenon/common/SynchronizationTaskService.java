@@ -108,7 +108,7 @@ public class SynchronizationTaskService
 
     private final long queryPageGetTimeoutSeconds = Long.getLong(
             PROPERTY_NAME_QUERY_GET_TIMEOUT_SECONDS,
-            TimeUnit.MICROSECONDS.toSeconds(ServiceHostState.DEFAULT_OPERATION_TIMEOUT_MICROS / 3));
+            TimeUnit.MICROSECONDS.toSeconds(ServiceHostState.DEFAULT_OPERATION_TIMEOUT_MICROS / 10));
 
     public SynchronizationTaskService() {
         super(State.class);
@@ -572,10 +572,7 @@ public class SynchronizationTaskService
                 return;
             }
 
-            Operation post = Operation.createPost(this, link)
-                    .setCompletion(c)
-                    .setReferer(getUri());
-            startOrSynchChildService(post);
+            synchronizeChild(task, link, c);
         }
     }
 
@@ -586,9 +583,11 @@ public class SynchronizationTaskService
             return false;
         }
 
+        long timeOutMicros = TimeUnit.SECONDS.toMicros(this.queryPageGetTimeoutSeconds);
+
         Operation selectOp = Operation
                 .createPost(null)
-                .setExpiration(task.documentExpirationTimeMicros)
+                .setExpiration(Utils.getNowMicrosUtc() + timeOutMicros)
                 .setCompletion((o, e) -> {
                     if (e != null) {
                         sendSelfFailurePatch(task, e.getMessage());
@@ -615,13 +614,24 @@ public class SynchronizationTaskService
         return true;
     }
 
-    private void startOrSynchChildService(Operation post) {
+    private void synchronizeChild(State task, String link, Operation.CompletionHandler c) {
+        ServiceDocument d = new ServiceDocument();
+        d.documentSelfLink = UriUtils.getLastPathSegment(link);
+
+        long timeOutMicros = TimeUnit.SECONDS.toMicros(this.queryPageGetTimeoutSeconds);
+
+        Operation synchRequest = Operation.createPost(this, task.factorySelfLink)
+                .setBody(d)
+                .setCompletion(c)
+                .setReferer(getUri())
+                .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_SYNCH_POST)
+                .setExpiration(Utils.getNowMicrosUtc() + timeOutMicros);
+
         try {
-            Service childService = this.childServiceInstantiator.get();
-            getHost().startOrSynchService(post, childService);
+            sendRequest(synchRequest);
         } catch (Throwable e) {
             logSevere(e);
-            post.fail(e);
+            synchRequest.fail(e);
         }
     }
 
