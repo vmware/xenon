@@ -14,6 +14,7 @@
 package com.vmware.xenon.common;
 
 import java.net.URI;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
@@ -23,6 +24,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Consumer;
 import java.util.function.Function;
 
 import org.junit.After;
@@ -31,11 +33,15 @@ import org.junit.Test;
 import com.vmware.xenon.common.Service.Action;
 import com.vmware.xenon.common.ServiceSubscriptionState.ServiceSubscriber;
 import com.vmware.xenon.common.http.netty.NettyHttpServiceClient;
+import com.vmware.xenon.common.test.MinimalTestServiceState;
 import com.vmware.xenon.common.test.TestContext;
 import com.vmware.xenon.common.test.VerificationHost;
 import com.vmware.xenon.services.common.ExampleService;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
+import com.vmware.xenon.services.common.MinimalTestService;
 import com.vmware.xenon.services.common.NodeGroupService.NodeGroupConfig;
+import com.vmware.xenon.services.common.ServiceUriPaths;
+
 
 public class TestSubscriptions extends BasicReportTestCase {
     private final int NODE_COUNT = 2;
@@ -230,6 +236,58 @@ public class TestSubscriptions extends BasicReportTestCase {
         doNotificationsWithExpiration(childUris);
 
         doDeleteNotifications(childUris, counterValue);
+    }
+
+    @Test
+    public void testSubscriptionsWithAuth() throws Throwable {
+        VerificationHost hostWithAuth = null;
+        try {
+            String testUserEmail = "foo@vmware.com";
+            hostWithAuth = VerificationHost.create(0);
+            hostWithAuth.setAuthorizationEnabled(true);
+            hostWithAuth.start();
+            hostWithAuth.setSystemAuthorizationContext();
+            TestContext waitContext = new TestContext(1, Duration.ofSeconds(5));
+            AuthorizationSetupHelper.create()
+                    .setHost(hostWithAuth)
+                    .setDocumentKind(Utils.buildKind(MinimalTestServiceState.class))
+                    .setUserEmail(testUserEmail)
+                    .setUserSelfLink(testUserEmail)
+                    .setUserPassword(testUserEmail)
+                    .setCompletion(waitContext.getCompletion())
+                    .start();
+            hostWithAuth.testWait(waitContext);
+            hostWithAuth.resetSystemAuthorizationContext();
+            hostWithAuth.assumeIdentity(UriUtils.buildUriPath(ServiceUriPaths.CORE_AUTHZ_USERS, testUserEmail));
+            MinimalTestService s = new MinimalTestService();
+            MinimalTestServiceState serviceState = new MinimalTestServiceState();
+            serviceState.id = UUID.randomUUID().toString();
+            String minimalServiceUUID = UUID.randomUUID().toString();
+            TestContext notifyContext = new TestContext(1, Duration.ofSeconds(5));
+            hostWithAuth.startServiceAndWait(s, minimalServiceUUID, serviceState);
+
+            Consumer<Operation> notifyC = (nOp) -> {
+                nOp.complete();
+                switch (nOp.getAction()) {
+                case PUT:
+                    notifyContext.completeIteration();
+                    break;
+                default:
+                    break;
+
+                }
+            };
+            Operation subscribe = Operation.createPost(UriUtils.buildUri(hostWithAuth, minimalServiceUUID));
+            subscribe.setReferer(hostWithAuth.getReferer());
+            ServiceSubscriber subscriber = new ServiceSubscriber();
+            subscriber.replayState = true;
+            hostWithAuth.startSubscriptionService(subscribe, notifyC, subscriber);
+            hostWithAuth.testWait(notifyContext);
+        } finally {
+            if (hostWithAuth != null) {
+                hostWithAuth.tearDown();
+            }
+        }
     }
 
     @Test

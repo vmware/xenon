@@ -1823,6 +1823,12 @@ public class ServiceHost implements ServiceRequestSender {
 
         Service notificationTarget = new StatelessService() {
             @Override
+            public void authorizeRequest(Operation op) {
+                op.complete();
+                return;
+            }
+
+            @Override
             public void handleRequest(Operation op) {
                 if (!op.isNotification()) {
                     super.handleRequest(op);
