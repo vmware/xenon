@@ -572,10 +572,7 @@ public class SynchronizationTaskService
                 return;
             }
 
-            Operation post = Operation.createPost(this, link)
-                    .setCompletion(c)
-                    .setReferer(getUri());
-            startOrSynchChildService(post);
+            synchronizeChild(task, link, c);
         }
     }
 
@@ -615,14 +612,48 @@ public class SynchronizationTaskService
         return true;
     }
 
-    private void startOrSynchChildService(Operation post) {
+    private void synchronizeChild(State task, String link, Operation.CompletionHandler c) {
+        Service childService = this.childServiceInstantiator.get();
+
+        ServiceDocument d = new ServiceDocument();
+        d.documentSelfLink = UriUtils.getLastPathSegment(link);
+
+        Operation synchRequest = Operation.createPost(this, task.factorySelfLink)
+                .setBody(d)
+                .setCompletion(c)
+                .setReferer(getUri())
+                .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_SYNCH_POST);
+
         try {
-            Service childService = this.childServiceInstantiator.get();
-            getHost().startOrSynchService(post, childService);
+            sendRequest(synchRequest);
         } catch (Throwable e) {
             logSevere(e);
-            post.fail(e);
+            synchRequest.fail(e);
         }
+    }
+
+    private void forwardSynchRequestToOwner(Operation synchRequest,
+            State task, ServiceDocument d, Operation.CompletionHandler c) {
+
+        Operation selectOwnerOp = Operation.createPost(null)
+                .setExpiration(task.documentExpirationTimeMicros)
+                .setCompletion((o, e) -> {
+                    if (e != null) {
+                        logWarning("owner selection failed: %s", e.toString());
+                        c.handle(null, e);
+                        return;
+                    }
+                    NodeSelectorService.SelectOwnerResponse rsp = o.getBody(
+                            NodeSelectorService.SelectOwnerResponse.class);
+                    URI ownerUri = NodeSelectorService.SelectOwnerResponse
+                            .buildUriToOwner(rsp, task.factorySelfLink, null);
+
+                    synchRequest.setUri(ownerUri);
+                    sendRequest(synchRequest);
+                });
+
+        this.getHost().selectOwner(
+                task.nodeSelectorLink, d.documentSelfLink, selectOwnerOp);
     }
 
     private void setFactoryAvailability(
