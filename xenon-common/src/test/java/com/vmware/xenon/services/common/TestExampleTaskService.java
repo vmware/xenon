@@ -80,7 +80,10 @@ public class TestExampleTaskService extends BasicReusableHostTestCase {
         // stop the host, and verify task deals with restart
         this.host.stop();
         this.host.setPort(0);
-        VerificationHost.restartStatefulHost(this.host);
+        if (!VerificationHost.restartStatefulHost(this.host)) {
+            this.host.log("Failed restart of host, aborting");
+            return;
+        }
         this.host.waitForServiceAvailable(taskLink);
         // verify service is re-started, and in FINISHED state
         ExampleTaskServiceState state = waitForTask(

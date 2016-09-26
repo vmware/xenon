@@ -3131,7 +3131,10 @@ public class TestNodeGroupService {
 
         hostToStop.setPort(0);
         hostToStop.setSecurePort(0);
-        VerificationHost.restartStatefulHost(hostToStop);
+        if (!VerificationHost.restartStatefulHost(hostToStop)) {
+            this.host.log("Failed restart of host, aborting");
+            return;
+        }
 
         // restart host, rejoin it
         URI nodeGroupU = UriUtils.buildUri(hostToStop, ServiceUriPaths.DEFAULT_NODE_GROUP);
