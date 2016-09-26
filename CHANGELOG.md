@@ -2,6 +2,9 @@
 
 ## 0.9.7-SNAPSHOT
 
+* Authorize all requests on default notification target services created in
+  ServiceHost.startSubscriptionService() 
+
 ## 0.9.6
 
 * Add errorCode property to ServiceErrorResponse to allow Xenon services
