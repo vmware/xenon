@@ -68,6 +68,15 @@ public class TestSubscriptions extends BasicReportTestCase {
     @Test
     public void remoteAndReliableSubscriptions() throws Throwable {
         setUpPeers();
+
+        // we abruptly stop nodes and on occasion requests to failed nodes
+        // can timeout (which is normally OK, other than they will then exceed the test
+        // timeout). So set the default time out to something sort
+        for (VerificationHost h : this.host.getInProcessHostMap().values()) {
+            h.setOperationTimeOutMicros(
+                    TimeUnit.SECONDS.toMicros(this.host.getTimeoutSeconds() / 3));
+        }
+
         // pick one host to post to
         VerificationHost serviceHost = this.host.getPeerHost();
         // test host to receive notifications
@@ -76,55 +85,60 @@ public class TestSubscriptions extends BasicReportTestCase {
         List<URI> exampleURIs = new ArrayList<>();
         // create example service documents across all nodes
         serviceHost.createExampleServices(serviceHost, serviceCount, exampleURIs, null);
-
+        TestContext oneUseNotificationCtx = this.host.testCreate(1);
         StatelessService notificationTarget = new StatelessService() {
             @Override
             public void handleRequest(Operation update) {
                 update.complete();
                 if (update.getAction().equals(Action.PATCH)) {
                     if (update.getUri().getHost() == null) {
-                        localHost.failIteration(new IllegalStateException(
+                        oneUseNotificationCtx.fail(new IllegalStateException(
                                 "Notification URI does not have host specified"));
                         return;
                     }
-                    localHost.completeIteration();
+                    oneUseNotificationCtx.complete();
                 }
-
             }
         };
 
         String[] ownerHostId = new String[1];
         URI uri = exampleURIs.get(0);
         URI subUri = UriUtils.buildUri(serviceHost.getUri(), uri.getPath());
-        this.host.testStart(1);
-        Operation subscribe = Operation.createPost(subUri).setCompletion(this.host.getCompletion());
+        TestContext subscribeCtx = this.host.testCreate(1);
+        Operation subscribe = Operation.createPost(subUri)
+                .setCompletion(subscribeCtx.getCompletion());
         subscribe.setReferer(localHost.getReferer());
         subscribe.forceRemote();
         // replay state
         serviceHost.startSubscriptionService(subscribe, notificationTarget, ServiceSubscriber
                 .create(false).setUsePublicUri(true));
-        this.host.testWait();
-        this.host.testStart(2);
+        this.host.testWait(subscribeCtx);
+
         // do an update to cause a notification
+        TestContext updateCtx = this.host.testCreate(1);
         ExampleServiceState body = new ExampleServiceState();
         body.name = UUID.randomUUID().toString();
         this.host.send(Operation.createPatch(uri).setBody(body).setCompletion((o, e) -> {
             if (e != null) {
-                this.host.failIteration(e);
+                updateCtx.fail(e);
                 return;
             }
             ExampleServiceState rsp = o.getBody(ExampleServiceState.class);
             ownerHostId[0] = rsp.documentOwner;
-            this.host.completeIteration();
+            updateCtx.complete();
 
         }));
-        this.host.testWait();
+        this.host.testWait(updateCtx);
+        this.host.testWait(oneUseNotificationCtx);
 
         // remove subscription
-        this.host.testStart(1);
-        serviceHost.stopSubscriptionService(subscribe.clone().setAction(Action.DELETE),
+        TestContext unSubscribeCtx = this.host.testCreate(1);
+        Operation unSubscribe = subscribe.clone()
+                .setCompletion(unSubscribeCtx.getCompletion())
+                .setAction(Action.DELETE);
+        serviceHost.stopSubscriptionService(unSubscribe,
                 notificationTarget.getUri());
-        this.host.testWait();
+        this.host.testWait(unSubscribeCtx);
         this.verifySubscriberCount(new URI[] { uri }, 0);
 
         VerificationHost ownerHost = null;
@@ -136,20 +150,20 @@ public class TestSubscriptions extends BasicReportTestCase {
             } else {
                 ownerHost = h;
             }
-            h.setOperationTimeOutMicros(TimeUnit.SECONDS.toMicros(10));
         }
 
         this.host.log("Owner node: %s, subscriber node: %s (%s)", ownerHostId[0],
                 serviceHost.getId(), serviceHost.getUri());
 
         AtomicInteger reliableNotificationCount = new AtomicInteger();
-        localHost.testStart(1);
+        TestContext subscribeCtxNonOwner = this.host.testCreate(1);
         // subscribe using non owner host
+        subscribe.setCompletion(subscribeCtxNonOwner.getCompletion());
         serviceHost.startReliableSubscriptionService(subscribe, (o) -> {
             reliableNotificationCount.incrementAndGet();
             o.complete();
         });
-        localHost.testWait();
+        localHost.testWait(subscribeCtxNonOwner);
 
         // send explicit update to example service
         body.name = UUID.randomUUID().toString();
@@ -183,7 +197,8 @@ public class TestSubscriptions extends BasicReportTestCase {
 
         this.host.stopHost(ownerHost);
 
-        this.host.waitForNodeGroupConvergence(1);
+        URI factoryUri = UriUtils.buildUri(serviceHost, ExampleService.FACTORY_LINK);
+        this.host.waitForReplicatedFactoryServiceAvailable(factoryUri);
 
         uri = UriUtils.buildUri(serviceHost.getUri(), uri.getPath());
 
@@ -193,7 +208,7 @@ public class TestSubscriptions extends BasicReportTestCase {
 
         // and test once again that notifications flow.
         this.host.log("Sending PATCH requests to %s", uri);
-        int c = 10;
+        long c = this.updateCount;
         for (int i = 0; i < c; i++) {
             body.name = "post-stop-" + UUID.randomUUID().toString();
             this.host.send(Operation.createPatch(uri).setBody(body));

@@ -196,17 +196,17 @@ public class NodeSelectorReplicationService extends StatelessService {
             boolean completeWithSuccess = false;
             boolean completeWithFailure = false;
             synchronized (outboundOp) {
+                // to avoid a AtomicBoolean and additional allocations, and make the completion
+                // check atomic, do the count checks inside the synchronized block
                 if (e != null) {
                     countsAndStatus[1] = countsAndStatus[1] + 1;
                     fCount = countsAndStatus[1];
+                    completeWithFailure = fCount == failureThresholdFinal;
                 } else {
                     countsAndStatus[0] = countsAndStatus[0] + 1;
                     sCount = countsAndStatus[0];
+                    completeWithSuccess = sCount == successThresholdFinal;
                 }
-                // to avoid a AtomicBoolean and additional allocations, and make the completion
-                // check atomic, do the count checks inside the synchronized block
-                completeWithSuccess = sCount == successThresholdFinal;
-                completeWithFailure = fCount == failureThresholdFinal;
             }
 
             if (completeWithSuccess) {
