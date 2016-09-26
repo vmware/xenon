@@ -443,7 +443,7 @@ public class NodeSelectorSynchronizationService extends StatelessService {
         peerOp.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_VERSION_CHECK);
 
         // indicate this is a synchronization request.
-        peerOp.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_SYNCH);
+        peerOp.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_SYNCH_BCAST);
 
         peerOp.addRequestHeader(Operation.REPLICATION_PHASE_HEADER,
                 Operation.REPLICATION_PHASE_COMMIT);
@@ -456,7 +456,9 @@ public class NodeSelectorSynchronizationService extends StatelessService {
                 request.factoryLink, "");
 
         if (isServiceDeleted) {
+            peerOp.setUri(UriUtils.buildUri(peer, bestState.documentSelfLink));
             peerOp.setAction(Action.DELETE);
+            clonedState.documentSelfLink = bestState.documentSelfLink;
         }
 
         peerOp.setBody(clonedState);

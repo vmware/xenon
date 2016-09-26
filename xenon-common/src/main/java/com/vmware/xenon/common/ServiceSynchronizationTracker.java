@@ -117,7 +117,7 @@ class ServiceSynchronizationTracker {
                 .setBody(new ServiceDocument())
                 .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_NO_FORWARDING)
                 .setReplicationDisabled(true)
-                .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_SYNCH)
+                .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_SYNCH_BCAST)
                 .transferRefererFrom(post)
                 .setCompletion((o, e) -> {
                     if (e != null) {
@@ -237,6 +237,8 @@ class ServiceSynchronizationTracker {
             t.state = template;
         }
 
+        op.removePragmaDirective(Operation.PRAGMA_DIRECTIVE_SYNCH_POST);
+
         CompletionHandler c = (o, e) -> {
             ServiceDocument selectedState = null;
 
@@ -273,7 +275,7 @@ class ServiceSynchronizationTracker {
             }
 
             // indicate that synchronization occurred, we got an updated state from peers
-            op.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_SYNCH);
+            op.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_SYNCH_BCAST);
 
             // The remote peers have a more recent state than the one we loaded from the store.
             // Use the peer service state as the initial state.
