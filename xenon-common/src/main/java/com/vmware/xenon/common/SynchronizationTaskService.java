@@ -21,7 +21,6 @@ import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 import com.vmware.xenon.common.ServiceDocumentDescription.PropertyUsageOption;
-import com.vmware.xenon.common.ServiceHost.ServiceHostState;
 import com.vmware.xenon.services.common.QueryTask;
 import com.vmware.xenon.services.common.ServiceUriPaths;
 import com.vmware.xenon.services.common.TaskService;
@@ -103,12 +102,11 @@ public class SynchronizationTaskService
 
     private Supplier<Service> childServiceInstantiator;
 
-    private final boolean isDetailedLoggingEnabled = Boolean
-            .getBoolean(PROPERTY_NAME_SYNCHRONIZATION_LOGGING);
+    private final boolean isDetailedLoggingEnabled = true;
 
     private final long queryPageGetTimeoutSeconds = Long.getLong(
             PROPERTY_NAME_QUERY_GET_TIMEOUT_SECONDS,
-            TimeUnit.MICROSECONDS.toSeconds(ServiceHostState.DEFAULT_OPERATION_TIMEOUT_MICROS / 3));
+            TimeUnit.MICROSECONDS.toSeconds(5));
 
     public SynchronizationTaskService() {
         super(State.class);
@@ -572,10 +570,7 @@ public class SynchronizationTaskService
                 return;
             }
 
-            Operation post = Operation.createPost(this, link)
-                    .setCompletion(c)
-                    .setReferer(getUri());
-            startOrSynchChildService(post);
+            synchronizeChild(task, link, c);
         }
     }
 
@@ -586,9 +581,11 @@ public class SynchronizationTaskService
             return false;
         }
 
+        long timeOutMicros = TimeUnit.SECONDS.toMicros(this.queryPageGetTimeoutSeconds);
+
         Operation selectOp = Operation
                 .createPost(null)
-                .setExpiration(task.documentExpirationTimeMicros)
+                .setExpiration(Utils.getNowMicrosUtc() + timeOutMicros)
                 .setCompletion((o, e) -> {
                     if (e != null) {
                         sendSelfFailurePatch(task, e.getMessage());
@@ -615,14 +612,49 @@ public class SynchronizationTaskService
         return true;
     }
 
-    private void startOrSynchChildService(Operation post) {
+    private void synchronizeChild(State task, String link, Operation.CompletionHandler c) {
+        ServiceDocument d = new ServiceDocument();
+        d.documentSelfLink = UriUtils.getLastPathSegment(link);
+
+        long timeOutMicros = TimeUnit.SECONDS.toMicros(this.queryPageGetTimeoutSeconds);
+
+        Operation synchRequest = Operation.createPost(this, task.factorySelfLink)
+                .setBody(d)
+                .setCompletion(c)
+                .setReferer(getUri())
+                .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_SYNCH_POST)
+                .setExpiration(Utils.getNowMicrosUtc() + timeOutMicros);
+
         try {
-            Service childService = this.childServiceInstantiator.get();
-            getHost().startOrSynchService(post, childService);
+            sendRequest(synchRequest);
         } catch (Throwable e) {
             logSevere(e);
-            post.fail(e);
+            synchRequest.fail(e);
         }
+    }
+
+    private void forwardSynchRequestToOwner(Operation synchRequest,
+            State task, ServiceDocument d, Operation.CompletionHandler c) {
+
+        Operation selectOwnerOp = Operation.createPost(null)
+                .setExpiration(task.documentExpirationTimeMicros)
+                .setCompletion((o, e) -> {
+                    if (e != null) {
+                        logWarning("owner selection failed: %s", e.toString());
+                        c.handle(null, e);
+                        return;
+                    }
+                    NodeSelectorService.SelectOwnerResponse rsp = o.getBody(
+                            NodeSelectorService.SelectOwnerResponse.class);
+                    URI ownerUri = NodeSelectorService.SelectOwnerResponse
+                            .buildUriToOwner(rsp, task.factorySelfLink, null);
+
+                    synchRequest.setUri(ownerUri);
+                    sendRequest(synchRequest);
+                });
+
+        this.getHost().selectOwner(
+                task.nodeSelectorLink, d.documentSelfLink, selectOwnerOp);
     }
 
     private void setFactoryAvailability(

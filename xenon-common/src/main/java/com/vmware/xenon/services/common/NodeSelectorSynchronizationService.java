@@ -441,7 +441,7 @@ public class NodeSelectorSynchronizationService extends StatelessService {
         peerOp.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_VERSION_CHECK);
 
         // indicate this is a synchronization request.
-        peerOp.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_SYNCH);
+        peerOp.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_SYNCH_BCAST);
 
         peerOp.addRequestHeader(Operation.REPLICATION_PHASE_HEADER,
                 Operation.REPLICATION_PHASE_COMMIT);
