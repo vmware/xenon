@@ -2,6 +2,14 @@
 
 ## 0.9.7-SNAPSHOT
 
+* Allow services to update notification handler
+
+  Users can specify a Consumer object instance while subscribing
+  to notifications. When that is done, xenon spins up a transient
+  stateless service as the notification target. This service did not
+  allow any service to issue subscription update messages due to how authz
+  was setup
+
 ## 0.9.6
 
 * Add errorCode property to ServiceErrorResponse to allow Xenon services
