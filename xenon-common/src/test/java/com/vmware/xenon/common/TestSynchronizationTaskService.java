@@ -22,6 +22,7 @@ import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
 import org.junit.After;
@@ -32,6 +33,7 @@ import org.junit.Test;
 
 import com.vmware.xenon.common.test.TestContext;
 import com.vmware.xenon.common.test.TestRequestSender;
+import com.vmware.xenon.common.test.VerificationHost;
 import com.vmware.xenon.services.common.ExampleService;
 import com.vmware.xenon.services.common.NodeGroupService;
 import com.vmware.xenon.services.common.ServiceUriPaths;
@@ -54,10 +56,15 @@ public class TestSynchronizationTaskService extends BasicTestCase {
                 SynchronizationTaskService.PROPERTY_NAME_SYNCHRONIZATION_LOGGING, "false");
     }
 
+    @Override
+    public void beforeHostStart(VerificationHost host) {
+        host.setMaintenanceIntervalMicros(TimeUnit.MILLISECONDS.toMicros(
+                VerificationHost.FAST_MAINT_INTERVAL_MILLIS));
+    }
+
     @Before
     public void setUp() {
         CommandLineArgumentParser.parseFromProperties(this);
-
         URI exampleFactoryUri = UriUtils.buildUri(
                 this.host.getUri(), ExampleService.FACTORY_LINK);
         this.host.waitForReplicatedFactoryServiceAvailable(

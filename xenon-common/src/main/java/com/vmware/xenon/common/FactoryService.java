@@ -807,11 +807,6 @@ public abstract class FactoryService extends StatelessService {
 
     @Override
     public void handleNodeGroupMaintenance(Operation maintOp) {
-        if (!this.childOptions.contains(ServiceOption.REPLICATION)) {
-            maintOp.complete();
-            return;
-        }
-
         if (hasOption(ServiceOption.ON_DEMAND_LOAD)) {
             // on demand load child services are synchronized on first use, or when an explicit
             // migration task runs
@@ -865,6 +860,7 @@ public abstract class FactoryService extends StatelessService {
 
     private void startFactorySynchronizationTask(Operation parentOp, Long membershipUpdateTimeMicros) {
         if (this.childOptions.contains(ServiceOption.ON_DEMAND_LOAD)) {
+            setAvailable(true);
             parentOp.complete();
             return;
         }
@@ -888,6 +884,7 @@ public abstract class FactoryService extends StatelessService {
                         parentOp.fail(e);
                         return;
                     }
+
                     parentOp.complete();
                 });
         sendRequest(post);

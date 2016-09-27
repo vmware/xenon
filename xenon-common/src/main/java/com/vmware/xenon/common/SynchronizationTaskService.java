@@ -21,6 +21,7 @@ import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 import com.vmware.xenon.common.ServiceDocumentDescription.PropertyUsageOption;
+import com.vmware.xenon.common.ServiceHost.ServiceHostState;
 import com.vmware.xenon.services.common.QueryTask;
 import com.vmware.xenon.services.common.ServiceUriPaths;
 import com.vmware.xenon.services.common.TaskService;
@@ -34,6 +35,9 @@ public class SynchronizationTaskService
     public static final String FACTORY_LINK = ServiceUriPaths.SYNCHRONIZATION_TASKS;
     public static final String PROPERTY_NAME_SYNCHRONIZATION_LOGGING = Utils.PROPERTY_NAME_PREFIX
             + "SynchronizationTaskService.isDetailedLoggingEnabled";
+
+    public static final String PROPERTY_NAME_QUERY_GET_TIMEOUT_SECONDS = Utils.PROPERTY_NAME_PREFIX
+            + "SynchronizationTaskService.queryGetTimeoutSeconds";
 
     public static SynchronizationTaskService create(Supplier<Service> childServiceInstantiator) {
         if (childServiceInstantiator.get() == null) {
@@ -99,8 +103,12 @@ public class SynchronizationTaskService
 
     private Supplier<Service> childServiceInstantiator;
 
-    private boolean isDetailedLoggingEnabled = Boolean
+    private final boolean isDetailedLoggingEnabled = Boolean
             .getBoolean(PROPERTY_NAME_SYNCHRONIZATION_LOGGING);
+
+    private final long queryPageGetTimeoutSeconds = Long.getLong(
+            PROPERTY_NAME_QUERY_GET_TIMEOUT_SECONDS,
+            TimeUnit.MICROSECONDS.toSeconds(ServiceHostState.DEFAULT_OPERATION_TIMEOUT_MICROS / 3));
 
     public SynchronizationTaskService() {
         super(State.class);
@@ -265,8 +273,6 @@ public class SynchronizationTaskService
                     task.subStage, task.membershipUpdateTimeMicros);
         }
 
-        put.complete();
-
         if (startStateMachine) {
             // The synch-task makes sure that at any given time, there
             // is only one active execution of the task per factory.
@@ -275,8 +281,9 @@ public class SynchronizationTaskService
             // redundant since the FactoryService may already have
             // changed the status to un-available, but just for
             // correctness we do it here again.
-            setFactoryAvailability(task, false,
-                    (o) -> handleSubStage(task));
+            setFactoryAvailability(task, false, (o) -> handleSubStage(task), put);
+        } else {
+            put.complete();
         }
     }
 
@@ -318,7 +325,7 @@ public class SynchronizationTaskService
             // as the task reached the FINISHED stage.
             if (!TaskState.isInProgress(currentTask.taskInfo)) {
                 setFactoryAvailability(currentTask, true,
-                        (o) -> put.fail(Operation.STATUS_CODE_BAD_REQUEST, e, rsp));
+                        (o) -> put.fail(Operation.STATUS_CODE_BAD_REQUEST, e, rsp), null);
             } else {
                 put.fail(Operation.STATUS_CODE_BAD_REQUEST, e, rsp);
             }
@@ -360,7 +367,15 @@ public class SynchronizationTaskService
                     currentStage, currentSubStage, task.taskInfo.stage, task.subStage);
         }
 
-        patch.complete();
+        boolean isTaskFinished = !TaskState.isInProgress(task.taskInfo);
+        if (isTaskFinished) {
+            // Since the synch-task finished (regardless of failure), we will
+            // mark the factory as available here. Complete the patch *after* we set availability
+            // to avoid races with other self patches
+            setFactoryAvailability(task, true, null, patch);
+        } else {
+            patch.complete();
+        }
 
         switch (task.taskInfo.stage) {
         case STARTED:
@@ -370,9 +385,6 @@ public class SynchronizationTaskService
             logInfo("Task canceled: not implemented, ignoring");
             break;
         case FINISHED:
-            // Since the synch-task finished successfully, we will
-            // mark the factory as available here.
-            setFactoryAvailability(task, true, (o) -> { });
             break;
         case FAILED:
             logWarning("Task failed: %s",
@@ -381,6 +393,7 @@ public class SynchronizationTaskService
         default:
             break;
         }
+
     }
 
     public void handleSubStage(State task) {
@@ -511,8 +524,11 @@ public class SynchronizationTaskService
             }
             synchronizeChildrenInQueryPage(task, rsp);
         };
-        sendRequest(Operation.createGet(
-                task.queryPageReference).setCompletion(c));
+
+        long timeOutMicros = TimeUnit.SECONDS.toMicros(this.queryPageGetTimeoutSeconds);
+        sendRequest(Operation.createGet(task.queryPageReference)
+                .setExpiration(Utils.getNowMicrosUtc() + timeOutMicros)
+                .setCompletion(c));
 
     }
 
@@ -610,7 +626,7 @@ public class SynchronizationTaskService
     }
 
     private void setFactoryAvailability(
-            State task, boolean isAvailable, Consumer<Operation> action) {
+            State task, boolean isAvailable, Consumer<Operation> action, Operation parentOp) {
         ServiceStats.ServiceStat body = new ServiceStats.ServiceStat();
         body.name = Service.STAT_NAME_AVAILABLE;
         body.latestValue = isAvailable ? STAT_VALUE_TRUE : STAT_VALUE_FALSE;
@@ -619,11 +635,16 @@ public class SynchronizationTaskService
                 UriUtils.buildAvailableUri(this.getHost(), task.factorySelfLink))
                 .setBody(body)
                 .setCompletion((o, e) -> {
+                    if (parentOp != null) {
+                        parentOp.complete();
+                    }
                     if (e != null) {
                         sendSelfFailurePatch(task, "Failed to set Factory Availability");
                         return;
                     }
-                    action.accept(o);
+                    if (action != null) {
+                        action.accept(o);
+                    }
                 });
         sendRequest(put);
     }
