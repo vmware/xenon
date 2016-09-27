@@ -14,6 +14,7 @@
 package com.vmware.xenon.common.http.netty;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
@@ -1205,6 +1206,64 @@ public class NettyHttpServiceClientTest {
 
         assertEquals(Operation.STATUS_CODE_CONFLICT, resp.op.getStatusCode());
         assertEquals("<error>hello</error>", resp.op.getBodyRaw());
+    }
+
+    @Test
+    public void keepAliveSetInClient() throws Throwable {
+
+        // When client set keep-alive false, it should be reflected to the received op in server
+
+        TestRequestSender sender = new TestRequestSender(this.host);
+
+        // initialize with null
+        Boolean[] serverSideKeepAlive = new Boolean[]{null};
+
+        StatelessService keepAliveCheck = new StatelessService() {
+            @Override
+            public void handleGet(Operation get) {
+                serverSideKeepAlive[0] = get.isKeepAlive();
+                get.complete();
+            }
+        };
+        String servicePath = "/keepAliveSetInClient";
+        this.host.startServiceAndWait(keepAliveCheck, servicePath, null);
+
+
+        // TEST for local op, default
+        Operation localOp = Operation.createGet(this.host, servicePath);
+        Operation localResponse = sender.sendAndWait(localOp);
+        assertTrue("local op with default", serverSideKeepAlive[0]);
+        assertTrue("local op with default", localResponse.isKeepAlive());
+
+        // TEST for local op, set keep-alive=true
+        localOp = Operation.createGet(this.host, servicePath).setKeepAlive(true);
+        localResponse = sender.sendAndWait(localOp);
+        assertTrue("local op with keep-alive set to true", serverSideKeepAlive[0]);
+        assertTrue("local op with keep-alive set to true", localResponse.isKeepAlive());
+
+        // TEST for local op, set keep-alive=false
+        localOp = Operation.createGet(this.host, servicePath).setKeepAlive(false);
+        localResponse = sender.sendAndWait(localOp);
+        assertFalse("local op with keep-alive set to false", serverSideKeepAlive[0]);
+        assertFalse("local op with keep-alive set to false", localResponse.isKeepAlive());
+
+        // TEST for remote op, default
+        Operation remoteOp = Operation.createGet(this.host, servicePath).forceRemote();
+        Operation remoteResponse = sender.sendAndWait(remoteOp);
+        assertTrue("remote op with default", serverSideKeepAlive[0]);
+        assertTrue("remote op with default", remoteResponse.isKeepAlive());
+
+        // TEST for remote op, set keep-alive=true
+        remoteOp = Operation.createGet(this.host, servicePath).forceRemote().setKeepAlive(true);
+        remoteResponse = sender.sendAndWait(remoteOp);
+        assertTrue("remote op with keep-alive set to true", serverSideKeepAlive[0]);
+        assertTrue("remote op with keep-alive set to true", remoteResponse.isKeepAlive());
+
+        // TEST for remote op, set keep-alive=false
+        remoteOp = Operation.createGet(this.host, servicePath).forceRemote().setKeepAlive(false);
+        remoteResponse = sender.sendAndWait(remoteOp);
+        assertFalse("remote op with keep-alive set to false", serverSideKeepAlive[0]);
+        assertFalse("remote op with keep-alive set to false", remoteResponse.isKeepAlive());
     }
 
 }
