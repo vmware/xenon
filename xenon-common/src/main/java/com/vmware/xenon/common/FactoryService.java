@@ -807,11 +807,6 @@ public abstract class FactoryService extends StatelessService {
 
     @Override
     public void handleNodeGroupMaintenance(Operation maintOp) {
-        if (!this.childOptions.contains(ServiceOption.REPLICATION)) {
-            maintOp.complete();
-            return;
-        }
-
         if (hasOption(ServiceOption.ON_DEMAND_LOAD)) {
             // on demand load child services are synchronized on first use, or when an explicit
             // migration task runs
@@ -865,6 +860,7 @@ public abstract class FactoryService extends StatelessService {
 
     private void startFactorySynchronizationTask(Operation parentOp, Long membershipUpdateTimeMicros) {
         if (this.childOptions.contains(ServiceOption.ON_DEMAND_LOAD)) {
+            setAvailable(true);
             parentOp.complete();
             return;
         }
@@ -875,6 +871,14 @@ public abstract class FactoryService extends StatelessService {
                 .createPost(this, ServiceUriPaths.SYNCHRONIZATION_TASKS)
                 .setBody(task)
                 .setCompletion((o, e) -> {
+
+                    if (!this.childOptions.contains(ServiceOption.REPLICATION)) {
+                        // Set available to true, even if synchronization failed.
+                        // Also, since non replicated services do not see node group maintenance events,
+                        // we must set availability here, on task completion
+                        setAvailable(true);
+                    }
+
                     // Ignore if the request failed because the current synch-request
                     // was considered out-dated by the synchronization-task.
                     if (o.getStatusCode() == Operation.STATUS_CODE_BAD_REQUEST) {
@@ -888,6 +892,7 @@ public abstract class FactoryService extends StatelessService {
                         parentOp.fail(e);
                         return;
                     }
+
                     parentOp.complete();
                 });
         sendRequest(post);
