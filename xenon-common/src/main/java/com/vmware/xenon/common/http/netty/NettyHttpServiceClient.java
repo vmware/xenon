@@ -499,7 +499,12 @@ public class NettyHttpServiceClient implements ServiceClient {
             request.headers().set(HttpHeaderNames.CONTENT_LENGTH,
                     Long.toString(op.getContentLength()));
             request.headers().set(HttpHeaderNames.CONTENT_TYPE, op.getContentType());
-            request.headers().set(HttpHeaderNames.CONNECTION, HttpHeaderValues.KEEP_ALIVE);
+
+            if (op.isKeepAlive()) {
+                request.headers().set(HttpHeaderNames.CONNECTION, HttpHeaderValues.KEEP_ALIVE);
+            } else {
+                request.headers().set(HttpHeaderNames.CONNECTION, HttpHeaderValues.CLOSE);
+            }
 
             if (!isXenonToXenon) {
                 if (op.getCookies() != null) {

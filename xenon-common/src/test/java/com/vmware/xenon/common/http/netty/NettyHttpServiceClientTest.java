@@ -14,8 +14,11 @@
 package com.vmware.xenon.common.http.netty;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
+
+import static com.vmware.xenon.common.test.TestContext.waitFor;
 
 import java.net.URI;
 import java.util.ArrayList;
@@ -54,6 +57,7 @@ import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
 import com.vmware.xenon.common.test.AuthorizationHelper;
 import com.vmware.xenon.common.test.MinimalTestServiceState;
+import com.vmware.xenon.common.test.TestContext;
 import com.vmware.xenon.common.test.TestProperty;
 import com.vmware.xenon.common.test.TestRequestSender;
 import com.vmware.xenon.common.test.TestRequestSender.FailureResponse;
@@ -1205,6 +1209,128 @@ public class NettyHttpServiceClientTest {
 
         assertEquals(Operation.STATUS_CODE_CONFLICT, resp.op.getStatusCode());
         assertEquals("<error>hello</error>", resp.op.getBodyRaw());
+    }
+
+    @Test
+    public void keepAliveFalseInClient() throws Throwable {
+
+        // When client set keep-alive false, it should be reflected to the received op in server
+        // Issue: https://www.pivotaltracker.com/story/show/130947685
+
+        TestRequestSender sender = new TestRequestSender(this.host);
+
+        // initialize with null
+        Boolean[] serverSideKeepAlive = new Boolean[]{null};
+
+        StatelessService failureService = new StatelessService() {
+            @Override
+            public void handleGet(Operation get) {
+                serverSideKeepAlive[0] = get.isKeepAlive();
+                get.complete();
+            }
+        };
+        this.host.startServiceAndWait(failureService, "/keepAliveFalseInClient", null);
+
+        // TEST for setting keep-alive=false
+
+        Operation put = Operation.createGet(this.host, "/keepAliveFalseInClient")
+                .forceRemote()
+                .setKeepAlive(false);
+        sender.sendRequest(put);
+
+        waitFor(TestContext.DEFAULT_WAIT_DURATION,
+                () -> serverSideKeepAlive[0] != null,
+                "/keepAliveFalseInClient was not invoked");
+
+        assertFalse("keep-alive has set to false", serverSideKeepAlive[0]);
+
+
+        // TEST for setting keep-alive=true
+
+        // nullify wait condition
+        serverSideKeepAlive[0] = null;
+
+        put = Operation.createGet(this.host, "/keepAliveFalseInClient")
+                .forceRemote()
+                .setKeepAlive(true);
+        sender.sendRequest(put);
+
+        waitFor(TestContext.DEFAULT_WAIT_DURATION,
+                () -> serverSideKeepAlive[0] != null,
+                "/keepAliveFalseInClient was not invoked");
+
+        assertTrue("keep-alive has set to true", serverSideKeepAlive[0]);
+
+        // TEST for NOT setting keep-alive
+
+        // nullify wait condition
+        serverSideKeepAlive[0] = null;
+
+        put = Operation.createGet(this.host, "/keepAliveFalseInClient").forceRemote();
+        sender.sendRequest(put);
+
+        waitFor(TestContext.DEFAULT_WAIT_DURATION,
+                () -> serverSideKeepAlive[0] != null,
+                "/keepAliveFalseInClient was not invoked");
+
+        assertTrue("default keep-alive is true", serverSideKeepAlive[0]);
+    }
+
+    @Test
+    public void keepAliveSetInClient() throws Throwable {
+
+        // When client set keep-alive false, it should be reflected to the received op in server
+
+        TestRequestSender sender = new TestRequestSender(this.host);
+
+        // initialize with null
+        Boolean[] serverSideKeepAlive = new Boolean[]{null};
+
+        StatelessService keepAliveCheck = new StatelessService() {
+            @Override
+            public void handleGet(Operation get) {
+                serverSideKeepAlive[0] = get.isKeepAlive();
+                get.complete();
+            }
+        };
+        this.host.startServiceAndWait(keepAliveCheck, "/keepAliveSetInClient", null);
+
+
+        // TEST for local op, default
+        Operation localOp = Operation.createGet(this.host, "/keepAliveSetInClient");
+        Operation localResponse = sender.sendAndWait(localOp);
+        assertTrue("local op with default", serverSideKeepAlive[0]);
+        assertTrue("local op with default", localResponse.isKeepAlive());
+
+        // TEST for local op, set keep-alive=true
+        localOp = Operation.createGet(this.host, "/keepAliveSetInClient").setKeepAlive(true);
+        localResponse = sender.sendAndWait(localOp);
+        assertTrue("local op with keep-alive set to true", serverSideKeepAlive[0]);
+        assertTrue("local op with keep-alive set to true", localResponse.isKeepAlive());
+
+        // TEST for local op, set keep-alive=false
+        localOp = Operation.createGet(this.host, "/keepAliveSetInClient").setKeepAlive(false);
+        localResponse = sender.sendAndWait(localOp);
+        assertFalse("local op with keep-alive set to false", serverSideKeepAlive[0]);
+        assertFalse("local op with keep-alive set to false", localResponse.isKeepAlive());
+
+        // TEST for remote op, default
+        Operation remoteOp = Operation.createGet(this.host, "/keepAliveSetInClient").forceRemote();
+        Operation remoteResponse = sender.sendAndWait(remoteOp);
+        assertTrue("remote op with default", serverSideKeepAlive[0]);
+        assertTrue("remote op with default", remoteResponse.isKeepAlive());
+
+        // TEST for remote op, set keep-alive=true
+        remoteOp = Operation.createGet(this.host, "/keepAliveSetInClient").forceRemote().setKeepAlive(true);
+        remoteResponse = sender.sendAndWait(remoteOp);
+        assertTrue("remote op with keep-alive set to true", serverSideKeepAlive[0]);
+        assertTrue("remote op with keep-alive set to true", remoteResponse.isKeepAlive());
+
+        // TEST for remote op, set keep-alive=false
+        remoteOp = Operation.createGet(this.host, "/keepAliveSetInClient").forceRemote().setKeepAlive(false);
+        remoteResponse = sender.sendAndWait(remoteOp);
+        assertFalse("remote op with keep-alive set to false", serverSideKeepAlive[0]);
+        assertFalse("remote op with keep-alive set to false", remoteResponse.isKeepAlive());
     }
 
 }

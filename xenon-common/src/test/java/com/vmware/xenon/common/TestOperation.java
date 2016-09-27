@@ -694,4 +694,26 @@ public class TestOperation extends BasicReusableHostTestCase {
         assertEquals(SerializedOperation.KIND, sop.documentKind);
         assertEquals(op.getExpirationMicrosUtc(), sop.documentExpirationTimeMicros);
     }
+
+    @Test
+    public void isKeepAlive() {
+        Operation localOp = Operation.createGet(null);
+        assertTrue(localOp.isKeepAlive());
+
+        localOp = Operation.createGet(null).setKeepAlive(true);
+        assertTrue(localOp.isKeepAlive());
+
+        localOp = Operation.createGet(null).setKeepAlive(false);
+        assertFalse(localOp.isKeepAlive());
+
+        Operation remoteOp = Operation.createGet(null).forceRemote();
+        assertTrue(remoteOp.isKeepAlive());
+
+        remoteOp = Operation.createGet(null).forceRemote().setKeepAlive(true);
+        assertTrue(remoteOp.isKeepAlive());
+
+        remoteOp = Operation.createGet(null).forceRemote().setKeepAlive(false);
+        assertFalse(remoteOp.isKeepAlive());
+    }
+
 }
