@@ -244,10 +244,49 @@ public class TestFactoryService extends BasicReusableHostTestCase {
     }
 
     @Test
+    public void isAvailable() throws Throwable {
+        MinimalFactoryTestService f = new MinimalFactoryTestService();
+        f.setChildServiceCaps(EnumSet.of(ServiceOption.PERSISTENCE));
+        MinimalFactoryTestService factoryService = (MinimalFactoryTestService) this.host
+                .startServiceAndWait(f, UUID.randomUUID().toString(), null);
+        this.host.waitForServiceAvailable(factoryService.getUri());
+
+        f = new MinimalFactoryTestService();
+        f.setChildServiceCaps(EnumSet.of(ServiceOption.PERSISTENCE, ServiceOption.ON_DEMAND_LOAD));
+        factoryService = (MinimalFactoryTestService) this.host
+                .startServiceAndWait(f, UUID.randomUUID().toString(), null);
+        this.host.waitForServiceAvailable(factoryService.getUri());
+
+        f = new MinimalFactoryTestService();
+        f.setChildServiceCaps(EnumSet.of(ServiceOption.ON_DEMAND_LOAD));
+        factoryService = (MinimalFactoryTestService) this.host
+                .startServiceAndWait(f, UUID.randomUUID().toString(), null);
+        this.host.waitForServiceAvailable(factoryService.getUri());
+
+        f = new MinimalFactoryTestService();
+        f.toggleOption(ServiceOption.REPLICATION, true);
+        f.setChildServiceCaps(EnumSet.of(ServiceOption.ON_DEMAND_LOAD, ServiceOption.REPLICATION));
+        factoryService = (MinimalFactoryTestService) this.host
+                .startServiceAndWait(f, UUID.randomUUID().toString(), null);
+        this.host.waitForServiceAvailable(factoryService.getUri());
+
+        f = new MinimalFactoryTestService();
+        f.toggleOption(ServiceOption.REPLICATION, true);
+        f.setChildServiceCaps(EnumSet.of(ServiceOption.ON_DEMAND_LOAD,
+                ServiceOption.PERSISTENCE,
+                ServiceOption.REPLICATION));
+        factoryService = (MinimalFactoryTestService) this.host
+                .startServiceAndWait(f, UUID.randomUUID().toString(), null);
+        this.host.waitForServiceAvailable(factoryService.getUri());
+    }
+
+    @Test
     public void factoryClonePostExpectFailure() throws Throwable {
         MinimalFactoryTestService f = new MinimalFactoryTestService();
         MinimalFactoryTestService factoryService = (MinimalFactoryTestService) this.host
                 .startServiceAndWait(f, UUID.randomUUID().toString(), null);
+
+        this.host.waitForServiceAvailable(factoryService.getUri());
 
         // create a child service
         MinimalTestServiceState initState = (MinimalTestServiceState) this.host
@@ -283,6 +322,8 @@ public class TestFactoryService extends BasicReusableHostTestCase {
         f.setChildServiceCaps(EnumSet.of(ServiceOption.PERSISTENCE));
         MinimalFactoryTestService factoryService = (MinimalFactoryTestService) this.host
                 .startServiceAndWait(f, UUID.randomUUID().toString(), null);
+
+        this.host.waitForServiceAvailable(factoryService.getUri());
 
         doFactoryServiceChildCreation(EnumSet.of(ServiceOption.PERSISTENCE),
                 EnumSet.of(TestProperty.DELETE_DURABLE_SERVICE), count,

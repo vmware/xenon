@@ -21,6 +21,7 @@ import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 import com.vmware.xenon.common.ServiceDocumentDescription.PropertyUsageOption;
+import com.vmware.xenon.common.ServiceHost.ServiceHostState;
 import com.vmware.xenon.services.common.QueryTask;
 import com.vmware.xenon.services.common.ServiceUriPaths;
 import com.vmware.xenon.services.common.TaskService;
@@ -34,6 +35,9 @@ public class SynchronizationTaskService
     public static final String FACTORY_LINK = ServiceUriPaths.SYNCHRONIZATION_TASKS;
     public static final String PROPERTY_NAME_SYNCHRONIZATION_LOGGING = Utils.PROPERTY_NAME_PREFIX
             + "SynchronizationTaskService.isDetailedLoggingEnabled";
+
+    public static final String PROPERTY_NAME_QUERY_GET_TIMEOUT_SECONDS = Utils.PROPERTY_NAME_PREFIX
+            + "SynchronizationTaskService.queryGetTimeoutSeconds";
 
     public static SynchronizationTaskService create(Supplier<Service> childServiceInstantiator) {
         if (childServiceInstantiator.get() == null) {
@@ -99,8 +103,12 @@ public class SynchronizationTaskService
 
     private Supplier<Service> childServiceInstantiator;
 
-    private boolean isDetailedLoggingEnabled = Boolean
+    private final boolean isDetailedLoggingEnabled = Boolean
             .getBoolean(PROPERTY_NAME_SYNCHRONIZATION_LOGGING);
+
+    private final long queryPageGetTimeoutSeconds = Long.getLong(
+            PROPERTY_NAME_QUERY_GET_TIMEOUT_SECONDS,
+            TimeUnit.MICROSECONDS.toSeconds(ServiceHostState.DEFAULT_OPERATION_TIMEOUT_MICROS / 3));
 
     public SynchronizationTaskService() {
         super(State.class);
@@ -511,8 +519,11 @@ public class SynchronizationTaskService
             }
             synchronizeChildrenInQueryPage(task, rsp);
         };
-        sendRequest(Operation.createGet(
-                task.queryPageReference).setCompletion(c));
+
+        long timeOutMicros = TimeUnit.SECONDS.toMicros(this.queryPageGetTimeoutSeconds);
+        sendRequest(Operation.createGet(task.queryPageReference)
+                .setExpiration(Utils.getNowMicrosUtc() + timeOutMicros)
+                .setCompletion(c));
 
     }
 
