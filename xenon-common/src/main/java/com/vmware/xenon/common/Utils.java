@@ -611,6 +611,10 @@ public class Utils {
             }
             antiReqs = EnumSet.of(ServiceOption.PERIODIC_MAINTENANCE);
             break;
+        case IMMUTABLE:
+            reqs = EnumSet.of(ServiceOption.ON_DEMAND_LOAD, ServiceOption.PERSISTENCE);
+            antiReqs = EnumSet.of(ServiceOption.PERIODIC_MAINTENANCE);
+            break;
         case TRANSACTION_PENDING:
             break;
         default:
@@ -1256,5 +1260,16 @@ public class Utils {
             }
         }
         return hasChanged;
+    }
+
+    /**
+     * Generate a v1 UUID: Use the supplied id as the identifier for the
+     * location (in space), and the value from {@link Utils#getNowMicrosUtc()} as the
+     * point in time. As long as the location id (for example, the local host ID) is
+     * unique within the node group, the UUID should be unique within the node group as
+     * well
+     */
+    public static String buildUUID(String id) {
+        return id + Utils.getNowMicrosUtc();
     }
 }

@@ -19,7 +19,6 @@ import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
-import java.util.UUID;
 
 import com.vmware.xenon.common.NodeSelectorService.SelectOwnerResponse;
 import com.vmware.xenon.common.Operation.CompletionHandler;
@@ -319,12 +318,13 @@ public abstract class FactoryService extends StatelessService {
             }
             String suffix;
             if (initialState == null) {
-                // create a random URI that is prefixed by the URI of this service
-                suffix = UUID.randomUUID().toString();
+                // create a unique path that is prefixed by the URI path of the factory
+                // We do not use UUID since its not a good primary key, given our index.
+                suffix = buildDefaultChildSelfLink();
                 initialState = new ServiceDocument();
             } else {
                 if (initialState.documentSelfLink == null) {
-                    suffix = UUID.randomUUID().toString();
+                    suffix = buildDefaultChildSelfLink();
                 } else {
                     // treat the supplied selfLink as a suffix
                     suffix = initialState.documentSelfLink;
@@ -349,7 +349,13 @@ public abstract class FactoryService extends StatelessService {
         initialState.documentSelfLink = o.getUri().getPath();
         initialState.documentKind = Utils.buildKind(this.stateType);
         initialState.documentTransactionId = o.getTransactionId();
-        o.setBody(initialState);
+        if (hasChildOption(ServiceOption.IMMUTABLE)) {
+            // skip cloning since contract with service author is that state
+            // can not change after post.complete() is called in handleStart()
+            o.setBodyNoCloning(initialState);
+        } else {
+            o.setBody(initialState);
+        }
 
         if (this.childOptions.contains(ServiceOption.REPLICATION) && !o.isFromReplication()
                 && !o.isForwardingDisabled()) {
@@ -361,6 +367,10 @@ public abstract class FactoryService extends StatelessService {
         }
 
         completePostRequest(o, childService);
+    }
+
+    protected String buildDefaultChildSelfLink() {
+        return Utils.buildUUID(getHost().getIdHash());
     }
 
     @Override

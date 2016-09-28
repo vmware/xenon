@@ -116,6 +116,8 @@ public class TestFactoryService extends BasicReusableHostTestCase {
 
     public int hostRestartCount = 10;
 
+    public long iterationCount = 10;
+
     private URI factoryUri;
 
     private SynchTestFactoryService factoryService;
@@ -124,6 +126,40 @@ public class TestFactoryService extends BasicReusableHostTestCase {
     public void setup() throws Throwable {
         this.factoryUri = UriUtils.buildUri(this.host, SomeFactoryService.class);
         CommandLineArgumentParser.parseFromProperties(this);
+    }
+
+    @Test
+    public void buildChildSelfLink() throws Throwable {
+        SomeFactoryService f = new SomeFactoryService();
+        f = (SomeFactoryService) this.host.startServiceAndWait(f,
+                UUID.randomUUID().toString(),
+                null);
+
+        // this test assumes how the implementation works. If we change
+        // the implementation, it will break, by design
+
+        String idHash = this.host.getIdHash();
+        String timeNowPrefix = Utils.getNowMicrosUtc() + "";
+        timeNowPrefix = timeNowPrefix.substring(0, 8);
+        assertTrue(f.buildDefaultChildSelfLink().startsWith(idHash + timeNowPrefix));
+
+        long s = System.nanoTime();
+        for (int i = 0; i < this.iterationCount; i++) {
+            assertTrue(f.buildDefaultChildSelfLink() != null);
+        }
+        long e = System.nanoTime();
+        double thpt = (double) this.iterationCount / (e - s);
+        thpt *= TimeUnit.SECONDS.toNanos(1);
+        this.host.log("throughput (calls/sec) %f", thpt);
+
+        s = System.nanoTime();
+        for (int i = 0; i < this.iterationCount; i++) {
+            assertTrue(UUID.randomUUID().toString() != null);
+        }
+        e = System.nanoTime();
+        thpt = (double) this.iterationCount / (e - s);
+        thpt *= TimeUnit.SECONDS.toNanos(1);
+        this.host.log("UUID.randomUUID().toString() throughput (calls/sec) %f", thpt);
     }
 
     /**

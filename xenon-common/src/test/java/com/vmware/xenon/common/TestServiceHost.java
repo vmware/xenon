@@ -242,6 +242,8 @@ public class TestServiceHost {
 
             h.start();
 
+            assertEquals(Utils.computeHash(hostId), h.getIdHash());
+
             assertTrue(UriUtils.isHostEqual(h, publicUri));
 
             assertEquals(bindAddress, h.getPreferredAddress());

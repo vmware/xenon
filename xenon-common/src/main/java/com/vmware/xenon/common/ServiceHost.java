@@ -515,6 +515,7 @@ public class ServiceHost implements ServiceRequestSender {
             .create(this, this.attachedServices, this.pendingPauseServices);
     private final OperationTracker operationTracker = OperationTracker.create(this);
 
+    private String hashedId;
     private String logPrefix;
     private URI cachedUri;
 
@@ -689,6 +690,7 @@ public class ServiceHost implements ServiceRequestSender {
         if (args.id != null) {
             this.state.id = args.id;
         }
+        this.hashedId = Utils.computeHash(this.state.id);
 
         this.state.peerSynchronizationTimeLimitSeconds = args.perFactoryPeerSynchronizationLimitSeconds;
         this.state.isPeerSynchronizationEnabled = args.isPeerSynchronizationEnabled;
@@ -1021,6 +1023,10 @@ public class ServiceHost implements ServiceRequestSender {
 
     public String getId() {
         return this.state.id;
+    }
+
+    public String getIdHash() {
+        return this.hashedId;
     }
 
     public long getOperationTimeoutMicros() {
@@ -2304,6 +2310,10 @@ public class ServiceHost implements ServiceRequestSender {
         return s.hasOption(ServiceOption.PERSISTENCE);
     }
 
+    public static boolean isServiceImmutable(Service s) {
+        return s.hasOption(ServiceOption.IMMUTABLE);
+    }
+
     private void processServiceStart(ProcessingStage next, Service s,
             Operation post, boolean hasClientSuppliedInitialState) {
 
@@ -2352,10 +2362,15 @@ public class ServiceHost implements ServiceRequestSender {
                 processServiceStart(nextStage, s, post, hasClientSuppliedInitialState);
                 break;
             case LOADING_INITIAL_STATE:
-                if (isServiceIndexed(s) && !post.isFromReplication()) {
-                    // we load state from the local index if the service is indexed and this is NOT
-                    // a replication POST that came from another node. If its a replicated POST we
-                    // use the body as is
+                boolean isImmutableStart = ServiceHost.isServiceCreate(post)
+                        && isServiceImmutable(s);
+                if (!isImmutableStart && isServiceIndexed(s) && !post.isFromReplication()) {
+                    // Skip querying the index for existing state if any of the following is true:
+                    // 1) Service is marked IMMUTABLE. This means no previous version should exist,
+                    //     its up to the client to enforce unique links
+                    // 2) Request is from replication. This means state is already attached to the
+                    //     request
+                    // 3) Service is NOT indexed.
                     loadInitialServiceState(s, post, ProcessingStage.SYNCHRONIZING,
                             hasClientSuppliedInitialState);
                 } else {
@@ -2364,13 +2379,11 @@ public class ServiceHost implements ServiceRequestSender {
                 }
                 break;
             case SYNCHRONIZING:
-                boolean doCreate = post.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_CREATED);
-                ProcessingStage nxt = doCreate ? ProcessingStage.EXECUTING_CREATE_HANDLER
+                ProcessingStage nxt = isServiceCreate(post)
+                        ? ProcessingStage.EXECUTING_CREATE_HANDLER
                         : ProcessingStage.EXECUTING_START_HANDLER;
-
                 if (s.hasOption(ServiceOption.FACTORY) || !s.hasOption(ServiceOption.REPLICATION)) {
-                    processServiceStart(nxt, s, post,
-                            hasClientSuppliedInitialState);
+                    processServiceStart(nxt, s, post, hasClientSuppliedInitialState);
                     break;
                 }
 
@@ -2539,28 +2552,33 @@ public class ServiceHost implements ServiceRequestSender {
 
     /**
      * Invoke the service setInitialState method and ensures the state has proper self link and
-     * kind. It caches the state and sets it as the body to the post operation
+     * kind. If the service is not marked with {@link ServiceOption#IMMUTABLE}, the state
+     * is serialized to JSON to verify serialization is possible, and cloned
      */
     void normalizeInitialServiceState(Service s, Operation post, Long finalVersion) {
         if (!post.hasBody()) {
             return;
         }
-        // cache initial state, after service had a chance to modify in
-        // handleStart(), in memory. We force serialize to JSON to clone
-        // and prove the state *is* convertible to JSON.
+        // We force serialize to JSON to clone
+        // and prove the state *is* convertible to JSON. It also forces type
+        // to the service state type through type coercion
         Object body = post.getBodyRaw();
-
+        if (!body.getClass().equals(s.getStateType())) {
+            body = Utils.toJson(body);
+        }
         ServiceDocument initialState = s.setInitialState(
-                Utils.toJson(body),
+                body,
                 finalVersion);
 
         initialState.documentSelfLink = s.getSelfLink();
         initialState.documentKind = Utils.buildKind(initialState.getClass());
         initialState.documentAuthPrincipalLink = (post.getAuthorizationContext() != null) ? post
                 .getAuthorizationContext().getClaims().getSubject() : null;
-        initialState = Utils.clone(initialState);
+
+        if (!isServiceImmutable(s)) {
+            initialState = Utils.clone(initialState);
+        }
         post.setBodyNoCloning(initialState);
-        cacheServiceState(s, initialState, null);
     }
 
     /**
@@ -5159,6 +5177,17 @@ public class ServiceHost implements ServiceRequestSender {
             // 1) Build the base description and add it to the cache
             desc = this.descriptionBuilder.buildDescription(serviceStateClass, s.getOptions(),
                     RequestRouter.findRequestRouter(s.getOperationProcessingChain()));
+
+            if (s.getOptions().contains(ServiceOption.IMMUTABLE)) {
+                if (desc.versionRetentionLimit > ServiceDocumentDescription.DEFAULT_VERSION_RETENTION_LIMIT) {
+                    log(Level.WARNING, "Service %s has option %s, forcing retention limit",
+                            s.getSelfLink(), ServiceOption.IMMUTABLE);
+                }
+                // set retention limit to MIN value so index service skips version retention on this
+                // document type
+                desc.versionRetentionLimit = ServiceDocumentDescription.FIELD_VALUE_DISABLED_VERSION_RETENTION;
+            }
+
             this.descriptionCache.put(serviceTypeName, desc);
 
             // 2) Call the service's getDocumentTemplate() to allow the service author to modify it

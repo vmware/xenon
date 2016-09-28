@@ -2,6 +2,17 @@
 
 ## 0.9.7-SNAPSHOT
 
+* Add new ServiceOption.IMMUTABLE, for services/documents that have
+  write once, read many semantics (metrics, logs, immutable configuration).
+  Several times faster in terms of POST throughput, for indexed services,
+  since it avoids previous version lookup, version retention. More optimizations
+  will be made in the near future, in a transparent fashion.
+
+* Use new scheme for generating random self links on factory POST. Instead
+  of UUID.randomGuid(), now use Murmur3 hash of host id plus local, non repeating
+  time in micros. Its 20x faster than the UUID scheme.
+  Add Utils.buildUUID() that uses the new scheme.
+
 * Authorize all requests on default notification target services created in
   ServiceHost.startSubscriptionService()
 
