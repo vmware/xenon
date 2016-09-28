@@ -269,6 +269,17 @@ public class StatefulService implements Service {
         boolean isCompletionNested = false;
         try {
             if (opProcessingStage == OperationProcessingStage.LOADING_STATE) {
+
+                if (hasOption(ServiceOption.IMMUTABLE)
+                        && (request.getAction() == Action.PATCH
+                                || request.getAction() == Action.PUT)) {
+                    processPending(request);
+                    request.fail(Operation.STATUS_CODE_BAD_REQUEST,
+                            new IllegalStateException("Service has " + ServiceOption.IMMUTABLE),
+                            null);
+                    return;
+                }
+
                 if (ServiceHost.isServiceStop(request)) {
                     // local shutdown induced delete. By pass two stage operation processing
                     request.nestCompletion((o, e) -> {

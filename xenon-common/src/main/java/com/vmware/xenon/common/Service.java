@@ -160,6 +160,16 @@ public interface Service extends ServiceRequestSender {
         ON_DEMAND_LOAD,
 
         /**
+         * Service has a single, initial version and will not accept any action other then DELETE
+         * for its entire lifetime. This option should be used to model immutable items such as logs,
+         * metrics where a high creation rate (high factory POST throughput) is desired but version
+         * tracking is not.
+         *
+         * Requires: ON_DEMAND_LOAD
+         */
+        IMMUTABLE,
+
+        /**
          * Service will queue operation in last in first out order. If limit on operation queue is
          * exceeded, oldest operation in the queue will be cancelled to make room for the most
          * recent one
