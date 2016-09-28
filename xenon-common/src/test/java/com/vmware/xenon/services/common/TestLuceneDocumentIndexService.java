@@ -44,6 +44,7 @@ import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 import java.util.logging.Level;
 
@@ -55,6 +56,7 @@ import org.junit.rules.TemporaryFolder;
 
 import com.vmware.xenon.common.AuthorizationSetupHelper;
 import com.vmware.xenon.common.CommandLineArgumentParser;
+import com.vmware.xenon.common.FactoryService;
 import com.vmware.xenon.common.FileUtils;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.OperationContext;
@@ -107,6 +109,19 @@ class FaultInjectionLuceneDocumentIndexService extends LuceneDocumentIndexServic
 
 public class TestLuceneDocumentIndexService {
 
+    public static class ImmutableExampleService extends ExampleService {
+        public ImmutableExampleService() {
+            super();
+            super.toggleOption(ServiceOption.ON_DEMAND_LOAD, true);
+            super.toggleOption(ServiceOption.IMMUTABLE, true);
+        }
+
+        public static FactoryService createFactory() {
+            return FactoryService.create(ImmutableExampleService.class);
+        }
+
+    }
+
     /**
      * Parameter that specifies number of durable service instances to create
      */
@@ -116,6 +131,22 @@ public class TestLuceneDocumentIndexService {
      * Parameter that specifies number of concurrent update requests
      */
     public int updateCount = 10;
+
+    /**
+     * Parameter that specifies query interleaving factor
+     */
+    public int updatesPerQuery = 10;
+
+    /**
+     * Parameter that specifies required number of document in index before
+     * tests start
+     */
+    public int documentCountAtStart = 0;
+
+    /**
+     * Parameter that specifies iterations per top level test method
+     */
+    public int iterationCount = 1;
 
     /**
      * Parameter that specifies authorized user count for auth enabled tests
@@ -135,6 +166,7 @@ public class TestLuceneDocumentIndexService {
     private int expiredDocumentSearchThreshold;
 
     private VerificationHost host;
+
 
     private void setUpHost(boolean isAuthEnabled) throws Throwable {
         if (this.host != null) {
@@ -425,51 +457,22 @@ public class TestLuceneDocumentIndexService {
             h.setMaintenanceIntervalMicros(TimeUnit.MILLISECONDS.toMicros(250));
             h.setOperationTimeOutMicros(this.host.getOperationTimeoutMicros());
             h.start();
-
             this.host.toggleServiceOptions(h.getDocumentIndexServiceUri(),
                     EnumSet.of(ServiceOption.INSTRUMENTATION),
                     null);
 
-            // create on demand load services
+            convertExampleFactoryToIdempotent(h);
+
             String factoryLink = createOnDemandLoadFactoryService(h);
             createOnDemandLoadServices(h, factoryLink);
 
-            this.host.testStart(1);
-            h.registerForServiceAvailability((o, e) -> {
-                this.host.completeIteration();
-            } , ExampleService.FACTORY_LINK);
-            this.host.testWait();
-
-            this.host.toggleServiceOptions(UriUtils.buildUri(h, ExampleService.FACTORY_LINK),
-                    EnumSet.of(ServiceOption.IDEMPOTENT_POST), null);
+            verifyImmutablePost(h);
 
             ServiceHostState initialState = h.getState();
 
-            ExampleServiceState body = new ExampleServiceState();
-            body.name = UUID.randomUUID().toString();
             List<URI> exampleURIs = new ArrayList<>();
-
-            // create example services
-            this.host.createExampleServices(h, this.serviceCount, exampleURIs, null);
-
-            verifyCreateStatCount(exampleURIs, 1.0);
-
-            int vc = 2;
-            this.host.testStart(exampleURIs.size() * vc);
-            for (int i = 0; i < vc; i++) {
-                for (URI u : exampleURIs) {
-                    this.host.send(Operation.createPut(u).setBody(body)
-                            .setCompletion(this.host.getCompletion()));
-                }
-            }
-            this.host.testWait();
-
-            verifyDeleteRePost(h, exampleURIs);
-
-            Map<URI, ExampleServiceState> beforeState = this.host.getServiceState(null,
-                    ExampleServiceState.class, exampleURIs);
-
-            verifyChildServiceCountByOptionQuery(h, beforeState);
+            Map<URI, ExampleServiceState> beforeState = verifyIdempotentServiceStartDeleteWithStats(
+                    h, exampleURIs);
 
             // stop the host, create new one
             h.stop();
@@ -485,132 +488,202 @@ public class TestLuceneDocumentIndexService {
                 h.setMaintenanceIntervalMicros(TimeUnit.MILLISECONDS.toMicros(250));
             }
 
-            long start = Utils.getNowMicrosUtc();
 
             if (!VerificationHost.restartStatefulHost(h)) {
                 this.host.log("Failed restart of host, aborting");
                 return;
             }
 
-            this.host.toggleServiceOptions(h.getDocumentIndexServiceUri(),
-                    EnumSet.of(ServiceOption.INSTRUMENTATION),
-                    null);
+            verifyIdempotentFactoryAfterHostRestart(h, initialState, exampleURIs, beforeState);
 
-            // make sure synchronization has run, so we can verify if synch produced index updates
-            this.host.waitForReplicatedFactoryServiceAvailable(
-                    UriUtils.buildUri(h, ExampleService.FACTORY_LINK));
-
-            URI indexStatsUris = UriUtils.buildStatsUri(h.getDocumentIndexServiceUri());
-            ServiceStats afterRestartIndexStats = this.host.getServiceState(null,
-                    ServiceStats.class, indexStatsUris);
-
-            String indexedFieldCountStatName = LuceneDocumentIndexService.STAT_NAME_INDEXED_FIELD_COUNT;
-
-            ServiceStat afterRestartIndexedFieldCountStat = afterRestartIndexStats.entries
-                    .get(indexedFieldCountStatName);
-            // estimate of fields per example and on demand load service state
-            int fieldCountPerService = 13;
-            if (afterRestartIndexedFieldCountStat != null) {
-                // if we had re-indexed all state on restart, the field update count would be approximately
-                // the number of example services times their field count. We require less than that to catch
-                // re-indexing that might occur before instrumentation is enabled in the index service
-                assertTrue(
-                        afterRestartIndexedFieldCountStat.latestValue < (this.serviceCount
-                                * fieldCountPerService) / 2);
-            }
-
-            beforeState = updateUriMapWithNewPort(h.getPort(), beforeState);
-            List<URI> updatedExampleUris = new ArrayList<>();
-            for (URI u : exampleURIs) {
-                updatedExampleUris.add(UriUtils.updateUriPort(u, h.getPort()));
-            }
-            exampleURIs = updatedExampleUris;
-
-            ServiceHostState stateAfterRestart = h.getState();
-
-            assertTrue(initialState.id.equals(stateAfterRestart.id));
-
-            String onDemandFactoryLink = createOnDemandLoadFactoryService(h);
-
-            URI exampleFactoryUri = UriUtils.buildUri(h, ExampleService.FACTORY_LINK);
-            URI exampleFactoryStatsUri = UriUtils.buildStatsUri(exampleFactoryUri);
-            this.host.waitForServiceAvailable(exampleFactoryUri);
-
-            this.host.toggleServiceOptions(exampleFactoryUri,
-                    EnumSet.of(ServiceOption.IDEMPOTENT_POST), null);
-
-            String statName = Service.STAT_NAME_NODE_GROUP_CHANGE_MAINTENANCE_COUNT;
-            this.host.waitFor("node group change stat missing", () -> {
-                ServiceStats stats = this.host.getServiceState(null, ServiceStats.class,
-                        exampleFactoryStatsUri);
-                ServiceStat st = stats.entries.get(statName);
-                if (st != null && st.latestValue >= 1) {
-                    return true;
-                }
-                return false;
-            });
-
-            long end = Utils.getNowMicrosUtc();
-
-            this.host.log("Example Factory available %d micros after host start", end - start);
-
-            verifyCreateStatCount(exampleURIs, 0.0);
-
-            verifyOnDemandLoad(h, onDemandFactoryLink);
-
-            // make sure all services are there
-            Map<URI, ExampleServiceState> afterState = this.host.getServiceState(null,
-                    ExampleServiceState.class, exampleURIs);
-
-            assertTrue(afterState.size() == beforeState.size());
-            ServiceDocumentDescription sdd = this.host.buildDescription(ExampleServiceState.class);
-
-            for (Entry<URI, ExampleServiceState> e : beforeState.entrySet()) {
-                ExampleServiceState before = e.getValue();
-                ExampleServiceState after = afterState.get(e.getKey());
-                assertTrue(before.documentUpdateAction != null);
-                assertTrue(after.documentUpdateAction != null);
-                assertTrue(after != null);
-                assertTrue(ServiceDocument.equals(sdd, before, after));
-                assertEquals(after.documentVersion, before.documentVersion);
-            }
-
-            ServiceDocumentQueryResult rsp = this.host.getFactoryState(UriUtils.buildUri(h,
-                    ExampleService.FACTORY_LINK));
-            assertEquals(beforeState.size(), rsp.documentLinks.size());
-
-            if (this.host.isStressTest()) {
-                return;
-            }
-
-            this.host.testStart(beforeState.size());
-            // issue some updates to force creation of link update time entries
-            for (URI u : beforeState.keySet()) {
-                Operation put = Operation.createPut(u)
-                        .setCompletion(this.host.getCompletion())
-                        .setBody(body);
-                this.host.send(put);
-            }
-            this.host.testWait();
-
-            verifyChildServiceCountByOptionQuery(h, afterState);
-
-            // issue some additional updates, per service, to verify that having clear self link info entries is OK
-            this.host.testStart(exampleURIs.size() * vc);
-            for (int i = 0; i < vc; i++) {
-                for (URI u : exampleURIs) {
-                    this.host.send(Operation.createPut(u).setBody(body)
-                            .setCompletion(this.host.getCompletion()));
-                }
-            }
-            this.host.testWait();
-
-            verifyFactoryStartedAndSynchronizedAfterNodeSynch(h, statName);
+            verifyOnDemandLoad(h);
 
         } finally {
             h.stop();
             tmpFolder.delete();
         }
+    }
+
+    void convertExampleFactoryToIdempotent(VerificationHost h) {
+        URI exampleFactoryUri = UriUtils.buildUri(h, ExampleService.FACTORY_LINK);
+        h.waitForServiceAvailable(exampleFactoryUri);
+        this.host.toggleServiceOptions(exampleFactoryUri,
+                EnumSet.of(ServiceOption.IDEMPOTENT_POST), null);
+    }
+
+    void verifyImmutablePost(VerificationHost h) throws Throwable {
+        URI factoryUri = createImmutableFactoryService(h);
+        doThroughputPost(false, factoryUri);
+        ServiceDocumentQueryResult r = this.host.getFactoryState(factoryUri);
+        assertEquals(this.serviceCount, (long) r.documentCount);
+        TestContext ctx = h.testCreate(this.serviceCount);
+        for (String link : r.documentLinks) {
+            Operation get = Operation.createGet(h, link).setCompletion((o, e) -> {
+                if (e != null) {
+                    ctx.fail(e);
+                    return;
+                }
+                ExampleServiceState rsp = o.getBody(ExampleServiceState.class);
+                if (rsp.name == null) {
+                    ctx.fail(new IllegalStateException("missing name field value"));
+                    return;
+                }
+                ctx.complete();
+            });
+            h.send(get);
+        }
+        h.testWait(ctx);
+    }
+
+    void verifyIdempotentFactoryAfterHostRestart(VerificationHost h, ServiceHostState initialState,
+            List<URI> exampleURIs, Map<URI, ExampleServiceState> beforeState) throws Throwable {
+        long start = Utils.getNowMicrosUtc();
+
+        this.host.toggleServiceOptions(h.getDocumentIndexServiceUri(),
+                EnumSet.of(ServiceOption.INSTRUMENTATION),
+                null);
+
+        // make sure synchronization has run, so we can verify if synch produced index updates
+        this.host.waitForReplicatedFactoryServiceAvailable(
+                UriUtils.buildUri(h, ExampleService.FACTORY_LINK));
+
+        URI indexStatsUris = UriUtils.buildStatsUri(h.getDocumentIndexServiceUri());
+        ServiceStats afterRestartIndexStats = this.host.getServiceState(null,
+                ServiceStats.class, indexStatsUris);
+
+        String indexedFieldCountStatName = LuceneDocumentIndexService.STAT_NAME_INDEXED_FIELD_COUNT;
+
+        ServiceStat afterRestartIndexedFieldCountStat = afterRestartIndexStats.entries
+                .get(indexedFieldCountStatName);
+        // estimate of fields per example and on demand load service state
+        int fieldCountPerService = 13;
+        if (afterRestartIndexedFieldCountStat != null) {
+            double latest = afterRestartIndexedFieldCountStat.latestValue;
+            // if we had re-indexed all state on restart, the field update count would be approximately
+            // the number of example services times their field count. We require less than that to catch
+            // re-indexing that might occur before instrumentation is enabled in the index service
+            assertTrue(latest < (this.serviceCount * fieldCountPerService) / 2);
+        }
+
+        beforeState = updateUriMapWithNewPort(h.getPort(), beforeState);
+        List<URI> updatedExampleUris = new ArrayList<>();
+        for (URI u : exampleURIs) {
+            updatedExampleUris.add(UriUtils.updateUriPort(u, h.getPort()));
+        }
+        exampleURIs = updatedExampleUris;
+
+        ServiceHostState stateAfterRestart = h.getState();
+
+        assertTrue(initialState.id.equals(stateAfterRestart.id));
+
+        URI exampleFactoryUri = UriUtils.buildUri(h, ExampleService.FACTORY_LINK);
+        URI exampleFactoryStatsUri = UriUtils.buildStatsUri(exampleFactoryUri);
+        this.host.waitForServiceAvailable(exampleFactoryUri);
+
+        this.host.toggleServiceOptions(exampleFactoryUri,
+                EnumSet.of(ServiceOption.IDEMPOTENT_POST), null);
+
+        String statName = Service.STAT_NAME_NODE_GROUP_CHANGE_MAINTENANCE_COUNT;
+        this.host.waitFor("node group change stat missing", () -> {
+            ServiceStats stats = this.host.getServiceState(null, ServiceStats.class,
+                    exampleFactoryStatsUri);
+            ServiceStat st = stats.entries.get(statName);
+            if (st != null && st.latestValue >= 1) {
+                return true;
+            }
+            return false;
+        });
+
+        long end = Utils.getNowMicrosUtc();
+
+        this.host.log("Example Factory available %d micros after host start", end - start);
+
+        verifyCreateStatCount(exampleURIs, 0.0);
+
+        // make sure all services are there
+        Map<URI, ExampleServiceState> afterState = this.host.getServiceState(null,
+                ExampleServiceState.class, exampleURIs);
+
+        assertTrue(afterState.size() == beforeState.size());
+        ServiceDocumentDescription sdd = this.host.buildDescription(ExampleServiceState.class);
+
+        for (Entry<URI, ExampleServiceState> e : beforeState.entrySet()) {
+            ExampleServiceState before = e.getValue();
+            ExampleServiceState after = afterState.get(e.getKey());
+            assertTrue(before.documentUpdateAction != null);
+            assertTrue(after.documentUpdateAction != null);
+            assertTrue(after != null);
+            assertTrue(ServiceDocument.equals(sdd, before, after));
+            assertEquals(after.documentVersion, before.documentVersion);
+        }
+
+        ServiceDocumentQueryResult rsp = this.host.getFactoryState(UriUtils.buildUri(h,
+                ExampleService.FACTORY_LINK));
+        assertEquals(beforeState.size(), rsp.documentLinks.size());
+
+        if (this.host.isStressTest()) {
+            return;
+        }
+
+        ExampleServiceState bodyAfter = new ExampleServiceState();
+        bodyAfter.name = UUID.randomUUID().toString();
+        this.host.testStart(beforeState.size());
+        // issue some updates to force creation of link update time entries
+        for (URI u : beforeState.keySet()) {
+            Operation put = Operation.createPut(u)
+                    .setCompletion(this.host.getCompletion())
+                    .setBody(bodyAfter);
+            this.host.send(put);
+        }
+        this.host.testWait();
+
+        verifyChildServiceCountByOptionQuery(h, afterState);
+
+
+
+        int putCount = 2;
+        // issue some additional updates, per service, to verify that having clear self link info entries is OK
+        this.host.testStart(exampleURIs.size() * putCount);
+        for (int i = 0; i < putCount; i++) {
+            for (URI u : exampleURIs) {
+                this.host.send(Operation.createPut(u).setBody(bodyAfter)
+                        .setCompletion(this.host.getCompletion()));
+            }
+        }
+        this.host.testWait();
+
+        verifyFactoryStartedAndSynchronizedAfterNodeSynch(h, statName);
+    }
+
+    Map<URI, ExampleServiceState> verifyIdempotentServiceStartDeleteWithStats(VerificationHost h,
+            List<URI> exampleURIs) throws Throwable {
+        int vc = 2;
+        ExampleServiceState bodyBefore = new ExampleServiceState();
+        bodyBefore.name = UUID.randomUUID().toString();
+
+
+        // create example, IDEMPOTENT services
+        this.host.createExampleServices(h, this.serviceCount, exampleURIs, null);
+
+        verifyCreateStatCount(exampleURIs, 1.0);
+
+
+        TestContext ctx = this.host.testCreate(exampleURIs.size() * vc);
+        for (int i = 0; i < vc; i++) {
+            for (URI u : exampleURIs) {
+                this.host.send(Operation.createPut(u).setBody(bodyBefore)
+                        .setCompletion(ctx.getCompletion()));
+            }
+        }
+        this.host.testWait(ctx);
+
+        verifyDeleteRePost(h, exampleURIs);
+
+        Map<URI, ExampleServiceState> beforeState = this.host.getServiceState(null,
+                ExampleServiceState.class, exampleURIs);
+
+        verifyChildServiceCountByOptionQuery(h, beforeState);
+        return beforeState;
     }
 
     private void verifyFactoryStartedAndSynchronizedAfterNodeSynch(ExampleServiceHost h,
@@ -719,8 +792,9 @@ public class TestLuceneDocumentIndexService {
         }
     }
 
-    private void verifyOnDemandLoad(ServiceHost h, String onDemandFactoryLink) throws Throwable {
+    private void verifyOnDemandLoad(ServiceHost h) throws Throwable {
         this.host.log("ODL verification starting");
+        String onDemandFactoryLink = createOnDemandLoadFactoryService(h);
         URI factoryUri = UriUtils.buildUri(h, onDemandFactoryLink);
         ServiceDocumentQueryResult rsp = this.host.getFactoryState(factoryUri);
         // verify that for every factory child reported by the index, through the GET (query), the service is NOT
@@ -1225,21 +1299,45 @@ public class TestLuceneDocumentIndexService {
 
     @Test
     public void throughputPost() throws Throwable {
-        setUpHost(false);
-        int iterationCount = this.host.isStressTest() ? 5 : 1;
-        URI factoryUri = UriUtils.buildFactoryUri(this.host, ExampleService.class);
+        doThroughputPost(true);
+        doThroughputPost(false);
+    }
 
-        Consumer<Operation> setBody = (o) -> {
-            ExampleServiceState body = new ExampleServiceState();
-            body.name = "a name";
-            body.counter = Utils.getNowMicrosUtc();
-            o.setBody(body);
-        };
+    private void doThroughputPost(boolean interleaveQueries) throws Throwable {
+        setUpHost(false);
+        this.host.log("Starting throughput POST, query interleaving: %s", interleaveQueries);
+        URI factoryUri = createImmutableFactoryService(this.host);
+        if (this.documentCountAtStart > 0) {
+            this.host.log("Pre populating index with %d documents", this.documentCountAtStart);
+            long serviceCountCached = this.serviceCount;
+            this.serviceCount = this.documentCountAtStart;
+            doThroughputPost(false, factoryUri);
+            this.serviceCount = serviceCountCached;
+        }
+
+        doMultipleIterationsThroughputPost(interleaveQueries, this.iterationCount, factoryUri);
+        factoryUri = UriUtils.buildFactoryUri(this.host, ExampleService.class);
+        doMultipleIterationsThroughputPost(interleaveQueries, this.iterationCount, factoryUri);
+    }
+
+    URI createImmutableFactoryService(VerificationHost h) throws Throwable {
+        Service immutableFactory = ImmutableExampleService.createFactory();
+        immutableFactory = h.startServiceAndWait(immutableFactory,
+                "immutable-" + Utils.getNowMicrosUtc(), null);
+
+        URI factoryUri = immutableFactory.getUri();
+        return factoryUri;
+    }
+
+    private void doMultipleIterationsThroughputPost(boolean interleaveQueries, int iterationCount,
+            URI factoryUri) throws Throwable {
 
         for (int ic = 0; ic < iterationCount; ic++) {
-            this.host.log("(%d) Starting service factory POST, count:%d", ic, this.serviceCount);
-            doThroughputPost(factoryUri, setBody);
-            this.host.deleteAllChildServices(factoryUri);
+            this.host.log("(%d) Starting POST test to %s, count:%d",
+                    ic, factoryUri, this.serviceCount);
+
+            doThroughputPost(interleaveQueries, factoryUri);
+            this.host.deleteOrStopAllChildServices(factoryUri, true);
             logQuerySingleStat();
         }
     }
@@ -1248,12 +1346,6 @@ public class TestLuceneDocumentIndexService {
     public void throughputPostWithAuthz() throws Throwable {
         setUpHost(true);
         URI factoryUri = UriUtils.buildFactoryUri(this.host, ExampleService.class);
-        Consumer<Operation> setBody = (o) -> {
-            ExampleServiceState body = new ExampleServiceState();
-            body.name = "a name";
-            body.counter = Utils.getNowMicrosUtc();
-            o.setBody(body);
-        };
 
         // assume system identity so we can create roles
         this.host.setSystemAuthorizationContext();
@@ -1271,7 +1363,7 @@ public class TestLuceneDocumentIndexService {
                     0,
                     OperationContext.getAuthorizationContext().getClaims().getSubject(),
                     this.serviceCount);
-            doThroughputPost(factoryUri, setBody);
+            doThroughputPost(false, factoryUri);
             this.host.deleteAllChildServices(factoryUri);
         }
 
@@ -1289,7 +1381,7 @@ public class TestLuceneDocumentIndexService {
                             OperationContext.getAuthorizationContext().getClaims().getSubject(),
                             this.serviceCount);
                     long start = Utils.getNowMicrosUtc();
-                    doThroughputPost(factoryUri, setBody);
+                    doThroughputPost(false, factoryUri);
                     long end = Utils.getNowMicrosUtc();
                     durationPerSubject.put(userLink, end - start);
                     ctx.complete();
@@ -1356,28 +1448,62 @@ public class TestLuceneDocumentIndexService {
     }
 
 
-    private void doThroughputPost(URI factoryUri, Consumer<Operation> setBody)
+    private void doThroughputPost(boolean interleaveQueries,
+            URI factoryUri)
             throws Throwable {
         long startTimeMicros = System.nanoTime() / 1000;
+        int queryCount = 0;
+        AtomicLong queryResultCount = new AtomicLong();
+        long totalQueryCount = this.serviceCount / this.updatesPerQuery;
         TestContext ctx = this.host.testCreate((int) this.serviceCount);
+        TestContext queryCtx = this.host.testCreate(totalQueryCount);
+
         for (int i = 0; i < this.serviceCount; i++) {
+
             Operation createPost = Operation.createPost(factoryUri);
-            // call callback to set the body
-            setBody.accept(createPost);
+            ExampleServiceState body = new ExampleServiceState();
+            body.name = Utils.getNowMicrosUtc() + "";
+            body.id = i + "";
+            body.counter = (long) i;
+            createPost.setBody(body);
 
             // create a start service POST with an initial state
-            createPost.setCompletion(
-                    (o, e) -> {
+            createPost.setCompletion(ctx.getCompletion());
+            this.host.send(createPost);
+            if (!interleaveQueries) {
+                continue;
+            }
+
+            if ((queryCount >= totalQueryCount) || i % this.updatesPerQuery != 0) {
+                continue;
+            }
+
+            queryCount++;
+            Query q = Query.Builder.create()
+                    .addFieldClause(ExampleServiceState.FIELD_NAME_ID,
+                            "saffsdfs")
+                    .build();
+            QueryTask qt = QueryTask.Builder.createDirectTask()
+                    .setQuery(q)
+                    .build();
+            Operation createQuery = Operation.createPost(this.host,
+                    ServiceUriPaths.CORE_LOCAL_QUERY_TASKS).setBody(qt)
+                    .setCompletion((o, e) -> {
                         if (e != null) {
-                            ctx.failIteration(e);
+                            queryCtx.fail(e);
                             return;
                         }
-
-                        ctx.completeIteration();
+                        QueryTask rsp = o.getBody(QueryTask.class);
+                        queryResultCount.addAndGet(rsp.results.documentCount);
+                        queryCtx.complete();
                     });
-            this.host.send(createPost);
+
+            this.host.send(createQuery);
         }
         this.host.testWait(ctx);
+        if (interleaveQueries) {
+            this.host.testWait(queryCtx);
+        }
         long endTimeMicros = System.nanoTime() / 1000;
         double deltaSeconds = (endTimeMicros - startTimeMicros) / 1000000.0;
         double ioCount = this.serviceCount;
@@ -1386,9 +1512,11 @@ public class TestLuceneDocumentIndexService {
         if (this.host.isAuthorizationEnabled()) {
             subject = OperationContext.getAuthorizationContext().getClaims().getSubject();
         }
-        this.host.log("(%s) Operation count: %f, throughput(ops/sec): %f",
+        this.host.log(
+                "(%s) Service count now: %d Operation count: %f, Query count: %d, Query Result count: %d, throughput(ops/sec): %f",
                 subject,
-                ioCount, throughput);
+                this.host.getState().serviceCount,
+                ioCount, queryCount, queryResultCount.get(), throughput);
     }
 
     @Test

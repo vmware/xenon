@@ -92,7 +92,7 @@ public class SamplePreviousEchoService extends StatefulService {
         List<String> dl = response.results.documentLinks;
         String penultimate = dl.get(1);
         Object obj = response.results.documents.get(penultimate);
-        EchoServiceState s = Utils.fromJson((String) obj, EchoServiceState.class);
+        EchoServiceState s = Utils.fromJson(obj, EchoServiceState.class);
         return s;
     }
 }

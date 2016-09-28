@@ -196,7 +196,7 @@ public class TestOperationIndexService extends BasicTestCase {
                         // the synchronization-task.
                         int actualDocLinkSize = 0;
                         for (Object obj : query.results.documents.values()) {
-                            String so = (String) obj;
+                            String so = Utils.toJson(obj);
                             if (!so.contains(SynchronizationTaskService.FACTORY_LINK)) {
                                 actualDocLinkSize++;
                             }
