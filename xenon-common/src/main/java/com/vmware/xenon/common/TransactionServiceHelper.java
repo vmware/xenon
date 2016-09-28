@@ -255,7 +255,7 @@ public class TransactionServiceHelper {
         String latest = dl.get(0);
         Object obj = response.results.documents.get(latest);
         // ..unshadow..
-        ServiceDocument sd = Utils.fromJson((String) obj, st);
+        ServiceDocument sd = Utils.fromJson(obj, st);
         sd.documentTransactionId = null;
         // ..and stick back in.
         s.setState(original, sd);

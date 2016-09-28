@@ -468,8 +468,8 @@ public class StatelessService implements Service {
     }
 
     @Override
-    public ServiceDocument setInitialState(String jsonState, Long version) {
-        ServiceDocument d = Utils.fromJson(jsonState, this.stateType);
+    public ServiceDocument setInitialState(Object state, Long version) {
+        ServiceDocument d = Utils.fromJson(state, this.stateType);
         if (version != null) {
             d.documentVersion = version;
         }

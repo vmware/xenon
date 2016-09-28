@@ -349,7 +349,11 @@ public abstract class FactoryService extends StatelessService {
         initialState.documentSelfLink = o.getUri().getPath();
         initialState.documentKind = Utils.buildKind(this.stateType);
         initialState.documentTransactionId = o.getTransactionId();
-        o.setBody(initialState);
+        if (hasChildOption(ServiceOption.IMMUTABLE)) {
+            o.setBodyNoCloning(initialState);
+        } else {
+            o.setBody(initialState);
+        }
 
         if (this.childOptions.contains(ServiceOption.REPLICATION) && !o.isFromReplication()
                 && !o.isForwardingDisabled()) {
