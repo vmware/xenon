@@ -87,7 +87,6 @@ import com.vmware.xenon.common.http.netty.NettyHttpServiceClient;
 import com.vmware.xenon.common.jwt.JWTUtils;
 import com.vmware.xenon.common.jwt.Signer;
 import com.vmware.xenon.common.jwt.Verifier;
-import com.vmware.xenon.common.jwt.Verifier.TokenException;
 import com.vmware.xenon.services.common.AuthCredentialsService;
 import com.vmware.xenon.services.common.AuthorizationContextService;
 import com.vmware.xenon.services.common.ConsistentHashingNodeSelectorService;
@@ -121,6 +120,7 @@ import com.vmware.xenon.services.common.UserGroupService;
 import com.vmware.xenon.services.common.UserService;
 import com.vmware.xenon.services.common.authn.AuthenticationConstants;
 import com.vmware.xenon.services.common.authn.BasicAuthenticationService;
+import com.vmware.xenon.services.common.authn.BasicAuthenticationUtils;
 
 /**
  * Service host manages service life cycle, delivery of operations (remote and local) and performing
@@ -494,6 +494,7 @@ public class ServiceHost implements ServiceRequestSender {
     private Service authorizationService;
     private Service transactionService;
     private Service managementService;
+    private Service authenticationService;
     private SystemHostInfo info = new SystemHostInfo();
     private ServiceClient client;
 
@@ -504,6 +505,7 @@ public class ServiceHost implements ServiceRequestSender {
     private URI authorizationServiceUri;
     private URI transactionServiceUri;
     private URI managementServiceUri;
+    private URI authenticationServiceUri;
     private ScheduledFuture<?> maintenanceTask;
 
     private final ServiceSynchronizationTracker serviceSynchTracker = ServiceSynchronizationTracker
@@ -611,6 +613,9 @@ public class ServiceHost implements ServiceRequestSender {
 
         ServiceHostManagementService managementService = new ServiceHostManagementService();
         setManagementService(managementService);
+
+        BasicAuthenticationService basicAuthenticationService = new BasicAuthenticationService();
+        setAuthenticationService(basicAuthenticationService);
 
         this.state.codeProperties = FileUtils.readPropertiesFromResource(this.getClass(),
                 GIT_COMMIT_PROPERTIES_RESOURCE_NAME);
@@ -1123,6 +1128,29 @@ public class ServiceHost implements ServiceRequestSender {
         return this.managementService;
     }
 
+    public ServiceHost setAuthenticationService(Service service) {
+        if (this.state.isStarted) {
+            throw new IllegalStateException("Host is started");
+        }
+        this.authenticationService = service;
+        return this;
+    }
+
+    Service getAuthenticationService() {
+        return this.authenticationService;
+    }
+
+    public URI getAuthenticationServiceUri() {
+        if (this.authenticationService == null) {
+            return null;
+        }
+        if (this.authenticationServiceUri != null) {
+            return this.authenticationServiceUri;
+        }
+        this.authenticationServiceUri = this.authenticationService.getUri();
+        return this.authenticationServiceUri;
+    }
+
     public ScheduledExecutorService getScheduledExecutor() {
         return this.scheduledExecutor;
     }
@@ -1330,6 +1358,7 @@ public class ServiceHost implements ServiceRequestSender {
             }
         }
 
+
         List<Service> coreServices = new ArrayList<>();
         coreServices.add(this.managementService);
         coreServices.add(new ProcessFactoryService());
@@ -1353,7 +1382,18 @@ public class ServiceHost implements ServiceRequestSender {
         coreServices.add(new SystemUserService());
         coreServices.add(new GuestUserService());
 
-        coreServices.add(new BasicAuthenticationService());
+        if (this.authenticationService != null ) {
+            if (!(this.authenticationService instanceof BasicAuthenticationService)) {
+                addPrivilegedService(this.authenticationService.getClass());
+                startCoreServicesSynchronously(this.authenticationService);
+            } else {
+                // let the BasicAuthenticationService start normally
+                coreServices.add(this.authenticationService);
+            }
+        } else {
+            // start the BasicAuthenticationService anyways
+            coreServices.add(new BasicAuthenticationService());
+        }
 
         Service transactionFactoryService = new TransactionFactoryService();
         coreServices.add(transactionFactoryService);
@@ -2123,11 +2163,14 @@ public class ServiceHost implements ServiceRequestSender {
         }
 
         if (this.isAuthorizationEnabled() && post.getAuthorizationContext() == null) {
-            populateAuthorizationContext(post);
+            populateAuthorizationContext(post, authorizationContext -> {
+                // kick off service start state machine
+                processServiceStart(ProcessingStage.INITIALIZING, service, post, post.hasBody());
+            });
+        } else {
+            // kick off service start state machine
+            processServiceStart(ProcessingStage.INITIALIZING, service, post, post.hasBody());
         }
-
-        // kick off service start state machine
-        processServiceStart(ProcessingStage.INITIALIZING, service, post, post.hasBody());
         return this;
     }
 
@@ -3089,21 +3132,62 @@ public class ServiceHost implements ServiceRequestSender {
         }
 
         if (this.isAuthorizationEnabled()) {
-            if (inboundOp.getAuthorizationContext() == null) {
-                populateAuthorizationContext(inboundOp);
-            }
-
-            if (this.authorizationService != null) {
-                inboundOp.nestCompletion(op -> {
-                    handleRequestWithAuthContext(null, op);
-                });
-                queueOrScheduleRequest(this.authorizationService, inboundOp);
-                return true;
-            }
+            checkAndPopulateAuthContext(service, inboundOp);
+        } else {
+            handleRequestWithAuthContext(service, inboundOp);
         }
 
-        handleRequestWithAuthContext(service, inboundOp);
         return true;
+    }
+
+    private void checkAndPopulateAuthContext(Service service, Operation inboundOp) {
+        if (inboundOp.getAuthorizationContext() == null) {
+            if (this.authenticationService != null
+                    && BasicAuthenticationUtils.getAuthToken(inboundOp) == null) {
+                // for a call to the authenticationService the populateAuthorizationContext()
+                // inside nestCompletion expects the accessToken to be populated
+                inboundOp.nestCompletion(op -> {
+                    if (this.getAuthenticationServiceUri().getPath()
+                            .equals(inboundOp.getUri().getPath())
+                            && inboundOp.getAction() == Action.GET) {
+                        populateAuthorizationContext(op, authorizationContext -> {
+                            inboundOp.complete();
+                        });
+                    } else {
+                        inboundOp.complete();
+                    }
+                });
+                if (!this.getAuthenticationServiceUri().getPath().equals(inboundOp.getUri().getPath())
+                        && !(this.authenticationService instanceof BasicAuthenticationService)) {
+                    // not calling queueRequest if BasicAuthenticationService otherwise let the
+                    // authenticationService handle it.
+                    queueOrScheduleRequest(this.authenticationService, inboundOp);
+                } else {
+                    // allow the call to authenticationService to pass through using
+                    // guest context this is needed for getting the token
+                    populateAuthorizationContext(inboundOp, authorizationContext -> {
+                        checkAndPopulateAuthzContext(service, inboundOp);
+                    });
+                }
+            } else {
+                populateAuthorizationContext(inboundOp, authorizationContext -> {
+                    checkAndPopulateAuthzContext(service, inboundOp);
+                });
+            }
+        } else {
+            checkAndPopulateAuthzContext(service, inboundOp);
+        }
+    }
+
+    private void checkAndPopulateAuthzContext(Service service, Operation inboundOp) {
+        if (this.authorizationService != null) {
+            inboundOp.nestCompletion(op -> {
+                handleRequestWithAuthContext(null, op);
+            });
+            queueOrScheduleRequest(this.authorizationService, inboundOp);
+        } else {
+            handleRequestWithAuthContext(service, inboundOp);
+        }
     }
 
     private void handleRequestWithAuthContext(Service service, Operation inboundOp) {
@@ -3155,63 +3239,72 @@ public class ServiceHost implements ServiceRequestSender {
         return;
     }
 
-    AuthorizationContext getAuthorizationContext(Operation op) {
-        String token = op.getRequestHeader(Operation.REQUEST_AUTH_TOKEN_HEADER);
-        if (token == null) {
-            Map<String, String> cookies = op.getCookies();
-            if (cookies == null) {
-                return null;
-            }
-            token = cookies.get(AuthenticationConstants.REQUEST_AUTH_TOKEN_COOKIE);
-        }
+    void getAuthorizationContext(Operation op, Consumer<AuthorizationContext> authorizationContextHandler) {
+        String token = BasicAuthenticationUtils.getAuthToken(op);
 
-        if (token == null) {
-            return null;
+        if (token == null || op.getUri().equals(this.getAuthenticationServiceUri())) {
+            authorizationContextHandler.accept(null);
+            return;
         }
 
         AuthorizationContext ctx = this.authorizationContextCache.get(token);
+        if (ctx == null) {
+            // make a call to the tokenVerification service to get the claims object
+            Operation verifyOp = Operation
+                    .createPost(this.getAuthenticationServiceUri())
+                    .setReferer(op.getUri())
+                    .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_VERIFY_TOKEN)
+                    .addRequestHeader(Operation.REQUEST_AUTH_TOKEN_HEADER, token)
+                    .setCompletion(
+                            (resultOp, ex) -> {
+                                if (ex != null) {
+                                    log(Level.WARNING, "Error verifying token: %s", ex);
+                                    authorizationContextHandler.accept(null);
+                                } else {
+                                    Claims claims = resultOp.getBody(Claims.class);
+                                    AuthorizationContext authCtx = checkAndGetAuthorizationContext(
+                                            null, claims, token, op);
+                                    authorizationContextHandler.accept(authCtx);
+                                }
+                            });
+            sendRequest(verifyOp);
+        } else {
+            ctx = checkAndGetAuthorizationContext(ctx, ctx.getClaims(), token, op);
+            authorizationContextHandler.accept(ctx);
+        }
+    }
 
-        try {
-            Claims claims = null;
-            if (ctx == null) {
-                claims = this.getTokenVerifier().verify(token, Claims.class);
-            } else {
-                claims = ctx.getClaims();
-            }
+    private AuthorizationContext checkAndGetAuthorizationContext(AuthorizationContext ctx,
+            Claims claims, String token, Operation op) {
 
-            if (claims == null) {
-                log(Level.INFO, "Request to %s has no claims found with token: %s",
-                        op.getUri().getPath(), token);
-                return null;
-            }
-
-            Long expirationTime = claims.getExpirationTime();
-            if (expirationTime != null && expirationTime <= Utils.getSystemNowMicrosUtc()) {
-                synchronized (this.state) {
-                    this.authorizationContextCache.remove(token);
-                    this.userLinktoTokenMap.remove(claims.getSubject());
-                }
-                return null;
-            }
-
-            if (ctx != null) {
-                return ctx;
-            }
-
-            AuthorizationContext.Builder b = AuthorizationContext.Builder.create();
-            b.setClaims(claims);
-            b.setToken(token);
-            ctx = b.getResult();
-            synchronized (this.state) {
-                this.authorizationContextCache.put(token, ctx);
-                addUserToken(this.userLinktoTokenMap, claims.getSubject(), token);
-            }
-            return ctx;
-        } catch (TokenException | GeneralSecurityException e) {
-            log(Level.INFO, "Error verifying token: %s", e);
+        if (claims == null) {
+            log(Level.INFO, "Request to %s has no claims found with token: %s",
+                    op.getUri().getPath(), token);
+            return null;
         }
 
-        return null;
+        Long expirationTime = claims.getExpirationTime();
+        if (expirationTime != null && expirationTime <= Utils.getSystemNowMicrosUtc()) {
+            synchronized (this.state) {
+                this.authorizationContextCache.remove(token);
+                this.userLinktoTokenMap.remove(claims.getSubject());
+            }
+            return null;
+        }
+
+        if (ctx != null) {
+            return ctx;
+        }
+
+        AuthorizationContext.Builder b = AuthorizationContext.Builder.create();
+        b.setClaims(claims);
+        b.setToken(token);
+        ctx = b.getResult();
+        synchronized (this.state) {
+            this.authorizationContextCache.put(token, ctx);
+            addUserToken(this.userLinktoTokenMap, claims.getSubject(), token);
+        }
+        return ctx;
     }
 
     /**
@@ -5289,14 +5382,15 @@ public class ServiceHost implements ServiceRequestSender {
         return this.authorizationContextCache.get(token);
     }
 
-    private void populateAuthorizationContext(Operation op) {
-        AuthorizationContext ctx = getAuthorizationContext(op);
-        if (ctx == null) {
-            // No (valid) authorization context, fall back to guest context
-            ctx = getGuestAuthorizationContext();
-        }
-
-        op.setAuthorizationContext(ctx);
+    private void populateAuthorizationContext(Operation op, Consumer<AuthorizationContext> authorizationContextHandler) {
+        getAuthorizationContext(op, authorizationContext -> {
+            if (authorizationContext == null) {
+                // No (valid) authorization context, fall back to guest context
+                authorizationContext = getGuestAuthorizationContext();
+            }
+            op.setAuthorizationContext(authorizationContext);
+            authorizationContextHandler.accept(authorizationContext);
+        });
     }
 
     /**
