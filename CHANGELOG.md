@@ -13,6 +13,10 @@
   time in micros. Its 20x faster than the UUID scheme.
   Add Utils.buildUUID() that uses the new scheme.
 
+* Fix race condition in authz cache clear when a user access request
+  interleaved with a cache clear operation would result in a stale
+  authz cache
+
 * Authorize all requests on default notification target services created in
   ServiceHost.startSubscriptionService()
 

@@ -958,7 +958,7 @@ public class StatefulService implements Service {
                     failRequest(op, failure);
                     return;
                 }
-                processCompletionStageTransactionNotification(op, null);
+                processCompletionStageUpdateAuthzArtifacts(op);
             });
 
             ServiceDocument mergedState = op.getLinkedState();
@@ -966,6 +966,25 @@ public class StatefulService implements Service {
         } finally {
             processPending(op);
         }
+    }
+
+    /**
+     * Update any authz cache artifacts. Service authors need to
+     * override this method to define custom authz cache clear behavior
+     */
+    protected void processupdateAuthzArtifacts(Operation op) {
+        op.complete();
+    }
+
+    private void processCompletionStageUpdateAuthzArtifacts(Operation op) {
+        op.nestCompletion((o, failure) -> {
+            if (failure != null) {
+                failRequest(op, failure);
+                return;
+            }
+            processCompletionStageTransactionNotification(op, null);
+        });
+        processupdateAuthzArtifacts(op);
     }
 
     /**

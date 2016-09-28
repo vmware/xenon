@@ -24,6 +24,7 @@ import java.security.GeneralSecurityException;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Date;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -32,9 +33,11 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Consumer;
+import java.util.logging.Level;
 
 import org.junit.After;
 import org.junit.Before;
@@ -512,6 +515,73 @@ public class TestAuthorization extends BasicTestCase {
 
         assertNull(this.host.getAuthorizationContext(s, authContext1.getToken()));
         assertNull(this.host.getAuthorizationContext(s, authContext2.getToken()));
+    }
+
+    @Test
+    public void updateAuthzCache() throws Throwable {
+        ExecutorService executor = null;
+        try {
+            this.host.setSystemAuthorizationContext();
+            AuthorizationHelper authsetupHelper = new AuthorizationHelper(this.host);
+            String email = "foo@foo.com";
+            String userLink = authsetupHelper.createUserService(this.host, email);
+            Query userGroupQuery = Query.Builder.create().addFieldClause(UserState.FIELD_NAME_EMAIL, email).build();
+            String userGroupLink = authsetupHelper.createUserGroup(this.host, email, userGroupQuery);
+
+            TestContext ctx = this.host.testCreate(this.serviceCount);
+            Service s = this.host.startServiceAndWait(MinimalTestService.class, UUID.randomUUID()
+                    .toString());
+            executor = this.host.allocateExecutor(s);
+            this.host.resetSystemAuthorizationContext();
+            for (int i = 0; i < this.serviceCount; i++) {
+                this.host.run(executor, () -> {
+                    String serviceName = UUID.randomUUID().toString();
+                    try {
+                        this.host.setSystemAuthorizationContext();
+                        Query resourceQuery = Query.Builder.create().addFieldClause(ExampleServiceState.FIELD_NAME_NAME,
+                                serviceName).build();
+                        String resourceGroupLink = authsetupHelper.createResourceGroup(this.host, serviceName, resourceQuery);
+                        authsetupHelper.createRole(this.host, userGroupLink, resourceGroupLink, EnumSet.allOf(Action.class));
+                        this.host.resetSystemAuthorizationContext();
+                        this.host.assumeIdentity(userLink);
+                        ExampleServiceState exampleState = new ExampleServiceState();
+                        exampleState.name = serviceName;
+                        exampleState.documentSelfLink = serviceName;
+                        // Issue: https://www.pivotaltracker.com/story/show/131520613
+                        // We have a potential race condition in the code where the role
+                        // created above is not being reflected in the auth context for
+                        // the user; We are retrying the operation to mitigate the issue
+                        // till we have a fix for the issue
+                        for (int retryCounter = 0; retryCounter < 3; retryCounter++) {
+                            try {
+                                this.host.sendAndWaitExpectSuccess(
+                                        Operation.createPost(UriUtils.buildUri(this.host, ExampleService.FACTORY_LINK))
+                                        .setBody(exampleState));
+                                break;
+                            } catch (Throwable t) {
+                                this.host.log(Level.WARNING, "Error creating example service: " + t.getMessage());
+                                if (retryCounter == 2) {
+                                    ctx.fail(new IllegalStateException("Example service creation failed thrice"));
+                                    return;
+                                }
+                            }
+                        }
+                        this.host.sendAndWaitExpectSuccess(
+                                Operation.createDelete(UriUtils.buildUri(this.host,
+                                        UriUtils.buildUriPath(ExampleService.FACTORY_LINK, serviceName))));
+                        ctx.complete();
+                    } catch (Throwable e) {
+                        this.host.log(Level.WARNING, e.getMessage());
+                        ctx.fail(e);
+                    }
+                });
+            }
+            this.host.testWait(ctx);
+        } finally {
+            if (executor != null) {
+                executor.shutdown();
+            }
+        }
     }
 
     @Test
