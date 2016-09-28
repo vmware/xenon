@@ -20,6 +20,7 @@ import java.util.Set;
 
 import com.vmware.xenon.common.FactoryService;
 import com.vmware.xenon.common.Operation;
+import com.vmware.xenon.common.Service;
 import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.ServiceDocumentDescription.PropertyDescription;
 import com.vmware.xenon.common.ServiceDocumentDescription.PropertyIndexingOption;
@@ -39,7 +40,21 @@ public class ExampleService extends StatefulService {
      * This method is optional, {@code FactoryService.create} can be used directly
      */
     public static FactoryService createFactory() {
-        return FactoryService.create(ExampleService.class);
+        FactoryService fs = new FactoryService(ExampleServiceState.class) {
+
+            @Override
+            public Service createServiceInstance() throws Throwable {
+                return new ExampleService();
+            }
+
+            @Override
+            public void handlePost(Operation request) {
+                ExampleServiceState state = AuthorizationCacheUtils.extractBody(request, this, ExampleServiceState.class);
+                System.out.println("Invoking doc creation for :" + state.documentSelfLink + "; at :" + Utils.getNowMicrosUtc());
+                super.handlePost(request);
+            }
+        };
+        return fs;
     }
 
     public static class ExampleServiceState extends ServiceDocument {
