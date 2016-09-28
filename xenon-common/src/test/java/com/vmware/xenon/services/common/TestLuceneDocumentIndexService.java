@@ -55,6 +55,7 @@ import org.junit.rules.TemporaryFolder;
 
 import com.vmware.xenon.common.AuthorizationSetupHelper;
 import com.vmware.xenon.common.CommandLineArgumentParser;
+import com.vmware.xenon.common.FactoryService;
 import com.vmware.xenon.common.FileUtils;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.OperationContext;
@@ -106,6 +107,19 @@ class FaultInjectionLuceneDocumentIndexService extends LuceneDocumentIndexServic
 }
 
 public class TestLuceneDocumentIndexService {
+
+    public static class ImmutableExampleService extends ExampleService {
+        public ImmutableExampleService() {
+            super();
+            super.toggleOption(ServiceOption.ON_DEMAND_LOAD, true);
+            super.toggleOption(ServiceOption.IMMUTABLE, true);
+        }
+
+        public static FactoryService createFactory() {
+            return FactoryService.create(ImmutableExampleService.class);
+        }
+
+    }
 
     /**
      * Parameter that specifies number of durable service instances to create
@@ -1226,18 +1240,31 @@ public class TestLuceneDocumentIndexService {
     @Test
     public void throughputPost() throws Throwable {
         setUpHost(false);
-        int iterationCount = this.host.isStressTest() ? 5 : 1;
-        URI factoryUri = UriUtils.buildFactoryUri(this.host, ExampleService.class);
-
+        int iterationCount = this.host.isStressTest() ? 10 : 1;
         Consumer<Operation> setBody = (o) -> {
             ExampleServiceState body = new ExampleServiceState();
             body.name = "a name";
             body.counter = Utils.getNowMicrosUtc();
+            body.documentSelfLink = body.counter + "";
             o.setBody(body);
         };
 
+        Service immutableFactory = ImmutableExampleService.createFactory();
+        immutableFactory = this.host.startServiceAndWait(immutableFactory,
+                "immutable-" + UUID.randomUUID().toString(), null);
+
+        URI factoryUri = immutableFactory.getUri();
+        doMultipleIterationsThroughputPost(iterationCount, factoryUri, setBody);
+
+        factoryUri = UriUtils.buildFactoryUri(this.host, ExampleService.class);
+        doMultipleIterationsThroughputPost(iterationCount, factoryUri, setBody);
+    }
+
+    private void doMultipleIterationsThroughputPost(int iterationCount, URI factoryUri,
+            Consumer<Operation> setBody) throws Throwable {
         for (int ic = 0; ic < iterationCount; ic++) {
-            this.host.log("(%d) Starting service factory POST, count:%d", ic, this.serviceCount);
+            this.host.log("(%d) Starting POST test to %s, count:%d",
+                    ic, factoryUri, this.serviceCount);
             doThroughputPost(factoryUri, setBody);
             this.host.deleteAllChildServices(factoryUri);
             logQuerySingleStat();
