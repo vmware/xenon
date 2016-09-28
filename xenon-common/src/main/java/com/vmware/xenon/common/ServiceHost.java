@@ -495,6 +495,7 @@ public class ServiceHost implements ServiceRequestSender {
     private Service authorizationService;
     private Service transactionService;
     private Service managementService;
+    private Service authenticationService;
     private SystemHostInfo info = new SystemHostInfo();
     private ServiceClient client;
 
@@ -505,6 +506,7 @@ public class ServiceHost implements ServiceRequestSender {
     private URI authorizationServiceUri;
     private URI transactionServiceUri;
     private URI managementServiceUri;
+    private URI authenticationServiceUri;
     private ScheduledFuture<?> maintenanceTask;
 
     private final ServiceSynchronizationTracker serviceSynchTracker = ServiceSynchronizationTracker
@@ -1120,6 +1122,29 @@ public class ServiceHost implements ServiceRequestSender {
         return this.managementService;
     }
 
+    public ServiceHost setAuthenticationService(Service service) {
+        if (this.state.isStarted) {
+            throw new IllegalStateException("Host is started");
+        }
+        this.authenticationService = service;
+        return this;
+    }
+
+    Service getAuthenticationService() {
+        return this.authenticationService;
+    }
+
+    public URI getAuthenticationServiceUri() {
+        if (this.authenticationService == null) {
+            return null;
+        }
+        if (this.authenticationServiceUri != null) {
+            return this.authenticationServiceUri;
+        }
+        this.authenticationServiceUri = this.authenticationService.getUri();
+        return this.authenticationServiceUri;
+    }
+
     public ScheduledExecutorService getScheduledExecutor() {
         return this.scheduledExecutor;
     }
@@ -1325,6 +1350,11 @@ public class ServiceHost implements ServiceRequestSender {
                         TaskFactoryService.create(SynchronizationTaskService.class) };
                 startCoreServicesSynchronously(queryServiceArray);
             }
+        }
+
+        if (this.authenticationService != null) {
+            addPrivilegedService(this.authenticationService.getClass());
+            startCoreServicesSynchronously(this.authenticationService);
         }
 
         List<Service> coreServices = new ArrayList<>();
@@ -3078,13 +3108,15 @@ public class ServiceHost implements ServiceRequestSender {
         String token = op.getRequestHeader(Operation.REQUEST_AUTH_TOKEN_HEADER);
         if (token == null) {
             Map<String, String> cookies = op.getCookies();
-            if (cookies == null) {
-                return null;
+            if (cookies != null) {
+                token = cookies.get(AuthenticationConstants.REQUEST_AUTH_TOKEN_COOKIE);
             }
-            token = cookies.get(AuthenticationConstants.REQUEST_AUTH_TOKEN_COOKIE);
         }
 
         if (token == null) {
+            if (this.authenticationService != null) {
+                queueOrScheduleRequest(this.authenticationService, op);
+            }
             return null;
         }
 
