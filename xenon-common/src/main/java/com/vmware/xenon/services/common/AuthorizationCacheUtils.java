@@ -17,12 +17,15 @@ import java.util.EnumSet;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicInteger;
 
+
+
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Operation.CompletionHandler;
 import com.vmware.xenon.common.Service;
 import com.vmware.xenon.common.Service.Action;
 import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.ServiceDocumentQueryResult;
+import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
 import com.vmware.xenon.services.common.QueryTask.Query;
 import com.vmware.xenon.services.common.QueryTask.Query.Builder;
@@ -47,8 +50,24 @@ public class AuthorizationCacheUtils {
                 op.fail(e);
                 return;
             }
-            s.getHost().clearAuthorizationContext(s, userPath);
-            op.complete();
+            if (s.getHost().getAuthorizationServiceUri() != null) {
+                AuthorizationCacheClearRequest request = AuthorizationCacheClearRequest.create(userPath);
+                Operation postClearCacheRequest = Operation.createPost(s.getHost(), ServiceUriPaths.CORE_AUTHZ_VERIFICATION)
+                        .setBody(request)
+                        .setCompletion((clearOp, clearEx) -> {
+                            if (clearEx != null) {
+                                op.fail(clearEx);
+                                return;
+                            }
+                            op.complete();
+                        }
+                                );
+                postClearCacheRequest.addRequestHeader(Operation.PRAGMA_HEADER, Operation.PRAGMA_DIRECTIVE_CLEAR_AUTH_CACHE);
+                s.setAuthorizationContext(postClearCacheRequest, s.getSystemAuthorizationContext());
+                s.sendRequest(postClearCacheRequest);
+            } else {
+                op.complete();
+            }
         });
     }
 
@@ -89,10 +108,23 @@ public class AuthorizationCacheUtils {
                             op.complete();
                             return;
                         }
+                        AtomicInteger completionCount = new AtomicInteger(0);
+                        CompletionHandler handler = (clearOp, clearEx) -> {
+                            if (clearEx != null) {
+                                op.fail(clearEx);
+                                return;
+                            }
+                            if (completionCount.incrementAndGet() == result.documentLinks.size()) {
+                                op.complete();
+                            }
+                        };
                         for (String userLink : result.documentLinks) {
-                            s.getHost().clearAuthorizationContext(s, userLink);
+                            Operation clearUserOp = new Operation();
+                            clearUserOp.setUri(UriUtils.buildUri(s.getHost(), userLink));
+                            clearUserOp.setCompletion(handler);
+                            clearAuthzCacheForUser(s, clearUserOp);
+                            clearUserOp.complete();
                         }
-                        op.complete();
                     }
                 );
             s.setAuthorizationContext(postOp, s.getSystemAuthorizationContext());
