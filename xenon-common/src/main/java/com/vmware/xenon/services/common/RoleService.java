@@ -82,9 +82,10 @@ public class RoleService extends StatefulService {
     }
 
     @Override
-    public void handleRequest(Operation request, OperationProcessingStage opProcessingStage) {
-        checkAndNestCompletionForAuthzCacheClear(this, request);
-        super.handleRequest(request, opProcessingStage);
+    public void processupdateAuthzArtifacts(Operation op) {
+        System.out.println("Invoking role update for :" + op.getUri() + "; at :" + Utils.getNowMicrosUtc());
+        checkAndNestCompletionForAuthzCacheClear(this, op);
+        op.complete();
     }
 
     @Override
