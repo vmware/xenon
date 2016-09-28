@@ -19,8 +19,11 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.EnumSet;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 import com.vmware.xenon.common.Claims;
 import com.vmware.xenon.common.Operation;
@@ -87,7 +90,8 @@ public class AuthorizationContextService extends StatelessService {
 
     public static final String SELF_LINK = ServiceUriPaths.CORE_AUTHZ_VERIFICATION;
 
-    private final Map<String, Collection<Operation>> pendingOperationsBySubject = new HashMap<>();
+    private final Map<String, Collection<Operation>> pendingOperationsBySubject = new ConcurrentHashMap<>();
+    private final Set<String> cacheClearRequests = Collections.synchronizedSet(new HashSet<>());
 
     /**
      * The service host will invoke this method to allow a service to handle
@@ -98,6 +102,7 @@ public class AuthorizationContextService extends StatelessService {
      */
     @Override
     public boolean queueRequest(Operation op) {
+
         AuthorizationContext ctx = op.getAuthorizationContext();
         if (ctx == null) {
             op.fail(new IllegalArgumentException("no authorization context"));
@@ -114,6 +119,11 @@ public class AuthorizationContextService extends StatelessService {
         if (subject == null) {
             op.fail(new IllegalArgumentException("no subject"));
             return true;
+        }
+
+        // handle a cache clear request
+        if (op.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_CLEAR_AUTH_CACHE)) {
+            return handleCacheClearRequest(op, subject);
         }
 
         // Allow unconditionally if this is the system user
@@ -134,6 +144,32 @@ public class AuthorizationContextService extends StatelessService {
         return false;
     }
 
+    private boolean handleCacheClearRequest(Operation op, String subject) {
+        AuthorizationCacheClearRequest requestBody = op.getBody(AuthorizationCacheClearRequest.class);
+        if (!AuthorizationCacheClearRequest.KIND.equals(requestBody.kind)) {
+            op.fail(new IllegalArgumentException("invalid request body type"));
+            return true;
+        }
+        if (requestBody.subjectLink == null) {
+            op.fail(new IllegalArgumentException("no subjectLink"));
+            return true;
+        }
+        if (!subject.equals(SystemUserService.SELF_LINK)) {
+            op.fail(Operation.STATUS_CODE_FORBIDDEN);
+            return true;
+        }
+        // it is ok if pendingOperationsBySubject changes from under us after
+        // this check - the fact that we have a clear request means that the
+        // service state has been updated and any pending task that might get created
+        // after this check will load the updated state
+        if (this.pendingOperationsBySubject.containsKey(requestBody.subjectLink)) {
+            this.cacheClearRequests.add(requestBody.subjectLink);
+        }
+        getHost().clearAuthorizationContext(this, requestBody.subjectLink);
+        op.complete();
+        return true;
+    }
+
     @Override
     public void handleRequest(Operation op) {
         AuthorizationContext ctx = op.getAuthorizationContext();
@@ -151,7 +187,7 @@ public class AuthorizationContextService extends StatelessService {
         // Add operation to collection of operations for this user.
         // Only if there was no collection for this subject will the routine
         // to gather state and roles for the subject be kicked off.
-        synchronized (this.pendingOperationsBySubject) {
+        synchronized (this) {
             String subject = claims.getSubject();
             Collection<Operation> pendingOperations = this.pendingOperationsBySubject.get(subject);
             if (pendingOperations != null) {
@@ -209,7 +245,6 @@ public class AuthorizationContextService extends StatelessService {
                     for (Object doc : result.documents.values()) {
                         UserGroupState userGroupState = Utils.fromJson(doc,
                                 UserGroupState.class);
-
                         try {
                             QueryFilter f = QueryFilter.create(userGroupState.query);
                             if (QueryFilterUtils.evaluate(f, userState, getHost())) {
@@ -421,8 +456,16 @@ public class AuthorizationContextService extends StatelessService {
             }
 
             AuthorizationContext newContext = builder.getResult();
-            getHost().cacheAuthorizationContext(this, newContext);
-            completePendingOperations(claims.getSubject(), newContext);
+            boolean retry = false;
+            if (this.cacheClearRequests.remove(claims.getSubject())) {
+                retry = true;
+            }
+            if (retry) {
+                getSubject(ctx, claims);
+            } else {
+                getHost().cacheAuthorizationContext(this, newContext);
+                completePendingOperations(claims.getSubject(), newContext);
+            }
         } catch (Throwable e) {
             failThrowable(claims.getSubject(), e);
         }
@@ -431,11 +474,7 @@ public class AuthorizationContextService extends StatelessService {
     private Collection<Operation> getPendingOperations(String subject) {
         Collection<Operation> operations;
 
-        synchronized (this.pendingOperationsBySubject) {
-            operations = this.pendingOperationsBySubject.get(subject);
-            this.pendingOperationsBySubject.remove(subject);
-        }
-
+        operations = this.pendingOperationsBySubject.remove(subject);
         if (operations == null) {
             return Collections.emptyList();
         }

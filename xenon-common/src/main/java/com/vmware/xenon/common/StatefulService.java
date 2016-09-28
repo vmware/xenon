@@ -110,6 +110,10 @@ public class StatefulService implements Service {
         op.complete();
     }
 
+    public void updateAuthzArtifacts(Operation op) {
+        op.complete();
+    }
+
     /**
      * Infrastructure use only. The service host will invoke this method to allow a service to
      * either queue a request or, if it returns true, indicate it is ready to process it
@@ -976,7 +980,7 @@ public class StatefulService implements Service {
                         }
 
                         if (e == null) {
-                            processCompletionStagePublishAndComplete(op);
+                            processUpdateAuthzArtifacts(op);
                             return;
                         }
 
@@ -986,11 +990,22 @@ public class StatefulService implements Service {
         }
 
         if (e == null) {
-            processCompletionStagePublishAndComplete(op);
+            processUpdateAuthzArtifacts(op);
             return;
         }
 
         failRequest(op, e);
+    }
+
+    private void processUpdateAuthzArtifacts(Operation op) {
+        op.nestCompletion((o, failure) -> {
+            if (failure != null) {
+                failRequest(op, failure);
+                return;
+            }
+            processCompletionStagePublishAndComplete(op);
+        });
+        updateAuthzArtifacts(op);
     }
 
     /**

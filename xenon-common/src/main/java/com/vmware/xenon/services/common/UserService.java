@@ -49,11 +49,11 @@ public class UserService extends StatefulService {
     }
 
     @Override
-    public void handleRequest(Operation request, OperationProcessingStage opProcessingStage) {
-        if (AuthorizationCacheUtils.isAuthzCacheClearApplicableOperation(request)) {
-            AuthorizationCacheUtils.clearAuthzCacheForUser(this, request);
+    public void updateAuthzArtifacts(Operation op) {
+        if (AuthorizationCacheUtils.isAuthzCacheClearApplicableOperation(op)) {
+            AuthorizationCacheUtils.clearAuthzCacheForUser(this, op);
         }
-        super.handleRequest(request, opProcessingStage);
+        op.complete();
     }
 
     @Override
