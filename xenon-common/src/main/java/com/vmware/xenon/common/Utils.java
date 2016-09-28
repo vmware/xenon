@@ -611,6 +611,10 @@ public class Utils {
             }
             antiReqs = EnumSet.of(ServiceOption.PERIODIC_MAINTENANCE);
             break;
+        case IMMUTABLE:
+            reqs = EnumSet.of(ServiceOption.ON_DEMAND_LOAD, ServiceOption.PERSISTENCE);
+            antiReqs = EnumSet.of(ServiceOption.PERIODIC_MAINTENANCE);
+            break;
         case TRANSACTION_PENDING:
             break;
         default:
