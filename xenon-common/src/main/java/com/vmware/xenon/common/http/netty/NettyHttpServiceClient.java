@@ -574,7 +574,7 @@ public class NettyHttpServiceClient implements ServiceClient {
             } else {
                 // for HTTP/1.1, we close the stream to ensure we don't use a bad connection
                 op.setSocketContext(null);
-                pool.returnOrClose(nettyCtx, !op.isKeepAlive());
+                pool.returnOrClose(nettyCtx, true);
             }
         }
 
