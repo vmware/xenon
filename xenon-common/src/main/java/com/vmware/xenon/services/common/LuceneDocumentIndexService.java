@@ -2080,6 +2080,9 @@ public class LuceneDocumentIndexService extends StatelessService {
 
     private void checkDocumentRetentionLimit(ServiceDocument state,
             ServiceDocumentDescription desc) {
+        if (desc.versionRetentionLimit == ServiceDocumentDescription.FIELD_VALUE_DISABLED_VERSION_RETENTION) {
+            return;
+        }
         synchronized (this.linkDocumentRetentionEstimates) {
             if (this.linkDocumentRetentionEstimates.containsKey(state.documentSelfLink)) {
                 return;
