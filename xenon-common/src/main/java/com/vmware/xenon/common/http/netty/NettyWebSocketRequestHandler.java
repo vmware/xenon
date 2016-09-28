@@ -38,7 +38,6 @@ import io.netty.handler.codec.http.websocketx.WebSocketServerHandshaker;
 import io.netty.handler.codec.http.websocketx.WebSocketServerHandshakerFactory;
 
 import com.vmware.xenon.common.Operation;
-import com.vmware.xenon.common.OperationContext;
 import com.vmware.xenon.common.Service.Action;
 import com.vmware.xenon.common.ServiceHost;
 import com.vmware.xenon.common.ServiceSubscriptionState;
@@ -124,7 +123,6 @@ public class NettyWebSocketRequestHandler extends SimpleChannelInboundHandler<Ob
                     dummyOp.addRequestHeader(Operation.REQUEST_AUTH_TOKEN_HEADER, this.authToken);
                     dummyOp.setUri(
                             UriUtils.buildUri(this.host, ServiceUriPaths.CORE_WEB_SOCKET_ENDPOINT));
-                    OperationContext.setAuthorizationContext(this.host, dummyOp);
                 }
 
                 processWebSocketFrame(ctx, frameText);
