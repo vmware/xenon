@@ -49,6 +49,7 @@ import org.junit.rules.TemporaryFolder;
 
 import com.vmware.xenon.common.Operation.CompletionHandler;
 import com.vmware.xenon.common.Service.ServiceOption;
+import com.vmware.xenon.common.ServiceHost.AuthDetails;
 import com.vmware.xenon.common.ServiceHost.ServiceAlreadyStartedException;
 import com.vmware.xenon.common.ServiceHost.ServiceHostState;
 import com.vmware.xenon.common.ServiceHost.ServiceHostState.MemoryLimitType;
@@ -694,6 +695,144 @@ public class TestServiceHost {
             h.stop();
         }
 
+    }
+
+    @Test
+    public void testExternalAuthRedirectSetup() throws Throwable {
+        setUp(false);
+        ExampleServiceHost h = new ExampleServiceHost();
+        try {
+            String bindAddress = "127.0.0.1";
+            String vidmAuthType = "Vidm";
+            String cspAuthType = "Csp";
+
+            AuthDetails vidmAuthdetails = new AuthDetails();
+            vidmAuthdetails.authType = "Vidm";
+            vidmAuthdetails.authUrl = "https://blr-3rd-2-dhcp78.eng.vmware.com/SAAS/auth/oauth2/authorize?response_type=code&client_id=vidm-xenon-client-2&redirect_uri=http://127.0.0.1:8000/auth/vidm";
+            vidmAuthdetails.redirectUri = new URI("http://127.0.0.1:8000/auth/vidm");
+
+            String[] args = {
+                    "--sandbox=" + this.tmpFolder.getRoot().getAbsolutePath(),
+                    "--port=0",
+                    "--bindAddress=" + bindAddress,
+                    "--isAuthorizationEnabled=" + Boolean.TRUE.toString(),
+                    "--authType=" + vidmAuthType
+            };
+
+            h.initialize(args);
+            assertEquals(vidmAuthType, h.getAuthType());
+            h.setAuthType(cspAuthType);
+            assertEquals(cspAuthType, h.getAuthType());
+            h.setAuthType(vidmAuthType);
+
+            //Setup the AuthDetails
+            h.addAuthDetails(vidmAuthdetails);
+            AuthDetails configuredAuthDetails = h.getAuthDetails(h.getAuthType());
+            assertEquals(vidmAuthdetails.authType, configuredAuthDetails.authType);
+            assertEquals(vidmAuthdetails.authUrl, configuredAuthDetails.authUrl);
+            assertEquals(vidmAuthdetails.redirectUri, configuredAuthDetails.redirectUri);
+
+            h.start();
+
+            this.host.testStart(1);
+            h.sendRequest(Operation
+                    .createGet(UriUtils.buildUri(h.getUri(), ServiceUriPaths.DEFAULT_NODE_GROUP))
+                    .setReferer(this.host.getReferer())
+                    .setCompletion((o, e) -> {
+                        if (o.getStatusCode() == Operation.STATUS_CODE_MOVED_TEMP
+                                && o.getResponseHeader(Operation.LOCATION_HEADER).equals(vidmAuthdetails.authUrl)) {
+                            this.host.completeIteration();
+                            return;
+                        }
+                        this.host.failIteration(new IllegalStateException(
+                                "Op succeded when failure expected"));
+                    }));
+            this.host.testWait();
+        } finally {
+            h.stop();
+        }
+    }
+
+    @Test
+    public void testExternalAuthTypeAsHeader() throws Throwable {
+        setUp(false);
+        ExampleServiceHost h = new ExampleServiceHost();
+        try {
+            String bindAddress = "127.0.0.1";
+            String vidmAuthType = "Vidm";
+
+            AuthDetails vidmAuthdetails = new AuthDetails();
+            vidmAuthdetails.authType = "Vidm";
+            vidmAuthdetails.authUrl = "https://blr-3rd-2-dhcp78.eng.vmware.com/SAAS/auth/oauth2/authorize?response_type=code&client_id=vidm-xenon-client-2&redirect_uri=http://127.0.0.1:8000/auth/vidm";
+            vidmAuthdetails.redirectUri = new URI("http://127.0.0.1:8000/auth/vidm");
+
+            String[] args = {
+                    "--sandbox=" + this.tmpFolder.getRoot().getAbsolutePath(),
+                    "--port=0",
+                    "--bindAddress=" + bindAddress,
+                    "--isAuthorizationEnabled=" + Boolean.TRUE.toString()
+            };
+
+            h.initialize(args);
+            //Setup the AuthDetails
+            h.addAuthDetails(vidmAuthdetails);
+            h.start();
+
+            this.host.testStart(1);
+            h.sendRequest(Operation
+                    .createGet(UriUtils.buildUri(h.getUri(), ServiceUriPaths.DEFAULT_NODE_GROUP))
+                    .setReferer(this.host.getReferer())
+                    .addRequestHeader(Operation.AUTH_TYPE_HEADER, vidmAuthType)
+                    .setCompletion((o, e) -> {
+                        if (o.getStatusCode() == Operation.STATUS_CODE_MOVED_TEMP
+                                && o.getResponseHeader(Operation.LOCATION_HEADER).equals(vidmAuthdetails.authUrl)) {
+                            this.host.completeIteration();
+                            return;
+                        }
+                        this.host.failIteration(new IllegalStateException(
+                                "Op succeded when failure expected"));
+                    }));
+            this.host.testWait();
+        } finally {
+            h.stop();
+        }
+    }
+
+    @Test
+    public void testExternalAuthTypeWithNoAuthDetails() throws Throwable {
+        setUp(false);
+        ExampleServiceHost h = new ExampleServiceHost();
+        try {
+            String bindAddress = "127.0.0.1";
+            String vidmAuthType = "Vidm";
+
+            String[] args = {
+                    "--sandbox=" + this.tmpFolder.getRoot().getAbsolutePath(),
+                    "--port=0",
+                    "--bindAddress=" + bindAddress,
+                    "--isAuthorizationEnabled=" + Boolean.TRUE.toString()
+            };
+
+            h.initialize(args);
+            h.start();
+
+            this.host.testStart(1);
+            h.sendRequest(Operation
+                    .createGet(UriUtils.buildUri(h.getUri(), ServiceUriPaths.DEFAULT_NODE_GROUP))
+                    .setReferer(this.host.getReferer())
+                    .addRequestHeader(Operation.AUTH_TYPE_HEADER, vidmAuthType)
+                    .setCompletion((o, e) -> {
+                        if (o.getStatusCode() == Operation.STATUS_CODE_FORBIDDEN) {
+                            this.host.completeIteration();
+                            return;
+                        }
+                        this.host.failIteration(new IllegalStateException(
+                                "Op succeded when failure expected"));
+                    }));
+            this.host.testWait();
+        } finally {
+            h.stop();
+        }
     }
 
     @Test

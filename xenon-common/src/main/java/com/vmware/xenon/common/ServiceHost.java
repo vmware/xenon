@@ -268,6 +268,11 @@ public class ServiceHost implements ServiceRequestSender {
          */
         public String location;
 
+        /**
+         * If isAuthorizationEnabled is set to true, this will determine the type of authn. Defaults to 'Basic' if not specified
+         */
+        public String authType;
+
     }
 
     protected static final LogFormatter LOG_FORMATTER = new LogFormatter();
@@ -328,6 +333,8 @@ public class ServiceHost implements ServiceRequestSender {
     static final Path DEFAULT_SANDBOX = DEFAULT_TMPDIR.resolve("xenon");
     static final Path DEFAULT_RESOURCE_SANDBOX_DIR = Paths.get("resources");
 
+    static final String AUTH_TYPE_BASIC = "Basic";
+
     /**
      * Estimate for average service state memory cost, in bytes. This can be computed per
      * state cached, estimated per kind, or made tunable in the future. Its used solely for estimating
@@ -378,6 +385,26 @@ public class ServiceHost implements ServiceRequestSender {
         public long startTimeMicros;
     }
 
+    public static class AuthDetails {
+        /**
+         * Holds the authType for the auth provider configured on the host,
+         * generally used for external auth
+         */
+        public String authType;
+
+        /**
+         * The authType's url to redirect for when doing a external
+         * authentication, again set by the auth provider
+         */
+        public String authUrl;
+
+        /**
+         * The url to which we will get a call back from the external auth
+         * provider after successful authentication
+         */
+        public URI redirectUri;
+    }
+
     public static class ServiceHostState extends ServiceDocument {
         public static enum MemoryLimitType {
             LOW_WATERMARK, HIGH_WATERMARK, EXACT
@@ -425,6 +452,7 @@ public class ServiceHost implements ServiceRequestSender {
         public Properties codeProperties;
         public long serviceCount;
         public String location;
+        public String authType;
 
         /**
          * Relative memory limit per service path. The limit is expressed as
@@ -523,6 +551,8 @@ public class ServiceHost implements ServiceRequestSender {
 
     private AuthorizationContext systemAuthorizationContext;
     private AuthorizationContext guestAuthorizationContext;
+
+    private final Map<String, AuthDetails> authTypeToDetailsMap = new ConcurrentHashMap<>();
 
     protected ServiceHost() {
         this.state = new ServiceHostState();
@@ -711,6 +741,7 @@ public class ServiceHost implements ServiceRequestSender {
 
         this.state.initialPeerNodes = args.peerNodes;
         this.state.location = args.location;
+        this.state.authType = args.authType;
     }
 
     public String getLocation() {
@@ -722,6 +753,14 @@ public class ServiceHost implements ServiceRequestSender {
             throw new IllegalStateException("Already started");
         }
         this.state.location = location;
+    }
+
+    public AuthDetails getAuthDetails(String authType) {
+        return this.authTypeToDetailsMap.get(authType);
+    }
+
+    public void addAuthDetails(AuthDetails authDetails) {
+        this.authTypeToDetailsMap.put(authDetails.authType, authDetails);
     }
 
     protected void configureLogging(File storageSandboxDir) throws IOException {
@@ -877,6 +916,14 @@ public class ServiceHost implements ServiceRequestSender {
             throw new IllegalStateException("Already started");
         }
         this.state.isAuthorizationEnabled = isAuthorizationEnabled;
+    }
+
+    public String getAuthType() {
+        return this.state.authType;
+    }
+
+    public void setAuthType(String authType) {
+        this.state.authType = authType;
     }
 
     public boolean isPeerSynchronizationEnabled() {
@@ -3042,16 +3089,43 @@ public class ServiceHost implements ServiceRequestSender {
     }
 
     AuthorizationContext getAuthorizationContext(Operation op) {
+
+        String authType = getAuthType();
+        if (authType == null) {
+            authType = op.getRequestHeader(Operation.AUTH_TYPE_HEADER);
+            if (authType == null) {
+                //Default to 'Basic', if not specified both as an argument or as a header
+                authType = AUTH_TYPE_BASIC;
+            }
+        }
+
         String token = op.getRequestHeader(Operation.REQUEST_AUTH_TOKEN_HEADER);
         if (token == null) {
             Map<String, String> cookies = op.getCookies();
-            if (cookies == null) {
-                return null;
+            if (cookies != null) {
+                token = cookies.get(AuthenticationConstants.REQUEST_AUTH_TOKEN_COOKIE);
             }
-            token = cookies.get(AuthenticationConstants.REQUEST_AUTH_TOKEN_COOKIE);
         }
 
         if (token == null) {
+            if (authType != AUTH_TYPE_BASIC) {
+                AuthDetails authDetails = getAuthDetails(authType);
+                if (authDetails != null) {
+
+                    //Until we get a request on the configured redirectUrl, it means
+                    //external authentication is not complete respond with a redirect
+                    //Once we get a request on the configured redirectUrl, will have to
+                    //pass it on to the external auth provider service and setup the authorizationContext
+
+                    URI requestUri = UriUtils.buildPublicUri(this, op.getUri().getPath());
+                    URI redirectUri = authDetails.redirectUri;
+                    if (!requestUri.equals(redirectUri)) {
+                        op.addResponseHeader(Operation.LOCATION_HEADER, authDetails.authUrl);
+                        op.setStatusCode(Operation.STATUS_CODE_MOVED_TEMP);
+                        op.complete();
+                    }
+                }
+            }
             return null;
         }
 
@@ -3060,7 +3134,11 @@ public class ServiceHost implements ServiceRequestSender {
         try {
             Claims claims = null;
             if (ctx == null) {
-                claims = this.getTokenVerifier().verify(token, Claims.class);
+                if (authType == AUTH_TYPE_BASIC) {
+                    claims = this.getTokenVerifier().verify(token, Claims.class);
+                } else {
+                    //Make a request to the auth provider for verifying the token and get the Claims object.
+                }
             } else {
                 claims = ctx.getClaims();
             }
