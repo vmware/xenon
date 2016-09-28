@@ -5167,6 +5167,18 @@ public class ServiceHost implements ServiceRequestSender {
             // 1) Build the base description and add it to the cache
             desc = this.descriptionBuilder.buildDescription(serviceStateClass, s.getOptions(),
                     RequestRouter.findRequestRouter(s.getOperationProcessingChain()));
+
+            if (s.getOptions().contains(ServiceOption.IMMUTABLE)) {
+                if (desc.versionRetentionLimit > ServiceDocumentDescription.DEFAULT_VERSION_RETENTION_LIMIT) {
+                    log(Level.WARNING, "Service has option %s, forcing retention limit",
+                            ServiceOption.IMMUTABLE,
+                            s.getSelfLink());
+                }
+                // set retention limit to MIN value so index service skips version retention on this
+                // document type
+                desc.versionRetentionLimit = ServiceDocumentDescription.FIELD_VALUE_DISABLED_VERSION_RETENTION;
+            }
+
             this.descriptionCache.put(serviceTypeName, desc);
 
             // 2) Call the service's getDocumentTemplate() to allow the service author to modify it
