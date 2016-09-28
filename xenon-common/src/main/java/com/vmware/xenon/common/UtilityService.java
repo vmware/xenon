@@ -737,7 +737,7 @@ public class UtilityService implements Service {
     }
 
     @Override
-    public ServiceDocument setInitialState(String jsonState, Long initialVersion) {
+    public ServiceDocument setInitialState(Object state, Long initialVersion) {
         return null;
     }
 
