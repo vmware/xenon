@@ -44,6 +44,7 @@ import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 import java.util.logging.Level;
 
@@ -55,6 +56,7 @@ import org.junit.rules.TemporaryFolder;
 
 import com.vmware.xenon.common.AuthorizationSetupHelper;
 import com.vmware.xenon.common.CommandLineArgumentParser;
+import com.vmware.xenon.common.FactoryService;
 import com.vmware.xenon.common.FileUtils;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.OperationContext;
@@ -107,6 +109,19 @@ class FaultInjectionLuceneDocumentIndexService extends LuceneDocumentIndexServic
 
 public class TestLuceneDocumentIndexService {
 
+    public static class ImmutableExampleService extends ExampleService {
+        public ImmutableExampleService() {
+            super();
+            super.toggleOption(ServiceOption.ON_DEMAND_LOAD, true);
+            super.toggleOption(ServiceOption.IMMUTABLE, true);
+        }
+
+        public static FactoryService createFactory() {
+            return FactoryService.create(ImmutableExampleService.class);
+        }
+
+    }
+
     /**
      * Parameter that specifies number of durable service instances to create
      */
@@ -116,6 +131,22 @@ public class TestLuceneDocumentIndexService {
      * Parameter that specifies number of concurrent update requests
      */
     public int updateCount = 10;
+
+    /**
+     * Parameter that specifies query interleaving factor
+     */
+    public int updatesPerQuery = 10;
+
+    /**
+     * Parameter that specifies required number of document in index before
+     * tests start
+     */
+    public int documentCountAtStart = 0;
+
+    /**
+     * Parameter that specifies iterations per top level test method
+     */
+    public int iterationCount = 1;
 
     /**
      * Parameter that specifies authorized user count for auth enabled tests
@@ -135,6 +166,7 @@ public class TestLuceneDocumentIndexService {
     private int expiredDocumentSearchThreshold;
 
     private VerificationHost host;
+
 
     private void setUpHost(boolean isAuthEnabled) throws Throwable {
         if (this.host != null) {
@@ -1225,21 +1257,41 @@ public class TestLuceneDocumentIndexService {
 
     @Test
     public void throughputPost() throws Throwable {
-        setUpHost(false);
-        int iterationCount = this.host.isStressTest() ? 5 : 1;
-        URI factoryUri = UriUtils.buildFactoryUri(this.host, ExampleService.class);
+        doThroughputPost(true);
+        doThroughputPost(false);
+    }
 
-        Consumer<Operation> setBody = (o) -> {
-            ExampleServiceState body = new ExampleServiceState();
-            body.name = "a name";
-            body.counter = Utils.getNowMicrosUtc();
-            o.setBody(body);
-        };
+    private void doThroughputPost(boolean interleaveQueries) throws Throwable {
+        setUpHost(false);
+        this.host.log("Starting throughput POST, query interleaving: %s", interleaveQueries);
+        Service immutableFactory = ImmutableExampleService.createFactory();
+        immutableFactory = this.host.startServiceAndWait(immutableFactory,
+                "immutable-" + Utils.getNowMicrosUtc(), null);
+
+        URI factoryUri = immutableFactory.getUri();
+        if (this.documentCountAtStart > 0) {
+            this.host.log("Pre populating index with %d documents", this.documentCountAtStart);
+            long serviceCountCached = this.serviceCount;
+            this.serviceCount = this.documentCountAtStart;
+            doThroughputPost(false, factoryUri);
+            this.serviceCount = serviceCountCached;
+        }
+
+        doMultipleIterationsThroughputPost(interleaveQueries, this.iterationCount, factoryUri);
+
+        factoryUri = UriUtils.buildFactoryUri(this.host, ExampleService.class);
+        doMultipleIterationsThroughputPost(interleaveQueries, this.iterationCount, factoryUri);
+    }
+
+    private void doMultipleIterationsThroughputPost(boolean interleaveQueries, int iterationCount,
+            URI factoryUri) throws Throwable {
 
         for (int ic = 0; ic < iterationCount; ic++) {
-            this.host.log("(%d) Starting service factory POST, count:%d", ic, this.serviceCount);
-            doThroughputPost(factoryUri, setBody);
-            this.host.deleteAllChildServices(factoryUri);
+            this.host.log("(%d) Starting POST test to %s, count:%d",
+                    ic, factoryUri, this.serviceCount);
+
+            doThroughputPost(interleaveQueries, factoryUri);
+            this.host.deleteOrStopAllChildServices(factoryUri, true);
             logQuerySingleStat();
         }
     }
@@ -1248,12 +1300,6 @@ public class TestLuceneDocumentIndexService {
     public void throughputPostWithAuthz() throws Throwable {
         setUpHost(true);
         URI factoryUri = UriUtils.buildFactoryUri(this.host, ExampleService.class);
-        Consumer<Operation> setBody = (o) -> {
-            ExampleServiceState body = new ExampleServiceState();
-            body.name = "a name";
-            body.counter = Utils.getNowMicrosUtc();
-            o.setBody(body);
-        };
 
         // assume system identity so we can create roles
         this.host.setSystemAuthorizationContext();
@@ -1271,7 +1317,7 @@ public class TestLuceneDocumentIndexService {
                     0,
                     OperationContext.getAuthorizationContext().getClaims().getSubject(),
                     this.serviceCount);
-            doThroughputPost(factoryUri, setBody);
+            doThroughputPost(false, factoryUri);
             this.host.deleteAllChildServices(factoryUri);
         }
 
@@ -1289,7 +1335,7 @@ public class TestLuceneDocumentIndexService {
                             OperationContext.getAuthorizationContext().getClaims().getSubject(),
                             this.serviceCount);
                     long start = Utils.getNowMicrosUtc();
-                    doThroughputPost(factoryUri, setBody);
+                    doThroughputPost(false, factoryUri);
                     long end = Utils.getNowMicrosUtc();
                     durationPerSubject.put(userLink, end - start);
                     ctx.complete();
@@ -1356,28 +1402,62 @@ public class TestLuceneDocumentIndexService {
     }
 
 
-    private void doThroughputPost(URI factoryUri, Consumer<Operation> setBody)
+    private void doThroughputPost(boolean interleaveQueries,
+            URI factoryUri)
             throws Throwable {
         long startTimeMicros = System.nanoTime() / 1000;
+        int queryCount = 0;
+        AtomicLong queryResultCount = new AtomicLong();
+        long totalQueryCount = this.serviceCount / this.updatesPerQuery;
         TestContext ctx = this.host.testCreate((int) this.serviceCount);
+        TestContext queryCtx = this.host.testCreate(totalQueryCount);
+
         for (int i = 0; i < this.serviceCount; i++) {
+
             Operation createPost = Operation.createPost(factoryUri);
-            // call callback to set the body
-            setBody.accept(createPost);
+            ExampleServiceState body = new ExampleServiceState();
+            body.name = Utils.getNowMicrosUtc() + "";
+            body.id = i + "";
+            body.counter = (long) i;
+            createPost.setBody(body);
 
             // create a start service POST with an initial state
-            createPost.setCompletion(
-                    (o, e) -> {
+            createPost.setCompletion(ctx.getCompletion());
+            this.host.send(createPost);
+            if (!interleaveQueries) {
+                continue;
+            }
+
+            if ((queryCount >= totalQueryCount) || i % this.updatesPerQuery != 0) {
+                continue;
+            }
+
+            queryCount++;
+            Query q = Query.Builder.create()
+                    .addFieldClause(ExampleServiceState.FIELD_NAME_ID,
+                            "saffsdfs")
+                    .build();
+            QueryTask qt = QueryTask.Builder.createDirectTask()
+                    .setQuery(q)
+                    .build();
+            Operation createQuery = Operation.createPost(this.host,
+                    ServiceUriPaths.CORE_LOCAL_QUERY_TASKS).setBody(qt)
+                    .setCompletion((o, e) -> {
                         if (e != null) {
-                            ctx.failIteration(e);
+                            queryCtx.fail(e);
                             return;
                         }
-
-                        ctx.completeIteration();
+                        QueryTask rsp = o.getBody(QueryTask.class);
+                        queryResultCount.addAndGet(rsp.results.documentCount);
+                        queryCtx.complete();
                     });
-            this.host.send(createPost);
+
+            this.host.send(createQuery);
         }
         this.host.testWait(ctx);
+        if (interleaveQueries) {
+            this.host.testWait(queryCtx);
+        }
         long endTimeMicros = System.nanoTime() / 1000;
         double deltaSeconds = (endTimeMicros - startTimeMicros) / 1000000.0;
         double ioCount = this.serviceCount;
@@ -1386,9 +1466,11 @@ public class TestLuceneDocumentIndexService {
         if (this.host.isAuthorizationEnabled()) {
             subject = OperationContext.getAuthorizationContext().getClaims().getSubject();
         }
-        this.host.log("(%s) Operation count: %f, throughput(ops/sec): %f",
+        this.host.log(
+                "(%s) Service count now: %d Operation count: %f, Query count: %d, Query Result count: %d, throughput(ops/sec): %f",
                 subject,
-                ioCount, throughput);
+                this.host.getState().serviceCount,
+                ioCount, queryCount, queryResultCount.get(), throughput);
     }
 
     @Test
