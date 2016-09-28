@@ -132,7 +132,7 @@ public class TestSynchronizationTaskService extends BasicTestCase {
         URI taskFactoryUri = UriUtils.buildUri(
                 this.host.getUri(), SynchronizationTaskService.FACTORY_LINK);
         URI taskUri = UriUtils.extendUri(
-                taskFactoryUri, ExampleService.FACTORY_LINK);
+                taskFactoryUri, FactoryService.getSynchTaskSelfLink(ExampleService.FACTORY_LINK));
 
         SynchronizationTaskService.State task = this.host.getServiceState(
                 null, SynchronizationTaskService.State.class, taskUri);
@@ -186,7 +186,7 @@ public class TestSynchronizationTaskService extends BasicTestCase {
         URI taskFactoryUri = UriUtils.buildUri(
                 this.host.getUri(), SynchronizationTaskService.FACTORY_LINK);
         URI taskUri = UriUtils.extendUri(
-                taskFactoryUri, ExampleService.FACTORY_LINK);
+                taskFactoryUri, FactoryService.getSynchTaskSelfLink(ExampleService.FACTORY_LINK));
 
         SynchronizationTaskService.State task = this.host.getServiceState(
                 null, SynchronizationTaskService.State.class, taskUri);
@@ -262,7 +262,7 @@ public class TestSynchronizationTaskService extends BasicTestCase {
     private SynchronizationTaskService.State createSynchronizationTaskState(
             Long membershipUpdateTimeMicros) {
         SynchronizationTaskService.State task = new SynchronizationTaskService.State();
-        task.documentSelfLink = ExampleService.FACTORY_LINK;
+        task.documentSelfLink = FactoryService.getSynchTaskSelfLink(ExampleService.FACTORY_LINK);
         task.factorySelfLink = ExampleService.FACTORY_LINK;
         task.factoryStateKind = Utils.buildKind(ExampleService.ExampleServiceState.class);
         task.membershipUpdateTimeMicros = membershipUpdateTimeMicros;
@@ -279,7 +279,7 @@ public class TestSynchronizationTaskService extends BasicTestCase {
     throws Throwable {
         String factorySelfLink = UUID.randomUUID().toString();
         URI taskUri = UriUtils.extendUri(
-                taskFactoryUri, factorySelfLink);
+                taskFactoryUri, FactoryService.getSynchTaskSelfLink(factorySelfLink));
 
         SynchronizationTaskService.State task = createSynchronizationTaskState(null);
         task.factorySelfLink = factorySelfLink;

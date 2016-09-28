@@ -261,6 +261,20 @@ public class TestUriUtils {
     }
 
     @Test
+    public void testTrimPathSlashes() {
+        assertEquals("a", UriUtils.trimPathSlashes("//a//"));
+        assertEquals("a", UriUtils.trimPathSlashes("///a"));
+        assertEquals("a", UriUtils.trimPathSlashes("a///"));
+        assertEquals("a", UriUtils.trimPathSlashes("/a/"));
+        assertEquals("a", UriUtils.trimPathSlashes("a"));
+        assertEquals("a/b", UriUtils.trimPathSlashes("/a/b/"));
+        assertEquals("a/b", UriUtils.trimPathSlashes("////a/b/////"));
+        assertEquals("a/b", UriUtils.trimPathSlashes("////a/b"));
+        assertEquals("a/b", UriUtils.trimPathSlashes("a/b/////"));
+        assertEquals("a/b", UriUtils.trimPathSlashes("a/b"));
+    }
+
+    @Test
     public void isChildPath() {
         assertFalse(UriUtils.isChildPath(null, "/a/b"));
         assertFalse(UriUtils.isChildPath("/a/b/c", null));
