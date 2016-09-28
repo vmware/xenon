@@ -495,6 +495,12 @@ public class Operation implements Cloneable {
     public static final String PRAGMA_DIRECTIVE_NO_INDEX_UPDATE = "xn-no-index-update";
 
     /**
+     * Infrastructure use only. Instructs AuthorizationContextService to treat this as a request to
+     * clear the authz cache
+     */
+    public static final String PRAGMA_DIRECTIVE_CLEAR_AUTH_CACHE = "xn-clear-auth-cache";
+
+    /**
      * Infrastructure use only. Debugging only. Indicates this operation was converted from POST to PUT
      * due to {@link com.vmware.xenon.common.Service.ServiceOption#IDEMPOTENT_POST}
      */
