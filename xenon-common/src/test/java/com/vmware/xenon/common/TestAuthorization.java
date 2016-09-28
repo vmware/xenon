@@ -24,6 +24,7 @@ import java.security.GeneralSecurityException;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Date;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -34,7 +35,9 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
+import java.util.logging.Level;
 
 import org.junit.After;
 import org.junit.Before;
@@ -512,6 +515,52 @@ public class TestAuthorization extends BasicTestCase {
 
         assertNull(this.host.getAuthorizationContext(s, authContext1.getToken()));
         assertNull(this.host.getAuthorizationContext(s, authContext2.getToken()));
+    }
+
+    @Test
+    public void updateAuthzCache() throws Throwable {
+        this.host.setSystemAuthorizationContext();
+        int SERVICE_COUNT = 100;
+        AuthorizationHelper authsetupHelper = new AuthorizationHelper(this.host);
+        String email = "foo@foo.com";
+        String userLink = authsetupHelper.createUserService(this.host, email);
+        Query userGroupQuery = Query.Builder.create().addFieldClause(UserState.FIELD_NAME_EMAIL, email).build();
+        String userGroupLink = authsetupHelper.createUserGroup(this.host, email, userGroupQuery);
+
+        this.host.resetSystemAuthorizationContext();
+        AtomicInteger operationCounter = new AtomicInteger(0);
+        for (int i = 0; i < SERVICE_COUNT; i++) {
+            this.host.schedule(() -> {
+                try {
+                    this.host.setSystemAuthorizationContext();
+                    String serviceName = UUID.randomUUID().toString();
+                    Query resourceQuery = Query.Builder.create().addFieldClause(ExampleServiceState.FIELD_NAME_NAME,
+                            serviceName).build();
+                    String resourceGroupLink = authsetupHelper.createResourceGroup(this.host, serviceName, resourceQuery);
+                    authsetupHelper.createRole(this.host, userGroupLink, resourceGroupLink, EnumSet.allOf(Action.class));
+                    this.host.resetSystemAuthorizationContext();
+                    this.host.assumeIdentity(userLink);
+                    ExampleServiceState exampleState = new ExampleServiceState();
+                    exampleState.name = serviceName;
+                    exampleState.documentSelfLink = serviceName;
+                    this.host.sendAndWaitExpectSuccess(
+                                Operation.createPost(UriUtils.buildUri(this.host, ExampleService.FACTORY_LINK))
+                                .setBody(exampleState));
+                    this.host.sendAndWaitExpectSuccess(
+                            Operation.createDelete(UriUtils.buildUri(this.host,
+                                    UriUtils.buildUriPath(ExampleService.FACTORY_LINK, serviceName))));
+                    operationCounter.incrementAndGet();
+                } catch (Throwable e) {
+                    this.host.log(Level.WARNING, e.getMessage());
+                }
+            }, 1, TimeUnit.MILLISECONDS);
+        }
+        this.host.waitFor("timeout waiting for post operations to complete", () -> {
+            if (operationCounter.get() == SERVICE_COUNT) {
+                return true;
+            }
+            return false;
+        });
     }
 
     @Test

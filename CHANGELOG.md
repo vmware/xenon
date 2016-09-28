@@ -5,6 +5,10 @@
 * Authorize all requests on default notification target services created in
   ServiceHost.startSubscriptionService()
 
+* Fix race condition in authz cache clear when a user access request
+  interleaved with a cache clear operation would result in a stale
+  authz cache
+
 ## 0.9.6
 
 * Add errorCode property to ServiceErrorResponse to allow Xenon services
