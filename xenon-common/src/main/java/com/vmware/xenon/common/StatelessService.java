@@ -24,6 +24,7 @@ import com.vmware.xenon.common.ServiceHost.ServiceNotFoundException;
 import com.vmware.xenon.common.ServiceStats.ServiceStat;
 import com.vmware.xenon.common.ServiceStats.TimeSeriesStats.AggregationType;
 import com.vmware.xenon.common.jwt.Signer;
+import com.vmware.xenon.common.jwt.Verifier;
 import com.vmware.xenon.services.common.ServiceUriPaths;
 
 /**
@@ -668,6 +669,17 @@ public class StatelessService implements Service {
     public final Signer getTokenSigner() {
         if (getHost().isPrivilegedService(this)) {
             return getHost().getTokenSigner();
+        } else {
+            throw new RuntimeException("Service not allowed to get token signer");
+        }
+    }
+
+    /**
+     * Returns the host's token verifier.
+     */
+    public final Verifier getTokenVerifier() {
+        if (getHost().isPrivilegedService(this)) {
+            return getHost().getTokenVerifier();
         } else {
             throw new RuntimeException("Service not allowed to get token signer");
         }
