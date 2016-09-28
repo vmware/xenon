@@ -2777,13 +2777,21 @@ public class VerificationHost extends ExampleServiceHost {
     }
 
     public void deleteAllChildServices(URI factoryURI) {
+        deleteOrStopAllChildServices(factoryURI, false);
+    }
+
+    public void deleteOrStopAllChildServices(URI factoryURI, boolean stopOnly) {
         ServiceDocumentQueryResult res = getFactoryState(factoryURI);
         if (res.documentLinks.isEmpty()) {
             return;
         }
         List<Operation> ops = new ArrayList<>();
         for (String link : res.documentLinks) {
-            ops.add(Operation.createDelete(UriUtils.buildUri(factoryURI, link)));
+            Operation op = Operation.createDelete(UriUtils.buildUri(factoryURI, link));
+            if (stopOnly) {
+                op.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_NO_INDEX_UPDATE);
+            }
+            ops.add(op);
         }
         this.sender.sendAndWait(ops);
     }
