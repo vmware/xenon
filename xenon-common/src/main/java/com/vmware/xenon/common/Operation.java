@@ -517,6 +517,18 @@ public class Operation implements Cloneable {
      */
     public static final String PRAGMA_DIRECTIVE_POST_TO_PUT = "xn-post-to-put";
 
+    /**
+     * Infrastructure use only. Instructs AuthorizationContextService to treat this as a request to
+     * authenticate and retrieve the auth token
+     */
+    public static final String PRAGMA_DIRECTIVE_AUTHENTICATE = "xn-authn";
+
+    /**
+     * Infrastructure use only. Instructs AuthenticationService to treat this as a request to
+     * verify the auth token
+     */
+    public static final String PRAGMA_DIRECTIVE_VERIFY_TOKEN = "xn-verify-token";
+
     public static final String TX_ENSURE_COMMIT = "ensure-commit";
     public static final String TX_COMMIT = "commit";
     public static final String TX_ABORT = "abort";

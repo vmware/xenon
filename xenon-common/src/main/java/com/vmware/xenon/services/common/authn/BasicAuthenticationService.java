@@ -39,6 +39,12 @@ public class BasicAuthenticationService extends StatelessService {
 
     @Override
     public void handlePost(Operation op) {
+        // not changing the other requestTypes to pragma header  for backward compatibility
+        if (op.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_VERIFY_TOKEN)) {
+            BasicAuthenticationUtils.handleTokenVerify(this, op);
+            op.removePragmaDirective(Operation.PRAGMA_DIRECTIVE_VERIFY_TOKEN);
+            return;
+        }
         AuthenticationRequestType requestType = op.getBody(AuthenticationRequest.class).requestType;
         // default to login for backward compatibility
         if (requestType == null) {

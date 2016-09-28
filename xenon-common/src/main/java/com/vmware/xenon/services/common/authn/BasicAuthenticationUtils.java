@@ -15,7 +15,9 @@ package com.vmware.xenon.services.common.authn;
 
 import java.io.UnsupportedEncodingException;
 import java.nio.charset.StandardCharsets;
+import java.security.GeneralSecurityException;
 import java.util.Base64;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 import com.vmware.xenon.common.Claims;
@@ -23,6 +25,8 @@ import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Operation.AuthorizationContext;
 import com.vmware.xenon.common.StatelessService;
 import com.vmware.xenon.common.Utils;
+import com.vmware.xenon.common.jwt.Verifier;
+import com.vmware.xenon.common.jwt.Verifier.TokenException;
 import com.vmware.xenon.services.common.QueryTask;
 import com.vmware.xenon.services.common.QueryTask.Query;
 import com.vmware.xenon.services.common.ServiceUriPaths;
@@ -270,6 +274,48 @@ public final class BasicAuthenticationUtils {
         // Associate resulting authorization context with operation.
         service.setAuthorizationContext(op, ab.getResult());
         return true;
+    }
+
+    /**
+     * Utility method to verify the token in incoming request
+     * @param service service invoking this method
+     * @param op Operation context of the request
+     */
+    public static void handleTokenVerify(StatelessService service, Operation op) {
+        String token = getAuthToken(op);
+        if (token == null) {
+            Exception e = new IllegalArgumentException("Token is empty");
+            service.logWarning("Token is empty", e.getMessage());
+            op.fail(e);
+            return;
+        }
+        try {
+            // use JWT token verifier for basic auth
+            Verifier verifier = service.getTokenVerifier();
+            Claims claims = verifier.verify(token, Claims.class);
+            op.setBody(claims);
+            op.complete();
+        } catch (TokenException | GeneralSecurityException e) {
+            service.logWarning("Error verifying token: %s", e.getMessage());
+            op.fail(e);
+        }
+    }
+
+    /**
+     * Extracts the auth token from the request
+     * @param op Operation context of the request
+     * @return auth token for the request
+     */
+    public static String getAuthToken(Operation op) {
+        String token = op.getRequestHeader(Operation.REQUEST_AUTH_TOKEN_HEADER);
+        if (token == null) {
+            Map<String, String> cookies = op.getCookies();
+            if (cookies == null) {
+                return null;
+            }
+            token = cookies.get(AuthenticationConstants.REQUEST_AUTH_TOKEN_COOKIE);
+        }
+        return token;
     }
 
 }
