@@ -64,8 +64,10 @@ import java.util.logging.FileHandler;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManagerFactory;
+
 
 import com.vmware.xenon.common.FileUtils.ResourceEntry;
 import com.vmware.xenon.common.NodeSelectorService.SelectAndForwardRequest;
@@ -3014,6 +3016,10 @@ public class ServiceHost implements ServiceRequestSender {
 
             if (this.authorizationService != null) {
                 inboundOp.nestCompletion(op -> {
+                    if (op.getUri().equals(this.authorizationService.getUri())) {
+                        op.complete();
+                        return;
+                    }
                     handleRequestWithAuthContext(service, op);
                 });
                 queueOrScheduleRequest(this.authorizationService, inboundOp);
