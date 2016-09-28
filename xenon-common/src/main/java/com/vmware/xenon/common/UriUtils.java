@@ -808,6 +808,11 @@ public class UriUtils {
         return tuple;
     }
 
+    public static String trimPathSlashes(String path) {
+        // removes beginning and trailing slashes from a URI path.
+        return path.replaceAll("^/*|/*$","");
+    }
+
     public static boolean hasODataExpandParamValue(URI uri) {
         String query = uri.getQuery();
         if (query == null || query.isEmpty()) {
