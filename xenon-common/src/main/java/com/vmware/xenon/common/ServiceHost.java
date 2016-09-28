@@ -64,8 +64,10 @@ import java.util.logging.FileHandler;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManagerFactory;
+
 
 import com.vmware.xenon.common.FileUtils.ResourceEntry;
 import com.vmware.xenon.common.NodeSelectorService.SelectAndForwardRequest;
@@ -104,6 +106,7 @@ import com.vmware.xenon.services.common.ODataQueryService;
 import com.vmware.xenon.services.common.OperationIndexService;
 import com.vmware.xenon.services.common.ProcessFactoryService;
 import com.vmware.xenon.services.common.QueryFilter;
+import com.vmware.xenon.services.common.QueryTask.Query;
 import com.vmware.xenon.services.common.QueryTaskFactoryService;
 import com.vmware.xenon.services.common.ReliableSubscriptionService;
 import com.vmware.xenon.services.common.ResourceGroupService;
@@ -2705,6 +2708,13 @@ public class ServiceHost implements ServiceRequestSender {
         ServiceDocumentDescription documentDescription = buildDocumentDescription(service);
         QueryFilter queryFilter = ctx.getResourceQueryFilter(op.getAction());
         if (queryFilter == null || !queryFilter.evaluate(document, documentDescription)) {
+            System.out.println("Filter evaluation failed for: " + service.getSelfLink());
+            Query resourceQuery = ctx.getResourceQuery(Action.POST);
+            if (resourceQuery != null && resourceQuery.booleanClauses != null) {
+                for (Query clause: resourceQuery.booleanClauses) {
+                    System.out.println(clause.booleanClauses.get(0).term.matchValue);
+                }
+            }
             return false;
         }
 
@@ -5305,6 +5315,7 @@ public class ServiceHost implements ServiceRequestSender {
         if (!this.isPrivilegedService(s)) {
             throw new RuntimeException("Service not allowed to cache authorization token");
         }
+        System.out.println("Adding authz cache for: " + ctx.getClaims().getSubject() + "; at: " + Utils.getNowMicrosUtc());
         synchronized (this.state) {
             this.authorizationContextCache.put(token, ctx);
             addUserToken(this.userLinktoTokenMap, ctx.getClaims().getSubject(), token);
@@ -5315,9 +5326,14 @@ public class ServiceHost implements ServiceRequestSender {
      * Infrastructure use only. Only services added as privileged can use this method.
      */
     public void clearAuthorizationContext(Service s, String userLink) {
+        clearAuthorizationContext(s, userLink, null);
+    }
+
+    public void clearAuthorizationContext(Service s, String userLink, String opId) {
         if (!this.isPrivilegedService(s)) {
             throw new RuntimeException("Service not allowed to clear authorization token");
         }
+        System.out.println("Clearing authz cache for: " + userLink  + "; at: " + Utils.getNowMicrosUtc() + "; operation: " + opId);
         synchronized (this.state) {
             Set<String> tokenSet = this.userLinktoTokenMap.remove(userLink);
             if (tokenSet != null) {
