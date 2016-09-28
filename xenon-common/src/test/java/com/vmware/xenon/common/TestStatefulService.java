@@ -698,10 +698,15 @@ public class TestStatefulService extends BasicReusableHostTestCase {
                             return true;
                         }
 
-                        throw new IllegalStateException(
-                                String.format(
-                                        "serviceMaintenanceCount %f was more than hostMaintenanceCount %f",
-                                        serviceMaintenanceCount, hostMaintenanceCount));
+                        if (serviceMaintenanceCount == 0.0) {
+                            this.host.log("serviceMaintenanceCount is zero");
+                            return false;
+                        }
+
+                        this.host.log(
+                                "serviceMaintenanceCount %f was more than hostMaintenanceCount %f",
+                                serviceMaintenanceCount, hostMaintenanceCount);
+                        return false;
                     }
                     return false;
                 });
