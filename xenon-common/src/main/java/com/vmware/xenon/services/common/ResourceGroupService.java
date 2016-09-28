@@ -80,12 +80,11 @@ public class ResourceGroupService extends StatefulService {
     }
 
     @Override
-    public void handleRequest(Operation request, OperationProcessingStage opProcessingStage) {
-        if (AuthorizationCacheUtils.isAuthzCacheClearApplicableOperation(request)) {
-            AuthorizationCacheUtils.clearAuthzCacheForResourceGroup(this, request);
+    public void processupdateAuthzArtifacts(Operation op) {
+        if (AuthorizationCacheUtils.isAuthzCacheClearApplicableOperation(op)) {
+            AuthorizationCacheUtils.clearAuthzCacheForResourceGroup(this, op);
         }
-
-        super.handleRequest(request, opProcessingStage);
+        op.complete();
     }
 
     @Override
