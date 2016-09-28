@@ -14,6 +14,7 @@
 package com.vmware.xenon.common;
 
 import com.vmware.xenon.common.Operation.AuthorizationContext;
+import com.vmware.xenon.common.ServiceHost.AuthorizationContextHandler;
 
 /**
  * OperationContext encapsulates the runtime context of an Operation
@@ -71,8 +72,11 @@ public class OperationContext {
      * @param host Service host.
      * @param op   Operation containing authorization headers / cookies.
      */
-    public static void setAuthorizationContext(ServiceHost host, Operation op) {
-        setAuthorizationContext(host.getAuthorizationContext(op));
+    public static void setAuthorizationContext(ServiceHost host, Operation op, AuthorizationContextHandler authorizationContextHandler) {
+        host.getAuthorizationContext(op, authorizationContext -> {
+            setAuthorizationContext(authorizationContext);
+            authorizationContextHandler.handle(authorizationContext);
+        });
     }
 
     public static AuthorizationContext getAuthorizationContext() {

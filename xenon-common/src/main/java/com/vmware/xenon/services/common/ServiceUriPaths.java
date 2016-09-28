@@ -101,6 +101,9 @@ public class ServiceUriPaths {
     public static final String CORE_AUTHN_BASIC = UriUtils.buildUriPath(ServiceUriPaths.CORE_AUTHN,
             "basic");
 
+    public static final String CORE_AUTHN_VERIFICATION = UriUtils.buildUriPath(ServiceUriPaths.CORE_AUTHN,
+            "verification");
+
     public static final String CORE_TRANSACTIONS = UriUtils.buildUriPath(ServiceUriPaths.CORE,
             "transactions");
 
