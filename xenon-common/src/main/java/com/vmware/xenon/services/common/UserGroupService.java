@@ -67,9 +67,9 @@ public class UserGroupService extends StatefulService {
     }
 
     @Override
-    public void handleRequest(Operation request, OperationProcessingStage opProcessingStage) {
-        checkAndNestCompletionForAuthzCacheClear(this, request);
-        super.handleRequest(request, opProcessingStage);
+    public void processupdateAuthzArtifacts(Operation op) {
+        checkAndNestCompletionForAuthzCacheClear(this, op);
+        op.complete();
     }
 
     @Override
