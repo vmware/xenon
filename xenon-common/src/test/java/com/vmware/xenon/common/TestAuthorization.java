@@ -24,6 +24,7 @@ import java.security.GeneralSecurityException;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Date;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -32,9 +33,11 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Consumer;
+import java.util.logging.Level;
 
 import org.junit.After;
 import org.junit.Before;
@@ -55,7 +58,11 @@ import com.vmware.xenon.services.common.MinimalTestService;
 import com.vmware.xenon.services.common.QueryTask;
 import com.vmware.xenon.services.common.QueryTask.Query;
 import com.vmware.xenon.services.common.QueryTask.Query.Builder;
+import com.vmware.xenon.services.common.QueryTask.Query.Occurance;
+import com.vmware.xenon.services.common.QueryTask.QuerySpecification;
+import com.vmware.xenon.services.common.QueryTask.QueryTerm.MatchType;
 import com.vmware.xenon.services.common.RoleService.RoleState;
+import com.vmware.xenon.services.common.ServiceUriPaths;
 import com.vmware.xenon.services.common.UserGroupService;
 import com.vmware.xenon.services.common.UserGroupService.UserGroupState;
 import com.vmware.xenon.services.common.UserService.UserState;
@@ -512,6 +519,103 @@ public class TestAuthorization extends BasicTestCase {
 
         assertNull(this.host.getAuthorizationContext(s, authContext1.getToken()));
         assertNull(this.host.getAuthorizationContext(s, authContext2.getToken()));
+    }
+
+    @Test
+    public void updateAuthzCache() throws Throwable {
+        ExecutorService executor = null;
+        try {
+            this.host.setSystemAuthorizationContext();
+            int SERVICE_COUNT = 300;
+            AuthorizationHelper authsetupHelper = new AuthorizationHelper(this.host);
+            String email = "foo@foo.com";
+            String userLink = authsetupHelper.createUserService(this.host, email);
+            Query userGroupQuery = Query.Builder.create().addFieldClause(UserState.FIELD_NAME_EMAIL, email).build();
+            String userGroupLink = authsetupHelper.createUserGroup(this.host, email, userGroupQuery);
+
+            TestContext ctx = this.host.testCreate(SERVICE_COUNT);
+            Service s = this.host.startServiceAndWait(MinimalTestService.class, UUID.randomUUID()
+                    .toString());
+            executor = this.host.allocateExecutor(s);
+            this.host.resetSystemAuthorizationContext();
+            for (int i = 0; i < SERVICE_COUNT; i++) {
+                this.host.run(executor, () -> {
+                    String serviceName = UUID.randomUUID().toString();
+                    try {
+                        this.host.setSystemAuthorizationContext();
+                        Query resourceQuery = Query.Builder.create().addFieldClause(ExampleServiceState.FIELD_NAME_NAME,
+                                serviceName).build();
+                        String resourceGroupLink = authsetupHelper.createResourceGroup(this.host, serviceName, resourceQuery);
+                        authsetupHelper.createRole(this.host, userGroupLink, resourceGroupLink, EnumSet.allOf(Action.class));
+                        Query kindClause = new Query();
+                        kindClause.occurance = Occurance.MUST_OCCUR;
+                        kindClause.setTermPropertyName(ServiceDocument.FIELD_NAME_KIND);
+                        kindClause.setTermMatchType(MatchType.TERM);
+                        kindClause.setTermMatchValue(RoleState.KIND);
+
+                        Query selfLinkClause = new Query();
+                        selfLinkClause.occurance = Occurance.MUST_OCCUR;
+                        selfLinkClause.setTermPropertyName(RoleState.FIELD_NAME_USER_GROUP_LINK);
+                        selfLinkClause.setTermMatchType(MatchType.TERM);
+                        selfLinkClause.setTermMatchValue(userGroupLink);
+                        Query query = new Query();
+                        query.addBooleanClause(kindClause);
+                        query.addBooleanClause(selfLinkClause);
+
+                        QueryTask queryTask = new QueryTask();
+                        queryTask.querySpec = new QuerySpecification();
+                        queryTask.querySpec.query = query;
+                        queryTask.querySpec.options =
+                                EnumSet.of(QueryTask.QuerySpecification.QueryOption.EXPAND_CONTENT);
+                        queryTask.setDirect(true);
+
+                        URI postQueryUri = UriUtils.buildUri(this.host, ServiceUriPaths.CORE_LOCAL_QUERY_TASKS);
+                        Operation post = Operation.createPost(postQueryUri)
+                                .setBody(queryTask)
+                                .setReferer(this.host.getUri())
+                                .setCompletion((o, e) -> {
+                                    if (e != null) {
+                                        System.out.println("Error!!");
+                                        e.printStackTrace();
+                                        ctx.fail(e);
+                                        return;
+                                    }
+
+                                    QueryTask queryTaskResult = o.getBody(QueryTask.class);
+                                    ServiceDocumentQueryResult result = queryTaskResult.results;
+                                    if (result.documents == null || result.documents.isEmpty()) {
+                                        ctx.fail(new IllegalStateException("empty"));
+                                        return;
+                                    }
+                                    boolean found  = false;
+                                    for (Object doc : result.documents.values()) {
+                                        RoleState roleState = Utils.fromJson(doc, RoleState.class);
+                                        if (roleState.documentSelfLink.contains(serviceName)) {
+                                            found = true;
+                                            break;
+                                        }
+                                    }
+                                    if (!found) {
+                                        ctx.fail(new IllegalStateException("context not found"));
+                                        return;
+                                    }
+                                    ctx.complete();
+                                });
+
+                        this.host.sendRequest(post);
+                    } catch (Throwable e) {
+                        this.host.log(Level.WARNING, e.getMessage());
+                        System.out.println("Failed service id is: " + serviceName);
+                    }
+                });
+            }
+            this.host.testWait(ctx);
+            System.out.println("Test done");
+        } finally {
+            if (executor != null) {
+                executor.shutdown();
+            }
+        }
     }
 
     @Test
