@@ -124,10 +124,12 @@ public class NettyWebSocketRequestHandler extends SimpleChannelInboundHandler<Ob
                     dummyOp.addRequestHeader(Operation.REQUEST_AUTH_TOKEN_HEADER, this.authToken);
                     dummyOp.setUri(
                             UriUtils.buildUri(this.host, ServiceUriPaths.CORE_WEB_SOCKET_ENDPOINT));
-                    OperationContext.setAuthorizationContext(this.host, dummyOp);
+                    OperationContext.setAuthorizationContext(this.host, dummyOp, authorizationContext -> {
+                        processWebSocketFrame(ctx, frameText);
+                    });
+                } else {
+                    processWebSocketFrame(ctx, frameText);
                 }
-
-                processWebSocketFrame(ctx, frameText);
             });
             return;
         }
