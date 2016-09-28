@@ -46,6 +46,8 @@ public class ServiceDocumentDescription {
      */
     public static final int DEFAULT_VERSION_RETENTION_LIMIT = 1000;
 
+    public static final long FIELD_VALUE_DISABLED_VERSION_RETENTION = Long.MIN_VALUE;
+
     /**
      * Upper bound, in bytes, of serialized state. If the a service state version exceeds this,
      * indexing and replication operations will fail. This can be configured per service using the
@@ -54,6 +56,7 @@ public class ServiceDocumentDescription {
     public static final int DEFAULT_SERIALIZED_STATE_LIMIT = 4096 * 8;
 
     public static final String FIELD_NAME_TENANT_LINKS = "tenantLinks";
+
 
     public enum TypeName {
         LONG,
