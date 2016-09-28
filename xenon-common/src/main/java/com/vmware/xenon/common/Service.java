@@ -160,6 +160,20 @@ public interface Service extends ServiceRequestSender {
         ON_DEMAND_LOAD,
 
         /**
+         * Service has a single, initial version and will not accept any action other then DELETE
+         * for its entire lifetime. This option should be used to model immutable items such as logs,
+         * metrics where a high creation rate (high factory POST throughput) is desired but version
+         * tracking is not.
+         * The framework does not enforce a single version, but makes assumptions, to gain performance,
+         * that the service will only ever be created once, and deleted once. If the service developer
+         * violates these assumptions (by using {@link Operation#PRAGMA_DIRECTIVE_FORCE_INDEX_UPDATE}
+         * for example), behavior is unspecified.
+         *
+         * Requires: ON_DEMAND_LOAD
+         */
+        IMMUTABLE,
+
+        /**
          * Service will queue operation in last in first out order. If limit on operation queue is
          * exceeded, oldest operation in the queue will be cancelled to make room for the most
          * recent one
@@ -478,7 +492,7 @@ public interface Service extends ServiceRequestSender {
 
     void setProcessingStage(ProcessingStage initialized);
 
-    ServiceDocument setInitialState(String jsonState, Long initialVersion);
+    ServiceDocument setInitialState(Object state, Long initialVersion);
 
     void setState(Operation op, ServiceDocument newState);
 

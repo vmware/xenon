@@ -31,10 +31,12 @@ import java.time.ZonedDateTime;
 import java.util.Calendar;
 import java.util.EnumSet;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Set;
 import java.util.TimeZone;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
@@ -72,6 +74,15 @@ public class TestUtils {
         Utils.registerKind(ExampleServiceState.class, kindBefore);
         kindAfter = Utils.buildKind(ExampleServiceState.class);
         assertEquals(kindBefore, kindAfter);
+    }
+
+    @Test
+    public void buildUUID() {
+        String baseId = Utils.computeHash("some id");
+        Set<String> ids = new HashSet<>();
+        for (int i = 0; i < this.iterationCount; i++) {
+            assertTrue(ids.add(Utils.buildUUID(baseId)));
+        }
     }
 
     @Test
