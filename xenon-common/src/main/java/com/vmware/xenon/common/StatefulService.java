@@ -269,6 +269,17 @@ public class StatefulService implements Service {
         boolean isCompletionNested = false;
         try {
             if (opProcessingStage == OperationProcessingStage.LOADING_STATE) {
+
+                if (hasOption(ServiceOption.IMMUTABLE)
+                        && (request.getAction() == Action.PATCH
+                                || request.getAction() == Action.PUT)) {
+                    processPending(request);
+                    request.fail(Operation.STATUS_CODE_BAD_REQUEST,
+                            new IllegalStateException("Service has " + ServiceOption.IMMUTABLE),
+                            null);
+                    return;
+                }
+
                 if (ServiceHost.isServiceStop(request)) {
                     // local shutdown induced delete. By pass two stage operation processing
                     request.nestCompletion((o, e) -> {
@@ -1697,8 +1708,9 @@ public class StatefulService implements Service {
     }
 
     @Override
-    public ServiceDocument setInitialState(String jsonState, Long version) {
-        ServiceDocument s = Utils.fromJson(jsonState, this.context.stateType);
+    public ServiceDocument setInitialState(Object state, Long version) {
+        ServiceDocument s = Utils.fromJson(state, this.context.stateType);
+
         if (version != null) {
             this.context.version = version;
             s.documentVersion = this.context.version;
