@@ -17,11 +17,11 @@ import { AuthenticationGuard, AuthenticationService, BASE_SERVICE_PROVIDERS,
     NodeSelectorService, NotificationService } from './services/index';
 
 import { MultilingualModule } from '../i18n/multilingual.module';
-import { multilingualReducer, MultilingualStateI } from '../i18n/index';
+import { multilingualReducer, IMultilingualState } from '../i18n/index';
 
 // state
 export interface AppStoreI {
-    i18n: MultilingualStateI;
+    i18n: IMultilingualState;
     names: Array<string>;
 };
 

@@ -1,4 +1,4 @@
-import {DisplayInfo} from '../../../frameworks/app/interfaces/index';
+import { DisplayInfo } from '../../../frameworks/app/interfaces/index';
 
 export class OsUtil {
     static OTHER: DisplayInfo = {

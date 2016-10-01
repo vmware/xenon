@@ -1,4 +1,4 @@
-import {Notification} from './notification';
+import { Notification } from './notification';
 
 /**
  * Context for rendering/controlling modals in the view.
