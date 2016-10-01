@@ -1,4 +1,5 @@
 import { join } from 'path';
+import * as slash from 'slash';
 import { argv } from 'yargs';
 
 import { Environments, InjectableDependency } from './seed.config.interfaces';
@@ -84,7 +85,7 @@ export class SeedConfig {
      * The base path of node modules.
      * @type {string}
      */
-    NPM_BASE = join(this.APP_BASE, 'node_modules/');
+    NPM_BASE = slash(join(this.APP_BASE, 'node_modules/'));
 
     /**
      * The flag for the hot-loader option of the application.
@@ -391,12 +392,14 @@ export class SeedConfig {
      */
     SYSTEM_BUILDER_CONFIG: any = {
         defaultJSExtensions: true,
+        base: this.PROJECT_ROOT,
         packageConfigPaths: [
-            join(this.PROJECT_ROOT, 'node_modules', '*', 'package.json'),
-            join(this.PROJECT_ROOT, 'node_modules', '@angular', '*', 'package.json')
+            join('node_modules', '*', 'package.json'),
+            join('node_modules', '@angular', '*', 'package.json')
         ],
         paths: {
             [`${this.TMP_DIR}/*`]: `${this.TMP_DIR}/*`,
+            'node_modules/*': 'node_modules/*',
             '*': 'node_modules/*'
         },
         packages: {
@@ -437,6 +440,7 @@ export class SeedConfig {
                 defaultExtension: 'js'
             },
             'rxjs': {
+                main: 'Rx.js',
                 defaultExtension: 'js'
             }
         }
@@ -496,36 +500,37 @@ export class SeedConfig {
          * Example: `npm start -- --b`
          * @type {any}
          */
-         'browser-sync': {
-              port: this.PORT,
-              startPath: this.APP_BASE,
-              server: {
-                  baseDir: `${this.DIST_DIR}/empty/`,
-                  middleware: [
-                      /**
-                       * A proxy is configured to facilitate development.
-                       * By default the UI dev server is running on port 4000 while
-                       * tekton server is running on port 9000. This proxy
-                       * will forward any request to localhost:5000/api to
-                       * localhost:8000/
-                       */
-                      proxy('/api', {
-                          target: 'http://localhost:8000',
-                          changeOrigin: true,
-                          ws: true,
-                          pathRewrite: {
-                              '^/api': ''
-                          }
-                      }),
-                      require('connect-history-api-fallback')({ index: `${this.APP_BASE}index.html` })
-                  ],
-                  routes: {
-                      [`${this.APP_BASE}${this.APP_DEST}`]: this.APP_DEST,
-                      [`${this.APP_BASE}node_modules`]: 'node_modules',
-                      [`${this.APP_BASE.replace(/\/$/, '')}`]: this.APP_DEST
-                  }
-              }
-          },
+        'browser-sync': {
+            port: this.PORT,
+            startPath: this.APP_BASE,
+            server: {
+                baseDir: `${this.DIST_DIR}/empty/`,
+                middleware: [
+                    /**
+                    * A proxy is configured to facilitate development.
+                    * By default the UI dev server is running on port 4000 while
+                    * tekton server is running on port 9000. This proxy
+                    * will forward any request to localhost:5000/api to
+                    * localhost:8000/
+                    */
+                    proxy('/api', {
+                        target: 'http://localhost:8000',
+                        changeOrigin: true,
+                        ws: true,
+                        pathRewrite: {
+                            '^/api': ''
+                        }
+                    }),
+                    require('connect-history-api-fallback')({ index: `${this.APP_BASE}index.html` })
+                ],
+                routes: {
+                    [`${this.APP_BASE}${this.APP_SRC}`]: this.APP_SRC,
+                    [`${this.APP_BASE}${this.APP_DEST}`]: this.APP_DEST,
+                    [`${this.APP_BASE}node_modules`]: 'node_modules',
+                    [`${this.APP_BASE.replace(/\/$/, '')}`]: this.APP_DEST
+                }
+            }
+        },
 
         // Note: you can customize the location of the file
         'environment-config': join(this.PROJECT_ROOT, this.TOOLS_DIR, 'env'),

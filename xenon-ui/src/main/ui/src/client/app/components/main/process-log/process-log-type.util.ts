@@ -1,6 +1,6 @@
 import * as _ from 'lodash';
 
-import {DisplayInfo} from '../../../frameworks/app/interfaces/index';
+import { DisplayInfo } from '../../../frameworks/app/interfaces/index';
 
 export class ProcessLogTypeUtil {
     static UNKNOWN: DisplayInfo = {

@@ -266,7 +266,7 @@ npm start -- --port 8080 --reload-port 4000 --base /my-app/
 This is an [Angular 2](https://angular.io/) application built on top of [Nathan Walker's](https://github.com/NathanWalker) [angular2-seed-advanced](https://github.com/NathanWalker/angular2-seed-advanced).
 
 #### Core Tech Stacks
-- [Angular 2](https://angular.io/) 2.0.0
+- [Angular 2](https://angular.io/) 2.1
 - [Bootstrap 4](http://v4-alpha.getbootstrap.com/) Alpha 4
 - [jQuery](http://jquery.com/) 3
 - [Chart.js](http://www.chartjs.org/)
@@ -292,7 +292,7 @@ This is an [Angular 2](https://angular.io/) application built on top of [Nathan 
 
 Due to the amount of breaking changes introduced in each Angular 2 release, please be super careful when you decide to sync to the latest changes from the [seed project](https://github.com/NathanWalker/angular2-seed-advanced), which will most likely bump up the Angular version and the underlying dependencies.
 
-Last Change Sync'd: f0e35215f3df8f0fbafdcab7ad8e81bdf3158e21 on 09/16
+Last Change Sync'd: e1f2e4d5ad6e3de93726b7bccc84e7b8ed54812a on 09/28
 
 # Cut a Release
 

@@ -9,7 +9,6 @@ import { HttpModule, Http } from '@angular/http';
 import { TranslateModule, TranslateLoader, TranslateStaticLoader } from 'ng2-translate/ng2-translate';
 
 // app
-import { LangSwitcherComponent } from './components/lang-switcher.component';
 import { MultilingualService } from './services/multilingual.service';
 
 /**
@@ -28,11 +27,8 @@ import { MultilingualService } from './services/multilingual.service';
       useFactory: (http: Http) => new TranslateStaticLoader(http, 'assets/i18n', '.json')
     })
   ],
-  declarations: [
-    LangSwitcherComponent
-  ],
+  declarations: [],
   exports: [
-    LangSwitcherComponent,
     TranslateModule
   ],
   providers: [
