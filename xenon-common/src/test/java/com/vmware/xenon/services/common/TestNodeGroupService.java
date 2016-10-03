@@ -3444,9 +3444,9 @@ public class TestNodeGroupService {
             Map<Action, Long> elapsedTimePerAction) throws Throwable {
 
         int testCount = childCount * updateCount;
-        String testName = "Replicated " + action;
+        String testName = "Replication with " + action;
         TestContext testContext = this.host.testCreate(testCount);
-        this.host.log("%s, iterations %d, started", testName, testCount);
+        testContext.setTestName(testName).logBefore();
 
         if (!this.expectFailure) {
             // Before we do the replication test, wait for factory availability.
@@ -3510,8 +3510,9 @@ public class TestNodeGroupService {
                                         }));
             }
         }
+
         testContext.await();
-        this.host.logThroughput();
+        testContext.logAfter();
 
         updatePerfDataPerAction(action, before, (long) (childCount * updateCount), countsPerAction,
                 elapsedTimePerAction);
@@ -3569,12 +3570,12 @@ public class TestNodeGroupService {
             this.host.toggleNegativeTestMode(true);
         }
 
-        this.host.log("%s: Starting replication", this.host.buildTestNameFromStack());
-
         String factoryPath = this.replicationTargetFactoryLink;
         Map<String, ExampleServiceState> serviceStates = new HashMap<>();
         long before = Utils.getNowMicrosUtc();
         TestContext testContext = this.host.testCreate(childCount);
+        testContext.setTestName("POST replication");
+        testContext.logBefore();
         for (int i = 0; i < childCount; i++) {
             URI factoryOnRandomPeerUri = this.host.getPeerServiceUri(factoryPath);
             Operation post = Operation
@@ -3613,7 +3614,7 @@ public class TestNodeGroupService {
         updatePerfDataPerAction(Action.POST, before, (long) this.serviceCount, countPerAction,
                 elapsedTimePerAction);
 
-        this.host.logThroughput();
+        testContext.logAfter();
 
         return waitForReplicatedFactoryChildServiceConvergence(serviceStates,
                 this.exampleStateConvergenceChecker,

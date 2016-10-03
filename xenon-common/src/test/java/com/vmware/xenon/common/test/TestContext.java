@@ -26,6 +26,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.BiConsumer;
 import java.util.function.Supplier;
+import java.util.logging.Logger;
 
 import com.vmware.xenon.common.Operation.CompletionHandler;
 import com.vmware.xenon.common.test.VerificationHost.WaitHandler;
@@ -52,6 +53,12 @@ public class TestContext {
     private boolean started;
 
     private int initialCount;
+
+    private long startTimeNanos;
+
+    private long endTimeNanos;
+
+    private String name;
 
     public static class WaitConfig {
         private Duration interval = DEFAULT_INTERVAL_DURATION;
@@ -123,6 +130,9 @@ public class TestContext {
         this.latch = new CountDownLatch(count);
         this.duration = duration;
         this.initialCount = count;
+        this.startTimeNanos = System.nanoTime();
+        StackTraceElement[] stack = new Exception().getStackTrace();
+        this.name = stack[2].getMethodName() + ":" + stack[3].getLineNumber();
     }
 
     public void complete() {
@@ -136,24 +146,32 @@ public class TestContext {
         this.latch.countDown();
     }
 
-    public void setCount(int count) {
+    public TestContext setTestName(String name) {
+        this.name = name;
+        return this;
+    }
+
+    public TestContext setCount(int count) {
         if (this.started) {
             throw new RuntimeException(String.format(
                     "%s has already started. count=%d", getClass().getSimpleName(), this.latch.getCount()));
         }
         this.latch = new CountDownLatch(count);
+        return this;
     }
 
-    public void setTimeout(Duration duration) {
+    public TestContext setTimeout(Duration duration) {
         if (this.started) {
             throw new RuntimeException(String.format(
                     "%s has already started. count=%d", getClass().getSimpleName(), this.latch.getCount()));
         }
         this.duration = duration;
+        return this;
     }
 
-    public void setCheckInterval(Duration interval) {
+    public TestContext setCheckInterval(Duration interval) {
         this.interval = interval;
+        return this;
     }
 
     public void await() {
@@ -196,6 +214,8 @@ public class TestContext {
                         this.initialCount, countAtAwait, this.latch.getCount());
                 throw new TimeoutException(msg);
             }
+
+            this.endTimeNanos = System.nanoTime();
 
             // prevent this latch from being reused
             this.latch = null;
@@ -253,5 +273,21 @@ public class TestContext {
                 this.fail(new IllegalStateException("got success, expected failure"));
             }
         };
+    }
+
+    public void logBefore() {
+        String msg = String.format("%s count = %d",
+                this.name,
+                this.initialCount);
+        Logger.getAnonymousLogger().info(msg);
+    }
+
+    public void logAfter() {
+        double delta = this.endTimeNanos - this.startTimeNanos;
+        delta /= (double) TimeUnit.SECONDS.toNanos(1);
+        double thpt = (double) this.initialCount / delta;
+        String msg = String.format("%s throughput: %f, count = %d", this.name, thpt,
+                this.initialCount);
+        Logger.getAnonymousLogger().info(msg);
     }
 }
