@@ -50,6 +50,8 @@ public class ServiceUriPaths {
     public static final String DEFAULT_NODE_SELECTOR_NAME = "default";
     public static final String DEFAULT_NODE_SELECTOR = NODE_SELECTOR_PREFIX + "/"
             + DEFAULT_NODE_SELECTOR_NAME;
+    public static final String DEFAULT_1X_NODE_SELECTOR = NODE_SELECTOR_PREFIX + "/"
+            + DEFAULT_NODE_SELECTOR_NAME + "-1x";
     public static final String DEFAULT_3X_NODE_SELECTOR = NODE_SELECTOR_PREFIX + "/"
             + DEFAULT_NODE_SELECTOR_NAME + "-3x";
     public static final String SYNCHRONIZATION_TASKS = CORE + "/synch-tasks";

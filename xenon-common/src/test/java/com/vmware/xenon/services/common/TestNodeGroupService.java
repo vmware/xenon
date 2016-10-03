@@ -280,9 +280,14 @@ public class TestNodeGroupService {
 
         h1.waitForServiceAvailable(ExampleService.FACTORY_LINK);
 
-        LimitedReplicationExampleFactoryService limitedExampleFactory = new LimitedReplicationExampleFactoryService();
-        h1.startServiceAndWait(limitedExampleFactory,
-                LimitedReplicationExampleFactoryService.SELF_LINK,
+        Replication1xExampleFactoryService exampleFactory1x = new Replication1xExampleFactoryService();
+        h1.startServiceAndWait(exampleFactory1x,
+                Replication1xExampleFactoryService.SELF_LINK,
+                null);
+
+        Replication3xExampleFactoryService exampleFactory3x = new Replication3xExampleFactoryService();
+        h1.startServiceAndWait(exampleFactory3x,
+                Replication3xExampleFactoryService.SELF_LINK,
                 null);
 
         // start the replication test factory service with OWNER_SELECTION
@@ -1739,10 +1744,18 @@ public class TestNodeGroupService {
     }
 
     @Test
-    public void replicationLimitedFactor() throws Throwable {
+    public void replication1x() throws Throwable {
+        this.replicationFactor = 1L;
+        this.replicationNodeSelector = ServiceUriPaths.DEFAULT_1X_NODE_SELECTOR;
+        this.replicationTargetFactoryLink = Replication1xExampleFactoryService.SELF_LINK;
+        doReplication();
+    }
+
+    @Test
+    public void replication3x() throws Throwable {
         this.replicationFactor = 3L;
         this.replicationNodeSelector = ServiceUriPaths.DEFAULT_3X_NODE_SELECTOR;
-        this.replicationTargetFactoryLink = LimitedReplicationExampleFactoryService.SELF_LINK;
+        this.replicationTargetFactoryLink = Replication3xExampleFactoryService.SELF_LINK;
         this.nodeCount = Math.max(5, this.nodeCount);
         doReplication();
     }
