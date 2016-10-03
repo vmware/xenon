@@ -1564,15 +1564,27 @@ public class ServiceHost implements ServiceRequestSender {
 
         List<Operation> startNodeSelectorPosts = new ArrayList<>();
         List<Service> nodeSelectorServices = new ArrayList<>();
+        // start a default node selector that replicates to all available nodes
         Operation startPost = Operation.createPost(UriUtils.buildUri(this,
                 ServiceUriPaths.DEFAULT_NODE_SELECTOR));
         startNodeSelectorPosts.add(startPost);
         nodeSelectorServices.add(new ConsistentHashingNodeSelectorService());
+
+        // we start second node selector that does 1X replication (owner only)
         startPost = Operation.createPost(UriUtils.buildUri(this,
-                ServiceUriPaths.DEFAULT_3X_NODE_SELECTOR));
+                ServiceUriPaths.DEFAULT_1X_NODE_SELECTOR));
         NodeSelectorState initialState = new NodeSelectorState();
         initialState.nodeGroupLink = ServiceUriPaths.DEFAULT_NODE_GROUP;
-        // we start second node selector that does 3X replication only
+        initialState.replicationFactor = 1L;
+        startPost.setBody(initialState);
+        startNodeSelectorPosts.add(startPost);
+        nodeSelectorServices.add(new ConsistentHashingNodeSelectorService());
+
+        // we start a third node selector that does 3X replication (owner plus 2 peers)
+        startPost = Operation.createPost(UriUtils.buildUri(this,
+                ServiceUriPaths.DEFAULT_3X_NODE_SELECTOR));
+        initialState = new NodeSelectorState();
+        initialState.nodeGroupLink = ServiceUriPaths.DEFAULT_NODE_GROUP;
         initialState.replicationFactor = 3L;
         startPost.setBody(initialState);
         startNodeSelectorPosts.add(startPost);
