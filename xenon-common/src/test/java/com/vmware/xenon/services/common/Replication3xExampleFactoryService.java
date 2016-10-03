@@ -20,11 +20,11 @@ import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
 /**
  * Test factory service that uses the limited replication selector to construct example service instances
  */
-public class LimitedReplicationExampleFactoryService extends FactoryService {
+public class Replication3xExampleFactoryService extends FactoryService {
     public static final String SELF_LINK = ServiceUriPaths.CORE
-            + "/test/limited-replication-examples";
+            + "/test/3x-replication-examples";
 
-    public LimitedReplicationExampleFactoryService() {
+    public Replication3xExampleFactoryService() {
         super(ExampleServiceState.class);
         super.setPeerNodeSelectorPath(ServiceUriPaths.DEFAULT_3X_NODE_SELECTOR);
     }

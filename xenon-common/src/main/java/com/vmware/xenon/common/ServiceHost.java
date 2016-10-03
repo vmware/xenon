@@ -1564,23 +1564,38 @@ public class ServiceHost implements ServiceRequestSender {
 
         List<Operation> startNodeSelectorPosts = new ArrayList<>();
         List<Service> nodeSelectorServices = new ArrayList<>();
+        // start a default node selector that replicates to all available nodes
         Operation startPost = Operation.createPost(UriUtils.buildUri(this,
                 ServiceUriPaths.DEFAULT_NODE_SELECTOR));
         startNodeSelectorPosts.add(startPost);
         nodeSelectorServices.add(new ConsistentHashingNodeSelectorService());
-        startPost = Operation.createPost(UriUtils.buildUri(this,
-                ServiceUriPaths.DEFAULT_3X_NODE_SELECTOR));
+
+        // we start second node selector that does 1X replication (owner only)
+        createCustomNodeSelectorService(startNodeSelectorPosts,
+                nodeSelectorServices,
+                ServiceUriPaths.DEFAULT_1X_NODE_SELECTOR,
+                1);
+
+        // we start a third node selector that does 3X replication (owner plus 2 peers)
+        createCustomNodeSelectorService(startNodeSelectorPosts,
+                nodeSelectorServices,
+                ServiceUriPaths.DEFAULT_3X_NODE_SELECTOR,
+                3);
+
+        // start node selectors before any other core service since the host APIs of forward
+        // and broadcast must be ready before any I/O
+        startCoreServicesSynchronously(startNodeSelectorPosts, nodeSelectorServices);
+    }
+
+    void createCustomNodeSelectorService(List<Operation> startNodeSelectorPosts,
+            List<Service> nodeSelectorServices, String link, long factor) {
+        Operation startPost = Operation.createPost(UriUtils.buildUri(this, link));
         NodeSelectorState initialState = new NodeSelectorState();
         initialState.nodeGroupLink = ServiceUriPaths.DEFAULT_NODE_GROUP;
-        // we start second node selector that does 3X replication only
-        initialState.replicationFactor = 3L;
+        initialState.replicationFactor = factor;
         startPost.setBody(initialState);
         startNodeSelectorPosts.add(startPost);
         nodeSelectorServices.add(new ConsistentHashingNodeSelectorService());
-
-        // start node selector before any other core service since the host APIs of forward
-        // and broadcast must be ready before any I/O
-        startCoreServicesSynchronously(startNodeSelectorPosts, nodeSelectorServices);
     }
 
     public void joinPeers(List<URI> peers, String nodeGroupUriPath) {
