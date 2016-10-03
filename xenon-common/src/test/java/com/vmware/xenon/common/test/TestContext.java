@@ -26,6 +26,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.BiConsumer;
 import java.util.function.Supplier;
+import java.util.logging.Logger;
 
 import com.vmware.xenon.common.Operation.CompletionHandler;
 import com.vmware.xenon.common.test.VerificationHost.WaitHandler;
@@ -52,6 +53,12 @@ public class TestContext {
     private boolean started;
 
     private int initialCount;
+
+    private Instant creationInstant;
+
+    private Instant finishInstant;
+
+    private String name;
 
     public static class WaitConfig {
         private Duration interval = DEFAULT_INTERVAL_DURATION;
@@ -123,6 +130,11 @@ public class TestContext {
         this.latch = new CountDownLatch(count);
         this.duration = duration;
         this.initialCount = count;
+        this.creationInstant = Instant.now();
+        StackTraceElement[] stack = new Exception().getStackTrace();
+        final int parentMethodIndex = 2;
+        this.name = stack[parentMethodIndex].getMethodName()
+                + ":" + stack[parentMethodIndex].getLineNumber();
     }
 
     public void complete() {
@@ -136,24 +148,32 @@ public class TestContext {
         this.latch.countDown();
     }
 
-    public void setCount(int count) {
+    public TestContext setTestName(String name) {
+        this.name = name;
+        return this;
+    }
+
+    public TestContext setCount(int count) {
         if (this.started) {
             throw new RuntimeException(String.format(
                     "%s has already started. count=%d", getClass().getSimpleName(), this.latch.getCount()));
         }
         this.latch = new CountDownLatch(count);
+        return this;
     }
 
-    public void setTimeout(Duration duration) {
+    public TestContext setTimeout(Duration duration) {
         if (this.started) {
             throw new RuntimeException(String.format(
                     "%s has already started. count=%d", getClass().getSimpleName(), this.latch.getCount()));
         }
         this.duration = duration;
+        return this;
     }
 
-    public void setCheckInterval(Duration interval) {
+    public TestContext setCheckInterval(Duration interval) {
         this.interval = interval;
+        return this;
     }
 
     public void await() {
@@ -169,12 +189,12 @@ public class TestContext {
                 throw new IllegalStateException("This context is already used");
             }
 
-            Instant startAt = Instant.now();
-            Instant expireAt = startAt.plus(this.duration);
+            Instant waitStartInstant = Instant.now();
+            Instant waitExpirationInstant = waitStartInstant.plus(this.duration);
             long countAtAwait = this.latch.getCount();
 
             // keep polling latch every interval
-            while (expireAt.isAfter(Instant.now())) {
+            while (waitExpirationInstant.isAfter(Instant.now())) {
                 beforeCheck.execute();
                 if (this.latch.await(this.interval.toNanos(), TimeUnit.NANOSECONDS)) {
                     break;
@@ -182,20 +202,25 @@ public class TestContext {
             }
 
             Instant now = Instant.now();
-            if (expireAt.isBefore(now)) {
-                LocalDateTime startAtLocal = LocalDateTime.ofInstant(startAt, ZoneId.systemDefault());
-                LocalDateTime expireAtLocal = LocalDateTime.ofInstant(expireAt, ZoneId.systemDefault());
+            if (waitExpirationInstant.isBefore(now)) {
+                LocalDateTime startAtLocal = LocalDateTime.ofInstant(waitStartInstant,
+                        ZoneId.systemDefault());
+                LocalDateTime expireAtLocal = LocalDateTime.ofInstant(waitExpirationInstant,
+                        ZoneId.systemDefault());
 
-                Duration actualDuration = Duration.between(startAt, now);
+                Duration actualDuration = Duration.between(waitStartInstant, now);
                 String msg = String.format("%s has expired. [start=%s(%s), expire=%s(%s), " +
                                 "durationGiven=%s, durationActual=%s, " +
                                 "countAtInit=%d, countAtAwait=%d, countNow=%d]",
                         getClass().getSimpleName(),
-                        startAt.toEpochMilli(), startAtLocal, expireAt.toEpochMilli(), expireAtLocal,
+                        waitStartInstant.toEpochMilli(), startAtLocal,
+                        waitExpirationInstant.toEpochMilli(), expireAtLocal,
                         this.duration, actualDuration,
                         this.initialCount, countAtAwait, this.latch.getCount());
                 throw new TimeoutException(msg);
             }
+
+            this.finishInstant = now;
 
             // prevent this latch from being reused
             this.latch = null;
@@ -253,5 +278,21 @@ public class TestContext {
                 this.fail(new IllegalStateException("got success, expected failure"));
             }
         };
+    }
+
+    public void logBefore() {
+        String msg = String.format("%s count = %d",
+                this.name,
+                this.initialCount);
+        Logger.getAnonymousLogger().info(msg);
+    }
+
+    public void logAfter() {
+        double delta = Duration.between(this.creationInstant, this.finishInstant).toNanos();
+        delta /= (double) TimeUnit.SECONDS.toNanos(1);
+        double thpt = ((double) this.initialCount) / delta;
+        String msg = String.format("%s throughput: %f, count = %d", this.name, thpt,
+                this.initialCount);
+        Logger.getAnonymousLogger().info(msg);
     }
 }
