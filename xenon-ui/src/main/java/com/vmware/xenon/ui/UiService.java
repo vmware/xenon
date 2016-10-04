@@ -13,9 +13,16 @@
 
 package com.vmware.xenon.ui;
 
+import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.services.common.ServiceUriPaths;
 import com.vmware.xenon.services.common.UiContentService;
 
 public class UiService extends UiContentService {
     public static final String SELF_LINK = ServiceUriPaths.UI_SERVICE_CORE_PATH;
+
+    @Override
+    public void authorizeRequest(Operation op) {
+        // default UI is a single page app and should be publicly accessible.
+        op.complete();
+    }
 }
