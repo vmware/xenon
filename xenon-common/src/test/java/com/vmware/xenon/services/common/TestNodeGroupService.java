@@ -89,6 +89,7 @@ import com.vmware.xenon.common.test.VerificationHost.WaitHandler;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
 import com.vmware.xenon.services.common.ExampleTaskService.ExampleTaskServiceState;
 import com.vmware.xenon.services.common.MinimalTestService.MinimalTestServiceErrorResponse;
+import com.vmware.xenon.services.common.NodeGroupBroadcastResult.PeerNodeResult;
 import com.vmware.xenon.services.common.NodeGroupService.JoinPeerRequest;
 import com.vmware.xenon.services.common.NodeGroupService.NodeGroupConfig;
 import com.vmware.xenon.services.common.NodeGroupService.NodeGroupState;
@@ -2080,7 +2081,8 @@ public class TestNodeGroupService {
                             NodeGroupBroadcastResponse rsp = o
                                     .getBody(NodeGroupBroadcastResponse.class);
 
-                            if (!rsp.failures.isEmpty()) {
+                            NodeGroupBroadcastResult broadcastResponse = NodeGroupUtils.toBroadcastResult(rsp);
+                            if (broadcastResponse.hasFailure()) {
                                 testContext.fail(new IllegalStateException(
                                         "Failure from query tasks: " + Utils.toJsonHtml(rsp)));
                                 return;
@@ -2089,14 +2091,13 @@ public class TestNodeGroupService {
                             // verify broadcast requests should come from all discrete nodes
                             Set<String> ownerIds = new HashSet<>();
 
-                            for (Entry<URI, String> en : rsp.jsonResponses.entrySet()) {
-                                String jsonRsp = en.getValue();
-                                QueryTask qt = Utils.fromJson(jsonRsp, QueryTask.class);
+                            for (PeerNodeResult successResponse : broadcastResponse.successResponses) {
+                                QueryTask qt = successResponse.castBodyTo(QueryTask.class);
                                 this.host.log("Broadcast response from %s %s", qt.documentSelfLink,
                                         qt.documentOwner);
                                 ownerIds.add(qt.documentOwner);
                                 if (qt.results == null) {
-                                    this.host.log("Node %s had no results", en.getKey());
+                                    this.host.log("Node %s had no results", successResponse.requestUri);
                                     continue;
                                 }
                                 for (String l : qt.results.documentLinks) {
@@ -2104,11 +2105,6 @@ public class TestNodeGroupService {
                                 }
                             }
 
-                            if (ownerIds.size() != rsp.jsonResponses.size()) {
-                                throw new IllegalStateException(
-                                        "Number of owners in response less than node count: " +
-                                                ownerIds.toString());
-                            }
                             testContext.completeIteration();
                         });
 

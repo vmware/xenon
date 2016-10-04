@@ -1734,7 +1734,7 @@ public class TestQueryTaskService {
         URI forwardingService = UriUtils.buildBroadcastRequestUri(localQueryTaskFactoryUri,
                 task.nodeSelectorLink);
 
-        targetHost.testStart(1);
+        TestContext testContext = targetHost.testCreate(1);
         // refer to LuceneQueryTaskService.createAndSendBroadcastQuery() to get the the internal result (before merge)
         // so we can get each node's local query result, then verify whether we have got the authoritative result
         Operation op = Operation
@@ -1743,22 +1743,23 @@ public class TestQueryTaskService {
                 .setReferer(targetHost.getUri())
                 .setCompletion((o, e) -> {
                     if (e != null) {
-                        targetHost.failIteration(e);
+                        testContext.fail(e);
                         return;
                     }
 
                     NodeGroupBroadcastResponse rsp = o.getBody((NodeGroupBroadcastResponse.class));
+                    NodeGroupBroadcastResult broadcastResponse = NodeGroupUtils.toBroadcastResult(rsp);
 
-                    if (!rsp.failures.isEmpty()) {
-                        targetHost.failIteration(new IllegalStateException(
+                    if (broadcastResponse.hasFailure()) {
+                        testContext.fail(new IllegalStateException(
                                 "Failures received: " + Utils.toJsonHtml(rsp)));
                         return;
                     }
 
                     // check the correctness of rsp.jsonResponses, the internal result (before merge)
                     int totalDocumentCount = 0;
-                    for (Map.Entry<URI, String> entry : rsp.jsonResponses.entrySet()) {
-                        QueryTask queryTask = Utils.fromJson(entry.getValue(), QueryTask.class);
+
+                    for (QueryTask queryTask  : broadcastResponse.getSuccessesAs(QueryTask.class)) {
                         // calculate the total document count from each node's local query result
                         totalDocumentCount += queryTask.results.documentCount;
                         String queryTaskDocumentOwner = queryTask.documentOwner;
@@ -1768,7 +1769,7 @@ public class TestQueryTaskService {
                                     ServiceDocument.class).documentOwner;
                             // find non-authoritative result
                             if (!linkOwner.equals(queryTaskDocumentOwner)) {
-                                targetHost.failIteration(new IllegalStateException("Non-authoritative result returned: "
+                                testContext.fail(new IllegalStateException("Non-authoritative result returned: "
                                         + queryTaskDocumentOwner + " expected, but " + linkOwner + " returned"));
                                 return;
                             }
@@ -1777,17 +1778,17 @@ public class TestQueryTaskService {
 
                     // check the total documents count
                     if (this.serviceCount != totalDocumentCount) {
-                        targetHost.failIteration(new IllegalStateException("Incorrect number of documents returned: "
+                        testContext.fail(new IllegalStateException("Incorrect number of documents returned: "
                                 + this.serviceCount + " expected, but " + totalDocumentCount + " returned"));
                         return;
                     }
 
-                    targetHost.completeIteration();
+                    testContext.complete();
                 });
 
         op.toggleOption(OperationOption.CONNECTION_SHARING, true);
         targetHost.send(op);
-        targetHost.testWait();
+        testContext.await();
     }
 
     private void startPagedBroadCastQuery(VerificationHost targetHost) {

@@ -13,12 +13,15 @@
 
 package com.vmware.xenon.services.common;
 
+import static java.util.stream.Collectors.toMap;
+
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -31,12 +34,14 @@ import com.vmware.xenon.common.Operation.CompletionHandler;
 import com.vmware.xenon.common.OperationJoin;
 import com.vmware.xenon.common.OperationJoin.JoinedCompletionHandler;
 import com.vmware.xenon.common.Service;
+import com.vmware.xenon.common.ServiceErrorResponse;
 import com.vmware.xenon.common.ServiceHost;
 import com.vmware.xenon.common.ServiceHost.ServiceHostState;
 import com.vmware.xenon.common.ServiceStats;
 import com.vmware.xenon.common.ServiceStats.ServiceStat;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
+import com.vmware.xenon.services.common.NodeGroupBroadcastResult.PeerNodeResult;
 import com.vmware.xenon.services.common.NodeGroupService.NodeGroupState;
 
 public class NodeGroupUtils {
@@ -364,6 +369,69 @@ public class NodeGroupUtils {
         };
 
         host.checkReplicatedServiceAvailable(ch, servicePath, nodeSelectorPath);
+    }
+
+    /**
+     * Convert {@link NodeGroupBroadcastResponse} to {@link NodeGroupBroadcastResult}
+     */
+    public static NodeGroupBroadcastResult toBroadcastResult(NodeGroupBroadcastResponse response) {
+        NodeGroupBroadcastResult result = new NodeGroupBroadcastResult();
+
+        result.totalNodeCount = response.nodeCount;
+        result.availableNodeCount = response.availableNodeCount;
+        result.unavailableNodeCount = response.nodeCount - response.availableNodeCount;
+        result.membershipQuorum = response.membershipQuorum;
+
+
+        // entry example: "http://127.0.0.1:8000" => "host1"
+        Map<URI, String> hostIdByUrl = response.selectedNodes.entrySet().stream()
+                .collect(toMap(entry -> {
+                    URI uri = entry.getValue();
+                    return URI.create(uri.toString().replace(uri.getPath(), ""));
+                }, Map.Entry::getKey));
+
+        // for successful responses
+        for (Entry<URI, String> entry : response.jsonResponses.entrySet()) {
+            PeerNodeResult singleResult = new PeerNodeResult();
+            URI requestUri = entry.getKey();
+            String json = entry.getValue();
+
+            URI hostUri = URI.create(requestUri.toString().replace(requestUri.getPath(), ""));
+            String hostId = hostIdByUrl.get(hostUri);
+            URI nodeGroupUri = response.selectedNodes.get(hostId);
+
+            singleResult.requestUri = requestUri;
+            singleResult.hostId = hostId;
+            singleResult.nodeGroupUri = nodeGroupUri;
+            singleResult.json = json;
+            singleResult.errorResponse = null;
+
+            result.allResponses.add(singleResult);
+            result.successResponses.add(singleResult);
+        }
+
+        // for failure responses
+        for (Entry<URI, ServiceErrorResponse> entry : response.failures.entrySet()) {
+            PeerNodeResult singleResult = new PeerNodeResult();
+            URI requestUri = entry.getKey();
+            ServiceErrorResponse errorResponse = entry.getValue();
+
+            URI hostUri = URI.create(requestUri.toString().replace(requestUri.getPath(), ""));
+            String hostId = hostIdByUrl.get(hostUri);
+            URI nodeGroupUri = response.selectedNodes.get(hostId);
+
+            singleResult.requestUri = requestUri;
+            singleResult.hostId = hostId;
+            singleResult.nodeGroupUri = nodeGroupUri;
+            singleResult.json = null;
+            singleResult.errorResponse = errorResponse;
+
+            result.allResponses.add(singleResult);
+            result.failureResponses.add(singleResult);
+            result.failureErrorResponses.add(errorResponse);
+        }
+
+        return result;
     }
 
 }
