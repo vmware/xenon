@@ -9,41 +9,42 @@ export const MainRoutes: Route[] = [
     {
         path: 'main',
         component: MainComponent,
+        canActivate: [AuthenticationGuard],
         children: [
             {
                 path: '',
-                redirectTo: 'dashboard',
-                pathMatch: 'full'
-            },
-            {
-                path: 'dashboard',
-                component: DashboardGridComponent,
-                canActivate: [AuthenticationGuard]
-            },
-            {
-                path: 'service',
-                component: ServiceGridComponent,
-                canActivate: [AuthenticationGuard]
-            },
-            {
-                path: 'service/:id',
-                component: ServiceDetailComponent,
-                canActivate: [AuthenticationGuard]
-            },
-            {
-                path: 'service/:id/:instanceId',
-                component: ServiceDetailComponent,
-                canActivate: [AuthenticationGuard]
-            },
-            {
-                path: 'process-log',
-                component: ProcessLogComponent,
-                canActivate: [AuthenticationGuard]
-            },
-            {
-                path: 'query',
-                component: QueryComponent,
-                canActivate: [AuthenticationGuard]
+                canActivateChild: [AuthenticationGuard],
+                children: [
+                    {
+                        path: 'dashboard',
+                        component: DashboardGridComponent
+                    },
+                    {
+                        path: 'service',
+                        component: ServiceGridComponent
+                    },
+                    {
+                        path: 'service/:id',
+                        component: ServiceDetailComponent
+                    },
+                    {
+                        path: 'service/:id/:instanceId',
+                        component: ServiceDetailComponent
+                    },
+                    {
+                        path: 'process-log',
+                        component: ProcessLogComponent
+                    },
+                    {
+                        path: 'query',
+                        component: QueryComponent
+                    },
+                    {
+                        path: '',
+                        redirectTo: 'dashboard',
+                        pathMatch: 'full'
+                    }
+                ]
             }
         ]
     }

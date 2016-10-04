@@ -166,6 +166,11 @@ export class ProcessLogComponent implements OnInit, OnDestroy {
     }
 
     private _getData(): void {
+        // Reset the arrays
+        this._infoLogItems = [];
+        this._warningLogItems = [];
+        this._severeLogItems = [];
+
         this._baseServiceSubscription =
             this._baseService.getDocument(URL.Log).subscribe(
                 (log: ProcessLog) => {
