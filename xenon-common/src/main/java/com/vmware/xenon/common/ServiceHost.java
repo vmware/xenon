@@ -3048,11 +3048,31 @@ public class ServiceHost implements ServiceRequestSender {
             service = pendingStopService;
         }
 
+        if (inboundOp.getUri().getPath().contains("duplicateExampleInstance")) {
+            this.log(Level.INFO,
+                    "handling %s %s %s %s",
+                    inboundOp.getContextId(), inboundOp.getAction(), inboundOp.getUri(),
+                    (inboundOp.isSynchronize() ? " isSynch" : "") + (inboundOp.isFromReplication() ? " isReplication" : ""));
+        }
+
         if (queueRequestUntilServiceAvailable(inboundOp, service, path)) {
+            if (inboundOp.getUri().getPath().contains("duplicateExampleInstance")) {
+                this.log(Level.INFO,
+                        "service un-available %s %s %s %s",
+                        inboundOp.getContextId(), inboundOp.getAction(), inboundOp.getUri(),
+                        (inboundOp.isSynchronize() ? " isSynch" : "") + (inboundOp.isFromReplication() ? " isReplication" : ""));
+            }
+
             return;
         }
 
         if (queueOrForwardRequest(service, path, inboundOp)) {
+            if (inboundOp.getUri().getPath().contains("duplicateExampleInstance")) {
+                this.log(Level.INFO,
+                        "service is queued or forwarded %s %s %s %s",
+                        inboundOp.getContextId(), inboundOp.getAction(), inboundOp.getUri(),
+                        (inboundOp.isSynchronize() ? " isSynch" : "") + (inboundOp.isFromReplication() ? " isReplication" : ""));
+            }
             return;
         }
 
@@ -3613,6 +3633,11 @@ public class ServiceHost implements ServiceRequestSender {
                     }
                 };
                 this.executor.execute(r);
+            } else {
+                if (op.getUri().getPath().contains("duplicateExampleInstance")) {
+                    this.log(Level.INFO, "Queued %s %s %s %s", op.getContextId(), op.getAction(), op.getUri(),
+                            (op.isSynchronize() ? " isSynch" : "") + (op.isFromReplication() ? " isReplication" : ""));
+                }
             }
         }
     }
