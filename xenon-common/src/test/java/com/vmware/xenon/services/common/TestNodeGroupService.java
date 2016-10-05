@@ -958,6 +958,15 @@ public class TestNodeGroupService {
     }
 
     @Test
+    public void testing() throws Throwable {
+        for (int i = 0; i < this.iterationCount; i++) {
+            setUp();
+            synchronizationWithPeerNodeListAndDuplicates();
+            this.host.log("Iteration: %d", i);
+            tearDown();
+        }
+    }
+
     public void synchronizationWithPeerNodeListAndDuplicates()
             throws Throwable {
 
@@ -1018,7 +1027,7 @@ public class TestNodeGroupService {
                 this.host.subscribeForNodeGroupConvergence(nodeGroup, this.nodeCount + 1,
                         (o, e) -> {
                             if (e != null) {
-                                this.host.log("Error in notificaiton: %s", Utils.toString(e));
+                                this.host.log("Error in notification: %s", Utils.toString(e));
                                 return;
                             }
                             notifications.countDown();
@@ -1077,15 +1086,19 @@ public class TestNodeGroupService {
 
             // Send some updates after the full group has formed  and verify the updates are seen by services on all nodes
 
+            this.host.log(Level.INFO, "###############STARTING TO DO PATCHES NOW###############");
             doStateUpdateReplicationTest(Action.PATCH, this.serviceCount, this.updateCount, 0,
                     this.exampleStateUpdateBodySetter,
                     this.exampleStateConvergenceChecker,
                     exampleStatesPerSelfLink);
+            this.host.log(Level.INFO, "###############FINISHING PATCHES NOW###############");
 
+            this.host.log(Level.INFO, "###############WAITING FOR REPLICATED FACTORY###############");
             URI exampleFactoryUri = this.host.getPeerServiceUri(ExampleService.FACTORY_LINK);
             waitForReplicatedFactoryServiceAvailable(
                     UriUtils.buildUri(exampleFactoryUri, ExampleService.FACTORY_LINK),
                     ServiceUriPaths.DEFAULT_NODE_SELECTOR);
+            this.host.log(Level.INFO, "###############FINISHED WAITING FOR REPLICATED FACTORY###############");
         } finally {
             this.host.log("test finished");
             if (h != null) {
@@ -1128,7 +1141,7 @@ public class TestNodeGroupService {
         this.host.testWait(ctx);
     }
 
-    @Test
+    //@Test
     public void replicationWithQuorumAfterAbruptNodeStop()
             throws Throwable {
         // we need at least 5 nodes, because we're going to stop 2
@@ -1423,7 +1436,7 @@ public class TestNodeGroupService {
      *
      * @throws Throwable
      */
-    @Test
+    //@Test
     public void replicationWithCrossServiceDependencies() throws Throwable {
         this.isPeerSynchronizationEnabled = false;
         setUp(this.nodeCount);
@@ -2897,7 +2910,7 @@ public class TestNodeGroupService {
         }
     }
 
-    @Test
+    //@Test
     public void replicationWithAuthAndNodeRestart() throws Throwable {
         AuthorizationHelper authHelper;
 
@@ -3491,36 +3504,41 @@ public class TestNodeGroupService {
                         .getPeerServiceUri(this.replicationTargetFactoryLink);
 
                 long finalSentTime = sentTime;
-                this.host
-                        .send(Operation
-                                .createPatch(UriUtils.buildUri(factoryOnRandomPeerUri,
-                                        initState.documentSelfLink))
-                                .setAction(action)
-                                .forceRemote()
-                                .setBodyNoCloning(initState)
-                                .setCompletion(
-                                        (o, e) -> {
-                                            if (e != null) {
-                                                if (this.expectFailure) {
-                                                    failedCount.incrementAndGet();
-                                                    testContext.complete();
-                                                    return;
-                                                }
-                                                testContext.fail(e);
-                                                return;
-                                            }
-
-                                            if (this.expectFailure
-                                                    && this.expectedFailureStartTimeMicros > 0
-                                                    && finalSentTime > this.expectedFailureStartTimeMicros) {
-                                                testContext.fail(new IllegalStateException(
-                                                        "Request should have failed: %s"
-                                                                + o.toString()
-                                                                + " sent at " + finalSentTime));
-                                                return;
-                                            }
+                URI patchUri = UriUtils.buildUri(factoryOnRandomPeerUri,
+                        initState.documentSelfLink);
+                Operation patch = Operation
+                        .createPatch(patchUri)
+                        .setAction(action)
+                        .setContextId(UUID.randomUUID().toString())
+                        .forceRemote()
+                        .setBodyNoCloning(initState)
+                        .setCompletion(
+                                (o, e) -> {
+                                    if (e != null) {
+                                        if (this.expectFailure) {
+                                            failedCount.incrementAndGet();
                                             testContext.complete();
-                                        }));
+                                            return;
+                                        }
+                                        this.host.log("%s %s to %s failed: %s", o.getContextId(), action.toString(), patchUri, e.toString());
+                                        testContext.fail(e);
+                                        return;
+                                    }
+
+                                    if (this.expectFailure
+                                            && this.expectedFailureStartTimeMicros > 0
+                                            && finalSentTime > this.expectedFailureStartTimeMicros) {
+                                        testContext.fail(new IllegalStateException(
+                                                "Request should have failed: %s"
+                                                        + o.toString()
+                                                        + " sent at " + finalSentTime));
+                                        return;
+                                    }
+                                    this.host.log("%s %s to %s passed", o.getContextId(), action.toString(), patchUri);
+                                    testContext.complete();
+                                });
+                this.host.log("Sending %s %s to %s", patch.getContextId(), action.toString(), patchUri);
+                this.host.send(patch);
             }
         }
 

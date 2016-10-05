@@ -26,6 +26,7 @@ import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Operation.CompletionHandler;
 import com.vmware.xenon.common.Service;
 import com.vmware.xenon.common.ServiceClient;
+import com.vmware.xenon.common.ServiceErrorResponse;
 import com.vmware.xenon.common.ServiceHost;
 import com.vmware.xenon.common.StatelessService;
 import com.vmware.xenon.common.UriUtils;
@@ -193,7 +194,7 @@ public class NodeSelectorReplicationService extends StatelessService {
         // Index 0 - success count
         // index 1 - failure count
         // index 2 - most recent failure status
-        int[] countsAndStatus = new int[3];
+        int[] countsAndStatus = new int[4];
 
         CompletionHandler c = (o, e) -> {
             // if location is set we require success from nodes in the same location;
@@ -236,6 +237,10 @@ public class NodeSelectorReplicationService extends StatelessService {
                         outboundOp.getId(),
                         o.getUri(), o.getStatusCode(), e.getMessage());
                 countsAndStatus[2] = o.getStatusCode();
+                if (o.hasBody()) {
+                    ServiceErrorResponse rsp = o.getBody(ServiceErrorResponse.class);
+                    countsAndStatus[3] = rsp.getErrorCode();
+                }
             }
 
             if (completeWithFailure) {
@@ -249,7 +254,15 @@ public class NodeSelectorReplicationService extends StatelessService {
                                 successThresholdFinal,
                                 failureThresholdFinal);
                 logWarning("%s", error);
-                outboundOp.setStatusCode(countsAndStatus[2]).fail(new IllegalStateException(error));
+
+                outboundOp.setStatusCode(countsAndStatus[2]);
+                IllegalStateException ex = new IllegalStateException(error);
+
+                if (countsAndStatus[3] == ServiceErrorResponse.ERROR_CODE_SERVICE_NOT_SYNCHRONIZED) {
+                    outboundOp.fail(ex, ServiceErrorResponse.createWithShouldRetry(ex));
+                    return;
+                }
+                outboundOp.fail(ex);
             }
         };
 

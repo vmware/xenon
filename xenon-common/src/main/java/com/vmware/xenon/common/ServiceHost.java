@@ -3529,6 +3529,12 @@ public class ServiceHost implements ServiceRequestSender {
                 handleRequest(null, inboundOp);
             });
 
+            if (s == null && inboundOp.isFromReplication() && !inboundOp.isSynchronize() &&
+                    (inboundOp.getAction() == Action.PATCH || inboundOp.getAction() == Action.PUT)) {
+                log(Level.INFO, "race detected %s %s %s", inboundOp.getUri().getPath(),
+                        inboundOp.getAction(), inboundOp.getContextId());
+            }
+
             registerForServiceAvailability(inboundOp, path);
             return true;
         }
@@ -3613,6 +3619,11 @@ public class ServiceHost implements ServiceRequestSender {
                     }
                 };
                 this.executor.execute(r);
+            } else {
+                if (op.getUri().getPath().contains("duplicateExampleInstance")) {
+                    this.log(Level.INFO, "Queued %s %s %s %s", op.getContextId(), op.getAction(), op.getUri(),
+                            (op.isSynchronize() ? " isSynch" : "") + (op.isFromReplication() ? " isReplication" : ""));
+                }
             }
         }
     }
@@ -4144,6 +4155,16 @@ public class ServiceHost implements ServiceRequestSender {
                             }
                         });
 
+                    }
+
+                    if (opTemplate.isFromReplication() && !opTemplate.isSynchronize() &&
+                            (opTemplate.getAction() == Action.PATCH || opTemplate.getAction() == Action.PUT)) {
+                        log(Level.INFO, "race detected %s %s %s", opTemplate.getUri().getPath(),
+                                opTemplate.getAction(), opTemplate.getContextId());
+                        failRequest(opTemplate, Operation.STATUS_CODE_UNAVAILABLE,
+                                ServiceErrorResponse.ERROR_CODE_SERVICE_NOT_SYNCHRONIZED,
+                                new IllegalStateException("this is not synchronized"));
+                        return;
                     }
 
                     // Track operation but do not clone again.
