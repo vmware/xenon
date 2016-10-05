@@ -88,8 +88,6 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
 
             for (VerificationHost host : this.host.getInProcessHostMap().values()) {
                 startMigrationService(host);
-                host.waitForServiceAvailable(ExampleService.FACTORY_LINK);
-                host.waitForServiceAvailable(MigrationTaskService.FACTORY_LINK);
             }
         }
         for (VerificationHost host : this.host.getInProcessHostMap().values()) {
@@ -107,8 +105,6 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
             destinationHost.setNodeGroupQuorum(this.nodeCount);
             for (VerificationHost host : destinationHost.getInProcessHostMap().values()) {
                 startMigrationService(host);
-                host.waitForServiceAvailable(ExampleService.FACTORY_LINK);
-                host.waitForServiceAvailable(MigrationTaskService.FACTORY_LINK);
             }
         }
         for (VerificationHost host : destinationHost.getInProcessHostMap().values()) {
@@ -128,6 +124,8 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
         this.host.waitForReplicatedFactoryServiceAvailable(this.sourceFactoryUri);
         this.host.waitForReplicatedFactoryServiceAvailable(this.exampleSourceFactory);
         this.host.waitForReplicatedFactoryServiceAvailable(this.exampleDestinationFactory);
+
+        resetMaintenanceInterval();
     }
 
     private VerificationHost getDestinationHost() {
@@ -147,6 +145,10 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
         for (VerificationHost host : destinationHost.getInProcessHostMap().values()) {
             checkAndStartHost(host);
         }
+        resetMaintenanceInterval();
+    }
+
+    private void resetMaintenanceInterval() {
         // need to reset the maintenance intervals on the hosts otherwise clean up can fail
         // between tests due to the very low maintenance interval set in the test for
         // continuous migration
@@ -157,6 +159,7 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
             host.setMaintenanceIntervalMicros(TimeUnit.MILLISECONDS.toMicros(VerificationHost.FAST_MAINT_INTERVAL_MILLIS));
         }
     }
+
 
     @AfterClass
     public static void afterClass() throws Throwable {
@@ -399,7 +402,7 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
     }
 
     @Test
-    public void sucessMigrateOnlyDocumentsUpdatedAfterTime() throws Throwable {
+    public void successMigrateOnlyDocumentsUpdatedAfterTime() throws Throwable {
         // create object in host
         Collection<String> links = createExampleDocuments(this.exampleSourceFactory, getSourceHost(),
                 this.serviceCount);
@@ -536,6 +539,7 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
             host.toggleServiceOptions(UriUtils.buildUri(host, ExampleService.FACTORY_LINK),
                     null, EnumSet.of(ServiceOption.IDEMPOTENT_POST));
         }
+
         // create object in host
         Collection<String> links = createExampleDocuments(this.exampleSourceFactory, getSourceHost(),
                 this.serviceCount);
@@ -584,7 +588,7 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
         testWait(ctx2);
 
         waitForServiceCompletion = waitForServiceCompletion(out[0], getDestinationHost());
-        assertEquals(waitForServiceCompletion.taskInfo.stage, TaskStage.FINISHED);
+        assertEquals(TaskStage.FINISHED, waitForServiceCompletion.taskInfo.stage);
         stats = getStats(out[0], getDestinationHost());
         processedDocuments = Long.valueOf((long) stats.entries.get(MigrationTaskService.STAT_NAME_PROCESSED_DOCUMENTS).latestValue);
         assertEquals(Long.valueOf(this.serviceCount), processedDocuments);
