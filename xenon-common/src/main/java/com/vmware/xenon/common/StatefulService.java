@@ -261,6 +261,13 @@ public class StatefulService implements Service {
 
     @Override
     public void handleRequest(Operation request) {
+        if (request.getUri().getPath().contains("duplicateExampleInstance")) {
+            this.getHost().log(Level.INFO,
+                    "handling %s %s %s" +
+                            (request.isSynchronize() ? " isSynch" : "") +
+                            (request.isFromReplication() ? " isReplication" : ""),
+                    request.getContextId(), request.getAction(), request.getUri());
+        }
         handleRequest(request, OperationProcessingStage.LOADING_STATE);
     }
 

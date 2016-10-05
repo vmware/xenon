@@ -800,6 +800,9 @@ public class Operation implements Cloneable {
     }
 
     public String getContextId() {
+        if (this.contextId == null) {
+            return "null";
+        }
         return this.contextId;
     }
 
