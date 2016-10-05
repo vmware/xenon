@@ -3611,6 +3611,10 @@ public class ServiceHost implements ServiceRequestSender {
                     }
                 };
                 this.executor.execute(r);
+            } else {
+                if (op.getUri().getPath().contains("duplicateExampleInstance")) {
+                    this.log(Level.INFO, "Queued %s %s %s", op.getContextId(), op.getAction(), op.getUri());
+                }
             }
         }
     }
