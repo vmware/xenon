@@ -701,6 +701,8 @@ public class MigrationTaskService extends StatefulService {
                             UriUtils.buildUri(
                                     selectRandomUri(destinationURIs),
                                     d.getValue()))
+                            .addRequestHeader(Operation.REPLICATION_QUORUM_HEADER,
+                                    Operation.REPLICATION_QUORUM_HEADER_VALUE_ALL)
                             .setBodyNoCloning(d.getKey());
                     return new AbstractMap.SimpleEntry<Operation, Object>(op, d.getKey());
                 })
@@ -728,26 +730,33 @@ public class MigrationTaskService extends StatefulService {
         Collection<Operation> deleteOperations = createDeleteOperations(entityDestinationUriTofailedOps.keySet());
 
         OperationJoin.create(deleteOperations)
-            .setCompletion((os ,ts) -> {
-                if (ts != null && !ts.isEmpty()) {
-                    failTask(ts.values());
-                    return;
-                }
-                Collection<Operation> postOperations = createPostOperations(entityDestinationUriTofailedOps, posts);
+                .setCompletion((os, ts) -> {
+                    if (ts != null && !ts.isEmpty()) {
+                        logWarning("Failure deleting entities, options:%s", state.migrationOptions);
+                        failTask(ts.values());
+                        return;
+                    }
 
-                OperationJoin
-                    .create(postOperations)
-                    .setCompletion((oss, tss) -> {
-                        if (tss != null && !tss.isEmpty()) {
-                            failTask(tss.values());
-                            return;
-                        }
-                        adjustStat(STAT_NAME_PROCESSED_DOCUMENTS, posts.size());
-                        migrate(state, nextPageLinks, destinationURIs, lastUpdateTimesPerOwner);
-                    })
-                    .sendWith(this);
-            })
-            .sendWith(this);
+                    Collection<Operation> postOperations = createPostOperations(
+                            entityDestinationUriTofailedOps, posts);
+
+                    OperationJoin
+                            .create(postOperations)
+                            .setCompletion((oss, tss) -> {
+                                if (tss != null && !tss.isEmpty()) {
+                                    logWarning(
+                                            "Failure re-creating entities, after DELETE, options:%s",
+                                            state.migrationOptions);
+                                    failTask(tss.values());
+                                    return;
+                                }
+                                adjustStat(STAT_NAME_PROCESSED_DOCUMENTS, posts.size());
+                                migrate(state, nextPageLinks, destinationURIs,
+                                        lastUpdateTimesPerOwner);
+                            })
+                            .sendWith(this);
+                })
+                .sendWith(this);
     }
 
     private Map<URI, Operation> getFailedOperations(Map<Operation, Object> posts, Map<Long, Throwable> operationFailures) {
