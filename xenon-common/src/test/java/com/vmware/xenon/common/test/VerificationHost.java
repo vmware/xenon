@@ -1128,19 +1128,24 @@ public class VerificationHost extends ExampleServiceHost {
         }
 
         logMemoryInfo();
-        log("starting %s test with properties %s, service caps: %s",
+        StackTraceElement[] e = new Exception().getStackTrace();
+        String testName = String.format(
+                "Parent: %s, %s test with properties %s, service caps: %s",
+                e[1].getMethodName(),
                 action, properties.toString(), services.get(0).getOptions());
 
         Map<URI, MinimalTestServiceState> statesBeforeUpdate = getServiceState(properties,
                 MinimalTestServiceState.class, services);
 
-        StackTraceElement[] e = new Exception().getStackTrace();
-        String testName = e[1].getMethodName() + ":" + e[0].getMethodName();
+
+        long startTimeMicros = System.nanoTime() / 1000;
+        TestContext ctx = testCreate(count * services.size());
+        ctx.setTestName(testName);
+        ctx.logBefore();
 
         // create a template PUT. Each operation instance is cloned on send, so
         // we can re-use across services
-        Operation updateOp = Operation.createPut(null).setCompletion(
-                getCompletion());
+        Operation updateOp = Operation.createPut(null).setCompletion(ctx.getCompletion());
 
         updateOp.setAction(action);
 
@@ -1201,19 +1206,17 @@ public class VerificationHost extends ExampleServiceHost {
         if (properties.contains(TestProperty.BINARY_PAYLOAD)) {
             updateOp.setContentType(Operation.MEDIA_TYPE_APPLICATION_OCTET_STREAM);
             updateOp.setCompletion((o, eb) -> {
-
                 if (eb != null) {
-                    failIteration(eb);
+                    ctx.fail(eb);
                     return;
                 }
 
                 if (!Operation.MEDIA_TYPE_APPLICATION_OCTET_STREAM.equals(o.getContentType())) {
-                    failIteration(new IllegalArgumentException("unexpected content type: "
+                    ctx.fail(new IllegalArgumentException("unexpected content type: "
                             + o.getContentType()));
                     return;
                 }
-
-                completeIteration();
+                ctx.complete();
             });
 
         }
@@ -1227,26 +1230,26 @@ public class VerificationHost extends ExampleServiceHost {
             if (properties.contains(TestProperty.LARGE_PAYLOAD)) {
                 updateOp.setCompletion((o, ex) -> {
                     if (ex == null) {
-                        failIteration(new IllegalStateException("expected failure"));
+                        ctx.fail(new IllegalStateException("expected failure"));
                     } else {
-                        completeIteration();
+                        ctx.complete();
                     }
                 });
             } else {
                 updateOp.setCompletion((o, ex) -> {
                     if (ex == null) {
-                        failIteration(new IllegalStateException("failure expected"));
+                        ctx.fail(new IllegalStateException("failure expected"));
                         return;
                     }
 
                     MinimalTestServiceErrorResponse rsp = o
                             .getBody(MinimalTestServiceErrorResponse.class);
                     if (!MinimalTestServiceErrorResponse.KIND.equals(rsp.documentKind)) {
-                        failIteration(new IllegalStateException("Response not expected:"
+                        ctx.fail(new IllegalStateException("Response not expected:"
                                 + Utils.toJson(rsp)));
                         return;
                     }
-                    completeIteration();
+                    ctx.complete();
                 });
             }
         }
@@ -1258,9 +1261,6 @@ public class VerificationHost extends ExampleServiceHost {
             byteCount = (int) c;
         }
         log("Bytes per payload %s", byteCount);
-
-        long startTimeMicros = System.nanoTime() / 1000;
-        testStart(testName, properties, count * services.size());
 
         boolean isConcurrentSend = properties.contains(TestProperty.CONCURRENT_SEND);
         final boolean isFailureExpectedFinal = isFailureExpected;
@@ -1299,11 +1299,11 @@ public class VerificationHost extends ExampleServiceHost {
                         if (ex == null || isFailureExpectedFinal) {
                             MinimalTestServiceState rsp = o.getBody(MinimalTestServiceState.class);
                             expectedVersion[0] = rsp.documentVersion;
-                            this.completeIteration();
+                            ctx.complete();
                             l[0].countDown();
                             return;
                         }
-                        this.failIteration(ex);
+                        ctx.fail(ex);
                         l[0].countDown();
                     });
                 }
@@ -1340,18 +1340,14 @@ public class VerificationHost extends ExampleServiceHost {
                 }
             }
         }
-        testWait();
+
+        testWait(ctx);
+        ctx.logAfter();
 
         if (isFailureExpected) {
             this.toggleNegativeTestMode(false);
             return;
         }
-
-        long endTimeMicros = System.nanoTime() / 1000;
-        double deltaSeconds = (endTimeMicros - startTimeMicros) / 1000000.0;
-        double ioCount = count * services.size();
-        double throughput = ioCount / deltaSeconds;
-        log("Operation count: %f, throughput(ops/sec): %f", ioCount, throughput);
 
         if (properties.contains(TestProperty.BINARY_PAYLOAD)) {
             return;
@@ -1377,10 +1373,11 @@ public class VerificationHost extends ExampleServiceHost {
                 MinimalTestServiceState.class, getUris);
 
         for (MinimalTestServiceState st : statesAfterUpdate.values()) {
-            ServiceDocument beforeSt = statesBeforeUpdate
-                    .get(UriUtils.buildUri(this, st.documentSelfLink));
-
-            if (st.documentVersion != beforeSt.documentVersion + count) {
+            URI serviceUri = UriUtils.buildUri(this, st.documentSelfLink);
+            ServiceDocument beforeSt = statesBeforeUpdate.get(serviceUri);
+            long expectedVersion = beforeSt.documentVersion + count;
+            if (st.documentVersion != expectedVersion) {
+                QueryTestUtils.logVersionInfoForService(this.sender, serviceUri, expectedVersion);
                 throw new IllegalStateException("got " + st.documentVersion + ", expected "
                         + (beforeSt.documentVersion + count));
             }
