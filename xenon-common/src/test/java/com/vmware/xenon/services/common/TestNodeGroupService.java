@@ -961,7 +961,7 @@ public class TestNodeGroupService {
     public void synchronizationWithPeerNodeListAndDuplicates()
             throws Throwable {
 
-        ExampleServiceHost h = null;
+        VerificationHost h = null;
 
         TemporaryFolder tmpFolder = new TemporaryFolder();
         tmpFolder.create();
@@ -1027,7 +1027,7 @@ public class TestNodeGroupService {
 
             // now start a new Host and supply the already created peer, then observe the automatic
             // join
-            h = new ExampleServiceHost();
+            h = new VerificationHost();
             int quorum = this.host.getPeerCount() + 1;
 
             String mainHostId = "main-" + VerificationHost.hostNumber.incrementAndGet();
@@ -1047,13 +1047,13 @@ public class TestNodeGroupService {
                     .toMicros(VerificationHost.FAST_MAINT_INTERVAL_MILLIS));
 
             h.start();
+            this.host.addPeerNode(h);
             URI mainHostNodeGroupUri = UriUtils.buildUri(h, ServiceUriPaths.DEFAULT_NODE_GROUP);
 
             int totalCount = this.nodeCount + 1;
-            peerNodeGroupUris.add(mainHostNodeGroupUri);
+
             this.host.waitForNodeGroupIsAvailableConvergence();
-            this.host.waitForNodeGroupConvergence(peerNodeGroupUris, totalCount,
-                    totalCount, true);
+            this.host.waitForNodeGroupConvergence(totalCount);
 
             this.host.setNodeGroupQuorum(quorum, mainHostNodeGroupUri);
             this.host.setNodeGroupQuorum(quorum);
