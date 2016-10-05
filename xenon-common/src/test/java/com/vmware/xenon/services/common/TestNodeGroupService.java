@@ -958,6 +958,15 @@ public class TestNodeGroupService {
     }
 
     @Test
+    public void testing() throws Throwable {
+        for (int i = 0; i < this.iterationCount; i++) {
+            setUp();
+            synchronizationWithPeerNodeListAndDuplicates();
+            this.host.log("Iteration: %d", i);
+            tearDown();
+        }
+    }
+
     public void synchronizationWithPeerNodeListAndDuplicates()
             throws Throwable {
 
@@ -1018,7 +1027,7 @@ public class TestNodeGroupService {
                 this.host.subscribeForNodeGroupConvergence(nodeGroup, this.nodeCount + 1,
                         (o, e) -> {
                             if (e != null) {
-                                this.host.log("Error in notificaiton: %s", Utils.toString(e));
+                                this.host.log("Error in notification: %s", Utils.toString(e));
                                 return;
                             }
                             notifications.countDown();
@@ -1077,15 +1086,19 @@ public class TestNodeGroupService {
 
             // Send some updates after the full group has formed  and verify the updates are seen by services on all nodes
 
+            this.host.log(Level.INFO, "###############STARTING TO DO PATCHES NOW###############");
             doStateUpdateReplicationTest(Action.PATCH, this.serviceCount, this.updateCount, 0,
                     this.exampleStateUpdateBodySetter,
                     this.exampleStateConvergenceChecker,
                     exampleStatesPerSelfLink);
+            this.host.log(Level.INFO, "###############FINISHING PATCHES NOW###############");
 
+            this.host.log(Level.INFO, "###############WAITING FOR REPLICATED FACTORY###############");
             URI exampleFactoryUri = this.host.getPeerServiceUri(ExampleService.FACTORY_LINK);
             waitForReplicatedFactoryServiceAvailable(
                     UriUtils.buildUri(exampleFactoryUri, ExampleService.FACTORY_LINK),
                     ServiceUriPaths.DEFAULT_NODE_SELECTOR);
+            this.host.log(Level.INFO, "###############FINISHED WAITING FOR REPLICATED FACTORY###############");
         } finally {
             this.host.log("test finished");
             if (h != null) {
