@@ -30,16 +30,14 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 import org.junit.After;
-import org.junit.AfterClass;
 import org.junit.Before;
 import org.junit.Test;
 
-import com.vmware.xenon.common.BasicReusableHostTestCase;
+import com.vmware.xenon.common.BasicTestCase;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Service.ServiceOption;
 import com.vmware.xenon.common.ServiceDocument;
@@ -61,7 +59,7 @@ import com.vmware.xenon.services.common.QueryTask.NumericRange;
 import com.vmware.xenon.services.common.QueryTask.Query;
 import com.vmware.xenon.services.common.QueryTask.QuerySpecification;
 
-public class TestMigrationTaskService extends BasicReusableHostTestCase {
+public class TestMigrationTaskService extends BasicTestCase {
     private static final int UNACCESSABLE_PORT = 123;
     private static final URI FAKE_URI = UriUtils.buildUri("127.0.0.1", UNACCESSABLE_PORT, null, null);
     private static final String TRANSFORMATION = "transformation";
@@ -71,16 +69,17 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
     private URI exampleSourceFactory;
     private URI exampleDestinationFactory;
 
-    private static VerificationHost destinationHost;
+    private VerificationHost destinationHost;
 
     public long serviceCount = 10;
-    private int nodeCount = 3;
+    private int nodeCount = 2;
 
     @Before
     public void setUp() throws Throwable {
         if (this.host.getInProcessHostMap().isEmpty()) {
             this.host.setStressTest(this.host.isStressTest);
             this.host.setPeerSynchronizationEnabled(true);
+            this.host.setUpLocalPeersHosts(this.nodeCount, 50L);
             this.host.setUpPeerHosts(this.nodeCount);
             getSourceHost().setNodeGroupQuorum(this.nodeCount);
             this.host.joinNodesAndVerifyConvergence(this.nodeCount, true);
@@ -88,8 +87,6 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
 
             for (VerificationHost host : this.host.getInProcessHostMap().values()) {
                 startMigrationService(host);
-                host.waitForServiceAvailable(ExampleService.FACTORY_LINK);
-                host.waitForServiceAvailable(MigrationTaskService.FACTORY_LINK);
             }
         }
         for (VerificationHost host : this.host.getInProcessHostMap().values()) {
@@ -97,21 +94,19 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
                     EnumSet.of(ServiceOption.IDEMPOTENT_POST), null);
         }
 
-        if (destinationHost == null) {
-            destinationHost = VerificationHost.create(0);
-            destinationHost.start();
-            destinationHost.setStressTest(destinationHost.isStressTest);
-            destinationHost.setPeerSynchronizationEnabled(true);
-            destinationHost.setUpPeerHosts(this.nodeCount);
-            destinationHost.joinNodesAndVerifyConvergence(this.nodeCount);
-            destinationHost.setNodeGroupQuorum(this.nodeCount);
-            for (VerificationHost host : destinationHost.getInProcessHostMap().values()) {
+        if (this.destinationHost == null) {
+            this.destinationHost = VerificationHost.create(0);
+            this.destinationHost.start();
+            this.destinationHost.setStressTest(this.destinationHost.isStressTest);
+            this.destinationHost.setPeerSynchronizationEnabled(true);
+            this.destinationHost.setUpLocalPeersHosts(this.nodeCount, 50L);
+            this.destinationHost.joinNodesAndVerifyConvergence(this.nodeCount);
+            this.destinationHost.setNodeGroupQuorum(this.nodeCount);
+            for (VerificationHost host : this.destinationHost.getInProcessHostMap().values()) {
                 startMigrationService(host);
-                host.waitForServiceAvailable(ExampleService.FACTORY_LINK);
-                host.waitForServiceAvailable(MigrationTaskService.FACTORY_LINK);
             }
         }
-        for (VerificationHost host : destinationHost.getInProcessHostMap().values()) {
+        for (VerificationHost host : this.destinationHost.getInProcessHostMap().values()) {
             host.toggleServiceOptions(UriUtils.buildUri(host, ExampleService.FACTORY_LINK),
                     EnumSet.of(ServiceOption.IDEMPOTENT_POST), null);
         }
@@ -128,10 +123,20 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
         this.host.waitForReplicatedFactoryServiceAvailable(this.sourceFactoryUri);
         this.host.waitForReplicatedFactoryServiceAvailable(this.exampleSourceFactory);
         this.host.waitForReplicatedFactoryServiceAvailable(this.exampleDestinationFactory);
+
+        resetMaintenanceInterval();
+    }
+
+    @After
+    public void tearDown() {
+        this.host.tearDownInProcessPeers();
+        this.host.tearDown();
+        this.destinationHost.tearDownInProcessPeers();
+        this.destinationHost.tearDown();
     }
 
     private VerificationHost getDestinationHost() {
-        return destinationHost.getInProcessHostMap().values().iterator().next();
+        return this.destinationHost.getInProcessHostMap().values().iterator().next();
     }
 
     private VerificationHost getSourceHost() {
@@ -144,25 +149,22 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
             checkAndStartHost(host);
         }
 
-        for (VerificationHost host : destinationHost.getInProcessHostMap().values()) {
+        for (VerificationHost host : this.destinationHost.getInProcessHostMap().values()) {
             checkAndStartHost(host);
         }
+        resetMaintenanceInterval();
+    }
+
+    private void resetMaintenanceInterval() {
         // need to reset the maintenance intervals on the hosts otherwise clean up can fail
         // between tests due to the very low maintenance interval set in the test for
         // continuous migration
         for (VerificationHost host : this.host.getInProcessHostMap().values()) {
             host.setMaintenanceIntervalMicros(TimeUnit.MILLISECONDS.toMicros(VerificationHost.FAST_MAINT_INTERVAL_MILLIS));
         }
-        for (VerificationHost host : destinationHost.getInProcessHostMap().values()) {
+        for (VerificationHost host : this.destinationHost.getInProcessHostMap().values()) {
             host.setMaintenanceIntervalMicros(TimeUnit.MILLISECONDS.toMicros(VerificationHost.FAST_MAINT_INTERVAL_MILLIS));
         }
-    }
-
-    @AfterClass
-    public static void afterClass() throws Throwable {
-        destinationHost.tearDownInProcessPeers();
-        destinationHost.tearDown();
-        destinationHost.stop();
     }
 
     State validMigrationState() throws Throwable {
@@ -297,7 +299,7 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
     }
 
     @Test
-    public void successNoDcumentsModifiedAfterTime() throws Throwable {
+    public void successNoDocumentsModifiedAfterTime() throws Throwable {
         // create object in host
         Collection<String> links = createExampleDocuments(this.exampleSourceFactory, getSourceHost(),
                 this.serviceCount);
@@ -365,7 +367,7 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
         MigrationTaskService.State migrationState = validMigrationState(
                 ExampleService.FACTORY_LINK);
         QuerySpecification spec = new QuerySpecification();
-        spec.resultLimit = 1;
+        spec.resultLimit = (int) (this.serviceCount / 2);
         migrationState.querySpec = spec;
 
         TestContext ctx = testCreate(1);
@@ -399,7 +401,7 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
     }
 
     @Test
-    public void sucessMigrateOnlyDocumentsUpdatedAfterTime() throws Throwable {
+    public void successMigrateOnlyDocumentsUpdatedAfterTime() throws Throwable {
         // create object in host
         Collection<String> links = createExampleDocuments(this.exampleSourceFactory, getSourceHost(),
                 this.serviceCount);
@@ -532,10 +534,11 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
     @Test
     public void successMigrateSameDocumentsTwiceUsingFallback() throws Throwable {
         // disable idempotent post on destination
-        for (VerificationHost host : destinationHost.getInProcessHostMap().values()) {
+        for (VerificationHost host : this.destinationHost.getInProcessHostMap().values()) {
             host.toggleServiceOptions(UriUtils.buildUri(host, ExampleService.FACTORY_LINK),
                     null, EnumSet.of(ServiceOption.IDEMPOTENT_POST));
         }
+
         // create object in host
         Collection<String> links = createExampleDocuments(this.exampleSourceFactory, getSourceHost(),
                 this.serviceCount);
@@ -584,7 +587,7 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
         testWait(ctx2);
 
         waitForServiceCompletion = waitForServiceCompletion(out[0], getDestinationHost());
-        assertEquals(waitForServiceCompletion.taskInfo.stage, TaskStage.FINISHED);
+        assertEquals(TaskStage.FINISHED, waitForServiceCompletion.taskInfo.stage);
         stats = getStats(out[0], getDestinationHost());
         processedDocuments = Long.valueOf((long) stats.entries.get(MigrationTaskService.STAT_NAME_PROCESSED_DOCUMENTS).latestValue);
         assertEquals(Long.valueOf(this.serviceCount), processedDocuments);
@@ -615,7 +618,7 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
         // start transformation service
         URI u = UriUtils.buildUri(getDestinationHost(), transformPath);
         Operation post = Operation.createPost(u);
-        for (VerificationHost host : destinationHost.getInProcessHostMap().values()) {
+        for (VerificationHost host : this.destinationHost.getInProcessHostMap().values()) {
             host.startService(post, transformServiceClass.newInstance());
             host.waitForServiceAvailable(transformPath);
         }
@@ -849,7 +852,7 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
         TestContext ctx = testCreate((int) documentNumber);
         for (; documentNumber > 0; documentNumber--) {
             ExampleServiceState exampleServiceState = new ExampleService.ExampleServiceState();
-            exampleServiceState.name = UUID.randomUUID().toString();
+            exampleServiceState.name = Utils.buildUUID(host.getIdHash());
             exampleServiceState.documentSelfLink = exampleServiceState.name;
             exampleServiceState.counter = Long.valueOf(documentNumber);
             ops.add(Operation.createPost(exampleSourceFactory)
@@ -860,10 +863,11 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
                             ctx.failIteration(e);
                             return;
                         }
+                        ExampleServiceState rsp = o.getBody(ExampleServiceState.class);
                         synchronized (ops) {
-                            links.add(o.getBody(
-                                    ExampleService.ExampleServiceState.class).documentSelfLink);
+                            links.add(rsp.documentSelfLink);
                         }
+                        this.host.log("Created %s on %s", rsp.documentSelfLink, rsp.documentOwner);
                         ctx.completeIteration();
                     }));
         }
