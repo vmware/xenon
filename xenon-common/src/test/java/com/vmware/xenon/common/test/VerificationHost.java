@@ -1497,6 +1497,12 @@ public class VerificationHost extends ExampleServiceHost {
         Map<URI, T> docByChildURI = responses.stream().collect(
                 toMap(doc -> UriUtils.buildUri(factoryURI, doc.documentSelfLink), identity()));
         initialStates.putAll(docByChildURI);
+
+        log("Created children: ");
+        for (URI d : docByChildURI.keySet()) {
+            log(d.toString());
+        }
+
         log("Done with %d POST requests to %s", c, factoryURI);
         return initialStates;
     }

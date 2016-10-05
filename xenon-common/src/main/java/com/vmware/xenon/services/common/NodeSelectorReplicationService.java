@@ -260,7 +260,7 @@ public class NodeSelectorReplicationService extends StatelessService {
                 .setAction(outboundOp.getAction())
                 .setCompletion(c)
                 .setRetryCount(1)
-                .setExpiration(outboundOp.getExpirationMicrosUtc())
+                .setExpiration(Utils.getNowMicrosUtc() + NodeGroupService.PEER_REQUEST_TIMEOUT_MICROS)
                 .transferRefererFrom(outboundOp);
 
         String pragmaHeader = outboundOp.getRequestHeader(Operation.PRAGMA_HEADER);
