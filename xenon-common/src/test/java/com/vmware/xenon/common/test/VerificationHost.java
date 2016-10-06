@@ -2787,6 +2787,9 @@ public class VerificationHost extends ExampleServiceHost {
             Operation op = Operation.createDelete(UriUtils.buildUri(factoryURI, link));
             if (stopOnly) {
                 op.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_NO_INDEX_UPDATE);
+            } else {
+                op.addRequestHeader(Operation.REPLICATION_QUORUM_HEADER,
+                        Operation.REPLICATION_QUORUM_HEADER_VALUE_ALL);
             }
             ops.add(op);
         }
