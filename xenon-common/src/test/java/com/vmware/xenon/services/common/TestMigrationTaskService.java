@@ -141,11 +141,11 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
     @After
     public void cleanUp() throws Throwable {
         for (VerificationHost host : this.host.getInProcessHostMap().values()) {
-            checkAndStartHost(host);
+            checkReusableHostAndCleanup(host);
         }
 
         for (VerificationHost host : destinationHost.getInProcessHostMap().values()) {
-            checkAndStartHost(host);
+            checkReusableHostAndCleanup(host);
         }
         // need to reset the maintenance intervals on the hosts otherwise clean up can fail
         // between tests due to the very low maintenance interval set in the test for
@@ -297,7 +297,7 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
     }
 
     @Test
-    public void successNoDcumentsModifiedAfterTime() throws Throwable {
+    public void successNoDocumentsModifiedAfterTime() throws Throwable {
         // create object in host
         Collection<String> links = createExampleDocuments(this.exampleSourceFactory, getSourceHost(),
                 this.serviceCount);
@@ -365,7 +365,7 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
         MigrationTaskService.State migrationState = validMigrationState(
                 ExampleService.FACTORY_LINK);
         QuerySpecification spec = new QuerySpecification();
-        spec.resultLimit = 1;
+        spec.resultLimit = (int) (this.serviceCount / 10);
         migrationState.querySpec = spec;
 
         TestContext ctx = testCreate(1);
@@ -399,7 +399,7 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
     }
 
     @Test
-    public void sucessMigrateOnlyDocumentsUpdatedAfterTime() throws Throwable {
+    public void successMigrateOnlyDocumentsUpdatedAfterTime() throws Throwable {
         // create object in host
         Collection<String> links = createExampleDocuments(this.exampleSourceFactory, getSourceHost(),
                 this.serviceCount);
@@ -414,7 +414,7 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
         assertTrue("max upateTime should not be 0", time > 0);
 
         Collection<String> newLinks = createExampleDocuments(this.exampleSourceFactory, getSourceHost(),
-                this.serviceCount);
+                this.serviceCount, false);
 
         // start migration
         MigrationTaskService.State migrationState = validMigrationState(
@@ -844,6 +844,17 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
 
     private Collection<String> createExampleDocuments(URI exampleSourceFactory,
             VerificationHost host, long documentNumber) throws Throwable {
+        return createExampleDocuments(exampleSourceFactory, host, documentNumber, true);
+    }
+
+    private Collection<String> createExampleDocuments(URI exampleSourceFactory,
+            VerificationHost host, long documentNumber, boolean assertOnEmptyFactory)
+            throws Throwable {
+        if (assertOnEmptyFactory) {
+            ServiceDocumentQueryResult r = this.host.getFactoryState(exampleSourceFactory);
+            this.host.log("Example collection before creation:%s", Utils.toJsonHtml(r));
+            assertTrue(r.documentLinks == null || r.documentLinks.isEmpty());
+        }
         Collection<String> links = new ArrayList<>();
         Collection<Operation> ops = new ArrayList<>();
         TestContext ctx = testCreate((int) documentNumber);
@@ -860,9 +871,10 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
                             ctx.failIteration(e);
                             return;
                         }
-                        synchronized (ops) {
-                            links.add(o.getBody(
-                                    ExampleService.ExampleServiceState.class).documentSelfLink);
+                        ExampleServiceState st = o.getBody(ExampleServiceState.class);
+                        this.host.log("Created %s on %s", st.documentSelfLink, st.documentOwner);
+                        synchronized (links) {
+                            links.add(st.documentSelfLink);
                         }
                         ctx.completeIteration();
                     }));
@@ -896,7 +908,7 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
         return out[0];
     }
 
-    private void checkAndStartHost(VerificationHost host) throws Throwable {
+    private void checkReusableHostAndCleanup(VerificationHost host) throws Throwable {
         if (host.isStopping() || !host.isStarted()) {
             host.start();
             startMigrationService(host);
