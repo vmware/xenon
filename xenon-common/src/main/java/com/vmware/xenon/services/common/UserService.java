@@ -13,16 +13,17 @@
 
 package com.vmware.xenon.services.common;
 
-import java.util.EnumSet;
 import java.util.Set;
 
 import com.vmware.xenon.common.FactoryService;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Service;
 import com.vmware.xenon.common.ServiceDocument;
-import com.vmware.xenon.common.ServiceDocumentDescription;
 import com.vmware.xenon.common.ServiceDocumentDescription.PropertyIndexingOption;
+import com.vmware.xenon.common.ServiceDocumentDescription.PropertyUsageOption;
 import com.vmware.xenon.common.StatefulService;
+import com.vmware.xenon.common.Utils;
+
 
 public class UserService extends StatefulService {
     public static final String FACTORY_LINK = ServiceUriPaths.CORE_AUTHZ_USERS;
@@ -37,7 +38,12 @@ public class UserService extends StatefulService {
     public static class UserState extends ServiceDocument {
         public static final String FIELD_NAME_EMAIL = "email";
         public static final String FIELD_NAME_USER_GROUP_LINKS = "userGroupLinks";
+
+        @PropertyOptions(indexing = PropertyIndexingOption.SORT)
+        @UsageOption(option = PropertyUsageOption.AUTO_MERGE_IF_NOT_NULL)
         public String email;
+
+        @UsageOption(option = PropertyUsageOption.AUTO_MERGE_IF_NOT_NULL)
         public Set<String> userGroupLinks;
     }
 
@@ -104,19 +110,18 @@ public class UserService extends StatefulService {
             return;
         }
         UserState currentState = getState(op);
-        UserState newState = op.getBody(UserState.class);
-        if (newState.email != null) {
-            currentState.email = newState.email;
-        }
-        if (newState.userGroupLinks != null) {
-            if (currentState.userGroupLinks == null) {
-                currentState.userGroupLinks = newState.userGroupLinks;
-            } else {
-                currentState.userGroupLinks.addAll(newState.userGroupLinks);
+        try {
+            UserState newState = getBody(op);
+            if (newState.email != null && !validate(op, newState)) {
+                op.fail(new IllegalArgumentException("Invalid email address"));
+                return;
             }
+            Utils.mergeWithStateAdvanced(getStateDescription(), currentState, UserState.class, op);
+        } catch (NoSuchFieldException | IllegalAccessException e) {
+            op.fail(e);
+            return;
         }
-        op.setBody(currentState);
-        op.complete();
+        op.setBody(currentState).complete();
     }
 
     private boolean validate(Operation op, UserState state) {
@@ -136,19 +141,5 @@ public class UserService extends StatefulService {
         }
 
         return true;
-    }
-
-    @Override
-    public ServiceDocument getDocumentTemplate() {
-        ServiceDocument td = super.getDocumentTemplate();
-        ServiceDocumentDescription.PropertyDescription pdGroupLinks = td.documentDescription.propertyDescriptions
-                .get(UserState.FIELD_NAME_USER_GROUP_LINKS);
-        if (pdGroupLinks == null) {
-            throw new IllegalStateException(UserState.FIELD_NAME_USER_GROUP_LINKS
-                    + " property is missing in the service document");
-        }
-        pdGroupLinks.indexingOptions = EnumSet
-                .of(PropertyIndexingOption.EXPAND);
-        return td;
     }
 }

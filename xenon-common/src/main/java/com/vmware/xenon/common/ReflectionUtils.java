@@ -129,9 +129,9 @@ public class ReflectionUtils {
     }
 
     /**
-     * Checks if fieldName is present and accessible in service type
+     * Checks if fieldName is present and accessible in specified type
      */
-    public static boolean hasField(Class<? extends Service> type, String fieldName) {
+    public static boolean hasField(Class<?> type, String fieldName) {
         try {
             type.getField(fieldName);
             return true;
