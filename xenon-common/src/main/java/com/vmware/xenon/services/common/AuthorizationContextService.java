@@ -44,6 +44,7 @@ import com.vmware.xenon.services.common.QueryTask.QueryTerm.MatchType;
 import com.vmware.xenon.services.common.ResourceGroupService.ResourceGroupState;
 import com.vmware.xenon.services.common.RoleService.RoleState;
 import com.vmware.xenon.services.common.UserGroupService.UserGroupState;
+import com.vmware.xenon.services.common.UserService.UserState;
 
 /**
  * The authorization context service takes an operation's authorization context and
@@ -210,7 +211,6 @@ public class AuthorizationContextService extends StatelessService {
                     }
 
                     ServiceDocument userState = QueryFilterUtils.getServiceState(o, getHost());
-
                     // If the native user state could not be extracted, we are sure no roles
                     // will apply and we can populate the authorization context.
                     if (userState == null) {
@@ -225,7 +225,42 @@ public class AuthorizationContextService extends StatelessService {
         sendRequest(get);
     }
 
-    private void loadUserGroups(AuthorizationContext ctx, Claims claims, ServiceDocument userState) {
+    private void loadUserGroups(AuthorizationContext ctx, Claims claims, ServiceDocument userServiceDocument) {
+        // if the user service derived from UserService and it has the userGroupLinks
+        // field populated, use that to compute the list of groups that apply to the user
+        if (UserState.class.isAssignableFrom(userServiceDocument.getClass())) {
+            UserState userState = (UserState)userServiceDocument;
+            if (userState.userGroupLinks != null && !userState.userGroupLinks.isEmpty()) {
+                JoinedCompletionHandler handler = (ops, failures) -> {
+                    if (failures != null && !failures.isEmpty()) {
+                        failThrowable(claims.getSubject(), failures.values().iterator().next());
+                        return;
+                    }
+                    try {
+                        Collection<UserGroupState> userGroupStates = new HashSet<>();
+                        for (Operation op : ops.values()) {
+                            UserGroupState userGroupState = op.getBody(UserGroupState.class);
+                            userGroupStates.add(userGroupState);
+                        }
+                        loadRoles(ctx, claims, userGroupStates);
+                    } catch (Throwable e) {
+                        failThrowable(claims.getSubject(), e);
+                        return;
+                    }
+                };
+                Collection<Operation> gets = new HashSet<>();
+                for (String userGroupLink : userState.userGroupLinks) {
+                    Operation get = Operation.createGet(this, userGroupLink).setReferer(getUri());
+                    setAuthorizationContext(get, getSystemAuthorizationContext());
+                    gets.add(get);
+                }
+                OperationJoin join = OperationJoin.create(gets);
+                join.setCompletion(handler);
+                join.sendWith(getHost());
+                return;
+            }
+        }
+
         URI getUserGroupsUri = UriUtils.buildUri(getHost(), ServiceUriPaths.CORE_AUTHZ_USER_GROUPS);
         getUserGroupsUri = UriUtils.buildExpandLinksQueryUri(getUserGroupsUri);
         Operation get = Operation.createGet(getUserGroupsUri)
@@ -243,7 +278,7 @@ public class AuthorizationContextService extends StatelessService {
                                 UserGroupState.class);
                         try {
                             QueryFilter f = QueryFilter.create(userGroupState.query);
-                            if (QueryFilterUtils.evaluate(f, userState, getHost())) {
+                            if (QueryFilterUtils.evaluate(f, userServiceDocument, getHost())) {
                                 userGroupStates.add(userGroupState);
                             }
                         } catch (QueryFilterException qfe) {
