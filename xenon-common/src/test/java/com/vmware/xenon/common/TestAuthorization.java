@@ -23,6 +23,7 @@ import java.net.URI;
 import java.security.GeneralSecurityException;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.Date;
 import java.util.EnumSet;
 import java.util.HashMap;
@@ -527,7 +528,11 @@ public class TestAuthorization extends BasicTestCase {
             String userLink = authsetupHelper.createUserService(this.host, email);
             Query userGroupQuery = Query.Builder.create().addFieldClause(UserState.FIELD_NAME_EMAIL, email).build();
             String userGroupLink = authsetupHelper.createUserGroup(this.host, email, userGroupQuery);
-
+            UserState patchState = new UserState();
+            patchState.userGroupLinks = Collections.singleton(userGroupLink);
+            this.host.sendAndWaitExpectSuccess(
+                    Operation.createPatch(UriUtils.buildUri(this.host, userLink))
+                    .setBody(patchState));
             TestContext ctx = this.host.testCreate(this.serviceCount);
             Service s = this.host.startServiceAndWait(MinimalTestService.class, UUID.randomUUID()
                     .toString());
