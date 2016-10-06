@@ -1439,6 +1439,7 @@ public class TestLuceneDocumentIndexService {
                     .setUserPassword(buildExampleUserEmail(i))
                     .setUserSelfLink(buildExampleUserLink(i))
                     .setIsAdmin(false)
+                    .setPatchUser(true)
                     .setDocumentKind(Utils.buildKind(ExampleServiceState.class))
                     .setCompletion(authCompletion)
                     .start();
