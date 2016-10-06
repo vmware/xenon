@@ -181,10 +181,8 @@ public class TransactionServiceHelper {
             return false;
         }
 
-        if (request.getRequestHeader(Operation.TRANSACTION_HEADER).equals(Operation.TX_TRY_COMMIT)
-                ||
-                request.getRequestHeader(Operation.TRANSACTION_HEADER)
-                        .equals(Operation.TX_ENSURE_COMMIT)) {
+        if (request.getRequestHeader(Operation.TRANSACTION_HEADER)
+                .equals(Operation.TX_ENSURE_COMMIT)) {
             // this request is targeting a transaction service - let it 'fall through'
             return false;
         }

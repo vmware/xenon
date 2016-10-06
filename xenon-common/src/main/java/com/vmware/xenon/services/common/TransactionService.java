@@ -51,12 +51,6 @@ public class TransactionService extends StatefulService {
         RESOLVING,
 
         /**
-         * Substage to be sent as a response, when in resolving phase but also detected circular
-         * dependency with the coordinator issuing the request
-         */
-        RESOLVING_CIRCULAR,
-
-        /**
          * No conflicts found, proceed with commit
          */
         COMMITTING,
@@ -113,12 +107,29 @@ public class TransactionService extends StatefulService {
     }
 
     /**
-     * Captures a request to add a dependency to dependentLinks.
+     * A conflict check request to be sent to a parent coordinator
      */
-    public static class AddDependentCoordinatorRequest {
-        public static final String KIND = Utils.buildKind(AddDependentCoordinatorRequest.class);
-        public String kind = KIND;
-        public String coordinatorLink;
+    public static class ConflictCheckRequest {
+        /**
+         * Link of service with potential conflict
+         */
+        public String serviceLink;
+    }
+
+    /**
+     * A conflict check response sent by a parent coordinator
+     */
+    public static class ConflictCheckResponse {
+        /**
+         * Substage of the parent coordinator
+         */
+        public SubStage subStage;
+
+        /**
+         * Whether the potentially conflicting service is in the parent
+         * coordinator's write set
+         */
+        public boolean serviceIsInWriteSet;
     }
 
     /**
@@ -164,11 +175,6 @@ public class TransactionService extends StatefulService {
         public SubStage taskSubStage;
 
         /**
-         * A set of transactions that should commit before this one
-         */
-        public Set<String> dependentLinks;
-
-        /**
          * Options customizing the behavior (performance, guarantees) of the coordinator/transactions.
          */
         public Options options;
@@ -207,7 +213,6 @@ public class TransactionService extends StatefulService {
         s.modifiedLinks = s.modifiedLinks == null ? new HashSet<>() : s.modifiedLinks;
         s.createdLinks = s.createdLinks == null ? new HashSet<>() : s.createdLinks;
         s.deletedLinks = s.deletedLinks == null ? new HashSet<>() : s.deletedLinks;
-        s.dependentLinks = s.dependentLinks == null ? new HashSet<>() : s.dependentLinks;
         s.failedLinks = new HashSet<>();
 
         setState(start, s);
@@ -284,26 +289,10 @@ public class TransactionService extends StatefulService {
             return;
         }
 
-        // In the first two cases, another coordinator is asking about state
-        // in the fall-back, client is sending a commit/abort request.
-        if (patch.getRequestHeader(Operation.TRANSACTION_HEADER) != null) {
-            if (patch.getRequestHeader(Operation.TRANSACTION_HEADER)
-                    .equals(Operation.TX_TRY_COMMIT)) {
-                handleTryCommit(patch);
-            } else if (patch.getRequestHeader(Operation.TRANSACTION_HEADER)
-                    .equals(Operation.TX_ENSURE_COMMIT)) {
-                handleEnsureCommit(patch);
-            }
-            return;
-        }
-
-        // Handle AddDependentCoordinator request
-        TransactionServiceState currentState = getState(patch);
-        AddDependentCoordinatorRequest addDependentCoordinatorRequest = patch
-                .getBody(AddDependentCoordinatorRequest.class);
-        if (addDependentCoordinatorRequest.kind == AddDependentCoordinatorRequest.KIND) {
-            currentState.dependentLinks.add(addDependentCoordinatorRequest.coordinatorLink);
-            patch.complete();
+        // Check if this is a conflict resolution check from another coordinator
+        if (Operation.TX_ENSURE_COMMIT
+                .equals(patch.getRequestHeader(Operation.TRANSACTION_HEADER))) {
+            handleCheckConflicts(patch);
             return;
         }
 
@@ -315,6 +304,7 @@ public class TransactionService extends StatefulService {
             return;
         }
 
+        TransactionServiceState currentState = getState(patch);
         if (resolution.resolutionKind == ResolutionKind.ABORT) {
             if (currentState.taskSubStage == SubStage.COMMITTED
                     || currentState.taskSubStage == SubStage.COMMITTING) {
@@ -384,8 +374,7 @@ public class TransactionService extends StatefulService {
             return;
         }
 
-        // kick-off the try-precede -> ensure-precede -> committed sequence
-        tryPrecede(existing);
+        checkPotentialConflicts(existing);
     }
 
     /**
@@ -415,23 +404,6 @@ public class TransactionService extends StatefulService {
     }
 
     /**
-     * Sends a selfPatch AddDependentCoordinator request
-     */
-    private void selfPatch(String coordinator) {
-        AddDependentCoordinatorRequest body = new AddDependentCoordinatorRequest();
-        body.coordinatorLink = coordinator;
-        Operation operation = Operation
-                .createPatch(getUri())
-                .setCompletion((o, e) -> {
-                    if (e != null) {
-                        logWarning("Failure self patching: %s", e.getMessage());
-                    }
-                })
-                .setBody(body);
-        sendRequest(operation);
-    }
-
-    /**
      * Handle the case when a client requests to abort.
      */
     private void handleAbort(TransactionServiceState existing) {
@@ -452,52 +424,20 @@ public class TransactionService extends StatefulService {
     }
 
     /**
-     * Handle the case when another coordinator is about to commit, and wants to learn about the status
-     * of one of the coordinators (this) in its read set. Any commit ordering is allowed, as long as
-     * it is maintained across all nodes.
+     * Handle the case when another, peer coordinator is about to commit, and
+     * wants to learn about a coordinator (this) in its write set.
      */
-    private void handleTryCommit(Operation op) {
+    private void handleCheckConflicts(Operation op) {
         TransactionServiceState existing = getState(op);
-        TransactionServiceState exchangeState = new TransactionServiceState();
-        exchangeState.taskSubStage = existing.taskSubStage;
-        boolean abort = false;
-
-        if (existing.taskSubStage == SubStage.RESOLVING) {
-            // notify about deterministic resolution..
-            exchangeState.taskSubStage = SubStage.RESOLVING_CIRCULAR;
-            // ..and resolve deterministically
-            if (!compareTo(op.getReferer().getPath())) {
-                logInfo("Conflicting transaction %s is trying to commit, aborting this transaction...",
-                        op.getReferer().getPath());
-                abort = true;
-                updateStage(op, SubStage.ABORTING);
-            }
-        }
-
-        op.setBodyNoCloning(exchangeState);
-        op.complete();
-
-        if (abort) {
-            handleAbort(existing);
-        }
-    }
-
-    /**
-     * Handle the case when another, peer coordinator is about to commit, and wants to learn about a coordinator (this)
-     * in its write set. If this coordinator has committed, the peer has to abort; otherwise, this
-     * has to ensure it commits afterwards.
-     */
-    private void handleEnsureCommit(Operation op) {
-        TransactionServiceState existing = getState(op);
-        TransactionServiceState exchangeState = new TransactionServiceState();
-        exchangeState.taskSubStage = existing.taskSubStage;
+        ConflictCheckRequest req = op.getBody(ConflictCheckRequest.class);
+        ConflictCheckResponse res = new ConflictCheckResponse();
+        res.subStage = existing.taskSubStage;
+        res.serviceIsInWriteSet = existing.modifiedLinks.contains(req.serviceLink);
         boolean abort = false;
 
         if (existing.taskSubStage == SubStage.COLLECTING
                 || existing.taskSubStage == SubStage.RESOLVING) {
-            // notify about deterministic resolution..
-            exchangeState.taskSubStage = SubStage.RESOLVING_CIRCULAR;
-            // ..and resolve deterministically
+            // potential conflict - resolve deterministically
             if (!compareTo(op.getReferer().getPath())) {
                 logInfo("Conflicting transaction %s is trying to commit, aborting this transaction...",
                         op.getReferer().getPath());
@@ -506,7 +446,7 @@ public class TransactionService extends StatefulService {
             }
         }
 
-        op.setBodyNoCloning(exchangeState);
+        op.setBodyNoCloning(res);
         op.complete();
 
         if (abort) {
@@ -515,105 +455,49 @@ public class TransactionService extends StatefulService {
     }
 
     /**
-     * Contacts peer coordinators in the read set -- in an effort to set "mustCommitAfter".
+     * Check potential conflicts with coordinators corresponding with
+     * this coordinator's write-set.
      */
-    private void tryPrecede(TransactionServiceState state) {
-        // keep a cache of contacted coordinators, to minimize network overhead
-        HashSet<String> cache = new HashSet<>();
+    private void checkPotentialConflicts(TransactionServiceState state) {
         Collection<Operation> operations = new HashSet<>();
         boolean[] continueWithCommit = new boolean[1];
         continueWithCommit[0] = true;
 
-        for (String service : state.readLinks) {
-            if (!state.servicesToCoordinators.containsKey(service)) {
+        for (String serviceLink : state.modifiedLinks) {
+            if (!state.servicesToCoordinators.containsKey(serviceLink)) {
                 continue;
             }
-            for (String coordinator : state.servicesToCoordinators.get(service)) {
-                if (cache.contains(coordinator) || coordinator.equals(getSelfLink())) {
+            for (String coordinator : state.servicesToCoordinators.get(serviceLink)) {
+                if (coordinator.equals(getSelfLink())) {
                     continue;
-                } else {
-                    cache.add(coordinator);
                 }
 
-                // a peer at RESOLVING (incl. RESOLVING_CIRCULAR) will append this to mustCommitAfter
-                operations.add(createNotifyOp(coordinator,
-                        Operation.TX_TRY_COMMIT, (o, e) -> {
-                            if (e == null) {
-                                TransactionServiceState exchangeState = o
-                                        .getBody(TransactionServiceState.class);
-                                SubStage s = exchangeState.taskSubStage;
-                                if (s == SubStage.COMMITTED || s == SubStage.COMMITTING) {
-                                    selfPatch(coordinator);
-                                } else if (s == SubStage.RESOLVING_CIRCULAR) {
-                                    if (!compareTo(coordinator)) {
-                                        continueWithCommit[0] = false;
-                                        logInfo("Conflicting transaction %s is committing, aborting this transaction...",
-                                                coordinator);
-                                        selfPatch(ResolutionKind.ABORT);
-                                    }
-                                }
-                            }
-                        }));
-            }
-        }
-
-        if (operations.isEmpty()) {
-            ensurePrecede(state);
-            return;
-        }
-
-        OperationJoin.create(operations).setCompletion((ops, failures) -> {
-            if (failures != null) {
-                logWarning("Failed to commit: %s. Aborting.", failures);
-                selfPatch(ResolutionKind.ABORT);
-                return;
-            }
-
-            if (continueWithCommit[0]) {
-                ensurePrecede(state);
-            }
-        }).sendWith(getHost());
-    }
-
-    /**
-     * Contacts peer coordinators in the write set -- in an effort to ensure sequencing
-     */
-    private void ensurePrecede(TransactionServiceState state) {
-        // keep a cache of contacted coordinators, to minimize network overhead
-        HashSet<String> cache = new HashSet<>();
-        Collection<Operation> operations = new HashSet<>();
-        boolean[] continueWithCommit = new boolean[1];
-        continueWithCommit[0] = true;
-
-        for (String service : state.modifiedLinks) {
-            if (!state.servicesToCoordinators.containsKey(service)) {
-                continue;
-            }
-            for (String coordinator : state.servicesToCoordinators.get(service)) {
-                if (cache.contains(coordinator) || coordinator.equals(getSelfLink())) {
-                    continue;
-                } else {
-                    cache.add(coordinator);
-                }
-                operations.add(createNotifyOp(coordinator,
+                operations.add(createNotifyOp(coordinator, serviceLink,
                         Operation.TX_ENSURE_COMMIT, (o, e) -> {
-                            if (e == null) {
-                                TransactionServiceState exchangeState = o
-                                        .getBody(TransactionServiceState.class);
-                                SubStage s = exchangeState.taskSubStage;
-                                if (s == SubStage.COMMITTED || s == SubStage.COMMITTING) {
-                                    continueWithCommit[0] = false;
-                                    logInfo("Conflicting transaction %s is committing, aborting this transaction...",
-                                            coordinator);
-                                    selfPatch(ResolutionKind.ABORT);
-                                } else if (s == SubStage.RESOLVING_CIRCULAR) {
-                                    if (!compareTo(coordinator)) {
-                                        continueWithCommit[0] = false;
-                                        logInfo("Conflicting transaction %s is committing, aborting this transaction...",
-                                                coordinator);
-                                        selfPatch(ResolutionKind.ABORT);
-                                    }
-                                }
+                            if (e != null) {
+                                continueWithCommit[0] = false;
+                                logWarning(
+                                        "Failed to receive response from transaction %s, aborting this transaction...",
+                                        coordinator);
+                                selfPatch(ResolutionKind.ABORT);
+                                return;
+                            }
+
+                            ConflictCheckResponse res = o
+                                    .getBody(ConflictCheckResponse.class);
+                            if (!res.serviceIsInWriteSet || res.subStage == SubStage.ABORTED
+                                    || res.subStage == SubStage.ABORTING) {
+                                // no conflict
+                                return;
+                            }
+
+                            if (res.subStage == SubStage.COMMITTED
+                                    || res.subStage == SubStage.COMMITTING
+                                    || !compareTo(coordinator)) {
+                                continueWithCommit[0] = false;
+                                logInfo("Conflicting transaction %s is committing, aborting this transaction...",
+                                        coordinator);
+                                selfPatch(ResolutionKind.ABORT);
                             }
                         }));
             }
@@ -737,15 +621,16 @@ public class TransactionService extends StatefulService {
     }
 
     /**
-     * Prepare an operation to resolve precedence with a remote coordinator
+     * Prepare an operation to check conflicts with a remote coordinator
      */
-    private Operation createNotifyOp(String coordinator, String header,
-            Operation.CompletionHandler callback) {
+    private Operation createNotifyOp(String coordinator, String serviceLink,
+            String header, Operation.CompletionHandler callback) {
+        ConflictCheckRequest body = new ConflictCheckRequest();
+        body.serviceLink = serviceLink;
         return Operation
                 .createPatch(this, coordinator)
                 .addRequestHeader(Operation.TRANSACTION_HEADER, header)
-                // just an empty body
-                .setBody(new TransactionServiceState())
+                .setBody(body)
                 .setReferer(getUri())
                 .setCompletion(callback);
     }

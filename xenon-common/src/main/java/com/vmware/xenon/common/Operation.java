@@ -500,7 +500,6 @@ public class Operation implements Cloneable {
      */
     public static final String PRAGMA_DIRECTIVE_POST_TO_PUT = "xn-post-to-put";
 
-    public static final String TX_TRY_COMMIT = "try-commit";
     public static final String TX_ENSURE_COMMIT = "ensure-commit";
     public static final String TX_COMMIT = "commit";
     public static final String TX_ABORT = "abort";
