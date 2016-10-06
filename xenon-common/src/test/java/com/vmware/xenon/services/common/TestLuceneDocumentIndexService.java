@@ -1346,7 +1346,6 @@ public class TestLuceneDocumentIndexService {
     public void throughputPostWithAuthz() throws Throwable {
         setUpHost(true);
         URI factoryUri = UriUtils.buildFactoryUri(this.host, ExampleService.class);
-
         // assume system identity so we can create roles
         this.host.setSystemAuthorizationContext();
 
@@ -1439,6 +1438,7 @@ public class TestLuceneDocumentIndexService {
                     .setUserPassword(buildExampleUserEmail(i))
                     .setUserSelfLink(buildExampleUserLink(i))
                     .setIsAdmin(false)
+                    .setUpdateUserGroupForUser(true)
                     .setDocumentKind(Utils.buildKind(ExampleServiceState.class))
                     .setCompletion(authCompletion)
                     .start();

@@ -113,7 +113,7 @@ public class AuthorizationSetupHelper {
      * The steps we follow in order to fully create a user. See {@link #setupUser} for details
      */
     private enum UserCreationStep {
-        QUERY_USER, MAKE_USER, MAKE_CREDENTIALS, MAKE_USER_GROUP, MAKE_RESOURCE_GROUP, MAKE_ROLE, SUCCESS, FAILURE
+        QUERY_USER, MAKE_USER, MAKE_CREDENTIALS, MAKE_USER_GROUP, UPDATE_USERGROUP_FOR_USER, MAKE_RESOURCE_GROUP, MAKE_ROLE, SUCCESS, FAILURE
     }
 
     private String userEmail;
@@ -123,6 +123,7 @@ public class AuthorizationSetupHelper {
     private String documentLink;
     private ServiceHost host;
     private AuthSetupCompletion completion;
+    private boolean updateUserGroupForUser = false;
 
     private UserCreationStep currentStep;
     private URI referer;
@@ -157,6 +158,14 @@ public class AuthorizationSetupHelper {
 
     public AuthorizationSetupHelper setIsAdmin(boolean isAdmin) {
         this.isAdmin = isAdmin;
+        return this;
+    }
+
+    /**
+     * Update the UserService with a link to the UserGroupService instance
+     */
+    public AuthorizationSetupHelper setUpdateUserGroupForUser(boolean updateUserGroupForUser) {
+        this.updateUserGroupForUser = updateUserGroupForUser;
         return this;
     }
 
@@ -302,6 +311,9 @@ public class AuthorizationSetupHelper {
             break;
         case MAKE_USER_GROUP:
             makeUserGroup();
+            break;
+        case UPDATE_USERGROUP_FOR_USER:
+            updateUserGroupForUser();
             break;
         case MAKE_RESOURCE_GROUP:
             makeResourceGroup();
@@ -464,11 +476,41 @@ public class AuthorizationSetupHelper {
                     UserGroupState groupResponse = op.getBody(UserGroupState.class);
                     this.userGroupSelfLink = normalizeLink(UserGroupService.FACTORY_LINK,
                             groupResponse.documentSelfLink);
-                    this.currentStep = UserCreationStep.MAKE_RESOURCE_GROUP;
+                    this.currentStep = UserCreationStep.UPDATE_USERGROUP_FOR_USER;
                     setupUser();
                 });
         addReplicationFactor(postGroup);
         this.host.sendRequest(postGroup);
+    }
+
+    /**
+     * Patch a user with the link of the userGroup that was just created
+     */
+    private void updateUserGroupForUser() {
+        if (!this.updateUserGroupForUser) {
+            this.currentStep = UserCreationStep.MAKE_RESOURCE_GROUP;
+            setupUser();
+            return;
+        }
+        UserState userState = new UserState();
+        userState.userGroupLinks = Collections.singleton(this.userGroupSelfLink);
+        Operation patchUser = Operation.createPatch(UriUtils.buildUri(this.host, this.userSelfLink))
+                .setBody(userState)
+                .setReferer(this.referer)
+                .setCompletion((op, ex) -> {
+                    if (ex != null) {
+                        this.failureMessage = String.format(
+                                "Could not patch user %s: %s",
+                                this.userSelfLink, ex);
+                        this.currentStep = UserCreationStep.FAILURE;
+                        setupUser();
+                        return;
+                    }
+                    this.currentStep = UserCreationStep.MAKE_RESOURCE_GROUP;
+                    setupUser();
+                });
+        addReplicationFactor(patchUser);
+        this.host.sendRequest(patchUser);
     }
 
     /**
