@@ -457,8 +457,8 @@ public class NodeGroupService extends StatefulService {
             NodeGroupState localState,
             long expirationMicros) {
         if (expirationMicros < Utils.getNowMicrosUtc()) {
-            logWarning("Failure joining peer %s, attempt expired, will not retry",
-                    joinBody.memberGroupReference);
+            logSevere("Failure joining peer %s due to %s, attempt expired, will not retry",
+                    joinBody.memberGroupReference, e.toString());
             return;
         }
 
