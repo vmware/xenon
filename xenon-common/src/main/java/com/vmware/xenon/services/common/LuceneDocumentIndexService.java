@@ -1442,6 +1442,7 @@ public class LuceneDocumentIndexService extends StatelessService {
             lastDocVisited = sd;
             Document d = s.getIndexReader().document(sd.doc, fieldsToLoad);
             String link = d.get(ServiceDocument.FIELD_NAME_SELF_LINK);
+            String originalLink = link;
 
             // ignore results not in supplied white list
             if (linkWhiteList != null && !linkWhiteList.contains(link)) {
@@ -1507,7 +1508,7 @@ public class LuceneDocumentIndexService extends StatelessService {
 
             if (options.contains(QueryOption.EXPAND_CONTENT)
                     || options.contains(QueryOption.OWNER_SELECTION)) {
-                state = getStateFromLuceneDocument(d, link);
+                state = getStateFromLuceneDocument(d, originalLink);
                 if (state == null) {
                     // support reading JSON serialized state for backwards compatibility
                     json = d.get(LUCENE_FIELD_NAME_JSON_SERIALIZED_STATE);

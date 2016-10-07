@@ -3261,6 +3261,17 @@ public class TestQueryTaskService {
 
         this.host.log("Result count : %d", finishedTaskState.results.documentLinks.size());
         validateSelfLinkResultCount(includeAllVersions ? sc * versionCount : sc, finishedTaskState);
+
+        if (includeAllVersions) {
+            q.options.add(QueryOption.EXPAND_CONTENT);
+            u = this.host.createQueryTaskService(QueryTask.create(q));
+            finishedTaskState = this.host.waitForQueryTaskCompletion(q,
+                    sc, versionCount, u, false, true);
+            for (Object o : finishedTaskState.results.documents.values()) {
+                QueryValidationServiceState s = Utils.fromJson(o, QueryValidationServiceState.class);
+                assertTrue(!s.documentSelfLink.contains(ServiceDocument.FIELD_NAME_VERSION));
+            }
+        }
         return newState;
     }
 
