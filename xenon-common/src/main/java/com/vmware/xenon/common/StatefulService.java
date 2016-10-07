@@ -164,7 +164,7 @@ public class StatefulService implements Service {
         if (isAlreadyStopped) {
             if (op.getAction() != Action.DELETE) {
                 if (hasOption(ServiceOption.ON_DEMAND_LOAD)) {
-                    getHost().retryOnDemandLoadStopConflict(this, op);
+                    getHost().retryPauseOrOnDemandLoadStopConflict(this, op, true);
                 } else {
                     logWarning("Service is stopped, cancelling operation");
                     op.fail(new CancellationException());
@@ -1530,7 +1530,6 @@ public class StatefulService implements Service {
                 } else if (this.context.processingStage == ProcessingStage.PAUSED
                         && stage == ProcessingStage.AVAILABLE) {
                     statName = STAT_NAME_RESUME_COUNT;
-                    logTransition = true;
                     this.context.isUpdateActive = false;
                 } else if (this.context.processingStage == ProcessingStage.STOPPED
                         && stage == ProcessingStage.AVAILABLE

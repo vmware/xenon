@@ -590,6 +590,14 @@ class ServiceResourceTracker {
                         if (serviceEntry == null && !this.host.isStopping()) {
                             this.host.log(Level.INFO, "aborting pause for %s", path);
                             resumeService(path, s);
+                            Operation op = s.dequeueRequest();
+                            if (op != null) {
+                                this.host.log(Level.WARNING, "Found pending request %d (%s) in %s",
+                                        op.getId(),
+                                        op.getContextId(),
+                                        s.getSelfLink());
+                                this.host.handleRequest(null, op);
+                            }
                             // this means service received a request and is active. Its OK, the index will have
                             // a stale entry that will get deleted next time we query for this self link.
                             this.host.processPendingServiceAvailableOperations(s, null, false);

@@ -3589,10 +3589,13 @@ public class ServiceHost implements ServiceRequestSender {
                     return;
                 }
                 if (s.hasOption(ServiceOption.ON_DEMAND_LOAD)) {
-                    retryOnDemandLoadStopConflict(s, op);
+                    retryPauseOrOnDemandLoadStopConflict(s, op, true);
                     return;
                 }
                 op.setStatusCode(Operation.STATUS_CODE_NOT_FOUND);
+            } else if (stage == ProcessingStage.PAUSED) {
+                retryPauseOrOnDemandLoadStopConflict(s, op, false);
+                return;
             }
 
             op.fail(new CancellationException("Service not available, in stage:" + stage));
@@ -3617,11 +3620,14 @@ public class ServiceHost implements ServiceRequestSender {
         }
     }
 
-    void retryOnDemandLoadStopConflict(Service statefulService, Operation op) {
-        log(Level.WARNING, "On demand conflict: retrying %s (%d %s) since it raced with a STOP",
-                op.getAction(), op.getId(), op.getContextId());
-        getManagementService().adjustStat(
-                ServiceHostManagementService.STAT_NAME_ODL_STOP_CONFLICT_COUNT, 1);
+    void retryPauseOrOnDemandLoadStopConflict(Service statefulService, Operation op,
+            boolean isOdlConflict) {
+        log(Level.WARNING, "Pause/ODL(%s) conflict: retrying %s (%d %s) since it raced with a STOP",
+                isOdlConflict, op.getAction(), op.getId(), op.getContextId());
+        String statName = isOdlConflict
+                ? ServiceHostManagementService.STAT_NAME_ODL_STOP_CONFLICT_COUNT
+                : ServiceHostManagementService.STAT_NAME_PAUSE_RESUME_CONFLICT_COUNT;
+        getManagementService().adjustStat(statName, 1);
         schedule(() -> {
             handleRequest(null, op);
         }, getMaintenanceIntervalMicros(), TimeUnit.MICROSECONDS);
