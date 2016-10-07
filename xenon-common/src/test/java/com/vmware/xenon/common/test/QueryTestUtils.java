@@ -14,10 +14,13 @@
 package com.vmware.xenon.common.test;
 
 import java.net.URI;
+import java.util.function.Consumer;
 import java.util.logging.Logger;
 
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.ServiceDocument;
+import com.vmware.xenon.common.ServiceHost;
+import com.vmware.xenon.common.ServiceSubscriptionState.ServiceSubscriber;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
 import com.vmware.xenon.services.common.QueryTask;
@@ -51,6 +54,55 @@ public class QueryTestUtils {
         URI queryUri = UriUtils.buildUri(serviceUri, ServiceUriPaths.CORE_LOCAL_QUERY_TASKS);
         Operation queryOp = s.sendAndWait(Operation.createPost(queryUri).setBody(q));
         Logger.getAnonymousLogger().info(Utils.toJsonHtml(queryOp.getBodyRaw()));
+    }
+
+    public static URI startAndSubscribeToContinuousQuery(TestRequestSender s, ServiceHost host,
+            QueryTask qt, Consumer<Operation> notify) {
+        qt.querySpec.options.add(QueryOption.CONTINUOUS);
+        qt.querySpec.options.add(QueryOption.EXPAND_CONTENT);
+
+        Operation post = Operation.createPost(
+                UriUtils.buildUri(host.getUri(), ServiceUriPaths.CORE_LOCAL_QUERY_TASKS))
+                .setBody(qt);
+        post = s.sendAndWait(post);
+        QueryTask activeTask = post.getBody(QueryTask.class);
+        URI queryTaskURI = UriUtils.buildUri(host.getUri(), activeTask.documentSelfLink);
+
+        // Wait for query task to have data
+        TestContext.waitFor(s.getTimeout(), () -> {
+            QueryTask queryTaskResponse = s.sendGetAndWait(queryTaskURI.toString(),
+                    QueryTask.class);
+            if (queryTaskResponse.results != null
+                    && queryTaskResponse.results.documentLinks != null
+                    && !queryTaskResponse.results.documentLinks.isEmpty()) {
+                qt.documentSelfLink = queryTaskResponse.documentSelfLink;
+                qt.results = queryTaskResponse.results;
+                return true;
+            }
+            return false;
+        });
+
+        // Subscribe to the query
+        TestContext ctx = new TestContext(1, s.getTimeout());
+        Operation subscribe = Operation.createPost(queryTaskURI)
+                .setReferer(host.getUri())
+                .setCompletion(ctx.getCompletion());
+
+        URI notificationURI = host.startSubscriptionService(subscribe, notify,
+                ServiceSubscriber.create(false));
+        ctx.await();
+        return notificationURI;
+    }
+
+    public static void stopContinuousQuerySubscription(TestRequestSender s, ServiceHost host,
+            URI notificationTarget, QueryTask qt) {
+        TestContext ctx = new TestContext(1, s.getTimeout());
+        Operation delete = Operation
+                .createDelete(UriUtils.buildUri(notificationTarget, qt.documentSelfLink))
+                .setReferer(host.getUri())
+                .setCompletion(ctx.getCompletion());
+        host.stopSubscriptionService(delete, notificationTarget);
+        ctx.await();
     }
 
 }

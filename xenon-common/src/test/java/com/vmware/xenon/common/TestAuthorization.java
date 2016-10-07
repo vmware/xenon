@@ -48,6 +48,7 @@ import com.vmware.xenon.common.Operation.AuthorizationContext;
 import com.vmware.xenon.common.Operation.CompletionHandler;
 import com.vmware.xenon.common.Service.Action;
 import com.vmware.xenon.common.test.AuthorizationHelper;
+import com.vmware.xenon.common.test.QueryTestUtils;
 import com.vmware.xenon.common.test.TestContext;
 import com.vmware.xenon.common.test.VerificationHost;
 import com.vmware.xenon.services.common.AuthorizationCacheUtils;
@@ -191,7 +192,7 @@ public class TestAuthorization extends BasicTestCase {
     }
 
     @Test
-    public void queryWithDocumentAuthPrincipal() throws Throwable {
+    public void queryTasksDirectAndContinuous() throws Throwable {
         this.host.assumeIdentity(this.userServicePath);
         createExampleServices("jane");
 
@@ -231,6 +232,41 @@ public class TestAuthorization extends BasicTestCase {
                 .setCompletion(this.host.getCompletion());
         this.host.send(get);
         this.host.testWait();
+
+        int requestCount = 10;
+        TestContext notifyCtx = this.testCreate(requestCount);
+
+        Consumer<Operation> notify = (o) -> {
+            o.complete();
+            String subject = o.getAuthorizationContext().getClaims().getSubject();
+            if (!this.userServicePath.equals(subject)) {
+                notifyCtx.fail(new IllegalStateException(
+                        "Invalid aith subject in notification: " + subject));
+                return;
+            }
+            this.host.log("Received authorized notification for index patch: %s", o.toString());
+            notifyCtx.complete();
+        };
+
+        Query q = Query.Builder.create()
+                .addKindFieldClause(ExampleServiceState.class)
+                .build();
+        qt = QueryTask.Builder.create().setQuery(q).build();
+
+        // do a continuous query, verify we receive some notifications
+        URI notifyURI = QueryTestUtils.startAndSubscribeToContinuousQuery(
+                this.host.getTestRequestSender(), this.host, qt,
+                notify);
+
+        // issue updates, create some services
+        createExampleServices("jane");
+        this.host.log("Waiting on continiuous query task notifications (%d)", requestCount);
+        notifyCtx.await();
+
+        QueryTestUtils.stopContinuousQuerySubscription(
+                this.host.getTestRequestSender(), this.host, notifyURI,
+                qt);
+
     }
 
     @Test

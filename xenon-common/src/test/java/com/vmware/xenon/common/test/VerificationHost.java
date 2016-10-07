@@ -3206,4 +3206,8 @@ public class VerificationHost extends ExampleServiceHost {
             Runtime.getRuntime().runFinalization();
         }
     }
+
+    public TestRequestSender getTestRequestSender() {
+        return this.sender;
+    }
 }
