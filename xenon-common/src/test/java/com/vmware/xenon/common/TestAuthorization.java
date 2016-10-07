@@ -47,6 +47,7 @@ import com.vmware.xenon.common.Operation.AuthorizationContext;
 import com.vmware.xenon.common.Operation.CompletionHandler;
 import com.vmware.xenon.common.Service.Action;
 import com.vmware.xenon.common.test.AuthorizationHelper;
+import com.vmware.xenon.common.test.QueryTestUtils;
 import com.vmware.xenon.common.test.TestContext;
 import com.vmware.xenon.common.test.VerificationHost;
 import com.vmware.xenon.services.common.AuthorizationCacheUtils;
@@ -230,6 +231,17 @@ public class TestAuthorization extends BasicTestCase {
                 .setCompletion(this.host.getCompletion());
         this.host.send(get);
         this.host.testWait();
+
+        int requestCount = 10;
+        TestContext notifyCtx = this.testCreate(requestCount);
+
+        Consumer<Operation> notify = (o) -> {
+            o.complete();
+            notifyCtx.complete();
+        };
+
+        // do a continuous query, verify we receive some notifications
+        QueryTestUtils.createAndSubscribeToContinuousQuery(qt, notify);
     }
 
     @Test

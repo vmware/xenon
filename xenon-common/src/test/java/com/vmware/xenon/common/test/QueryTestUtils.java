@@ -14,6 +14,7 @@
 package com.vmware.xenon.common.test;
 
 import java.net.URI;
+import java.util.function.Consumer;
 import java.util.logging.Logger;
 
 import com.vmware.xenon.common.Operation;
@@ -51,6 +52,11 @@ public class QueryTestUtils {
         URI queryUri = UriUtils.buildUri(serviceUri, ServiceUriPaths.CORE_LOCAL_QUERY_TASKS);
         Operation queryOp = s.sendAndWait(Operation.createPost(queryUri).setBody(q));
         Logger.getAnonymousLogger().info(Utils.toJsonHtml(queryOp.getBodyRaw()));
+    }
+
+    public static URI createAndSubscribeToContinuousQuery(QueryTask qt, Consumer<Operation> notify) {
+
+        return null;
     }
 
 }
