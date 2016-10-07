@@ -95,6 +95,7 @@ import com.vmware.xenon.common.FileUtils;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Operation.AuthorizationContext;
 import com.vmware.xenon.common.Operation.CompletionHandler;
+import com.vmware.xenon.common.OperationContext;
 import com.vmware.xenon.common.QueryFilterUtils;
 import com.vmware.xenon.common.ReflectionUtils;
 import com.vmware.xenon.common.RoundRobinOperationQueue;
@@ -2126,7 +2127,7 @@ public class LuceneDocumentIndexService extends StatelessService {
             return;
         }
 
-        applyActiveQueries(state, null);
+        applyActiveQueries(postOrDelete, state, null);
         // remove service, if its running
         sendRequest(Operation.createDelete(this, state.documentSelfLink)
                 .setBodyNoCloning(state)
@@ -2268,7 +2269,7 @@ public class LuceneDocumentIndexService extends StatelessService {
 
         op.setBody(null).complete();
         checkDocumentRetentionLimit(sd, desc);
-        applyActiveQueries(sd, desc);
+        applyActiveQueries(op, sd, desc);
     }
 
     private void updateLinkAccessTime(long t, String link) {
@@ -2665,10 +2666,15 @@ public class LuceneDocumentIndexService extends StatelessService {
         }
     }
 
-    private void applyActiveQueries(ServiceDocument latestState, ServiceDocumentDescription desc) {
+    private void applyActiveQueries(Operation op, ServiceDocument latestState,
+            ServiceDocumentDescription desc) {
         if (this.activeQueries.isEmpty()) {
             return;
         }
+
+        // set current context from the operation so all acive query task notifications carry the
+        // same context as the operation that updated the index
+        OperationContext.setFrom(op);
 
         // TODO Optimize. We currently traverse each query independently. We can collapse the queries
         // and evaluate clauses keeping track which clauses applied, then skip any queries accordingly.

@@ -24,7 +24,6 @@ import java.security.GeneralSecurityException;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.Date;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -36,7 +35,6 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import java.util.function.Consumer;
 import java.util.logging.Level;
 
@@ -48,6 +46,7 @@ import com.vmware.xenon.common.Operation.AuthorizationContext;
 import com.vmware.xenon.common.Operation.CompletionHandler;
 import com.vmware.xenon.common.Service.Action;
 import com.vmware.xenon.common.test.AuthorizationHelper;
+import com.vmware.xenon.common.test.QueryTestUtils;
 import com.vmware.xenon.common.test.TestContext;
 import com.vmware.xenon.common.test.VerificationHost;
 import com.vmware.xenon.services.common.AuthorizationCacheUtils;
@@ -76,15 +75,17 @@ public class TestAuthorization extends BasicTestCase {
         }
     }
 
+    public int serviceCount = 10;
+
     private String userServicePath;
     private AuthorizationHelper authHelper;
-    private int serviceCount = 10;
 
     @Override
     public void beforeHostStart(VerificationHost host) {
         // Enable authorization service; this is an end to end test
         host.setAuthorizationService(new AuthorizationContextService());
         host.setAuthorizationEnabled(true);
+        CommandLineArgumentParser.parseFromProperties(this);
     }
 
     @Before
@@ -191,7 +192,7 @@ public class TestAuthorization extends BasicTestCase {
     }
 
     @Test
-    public void queryWithDocumentAuthPrincipal() throws Throwable {
+    public void queryTasksDirectAndContinuous() throws Throwable {
         this.host.assumeIdentity(this.userServicePath);
         createExampleServices("jane");
 
@@ -208,29 +209,60 @@ public class TestAuthorization extends BasicTestCase {
                 .build();
 
         URI taskUri = this.host.createQueryTaskService(qt);
-        Date exp = this.host.getTestExpiration();
-        while (new Date().before(exp)) {
-
-            qt = this.host.getServiceState(null, QueryTask.class, taskUri);
-            if (TaskState.isFailed(qt.taskInfo)) {
+        this.host.waitFor("task not finished in time", () -> {
+            QueryTask r = this.host.getServiceState(null, QueryTask.class, taskUri);
+            if (TaskState.isFailed(r.taskInfo)) {
                 throw new IllegalStateException("task failed");
             }
-            if (TaskState.isFinished(qt.taskInfo)) {
-                break;
+            if (TaskState.isFinished(r.taskInfo)) {
+                qt.taskInfo = r.taskInfo;
+                qt.results = r.results;
+                return true;
             }
-            this.host.log("Task not finished");
-            Thread.sleep(100);
-        }
+            return false;
+        });
 
-        if (new Date().after(exp)) {
-            throw new TimeoutException();
-        }
 
-        this.host.testStart(1);
+        TestContext ctx = this.host.testCreate(1);
         Operation get = Operation.createGet(UriUtils.buildUri(this.host, qt.results.nextPageLink))
-                .setCompletion(this.host.getCompletion());
+                .setCompletion(ctx.getCompletion());
         this.host.send(get);
-        this.host.testWait();
+        ctx.await();
+
+        int requestCount = this.serviceCount;
+        TestContext notifyCtx = this.testCreate(requestCount);
+
+        Consumer<Operation> notify = (o) -> {
+            o.complete();
+            String subject = o.getAuthorizationContext().getClaims().getSubject();
+            if (!this.userServicePath.equals(subject)) {
+                notifyCtx.fail(new IllegalStateException(
+                        "Invalid aith subject in notification: " + subject));
+                return;
+            }
+            this.host.log("Received authorized notification for index patch: %s", o.toString());
+            notifyCtx.complete();
+        };
+
+        Query q = Query.Builder.create()
+                .addKindFieldClause(ExampleServiceState.class)
+                .build();
+        QueryTask cqt = QueryTask.Builder.create().setQuery(q).build();
+
+        // do a continuous query, verify we receive some notifications
+        URI notifyURI = QueryTestUtils.startAndSubscribeToContinuousQuery(
+                this.host.getTestRequestSender(), this.host, cqt,
+                notify);
+
+        // issue updates, create some services
+        createExampleServices("jane");
+        this.host.log("Waiting on continiuous query task notifications (%d)", requestCount);
+        notifyCtx.await();
+
+        QueryTestUtils.stopContinuousQuerySubscription(
+                this.host.getTestRequestSender(), this.host, notifyURI,
+                cqt);
+
     }
 
     @Test
