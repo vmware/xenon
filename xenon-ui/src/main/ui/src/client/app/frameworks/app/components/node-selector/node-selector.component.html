@@ -11,18 +11,19 @@
             <xe-node-canvas
                 class="node-canvas"
                 [nodeGroups]="getNodeGroups()"
+                [hostNodeId]="getHostNode()?.id"
                 [selectedNodeId]="getSelectedNode()?.id"
                 [highlightedNodeId]="getHighlightedNode()?.id"
-                [hostNodeId]="getHostNode()?.id"
                 (highlightNode)="onNodeHighlighted($event)">
             </xe-node-canvas>
         </main>
         <main class="right-side-area area">
             <xe-node-info-panel
                 class="node-info-panel"
-                [selectedNodeId]="getSelectedNode()?.id"
-                [highlightedNodeId]="getHighlightedNode()?.id"
                 [hostNodeId]="getHostNode()?.id"
+                [selectedNodeId]="getSelectedNode()?.id"
+                [highlightedNodeGroupReference]="getHighlightedNode()?.groupReference"
+                [highlightedNodeId]="getHighlightedNode()?.id"
                 (selectNode)="onNodeSelectionConfirmed($event)">
             </xe-node-info-panel>
         </main>

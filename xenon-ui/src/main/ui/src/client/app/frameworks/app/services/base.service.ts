@@ -10,6 +10,7 @@ import 'rxjs/add/observable/forkJoin';
 
 import { URL } from '../enums/url';
 import { Node, ServiceDocument, ServiceDocumentQueryResult } from '../interfaces/index';
+import { StringUtil } from '../utils/index';
 
 import { NodeSelectorService } from './node-selector.service';
 import { LogService } from '../../core/index';
@@ -26,6 +27,8 @@ export class BaseService {
      */
     protected _selectedNodeId: string;
 
+    protected _selectedNodeGroupReference: string;
+
     constructor (
         protected _http: Http,
         protected _nodeSelectorService: NodeSelectorService,
@@ -33,6 +36,8 @@ export class BaseService {
             this._nodeSelectorService.getSelectedNode().subscribe(
                 (node: Node) => {
                     this._selectedNodeId = node ? node.id : '';
+                    this._selectedNodeGroupReference = node ?
+                        StringUtil.parseDocumentLink(node.groupReference).id : 'default';
                 },
                 (error) => {
                     this._logService.error(`Failed to retrieve selected node: ${error}`);
@@ -193,7 +198,7 @@ export class BaseService {
     }
 
     protected _getForwardingLink(targetLink: string, query: string = ''): string {
-        return `${URL.FORWARDING_PATH}?peer=${this._selectedNodeId}&path=${targetLink}&query=${query}&target=PEER_ID`;
+        return `${URL.NODE_SELECTOR}/${this._selectedNodeGroupReference}/forwarding?peer=${this._selectedNodeId}&path=${targetLink}&query=${query}&target=PEER_ID`;
     }
 
     protected _onError(error: Response) {

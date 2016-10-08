@@ -35,6 +35,12 @@ export class NodeInfoPanelComponent implements OnChanges, AfterViewInit, OnDestr
     selectedNodeId: string;
 
     /**
+     * The reference to the node group whose node inside it is highlighted.
+     */
+    @Input()
+    highlightedNodeGroupReference: string;
+
+    /**
      * The id of the node that is temporary being highlighted in the node selector.
      * Until user confirms, the node will not become selected node.
      */
@@ -46,6 +52,11 @@ export class NodeInfoPanelComponent implements OnChanges, AfterViewInit, OnDestr
      */
     @Output()
     selectNode = new EventEmitter<string>();
+
+    /**
+     * Whether or not the highlighted node can be switched to
+     */
+    private _canSwitchToNode: boolean = false;
 
     /**
      * Details of the highlighted node
@@ -199,8 +210,19 @@ export class NodeInfoPanelComponent implements OnChanges, AfterViewInit, OnDestr
         return this.highlightedNodeId === this.selectedNodeId;
     }
 
+    canSwitchToNode(): boolean {
+        return this._canSwitchToNode;
+    }
+
     onSelectNodeBtnClicked(evnet: Event): void {
         this.selectNode.emit(this.highlightedNodeId);
+    }
+
+    private _getForwardingLink(): string {
+        let nodeGroupReference: string = this.highlightedNodeGroupReference ?
+            StringUtil.parseDocumentLink(this.highlightedNodeGroupReference).id :
+            'default';
+        return `${URL.NODE_SELECTOR}/${nodeGroupReference}/forwarding?peer=${this.highlightedNodeId}&path=${URL.CoreManagement}&target=PEER_ID`;
     }
 
     private _retrieveHighlightedNodeDetails(): void {
@@ -209,21 +231,27 @@ export class NodeInfoPanelComponent implements OnChanges, AfterViewInit, OnDestr
         if (this.isHostNode()) {
             url = URL.CoreManagement;
         } else {
-            url = `${URL.FORWARDING_PATH}?peer=${this.highlightedNodeId}&path=${URL.CoreManagement}&target=PEER_ID`;
+            url = this._getForwardingLink();
         }
 
         this._baseServiceSubscription = this._baseService.getDocument(url, false).subscribe(
             (serviceHostState: ServiceHostState) => {
                 this._highlightedNodeDetails = serviceHostState;
 
+                this._canSwitchToNode = true;
+
                 // Render charts
                 this._renderChart();
             },
             (error) => {
+                this._canSwitchToNode = false;
+
                 // TODO: Better error handling
                 this._notificationService.set([{
                     type: 'ERROR',
-                    messages: [`Failed to retrieve node details: [${error.statusCode}] ${error.message}`]
+                    messages: [`Failed to retrieve node details: [${error.statusCode}] ${error.message}.
+                        If you are accessing a node that is outside of the default node group, please
+                        switching to its own Xenon UI.`]
                 }]);
             });
     }

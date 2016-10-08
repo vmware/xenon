@@ -5,7 +5,9 @@ import { AfterViewInit, ChangeDetectionStrategy, EventEmitter, Input,
 // app
 import { BaseComponent } from '../../../core/index';
 
-import { Link, NodeGroup, Node } from '../../interfaces/index';
+import { NodeGroupUtil } from './node-group.util';
+
+import { Link, NodeGroup, NodeGroupCircle, Node } from '../../interfaces/index';
 import { ProcessingStageUtil } from '../../utils/index';
 
 declare var d3: any;
@@ -74,9 +76,19 @@ export class NodeCanvasComponent implements AfterViewInit, OnChanges, OnDestroy 
     private _linkConfig: any;
 
     /**
-     * The d3 tooltip
+     * The d3 group configurations
      */
-    private _tooltip: any;
+    private _groupConfig: any;
+
+    /**
+     * The d3 tooltip for nodes
+     */
+    private _nodeTooltip: any;
+
+    /**
+     * The d3 tooltip for groups
+     */
+    private _groupTooltip: any;
 
     ngOnChanges(changes: {[propertyName: string]: SimpleChange}): void {
         var selectedNodeIdChanges = changes['selectedNodeId'];
@@ -100,7 +112,7 @@ export class NodeCanvasComponent implements AfterViewInit, OnChanges, OnDestroy 
         var canvasWidth = canvasDom.parentElement.offsetWidth;
         var canvasHeight = canvasDom.parentElement.offsetHeight;
 
-        this._tooltip = d3.tip()
+        this._nodeTooltip = d3.tip()
             .attr('class', 'chart-tooltip')
             .offset([-12, 0])
             .html((node: Node) => {
@@ -124,11 +136,19 @@ export class NodeCanvasComponent implements AfterViewInit, OnChanges, OnDestroy 
                         <p class="m-b-0">Options: <strong>${node.options.join(' ')}</strong></p>`;
             });
 
-        this._canvas = d3.select('svg').call(this._tooltip);
+        this._groupTooltip = d3.tip()
+            .attr('class', 'chart-tooltip')
+            .offset([-12, 0])
+            .html((group: NodeGroupCircle) => {
+                return `Group: <strong>${group.group}</strong>`;
+            });
+
+        this._canvas = d3.select('svg').call(this._nodeTooltip).call(this._groupTooltip);
 
         this._forceLayout = d3.layout.force()
-            .charge(-100)
-            .linkDistance(120)
+            .charge(-2000)
+            .chargeDistance(2000)
+            .linkDistance(100)
             .size([canvasWidth, canvasHeight]);
     }
 
@@ -150,23 +170,29 @@ export class NodeCanvasComponent implements AfterViewInit, OnChanges, OnDestroy 
         }
     }
 
-    private _getNodes(): Node[] {
-        var nodes: Node[] = [];
+    private _getNodesByName(): {[key: string]: Node} {
+        var nodesByName: {[key: string]: Node} = {};
 
         if (_.isUndefined(this.nodeGroups) || _.isEmpty(this.nodeGroups)) {
-            return nodes;
+            return nodesByName;
         }
 
         _.each(this.nodeGroups, (nodeGroup: NodeGroup) => {
             _.each(nodeGroup.nodes, (node: Node) => {
-                nodes.push(node);
+                // Keep the existing node if it belongs to the default group
+                if (nodesByName.hasOwnProperty(node.id) &&
+                    NodeGroupUtil.belongsToDefaultGroup(nodesByName[node.id].groupReference)) {
+                    return;
+                }
+
+                nodesByName[node.id] = node;
             });
         });
 
-        return nodes;
+        return nodesByName;
     }
 
-    private _getLinks(): Link[] {
+    private _getLinks(nodesByName: {[key: string]: Node}): Link[] {
         var links: Link[] = [];
 
         if (_.isUndefined(this.nodeGroups) || _.isEmpty(this.nodeGroups)) {
@@ -174,28 +200,52 @@ export class NodeCanvasComponent implements AfterViewInit, OnChanges, OnDestroy 
         }
 
         _.each(this.nodeGroups, (nodeGroup: NodeGroup) => {
-            // Interconnect all the nodes within each group
-            var nodeGroupSize: number = _.size(nodeGroup.nodes);
-
-            for (let sourceId: number = 0; sourceId < nodeGroupSize; sourceId++) {
-                for (let targetId: number = 0; targetId < nodeGroupSize; targetId++) {
-                    if (sourceId === targetId) {
-                        continue;
+            _.each(nodeGroup.nodes, (sourceNode: Node) => {
+                _.each(nodeGroup.nodes, (targetNode: Node) => {
+                    if (sourceNode.id === targetNode.id) {
+                        return;
                     }
 
                     links.push({
-                        source: sourceId,
-                        target: targetId
+                        source: nodesByName[sourceNode.id],
+                        target: nodesByName[targetNode.id]
                     });
-                }
-            }
+                });
+            });
         });
 
         return links;
     }
 
+    private _getNodesByGroup(nodesByName: {[key: string]: Node}): {[key: string]: Node[]} {
+        var nodesByGroup: {[key: string]: Node[]} = {};
+
+        if (_.isUndefined(this.nodeGroups) || _.isEmpty(this.nodeGroups)) {
+            return nodesByGroup;
+        }
+
+        _.each(this.nodeGroups, (nodeGroup: NodeGroup) => {
+            var nodes: Node[] = [];
+
+            _.each(nodeGroup.nodes, (node: Node) => {
+                // In case a node belongs to multiple group, the same instance
+                // will be pushed to each group.
+                var uniqNode: Node = nodesByName[node.id];
+                nodes.push(uniqNode);
+            });
+
+            nodesByGroup[nodeGroup.documentSelfLink] = nodes;
+        });
+
+        return nodesByGroup;
+    }
+
     private _render(): void {
         // Clears the link and nodes to prepare for refresh
+        if (!_.isUndefined(this._groupConfig)) {
+            this._groupConfig.remove();
+        }
+
         if (!_.isUndefined(this._linkConfig)) {
             this._linkConfig.remove();
         }
@@ -204,13 +254,26 @@ export class NodeCanvasComponent implements AfterViewInit, OnChanges, OnDestroy 
             this._nodeConfig.remove();
         }
 
-        var nodes: Node[] = this._getNodes();
-        var links: Link[] = this._getLinks();
+        var nodesByName: {[key: string]: Node} = this._getNodesByName();
+        var nodesByGroup: {[key: string]: Node[]} = this._getNodesByGroup(nodesByName);
+        var links: Link[] = this._getLinks(nodesByName);
+        var nodes: Node[] = _.values(nodesByName);
 
         this._forceLayout
             .nodes(nodes)
             .links(links)
             .start();
+
+        this._groupConfig = this._canvas.selectAll('.group')
+                .data(NodeGroupUtil.getGroupCircles(nodesByGroup))
+            .enter()
+                .append('g')
+                    .append('circle')
+                        .attr('class', (nodeGroup: NodeGroupCircle) => {
+                            return this._getNodeGroupClass(nodeGroup.group);
+                        })
+                        .on('mouseover', this._groupTooltip.show)
+                        .on('mouseout', this._groupTooltip.hide);
 
         this._linkConfig = this._canvas.selectAll('.link')
                 .data(links)
@@ -256,9 +319,9 @@ export class NodeCanvasComponent implements AfterViewInit, OnChanges, OnDestroy 
                                 this._canvas.selectAll('.node').classed('highlight', false);
                                 target.classed('highlight', true);
                             }
-                        }).
-                        on('mouseover', this._tooltip.show).
-                        on('mouseout', this._tooltip.hide);
+                        })
+                        .on('mouseover', this._nodeTooltip.show)
+                        .on('mouseout', this._nodeTooltip.hide);
 
         this._forceLayout.on('tick',
             () => {
@@ -271,7 +334,24 @@ export class NodeCanvasComponent implements AfterViewInit, OnChanges, OnDestroy 
                 this._nodeConfig.attr('transform', (d: any) => {
                         return 'translate(' + d.x + ',' + d.y + ')';
                     });
+
+                this._groupConfig.data(NodeGroupUtil.getGroupCircles(nodesByGroup))
+                    .attr('transform', (d: any) => {
+                        return 'translate(' + d.x + ',' + d.y + ')';
+                    })
+                    .attr('r', (d: any) => {
+                        return d.r + 32;
+                    });
             });
+    }
+
+    private _getNodeGroupClass(group: string): string {
+        // 7 different colors are available, if the group number go beyond 7,
+        // start from 0
+        var index: number = this.nodeGroups ? _.findIndex(this.nodeGroups, (nodeGroup: NodeGroup) => {
+            return nodeGroup.documentSelfLink === group;
+        }) % 7 : 0;
+        return `group group-${index}`;
     }
 
     private _getNodeClassByStatus(status: string): string {

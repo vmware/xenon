@@ -5,7 +5,7 @@ export class URL {
     static API_PREFIX: string = API_PREFIX;
     static CONFIG_SUFFIX: string = '/config';
     static STATS_SUFFIX: string = '/stats';
-    static FORWARDING_PATH: string = '/core/node-selectors/default/forwarding';
+    static NODE_SELECTOR: string = '/core/node-selectors';
 
     static Root: string = '/';
 

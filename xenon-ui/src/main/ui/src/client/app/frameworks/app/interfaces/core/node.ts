@@ -6,4 +6,8 @@ export interface Node extends ServiceDocument {
     options: string[];
     id: string;
     membershipQuorum: number;
+
+    // Added by D3 when renderring
+    x?: number;
+    y?: number;
 }

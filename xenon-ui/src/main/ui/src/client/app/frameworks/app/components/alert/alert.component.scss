@@ -15,6 +15,7 @@
             display: inline-block;
             height: 16px;
             width: 16px;
+            min-width: 16px;
             padding: 0;
             margin-right: baselinerem(.5);
             content: "";
@@ -22,18 +23,18 @@
     }
 
     &.alert-info > .alert-item > .alert-text::before {
-        background: url("assets/images/ic_info_16x.svg");
+        background: url("assets/images/ic_info_16x.svg") no-repeat;
     }
 
     &.alert-warning > .alert-item > .alert-text::before {
-        background: url("assets/images/ic_warning_16x.svg");
+        background: url("assets/images/ic_warning_16x.svg") no-repeat;
     }
 
     &.alert-success > .alert-item > .alert-text::before {
-        background: url("assets/images/ic_success_16x.svg");
+        background: url("assets/images/ic_success_16x.svg") no-repeat;
     }
 
     &.alert-danger > .alert-item > .alert-text::before {
-        background: url("assets/images/ic_error_red_16x.svg");
+        background: url("assets/images/ic_error_red_16x.svg") no-repeat;
     }
 }

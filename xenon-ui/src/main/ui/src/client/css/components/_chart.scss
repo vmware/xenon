@@ -97,6 +97,51 @@
 }
 
 .node-canvas {
+    .group {
+        opacity: .7;
+        stroke-width: 1;
+
+        &:hover {
+            opacity: 1;
+            @include transition(opacity);
+        }
+
+        &.group-0 {
+            fill: transparentize($amber-200, .75);
+            stroke: $amber-600;
+        }
+
+        &.group-1 {
+            fill: transparentize($lime-200, .75);
+            stroke: $lime-600;
+        }
+
+        &.group-2 {
+            fill: transparentize($teal-200, .75);
+            stroke: $teal-600;
+        }
+
+        &.group-3 {
+            fill: transparentize($indigo-200, .75);
+            stroke: $indigo-600;
+        }
+
+        &.group-4 {
+            fill: transparentize($purple-200, .75);
+            stroke: $purple-600;
+        }
+
+        &.group-5 {
+            fill: transparentize($pink-200, .75);
+            stroke: $pink-600;
+        }
+
+        &.group-6 {
+            fill: transparentize($brown-600, .75);
+            stroke: $brown-600;
+        }
+    }
+
     .link {
         stroke: $grey-400;
         stroke-width: 2;
