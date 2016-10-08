@@ -19,6 +19,7 @@ import java.util.Collection;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 
 import com.vmware.xenon.common.NodeSelectorService;
 import com.vmware.xenon.common.NodeSelectorService.SelectAndForwardRequest;
@@ -26,6 +27,7 @@ import com.vmware.xenon.common.NodeSelectorService.SelectOwnerResponse;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Service;
 import com.vmware.xenon.common.ServiceClient;
+import com.vmware.xenon.common.ServiceErrorResponse;
 import com.vmware.xenon.common.ServiceHost;
 import com.vmware.xenon.common.StatelessService;
 import com.vmware.xenon.common.UriUtils;
@@ -318,6 +320,10 @@ public class NodeSelectorReplicationService extends StatelessService {
             e = new IllegalStateException("Request failed: " + o.toString());
         }
 
+        if (e != null && handleServiceNotFoundOnReplica(context, o)) {
+            return;
+        }
+
         int sCount = context.getSuccessCount();
         int fCount = context.getFailureCount();
         boolean completeWithSuccess = false;
@@ -361,6 +367,42 @@ public class NodeSelectorReplicationService extends StatelessService {
             context.outboundOp.setStatusCode(context.getLastFailureStatus())
                     .fail(new IllegalStateException(error));
         }
+    }
+
+    private boolean handleServiceNotFoundOnReplica(ReplicationContext context, Operation o) {
+        // A replica would report a service-not-found error only for
+        // update requests. So, let's not worry about it.
+        if (!context.outboundOp.isUpdate()) {
+            return false;
+        }
+
+        // We expect a body with ServiceErrorResponse if the failure is because
+        // of service-not-found error.
+        if (o == null || !o.hasBody() || !o.getContentType().equals(Operation.MEDIA_TYPE_APPLICATION_JSON)) {
+            return false;
+        }
+
+        ServiceErrorResponse rsp = o.getBody(ServiceErrorResponse.class);
+        if (rsp == null ||
+                rsp.getErrorCode() != ServiceErrorResponse.ERROR_CODE_SERVICE_NOT_FOUND_ON_REPLICA) {
+            return false;
+        }
+
+        // The remote replica does not have the service in AVAILABLE stage. This could be
+        // because of out-of-order replication requests of a POST and PUT/PATCH.
+        // We will just retry for that specific replica.
+        URI remoteUri = createReplicaUri(o.getUri(), context.outboundOp);
+        Operation update = createReplicationRequest(context.outboundOp, remoteUri);
+        update.setCompletion((innerOp, innerEx) ->
+                this.handleReplicationCompletion(context, innerOp, innerEx));
+
+        this.getHost().schedule(() -> {
+            logWarning("Service %s not found on replica. Retrying replication request ...",
+                    o.getUri().getPath());
+            this.getHost().getClient().send(update);
+        }, this.getHost().getMaintenanceIntervalMicros(), TimeUnit.MICROSECONDS);
+
+        return true;
     }
 
     @Override

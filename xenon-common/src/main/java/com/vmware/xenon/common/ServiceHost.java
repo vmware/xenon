@@ -1827,7 +1827,7 @@ public class ServiceHost implements ServiceRequestSender {
             Consumer<Operation> notificationConsumer,
             ServiceSubscriber request) {
         if (subscribe == null) {
-            throw new IllegalArgumentException("subcribe operation is required");
+            throw new IllegalArgumentException("subscribe operation is required");
         }
 
         if (notificationConsumer == null) {
@@ -3507,6 +3507,20 @@ public class ServiceHost implements ServiceRequestSender {
             }
         }
 
+        if (inboundOp.isFromReplication()) {
+            // If this is a replicated update request but the service is not
+            // AVAILABLE, then we fail the request with 404 - NOT FOUND error.
+            if (!isServiceAvailable(s) && inboundOp.isUpdate()) {
+                this.log(Level.WARNING, "Service %s is not available. Failing replication request",
+                        inboundOp.getUri().getPath());
+
+                IllegalStateException ex = new IllegalStateException("Service not found on replica");
+                failRequest(inboundOp, Operation.STATUS_CODE_NOT_FOUND,
+                        ServiceErrorResponse.ERROR_CODE_SERVICE_NOT_FOUND_ON_REPLICA, ex);
+                return true;
+            }
+        }
+
         if (inboundOp
                 .hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_QUEUE_FOR_SERVICE_AVAILABILITY)) {
             waitForService = true;
@@ -3956,6 +3970,10 @@ public class ServiceHost implements ServiceRequestSender {
     public static boolean isServiceStop(Operation op) {
         return op.getAction() == Action.DELETE
                 && op.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_NO_INDEX_UPDATE);
+    }
+
+    public static boolean isServiceAvailable(Service s) {
+        return s != null && s.getProcessingStage() == ProcessingStage.AVAILABLE;
     }
 
     /**

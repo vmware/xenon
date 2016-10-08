@@ -29,6 +29,7 @@ public class ServiceErrorResponse {
     public static final int ERROR_CODE_OUTDATED_SYNCH_REQUEST = 0x80000001;
     public static final int ERROR_CODE_STATE_MARKED_DELETED = 0x80000002;
     public static final int ERROR_CODE_SERVICE_ALREADY_EXISTS = 0x80000003;
+    public static final int ERROR_CODE_SERVICE_NOT_FOUND_ON_REPLICA = 0x80000004;
 
     public static enum ErrorDetail {
         SHOULD_RETRY

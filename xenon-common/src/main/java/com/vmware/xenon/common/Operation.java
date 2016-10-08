@@ -1756,6 +1756,10 @@ public class Operation implements Cloneable {
         return hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_SYNCH_PEER);
     }
 
+    public boolean isUpdate() {
+        return this.getAction() == Action.PUT || this.getAction() == Action.PATCH;
+    }
+
     /**
      * Infrastructure use only
      */

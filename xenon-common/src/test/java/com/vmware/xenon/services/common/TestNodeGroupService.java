@@ -1732,6 +1732,62 @@ public class TestNodeGroupService {
     }
 
     @Test
+    public void replicationWithOutOfOrderPostAndUpdates() throws Throwable {
+        // This test verifies that if a replica receives
+        // replication requests of POST and PATCH/PUT
+        // out-of-order, xenon can still handle it
+        // by doing retries for failed out-of-order
+        // updates. To verify this, we setup a node
+        // group and set quorum to just 1, so that the post
+        // returns as soon as the owner commits the post,
+        // so that we increase the chance of out-of-order
+        // update replication requests.
+        setUp(this.nodeCount);
+        this.host.joinNodesAndVerifyConvergence(this.host.getPeerCount());
+        this.host.setNodeGroupQuorum(1);
+
+        waitForReplicatedFactoryServiceAvailable(
+                this.host.getPeerServiceUri(ExampleService.FACTORY_LINK),
+                ServiceUriPaths.DEFAULT_NODE_SELECTOR);
+        waitForReplicationFactoryConvergence();
+
+        ExampleServiceState state = new ExampleServiceState();
+        state.name = "testing";
+        state.counter = 1L;
+
+        VerificationHost peer = this.host.getPeerHost();
+
+        TestContext ctx = this.host.testCreate(this.serviceCount * this.updateCount);
+        for (int i = 0; i < this.serviceCount; i++) {
+            Operation post = Operation
+                    .createPost(peer, ExampleService.FACTORY_LINK)
+                    .setBody(state)
+                    .setReferer(this.host.getUri())
+                    .setCompletion((o, e) -> {
+                        if (e != null) {
+                            ctx.failIteration(e);
+                            return;
+                        }
+
+                        ExampleServiceState rsp = o.getBody(ExampleServiceState.class);
+                        for (int k = 0; k < this.updateCount; k++) {
+                            ExampleServiceState update = new ExampleServiceState();
+                            state.counter = (long)k;
+                            Operation patch = Operation
+                                    .createPatch(peer, rsp.documentSelfLink)
+                                    .setBody(update)
+                                    .setReferer(this.host.getUri())
+                                    .setCompletion(ctx.getCompletion());
+                            this.host.sendRequest(patch);
+                        }
+
+                    });
+            this.host.sendRequest(post);
+        }
+        ctx.await();
+    }
+
+    @Test
     public void replication() throws Throwable {
         this.replicationTargetFactoryLink = ExampleService.FACTORY_LINK;
         doReplication();
