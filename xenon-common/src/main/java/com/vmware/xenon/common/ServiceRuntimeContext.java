@@ -13,19 +13,16 @@
 
 package com.vmware.xenon.common;
 
-import java.util.EnumSet;
+import java.nio.ByteBuffer;
 
-import com.vmware.xenon.common.Service.ServiceOption;
+public class ServiceRuntimeContext {
+    public String selfLink;
+    public long serializationTimeMicros;
+    public ByteBuffer serializedService;
 
-public class ServiceConfiguration extends ServiceDocument {
-    public static final String KIND = Utils.buildKind(ServiceConfiguration.class);
-    public long maintenanceIntervalMicros;
-    public int operationQueueLimit;
-    public long epoch;
-    public long version;
-    public EnumSet<ServiceOption> options;
-
-    public ServiceConfiguration() {
-        this.documentKind = KIND;
+    public static ServiceRuntimeContext create(String link) {
+        ServiceRuntimeContext src = new ServiceRuntimeContext();
+        src.selfLink = link;
+        return src;
     }
 }
