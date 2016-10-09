@@ -61,6 +61,16 @@ public class UtilityService implements Service {
     }
 
     @Override
+    public void handlePause(Operation op) {
+        op.fail(new IllegalStateException("Utility service does not support pause"));
+    }
+
+    @Override
+    public void handleResume(Operation op) {
+        op.fail(new IllegalStateException("Utility service does not support resume"));
+    }
+
+    @Override
     public void handleRequest(Operation op) {
         String uriPrefix = this.parent.getSelfLink() + ServiceHost.SERVICE_URI_SUFFIX_UI;
 

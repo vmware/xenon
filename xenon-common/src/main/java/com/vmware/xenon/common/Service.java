@@ -379,6 +379,20 @@ public interface Service extends ServiceRequestSender {
     void handleStop(Operation stopDelete);
 
     /**
+     * Invoked by the host when the service is idle. Default implementation should complete request
+     * if pause is allowed, or fail it, to abort pause
+     * See {@code ServiceRuntimeContext}
+     */
+    void handlePause(Operation pausePost);
+
+    /**
+     * Invoked by the host when a service is previously paused and is being resumed to process
+     * a client request
+     * See {@code ServiceRuntimeContext}
+     */
+    void handleResume(Operation resumePost);
+
+    /**
      * Infrastructure use. Invoked by host to let the service decide if the request is authorized.
      * Services can defer authorization for a later stage, during handleRequest(), or do it as
      * part of this method. The method must either complete or fail the operation to allow
