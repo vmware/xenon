@@ -17,7 +17,6 @@ import static com.vmware.xenon.common.test.TestContext.waitFor;
 
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.Date;
 import java.util.EnumSet;
 import java.util.List;
 
@@ -25,11 +24,13 @@ import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 
+import com.vmware.xenon.common.CommandLineArgumentParser;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Service.ServiceOption;
 import com.vmware.xenon.common.ServiceStats;
 import com.vmware.xenon.common.ServiceStats.ServiceStat;
 import com.vmware.xenon.common.UriUtils;
+import com.vmware.xenon.common.test.TestContext;
 import com.vmware.xenon.common.test.TestRequestSender;
 import com.vmware.xenon.common.test.VerificationHost;
 import com.vmware.xenon.services.common.LuceneDocumentIndexService;
@@ -42,12 +43,12 @@ public class TestSampleContinuousQueryObserverService {
 
     private VerificationHost host;
     private TestRequestSender sender;
-    private int serviceCount = 10;
+    public int serviceCount = 10;
     private Duration timeout = Duration.ofSeconds(5);
-
 
     @Before
     public void setupHost() throws Exception, Throwable {
+        CommandLineArgumentParser.parseFromProperties(this);
         this.host = VerificationHost.create(0);
         this.host.start();
         this.host.toggleServiceOptions(this.host.getDocumentIndexServiceUri(),
@@ -56,6 +57,10 @@ public class TestSampleContinuousQueryObserverService {
         this.sender = new TestRequestSender(this.host);
         this.host.startFactory(new SamplePreviousEchoService());
         this.host.startFactory(new SampleContinuousQueryObserverService());
+        this.host.waitForReplicatedFactoryServiceAvailable(
+                UriUtils.buildUri(this.host, SamplePreviousEchoService.FACTORY_LINK));
+        this.host.waitForReplicatedFactoryServiceAvailable(
+                UriUtils.buildUri(this.host, SampleContinuousQueryObserverService.FACTORY_LINK));
     }
 
     @After
@@ -88,18 +93,16 @@ public class TestSampleContinuousQueryObserverService {
 
         // wait for filter to be active in the index service, which happens asynchronously
         // in relation to query task creation, before issuing updates.
-        Date exp = this.host.getTestExpiration();
-        while (new Date().before(exp)) {
+        waitFor(this.timeout, () -> {
             ServiceStats indexStats = this.host.getServiceState(null, ServiceStats.class,
                     UriUtils.buildStatsUri(this.host.getDocumentIndexServiceUri()));
             ServiceStat activeQueryStat = indexStats.entries.get(
                     LuceneDocumentIndexService.STAT_NAME_ACTIVE_QUERY_FILTERS);
             if (activeQueryStat == null || activeQueryStat.latestValue < 1.0) {
-                Thread.sleep(250);
-                continue;
+                return false;
             }
-            break;
-        }
+            return true;
+        });
 
         // create serviceCount instances of SamplePreviousEchoService
         // and save the links to these services
@@ -124,18 +127,23 @@ public class TestSampleContinuousQueryObserverService {
                     .setReferer(this.host.getUri());
             QueryObserverState updatedQueryObserverState =
                     this.sender.sendAndWait(getQueryObserverState, QueryObserverState.class);
-            return (this.serviceCount == updatedQueryObserverState.notificationsCounter);
+            this.host.log("notification count: %d",
+                    updatedQueryObserverState.notificationsCounter);
+            return (this.serviceCount <= updatedQueryObserverState.notificationsCounter);
         });
 
         // update the state of all the SamplePreviousEchoService we created
         final EchoServiceState updatedState = new EchoServiceState();
         updatedState.message = "hello world";
+        TestContext ctx1 = new TestContext(samplePreviousEchoServicesLinks.size(), this.timeout);
         samplePreviousEchoServicesLinks.forEach(selfLink -> {
             Operation putOp = Operation.createPut(UriUtils.buildUri(this.host.getUri(), selfLink))
                     .setBody(updatedState)
-                    .setReferer(this.host.getUri());
-            this.sender.sendAndWait(putOp, EchoServiceState.class);
+                    .setReferer(this.host.getUri())
+                    .setCompletion(ctx1.getCompletion());
+            this.sender.sendRequest(putOp);
         });
+        ctx1.await();
 
         // get the QueryObserverState and make sure that it was notified
         // for the updates to the SamplePreviousEchoService services
@@ -147,15 +155,20 @@ public class TestSampleContinuousQueryObserverService {
                     .setReferer(this.host.getUri());
             QueryObserverState updatedQueryObserverState =
                     this.sender.sendAndWait(getQueryObserverState, QueryObserverState.class);
-            return (this.serviceCount * 2 == updatedQueryObserverState.notificationsCounter);
+            this.host.log("notification count: %d",
+                    updatedQueryObserverState.notificationsCounter);
+            return (this.serviceCount * 2 <= updatedQueryObserverState.notificationsCounter);
         });
 
         // delete all the services
+        TestContext ctx = new TestContext(samplePreviousEchoServicesLinks.size(), this.timeout);
         samplePreviousEchoServicesLinks.forEach(selfLink -> {
-            Operation delete = Operation.createDelete(UriUtils.buildUri(this.host.getUri(), selfLink))
-                    .setReferer(this.host.getUri());
-            this.sender.sendAndWait(delete);
+            Operation delete = Operation
+                    .createDelete(UriUtils.buildUri(this.host.getUri(), selfLink))
+                    .setReferer(this.host.getUri()).setCompletion(ctx.getCompletion());
+            this.sender.sendRequest(delete);
         });
+        ctx.await();
 
         /// get the QueryObserverState and make sure that it was notified
         // for the deletes to the SamplePreviousEchoService services
@@ -168,7 +181,9 @@ public class TestSampleContinuousQueryObserverService {
                     .setReferer(this.host.getUri());
             QueryObserverState updatedQueryObserverState =
                     this.sender.sendAndWait(getQueryObserverState, QueryObserverState.class);
-            return (this.serviceCount * 3 == updatedQueryObserverState.notificationsCounter);
+            this.host.log("notification count: %d",
+                    updatedQueryObserverState.notificationsCounter);
+            return (this.serviceCount * 3 <= updatedQueryObserverState.notificationsCounter);
         });
     }
 }
