@@ -99,6 +99,7 @@ import com.vmware.xenon.services.common.GuestUserService;
 import com.vmware.xenon.services.common.LocalQueryTaskFactoryService;
 import com.vmware.xenon.services.common.LuceneBlobIndexService;
 import com.vmware.xenon.services.common.LuceneDocumentIndexService;
+import com.vmware.xenon.services.common.LuceneServiceContextIndexService;
 import com.vmware.xenon.services.common.NodeGroupFactoryService;
 import com.vmware.xenon.services.common.NodeGroupService.JoinPeerRequest;
 import com.vmware.xenon.services.common.NodeGroupUtils;
@@ -110,7 +111,6 @@ import com.vmware.xenon.services.common.QueryTaskFactoryService;
 import com.vmware.xenon.services.common.ReliableSubscriptionService;
 import com.vmware.xenon.services.common.ResourceGroupService;
 import com.vmware.xenon.services.common.RoleService;
-import com.vmware.xenon.services.common.ServiceContextIndexService;
 import com.vmware.xenon.services.common.ServiceHostLogService;
 import com.vmware.xenon.services.common.ServiceHostManagementService;
 import com.vmware.xenon.services.common.ServiceUriPaths;
@@ -1320,7 +1320,7 @@ public class ServiceHost implements ServiceRequestSender {
                 Service[] queryServiceArray = new Service[] {
                         this.documentIndexService,
                         new LuceneBlobIndexService(),
-                        new ServiceContextIndexService(),
+                        new LuceneServiceContextIndexService(),
                         new QueryTaskFactoryService(),
                         new LocalQueryTaskFactoryService(),
                         TaskFactoryService.create(GraphQueryTaskService.class),
