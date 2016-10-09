@@ -34,6 +34,7 @@ import com.vmware.xenon.common.ServiceErrorResponse.ErrorDetail;
 import com.vmware.xenon.common.ServiceStats.ServiceStat;
 import com.vmware.xenon.common.ServiceStats.ServiceStatLogHistogram;
 import com.vmware.xenon.common.jwt.Signer;
+import com.vmware.xenon.common.serialization.KryoSerializers;
 import com.vmware.xenon.services.common.ServiceUriPaths;
 
 /**
@@ -104,6 +105,16 @@ public class StatefulService implements Service {
     @Override
     public void handleStart(Operation post) {
         post.complete();
+    }
+
+    @Override
+    public void handlePause(Operation op) {
+        op.complete();
+    }
+
+    @Override
+    public void handleResume(Operation op) {
+        op.complete();
     }
 
     /**
@@ -352,7 +363,6 @@ public class StatefulService implements Service {
 
             if (opProcessingStage == OperationProcessingStage.EXECUTING_SERVICE_HANDLER) {
                 isCompletionNested = true;
-
                 switch (request.getAction()) {
                 case DELETE:
                     if (ServiceHost.isServiceStop(request)) {
@@ -373,7 +383,11 @@ public class StatefulService implements Service {
                     handlePatch(request);
                     break;
                 case POST:
-                    handlePost(request);
+                    if (request.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_PAUSE)) {
+                        handlePause(request);
+                    } else {
+                        handlePost(request);
+                    }
                     break;
                 case PUT:
                     handlePut(request);
@@ -724,6 +738,12 @@ public class StatefulService implements Service {
                 return;
             }
 
+            if (op.getAction() == Action.POST
+                    && op.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_PAUSE)) {
+                handlePauseCompletion(op);
+                return;
+            }
+
             if (isStateUpdated && linkedState != null) {
                 // defense in depth: conform state so core fields are properly set
                 if (linkedState.documentDescription != null) {
@@ -754,6 +774,17 @@ public class StatefulService implements Service {
             }
             processPending(op);
         }
+    }
+
+    private void handlePauseCompletion(Operation op) {
+        try {
+            ServiceRuntimeContext src = setProcessingStageImpl(ProcessingStage.PAUSED, true);
+            op.setBodyNoCloning(src);
+            processCompletionStagePublishAndComplete(op);
+        } catch (Throwable e) {
+            failRequest(op, e);
+        }
+
     }
 
     protected void handleOptionsCompletion(Operation options) {
@@ -1528,27 +1559,39 @@ public class StatefulService implements Service {
 
     @Override
     public void setProcessingStage(Service.ProcessingStage stage) {
+        setProcessingStageImpl(stage, false);
+    }
+
+    private ServiceRuntimeContext setProcessingStageImpl(ProcessingStage stage,
+            boolean isPauseRequest) {
+        ServiceRuntimeContext src = null;
         IllegalStateException failure = null;
         String statName = null;
         try {
             boolean logTransition = false;
             synchronized (this.context) {
                 if (this.context.processingStage == stage) {
-                    return;
+                    return null;
                 }
 
                 if (stage == ProcessingStage.PAUSED) {
                     if (this.context.processingStage != ProcessingStage.AVAILABLE) {
                         failure = new IllegalStateException("Service can not be paused, in stage: "
                                 + this.context.processingStage);
-                        return;
+                        return null;
                     }
-                    if (this.context.isUpdateActive ||
+
+                    if ((this.context.isUpdateActive && !isPauseRequest) ||
                             !this.context.synchQueue.isEmpty() ||
                             !this.context.operationQueue.isEmpty()) {
                         failure = new IllegalStateException("Service has active updates");
-                        return;
+                        return null;
                     }
+                    src = new ServiceRuntimeContext();
+                    src.selfLink = getSelfLink();
+                    src.serializationTimeMicros = Utils.getNowMicrosUtc();
+                    src.serializedService = KryoSerializers.serializeObject(this,
+                            Service.MAX_SERIALIZED_SIZE_BYTES * 64);
                     statName = STAT_NAME_PAUSE_COUNT;
                 } else if (this.context.processingStage == ProcessingStage.PAUSED
                         && stage == ProcessingStage.AVAILABLE) {
@@ -1584,6 +1627,7 @@ public class StatefulService implements Service {
         if (stage == ProcessingStage.AVAILABLE) {
             getHost().processPendingServiceAvailableOperations(this, null, false);
         }
+        return src;
     }
 
     @Override

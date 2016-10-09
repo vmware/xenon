@@ -13,25 +13,103 @@
 
 package com.vmware.xenon.services.common;
 
-import java.util.EnumSet;
+import java.io.File;
+import java.io.IOException;
+import java.net.URI;
+import java.nio.ByteBuffer;
+import java.nio.file.NoSuchFileException;
+import java.util.Map;
 
+import com.vmware.xenon.common.FileUtils;
 import com.vmware.xenon.common.Operation;
+import com.vmware.xenon.common.Service;
+import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.ServiceHost;
+import com.vmware.xenon.common.ServiceRuntimeContext;
+import com.vmware.xenon.common.StatelessService;
+import com.vmware.xenon.common.UriUtils;
+import com.vmware.xenon.common.serialization.KryoSerializers;
 
-public class ServiceContextIndexService extends LuceneBlobIndexService {
-    public static Operation createPost(ServiceHost host, String key, Object blob) {
-        return createPost(host, SELF_LINK, key, blob);
-    }
+public class ServiceContextIndexService extends StatelessService {
+    private static final String SERIALIZED_CONTEXT_FILE_EXTENSION = ".kryo";
 
     public static Operation createGet(ServiceHost host, String key) {
-        return createGet(host, SELF_LINK, key);
+        URI uri = UriUtils.buildUri(host, ServiceUriPaths.CORE_SERVICE_CONTEXT_INDEX,
+                ServiceDocument.FIELD_NAME_SELF_LINK + "=" + key);
+        return Operation.createGet(uri);
     }
 
     public static final String SELF_LINK = ServiceUriPaths.CORE_SERVICE_CONTEXT_INDEX;
-    public static final String FILE_PATH = "lucene-service-context-index";
+    public static final String FILE_PATH = "service-context-index";
+
+    private File indexDirectory;
 
     public ServiceContextIndexService() {
-        super(EnumSet.of(BlobIndexOption.CREATE, BlobIndexOption.SINGLE_USE_KEYS),
-                FILE_PATH);
+
     }
+
+    @Override
+    public void handleStart(Operation post) {
+        this.indexDirectory = new File(new File(getHost().getStorageSandbox()), FILE_PATH);
+        if (!createIndexDirectory(post)) {
+            return;
+        }
+        post.complete();
+    }
+
+    private boolean createIndexDirectory(Operation post) {
+        if (this.indexDirectory.exists()) {
+            return true;
+        }
+        if (this.indexDirectory.mkdir()) {
+            return true;
+        }
+        logWarning("Failure creating index directory %s, failing start", this.indexDirectory);
+        post.fail(new IOException("could not create " + this.indexDirectory));
+        return false;
+    }
+
+    @Override
+    public void handlePost(Operation post) {
+        ServiceRuntimeContext s = (ServiceRuntimeContext) post.getBodyRaw();
+        ByteBuffer bb = KryoSerializers.serializeObject(s, Service.MAX_SERIALIZED_SIZE_BYTES * 64);
+        File serviceContextFile = getFileFromLink(s.selfLink);
+        FileUtils.writeFileAndComplete(post, bb, serviceContextFile);
+    }
+
+    @Override
+    public void handleGet(Operation get) {
+        Map<String, String> queryParams = UriUtils.parseUriQueryParams(get.getUri());
+        String link = queryParams.get(ServiceDocument.FIELD_NAME_SELF_LINK);
+        if (link == null) {
+            get.fail(new IllegalArgumentException(ServiceDocument.FIELD_NAME_SELF_LINK
+                    + " is required URI query parameter"));
+            return;
+        }
+        File serviceContextFile = getFileFromLink(link);
+
+        get.nestCompletion((o, e) -> {
+            if (e != null && e instanceof NoSuchFileException) {
+                get.setBody(null).complete();
+                return;
+            }
+            try {
+                byte[] data = (byte[]) o.getBodyRaw();
+                ServiceRuntimeContext src = (ServiceRuntimeContext) KryoSerializers
+                        .deserializeObject(data, 0, (int) o.getContentLength());
+                get.setBodyNoCloning(src).complete();
+            } catch (Throwable ex) {
+                o.fail(ex);
+            }
+        });
+
+        FileUtils.readFileAndComplete(get, serviceContextFile);
+        serviceContextFile.deleteOnExit();
+    }
+
+    private File getFileFromLink(String link) {
+        String name = UriUtils.convertPathCharsFromLink(link) + SERIALIZED_CONTEXT_FILE_EXTENSION;
+        return new File(this.indexDirectory, name);
+    }
+
 }

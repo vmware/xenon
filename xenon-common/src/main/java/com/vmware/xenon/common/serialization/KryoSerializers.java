@@ -14,6 +14,7 @@
 package com.vmware.xenon.common.serialization;
 
 import java.net.URI;
+import java.nio.ByteBuffer;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
@@ -160,6 +161,16 @@ public final class KryoSerializers {
         out.setPosition(position);
         k.writeClassAndObject(out, o);
         return out.position();
+    }
+
+    /**
+     * @see #serializeObject(Object, byte[], int)
+     */
+    public static ByteBuffer serializeObject(Object o, int maxSize) {
+        Kryo k = getKryoThreadLocalForObjects();
+        Output out = new Output(4096, maxSize);
+        k.writeClassAndObject(out, o);
+        return ByteBuffer.wrap(out.getBuffer(), 0, out.position());
     }
 
     public static <T> T clone(T t) {
