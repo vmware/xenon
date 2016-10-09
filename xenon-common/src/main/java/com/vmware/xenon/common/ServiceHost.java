@@ -346,8 +346,7 @@ public class ServiceHost implements ServiceRequestSender {
      * 4) Estimated cost of default statistics, if service is instrumented
      * 5) Estimated cost of a small number of subscriptions
      */
-    public static final int DEFAULT_SERVICE_INSTANCE_COST_BYTES = Service.MAX_SERIALIZED_SIZE_BYTES
-            / 2;
+    public static final int DEFAULT_SERVICE_INSTANCE_COST_BYTES = 4096;
     private static final long ONE_MINUTE_IN_MICROS = TimeUnit.MINUTES.toMicros(1);
 
     private static final String PROPERTY_NAME_APPEND_PORT_TO_SANDBOX = Utils.PROPERTY_NAME_PREFIX
@@ -3388,7 +3387,7 @@ public class ServiceHost implements ServiceRequestSender {
     }
 
     private void queueOrFailRequestForServiceNotFoundOnOwner(String path, Operation op) {
-        if (this.serviceResourceTracker.checkAndResumePausedServiceOnOwner(op)) {
+        if (this.serviceResourceTracker.checkAndResumeService(op)) {
             return;
         }
 
@@ -3515,7 +3514,7 @@ public class ServiceHost implements ServiceRequestSender {
                 }
                 // the service might be paused (stopped due to memory pressure)
                 if (parentService.hasOption(ServiceOption.PERSISTENCE)) {
-                    if (this.serviceResourceTracker.checkAndResumePausedServiceOnOwner(inboundOp)) {
+                    if (this.serviceResourceTracker.checkAndResumeService(inboundOp)) {
                         return true;
                     }
                 }
@@ -3595,18 +3594,6 @@ public class ServiceHost implements ServiceRequestSender {
                 return;
             }
 
-            if (stage == ProcessingStage.PAUSED) {
-                if (this.serviceResourceTracker.checkAndResumePausedServiceOnOwner(op)) {
-                    processRequest = false;
-                    return;
-                }
-                // update stage since we might have aborted PAUSE
-                stage = s.getProcessingStage();
-                if (stage == ProcessingStage.AVAILABLE) {
-                    return;
-                }
-            }
-
             processRequest = false;
 
             if (stage == ProcessingStage.STOPPED) {
@@ -3618,12 +3605,12 @@ public class ServiceHost implements ServiceRequestSender {
                     return;
                 }
                 if (s.hasOption(ServiceOption.ON_DEMAND_LOAD)) {
-                    retryPauseOrOnDemandLoadStopConflict(s, op, true);
+                    retryPauseOrOnDemandLoadConflict(op, true);
                     return;
                 }
                 op.setStatusCode(Operation.STATUS_CODE_NOT_FOUND);
             } else if (stage == ProcessingStage.PAUSED) {
-                retryPauseOrOnDemandLoadStopConflict(s, op, false);
+                retryPauseOrOnDemandLoadConflict(op, false);
                 return;
             }
 
@@ -3649,17 +3636,24 @@ public class ServiceHost implements ServiceRequestSender {
         }
     }
 
-    void retryPauseOrOnDemandLoadStopConflict(Service statefulService, Operation op,
+    void retryPauseOrOnDemandLoadConflict(Operation op,
             boolean isOdlConflict) {
-        log(Level.WARNING, "Pause/ODL(%s) conflict: retrying %s (%d %s) since it raced with a STOP",
-                isOdlConflict, op.getAction(), op.getId(), op.getContextId());
+
+        op.removePragmaDirective(Operation.PRAGMA_DIRECTIVE_INDEX_CHECK);
         String statName = isOdlConflict
                 ? ServiceHostManagementService.STAT_NAME_ODL_STOP_CONFLICT_COUNT
                 : ServiceHostManagementService.STAT_NAME_PAUSE_RESUME_CONFLICT_COUNT;
         getManagementService().adjustStat(statName, 1);
+
+        log(Level.WARNING,
+                "Pause(%s)/ODL(%s) conflict: retrying %s (%d %s) on %s",
+                !isOdlConflict, isOdlConflict, op.getAction(), op.getId(), op.getContextId(),
+                op.getUri().getPath());
+
+        long interval = Math.max(TimeUnit.SECONDS.toMicros(1), getMaintenanceIntervalMicros());
         schedule(() -> {
             handleRequest(null, op);
-        }, getMaintenanceIntervalMicros(), TimeUnit.MICROSECONDS);
+        }, interval, TimeUnit.MICROSECONDS);
     }
 
     private boolean applyRequestRateLimit(Operation op) {

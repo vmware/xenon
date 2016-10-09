@@ -4,6 +4,13 @@
 
 * Upgrade Lucene from 6.0.0 to 6.2.1
 
+* Service pause/resume improvements:
+  - New, simple, file based key/value service context index for storing
+    service serialized instance
+  - Service.setProcessingStage now atomically serializes service state
+    if processing stage is PAUSED
+  Service.setProcessingStage() now returns ServiceRuntimeContext
+
 ## 1.0.0
 
 * Improve Xenon UI's' node selector to support multi node group use cases.

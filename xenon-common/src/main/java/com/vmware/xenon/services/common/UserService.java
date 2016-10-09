@@ -14,6 +14,7 @@
 package com.vmware.xenon.services.common;
 
 import java.util.Set;
+import java.util.concurrent.CancellationException;
 
 import com.vmware.xenon.common.FactoryService;
 import com.vmware.xenon.common.Operation;
@@ -21,6 +22,7 @@ import com.vmware.xenon.common.Service;
 import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.ServiceDocumentDescription.PropertyIndexingOption;
 import com.vmware.xenon.common.ServiceDocumentDescription.PropertyUsageOption;
+import com.vmware.xenon.common.ServiceRuntimeContext;
 import com.vmware.xenon.common.StatefulService;
 import com.vmware.xenon.common.Utils;
 
@@ -63,11 +65,11 @@ public class UserService extends StatefulService {
     }
 
     @Override
-    public void setProcessingStage(Service.ProcessingStage stage) {
+    public ServiceRuntimeContext setProcessingStage(Service.ProcessingStage stage) {
         if (stage == Service.ProcessingStage.PAUSED) {
-            throw new IllegalStateException("Cannot pause service.");
+            throw new CancellationException("Cannot pause service.");
         }
-        super.setProcessingStage(stage);
+        return super.setProcessingStage(stage);
     }
 
     @Override

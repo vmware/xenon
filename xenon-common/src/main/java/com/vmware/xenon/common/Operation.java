@@ -1353,12 +1353,11 @@ public class Operation implements Cloneable {
      * Removes a directive. Lower case strings must be used
      */
     public Operation removePragmaDirective(String directive) {
-        allocateRemoteContext();
         String existingDirectives = getRequestHeader(PRAGMA_HEADER);
         if (existingDirectives != null) {
             directive = existingDirectives.replace(directive, "");
+            addRequestHeader(PRAGMA_HEADER, directive);
         }
-        addRequestHeader(PRAGMA_HEADER, directive);
         return this;
     }
 
