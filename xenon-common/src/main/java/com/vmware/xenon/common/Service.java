@@ -328,7 +328,7 @@ public interface Service extends ServiceRequestSender {
      * Estimate on run time context cost in bytes, per service instance. Services should not use instanced
      * fields, so, other than queuing context and utility service usage, the memory overhead should be small
      */
-    static final int MAX_SERIALIZED_SIZE_BYTES = 8192;
+    static final int MAX_SERIALIZED_SIZE_BYTES = 1024 * 64;
 
     /**
      * Default operation queue limit
@@ -490,7 +490,7 @@ public interface Service extends ServiceRequestSender {
 
     void setOperationProcessingChain(OperationProcessingChain opProcessingChain);
 
-    void setProcessingStage(ProcessingStage initialized);
+    ServiceRuntimeContext setProcessingStage(ProcessingStage initialized);
 
     ServiceDocument setInitialState(Object state, Long initialVersion);
 
