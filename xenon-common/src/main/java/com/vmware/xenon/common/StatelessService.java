@@ -462,17 +462,18 @@ public class StatelessService implements Service {
     }
 
     @Override
-    public void setProcessingStage(ProcessingStage stage) {
+    public ServiceRuntimeContext setProcessingStage(ProcessingStage stage) {
         if (this.stage == stage) {
-            return;
+            return null;
         }
 
         this.stage = stage;
         if (stage != ProcessingStage.AVAILABLE) {
-            return;
+            return null;
         }
 
         getHost().processPendingServiceAvailableOperations(this, null, false);
+        return null;
     }
 
     @Override

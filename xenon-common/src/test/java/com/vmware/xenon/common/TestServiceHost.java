@@ -22,7 +22,9 @@ import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
 import java.io.File;
+import java.io.IOException;
 import java.net.URI;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
@@ -34,12 +36,14 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Random;
 import java.util.UUID;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
+import java.util.logging.Level;
 
 import io.netty.handler.ssl.util.SelfSignedCertificate;
 
@@ -73,6 +77,7 @@ import com.vmware.xenon.services.common.MinimalTestService;
 import com.vmware.xenon.services.common.NodeGroupService.NodeGroupState;
 import com.vmware.xenon.services.common.NodeState;
 import com.vmware.xenon.services.common.QueryTask.Query;
+import com.vmware.xenon.services.common.ServiceContextIndexService;
 import com.vmware.xenon.services.common.ServiceHostManagementService;
 import com.vmware.xenon.services.common.ServiceUriPaths;
 import com.vmware.xenon.services.common.UserService;
@@ -1362,14 +1367,14 @@ public class TestServiceHost {
         }
 
         @Override
-        public void setProcessingStage(Service.ProcessingStage stage) {
+        public ServiceRuntimeContext setProcessingStage(Service.ProcessingStage stage) {
             if (stage == Service.ProcessingStage.PAUSED) {
                 if (new Random().nextBoolean()) {
                     this.adjustStat(STAT_NAME_ABORT_COUNT, 1);
-                    throw new IllegalStateException("Cannot pause service.");
+                    throw new CancellationException("Cannot pause service.");
                 }
             }
-            super.setProcessingStage(stage);
+            return super.setProcessingStage(stage);
         }
     }
 
@@ -1405,7 +1410,7 @@ public class TestServiceHost {
         this.host.start();
 
         this.host.setSystemAuthorizationContext();
-        TestContext ctx = this.host.testCreate(1);
+        TestContext ctxQuery = this.host.testCreate(1);
         String user = "foo@bar.com";
         Query.Builder queryBuilder = Query.Builder.create()
                 .addFieldClause(ServiceDocument.FIELD_NAME_KIND, Utils.buildKind(ExampleServiceState.class));
@@ -1417,12 +1422,12 @@ public class TestServiceHost {
                 .setResourceQuery(queryBuilder.build())
                 .setCompletion((ex) -> {
                     if (ex != null) {
-                        ctx.failIteration(ex);
+                        ctxQuery.failIteration(ex);
+                        return;
                     }
-                    ctx.completeIteration();
-                })
-                .start();
-        ctx.await();
+                    ctxQuery.completeIteration();
+                }).start();
+        ctxQuery.await();
         this.host.startFactory(PauseExampleService.class,
                 PauseExampleService::createFactory);
         URI factoryURI = UriUtils.buildFactoryUri(this.host, PauseExampleService.class);
@@ -1461,7 +1466,7 @@ public class TestServiceHost {
         }
         patchExampleServices(states, updateCount);
 
-        this.host.testStart(states.size());
+        TestContext ctxGet = this.host.testCreate(states.size());
         for (ExampleServiceState st : states.values()) {
             Operation get = Operation.createGet(UriUtils.buildUri(this.host, st.documentSelfLink))
                     .setCompletion(
@@ -1473,15 +1478,15 @@ public class TestServiceHost {
 
                                 ExampleServiceState rsp = o.getBody(ExampleServiceState.class);
                                 if (!rsp.name.startsWith("updated")) {
-                                    this.host.failIteration(new IllegalStateException(Utils
+                                    ctxGet.fail(new IllegalStateException(Utils
                                             .toJsonHtml(rsp)));
                                     return;
                                 }
-                                this.host.completeIteration();
+                                ctxGet.complete();
                             });
             this.host.send(get);
         }
-        this.host.testWait();
+        this.host.testWait(ctxGet);
 
         if (this.testDurationSeconds == 0) {
             verifyPauseResumeStats(states);
@@ -1503,12 +1508,15 @@ public class TestServiceHost {
                 TimeUnit.SECONDS.toMicros(this.host.getTimeoutSeconds()));
 
         while (new Date().before(exp)) {
-            this.host.doFactoryChildServiceStart(null,
+            states = this.host.doFactoryChildServiceStart(null,
                     this.serviceCount,
                     ExampleServiceState.class, bodySetter, factoryURI);
             Thread.sleep(500);
-            this.host.log("created %d services, created so far: %d", this.serviceCount,
-                    selfLinkCounter.get());
+
+            this.host.log("created %d services, created so far: %d, attached count: %d",
+                    this.serviceCount,
+                    selfLinkCounter.get(),
+                    this.host.getState().serviceCount);
             Runtime.getRuntime().gc();
             this.host.logMemoryInfo();
 
@@ -1518,22 +1526,15 @@ public class TestServiceHost {
                     f.getUsableSpace(),
                     f.getTotalSpace());
 
-            int limit = (int) (this.serviceCount * 2);
-            int step = 1;
-            int count = limit / step;
-            if (selfLinkCounter.get() < limit) {
-                continue;
-            }
+            // let a couple of maintenance intervals run
+            Thread.sleep(TimeUnit.MICROSECONDS.toMillis(this.host.getMaintenanceIntervalMicros()) * 2);
 
-            this.host.testStart(count);
-            for (int i = 0; i < count; i += step) {
-                // now that we have created a bunch of services, and a lot of them are paused, ping one randomly
-                // to make sure it resumes
-                URI instanceUri = UriUtils.buildFactoryUri(this.host, PauseExampleService.class);
-                instanceUri = UriUtils.extendUri(instanceUri, prefix + (selfLinkCounter.get() - i));
-                Operation get = Operation.createGet(instanceUri).setCompletion((o, e) -> {
+            // ping every service we created to see if they can be resumed
+            TestContext getCtx = this.host.testCreate(states.size());
+            for (URI u : states.keySet()) {
+                Operation get = Operation.createGet(u).setCompletion((o, e) -> {
                     if (e == null) {
-                        this.host.completeIteration();
+                        getCtx.complete();
                         return;
                     }
 
@@ -1544,45 +1545,94 @@ public class TestServiceHost {
                                     ServiceDocument.FIELD_NAME_SELF_LINK, o.getUri().getPath(), 1,
                                     1);
                         } catch (Throwable e1) {
-                            this.host.failIteration(e1);
+                            getCtx.fail(e1);
                             return;
                         }
                     }
-                    this.host.failIteration(e);
+                    getCtx.fail(e);
                 });
                 this.host.send(get);
             }
-            this.host.testWait();
+            this.host.testWait(getCtx);
+
+            long limit = this.serviceCount * 30;
+            if (selfLinkCounter.get() <= limit) {
+                continue;
+            }
+
+            TestContext ctxDelete = this.host.testCreate(states.size());
+            // periodically, delete services we created (and likely paused) several passes ago
+            for (int i = 0; i < states.size(); i++) {
+                String childPath = UriUtils.buildUriPath(factoryURI.getPath(), prefix + ""
+                        + (selfLinkCounter.get() - limit + i));
+                Operation delete = Operation.createDelete(this.host, childPath);
+                delete.setCompletion((o, e) -> {
+                    ctxDelete.complete();
+                });
+                this.host.send(delete);
+            }
+            ctxDelete.await();
+
+            File indexDir = new File(this.host.getStorageSandbox());
+            indexDir = new File(indexDir, ServiceContextIndexService.FILE_PATH);
+            long fileCount = Files.list(indexDir.toPath()).count();
+            this.host.log("Paused file count %d", fileCount);
         }
     }
 
+    private void deletePausedFiles() throws IOException {
+        File indexDir = new File(this.host.getStorageSandbox());
+        indexDir = new File(indexDir, ServiceContextIndexService.FILE_PATH);
+        AtomicInteger count = new AtomicInteger();
+        Files.list(indexDir.toPath()).forEach((p) -> {
+            try {
+                Files.deleteIfExists(p);
+                count.incrementAndGet();
+            } catch (Exception e) {
+
+            }
+        });
+        this.host.log("Deleted %d files", count.get());
+    }
 
     private void verifyPauseResumeStats(Map<URI, ExampleServiceState> states) throws Throwable {
         // Let's now query stats for each service. We will use these stats to verify that the
         // services did get paused and resumed.
         WaitHandler wh = () -> {
             int totalServicePauseResumeOrAbort = 0;
+            int pauseCount = 0;
+            List<URI> statsUris = new ArrayList<>();
             // Verify the stats for each service show that the service was paused and resumed
             for (ExampleServiceState st : states.values()) {
-                URI serviceUri = UriUtils.buildUri(this.host, st.documentSelfLink);
-                Map<String, ServiceStat> serviceStats = this.host.getServiceStats(serviceUri);
+                URI serviceUri = UriUtils.buildStatsUri(this.host, st.documentSelfLink);
+                statsUris.add(serviceUri);
+            }
 
-                ServiceStat pauseStat = serviceStats.get(Service.STAT_NAME_PAUSE_COUNT);
-                ServiceStat resumeStat = serviceStats.get(Service.STAT_NAME_RESUME_COUNT);
-                ServiceStat abortStat = serviceStats.get(PauseExampleService.STAT_NAME_ABORT_COUNT);
-                if (abortStat == null && (pauseStat == null || resumeStat == null)) {
+            Map<URI, ServiceStats> statsPerService = this.host.getServiceState(null,
+                    ServiceStats.class, statsUris);
+            for (ServiceStats serviceStats : statsPerService.values()) {
+                ServiceStat pauseStat = serviceStats.entries.get(Service.STAT_NAME_PAUSE_COUNT);
+                ServiceStat resumeStat = serviceStats.entries.get(Service.STAT_NAME_RESUME_COUNT);
+                ServiceStat abortStat = serviceStats.entries
+                        .get(PauseExampleService.STAT_NAME_ABORT_COUNT);
+                if (abortStat == null && pauseStat == null && resumeStat == null) {
                     return false;
+                }
+                if (pauseStat != null) {
+                    pauseCount += pauseStat.latestValue;
                 }
                 totalServicePauseResumeOrAbort++;
             }
 
-            if (totalServicePauseResumeOrAbort < states.size()) {
+            if (totalServicePauseResumeOrAbort < states.size() || pauseCount == 0) {
                 this.host.log(
-                        "ManagementSvc total pause + resume or abort was less than service count %f (%d)",
-                        totalServicePauseResumeOrAbort, states.size());
+                        "ManagementSvc total pause + resume or abort was less than service count."
+                                + "Abort,Pause,Resume: %d, pause:%d (service count: %d)",
+                        totalServicePauseResumeOrAbort, pauseCount, states.size());
                 return false;
             }
 
+            this.host.log("Pause count: %d", pauseCount);
             return true;
         };
         this.host.waitFor("Service stats did not get updated", wh);
@@ -1662,18 +1712,36 @@ public class TestServiceHost {
 
     private void patchExampleServices(Map<URI, ExampleServiceState> states, int count)
             throws Throwable {
-        this.host.testStart(states.size() * count);
+        TestContext ctx = this.host.testCreate(states.size() * count);
         for (ExampleServiceState st : states.values()) {
             for (int i = 0; i < count; i++) {
                 st.name = "updated" + Utils.getNowMicrosUtc() + "";
                 Operation patch = Operation
                         .createPatch(UriUtils.buildUri(this.host, st.documentSelfLink))
-                        .setCompletion(this.host.getCompletion())
-                        .setBody(st);
+                        .setCompletion((o, e) -> {
+                            if (e != null) {
+                                logPausedFiles();
+                                ctx.fail(e);
+                                return;
+                            }
+                            ctx.complete();
+                        }).setBody(st);
                 this.host.send(patch);
             }
         }
-        this.host.testWait();
+        this.host.testWait(ctx);
+    }
+
+    private void logPausedFiles() {
+        File sandBox = new File(this.host.getStorageSandbox());
+        File serviceContextIndex = new File(sandBox, ServiceContextIndexService.FILE_PATH);
+        try {
+            Files.list(serviceContextIndex.toPath()).forEach((p) -> {
+                this.host.log("%s", p);
+            });
+        } catch (IOException e) {
+            this.host.log(Level.WARNING, "%s", Utils.toString(e));
+        }
     }
 
     @Test
@@ -1979,7 +2047,7 @@ public class TestServiceHost {
     }
 
     @After
-    public void tearDown() {
+    public void tearDown() throws IOException {
         LuceneDocumentIndexService.setIndexFileCountThresholdForWriterRefresh(
                 LuceneDocumentIndexService
                         .DEFAULT_INDEX_FILE_COUNT_THRESHOLD_FOR_WRITER_REFRESH);
@@ -1987,6 +2055,8 @@ public class TestServiceHost {
         if (this.host == null) {
             return;
         }
+
+        deletePausedFiles();
         this.host.tearDown();
     }
 

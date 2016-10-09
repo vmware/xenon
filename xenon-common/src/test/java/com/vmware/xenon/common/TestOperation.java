@@ -123,6 +123,11 @@ public class TestOperation extends BasicReusableHostTestCase {
         op.removePragmaDirective(Operation.PRAGMA_DIRECTIVE_INDEX_CHECK);
         assertTrue(op.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_CREATED));
         assertTrue(!op.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_INDEX_CHECK));
+
+        // repeat on fresh op, no remote context allocated
+        op = Operation.createGet(this.host.getUri());
+        op.removePragmaDirective(Operation.PRAGMA_DIRECTIVE_INDEX_CHECK);
+        assertTrue(!op.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_INDEX_CHECK));
     }
 
     @Test

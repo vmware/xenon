@@ -429,52 +429,95 @@ public class FileUtils {
         return mediaType;
     }
 
-    public static void readFileAndComplete(final Operation op, File f) throws IOException {
+    public static void readFileAndComplete(final Operation op, File f) {
+        AsynchronousFileChannel channel = null;
+        try {
+            final AsynchronousFileChannel ch = AsynchronousFileChannel.open(f.toPath(),
+                    StandardOpenOption.READ);
+            final ByteBuffer bb = ByteBuffer.allocate((int) f.length());
+            channel = ch;
+            ch.read(bb, 0L, null,
+                    new CompletionHandler<Integer, Void>() {
 
-        final AsynchronousFileChannel ch = AsynchronousFileChannel.open(f.toPath(),
-                StandardOpenOption.READ);
+                        @Override
+                        public void completed(Integer arg0, Void v) {
+                            try {
+                                bb.flip();
+                                closeFileChannelSafe(ch);
+                                String contentType = FileUtils.getContentType(f.toURI());
+                                if (contentType != null) {
+                                    op.setContentType(contentType);
+                                }
 
-        final ByteBuffer bb = ByteBuffer.allocate((int) f.length());
-
-        ch.read(bb, 0L, null,
-                new CompletionHandler<Integer, Void>() {
-
-                    @Override
-                    public void completed(Integer arg0, Void v) {
-                        try {
-                            bb.flip();
-                            close(bb, ch);
-                            String contentType = FileUtils.getContentType(f.toURI());
-                            if (contentType != null) {
-                                op.setContentType(contentType);
+                                String body = Utils.decodeIfText(bb, contentType);
+                                if (body != null) {
+                                    op.setBody(body);
+                                } else {
+                                    op.setBody(bb.array());
+                                    op.setContentLength(bb.limit());
+                                }
+                                op.complete();
+                            } catch (Throwable e) {
+                                failed(e, v);
                             }
+                        }
 
-                            String body = Utils.decodeIfText(bb, contentType);
-                            if (body != null) {
-                                op.setBody(body);
-                            } else {
-                                op.setBody(bb.array());
-                                op.setContentLength(bb.limit());
-                            }
+                        @Override
+                        public void failed(Throwable arg0, Void v) {
+                            closeFileChannelSafe(ch);
+                            op.fail(arg0);
+                        }
+                    });
+        } catch (Throwable e) {
+            if (channel != null) {
+                closeFileChannelSafe(channel);
+            }
+            op.fail(e);
+        }
+    }
+
+    public static void writeFileAndComplete(final Operation op, ByteBuffer data, File f) {
+        AsynchronousFileChannel channel = null;
+        try {
+            final AsynchronousFileChannel ch = AsynchronousFileChannel.open(f.toPath(),
+                    StandardOpenOption.CREATE,
+                    StandardOpenOption.WRITE,
+                    StandardOpenOption.TRUNCATE_EXISTING);
+            channel = ch;
+            if (data == null || data.limit() == 0) {
+                op.fail(new IllegalStateException("data is required"));
+                return;
+            }
+            data.rewind();
+            ch.write(data, 0, null,
+                    new CompletionHandler<Integer, Void>() {
+
+                        @Override
+                        public void completed(Integer result, Void notUsed) {
+                            closeFileChannelSafe(ch);
                             op.complete();
-                        } catch (Throwable e) {
-                            failed(e, v);
                         }
-                    }
 
-                    @Override
-                    public void failed(Throwable arg0, Void v) {
-                        close(null, ch);
-                        op.fail(arg0);
-                    }
-
-                    private void close(ByteBuffer buffer, AsynchronousFileChannel channel) {
-                        try {
-                            channel.close();
-                        } catch (Throwable e) {
+                        @Override
+                        public void failed(Throwable exc, Void notUsed) {
+                            closeFileChannelSafe(ch);
+                            op.fail(exc);
                         }
-                    }
-                });
+
+                    });
+        } catch (Throwable e) {
+            closeFileChannelSafe(channel);
+            op.fail(e);
+        }
+    }
+
+    private static void closeFileChannelSafe(AsynchronousFileChannel ch) {
+        if (ch != null) {
+            try {
+                ch.close();
+            } catch (IOException e1) {
+            }
+        }
     }
 
     /**
