@@ -577,7 +577,7 @@ class ServiceResourceTracker {
 
             // ask object index to store service object. It should be tiny since services
             // should hold no instanced fields. We avoid service stop/start by doing this
-            this.host.sendRequest(ServiceContextIndexService.createPost(this.host, path, s)
+            this.host.sendRequest(ServiceContextIndexService.createPost(this.host, s)
                     .setReferer(this.host.getUri()).setCompletion((o, e) -> {
                         if (e != null && !this.host.isStopping()) {
                             this.host.log(Level.WARNING, "Failure indexing service for pause: %s",
@@ -727,30 +727,28 @@ class ServiceResourceTracker {
 
         inboundOp.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_INDEX_CHECK);
         OperationContext inputContext = OperationContext.getOperationContext();
-        Operation query = ServiceContextIndexService
-                .createGet(this.host, path)
-                .setCompletion(
-                        (o, e) -> {
-                            OperationContext.setFrom(inputContext);
-                            if (e != null) {
-                                this.host.log(Level.WARNING,
-                                        "Failure checking if service paused: " + Utils.toString(e));
-                                this.host.handleRequest(null, inboundOp);
-                                return;
-                            }
+        Operation get = ServiceContextIndexService.createGet(this.host, key);
+        get.setCompletion((o, e) -> {
+            OperationContext.setFrom(inputContext);
+            if (e != null) {
+                this.host.log(Level.WARNING,
+                        "Failure checking if service paused: " + Utils.toString(e));
+                this.host.handleRequest(null, inboundOp);
+                return;
+            }
 
-                            if (!o.hasBody()) {
-                                // service is not paused
-                                this.host.handleRequest(null, inboundOp);
-                                return;
-                            }
+            if (!o.hasBody()) {
+                // service is not paused
+                this.host.handleRequest(null, inboundOp);
+                return;
+            }
 
-                            Service resumedService = (Service) o.getBodyRaw();
-                            resumeService(path, resumedService);
-                            this.host.handleRequest(null, inboundOp);
-                        });
+            Service resumedService = (Service) o.getBodyRaw();
+            resumeService(path, resumedService);
+            this.host.handleRequest(null, inboundOp);
+        });
         OperationContext.setAuthorizationContext(this.host.getSystemAuthorizationContext());
-        this.host.sendRequest(query.setReferer(this.host.getUri()));
+        this.host.sendRequest(get.setReferer(this.host.getUri()));
         return true;
     }
 

@@ -443,7 +443,7 @@ public class FileUtils {
                     public void completed(Integer arg0, Void v) {
                         try {
                             bb.flip();
-                            close(bb, ch);
+                            closeFileChannelSafe(ch);
                             String contentType = FileUtils.getContentType(f.toURI());
                             if (contentType != null) {
                                 op.setContentType(contentType);
@@ -464,17 +464,54 @@ public class FileUtils {
 
                     @Override
                     public void failed(Throwable arg0, Void v) {
-                        close(null, ch);
+                        closeFileChannelSafe(ch);
                         op.fail(arg0);
                     }
-
-                    private void close(ByteBuffer buffer, AsynchronousFileChannel channel) {
-                        try {
-                            channel.close();
-                        } catch (Throwable e) {
-                        }
-                    }
                 });
+    }
+
+    public static void writeFileAndComplete(final Operation op, File f) {
+        AsynchronousFileChannel channel = null;
+        try {
+            final AsynchronousFileChannel ch = AsynchronousFileChannel.open(f.toPath(),
+                    StandardOpenOption.CREATE);
+            channel = ch;
+            byte[] data = (byte[]) op.getBodyRaw();
+            if (data == null || data.length == 0) {
+                op.fail(new IllegalStateException("data is required"));
+                return;
+            }
+
+            final ByteBuffer buf = ByteBuffer.wrap(data);
+
+            ch.write(buf, 0, null,
+                    new CompletionHandler<Integer, Void>() {
+
+                        @Override
+                        public void completed(Integer result, Void notUsed) {
+                            closeFileChannelSafe(ch);
+                        }
+
+                        @Override
+                        public void failed(Throwable exc, Void notUsed) {
+                            closeFileChannelSafe(ch);
+                            op.fail(exc);
+                        }
+
+                    });
+        } catch (Throwable e) {
+            closeFileChannelSafe(channel);
+            op.fail(e);
+        }
+    }
+
+    private static void closeFileChannelSafe(AsynchronousFileChannel ch) {
+        if (ch != null) {
+            try {
+                ch.close();
+            } catch (IOException e1) {
+            }
+        }
     }
 
     /**

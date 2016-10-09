@@ -13,53 +13,64 @@
 
 package com.vmware.xenon.services.common;
 
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
-import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
 import org.junit.Test;
 
 import com.vmware.xenon.common.BasicTestCase;
 import com.vmware.xenon.common.Operation;
+import com.vmware.xenon.common.Service;
 import com.vmware.xenon.common.Utils;
 import com.vmware.xenon.common.test.TestContext;
 import com.vmware.xenon.common.test.VerificationHost;
 
-public class TestLuceneBlobIndexService extends BasicTestCase {
+public class TestLuceneServiceContextIndexService extends BasicTestCase {
     /**
      * Parameter that specifies number of concurrent update requests
      */
-    public int updateCount = 100;
-
-    @Test
-    public void postAndGet() throws Throwable {
-        Set<String> keys = doPost();
-        this.host.testStart(keys.size());
-        for (String key : keys) {
-            Operation get = LuceneBlobIndexService.createGet(this.host, key);
-            this.host.send(get.setCompletion(this.host.getCompletion()));
-        }
-        this.host.testWait();
-        this.host.logThroughput();
-    }
+    public int serviceCount = 100;
 
     @Override
     public void beforeHostStart(VerificationHost host) {
         host.setMaintenanceIntervalMicros(TimeUnit.MILLISECONDS.toMicros(100));
     }
 
-    private Set<String> doPost() throws Throwable {
-        MinimalTestService s = new MinimalTestService();
-        this.host.startServiceAndWait(s, UUID.randomUUID().toString(), null);
+    @Test
+    public void postAndGet() throws Throwable {
+        Set<String> keys = postServiceInstances();
+        this.host.testStart(keys.size());
+        for (String key : keys) {
+            Operation get = ServiceContextIndexService.createGet(this.host, key);
+            this.host.send(get.setCompletion(this.host.getCompletion()));
+        }
+        this.host.testWait();
+        this.host.logThroughput();
+    }
 
-        TestContext ctx = this.host.testCreate(this.updateCount);
-        ctx.setTestName("blob index post").logBefore();
+    private Set<String> postServiceInstances() throws Throwable {
+        TestContext ctx = this.host.testCreate(this.serviceCount);
         Set<String> keys = new HashSet<>();
-        for (int i = 0; i < this.updateCount; i++) {
-            String key = Utils.getNowMicrosUtc() + "";
-            keys.add(key);
-            Operation post = LuceneBlobIndexService.createPost(this.host, key, s);
+        List<Service> services = new ArrayList<>();
+        // create N services
+        for (int i = 0; i < this.serviceCount; i++) {
+            Service s = new MinimalTestService();
+            String link = Utils.buildUUID(this.host.getIdHash());
+            Operation post = Operation.createPost(this.host, link)
+                    .setReferer(this.host.getReferer())
+                    .setCompletion(ctx.getCompletion());
+            keys.add(link);
+            services.add(s);
+            this.host.startService(post, s);
+        }
+        ctx.await();
+        ctx = this.host.testCreate(this.serviceCount);
+        ctx.setTestName("service context index post").logBefore();
+        for (Service s : services) {
+            Operation post = ServiceContextIndexService.createPost(this.host, s);
             this.host.send(post.setCompletion(ctx.getCompletion()));
         }
         ctx.await();
