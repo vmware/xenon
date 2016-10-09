@@ -501,6 +501,17 @@ public class Operation implements Cloneable {
     public static final String PRAGMA_DIRECTIVE_CLEAR_AUTH_CACHE = "xn-clear-auth-cache";
 
     /**
+     * Infrastructure use only. Instructs service to prepare for remove from in memory dispatch map
+     * and serialize any in memory context in the supplied operation body
+     */
+    public static final String PRAGMA_DIRECTIVE_PAUSE = "xn-pause";
+
+    /**
+     * Infrastructure use only. Instructs service to restore runtime context from the operation body
+     */
+    public static final String PRAGMA_DIRECTIVE_RESUME = "xn-resume";
+
+    /**
      * Infrastructure use only. Debugging only. Indicates this operation was converted from POST to PUT
      * due to {@link com.vmware.xenon.common.Service.ServiceOption#IDEMPOTENT_POST}
      */

@@ -65,6 +65,27 @@ public class StatelessService implements Service {
     }
 
     @Override
+    public void handleLifecycleRequest(Operation op) {
+        if (op.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_PAUSE)) {
+            handlePause(op);
+        } else if (op.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_RESUME)) {
+            handleResume(op);
+        } else {
+            getHost().failRequestActionNotSupported(op);
+        }
+    }
+
+    @Override
+    public void handlePause(Operation op) {
+        op.fail(new IllegalStateException("Service does not support pause"));
+    }
+
+    @Override
+    public void handleResume(Operation op) {
+        op.fail(new IllegalStateException("Service does not support resume"));
+    }
+
+    @Override
     public void authorizeRequest(Operation op) {
         // A state-less service has no service state to apply policy to, but it does have a
         // self link. Create a document with the service link so we can apply roles with resource

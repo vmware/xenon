@@ -25,7 +25,6 @@ import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.core.SimpleAnalyzer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
-import org.apache.lucene.document.LongPoint;
 import org.apache.lucene.document.StoredField;
 import org.apache.lucene.document.StringField;
 import org.apache.lucene.index.DirectoryReader;
@@ -33,8 +32,6 @@ import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.IndexWriterConfig;
 import org.apache.lucene.index.IndexWriterConfig.OpenMode;
 import org.apache.lucene.index.Term;
-import org.apache.lucene.search.BooleanClause.Occur;
-import org.apache.lucene.search.BooleanQuery;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.Sort;
@@ -55,11 +52,6 @@ import com.vmware.xenon.common.Utils;
 
 public class LuceneBlobIndexService extends StatelessService {
     public static enum BlobIndexOption {
-        /**
-         * Key is deleted after a successful query
-         */
-        SINGLE_USE_KEYS,
-
         /**
          * Index is created on start. If an older index exists, its deleted.
          */
@@ -368,23 +360,6 @@ public class LuceneBlobIndexService extends StatelessService {
         if (wr == null) {
             return;
         }
-
-        if (!this.indexOptions.contains(BlobIndexOption.SINGLE_USE_KEYS)) {
-            return;
-        }
-
-        // Query all blobs that satisfy the passed linkQuery and have
-        // URI_PARAM_NAME_UPDATE_TIME field set to less than or
-        // equal to updateTime
-        Query timeQuery = LongPoint.newRangeQuery(
-                URI_PARAM_NAME_UPDATE_TIME,
-                Long.MIN_VALUE,
-                updateTime);
-        BooleanQuery.Builder builder = new BooleanQuery.Builder()
-                .add(linkQuery, Occur.MUST)
-                .add(timeQuery, Occur.MUST);
-        wr.deleteDocuments(builder.build());
-        this.indexUpdateTimeMicros = Utils.getNowMicrosUtc();
     }
 
     @Override

@@ -101,6 +101,29 @@ public class StatefulService implements Service {
         post.complete();
     }
 
+    @Override
+    public void handleLifecycleRequest(Operation op) {
+        if (op.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_PAUSE)) {
+            // FIXME nest completion that captures subscriptions, config, and stats
+            handlePause(op);
+        } else if (op.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_RESUME)) {
+            // FIXME nest completion that restores subscriptions, config, and stats
+            handleResume(op);
+        } else {
+            getHost().failRequestActionNotSupported(op);
+        }
+    }
+
+    @Override
+    public void handlePause(Operation op) {
+        op.complete();
+    }
+
+    @Override
+    public void handleResume(Operation op) {
+        op.complete();
+    }
+
     /**
      * Authorization processing happens during the state loading phase of request handling.
      * This method always immediately completes the operation
