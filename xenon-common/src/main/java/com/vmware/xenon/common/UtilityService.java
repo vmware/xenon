@@ -732,8 +732,8 @@ public class UtilityService implements Service {
     }
 
     @Override
-    public void setProcessingStage(ProcessingStage initialized) {
-
+    public ServiceRuntimeContext setProcessingStage(ProcessingStage initialized) {
+        return null;
     }
 
     @Override

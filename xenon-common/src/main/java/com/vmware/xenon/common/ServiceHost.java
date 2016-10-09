@@ -346,8 +346,7 @@ public class ServiceHost implements ServiceRequestSender {
      * 4) Estimated cost of default statistics, if service is instrumented
      * 5) Estimated cost of a small number of subscriptions
      */
-    public static final int DEFAULT_SERVICE_INSTANCE_COST_BYTES = Service.MAX_SERIALIZED_SIZE_BYTES
-            / 2;
+    public static final int DEFAULT_SERVICE_INSTANCE_COST_BYTES = 4096;
     private static final long ONE_MINUTE_IN_MICROS = TimeUnit.MINUTES.toMicros(1);
 
     private static final String PROPERTY_NAME_APPEND_PORT_TO_SANDBOX = Utils.PROPERTY_NAME_PREFIX

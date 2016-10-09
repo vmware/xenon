@@ -34,6 +34,7 @@ import com.vmware.xenon.common.ServiceErrorResponse.ErrorDetail;
 import com.vmware.xenon.common.ServiceStats.ServiceStat;
 import com.vmware.xenon.common.ServiceStats.ServiceStatLogHistogram;
 import com.vmware.xenon.common.jwt.Signer;
+import com.vmware.xenon.common.serialization.KryoSerializers;
 import com.vmware.xenon.services.common.ServiceUriPaths;
 
 /**
@@ -352,7 +353,6 @@ public class StatefulService implements Service {
 
             if (opProcessingStage == OperationProcessingStage.EXECUTING_SERVICE_HANDLER) {
                 isCompletionNested = true;
-
                 switch (request.getAction()) {
                 case DELETE:
                     if (ServiceHost.isServiceStop(request)) {
@@ -1527,29 +1527,36 @@ public class StatefulService implements Service {
     }
 
     @Override
-    public void setProcessingStage(Service.ProcessingStage stage) {
+    public ServiceRuntimeContext setProcessingStage(ProcessingStage stage) {
+        ServiceRuntimeContext src = null;
         IllegalStateException failure = null;
         String statName = null;
         try {
             boolean logTransition = false;
             synchronized (this.context) {
                 if (this.context.processingStage == stage) {
-                    return;
+                    return null;
                 }
 
                 if (stage == ProcessingStage.PAUSED) {
                     if (this.context.processingStage != ProcessingStage.AVAILABLE) {
                         failure = new IllegalStateException("Service can not be paused, in stage: "
                                 + this.context.processingStage);
-                        return;
+                        return null;
                     }
+
                     if (this.context.isUpdateActive ||
                             !this.context.synchQueue.isEmpty() ||
                             !this.context.operationQueue.isEmpty()) {
                         failure = new IllegalStateException("Service has active updates");
-                        return;
+                        return null;
                     }
-                    statName = STAT_NAME_PAUSE_COUNT;
+                    adjustStat(STAT_NAME_PAUSE_COUNT, 1);
+                    src = new ServiceRuntimeContext();
+                    src.selfLink = getSelfLink();
+                    src.serializationTimeMicros = Utils.getNowMicrosUtc();
+                    src.serializedService = KryoSerializers.serializeObject(this,
+                            Service.MAX_SERIALIZED_SIZE_BYTES);
                 } else if (this.context.processingStage == ProcessingStage.PAUSED
                         && stage == ProcessingStage.AVAILABLE) {
                     statName = STAT_NAME_RESUME_COUNT;
@@ -1584,6 +1591,7 @@ public class StatefulService implements Service {
         if (stage == ProcessingStage.AVAILABLE) {
             getHost().processPendingServiceAvailableOperations(this, null, false);
         }
+        return src;
     }
 
     @Override

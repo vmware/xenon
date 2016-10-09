@@ -14,7 +14,6 @@
 package com.vmware.xenon.services.common;
 
 import java.io.File;
-import java.io.IOException;
 
 import com.vmware.xenon.common.FileUtils;
 import com.vmware.xenon.common.Operation;
@@ -39,11 +38,7 @@ public class FileContentService extends StatelessService {
 
     @Override
     public void handleGet(Operation get) {
-        try {
-            FileUtils.readFileAndComplete(get, this.file);
-        } catch (IOException e) {
-            get.fail(e);
-        }
+        FileUtils.readFileAndComplete(get, this.file);
     }
 
 }

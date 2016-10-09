@@ -34,6 +34,7 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Random;
 import java.util.UUID;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -1362,14 +1363,14 @@ public class TestServiceHost {
         }
 
         @Override
-        public void setProcessingStage(Service.ProcessingStage stage) {
+        public ServiceRuntimeContext setProcessingStage(Service.ProcessingStage stage) {
             if (stage == Service.ProcessingStage.PAUSED) {
                 if (new Random().nextBoolean()) {
                     this.adjustStat(STAT_NAME_ABORT_COUNT, 1);
-                    throw new IllegalStateException("Cannot pause service.");
+                    throw new CancellationException("Cannot pause service.");
                 }
             }
-            super.setProcessingStage(stage);
+            return super.setProcessingStage(stage);
         }
     }
 
@@ -1562,6 +1563,7 @@ public class TestServiceHost {
         // services did get paused and resumed.
         WaitHandler wh = () -> {
             int totalServicePauseResumeOrAbort = 0;
+            int pauseCount = 0;
             // Verify the stats for each service show that the service was paused and resumed
             for (ExampleServiceState st : states.values()) {
                 URI serviceUri = UriUtils.buildUri(this.host, st.documentSelfLink);
@@ -1573,16 +1575,21 @@ public class TestServiceHost {
                 if (abortStat == null && (pauseStat == null || resumeStat == null)) {
                     return false;
                 }
+                if (pauseStat != null) {
+                    pauseCount += pauseStat.latestValue;
+                }
                 totalServicePauseResumeOrAbort++;
             }
 
-            if (totalServicePauseResumeOrAbort < states.size()) {
+            if (totalServicePauseResumeOrAbort < states.size() || pauseCount == 0) {
                 this.host.log(
-                        "ManagementSvc total pause + resume or abort was less than service count %f (%d)",
-                        totalServicePauseResumeOrAbort, states.size());
+                        "ManagementSvc total pause + resume or abort was less than service count."
+                                + "Abort,Pause,Resume: %d, pause:%d (service count: %d)",
+                        totalServicePauseResumeOrAbort, pauseCount, states.size());
                 return false;
             }
 
+            this.host.log("Pause count: %d", pauseCount);
             return true;
         };
         this.host.waitFor("Service stats did not get updated", wh);
