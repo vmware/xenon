@@ -20,6 +20,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
+import java.util.logging.Level;
 
 import com.vmware.xenon.common.NodeSelectorService;
 import com.vmware.xenon.common.NodeSelectorService.SelectAndForwardRequest;
@@ -38,39 +39,75 @@ import com.vmware.xenon.services.common.NodeState.NodeOption;
 public class NodeSelectorReplicationService extends StatelessService {
 
     public static class ReplicationContext {
-        String location;
-        Collection<NodeState> nodes;
-        Operation outboundOp;
-        int successThreshold;
-        int failureThreshold;
-
-        // Index 0 - success count
-        // index 1 - failure count
-        // index 2 - most recent failure status
-        private int[] countsAndStatus = new int[3];
-
-        int getSuccessCount() {
-            return this.countsAndStatus[0];
+        public ReplicationContext(String location, Collection<NodeState> nodes, Operation op) {
+            this.location = location;
+            this.nodes = nodes;
+            this.parentOp = op;
         }
 
-        int getFailureCount() {
-            return this.countsAndStatus[1];
-        }
+        private String location;
+        private Collection<NodeState> nodes;
+        private Operation parentOp;
+        private int successThreshold;
+        private int failureThreshold;
+        private int successCount;
+        private int failureCount;
+        private int failureStatus;
+        private Status completionStatus = Status.PENDING;
 
-        int getLastFailureStatus() {
-            return this.countsAndStatus[2];
-        }
-
-        int incrementSuccessCount() {
-            return ++this.countsAndStatus[0];
-        }
-
-        int incrementFailureCount() {
-            return ++this.countsAndStatus[1];
+        public enum Status {
+            SUCCEEDED, FAILED, PENDING
         }
 
         void setLastFailureStatus(int statusCode) {
-            this.countsAndStatus[2] = statusCode;
+            this.failureStatus = statusCode;
+        }
+
+        public void checkAndCompleteOperation(ServiceHost h, Throwable e, Operation o) {
+            Status ct;
+            String failureMsg = null;
+            Operation op = this.parentOp;
+
+            synchronized (this) {
+                if (this.completionStatus != Status.PENDING) {
+                    return;
+                }
+                if (e == null && ++this.successCount == this.successThreshold) {
+                    this.completionStatus = Status.SUCCEEDED;
+                } else if (e != null && ++this.failureCount == this.failureThreshold) {
+                    this.completionStatus = Status.FAILED;
+                    failureMsg = String
+                            .format("(Original id: %d) %s to %s failed. Success: %d,  Fail: %d, quorum: %d, failure threshold: %d",
+                                    op.getId(),
+                                    op.getAction(),
+                                    op.getUri().getPath(),
+                                    this.successCount,
+                                    this.failureCount,
+                                    this.successThreshold,
+                                    this.failureThreshold);
+                }
+                ct = this.completionStatus;
+            }
+
+            if (ct == Status.SUCCEEDED) {
+                op.setStatusCode(Operation.STATUS_CODE_OK).complete();
+                return;
+            }
+
+            if (e != null && o != null) {
+                h.log(Level.WARNING,
+                        "(Original id: %d) Replication request to %s-%s failed with %d, %s",
+                        op.getId(),
+                        o.getAction(), o.getUri(), o.getStatusCode(), e.getMessage());
+                setLastFailureStatus(o.getStatusCode());
+            }
+
+            if (ct == ReplicationContext.Status.FAILED) {
+                h.log(Level.WARNING, "%s", failureMsg);
+                op.setStatusCode(this.failureStatus)
+                        .fail(new IllegalStateException(failureMsg));
+            }
+
         }
     }
 
@@ -123,16 +160,12 @@ public class NodeSelectorReplicationService extends StatelessService {
 
         // location is usually null, unless set explicitly
         String location = getHost().getLocation();
+        ReplicationContext context = new ReplicationContext(location, selectedNodes, outboundOp);
 
         // success threshold is determined based on the following precedence:
         // 1. request replication quorum header (if exists)
         // 2. group membership quorum (in case of OWNER_SELECTION)
         // 3. at least one remote node (in case one exists)
-        ReplicationContext context = new ReplicationContext();
-        context.location = location;
-        context.nodes = selectedNodes;
-        context.outboundOp = outboundOp;
-
         String rplQuorumValue = outboundOp.getRequestHeader(Operation.REPLICATION_QUORUM_HEADER);
         if (rplQuorumValue != null) {
             // replicate using success threshold based on request quorum header
@@ -223,7 +256,7 @@ public class NodeSelectorReplicationService extends StatelessService {
     }
 
     private void replicateUpdateToNodes(ReplicationContext context) {
-        Operation update = createReplicationRequest(context.outboundOp, null);
+        Operation update = createReplicationRequest(context.parentOp, null);
         update.setCompletion((o, e) -> handleReplicationCompletion(context, o, e));
 
         // trigger completion once, for self node, since its part of our accounting
@@ -238,7 +271,7 @@ public class NodeSelectorReplicationService extends StatelessService {
                 continue;
             }
 
-            URI updateUri = createReplicaUri(m.groupReference, context.outboundOp);
+            URI updateUri = createReplicaUri(m.groupReference, context.parentOp);
             update.setUri(updateUri);
 
             if (NodeState.isUnAvailable(m)) {
@@ -324,55 +357,15 @@ public class NodeSelectorReplicationService extends StatelessService {
             return;
         }
 
-        int sCount = context.getSuccessCount();
-        int fCount = context.getFailureCount();
-        boolean completeWithSuccess = false;
-        boolean completeWithFailure = false;
-        synchronized (context.outboundOp) {
-            // To avoid an AtomicBoolean and additional allocations, and make the completion
-            // check atomic, do the count checks inside the synchronized block
-            if (e != null) {
-                fCount = context.incrementFailureCount();
-                completeWithFailure = fCount == context.failureThreshold;
-            } else {
-                sCount = context.incrementSuccessCount();
-                completeWithSuccess = sCount == context.successThreshold;
-            }
-        }
-
-        if (completeWithSuccess) {
-            // this code must only be called once.
-            context.outboundOp.setStatusCode(Operation.STATUS_CODE_OK).complete();
-            return;
-        }
-
-        if (e != null && o != null) {
-            logWarning("(Original id: %d) Replication request to %s-%s failed with %d, %s",
-                    context.outboundOp.getId(),
-                    o.getAction(), o.getUri(), o.getStatusCode(), e.getMessage());
-            context.setLastFailureStatus(o.getStatusCode());
-        }
-
-        if (completeWithFailure) {
-            String error = String
-                    .format("(Original id: %d) %s to %s failed. Success: %d,  Fail: %d, quorum: %d, failure threshold: %d",
-                            context.outboundOp.getId(),
-                            context.outboundOp.getAction(),
-                            context.outboundOp.getUri().getPath(),
-                            sCount,
-                            fCount,
-                            context.successThreshold,
-                            context.failureThreshold);
-            logWarning("%s", error);
-            context.outboundOp.setStatusCode(context.getLastFailureStatus())
-                    .fail(new IllegalStateException(error));
-        }
+        context.checkAndCompleteOperation(getHost(), e, o);
     }
 
     private boolean handleServiceNotFoundOnReplica(ReplicationContext context, Operation o) {
+        Operation op = context.parentOp;
+
         // A replica would report a service-not-found error only for
         // update requests. So, let's not worry about it.
-        if (!context.outboundOp.isUpdate()) {
+        if (!op.isUpdate()) {
             return false;
         }
 
@@ -391,8 +384,8 @@ public class NodeSelectorReplicationService extends StatelessService {
         // The remote replica does not have the service in AVAILABLE stage. This could be
         // because of out-of-order replication requests of a POST and PUT/PATCH.
         // We will just retry for that specific replica.
-        URI remoteUri = createReplicaUri(o.getUri(), context.outboundOp);
-        Operation update = createReplicationRequest(context.outboundOp, remoteUri);
+        URI remoteUri = createReplicaUri(o.getUri(), op);
+        Operation update = createReplicationRequest(op, remoteUri);
         update.setCompletion((innerOp, innerEx) ->
                 this.handleReplicationCompletion(context, innerOp, innerEx));
 

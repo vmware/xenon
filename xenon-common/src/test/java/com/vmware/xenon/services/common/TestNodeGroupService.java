@@ -1130,7 +1130,18 @@ public class TestNodeGroupService {
     }
 
     @Test
-    public void replicationWithQuorumAfterAbruptNodeStop()
+    public void replicationWithQuorumAfterAbruptNodeStop() throws Throwable {
+        tearDown();
+        for (int i = 0; i < this.testIterationCount; i++) {
+            setUp();
+            doReplicationWithQuorumAfterAbruptNodeStop();
+            this.host.log("Done with iteration %d", i);
+            tearDown();
+            this.host = null;
+        }
+    }
+
+    private void doReplicationWithQuorumAfterAbruptNodeStop()
             throws Throwable {
         // we need at least 5 nodes, because we're going to stop 2
         // nodes and we need majority quorum
