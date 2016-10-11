@@ -27,6 +27,10 @@
 
 ## 0.9.6
 
+* Note: This release has a regression where the documentKind field of
+  a ServiceDocument is not set in certain conditions. This release should
+  not be used for production
+
 * Add errorCode property to ServiceErrorResponse to allow Xenon services
   to indicate a specific error case that otherwise cannot be expressed
   through the status code. For xenon's internal errors the range 0x8xxxxxxx
