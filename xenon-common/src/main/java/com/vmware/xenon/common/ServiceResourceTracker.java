@@ -749,7 +749,7 @@ class ServiceResourceTracker {
                             resumeService(path, resumedService);
                             this.host.handleRequest(null, inboundOp);
                         });
-        OperationContext.setAuthorizationContext(this.host.getSystemAuthorizationContext());
+        query.setAuthorizationContext(this.host.getSystemAuthorizationContext());
         this.host.sendRequest(query.setReferer(this.host.getUri()));
         return true;
     }
