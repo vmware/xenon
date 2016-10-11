@@ -329,6 +329,21 @@ public class TestNodeGroupService {
         Utils.registerKind(ExampleServiceState.class, CUSTOM_EXAMPLE_SERVICE_KIND);
     }
 
+    private void setUpOnDemandLoad() throws Throwable {
+        setUp();
+        // we need at least 5 nodes, because we're going to stop 2
+        // nodes and we need majority quorum
+        this.nodeCount = Math.max(5, this.nodeCount);
+
+        this.isPeerSynchronizationEnabled = true;
+        this.skipAvailabilityChecks = true;
+        // create node group, join nodes and set majority quorum
+        setUp(this.nodeCount);
+        toggleOnDemandLoad();
+        this.host.joinNodesAndVerifyConvergence(this.host.getPeerCount());
+        this.host.setNodeGroupQuorum(this.host.getPeerCount() / 2 + 1);
+    }
+
     @After
     public void tearDown() throws InterruptedException {
         Utils.registerKind(ExampleServiceState.class,
@@ -1130,33 +1145,22 @@ public class TestNodeGroupService {
     }
 
     @Test
-    public void replicationWithQuorumAfterAbruptNodeStop() throws Throwable {
+    public void replicationOnDemandLoadWithQuorumAfterAbruptNodeStop() throws Throwable {
         tearDown();
         for (int i = 0; i < this.testIterationCount; i++) {
-            setUp();
-            doReplicationWithQuorumAfterAbruptNodeStop();
+
+            setUpOnDemandLoad();
+
+            int hostStopCount = 2;
+            doReplicationWithQuorumAfterAbruptNodeStop(hostStopCount);
             this.host.log("Done with iteration %d", i);
             tearDown();
             this.host = null;
         }
     }
 
-    private void doReplicationWithQuorumAfterAbruptNodeStop()
+    private void doReplicationWithQuorumAfterAbruptNodeStop(int hostStopCount)
             throws Throwable {
-        // we need at least 5 nodes, because we're going to stop 2
-        // nodes and we need majority quorum
-        this.nodeCount = Math.max(5, this.nodeCount);
-        int hostStopCount = 2;
-
-        this.isPeerSynchronizationEnabled = true;
-        this.skipAvailabilityChecks = true;
-
-        if (this.host == null) {
-            // create node group, join nodes and set majority quorum
-            setUp(this.nodeCount);
-            this.host.joinNodesAndVerifyConvergence(this.host.getPeerCount());
-            this.host.setNodeGroupQuorum(this.host.getPeerCount() / 2 + 1);
-        }
 
         // create some documents
         Map<String, ExampleServiceState> childStates = doExampleFactoryPostReplicationTest(
@@ -1181,6 +1185,15 @@ public class TestNodeGroupService {
                 this.exampleStateUpdateBodySetter,
                 this.exampleStateConvergenceChecker,
                 childStates);
+    }
+
+    private void toggleOnDemandLoad() {
+        // enable ON_DEMAND_LOAD on all example factories across all nodes
+        for (URI nodeUri : this.host.getNodeGroupMap().keySet()) {
+            URI factoryUri = UriUtils.buildUri(nodeUri, ExampleService.FACTORY_LINK);
+            this.host.toggleServiceOptions(factoryUri, EnumSet.of(ServiceOption.ON_DEMAND_LOAD),
+                    null);
+        }
     }
 
     @Test
