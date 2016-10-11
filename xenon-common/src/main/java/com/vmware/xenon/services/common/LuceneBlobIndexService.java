@@ -253,7 +253,6 @@ public class LuceneBlobIndexService extends StatelessService {
             post.fail(new IllegalArgumentException("key query parameter is required"));
             return;
         }
-
         String updateTimeParam = params.get(URI_PARAM_NAME_UPDATE_TIME);
 
         if (updateTimeParam == null) {

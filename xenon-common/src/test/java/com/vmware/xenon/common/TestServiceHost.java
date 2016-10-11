@@ -71,8 +71,10 @@ import com.vmware.xenon.services.common.MinimalFactoryTestService;
 import com.vmware.xenon.services.common.MinimalTestService;
 import com.vmware.xenon.services.common.NodeGroupService.NodeGroupState;
 import com.vmware.xenon.services.common.NodeState;
+import com.vmware.xenon.services.common.QueryTask.Query;
 import com.vmware.xenon.services.common.ServiceHostManagementService;
 import com.vmware.xenon.services.common.ServiceUriPaths;
+import com.vmware.xenon.services.common.UserService;
 
 public class TestServiceHost {
 
@@ -1373,6 +1375,26 @@ public class TestServiceHost {
         assertTrue(delayMicros == delayMicrosAfter);
         this.host.start();
 
+        this.host.setSystemAuthorizationContext();
+        TestContext ctx = this.host.testCreate(1);
+        Query.Builder queryBuilder = Query.Builder.create()
+                .addFieldClause(ServiceDocument.FIELD_NAME_KIND, Utils.buildKind(ExampleServiceState.class));
+        AuthorizationSetupHelper.create()
+                .setHost(this.host)
+                .setUserEmail("foo@bar.com")
+                .setUserSelfLink("foo")
+                .setUserPassword("foo")
+                .setResourceQuery(queryBuilder.build())
+                .setCompletion((ex) -> {
+                    if (ex != null) {
+                        ctx.failIteration(ex);
+                    }
+                    ctx.completeIteration();
+                })
+                .start();
+        ctx.await();
+        this.host.resetSystemAuthorizationContext();
+
         AtomicLong selfLinkCounter = new AtomicLong();
         String prefix = "instance-";
         String name = UUID.randomUUID().toString();
@@ -1385,7 +1407,8 @@ public class TestServiceHost {
 
         // Create a number of child services.
         URI factoryURI = UriUtils.buildFactoryUri(this.host, ExampleService.class);
-        this.host.setSystemAuthorizationContext();
+        this.host.assumeIdentity(UriUtils.buildUriPath(UserService.FACTORY_LINK, "foo"));
+
         Map<URI, ExampleServiceState> states = this.host.doFactoryChildServiceStart(null,
                 this.serviceCount,
                 ExampleServiceState.class, bodySetter, factoryURI);

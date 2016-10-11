@@ -2562,6 +2562,10 @@ public class ServiceHost implements ServiceRequestSender {
             state = Utils.clone(state);
         }
 
+        if (state != null && state.documentKind == null) {
+            state.documentKind = Utils.buildKind(s.getStateType());
+        }
+
         // If either there is cached state, or the service is not indexed (meaning nothing
         // will be found in the index), subject this state to authorization.
         if (state != null || !isServiceIndexed(s)) {

@@ -739,7 +739,7 @@ class ServiceResourceTracker {
                                     ServiceHostManagementService.STAT_NAME_SERVICE_RESUME_COUNT, 1);
                             this.host.handleRequest(null, inboundOp);
                         });
-        OperationContext.setAuthorizationContext(this.host.getSystemAuthorizationContext());
+        query.setAuthorizationContext(this.host.getSystemAuthorizationContext());
         this.host.sendRequest(query.setReferer(this.host.getUri()));
         return true;
     }
