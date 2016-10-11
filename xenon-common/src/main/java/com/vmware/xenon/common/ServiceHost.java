@@ -2513,8 +2513,13 @@ public class ServiceHost implements ServiceRequestSender {
                 });
 
                 if (post.hasBody()) {
+                    ServiceDocument state = (ServiceDocument) post.getBodyRaw();
+                    if (state != null && state.documentKind == null) {
+                        log(Level.WARNING, "documentKind is null for %s", s.getSelfLink());
+                        state.documentKind = Utils.buildKind(s.getStateType());
+                    }
                     this.serviceResourceTracker.updateCachedServiceState(s,
-                            (ServiceDocument) post.getBodyRaw(), post);
+                            state, post);
                 }
 
                 if (!post.hasBody() || !needsIndexing) {
@@ -2614,6 +2619,11 @@ public class ServiceHost implements ServiceRequestSender {
         // Clone state if it might change while processing
         if (state != null && !s.hasOption(ServiceOption.CONCURRENT_UPDATE_HANDLING)) {
             state = Utils.clone(state);
+        }
+
+        if (state != null && state.documentKind == null) {
+            log(Level.WARNING, "documentKind is null for %s", s.getSelfLink());
+            state.documentKind = Utils.buildKind(s.getStateType());
         }
 
         // If either there is cached state, or the service is not indexed (meaning nothing
@@ -2748,6 +2758,10 @@ public class ServiceHost implements ServiceRequestSender {
             return;
         }
 
+        if (st != null && st.documentKind == null) {
+            log(Level.WARNING, "documentKind is null for %s", s.getSelfLink());
+            st.documentKind = Utils.buildKind(s.getStateType());
+        }
         this.serviceResourceTracker.updateCachedServiceState(s, st, op);
     }
 
@@ -3016,7 +3030,7 @@ public class ServiceHost implements ServiceRequestSender {
 
             if (this.authorizationService != null) {
                 inboundOp.nestCompletion(op -> {
-                    handleRequestWithAuthContext(service, op);
+                    handleRequestWithAuthContext(null, op);
                 });
                 queueOrScheduleRequest(this.authorizationService, inboundOp);
                 return true;
