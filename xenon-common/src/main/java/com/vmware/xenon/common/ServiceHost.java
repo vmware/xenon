@@ -3411,6 +3411,7 @@ public class ServiceHost implements ServiceRequestSender {
                 owner, id));
         ServiceErrorResponse rsp = ServiceErrorResponse.create(e, op.getStatusCode(),
                 EnumSet.of(ErrorDetail.SHOULD_RETRY));
+        rsp.setErrorCode(ServiceErrorResponse.ERROR_CODE_OWNER_MISMATCH);
         op.fail(e, rsp);
     }
 
