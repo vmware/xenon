@@ -88,6 +88,14 @@ public class ResourceGroupService extends StatefulService {
     }
 
     @Override
+    public void setProcessingStage(Service.ProcessingStage stage) {
+        if (stage == Service.ProcessingStage.PAUSED) {
+            throw new IllegalStateException("Cannot pause service.");
+        }
+        super.setProcessingStage(stage);
+    }
+
+    @Override
     public void handleStart(Operation op) {
         if (!op.hasBody()) {
             op.fail(new IllegalArgumentException("body is required"));

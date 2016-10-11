@@ -32,6 +32,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Random;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -71,8 +72,10 @@ import com.vmware.xenon.services.common.MinimalFactoryTestService;
 import com.vmware.xenon.services.common.MinimalTestService;
 import com.vmware.xenon.services.common.NodeGroupService.NodeGroupState;
 import com.vmware.xenon.services.common.NodeState;
+import com.vmware.xenon.services.common.QueryTask.Query;
 import com.vmware.xenon.services.common.ServiceHostManagementService;
 import com.vmware.xenon.services.common.ServiceUriPaths;
+import com.vmware.xenon.services.common.UserService;
 
 public class TestServiceHost {
 
@@ -1347,6 +1350,27 @@ public class TestServiceHost {
         this.host.testWait();
     }
 
+    //override setProcessingStage() of ExampleService to randomly
+    // fail some pause operations
+    static class PauseExampleService extends ExampleService {
+
+        public static final String FACTORY_LINK = ServiceUriPaths.CORE + "/pause-examples";
+
+        public static FactoryService createFactory() {
+            return FactoryService.create(PauseExampleService.class);
+        }
+
+        @Override
+        public void setProcessingStage(Service.ProcessingStage stage) {
+            // if (stage == Service.ProcessingStage.PAUSED) {
+            //    if (new Random().nextBoolean()) {
+            //        throw new IllegalStateException("Cannot pause service.");
+            //    }
+            // }
+            super.setProcessingStage(stage);
+        }
+    }
+
     @Test
     public void servicePauseDueToMemoryPressure() throws Throwable {
         setUp(true);
@@ -1378,6 +1402,31 @@ public class TestServiceHost {
         assertTrue(delayMicros == delayMicrosAfter);
         this.host.start();
 
+        this.host.setSystemAuthorizationContext();
+        TestContext ctx = this.host.testCreate(1);
+        String user = "foo@bar.com";
+        Query.Builder queryBuilder = Query.Builder.create()
+                .addFieldClause(ServiceDocument.FIELD_NAME_KIND, Utils.buildKind(ExampleServiceState.class));
+        AuthorizationSetupHelper.create()
+                .setHost(this.host)
+                .setUserEmail(user)
+                .setUserSelfLink(user)
+                .setUserPassword(user)
+                .setResourceQuery(queryBuilder.build())
+                .setCompletion((ex) -> {
+                    if (ex != null) {
+                        ctx.failIteration(ex);
+                    }
+                    ctx.completeIteration();
+                })
+                .start();
+        ctx.await();
+        this.host.startFactory(PauseExampleService.class,
+                PauseExampleService::createFactory);
+        URI factoryURI = UriUtils.buildFactoryUri(this.host, PauseExampleService.class);
+        this.host.waitForServiceAvailable(PauseExampleService.FACTORY_LINK);
+        this.host.resetSystemAuthorizationContext();
+
         AtomicLong selfLinkCounter = new AtomicLong();
         String prefix = "instance-";
         String name = UUID.randomUUID().toString();
@@ -1389,8 +1438,8 @@ public class TestServiceHost {
         };
 
         // Create a number of child services.
-        URI factoryURI = UriUtils.buildFactoryUri(this.host, ExampleService.class);
-        this.host.setSystemAuthorizationContext();
+        this.host.assumeIdentity(UriUtils.buildUriPath(UserService.FACTORY_LINK, user));
+
         Map<URI, ExampleServiceState> states = this.host.doFactoryChildServiceStart(null,
                 this.serviceCount,
                 ExampleServiceState.class, bodySetter, factoryURI);
@@ -1408,12 +1457,6 @@ public class TestServiceHost {
         if (this.testDurationSeconds > 0 || this.host.isStressTest()) {
             updateCount = 1;
         }
-        patchExampleServices(states, updateCount);
-
-        // Let's set the service memory limit back to normal and issue more updates to ensure
-        // that the services still continue to operate as expected.
-        this.host
-                .setServiceMemoryLimit(ServiceHost.ROOT_PATH, ServiceHost.DEFAULT_PCT_MEMORY_LIMIT);
         patchExampleServices(states, updateCount);
 
         this.host.testStart(states.size());
@@ -1436,12 +1479,17 @@ public class TestServiceHost {
                             });
             this.host.send(get);
         }
-
         this.host.testWait();
 
         if (this.testDurationSeconds == 0) {
             verifyPauseResumeStats(states);
         }
+
+        // Let's set the service memory limit back to normal and issue more updates to ensure
+        // that the services still continue to operate as expected.
+        this.host
+                .setServiceMemoryLimit(ServiceHost.ROOT_PATH, ServiceHost.DEFAULT_PCT_MEMORY_LIMIT);
+        patchExampleServices(states, updateCount);
 
         states.clear();
         // Long running test. Keep adding services, expecting pause to occur and free up memory so the
@@ -1479,7 +1527,7 @@ public class TestServiceHost {
             for (int i = 0; i < count; i += step) {
                 // now that we have created a bunch of services, and a lot of them are paused, ping one randomly
                 // to make sure it resumes
-                URI instanceUri = UriUtils.buildFactoryUri(this.host, ExampleService.class);
+                URI instanceUri = UriUtils.buildFactoryUri(this.host, PauseExampleService.class);
                 instanceUri = UriUtils.extendUri(instanceUri, prefix + (selfLinkCounter.get() - i));
                 Operation get = Operation.createGet(instanceUri).setCompletion((o, e) -> {
                     if (e == null) {
@@ -1505,6 +1553,7 @@ public class TestServiceHost {
             this.host.testWait();
         }
     }
+
 
     private void verifyPauseResumeStats(Map<URI, ExampleServiceState> states) throws Throwable {
         // Let's now query stats for each service. We will use these stats to verify that the
