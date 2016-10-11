@@ -258,7 +258,7 @@ public class AuthorizationSetupHelper {
         if (this.host == null) {
             throw new IllegalStateException("Missing host");
         }
-        if (!this.isAdmin && (this.documentKind == null && this.documentLink == null)) {
+        if (this.resourceQuery == null && (!this.isAdmin && (this.documentKind == null && this.documentLink == null))) {
             throw new IllegalStateException("User has access to nothing");
         }
     }
