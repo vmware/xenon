@@ -1344,6 +1344,32 @@ public class TestFactoryService extends BasicReusableHostTestCase {
                 }));
     }
 
+    @Test
+    public void factoryWithStatelessChildServices() throws Throwable {
+        host.startFactoryServicesSynchronously(ExampleBarService.createFactory());
+
+        ExampleBarService.ExampleBarServiceContext response;
+
+        Operation post = Operation.createPost(host, ExampleBarService.FACTORY_LINK);
+
+        response = host.getTestRequestSender().sendAndWait(post)
+                .getBody(ExampleBarService.ExampleBarServiceContext.class);
+        assert (response.documentSelfLink != null);
+
+        Operation get = Operation.createGet(host, response.documentSelfLink);
+
+        response = host.getTestRequestSender().sendAndWait(get)
+                .getBody(ExampleBarService.ExampleBarServiceContext.class);
+
+        assert (response.message.equals("Default Message"));
+
+        post = Operation.createPost(host, response.documentSelfLink);
+        response = host.getTestRequestSender().sendAndWait(post)
+                .getBody(ExampleBarService.ExampleBarServiceContext.class);
+
+        assert (response.message.equals("Default Message modified"));
+    }
+
     public static class SomeFactoryService extends FactoryService {
 
         public static final String SELF_LINK = FAC_PATH;
@@ -1381,6 +1407,42 @@ public class TestFactoryService extends BasicReusableHostTestCase {
 
         public int value;
 
+    }
+
+    public static class ExampleBarService extends StatelessService {
+        public static final String FACTORY_LINK = ServiceUriPaths.CORE + "/stateless-examples";
+        public ExampleBarServiceContext context;
+
+        public ExampleBarService() {
+            super(ExampleBarServiceContext.class);
+        }
+
+        public static class ExampleBarServiceContext extends ServiceDocument{
+            public String message;
+        }
+
+        public static FactoryService createFactory() {
+            return FactoryService.create(ExampleBarService.class);
+        }
+
+        public void handleStart(Operation start) {
+            ExampleBarServiceContext body = start.getBody(ExampleBarServiceContext.class);
+            if (body.message == null) {
+                body.message = "Default Message";
+            }
+            this.context = body;
+            start.setBody(body);
+            start.complete();
+        }
+
+        public void handleGet(Operation get) {
+            get.setBody(this.context).complete();
+        }
+
+        public void handlePost(Operation post) {
+            this.context.message += " modified";
+            post.setBody(this.context).complete();
+        }
     }
 
 }
