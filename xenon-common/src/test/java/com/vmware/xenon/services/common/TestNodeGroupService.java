@@ -1273,6 +1273,40 @@ public class TestNodeGroupService {
     }
 
     @Test
+    public void synchronizationRequestQueuing() throws Throwable {
+        setUp(this.nodeCount);
+
+        this.host.joinNodesAndVerifyConvergence(this.host.getPeerCount());
+        this.host.setNodeGroupQuorum(this.nodeCount);
+
+        waitForReplicatedFactoryServiceAvailable(
+                this.host.getPeerServiceUri(ExampleService.FACTORY_LINK),
+                ServiceUriPaths.DEFAULT_NODE_SELECTOR);
+        waitForReplicationFactoryConvergence();
+
+        VerificationHost peerHost = this.host.getPeerHost();
+
+        List<URI> exampleUris = new ArrayList<>();
+        this.host.createExampleServices(peerHost, 1, exampleUris, null);
+
+        URI instanceUri = exampleUris.get(0);
+
+        ExampleServiceState synchState = new ExampleServiceState();
+        synchState.documentSelfLink = UriUtils.getLastPathSegment(instanceUri);
+
+        TestContext ctx = this.host.testCreate(this.updateCount);
+        for (int i = 0; i < this.updateCount; i++) {
+            Operation op = Operation.createPost(peerHost, ExampleService.FACTORY_LINK)
+                        .setBody(synchState)
+                        .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_SYNCH_OWNER)
+                        .setReferer(this.host.getUri())
+                        .setCompletion(ctx.getCompletion());
+            this.host.sendRequest(op);
+        }
+        ctx.await();
+    }
+
+    @Test
     public void enforceHighQuorumWithNodeConcurrentStop()
             throws Throwable {
         int hostRestartCount = 2;

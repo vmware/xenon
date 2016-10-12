@@ -51,6 +51,7 @@ public class StatefulService implements Service {
         public EnumSet<ServiceOption> options = EnumSet.noneOf(ServiceOption.class);
         public Class<? extends ServiceDocument> stateType;
         public long maintenanceInterval;
+        public OperationQueue synchQueue;
         public OperationQueue operationQueue;
         public boolean isUpdateActive;
         public int getActiveCount;
@@ -73,9 +74,13 @@ public class StatefulService implements Service {
         }
         this.context.stateType = stateType;
         if (this.context.options.contains(ServiceOption.LIFO_QUEUE)) {
+            this.context.synchQueue = OperationQueue
+                    .createLifo(Service.OPERATION_QUEUE_DEFAULT_LIMIT);
             this.context.operationQueue = OperationQueue
                     .createLifo(Service.OPERATION_QUEUE_DEFAULT_LIMIT);
         } else {
+            this.context.synchQueue = OperationQueue
+                    .createFifo(Service.OPERATION_QUEUE_DEFAULT_LIMIT);
             this.context.operationQueue = OperationQueue
                     .createFifo(Service.OPERATION_QUEUE_DEFAULT_LIMIT);
         }
@@ -151,7 +156,7 @@ public class StatefulService implements Service {
             return true;
         }
 
-        if (!hasOption(ServiceOption.CONCURRENT_UPDATE_HANDLING) && queueSynchronizedRequest(op)) {
+        if (!hasOption(ServiceOption.CONCURRENT_UPDATE_HANDLING) && queueRequestInternal(op)) {
             return true;
         }
 
@@ -183,7 +188,9 @@ public class StatefulService implements Service {
         Collection<Operation> opsToCancel = null;
         synchronized (this.context) {
             opsToCancel = this.context.operationQueue.toCollection();
+            opsToCancel.addAll(this.context.synchQueue.toCollection());
             this.context.operationQueue.clear();
+            this.context.synchQueue.clear();
         }
 
         for (Operation o : opsToCancel) {
@@ -201,7 +208,7 @@ public class StatefulService implements Service {
     /**
      * Returns true if a request was handled (caller should not attempt to dispatch it)
      */
-    private boolean queueSynchronizedRequest(final Operation op) {
+    private boolean queueRequestInternal(final Operation op) {
         boolean isPaused = false;
         if (op.getAction() != Action.GET && op.getAction() != Action.OPTIONS) {
             // serialize updates
@@ -211,7 +218,13 @@ public class StatefulService implements Service {
                 } else if (this.context.processingStage == ProcessingStage.STOPPED) {
                     // fall through, request will be cancelled
                 } else if ((this.context.isUpdateActive || this.context.getActiveCount != 0)) {
-                    if (!this.context.operationQueue.offer(op)) {
+                    if (op.isSynchronizeOwner()) {
+                        // Synchronization requests are queued in a separate queue
+                        // so that they can prioritized higher than other updates.
+                        if (!this.context.synchQueue.offer(op)) {
+                            getHost().failRequestLimitExceeded(op);
+                        }
+                    } else if (!this.context.operationQueue.offer(op)) {
                         getHost().failRequestLimitExceeded(op);
                     }
                     return true;
@@ -1165,9 +1178,16 @@ public class StatefulService implements Service {
 
     @Override
     public Operation dequeueRequest() {
+        Operation op;
         synchronized (this.context) {
-            return this.context.operationQueue.poll();
+            // Synch requests are prioritized higher than
+            // other update requests.
+            op = this.context.synchQueue.poll();
+            if (op == null) {
+                op = this.context.operationQueue.poll();
+            }
         }
+        return op;
     }
 
     private void applyUpdate(Operation op) throws Throwable {
@@ -1502,6 +1522,7 @@ public class StatefulService implements Service {
     }
 
     protected void setOperationQueueLimit(int limit) {
+        this.context.synchQueue.setLimit(limit);
         this.context.operationQueue.setLimit(limit);
     }
 
@@ -1522,7 +1543,9 @@ public class StatefulService implements Service {
                                 + this.context.processingStage);
                         return;
                     }
-                    if (this.context.isUpdateActive || !this.context.operationQueue.isEmpty()) {
+                    if (this.context.isUpdateActive ||
+                            !this.context.synchQueue.isEmpty() ||
+                            !this.context.operationQueue.isEmpty()) {
                         failure = new IllegalStateException("Service has active updates");
                         return;
                     }
