@@ -3322,7 +3322,7 @@ public class ServiceHost implements ServiceRequestSender {
 
             if (op.isFromReplication()) {
                 ServiceDocument body = op.getBody(s.getStateType());
-                if (!rsp.ownerNodeId.equals(body.documentOwner)) {
+                if (rsp.isLocalHostOwner) {
                     failRequestOwnerMismatch(op, rsp.ownerNodeId, body);
                     return;
                 }
@@ -3425,6 +3425,7 @@ public class ServiceHost implements ServiceRequestSender {
                 owner, id));
         ServiceErrorResponse rsp = ServiceErrorResponse.create(e, op.getStatusCode(),
                 EnumSet.of(ErrorDetail.SHOULD_RETRY));
+        rsp.setErrorCode(ServiceErrorResponse.ERROR_CODE_OWNER_MISMATCH);
         op.fail(e, rsp);
     }
 

@@ -20,7 +20,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
-import java.util.logging.Level;
 
 import com.vmware.xenon.common.NodeSelectorService;
 import com.vmware.xenon.common.NodeSelectorService.SelectAndForwardRequest;
@@ -37,76 +36,6 @@ import com.vmware.xenon.services.common.NodeGroupService.NodeGroupState;
 import com.vmware.xenon.services.common.NodeState.NodeOption;
 
 public class NodeSelectorReplicationService extends StatelessService {
-
-    public static class ReplicationContext {
-        public ReplicationContext(String location, Collection<NodeState> nodes, Operation op) {
-            this.location = location;
-            this.nodes = nodes;
-            this.parentOp = op;
-        }
-
-        private String location;
-        private Collection<NodeState> nodes;
-        private Operation parentOp;
-        private int successThreshold;
-        private int failureThreshold;
-        private int successCount;
-        private int failureCount;
-        private int failureStatus;
-        private Status completionStatus = Status.PENDING;
-
-        public enum Status {
-            SUCCEEDED, FAILED, PENDING
-        }
-
-        public void checkAndCompleteOperation(ServiceHost h, Throwable e, Operation o) {
-            Status ct;
-            String failureMsg = null;
-            Operation op = this.parentOp;
-
-
-            if (e != null && o != null) {
-                h.log(Level.WARNING,
-                        "(Original id: %d) Replication request to %s-%s failed with %d, %s",
-                        op.getId(),
-                        o.getUri(), o.getAction(), o.getStatusCode(), e.getMessage());
-                this.failureStatus = o.getStatusCode();
-            }
-
-            synchronized (this) {
-                if (this.completionStatus != Status.PENDING) {
-                    return;
-                }
-                if (e == null && ++this.successCount == this.successThreshold) {
-                    this.completionStatus = Status.SUCCEEDED;
-                } else if (e != null && ++this.failureCount == this.failureThreshold) {
-                    this.completionStatus = Status.FAILED;
-                    failureMsg = String
-                            .format("(Original id: %d) %s to %s failed. Success: %d,  Fail: %d, quorum: %d, failure threshold: %d",
-                                    op.getId(),
-                                    op.getAction(),
-                                    op.getUri().getPath(),
-                                    this.successCount,
-                                    this.failureCount,
-                                    this.successThreshold,
-                                    this.failureThreshold);
-                }
-                ct = this.completionStatus;
-            }
-
-            if (ct == Status.SUCCEEDED) {
-                op.setStatusCode(Operation.STATUS_CODE_OK).complete();
-                return;
-            }
-
-            if (ct == ReplicationContext.Status.FAILED) {
-                h.log(Level.WARNING, "%s", failureMsg);
-                op.setStatusCode(this.failureStatus)
-                        .fail(new IllegalStateException(failureMsg));
-            }
-
-        }
-    }
 
     public static final int BINARY_SERIALIZATION = Integer.getInteger(
             Utils.PROPERTY_NAME_PREFIX
@@ -157,7 +86,7 @@ public class NodeSelectorReplicationService extends StatelessService {
 
         // location is usually null, unless set explicitly
         String location = getHost().getLocation();
-        ReplicationContext context = new ReplicationContext(location, selectedNodes, outboundOp);
+        NodeSelectorReplicationContext context = new NodeSelectorReplicationContext(location, selectedNodes, outboundOp);
 
         // success threshold is determined based on the following precedence:
         // 1. request replication quorum header (if exists)
@@ -252,7 +181,7 @@ public class NodeSelectorReplicationService extends StatelessService {
         return location.equals(remoteNodeLocation);
     }
 
-    private void replicateUpdateToNodes(ReplicationContext context) {
+    private void replicateUpdateToNodes(NodeSelectorReplicationContext context) {
         Operation update = createReplicationRequest(context.parentOp, null);
         update.setCompletion((o, e) -> handleReplicationCompletion(context, o, e));
 
@@ -337,7 +266,7 @@ public class NodeSelectorReplicationService extends StatelessService {
     }
 
     private void handleReplicationCompletion(
-            ReplicationContext context, Operation o, Throwable e) {
+            NodeSelectorReplicationContext context, Operation o, Throwable e) {
         // if location is set we require success from nodes in the same location;
         // all other responses are ignored for success calculation purposes
         if (context.location != null &&
@@ -357,7 +286,7 @@ public class NodeSelectorReplicationService extends StatelessService {
         context.checkAndCompleteOperation(getHost(), e, o);
     }
 
-    private boolean handleServiceNotFoundOnReplica(ReplicationContext context, Operation o) {
+    private boolean handleServiceNotFoundOnReplica(NodeSelectorReplicationContext context, Operation o) {
         Operation op = context.parentOp;
 
         // A replica would report a service-not-found error only for
