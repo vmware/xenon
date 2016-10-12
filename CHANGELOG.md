@@ -1,6 +1,6 @@
 # CHANGELOG
 
-## 1.0.0-SNAPSHOT
+## 1.0.0
 
 ## 0.9.7
 
@@ -65,7 +65,7 @@
   is required among hosts in the same location. This is helpful in multi-geo
   deployment, where strong consistency within a region (with eventual consistency
   across regions) is required.
-   
+
 * Add QueryOption.EXPAND_BUILTIN_CONTENT_ONLY, used by synchronization code for
   state comparison
 
