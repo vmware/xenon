@@ -13,17 +13,23 @@
 
 package com.vmware.xenon.services.common;
 
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.EnumSet;
+import java.util.List;
 import java.util.logging.Level;
 
 import com.vmware.xenon.common.Operation;
+import com.vmware.xenon.common.ServiceErrorResponse;
 import com.vmware.xenon.common.ServiceHost;
+import com.vmware.xenon.common.Utils;
 
 public class NodeSelectorReplicationContext {
     public NodeSelectorReplicationContext(String location, Collection<NodeState> nodes, Operation op) {
         this.location = location;
         this.nodes = nodes;
         this.parentOp = op;
+        this.startTimeMicros = Utils.getNowMicrosUtc();
     }
 
     String location;
@@ -31,20 +37,21 @@ public class NodeSelectorReplicationContext {
     Operation parentOp;
     int successThreshold;
     int failureThreshold;
+    long startTimeMicros;
     private int successCount;
     private int failureCount;
     private int failureStatus;
-    private NodeSelectorReplicationContext.Status completionStatus = Status.PENDING;
+    private List<Integer> failureErrorCodes = new ArrayList<>();
+    private Status completionStatus = Status.PENDING;
 
     public enum Status {
         SUCCEEDED, FAILED, PENDING
     }
 
     public void checkAndCompleteOperation(ServiceHost h, Throwable e, Operation o) {
-        NodeSelectorReplicationContext.Status ct;
+        Status ct;
         String failureMsg = null;
         Operation op = this.parentOp;
-
 
         if (e != null && o != null) {
             h.log(Level.WARNING,
@@ -52,6 +59,7 @@ public class NodeSelectorReplicationContext {
                     op.getId(),
                     o.getUri(), o.getAction(), o.getStatusCode(), e.getMessage());
             this.failureStatus = o.getStatusCode();
+            this.saveErrorCode(o);
         }
 
         synchronized (this) {
@@ -80,11 +88,40 @@ public class NodeSelectorReplicationContext {
             return;
         }
 
-        if (ct == NodeSelectorReplicationContext.Status.FAILED) {
+        if (ct == Status.FAILED) {
             h.log(Level.WARNING, "%s", failureMsg);
-            op.setStatusCode(this.failureStatus)
-                    .fail(new IllegalStateException(failureMsg));
-        }
+            op.setStatusCode(this.failureStatus);
 
+            Exception ex = new IllegalStateException(failureMsg);
+            ServiceErrorResponse sep = Utils.toServiceErrorResponse(ex);
+            sep.statusCode = this.failureStatus;
+            if (parentOpShouldRetry()) {
+                sep.details = EnumSet.of(ServiceErrorResponse.ErrorDetail.SHOULD_RETRY);
+            }
+            op.setBody(sep);
+            op.fail(ex);
+            return;
+        }
+    }
+
+    private void saveErrorCode(Operation o) {
+        if (o.hasBody() && o.getContentType().equals(Operation.MEDIA_TYPE_APPLICATION_JSON)) {
+            Object obj = o.getBodyRaw();
+            if (obj instanceof ServiceErrorResponse) {
+                ServiceErrorResponse rsp = (ServiceErrorResponse)obj;
+                if (rsp.getErrorCode() != 0) {
+                    this.failureErrorCodes.add(rsp.getErrorCode());
+                }
+            }
+        }
+    }
+
+    private boolean parentOpShouldRetry() {
+        for (Integer errorCode : this.failureErrorCodes) {
+            if (errorCode == ServiceErrorResponse.ERROR_CODE_SERVICE_NOT_FOUND_ON_REPLICA) {
+                return true;
+            }
+        }
+        return false;
     }
 }

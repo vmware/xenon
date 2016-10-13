@@ -71,6 +71,7 @@ import org.junit.rules.TemporaryFolder;
 import com.vmware.xenon.common.Claims;
 import com.vmware.xenon.common.CommandLineArgumentParser;
 import com.vmware.xenon.common.DeferredResult;
+import com.vmware.xenon.common.NodeSelectorService;
 import com.vmware.xenon.common.NodeSelectorState;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Operation.AuthorizationContext;
@@ -707,6 +708,29 @@ public class VerificationHost extends ExampleServiceHost {
             int versionCount, URI u, boolean forceRemote, boolean deleteOnFinish) {
         return waitForQueryTaskCompletion(q, totalDocuments, versionCount, u, forceRemote,
                 deleteOnFinish, true);
+    }
+
+    public boolean isOwner(String documentSelfLink, String nodeSelector) {
+        final boolean[] isOwner = new boolean[1];
+        TestContext ctx = this.testCreate(1);
+        Operation op = Operation
+                .createPost(null)
+                .setExpiration(Utils.getNowMicrosUtc() + TimeUnit.SECONDS.toMicros(10))
+                .setCompletion((o, e) -> {
+                    if (e != null) {
+                        ctx.failIteration(e);
+                        return;
+                    }
+
+                    NodeSelectorService.SelectOwnerResponse rsp =
+                            o.getBody(NodeSelectorService.SelectOwnerResponse.class);
+                    isOwner[0] = rsp.isLocalHostOwner;
+                    ctx.completeIteration();
+                });
+        this.selectOwner(nodeSelector, documentSelfLink, op);
+        ctx.await();
+
+        return isOwner[0];
     }
 
     public QueryTask waitForQueryTaskCompletion(QuerySpecification q, int totalDocuments,
