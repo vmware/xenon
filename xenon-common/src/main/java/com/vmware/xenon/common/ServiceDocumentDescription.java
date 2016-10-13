@@ -61,7 +61,6 @@ public class ServiceDocumentDescription {
     public enum TypeName {
         LONG,
         STRING,
-        BYTES,
         PODO,
         COLLECTION,
         MAP,
@@ -365,8 +364,6 @@ public class ServiceDocumentDescription {
             } else if (Byte.class.equals(clazz) || byte.class.equals(clazz)) {
                 pd.typeName = TypeName.LONG;
                 pd.exampleValue = (byte) 0;
-            } else if (byte[].class.equals(clazz)) {
-                pd.typeName = TypeName.BYTES;
             } else if (Double.class.equals(clazz) || double.class.equals(clazz)) {
                 pd.typeName = TypeName.DOUBLE;
                 pd.exampleValue = 0.0;

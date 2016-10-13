@@ -181,11 +181,10 @@ public class TestQueryTaskService {
         assertTrue(descriptionsPerType.get(TypeName.MAP) == 8L);
         assertEquals(descriptionsPerType.get(TypeName.LONG), (Long) (1L + 4L + 3L));
         assertTrue(descriptionsPerType.get(TypeName.PODO) == 3L);
-        assertTrue(descriptionsPerType.get(TypeName.COLLECTION) == 8L);
+        assertTrue(descriptionsPerType.get(TypeName.COLLECTION) == 9L);
         assertTrue(descriptionsPerType.get(TypeName.STRING) == 6L + 5L);
         assertTrue(descriptionsPerType.get(TypeName.DATE) == 1L);
         assertTrue(descriptionsPerType.get(TypeName.DOUBLE) == 4L);
-        assertTrue(descriptionsPerType.get(TypeName.BYTES) == 1L);
 
         pd = sdd.propertyDescriptions.get("exampleValue");
         assertTrue(pd != null);

@@ -1946,8 +1946,6 @@ public class LuceneDocumentIndexService extends StatelessService {
                 luceneDocValuesField = new SortedDocValuesField(fieldName, new BytesRef(
                         (booleanValue)));
             }
-        } else if (pd.typeName.equals(TypeName.BYTES)) {
-            // Don't store bytes in the index
         } else if (pd.typeName.equals(TypeName.PODO)) {
             // Ignore all complex fields if they are not explicitly marked with EXPAND.
             // We special case all fields of TaskState to ensure task based services have

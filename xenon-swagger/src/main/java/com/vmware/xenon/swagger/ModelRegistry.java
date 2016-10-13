@@ -22,7 +22,6 @@ import java.util.Map.Entry;
 import io.swagger.models.Model;
 import io.swagger.models.ModelImpl;
 import io.swagger.models.properties.ArrayProperty;
-import io.swagger.models.properties.BinaryProperty;
 import io.swagger.models.properties.BooleanProperty;
 import io.swagger.models.properties.DateTimeProperty;
 import io.swagger.models.properties.DoubleProperty;
@@ -95,8 +94,6 @@ class ModelRegistry {
         switch (pd.typeName) {
         case BOOLEAN:
             return new BooleanProperty();
-        case BYTES:
-            return new BinaryProperty();
         case COLLECTION:
             return new ArrayProperty(makeProperty(pd.elementDescription));
         case DATE:

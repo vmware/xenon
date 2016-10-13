@@ -175,8 +175,6 @@ class LuceneQueryConverter {
 
         case STRING:
             return SortField.Type.STRING;
-        case BYTES:
-            return SortField.Type.BYTES;
         case DOUBLE:
             return SortField.Type.DOUBLE;
         case LONG:
