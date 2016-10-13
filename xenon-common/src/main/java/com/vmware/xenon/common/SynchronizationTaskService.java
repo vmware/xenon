@@ -310,7 +310,7 @@ public class SynchronizationTaskService
             Exception e = new IllegalArgumentException(msg);
 
             ServiceErrorResponse rsp = Utils.toServiceErrorResponse(e);
-            rsp.setInternalCode(ServiceErrorResponse.ERROR_CODE_OUTDATED_SYNCH_REQUEST);
+            rsp.setInternalErrorCode(ServiceErrorResponse.ERROR_CODE_OUTDATED_SYNCH_REQUEST);
 
             // Another corner case, if this was an outdated synch request and the task
             // is not running anymore, we set the factory as Available. If the task

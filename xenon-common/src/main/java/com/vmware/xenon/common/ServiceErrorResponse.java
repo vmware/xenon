@@ -86,7 +86,7 @@ public class ServiceErrorResponse {
         this.errorCode = errorCode;
     }
 
-    public void setInternalCode(int errorCode) {
+    public void setInternalErrorCode(int errorCode) {
         if (!isInternalErrorCode(errorCode)) {
             throw new IllegalArgumentException(
                     "Error code must use internal xenon errorCode range.");

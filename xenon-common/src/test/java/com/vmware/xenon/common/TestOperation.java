@@ -659,7 +659,7 @@ public class TestOperation extends BasicReusableHostTestCase {
                 new IllegalArgumentException(), Operation.STATUS_CODE_BAD_REQUEST);
         rsp.setErrorCode(123123);
         assertEquals(rsp.getErrorCode(), 123123);
-        rsp.setInternalCode(0x81234567);
+        rsp.setInternalErrorCode(0x81234567);
         assertEquals(rsp.getErrorCode(), 0x81234567);
     }
 
@@ -674,7 +674,7 @@ public class TestOperation extends BasicReusableHostTestCase {
     public void testXenonErrorCode() throws Throwable {
         ServiceErrorResponse rsp = ServiceErrorResponse.create(
                 new IllegalArgumentException(), Operation.STATUS_CODE_BAD_REQUEST);
-        rsp.setInternalCode(123123);
+        rsp.setInternalErrorCode(123123);
     }
 
     private void verifyOp(Operation op, SerializedOperation sop) {
