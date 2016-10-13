@@ -385,6 +385,41 @@ public class TestTransactionService extends BasicReusableHostTestCase {
         countAccounts(null, 0);
     }
 
+    @Test
+    public void testTransactionWithFailedOperations() throws Throwable {
+        // create accounts, each with an initial balance of 100
+        String txid = newTransaction();
+        createAccounts(txid, this.accountCount, 100.0);
+        boolean committed = commit(txid);
+        assertTrue(committed);
+
+        // try to withdraw more than balance (should fail) from odd accounts
+        txid = newTransaction();
+        for (int i = 0; i < this.accountCount; i++) {
+            verifyAccountBalance(null, buildAccountId(i), 100.0);
+            double amountToWithdraw = i % 2 == 0 ? 100.0 : 101.0;
+            try {
+                this.host.log("trying to withdraw %f from account %d", amountToWithdraw, i);
+                withdrawFromAccount(txid, buildAccountId(i), amountToWithdraw, null);
+            } catch (IllegalArgumentException ex) {
+                assertTrue(i % 2 != 0);
+            }
+        }
+        abort(txid);
+
+        // verify balances
+        for (int i = 0; i < this.accountCount; i++) {
+            verifyAccountBalance(null, buildAccountId(i), 100.0);
+        }
+
+        // delete accounts
+        txid = newTransaction();
+        deleteAccounts(txid, this.accountCount);
+        committed = commit(txid);
+        assertTrue(committed);
+        countAccounts(null, 0);
+    }
+
     private void sendWithdrawDepositOperationPairs(String[] txids, int numOfTransfers,
             TestContext ctx) throws Throwable {
         boolean independentTest = ctx == null;
