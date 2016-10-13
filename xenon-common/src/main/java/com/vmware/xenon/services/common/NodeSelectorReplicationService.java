@@ -37,6 +37,9 @@ import com.vmware.xenon.services.common.NodeState.NodeOption;
 
 public class NodeSelectorReplicationService extends StatelessService {
 
+    public static final String PROPERTY_NAME_REPLICA_NOT_FOUND_TIMEOUT_MICROS = Utils.PROPERTY_NAME_PREFIX
+            + "NodeSelectorReplicationService.replicaTimeoutMicros";
+
     public static final int BINARY_SERIALIZATION = Integer.getInteger(
             Utils.PROPERTY_NAME_PREFIX
                     + "NodeSelectorReplicationService.BINARY_SERIALIZATION",
@@ -45,6 +48,7 @@ public class NodeSelectorReplicationService extends StatelessService {
     private Service parent;
     private Map<String, Integer> nodeCountPerLocation;
     private Map<URI, String> locationPerNodeURI;
+    private long peerTimeoutMicros;
 
     public NodeSelectorReplicationService(Service parent) {
         this.parent = parent;
@@ -55,6 +59,9 @@ public class NodeSelectorReplicationService extends StatelessService {
             this.nodeCountPerLocation = new ConcurrentHashMap<>();
             this.locationPerNodeURI = new ConcurrentHashMap<>();
         }
+        this.peerTimeoutMicros = Long.getLong(
+                PROPERTY_NAME_REPLICA_NOT_FOUND_TIMEOUT_MICROS,
+                NodeGroupService.PEER_REQUEST_TIMEOUT_MICROS);
         super.setProcessingStage(ProcessingStage.AVAILABLE);
     }
 
@@ -290,12 +297,12 @@ public class NodeSelectorReplicationService extends StatelessService {
         Operation op = context.parentOp;
 
         // A replica would report a service-not-found error only for
-        // update requests. So, let's not worry about it.
+        // update requests.
         if (!op.isUpdate()) {
             return false;
         }
 
-        // We expect a body with ServiceErrorResponse if the failure is because
+        // We expect a body with ServiceErrorResponse when the failure is because
         // of service-not-found error.
         if (o == null || !o.hasBody() || !o.getContentType().equals(Operation.MEDIA_TYPE_APPLICATION_JSON)) {
             return false;
@@ -304,6 +311,12 @@ public class NodeSelectorReplicationService extends StatelessService {
         ServiceErrorResponse rsp = o.getBody(ServiceErrorResponse.class);
         if (rsp == null ||
                 rsp.getErrorCode() != ServiceErrorResponse.ERROR_CODE_SERVICE_NOT_FOUND_ON_REPLICA) {
+            return false;
+        }
+
+        // We avoid retrying if the service is not started on the replica even after
+        // retrying a few times.
+        if (Utils.getNowMicrosUtc() >= context.startTimeMicros + this.peerTimeoutMicros) {
             return false;
         }
 
