@@ -20,6 +20,8 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import com.vmware.xenon.common.Operation.AuthorizationContext;
+import com.vmware.xenon.common.Service.ProcessingStage;
+import com.vmware.xenon.common.Service.ServiceOption;
 import com.vmware.xenon.common.ServiceHost.ServiceNotFoundException;
 import com.vmware.xenon.common.ServiceStats.ServiceStat;
 import com.vmware.xenon.common.ServiceStats.ServiceStatLogHistogram;
@@ -335,10 +337,18 @@ public class StatelessService implements Service {
                 throw new IllegalArgumentException("Option is not supported");
             }
         }
+        boolean optionsChanged = false;
         if (enable) {
-            this.options.add(option);
+            optionsChanged = this.options.add(option);
         } else {
-            this.options.remove(option);
+            optionsChanged = this.options.remove(option);
+        }
+
+        if (enable
+                && optionsChanged
+                && option == ServiceOption.PERIODIC_MAINTENANCE
+                && this.stage == ProcessingStage.AVAILABLE) {
+            getHost().scheduleServiceMaintenance(this);
         }
     }
 
