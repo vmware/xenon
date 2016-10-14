@@ -220,6 +220,8 @@ public class NodeSelectorReplicationService extends StatelessService {
                 continue;
             }
 
+            logInfo("Replicating %s %s", update.getAction(), update.getUri());
+
             this.getHost().getClient().send(update);
         }
     }

@@ -62,6 +62,8 @@ public class NodeSelectorReplicationContext {
                     o.getUri(), o.getAction(), o.getStatusCode(), e.getMessage());
             this.failureStatus = o.getStatusCode();
             errorCode = this.getErrorCode(o);
+        } else if (e == null && o != null) {
+            h.log(Level.INFO, "Replication successful %s %s", o.getAction(), o.getUri());
         }
 
         synchronized (this) {
