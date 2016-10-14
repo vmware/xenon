@@ -710,6 +710,7 @@ public class MigrationTaskService extends StatefulService {
             .setCompletion((os, ts) -> {
                 if (ts != null && !ts.isEmpty()) {
                     if (state.migrationOptions.contains(MigrationOption.DELETE_AFTER)) {
+                        logWarning("Migrating entities failed with exception: %s; Retrying operation.", ts.values().iterator().next());
                         useFallBack(state, posts, ts, nextPageLinks, destinationURIs, lastUpdateTimesPerOwner);
                     } else {
                         failTask(ts.values());
