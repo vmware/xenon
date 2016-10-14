@@ -42,6 +42,7 @@ import com.vmware.xenon.common.Service.ServiceOption;
 import com.vmware.xenon.common.test.MinimalTestServiceState;
 import com.vmware.xenon.common.test.TestContext;
 import com.vmware.xenon.common.test.TestProperty;
+import com.vmware.xenon.common.test.TestRequestSender;
 import com.vmware.xenon.common.test.VerificationHost;
 import com.vmware.xenon.services.common.ExampleService;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
@@ -1346,28 +1347,23 @@ public class TestFactoryService extends BasicReusableHostTestCase {
 
     @Test
     public void factoryWithStatelessChildServices() throws Throwable {
+        TestRequestSender sender = host.getTestRequestSender();
+
         host.startFactoryServicesSynchronously(ExampleBarService.createFactory());
 
         ExampleBarService.ExampleBarServiceContext response;
 
         Operation post = Operation.createPost(host, ExampleBarService.FACTORY_LINK);
-
-        response = host.getTestRequestSender().sendAndWait(post)
-                .getBody(ExampleBarService.ExampleBarServiceContext.class);
-        assert (response.documentSelfLink != null);
+        response = sender.sendAndWait(post, ExampleBarService.ExampleBarServiceContext.class);
+        assertNotNull(response.documentSelfLink);
 
         Operation get = Operation.createGet(host, response.documentSelfLink);
-
-        response = host.getTestRequestSender().sendAndWait(get)
-                .getBody(ExampleBarService.ExampleBarServiceContext.class);
-
-        assert (response.message.equals("Default Message"));
+        response = sender.sendAndWait(get, ExampleBarService.ExampleBarServiceContext.class);
+        assertEquals("Default Message", response.message);
 
         post = Operation.createPost(host, response.documentSelfLink);
-        response = host.getTestRequestSender().sendAndWait(post)
-                .getBody(ExampleBarService.ExampleBarServiceContext.class);
-
-        assert (response.message.equals("Default Message modified"));
+        response = sender.sendAndWait(post, ExampleBarService.ExampleBarServiceContext.class);
+        assertEquals("Default Message modified", response.message);
     }
 
     public static class SomeFactoryService extends FactoryService {
