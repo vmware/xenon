@@ -809,11 +809,27 @@ public class TestServiceModel extends BasicReusableHostTestCase {
 
         // Check StatefulService
         doCheckPeriodicMaintenance(new PeriodicMaintenanceTestStatefulService());
+
+        // Check StatelessService with dynamic toggle
+        Service s = new PeriodicMaintenanceTestStatelessService();
+        s.toggleOption(ServiceOption.PERIODIC_MAINTENANCE, false);
+        doCheckPeriodicMaintenance(s);
+
+        // Check StatefulService with dynamic toggle
+        s = new PeriodicMaintenanceTestStatefulService();
+        s.toggleOption(ServiceOption.PERIODIC_MAINTENANCE, false);
+        doCheckPeriodicMaintenance(s);
     }
 
     private void doCheckPeriodicMaintenance(Service s) throws Throwable {
         // Start service
-        this.host.startServiceAndWait(s, UUID.randomUUID().toString(), null);
+        s = this.host.startServiceAndWait(s, UUID.randomUUID().toString(), null);
+
+        if (!s.hasOption(ServiceOption.PERIODIC_MAINTENANCE)) {
+            this.host.log("Toggling %s on", ServiceOption.PERIODIC_MAINTENANCE);
+            this.host.toggleServiceOptions(s.getUri(),
+                    EnumSet.of(ServiceOption.PERIODIC_MAINTENANCE), null);
+        }
 
         ServiceStat stat = s.getStat(STAT_NAME_HANDLE_PERIODIC_MAINTENANCE);
 
