@@ -20,8 +20,6 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import com.vmware.xenon.common.Operation.AuthorizationContext;
-import com.vmware.xenon.common.Service.ProcessingStage;
-import com.vmware.xenon.common.Service.ServiceOption;
 import com.vmware.xenon.common.ServiceHost.ServiceNotFoundException;
 import com.vmware.xenon.common.ServiceStats.ServiceStat;
 import com.vmware.xenon.common.ServiceStats.ServiceStatLogHistogram;
