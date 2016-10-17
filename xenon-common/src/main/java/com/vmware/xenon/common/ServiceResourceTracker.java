@@ -30,7 +30,6 @@ import com.vmware.xenon.common.Service.Action;
 import com.vmware.xenon.common.Service.ProcessingStage;
 import com.vmware.xenon.common.Service.ServiceOption;
 import com.vmware.xenon.common.ServiceHost.ServiceHostState;
-import com.vmware.xenon.common.ServiceHost.ServiceHostState.MemoryLimitType;
 import com.vmware.xenon.common.ServiceStats.ServiceStat;
 import com.vmware.xenon.common.ServiceStats.TimeSeriesStats;
 import com.vmware.xenon.common.ServiceStats.TimeSeriesStats.AggregationType;
@@ -410,14 +409,6 @@ class ServiceResourceTracker {
     public void performMaintenance(long now, long deadlineMicros) {
         updateStats(now);
         ServiceHostState hostState = this.host.getStateNoCloning();
-        long memoryLimitLowMB = this.host.getServiceMemoryLimitMB(ServiceHost.ROOT_PATH,
-                MemoryLimitType.HIGH_WATERMARK);
-
-        long memoryInUseMB = hostState.serviceCount
-                * ServiceHost.DEFAULT_SERVICE_INSTANCE_COST_BYTES;
-        memoryInUseMB /= (1024 * 1024);
-
-        boolean shouldPause = memoryLimitLowMB <= memoryInUseMB;
 
         int pauseServiceCount = 0;
         for (Service service : this.attachedServices.values()) {
@@ -485,6 +476,10 @@ class ServiceResourceTracker {
                 continue;
             }
 
+            if (!service.hasOption(ServiceOption.ON_DEMAND_LOAD)) {
+                continue;
+            }
+
             if (this.host.isServiceStarting(service, service.getSelfLink())) {
                 continue;
             }
@@ -496,17 +491,13 @@ class ServiceResourceTracker {
                 continue;
             }
 
-            boolean odlWithNoSubscriptions = isOnDemandLoadWithNoSubscriptions(service);
-            if (cacheCleared && odlWithNoSubscriptions) {
-                // if it's an on-demand-load service with no subscribers, instead of pausing it,
-                // simply stop them when the service is idle.
-                // if the on-demand-load service does have subscribers, then continue with pausing
-                // so that we don't lose the subscriptions.
+            boolean hasSoftState = hasServiceSoftState(service);
+            if (cacheCleared && !hasSoftState) {
+                // if it's an on-demand-load service with no subscribers or stats,
+                // instead of pausing it, simply stop them when the service is idle.
+                // if the on-demand-load service does have subscribers/stats, then continue with
+                // pausing so that we don't lose any "soft" state
                 stopService(service.getSelfLink(), false, null);
-                continue;
-            }
-
-            if (!shouldPause) {
                 continue;
             }
 
@@ -514,7 +505,7 @@ class ServiceResourceTracker {
                 // if we're going to pause it, clear state from cache if not already cleared
                 clearCachedServiceState(service.getSelfLink(), null);
                 // and check again if ON_DEMAND_LOAD with no subscriptions, then we need to stop
-                if (odlWithNoSubscriptions) {
+                if (!hasSoftState) {
                     stopService(service.getSelfLink(), false, null);
                     continue;
                 }
@@ -730,13 +721,22 @@ class ServiceResourceTracker {
                 && this.host.getTransactionServiceUri() != null;
     }
 
-    private boolean isOnDemandLoadWithNoSubscriptions(Service service) {
+    private boolean hasServiceSoftState(Service service) {
         if (!service.hasOption(ServiceOption.ON_DEMAND_LOAD)) {
             return false;
         }
 
-        UtilityService utilityService = (UtilityService) service
+        UtilityService subUtilityService = (UtilityService) service
                 .getUtilityService(ServiceHost.SERVICE_URI_SUFFIX_SUBSCRIPTIONS);
-        return !utilityService.hasSubscribers();
+        UtilityService statsUtilityService = (UtilityService) service
+                .getUtilityService(ServiceHost.SERVICE_URI_SUFFIX_STATS);
+        boolean hasSoftState = false;
+        if (subUtilityService != null && subUtilityService.hasSubscribers()) {
+            hasSoftState = true;
+        }
+        if (statsUtilityService != null && statsUtilityService.hasStats()) {
+            hasSoftState = true;
+        }
+        return hasSoftState;
     }
 }

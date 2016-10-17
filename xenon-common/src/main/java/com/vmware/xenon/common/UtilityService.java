@@ -213,6 +213,11 @@ public class UtilityService implements Service {
                 && !subscriptions.subscribers.isEmpty();
     }
 
+    public boolean hasStats() {
+        ServiceStats stats = this.stats;
+        return stats != null && stats.entries != null && !stats.entries.isEmpty();
+    }
+
     public void notifySubscribers(Operation op) {
         try {
             if (op.getAction() == Action.GET) {

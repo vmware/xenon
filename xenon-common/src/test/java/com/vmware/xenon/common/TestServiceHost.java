@@ -76,6 +76,7 @@ import com.vmware.xenon.services.common.MinimalFactoryTestService;
 import com.vmware.xenon.services.common.MinimalTestService;
 import com.vmware.xenon.services.common.NodeGroupService.NodeGroupState;
 import com.vmware.xenon.services.common.NodeState;
+import com.vmware.xenon.services.common.OnDemandLoadFactoryService;
 import com.vmware.xenon.services.common.QueryTask.Query;
 import com.vmware.xenon.services.common.ServiceContextIndexService;
 import com.vmware.xenon.services.common.ServiceHostManagementService;
@@ -1366,6 +1367,17 @@ public class TestServiceHost {
             return FactoryService.create(PauseExampleService.class);
         }
 
+        public PauseExampleService() {
+            super();
+            // we only pause on demand load services
+            toggleOption(ServiceOption.ON_DEMAND_LOAD, true);
+            // ODL services will normally just stop, not pause. To make them pause
+            // we need to either add subscribers or stats. We toggle the INSTRUMENTATION
+            // option (even if ExampleService already sets it, we do it again in case it
+            // changes in the future)
+            toggleOption(ServiceOption.INSTRUMENTATION, true);
+        }
+
         @Override
         public ServiceRuntimeContext setProcessingStage(Service.ProcessingStage stage) {
             if (stage == Service.ProcessingStage.PAUSED) {
@@ -1668,27 +1680,22 @@ public class TestServiceHost {
 
         // Let's verify now that all of the services have stopped by now.
         this.host.waitFor("Service stats did not get updated", () -> {
-            int stoppedCount = 0;
+            int pausedCount = 0;
             for (Service svc : services) {
                 MinimalTestService service = (MinimalTestService) svc;
-                if (service.gotStopped) {
-                    stoppedCount++;
+                if (service.gotPaused) {
+                    // the ODL service is instrumented, so it will pause, not stop
+                    pausedCount++;
                 }
             }
 
-            if (stoppedCount < this.serviceCount) {
-                this.host.log("StoppedCount %d is less than expected %d", stoppedCount, this.serviceCount);
+            if (pausedCount < this.serviceCount) {
+                this.host.log("Paused Count %d is less than expected %d", pausedCount,
+                        this.serviceCount);
                 return false;
             }
 
             Map<String, ServiceStat> stats = this.host.getServiceStats(this.host.getManagementServiceUri());
-            ServiceStat odlStops = stats.get(ServiceHostManagementService.STAT_NAME_ODL_STOP_COUNT);
-            if (odlStops == null || odlStops.latestValue < this.serviceCount) {
-                this.host.log("ODL Service Stops %s were less than expected %d",
-                        odlStops == null ? "null" : String.valueOf(odlStops.latestValue),
-                        this.serviceCount);
-                return false;
-            }
 
             ServiceStat odlCacheClears = stats.get(ServiceHostManagementService.STAT_NAME_ODL_CACHE_CLEAR_COUNT);
             if (odlCacheClears == null || odlCacheClears.latestValue < this.serviceCount) {
@@ -1757,7 +1764,7 @@ public class TestServiceHost {
 
         // Start some test services with ServiceOption.ON_DEMAND_LOAD
         EnumSet<ServiceOption> caps = EnumSet.of(ServiceOption.PERSISTENCE,
-                ServiceOption.INSTRUMENTATION, ServiceOption.ON_DEMAND_LOAD,
+                ServiceOption.ON_DEMAND_LOAD,
                 ServiceOption.FACTORY_ITEM);
 
         MinimalFactoryTestService factoryService = new MinimalFactoryTestService();
@@ -1848,6 +1855,78 @@ public class TestServiceHost {
                             && this.host.getServiceStage(servicePath) == null;
                 }
         );
+    }
+
+    @Test
+    public void onDemandLoadServicePauseWithSubscribersAndStats() throws Throwable {
+        setUp(false);
+        // Set memory limit very low to induce service pause/stop.
+        this.host.setServiceMemoryLimit(ServiceHost.ROOT_PATH, 0.00001);
+
+        // Increase the maintenance interval to delay service pause/ stop.
+        this.host.setMaintenanceIntervalMicros(TimeUnit.SECONDS.toMicros(5));
+
+        Consumer<Operation> bodySetter = (o) -> {
+            ExampleServiceState body = new ExampleServiceState();
+            body.name = "prefix-" + UUID.randomUUID();
+            o.setBody(body);
+        };
+
+        // Create one OnDemandLoad Service
+        String factoryLink = OnDemandLoadFactoryService.create(this.host);
+        Map<URI, ExampleServiceState> states = this.host.doFactoryChildServiceStart(
+                null,
+                1,
+                ExampleServiceState.class,
+                bodySetter,
+                UriUtils.buildUri(this.host, factoryLink));
+
+        URI serviceUri = states.keySet().iterator().next();
+        ExampleServiceState st = new ExampleServiceState();
+        st.name = "firstPatch";
+
+        // Subscribe to created service
+        TestContext ctx = this.host.testCreate(1);
+        Operation subscribe = Operation.createPost(serviceUri)
+                .setCompletion(ctx.getCompletion())
+                .setReferer(this.host.getReferer());
+
+        TestContext notifyCtx = this.host.testCreate(2);
+        this.host.startReliableSubscriptionService(subscribe, (notifyOp) -> {
+            notifyOp.complete();
+            notifyCtx.completeIteration();
+        });
+        this.host.testWait(ctx);
+
+        // do a PATCH, to trigger a notification
+        TestContext patchCtx = this.host.testCreate(1);
+        Operation patch = Operation
+                .createPatch(serviceUri)
+                .setBody(st)
+                .setCompletion(patchCtx.getCompletion());
+        this.host.send(patch);
+        this.host.testWait(patchCtx);
+
+        // Let's change the maintenance interval to low so that the service pauses.
+        this.host.setMaintenanceIntervalMicros(TimeUnit.MILLISECONDS.toMicros(100));
+
+        // Wait for the service to get paused.
+        this.host.waitFor("Service failed to pause",
+                () -> this.host.getServiceStage(serviceUri.getPath()) == null);
+
+        // Let's do a PATCH again
+        st.name = "secondPatch";
+        patchCtx = this.host.testCreate(1);
+        patch = Operation
+                .createPatch(serviceUri)
+                .setBody(st)
+                .setCompletion(patchCtx.getCompletion());
+        this.host.send(patch);
+        this.host.testWait(patchCtx);
+
+        // Wait for the patch notifications. This will exit only
+        // when both notifications have been received.
+        this.host.testWait(notifyCtx);
     }
 
     private ServiceStat getODLStopCountStat() throws Throwable {

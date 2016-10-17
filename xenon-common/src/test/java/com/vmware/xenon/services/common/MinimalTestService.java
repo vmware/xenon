@@ -25,6 +25,7 @@ import com.vmware.xenon.common.ServiceErrorResponse;
 import com.vmware.xenon.common.ServiceHost;
 import com.vmware.xenon.common.ServiceMaintenanceRequest;
 import com.vmware.xenon.common.ServiceMaintenanceRequest.MaintenanceReason;
+import com.vmware.xenon.common.ServiceRuntimeContext;
 import com.vmware.xenon.common.StatefulService;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
@@ -129,9 +130,19 @@ public class MinimalTestService extends StatefulService {
         }
     }
 
-    public boolean gotStopped;
+    public boolean gotPaused;
 
     public boolean gotDeleted;
+
+    public boolean gotStopped;
+
+    @Override
+    public ServiceRuntimeContext setProcessingStage(ProcessingStage newStage) {
+        if (newStage == ProcessingStage.PAUSED) {
+            this.gotPaused = true;
+        }
+        return super.setProcessingStage(newStage);
+    }
 
     @Override
     public void handleStop(Operation delete) {

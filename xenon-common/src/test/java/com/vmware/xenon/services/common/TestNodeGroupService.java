@@ -443,8 +443,7 @@ public class TestNodeGroupService {
         EnumSet<ServiceOption> caps = EnumSet.of(
                 ServiceOption.PERSISTENCE,
                 ServiceOption.REPLICATION,
-                ServiceOption.OWNER_SELECTION,
-                ServiceOption.INSTRUMENTATION);
+                ServiceOption.OWNER_SELECTION);
 
         long intervalMicros = TimeUnit.MILLISECONDS.toMicros(200);
 
