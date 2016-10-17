@@ -2173,11 +2173,37 @@ public class VerificationHost extends ExampleServiceHost {
                 .collect(toSet());
 
         // perform "waitForConvergence()"
-        TestNodeGroupManager manager = new TestNodeGroupManager(nodeGroupName);
-        manager.addHosts(hosts);
-        manager.setTimeout(timeout);
-        manager.waitForConvergence();
+        if (hosts != null && !hosts.isEmpty()) {
+            TestNodeGroupManager manager = new TestNodeGroupManager(nodeGroupName);
+            manager.addHosts(hosts);
+            manager.setTimeout(timeout);
+            manager.waitForConvergence();
+        } else {
+            this.waitFor("Node group did not converge", () -> {
+                String nodeGroupPath = ServiceUriPaths.NODE_GROUP_FACTORY + "/" + nodeGroupName;
+                List<Operation> nodeGroupOps = baseUris.stream()
+                        .map(u -> UriUtils.buildUri(u, nodeGroupPath))
+                        .map(Operation::createGet)
+                        .collect(toList());
+                List<NodeGroupState> nodeGroupStates = getTestRequestSender()
+                        .sendAndWait(nodeGroupOps, NodeGroupState.class);
 
+                for (NodeGroupState nodeGroupState : nodeGroupStates) {
+                    TestContext testContext = this.testCreate(1);
+                    // placeholder operation
+                    Operation parentOp = Operation.createGet(null)
+                            .setReferer(this.getUri())
+                            .setCompletion(testContext.getCompletion());
+                    try {
+                        NodeGroupUtils.checkConvergenceFromAnyHost(this, nodeGroupState, parentOp);
+                        testContext.await();
+                    } catch (Exception e) {
+                        return false;
+                    }
+                }
+                return true;
+            });
+        }
 
         // To be compatible with old behavior, populate peerHostIdToNodeState same way as before
         List<Operation> nodeGroupGetOps = nodeGroupUris.stream()
