@@ -2,6 +2,12 @@
 
 ## 1.1.0-SNAPSHOT
 
+* Pause/Resume now happens only for services with ServiceOption.ON_DEMAND_LOAD.
+  Independent of memory usage, a ODL service will be either stopped or
+  paused to disk, the moment we determine its idle. If the service has stats
+  or subscriptions, it will be paused/resumed. If it has neither, it will be
+  simple stopped and on demand started
+
 * Upgrade Lucene from 6.0.0 to 6.2.1
 
 * Service pause/resume improvements:

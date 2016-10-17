@@ -129,9 +129,9 @@ public class MinimalTestService extends StatefulService {
         }
     }
 
-    public boolean gotStopped;
-
     public boolean gotDeleted;
+
+    public boolean gotStopped;
 
     @Override
     public void handleStop(Operation delete) {

@@ -27,7 +27,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 
 import org.junit.Test;
 
@@ -803,45 +802,52 @@ public class TestServiceModel extends BasicReusableHostTestCase {
     }
 
     @Test
-    public void handlePeriodicMaintenance() throws Throwable {
-        // Check StatelessService
-        doCheckPeriodicMaintenance(new PeriodicMaintenanceTestStatelessService());
+    public void periodicMaintenance() throws Throwable {
+        try {
+            this.host.setMaintenanceIntervalMicros(TimeUnit.MILLISECONDS.toMicros(50));
+            // Check StatelessService
+            doCheckPeriodicMaintenance(new PeriodicMaintenanceTestStatelessService());
 
-        // Check StatefulService
-        doCheckPeriodicMaintenance(new PeriodicMaintenanceTestStatefulService());
+            // Check StatefulService
+            doCheckPeriodicMaintenance(new PeriodicMaintenanceTestStatefulService());
 
-        // Check StatelessService with dynamic toggle
-        Service s = new PeriodicMaintenanceTestStatelessService();
-        s.toggleOption(ServiceOption.PERIODIC_MAINTENANCE, false);
-        doCheckPeriodicMaintenance(s);
+            // Check StatelessService with dynamic toggle
+            Service s = new PeriodicMaintenanceTestStatelessService();
+            s.toggleOption(ServiceOption.PERIODIC_MAINTENANCE, false);
+            doCheckPeriodicMaintenance(s);
 
-        // Check StatefulService with dynamic toggle
-        s = new PeriodicMaintenanceTestStatefulService();
-        s.toggleOption(ServiceOption.PERIODIC_MAINTENANCE, false);
-        doCheckPeriodicMaintenance(s);
+            // Check StatefulService with dynamic toggle
+            s = new PeriodicMaintenanceTestStatefulService();
+            s.toggleOption(ServiceOption.PERIODIC_MAINTENANCE, false);
+            doCheckPeriodicMaintenance(s);
+        } finally {
+            this.host.setMaintenanceIntervalMicros(TimeUnit.MILLISECONDS.toMicros(
+                    VerificationHost.FAST_MAINT_INTERVAL_MILLIS));
+        }
     }
 
     private void doCheckPeriodicMaintenance(Service s) throws Throwable {
         // Start service
-        s = this.host.startServiceAndWait(s, UUID.randomUUID().toString(), null);
+        Service service = this.host.startServiceAndWait(s, UUID.randomUUID().toString(), null);
 
+        int expectedMaintCount = PERIODIC_MAINTENANCE_MAX;
         if (!s.hasOption(ServiceOption.PERIODIC_MAINTENANCE)) {
             this.host.log("Toggling %s on", ServiceOption.PERIODIC_MAINTENANCE);
             this.host.toggleServiceOptions(s.getUri(),
                     EnumSet.of(ServiceOption.PERIODIC_MAINTENANCE), null);
+            expectedMaintCount = 1;
         }
 
-        ServiceStat stat = s.getStat(STAT_NAME_HANDLE_PERIODIC_MAINTENANCE);
-
-        Date exp = this.host.getTestExpiration();
-        while (stat.latestValue < PERIODIC_MAINTENANCE_MAX) {
-            Thread.sleep(100);
-            this.host.log("Handled %d periodic maintenance events, expecting %d",
-                    (int)stat.latestValue, PERIODIC_MAINTENANCE_MAX);
-            if (new Date().after(exp)) {
-                throw new TimeoutException();
+        this.host.log("waiting for maintenance stat increment, expecting %d repeats",
+                expectedMaintCount);
+        final int limit = expectedMaintCount;
+        this.host.waitFor("maint. count incorrect", () -> {
+            ServiceStat stat = service.getStat(STAT_NAME_HANDLE_PERIODIC_MAINTENANCE);
+            if (stat.latestValue < limit) {
+                return false;
             }
-        }
+            return true;
+        });
     }
 
     @Test

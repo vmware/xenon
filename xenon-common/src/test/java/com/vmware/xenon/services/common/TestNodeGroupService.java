@@ -440,12 +440,6 @@ public class TestNodeGroupService {
         // Setup peer nodes
         setUp(this.nodeCount);
 
-        EnumSet<ServiceOption> caps = EnumSet.of(
-                ServiceOption.PERSISTENCE,
-                ServiceOption.REPLICATION,
-                ServiceOption.OWNER_SELECTION,
-                ServiceOption.INSTRUMENTATION);
-
         long intervalMicros = TimeUnit.MILLISECONDS.toMicros(200);
 
         // Start the ODL Factory service on all the peers.
@@ -455,14 +449,7 @@ public class TestNodeGroupService {
             h.setServiceCacheClearDelayMicros(h.getMaintenanceIntervalMicros());
 
             // create an on demand load factory and services
-            TestContext testContext = this.host.testCreate(1);
-            OnDemandLoadFactoryService s = new OnDemandLoadFactoryService();
-            s.setChildServiceCaps(caps);
-            Operation factoryPost = Operation
-                    .createPost(UriUtils.buildUri(h, OnDemandLoadFactoryService.class))
-                    .setCompletion(testContext.getCompletion());
-            h.startService(factoryPost, s);
-            testContext.await();
+            OnDemandLoadFactoryService.create(h);
         }
 
         // join the nodes and set full quorum.
@@ -497,15 +484,12 @@ public class TestNodeGroupService {
         VerificationHost newHost = this.host.setUpLocalPeerHost(0, h.getMaintenanceIntervalMicros(),
                 null);
         newHost.setServiceCacheClearDelayMicros(intervalMicros);
-        TestContext testContext = this.host.testCreate(1);
-        OnDemandLoadFactoryService s = new OnDemandLoadFactoryService();
-        s.setChildServiceCaps(caps);
-        Operation factoryPost = Operation
-                .createPost(UriUtils.buildUri(newHost, s.getClass()))
-                .setCompletion(testContext.getCompletion());
-        newHost.startService(factoryPost, s);
-        testContext.await();
+        OnDemandLoadFactoryService.create(newHost);
         this.host.joinNodesAndVerifyConvergence(this.nodeCount + 1);
+
+        waitForReplicatedFactoryServiceAvailable(
+                this.host.getPeerServiceUri(OnDemandLoadFactoryService.SELF_LINK),
+                this.replicationNodeSelector);
 
         // Do GETs on each previously created child services by calling the newly added host.
         // This will trigger synchronization for the child services.
