@@ -463,7 +463,7 @@ public class TestLuceneDocumentIndexService {
 
             convertExampleFactoryToIdempotent(h);
 
-            String factoryLink = createOnDemandLoadFactoryService(h);
+            String factoryLink = OnDemandLoadFactoryService.create(h);
             createOnDemandLoadServices(h, factoryLink);
 
             verifyImmutablePost(h);
@@ -502,6 +502,21 @@ public class TestLuceneDocumentIndexService {
             h.stop();
             tmpFolder.delete();
         }
+    }
+
+    private void createOnDemandLoadServices(ServiceHost h, String factoryLink)
+            throws Throwable {
+        this.host.testStart(this.serviceCount);
+        for (int i = 0; i < this.serviceCount; i++) {
+            ExampleServiceState body = new ExampleServiceState();
+            body.name = "prefix" + UUID.randomUUID().toString();
+            Operation post = Operation.createPost(UriUtils.buildUri(h, factoryLink))
+                    .setCompletion(this.host.getCompletion())
+                    .setBody(body);
+            this.host.send(post);
+
+        }
+        this.host.testWait();
     }
 
     void convertExampleFactoryToIdempotent(VerificationHost h) {
@@ -794,7 +809,9 @@ public class TestLuceneDocumentIndexService {
 
     private void verifyOnDemandLoad(ServiceHost h) throws Throwable {
         this.host.log("ODL verification starting");
-        String onDemandFactoryLink = createOnDemandLoadFactoryService(h);
+        // make sure on demand load does not have INSTRUMENTATION enabled since that
+        // will prevent stop: services will be paused instead
+        String onDemandFactoryLink = OnDemandLoadFactoryService.create(h);
         URI factoryUri = UriUtils.buildUri(h, onDemandFactoryLink);
         ServiceDocumentQueryResult rsp = this.host.getFactoryState(factoryUri);
         // verify that for every factory child reported by the index, through the GET (query), the service is NOT
@@ -997,111 +1014,6 @@ public class TestLuceneDocumentIndexService {
         this.host.testWait(ctx);
     }
 
-    @Test
-    public void verifyOnDemandLoadServiceWithSubscribers() throws Throwable {
-        setUpHost(false);
-        // Set memory limit very low to induce service pause/stop.
-        this.host.setServiceMemoryLimit(ServiceHost.ROOT_PATH, 0.00001);
-
-        // Increase the maintenance interval to delay service pause/ stop.
-        this.host.setMaintenanceIntervalMicros(TimeUnit.SECONDS.toMicros(5));
-
-        Consumer<Operation> bodySetter = (o) -> {
-            ExampleServiceState body = new ExampleServiceState();
-            body.name = "prefix-" + UUID.randomUUID();
-            o.setBody(body);
-        };
-
-        // Create one OnDemandLoad Service
-        String factoryLink = createOnDemandLoadFactoryService(this.host);
-        Map<URI, ExampleServiceState> states = this.host.doFactoryChildServiceStart(
-                null,
-                1,
-                ExampleServiceState.class,
-                bodySetter,
-                UriUtils.buildUri(this.host, factoryLink));
-
-        URI serviceUri = states.keySet().iterator().next();
-        ExampleServiceState st = new ExampleServiceState();
-        st.name = "firstPatch";
-
-        // Subscribe to created service
-        TestContext ctx = this.host.testCreate(1);
-        Operation subscribe = Operation.createPost(serviceUri)
-                .setCompletion(ctx.getCompletion())
-                .setReferer(this.host.getReferer());
-
-        TestContext notifyCtx = this.host.testCreate(2);
-        this.host.startReliableSubscriptionService(subscribe, (notifyOp) -> {
-            notifyOp.complete();
-            notifyCtx.completeIteration();
-        });
-        this.host.testWait(ctx);
-
-        // do a PATCH, to trigger a notification
-        TestContext patchCtx = this.host.testCreate(1);
-        Operation patch = Operation
-                .createPatch(serviceUri)
-                .setBody(st)
-                .setCompletion(patchCtx.getCompletion());
-        this.host.send(patch);
-        this.host.testWait(patchCtx);
-
-        // Let's change the maintenance interval to low so that the service pauses.
-        this.host.setMaintenanceIntervalMicros(TimeUnit.MILLISECONDS.toMicros(100));
-
-        // Wait for the service to get paused.
-        this.host.waitFor("Service failed to pause", () ->
-                this.host.getServiceStage(serviceUri.getPath()) == null);
-
-        // Let's do a PATCH again
-        st.name = "secondPatch";
-        patchCtx = this.host.testCreate(1);
-        patch = Operation
-                .createPatch(serviceUri)
-                .setBody(st)
-                .setCompletion(patchCtx.getCompletion());
-        this.host.send(patch);
-        this.host.testWait(patchCtx);
-
-        // Wait for the patch notifications. This will exit only
-        // when both notifications have been received.
-        this.host.testWait(notifyCtx);
-    }
-
-    private void createOnDemandLoadServices(ServiceHost h, String factoryLink)
-            throws Throwable {
-        this.host.testStart(this.serviceCount);
-        for (int i = 0; i < this.serviceCount; i++) {
-            ExampleServiceState body = new ExampleServiceState();
-            body.name = "prefix" + UUID.randomUUID().toString();
-            Operation post = Operation.createPost(UriUtils.buildUri(h, factoryLink))
-                    .setCompletion(this.host.getCompletion())
-                    .setBody(body);
-            this.host.send(post);
-
-        }
-        this.host.testWait();
-    }
-
-    private String createOnDemandLoadFactoryService(ServiceHost h) throws Throwable {
-        // create an on demand load factory and services
-        this.host.testStart(1);
-        OnDemandLoadFactoryService s = new OnDemandLoadFactoryService();
-        s.setChildServiceCaps(EnumSet.of(ServiceOption.PERSISTENCE,
-                ServiceOption.REPLICATION, ServiceOption.OWNER_SELECTION,
-                ServiceOption.INSTRUMENTATION));
-        Operation factoryPost = Operation.createPost(
-                UriUtils.buildUri(h, s.getClass()))
-                .setCompletion(this.host.getCompletion());
-        h.startService(factoryPost, s);
-        this.host.testWait();
-        String factoryLink = s.getSelfLink();
-        this.host.scheduleNodeGroupChangeMaintenance(ServiceUriPaths.DEFAULT_NODE_SELECTOR);
-        this.host.log("Started on demand load factory at %s", factoryLink);
-        return factoryLink;
-    }
-
     private Map<URI, ExampleServiceState> updateUriMapWithNewPort(int port,
             Map<URI, ExampleServiceState> beforeState) {
         Map<URI, ExampleServiceState> updatedExampleMap = new HashMap<>();
@@ -1268,8 +1180,7 @@ public class TestLuceneDocumentIndexService {
     public void patchLargeServiceState() throws Throwable {
         setUpHost(false);
         // create on demand load services
-        String factoryLink = createOnDemandLoadFactoryService(this.host);
-        createOnDemandLoadServices(this.host, factoryLink);
+        String factoryLink = OnDemandLoadFactoryService.create(this.host);
         ServiceDocumentQueryResult res = this.host.getFactoryState(
                 UriUtils.buildUri(this.host, factoryLink));
 
