@@ -643,6 +643,72 @@ public class TestNodeGroupService {
             }
         }
 
+        // create additional example services which are not associated with the custom node group
+        // and verify that they are always included in queries which target the custom node group
+        // (e.g. that the query is never executed on the OBSERVER node).
+        Map<String, ExampleServiceState> exampleStates = createExampleServices(observerHostUri);
+        QueryTask.QuerySpecification q = new QueryTask.QuerySpecification();
+        q.query.setTermPropertyName(ServiceDocument.FIELD_NAME_KIND).setTermMatchValue(
+                Utils.buildKind(ExampleServiceState.class));
+        QueryTask task = QueryTask.create(q).setDirect(true);
+
+        for (Entry<URI, URI> node : this.host.getNodeGroupMap().entrySet()) {
+            URI nodeUri = node.getKey();
+            URI serviceUri = UriUtils.buildUri(nodeUri, ServiceUriPaths.CORE_LOCAL_QUERY_TASKS);
+            URI forwardQueryUri = UriUtils.buildForwardRequestUri(serviceUri, null,
+                    CUSTOM_GROUP_NODE_SELECTOR);
+            TestContext ctx = this.host.testCreate(1);
+            Operation post = Operation
+                    .createPost(forwardQueryUri)
+                    .setBody(task)
+                    .setCompletion((o, e) -> {
+                        if (e != null) {
+                            ctx.fail(e);
+                            return;
+                        }
+
+                        QueryTask rsp = o.getBody(QueryTask.class);
+                        int resultCount = rsp.results.documentLinks.size();
+                        if (resultCount != 2 * this.serviceCount) {
+                            ctx.fail(new IllegalStateException(
+                                    "Forwarded query returned unexpected document count " +
+                                            resultCount));
+                            return;
+                        }
+
+                        ctx.complete();
+                    });
+            this.host.send(post);
+            ctx.await();
+        }
+
+        task.querySpec.options = EnumSet.of(QueryTask.QuerySpecification.QueryOption.BROADCAST);
+        task.nodeSelectorLink = CUSTOM_GROUP_NODE_SELECTOR;
+        URI queryPostUri = UriUtils.buildUri(observerHostUri, ServiceUriPaths.CORE_QUERY_TASKS);
+        TestContext ctx = this.host.testCreate(1);
+        Operation post = Operation
+                .createPost(queryPostUri)
+                .setBody(task)
+                .setCompletion((o, e) -> {
+                    if (e != null) {
+                        ctx.fail(e);
+                        return;
+                    }
+
+                    QueryTask rsp = o.getBody(QueryTask.class);
+                    int resultCount = rsp.results.documentLinks.size();
+                    if (resultCount != 2 * this.serviceCount) {
+                        ctx.fail(new IllegalStateException(
+                                "Broadcast query returned unexpected document count " +
+                                        resultCount));
+                        return;
+                    }
+
+                    ctx.complete();
+                });
+        this.host.send(post);
+        ctx.await();
+
         URI existingNodeGroup = this.host.getPeerNodeGroupUri();
 
         // start more nodes, insert them to existing group, but with no synchronization required
@@ -1323,10 +1389,10 @@ public class TestNodeGroupService {
         TestContext ctx = this.host.testCreate(this.updateCount);
         for (int i = 0; i < this.updateCount; i++) {
             Operation op = Operation.createPost(peerHost, ExampleService.FACTORY_LINK)
-                        .setBody(synchState)
-                        .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_SYNCH_OWNER)
-                        .setReferer(this.host.getUri())
-                        .setCompletion(ctx.getCompletion());
+                    .setBody(synchState)
+                    .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_SYNCH_OWNER)
+                    .setReferer(this.host.getUri())
+                    .setCompletion(ctx.getCompletion());
             this.host.sendRequest(op);
         }
         ctx.await();
@@ -1744,7 +1810,7 @@ public class TestNodeGroupService {
                     if (!newState.documentSelfLink
                             .contains(ReplicationFactoryTestService.STRICT_SELF_LINK)
                             && !newState.documentSelfLink
-                                    .contains(ReplicationFactoryTestService.SIMPLE_REPL_SELF_LINK)
+                            .contains(ReplicationFactoryTestService.SIMPLE_REPL_SELF_LINK)
                             && !newState.stringField.equals(newState.documentSelfLink)) {
                         this.host.log("State not in final state");
                         isConverged = false;
@@ -1832,7 +1898,7 @@ public class TestNodeGroupService {
                         ExampleServiceState rsp = o.getBody(ExampleServiceState.class);
                         for (int k = 0; k < this.updateCount; k++) {
                             ExampleServiceState update = new ExampleServiceState();
-                            state.counter = (long)k;
+                            state.counter = (long) k;
                             Operation patch = Operation
                                     .createPatch(peer, rsp.documentSelfLink)
                                     .setBody(update)
@@ -1939,7 +2005,7 @@ public class TestNodeGroupService {
 
             if (!this.host.isStressTest()
                     && (this.host.getPeerCount() > 16
-                            || this.serviceCount * this.updateCount > 100)) {
+                    || this.serviceCount * this.updateCount > 100)) {
                 this.host.setStressTest(true);
             }
 
@@ -2466,7 +2532,6 @@ public class TestNodeGroupService {
                         .setBody(resourceGroupState));
         groupHost.resetSystemAuthorizationContext();
         verifyAuthCacheHasClearedInAllPeers(barToken);
-
 
         // verify patching user should clear the auth cache
         populateAuthCacheInAllPeers(fooAuthContext);
@@ -3022,7 +3087,6 @@ public class TestNodeGroupService {
         // owner node will try to synchronize on-demand
         // and retry the original update reqeust.
 
-
         // Artificially setting the replica not found timeout to
         // a lower-value, to reduce the wait time before owner
         // retries
@@ -3442,7 +3506,7 @@ public class TestNodeGroupService {
         for (ReplicationTestServiceState st : childStates.values()) {
             Operation get = Operation.createGet(
                     this.host.getPeerServiceUri(st.documentSelfLink)).setReferer(
-                            this.host.getReferer());
+                    this.host.getReferer());
             joinedOps.add(get);
         }
 
@@ -4007,7 +4071,7 @@ public class TestNodeGroupService {
                 if (e.getValue().size() < expectedNodeCountPerLinkMin
                         || e.getValue().size() > expectedNodeCountPerLinkMax) {
                     this.host.log("Service %s found on %d nodes, expected %d -> %d", e.getKey(), e
-                            .getValue().size(), expectedNodeCountPerLinkMin,
+                                    .getValue().size(), expectedNodeCountPerLinkMin,
                             expectedNodeCountPerLinkMax);
                     isConverged = false;
                 }
