@@ -1842,10 +1842,10 @@ public class VerificationHost extends ExampleServiceHost {
         this.peerNodeGroups.clear();
         for (String remoteNode : peerNodes) {
             URI remoteHostBaseURI = URI.create(remoteNode);
-            if (remoteHostBaseURI.getPort() == 80 || remoteHostBaseURI.getPort() == -1) {
-                remoteHostBaseURI = UriUtils.buildUri(remoteNode, ServiceHost.DEFAULT_PORT, "",
-                        null);
-            }
+//            if (remoteHostBaseURI.getPort() == 80 || remoteHostBaseURI.getPort() == -1) {
+//                remoteHostBaseURI = UriUtils.buildUri(remoteNode, ServiceHost.DEFAULT_PORT, "",
+//                        null);
+//            }
 
             URI remoteNodeGroup = UriUtils.extendUri(remoteHostBaseURI,
                     ServiceUriPaths.DEFAULT_NODE_GROUP);
