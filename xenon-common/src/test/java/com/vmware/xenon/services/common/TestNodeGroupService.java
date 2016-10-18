@@ -3036,6 +3036,7 @@ public class TestNodeGroupService {
             String mainHostId = "main-" + VerificationHost.hostNumber.incrementAndGet();
             String[] args = {
                     "--id=" + mainHostId,
+                    "--port=0",
                     "--bindAddress=127.0.0.1",
                     "--sandbox="
                             + tmpFolder.getRoot().getAbsolutePath(),
