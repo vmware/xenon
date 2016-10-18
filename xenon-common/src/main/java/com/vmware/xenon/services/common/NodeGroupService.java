@@ -629,6 +629,7 @@ public class NodeGroupService extends StatefulService {
                     .setBody(localState)
                     .setRetryCount(0)
                     .setConnectionTag(ServiceClient.CONNECTION_TAG_GOSSIP)
+                    .setConnectionSharing(true)
                     .setExpiration(
                             Utils.getNowMicrosUtc() + localState.config.peerRequestTimeoutMicros)
                     .forceRemote()
