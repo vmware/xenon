@@ -98,6 +98,7 @@ import com.vmware.xenon.services.common.LocalQueryTaskFactoryService;
 import com.vmware.xenon.services.common.LuceneBlobIndexService;
 import com.vmware.xenon.services.common.LuceneDocumentIndexService;
 import com.vmware.xenon.services.common.NodeGroupFactoryService;
+import com.vmware.xenon.services.common.NodeGroupService;
 import com.vmware.xenon.services.common.NodeGroupService.JoinPeerRequest;
 import com.vmware.xenon.services.common.NodeGroupUtils;
 import com.vmware.xenon.services.common.ODataQueryService;
@@ -2114,6 +2115,35 @@ public class ServiceHost implements ServiceRequestSender {
                 return;
             }
             stopService(service);
+
+            // We check if if this was a failure because of
+            // a 409 error from a replica node. If it was,
+            // then this is mostly likely a new owner who does
+            // not have the service. Remember before reaching here
+            // we do check if the service is started locally in
+            // checkIfServiceExistsAndAttach. So, in this scenario,
+            // we will kick-off on-demand synchronization by kicking
+            // off a synch-post request (like the synch-task). This will
+            // start the service locally.
+            boolean isReplicaConflict = isServiceCreate(post) &&
+                    service.hasOption(ServiceOption.REPLICATION) &&
+                    post.getAction() == Action.POST &&
+                    !post.isFromReplication() &&
+                    o.getStatusCode() == Operation.STATUS_CODE_CONFLICT;
+            if (isReplicaConflict) {
+                ServiceDocument d = new ServiceDocument();
+                d.documentSelfLink = o.getLinkedState().documentSelfLink;
+                Operation synchRequest = Operation
+                        .createPost(o.getUri())
+                        .setBody(d)
+                        .setReferer(getUri())
+                        .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_SYNCH_OWNER)
+                        .setExpiration(Utils.getNowMicrosUtc() + NodeGroupService.PEER_REQUEST_TIMEOUT_MICROS)
+                        .setCompletion((synchOp, t) -> post.fail(e));
+                this.handleRequest(null, synchRequest);
+                return;
+            }
+
             post.fail(e);
 
             processPendingServiceAvailableOperations(service, e, !post.isFailureLoggingDisabled());
@@ -2509,7 +2539,7 @@ public class ServiceHost implements ServiceRequestSender {
                 }
 
                 post.nestCompletion(o -> {
-                    processServiceStart(ProcessingStage.AVAILABLE, s, post,
+                    processServiceStart(ProcessingStage.REPLICATE_STATE, s, post,
                             hasClientSuppliedInitialState);
                 });
 
@@ -2534,6 +2564,51 @@ public class ServiceHost implements ServiceRequestSender {
 
                 ServiceDocument state = (ServiceDocument) post.getBodyRaw();
                 saveServiceState(s, post, state);
+                break;
+            case REPLICATE_STATE:
+                // The state should be replicated only if it's a POST
+                // request from the FactoryService for a replicated service.
+                // If this was a replication request from the owner node or
+                // a POST converted to a PUT, we avoid replication and
+                // directly jump to STARTED stage.
+                boolean shouldReplicate = isServiceCreate(post) &&
+                        post.getAction() == Action.POST &&
+                        s.hasOption(ServiceOption.REPLICATION) &&
+                        !post.isFromReplication() &&
+                        !post.isReplicationDisabled();
+
+                if (!shouldReplicate) {
+                    processServiceStart(ProcessingStage.AVAILABLE, s, post,
+                            hasClientSuppliedInitialState);
+                    return;
+                }
+
+                String factoryPath = post.getRequestHeader(Operation.FACTORY_PATH_HEADER);
+                post.setUri(UriUtils.buildUri(this, factoryPath));
+
+                ServiceDocument initialState = post.getBody(s.getStateType());
+                final ServiceDocument clonedInitState = Utils.clone(initialState);
+
+                // The factory services on the remote nodes must see the request body as it was before it
+                // was fixed up by this instance. Restore self link to be just the child suffix "hint", removing the
+                // factory prefix added upstream.
+                String originalLink = clonedInitState.documentSelfLink;
+                clonedInitState.documentSelfLink = originalLink.replace(factoryPath, "");
+
+                post.nestCompletion((replicatedOp) -> {
+                    clonedInitState.documentSelfLink = originalLink;
+                    post.setBodyNoCloning(clonedInitState);
+
+                    processServiceStart(ProcessingStage.AVAILABLE, s, post,
+                            hasClientSuppliedInitialState);
+                });
+
+                // if limited replication is used for this service, supply a selection key, the fully qualified service link
+                // so the same set of nodes get selected for the POST to create the service, as the nodes chosen
+                // for subsequent updates to the child service
+                post.linkState(clonedInitState);
+                this.replicateRequest(s.getOptions(), clonedInitState, s.getPeerNodeSelectorPath(),
+                        originalLink, post);
                 break;
             case AVAILABLE:
                 // It's possible a service is stopped before it transitions to available

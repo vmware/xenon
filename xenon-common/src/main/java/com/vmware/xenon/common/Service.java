@@ -262,6 +262,11 @@ public interface Service extends ServiceRequestSender {
         INDEXING_INITIAL_STATE,
 
         /**
+         * Replicate the state to peer replicas.
+         */
+        REPLICATE_STATE,
+
+        /**
          * Service is ready for operation processing. Any operations received while in the STARTED
          * or INITIALIZED stage will be dequeued.
          */

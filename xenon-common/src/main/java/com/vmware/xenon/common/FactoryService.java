@@ -338,6 +338,8 @@ public abstract class FactoryService extends StatelessService {
             } else {
                 serviceUri = UriUtils.extendUri(getUri(), suffix);
             }
+
+            o.addRequestHeader(Operation.FACTORY_PATH_HEADER, getSelfLink());
             o.setUri(serviceUri);
 
         } catch (Throwable e) {
@@ -402,8 +404,8 @@ public abstract class FactoryService extends StatelessService {
                     o.complete();
                     return;
                 }
-                o.setReplicationDisabled(false);
-                replicateRequest(o);
+                o.linkState(null);
+                o.complete();
             });
 
             if (o.isWithinTransaction() && this.getHost().getTransactionServiceUri() != null) {
@@ -422,36 +424,8 @@ public abstract class FactoryService extends StatelessService {
     }
 
     private void startChildService(Operation o, Service childService) {
-        o.setReplicationDisabled(true);
         o.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_VERSION_CHECK);
         getHost().startService(o, childService);
-    }
-
-    private void replicateRequest(Operation op) {
-        // set the URI to be of this service, the factory since we want
-        // the POST going to the remote peer factory service, not the
-        // yet-to-be-created child service
-        op.setUri(getUri());
-
-        ServiceDocument initialState = op.getBody(this.stateType);
-        final ServiceDocument clonedInitState = Utils.clone(initialState);
-
-        // The factory services on the remote nodes must see the request body as it was before it
-        // was fixed up by this instance. Restore self link to be just the child suffix "hint", removing the
-        // factory prefix added upstream.
-        String originalLink = clonedInitState.documentSelfLink;
-        clonedInitState.documentSelfLink = clonedInitState.documentSelfLink.replace(getSelfLink(),"");
-        op.nestCompletion((replicatedOp) -> {
-            clonedInitState.documentSelfLink = originalLink;
-            op.linkState(null).setBodyNoCloning(clonedInitState).complete();
-        });
-
-        // if limited replication is used for this service, supply a selection key, the fully qualified service link
-        // so the same set of nodes get selected for the POST to create the service, as the nodes chosen
-        // for subsequence updates to the child service
-        op.linkState(clonedInitState);
-        getHost().replicateRequest(this.childOptions, clonedInitState, getPeerNodeSelectorPath(),
-                originalLink, op);
     }
 
     private void forwardRequest(Operation o, Service childService) {
