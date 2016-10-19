@@ -564,11 +564,15 @@ public class LuceneDocumentIndexService extends StatelessService {
 
         try {
             if (a == Action.GET || a == Action.PATCH) {
-                offerQueryOperation(op);
-                this.privateQueryExecutor.execute(this::handleQueryRequest);
+                boolean accepted = offerQueryOperation(op);
+                if (accepted) {
+                    this.privateQueryExecutor.execute(this::handleQueryRequest);
+                }
             } else {
-                offerUpdateOperation(op);
-                this.privateIndexingExecutor.execute(this::handleUpdateRequest);
+                boolean accepted = offerUpdateOperation(op);
+                if (accepted) {
+                    this.privateIndexingExecutor.execute(this::handleUpdateRequest);
+                }
             }
         } catch (RejectedExecutionException e) {
             op.fail(e);
@@ -781,7 +785,7 @@ public class LuceneDocumentIndexService extends StatelessService {
             }
             if (fieldToExpand != null
                     && fieldToExpand
-                            .equals(ServiceDocumentQueryResult.FIELD_NAME_DOCUMENT_LINKS)) {
+                    .equals(ServiceDocumentQueryResult.FIELD_NAME_DOCUMENT_LINKS)) {
                 options.add(QueryOption.EXPAND_CONTENT);
             }
         }
@@ -835,14 +839,16 @@ public class LuceneDocumentIndexService extends StatelessService {
     /**
      * Queues operation in a multi-queue that uses the subject as the key per queue
      */
-    private void offerQueryOperation(Operation op) {
+    private boolean offerQueryOperation(Operation op) {
         String subject = getSubject(op);
-        this.queryQueue.offer(subject, op);
+        boolean accepted = this.queryQueue.offer(subject, op);
+        return accepted;
     }
 
-    private void offerUpdateOperation(Operation op) {
+    private boolean offerUpdateOperation(Operation op) {
         String subject = getSubject(op);
-        this.updateQueue.offer(subject, op);
+        boolean accepted = this.updateQueue.offer(subject, op);
+        return accepted;
     }
 
     private String getSubject(Operation op) {
@@ -2224,7 +2230,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         // link back for retention so that the next grooming run can cleanup the missed document.
         if (versionCount < versionUpperBound - versionLowerBound + 1) {
             logWarning("Adding %s back for version grooming since versionCount %d " +
-                    "was lower than version delta from %d to %d.",
+                            "was lower than version delta from %d to %d.",
                     link, versionCount, versionLowerBound, versionUpperBound);
             synchronized (this.linkDocumentRetentionEstimates) {
                 this.linkDocumentRetentionEstimates.put(link, versionsToKeep);
