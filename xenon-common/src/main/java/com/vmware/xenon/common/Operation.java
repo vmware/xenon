@@ -408,6 +408,7 @@ public class Operation implements Cloneable {
     public static final String TRANSACTION_HEADER = HEADER_NAME_PREFIX
             + "tx-phase";
     public static final String TRANSACTION_ID_HEADER = HEADER_NAME_PREFIX + "tx-id";
+    public static final String FACTORY_PATH_HEADER = HEADER_NAME_PREFIX + "factory-path";
 
     /**
      * Infrastructure use only. Set when a service is first created due to a client request. Since

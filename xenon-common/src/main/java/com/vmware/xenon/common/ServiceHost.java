@@ -2505,7 +2505,7 @@ public class ServiceHost implements ServiceRequestSender {
                 }
 
                 post.nestCompletion(o -> {
-                    processServiceStart(ProcessingStage.AVAILABLE, s, post,
+                    processServiceStart(ProcessingStage.REPLICATE_STATE, s, post,
                             hasClientSuppliedInitialState);
                 });
 
@@ -2530,6 +2530,51 @@ public class ServiceHost implements ServiceRequestSender {
 
                 ServiceDocument state = (ServiceDocument) post.getBodyRaw();
                 saveServiceState(s, post, state);
+                break;
+            case REPLICATE_STATE:
+                // The state should be replicated only if it's a POST
+                // request from the FactoryService for a replicated service.
+                // If this was a replication request from the owner node or
+                // a POST converted to a PUT, we avoid replication and
+                // directly jump to STARTED stage.
+                boolean shouldReplicate = isServiceCreate(post) &&
+                        post.getAction() == Action.POST &&
+                        s.hasOption(ServiceOption.REPLICATION) &&
+                        !post.isFromReplication() &&
+                        !post.isReplicationDisabled();
+
+                if (!shouldReplicate) {
+                    processServiceStart(ProcessingStage.AVAILABLE, s, post,
+                            hasClientSuppliedInitialState);
+                    return;
+                }
+
+                String factoryPath = post.getRequestHeader(Operation.FACTORY_PATH_HEADER);
+                post.setUri(UriUtils.buildUri(this, factoryPath));
+
+                ServiceDocument initialState = post.getBody(s.getStateType());
+                final ServiceDocument clonedInitState = Utils.clone(initialState);
+
+                // The factory services on the remote nodes must see the request body as it was before it
+                // was fixed up by this instance. Restore self link to be just the child suffix "hint", removing the
+                // factory prefix added upstream.
+                String originalLink = clonedInitState.documentSelfLink;
+                clonedInitState.documentSelfLink = originalLink.replace(factoryPath, "");
+
+                post.nestCompletion((replicatedOp) -> {
+                    clonedInitState.documentSelfLink = originalLink;
+                    post.setBodyNoCloning(clonedInitState);
+
+                    processServiceStart(ProcessingStage.AVAILABLE, s, post,
+                            hasClientSuppliedInitialState);
+                });
+
+                // if limited replication is used for this service, supply a selection key, the fully qualified service link
+                // so the same set of nodes get selected for the POST to create the service, as the nodes chosen
+                // for subsequent updates to the child service
+                post.linkState(clonedInitState);
+                this.replicateRequest(s.getOptions(), clonedInitState, s.getPeerNodeSelectorPath(),
+                        originalLink, post);
                 break;
             case AVAILABLE:
                 // It's possible a service is stopped before it transitions to available
