@@ -149,6 +149,11 @@ public class TestLuceneDocumentIndexService {
     public int iterationCount = 1;
 
     /**
+     * Parameter that specifies service cache clear
+     */
+    public long serviceCacheClearIntervalSeconds = 0;
+
+    /**
      * Parameter that specifies authorized user count for auth enabled tests
      */
     public int authUserCount = Utils.DEFAULT_THREAD_COUNT;
@@ -194,6 +199,11 @@ public class TestLuceneDocumentIndexService {
             if (isAuthEnabled) {
                 this.host.setAuthorizationService(new AuthorizationContextService());
                 this.host.setAuthorizationEnabled(true);
+            }
+
+            if (this.serviceCacheClearIntervalSeconds != 0) {
+                this.host.setServiceCacheClearDelayMicros(
+                        TimeUnit.SECONDS.toMicros(this.serviceCacheClearIntervalSeconds));
             }
 
             this.host.start();
@@ -1215,7 +1225,13 @@ public class TestLuceneDocumentIndexService {
     }
 
     private void doThroughputPost(boolean interleaveQueries) throws Throwable {
+        if (this.serviceCacheClearIntervalSeconds == 0) {
+            // effectively disable ODL stop/start behavior while running throughput tests
+            this.serviceCacheClearIntervalSeconds = TimeUnit.MICROSECONDS.toSeconds(
+                    ServiceHostState.DEFAULT_OPERATION_TIMEOUT_MICROS);
+        }
         setUpHost(false);
+        double initialPauseCount = getHostPauseCount();
         this.host.log("Starting throughput POST, query interleaving: %s", interleaveQueries);
         URI factoryUri = createImmutableFactoryService(this.host);
         if (this.documentCountAtStart > 0) {
@@ -1229,6 +1245,8 @@ public class TestLuceneDocumentIndexService {
         doMultipleIterationsThroughputPost(interleaveQueries, this.iterationCount, factoryUri);
         factoryUri = UriUtils.buildFactoryUri(this.host, ExampleService.class);
         doMultipleIterationsThroughputPost(interleaveQueries, this.iterationCount, factoryUri);
+        double finalPauseCount = getHostPauseCount();
+        assertTrue(initialPauseCount == finalPauseCount);
     }
 
     URI createImmutableFactoryService(VerificationHost h) throws Throwable {
@@ -1238,6 +1256,16 @@ public class TestLuceneDocumentIndexService {
 
         URI factoryUri = immutableFactory.getUri();
         return factoryUri;
+    }
+
+    private double getHostPauseCount() {
+        Map<String, ServiceStat> hostStats = this.host.getServiceStats(
+                UriUtils.buildUri(this.host, ServiceHostManagementService.SELF_LINK));
+        ServiceStat st = hostStats.get(Service.STAT_NAME_PAUSE_COUNT);
+        if (st == null) {
+            return 0.0;
+        }
+        return st.latestValue;
     }
 
     private void doMultipleIterationsThroughputPost(boolean interleaveQueries, int iterationCount,
