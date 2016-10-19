@@ -76,6 +76,7 @@ import com.vmware.xenon.common.ServiceHost.ServiceHostState;
 import com.vmware.xenon.common.ServiceStats;
 import com.vmware.xenon.common.ServiceStats.ServiceStat;
 import com.vmware.xenon.common.StatefulService;
+import com.vmware.xenon.common.SynchronizationTaskService;
 import com.vmware.xenon.common.TaskState;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
@@ -383,6 +384,83 @@ public class TestNodeGroupService {
 
         System.clearProperty(
                 NodeSelectorReplicationService.PROPERTY_NAME_REPLICA_NOT_FOUND_TIMEOUT_MICROS);
+    }
+
+    @Test
+    public void synchronizationCollisionWithPosts() throws Throwable {
+        // POST requests go through the FactoryService
+        // and do not get queued with Synchronization
+        // requests, so if synchronization was running
+        // while POSTs were happening for the same factory
+        // service, we could run into collisions. This test
+        // verifies that xenon handles such collisions and
+        // POST requests are always successful.
+
+        // Join the nodes with full quorum and wait for nodes to
+        // converge and synchronization to complete.
+        setUp(this.nodeCount);
+        this.host.joinNodesAndVerifyConvergence(this.host.getPeerCount());
+        this.host.setNodeGroupQuorum(this.nodeCount);
+        this.host.waitForNodeGroupConvergence(this.nodeCount);
+
+        // Find the owner node for /core/examples. We will
+        // use it to start on-demand synchronization for
+        // this factory
+        URI factoryUri = UriUtils.buildUri(this.host.getPeerHost(), ExampleService.FACTORY_LINK);
+        waitForReplicatedFactoryServiceAvailable(factoryUri, this.replicationNodeSelector);
+
+        String taskPath = UriUtils.buildUriPath(
+                SynchronizationTaskService.FACTORY_LINK,
+                UriUtils.convertPathCharsFromLink(ExampleService.FACTORY_LINK));
+
+        VerificationHost owner = null;
+        for (VerificationHost peer : this.host.getInProcessHostMap().values()) {
+            if (peer.isOwner(ExampleService.FACTORY_LINK, ServiceUriPaths.DEFAULT_NODE_SELECTOR)) {
+                owner = peer;
+                break;
+            }
+        }
+        this.host.log(Level.INFO, "Owner of synch-task is %s", owner.getId());
+
+        // Get the membershipUpdateTimeMicros so that we can
+        // kick-off the synch-task on-demand.
+        URI taskUri = UriUtils.buildUri(owner, taskPath);
+        SynchronizationTaskService.State taskState = this.host.getServiceState(
+                null, SynchronizationTaskService.State.class, taskUri);
+        long membershipUpdateTimeMicros = taskState.membershipUpdateTimeMicros;
+
+        // Start posting and in the middle also start
+        // synchronization. All POSTs should succeed!
+        ExampleServiceState state = new ExampleServiceState();
+        state.name = "testing";
+        TestContext ctx = this.host.testCreate((this.serviceCount * 10) + 1);
+        for (int i = 0; i < this.serviceCount * 10; i++) {
+            if (i == 5) {
+                SynchronizationTaskService.State task = new SynchronizationTaskService.State();
+                task.documentSelfLink = UriUtils.convertPathCharsFromLink(ExampleService.FACTORY_LINK);
+                task.factorySelfLink = ExampleService.FACTORY_LINK;
+                task.factoryStateKind = Utils.buildKind(ExampleService.ExampleServiceState.class);
+                task.membershipUpdateTimeMicros = membershipUpdateTimeMicros + 1;
+                task.nodeSelectorLink = ServiceUriPaths.DEFAULT_NODE_SELECTOR;
+                task.queryResultLimit = 1000;
+                task.taskInfo = TaskState.create();
+                task.taskInfo.isDirect = true;
+
+                Operation post = Operation
+                        .createPost(owner, SynchronizationTaskService.FACTORY_LINK)
+                        .setBody(task)
+                        .setReferer(this.host.getUri())
+                        .setCompletion(ctx.getCompletion());
+                this.host.sendRequest(post);
+            }
+            Operation post = Operation
+                    .createPost(factoryUri)
+                    .setBody(state)
+                    .setReferer(this.host.getUri())
+                    .setCompletion(ctx.getCompletion());
+            this.host.sendRequest(post);
+        }
+        ctx.await();
     }
 
     @Test

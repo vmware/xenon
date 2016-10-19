@@ -20,6 +20,7 @@ import java.util.List;
 import java.util.logging.Level;
 
 import com.vmware.xenon.common.Operation;
+import com.vmware.xenon.common.Service;
 import com.vmware.xenon.common.ServiceErrorResponse;
 import com.vmware.xenon.common.ServiceHost;
 import com.vmware.xenon.common.Utils;
@@ -56,12 +57,24 @@ public class NodeSelectorReplicationContext {
         boolean shouldRetry = false;
 
         if (e != null && o != null) {
-            h.log(Level.WARNING,
-                    "(Original id: %d) Replication request to %s-%s failed with %d, %s",
-                    op.getId(),
-                    o.getUri(), o.getAction(), o.getStatusCode(), e.getMessage());
-            this.failureStatus = o.getStatusCode();
-            errorCode = this.getErrorCode(o);
+            // If this was a replicated POST request, and the replica
+            // failed with a 409 CONFLICT error, then just ignore the
+            // failure. This has happened because Synchronization
+            // raced the POST request and already started the service
+            // on replica nodes.
+            if (o.getAction() == Service.Action.POST &&
+                    o.getStatusCode() == Operation.STATUS_CODE_CONFLICT) {
+                h.log(Level.WARNING, "Replica returned 409 for POST request. %s " +
+                        "Ignoring failure %s", o.getUri(), e.getMessage());
+                e = null;
+            } else {
+                h.log(Level.WARNING,
+                        "(Original id: %d) Replication request to %s-%s failed with %d, %s",
+                        op.getId(),
+                        o.getUri(), o.getAction(), o.getStatusCode(), e.getMessage());
+                this.failureStatus = o.getStatusCode();
+                errorCode = this.getErrorCode(o);
+            }
         }
 
         synchronized (this) {
