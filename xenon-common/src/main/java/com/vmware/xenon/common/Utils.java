@@ -1270,6 +1270,9 @@ public class Utils {
      * well
      */
     public static String buildUUID(String id) {
-        return id + Utils.getNowMicrosUtc();
+        return getBuilder()
+                .append(id)
+                .append(Utils.getNowMicrosUtc())
+                .toString();
     }
 }
