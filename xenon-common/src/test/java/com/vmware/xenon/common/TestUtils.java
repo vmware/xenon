@@ -79,10 +79,24 @@ public class TestUtils {
     @Test
     public void buildUUID() {
         String baseId = Utils.computeHash("some id");
-        Set<String> ids = new HashSet<>();
-        for (int i = 0; i < this.iterationCount; i++) {
-            assertTrue(ids.add(Utils.buildUUID(baseId)));
+        // warmup
+        Set<String> set = new HashSet<>();
+        int iterations = this.iterationCount;
+        for (int i = 0; i < iterations; i++) {
+            assertTrue(set.add(Utils.buildUUID(baseId)));
         }
+
+        // keep jvm from optimizing away calls
+        int sum = 0;
+        long start = System.nanoTime();
+        for (int i = 0; i < iterations; i++) {
+            sum += Utils.buildUUID(baseId).length();
+        }
+        long end = System.nanoTime();
+        Logger log = Logger.getAnonymousLogger();
+        log.info("" + sum);
+        double thpt = this.iterationCount / ((end - start) / 1000000000.0);
+        log.info("Throughput: " + thpt);
     }
 
     @Test

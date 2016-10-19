@@ -1188,9 +1188,12 @@ public class Utils {
         return Math.abs(timeMicros - now) < TIME_COMPARISON_EPSILON_MICROS;
     }
 
-    public static StringBuilder getBuilder() {
+    /**
+     * Return a non-null, zero-length thread-local instance.
+     * @return
+     */
+    private static StringBuilder getBuilder() {
         return builderPerThread.get();
-
     }
 
     /**
@@ -1270,6 +1273,9 @@ public class Utils {
      * well
      */
     public static String buildUUID(String id) {
-        return id + Utils.getNowMicrosUtc();
+        return Utils.getBuilder()
+                .append(id)
+                .append(Long.toHexString(Utils.getNowMicrosUtc()))
+                .toString();
     }
 }
