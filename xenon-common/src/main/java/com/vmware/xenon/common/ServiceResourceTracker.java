@@ -30,6 +30,7 @@ import com.vmware.xenon.common.Service.Action;
 import com.vmware.xenon.common.Service.ProcessingStage;
 import com.vmware.xenon.common.Service.ServiceOption;
 import com.vmware.xenon.common.ServiceHost.ServiceHostState;
+import com.vmware.xenon.common.ServiceHost.ServiceHostState.MemoryLimitType;
 import com.vmware.xenon.common.ServiceStats.ServiceStat;
 import com.vmware.xenon.common.ServiceStats.TimeSeriesStats;
 import com.vmware.xenon.common.ServiceStats.TimeSeriesStats.AggregationType;
@@ -409,8 +410,16 @@ class ServiceResourceTracker {
     public void performMaintenance(long now, long deadlineMicros) {
         updateStats(now);
         ServiceHostState hostState = this.host.getStateNoCloning();
-
         int pauseServiceCount = 0;
+        long memoryLimitHighMB = this.host.getServiceMemoryLimitMB(ServiceHost.ROOT_PATH,
+                MemoryLimitType.HIGH_WATERMARK);
+
+        long memoryInUseMB = hostState.serviceCount
+                * ServiceHost.DEFAULT_SERVICE_INSTANCE_COST_BYTES;
+        memoryInUseMB /= (1024 * 1024);
+
+        boolean shouldPause = memoryLimitHighMB <= memoryInUseMB;
+
         for (Service service : this.attachedServices.values()) {
             // skip factory services, they do not have state
             if (service.hasOption(ServiceOption.FACTORY)) {
@@ -498,6 +507,13 @@ class ServiceResourceTracker {
                 // if the on-demand-load service does have subscribers/stats, then continue with
                 // pausing so that we don't lose any "soft" state
                 stopService(service.getSelfLink(), false, null);
+                continue;
+            }
+
+            if (!shouldPause && !cacheCleared) {
+                // if we are not under memory pressure only pause or stop ODL services if their
+                // cache is cleared. It uses a longer interval of inactivity, to avoid thrashing
+                // the service context index with pause/resume or with start/stop
                 continue;
             }
 
