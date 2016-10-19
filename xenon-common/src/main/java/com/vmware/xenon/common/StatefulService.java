@@ -163,14 +163,32 @@ public class StatefulService implements Service {
     private boolean checkServiceStopped(Operation op, boolean stop) {
         boolean isAlreadyStopped = this.context.processingStage == ProcessingStage.STOPPED;
 
+        if (hasOption(ServiceOption.ON_DEMAND_LOAD)) {
+            boolean hasActiveUpdates = false;
+            synchronized (this.context) {
+                isAlreadyStopped = this.context.processingStage == ProcessingStage.STOPPED;
+                if (!hasActiveUpdates && this.context.synchQueue != null
+                        && !this.context.synchQueue.isEmpty()) {
+                    hasActiveUpdates = true;
+                }
+                if (!hasActiveUpdates && !this.context.operationQueue.isEmpty()) {
+                    hasActiveUpdates = true;
+                }
+            }
+            if (stop && hasActiveUpdates) {
+                op.fail(new CancellationException("Service is active"));
+                return true;
+            }
+            if (isAlreadyStopped && !stop) {
+                getHost().retryPauseOrOnDemandLoadConflict(op, true);
+                return true;
+            }
+        }
+
         if (isAlreadyStopped) {
             if (op.getAction() != Action.DELETE) {
-                if (hasOption(ServiceOption.ON_DEMAND_LOAD)) {
-                    getHost().retryPauseOrOnDemandLoadConflict(op, true);
-                } else {
-                    logWarning("Service is stopped, cancelling operation");
-                    op.fail(new CancellationException());
-                }
+                logWarning("Service is stopped, cancelling operation");
+                op.fail(new CancellationException());
             } else {
                 op.complete();
             }

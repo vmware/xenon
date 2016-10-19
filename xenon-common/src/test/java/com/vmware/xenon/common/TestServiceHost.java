@@ -53,6 +53,7 @@ import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 
 import com.vmware.xenon.common.Operation.CompletionHandler;
+import com.vmware.xenon.common.Service.ProcessingStage;
 import com.vmware.xenon.common.Service.ServiceOption;
 import com.vmware.xenon.common.ServiceHost.ServiceAlreadyStartedException;
 import com.vmware.xenon.common.ServiceHost.ServiceHostState;
@@ -1788,7 +1789,7 @@ public class TestServiceHost {
 
         final double stopCount = getODLStopCountStat() != null ? getODLStopCountStat().latestValue : 0;
 
-        // create a ON_DEMAND_LOAD
+        // create a ON_DEMAND_LOAD service
         MinimalTestServiceState initialState = new MinimalTestServiceState();
         initialState.id = "foo";
         initialState.documentSelfLink = "/foo";
@@ -1845,20 +1846,14 @@ public class TestServiceHost {
 
         // send 10 update request 40ms apart to make service receive PATCH request during a couple
         // of maintenance windows
-        TestContext testContextForPatch = this.host.testCreate(requestCount);
+        TestContext ctx = this.host.testCreate(requestCount);
         for (int i = 0; i < requestCount; i++) {
-            MinimalTestServiceState body = new MinimalTestServiceState();
-            body.id = "foo-" + i;
-            Operation patch = Operation
-                    .createPatch(UriUtils.buildUri(this.host, servicePath))
-                    .setBody(body)
-                    .setCompletion(this.host.getSafeHandler(testContextForPatch, (o, e) -> {
-                    }));
+            Operation patch = createMinimalTestServicePatch(servicePath, ctx);
             beforeLastRequestSentTime = Utils.getNowMicrosUtc();
             this.host.send(patch);
             Thread.sleep(requestDelayMills);
         }
-        testContextForPatch.await();
+        ctx.await();
 
         // wait for the service to be stopped
         final long beforeLastPatchSentTime = beforeLastRequestSentTime;
@@ -1870,6 +1865,57 @@ public class TestServiceHost {
                             && this.host.getServiceStage(servicePath) == null;
                 }
         );
+
+        double maintCount = getHostMaintenanceCount();
+        // issue multiple PATCHs while directly stopping a ODL service to induce collision
+        // of stop with active requests. First prevent automatic stop of ODL by extending
+        // cache clear time
+        this.host.setServiceCacheClearDelayMicros(TimeUnit.DAYS.toMicros(1));
+        this.host.waitFor("wait for main.", () -> {
+            double latestCount = getHostMaintenanceCount();
+            return latestCount > maintCount + 1;
+        });
+
+
+        // first cause a on demand load (start)
+        Operation patch = createMinimalTestServicePatch(servicePath, null);
+        this.host.sendAndWaitExpectSuccess(patch);
+
+        assertTrue(this.host.getServiceStage(servicePath) == ProcessingStage.AVAILABLE);
+
+        // service is started. issue updates in parallel and then stop service while requests are
+        // still being issued
+        ctx = this.host.testCreate(requestCount);
+        for (int i = 0; i < requestCount; i++) {
+            patch = createMinimalTestServicePatch(servicePath, ctx);
+            this.host.send(patch);
+            if (i == requestCount / 2) {
+                Operation deleteStop = Operation.createDelete(this.host, servicePath)
+                        .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_NO_INDEX_UPDATE);
+                this.host.send(deleteStop);
+            }
+        }
+        ctx.await();
+
+    }
+
+    double getHostMaintenanceCount() {
+        Map<String, ServiceStat> hostStats = this.host.getServiceStats(
+                UriUtils.buildUri(this.host, ServiceHostManagementService.SELF_LINK));
+        double maintCount = hostStats.get(Service.STAT_NAME_SERVICE_HOST_MAINTENANCE_COUNT).latestValue;
+        return maintCount;
+    }
+
+    Operation createMinimalTestServicePatch(String servicePath, TestContext ctx) {
+        MinimalTestServiceState body = new MinimalTestServiceState();
+        body.id = Utils.buildUUID("foo");
+        Operation patch = Operation
+                .createPatch(UriUtils.buildUri(this.host, servicePath))
+                .setBody(body);
+        if (ctx != null) {
+            patch.setCompletion(ctx.getCompletion());
+        }
+        return patch;
     }
 
     @Test
