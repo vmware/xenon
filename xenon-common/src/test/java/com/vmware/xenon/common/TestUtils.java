@@ -86,6 +86,28 @@ public class TestUtils {
     }
 
     @Test
+    public void buildUUIDSpeed() {
+        String baseId = Utils.computeHash("some id");
+        Set<String> ids = new HashSet<>();
+        // keep jvm from optimizing away calls
+        int sum = 0;
+
+        // warmup
+        int iterations = 10000000;
+        for (int i = 0; i < iterations; i++) {
+            sum += Utils.buildUUID(baseId).length();
+        }
+
+        long start = System.nanoTime();
+        for (int i = 0; i < iterations; i++) {
+            sum += Utils.buildUUID(baseId).length();
+        }
+        long end = System.nanoTime();
+        System.out.println(sum);
+        System.out.println((end - start) / iterations + "nanos per uuid");
+    }
+
+    @Test
     public void buildKind() {
         CommandLineArgumentParser.parseFromProperties(this);
         String kind = Utils.buildKind(ExampleServiceState.class);
