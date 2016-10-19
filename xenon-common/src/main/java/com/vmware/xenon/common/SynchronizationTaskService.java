@@ -408,7 +408,6 @@ public class SynchronizationTaskService
         Operation queryPost = Operation
                 .createPost(this, ServiceUriPaths.CORE_QUERY_TASKS)
                 .setBody(queryTask)
-                .setConnectionSharing(true)
                 .setExpiration(Utils.getNowMicrosUtc() + NodeGroupService.PEER_REQUEST_TIMEOUT_MICROS)
                 .setCompletion((o, e) -> {
                     if (getHost().isStopping()) {
