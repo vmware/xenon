@@ -663,7 +663,26 @@ public class Utils {
      * Infrastructure use only
      */
     static boolean validateServiceOptions(ServiceHost host, Service service, Operation post) {
+
+        // Filter options for stateless service
+
+        EnumSet<ServiceOption> invalidOptionsForStatelessServices = EnumSet.of(ServiceOption.PERSISTENCE,
+                ServiceOption.REPLICATION,
+                ServiceOption.STRICT_UPDATE_CHECKING,
+                ServiceOption.OWNER_SELECTION);
+
+
         for (ServiceOption o : service.getOptions()) {
+
+            if (!(service instanceof StatefulService || service instanceof FactoryService)) {
+                if (invalidOptionsForStatelessServices.contains(o)) {
+                    String error = String.format("Service option %s is invalid for StatelessService", o);
+                    host.log(Level.WARNING, error);
+                    post.fail(new IllegalArgumentException(error));
+                    return false;
+                }
+            }
+
             String error = Utils.validateServiceOption(service.getOptions(), o);
             if (error != null) {
                 host.log(Level.WARNING, error);
