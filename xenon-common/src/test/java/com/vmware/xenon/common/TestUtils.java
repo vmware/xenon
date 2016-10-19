@@ -13,6 +13,7 @@
 
 package com.vmware.xenon.common;
 
+import static com.esotericsoftware.minlog.Log.info;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
@@ -41,6 +42,7 @@ import java.util.TimeZone;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.zip.GZIPOutputStream;
 
@@ -49,6 +51,7 @@ import com.esotericsoftware.kryo.Kryo.DefaultInstantiatorStrategy;
 import com.esotericsoftware.kryo.serializers.VersionFieldSerializer;
 import com.google.gson.reflect.TypeToken;
 import org.junit.Assert;
+import org.junit.Ignore;
 import org.junit.Test;
 import org.objenesis.strategy.StdInstantiatorStrategy;
 
@@ -83,6 +86,30 @@ public class TestUtils {
         for (int i = 0; i < this.iterationCount; i++) {
             assertTrue(ids.add(Utils.buildUUID(baseId)));
         }
+    }
+
+    @Test
+    @Ignore
+    public void throughputBuildUUID() {
+        String baseId = Utils.computeHash("some id");
+        // keep jvm from optimizing away calls
+        int sum = 0;
+
+        // warmup
+        int iterations = this.iterationCount;
+        for (int i = 0; i < iterations; i++) {
+            sum += Utils.buildUUID(baseId).length();
+        }
+
+        long start = System.nanoTime();
+        for (int i = 0; i < iterations; i++) {
+            sum += Utils.buildUUID(baseId).length();
+        }
+        long end = System.nanoTime();
+        Logger log = Logger.getAnonymousLogger();
+        log.info("" + sum);
+        double thpt = this.iterationCount / ((end - start) / 1000000000.0);
+        log.info("Throughput: " + thpt);
     }
 
     @Test

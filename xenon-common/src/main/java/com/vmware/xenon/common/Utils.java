@@ -1263,13 +1263,33 @@ public class Utils {
     }
 
     /**
+     * zooko's base32 alphabet
+     * http://philzimmermann.com/docs/human-oriented-base-32-encoding.txt
+     */
+    private static final char[] ZOOKO_ALPHABET = "abcdefghijklmnopqrstuvwxyz234567".toCharArray();
+
+    /**
      * Generate a v1 UUID: Use the supplied id as the identifier for the
-     * location (in space), and the value from {@link Utils#getNowMicrosUtc()} as the
+     * location (in space), and the base32 encoded value from {@link Utils#getNowMicrosUtc()} as the
      * point in time. As long as the location id (for example, the local host ID) is
      * unique within the node group, the UUID should be unique within the node group as
-     * well
+     * well.
+     * See https://en.wikipedia.org/wiki/Base32 for details.
      */
     public static String buildUUID(String id) {
-        return id + Utils.getNowMicrosUtc();
+        long i = -Utils.getNowMicrosUtc();
+
+        char[] buf = new char[65];
+        int pos = 64;
+
+        while (i <= -ZOOKO_ALPHABET.length) {
+            buf[pos--] = ZOOKO_ALPHABET[(int) (-(i % ZOOKO_ALPHABET.length))];
+            i = i / ZOOKO_ALPHABET.length;
+        }
+        buf[pos] = ZOOKO_ALPHABET[(int) (-i)];
+        return getBuilder()
+                .append(id)
+                .append(buf, pos, 65 - pos)
+                .toString();
     }
 }

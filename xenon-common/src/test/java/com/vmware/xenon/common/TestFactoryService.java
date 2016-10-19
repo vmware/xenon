@@ -142,7 +142,7 @@ public class TestFactoryService extends BasicReusableHostTestCase {
         String idHash = this.host.getIdHash();
         String timeNowPrefix = Utils.getNowMicrosUtc() + "";
         timeNowPrefix = timeNowPrefix.substring(0, 8);
-        assertTrue(f.buildDefaultChildSelfLink().startsWith(idHash + timeNowPrefix));
+        assertTrue(f.buildDefaultChildSelfLink().startsWith(idHash));
 
         long s = System.nanoTime();
         for (int i = 0; i < this.iterationCount; i++) {
