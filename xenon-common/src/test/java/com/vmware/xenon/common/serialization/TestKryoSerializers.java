@@ -18,9 +18,12 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
+import java.util.Arrays;
 import java.util.HashMap;
+import java.util.List;
 import java.util.UUID;
 
+import org.junit.Assert;
 import org.junit.Test;
 
 import com.vmware.xenon.common.ServiceDocument;
@@ -80,5 +83,24 @@ public class TestKryoSerializers {
         byte[] veryLargeSecond = KryoSerializers
                 .getBuffer((int) KryoSerializers.THREAD_LOCAL_BUFFER_LIMIT_BYTES * 2);
         assertTrue(veryLarge.hashCode() != veryLargeSecond.hashCode());
+    }
+
+    @Test
+    public void testArraysAsListClone() {
+        CloneTest source = new CloneTest();
+        source.listOfStrings = Arrays.asList("valueA", "valueB", "valueC", "valueD");
+
+        CloneTest clone = KryoSerializers.clone(source);
+        Assert.assertNotNull("Check cloned object is not null", clone);
+        Assert.assertNotNull("Check cloned list is not null", clone.listOfStrings);
+        Assert.assertTrue("Check cloned list contains all source values",
+                clone.listOfStrings.containsAll(source.listOfStrings));
+    }
+
+    /**
+     * Test service document
+     */
+    private static class CloneTest extends ServiceDocument {
+        public List<String> listOfStrings;
     }
 }

@@ -18,6 +18,7 @@ import java.nio.ByteBuffer;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
+import java.util.Arrays;
 import java.util.UUID;
 
 import com.esotericsoftware.kryo.Kryo;
@@ -25,6 +26,7 @@ import com.esotericsoftware.kryo.Kryo.DefaultInstantiatorStrategy;
 import com.esotericsoftware.kryo.io.Input;
 import com.esotericsoftware.kryo.io.Output;
 
+import com.esotericsoftware.kryo.serializers.FieldSerializer;
 import com.esotericsoftware.kryo.serializers.VersionFieldSerializer;
 import org.objenesis.strategy.StdInstantiatorStrategy;
 
@@ -76,6 +78,8 @@ public final class KryoSerializers {
         // Add non-cloning serializers for all immutable types bellow
         k.addDefaultSerializer(UUID.class, UUIDSerializer.INSTANCE);
         k.addDefaultSerializer(URI.class, URISerializer.INSTANCE);
+        k.addDefaultSerializer(Arrays.asList().getClass(),
+                new FieldSerializer<>(k, Arrays.asList().getClass()));
 
         if (!isObjectSerializer) {
             // For performance reasons, and to avoid memory use, assume documents do not
