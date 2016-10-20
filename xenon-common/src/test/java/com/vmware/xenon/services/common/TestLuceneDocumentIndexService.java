@@ -861,43 +861,54 @@ public class TestLuceneDocumentIndexService {
                 .setCompletion(this.host.getCompletion());
         this.host.sendAndWait(delete);
 
-        // attempt to use service we just deleted, we should get failure
-        // do a PATCH, expect 404
-        Operation patch = Operation.createPatch(serviceToDelete)
-                .setBody(st)
-                .setCompletion(
-                        this.host.getExpectedFailureCompletion(Operation.STATUS_CODE_NOT_FOUND));
-        this.host.sendAndWait(patch);
+        for (int i = 0; i < 100; i++) {
+            // attempt to use service we just deleted, we should get failure
+            // do a PATCH, expect 404
+            this.host.log("Doing patch on deleted, expect failure");
+            Operation patch = Operation
+                    .createPatch(serviceToDelete)
+                    .setBody(st)
+                    .setCompletion(
+                            this.host.getExpectedFailureCompletion(Operation.STATUS_CODE_NOT_FOUND));
+            this.host.sendAndWait(patch);
 
-        // do a GET, expect 404
-        Operation get = Operation.createGet(serviceToDelete)
-                .setCompletion(
-                        this.host.getExpectedFailureCompletion(Operation.STATUS_CODE_NOT_FOUND));
-        this.host.sendAndWait(get);
+            // do a GET, expect 404
+            this.host.log("Doing GET on deleted, expect failure");
+            Operation get = Operation
+                    .createGet(serviceToDelete)
+                    .setCompletion(
+                            this.host.getExpectedFailureCompletion(Operation.STATUS_CODE_NOT_FOUND));
+            this.host.sendAndWait(get);
 
-        // do a PUT, expect 404
-        Operation put = Operation.createPut(serviceToDelete)
-                .setBody(st)
-                .setCompletion(
-                        this.host.getExpectedFailureCompletion(Operation.STATUS_CODE_NOT_FOUND));
-        this.host.sendAndWait(put);
+            // do a PUT, expect 404
+            this.host.log("Doing PUT on deleted, expect failure");
+            Operation put = Operation
+                    .createPut(serviceToDelete)
+                    .setBody(st)
+                    .setCompletion(
+                            this.host.getExpectedFailureCompletion(Operation.STATUS_CODE_NOT_FOUND));
+            this.host.sendAndWait(put);
 
-        // do a POST, expect 409
-        Operation post = Operation.createPost(serviceToDelete)
-                .setCompletion(
-                        this.host.getExpectedFailureCompletion(Operation.STATUS_CODE_CONFLICT));
-        this.host.sendAndWait(post);
+            // do a POST, expect 409
+            this.host.log("Doing POST on deleted, expect conflict failure");
+            Operation post = Operation.createPost(serviceToDelete)
+                    .setCompletion(
+                            this.host.getExpectedFailureCompletion(Operation.STATUS_CODE_CONFLICT));
+            this.host.sendAndWait(post);
 
-        // do a DELETE again, expect no failure
-        delete = Operation.createDelete(serviceToDelete)
-                .setCompletion(this.host.getCompletion());
-        this.host.sendAndWait(delete);
+            // do a DELETE again, expect no failure
+            delete = Operation.createDelete(serviceToDelete)
+                    .setCompletion(this.host.getCompletion());
+            this.host.sendAndWait(delete);
 
-        // do a DELETE for a completely unknown service, expect 404
-        delete = Operation.createDelete(new URI(factoryUri.toString() + "/unknown"))
-                .setCompletion(
-                        this.host.getExpectedFailureCompletion(Operation.STATUS_CODE_NOT_FOUND));
-        this.host.sendAndWait(delete);
+            // do a DELETE for a completely unknown service, expect 404
+            this.host.log("Doing DELETE on unknown, expect not found");
+            delete = Operation
+                    .createDelete(new URI(factoryUri.toString() + "/unknown"))
+                    .setCompletion(
+                            this.host.getExpectedFailureCompletion(Operation.STATUS_CODE_NOT_FOUND));
+            this.host.sendAndWait(delete);
+        }
 
         // verify that attempting to start a service, through factory POST, that was previously created,
         // but not yet loaded/started, fails, with ServiceAlreadyStarted exception
@@ -910,7 +921,7 @@ public class TestLuceneDocumentIndexService {
             URI u = childUris.get(i);
             body.documentSelfLink = u.getPath();
             body.name = prefix + UUID.randomUUID().toString();
-            post = Operation.createPost(factoryUri)
+            Operation post = Operation.createPost(factoryUri)
                     .setCompletion(this.host.getExpectedFailureCompletion())
                     .setBody(body);
             this.host.send(post);
@@ -932,7 +943,7 @@ public class TestLuceneDocumentIndexService {
         ExampleServiceState body = new ExampleServiceState();
         body.name = UUID.randomUUID().toString();
         body.documentExpirationTimeMicros = Utils.getNowMicrosUtc() + TimeUnit.SECONDS.toMicros(2);
-        patch = Operation.createPatch(serviceToDelete)
+        Operation patch = Operation.createPatch(serviceToDelete)
                 .setBody(body)
                 .setCompletion(this.host.getCompletion());
         this.host.sendAndWait(patch);
