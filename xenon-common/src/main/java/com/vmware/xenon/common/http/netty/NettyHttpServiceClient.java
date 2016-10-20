@@ -814,6 +814,33 @@ public class NettyHttpServiceClient implements ServiceClient {
         return this.http2ChannelPool.getFirstValidHttp2Context(tag, host, port);
     }
 
+    public ConnectionTagInfo getConnectionTagInfo(String tag) {
+        ConnectionTagInfo tagInfo = null;
+        if (this.http2ChannelPool != null) {
+            tagInfo = this.http2ChannelPool.getConnectionTagInfo(tag);
+        }
+        if (tagInfo != null) {
+            return tagInfo;
+        }
+        if (this.channelPool != null) {
+            tagInfo = this.channelPool.getConnectionTagInfo(tag);
+        }
+
+        ConnectionTagInfo secureTagInfo = null;
+        if (this.sslChannelPool != null) {
+            secureTagInfo = this.sslChannelPool.getConnectionTagInfo(tag);
+        }
+
+        if (tagInfo == null) {
+            tagInfo = secureTagInfo;
+        } else if (secureTagInfo != null) {
+            tagInfo.inUseConnectionCount += secureTagInfo.inUseConnectionCount;
+            tagInfo.pendingRequestCount += secureTagInfo.pendingRequestCount;
+        }
+
+        return tagInfo;
+    }
+
     /**
      * Count how many HTTP/2 contexts we have. There may be more than one if we have
      * an exhausted connection that hasn't been cleaned up yet.

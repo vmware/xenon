@@ -47,6 +47,7 @@ import com.vmware.xenon.common.Operation.CompletionHandler;
 import com.vmware.xenon.common.Operation.OperationOption;
 import com.vmware.xenon.common.Service;
 import com.vmware.xenon.common.ServiceClient;
+import com.vmware.xenon.common.ServiceClient.ConnectionTagInfo;
 import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.StatefulService;
 import com.vmware.xenon.common.StatelessService;
@@ -111,6 +112,7 @@ public class NettyHttpServiceClientTest {
         SelfSignedCertificate ssc = new SelfSignedCertificate();
         HOST.setCertificateFileReference(ssc.certificate().toURI());
         HOST.setPrivateKeyFileReference(ssc.privateKey().toURI());
+        HOST.setSecurePort(0);
 
         try {
             HOST.start();
@@ -233,11 +235,22 @@ public class NettyHttpServiceClientTest {
         for (URI u : uris) {
             MinimalTestServiceState body = (MinimalTestServiceState) this.host
                     .buildMinimalTestState();
-            Operation put = Operation.createPut(u).setBody(body)
+            Operation put = Operation.createPut(u)
+                    .setBody(body)
+                    .forceRemote()
                     .setCompletion(this.host.getCompletion());
             this.host.send(put);
         }
         this.host.testWait();
+
+        String tag = ServiceClient.CONNECTION_TAG_DEFAULT;
+        validateTagInfo(tag);
+    }
+
+    private void validateTagInfo(String tag) {
+        ConnectionTagInfo tagInfo = this.host.getClient().getConnectionTagInfo(tag);
+        assertTrue(tagInfo != null);
+        assertTrue(tagInfo.pendingRequestCount == 0);
     }
 
     @Test
@@ -395,6 +408,9 @@ public class NettyHttpServiceClientTest {
                         TestProperty.SINGLE_ITERATION),
                 services);
 
+        String tag = ServiceClient.CONNECTION_TAG_DEFAULT;
+        validateTagInfo(tag);
+
         // check that content type is set and preserved
         URI u = services.get(0).getUri();
         this.host.testStart(1);
@@ -451,6 +467,7 @@ public class NettyHttpServiceClientTest {
         });
         this.host.send(p);
         this.host.testWait();
+
     }
 
     @Test
@@ -794,6 +811,9 @@ public class NettyHttpServiceClientTest {
                     TimeUnit.SECONDS.toMicros(this.host.getTimeoutSeconds()));
         }
 
+        String tag = ServiceClient.CONNECTION_TAG_DEFAULT;
+        validateTagInfo(tag);
+
         // use global limit, which applies by default to all tags
         int limit = this.host.getClient().getConnectionLimitPerHost();
         this.host.connectionTag = null;
@@ -820,6 +840,9 @@ public class NettyHttpServiceClientTest {
                 this.requestCount,
                 EnumSet.of(TestProperty.FORCE_REMOTE),
                 services);
+
+        tag = this.host.connectionTag;
+        validateTagInfo(tag);
     }
 
     @Test

@@ -32,6 +32,7 @@ import com.vmware.xenon.common.CommandLineArgumentParser;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Service;
 import com.vmware.xenon.common.ServiceClient;
+import com.vmware.xenon.common.ServiceClient.ConnectionTagInfo;
 import com.vmware.xenon.common.ServiceHost;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
@@ -240,6 +241,13 @@ public class NettyHttp2Test {
         }
         this.host.testWait();
         assertTrue(completionTimes[0] > completionTimes[1]);
+
+        String tag = ServiceClient.CONNECTION_TAG_HTTP2_DEFAULT;
+        ConnectionTagInfo tagInfo = this.host.getClient().getConnectionTagInfo(tag);
+        assertTrue(tagInfo != null);
+        assertTrue(tagInfo.inUseConnectionCount > 0);
+        assertTrue(tagInfo.pendingRequestCount == 0);
+
         this.host.log("Test passed: validateHttp2Multiplexing");
     }
 
@@ -427,6 +435,12 @@ public class NettyHttp2Test {
             this.host.waitForGC();
         }
 
+        String tag = ServiceClient.CONNECTION_TAG_HTTP2_DEFAULT;
+        ConnectionTagInfo tagInfo = this.host.getClient().getConnectionTagInfo(tag);
+        assertTrue(tagInfo != null);
+        assertTrue(tagInfo.inUseConnectionCount > 0);
+        assertTrue(tagInfo.pendingRequestCount == 0);
+
         // set a specific tag limit
         limit = 16;
         this.host.connectionTag = "http2test";
@@ -436,6 +450,12 @@ public class NettyHttp2Test {
                 this.requestCount,
                 EnumSet.of(TestProperty.FORCE_REMOTE, TestProperty.HTTP2),
                 services);
+
+        tag = this.host.connectionTag;
+        tagInfo = this.host.getClient().getConnectionTagInfo(tag);
+        assertTrue(tagInfo != null);
+        assertTrue(tagInfo.inUseConnectionCount > 0);
+        assertTrue(tagInfo.pendingRequestCount == 0);
     }
 
     /**

@@ -861,8 +861,11 @@ public class TestServiceHost {
         ServiceStat cacheClearStat = null;
         Map<URI, ServiceStats> servicesWithMaintenance = new HashMap<>();
 
-        // guarantee at least a few intervals have passed. Other we risk false negatives.
-        Thread.sleep(maintIntervalMillis * 10);
+        double maintCount = getHostMaintenanceCount();
+        this.host.waitFor("wait for main.", () -> {
+            double latestCount = getHostMaintenanceCount();
+            return latestCount > maintCount + 2;
+        });
 
         Date exp = this.host.getTestExpiration();
         while (new Date().before(exp)) {
@@ -1009,6 +1012,8 @@ public class TestServiceHost {
         }
         this.host.testWait();
 
+        // before we increase maintenance interval, verify stats reported by MGMT service
+        verifyMgmtServiceStats();
 
         // now validate that service handleMaintenance does not get called right after start, but at least
         // one interval later. We set the interval to 30 seconds so we can verify it did not get called within
@@ -1018,8 +1023,9 @@ public class TestServiceHost {
 
         // there is a small race: if the host scheduled a maintenance task already, using the default
         // 1 second interval, its possible it executes maintenance on the newly added services using
-        // the 1 second schedule, instead of 30 seconds. So wait 1sec worth to minimize that
-        Thread.sleep(ServiceHostState.DEFAULT_MAINTENANCE_INTERVAL_MICROS / 1000);
+        // the 1 second schedule, instead of 30 seconds. So wait at least one maint. interval with the
+        // default interval
+        Thread.sleep(1000);
 
         slowMaintServices = this.host.doThroughputServiceStart(
                 this.serviceCount, MinimalTestService.class, this.host.buildMinimalTestState(),
@@ -1042,9 +1048,31 @@ public class TestServiceHost {
             }
         }
 
+    }
+
+    private void verifyMgmtServiceStats() {
+        // send at least one HTTP1.1 and HTTP/2 request so the network stats have at least one
+        // count
+        // net stats are update only after host maintenance runs at least once
+        double maintCountThree = getHostMaintenanceCount();
+        this.host.waitFor("wait for main.", () -> {
+            Operation get = Operation.createGet(this.host, ServiceHostManagementService.SELF_LINK);
+            this.host.sendAndWaitExpectSuccess(get.forceRemote());
+            this.host
+                    .sendAndWaitExpectSuccess(get.clone().forceRemote().setConnectionSharing(true));
+            double latestCount = getHostMaintenanceCount();
+            return latestCount > maintCountThree + 3;
+        });
+
         URI serviceHostMgmtURI = UriUtils.buildUri(this.host, ServiceUriPaths.CORE_MANAGEMENT);
         // confirm host global time series stats have been created / updated
         Map<String, ServiceStat> hostMgmtStats = this.host.getServiceStats(serviceHostMgmtURI);
+
+        ServiceStat serviceCount = hostMgmtStats
+                .get(ServiceHostManagementService.STAT_NAME_SERVICE_COUNT);
+        assertTrue(serviceCount != null);
+        assertTrue(serviceCount.latestValue > 2);
+
         ServiceStat freeMemDaily = hostMgmtStats
                 .get(ServiceHostManagementService.STAT_NAME_AVAILABLE_MEMORY_BYTES_PER_DAY);
         ServiceStat freeMemHourly = hostMgmtStats
@@ -1061,6 +1089,29 @@ public class TestServiceHost {
                 .get(ServiceHostManagementService.STAT_NAME_THREAD_COUNT_PER_DAY);
         ServiceStat threadCountHourly = hostMgmtStats
                 .get(ServiceHostManagementService.STAT_NAME_THREAD_COUNT_PER_HOUR);
+        ServiceStat http1PendingCount = hostMgmtStats
+                .get(ServiceHostManagementService.STAT_NAME_HTTP11_PENDING_OP_COUNT);
+        assert (http1PendingCount != null);
+        ServiceStat http2PendingCount = hostMgmtStats
+                .get(ServiceHostManagementService.STAT_NAME_HTTP2_PENDING_OP_COUNT);
+        assert (http2PendingCount != null);
+        ServiceStat http1ConnectionCountDaily = hostMgmtStats
+                .get(ServiceHostManagementService.STAT_NAME_HTTP11_CONNECTION_COUNT_PER_DAY);
+        ServiceStat http1ConnectionCountHourly = hostMgmtStats
+                .get(ServiceHostManagementService.STAT_NAME_HTTP11_CONNECTION_COUNT_PER_HOUR);
+        ServiceStat http2ConnectionCountDaily = hostMgmtStats
+                .get(ServiceHostManagementService.STAT_NAME_HTTP2_CONNECTION_COUNT_PER_DAY);
+        ServiceStat http2ConnectionCountHourly = hostMgmtStats
+                .get(ServiceHostManagementService.STAT_NAME_HTTP2_CONNECTION_COUNT_PER_HOUR);
+        TestUtilityService.validateTimeSeriesStat(http1ConnectionCountDaily,
+                TimeUnit.HOURS.toMillis(1));
+        TestUtilityService.validateTimeSeriesStat(http1ConnectionCountHourly,
+                TimeUnit.MINUTES.toMillis(1));
+        TestUtilityService.validateTimeSeriesStat(http2ConnectionCountDaily,
+                TimeUnit.HOURS.toMillis(1));
+        TestUtilityService.validateTimeSeriesStat(http2ConnectionCountHourly,
+                TimeUnit.MINUTES.toMillis(1));
+
         TestUtilityService.validateTimeSeriesStat(freeMemDaily, TimeUnit.HOURS.toMillis(1));
         TestUtilityService.validateTimeSeriesStat(freeMemHourly, TimeUnit.MINUTES.toMillis(1));
         TestUtilityService.validateTimeSeriesStat(freeDiskDaily, TimeUnit.HOURS.toMillis(1));

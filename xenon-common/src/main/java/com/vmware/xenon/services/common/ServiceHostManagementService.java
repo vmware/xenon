@@ -56,6 +56,22 @@ public class ServiceHostManagementService extends StatefulService {
     public static final String STAT_NAME_THREAD_COUNT_PER_HOUR = STAT_NAME_THREAD_COUNT_PREFIX
             + ServiceStats.STAT_NAME_SUFFIX_PER_HOUR;
 
+    public static final String STAT_NAME_HTTP11_CONNECTION_COUNT_PREFIX = "http11ConnectionCount";
+    public static final String STAT_NAME_HTTP11_CONNECTION_COUNT_PER_DAY = STAT_NAME_HTTP11_CONNECTION_COUNT_PREFIX
+            + ServiceStats.STAT_NAME_SUFFIX_PER_DAY;
+    public static final String STAT_NAME_HTTP11_CONNECTION_COUNT_PER_HOUR = STAT_NAME_HTTP11_CONNECTION_COUNT_PREFIX
+            + ServiceStats.STAT_NAME_SUFFIX_PER_HOUR;
+
+    public static final String STAT_NAME_HTTP2_CONNECTION_COUNT_PREFIX = "http2ConnectionCount";
+    public static final String STAT_NAME_HTTP2_CONNECTION_COUNT_PER_DAY = STAT_NAME_HTTP2_CONNECTION_COUNT_PREFIX
+            + ServiceStats.STAT_NAME_SUFFIX_PER_DAY;
+    public static final String STAT_NAME_HTTP2_CONNECTION_COUNT_PER_HOUR = STAT_NAME_HTTP2_CONNECTION_COUNT_PREFIX
+            + ServiceStats.STAT_NAME_SUFFIX_PER_HOUR;
+
+    public static final String STAT_NAME_HTTP11_PENDING_OP_COUNT = "http11PendingOperationCount";
+    public static final String STAT_NAME_HTTP2_PENDING_OP_COUNT = "http2PendingOperationCount";
+
+    public static final String STAT_NAME_SERVICE_COUNT = "serviceCount";
     public static final String STAT_NAME_SERVICE_PAUSE_COUNT = "servicePauseCount";
     public static final String STAT_NAME_SERVICE_RESUME_COUNT = "serviceResumeCount";
     public static final String STAT_NAME_SERVICE_CACHE_CLEAR_COUNT = "serviceCacheClearCount";

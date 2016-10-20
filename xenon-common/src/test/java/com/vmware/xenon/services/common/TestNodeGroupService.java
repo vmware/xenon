@@ -2073,9 +2073,19 @@ public class TestNodeGroupService {
 
         } while (new Date().before(expiration) && this.totalOperationLimit > totalOperations);
 
+        logHostStats();
         logPerActionThroughput(elapsedTimePerAction, countPerAction);
 
         this.host.doNodeGroupStatsVerification(this.host.getNodeGroupMap());
+    }
+
+    private void logHostStats() {
+        for (URI u : this.host.getNodeGroupMap().keySet()) {
+            URI mgmtUri = UriUtils.buildUri(u, ServiceHostManagementService.SELF_LINK);
+            mgmtUri = UriUtils.buildStatsUri(mgmtUri);
+            ServiceStats stats = this.host.getServiceState(null, ServiceStats.class, mgmtUri);
+            this.host.log("%s: %s", u, Utils.toJsonHtml(stats));
+        }
     }
 
     private void logPerActionThroughput(Map<Action, Long> elapsedTimePerAction,

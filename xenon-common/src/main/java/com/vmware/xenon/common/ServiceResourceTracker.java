@@ -29,6 +29,7 @@ import com.vmware.xenon.common.Operation.CompletionHandler;
 import com.vmware.xenon.common.Service.Action;
 import com.vmware.xenon.common.Service.ProcessingStage;
 import com.vmware.xenon.common.Service.ServiceOption;
+import com.vmware.xenon.common.ServiceClient.ConnectionTagInfo;
 import com.vmware.xenon.common.ServiceHost.ServiceHostState;
 import com.vmware.xenon.common.ServiceHost.ServiceHostState.MemoryLimitType;
 import com.vmware.xenon.common.ServiceStats.ServiceStat;
@@ -160,10 +161,17 @@ class ServiceResourceTracker {
                 ServiceHostManagementService.STAT_NAME_CPU_USAGE_PCT_PREFIX,
                 0);
 
-        // guess initial thread count
         createTimeSeriesStat(
                 ServiceHostManagementService.STAT_NAME_THREAD_COUNT_PREFIX,
                 Utils.DEFAULT_THREAD_COUNT);
+
+        createTimeSeriesStat(
+                ServiceHostManagementService.STAT_NAME_HTTP11_CONNECTION_COUNT_PREFIX,
+                0);
+
+        createTimeSeriesStat(
+                ServiceHostManagementService.STAT_NAME_HTTP2_CONNECTION_COUNT_PREFIX,
+                0);
     }
 
     private void createTimeSeriesStat(String name, double v) {
@@ -195,6 +203,8 @@ class ServiceResourceTracker {
         SystemHostInfo shi = this.host.updateSystemInfo(false);
         Service mgmtService = this.host.getManagementService();
         checkAndInitializeStats();
+        mgmtService.setStat(ServiceHostManagementService.STAT_NAME_SERVICE_COUNT,
+                this.host.getStateNoCloning().serviceCount);
 
         // The JVM reports free memory in a indirect way, relative to the current "total". But the
         // true free memory is the estimated used memory subtracted from the JVM heap max limit
@@ -247,6 +257,35 @@ class ServiceResourceTracker {
         mgmtService.setStat(
                 ServiceHostManagementService.STAT_NAME_CPU_USAGE_PCT_PER_DAY,
                 pctUse);
+
+        ConnectionTagInfo http11TagInfo = this.host.getClient()
+                .getConnectionTagInfo(ServiceClient.CONNECTION_TAG_DEFAULT);
+        if (http11TagInfo != null) {
+            mgmtService.setStat(
+                    ServiceHostManagementService.STAT_NAME_HTTP11_PENDING_OP_COUNT,
+                    http11TagInfo.pendingRequestCount);
+            mgmtService.setStat(
+                    ServiceHostManagementService.STAT_NAME_HTTP11_CONNECTION_COUNT_PER_HOUR,
+                    http11TagInfo.inUseConnectionCount);
+            mgmtService.setStat(
+                    ServiceHostManagementService.STAT_NAME_HTTP11_CONNECTION_COUNT_PER_DAY,
+                    http11TagInfo.inUseConnectionCount);
+        }
+
+        ConnectionTagInfo http2TagInfo = this.host.getClient()
+                .getConnectionTagInfo(ServiceClient.CONNECTION_TAG_HTTP2_DEFAULT);
+
+        if (http2TagInfo != null) {
+            mgmtService.setStat(
+                    ServiceHostManagementService.STAT_NAME_HTTP2_PENDING_OP_COUNT,
+                    http2TagInfo.pendingRequestCount);
+            mgmtService.setStat(
+                    ServiceHostManagementService.STAT_NAME_HTTP2_CONNECTION_COUNT_PER_HOUR,
+                    http2TagInfo.inUseConnectionCount);
+            mgmtService.setStat(
+                    ServiceHostManagementService.STAT_NAME_HTTP2_CONNECTION_COUNT_PER_DAY,
+                    http2TagInfo.inUseConnectionCount);
+        }
     }
 
     public void setServiceStateCaching(boolean enable) {
@@ -540,14 +579,17 @@ class ServiceResourceTracker {
             }
         }
 
-        if (pauseServiceCount == 0) {
-            return;
+        if (hostState.serviceCount < 0) {
+            // Make sure our service count matches the list contents, they could drift. Using size()
+            // on a concurrent data structure is costly so we do this only when pausing services or
+            // the count is negative
+            synchronized (hostState) {
+                hostState.serviceCount = this.attachedServices.size();
+            }
         }
 
-        // Make sure our service count matches the list contents, they could drift. Using size()
-        // on a concurrent data structure is costly so we do this only when pausing services
-        synchronized (hostState) {
-            hostState.serviceCount = this.attachedServices.size();
+        if (pauseServiceCount == 0) {
+            return;
         }
 
         this.host.log(Level.FINE,

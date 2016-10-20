@@ -16,6 +16,12 @@ package com.vmware.xenon.common;
 import javax.net.ssl.SSLContext;
 
 public interface ServiceClient extends ServiceRequestSender {
+
+    public static class ConnectionTagInfo {
+        public int inUseConnectionCount;
+        public int pendingRequestCount;
+    }
+
     String SSL_PROTOCOL_NAME = "SSL";
     String TLS_PROTOCOL_NAME = "TLS";
 
@@ -122,4 +128,9 @@ public interface ServiceClient extends ServiceRequestSender {
      * Returns the maximum size of a request payload in bytes.
      */
     int getRequestPayloadSizeLimit();
+
+    /**
+     * Returns the number of operations waiting for a connection to become available, for the tag
+     */
+    ConnectionTagInfo getConnectionTagInfo(String connectionTag);
 }
