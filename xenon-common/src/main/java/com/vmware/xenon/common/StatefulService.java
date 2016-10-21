@@ -174,12 +174,14 @@ public class StatefulService implements Service {
                     hasActiveUpdates = true;
                 }
             }
-            if (stop && hasActiveUpdates) {
+
+            if (isAlreadyStopped) {
+                if (!stop) {
+                    getHost().retryPauseOrOnDemandLoadConflict(op, true);
+                    return true;
+                }
+            } else if (stop && hasActiveUpdates) {
                 op.fail(new CancellationException("Service is active"));
-                return true;
-            }
-            if (isAlreadyStopped && !stop) {
-                getHost().retryPauseOrOnDemandLoadConflict(op, true);
                 return true;
             }
         }
@@ -1485,7 +1487,7 @@ public class StatefulService implements Service {
                 || option == ServiceOption.ON_DEMAND_LOAD
                         && hasOption(ServiceOption.PERIODIC_MAINTENANCE)) {
             throw new IllegalArgumentException("Service option PERIODIC_MAINTENANCE and " +
-                    "ON_DEMAND_LOAD cannot co-exists.");
+                    "ON_DEMAND_LOAD cannot co-exist.");
         }
 
         boolean optionsChanged = false;
