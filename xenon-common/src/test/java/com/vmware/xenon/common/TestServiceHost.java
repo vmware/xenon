@@ -1943,6 +1943,45 @@ public class TestServiceHost {
         }
         ctx.await();
 
+        Consumer<Operation> bodySetter = (o) -> {
+            ExampleServiceState body = new ExampleServiceState();
+            body.name = "prefix-" + UUID.randomUUID();
+            o.setBody(body);
+        };
+        String factoryLink = OnDemandLoadFactoryService.create(this.host);
+        // create another set of services
+        Map<URI, ExampleServiceState> states = this.host.doFactoryChildServiceStart(
+                null,
+                this.serviceCount,
+                ExampleServiceState.class,
+                bodySetter,
+                UriUtils.buildUri(this.host, factoryLink));
+
+        // set aggressive cache clear again so ODL services stop
+        double nowCount = getHostMaintenanceCount();
+        this.host.setServiceCacheClearDelayMicros(this.host.getMaintenanceIntervalMicros() / 2);
+        this.host.waitFor("wait for main.", () -> {
+            double latestCount = getHostMaintenanceCount();
+            return latestCount > nowCount + 1;
+        });
+
+        // now patch these services, while we issue deletes. The PATCHs can fail, but not
+        // the DELETEs
+        TestContext patchAndDeleteCtx = this.host.testCreate(states.size() * 2);
+        patchAndDeleteCtx.setTestName("Concurrent PATCH / DELETE on ODL").logBefore();
+        for (Entry<URI, ExampleServiceState> e : states.entrySet()) {
+            patch = Operation.createPatch(e.getKey())
+                    .setBody(e.getValue())
+                    .setCompletion((o, ex) -> {
+                        patchAndDeleteCtx.complete();
+                    });
+            this.host.send(patch);
+            // in parallel send a DELETE
+            this.host.send(Operation.createDelete(e.getKey())
+                    .setCompletion(patchAndDeleteCtx.getCompletion()));
+        }
+        patchAndDeleteCtx.await();
+        patchAndDeleteCtx.logAfter();
     }
 
     double getHostMaintenanceCount() {

@@ -114,6 +114,8 @@ public class TestLuceneDocumentIndexService {
             super();
             super.toggleOption(ServiceOption.ON_DEMAND_LOAD, true);
             super.toggleOption(ServiceOption.IMMUTABLE, true);
+            // toggle instrumentation off so service stops, instead of pausing
+            super.toggleOption(ServiceOption.INSTRUMENTATION, false);
         }
 
         public static FactoryService createFactory() {
@@ -141,7 +143,7 @@ public class TestLuceneDocumentIndexService {
      * Parameter that specifies required number of document in index before
      * tests start
      */
-    public int documentCountAtStart = 0;
+    public int documentCountAtStart = 10;
 
     /**
      * Parameter that specifies iterations per top level test method
@@ -182,16 +184,18 @@ public class TestLuceneDocumentIndexService {
         CommandLineArgumentParser.parseFromProperties(this.host);
         CommandLineArgumentParser.parseFromProperties(this);
         try {
-            this.host.setMaintenanceIntervalMicros(TimeUnit.MILLISECONDS
-                    .toMicros(VerificationHost.FAST_MAINT_INTERVAL_MILLIS));
             // disable synchronization so it does not interfere with the various test assumptions
             // on index stats.
             this.host.setPeerSynchronizationEnabled(false);
             this.indexService = new FaultInjectionLuceneDocumentIndexService();
             if (this.host.isStressTest) {
                 this.host.setStressTest(this.host.isStressTest);
+                this.host.setMaintenanceIntervalMicros(
+                        ServiceHostState.DEFAULT_MAINTENANCE_INTERVAL_MICROS);
             } else {
                 this.indexService.toggleOption(ServiceOption.INSTRUMENTATION, true);
+                this.host.setMaintenanceIntervalMicros(TimeUnit.MILLISECONDS
+                        .toMicros(VerificationHost.FAST_MAINT_INTERVAL_MILLIS));
             }
             this.host.setDocumentIndexingService(this.indexService);
             this.host.setPeerSynchronizationEnabled(false);
@@ -236,7 +240,7 @@ public class TestLuceneDocumentIndexService {
     }
 
     @Test
-    public void immutableInitialState() throws Throwable {
+    public void initialStateCorrectness() throws Throwable {
         setUpHost(false);
         List<MinimalTestService> services = new ArrayList<>();
         TestContext ctx = this.host.testCreate(this.serviceCount);
@@ -449,6 +453,53 @@ public class TestLuceneDocumentIndexService {
     }
 
     @Test
+    public void immutableServiceLifecycle() throws Throwable {
+        setUpHost(false);
+        URI factoryUri = createImmutableFactoryService(this.host);
+        doThroughputPost(false, factoryUri);
+        ServiceDocumentQueryResult res = this.host.getFactoryState(factoryUri);
+        assertEquals(this.serviceCount, res.documentLinks.size());
+
+        TestContext ctx = this.host.testCreate(res.documentLinks.size());
+        ctx.setTestName("DELETE").logBefore();
+        for (String link : res.documentLinks) {
+            Operation del = Operation.createDelete(this.host, link).setCompletion((o, e) -> {
+                ctx.completeIteration();
+            });
+            this.host.send(del);
+        }
+
+        ctx.await();
+        ctx.logAfter();
+
+        // verify option validation
+        MinimalFactoryTestService f = new MinimalFactoryTestService();
+        MinimalFactoryTestService factoryService = (MinimalFactoryTestService) this.host
+                .startServiceAndWait(f, UUID.randomUUID().toString(), null);
+        factoryService.setChildServiceCaps(
+                EnumSet.of(ServiceOption.PERSISTENCE, ServiceOption.IMMUTABLE));
+        MinimalTestServiceState body = new MinimalTestServiceState();
+        body.id = "id";
+        Operation post = Operation.createPost(factoryService.getUri()).setBody(body);
+        // should fail, missing ON_DEMAND_LOAD
+        this.host.sendAndWaitExpectFailure(post);
+
+        post = Operation.createPost(factoryService.getUri()).setBody(body);
+        factoryService.setChildServiceCaps(
+                EnumSet.of(ServiceOption.PERSISTENCE, ServiceOption.ON_DEMAND_LOAD,
+                        ServiceOption.IMMUTABLE, ServiceOption.PERIODIC_MAINTENANCE));
+        // should fail, has PERIODIC_MAINTENANCE
+        this.host.sendAndWaitExpectFailure(post);
+
+        post = Operation.createPost(factoryService.getUri()).setBody(body);
+        factoryService.setChildServiceCaps(
+                EnumSet.of(ServiceOption.PERSISTENCE, ServiceOption.ON_DEMAND_LOAD,
+                        ServiceOption.IMMUTABLE, ServiceOption.INSTRUMENTATION));
+        // should fail, has INSTRUMENTATION
+        this.host.sendAndWaitExpectFailure(post);
+    }
+
+    @Test
     public void serviceHostRestartWithDurableServices() throws Throwable {
         setUpHost(false);
         VerificationHost h = VerificationHost.create();
@@ -476,7 +527,7 @@ public class TestLuceneDocumentIndexService {
             String factoryLink = OnDemandLoadFactoryService.create(h);
             createOnDemandLoadServices(h, factoryLink);
 
-            verifyImmutablePost(h);
+            verifyInitialStatePost(h);
 
             ServiceHostState initialState = h.getState();
 
@@ -536,7 +587,7 @@ public class TestLuceneDocumentIndexService {
                 EnumSet.of(ServiceOption.IDEMPOTENT_POST), null);
     }
 
-    void verifyImmutablePost(VerificationHost h) throws Throwable {
+    void verifyInitialStatePost(VerificationHost h) throws Throwable {
         URI factoryUri = createImmutableFactoryService(h);
         doThroughputPost(false, factoryUri);
         ServiceDocumentQueryResult r = this.host.getFactoryState(factoryUri);
@@ -1245,19 +1296,55 @@ public class TestLuceneDocumentIndexService {
         double initialPauseCount = getHostPauseCount();
         this.host.log("Starting throughput POST, query interleaving: %s", interleaveQueries);
         URI factoryUri = createImmutableFactoryService(this.host);
-        if (this.documentCountAtStart > 0) {
-            this.host.log("Pre populating index with %d documents", this.documentCountAtStart);
-            long serviceCountCached = this.serviceCount;
-            this.serviceCount = this.documentCountAtStart;
-            doThroughputPost(false, factoryUri);
-            this.serviceCount = serviceCountCached;
-        }
+        prePopulateIndexWithServiceDocuments(factoryUri);
+        verifyImmutableEagerServiceStop(factoryUri, this.documentCountAtStart);
 
         doMultipleIterationsThroughputPost(interleaveQueries, this.iterationCount, factoryUri);
         factoryUri = UriUtils.buildFactoryUri(this.host, ExampleService.class);
         doMultipleIterationsThroughputPost(interleaveQueries, this.iterationCount, factoryUri);
         double finalPauseCount = getHostPauseCount();
         assertTrue(initialPauseCount == finalPauseCount);
+    }
+
+    void prePopulateIndexWithServiceDocuments(URI factoryUri) throws Throwable {
+        if (this.documentCountAtStart == 0) {
+            return;
+        }
+        this.host.log("Pre populating index with %d documents on %s", this.documentCountAtStart,
+                factoryUri);
+        long serviceCountCached = this.serviceCount;
+        this.serviceCount = this.documentCountAtStart;
+        doThroughputPost(false, factoryUri);
+        this.serviceCount = serviceCountCached;
+    }
+
+    void verifyImmutableEagerServiceStop(URI factoryUri, int expectedStopCount) {
+        double initialStopCount = getHostODLStopCount();
+        double initialMaintCount = getMaintCount();
+        this.host.waitFor("eager ODL stop not seen", () -> {
+            double maintCount = getMaintCount();
+            if (maintCount <= initialMaintCount + 1) {
+                return false;
+            }
+            double stopCount = getHostODLStopCount();
+            this.host.log("Stop count: %f, initial: %f, maint count delta: %f",
+                    stopCount,
+                    initialStopCount,
+                    maintCount - initialMaintCount);
+            boolean allStopped = stopCount >= expectedStopCount;
+            if (!allStopped) {
+                return false;
+            }
+
+            if (maintCount > initialMaintCount + 20) {
+                // service cache clear is essentially turned off, but IMMUTABLE services should stop
+                // within a maintenance interval of start. We are being forgiving and allow for 20, but
+                // either way if it does not happen before waitFor timeout, something is broken
+                throw new IllegalStateException("Eager service stop took too long");
+            }
+            return true;
+        });
+        this.host.log("All services for %s stopped", factoryUri);
     }
 
     URI createImmutableFactoryService(VerificationHost h) throws Throwable {
@@ -1273,6 +1360,27 @@ public class TestLuceneDocumentIndexService {
         Map<String, ServiceStat> hostStats = this.host.getServiceStats(
                 UriUtils.buildUri(this.host, ServiceHostManagementService.SELF_LINK));
         ServiceStat st = hostStats.get(Service.STAT_NAME_PAUSE_COUNT);
+        if (st == null) {
+            return 0.0;
+        }
+        return st.latestValue;
+    }
+
+    private double getHostODLStopCount() {
+        Map<String, ServiceStat> hostStats = this.host.getServiceStats(
+                UriUtils.buildUri(this.host, ServiceHostManagementService.SELF_LINK));
+        ServiceStat st = hostStats.get(ServiceHostManagementService.STAT_NAME_ODL_STOP_COUNT);
+        if (st == null) {
+            return 0.0;
+        }
+        return st.latestValue;
+    }
+
+    private double getMaintCount() {
+        Map<String, ServiceStat> hostStats = this.host.getServiceStats(
+                UriUtils.buildUri(this.host, ServiceHostManagementService.SELF_LINK));
+        ServiceStat st = hostStats
+                .get(ServiceHostManagementService.STAT_NAME_SERVICE_HOST_MAINTENANCE_COUNT);
         if (st == null) {
             return 0.0;
         }
@@ -1316,7 +1424,7 @@ public class TestLuceneDocumentIndexService {
             this.host.deleteAllChildServices(factoryUri);
         }
 
-        // no test it in parallel, with contention
+        // now test service creation with contention across different authorized subjects
         TestContext ctx = this.host.testCreate(userLinks.size());
         Map<String, Runnable> postTasksPerSubject = new ConcurrentSkipListMap<>();
         Map<String, Long> durationPerSubject = new ConcurrentSkipListMap<>();

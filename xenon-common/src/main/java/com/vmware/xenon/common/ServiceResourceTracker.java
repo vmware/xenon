@@ -91,7 +91,7 @@ class ServiceResourceTracker {
     /**
      * Tracks if a factory link ever had one of its children paused
      */
-    private final ConcurrentSkipListSet<String> serviceFactoriesUnderMemoryPressure = new ConcurrentSkipListSet<>();
+    private final ConcurrentSkipListSet<String> serviceFactoriesWithPauseResume = new ConcurrentSkipListSet<>();
 
     /**
      * Tracks cached service state. Cleared periodically during maintenance
@@ -357,15 +357,14 @@ class ServiceResourceTracker {
         if (state.documentExpirationTimeMicros > 0
                 && state.documentExpirationTimeMicros < state.documentUpdateTimeMicros) {
             // state expired, clear from cache
-            stopService(servicePath, true, op);
+            stopService(s, true, op);
             return null;
         }
 
         return state;
     }
 
-    private void stopService(String servicePath, boolean isExpired, Operation op) {
-        Service s = this.host.findService(servicePath, true);
+    private void stopService(Service s, boolean isExpired, Operation op) {
         if (s == null) {
             return;
         }
@@ -374,30 +373,24 @@ class ServiceResourceTracker {
             return;
         }
         // Issue DELETE to stop the service
-        Operation deleteExp = Operation.createDelete(s.getUri())
+        Operation deleteExp = Operation.createDelete(this.host, s.getSelfLink())
                 .disableFailureLogging(true)
                 .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_NO_INDEX_UPDATE)
                 .setReplicationDisabled(true)
-                .setReferer(this.host.getUri())
-                .setCompletion((o, e) -> {
-                    if (s.hasOption(ServiceOption.ON_DEMAND_LOAD)) {
-                        this.host.getManagementService()
-                                        .adjustStat(
-                                                ServiceHostManagementService.STAT_NAME_ODL_STOP_COUNT,
-                                                1);
-                    }
-                });
+                .setReferer(this.host.getUri());
 
         this.host.sendRequest(deleteExp);
-
-        clearCachedServiceState(servicePath, op);
     }
 
-    public void clearCachedServiceState(String servicePath, Operation op) {
-        this.clearCachedServiceState(servicePath, op, false);
+    public void clearCachedServiceState(Service s, String servicePath, Operation op) {
+        this.clearCachedServiceState(s, servicePath, op, false);
     }
 
-    private void clearCachedServiceState(String servicePath, Operation op, boolean keepLastAccessTime) {
+    private void clearCachedServiceState(Service s, String servicePath, Operation op,
+            boolean keepLastAccessTime) {
+        if (s != null && servicePath == null) {
+            servicePath = s.getSelfLink();
+        }
 
         if (!isTransactional(op)) {
             if (!keepLastAccessTime) {
@@ -405,7 +398,9 @@ class ServiceResourceTracker {
             }
 
             ServiceDocument doc = this.cachedServiceStates.remove(servicePath);
-            Service s = this.host.findService(servicePath, true);
+            if (s == null) {
+                s = this.host.findService(servicePath, true);
+            }
             if (s == null) {
                 return;
             }
@@ -473,7 +468,7 @@ class ServiceResourceTracker {
                     // we do not clear cache or stop in memory services but we do check expiration
                     if (s.documentExpirationTimeMicros > 0
                             && s.documentExpirationTimeMicros < now) {
-                        stopService(service.getSelfLink(), true, null);
+                        stopService(service, true, null);
                     }
                     continue;
                 }
@@ -488,12 +483,17 @@ class ServiceResourceTracker {
                     lastAccessTime = s.documentUpdateTimeMicros;
                 }
 
-                if ((hostState.serviceCacheClearDelayMicros + lastAccessTime) < now) {
+                long cacheClearDelayMicros = hostState.serviceCacheClearDelayMicros;
+                if (ServiceHost.isServiceImmutable(service)) {
+                    cacheClearDelayMicros = 0;
+                }
+
+                if ((cacheClearDelayMicros + lastAccessTime) < now) {
                     // The cached entry is old and should be cleared.
                     // Note that we are not going to clear the lastAccessTime here
                     // because we will need it in future maintenance runs to determine
                     // if the service should be paused/ stopped.
-                    clearCachedServiceState(service.getSelfLink(), null, true);
+                    clearCachedServiceState(service, null, null, true);
                     cacheCleared = true;
                 }
             }
@@ -544,7 +544,7 @@ class ServiceResourceTracker {
                 // instead of pausing it, simply stop them when the service is idle.
                 // if the on-demand-load service does have subscribers/stats, then continue with
                 // pausing so that we don't lose any "soft" state
-                stopService(service.getSelfLink(), false, null);
+                stopService(service, false, null);
                 continue;
             }
 
@@ -557,17 +557,17 @@ class ServiceResourceTracker {
 
             if (!cacheCleared) {
                 // if we're going to pause it, clear state from cache if not already cleared
-                clearCachedServiceState(service.getSelfLink(), null);
+                clearCachedServiceState(service, null, null);
                 // and check again if ON_DEMAND_LOAD with no subscriptions, then we need to stop
                 if (!hasSoftState) {
-                    stopService(service.getSelfLink(), false, null);
+                    stopService(service, false, null);
                     continue;
                 }
             }
 
             String factoryPath = UriUtils.getParentPath(service.getSelfLink());
             if (factoryPath != null) {
-                this.serviceFactoriesUnderMemoryPressure.add(factoryPath);
+                this.serviceFactoriesWithPauseResume.add(factoryPath);
             }
 
             pauseServiceCount++;
@@ -672,7 +672,7 @@ class ServiceResourceTracker {
         }
 
         if (factoryService != null
-                && !this.serviceFactoriesUnderMemoryPressure.contains(factoryPath)) {
+                && !this.serviceFactoriesWithPauseResume.contains(factoryPath)) {
             // minor optimization: if the service factory has never experienced a pause for one of the child
             // services, do not bother querying the blob index. A node might never come under memory
             // pressure so this lookup avoids the index query.

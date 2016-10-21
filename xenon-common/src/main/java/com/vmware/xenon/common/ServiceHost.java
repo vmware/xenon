@@ -98,7 +98,6 @@ import com.vmware.xenon.services.common.LocalQueryTaskFactoryService;
 import com.vmware.xenon.services.common.LuceneBlobIndexService;
 import com.vmware.xenon.services.common.LuceneDocumentIndexService;
 import com.vmware.xenon.services.common.NodeGroupFactoryService;
-import com.vmware.xenon.services.common.NodeGroupService;
 import com.vmware.xenon.services.common.NodeGroupService.JoinPeerRequest;
 import com.vmware.xenon.services.common.NodeGroupUtils;
 import com.vmware.xenon.services.common.ODataQueryService;
@@ -2115,7 +2114,7 @@ public class ServiceHost implements ServiceRequestSender {
                 return;
             }
             stopService(service);
-            failStartServiceOrSynchronize(service, post, o, e);
+            this.serviceSynchTracker.failStartServiceOrSynchronize(service, post, o, e);
         });
 
         this.operationTracker.trackStartOperation(post);
@@ -2586,14 +2585,14 @@ public class ServiceHost implements ServiceRequestSender {
                     return;
                 }
 
-                startUiFileContentServices(s);
-
-                scheduleServiceMaintenance(s);
-
                 s.setProcessingStage(Service.ProcessingStage.AVAILABLE);
-
-                log(Level.FINEST, "Started %s", s.getSelfLink());
+                if (!isServiceImmutable(s)) {
+                    startUiFileContentServices(s);
+                    scheduleServiceMaintenance(s);
+                    log(Level.FINEST, "Started %s", s.getSelfLink());
+                }
                 post.complete();
+
                 break;
 
             default:
@@ -2937,6 +2936,7 @@ public class ServiceHost implements ServiceRequestSender {
     }
 
     private void stopService(String path) {
+        EnumSet<ServiceOption> options = null;
         synchronized (this.state) {
             Service existing = this.attachedServices.remove(path);
             if (existing == null) {
@@ -2945,6 +2945,7 @@ public class ServiceHost implements ServiceRequestSender {
             }
 
             if (existing != null) {
+                options = existing.getOptions();
                 existing.setProcessingStage(ProcessingStage.STOPPED);
                 if (existing.hasOption(ServiceOption.URI_NAMESPACE_OWNER)) {
                     this.attachedNamespaceServices.remove(path);
@@ -2952,7 +2953,7 @@ public class ServiceHost implements ServiceRequestSender {
             }
 
             this.serviceSynchTracker.removeService(path);
-            this.serviceResourceTracker.clearCachedServiceState(path, null);
+            this.serviceResourceTracker.clearCachedServiceState(existing, path, null);
             this.pendingPauseServices.remove(path);
 
             this.state.serviceCount--;
@@ -2960,6 +2961,16 @@ public class ServiceHost implements ServiceRequestSender {
 
         // we do not remove from maintenance tracker, service will
         // be ignored and never schedule for maintenance if its stopped
+        if (options == null || this.managementService == null) {
+            return;
+        }
+
+        if (options.contains(ServiceOption.ON_DEMAND_LOAD)) {
+            this.managementService.adjustStat(
+                    ServiceHostManagementService.STAT_NAME_ODL_STOP_COUNT,
+                    1);
+        }
+
     }
 
     protected Service findService(String uriPath) {
@@ -3541,48 +3552,6 @@ public class ServiceHost implements ServiceRequestSender {
         this.operationTracker.trackOperationForRetry(Utils.getNowMicrosUtc(), fe, op);
     }
 
-    private void failStartServiceOrSynchronize(
-            Service service, Operation start, Operation startRsp, Throwable startEx) {
-        // We check if if this was a failure because of
-        // a 409 error from a replica node. If it was,
-        // then this is mostly likely a new owner who does
-        // not have the service. Remember before reaching here
-        // we do check if the service is started locally in
-        // checkIfServiceExistsAndAttach. So, in this scenario,
-        // we will kick-off on-demand synchronization by kicking
-        // off a synch-post request (like the synch-task). This will
-        // start the service locally.
-        boolean isReplicaConflict = isServiceCreate(start) &&
-                service.hasOption(ServiceOption.REPLICATION) &&
-                start.getAction() == Action.POST &&
-                !start.isFromReplication() &&
-                startRsp.getStatusCode() == Operation.STATUS_CODE_CONFLICT;
-        if (isReplicaConflict) {
-            this.log(Level.INFO, "%s not available on owner node, on-demand synchronizing ...",
-                    service.getSelfLink());
-
-            ServiceDocument d = new ServiceDocument();
-            d.documentSelfLink = startRsp.getLinkedState().documentSelfLink;
-            Operation synchRequest = Operation
-                    .createPost(startRsp.getUri())
-                    .setBody(d)
-                    .setReferer(getUri())
-                    .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_SYNCH_OWNER)
-                    .setExpiration(Utils.getNowMicrosUtc() + NodeGroupService.PEER_REQUEST_TIMEOUT_MICROS)
-                    .setCompletion((synchOp, t) ->  {
-                        start.fail(startEx);
-                        processPendingServiceAvailableOperations(
-                                service, startEx, !start.isFailureLoggingDisabled());
-                    });
-            this.handleRequest(null, synchRequest);
-            return;
-        }
-
-        start.fail(startEx);
-        processPendingServiceAvailableOperations(
-                service, startEx, !start.isFailureLoggingDisabled());
-    }
-
     /**
      * Determine if the request should be queued because the target service is in the process
      * of being started or, if its parent suffix is registered to a factory, the factory is not yet available
@@ -4060,6 +4029,11 @@ public class ServiceHost implements ServiceRequestSender {
     public static boolean isServiceStop(Operation op) {
         return op.getAction() == Action.DELETE
                 && op.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_NO_INDEX_UPDATE);
+    }
+
+    public static boolean isServiceDeleteAndStop(Operation op) {
+        return op.getAction() == Action.DELETE
+                && !op.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_NO_INDEX_UPDATE);
     }
 
     public static boolean isServiceAvailable(Service s) {
@@ -4860,7 +4834,7 @@ public class ServiceHost implements ServiceRequestSender {
                         unmarkAsPendingDelete(s);
                     }
                     if (e != null) {
-                        this.serviceResourceTracker.clearCachedServiceState(s.getSelfLink(), op);
+                        this.serviceResourceTracker.clearCachedServiceState(s, null, op);
                         op.fail(e);
                         return;
                     }
