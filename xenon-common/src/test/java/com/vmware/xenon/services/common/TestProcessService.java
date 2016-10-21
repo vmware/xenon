@@ -141,11 +141,11 @@ public class TestProcessService extends BasicReportTestCase {
 
     private void waitForProcess(String commandToExecute, boolean exists) throws Throwable {
         this.host.waitFor("Process state did not change", () -> {
-            ProcessBuilder pb = new ProcessBuilder("bash", "-c", commandToExecute);
+            ProcessBuilder pb = new ProcessBuilder("sh", "-c", commandToExecute);
             Process process = pb.start();
             BufferedReader bReader = new BufferedReader(new InputStreamReader(process.getInputStream()));
             Integer outputState = Integer.valueOf(bReader.readLine().trim());
-            if (outputState.equals(Integer.valueOf(exists ? 1 : 0))) {
+            if (outputState.equals(exists ? 1 : 0)) {
                 return true;
             }
             return false;
@@ -191,7 +191,7 @@ public class TestProcessService extends BasicReportTestCase {
         // If this works correctly, this should be appended only once!
         String childProc = "echo '" + FILE_CONTENTS + "' >> " + fileName;
 
-        state[0].arguments = new String[] { "bash", "-c", childProc };
+        state[0].arguments = new String[] { "sh", "-c", childProc };
         state[0].isRestartRequired = false;
 
         this.host.testStart(1);
