@@ -164,6 +164,9 @@ public class StatefulService implements Service {
         boolean isAlreadyStopped = this.context.processingStage == ProcessingStage.STOPPED;
 
         if (hasOption(ServiceOption.ON_DEMAND_LOAD)) {
+            // Special processing for ODL services: they have a high probability of
+            // STOP requests, due to inactivity, colliding with new client requests that
+            // re-start the service.
             boolean hasActiveUpdates = false;
             synchronized (this.context) {
                 isAlreadyStopped = this.context.processingStage == ProcessingStage.STOPPED;
@@ -174,12 +177,21 @@ public class StatefulService implements Service {
                     hasActiveUpdates = true;
                 }
             }
-            if (stop && hasActiveUpdates) {
+
+            if (isAlreadyStopped) {
+                // The service was just stopped, so we need to restart it: on demand load is exactly
+                // the functionality that causes a service to be re-started when a request arrives
+                if (!stop) {
+                    getHost().retryPauseOrOnDemandLoadConflict(op, true);
+                    return true;
+                }
+            } else if (stop && hasActiveUpdates) {
+                // This method was called with the intent to stop the service. However, an ODL
+                // service with active updates should NOT stop. This can cause DELETEs to fail from
+                // the periodic logic that stops idle services. It can also cause DELETEs from clients
+                // to fail, but we accept that as by-design behavior: if the service is busy with other
+                // updates we prefer to process them first and reject the DELETE
                 op.fail(new CancellationException("Service is active"));
-                return true;
-            }
-            if (isAlreadyStopped && !stop) {
-                getHost().retryPauseOrOnDemandLoadConflict(op, true);
                 return true;
             }
         }
@@ -1485,7 +1497,7 @@ public class StatefulService implements Service {
                 || option == ServiceOption.ON_DEMAND_LOAD
                         && hasOption(ServiceOption.PERIODIC_MAINTENANCE)) {
             throw new IllegalArgumentException("Service option PERIODIC_MAINTENANCE and " +
-                    "ON_DEMAND_LOAD cannot co-exists.");
+                    "ON_DEMAND_LOAD cannot co-exist.");
         }
 
         boolean optionsChanged = false;
