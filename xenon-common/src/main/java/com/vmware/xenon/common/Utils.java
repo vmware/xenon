@@ -581,7 +581,7 @@ public class Utils {
             antiReqs = EnumSet.of(ServiceOption.PERSISTENCE, ServiceOption.REPLICATION);
             break;
         case PERIODIC_MAINTENANCE:
-            antiReqs = EnumSet.of(ServiceOption.ON_DEMAND_LOAD);
+            antiReqs = EnumSet.of(ServiceOption.ON_DEMAND_LOAD, ServiceOption.IMMUTABLE);
             break;
         case PERSISTENCE:
             break;
@@ -598,6 +598,7 @@ public class Utils {
         case HTML_USER_INTERFACE:
             break;
         case INSTRUMENTATION:
+            antiReqs = EnumSet.of(ServiceOption.IMMUTABLE);
             break;
         case LIFO_QUEUE:
             break;
@@ -613,7 +614,8 @@ public class Utils {
             break;
         case IMMUTABLE:
             reqs = EnumSet.of(ServiceOption.ON_DEMAND_LOAD, ServiceOption.PERSISTENCE);
-            antiReqs = EnumSet.of(ServiceOption.PERIODIC_MAINTENANCE);
+            antiReqs = EnumSet.of(ServiceOption.PERIODIC_MAINTENANCE,
+                    ServiceOption.INSTRUMENTATION);
             break;
         case TRANSACTION_PENDING:
             break;

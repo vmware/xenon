@@ -1485,7 +1485,7 @@ public class StatefulService implements Service {
                 || option == ServiceOption.ON_DEMAND_LOAD
                         && hasOption(ServiceOption.PERIODIC_MAINTENANCE)) {
             throw new IllegalArgumentException("Service option PERIODIC_MAINTENANCE and " +
-                    "ON_DEMAND_LOAD cannot co-exists.");
+                    "ON_DEMAND_LOAD cannot co-exist.");
         }
 
         boolean optionsChanged = false;

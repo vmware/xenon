@@ -33,6 +33,7 @@ import com.vmware.xenon.common.ServiceHost.MaintenanceStage;
 import com.vmware.xenon.common.ServiceHost.ServiceHostState;
 import com.vmware.xenon.common.ServiceMaintenanceRequest.MaintenanceReason;
 import com.vmware.xenon.common.ServiceStats.ServiceStat;
+import com.vmware.xenon.services.common.NodeGroupService;
 import com.vmware.xenon.services.common.NodeGroupService.NodeGroupState;
 import com.vmware.xenon.services.common.NodeSelectorSynchronizationService.SynchronizePeersRequest;
 import com.vmware.xenon.services.common.ServiceUriPaths;
@@ -96,6 +97,50 @@ class ServiceSynchronizationTracker {
                             }
                         });
         this.host.sendRequest(get);
+    }
+
+    void failStartServiceOrSynchronize(
+            Service service, Operation start, Operation startRsp, Throwable startEx) {
+        // We check if if this was a failure because of
+        // a 409 error from a replica node. If it was,
+        // then this is mostly likely a new owner who does
+        // not have the service. Remember before reaching here
+        // we do check if the service is started locally in
+        // checkIfServiceExistsAndAttach. So, in this scenario,
+        // we will kick-off on-demand synchronization by kicking
+        // off a synch-post request (like the synch-task). This will
+        // start the service locally.
+        boolean isReplicaConflict = ServiceHost.isServiceCreate(start) &&
+                service.hasOption(ServiceOption.REPLICATION) &&
+                start.getAction() == Action.POST &&
+                !start.isFromReplication() &&
+                startRsp.getStatusCode() == Operation.STATUS_CODE_CONFLICT;
+        if (isReplicaConflict) {
+            this.host.log(Level.INFO,
+                    "%s not available on owner node, on-demand synchronizing ...",
+                    service.getSelfLink());
+
+            ServiceDocument d = new ServiceDocument();
+            d.documentSelfLink = startRsp.getLinkedState().documentSelfLink;
+            Operation synchRequest = Operation
+                    .createPost(startRsp.getUri())
+                    .setBody(d)
+                    .setReferer(this.host.getUri())
+                    .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_SYNCH_OWNER)
+                    .setExpiration(
+                            Utils.getNowMicrosUtc() + NodeGroupService.PEER_REQUEST_TIMEOUT_MICROS)
+                    .setCompletion((synchOp, t) -> {
+                        start.fail(startEx);
+                        this.host.processPendingServiceAvailableOperations(
+                                service, startEx, !start.isFailureLoggingDisabled());
+                    });
+            this.host.handleRequest(null, synchRequest);
+            return;
+        }
+
+        start.fail(startEx);
+        this.host.processPendingServiceAvailableOperations(
+                service, startEx, !start.isFailureLoggingDisabled());
     }
 
     /**
