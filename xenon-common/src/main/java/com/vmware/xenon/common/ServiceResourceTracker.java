@@ -90,7 +90,7 @@ class ServiceResourceTracker {
     /**
      * Tracks if a factory link ever had one of its children paused
      */
-    private final ConcurrentSkipListSet<String> serviceFactoriesUnderMemoryPressure = new ConcurrentSkipListSet<>();
+    private final ConcurrentSkipListSet<String> serviceFactoriesWithPauseResume = new ConcurrentSkipListSet<>();
 
     /**
      * Tracks cached service state. Cleared periodically during maintenance
@@ -450,7 +450,12 @@ class ServiceResourceTracker {
                     lastAccessTime = s.documentUpdateTimeMicros;
                 }
 
-                if ((hostState.serviceCacheClearDelayMicros + lastAccessTime) < now) {
+                long cacheClearDelayMicros = hostState.serviceCacheClearDelayMicros;
+                if (service.hasOption(ServiceOption.IMMUTABLE)) {
+                    cacheClearDelayMicros = service.getMaintenanceIntervalMicros() / 2;
+                }
+
+                if ((cacheClearDelayMicros + lastAccessTime) < now) {
                     // The cached entry is old and should be cleared.
                     // Note that we are not going to clear the lastAccessTime here
                     // because we will need it in future maintenance runs to determine
@@ -529,7 +534,7 @@ class ServiceResourceTracker {
 
             String factoryPath = UriUtils.getParentPath(service.getSelfLink());
             if (factoryPath != null) {
-                this.serviceFactoriesUnderMemoryPressure.add(factoryPath);
+                this.serviceFactoriesWithPauseResume.add(factoryPath);
             }
 
             pauseServiceCount++;
@@ -631,7 +636,7 @@ class ServiceResourceTracker {
         }
 
         if (factoryService != null
-                && !this.serviceFactoriesUnderMemoryPressure.contains(factoryPath)) {
+                && !this.serviceFactoriesWithPauseResume.contains(factoryPath)) {
             // minor optimization: if the service factory has never experienced a pause for one of the child
             // services, do not bother querying the blob index. A node might never come under memory
             // pressure so this lookup avoids the index query.
