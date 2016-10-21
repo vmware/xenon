@@ -2061,9 +2061,8 @@ public class TestNodeGroupService {
 
             totalOperations += this.serviceCount;
 
-            if (expiration == null) {
-                expiration = this.host.getTestExpiration();
-            }
+            expiration = this.host.getTestExpiration();
+
             int expectedVersion = this.updateCount;
 
             if (!this.host.isStressTest()

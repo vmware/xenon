@@ -153,6 +153,10 @@ public class VerificationHost extends ExampleServiceHost {
     public String[] peerNodes;
 
     /**
+     * When {@link peerNodes} is configured this flag will trigger join of the remote nodes.
+     */
+    public boolean joinNodes;
+    /**
      * Command line argument indicating this is a stress test
      */
     public boolean isStressTest;
@@ -1988,7 +1992,9 @@ public class VerificationHost extends ExampleServiceHost {
 
         if (this.isRemotePeerTest()) {
             memberCount = getPeerCount();
-        } else {
+        }
+
+        if (!isRemotePeerTest() || (isRemotePeerTest() && this.joinNodes)) {
             for (URI initialNodeGroupService : this.peerNodeGroups.values()) {
                 if (customGroupPath != null) {
                     initialNodeGroupService = UriUtils.buildUri(initialNodeGroupService,
@@ -2009,7 +2015,6 @@ public class VerificationHost extends ExampleServiceHost {
                     testWait();
                 }
             }
-
         }
 
         // for local or remote tests, we still want to wait for convergence
