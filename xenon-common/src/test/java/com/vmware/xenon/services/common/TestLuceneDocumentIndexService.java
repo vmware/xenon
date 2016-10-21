@@ -114,6 +114,8 @@ public class TestLuceneDocumentIndexService {
             super();
             super.toggleOption(ServiceOption.ON_DEMAND_LOAD, true);
             super.toggleOption(ServiceOption.IMMUTABLE, true);
+            // toggle instrumentation off so service stops, instead of pausing
+            super.toggleOption(ServiceOption.INSTRUMENTATION, false);
         }
 
         public static FactoryService createFactory() {
@@ -141,7 +143,7 @@ public class TestLuceneDocumentIndexService {
      * Parameter that specifies required number of document in index before
      * tests start
      */
-    public int documentCountAtStart = 0;
+    public int documentCountAtStart = 10;
 
     /**
      * Parameter that specifies iterations per top level test method
@@ -1245,19 +1247,55 @@ public class TestLuceneDocumentIndexService {
         double initialPauseCount = getHostPauseCount();
         this.host.log("Starting throughput POST, query interleaving: %s", interleaveQueries);
         URI factoryUri = createImmutableFactoryService(this.host);
-        if (this.documentCountAtStart > 0) {
-            this.host.log("Pre populating index with %d documents", this.documentCountAtStart);
-            long serviceCountCached = this.serviceCount;
-            this.serviceCount = this.documentCountAtStart;
-            doThroughputPost(false, factoryUri);
-            this.serviceCount = serviceCountCached;
-        }
+        prePopulateIndexWithServiceDocuments(factoryUri);
+        verifyImmutableEagerServiceStop(factoryUri, this.documentCountAtStart);
 
         doMultipleIterationsThroughputPost(interleaveQueries, this.iterationCount, factoryUri);
         factoryUri = UriUtils.buildFactoryUri(this.host, ExampleService.class);
         doMultipleIterationsThroughputPost(interleaveQueries, this.iterationCount, factoryUri);
         double finalPauseCount = getHostPauseCount();
         assertTrue(initialPauseCount == finalPauseCount);
+    }
+
+    void prePopulateIndexWithServiceDocuments(URI factoryUri) throws Throwable {
+        if (this.documentCountAtStart == 0) {
+            return;
+        }
+        this.host.log("Pre populating index with %d documents on %s", this.documentCountAtStart,
+                factoryUri);
+        long serviceCountCached = this.serviceCount;
+        this.serviceCount = this.documentCountAtStart;
+        doThroughputPost(false, factoryUri);
+        this.serviceCount = serviceCountCached;
+    }
+
+    void verifyImmutableEagerServiceStop(URI factoryUri, int expectedStopCount) {
+        double initialStopCount = getHostODLStopCount();
+        double initialMaintCount = getMaintCount();
+        this.host.waitFor("eager ODL stop not seen", () -> {
+            double maintCount = getMaintCount();
+            if (maintCount <= initialMaintCount + 1) {
+                return false;
+            }
+            double stopCount = getHostODLStopCount();
+            this.host.log("Stop count: %f, initial: %f, maint count delta: %f",
+                    stopCount,
+                    initialStopCount,
+                    maintCount - initialMaintCount);
+            boolean allStopped = stopCount >= expectedStopCount;
+            if (!allStopped) {
+                return false;
+            }
+
+            if (maintCount > initialMaintCount + 20) {
+                // service cache clear is essentially turned off, but IMMUTABLE services should stop
+                // within a maintenance interval of start. We are being forgiving and allow for 20, but
+                // either way if it does not happen before waitFor timeout, something is broken
+                throw new IllegalStateException("Eager service stop took too long");
+            }
+            return true;
+        });
+        this.host.log("All services for %s stopped", factoryUri);
     }
 
     URI createImmutableFactoryService(VerificationHost h) throws Throwable {
@@ -1273,6 +1311,27 @@ public class TestLuceneDocumentIndexService {
         Map<String, ServiceStat> hostStats = this.host.getServiceStats(
                 UriUtils.buildUri(this.host, ServiceHostManagementService.SELF_LINK));
         ServiceStat st = hostStats.get(Service.STAT_NAME_PAUSE_COUNT);
+        if (st == null) {
+            return 0.0;
+        }
+        return st.latestValue;
+    }
+
+    private double getHostODLStopCount() {
+        Map<String, ServiceStat> hostStats = this.host.getServiceStats(
+                UriUtils.buildUri(this.host, ServiceHostManagementService.SELF_LINK));
+        ServiceStat st = hostStats.get(ServiceHostManagementService.STAT_NAME_ODL_STOP_COUNT);
+        if (st == null) {
+            return 0.0;
+        }
+        return st.latestValue;
+    }
+
+    private double getMaintCount() {
+        Map<String, ServiceStat> hostStats = this.host.getServiceStats(
+                UriUtils.buildUri(this.host, ServiceHostManagementService.SELF_LINK));
+        ServiceStat st = hostStats
+                .get(ServiceHostManagementService.STAT_NAME_SERVICE_HOST_MAINTENANCE_COUNT);
         if (st == null) {
             return 0.0;
         }

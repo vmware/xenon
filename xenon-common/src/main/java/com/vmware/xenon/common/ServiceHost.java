@@ -98,7 +98,6 @@ import com.vmware.xenon.services.common.LocalQueryTaskFactoryService;
 import com.vmware.xenon.services.common.LuceneBlobIndexService;
 import com.vmware.xenon.services.common.LuceneDocumentIndexService;
 import com.vmware.xenon.services.common.NodeGroupFactoryService;
-import com.vmware.xenon.services.common.NodeGroupService;
 import com.vmware.xenon.services.common.NodeGroupService.JoinPeerRequest;
 import com.vmware.xenon.services.common.NodeGroupUtils;
 import com.vmware.xenon.services.common.ODataQueryService;
@@ -2115,7 +2114,7 @@ public class ServiceHost implements ServiceRequestSender {
                 return;
             }
             stopService(service);
-            failStartServiceOrSynchronize(service, post, o, e);
+            this.serviceSynchTracker.failStartServiceOrSynchronize(service, post, o, e);
         });
 
         this.operationTracker.trackStartOperation(post);
@@ -2594,6 +2593,7 @@ public class ServiceHost implements ServiceRequestSender {
 
                 log(Level.FINEST, "Started %s", s.getSelfLink());
                 post.complete();
+
                 break;
 
             default:
@@ -3539,48 +3539,6 @@ public class ServiceHost implements ServiceRequestSender {
         }
 
         this.operationTracker.trackOperationForRetry(Utils.getNowMicrosUtc(), fe, op);
-    }
-
-    private void failStartServiceOrSynchronize(
-            Service service, Operation start, Operation startRsp, Throwable startEx) {
-        // We check if if this was a failure because of
-        // a 409 error from a replica node. If it was,
-        // then this is mostly likely a new owner who does
-        // not have the service. Remember before reaching here
-        // we do check if the service is started locally in
-        // checkIfServiceExistsAndAttach. So, in this scenario,
-        // we will kick-off on-demand synchronization by kicking
-        // off a synch-post request (like the synch-task). This will
-        // start the service locally.
-        boolean isReplicaConflict = isServiceCreate(start) &&
-                service.hasOption(ServiceOption.REPLICATION) &&
-                start.getAction() == Action.POST &&
-                !start.isFromReplication() &&
-                startRsp.getStatusCode() == Operation.STATUS_CODE_CONFLICT;
-        if (isReplicaConflict) {
-            this.log(Level.INFO, "%s not available on owner node, on-demand synchronizing ...",
-                    service.getSelfLink());
-
-            ServiceDocument d = new ServiceDocument();
-            d.documentSelfLink = startRsp.getLinkedState().documentSelfLink;
-            Operation synchRequest = Operation
-                    .createPost(startRsp.getUri())
-                    .setBody(d)
-                    .setReferer(getUri())
-                    .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_SYNCH_OWNER)
-                    .setExpiration(Utils.getNowMicrosUtc() + NodeGroupService.PEER_REQUEST_TIMEOUT_MICROS)
-                    .setCompletion((synchOp, t) ->  {
-                        start.fail(startEx);
-                        processPendingServiceAvailableOperations(
-                                service, startEx, !start.isFailureLoggingDisabled());
-                    });
-            this.handleRequest(null, synchRequest);
-            return;
-        }
-
-        start.fail(startEx);
-        processPendingServiceAvailableOperations(
-                service, startEx, !start.isFailureLoggingDisabled());
     }
 
     /**
