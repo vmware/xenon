@@ -103,6 +103,7 @@ public abstract class FactoryService extends StatelessService {
      */
     public FactoryService(Class<? extends ServiceDocument> childServiceDocumentType) {
         super(childServiceDocumentType);
+        super.toggleOption(ServiceOption.STATELESS, false);
         super.toggleOption(ServiceOption.FACTORY, true);
         setSelfLink("");
         Service s = createChildServiceSafe();

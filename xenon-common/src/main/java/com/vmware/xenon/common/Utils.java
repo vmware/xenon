@@ -617,6 +617,10 @@ public class Utils {
             break;
         case TRANSACTION_PENDING:
             break;
+        case STATELESS:
+            antiReqs = EnumSet.of(ServiceOption.PERSISTENCE, ServiceOption.REPLICATION,
+                    ServiceOption.OWNER_SELECTION, ServiceOption.STRICT_UPDATE_CHECKING);
+            break;
         default:
             break;
         }
