@@ -82,6 +82,30 @@
           </execution>
         </executions>
       </plugin>
+      <plugin>
+        <groupId>pl.project13.maven</groupId>
+        <artifactId>git-commit-id-plugin</artifactId>
+        <version>2.1.10</version>
+        <executions>
+          <execution>
+            <goals>
+              <goal>revision</goal>
+            </goals>
+          </execution>
+        </executions>
+        <configuration>
+          <failOnNoGitDirectory>false</failOnNoGitDirectory>
+          <generateGitPropertiesFile>true</generateGitPropertiesFile>
+          <generateGitPropertiesFilename>src/main/resources/xenon.git.properties</generateGitPropertiesFilename>
+          <excludeProperties>
+            <excludeProperty>git.branch.*</excludeProperty>
+            <excludeProperty>git.build.*</excludeProperty>
+            <excludeProperty>git.commit.message.*</excludeProperty>
+            <excludeProperty>git.commit.user.*</excludeProperty>
+            <excludeProperty>git.remote.*</excludeProperty>
+          </excludeProperties>
+        </configuration>
+      </plugin>
     </plugins>
   </build>
   <profiles>
