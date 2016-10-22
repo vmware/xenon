@@ -20,6 +20,7 @@ import static org.junit.Assert.assertTrue;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.EnumSet;
+import java.util.Map;
 import java.util.UUID;
 
 import org.junit.Test;
@@ -317,5 +318,17 @@ public class TestUriUtils {
         assertFalse(UriUtils.hasODataExpandParamValue(u));
         u = UriUtils.buildUri("http://example.com:8000?");
         assertFalse(UriUtils.hasODataExpandParamValue(u));
+    }
+
+    @Test
+    public void testSimplePathParamParsing() {
+        String template = "/vmware/offices/{location}/sites/{site}";
+        URI u = UriUtils.buildUri("http://example.com:8000/vmware/offices/pa/sites/prom-e");
+        Map<String, String> pathParams = UriUtils.parseUriPathSegments(u, template);
+        assertEquals(2, pathParams.size());
+        assertTrue(pathParams.keySet().contains("location"));
+        assertTrue(pathParams.keySet().contains("site"));
+        assertTrue(pathParams.get("location").equals("pa"));
+        assertTrue(pathParams.get("site").equals("prom-e"));
     }
 }
