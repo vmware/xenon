@@ -114,7 +114,6 @@ public class TaskFactoryService extends FactoryService {
             subscribeToChildTask(o, post);
         });
 
-        clonedPost.setConnectionSharing(true);
         super.handleRequest(clonedPost, OperationProcessingStage.EXECUTING_SERVICE_HANDLER);
     }
 
