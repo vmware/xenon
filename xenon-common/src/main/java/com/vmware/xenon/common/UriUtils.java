@@ -71,6 +71,7 @@ public class UriUtils {
     public static final String URI_QUERY_PARAM_LINK_CHAR = "&";
     public static final String URI_WILDCARD_CHAR = "*";
     public static final String URI_QUERY_PARAM_KV_CHAR = "=";
+    public static final String URI_PATH_PARAM_REGEX = "\\{.*\\}";
     public static final String URI_PARAM_CAPABILITY = "capability";
     public static final String URI_PARAM_INCLUDE_DELETED = "includeDeleted";
     public static final String FIELD_NAME_SELF_LINK = "SELF_LINK";
@@ -492,6 +493,28 @@ public class UriUtils {
                 value = sb.toString();
             }
             params.put(key, value);
+        }
+        return params;
+    }
+
+    public static Map<String, String> parseSimpleUriPathParams(URI uri, String templatePath) {
+        Map<String, String> params = new HashMap<>();
+        String path = uri.getPath();
+        if (path == null || path.isEmpty()) {
+            return params;
+        }
+
+        String[] pathSplit = path.split(URI_PATH_CHAR);
+        String[] templatePathSplit = templatePath.split(URI_PATH_CHAR);
+
+        for (int index = 0; index < templatePathSplit.length; index++) {
+            String templateStr = templatePathSplit[index];
+            if (templateStr.matches(URI_PATH_PARAM_REGEX)) {
+                String pathParam = templateStr.subSequence(1, templateStr.length() - 1).toString();
+                params.put(pathParam, pathSplit[index]);
+            } else if (!templatePathSplit[index].equals(pathSplit[index])) {
+                break;
+            }
         }
         return params;
     }
