@@ -60,11 +60,13 @@ import java.util.function.Consumer;
 import java.util.logging.Handler;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+
 import javax.net.ssl.SSLContext;
 import javax.xml.bind.DatatypeConverter;
 
 import io.netty.handler.ssl.util.InsecureTrustManagerFactory;
 import io.netty.handler.ssl.util.SelfSignedCertificate;
+
 import org.apache.lucene.store.LockObtainFailedException;
 import org.junit.rules.TemporaryFolder;
 
@@ -96,6 +98,7 @@ import com.vmware.xenon.common.TaskState;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
 import com.vmware.xenon.common.http.netty.NettyHttpServiceClient;
+import com.vmware.xenon.common.serialization.KryoSerializers;
 import com.vmware.xenon.common.test.TestRequestSender.FailureResponse;
 import com.vmware.xenon.services.common.AuthorizationContextService;
 import com.vmware.xenon.services.common.ConsistentHashingNodeSelectorService;
@@ -1280,8 +1283,7 @@ public class VerificationHost extends ExampleServiceHost {
 
         int byteCount = Utils.toJson(body).getBytes(Utils.CHARSET).length;
         if (properties.contains(TestProperty.BINARY_SERIALIZATION)) {
-            byte[] buffer = new byte[4096];
-            long c = Utils.toDocumentBytes(body, buffer, 0);
+            long c = KryoSerializers.serializeDocument(body, 4096).position();
             byteCount = (int) c;
         }
         log("Bytes per payload %s", byteCount);

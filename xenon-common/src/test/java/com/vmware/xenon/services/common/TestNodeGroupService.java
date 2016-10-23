@@ -80,6 +80,7 @@ import com.vmware.xenon.common.SynchronizationTaskService;
 import com.vmware.xenon.common.TaskState;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
+import com.vmware.xenon.common.serialization.KryoSerializers;
 import com.vmware.xenon.common.test.AuthorizationHelper;
 import com.vmware.xenon.common.test.MinimalTestServiceState;
 import com.vmware.xenon.common.test.RoundRobinIterator;
@@ -2129,7 +2130,7 @@ public class TestNodeGroupService {
             // compute the binary serialized payload, and the JSON payload size
             ExampleServiceState st = childStates.values().iterator().next();
             String json = Utils.toJson(st);
-            int byteCount = Utils.toDocumentBytes(st, new byte[4096], 0);
+            int byteCount = KryoSerializers.serializeDocument(st, 4096).position();
             int jsonByteCount = json.getBytes(Utils.CHARSET).length;
             // estimate total bytes transferred between nodes. The owner receives JSON from the client
             // but then uses binary serialization to the N-1 replicas
