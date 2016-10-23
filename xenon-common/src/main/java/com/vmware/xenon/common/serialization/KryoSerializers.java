@@ -24,8 +24,8 @@ import com.esotericsoftware.kryo.Kryo;
 import com.esotericsoftware.kryo.Kryo.DefaultInstantiatorStrategy;
 import com.esotericsoftware.kryo.io.Input;
 import com.esotericsoftware.kryo.io.Output;
-
 import com.esotericsoftware.kryo.serializers.VersionFieldSerializer;
+
 import org.objenesis.strategy.StdInstantiatorStrategy;
 
 import com.vmware.xenon.common.ServiceDocument;
@@ -61,6 +61,7 @@ public final class KryoSerializers {
     private static ThreadLocal<Kryo> kryoForDocumentPerThreadCustom;
 
     public static final long THREAD_LOCAL_BUFFER_LIMIT_BYTES = 1024 * 1024;
+    private static final int OUTPUT_BUFFER_SIZE_BYTES = 4096;
     private static final BufferThreadLocal bufferPerThread = new BufferThreadLocal();
 
     public static Kryo create(boolean isObjectSerializer) {
@@ -123,31 +124,30 @@ public final class KryoSerializers {
      * The document should not contain circular references.
      * Must be paired with {@code KryoSerializers#deserializeDocument(byte[], int, int)}
      */
-    public static int serializeDocument(ServiceDocument o, byte[] buffer, int position) {
-        return serializeAsDocument(o, buffer, position);
+    public static Output serializeDocument(ServiceDocument o, int maxSize) {
+        return serializeAsDocument(o, maxSize);
     }
 
     /**
      * See {@link #serializeDocument(ServiceDocument, byte[], int)}
      */
-    public static int serializeAsDocument(Object o, byte[] buffer, int position) {
+    public static Output serializeAsDocument(Object o, int maxSize) {
         Kryo k = getKryoThreadLocalForDocuments();
-        Output out = new Output(buffer);
-        out.setPosition(position);
+        Output out = new Output(getBuffer(OUTPUT_BUFFER_SIZE_BYTES), maxSize);
         k.writeClassAndObject(out, o);
-        return out.position();
+        return out;
     }
 
     /**
-     * Uses custom serialization that will write nulls for select built-in fields that can
-     * be reconstructed from other index data
+     * Infrastructure use only. Uses custom serialization that will write nulls for select built-in
+     * fields that can be reconstructed from other index data
      */
-    public static int serializeObjectForIndexing(Object o, byte[] buffer, int position) {
+    public static Output serializeDocumentForIndexing(Object o, int maxSize) {
         Kryo k = getKryoThreadLocalForDocuments();
-        Output out = new OutputWithRoot(buffer, o);
-        out.setPosition(position);
+        byte[] buffer = getBuffer(OUTPUT_BUFFER_SIZE_BYTES);
+        Output out = new OutputWithRoot(buffer, maxSize, o);
         k.writeClassAndObject(out, o);
-        return out.position();
+        return out;
     }
     /**
      * Serializes an arbitrary object into a binary representation, using full
@@ -168,7 +168,7 @@ public final class KryoSerializers {
      */
     public static ByteBuffer serializeObject(Object o, int maxSize) {
         Kryo k = getKryoThreadLocalForObjects();
-        Output out = new Output(4096, maxSize);
+        Output out = new Output(OUTPUT_BUFFER_SIZE_BYTES, maxSize);
         k.writeClassAndObject(out, o);
         return ByteBuffer.wrap(out.getBuffer(), 0, out.position());
     }

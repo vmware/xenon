@@ -43,6 +43,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import com.esotericsoftware.kryo.KryoException;
+import com.esotericsoftware.kryo.io.Output;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
@@ -1826,8 +1827,10 @@ public class LuceneDocumentIndexService extends StatelessService {
         try {
             int count = 0;
             if (serializedDocument == null) {
-                serializedDocument = KryoSerializers.getBuffer(desc.serializedStateSizeLimit);
-                count = KryoSerializers.serializeObjectForIndexing(s, serializedDocument, 0);
+                Output o = KryoSerializers.serializeDocumentForIndexing(s,
+                        desc.serializedStateSizeLimit);
+                count = o.position();
+                serializedDocument = o.getBuffer();
             } else {
                 count = serializedDocument.length;
             }

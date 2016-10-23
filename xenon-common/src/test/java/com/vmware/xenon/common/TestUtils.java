@@ -46,8 +46,10 @@ import java.util.zip.GZIPOutputStream;
 
 import com.esotericsoftware.kryo.Kryo;
 import com.esotericsoftware.kryo.Kryo.DefaultInstantiatorStrategy;
+import com.esotericsoftware.kryo.io.Output;
 import com.esotericsoftware.kryo.serializers.VersionFieldSerializer;
 import com.google.gson.reflect.TypeToken;
+
 import org.junit.Assert;
 import org.junit.Test;
 import org.objenesis.strategy.StdInstantiatorStrategy;
@@ -56,6 +58,7 @@ import com.vmware.xenon.common.Service.ServiceOption;
 import com.vmware.xenon.common.ServiceDocumentDescription.Builder;
 import com.vmware.xenon.common.ServiceDocumentDescription.PropertyIndexingOption;
 import com.vmware.xenon.common.SystemHostInfo.OsFamily;
+import com.vmware.xenon.common.serialization.KryoSerializers;
 import com.vmware.xenon.common.test.VerificationHost;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
 import com.vmware.xenon.services.common.QueryValidationTestService.QueryValidationServiceState;
@@ -145,8 +148,8 @@ public class TestUtils {
 
         int byteCount = 0;
         long start = Utils.getNowMicrosUtc();
-        byte[] content = new byte[1024];
         for (int i = 0; i < count; i++) {
+            byte[] content = Utils.getBuffer(1024);
             byteCount = Utils.toBytes(s, content, 0);
             assertTrue(content != null);
             assertTrue(content.length >= expectedByteCount);
@@ -246,35 +249,34 @@ public class TestUtils {
             // serialize with defaults, then with custom, and compare sizes
 
             int byteCountToObjectDefault = Utils.toBytes(st, Utils.getBuffer(1024), 0);
-            int byteCountToDocumentImplicitDefault = Utils.toDocumentBytes((Object) st,
-                    Utils.getBuffer(1024), 0);
-            int byteCountToDocumentDefault = Utils.toDocumentBytes((Object) st,
-                    Utils.getBuffer(1024), 0);
+            Output outDocumentImplicitDefault = KryoSerializers.serializeAsDocument((Object) st,
+                    1024);
+            Output outDocumentDefault = KryoSerializers.serializeDocument(st, 1024);
 
             Utils.registerCustomKryoSerializer(new CustomKryoForObjectThreadLocal(), false);
             Utils.registerCustomKryoSerializer(new CustomKryoForDocumentThreadLocal(),
                     true);
 
             byte[] objectData = new byte[1024];
-            byte[] documentImplicitData = new byte[1024];
-            byte[] documentData = new byte[1024];
             int byteCountToObjectCustom = Utils.toBytes((Object) st, objectData, 0);
-            int byteCountToDocumentImplicitCustom = Utils.toDocumentBytes((Object) st,
-                    documentImplicitData, 0);
-            int byteCountToDocumentCustom = Utils.toDocumentBytes((Object) st,
-                    documentData, 0);
+            Output outDocumentImplicitCustom = KryoSerializers.serializeAsDocument((Object) st,
+                    1024);
+            Output outDocumentCustom = KryoSerializers.serializeDocument(st, 1024);
 
             assertTrue(byteCountToObjectCustom != byteCountToObjectDefault);
-            assertTrue(byteCountToDocumentImplicitCustom != byteCountToDocumentImplicitDefault);
-            assertTrue(byteCountToDocumentDefault != byteCountToDocumentCustom);
+            assertTrue(outDocumentImplicitCustom.position() != outDocumentImplicitDefault
+                    .position());
+            assertTrue(outDocumentCustom.position() != outDocumentDefault.position());
 
             ExampleServiceState stDeserializedFromObject = (ExampleServiceState) Utils.fromBytes(
                     objectData);
-            ExampleServiceState stDeserializedImplicit = (ExampleServiceState) Utils
-                    .fromDocumentBytes(
-                            documentImplicitData, 0, byteCountToDocumentImplicitCustom);
-            ExampleServiceState stDeserialized = (ExampleServiceState) Utils.fromDocumentBytes(
-                    documentData, 0, byteCountToDocumentCustom);
+            ExampleServiceState stDeserializedImplicit =
+                    (ExampleServiceState) KryoSerializers.deserializeDocument(
+                            outDocumentImplicitDefault.getBuffer(), 0,
+                            outDocumentImplicitDefault.position());
+            ExampleServiceState stDeserialized = (ExampleServiceState) KryoSerializers
+                    .deserializeDocument(
+                    outDocumentDefault.getBuffer(), 0, outDocumentDefault.position());
             assertEquals(st.id, stDeserializedFromObject.id);
             assertEquals(st.id, stDeserializedImplicit.id);
             assertEquals(st.id, stDeserialized.id);
@@ -328,37 +330,6 @@ public class TestUtils {
                 assertEquals(s.get(e.getKey()), e.getValue());
             }
         }
-    }
-
-    @Test
-    public void fromDocumentBytes() {
-        int count = 100000;
-        ExampleServiceState s = buildCloneOrSerializationObject();
-
-        byte[] content = new byte[1024];
-        int byteCount = Utils.toBytes(s, content, 0);
-
-        long start = Utils.getNowMicrosUtc();
-        for (int i = 0; i < count; i++) {
-            ExampleServiceState s1 = (ExampleServiceState) Utils.fromDocumentBytes(content, 0,
-                    content.length);
-            assertEquals(s.counter, s1.counter);
-            assertEquals(s.name, s1.name);
-            assertEquals(s.keyValues.size(), s1.keyValues.size());
-            assertEquals(s.keyValues.get("1"), s1.keyValues.get("1"));
-        }
-
-        long end = Utils.getNowMicrosUtc();
-
-        double thpt = end - start;
-        thpt /= 1000000;
-        thpt = count / thpt;
-
-        Logger.getAnonymousLogger().info(
-                String.format(
-                        "Binary deserializations per second: %f, iterations: %d, byte count: %d",
-                        thpt, count, byteCount));
-
     }
 
     private ExampleServiceState buildCloneOrSerializationObject() {
@@ -470,11 +441,10 @@ public class TestUtils {
 
         for (int i = 0; i < count; i++) {
             if (useBinary) {
-                byte[] bytes = new byte[4096];
-                int pos = Utils.toBytes(original, bytes, 0);
-                assertTrue(bytes != null && pos > 10);
-                length = pos;
-                Utils.fromDocumentBytes(bytes, 0, pos);
+                Output o = KryoSerializers.serializeDocument(original, 4096);
+                assertTrue(o != null && o.position() > 10);
+                length = o.position();
+                KryoSerializers.deserializeDocument(o.getBuffer(), 0, o.position());
             } else {
                 String serializedDocument = Utils.toJson(original);
                 assertTrue(serializedDocument != null);
@@ -497,11 +467,11 @@ public class TestUtils {
             throws Throwable {
         QueryValidationServiceState originalDeserializedWithSig = null;
         if (useBinary) {
-            byte[] serializedDocument = new byte[4096];
-            Utils.toBytes(original, serializedDocument, 0);
-            originalDeserializedWithSig = (QueryValidationServiceState) Utils.fromBytes(
-                    serializedDocument,
-                    0, serializedDocument.length);
+            Output o = KryoSerializers.serializeDocument(original, 4096);
+            originalDeserializedWithSig = (QueryValidationServiceState) KryoSerializers
+                    .deserializeDocument(
+                            o.getBuffer(),
+                            0, o.position());
         } else {
             String serializedDocument = Utils.toJson(original);
             originalDeserializedWithSig = Utils.fromJson(

@@ -21,6 +21,8 @@ import static org.junit.Assert.assertTrue;
 import java.util.HashMap;
 import java.util.UUID;
 
+import com.esotericsoftware.kryo.io.Output;
+
 import org.junit.Test;
 
 import com.vmware.xenon.common.ServiceDocument;
@@ -33,16 +35,16 @@ import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
 public class TestKryoSerializers {
 
     @Test
-    public void serializeObjectForIndexing() {
+    public void serializeDocumentForIndexing() {
         ExampleServiceState state = new ExampleServiceState();
         state.documentSelfLink = "selfLink";
         state.documentKind = Utils.buildKind(ExampleServiceState.class);
 
-        byte[] buffer = KryoSerializers.getBuffer(2 * 1024);
-        KryoSerializers.serializeObjectForIndexing(state, buffer, 0);
+        Output o = KryoSerializers.serializeDocumentForIndexing(state, 2048);
 
-        ExampleServiceState deser = (ExampleServiceState) Utils.fromDocumentBytes(buffer, 0,
-                buffer.length);
+        ExampleServiceState deser = (ExampleServiceState) KryoSerializers.deserializeDocument(
+                o.getBuffer(), 0,
+                o.position());
         assertNull(deser.documentSelfLink);
         assertNull(deser.documentKind);
     }
@@ -58,9 +60,9 @@ public class TestKryoSerializers {
         st.keyValues = new HashMap<>();
         st.keyValues.put(st.id, st.id);
         st.documentKind = Utils.buildKind(ExampleServiceState.class);
-        byte [] buffer = KryoSerializers.getBuffer(4096);
-        int lengthWithKind = KryoSerializers.serializeDocument(st, buffer, 0);
-        ExampleServiceState deserializedSt = (ExampleServiceState) KryoSerializers.deserializeDocument(buffer, 0, lengthWithKind);
+        Output o = KryoSerializers.serializeDocument(st, 1024);
+        ExampleServiceState deserializedSt = (ExampleServiceState) KryoSerializers
+                .deserializeDocument(o.getBuffer(), 0, o.position());
         assertTrue(ServiceDocument.equals(sdd, st, deserializedSt));
     }
 

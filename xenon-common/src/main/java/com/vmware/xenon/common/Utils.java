@@ -48,7 +48,8 @@ import java.util.logging.Logger;
 import java.util.zip.GZIPInputStream;
 
 import com.esotericsoftware.kryo.Kryo;
-import com.esotericsoftware.kryo.KryoException;
+import com.esotericsoftware.kryo.io.Output;
+
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
@@ -224,21 +225,6 @@ public class Utils {
         return KryoSerializers.serializeObject(o, buffer, position);
     }
 
-
-    /**
-     * See {@link KryoSerializers#serializeDocument(ServiceDocument, byte[], int)}
-     */
-    public static int toDocumentBytes(Object o, byte[] buffer, int position) {
-        return KryoSerializers.serializeAsDocument(o, buffer, position);
-    }
-
-    /**
-     * See {@link KryoSerializers#serializeDocument(ServiceDocument, byte[], int)}
-     */
-    public static int toBytes(ServiceDocument o, byte[] buffer, int position) {
-        return KryoSerializers.serializeDocument(o, buffer, position);
-    }
-
     /**
      * See {@link KryoSerializers#deserializeObject(byte[], int, int)}
      */
@@ -251,14 +237,6 @@ public class Utils {
      */
     public static Object fromBytes(byte[] bytes, int position, int length) {
         return KryoSerializers.deserializeObject(bytes, position, length);
-    }
-
-    /**
-     * See {@link KryoSerializers#deserializeDocument(byte[], int, int)}
-     */
-    public static Object fromDocumentBytes(byte[] bytes, int position, int length) {
-        return KryoSerializers.deserializeDocument(bytes, position, length);
-
     }
 
     public static void performMaintenance() {
@@ -818,20 +796,13 @@ public class Utils {
                 op.setContentLength(data.length);
             }
         } else if (Operation.MEDIA_TYPE_APPLICATION_KRYO_OCTET_STREAM.equals(contentType)) {
-            int limit = ServiceClient.MAX_BINARY_SERIALIZED_BODY_LIMIT;
-            if (op.getContentLength() < 512) {
-                op.setContentLength(512);
-            }
-            while (op.getContentLength() <= limit) {
-                try {
-                    data = new byte[(int) op.getContentLength()];
-                    int count = Utils.toDocumentBytes(body, data, 0);
-                    op.setContentLength(count);
-                    break;
-                } catch (KryoException e) {
-                    op.setContentLength(op.getContentLength() * 2);
-                }
-            }
+            Output o = KryoSerializers.serializeAsDocument(
+                    body,
+                    ServiceClient.MAX_BINARY_SERIALIZED_BODY_LIMIT);
+            // incur a memory copy since the byte array can be used across many threads in the
+            // I/O path
+            data = o.toBytes();
+            op.setContentLength(data.length);
         }
 
         if (data == null) {
@@ -895,7 +866,7 @@ public class Utils {
             byte[] data = new byte[(int) op.getContentLength()];
             buffer.get(data);
             if (Operation.MEDIA_TYPE_APPLICATION_KRYO_OCTET_STREAM.equals(contentType)) {
-                body = Utils.fromDocumentBytes(data, 0, data.length);
+                body = KryoSerializers.deserializeDocument(data, 0, data.length);
                 if (op.isFromReplication()) {
                     // optimization to avoid having to serialize state again, during indexing
                     op.linkSerializedState(data);
