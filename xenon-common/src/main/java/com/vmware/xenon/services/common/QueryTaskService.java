@@ -216,6 +216,7 @@ public class QueryTaskService extends StatefulService {
                 .createPost(forwardingService)
                 .setBody(queryTask)
                 .setReferer(this.getUri())
+                .setConnectionSharing(true)
                 .setCompletion((o, e) -> {
                     if (e != null) {
                         failTask(e, startPost, null);

@@ -68,15 +68,28 @@ public class NettyChannelContext extends SocketContext {
         HTTP11, HTTP2
     }
 
-    public static final PooledByteBufAllocator ALLOCATOR = NettyChannelContext.createAllocator();
+    private static volatile PooledByteBufAllocator bufferAllocator;
 
     static PooledByteBufAllocator createAllocator() {
+        if (bufferAllocator != null) {
+            return bufferAllocator;
+        }
         // We are using defaults from the code internals since the pooled allocator does not
         // expose the values it calculates. The available constructor methods that take cache
         // sizes require us to pass things like max order and page size.
         // maxOrder determines the allocation chunk size as a multiple of page size
         int maxOrder = 4;
-        return new PooledByteBufAllocator(true, 2, 2, 8192, maxOrder, 64, 32, 16);
+        PooledByteBufAllocator allocator = new PooledByteBufAllocator(true, 2, 2, 8192, maxOrder,
+                64, 32, 16);
+        bufferAllocator = allocator;
+        return bufferAllocator;
+    }
+
+    /**
+     * Test infrastructure use only
+     */
+    public static void resetAllocator() {
+        bufferAllocator = null;
     }
 
     private Channel channel;

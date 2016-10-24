@@ -89,7 +89,7 @@ public class NettyHttpServiceClient implements ServiceClient {
 
     private HttpRequestCallbackService callbackService;
 
-    CookieJar cookieJar = new CookieJar();
+    private CookieJar cookieJar = new CookieJar();
 
     private boolean isStarted;
 

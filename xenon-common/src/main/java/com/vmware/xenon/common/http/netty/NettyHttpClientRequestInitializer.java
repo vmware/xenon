@@ -80,7 +80,7 @@ public class NettyHttpClientRequestInitializer extends ChannelInitializer<Socket
     @Override
     public void initChannel(SocketChannel ch) {
         ChannelPipeline p = ch.pipeline();
-        ch.config().setAllocator(NettyChannelContext.ALLOCATOR);
+        ch.config().setAllocator(NettyChannelContext.createAllocator());
         ch.config().setSendBufferSize(NettyChannelContext.BUFFER_SIZE);
         ch.config().setReceiveBufferSize(NettyChannelContext.BUFFER_SIZE);
         if (this.pool.getSSLContext() != null) {
