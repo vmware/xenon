@@ -1348,9 +1348,7 @@ public class StatefulService implements Service {
 
         completeSynchronizationRequest(request, failure, isStateUpdated);
 
-        if (wasOwner) {
-            return;
-        }
+        logInfo("done with synch %d", request.getId());
     }
 
     private void completeSynchronizationRequest(Operation request, Throwable failure,

@@ -47,7 +47,6 @@ public class OnDemandLoadFactoryService extends FactoryService {
         h.startService(factoryPost, s);
         ctx.await();
         String factoryLink = s.getSelfLink();
-        h.scheduleNodeGroupChangeMaintenance(ServiceUriPaths.DEFAULT_NODE_SELECTOR);
         h.log(Level.INFO, "Started on demand load factory at %s", factoryLink);
         return factoryLink;
     }

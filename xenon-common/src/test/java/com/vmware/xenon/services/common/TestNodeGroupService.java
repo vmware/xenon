@@ -529,6 +529,7 @@ public class TestNodeGroupService {
 
             // create an on demand load factory and services
             OnDemandLoadFactoryService.create(h);
+            h.scheduleNodeGroupChangeMaintenance(ServiceUriPaths.DEFAULT_NODE_SELECTOR);
         }
 
         // join the nodes and set full quorum.
