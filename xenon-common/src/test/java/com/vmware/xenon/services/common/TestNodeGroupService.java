@@ -80,6 +80,7 @@ import com.vmware.xenon.common.SynchronizationTaskService;
 import com.vmware.xenon.common.TaskState;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
+import com.vmware.xenon.common.http.netty.NettyChannelContext;
 import com.vmware.xenon.common.serialization.KryoSerializers;
 import com.vmware.xenon.common.test.AuthorizationHelper;
 import com.vmware.xenon.common.test.MinimalTestServiceState;
@@ -385,6 +386,10 @@ public class TestNodeGroupService {
 
         System.clearProperty(
                 NodeSelectorReplicationService.PROPERTY_NAME_REPLICA_NOT_FOUND_TIMEOUT_MICROS);
+
+        // reset buffer allocator to isolate test runs, its the only process singleton that is
+        // shared across hosts and tests
+        NettyChannelContext.resetAllocator();
     }
 
     @Test
@@ -516,6 +521,14 @@ public class TestNodeGroupService {
 
     @Test
     public void synchronizationOnDemandLoad() throws Throwable {
+        for (int i = 0; i < this.iterationCount; i++) {
+            this.tearDown();
+            doSynchronizationOnDemandLoad();
+            this.host.log("Done with iteration %d", i);
+        }
+    }
+
+    private void doSynchronizationOnDemandLoad() throws Throwable {
         // Setup peer nodes
         setUp(this.nodeCount);
 
