@@ -39,7 +39,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.Semaphore;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import com.esotericsoftware.kryo.KryoException;
@@ -109,10 +108,8 @@ import com.vmware.xenon.common.ServiceDocumentDescription.TypeName;
 import com.vmware.xenon.common.ServiceDocumentQueryResult;
 import com.vmware.xenon.common.ServiceHost.ServiceHostState.MemoryLimitType;
 import com.vmware.xenon.common.ServiceMaintenanceRequest;
-import com.vmware.xenon.common.ServiceStats;
+import com.vmware.xenon.common.ServiceStatUtils;
 import com.vmware.xenon.common.ServiceStats.ServiceStat;
-import com.vmware.xenon.common.ServiceStats.TimeSeriesStats;
-import com.vmware.xenon.common.ServiceStats.TimeSeriesStats.AggregationType;
 import com.vmware.xenon.common.StatelessService;
 import com.vmware.xenon.common.TaskState;
 import com.vmware.xenon.common.TaskState.TaskStage;
@@ -206,26 +203,6 @@ public class LuceneDocumentIndexService extends StatelessService {
     public static final String STAT_NAME_DOCUMENT_EXPIRATION_COUNT = "expiredDocumentCount";
 
     public static final String STAT_NAME_DOCUMENT_EXPIRATION_FORCED_MAINTENANCE_COUNT = "expiredDocumentForcedMaintenanceCount";
-
-    static final String[] TIME_SERIES_ENABLED_STATS = new String[] {
-            STAT_NAME_ACTIVE_QUERY_FILTERS,
-            STAT_NAME_ACTIVE_PAGINATED_QUERIES,
-            STAT_NAME_COMMIT_COUNT,
-            STAT_NAME_COMMIT_DURATION_MICROS,
-            STAT_NAME_GROUP_QUERY_COUNT,
-            STAT_NAME_QUERY_DURATION_MICROS,
-            STAT_NAME_GROUP_QUERY_DURATION_MICROS,
-            STAT_NAME_QUERY_SINGLE_DURATION_MICROS,
-            STAT_NAME_QUERY_ALL_VERSIONS_DURATION_MICROS,
-            STAT_NAME_RESULT_PROCESSING_DURATION_MICROS,
-            STAT_NAME_INDEXED_FIELD_COUNT,
-            STAT_NAME_INDEXED_DOCUMENT_COUNT,
-            STAT_NAME_INDEXING_DURATION_MICROS,
-            STAT_NAME_SEARCHER_UPDATE_COUNT,
-            STAT_NAME_SERVICE_DELETE_COUNT,
-            STAT_NAME_DOCUMENT_EXPIRATION_COUNT,
-            STAT_NAME_DOCUMENT_EXPIRATION_FORCED_MAINTENANCE_COUNT
-    };
 
     protected static final int UPDATE_THREAD_COUNT = Utils.DEFAULT_THREAD_COUNT / 2;
     protected static final int QUERY_THREAD_COUNT = Utils.DEFAULT_THREAD_COUNT;
@@ -349,44 +326,16 @@ public class LuceneDocumentIndexService extends StatelessService {
     }
 
     private void initializeStats() {
-        IndexWriter w = this.writer;
-        for (String name : TIME_SERIES_ENABLED_STATS) {
-            if (STAT_NAME_INDEXED_DOCUMENT_COUNT.equals(name)) {
-                createTimeSeriesStat(STAT_NAME_INDEXED_DOCUMENT_COUNT, w != null ? w.numDocs() : 0);
-                continue;
-            }
-            if (STAT_NAME_INDEXED_FIELD_COUNT.equals(name)) {
-                // simple estimate on field count, just so our first bin does not have a completely bogus
-                // number
-                createTimeSeriesStat(STAT_NAME_INDEXED_FIELD_COUNT, w != null ? w.numDocs() * 10
-                        : 0);
-                continue;
-            }
-            createTimeSeriesStat(name, 0);
+        if (!hasOption(ServiceOption.INSTRUMENTATION)) {
+            return;
         }
-    }
-
-    private void createTimeSeriesStat(String name, double v) {
-        createDayTimeSeriesStat(name, v);
-        createHourTimeSeriesStat(name, v);
-    }
-
-    private void createDayTimeSeriesStat(String name, double v) {
-        ServiceStat st = new ServiceStat();
-        st.name = name + ServiceStats.STAT_NAME_SUFFIX_PER_DAY;
-        st.timeSeriesStats = new TimeSeriesStats((int) TimeUnit.DAYS.toHours(1),
-                TimeUnit.HOURS.toMillis(1),
-                EnumSet.of(AggregationType.AVG));
-        super.setStat(st, v);
-    }
-
-    private void createHourTimeSeriesStat(String name, double v) {
-        ServiceStat st = new ServiceStat();
-        st.name = name + ServiceStats.STAT_NAME_SUFFIX_PER_HOUR;
-        st.timeSeriesStats = new TimeSeriesStats((int) TimeUnit.HOURS.toMinutes(1),
-                TimeUnit.MINUTES.toMillis(1),
-                EnumSet.of(AggregationType.AVG));
-        super.setStat(st, v);
+        IndexWriter w = this.writer;
+        ServiceStatUtils.setTimeSeriesStat(this, STAT_NAME_INDEXED_DOCUMENT_COUNT,
+                w != null ? w.numDocs() : 0);
+        // simple estimate on field count, just so our first bin does not have a completely bogus
+        // number
+        ServiceStatUtils.setTimeSeriesStat(this, STAT_NAME_INDEXED_FIELD_COUNT,
+                w != null ? w.numDocs() * 10 : 0);
     }
 
     public IndexWriter createWriter(File directory, boolean doUpgrade) throws Exception {
@@ -713,14 +662,16 @@ public class LuceneDocumentIndexService extends StatelessService {
             clonedTask.querySpec = task.querySpec;
             clonedTask.querySpec.context.filter = QueryFilter.create(qs.query);
             this.activeQueries.put(task.documentSelfLink, clonedTask);
-            this.setStat(STAT_NAME_ACTIVE_QUERY_FILTERS, this.activeQueries.size());
+            ServiceStatUtils.setTimeSeriesStat(this, STAT_NAME_ACTIVE_QUERY_FILTERS,
+                    this.activeQueries.size());
             logInfo("Activated continuous query task: %s", task.documentSelfLink);
             break;
         case CANCELLED:
         case FAILED:
         case FINISHED:
             this.activeQueries.remove(task.documentSelfLink);
-            this.setStat(STAT_NAME_ACTIVE_QUERY_FILTERS, this.activeQueries.size());
+            ServiceStatUtils.setTimeSeriesStat(this, STAT_NAME_ACTIVE_QUERY_FILTERS,
+                    this.activeQueries.size());
             op.complete();
             return true;
         default:
@@ -923,18 +874,14 @@ public class LuceneDocumentIndexService extends StatelessService {
 
         IndexSearcher s = updateSearcher(selfLink, 1, w);
         long start = 0;
-        long end = 0;
         if (hasOption(ServiceOption.INSTRUMENTATION)) {
             start = System.nanoTime();
         }
         TopDocs hits = searchByVersion(selfLink, s, version);
         if (hasOption(ServiceOption.INSTRUMENTATION)) {
-            end = System.nanoTime();
-        }
-
-        if (hasOption(ServiceOption.INSTRUMENTATION)) {
-            ServiceStat st = getHistogramStat(STAT_NAME_QUERY_SINGLE_DURATION_MICROS);
-            setStat(st, (end - start) / 1000.0);
+            long duration = System.nanoTime() - start;
+            ServiceStatUtils.setDurationStat(this, STAT_NAME_QUERY_SINGLE_DURATION_MICROS,
+                    duration / 1000.0);
         }
 
         if (hits.totalHits == 0) {
@@ -1066,7 +1013,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         groupingSearch.setGroupSort(groupSort);
         groupingSearch.setSortWithinGroup(sort);
 
-        super.adjustStat(STAT_NAME_GROUP_QUERY_COUNT, 1);
+        ServiceStatUtils.incrementCountStat(this, STAT_NAME_GROUP_QUERY_COUNT, 1.0);
 
         int groupOffset = page != null ? page.groupOffset : 0;
         int groupLimit = qs.groupResultLimit != null ? qs.groupResultLimit : 10000;
@@ -1088,10 +1035,10 @@ public class LuceneDocumentIndexService extends StatelessService {
         long startTimeMicros = Utils.getNowMicrosUtc();
         // perform the actual search
         TopGroups<?> groups = groupingSearch.search(s, tq, groupOffset, groupLimit);
-        long endTimeMicros = Utils.getNowMicrosUtc();
-        String statName = STAT_NAME_GROUP_QUERY_DURATION_MICROS;
-        ServiceStat st = getHistogramStat(statName);
-        setStat(st, endTimeMicros - startTimeMicros);
+        long durationMicros = Utils.getNowMicrosUtc() - startTimeMicros;
+        ServiceStatUtils.setDurationStat(this, STAT_NAME_GROUP_QUERY_DURATION_MICROS,
+                durationMicros);
+
         // generate page links for each grouped result
         for (GroupDocs<?> groupDocs : groups.groups) {
             if (groupDocs.totalHits == 0) {
@@ -1215,11 +1162,9 @@ public class LuceneDocumentIndexService extends StatelessService {
                     String statName = options.contains(QueryOption.INCLUDE_ALL_VERSIONS)
                             ? STAT_NAME_QUERY_ALL_VERSIONS_DURATION_MICROS
                             : STAT_NAME_QUERY_DURATION_MICROS;
-                    ServiceStat st = getHistogramStat(statName);
-                    setStat(st, queryTime);
-
-                    st = getHistogramStat(STAT_NAME_RESULT_PROCESSING_DURATION_MICROS);
-                    setStat(st, end - start);
+                    ServiceStatUtils.setDurationStat(this, statName, queryTime);
+                    ServiceStatUtils.setDurationStat(this, STAT_NAME_RESULT_PROCESSING_DURATION_MICROS,
+                            end - start);
                 }
             }
 
@@ -1815,9 +1760,8 @@ public class LuceneDocumentIndexService extends StatelessService {
 
         if (hasOption(ServiceOption.INSTRUMENTATION)) {
             int fieldCount = doc.getFields().size();
-            ServiceStat st = getStat(STAT_NAME_INDEXED_FIELD_COUNT);
-            adjustStat(st, fieldCount);
-            st = getHistogramStat(STAT_NAME_FIELD_COUNT_PER_DOCUMENT);
+            ServiceStatUtils.incrementCountStat(this, STAT_NAME_INDEXED_FIELD_COUNT, fieldCount);
+            ServiceStat st = getHistogramStat(STAT_NAME_FIELD_COUNT_PER_DOCUMENT);
             setStat(st, fieldCount);
         }
     }
@@ -2069,7 +2013,7 @@ public class LuceneDocumentIndexService extends StatelessService {
             return false;
         }
 
-        adjustStat(STAT_NAME_DOCUMENT_EXPIRATION_COUNT, 1);
+        ServiceStatUtils.incrementCountStat(this, STAT_NAME_DOCUMENT_EXPIRATION_COUNT, 1.0);
 
         // update document with one that has all fields, including binary state
         doc = searcher.getIndexReader().document(docId, this.fieldsToLoadWithExpand);
@@ -2125,8 +2069,7 @@ public class LuceneDocumentIndexService extends StatelessService {
             ServiceDocument state)
             throws Throwable {
         deleteDocumentsFromIndex(postOrDelete, link, 0);
-        ServiceStat st = getStat(STAT_NAME_SERVICE_DELETE_COUNT);
-        adjustStat(st, 1);
+        ServiceStatUtils.incrementCountStat(this, STAT_NAME_SERVICE_DELETE_COUNT, 1.0);
         logFine("%s expired", link);
         if (state == null) {
             return;
@@ -2268,8 +2211,9 @@ public class LuceneDocumentIndexService extends StatelessService {
         updateLinkAccessTime(end, sd.documentSelfLink);
 
         if (hasOption(ServiceOption.INSTRUMENTATION)) {
-            ServiceStat s = getHistogramStat(STAT_NAME_INDEXING_DURATION_MICROS);
-            setStat(s, end - start);
+            ServiceStatUtils.incrementCountStat(this, STAT_NAME_INDEXED_DOCUMENT_COUNT, 1.0);
+            ServiceStatUtils.setDurationStat(this, STAT_NAME_INDEXING_DURATION_MICROS,
+                    end - start);
         }
 
         op.setBody(null).complete();
@@ -2340,10 +2284,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         // also create a searcher, but that is OK: the most recent one will be used.
         s = new IndexSearcher(DirectoryReader.open(w, true, true));
 
-        if (hasOption(ServiceOption.INSTRUMENTATION)) {
-            ServiceStat st = getStat(STAT_NAME_SEARCHER_UPDATE_COUNT);
-            adjustStat(st, 1);
-        }
+        ServiceStatUtils.incrementCountStat(this, STAT_NAME_SEARCHER_UPDATE_COUNT, 1.0);
 
         synchronized (this.searchSync) {
             this.searchersPendingClose.add(s);
@@ -2378,18 +2319,11 @@ public class LuceneDocumentIndexService extends StatelessService {
 
     private void handleMaintenanceImpl(boolean forceMerge) throws Throwable {
         try {
-            long start = Utils.getNowMicrosUtc();
 
             IndexWriter w = this.writer;
             if (w == null) {
                 return;
             }
-
-            setStat(STAT_NAME_INDEXED_DOCUMENT_COUNT, w.maxDoc());
-
-            adjustStat(STAT_NAME_COMMIT_COUNT, 1.0);
-            long end = Utils.getNowMicrosUtc();
-            setStat(STAT_NAME_COMMIT_DURATION_MICROS, end - start);
 
             IndexSearcher s = updateSearcher(null, Integer.MAX_VALUE, w);
             if (s == null) {
@@ -2398,11 +2332,14 @@ public class LuceneDocumentIndexService extends StatelessService {
 
             applyDocumentExpirationPolicy(w);
             applyDocumentVersionRetentionPolicy();
+
+            long start = Utils.getNowMicrosUtc();
             w.commit();
+            long duration = Utils.getNowMicrosUtc() - start;
+            ServiceStatUtils.setDurationStat(this, STAT_NAME_COMMIT_DURATION_MICROS, duration);
+            ServiceStatUtils.incrementCountStat(this, STAT_NAME_COMMIT_COUNT, 1.0);
 
             applyMemoryLimit();
-
-            applyTimeSeriesStatsUpdates();
 
             boolean reOpenWriter = applyIndexSearcherAndFileLimit();
 
@@ -2418,23 +2355,6 @@ public class LuceneDocumentIndexService extends StatelessService {
             reOpenWriterSynchronously();
             throw e;
         }
-    }
-
-    private void applyTimeSeriesStatsUpdates() {
-        // read the point value statistics and update the corresponding time series entries. We only
-        // do this once per maintenance, to reduce overhead in the fast path
-        for (String name : TIME_SERIES_ENABLED_STATS) {
-            updateTimeSeriesStat(name);
-        }
-    }
-
-    private void updateTimeSeriesStat(String name) {
-        ServiceStat st = getStat(name);
-        if (st == null) {
-            return;
-        }
-        super.setStat(name + ServiceStats.STAT_NAME_SUFFIX_PER_DAY, st.latestValue);
-        super.setStat(name + ServiceStats.STAT_NAME_SUFFIX_PER_HOUR, st.latestValue);
     }
 
     private boolean applyIndexSearcherAndFileLimit() {
@@ -2604,7 +2524,8 @@ public class LuceneDocumentIndexService extends StatelessService {
                 entriesToClose.put(entry.getKey(), entry.getValue());
                 itr.remove();
             }
-            setStat(STAT_NAME_ACTIVE_PAGINATED_QUERIES, this.searchersForPaginatedQueries.size());
+            ServiceStatUtils.setTimeSeriesStat(this, STAT_NAME_ACTIVE_PAGINATED_QUERIES,
+                    this.searchersForPaginatedQueries.size());
         }
 
         for (Entry<Long, List<IndexSearcher>> entry : entriesToClose.entrySet()) {
@@ -2660,7 +2581,8 @@ public class LuceneDocumentIndexService extends StatelessService {
 
         // More documents to be expired trigger maintenance right away.
         if (results.totalHits > EXPIRED_DOCUMENT_SEARCH_THRESHOLD) {
-            adjustStat(STAT_NAME_DOCUMENT_EXPIRATION_FORCED_MAINTENANCE_COUNT, 1);
+            ServiceStatUtils.incrementCountStat(this,
+                    STAT_NAME_DOCUMENT_EXPIRATION_FORCED_MAINTENANCE_COUNT, 1.0);
             ServiceMaintenanceRequest body = ServiceMaintenanceRequest.create();
             Operation servicePost = Operation
                     .createPost(UriUtils.buildUri(getHost(), getSelfLink()))

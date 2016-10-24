@@ -56,20 +56,22 @@ public class ServiceStats extends ServiceDocument {
             public double count;
         }
 
-        public static enum AggregationType {
+        public enum AggregationType {
             AVG, MIN, MAX, SUM
         }
 
+        public String name;
         public SortedMap<Long, TimeBin> bins;
         public int numBins;
         public long binDurationMillis;
         public EnumSet<AggregationType> aggregationType;
 
-        public TimeSeriesStats(int numBins, long binDurationMillis,
+        public TimeSeriesStats(String name, int numBins, long binDurationMillis,
                 EnumSet<AggregationType> aggregationType) {
+            this.name = name;
             this.numBins = numBins;
             this.binDurationMillis = binDurationMillis;
-            this.bins = new TreeMap<Long, TimeBin>();
+            this.bins = new TreeMap<>();
             this.aggregationType = aggregationType;
         }
 
@@ -93,31 +95,30 @@ public class ServiceStats extends ServiceDocument {
                 }
                 if (this.aggregationType.contains(AggregationType.AVG)) {
                     if (dataBin.avg == null) {
-                        dataBin.avg = new Double(value);
+                        dataBin.avg = value;
                         dataBin.count = 1;
                     } else {
-                        double newAvg = ((dataBin.avg * dataBin.count)  + value) / (dataBin.count + 1);
-                        dataBin.avg = newAvg;
+                        dataBin.avg = ((dataBin.avg * dataBin.count) + value) / (dataBin.count + 1);
                         dataBin.count++;
                     }
                 }
                 if (this.aggregationType.contains(AggregationType.SUM)) {
                     if (dataBin.sum == null) {
-                        dataBin.sum = new Double(value);
+                        dataBin.sum = value;
                     } else {
                         dataBin.sum += value;
                     }
                 }
                 if (this.aggregationType.contains(AggregationType.MAX)) {
                     if (dataBin.max == null) {
-                        dataBin.max = new Double(value);
+                        dataBin.max = value;
                     } else if (dataBin.max < value) {
                         dataBin.max = value;
                     }
                 }
                 if (this.aggregationType.contains(AggregationType.MIN)) {
                     if (dataBin.min == null) {
-                        dataBin.min = new Double(value);
+                        dataBin.min = value;
                     } else if (dataBin.min > value) {
                         dataBin.min = value;
                     }
@@ -197,7 +198,7 @@ public class ServiceStats extends ServiceDocument {
          * exists, aggregates (average, minimum, maximum; based
          * on user choice) are maintained
          */
-        public TimeSeriesStats timeSeriesStats;
+        public TimeSeriesStats[] timeSeriesStats;
     }
 
     public String kind = KIND;

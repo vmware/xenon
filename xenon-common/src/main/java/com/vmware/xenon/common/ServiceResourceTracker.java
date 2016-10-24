@@ -183,7 +183,9 @@ class ServiceResourceTracker {
         Service mgmtService = this.host.getManagementService();
         ServiceStat st = new ServiceStat();
         st.name = name + ServiceStats.STAT_NAME_SUFFIX_PER_DAY;
-        st.timeSeriesStats = new TimeSeriesStats((int) TimeUnit.DAYS.toHours(1),
+        st.timeSeriesStats = new TimeSeriesStats[1];
+        st.timeSeriesStats[0] = new TimeSeriesStats(st.name,
+                (int) TimeUnit.DAYS.toHours(1),
                 TimeUnit.HOURS.toMillis(1),
                 EnumSet.of(AggregationType.AVG));
         mgmtService.setStat(st, v);
@@ -193,7 +195,9 @@ class ServiceResourceTracker {
         Service mgmtService = this.host.getManagementService();
         ServiceStat st = new ServiceStat();
         st.name = name + ServiceStats.STAT_NAME_SUFFIX_PER_HOUR;
-        st.timeSeriesStats = new TimeSeriesStats((int) TimeUnit.HOURS.toMinutes(1),
+        st.timeSeriesStats = new TimeSeriesStats[1];
+        st.timeSeriesStats[0] = new TimeSeriesStats(st.name,
+                (int) TimeUnit.HOURS.toMinutes(1),
                 TimeUnit.MINUTES.toMillis(1),
                 EnumSet.of(AggregationType.AVG));
         mgmtService.setStat(st, v);
@@ -292,7 +296,7 @@ class ServiceResourceTracker {
     }
 
     public void updateCachedServiceState(Service s,
-             ServiceDocument st, Operation op) {
+            ServiceDocument st, Operation op) {
 
         if (ServiceHost.isServiceIndexed(s) && !isTransactional(op)) {
             this.persistedServiceLastAccessTimes.put(s.getSelfLink(), Utils.getNowMicrosUtc());
@@ -507,7 +511,7 @@ class ServiceResourceTracker {
 
             if (lastAccessTime != null &&
                     hostState.lastMaintenanceTimeUtcMicros - lastAccessTime < service
-                    .getMaintenanceIntervalMicros() * 2) {
+                            .getMaintenanceIntervalMicros() * 2) {
                 // Skip pause for services that have been active within a maintenance interval
                 continue;
             }
@@ -668,7 +672,7 @@ class ServiceResourceTracker {
         String factoryPath = UriUtils.getParentPath(key);
         FactoryService factoryService = null;
         if (factoryPath != null) {
-            factoryService = (FactoryService)this.host.findService(factoryPath);
+            factoryService = (FactoryService) this.host.findService(factoryPath);
         }
 
         if (factoryService != null
@@ -813,7 +817,7 @@ class ServiceResourceTracker {
                     // local stop of idle service raced with client request to load it. Retry.
                     this.host.log(Level.WARNING, "Stop of idle service %s detected, retrying",
                             inboundOp
-                            .getUri().getPath());
+                                    .getUri().getPath());
                     this.host.schedule(() -> {
                         checkAndOnDemandStartService(inboundOp, parentService);
                     }, 1, TimeUnit.SECONDS);

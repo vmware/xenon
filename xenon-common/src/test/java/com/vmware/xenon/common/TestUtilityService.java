@@ -313,7 +313,8 @@ public class TestUtilityService extends BasicReusableHostTestCase {
         long interval = 1000;
         double value = 100;
         // set data to fill up the specified number of bins
-        TimeSeriesStats timeSeriesStats = new TimeSeriesStats(numBins, interval, EnumSet.allOf(AggregationType.class));
+        TimeSeriesStats timeSeriesStats = new TimeSeriesStats(null, numBins, interval,
+                EnumSet.allOf(AggregationType.class));
         for (int i = 0; i < numBins; i++) {
             startTime += TimeUnit.MILLISECONDS.toMicros(interval);
             value += 1;
@@ -352,7 +353,7 @@ public class TestUtilityService extends BasicReusableHostTestCase {
         assertTrue(lastBin.min.equals(origValue));
 
         // test with a subset of the aggregation types specified
-        timeSeriesStats = new TimeSeriesStats(numBins, interval, EnumSet.of(AggregationType.AVG));
+        timeSeriesStats = new TimeSeriesStats(null, numBins, interval, EnumSet.of(AggregationType.AVG));
         timeSeriesStats.add(startTime, value);
         lastBin = timeSeriesStats.bins.get(timeSeriesStats.bins.lastKey());
         assertTrue(lastBin.avg != null);
@@ -360,7 +361,8 @@ public class TestUtilityService extends BasicReusableHostTestCase {
         assertTrue(lastBin.max == null);
         assertTrue(lastBin.min == null);
 
-        timeSeriesStats = new TimeSeriesStats(numBins, interval, EnumSet.of(AggregationType.MIN, AggregationType.MAX));
+        timeSeriesStats = new TimeSeriesStats(null, numBins, interval,
+                EnumSet.of(AggregationType.MIN, AggregationType.MAX));
         timeSeriesStats.add(startTime, value);
         lastBin = timeSeriesStats.bins.get(timeSeriesStats.bins.lastKey());
         assertTrue(lastBin.avg == null);
@@ -383,7 +385,8 @@ public class TestUtilityService extends BasicReusableHostTestCase {
         stat.name = "key1";
         stat.latestValue = 100;
         // set bin size to 1ms
-        stat.timeSeriesStats = new TimeSeriesStats(numBins, 1, EnumSet.allOf(AggregationType.class));
+        stat.timeSeriesStats = new TimeSeriesStats[1];
+        stat.timeSeriesStats[0] = new TimeSeriesStats(null, numBins, 1, EnumSet.allOf(AggregationType.class));
         this.host.sendAndWaitExpectSuccess(Operation.createPost(UriUtils.buildStatsUri(
                 this.host, exampleServiceState.documentSelfLink)).setBody(stat));
         for (int i = 0; i < numBins; i++) {
@@ -398,7 +401,7 @@ public class TestUtilityService extends BasicReusableHostTestCase {
         assertTrue(retStatEntry.accumulatedValue == 100 * (numBins + 1));
         assertTrue(retStatEntry.latestValue == 100);
         assertTrue(retStatEntry.version == numBins + 1);
-        assertTrue(retStatEntry.timeSeriesStats.bins.size() == numBins);
+        assertTrue(retStatEntry.timeSeriesStats[0].bins.size() == numBins);
 
         // Step 3 - POST a stat to the service instance with sourceTimeMicrosUtc and verify we can fetch the stat just posted
         String statName = UUID.randomUUID().toString();
@@ -424,8 +427,10 @@ public class TestUtilityService extends BasicReusableHostTestCase {
         Long sourceTimeMicrosUtc2 = 946800000000000L;
         sourceStat2.sourceTimeMicrosUtc = sourceTimeMicrosUtc2;
         // set bucket size to 1ms
-        sourceStat1.timeSeriesStats = new TimeSeriesStats(numBins, 1, EnumSet.allOf(AggregationType.class));
-        sourceStat2.timeSeriesStats = new TimeSeriesStats(numBins, 1, EnumSet.allOf(AggregationType.class));
+        sourceStat1.timeSeriesStats = new TimeSeriesStats[1];
+        sourceStat1.timeSeriesStats[0] = new TimeSeriesStats(null, numBins, 1, EnumSet.allOf(AggregationType.class));
+        sourceStat2.timeSeriesStats = new TimeSeriesStats[1];
+        sourceStat2.timeSeriesStats[0] = new TimeSeriesStats(null, numBins, 1, EnumSet.allOf(AggregationType.class));
         this.host.sendAndWaitExpectSuccess(Operation.createPost(UriUtils.buildStatsUri(
                 this.host, returnExampleState.documentSelfLink)).setBody(sourceStat1));
         this.host.sendAndWaitExpectSuccess(Operation.createPost(UriUtils.buildStatsUri(
@@ -437,16 +442,18 @@ public class TestUtilityService extends BasicReusableHostTestCase {
         assertTrue(retStatEntry.accumulatedValue == 100);
         assertTrue(retStatEntry.latestValue == 100);
         assertTrue(retStatEntry.version == 1);
-        assertTrue(retStatEntry.timeSeriesStats.bins.size() == 1);
-        assertTrue(retStatEntry.timeSeriesStats.bins.firstKey()
+        assertTrue(retStatEntry.timeSeriesStats.length == 1);
+        assertTrue(retStatEntry.timeSeriesStats[0].bins.size() == 1);
+        assertTrue(retStatEntry.timeSeriesStats[0].bins.firstKey()
                 .equals(TimeUnit.MICROSECONDS.toMillis(sourceTimeMicrosUtc1)));
 
         retStatEntry = allStats.entries.get(sourceStat2.name);
         assertTrue(retStatEntry.accumulatedValue == 100);
         assertTrue(retStatEntry.latestValue == 100);
         assertTrue(retStatEntry.version == 1);
-        assertTrue(retStatEntry.timeSeriesStats.bins.size() == 1);
-        assertTrue(retStatEntry.timeSeriesStats.bins.firstKey()
+        assertTrue(retStatEntry.timeSeriesStats.length == 1);
+        assertTrue(retStatEntry.timeSeriesStats[0].bins.size() == 1);
+        assertTrue(retStatEntry.timeSeriesStats[0].bins.firstKey()
                 .equals(TimeUnit.MICROSECONDS.toMillis(sourceTimeMicrosUtc2)));
     }
 
@@ -570,14 +577,15 @@ public class TestUtilityService extends BasicReusableHostTestCase {
                 "/core/ui/default/#"));
     }
 
-    public static void validateTimeSeriesStat(ServiceStat stat, long expectedBinDurationMillis) {
+    public static void validateTimeSeriesStat(ServiceStat stat, int index, long expectedBinDurationMillis) {
         assertTrue(stat != null);
         assertTrue(stat.timeSeriesStats != null);
         assertTrue(stat.version > 1);
-        assertEquals(expectedBinDurationMillis, stat.timeSeriesStats.binDurationMillis);
+        assertTrue(stat.timeSeriesStats.length > index);
+        assertEquals(expectedBinDurationMillis, stat.timeSeriesStats[index].binDurationMillis);
         double maxAvg = 0;
         double countPerMaxAvgBin = 0;
-        for (TimeBin bin : stat.timeSeriesStats.bins.values()) {
+        for (TimeBin bin : stat.timeSeriesStats[0].bins.values()) {
             if (bin.avg != null && bin.avg > maxAvg) {
                 maxAvg = bin.avg;
                 countPerMaxAvgBin = bin.count;

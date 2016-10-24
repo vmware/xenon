@@ -35,7 +35,6 @@ import com.vmware.xenon.common.ServiceSubscriptionState.ServiceSubscriber;
 import com.vmware.xenon.services.common.ServiceUriPaths;
 import com.vmware.xenon.services.common.UiContentService;
 
-
 /**
  * Utility service managing the various URI control REST APIs for each service instance. A single
  * utility service instance manages operations on multiple URI suffixes (/stats, /subscriptions,
@@ -498,10 +497,9 @@ public class UtilityService implements Service {
                 && updateBody.operationQueueLimit == null
                 && updateBody.epoch == null
                 && (updateBody.addOptions == null || updateBody.addOptions.isEmpty())
-                && (updateBody.removeOptions == null || updateBody.removeOptions
-                        .isEmpty())) {
+                && (updateBody.removeOptions == null || updateBody.removeOptions.isEmpty())) {
             op.fail(new IllegalArgumentException(
-                    "At least one configuraton field must be specified"));
+                    "At least one configuration field must be specified"));
             return;
         }
 
@@ -528,8 +526,13 @@ public class UtilityService implements Service {
     private void initializeOrSetStat(ServiceStat stat, ServiceStat newValue) {
         synchronized (stat) {
             if (stat.timeSeriesStats == null && newValue.timeSeriesStats != null) {
-                stat.timeSeriesStats = new TimeSeriesStats(newValue.timeSeriesStats.numBins,
-                        newValue.timeSeriesStats.binDurationMillis, newValue.timeSeriesStats.aggregationType);
+                stat.timeSeriesStats = new TimeSeriesStats[newValue.timeSeriesStats.length];
+                for (int i = 0; i < newValue.timeSeriesStats.length; i++) {
+                    stat.timeSeriesStats[i] = new TimeSeriesStats(newValue.timeSeriesStats[i].name,
+                            newValue.timeSeriesStats[i].numBins,
+                            newValue.timeSeriesStats[i].binDurationMillis,
+                            newValue.timeSeriesStats[i].aggregationType);
+                }
             }
             stat.unit = newValue.unit;
             stat.sourceTimeMicrosUtc = newValue.sourceTimeMicrosUtc;
@@ -541,56 +544,13 @@ public class UtilityService implements Service {
     public void setStat(ServiceStat stat, double newValue) {
         allocateStats();
         findStat(stat.name, true, stat);
-
-        synchronized (stat) {
-            stat.version++;
-            stat.accumulatedValue += newValue;
-            stat.latestValue = newValue;
-            if (stat.logHistogram != null) {
-                int binIndex = 0;
-                if (newValue > 0.0) {
-                    binIndex = (int) Math.log10(newValue);
-                }
-                if (binIndex >= 0 && binIndex < stat.logHistogram.bins.length) {
-                    stat.logHistogram.bins[binIndex]++;
-                }
-            }
-            stat.lastUpdateMicrosUtc = Utils.getNowMicrosUtc();
-            if (stat.timeSeriesStats != null) {
-                if (stat.sourceTimeMicrosUtc != null) {
-                    stat.timeSeriesStats.add(stat.sourceTimeMicrosUtc, newValue);
-                } else {
-                    stat.timeSeriesStats.add(stat.lastUpdateMicrosUtc, newValue);
-                }
-            }
-        }
+        ServiceStatUtils.setStat(stat, newValue);
     }
 
     @Override
     public void adjustStat(ServiceStat stat, double delta) {
         allocateStats();
-        synchronized (stat) {
-            stat.latestValue += delta;
-            stat.version++;
-            if (stat.logHistogram != null) {
-
-                int binIndex = 0;
-                if (delta > 0.0) {
-                    binIndex = (int) Math.log10(delta);
-                }
-                if (binIndex >= 0 && binIndex < stat.logHistogram.bins.length) {
-                    stat.logHistogram.bins[binIndex]++;
-                }
-            }
-            stat.lastUpdateMicrosUtc = Utils.getNowMicrosUtc();
-            if (stat.timeSeriesStats != null) {
-                if (stat.sourceTimeMicrosUtc != null) {
-                    stat.timeSeriesStats.add(stat.sourceTimeMicrosUtc, stat.latestValue);
-                } else {
-                    stat.timeSeriesStats.add(stat.lastUpdateMicrosUtc, stat.latestValue);
-                }
-            }
-        }
+        ServiceStatUtils.adjustStat(stat, delta);
     }
 
     @Override

@@ -318,7 +318,7 @@ public class TestServiceHost {
             s = new File(s, ServiceHost.SERVICE_HOST_STATE_FILE);
 
             this.host.testStart(1);
-            ServiceHostState [] state = new ServiceHostState[1];
+            ServiceHostState[] state = new ServiceHostState[1];
             Operation get = Operation.createGet(h.getUri()).setCompletion((o, e) -> {
                 if (e != null) {
                     this.host.failIteration(e);
@@ -343,7 +343,7 @@ public class TestServiceHost {
             bindAddress = "localhost";
             hostId = UUID.randomUUID().toString();
 
-            String [] args2 = {
+            String[] args2 = {
                     "--port=" + 0,
                     "--bindAddress=" + bindAddress,
                     "--sandbox=" + this.tmpFolder.getRoot().toURI(),
@@ -665,7 +665,6 @@ public class TestServiceHost {
         }
     }
 
-
     @Test
     public void setAuthEnforcement() throws Throwable {
         setUp(false);
@@ -788,7 +787,6 @@ public class TestServiceHost {
             this.host.startService(post, normalService);
         }
         this.host.testWait();
-
 
         this.host.addPrivilegedService(PrivilegedStopOrderTestService.class);
         List<PrivilegedStopOrderTestService> pServices = new ArrayList<>();
@@ -965,7 +963,6 @@ public class TestServiceHost {
 
         }
 
-
         if (cacheMissCount < 1) {
             throw new IllegalStateException(
                     "No cache misses observed through stats");
@@ -1074,7 +1071,6 @@ public class TestServiceHost {
             return true;
         });
 
-
         // confirm host global time series stats have been created / updated
         Map<String, ServiceStat> hostMgmtStats = this.host.getServiceStats(serviceHostMgmtURI);
 
@@ -1106,14 +1102,14 @@ public class TestServiceHost {
                 .get(ServiceHostManagementService.STAT_NAME_HTTP2_PENDING_OP_COUNT);
         assertTrue(http2PendingCount != null);
 
-        TestUtilityService.validateTimeSeriesStat(freeMemDaily, TimeUnit.HOURS.toMillis(1));
-        TestUtilityService.validateTimeSeriesStat(freeMemHourly, TimeUnit.MINUTES.toMillis(1));
-        TestUtilityService.validateTimeSeriesStat(freeDiskDaily, TimeUnit.HOURS.toMillis(1));
-        TestUtilityService.validateTimeSeriesStat(freeDiskHourly, TimeUnit.MINUTES.toMillis(1));
-        TestUtilityService.validateTimeSeriesStat(cpuUsageDaily, TimeUnit.HOURS.toMillis(1));
-        TestUtilityService.validateTimeSeriesStat(cpuUsageHourly, TimeUnit.MINUTES.toMillis(1));
-        TestUtilityService.validateTimeSeriesStat(threadCountDaily, TimeUnit.HOURS.toMillis(1));
-        TestUtilityService.validateTimeSeriesStat(threadCountHourly, TimeUnit.MINUTES.toMillis(1));
+        TestUtilityService.validateTimeSeriesStat(freeMemDaily, 0, TimeUnit.HOURS.toMillis(1));
+        TestUtilityService.validateTimeSeriesStat(freeMemHourly, 0, TimeUnit.MINUTES.toMillis(1));
+        TestUtilityService.validateTimeSeriesStat(freeDiskDaily, 0, TimeUnit.HOURS.toMillis(1));
+        TestUtilityService.validateTimeSeriesStat(freeDiskHourly, 0, TimeUnit.MINUTES.toMillis(1));
+        TestUtilityService.validateTimeSeriesStat(cpuUsageDaily, 0, TimeUnit.HOURS.toMillis(1));
+        TestUtilityService.validateTimeSeriesStat(cpuUsageHourly, 0, TimeUnit.MINUTES.toMillis(1));
+        TestUtilityService.validateTimeSeriesStat(threadCountDaily, 0, TimeUnit.HOURS.toMillis(1));
+        TestUtilityService.validateTimeSeriesStat(threadCountHourly, 0, TimeUnit.MINUTES.toMillis(1));
     }
 
     private void verifyMaintenanceDelayStat(long intervalMicros) throws Throwable {
@@ -1207,7 +1203,7 @@ public class TestServiceHost {
         }
 
         public static class SomeExampleServiceState extends ServiceDocument {
-            public String name ;
+            public String name;
         }
     }
 
@@ -1920,7 +1916,6 @@ public class TestServiceHost {
             double latestCount = getHostMaintenanceCount();
             return latestCount > maintCount + 1;
         });
-
 
         // first cause a on demand load (start)
         Operation patch = createMinimalTestServicePatch(servicePath, null);
