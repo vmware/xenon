@@ -516,6 +516,13 @@ public class TestNodeGroupService {
 
     @Test
     public void synchronizationOnDemandLoad() throws Throwable {
+        for (int i = 0; i < this.iterationCount; i++) {
+            tearDown();
+            doSynchronizationOnDemandLoad();
+        }
+    }
+
+    private void doSynchronizationOnDemandLoad() throws Throwable {
         // Setup peer nodes
         setUp(this.nodeCount);
 
@@ -526,9 +533,9 @@ public class TestNodeGroupService {
             // Reduce cache clear delay to short duration
             // to cause ODL service stops.
             h.setServiceCacheClearDelayMicros(h.getMaintenanceIntervalMicros());
-
             // create an on demand load factory and services
             OnDemandLoadFactoryService.create(h);
+            h.scheduleNodeGroupChangeMaintenance(ServiceUriPaths.DEFAULT_NODE_SELECTOR);
         }
 
         // join the nodes and set full quorum.
