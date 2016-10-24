@@ -14,7 +14,6 @@
 package com.vmware.xenon.services.common;
 
 import java.util.EnumSet;
-import java.util.logging.Level;
 
 import com.vmware.xenon.common.FactoryService;
 import com.vmware.xenon.common.Operation;
@@ -47,8 +46,6 @@ public class OnDemandLoadFactoryService extends FactoryService {
         h.startService(factoryPost, s);
         ctx.await();
         String factoryLink = s.getSelfLink();
-        h.scheduleNodeGroupChangeMaintenance(ServiceUriPaths.DEFAULT_NODE_SELECTOR);
-        h.log(Level.INFO, "Started on demand load factory at %s", factoryLink);
         return factoryLink;
     }
 

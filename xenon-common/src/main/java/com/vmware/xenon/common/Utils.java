@@ -419,6 +419,9 @@ public class Utils {
             // This CAS can fail; getAndIncrement() ensures no value is returned twice.
             PREVIOUS_TIME_VALUE.compareAndSet(time + 1, now);
             return PREVIOUS_TIME_VALUE.getAndIncrement();
+        } else if (time - now > TimeUnit.SECONDS.toMicros(1)) {
+            Utils.logWarning("time drift, now:wall clock %d, xenon time:%d", now, time);
+            throw new IllegalStateException("drift of " + (time - now));
         }
 
         return time;

@@ -1347,10 +1347,6 @@ public class StatefulService implements Service {
         }
 
         completeSynchronizationRequest(request, failure, isStateUpdated);
-
-        if (wasOwner) {
-            return;
-        }
     }
 
     private void completeSynchronizationRequest(Operation request, Throwable failure,
