@@ -515,6 +515,13 @@ public class TestNodeGroupService {
 
     @Test
     public void synchronizationOnDemandLoad() throws Throwable {
+        for (int i = 0; i < this.iterationCount; i++) {
+            this.tearDown();
+            doSynchronizationOnDemandLoad();
+        }
+    }
+
+    private void doSynchronizationOnDemandLoad() throws Throwable {
         // Setup peer nodes
         setUp(this.nodeCount);
 
