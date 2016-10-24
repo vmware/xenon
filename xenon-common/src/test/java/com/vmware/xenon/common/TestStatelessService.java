@@ -53,6 +53,17 @@ public class TestStatelessService extends BasicReusableHostTestCase {
         CommandLineArgumentParser.parseFromProperties(this);
     }
 
+    @Test (expected = IllegalArgumentException.class)
+    public void serviceOptionsTest() throws Throwable {
+
+        StatelessService service = new StatelessTestService();
+        service.options.add(Service.ServiceOption.PERSISTENCE);
+        service.options.add(Service.ServiceOption.REPLICATION);
+        service.options.add(Service.ServiceOption.OWNER_SELECTION);
+
+        this.host.startServiceAndWait(service, "bad-stateless/service", null);
+    }
+
     @Test
     public void throughputPost() throws Throwable {
         Service s = this.host.startServiceAndWait(new StatelessTestService(), "stateless/service",

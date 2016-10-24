@@ -103,6 +103,9 @@ public abstract class FactoryService extends StatelessService {
      */
     public FactoryService(Class<? extends ServiceDocument> childServiceDocumentType) {
         super(childServiceDocumentType);
+        // We accept child service options to be set at factory
+        // Turn off STATELESS, so that child services do not inherit the same.
+        super.toggleOption(ServiceOption.STATELESS, false);
         super.toggleOption(ServiceOption.FACTORY, true);
         setSelfLink("");
         Service s = createChildServiceSafe();
