@@ -1,5 +1,7 @@
 # CHANGELOG
 
+## 1.1.1-SNAPSHOT
+
 ## 1.1.0
 
 * Remove infrastructure Utils.toDocumentBytes/fromDocumentBytes and related methods,
