@@ -504,6 +504,9 @@ public class UriUtils {
      * Utility method to parse path parameters from a supplied template and URI
      * To be used with services with option {@link ServiceOption#URI_NAMESPACE_OWNER}
      *
+     * template - /example-service/{name}/keyValues/{myKey}
+     * uri - http://localhost:8000/example-service/sample/keyValues/key1
+     * response - name -> sample, myKey -> key1
      * Note: If the uri passed deviates from the template, the method returns
      *       with params parsed so far.
      */

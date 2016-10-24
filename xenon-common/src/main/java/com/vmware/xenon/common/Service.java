@@ -219,6 +219,10 @@ public interface Service extends ServiceRequestSender {
          */
         TRANSACTION_PENDING,
 
+        /**
+         * Set by runtime. Service is stateless.
+         */
+        STATELESS,
         NONE
     }
 
