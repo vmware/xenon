@@ -3019,7 +3019,7 @@ public class ServiceHost implements ServiceRequestSender {
         int uriPathLength = uriPath.length();
         Service candidate = null;
         // pick the service with the longest match
-        for (Entry<String, Service> e : this.attachedNamespaceServices.entrySet()) {
+        for (Entry<String, Service> e : this.attachedNamespaceServices.headMap(uriPath, true).entrySet()) {
             if (!uriPath.startsWith(e.getKey())) {
                 continue;
             }
@@ -3030,11 +3030,7 @@ public class ServiceHost implements ServiceRequestSender {
             }
         }
 
-        if (candidate != null) {
-            return candidate;
-        }
-
-        return null;
+        return candidate;
     }
 
     Service findHelperService(String uriPath) {
