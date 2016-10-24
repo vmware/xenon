@@ -1,6 +1,6 @@
 # CHANGELOG
 
-## 1.1.0-SNAPSHOT
+## 1.1.0
 
 * Remove infrastructure Utils.toDocumentBytes/fromDocumentBytes and related methods,
   KryoSerializers.serialize/deserializeObject are used instead
