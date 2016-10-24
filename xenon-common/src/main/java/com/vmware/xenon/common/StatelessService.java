@@ -46,12 +46,14 @@ public class StatelessService implements Service {
             throw new IllegalArgumentException("stateType is required");
         }
         this.stateType = stateType;
+        this.options.add(ServiceOption.STATELESS);
         this.options.add(ServiceOption.CONCURRENT_GET_HANDLING);
         this.options.add(ServiceOption.CONCURRENT_UPDATE_HANDLING);
     }
 
     public StatelessService() {
         this.stateType = ServiceDocument.class;
+        this.options.add(ServiceOption.STATELESS);
     }
 
     @Override
