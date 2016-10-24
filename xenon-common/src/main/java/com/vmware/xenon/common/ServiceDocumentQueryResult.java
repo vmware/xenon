@@ -27,6 +27,7 @@ public class ServiceDocumentQueryResult extends ServiceDocument {
     public static final String FIELD_NAME_NEXT_PAGE_LINK = "nextPageLink";
     public static final String FIELD_NAME_QUERY_TIME_MICROS = "queryTimeMicros";
 
+    public static final String KIND = Utils.buildKind(ServiceDocumentQueryResult.class);
     /**
      * Collection of self links associated with each document found. The self link acts as the
      * primary key for a document.
