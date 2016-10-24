@@ -28,6 +28,15 @@ public class OnDemandLoadService extends StatefulService {
     }
 
     @Override
+    public void handleStart(Operation start) {
+        if (!start.hasBody()) {
+            start.fail(new IllegalArgumentException("body is required"));
+            return;
+        }
+        start.complete();
+    }
+
+    @Override
     public void handlePatch(Operation op) {
         ExampleService.ExampleServiceState state = getState(op);
         ExampleService.ExampleServiceState body = getBody(op);

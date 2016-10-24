@@ -1943,12 +1943,26 @@ public class TestServiceHost {
         }
         ctx.await();
 
+        verifyOnDemandLoadUpdateDeleteContention();
+    }
+
+    void verifyOnDemandLoadUpdateDeleteContention() throws Throwable {
+        Operation patch;
         Consumer<Operation> bodySetter = (o) -> {
             ExampleServiceState body = new ExampleServiceState();
             body.name = "prefix-" + UUID.randomUUID();
             o.setBody(body);
         };
         String factoryLink = OnDemandLoadFactoryService.create(this.host);
+
+        // before we start service attempt a GET on a ODL service we know does not
+        // exist. Make sure its handleStart is NOT called (we will fail the POST if handleStart
+        // is called, with no body)
+
+        Operation get = Operation.createGet(UriUtils.buildUri(
+                this.host, UriUtils.buildUriPath(factoryLink, "does-not-exist")));
+        this.host.sendAndWaitExpectFailure(get, Operation.STATUS_CODE_NOT_FOUND);
+
         // create another set of services
         Map<URI, ExampleServiceState> states = this.host.doFactoryChildServiceStart(
                 null,

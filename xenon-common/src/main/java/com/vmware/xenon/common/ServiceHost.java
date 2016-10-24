@@ -2326,6 +2326,10 @@ public class ServiceHost implements ServiceRequestSender {
         return s.hasOption(ServiceOption.PERSISTENCE);
     }
 
+    public static boolean isServiceOnDemandLoad(Service s) {
+        return s.hasOption(ServiceOption.ON_DEMAND_LOAD);
+    }
+
     public static boolean isServiceImmutable(Service s) {
         return s.hasOption(ServiceOption.IMMUTABLE);
     }
@@ -2483,6 +2487,15 @@ public class ServiceHost implements ServiceRequestSender {
                     // bypass handleStart on nodes that do not own the service
                     post.complete();
                     break;
+                }
+
+                if (!post.hasBody()
+                        && ServiceHost.isServiceOnDemandLoad(s)
+                        && post.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_INDEX_CHECK)) {
+                    // skip handleStart for ODL probes (the POST was issued to check if the service
+                    // existed
+                    post.complete();
+                    return;
                 }
 
                 opCtx = extractAndApplyContext(post);
