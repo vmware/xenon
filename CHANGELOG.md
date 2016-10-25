@@ -2,6 +2,9 @@
 
 ## 1.1.1-SNAPSHOT
 
+* Validate service options for Stateless services. Using PERSISTENCE, REPLICATION, 
+  OWNER_SELECTION, STRICT_UPDATE_CHECKING will now fail service start.
+
 ## 1.1.0
 
 * Remove infrastructure Utils.toDocumentBytes/fromDocumentBytes and related methods,
