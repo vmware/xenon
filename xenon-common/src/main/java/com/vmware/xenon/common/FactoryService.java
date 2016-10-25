@@ -803,6 +803,7 @@ public abstract class FactoryService extends StatelessService {
             try {
                 Service s = createServiceInstance();
                 s.setHost(getHost());
+                s.toggleOption(ServiceOption.FACTORY_ITEM, true);
                 this.childTemplate = s.getDocumentTemplate();
             } catch (Throwable e) {
                 logSevere(e);

@@ -213,6 +213,12 @@ public class ServiceDocumentDescription {
     public String userInterfaceResourcePath;
 
     /**
+     * Link to parent, if applicable. Should be set to the factory link if this is a service
+     * created through POST to a factory service
+     */
+    public String parentPath;
+
+    /**
      * Upper bound on how many state versions to track in the index. Versions that exceed the limit will
      * be permanently deleted.
      */
