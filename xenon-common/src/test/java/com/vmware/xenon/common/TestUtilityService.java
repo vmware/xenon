@@ -313,18 +313,19 @@ public class TestUtilityService extends BasicReusableHostTestCase {
         long interval = 1000;
         double value = 100;
         // set data to fill up the specified number of bins
-        TimeSeriesStats timeSeriesStats = new TimeSeriesStats(numBins, interval, EnumSet.allOf(AggregationType.class));
+        TimeSeriesStats timeSeriesStats = new TimeSeriesStats(numBins, interval,
+                EnumSet.allOf(AggregationType.class));
         for (int i = 0; i < numBins; i++) {
             startTime += TimeUnit.MILLISECONDS.toMicros(interval);
             value += 1;
-            timeSeriesStats.add(startTime, value);
+            timeSeriesStats.add(startTime, value, 1);
         }
         assertTrue(timeSeriesStats.bins.size() == numBins);
         // insert additional unique datapoints; the earliest entries should be dropped
         for (int i = 0; i < numBins / 2; i++) {
             startTime += TimeUnit.MILLISECONDS.toMicros(interval);
             value += 1;
-            timeSeriesStats.add(startTime, value);
+            timeSeriesStats.add(startTime, value, 1);
         }
         assertTrue(timeSeriesStats.bins.size() == numBins);
         long timeMicros = startTime - TimeUnit.MILLISECONDS.toMicros(interval * (numBins - 1));
@@ -341,30 +342,33 @@ public class TestUtilityService extends BasicReusableHostTestCase {
         for (int i = 0; i < numBins / 2; i++) {
             newValue++;
             count++;
-            timeSeriesStats.add(startTime, newValue);
+            timeSeriesStats.add(startTime, newValue, 2);
             accumulatedValue += newValue;
         }
         TimeBin lastBin = timeSeriesStats.bins.get(timeSeriesStats.bins.lastKey());
         assertTrue(lastBin.avg.equals(accumulatedValue / count));
-        assertTrue(lastBin.sum.equals(accumulatedValue));
+        assertTrue(lastBin.sum.equals((2 * count) - 1));
         assertTrue(lastBin.count == count);
         assertTrue(lastBin.max.equals(newValue));
         assertTrue(lastBin.min.equals(origValue));
 
         // test with a subset of the aggregation types specified
         timeSeriesStats = new TimeSeriesStats(numBins, interval, EnumSet.of(AggregationType.AVG));
-        timeSeriesStats.add(startTime, value);
+        timeSeriesStats.add(startTime, value, value);
         lastBin = timeSeriesStats.bins.get(timeSeriesStats.bins.lastKey());
         assertTrue(lastBin.avg != null);
         assertTrue(lastBin.count != 0);
+        assertTrue(lastBin.sum == null);
         assertTrue(lastBin.max == null);
         assertTrue(lastBin.min == null);
 
-        timeSeriesStats = new TimeSeriesStats(numBins, interval, EnumSet.of(AggregationType.MIN, AggregationType.MAX));
-        timeSeriesStats.add(startTime, value);
+        timeSeriesStats = new TimeSeriesStats(numBins, interval, EnumSet.of(AggregationType.MIN,
+                AggregationType.MAX));
+        timeSeriesStats.add(startTime, value, value);
         lastBin = timeSeriesStats.bins.get(timeSeriesStats.bins.lastKey());
         assertTrue(lastBin.avg == null);
         assertTrue(lastBin.count == 0);
+        assertTrue(lastBin.sum == null);
         assertTrue(lastBin.max != null);
         assertTrue(lastBin.min != null);
 
