@@ -13,19 +13,33 @@
 
 package com.vmware.xenon.common.serialization;
 
+import static javafx.scene.input.KeyCode.H;
+
 import java.net.URI;
 import java.nio.ByteBuffer;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.NavigableMap;
+import java.util.Set;
+import java.util.TreeMap;
 import java.util.UUID;
 
 import com.esotericsoftware.kryo.Kryo;
 import com.esotericsoftware.kryo.Kryo.DefaultInstantiatorStrategy;
+import com.esotericsoftware.kryo.Serializer;
 import com.esotericsoftware.kryo.io.Input;
 import com.esotericsoftware.kryo.io.Output;
+import com.esotericsoftware.kryo.serializers.CollectionSerializer;
+import com.esotericsoftware.kryo.serializers.MapSerializer;
 import com.esotericsoftware.kryo.serializers.VersionFieldSerializer;
-
 import org.objenesis.strategy.StdInstantiatorStrategy;
 
 import com.vmware.xenon.common.ServiceDocument;
@@ -78,6 +92,8 @@ public final class KryoSerializers {
         k.addDefaultSerializer(UUID.class, UUIDSerializer.INSTANCE);
         k.addDefaultSerializer(URI.class, URISerializer.INSTANCE);
 
+        configureJdkCollections(k);
+
         if (!isObjectSerializer) {
             // For performance reasons, and to avoid memory use, assume documents do not
             // require object graph serialization with duplicate or recursive references
@@ -91,6 +107,47 @@ public final class KryoSerializers {
             k.setAutoReset(true);
         }
         return k;
+    }
+
+    private static void configureJdkCollections(Kryo kryo) {
+        // write singleton as arraylists of size 1
+        Serializer collectionSerializer = new CollectionSerializer(){
+            @Override
+            protected Collection<?> create(Kryo kryo, Input input, Class<Collection> type) {
+                if (Set.class.isAssignableFrom(type)) {
+                    return new HashSet<>();
+                } else {
+                    return new ArrayList<>(1);
+                }
+            }
+        };
+
+        MapSerializer mapSerializer = new MapSerializer(){
+            @Override
+            protected Map<?, ?> create(Kryo kryo, Input input, Class<Map> type) {
+                if (NavigableMap.class.isAssignableFrom(type)) {
+                    return new TreeMap<>();
+                } else {
+                    return new HashMap<>();
+                }
+            }
+        };
+
+        // empty collections
+        kryo.addDefaultSerializer(Collections.EMPTY_LIST.getClass(), collectionSerializer);
+        kryo.addDefaultSerializer(Collections.EMPTY_SET.getClass(), collectionSerializer);
+        kryo.addDefaultSerializer(Collections.emptyNavigableSet().getClass(), collectionSerializer);
+
+        // empty maps
+        kryo.addDefaultSerializer(Collections.EMPTY_MAP.getClass(), mapSerializer);
+        kryo.addDefaultSerializer(Collections.emptyNavigableMap().getClass(), mapSerializer);
+
+
+        // singletons
+        kryo.addDefaultSerializer(Arrays.asList(kryo).getClass(), collectionSerializer);
+        kryo.addDefaultSerializer(Collections.singleton(kryo).getClass(), collectionSerializer);
+        kryo.addDefaultSerializer(Collections.singletonList(kryo).getClass(), collectionSerializer);
+        kryo.addDefaultSerializer(Collections.singletonMap("", kryo).getClass(), mapSerializer);
     }
 
     public static void register(ThreadLocal<Kryo> kryoThreadLocal, boolean isDocumentSerializer) {

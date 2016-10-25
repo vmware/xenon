@@ -14,11 +14,16 @@
 package com.vmware.xenon.common.serialization;
 
 
+import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 
+import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.Map;
 import java.util.UUID;
 
 import com.esotericsoftware.kryo.io.Output;
@@ -82,5 +87,71 @@ public class TestKryoSerializers {
         byte[] veryLargeSecond = KryoSerializers
                 .getBuffer((int) KryoSerializers.THREAD_LOCAL_BUFFER_LIMIT_BYTES * 2);
         assertTrue(veryLarge.hashCode() != veryLargeSecond.hashCode());
+    }
+
+    @Test
+    public void testEmptyCollectionSerialization() {
+        Object target;
+
+        target = Collections.emptyList();
+        assertCollectionEqualAndUsable(target, serAndDeser(target));
+
+        target = Collections.emptySet();
+        assertCollectionEqualAndUsable(target, serAndDeser(target));
+
+        target = Collections.emptyMap();
+        assertCollectionEqualAndUsable(target, serAndDeser(target));
+
+        target = Collections.emptyNavigableMap();
+        assertCollectionEqualAndUsable(target, serAndDeser(target));
+
+        target = Collections.emptyNavigableSet();
+        assertCollectionEqualAndUsable(target, serAndDeser(target));
+
+        target = Collections.emptySortedMap();
+        assertCollectionEqualAndUsable(target, serAndDeser(target));
+
+        target = Collections.emptySortedSet();
+        assertCollectionEqualAndUsable(target, serAndDeser(target));
+    }
+
+    @SuppressWarnings("unchecked")
+    private void assertCollectionEqualAndUsable(Object orig, Object deserialized) {
+        if (orig instanceof Map && deserialized instanceof Map) {
+            Map<Object, Object> first = (Map<Object, Object>) orig;
+            Map<Object, Object> second = (Map<Object, Object>) deserialized;
+            // wrap in another map to exclude check on concrete type
+            assertEquals(new HashMap<>(first), new HashMap<>(second));
+
+            //check deseriliazed map can be written to
+            second.put("test", "test");
+            return;
+        }
+
+        Collection<Object> first = (Collection<Object>) orig;
+        Collection<Object> second = (Collection<Object>) deserialized;
+
+        assertArrayEquals(first.toArray(), second.toArray());
+
+        // check deseriliazed collection can be written to
+        second.add("test");
+    }
+
+    @Test
+    public void testSingletonCollections() {
+        Object target;
+
+        target = Collections.singletonList("");
+        assertEquals(target, serAndDeser(target));
+
+        target = Collections.singleton("");
+        assertEquals(target, serAndDeser(target));
+
+        target = Collections.singletonMap("", 1);
+        assertEquals(target, serAndDeser(target));
+    }
+
+    private Object serAndDeser(Object o) {
+        return KryoSerializers.deserializeObject(KryoSerializers.serializeObject(o, 1000));
     }
 }
