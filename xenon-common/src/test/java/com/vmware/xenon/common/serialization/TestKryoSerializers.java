@@ -13,19 +13,18 @@
 
 package com.vmware.xenon.common.serialization;
 
-
+import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
-import java.util.Arrays;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
-import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import com.esotericsoftware.kryo.io.Output;
-
-import org.junit.Assert;
 import org.junit.Test;
 
 import com.vmware.xenon.common.ServiceDocument;
@@ -88,21 +87,113 @@ public class TestKryoSerializers {
     }
 
     @Test
-    public void testArraysAsListClone() {
-        CloneTest source = new CloneTest();
-        source.listOfStrings = Arrays.asList("valueA", "valueB", "valueC", "valueD");
+    public void testEmptyCollectionSerialization() {
+        Object target;
 
-        CloneTest clone = KryoSerializers.clone(source);
-        Assert.assertNotNull("Check cloned object is not null", clone);
-        Assert.assertNotNull("Check cloned list is not null", clone.listOfStrings);
-        Assert.assertTrue("Check cloned list contains all source values",
-                clone.listOfStrings.containsAll(source.listOfStrings));
+        target = Collections.emptyList();
+        assertCollectionEqualAndUsable(target, serAndDeser(target));
+
+        target = Collections.emptySet();
+        assertCollectionEqualAndUsable(target, serAndDeser(target));
+
+        target = Collections.emptyMap();
+        assertCollectionEqualAndUsable(target, serAndDeser(target));
+
+        target = Collections.emptyNavigableMap();
+        assertCollectionEqualAndUsable(target, serAndDeser(target));
+
+        target = Collections.emptyNavigableSet();
+        assertCollectionEqualAndUsable(target, serAndDeser(target));
+
+        target = Collections.emptySortedMap();
+        assertCollectionEqualAndUsable(target, serAndDeser(target));
+
+        target = Collections.emptySortedSet();
+        assertCollectionEqualAndUsable(target, serAndDeser(target));
     }
 
-    /**
-     * Test service document
-     */
-    private static class CloneTest extends ServiceDocument {
-        public List<String> listOfStrings;
+
+    @Test
+    public void testEmptyCollectionClone() {
+        Object target;
+
+        target = Collections.emptyList();
+        assertCollectionEqualAndUsable(target, cloneWithKryo(target));
+
+        target = Collections.emptySet();
+        assertCollectionEqualAndUsable(target, cloneWithKryo(target));
+
+        target = Collections.emptyMap();
+        assertCollectionEqualAndUsable(target, cloneWithKryo(target));
+
+        target = Collections.emptyNavigableMap();
+        assertCollectionEqualAndUsable(target, cloneWithKryo(target));
+
+        target = Collections.emptyNavigableSet();
+        assertCollectionEqualAndUsable(target, cloneWithKryo(target));
+
+        target = Collections.emptySortedMap();
+        assertCollectionEqualAndUsable(target, cloneWithKryo(target));
+
+        target = Collections.emptySortedSet();
+        assertCollectionEqualAndUsable(target, cloneWithKryo(target));
+    }
+
+    private Object cloneWithKryo(Object target) {
+        return KryoSerializers.clone(target);
+    }
+
+    @SuppressWarnings("unchecked")
+    private void assertCollectionEqualAndUsable(Object orig, Object deserialized) {
+        if (orig instanceof Map && deserialized instanceof Map) {
+            Map<Object, Object> first = (Map<Object, Object>) orig;
+            Map<Object, Object> second = (Map<Object, Object>) deserialized;
+            // wrap in another map to exclude check on concrete type
+            assertEquals(new HashMap<>(first), new HashMap<>(second));
+
+            //check deseriliazed map can be written to
+            second.put("test", "test");
+            return;
+        }
+
+        Collection<Object> first = (Collection<Object>) orig;
+        Collection<Object> second = (Collection<Object>) deserialized;
+
+        assertArrayEquals(first.toArray(), second.toArray());
+
+        // check deseriliazed collection can be written to
+        second.add("test");
+    }
+
+    @Test
+    public void testSingletonCollectionsSerialization() {
+        Object target;
+
+        target = Collections.singletonList("");
+        assertEquals(target, serAndDeser(target));
+
+        target = Collections.singleton("");
+        assertEquals(target, serAndDeser(target));
+
+        target = Collections.singletonMap("", 1);
+        assertEquals(target, serAndDeser(target));
+    }
+
+    @Test
+    public void testSingletonCollectionsClone() {
+        Object target;
+
+        target = Collections.singletonList("");
+        assertEquals(target, cloneWithKryo(target));
+
+        target = Collections.singleton("");
+        assertEquals(target, cloneWithKryo(target));
+
+        target = Collections.singletonMap("", 1);
+        assertEquals(target, cloneWithKryo(target));
+    }
+
+    private Object serAndDeser(Object o) {
+        return KryoSerializers.deserializeObject(KryoSerializers.serializeObject(o, 1000));
     }
 }
