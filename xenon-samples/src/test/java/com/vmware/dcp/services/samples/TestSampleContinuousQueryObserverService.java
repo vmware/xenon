@@ -97,7 +97,8 @@ public class TestSampleContinuousQueryObserverService {
             ServiceStats indexStats = this.host.getServiceState(null, ServiceStats.class,
                     UriUtils.buildStatsUri(this.host.getDocumentIndexServiceUri()));
             ServiceStat activeQueryStat = indexStats.entries.get(
-                    LuceneDocumentIndexService.STAT_NAME_ACTIVE_QUERY_FILTERS);
+                    LuceneDocumentIndexService.STAT_NAME_ACTIVE_QUERY_FILTERS
+                            + ServiceStats.STAT_NAME_SUFFIX_PER_DAY);
             if (activeQueryStat == null || activeQueryStat.latestValue < 1.0) {
                 return false;
             }
