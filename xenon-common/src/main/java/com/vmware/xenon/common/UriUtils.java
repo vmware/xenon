@@ -398,7 +398,9 @@ public class UriUtils {
             boolean includeDeleted,
             EnumSet<ServiceOption> serviceCaps) {
         ServiceOption queryCap = ServiceOption.NONE;
-        if (serviceCaps.contains(ServiceOption.PERSISTENCE)) {
+        if (serviceCaps.contains(ServiceOption.IMMUTABLE)) {
+            queryCap = ServiceOption.IMMUTABLE;
+        } else if (serviceCaps.contains(ServiceOption.PERSISTENCE)) {
             queryCap = ServiceOption.PERSISTENCE;
         }
         return buildDocumentQueryUri(host, selfLink, doExpand, includeDeleted, queryCap);

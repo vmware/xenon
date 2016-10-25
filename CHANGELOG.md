@@ -2,6 +2,9 @@
 
 ## 1.1.1-SNAPSHOT
 
+* Add QueryOption.SKIP_VERSION_VALIDATION which skips version checks during
+  query result processing
+
 * Add Utils.getSystemNowMicrosUtc() which can be used for expirations or
   whenever a non unique time value is sufficient
 
