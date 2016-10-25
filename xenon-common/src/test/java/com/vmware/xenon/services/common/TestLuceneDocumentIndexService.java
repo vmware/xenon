@@ -500,6 +500,33 @@ public class TestLuceneDocumentIndexService {
     }
 
     @Test
+    public void throughputSelfLinkQueryImmutable() throws Throwable {
+        setUpHost(false);
+        URI factoryUri = createImmutableFactoryService(this.host);
+        doThroughputPost(false, factoryUri);
+
+        double durationNanos = 0;
+        for (int i = 0; i < this.iterationCount; i++) {
+            this.host.log("starting iteration %d", i);
+            long s = System.nanoTime();
+            ServiceDocumentQueryResult res = this.host.getFactoryState(factoryUri);
+            assertEquals(this.serviceCount, res.documentLinks.size());
+            long e = System.nanoTime();
+            durationNanos += e - s;
+        }
+
+        double thput = (double) (this.serviceCount * this.iterationCount);
+        thput /= durationNanos;
+        thput *= TimeUnit.SECONDS.toNanos(1);
+        this.host.log(
+                "Service count:%d, iteration count: %d, %s Query processing throughput (links/sec): %f",
+                this.serviceCount,
+                this.iterationCount,
+                ServiceOption.IMMUTABLE.toString(),
+                thput);
+    }
+
+    @Test
     public void serviceHostRestartWithDurableServices() throws Throwable {
         setUpHost(false);
         VerificationHost h = VerificationHost.create();
