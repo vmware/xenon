@@ -2,6 +2,10 @@
 
 ## 1.1.1-SNAPSHOT
 
+* Optimize result processing for services with ServiceOption.IMMUTABLE.
+  Skip latest version lookup and validation during query result processing
+  resulting in 3x throughput increase (links processed / sec)
+
 * Add Utils.getSystemNowMicrosUtc() which can be used for expirations or
   whenever a non unique time value is sufficient
 

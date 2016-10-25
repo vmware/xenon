@@ -540,6 +540,10 @@ public abstract class FactoryService extends StatelessService {
             task.querySpec.sortTerm.propertyType = propertyDescription.typeName;
         }
 
+        if (hasOption(ServiceOption.IMMUTABLE)) {
+            task.querySpec.options.add(QueryOption.INCLUDE_ALL_VERSIONS);
+        }
+
         if (task.querySpec.resultLimit != null) {
             handleODataLimitRequest(op, task);
             return;
@@ -593,7 +597,9 @@ public abstract class FactoryService extends StatelessService {
             countTask.querySpec = new QueryTask.QuerySpecification();
             countTask.querySpec.options.add(QueryOption.COUNT);
             countTask.querySpec.query = task.querySpec.query;
-
+            if (hasOption(ServiceOption.IMMUTABLE)) {
+                countTask.querySpec.options.add(QueryOption.INCLUDE_ALL_VERSIONS);
+            }
             Operation count = Operation
                     .createPost(this, ServiceUriPaths.CORE_QUERY_TASKS)
                     .setBody(countTask);
@@ -803,6 +809,7 @@ public abstract class FactoryService extends StatelessService {
             try {
                 Service s = createServiceInstance();
                 s.setHost(getHost());
+                s.toggleOption(ServiceOption.FACTORY_ITEM, true);
                 this.childTemplate = s.getDocumentTemplate();
             } catch (Throwable e) {
                 logSevere(e);

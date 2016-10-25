@@ -500,6 +500,44 @@ public class TestLuceneDocumentIndexService {
     }
 
     @Test
+    public void throughputSelfLinkQuery() throws Throwable {
+        setUpHost(false);
+        URI factoryUri = createImmutableFactoryService(this.host);
+        doThroughputSelfLinkQuery(factoryUri);
+        factoryUri = UriUtils.buildUri(this.host, ExampleService.FACTORY_LINK);
+        doThroughputSelfLinkQuery(factoryUri);
+    }
+
+    private void doThroughputSelfLinkQuery(URI factoryUri) throws Throwable {
+        doThroughputPost(false, factoryUri);
+
+        double durationNanos = 0;
+        long s = System.nanoTime();
+        TestContext ctx = this.host.testCreate(this.iterationCount);
+        for (int i = 0; i < this.iterationCount; i++) {
+            this.host.send(Operation.createGet(factoryUri).setCompletion(ctx.getCompletion()));
+        }
+        ctx.await();
+
+        long e = System.nanoTime();
+        durationNanos += e - s;
+        double thput = (double) (this.serviceCount * this.iterationCount);
+        thput /= durationNanos;
+        thput *= TimeUnit.SECONDS.toNanos(1);
+
+        double qps = (double) this.iterationCount / durationNanos;
+        qps *= TimeUnit.SECONDS.toNanos(1);
+
+        this.host.log(
+                "Factory:%S, Results per query:%d, Queries: %d, QPS: %f, Processing thpt (links/sec): %f",
+                factoryUri.getPath(),
+                this.serviceCount,
+                this.iterationCount,
+                qps,
+                thput);
+    }
+
+    @Test
     public void serviceHostRestartWithDurableServices() throws Throwable {
         setUpHost(false);
         VerificationHost h = VerificationHost.create();
@@ -1563,8 +1601,9 @@ public class TestLuceneDocumentIndexService {
             subject = OperationContext.getAuthorizationContext().getClaims().getSubject();
         }
         this.host.log(
-                "(%s) Service count now: %d Operation count: %f, Query count: %d, Query Result count: %d, throughput(ops/sec): %f",
+                "(%s) Factory: %s, Services: %d Ops: %f, Queries: %d, Total result count: %d, POST throughput(ops/sec): %f",
                 subject,
+                factoryUri.getPath(),
                 this.host.getState().serviceCount,
                 ioCount, queryCount, queryResultCount.get(), throughput);
     }
