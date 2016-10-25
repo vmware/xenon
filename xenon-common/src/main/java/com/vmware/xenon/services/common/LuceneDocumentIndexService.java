@@ -35,6 +35,7 @@ import java.util.TreeMap;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
@@ -246,6 +247,7 @@ public class LuceneDocumentIndexService extends StatelessService {
 
     private long indexWriterCreationTimeMicros;
 
+    private final Set<String> immutableParentLinks = new ConcurrentSkipListSet<>();
     private final Map<String, Long> linkAccessTimes = new HashMap<>();
     private final Map<String, Long> linkDocumentRetentionEstimates = new HashMap<>();
     private long linkAccessMemoryLimitMB;
@@ -749,12 +751,12 @@ public class LuceneDocumentIndexService extends StatelessService {
     public void handleGetImpl(Operation get) throws Throwable {
         String selfLink = null;
         Long version = null;
-        ServiceOption targetIndex = ServiceOption.NONE;
+        ServiceOption serviceOption = ServiceOption.NONE;
 
         EnumSet<QueryOption> options = EnumSet.noneOf(QueryOption.class);
         if (get.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_INDEX_CHECK)) {
             // fast path for checking if a service exists, and loading its latest state
-            targetIndex = ServiceOption.PERSISTENCE;
+            serviceOption = ServiceOption.PERSISTENCE;
             // the GET operation URI is set to the service we want to load, not the self link
             // of the index service. This is only possible when the operation was directly
             // dispatched from the local host, on the index service
@@ -766,7 +768,12 @@ public class LuceneDocumentIndexService extends StatelessService {
             String cap = params.get(UriUtils.URI_PARAM_CAPABILITY);
 
             if (cap != null) {
-                targetIndex = ServiceOption.valueOf(cap);
+                serviceOption = ServiceOption.valueOf(cap);
+            }
+
+            if (serviceOption == ServiceOption.IMMUTABLE) {
+                options.add(QueryOption.IMMUTABLE);
+                serviceOption = ServiceOption.PERSISTENCE;
             }
 
             if (params.containsKey(UriUtils.URI_PARAM_INCLUDE_DELETED)) {
@@ -814,7 +821,7 @@ public class LuceneDocumentIndexService extends StatelessService {
             return;
         }
 
-        if (targetIndex == ServiceOption.PERSISTENCE) {
+        if (serviceOption == ServiceOption.PERSISTENCE) {
             // specific index requested but no results, return empty response
             get.setBodyNoCloning(rsp).complete();
             return;
@@ -1429,8 +1436,10 @@ public class LuceneDocumentIndexService extends StatelessService {
 
         // Keep duplicates out
         Set<String> uniques = new LinkedHashSet<>(rsp.documentLinks);
+        boolean doIsImmutableCheck = !this.immutableParentLinks.isEmpty()
+                && options.contains(QueryOption.IMMUTABLE);
         final boolean hasCountOption = options.contains(QueryOption.COUNT);
-        final boolean hasIncludeAllVersionsOption = options
+        boolean hasIncludeAllVersionsOption = options
                 .contains(QueryOption.INCLUDE_ALL_VERSIONS);
         Set<String> linkWhiteList = null;
         if (qs != null && qs.context != null && qs.context.documentLinkWhiteList != null) {
@@ -1447,6 +1456,14 @@ public class LuceneDocumentIndexService extends StatelessService {
             Document d = s.getIndexReader().document(sd.doc, fieldsToLoad);
             String link = d.get(ServiceDocument.FIELD_NAME_SELF_LINK);
             String originalLink = link;
+
+            if (doIsImmutableCheck) {
+                doIsImmutableCheck = false;
+                String parent = UriUtils.getParentPath(link);
+                if (parent != null && this.immutableParentLinks.contains(parent)) {
+                    hasIncludeAllVersionsOption = true;
+                }
+            }
 
             // ignore results not in supplied white list
             if (linkWhiteList != null && !linkWhiteList.contains(link)) {
@@ -2254,6 +2271,11 @@ public class LuceneDocumentIndexService extends StatelessService {
         if (wr == null) {
             op.fail(new CancellationException());
             return;
+        }
+
+        if (desc.serviceCapabilities != null
+                && desc.serviceCapabilities.contains(ServiceOption.IMMUTABLE)) {
+            this.immutableParentLinks.add(desc.parentPath);
         }
 
         long start = Utils.getNowMicrosUtc();

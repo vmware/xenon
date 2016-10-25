@@ -122,6 +122,12 @@ public class QueryTask extends ServiceDocument {
             INCLUDE_DELETED,
 
             /**
+             * Query results are expected to include immutable (single version) documents. This
+             * option acts as a hint to the query processor to use certain optimizations
+             */
+            IMMUTABLE,
+
+            /**
              * Query results will be sorted by the specified sort field
              */
             SORT,

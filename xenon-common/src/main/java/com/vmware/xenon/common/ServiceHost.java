@@ -4829,6 +4829,10 @@ public class ServiceHost implements ServiceRequestSender {
         // retrieve the description through the cached template so its the thread safe,
         // immutable version
         body.description = buildDocumentDescription(s);
+        if (body.description.parentPath == null) {
+            body.description.parentPath = UriUtils.getParentPath(s.getSelfLink());
+        }
+
         body.serializedDocument = op.getLinkedSerializedState();
         op.linkSerializedState(null);
         if (!op.isFromReplication()) {
