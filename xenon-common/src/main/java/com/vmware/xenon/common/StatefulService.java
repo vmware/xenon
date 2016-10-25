@@ -32,7 +32,6 @@ import com.vmware.xenon.common.Operation.InstrumentationContext;
 import com.vmware.xenon.common.ServiceDocumentDescription.PropertyDescription;
 import com.vmware.xenon.common.ServiceErrorResponse.ErrorDetail;
 import com.vmware.xenon.common.ServiceStats.ServiceStat;
-import com.vmware.xenon.common.ServiceStats.ServiceStatLogHistogram;
 import com.vmware.xenon.common.jwt.Signer;
 import com.vmware.xenon.common.serialization.KryoSerializers;
 import com.vmware.xenon.services.common.ServiceUriPaths;
@@ -321,7 +320,7 @@ public class StatefulService implements Service {
 
                 if (hasOption(ServiceOption.IMMUTABLE)
                         && (request.getAction() == Action.PATCH
-                                || request.getAction() == Action.PUT)) {
+                        || request.getAction() == Action.PUT)) {
                     processPending(request);
                     getHost().failRequestActionNotSupported(request);
                     return;
@@ -949,7 +948,7 @@ public class StatefulService implements Service {
 
             if (latestState.documentVersion < this.context.version
                     || (latestState.documentEpoch != null
-                            && latestState.documentEpoch < this.context.epoch)) {
+                    && latestState.documentEpoch < this.context.epoch)) {
                 return;
             }
 
@@ -1429,16 +1428,19 @@ public class StatefulService implements Service {
     }
 
     private ServiceStat getHistogramStat(String name) {
-        if (!hasOption(Service.ServiceOption.INSTRUMENTATION)) {
-            return null;
-        }
-        ServiceStat s = getStat(name);
-        synchronized (s) {
-            if (s.logHistogram == null) {
-                s.logHistogram = new ServiceStatLogHistogram();
-            }
-        }
-        return s;
+        return ServiceStatUtils.getHistogramStat(this, name);
+    }
+
+    public ServiceStat getTimeSeriesStat(String name, int numBins, long binDurationMillis,
+            EnumSet<ServiceStats.TimeSeriesStats.AggregationType> aggregationType) {
+        return ServiceStatUtils.getTimeSeriesStat(this, name, numBins, binDurationMillis,
+                aggregationType);
+    }
+
+    public ServiceStat getTimeSeriesHistogramStat(String name, int numBins, long binDurationMillis,
+            EnumSet<ServiceStats.TimeSeriesStats.AggregationType> aggregationType) {
+        return ServiceStatUtils.getTimeSeriesHistogramStat(this, name, numBins, binDurationMillis,
+                aggregationType);
     }
 
     private boolean allocateUtilityService(boolean forceAllocate) {
@@ -1498,7 +1500,7 @@ public class StatefulService implements Service {
 
         if (option == ServiceOption.PERIODIC_MAINTENANCE && hasOption(ServiceOption.ON_DEMAND_LOAD)
                 || option == ServiceOption.ON_DEMAND_LOAD
-                        && hasOption(ServiceOption.PERIODIC_MAINTENANCE)) {
+                && hasOption(ServiceOption.PERIODIC_MAINTENANCE)) {
             throw new IllegalArgumentException("Service option PERIODIC_MAINTENANCE and " +
                     "ON_DEMAND_LOAD cannot co-exist.");
         }
@@ -1929,7 +1931,7 @@ public class StatefulService implements Service {
 
         if (micros > 0 && micros < Service.MIN_MAINTENANCE_INTERVAL_MICROS) {
             logWarning("Maintenance interval %d is less than the minimum interval %d"
-                    + ", reducing to min interval", micros,
+                            + ", reducing to min interval", micros,
                     Service.MIN_MAINTENANCE_INTERVAL_MICROS);
             micros = Service.MIN_MAINTENANCE_INTERVAL_MICROS;
         }
@@ -2002,8 +2004,8 @@ public class StatefulService implements Service {
     }
 
     /**
-    * Set authorization context on operation.
-    */
+     * Set authorization context on operation.
+     */
     public final void setAuthorizationContext(Operation op, AuthorizationContext ctx) {
         if (getHost().isPrivilegedService(this)) {
             op.setAuthorizationContext(ctx);

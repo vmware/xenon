@@ -22,7 +22,7 @@ import java.util.logging.Logger;
 import com.vmware.xenon.common.Operation.AuthorizationContext;
 import com.vmware.xenon.common.ServiceHost.ServiceNotFoundException;
 import com.vmware.xenon.common.ServiceStats.ServiceStat;
-import com.vmware.xenon.common.ServiceStats.ServiceStatLogHistogram;
+import com.vmware.xenon.common.ServiceStats.TimeSeriesStats.AggregationType;
 import com.vmware.xenon.common.jwt.Signer;
 import com.vmware.xenon.services.common.ServiceUriPaths;
 
@@ -400,16 +400,19 @@ public class StatelessService implements Service {
     }
 
     public ServiceStat getHistogramStat(String name) {
-        if (!hasOption(Service.ServiceOption.INSTRUMENTATION)) {
-            return null;
-        }
-        ServiceStat s = getStat(name);
-        synchronized (s) {
-            if (s.logHistogram == null) {
-                s.logHistogram = new ServiceStatLogHistogram();
-            }
-        }
-        return s;
+        return ServiceStatUtils.getHistogramStat(this, name);
+    }
+
+    public ServiceStat getTimeSeriesStat(String name, int numBins, long binDurationMillis,
+            EnumSet<AggregationType> aggregationType) {
+        return ServiceStatUtils.getTimeSeriesStat(this, name, numBins, binDurationMillis,
+                aggregationType);
+    }
+
+    public ServiceStat getTimeSeriesHistogramStat(String name, int numBins, long binDurationMillis,
+            EnumSet<AggregationType> aggregationType) {
+        return ServiceStatUtils.getTimeSeriesHistogramStat(this, name, numBins, binDurationMillis,
+                aggregationType);
     }
 
     /**
