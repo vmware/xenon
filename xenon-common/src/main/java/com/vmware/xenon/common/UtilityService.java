@@ -35,7 +35,6 @@ import com.vmware.xenon.common.ServiceSubscriptionState.ServiceSubscriber;
 import com.vmware.xenon.services.common.ServiceUriPaths;
 import com.vmware.xenon.services.common.UiContentService;
 
-
 /**
  * Utility service managing the various URI control REST APIs for each service instance. A single
  * utility service instance manages operations on multiple URI suffixes (/stats, /subscriptions,
@@ -499,7 +498,7 @@ public class UtilityService implements Service {
                 && updateBody.epoch == null
                 && (updateBody.addOptions == null || updateBody.addOptions.isEmpty())
                 && (updateBody.removeOptions == null || updateBody.removeOptions
-                        .isEmpty())) {
+                .isEmpty())) {
             op.fail(new IllegalArgumentException(
                     "At least one configuraton field must be specified"));
             return;
@@ -541,7 +540,6 @@ public class UtilityService implements Service {
     public void setStat(ServiceStat stat, double newValue) {
         allocateStats();
         findStat(stat.name, true, stat);
-
         synchronized (stat) {
             stat.version++;
             stat.accumulatedValue += newValue;
@@ -558,9 +556,9 @@ public class UtilityService implements Service {
             stat.lastUpdateMicrosUtc = Utils.getNowMicrosUtc();
             if (stat.timeSeriesStats != null) {
                 if (stat.sourceTimeMicrosUtc != null) {
-                    stat.timeSeriesStats.add(stat.sourceTimeMicrosUtc, newValue);
+                    stat.timeSeriesStats.add(stat.sourceTimeMicrosUtc, newValue, newValue);
                 } else {
-                    stat.timeSeriesStats.add(stat.lastUpdateMicrosUtc, newValue);
+                    stat.timeSeriesStats.add(stat.lastUpdateMicrosUtc, newValue, newValue);
                 }
             }
         }
@@ -573,7 +571,6 @@ public class UtilityService implements Service {
             stat.latestValue += delta;
             stat.version++;
             if (stat.logHistogram != null) {
-
                 int binIndex = 0;
                 if (delta > 0.0) {
                     binIndex = (int) Math.log10(delta);
@@ -585,9 +582,9 @@ public class UtilityService implements Service {
             stat.lastUpdateMicrosUtc = Utils.getNowMicrosUtc();
             if (stat.timeSeriesStats != null) {
                 if (stat.sourceTimeMicrosUtc != null) {
-                    stat.timeSeriesStats.add(stat.sourceTimeMicrosUtc, stat.latestValue);
+                    stat.timeSeriesStats.add(stat.sourceTimeMicrosUtc, stat.latestValue, delta);
                 } else {
-                    stat.timeSeriesStats.add(stat.lastUpdateMicrosUtc, stat.latestValue);
+                    stat.timeSeriesStats.add(stat.lastUpdateMicrosUtc, stat.latestValue, delta);
                 }
             }
         }

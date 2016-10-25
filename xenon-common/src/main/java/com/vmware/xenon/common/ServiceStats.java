@@ -56,7 +56,7 @@ public class ServiceStats extends ServiceDocument {
             public double count;
         }
 
-        public static enum AggregationType {
+        public enum AggregationType {
             AVG, MIN, MAX, SUM
         }
 
@@ -69,11 +69,11 @@ public class ServiceStats extends ServiceDocument {
                 EnumSet<AggregationType> aggregationType) {
             this.numBins = numBins;
             this.binDurationMillis = binDurationMillis;
-            this.bins = new TreeMap<Long, TimeBin>();
+            this.bins = new TreeMap<>();
             this.aggregationType = aggregationType;
         }
 
-        public void add(long timestampMicros, double value) {
+        public void add(long timestampMicros, double value, double delta) {
             synchronized (this.bins) {
                 long binId = normalizeTimestamp(timestampMicros, this.binDurationMillis);
                 TimeBin dataBin = null;
@@ -93,31 +93,30 @@ public class ServiceStats extends ServiceDocument {
                 }
                 if (this.aggregationType.contains(AggregationType.AVG)) {
                     if (dataBin.avg == null) {
-                        dataBin.avg = new Double(value);
+                        dataBin.avg = value;
                         dataBin.count = 1;
                     } else {
-                        double newAvg = ((dataBin.avg * dataBin.count)  + value) / (dataBin.count + 1);
-                        dataBin.avg = newAvg;
+                        dataBin.avg = ((dataBin.avg * dataBin.count) + value) / (dataBin.count + 1);
                         dataBin.count++;
                     }
                 }
                 if (this.aggregationType.contains(AggregationType.SUM)) {
                     if (dataBin.sum == null) {
-                        dataBin.sum = new Double(value);
+                        dataBin.sum = delta;
                     } else {
-                        dataBin.sum += value;
+                        dataBin.sum += delta;
                     }
                 }
                 if (this.aggregationType.contains(AggregationType.MAX)) {
                     if (dataBin.max == null) {
-                        dataBin.max = new Double(value);
+                        dataBin.max = value;
                     } else if (dataBin.max < value) {
                         dataBin.max = value;
                     }
                 }
                 if (this.aggregationType.contains(AggregationType.MIN)) {
                     if (dataBin.min == null) {
-                        dataBin.min = new Double(value);
+                        dataBin.min = value;
                     } else if (dataBin.min > value) {
                         dataBin.min = value;
                     }
