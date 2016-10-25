@@ -890,7 +890,7 @@ public class TestQueryTaskService {
     }
 
     private void doNotInQuery(String fieldName, String fieldValue, long documentCount,
-                           long expectedResultCount) throws Throwable {
+            long expectedResultCount) throws Throwable {
         QuerySpecification spec = new QuerySpecification();
         spec.query = Query.Builder.create().addInClause(
                 fieldName,
@@ -1142,12 +1142,14 @@ public class TestQueryTaskService {
         Map<String, ServiceStat> stats = this.host
                 .getServiceStats(targetHost.getDocumentIndexServiceUri());
         ServiceStat groupQueryCount = stats
-                .get(LuceneDocumentIndexService.STAT_NAME_GROUP_QUERY_COUNT);
+                .get(LuceneDocumentIndexService.STAT_NAME_GROUP_QUERY_COUNT
+                        + ServiceStats.STAT_NAME_SUFFIX_PER_DAY);
         assertTrue(groupQueryCount != null);
         assertTrue(groupQueryCount.latestValue >= 4.0);
 
         ServiceStat groupQueryDuration = stats
-                .get(LuceneDocumentIndexService.STAT_NAME_GROUP_QUERY_DURATION_MICROS);
+                .get(LuceneDocumentIndexService.STAT_NAME_GROUP_QUERY_DURATION_MICROS
+                        + ServiceStats.STAT_NAME_SUFFIX_PER_DAY);
         assertTrue(groupQueryDuration != null);
         assertTrue(groupQueryDuration.logHistogram != null);
     }
@@ -1282,10 +1284,10 @@ public class TestQueryTaskService {
                 .addOption(QueryOption.EXPAND_CONTENT)
                 .setResultLimit(this.serviceCount / 5)
                 .setGroupResultLimit(2)
-                        .orderAscending(ExampleServiceState.FIELD_NAME_ID, TypeName.STRING)
-                        .groupOrder(ExampleServiceState.FIELD_NAME_NAME, TypeName.STRING,
-                                SortOrder.ASC)
-                        .setQuery(query).build();
+                .orderAscending(ExampleServiceState.FIELD_NAME_ID, TypeName.STRING)
+                .groupOrder(ExampleServiceState.FIELD_NAME_NAME, TypeName.STRING,
+                        SortOrder.ASC)
+                .setQuery(query).build();
         URI queryTaskURI = this.host.createQueryTaskService(queryTask);
         QueryTask finalState = this.host.waitForQueryTask(queryTaskURI, TaskStage.FINISHED);
         int expectedCountPerPage = queryTask.querySpec.resultLimit;
@@ -1443,7 +1445,7 @@ public class TestQueryTaskService {
             finishedTaskState = queryTask;
         } else {
             finishedTaskState = targetHost.waitForQueryTaskCompletion(queryTask.querySpec,
-                this.serviceCount, 1, u, false, false);
+                    this.serviceCount, 1, u, false, false);
         }
 
         if (!validateNativeContextIsNull(targetHost, finishedTaskState)) {
@@ -1504,7 +1506,7 @@ public class TestQueryTaskService {
     }
 
     private void validateBroadcastQueryPostFailure(VerificationHost targetHost, Operation o,
-                                                   Throwable e) {
+            Throwable e) {
         if (e != null) {
             ServiceErrorResponse rsp = o.getBody(ServiceErrorResponse.class);
             if (rsp.message == null
@@ -1554,7 +1556,8 @@ public class TestQueryTaskService {
         targetHost.testWait();
     }
 
-    private void nonpaginatedBroadcastQueryTasksOnExampleStates(VerificationHost targetHost, EnumSet<QueryOption> queryOptions)
+    private void nonpaginatedBroadcastQueryTasksOnExampleStates(VerificationHost targetHost,
+            EnumSet<QueryOption> queryOptions)
             throws Throwable {
         QuerySpecification q = new QuerySpecification();
         Query kindClause = new Query();
@@ -1722,7 +1725,8 @@ public class TestQueryTaskService {
         assertTrue(documentLinksList.get(0).equals(documentLinksList.get(1)));
     }
 
-    private void lowLevelBroadcastQueryTasksWithOwnerSelection(VerificationHost targetHost, EnumSet<QueryOption> queryOptions)
+    private void lowLevelBroadcastQueryTasksWithOwnerSelection(VerificationHost targetHost,
+            EnumSet<QueryOption> queryOptions)
             throws Throwable {
         QuerySpecification q = new QuerySpecification();
         Query kindClause = new Query();
@@ -1764,7 +1768,7 @@ public class TestQueryTaskService {
                     // check the correctness of rsp.jsonResponses, the internal result (before merge)
                     int totalDocumentCount = 0;
 
-                    for (QueryTask queryTask  : broadcastResponse.getSuccessesAs(QueryTask.class)) {
+                    for (QueryTask queryTask : broadcastResponse.getSuccessesAs(QueryTask.class)) {
                         // calculate the total document count from each node's local query result
                         totalDocumentCount += queryTask.results.documentCount;
                         String queryTaskDocumentOwner = queryTask.documentOwner;
@@ -1926,7 +1930,7 @@ public class TestQueryTaskService {
                 || rsp.querySpec.context.nativeSearcher != null
                 || rsp.querySpec.context.nativeSort != null) {
             targetHost.failIteration(new IllegalStateException(
-                            "native context fields are not null"));
+                    "native context fields are not null"));
             return false;
         }
         return true;
@@ -2132,8 +2136,8 @@ public class TestQueryTaskService {
     }
 
     private List<URI> queryAndValidateSortedResults(String propertyName, TypeName propertyType,
-                                                    List<URI> exampleServices, int resultLimit,
-                                                    boolean isDirect) throws Throwable {
+            List<URI> exampleServices, int resultLimit,
+            boolean isDirect) throws Throwable {
         Query kindClause = Query.Builder.create()
                 .addKindFieldClause(ExampleServiceState.class)
                 .build();
@@ -3048,7 +3052,7 @@ public class TestQueryTaskService {
             // restore large numbers for remainder
             LuceneDocumentIndexService.setSearcherCountThreshold(
                     LuceneDocumentIndexService
-                        .DEFAULT_INDEX_SEARCHER_COUNT_THRESHOLD);
+                            .DEFAULT_INDEX_SEARCHER_COUNT_THRESHOLD);
 
             LuceneDocumentIndexService.setIndexFileCountThresholdForWriterRefresh(
                     LuceneDocumentIndexService
@@ -3316,7 +3320,8 @@ public class TestQueryTaskService {
             ServiceStats stats = this.host
                     .getServiceState(null, ServiceStats.class, luceneStatsUri);
             ServiceStat searcherUpdateBeforeQuery = stats.entries
-                    .get(LuceneDocumentIndexService.STAT_NAME_SEARCHER_UPDATE_COUNT);
+                    .get(LuceneDocumentIndexService.STAT_NAME_SEARCHER_UPDATE_COUNT
+                            + ServiceStats.STAT_NAME_SUFFIX_PER_DAY);
             currentStat = searcherUpdateBeforeQuery.latestValue;
 
             q = new QueryTask.QuerySpecification();
@@ -3331,7 +3336,8 @@ public class TestQueryTaskService {
 
             stats = this.host.getServiceState(null, ServiceStats.class, luceneStatsUri);
             ServiceStat searcherUpdateAfterQuery = stats.entries
-                    .get(LuceneDocumentIndexService.STAT_NAME_SEARCHER_UPDATE_COUNT);
+                    .get(LuceneDocumentIndexService.STAT_NAME_SEARCHER_UPDATE_COUNT
+                            + ServiceStats.STAT_NAME_SUFFIX_PER_DAY);
             newStat = searcherUpdateAfterQuery.latestValue;
             if (currentStat == newStat) {
                 counter++;

@@ -23,6 +23,8 @@ import com.vmware.xenon.common.Operation.AuthorizationContext;
 import com.vmware.xenon.common.ServiceHost.ServiceNotFoundException;
 import com.vmware.xenon.common.ServiceStats.ServiceStat;
 import com.vmware.xenon.common.ServiceStats.ServiceStatLogHistogram;
+import com.vmware.xenon.common.ServiceStats.TimeSeriesStats;
+import com.vmware.xenon.common.ServiceStats.TimeSeriesStats.AggregationType;
 import com.vmware.xenon.common.jwt.Signer;
 import com.vmware.xenon.services.common.ServiceUriPaths;
 
@@ -407,6 +409,45 @@ public class StatelessService implements Service {
         synchronized (s) {
             if (s.logHistogram == null) {
                 s.logHistogram = new ServiceStatLogHistogram();
+            }
+        }
+        return s;
+    }
+
+    public ServiceStat getTimeSeriesStat(String name, int numBins, long binDurationMillis,
+            EnumSet<AggregationType> aggregationType) {
+        if (!hasOption(Service.ServiceOption.INSTRUMENTATION)) {
+            return null;
+        }
+        ServiceStat s = getStat(name);
+        synchronized (s) {
+            if (s.timeSeriesStats == null) {
+                s.timeSeriesStats = new TimeSeriesStats(numBins, binDurationMillis,
+                        aggregationType);
+            } else if (!s.timeSeriesStats.aggregationType.equals(aggregationType)) {
+                throw new IllegalStateException("Unexpected aggregation type "
+                        + s.timeSeriesStats.aggregationType);
+            }
+        }
+        return s;
+    }
+
+    public ServiceStat getTimeSeriesHistogramStat(String name, int numBins, long binDurationMillis,
+            EnumSet<AggregationType> aggregationType) {
+        if (!hasOption(Service.ServiceOption.INSTRUMENTATION)) {
+            return null;
+        }
+        ServiceStat s = getStat(name);
+        synchronized (s) {
+            if (s.logHistogram == null) {
+                s.logHistogram = new ServiceStatLogHistogram();
+            }
+            if (s.timeSeriesStats == null) {
+                s.timeSeriesStats = new TimeSeriesStats(numBins, binDurationMillis,
+                        aggregationType);
+            } else if (!s.timeSeriesStats.aggregationType.equals(aggregationType)) {
+                throw new IllegalStateException("Unexpected aggregation type "
+                        + s.timeSeriesStats.aggregationType);
             }
         }
         return s;
