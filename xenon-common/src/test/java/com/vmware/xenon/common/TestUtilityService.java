@@ -367,7 +367,7 @@ public class TestUtilityService extends BasicReusableHostTestCase {
         timeSeriesStats.add(startTime, value, value);
         lastBin = timeSeriesStats.bins.get(timeSeriesStats.bins.lastKey());
         assertTrue(lastBin.avg == null);
-        assertTrue(lastBin.count == 0);
+        assertTrue(lastBin.count == 1);
         assertTrue(lastBin.sum == null);
         assertTrue(lastBin.max != null);
         assertTrue(lastBin.min != null);
@@ -577,17 +577,14 @@ public class TestUtilityService extends BasicReusableHostTestCase {
     public static void validateTimeSeriesStat(ServiceStat stat, long expectedBinDurationMillis) {
         assertTrue(stat != null);
         assertTrue(stat.timeSeriesStats != null);
-        assertTrue(stat.version > 1);
+        assertTrue(stat.version >= 1);
         assertEquals(expectedBinDurationMillis, stat.timeSeriesStats.binDurationMillis);
-        double maxAvg = 0;
-        double countPerMaxAvgBin = 0;
+        double maxCount = 0;
         for (TimeBin bin : stat.timeSeriesStats.bins.values()) {
-            if (bin.avg != null && bin.avg > maxAvg) {
-                maxAvg = bin.avg;
-                countPerMaxAvgBin = bin.count;
+            if (bin.count > maxCount) {
+                maxCount = bin.count;
             }
         }
-        assertTrue(maxAvg > 0);
-        assertTrue(countPerMaxAvgBin >= 1);
+        assertTrue(maxCount >= 1);
     }
 }

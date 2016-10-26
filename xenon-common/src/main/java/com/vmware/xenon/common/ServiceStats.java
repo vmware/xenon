@@ -94,10 +94,8 @@ public class ServiceStats extends ServiceDocument {
                 if (this.aggregationType.contains(AggregationType.AVG)) {
                     if (dataBin.avg == null) {
                         dataBin.avg = value;
-                        dataBin.count = 1;
                     } else {
                         dataBin.avg = ((dataBin.avg * dataBin.count) + value) / (dataBin.count + 1);
-                        dataBin.count++;
                     }
                 }
                 if (this.aggregationType.contains(AggregationType.SUM)) {
@@ -121,6 +119,7 @@ public class ServiceStats extends ServiceDocument {
                         dataBin.min = value;
                     }
                 }
+                dataBin.count++;
             }
         }
 
