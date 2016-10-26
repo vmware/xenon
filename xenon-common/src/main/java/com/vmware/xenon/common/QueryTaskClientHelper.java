@@ -151,7 +151,7 @@ public class QueryTaskClientHelper<T extends ServiceDocument> {
      *            {@link ServiceDocument#documentUpdateTimeMicros}.
      */
     public QueryTaskClientHelper<T> setUpdatedSince(long documentSinceUpdateTimeMicros) {
-        long nowMicrosUtc = Utils.getNowMicrosUtc();
+        long nowMicrosUtc = Utils.getSystemNowMicrosUtc();
         if (nowMicrosUtc < documentSinceUpdateTimeMicros) {
             throw new IllegalArgumentException(
                     "'documentSinceUpdateTimeMicros' must be in the past.");
@@ -232,7 +232,7 @@ public class QueryTaskClientHelper<T extends ServiceDocument> {
     }
 
     public static long getDefaultQueryExpiration() {
-        return Utils.getNowMicrosUtc() + DEFAULT_EXPIRATION_TIME_IN_MICROS;
+        return Utils.getExpirationTimeMicros(DEFAULT_EXPIRATION_TIME_IN_MICROS);
     }
 
     private void sendQueryRequest() {
@@ -377,7 +377,7 @@ public class QueryTaskClientHelper<T extends ServiceDocument> {
     }
 
     private Query createUpdatedSinceTimeRange(long timeInMicros) {
-        long limitToNowInMicros = Utils.getNowMicrosUtc() + TimeUnit.SECONDS.toMicros(10);
+        long limitToNowInMicros = Utils.getNowMicrosUtc1() + TimeUnit.SECONDS.toMicros(10);
         NumericRange<Long> range = NumericRange.createLongRange(timeInMicros, limitToNowInMicros,
                 true, false);
         range.precisionStep = 64; // 4 and 8 doesn't work. 16 works but set 64 to be certain.

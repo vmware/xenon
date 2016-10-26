@@ -57,7 +57,7 @@ public class TestLuceneBlobIndexService extends BasicTestCase {
         ctx.setTestName("blob index post").logBefore();
         Set<String> keys = new HashSet<>();
         for (int i = 0; i < this.updateCount; i++) {
-            String key = Utils.getNowMicrosUtc() + "";
+            String key = Utils.getNowMicrosUtc1() + "";
             keys.add(key);
             Operation post = LuceneBlobIndexService.createPost(this.host, key, s);
             this.host.send(post.setCompletion(ctx.getCompletion()));

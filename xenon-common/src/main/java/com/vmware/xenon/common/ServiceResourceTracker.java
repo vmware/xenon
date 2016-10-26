@@ -138,7 +138,7 @@ class ServiceResourceTracker {
         if (this.startTimeMicros > 0) {
             return;
         }
-        this.startTimeMicros = Utils.getNowMicrosUtc();
+        this.startTimeMicros = Utils.getNowMicrosUtc1();
         if (this.host.getManagementService() == null) {
             this.host.log(Level.WARNING, "Management service not found, stats will not be available");
             return;
@@ -295,7 +295,7 @@ class ServiceResourceTracker {
              ServiceDocument st, Operation op) {
 
         if (ServiceHost.isServiceIndexed(s) && !isTransactional(op)) {
-            this.persistedServiceLastAccessTimes.put(s.getSelfLink(), Utils.getNowMicrosUtc());
+            this.persistedServiceLastAccessTimes.put(s.getSelfLink(), Utils.getNowMicrosUtc1());
         }
 
         // if caching is disabled on the serviceHost, then we don't bother updating the cache
@@ -573,7 +573,7 @@ class ServiceResourceTracker {
             pauseServiceCount++;
             pauseService(service);
 
-            if (deadlineMicros < Utils.getNowMicrosUtc()) {
+            if (deadlineMicros < Utils.getSystemNowMicrosUtc()) {
                 break;
             }
         }
@@ -699,7 +699,7 @@ class ServiceResourceTracker {
         }
 
         if (inboundOp.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_INDEX_CHECK)) {
-            if (inboundOp.getExpirationMicrosUtc() < Utils.getNowMicrosUtc()) {
+            if (inboundOp.getExpirationMicrosUtc() < Utils.getSystemNowMicrosUtc()) {
                 this.host.log(Level.WARNING, "Request to %s has expired", path);
                 return false;
             }
@@ -925,7 +925,7 @@ class ServiceResourceTracker {
 
         if (ServiceHost.isServiceIndexed(resumedService)) {
             this.persistedServiceLastAccessTimes.put(
-                    resumedService.getSelfLink(), Utils.getNowMicrosUtc());
+                    resumedService.getSelfLink(), Utils.getNowMicrosUtc1());
         }
 
         this.host.getManagementService().adjustStat(

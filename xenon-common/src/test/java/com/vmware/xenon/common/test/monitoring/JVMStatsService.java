@@ -181,7 +181,7 @@ public class JVMStatsService extends StatefulService {
             sample.collectionTimeMillis.add(gcBean.getCollectionTime());
         }
 
-        sample.currentSampleMicros = Utils.getNowMicrosUtc();
+        sample.currentSampleMicros = Utils.getNowMicrosUtc1();
 
         return sample;
     }

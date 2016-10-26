@@ -649,7 +649,7 @@ public class NettyChannelPool {
     }
 
     public void handleMaintenance(Operation op) {
-        long now = Utils.getNowMicrosUtc();
+        long now = Utils.getSystemNowMicrosUtc();
         if (this.isHttp2Only) {
             handleHttp2Maintenance(now);
         } else {

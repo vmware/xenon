@@ -560,7 +560,7 @@ public class TestGraphQueryTaskService extends BasicTestCase {
         }
 
         GraphQueryTask initialState = builder.build();
-        this.taskCreationTimeMicros = Utils.getNowMicrosUtc();
+        this.taskCreationTimeMicros = Utils.getNowMicrosUtc1();
         return initialState;
     }
 
@@ -599,7 +599,7 @@ public class TestGraphQueryTaskService extends BasicTestCase {
             GraphQueryTask r = o.getBody(GraphQueryTask.class);
             rsp[0] = r;
             if (initialState.taskInfo.isDirect) {
-                this.taskCompletionTimeMicros = Utils.getNowMicrosUtc();
+                this.taskCompletionTimeMicros = Utils.getNowMicrosUtc1();
             }
             ctx.completeIteration();
         });
@@ -623,7 +623,7 @@ public class TestGraphQueryTaskService extends BasicTestCase {
             taskUri = UriUtils.buildUri(this.host, initialState.documentSelfLink);
         }
         GraphQueryTask t = this.host.waitForFinishedTask(GraphQueryTask.class, taskUri);
-        this.taskCompletionTimeMicros = Utils.getNowMicrosUtc();
+        this.taskCompletionTimeMicros = Utils.getNowMicrosUtc1();
         TestContext ctx = testCreate(1);
         Operation get = Operation.createGet(taskUri)
                 .forceRemote().setCompletion((o, e) -> {

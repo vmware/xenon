@@ -210,10 +210,10 @@ public class BasicAuthenticationUtils {
             AuthenticationRequest authRequest = parentOp.getBody(AuthenticationRequest.class);
             long expirationTime;
             if (authRequest.sessionExpirationSeconds != null) {
-                expirationTime = Utils.getNowMicrosUtc() + TimeUnit.SECONDS
-                        .toMicros(authRequest.sessionExpirationSeconds);
+                expirationTime = Utils.getExpirationTimeMicros(TimeUnit.SECONDS
+                        .toMicros(authRequest.sessionExpirationSeconds));
             } else {
-                expirationTime = Utils.getNowMicrosUtc() + AUTH_TOKEN_EXPIRATION_MICROS;
+                expirationTime = Utils.getExpirationTimeMicros(AUTH_TOKEN_EXPIRATION_MICROS);
             }
 
             // set token validity

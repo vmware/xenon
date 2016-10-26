@@ -20,7 +20,6 @@ import java.util.TreeMap;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ConcurrentSkipListMap;
-import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 
@@ -448,11 +447,11 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
             return true;
         }
 
-        if (op.getExpirationMicrosUtc() < Utils.getNowMicrosUtc()) {
+        if (op.getExpirationMicrosUtc() < Utils.getSystemNowMicrosUtc()) {
             // operation has expired
-            op.fail(new TimeoutException(String.format(
+            op.fail(new CancellationException(String.format(
                     "Operation already expired, will not queue. Exp:%d, now:%d",
-                    op.getExpirationMicrosUtc(), Utils.getNowMicrosUtc())));
+                    op.getExpirationMicrosUtc(), Utils.getSystemNowMicrosUtc())));
             return true;
         }
 
@@ -544,7 +543,8 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
             updateCachedNodeGroupState(ngs, null);
             Operation op = Operation.createPost(null)
                     .setReferer(getUri())
-                    .setExpiration(Utils.getNowMicrosUtc() + getHost().getOperationTimeoutMicros());
+                    .setExpiration(
+                            Utils.getExpirationTimeMicros(getHost().getOperationTimeoutMicros()));
             NodeGroupUtils
                     .checkConvergence(
                             getHost(),
@@ -593,7 +593,7 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
             logInfo("Quorum update: %d", quorumUpdate.membershipQuorum);
         }
 
-        long now = Utils.getNowMicrosUtc();
+        long now = Utils.getNowMicrosUtc1();
         synchronized (this.cachedState) {
             if (quorumUpdate != null) {
                 this.cachedState.documentUpdateTimeMicros = now;

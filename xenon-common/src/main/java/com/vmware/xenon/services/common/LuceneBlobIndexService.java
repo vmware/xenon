@@ -73,7 +73,7 @@ public class LuceneBlobIndexService extends StatelessService {
                 indexPath,
                 LuceneBlobIndexService.URI_PARAM_NAME_KEY + "=" + key + "&" +
                         LuceneBlobIndexService.URI_PARAM_NAME_UPDATE_TIME + "="
-                        + Utils.getNowMicrosUtc());
+                        + Utils.getNowMicrosUtc1());
         return Operation.createPost(indexUri).setBodyNoCloning(blob);
     }
 
@@ -282,7 +282,7 @@ public class LuceneBlobIndexService extends StatelessService {
                     doc, URI_PARAM_NAME_UPDATE_TIME, updateTime, true);
 
             wr.addDocument(doc);
-            this.indexUpdateTimeMicros = Utils.getNowMicrosUtc();
+            this.indexUpdateTimeMicros = Utils.getNowMicrosUtc1();
             post.setBody(null).complete();
         } catch (Throwable e) {
             logSevere(e);
@@ -333,7 +333,7 @@ public class LuceneBlobIndexService extends StatelessService {
 
     private IndexSearcher updateSearcher(IndexWriter w)
             throws IOException {
-        long now = Utils.getNowMicrosUtc();
+        long now = Utils.getNowMicrosUtc1();
 
         // we do not synchronize the searcher update since this service uses a single thread
         // to schedule all queries, updates and maintenance. If this changes, the code below

@@ -82,7 +82,7 @@ class ServiceMaintenanceTracker {
     }
 
     public void performMaintenance(Operation op, long deadline) {
-        long now = Utils.getNowMicrosUtc();
+        long now = Utils.getSystemNowMicrosUtc();
         while (now < deadline) {
             if (this.host.isStopping()) {
                 op.fail(new CancellationException("Host is stopping"));
@@ -131,7 +131,7 @@ class ServiceMaintenanceTracker {
 
                 performServiceMaintenance(servicePath, s);
             }
-            now = Utils.getNowMicrosUtc();
+            now = Utils.getSystemNowMicrosUtc();
         }
     }
 
@@ -146,7 +146,7 @@ class ServiceMaintenanceTracker {
                 .setCompletion(
                         (o, ex) -> {
 
-                            long now = Utils.getNowMicrosUtc();
+                            long now = Utils.getSystemNowMicrosUtc();
                             long actual = now - start[0];
                             long limit = Math.max(this.host.getMaintenanceIntervalMicros(),
                                     s.getMaintenanceIntervalMicros());
@@ -173,7 +173,7 @@ class ServiceMaintenanceTracker {
                 if (s.hasOption(Service.ServiceOption.INSTRUMENTATION)) {
                     s.adjustStat(Service.STAT_NAME_MAINTENANCE_COUNT, 1);
                 }
-                start[0] = Utils.getNowMicrosUtc();
+                start[0] = Utils.getSystemNowMicrosUtc();
                 s.handleMaintenance(servicePost);
             } catch (Throwable ex) {
                 // Mostly at this point, CompletionHandler for servicePost has already consumed in

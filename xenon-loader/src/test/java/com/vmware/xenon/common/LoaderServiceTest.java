@@ -99,7 +99,7 @@ public class LoaderServiceTest extends BasicReusableHostTestCase {
         URI[] childURIs = new URI[childCount];
         for (int i = 0; i < childCount; i++) {
             LoaderServiceState initialState = new LoaderServiceState();
-            initialState.path = initialState.documentSelfLink = prefix + Utils.getNowMicrosUtc();
+            initialState.path = initialState.documentSelfLink = prefix + Utils.getNowMicrosUtc1();
             final int finalI = i;
             // create a service instance
             Operation createPost = Operation

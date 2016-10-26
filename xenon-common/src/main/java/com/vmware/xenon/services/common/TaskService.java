@@ -84,7 +84,8 @@ public abstract class TaskService<T extends TaskService.TaskServiceState>
         if (state == null) {
             throw new IllegalArgumentException("state cannot be null");
         }
-        state.documentExpirationTimeMicros = Utils.getNowMicrosUtc() + timeUnit.toMicros(timeUnitValue);
+        state.documentExpirationTimeMicros = Utils
+                .getExpirationTimeMicros(timeUnit.toMicros(timeUnitValue));
     }
 
     /**

@@ -761,7 +761,7 @@ public class StatelessService implements Service {
         if (!hasOption(Service.ServiceOption.INSTRUMENTATION)) {
             return;
         }
-        request.setHandlerInvokeTime(Utils.getNowMicrosUtc());
+        request.setHandlerInvokeTime(System.nanoTime() / 1000);
     }
 
     /**
@@ -778,7 +778,7 @@ public class StatelessService implements Service {
             return;
         }
         setStat(request.getAction() + STAT_NAME_OPERATION_DURATION,
-                Utils.getNowMicrosUtc()
+                (System.nanoTime() / 1000)
                         - request.getInstrumentationContext().handleInvokeTimeMicrosUtc);
 
     }

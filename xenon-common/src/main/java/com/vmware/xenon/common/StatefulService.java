@@ -145,7 +145,7 @@ public class StatefulService implements Service {
         }
 
         if (hasOption(Service.ServiceOption.INSTRUMENTATION)) {
-            op.setEnqueueTime(Utils.getNowMicrosUtc());
+            op.setEnqueueTime(System.nanoTime() / 1000);
         }
 
         if (!op.hasReferer()) {
@@ -446,7 +446,7 @@ public class StatefulService implements Service {
      */
     private boolean handleRequestLoadingAndLinkingState(Operation request) {
         if (hasOption(Service.ServiceOption.INSTRUMENTATION)) {
-            request.setHandlerInvokeTime(Utils.getNowMicrosUtc());
+            request.setHandlerInvokeTime(System.nanoTime() / 1000);
             adjustStat(request.getAction() + Service.STAT_NAME_REQUEST_COUNT, 1.0);
         }
 
@@ -698,7 +698,7 @@ public class StatefulService implements Service {
      */
     private void handleRequestCompletion(Operation op, Throwable e) {
         if (hasOption(Service.ServiceOption.INSTRUMENTATION)) {
-            op.setHandlerCompletionTime(Utils.getNowMicrosUtc());
+            op.setHandlerCompletionTime(System.nanoTime() / 1000);
         }
 
         ServiceDocument linkedState = op.getLinkedState();
@@ -961,7 +961,8 @@ public class StatefulService implements Service {
                     .addRequestHeader(Operation.REPLICATION_PHASE_HEADER,
                             Operation.REPLICATION_PHASE_COMMIT)
                     .setReferer(u)
-                    .setExpiration(getHost().getOperationTimeoutMicros() + Utils.getNowMicrosUtc());
+                    .setExpiration(
+                            Utils.getExpirationTimeMicros(getHost().getOperationTimeoutMicros()));
 
             if (op.getAction() == Action.DELETE) {
                 commitOp.setAction(op.getAction());
@@ -1125,7 +1126,7 @@ public class StatefulService implements Service {
     }
 
     private void updatePerOperationStats(Operation op) {
-        op.setCompletionTime(Utils.getNowMicrosUtc());
+        op.setCompletionTime(System.nanoTime() / 1000);
         InstrumentationContext ctx = op.getInstrumentationContext();
         long queueLatency = ctx.handleInvokeTimeMicrosUtc - ctx.enqueueTimeMicrosUtc;
         long handlerLatency = ctx.handlerCompletionTime - ctx.handleInvokeTimeMicrosUtc;
@@ -1237,7 +1238,7 @@ public class StatefulService implements Service {
         }
 
         if (!op.isFromReplication()) {
-            long time = Utils.getNowMicrosUtc();
+            long time = Utils.getNowMicrosUtc1();
             if (hasOption(ServiceOption.OWNER_SELECTION)) {
                 cachedState.documentEpoch = this.context.epoch;
             }
@@ -1593,7 +1594,7 @@ public class StatefulService implements Service {
                     adjustStat(STAT_NAME_PAUSE_COUNT, 1);
                     src = new ServiceRuntimeContext();
                     src.selfLink = getSelfLink();
-                    src.serializationTimeMicros = Utils.getNowMicrosUtc();
+                    src.serializationTimeMicros = Utils.getNowMicrosUtc1();
                     src.serializedService = KryoSerializers.serializeObject(this,
                             Service.MAX_SERIALIZED_SIZE_BYTES);
                 } else if (this.context.processingStage == ProcessingStage.PAUSED

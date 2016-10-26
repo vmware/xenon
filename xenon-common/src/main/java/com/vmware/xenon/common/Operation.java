@@ -63,7 +63,7 @@ public class Operation implements Cloneable {
         }
 
         public void updateLastUseTime() {
-            this.lastUseTimeMicros = Utils.getNowMicrosUtc();
+            this.lastUseTimeMicros = Utils.getSystemNowMicrosUtc();
         }
 
         public void writeHttpRequest(Object request) {

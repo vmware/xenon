@@ -293,9 +293,9 @@ public class LuceneDocumentIndexService extends StatelessService {
 
         File directory = new File(new File(getHost().getStorageSandbox()), this.indexDirectory);
         this.privateQueryExecutor = Executors.newFixedThreadPool(QUERY_THREAD_COUNT,
-                r -> new Thread(r, getUri() + "/queries/" + Utils.getNowMicrosUtc()));
+                r -> new Thread(r, getUri() + "/queries/" + Utils.getSystemNowMicrosUtc()));
         this.privateIndexingExecutor = Executors.newFixedThreadPool(UPDATE_THREAD_COUNT,
-                r -> new Thread(r, getSelfLink() + "/updates/" + Utils.getNowMicrosUtc()));
+                r -> new Thread(r, getSelfLink() + "/updates/" + Utils.getSystemNowMicrosUtc()));
 
         initializeInstance();
 
@@ -417,7 +417,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         synchronized (this.searchSync) {
             this.writer = w;
             this.linkAccessTimes.clear();
-            this.indexUpdateTimeMicros = Utils.getNowMicrosUtc();
+            this.indexUpdateTimeMicros = Utils.getNowMicrosUtc1();
             this.indexWriterCreationTimeMicros = this.indexUpdateTimeMicros;
         }
         return this.writer;
@@ -440,13 +440,13 @@ public class LuceneDocumentIndexService extends StatelessService {
             logInfo("Upgrading index to %s", Version.LATEST.toString());
             IndexWriterConfig iwc = new IndexWriterConfig(null);
             new IndexUpgrader(dir, iwc, false).upgrade();
-            this.indexUpdateTimeMicros = Utils.getNowMicrosUtc();
+            this.indexUpdateTimeMicros = Utils.getNowMicrosUtc1();
         }
     }
 
     private void archiveCorruptIndexFiles(File directory) {
         File newDirectory = new File(new File(getHost().getStorageSandbox()), this.indexDirectory
-                + "." + Utils.getNowMicrosUtc());
+                + "." + Utils.getNowMicrosUtc1());
         try {
             Files.createDirectory(newDirectory.toPath());
             // we assume a flat directory structure for the LUCENE directory
@@ -489,7 +489,7 @@ public class LuceneDocumentIndexService extends StatelessService {
             // Add the files in the commit to a zip file.
             List<URI> fileList = FileUtils.filesToUris(indexDirectory, commit.getFileNames());
             req.backupFile = FileUtils.zipFiles(fileList,
-                    this.indexDirectory + "-" + Utils.getNowMicrosUtc());
+                    this.indexDirectory + "-" + Utils.getNowMicrosUtc1());
 
             op.setBody(req).complete();
         } catch (Exception e) {
@@ -532,7 +532,7 @@ public class LuceneDocumentIndexService extends StatelessService {
             this.logInfo("restoring index %s from %s md5sum(%s)", directory, req.backupFile,
                     FileUtils.md5sum(new File(req.backupFile)));
             FileUtils.extractZipArchive(new File(req.backupFile), directory.toPath());
-            this.indexUpdateTimeMicros = Utils.getNowMicrosUtc();
+            this.indexUpdateTimeMicros = Utils.getNowMicrosUtc1();
             createWriter(directory, true);
             op.complete();
             this.logInfo("restore complete");
@@ -946,7 +946,7 @@ public class LuceneDocumentIndexService extends StatelessService {
                 this.fieldsToLoadWithExpand);
 
         if (checkAndDeleteExpiratedDocuments(selfLink, s, hits.scoreDocs[0].doc, doc,
-                Utils.getNowMicrosUtc())) {
+                Utils.getSystemNowMicrosUtc())) {
             op.complete();
             return;
         }
@@ -1085,10 +1085,10 @@ public class LuceneDocumentIndexService extends StatelessService {
 
         ServiceDocumentQueryResult rsp = new ServiceDocumentQueryResult();
         rsp.nextPageLinksPerGroup = new TreeMap<>();
-        long startTimeMicros = Utils.getNowMicrosUtc();
+        long startTimeMicros = Utils.getNowMicrosUtc1();
         // perform the actual search
         TopGroups<?> groups = groupingSearch.search(s, tq, groupOffset, groupLimit);
-        long endTimeMicros = Utils.getNowMicrosUtc();
+        long endTimeMicros = Utils.getNowMicrosUtc1();
         String statName = STAT_NAME_GROUP_QUERY_DURATION_MICROS;
         ServiceStat st = getHistogramStat(statName);
         setStat(st, endTimeMicros - startTimeMicros);
@@ -1182,7 +1182,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         TopDocs results = null;
 
         rsp.queryTimeMicros = 0L;
-        long queryStartTimeMicros = Utils.getNowMicrosUtc();
+        long queryStartTimeMicros = Utils.getNowMicrosUtc1();
         long start = queryStartTimeMicros;
 
         do {
@@ -1192,7 +1192,7 @@ public class LuceneDocumentIndexService extends StatelessService {
                 results = s.searchAfter(after, tq, count, sort, false, false);
             }
 
-            long end = Utils.getNowMicrosUtc();
+            long end = Utils.getNowMicrosUtc1();
 
             if (results == null) {
                 return rsp;
@@ -1206,10 +1206,10 @@ public class LuceneDocumentIndexService extends StatelessService {
             rsp.queryTimeMicros += queryTime;
             ScoreDoc bottom = null;
             if (shouldProcessResults) {
-                start = Utils.getNowMicrosUtc();
+                start = Utils.getNowMicrosUtc1();
                 bottom = processQueryResults(qs, options, count, s, rsp, hits,
                         queryStartTimeMicros);
-                end = Utils.getNowMicrosUtc();
+                end = Utils.getNowMicrosUtc1();
 
                 if (hasOption(ServiceOption.INSTRUMENTATION)) {
                     String statName = options.contains(QueryOption.INCLUDE_ALL_VERSIONS)
@@ -1341,7 +1341,7 @@ public class LuceneDocumentIndexService extends StatelessService {
             boolean hasPage) {
 
         URI u = UriUtils.buildUri(getHost(), UriUtils.buildUriPath(ServiceUriPaths.CORE_QUERY_PAGE,
-                Utils.getNowMicrosUtc() + ""));
+                Utils.getNowMicrosUtc1() + ""));
 
         // the page link must point to this node, since the index searcher and results have been
         // computed locally. Transform the link to a forwarder link, which will transparently
@@ -2180,7 +2180,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         if (versionsToKeep == 0) {
             // we are asked to delete everything, no need to sort or query
             wr.deleteDocuments(linkQuery);
-            this.indexUpdateTimeMicros = Utils.getNowMicrosUtc();
+            this.indexUpdateTimeMicros = Utils.getNowMicrosUtc1();
             delete.complete();
             return;
         }
@@ -2236,7 +2236,7 @@ public class LuceneDocumentIndexService extends StatelessService {
             }
         }
 
-        long now = Utils.getNowMicrosUtc();
+        long now = Utils.getNowMicrosUtc1();
 
         // Use time AFTER index was updated to be sure that it can be compared
         // against the time the searcher was updated and have this change
@@ -2256,9 +2256,9 @@ public class LuceneDocumentIndexService extends StatelessService {
             return;
         }
 
-        long start = Utils.getNowMicrosUtc();
+        long start = Utils.getNowMicrosUtc1();
         wr.addDocument(doc);
-        long end = Utils.getNowMicrosUtc();
+        long end = Utils.getNowMicrosUtc1();
 
         // Use time AFTER index was updated to be sure that it can be compared
         // against the time the searcher was updated and have this change
@@ -2315,7 +2315,7 @@ public class LuceneDocumentIndexService extends StatelessService {
             throws IOException {
         IndexSearcher s;
         boolean needNewSearcher = false;
-        long now = Utils.getNowMicrosUtc();
+        long now = Utils.getNowMicrosUtc1();
 
         synchronized (this.searchSync) {
             s = this.searcher;
@@ -2378,7 +2378,7 @@ public class LuceneDocumentIndexService extends StatelessService {
 
     private void handleMaintenanceImpl(boolean forceMerge) throws Throwable {
         try {
-            long start = Utils.getNowMicrosUtc();
+            long start = Utils.getNowMicrosUtc1();
 
             IndexWriter w = this.writer;
             if (w == null) {
@@ -2388,7 +2388,7 @@ public class LuceneDocumentIndexService extends StatelessService {
             setStat(STAT_NAME_INDEXED_DOCUMENT_COUNT, w.maxDoc());
 
             adjustStat(STAT_NAME_COMMIT_COUNT, 1.0);
-            long end = Utils.getNowMicrosUtc();
+            long end = Utils.getNowMicrosUtc1();
             setStat(STAT_NAME_COMMIT_DURATION_MICROS, end - start);
 
             IndexSearcher s = updateSearcher(null, Integer.MAX_VALUE, w);
@@ -2507,7 +2507,7 @@ public class LuceneDocumentIndexService extends StatelessService {
 
             IndexWriter w = this.writer;
 
-            long now = Utils.getNowMicrosUtc();
+            long now = Utils.getNowMicrosUtc1();
             if (now - this.indexWriterCreationTimeMicros < getHost()
                     .getMaintenanceIntervalMicros()) {
                 logInfo("Skipping writer re-open, it was created recently");
@@ -2590,7 +2590,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         }
 
         // close any paginated query searchers that have expired
-        long now = Utils.getNowMicrosUtc();
+        long now = Utils.getNowMicrosUtc1();
         Map<Long, List<IndexSearcher>> entriesToClose = new HashMap<>();
         synchronized (this.searchSync) {
             Iterator<Entry<Long, List<IndexSearcher>>> itr = this.searchersForPaginatedQueries
@@ -2630,7 +2630,7 @@ public class LuceneDocumentIndexService extends StatelessService {
             return;
         }
 
-        long expirationUpperBound = Utils.getNowMicrosUtc();
+        long expirationUpperBound = Utils.getNowMicrosUtc1();
 
         Query versionQuery = LongPoint.newRangeQuery(
                 ServiceDocument.FIELD_NAME_EXPIRATION_TIME_MICROS, 1L, expirationUpperBound);
@@ -2642,7 +2642,7 @@ public class LuceneDocumentIndexService extends StatelessService {
 
         // The expiration query will return all versions for a link. Use a set so we only delete once per link
         Set<String> links = new HashSet<>();
-        long now = Utils.getNowMicrosUtc();
+        long now = Utils.getNowMicrosUtc1();
         for (ScoreDoc sd : results.scoreDocs) {
             Document d = s.getIndexReader().document(sd.doc, this.fieldsToLoadNoExpand);
             String link = d.get(ServiceDocument.FIELD_NAME_SELF_LINK);

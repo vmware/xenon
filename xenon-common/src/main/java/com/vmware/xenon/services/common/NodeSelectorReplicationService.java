@@ -316,7 +316,7 @@ public class NodeSelectorReplicationService extends StatelessService {
 
         // We avoid retrying if the service is not started on the replica even after
         // retrying a few times.
-        if (Utils.getNowMicrosUtc() >= context.startTimeMicros + this.peerTimeoutMicros) {
+        if (Utils.isInThePast(context.startTimeMicros + this.peerTimeoutMicros)) {
             return false;
         }
 
