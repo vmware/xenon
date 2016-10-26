@@ -351,6 +351,7 @@ public class TestUtilityService extends BasicReusableHostTestCase {
         assertTrue(lastBin.count == count);
         assertTrue(lastBin.max.equals(newValue));
         assertTrue(lastBin.min.equals(origValue));
+        assertTrue(lastBin.latest.equals(newValue));
 
         // test with a subset of the aggregation types specified
         timeSeriesStats = new TimeSeriesStats(numBins, interval, EnumSet.of(AggregationType.AVG));
@@ -371,6 +372,16 @@ public class TestUtilityService extends BasicReusableHostTestCase {
         assertTrue(lastBin.sum == null);
         assertTrue(lastBin.max != null);
         assertTrue(lastBin.min != null);
+
+        timeSeriesStats = new TimeSeriesStats(numBins, interval, EnumSet.of(AggregationType.LATEST));
+        timeSeriesStats.add(startTime, value, value);
+        lastBin = timeSeriesStats.bins.get(timeSeriesStats.bins.lastKey());
+        assertTrue(lastBin.avg == null);
+        assertTrue(lastBin.count == 0);
+        assertTrue(lastBin.sum == null);
+        assertTrue(lastBin.max == null);
+        assertTrue(lastBin.min == null);
+        assertTrue(lastBin.latest.equals(value));
 
         // Step 2 - POST a stat to the service instance and verify we can fetch the stat just posted
         String name = UUID.randomUUID().toString();
