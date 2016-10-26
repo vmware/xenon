@@ -53,11 +53,12 @@ public class ServiceStats extends ServiceDocument {
             public Double min;
             public Double max;
             public Double sum;
+            public Double latest;
             public double count;
         }
 
         public enum AggregationType {
-            AVG, MIN, MAX, SUM
+            AVG, MIN, MAX, SUM, LATEST
         }
 
         public SortedMap<Long, TimeBin> bins;
@@ -120,6 +121,9 @@ public class ServiceStats extends ServiceDocument {
                     } else if (dataBin.min > value) {
                         dataBin.min = value;
                     }
+                }
+                if (this.aggregationType.contains(AggregationType.LATEST)) {
+                    dataBin.latest = value;
                 }
             }
         }
