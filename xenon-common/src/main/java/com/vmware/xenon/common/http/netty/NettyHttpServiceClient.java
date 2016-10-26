@@ -134,7 +134,7 @@ public class NettyHttpServiceClient implements ServiceClient {
         if (this.host != null) {
             return UriUtils.extendUri(this.host.getUri(), "netty-client").toString();
         }
-        return getClass().getSimpleName() + ":" + Utils.getNowMicrosUtc();
+        return getClass().getSimpleName() + ":" + Utils.getSystemNowMicrosUtc();
     }
 
     @Override
@@ -248,7 +248,7 @@ public class NettyHttpServiceClient implements ServiceClient {
         }
         long expMicros = this.host != null ? this.host.getOperationTimeoutMicros()
                 : ServiceHostState.DEFAULT_OPERATION_TIMEOUT_MICROS;
-        op.setExpiration(Utils.getNowMicrosUtc() + expMicros);
+        op.setExpiration(Utils.fromNowMicrosUtc(expMicros));
     }
 
     private void setCookies(Operation clone) {
@@ -665,7 +665,7 @@ public class NettyHttpServiceClient implements ServiceClient {
 
     @Override
     public void handleMaintenance(Operation op) {
-        long now = Utils.getNowMicrosUtc();
+        long now = Utils.getSystemNowMicrosUtc();
         if (this.sslChannelPool != null) {
             this.sslChannelPool.handleMaintenance(Operation.createPost(op.getUri()));
         }

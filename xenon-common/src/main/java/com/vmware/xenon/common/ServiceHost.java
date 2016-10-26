@@ -1139,7 +1139,7 @@ public class ServiceHost implements ServiceRequestSender {
         return Executors.newFixedThreadPool(threadCount, new ThreadFactory() {
             @Override
             public Thread newThread(Runnable r) {
-                return new Thread(r, s.getUri() + "/" + Utils.getNowMicrosUtc());
+                return new Thread(r, s.getUri() + "/" + Utils.getSystemNowMicrosUtc());
             }
         });
     }
@@ -1918,7 +1918,7 @@ public class ServiceHost implements ServiceRequestSender {
         }
 
         if (request.documentExpirationTimeMicros != 0) {
-            long delta = request.documentExpirationTimeMicros - Utils.getNowMicrosUtc();
+            long delta = request.documentExpirationTimeMicros - Utils.getSystemNowMicrosUtc();
             if (delta <= 0) {
                 log(Level.WARNING, "Expiration time is in the past: %d",
                         request.documentExpirationTimeMicros);
@@ -2085,7 +2085,7 @@ public class ServiceHost implements ServiceRequestSender {
         }
 
         if (post.getExpirationMicrosUtc() == 0) {
-            post.setExpiration(this.state.operationTimeoutMicros + Utils.getNowMicrosUtc());
+            post.setExpiration(Utils.fromNowMicrosUtc(this.state.operationTimeoutMicros));
         }
 
         // if the service is a helper for one of the known URI suffixes, do not
@@ -3186,7 +3186,7 @@ public class ServiceHost implements ServiceRequestSender {
             }
 
             Long expirationTime = claims.getExpirationTime();
-            if (expirationTime != null && expirationTime <= Utils.getNowMicrosUtc()) {
+            if (expirationTime != null && expirationTime <= Utils.getSystemNowMicrosUtc()) {
                 synchronized (this.state) {
                     this.authorizationContextCache.remove(token);
                     this.userLinktoTokenMap.remove(claims.getSubject());
@@ -3438,8 +3438,8 @@ public class ServiceHost implements ServiceRequestSender {
             // Forwarded operations are retried until the parent operation, from the client,
             // expires. Since a peer might have become unresponsive, we want short time outs
             // and retries, to whatever peer we select, on each retry.
-            forwardOp.setExpiration(Utils.getNowMicrosUtc()
-                    + this.state.operationTimeoutMicros / 10);
+            forwardOp.setExpiration(Utils.fromNowMicrosUtc(
+                    this.state.operationTimeoutMicros / 10));
             forwardOp.setUri(SelectOwnerResponse.buildUriToOwner(rsp, op))
                     .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_FORWARDED);
 
@@ -3548,8 +3548,9 @@ public class ServiceHost implements ServiceRequestSender {
             shouldRetry = false;
         }
 
-        if (op.getExpirationMicrosUtc() < Utils.getNowMicrosUtc()) {
-            op.setBodyNoCloning(fo.getBodyRaw()).fail(new TimeoutException());
+        if (op.getExpirationMicrosUtc() < Utils.getSystemNowMicrosUtc()) {
+            op.setBodyNoCloning(fo.getBodyRaw())
+                    .fail(new CancellationException("Expired at " + op.getExpirationMicrosUtc()));
             return;
         }
 
@@ -3743,7 +3744,7 @@ public class ServiceHost implements ServiceRequestSender {
         }
 
         double count = rateInfo.count.incrementAndGet();
-        long now = Utils.getNowMicrosUtc();
+        long now = Utils.getSystemNowMicrosUtc();
         long delta = now - rateInfo.startTimeMicros;
         double deltaInSeconds = delta / 1000000.0;
         if (delta < getMaintenanceIntervalMicros()) {
@@ -3824,7 +3825,8 @@ public class ServiceHost implements ServiceRequestSender {
             op.forceRemote();
         }
         if (op.getExpirationMicrosUtc() == 0) {
-            long expirationMicros = Utils.getNowMicrosUtc() + this.state.operationTimeoutMicros;
+            long expirationMicros = Utils
+                    .fromNowMicrosUtc(this.state.operationTimeoutMicros);
             op.setExpiration(expirationMicros);
         }
 
@@ -4176,7 +4178,7 @@ public class ServiceHost implements ServiceRequestSender {
         }
         Operation op = Operation.createPost(null)
                 .setCompletion(completion)
-                .setExpiration(getOperationTimeoutMicros() + Utils.getNowMicrosUtc());
+                .setExpiration(Utils.fromNowMicrosUtc(getOperationTimeoutMicros()));
 
         registerForServiceAvailability(op, checkReplica, nodeSelectorPath, servicePaths);
     }
@@ -4303,7 +4305,7 @@ public class ServiceHost implements ServiceRequestSender {
     public ServiceHost setRequestRateLimit(String key, double operationsPerSecond) {
         RequestRateInfo ri = new RequestRateInfo();
         ri.limit = operationsPerSecond;
-        ri.startTimeMicros = Utils.getNowMicrosUtc();
+        ri.startTimeMicros = Utils.getSystemNowMicrosUtc();
         this.state.requestRateLimits.put(key, ri);
         return this;
     }
@@ -4593,7 +4595,7 @@ public class ServiceHost implements ServiceRequestSender {
     private void scheduleMaintenance() {
         Runnable r = () -> {
             OperationContext.setAuthorizationContext(this.getSystemAuthorizationContext());
-            this.state.lastMaintenanceTimeUtcMicros = Utils.getNowMicrosUtc();
+            this.state.lastMaintenanceTimeUtcMicros = Utils.getSystemNowMicrosUtc();
             long deadline = this.state.lastMaintenanceTimeUtcMicros
                     + this.state.maintenanceIntervalMicros;
             performMaintenanceStage(Operation.createPost(getUri()),
@@ -4611,7 +4613,7 @@ public class ServiceHost implements ServiceRequestSender {
         if (!s.hasOption(ServiceOption.PERIODIC_MAINTENANCE)) {
             return;
         }
-        this.serviceMaintTracker.schedule(s, Utils.getNowMicrosUtc());
+        this.serviceMaintTracker.schedule(s, Utils.getSystemNowMicrosUtc());
     }
 
     /**
@@ -4622,7 +4624,7 @@ public class ServiceHost implements ServiceRequestSender {
     void performMaintenanceStage(Operation post, MaintenanceStage stage, long deadline) {
 
         try {
-            long now = Utils.getNowMicrosUtc();
+            long now = Utils.getSystemNowMicrosUtc();
 
             switch (stage) {
             case UTILS:
@@ -4728,7 +4730,7 @@ public class ServiceHost implements ServiceRequestSender {
     }
 
     private void performPendingOperationMaintenance() {
-        long now = Utils.getNowMicrosUtc();
+        long now = Utils.getSystemNowMicrosUtc();
         this.operationTracker.performMaintenance(now);
     }
 

@@ -145,7 +145,7 @@ public class StatefulService implements Service {
         }
 
         if (hasOption(Service.ServiceOption.INSTRUMENTATION)) {
-            op.setEnqueueTime(Utils.getNowMicrosUtc());
+            op.setEnqueueTime(System.nanoTime() / 1000);
         }
 
         if (!op.hasReferer()) {
@@ -446,7 +446,7 @@ public class StatefulService implements Service {
      */
     private boolean handleRequestLoadingAndLinkingState(Operation request) {
         if (hasOption(Service.ServiceOption.INSTRUMENTATION)) {
-            request.setHandlerInvokeTime(Utils.getNowMicrosUtc());
+            request.setHandlerInvokeTime(System.nanoTime() / 1000);
             adjustStat(request.getAction() + Service.STAT_NAME_REQUEST_COUNT, 1.0);
         }
 
@@ -698,7 +698,7 @@ public class StatefulService implements Service {
      */
     private void handleRequestCompletion(Operation op, Throwable e) {
         if (hasOption(Service.ServiceOption.INSTRUMENTATION)) {
-            op.setHandlerCompletionTime(Utils.getNowMicrosUtc());
+            op.setHandlerCompletionTime(System.nanoTime() / 1000);
         }
 
         ServiceDocument linkedState = op.getLinkedState();
@@ -961,7 +961,8 @@ public class StatefulService implements Service {
                     .addRequestHeader(Operation.REPLICATION_PHASE_HEADER,
                             Operation.REPLICATION_PHASE_COMMIT)
                     .setReferer(u)
-                    .setExpiration(getHost().getOperationTimeoutMicros() + Utils.getNowMicrosUtc());
+                    .setExpiration(
+                            Utils.fromNowMicrosUtc(getHost().getOperationTimeoutMicros()));
 
             if (op.getAction() == Action.DELETE) {
                 commitOp.setAction(op.getAction());
@@ -1125,15 +1126,15 @@ public class StatefulService implements Service {
     }
 
     private void updatePerOperationStats(Operation op) {
-        op.setCompletionTime(Utils.getNowMicrosUtc());
+        op.setCompletionTime(System.nanoTime() / 1000);
         InstrumentationContext ctx = op.getInstrumentationContext();
-        long queueLatency = ctx.handleInvokeTimeMicrosUtc - ctx.enqueueTimeMicrosUtc;
-        long handlerLatency = ctx.handlerCompletionTime - ctx.handleInvokeTimeMicrosUtc;
-        long endToEndDuration = ctx.operationCompletionTimeMicrosUtc - ctx.enqueueTimeMicrosUtc;
-        if (ctx.documentStoreCompletionTimeMicrosUtc > 0) {
+        long queueLatency = ctx.handleInvokeTimeMicros - ctx.enqueueTimeMicros;
+        long handlerLatency = ctx.handlerCompletionTimeMicros - ctx.handleInvokeTimeMicros;
+        long endToEndDuration = ctx.operationCompletionTimeMicros - ctx.enqueueTimeMicros;
+        if (ctx.documentStoreCompletionTimeMicros > 0) {
             ServiceStat s = getHistogramStat(Service.STAT_NAME_STATE_PERSIST_LATENCY);
             setStat(s,
-                    ctx.documentStoreCompletionTimeMicrosUtc - ctx.handlerCompletionTime);
+                    ctx.documentStoreCompletionTimeMicros - ctx.handlerCompletionTimeMicros);
         }
         ServiceStat s = getHistogramStat(op.getAction()
                 + Service.STAT_NAME_OPERATION_QUEUEING_LATENCY);

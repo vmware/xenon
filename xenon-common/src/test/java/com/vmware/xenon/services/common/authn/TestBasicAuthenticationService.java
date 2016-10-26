@@ -306,7 +306,7 @@ public class TestBasicAuthenticationService extends BasicTestCase {
         // Next send a valid request
         String headerVal = constructBasicAuth(USER, PASSWORD);
 
-        long oneHourFromNowBeforeAuth = Utils.getNowMicrosUtc() + TimeUnit.HOURS.toMicros(1);
+        long oneHourFromNowBeforeAuth = Utils.getSystemNowMicrosUtc() + TimeUnit.HOURS.toMicros(1);
 
         // do not specify expiration
         AuthenticationRequest authReq = new AuthenticationRequest();
@@ -324,7 +324,7 @@ public class TestBasicAuthenticationService extends BasicTestCase {
                             }
 
                             long oneHourFromNowAfterAuth =
-                                    Utils.getNowMicrosUtc() + TimeUnit.HOURS.toMicros(1);
+                                    Utils.getSystemNowMicrosUtc() + TimeUnit.HOURS.toMicros(1);
 
                             // default expiration(1hour) must be used
                             validateExpirationTimeRange(o.getAuthorizationContext(),
@@ -351,7 +351,7 @@ public class TestBasicAuthenticationService extends BasicTestCase {
                             }
 
                             long tenMinAfterNowInMicro =
-                                    Utils.getNowMicrosUtc() + TimeUnit.MINUTES.toMicros(10);
+                                    Utils.getSystemNowMicrosUtc() + TimeUnit.MINUTES.toMicros(10);
 
                             // expiration has set to 1min, so it must be before now + 10min
                             validateExpirationTimeRange(o.getAuthorizationContext(),
@@ -379,7 +379,7 @@ public class TestBasicAuthenticationService extends BasicTestCase {
 
                             // must be before now
                             validateExpirationTimeRange(o.getAuthorizationContext(),
-                                    null, Utils.getNowMicrosUtc());
+                                    null, Utils.getSystemNowMicrosUtc());
 
                             this.host.completeIteration();
                         }));
@@ -403,7 +403,7 @@ public class TestBasicAuthenticationService extends BasicTestCase {
 
                             // must be before now
                             validateExpirationTimeRange(o.getAuthorizationContext(),
-                                    null, Utils.getNowMicrosUtc());
+                                    null, Utils.getSystemNowMicrosUtc());
 
                             this.host.completeIteration();
                         }));
@@ -418,13 +418,13 @@ public class TestBasicAuthenticationService extends BasicTestCase {
         assertNotNull(authContext.getClaims().getExpirationTime());
         long expirationInMicro = authContext.getClaims().getExpirationTime();
 
-        if (fromInMicro != null && expirationInMicro <= fromInMicro) {
+        if (fromInMicro != null && expirationInMicro < fromInMicro) {
             String msg = String.format("expiration must be greater than %d but was %d", fromInMicro,
                     expirationInMicro);
             this.host.failIteration(new IllegalStateException(msg));
         }
 
-        if (toInMicro != null && toInMicro <= expirationInMicro) {
+        if (toInMicro != null && toInMicro < expirationInMicro) {
             String msg = String.format("expiration must be greater less %d but was %d", toInMicro,
                     expirationInMicro);
             this.host.failIteration(new IllegalStateException(msg));

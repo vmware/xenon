@@ -409,7 +409,8 @@ public class SynchronizationTaskService
                 .createPost(this, ServiceUriPaths.CORE_QUERY_TASKS)
                 .setBody(queryTask)
                 .setConnectionSharing(true)
-                .setExpiration(Utils.getNowMicrosUtc() + NodeGroupService.PEER_REQUEST_TIMEOUT_MICROS)
+                .setExpiration(
+                        Utils.fromNowMicrosUtc(NodeGroupService.PEER_REQUEST_TIMEOUT_MICROS))
                 .setCompletion((o, e) -> {
                     if (getHost().isStopping()) {
                         sendSelfCancellationPatch(task, "host is stopping");
@@ -468,7 +469,7 @@ public class SynchronizationTaskService
         long timeoutMicros = TimeUnit.SECONDS.toMicros(
                 getHost().getPeerSynchronizationTimeLimitSeconds());
         timeoutMicros = Math.max(timeoutMicros, getHost().getOperationTimeoutMicros());
-        queryTask.documentExpirationTimeMicros = Utils.getNowMicrosUtc() + timeoutMicros;
+        queryTask.documentExpirationTimeMicros = Utils.fromNowMicrosUtc(timeoutMicros);
 
         // Make this a broadcast query so that we get child services from all peer nodes.
         queryTask.querySpec.options = EnumSet.of(
@@ -521,7 +522,8 @@ public class SynchronizationTaskService
         };
 
         sendRequest(Operation.createGet(task.queryPageReference)
-                .setExpiration(Utils.getNowMicrosUtc() + NodeGroupService.PEER_REQUEST_TIMEOUT_MICROS)
+                .setExpiration(
+                        Utils.fromNowMicrosUtc(NodeGroupService.PEER_REQUEST_TIMEOUT_MICROS))
                 .setCompletion(c));
     }
 
@@ -624,7 +626,8 @@ public class SynchronizationTaskService
                 .setCompletion(c)
                 .setReferer(getUri())
                 .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_SYNCH_OWNER)
-                .setExpiration(Utils.getNowMicrosUtc() + NodeGroupService.PEER_REQUEST_TIMEOUT_MICROS)
+                .setExpiration(
+                        Utils.fromNowMicrosUtc(NodeGroupService.PEER_REQUEST_TIMEOUT_MICROS))
                 .setRetryCount(0);
         try {
             sendRequest(synchRequest);

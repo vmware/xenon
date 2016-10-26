@@ -477,8 +477,8 @@ public class TestStatefulService extends BasicReusableHostTestCase {
         for (Service s : services) {
             MinimalTestServiceState body = new MinimalTestServiceState();
             body.id = Utils.getNowMicrosUtc() + "";
-            body.documentExpirationTimeMicros = Utils.getNowMicrosUtc()
-                    + TimeUnit.MILLISECONDS.toMicros(expMillis);
+            body.documentExpirationTimeMicros = Utils.fromNowMicrosUtc(
+                    TimeUnit.MILLISECONDS.toMicros(expMillis));
             Operation patchExp = Operation.createPatch(s.getUri())
                     .setBody(body)
                     .setCompletion(ctx.getCompletion());

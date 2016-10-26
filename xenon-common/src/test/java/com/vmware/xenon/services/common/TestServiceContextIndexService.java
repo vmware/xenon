@@ -41,7 +41,7 @@ public class TestServiceContextIndexService extends BasicReusableHostTestCase {
      */
     public int requestCount = 100;
 
-    public long testStartTimeMicros = Utils.getNowMicrosUtc();
+    public long testStartTimeMicros = Utils.getSystemNowMicrosUtc();
 
     @Test
     public void serDesDirect() throws Throwable {

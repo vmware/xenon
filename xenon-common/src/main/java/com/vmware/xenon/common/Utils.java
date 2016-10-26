@@ -76,6 +76,7 @@ public class Utils {
     public static final String PROPERTY_NAME_PREFIX = "xenon.";
     public static final String CHARSET = CHARSET_UTF_8;
     public static final String UI_DIRECTORY_NAME = "ui";
+    public static final String PROPERTY_NAME_TIME_COMPARISON = "timeComparisonEpsilonMicros";
 
     private static final char[] HEX_CHARS = "0123456789abcdef".toCharArray();
 
@@ -97,11 +98,20 @@ public class Utils {
             .availableProcessors());
 
     /**
+     * See {@link #setTimeDriftThreshold(long)}
+     */
+    public static final long DEFAULT_TIME_DRIFT_THRESHOLD_MICROS = TimeUnit.SECONDS.toMicros(1);
+
+    /**
      * {@link #isReachableByPing} launches a separate ping process to ascertain whether a given IP
      * address is reachable within a specified timeout. This constant extends the timeout for that
      * check to account for the start-up overhead of that process.
      */
     private static final long PING_LAUNCH_TOLERANCE_MS = 50;
+
+    private static final AtomicLong previousTimeValue = new AtomicLong();
+    private static long timeComparisonEpsilon = initializeTimeEpsilon();
+    private static long timeDriftThresholdMicros = DEFAULT_TIME_DRIFT_THRESHOLD_MICROS;
 
     private static final JsonMapper JSON = new JsonMapper();
     private static final ConcurrentMap<Class<?>, JsonMapper> CUSTOM_JSON = new ConcurrentSkipListMap<>(
@@ -391,37 +401,6 @@ public class Utils {
 
     public static void logWarning(String fmt, Object... args) {
         Logger.getAnonymousLogger().warning(String.format(fmt, args));
-    }
-
-    private static AtomicLong PREVIOUS_TIME_VALUE = new AtomicLong();
-    private static long TIME_COMPARISON_EPSILON_MICROS = initializeTimeEpsilon();
-    public static final String PROPERTY_NAME_TIME_COMPARISON = "timeComparisonEpsilonMicros";
-
-    private static long initializeTimeEpsilon() {
-        Long l = Long.getLong(Utils.PROPERTY_NAME_PREFIX + PROPERTY_NAME_TIME_COMPARISON,
-                ServiceHostState.DEFAULT_OPERATION_TIMEOUT_MICROS);
-        return l;
-    }
-
-    /**
-     * Return wall clock time, in microseconds since Unix Epoch (1/1/1970 UTC midnight). This
-     * functions guarantees time always moves forward, but it does not guarantee it does so in fixed
-     * intervals.
-     *
-     * @return
-     */
-    public static long getNowMicrosUtc() {
-        long now = System.currentTimeMillis() * 1000;
-        long time = PREVIOUS_TIME_VALUE.getAndIncrement();
-
-        // Only set time if current time is greater than our stored time.
-        if (now > time) {
-            // This CAS can fail; getAndIncrement() ensures no value is returned twice.
-            PREVIOUS_TIME_VALUE.compareAndSet(time + 1, now);
-            return PREVIOUS_TIME_VALUE.getAndIncrement();
-        }
-
-        return time;
     }
 
     public static String toDocumentKind(Class<?> type) {
@@ -1131,18 +1110,85 @@ public class Utils {
         }
     }
 
+    private static long initializeTimeEpsilon() {
+        Long l = Long.getLong(Utils.PROPERTY_NAME_PREFIX + PROPERTY_NAME_TIME_COMPARISON,
+                ServiceHostState.DEFAULT_OPERATION_TIMEOUT_MICROS);
+        return l;
+    }
+
+    /**
+     * Adds the supplied argument to the value from {@link #getSystemNowMicrosUtc()} and returns
+     * an absolute expiration time in the future
+     */
+    public static long fromNowMicrosUtc(long deltaMicros) {
+        return getSystemNowMicrosUtc() + deltaMicros;
+    }
+
+    /**
+     * Expects an absolute time, in microseconds since Epoch and returns true if the value represents
+     * a time before the current system time
+     */
+    public static boolean beforeNow(long microsUtc) {
+        return getSystemNowMicrosUtc() >= microsUtc;
+    }
+
+    /**
+     * Returns the current time in microseconds, since Unix Epoch. This method can return the
+     * same value on consecutive calls. See {@link #getNowMicrosUtc()} for an alternative but
+     * with potential for drift from wall clock time
+     */
+    public static long getSystemNowMicrosUtc() {
+        return System.currentTimeMillis() * 1000;
+    }
+
+    /**
+     * Return wall clock time, in microseconds since Unix Epoch (1/1/1970 UTC midnight). This
+     * functions guarantees time always moves forward, but it does not guarantee it does so in fixed
+     * intervals.
+     *
+     * @return
+     */
+    public static long getNowMicrosUtc() {
+        long now = System.currentTimeMillis() * 1000;
+        long time = previousTimeValue.getAndIncrement();
+
+        // Only set time if current time is greater than our stored time.
+        if (now > time) {
+            // This CAS can fail; getAndIncrement() ensures no value is returned twice.
+            previousTimeValue.compareAndSet(time + 1, now);
+            return previousTimeValue.getAndIncrement();
+        } else if (time - now > timeDriftThresholdMicros) {
+            throw new IllegalStateException("Time drift is " + (time - now));
+        }
+
+        return time;
+    }
+
+    /**
+     * Infrastructure use only, do *not* use outside tests.
+     * Set the upper bound between wall clock time as reported by {@link System#currentTimeMillis()}
+     * and the time reported by {@link #getNowMicrosUtc()} (when both converted to micros).
+     * The current time value will be reset to latest wall clock time so this call must be avoided
+     * at all costs in a production system (it might make {@link #getNowMicrosUtc()} return a
+     * smaller value than previous calls
+     */
+    public static void setTimeDriftThreshold(long micros) {
+        timeDriftThresholdMicros = micros;
+        previousTimeValue.set(TimeUnit.MILLISECONDS.toMicros(System.currentTimeMillis()));
+    }
+
     /**
      * Resets comparison value from default or global property
      */
     public static void resetTimeComparisonEpsilonMicros() {
-        TIME_COMPARISON_EPSILON_MICROS = initializeTimeEpsilon();
+        timeComparisonEpsilon = initializeTimeEpsilon();
     }
 
     /**
      * Sets the time interval, in microseconds, for replicated document time comparisons.
      */
     public static void setTimeComparisonEpsilonMicros(long micros) {
-        TIME_COMPARISON_EPSILON_MICROS = micros;
+        timeComparisonEpsilon = micros;
     }
 
     /**
@@ -1151,7 +1197,7 @@ public class Utils {
      * @return
      */
     public static long getTimeComparisonEpsilonMicros() {
-        return TIME_COMPARISON_EPSILON_MICROS;
+        return timeComparisonEpsilon;
     }
 
     /**
@@ -1161,8 +1207,8 @@ public class Utils {
     * globally order in respect to each other and this method will return true.
     */
     public static boolean isWithinTimeComparisonEpsilon(long timeMicros) {
-        long now = Utils.getNowMicrosUtc();
-        return Math.abs(timeMicros - now) < TIME_COMPARISON_EPSILON_MICROS;
+        long now = Utils.getSystemNowMicrosUtc();
+        return Math.abs(timeMicros - now) < timeComparisonEpsilon;
     }
 
     /**

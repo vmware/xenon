@@ -573,7 +573,7 @@ class ServiceResourceTracker {
             pauseServiceCount++;
             pauseService(service);
 
-            if (deadlineMicros < Utils.getNowMicrosUtc()) {
+            if (deadlineMicros < Utils.getSystemNowMicrosUtc()) {
                 break;
             }
         }
@@ -699,7 +699,7 @@ class ServiceResourceTracker {
         }
 
         if (inboundOp.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_INDEX_CHECK)) {
-            if (inboundOp.getExpirationMicrosUtc() < Utils.getNowMicrosUtc()) {
+            if (inboundOp.getExpirationMicrosUtc() < Utils.getSystemNowMicrosUtc()) {
                 this.host.log(Level.WARNING, "Request to %s has expired", path);
                 return false;
             }

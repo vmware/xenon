@@ -128,7 +128,8 @@ class ServiceSynchronizationTracker {
                     .setReferer(this.host.getUri())
                     .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_SYNCH_OWNER)
                     .setExpiration(
-                            Utils.getNowMicrosUtc() + NodeGroupService.PEER_REQUEST_TIMEOUT_MICROS)
+                            Utils.fromNowMicrosUtc(
+                                    NodeGroupService.PEER_REQUEST_TIMEOUT_MICROS))
                     .setCompletion((synchOp, t) -> {
                         start.fail(startEx);
                         this.host.processPendingServiceAvailableOperations(
@@ -388,7 +389,8 @@ class ServiceSynchronizationTracker {
             }
 
             // we refreshed the pending selector list, now ready to do kick of synchronization
-            performNodeSelectorChangeMaintenance(post, Utils.getNowMicrosUtc(), nextStage, false,
+            performNodeSelectorChangeMaintenance(post, Utils.getSystemNowMicrosUtc(), nextStage,
+                    false,
                     deadline);
         };
 
@@ -403,7 +405,7 @@ class ServiceSynchronizationTracker {
         String nodeSelectorPath = entry.getKey();
         Long selectorSynchTime = this.synchronizationTimes.get(nodeSelectorPath);
         NodeGroupState ngs = entry.getValue();
-        long now = Utils.getNowMicrosUtc();
+        long now = Utils.getSystemNowMicrosUtc();
 
         for (Entry<String, Long> en : this.synchronizationActiveServices.entrySet()) {
             String link = en.getKey();
@@ -439,7 +441,7 @@ class ServiceSynchronizationTracker {
 
         for (Entry<String, Long> en : this.synchronizationRequiredServices
                 .entrySet()) {
-            now = Utils.getNowMicrosUtc();
+            now = Utils.getSystemNowMicrosUtc();
             if (this.host.isStopping()) {
                 return;
             }

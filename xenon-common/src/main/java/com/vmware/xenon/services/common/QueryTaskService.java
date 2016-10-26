@@ -73,8 +73,8 @@ public class QueryTaskService extends StatefulService {
 
         if (initState.documentExpirationTimeMicros == 0) {
             // always set expiration so we do not accumulate tasks
-            initState.documentExpirationTimeMicros = Utils.getNowMicrosUtc()
-                    + TimeUnit.SECONDS.toMicros(DEFAULT_EXPIRATION_SECONDS);
+            initState.documentExpirationTimeMicros = Utils.fromNowMicrosUtc(
+                    TimeUnit.SECONDS.toMicros(DEFAULT_EXPIRATION_SECONDS));
         }
         initState.taskInfo.stage = TaskStage.CREATED;
 
@@ -254,7 +254,7 @@ public class QueryTaskService extends StatefulService {
     }
 
     private void collectBroadcastQueryResults(Map<URI, String> jsonResponses, QueryTask queryTask) {
-        long startTime = Utils.getNowMicrosUtc();
+        long startTimeNanos = System.nanoTime();
 
         List<ServiceDocumentQueryResult> queryResults = new ArrayList<>();
         for (Map.Entry<URI, String> entry : jsonResponses.entrySet()) {
@@ -274,7 +274,8 @@ public class QueryTaskService extends StatefulService {
                     queryTask.querySpec.options);
         } else {
             URI broadcastPageServiceUri = UriUtils.buildUri(this.getHost(), UriUtils.buildUriPath(ServiceUriPaths.CORE,
-                    BroadcastQueryPageService.SELF_LINK_PREFIX, String.valueOf(Utils.getNowMicrosUtc())));
+                            BroadcastQueryPageService.SELF_LINK_PREFIX,
+                            String.valueOf(Utils.getNowMicrosUtc())));
 
             URI forwarderUri = UriUtils.buildForwardToPeerUri(broadcastPageServiceUri, getHost().getId(),
                     ServiceUriPaths.DEFAULT_NODE_SELECTOR, EnumSet.noneOf(ServiceOption.class));
@@ -312,7 +313,8 @@ public class QueryTaskService extends StatefulService {
         }
 
         if (queryResults.size() > 0) {
-            long timeElapsed = Utils.getNowMicrosUtc() - startTime;
+            long timeElapsed = System.nanoTime() - startTimeNanos;
+            timeElapsed /= 1000;
             queryTask.taskInfo.durationMicros = timeElapsed + Collections.max(queryResults.stream().map(r -> r
                     .queryTimeMicros).collect(Collectors.toList()));
         }
@@ -499,7 +501,7 @@ public class QueryTaskService extends StatefulService {
         }
 
         Operation delete = Operation.createDelete(getUri()).setBody(new ServiceDocument());
-        long delta = task.documentExpirationTimeMicros - Utils.getNowMicrosUtc();
+        long delta = task.documentExpirationTimeMicros - Utils.getSystemNowMicrosUtc();
         delta = Math.max(1, delta);
         getHost().schedule(() -> {
             if (task.querySpec.options.contains(QueryOption.CONTINUOUS)) {
@@ -547,7 +549,7 @@ public class QueryTaskService extends StatefulService {
         // Otherwise self patch can fail if the document has expired and clients
         // need a chance to GET the FAILED state.
         long exp = task.documentExpirationTimeMicros - getHost().getMaintenanceIntervalMicros();
-        if (exp < Utils.getNowMicrosUtc()) {
+        if (exp < Utils.getSystemNowMicrosUtc()) {
             failTask(new TimeoutException(), directOp, (o, e) -> {
                 scheduleTaskExpiration(task);
             });

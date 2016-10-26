@@ -36,8 +36,8 @@ class OperationTracker {
         return new ConcurrentSkipListSet<>(new Comparator<Operation>() {
             @Override
             public int compare(Operation o1, Operation o2) {
-                return Long.compare(o1.getExpirationMicrosUtc(),
-                        o2.getExpirationMicrosUtc());
+                return Long.compare(o1.getId(),
+                        o2.getId());
             }
         });
     }

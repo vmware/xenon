@@ -232,7 +232,7 @@ public class QueryTaskClientHelper<T extends ServiceDocument> {
     }
 
     public static long getDefaultQueryExpiration() {
-        return Utils.getNowMicrosUtc() + DEFAULT_EXPIRATION_TIME_IN_MICROS;
+        return Utils.fromNowMicrosUtc(DEFAULT_EXPIRATION_TIME_IN_MICROS);
     }
 
     private void sendQueryRequest() {
