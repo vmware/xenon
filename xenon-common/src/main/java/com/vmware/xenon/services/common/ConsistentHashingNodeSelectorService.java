@@ -483,13 +483,13 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
             return;
         }
 
-        if (!NodeGroupUtils.isNodeGroupAvailable(getHost(), this.cachedGroupState)) {
-            // Optimization: if the node group is not ready do not evaluate each
-            // request. We check for availability in the selectAndForward method as well.
-            return;
-        }
-
         while (!this.pendingRequests.isEmpty()) {
+            if (!NodeGroupUtils.isNodeGroupAvailable(getHost(), this.cachedGroupState)) {
+                // Optimization: if the node group is not ready do not evaluate each
+                // request. We check for availability in the selectAndForward method as well.
+                return;
+            }
+
             SelectAndForwardRequest req = this.pendingRequests.poll();
             if (req == null) {
                 break;
