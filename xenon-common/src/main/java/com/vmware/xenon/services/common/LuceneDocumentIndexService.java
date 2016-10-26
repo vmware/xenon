@@ -293,9 +293,9 @@ public class LuceneDocumentIndexService extends StatelessService {
 
         File directory = new File(new File(getHost().getStorageSandbox()), this.indexDirectory);
         this.privateQueryExecutor = Executors.newFixedThreadPool(QUERY_THREAD_COUNT,
-                r -> new Thread(r, getUri() + "/queries/" + Utils.getNowMicrosUtc()));
+                r -> new Thread(r, getUri() + "/queries/" + Utils.getSystemNowMicrosUtc()));
         this.privateIndexingExecutor = Executors.newFixedThreadPool(UPDATE_THREAD_COUNT,
-                r -> new Thread(r, getSelfLink() + "/updates/" + Utils.getNowMicrosUtc()));
+                r -> new Thread(r, getSelfLink() + "/updates/" + Utils.getSystemNowMicrosUtc()));
 
         initializeInstance();
 
@@ -946,7 +946,7 @@ public class LuceneDocumentIndexService extends StatelessService {
                 this.fieldsToLoadWithExpand);
 
         if (checkAndDeleteExpiratedDocuments(selfLink, s, hits.scoreDocs[0].doc, doc,
-                Utils.getNowMicrosUtc())) {
+                Utils.getSystemNowMicrosUtc())) {
             op.complete();
             return;
         }

@@ -486,8 +486,8 @@ public class TestSubscriptions extends BasicTestCase {
         // with notifications, allowing for notifications to be processed after the next test starts
         ServiceSubscriber sr = createAndStartNotificationTarget(UUID.randomUUID()
                 .toString(), deletesRemainingCount, false, false);
-        sr.documentExpirationTimeMicros = Utils.getNowMicrosUtc()
-                + this.host.getMaintenanceIntervalMicros() * 2;
+        sr.documentExpirationTimeMicros = Utils.fromNowMicrosUtc(
+                this.host.getMaintenanceIntervalMicros() * 2);
         // Subscribe to notifications from every example service; get notified with current state
         subscribeToServices(childUris, sr);
         verifySubscriberCount(childUris, 1);

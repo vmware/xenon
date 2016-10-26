@@ -425,7 +425,7 @@ public class VerificationHost extends ExampleServiceHost {
         }
         this.failure = null;
         this.expectedCompletionCount = c;
-        this.testStartMicros = Utils.getNowMicrosUtc();
+        this.testStartMicros = Utils.getSystemNowMicrosUtc();
         this.context = TestContext.create((int) c, TimeUnit.SECONDS.toMicros(this.timeoutSeconds));
     }
 
@@ -494,7 +494,7 @@ public class VerificationHost extends ExampleServiceHost {
 
         try {
             ctx.await();
-            this.testEndMicros = Utils.getNowMicrosUtc();
+            this.testEndMicros = Utils.getSystemNowMicrosUtc();
             if (this.expectedCompletionCount > 1) {
                 log("Test %s, iterations %d, complete!", testName,
                         this.expectedCompletionCount);
@@ -666,8 +666,8 @@ public class VerificationHost extends ExampleServiceHost {
             String sourceLink) {
 
         if (create.documentExpirationTimeMicros == 0) {
-            create.documentExpirationTimeMicros = Utils.getNowMicrosUtc()
-                    + this.getOperationTimeoutMicros();
+            create.documentExpirationTimeMicros = Utils.fromNowMicrosUtc(
+                    this.getOperationTimeoutMicros());
         }
 
         if (factoryUri == null) {
@@ -718,7 +718,7 @@ public class VerificationHost extends ExampleServiceHost {
         TestContext ctx = this.testCreate(1);
         Operation op = Operation
                 .createPost(null)
-                .setExpiration(Utils.getNowMicrosUtc() + TimeUnit.SECONDS.toMicros(10))
+                .setExpiration(Utils.fromNowMicrosUtc(TimeUnit.SECONDS.toMicros(10)))
                 .setCompletion((o, e) -> {
                     if (e != null) {
                         ctx.failIteration(e);
@@ -806,7 +806,7 @@ public class VerificationHost extends ExampleServiceHost {
 
     public ServiceDocumentQueryResult createAndWaitSimpleDirectQuery(URI hostUri,
             QueryTask.QuerySpecification spec, long documentCount, long expectedResultCount) {
-        long start = Utils.getNowMicrosUtc();
+        long start = System.nanoTime() / 1000;
 
         QueryTask[] tasks = new QueryTask[1];
         waitFor("", () -> {
@@ -828,7 +828,7 @@ public class VerificationHost extends ExampleServiceHost {
                 String.format("Got %d links, expected %d", resultTask.results.documentLinks.size(),
                         expectedResultCount),
                 resultTask.results.documentLinks.size() == expectedResultCount);
-        long end = Utils.getNowMicrosUtc();
+        long end = System.nanoTime() / 1000;
         double delta = (end - start) / 1000000.0;
         double thpt = documentCount / delta;
         log("Document count: %d, Expected match count: %d, Documents / sec: %f",
@@ -886,7 +886,7 @@ public class VerificationHost extends ExampleServiceHost {
             op.setAction(Action.POST).setBody(requestBody);
         }
 
-        op.setExpiration(Utils.getNowMicrosUtc() + getOperationTimeoutMicros());
+        op.setExpiration(Utils.fromNowMicrosUtc(getOperationTimeoutMicros()));
         op.setReferer(getReferer());
         ServiceClient c = client != null ? client : getClient();
         for (int i = 0; i < count; i++) {
@@ -1199,8 +1199,8 @@ public class VerificationHost extends ExampleServiceHost {
         if (properties.contains(TestProperty.SET_EXPIRATION)) {
             // set expiration to the maintenance interval, which should already be very small
             // when the caller sets this test property
-            body.documentExpirationTimeMicros = Utils.getNowMicrosUtc()
-                    + this.getMaintenanceIntervalMicros();
+            body.documentExpirationTimeMicros = Utils.fromNowMicrosUtc(
+                    +this.getMaintenanceIntervalMicros());
         }
 
         final int maxByteCount = 256 * 1024;
@@ -3223,7 +3223,7 @@ public class VerificationHost extends ExampleServiceHost {
     * Returns true of host restarted, false if retry attempts expired or other exceptions where thrown
      */
     public static boolean restartStatefulHost(ServiceHost host) throws Throwable {
-        long exp = Utils.getNowMicrosUtc() + host.getOperationTimeoutMicros();
+        long exp = Utils.fromNowMicrosUtc(host.getOperationTimeoutMicros());
 
         do {
             Thread.sleep(2000);
@@ -3245,7 +3245,7 @@ public class VerificationHost extends ExampleServiceHost {
                 }
                 return false;
             }
-        } while (Utils.getNowMicrosUtc() < exp);
+        } while (Utils.getSystemNowMicrosUtc() < exp);
         return false;
     }
 

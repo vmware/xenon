@@ -81,7 +81,9 @@ public class BasicReusableHostTestCase {
     public void setUpPerMethod() throws Throwable {
         CommandLineArgumentParser.parseFromProperties(this);
         this.host = HOST;
-
+        if (HOST.isStressTest()) {
+            Utils.setTimeDriftThreshold(TimeUnit.SECONDS.toMicros(120));
+        }
         if (this.enableAuth) {
 
             if (!this.host.isAuthorizationEnabled()) {
@@ -144,6 +146,7 @@ public class BasicReusableHostTestCase {
     public static void tearDownOnce() {
         HOST.tearDownInProcessPeers();
         HOST.tearDown();
+        Utils.setTimeDriftThreshold(Utils.DEFAULT_TIME_DRIFT_THRESHOLD_MICROS);
     }
 
     @After

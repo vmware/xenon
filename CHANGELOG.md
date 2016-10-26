@@ -2,6 +2,15 @@
 
 ## 1.1.1-SNAPSHOT
 
+* Add Utils.getSystemNowMicrosUtc() which can be used for expirations or
+  whenever a non unique time value is sufficient
+
+* Add Utils.beforeNow convenience method to check if a absolute time value
+  is in the past
+
+* Throw exception in Utils.getNowMicrosUtc() if detect large drift between wall
+  clock / system time and the xenon sequence value
+
 * Validate service options for Stateless services.
   Using PERSISTENCE, REPLICATION, OWNER_SELECTION, STRICT_UPDATE_CHECKING
   will fail service start.

@@ -48,13 +48,13 @@ public class TestServiceDocument {
 
     public static final Integer SOME_INT_VALUE = 100;
     public static final Integer SOME_OTHER_INT_VALUE = 200;
-    public static final long SOME_EXPIRATION_VALUE = Utils.getNowMicrosUtc();
+    public static final long SOME_EXPIRATION_VALUE = Utils.getSystemNowMicrosUtc();
     public static final String SOME_STRING_VALUE = "some value";
     public static final String SOME_OTHER_STRING_VALUE = "some other value";
     public static final String SOME_IGNORE_VALUE = "ignore me";
     public static final String SOME_OTHER_IGNORE_VALUE = "ignore me please";
     public static final long SOME_OTHER_EXPIRATION_VALUE =
-            Utils.getNowMicrosUtc() + TimeUnit.MINUTES.toMicros(5);
+            Utils.fromNowMicrosUtc(TimeUnit.MINUTES.toMicros(5));
 
     private static class Range {
         public final int from;

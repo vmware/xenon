@@ -148,7 +148,7 @@ public class TaskFactoryService extends FactoryService {
                 stopInDirectTaskSubscription(subscribe, nOp.getUri());
                 return;
             case DELETE:
-                if (Utils.getNowMicrosUtc() >= expiration) {
+                if (Utils.getSystemNowMicrosUtc() >= expiration) {
                     // the task might have expired and self deleted, fail the client post
                     post.setStatusCode(Operation.STATUS_CODE_TIMEOUT)
                             .fail(new IllegalStateException("Task expired"));

@@ -63,7 +63,7 @@ public class Operation implements Cloneable {
         }
 
         public void updateLastUseTime() {
-            this.lastUseTimeMicros = Utils.getNowMicrosUtc();
+            this.lastUseTimeMicros = Utils.getSystemNowMicrosUtc();
         }
 
         public void writeHttpRequest(Object request) {
@@ -76,11 +76,11 @@ public class Operation implements Cloneable {
     }
 
     static class InstrumentationContext {
-        public long handleInvokeTimeMicrosUtc;
-        public long enqueueTimeMicrosUtc;
-        public long documentStoreCompletionTimeMicrosUtc;
-        public long handlerCompletionTime;
-        public long operationCompletionTimeMicrosUtc;
+        public long handleInvokeTimeMicros;
+        public long enqueueTimeMicros;
+        public long documentStoreCompletionTimeMicros;
+        public long handlerCompletionTimeMicros;
+        public long operationCompletionTimeMicros;
     }
 
     /**
@@ -1400,29 +1400,29 @@ public class Operation implements Cloneable {
         return this.options.contains(option);
     }
 
-    void setHandlerInvokeTime(long nowMicrosUtc) {
+    void setHandlerInvokeTime(long nowMicros) {
         allocateInstrumentationContext();
-        this.instrumentationCtx.handleInvokeTimeMicrosUtc = nowMicrosUtc;
+        this.instrumentationCtx.handleInvokeTimeMicros = nowMicros;
     }
 
-    void setEnqueueTime(long nowMicrosUtc) {
+    void setEnqueueTime(long nowMicros) {
         allocateInstrumentationContext();
-        this.instrumentationCtx.enqueueTimeMicrosUtc = nowMicrosUtc;
+        this.instrumentationCtx.enqueueTimeMicros = nowMicros;
     }
 
-    void setHandlerCompletionTime(long nowMicrosUtc) {
+    void setHandlerCompletionTime(long nowMicros) {
         allocateInstrumentationContext();
-        this.instrumentationCtx.handlerCompletionTime = nowMicrosUtc;
+        this.instrumentationCtx.handlerCompletionTimeMicros = nowMicros;
     }
 
-    void setDocumentStoreCompletionTime(long nowMicrosUtc) {
+    void setDocumentStoreCompletionTime(long nowMicros) {
         allocateInstrumentationContext();
-        this.instrumentationCtx.documentStoreCompletionTimeMicrosUtc = nowMicrosUtc;
+        this.instrumentationCtx.documentStoreCompletionTimeMicros = nowMicros;
     }
 
-    void setCompletionTime(long nowMicrosUtc) {
+    void setCompletionTime(long nowMicros) {
         allocateInstrumentationContext();
-        this.instrumentationCtx.operationCompletionTimeMicrosUtc = nowMicrosUtc;
+        this.instrumentationCtx.operationCompletionTimeMicros = nowMicros;
     }
 
     private void allocateInstrumentationContext() {

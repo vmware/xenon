@@ -177,16 +177,17 @@ public class NettyHttpServiceClientTest {
         }
         this.host.setOperationTimeOutMicros(TimeUnit.SECONDS.toMicros(120));
         this.host.setTimeoutSeconds(120);
-        this.host
-                .log(
-                        "Starting HTTP GET stress test against %s, request count: %d, connection limit: %d",
-                        this.testURI, this.requestCount, this.connectionCount);
+        this.host.log(
+                "Starting HTTP GET stress test against %s, request count: %d, connection limit: %d",
+                this.testURI, this.requestCount, this.connectionCount);
+
         this.host.getClient().setConnectionLimitPerHost(this.connectionCount);
         for (int i = 0; i < 3; i++) {
-            long start = Utils.getNowMicrosUtc();
+            long start = System.nanoTime();
             getThirdPartyServerResponse(this.testURI, this.requestCount);
-            long end = Utils.getNowMicrosUtc();
-            double thpt = this.requestCount / ((end - start) / 1000000.0);
+            long end = System.nanoTime();
+            double thpt = this.requestCount
+                    / ((end - start) / (double) TimeUnit.SECONDS.toNanos(1));
             this.host.log("Connection limit: %d, Request count: %d, Requests per second:%f",
                     this.connectionCount, this.requestCount, thpt);
             System.gc();
@@ -205,13 +206,13 @@ public class NettyHttpServiceClientTest {
                         "Starting HTTP POST stress test against %s, request count: %d, connection limit: %d",
                         this.testURI, this.requestCount, this.connectionCount);
         this.host.getClient().setConnectionLimitPerHost(this.connectionCount);
-        long start = Utils.getNowMicrosUtc();
+        long start = System.nanoTime();
         ExampleServiceState body = new ExampleServiceState();
         body.name = UUID.randomUUID().toString();
         this.host.sendHttpRequest(this.host.getClient(), this.testURI, Utils.toJson(body),
                 this.requestCount);
-        long end = Utils.getNowMicrosUtc();
-        double thpt = this.requestCount / ((end - start) / 1000000.0);
+        long end = System.nanoTime();
+        double thpt = this.requestCount / ((end - start) / (double) TimeUnit.SECONDS.toNanos(1));
         this.host.log("Connection limit: %d, Request count: %d, Requests per second:%f",
                 this.connectionCount, this.requestCount, thpt);
     }
@@ -472,7 +473,7 @@ public class NettyHttpServiceClientTest {
 
     @Test
     public void putSingleNoQueueing() throws Throwable {
-        long s = Utils.getNowMicrosUtc();
+        long s = System.nanoTime() / 1000;
         this.host.waitForServiceAvailable(ExampleService.FACTORY_LINK);
 
         URI uriToMissingService = UriUtils.buildUri(this.host, ExampleService.FACTORY_LINK
@@ -502,7 +503,7 @@ public class NettyHttpServiceClientTest {
 
         this.host.send(put);
         this.host.testWait();
-        long e = Utils.getNowMicrosUtc();
+        long e = System.nanoTime() / 1000;
 
         if (e - s > this.host.getOperationTimeoutMicros() / 2) {
             throw new TimeoutException("Request got queued, it should have bypassed queuing");
@@ -516,7 +517,7 @@ public class NettyHttpServiceClientTest {
             nonXenonLookingClient = NettyHttpServiceClient.create(UUID.randomUUID().toString(),
                     Executors.newFixedThreadPool(1), Executors.newScheduledThreadPool(1));
             nonXenonLookingClient.start();
-            s = Utils.getNowMicrosUtc();
+            s = System.nanoTime() / 1000;
             // try a JAVA HTTP client and verify we do not queue.
             this.host.sendWithJavaClient(uriToMissingService,
                     Operation.MEDIA_TYPE_APPLICATION_JSON,
@@ -530,14 +531,14 @@ public class NettyHttpServiceClientTest {
                     .createPut(
                             uriToMissingService)
                     .setBody(this.host.buildMinimalTestState())
-                    .setExpiration(Utils.getNowMicrosUtc() + TimeUnit.SECONDS.toMicros(1000))
+                    .setExpiration(Utils.fromNowMicrosUtc(TimeUnit.SECONDS.toMicros(1000)))
                     .setReferer(this.host.getReferer())
                     .forceRemote()
                     .setCompletion(this.host.getExpectedFailureCompletion());
             nonXenonLookingClient.send(put);
             this.host.testWait();
 
-            e = Utils.getNowMicrosUtc();
+            e = System.nanoTime() / 1000;
             if (e - s > this.host.getOperationTimeoutMicros() / 2) {
                 throw new TimeoutException("Request got queued, it should have bypassed queuing");
             }
@@ -972,8 +973,8 @@ public class NettyHttpServiceClientTest {
 
         for (int i = 0; i < c; i++) {
             inFlight.incrementAndGet();
-            this.host.send(get.setExpiration(this.host.getOperationTimeoutMicros()
-                    + Utils.getNowMicrosUtc()));
+            this.host.send(get.setExpiration(Utils.fromNowMicrosUtc(
+                    this.host.getOperationTimeoutMicros())));
             if (inFlight.get() < concurrencyFactor) {
                 continue;
             }

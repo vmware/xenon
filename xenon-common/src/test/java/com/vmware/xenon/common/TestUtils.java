@@ -106,12 +106,24 @@ public class TestUtils {
     public void buildKind() {
         CommandLineArgumentParser.parseFromProperties(this);
         String kind = Utils.buildKind(ExampleServiceState.class);
-        long s = Utils.getNowMicrosUtc();
+        long s = System.nanoTime() / 1000;
         for (int i = 0; i < this.iterationCount; i++) {
             String k = Utils.buildKind(ExampleServiceState.class);
             assertTrue(kind.hashCode() == k.hashCode());
         }
-        long e = Utils.getNowMicrosUtc();
+        long e = System.nanoTime() / 1000;
+        double thpt = this.iterationCount / ((e - s) / 1000000.0);
+        Logger.getAnonymousLogger().info("Throughput: " + thpt);
+    }
+
+    @Test
+    public void getSystemNowMicrosUtc() {
+        CommandLineArgumentParser.parseFromProperties(this);
+        long s = System.nanoTime() / 1000;
+        for (int i = 0; i < this.iterationCount; i++) {
+            Utils.getSystemNowMicrosUtc();
+        }
+        long e = System.nanoTime() / 1000;
         double thpt = this.iterationCount / ((e - s) / 1000000.0);
         Logger.getAnonymousLogger().info("Throughput: " + thpt);
     }
@@ -147,7 +159,7 @@ public class TestUtils {
         ServiceDocument s = buildCloneOrSerializationObject();
 
         int byteCount = 0;
-        long start = Utils.getNowMicrosUtc();
+        long start = System.nanoTime() / 1000;
         for (int i = 0; i < count; i++) {
             byte[] content = Utils.getBuffer(1024);
             byteCount = Utils.toBytes(s, content, 0);
@@ -155,7 +167,7 @@ public class TestUtils {
             assertTrue(content.length >= expectedByteCount);
         }
 
-        long end = Utils.getNowMicrosUtc();
+        long end = System.nanoTime() / 1000;
         double thpt = end - start;
         thpt /= 1000000;
         thpt = count / thpt;
@@ -188,10 +200,10 @@ public class TestUtils {
     public void isWithinTimeComparisonEpsilon() {
         Utils.setTimeComparisonEpsilonMicros(TimeUnit.SECONDS.toMicros(10));
         // check a value within about a millisecond from now
-        long l = Utils.getNowMicrosUtc() + 1000;
+        long l = Utils.getSystemNowMicrosUtc() + 1000;
         assertTrue(Utils.isWithinTimeComparisonEpsilon(l));
         // check a value days from now
-        l = Utils.getNowMicrosUtc() + TimeUnit.DAYS.toMicros(2);
+        l = Utils.getSystemNowMicrosUtc() + TimeUnit.DAYS.toMicros(2);
         assertFalse(Utils.isWithinTimeComparisonEpsilon(l));
     }
 
@@ -294,14 +306,14 @@ public class TestUtils {
         int count = 100000;
         Object s = buildCloneOrSerializationObject();
 
-        long start = Utils.getNowMicrosUtc();
+        long start = System.nanoTime() / 1000;
         for (int i = 0; i < count; i++) {
             s = Utils.cloneObject(s);
             Object foo = s;
             foo = Utils.cloneObject(foo);
         }
 
-        long end = Utils.getNowMicrosUtc();
+        long end = System.nanoTime() / 1000;
         double thpt = end - start;
         thpt /= 1000000;
         thpt = count / thpt;
@@ -436,7 +448,7 @@ public class TestUtils {
             ServiceDocument original)
             throws Throwable {
 
-        long s = Utils.getNowMicrosUtc();
+        long s = System.nanoTime() / 1000;
         long length = 0;
 
         for (int i = 0; i < count; i++) {
@@ -452,7 +464,7 @@ public class TestUtils {
                 Utils.fromJson(serializedDocument, original.getClass());
             }
         }
-        long e = Utils.getNowMicrosUtc();
+        long e = System.nanoTime() / 1000;
         double throughput = (e - s) / (double) TimeUnit.SECONDS.toMicros(1);
         throughput = count / throughput;
         Logger.getAnonymousLogger().info(

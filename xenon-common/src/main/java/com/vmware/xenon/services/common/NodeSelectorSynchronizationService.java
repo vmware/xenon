@@ -141,7 +141,8 @@ public class NodeSelectorSynchronizationService extends StatelessService {
 
         Operation remoteGet = Operation.createGet(localQueryUri)
                 .setReferer(getUri())
-                .setExpiration(Utils.getNowMicrosUtc() + NodeGroupService.PEER_REQUEST_TIMEOUT_MICROS)
+                .setExpiration(
+                        Utils.fromNowMicrosUtc(NodeGroupService.PEER_REQUEST_TIMEOUT_MICROS))
                 .setCompletion((o, e) -> {
                     if (e != null) {
                         post.fail(e);
@@ -395,7 +396,7 @@ public class NodeSelectorSynchronizationService extends StatelessService {
         Operation checkGet = Operation.createGet(UriUtils.buildUri(peerOp.getUri(), link))
                 .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_NO_FORWARDING)
                 .setConnectionSharing(true)
-                .setExpiration(Utils.getNowMicrosUtc() + TimeUnit.SECONDS.toMicros(2))
+                .setExpiration(Utils.fromNowMicrosUtc(TimeUnit.SECONDS.toMicros(2)))
                 .setCompletion((o, e) -> {
                     if (e == null) {
                         logInfo("Skipping %s , state identical with best state", o.getUri());
@@ -417,7 +418,8 @@ public class NodeSelectorSynchronizationService extends StatelessService {
                 .setCompletion(c);
 
         peerOp.setRetryCount(0);
-        peerOp.setExpiration(Utils.getNowMicrosUtc() + NodeGroupService.PEER_REQUEST_TIMEOUT_MICROS);
+        peerOp.setExpiration(
+                Utils.fromNowMicrosUtc(NodeGroupService.PEER_REQUEST_TIMEOUT_MICROS));
 
         peerOp.toggleOption(OperationOption.CONNECTION_SHARING, true);
 

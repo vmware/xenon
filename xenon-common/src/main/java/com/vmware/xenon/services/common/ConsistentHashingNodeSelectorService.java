@@ -20,7 +20,6 @@ import java.util.TreeMap;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ConcurrentSkipListMap;
-import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 
@@ -448,11 +447,11 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
             return true;
         }
 
-        if (op.getExpirationMicrosUtc() < Utils.getNowMicrosUtc()) {
+        if (op.getExpirationMicrosUtc() < Utils.getSystemNowMicrosUtc()) {
             // operation has expired
-            op.fail(new TimeoutException(String.format(
+            op.fail(new CancellationException(String.format(
                     "Operation already expired, will not queue. Exp:%d, now:%d",
-                    op.getExpirationMicrosUtc(), Utils.getNowMicrosUtc())));
+                    op.getExpirationMicrosUtc(), Utils.getSystemNowMicrosUtc())));
             return true;
         }
 
@@ -483,22 +482,22 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
             return;
         }
 
-        if (!NodeGroupUtils.isNodeGroupAvailable(getHost(), this.cachedGroupState)) {
-            // Optimization: if the node group is not ready do not evaluate each
-            // request. We check for availability in the selectAndForward method as well.
-            return;
-        }
-
         while (!this.pendingRequests.isEmpty()) {
+            if (!NodeGroupUtils.isNodeGroupAvailable(getHost(), this.cachedGroupState)) {
+                // Optimization: if the node group is not ready do not evaluate each
+                // request. We check for availability in the selectAndForward method as well.
+                return;
+            }
+
             SelectAndForwardRequest req = this.pendingRequests.poll();
             if (req == null) {
                 break;
             }
+
             if (getHost().isStopping()) {
                 req.associatedOp.fail(new CancellationException());
                 continue;
             }
-
             selectAndForward(req, req.associatedOp, this.cachedGroupState);
         }
 
@@ -544,7 +543,8 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
             updateCachedNodeGroupState(ngs, null);
             Operation op = Operation.createPost(null)
                     .setReferer(getUri())
-                    .setExpiration(Utils.getNowMicrosUtc() + getHost().getOperationTimeoutMicros());
+                    .setExpiration(
+                            Utils.fromNowMicrosUtc(getHost().getOperationTimeoutMicros()));
             NodeGroupUtils
                     .checkConvergence(
                             getHost(),

@@ -192,6 +192,7 @@ public class TestLuceneDocumentIndexService {
                 this.host.setStressTest(this.host.isStressTest);
                 this.host.setMaintenanceIntervalMicros(
                         ServiceHostState.DEFAULT_MAINTENANCE_INTERVAL_MICROS);
+                Utils.setTimeDriftThreshold(TimeUnit.SECONDS.toMicros(120));
             } else {
                 this.indexService.toggleOption(ServiceOption.INSTRUMENTATION, true);
                 this.host.setMaintenanceIntervalMicros(TimeUnit.MILLISECONDS
@@ -225,6 +226,7 @@ public class TestLuceneDocumentIndexService {
 
     @After
     public void tearDown() throws Exception {
+        Utils.setTimeDriftThreshold(Utils.DEFAULT_TIME_DRIFT_THRESHOLD_MICROS);
         if (this.host == null) {
             return;
         }
@@ -613,7 +615,7 @@ public class TestLuceneDocumentIndexService {
 
     void verifyIdempotentFactoryAfterHostRestart(VerificationHost h, ServiceHostState initialState,
             List<URI> exampleURIs, Map<URI, ExampleServiceState> beforeState) throws Throwable {
-        long start = Utils.getNowMicrosUtc();
+        long start = System.nanoTime() / 1000;
 
         this.host.toggleServiceOptions(h.getDocumentIndexServiceUri(),
                 EnumSet.of(ServiceOption.INSTRUMENTATION),
@@ -670,7 +672,7 @@ public class TestLuceneDocumentIndexService {
             return false;
         });
 
-        long end = Utils.getNowMicrosUtc();
+        long end = System.nanoTime() / 1000;
 
         this.host.log("Example Factory available %d micros after host start", end - start);
 
@@ -993,7 +995,8 @@ public class TestLuceneDocumentIndexService {
         serviceToDelete = childUris.remove(0);
         ExampleServiceState body = new ExampleServiceState();
         body.name = UUID.randomUUID().toString();
-        body.documentExpirationTimeMicros = Utils.getNowMicrosUtc() + TimeUnit.SECONDS.toMicros(2);
+        body.documentExpirationTimeMicros = Utils
+                .fromNowMicrosUtc(TimeUnit.SECONDS.toMicros(2));
         Operation patch = Operation.createPatch(serviceToDelete)
                 .setBody(body)
                 .setCompletion(this.host.getCompletion());
@@ -1045,7 +1048,7 @@ public class TestLuceneDocumentIndexService {
         // verify request gets queued, for a ODL service, not YET created
         // attempt to on demand load a service that *never* existed
         body = new ExampleServiceState();
-        body.documentSelfLink = UUID.randomUUID().toString() + Utils.getNowMicrosUtc();
+        body.documentSelfLink = Utils.buildUUID(this.host.getIdHash());
         body.name = "queue-for-avail-" + UUID.randomUUID().toString();
         URI yetToBeCreatedChildUri = UriUtils.extendUri(factoryUri, body.documentSelfLink);
 
@@ -1148,7 +1151,7 @@ public class TestLuceneDocumentIndexService {
         // prefix query, while at the same time issuing updates to the existing services and
         // creating new services. Verify that that the results from the query are always the
         // same
-        long endTime = Utils.getNowMicrosUtc() + TimeUnit.SECONDS.toMicros(1);
+        long endTime = Utils.getSystemNowMicrosUtc() + TimeUnit.SECONDS.toMicros(1);
         Throwable[] failure = new Throwable[1];
 
         AtomicInteger inFlightRequests = new AtomicInteger();
@@ -1205,10 +1208,11 @@ public class TestLuceneDocumentIndexService {
                 throw failure[0];
             }
 
+            long i = 0;
             for (URI u : services.keySet()) {
                 ExampleServiceState s = new ExampleServiceState();
                 s.name = initialServiceNameValue;
-                s.counter = Utils.getNowMicrosUtc();
+                s.counter = i++;
                 Operation patchState = Operation.createPatch(u).setBody(s)
                         .setCompletion((o, e) -> {
                             inFlightRequests.decrementAndGet();
@@ -1227,7 +1231,7 @@ public class TestLuceneDocumentIndexService {
             // we need a small sleep otherwise we will have millions of concurrent requests issued, even within the span of
             // a few seconds (and we will end up waiting for a while for all of them to complete)
             Thread.sleep(50);
-        } while (endTime > Utils.getNowMicrosUtc());
+        } while (endTime > Utils.getSystemNowMicrosUtc());
 
         Date exp = this.host.getTestExpiration();
         while (inFlightRequests.get() > 0) {
@@ -1437,9 +1441,9 @@ public class TestLuceneDocumentIndexService {
                             0,
                             OperationContext.getAuthorizationContext().getClaims().getSubject(),
                             this.serviceCount);
-                    long start = Utils.getNowMicrosUtc();
+                    long start = System.nanoTime();
                     doThroughputPost(false, factoryUri);
-                    long end = Utils.getNowMicrosUtc();
+                    long end = System.nanoTime();
                     durationPerSubject.put(userLink, end - start);
                     ctx.complete();
                 } catch (Throwable e) {
@@ -1465,7 +1469,7 @@ public class TestLuceneDocumentIndexService {
 
         // Until we confirm correctness, do not assert on durations. this will be enabled soon
         for (Entry<String, Long> e : durationPerSubject.entrySet()) {
-            this.host.log("Subject: %s, duration(micros): %d", e.getKey(), e.getValue());
+            this.host.log("Subject: %s, duration(micros): %d", e.getKey(), e.getValue() / 1000);
         }
     }
 
@@ -1520,7 +1524,7 @@ public class TestLuceneDocumentIndexService {
 
             Operation createPost = Operation.createPost(factoryUri);
             ExampleServiceState body = new ExampleServiceState();
-            body.name = Utils.getNowMicrosUtc() + "";
+            body.name = i + "";
             body.id = i + "";
             body.counter = (long) i;
             createPost.setBody(body);
@@ -1646,7 +1650,7 @@ public class TestLuceneDocumentIndexService {
     public void deleteWithExpirationAndPostWithPragmaForceUpdate() throws Throwable {
         setUpHost(false);
         URI factoryUri = UriUtils.buildFactoryUri(this.host, ExampleService.class);
-        long originalExpMicros = Utils.getNowMicrosUtc() + TimeUnit.MINUTES.toMicros(1);
+        long originalExpMicros = Utils.getSystemNowMicrosUtc() + TimeUnit.MINUTES.toMicros(1);
         Consumer<Operation> setBody = (o) -> {
             ExampleServiceState body = new ExampleServiceState();
             body.name = UUID.randomUUID().toString();
@@ -1702,7 +1706,8 @@ public class TestLuceneDocumentIndexService {
         }
 
         // recreate the documents, use same self links, set for short expiration in future,
-        long recreateExpMicros = Utils.getNowMicrosUtc() + this.host.getMaintenanceIntervalMicros();
+        long recreateExpMicros = Utils.getSystemNowMicrosUtc()
+                + this.host.getMaintenanceIntervalMicros();
         Iterator<URI> uris = services.keySet().iterator();
         Consumer<Operation> setBodyReUseLinks = (o) -> {
             o.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_FORCE_INDEX_UPDATE);
@@ -1792,8 +1797,8 @@ public class TestLuceneDocumentIndexService {
             ExampleServiceState s = new ExampleServiceState();
             s.name = UUID.randomUUID().toString();
             // set a very long expiration
-            s.documentExpirationTimeMicros = Utils.getNowMicrosUtc()
-                    + TimeUnit.DAYS.toMicros(1);
+            s.documentExpirationTimeMicros = Utils.fromNowMicrosUtc(
+                    TimeUnit.DAYS.toMicros(1));
             names.add(s.name);
             this.host.send(Operation.createPatch(u).setBody(s)
                     .setCompletion(this.host.getCompletion()));
@@ -1923,8 +1928,8 @@ public class TestLuceneDocumentIndexService {
         Consumer<Operation> maintExpSetBody = (o) -> {
             ExampleServiceState body = new ExampleServiceState();
             body.name = UUID.randomUUID().toString();
-            body.documentExpirationTimeMicros = Utils.getNowMicrosUtc()
-                    + this.host.getMaintenanceIntervalMicros();
+            body.documentExpirationTimeMicros = Utils.fromNowMicrosUtc(
+                    this.host.getMaintenanceIntervalMicros());
             o.setBody(body);
         };
 
@@ -2043,7 +2048,7 @@ public class TestLuceneDocumentIndexService {
 
         // send a GET immediately and expect either failure or success, we are doing it
         // to ensure it actually completes
-        boolean sendDelete = expTime != 0 && expTime < Utils.getNowMicrosUtc();
+        boolean sendDelete = expTime != 0 && expTime < Utils.getSystemNowMicrosUtc();
         int count = services.size();
         if (sendDelete) {
             count *= 2;
@@ -2073,8 +2078,8 @@ public class TestLuceneDocumentIndexService {
             throws Throwable, InterruptedException {
         ServiceDocumentQueryResult rsp = null;
 
-        long start = Utils.getNowMicrosUtc();
-        while (Utils.getNowMicrosUtc() - start < this.host.getOperationTimeoutMicros()) {
+        long start = Utils.getSystemNowMicrosUtc();
+        while (Utils.getSystemNowMicrosUtc() - start < this.host.getOperationTimeoutMicros()) {
             int actualCount = 0;
             rsp = this.host.getFactoryState(factoryUri);
             for (String link : rsp.documentLinks) {
@@ -2198,7 +2203,8 @@ public class TestLuceneDocumentIndexService {
     }
 
     private void doServiceVersionGroomingValidation(EnumSet<ServiceOption> caps) throws Throwable {
-        long end = Utils.getNowMicrosUtc() + TimeUnit.SECONDS.toMicros(this.testDurationSeconds);
+        long end = Utils.getSystemNowMicrosUtc()
+                + TimeUnit.SECONDS.toMicros(this.testDurationSeconds);
         final long offset = 10;
 
         do {
@@ -2240,7 +2246,7 @@ public class TestLuceneDocumentIndexService {
             for (int i = 0; i < count; i++) {
                 for (URI u : serviceUrisWithCustomRetention) {
                     ExampleServiceState st = new ExampleServiceState();
-                    st.name = Utils.getNowMicrosUtc() + "";
+                    st.name = i + "";
                     this.host.send(Operation.createPut(u)
                             .setBody(st)
                             .setCompletion(this.host.getCompletion()));
@@ -2267,7 +2273,7 @@ public class TestLuceneDocumentIndexService {
                         .setCompletion(this.host.getCompletion()));
             }
             this.host.testWait();
-        } while (Utils.getNowMicrosUtc() < end);
+        } while (Utils.getSystemNowMicrosUtc() < end);
     }
 
     private void verifyVersionRetention(

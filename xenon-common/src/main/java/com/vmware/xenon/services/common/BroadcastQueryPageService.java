@@ -50,7 +50,7 @@ public class BroadcastQueryPageService extends StatelessService {
     public void handleStart(Operation post) {
         ServiceDocument initState = post.getBody(ServiceDocument.class);
 
-        long interval = initState.documentExpirationTimeMicros - Utils.getNowMicrosUtc();
+        long interval = initState.documentExpirationTimeMicros - Utils.getSystemNowMicrosUtc();
         if (interval < 0) {
             logWarning("Task expiration is in the past, extending it");
             interval = TimeUnit.SECONDS.toMicros(getHost().getMaintenanceIntervalMicros() * 2);
@@ -76,7 +76,8 @@ public class BroadcastQueryPageService extends StatelessService {
                     .createGet(UriUtils.buildUri(this.getHost(), indexLink))
                     .transferRefererFrom(get)
                     .setExpiration(
-                            Utils.getNowMicrosUtc() + getHost().getOperationTimeoutMicros() / 3)
+                            Utils.fromNowMicrosUtc(
+                                    getHost().getOperationTimeoutMicros() / 3))
                     .setCompletion((o, e) -> {
                         if (e != null) {
                             get.fail(e);
@@ -147,7 +148,8 @@ public class BroadcastQueryPageService extends StatelessService {
 
     private String startNewService(List<String> pageLinks) {
         URI broadcastPageServiceUri = UriUtils.buildUri(this.getHost(), UriUtils.buildUriPath(ServiceUriPaths.CORE,
-                BroadcastQueryPageService.SELF_LINK_PREFIX, String.valueOf(Utils.getNowMicrosUtc())));
+                        BroadcastQueryPageService.SELF_LINK_PREFIX,
+                        String.valueOf(Utils.getNowMicrosUtc())));
 
         URI forwarderUri = UriUtils.buildForwardToPeerUri(broadcastPageServiceUri, getHost().getId(),
                 ServiceUriPaths.DEFAULT_NODE_SELECTOR, EnumSet.noneOf(ServiceOption.class));
