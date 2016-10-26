@@ -94,7 +94,7 @@ public class TestSimpleTransactionService extends BasicReusableHostTestCase {
     @Before
     public void setUp() throws Exception {
         try {
-            this.baseAccountId = Utils.getNowMicrosUtc();
+            this.baseAccountId = Utils.getNowMicrosUtc1();
             setUpHostWithAdditionalServices(this.host);
             this.defaultHost = this.host;
         } catch (Throwable e) {
@@ -206,7 +206,7 @@ public class TestSimpleTransactionService extends BasicReusableHostTestCase {
         commit(txid);
         // verify that two accounts are created (one as part of the transaction and one without)
         countAccounts(null, 2);
-        this.baseAccountId = Utils.getNowMicrosUtc();
+        this.baseAccountId = Utils.getNowMicrosUtc1();
         txid = newTransaction();
         postOp = Operation.createPost(UriUtils.buildUri(this.defaultHost, servicePath));
         postOp.setTransactionId(txid);
@@ -463,7 +463,7 @@ public class TestSimpleTransactionService extends BasicReusableHostTestCase {
     @Test
     public void testClientFailureMidTransaction() throws Throwable {
         // create accounts in a new transaction, do not commit
-        long transactionExpirationTimeMicros = Utils.getNowMicrosUtc()
+        long transactionExpirationTimeMicros = Utils.getNowMicrosUtc1()
                 + TimeUnit.SECONDS.toMicros(1);
         String txid = newTransaction(transactionExpirationTimeMicros);
         createAccounts(txid, this.accountCount, 0.0);

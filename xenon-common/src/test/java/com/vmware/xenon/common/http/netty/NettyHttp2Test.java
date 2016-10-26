@@ -234,7 +234,7 @@ public class NettyHttp2Test {
                             this.host.failIteration(e);
                             return;
                         }
-                        completionTimes[operationId] = Utils.getNowMicrosUtc();
+                        completionTimes[operationId] = Utils.getNowMicrosUtc1();
                         this.host.completeIteration();
                     });
             this.host.send(getRequest);

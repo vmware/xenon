@@ -106,12 +106,12 @@ public class TestUtils {
     public void buildKind() {
         CommandLineArgumentParser.parseFromProperties(this);
         String kind = Utils.buildKind(ExampleServiceState.class);
-        long s = Utils.getNowMicrosUtc();
+        long s = System.nanoTime() / 1000;
         for (int i = 0; i < this.iterationCount; i++) {
             String k = Utils.buildKind(ExampleServiceState.class);
             assertTrue(kind.hashCode() == k.hashCode());
         }
-        long e = Utils.getNowMicrosUtc();
+        long e = System.nanoTime() / 1000;
         double thpt = this.iterationCount / ((e - s) / 1000000.0);
         Logger.getAnonymousLogger().info("Throughput: " + thpt);
     }
@@ -147,7 +147,7 @@ public class TestUtils {
         ServiceDocument s = buildCloneOrSerializationObject();
 
         int byteCount = 0;
-        long start = Utils.getNowMicrosUtc();
+        long start = System.nanoTime() / 1000;
         for (int i = 0; i < count; i++) {
             byte[] content = Utils.getBuffer(1024);
             byteCount = Utils.toBytes(s, content, 0);
@@ -155,7 +155,7 @@ public class TestUtils {
             assertTrue(content.length >= expectedByteCount);
         }
 
-        long end = Utils.getNowMicrosUtc();
+        long end = System.nanoTime() / 1000;
         double thpt = end - start;
         thpt /= 1000000;
         thpt = count / thpt;
@@ -188,10 +188,10 @@ public class TestUtils {
     public void isWithinTimeComparisonEpsilon() {
         Utils.setTimeComparisonEpsilonMicros(TimeUnit.SECONDS.toMicros(10));
         // check a value within about a millisecond from now
-        long l = Utils.getNowMicrosUtc() + 1000;
+        long l = Utils.getSystemNowMicrosUtc() + 1000;
         assertTrue(Utils.isWithinTimeComparisonEpsilon(l));
         // check a value days from now
-        l = Utils.getNowMicrosUtc() + TimeUnit.DAYS.toMicros(2);
+        l = Utils.getSystemNowMicrosUtc() + TimeUnit.DAYS.toMicros(2);
         assertFalse(Utils.isWithinTimeComparisonEpsilon(l));
     }
 
@@ -240,7 +240,7 @@ public class TestUtils {
 
             ExampleServiceState st = new ExampleServiceState();
             st.id = UUID.randomUUID().toString();
-            st.counter = Utils.getNowMicrosUtc();
+            st.counter = Utils.getNowMicrosUtc1();
             st.documentSelfLink = st.id;
             st.keyValues = new HashMap<>();
             st.keyValues.put(st.id, st.id);
@@ -294,14 +294,14 @@ public class TestUtils {
         int count = 100000;
         Object s = buildCloneOrSerializationObject();
 
-        long start = Utils.getNowMicrosUtc();
+        long start = System.nanoTime() / 1000;
         for (int i = 0; i < count; i++) {
             s = Utils.cloneObject(s);
             Object foo = s;
             foo = Utils.cloneObject(foo);
         }
 
-        long end = Utils.getNowMicrosUtc();
+        long end = System.nanoTime() / 1000;
         double thpt = end - start;
         thpt /= 1000000;
         thpt = count / thpt;
@@ -361,10 +361,10 @@ public class TestUtils {
         document.documentKind = Utils.buildKind(document.getClass());
         document.documentSelfLink = UUID.randomUUID().toString();
         document.documentVersion = 0;
-        document.documentExpirationTimeMicros = Utils.getNowMicrosUtc();
+        document.documentExpirationTimeMicros = Utils.getNowMicrosUtc1();
         document.documentSourceLink = UUID.randomUUID().toString();
         document.documentOwner = UUID.randomUUID().toString();
-        document.documentUpdateTimeMicros = Utils.getNowMicrosUtc();
+        document.documentUpdateTimeMicros = Utils.getNowMicrosUtc1();
         document.documentAuthPrincipalLink = UUID.randomUUID().toString();
         document.documentUpdateAction = UUID.randomUUID().toString();
         document.mapOfStrings = new LinkedHashMap<String, String>();
@@ -386,10 +386,10 @@ public class TestUtils {
         document.documentOwner = UUID.randomUUID().toString();
         assertTrue(ServiceDocument.equals(desc, original, document));
 
-        document.documentUpdateTimeMicros = Utils.getNowMicrosUtc();
+        document.documentUpdateTimeMicros = Utils.getNowMicrosUtc1();
         assertTrue(ServiceDocument.equals(desc, original, document));
 
-        document.documentVersion = Utils.getNowMicrosUtc();
+        document.documentVersion = Utils.getNowMicrosUtc1();
         assertTrue(ServiceDocument.equals(desc, original, document));
 
         document.documentUpdateAction = UUID.randomUUID().toString();
@@ -400,12 +400,12 @@ public class TestUtils {
 
         // we have marked one of the derived fields as EXCLUDE from signature, verify that changing
         // it does not change the signature
-        document.ignoredStringValue = Utils.getNowMicrosUtc() + "";
+        document.ignoredStringValue = Utils.getNowMicrosUtc1() + "";
         assertTrue(ServiceDocument.equals(desc, original, document));
 
         // now change derived fields and expect the signature to change
         QueryValidationServiceState changed = Utils.clone(original);
-        changed.documentExpirationTimeMicros = Utils.getNowMicrosUtc();
+        changed.documentExpirationTimeMicros = Utils.getNowMicrosUtc1();
         assertTrue(false == ServiceDocument.equals(desc, original, changed));
 
         changed = Utils.clone(original);
@@ -436,7 +436,7 @@ public class TestUtils {
             ServiceDocument original)
             throws Throwable {
 
-        long s = Utils.getNowMicrosUtc();
+        long s = System.nanoTime() / 1000;
         long length = 0;
 
         for (int i = 0; i < count; i++) {
@@ -452,7 +452,7 @@ public class TestUtils {
                 Utils.fromJson(serializedDocument, original.getClass());
             }
         }
-        long e = Utils.getNowMicrosUtc();
+        long e = System.nanoTime() / 1000;
         double throughput = (e - s) / (double) TimeUnit.SECONDS.toMicros(1);
         throughput = count / throughput;
         Logger.getAnonymousLogger().info(
@@ -545,7 +545,7 @@ public class TestUtils {
 
                     long max = 0;
                     for (int i = 0; i < NUM_ITERATIONS; i++) {
-                        long now = Utils.getNowMicrosUtc();
+                        long now = Utils.getNowMicrosUtc1();
                         if (now < max) {
                             e[0] = new Exception("Time moved backwards:" + now + " < " + max);
                             return;

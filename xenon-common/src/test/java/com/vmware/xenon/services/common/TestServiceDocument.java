@@ -37,16 +37,16 @@ public class TestServiceDocument {
         ServiceDocument one = new ServiceDocument();
         one.documentAuthPrincipalLink = UUID.randomUUID().toString();
         one.documentDescription = null;
-        one.documentEpoch = Utils.getNowMicrosUtc();
-        one.documentExpirationTimeMicros = Utils.getNowMicrosUtc();
+        one.documentEpoch = Utils.getNowMicrosUtc1();
+        one.documentExpirationTimeMicros = Utils.getNowMicrosUtc1();
         one.documentKind = UUID.randomUUID().toString();
         one.documentOwner = UUID.randomUUID().toString();
         one.documentSelfLink = UUID.randomUUID().toString();
         one.documentSourceLink = UUID.randomUUID().toString();
         one.documentTransactionId = UUID.randomUUID().toString();
         one.documentUpdateAction = UUID.randomUUID().toString();
-        one.documentUpdateTimeMicros = Utils.getNowMicrosUtc();
-        one.documentVersion = Utils.getNowMicrosUtc();
+        one.documentUpdateTimeMicros = Utils.getNowMicrosUtc1();
+        one.documentVersion = Utils.getNowMicrosUtc1();
 
         ServiceDocument two = new ServiceDocument();
         one.copyTo(two);
@@ -122,7 +122,7 @@ public class TestServiceDocument {
         // different versions, equal time, B should be preferred
         stateA.documentVersion = 1;
         stateB.documentVersion = 2;
-        stateA.documentUpdateTimeMicros = Utils.getNowMicrosUtc();
+        stateA.documentUpdateTimeMicros = Utils.getNowMicrosUtc1();
         stateB.documentUpdateTimeMicros = stateA.documentUpdateTimeMicros;
 
         EnumSet<DocumentRelationship> results = ServiceDocument.compare(stateA, stateB,
@@ -135,7 +135,7 @@ public class TestServiceDocument {
         // equal versions, equal time, neither is preferred
         stateA.documentVersion = 1;
         stateB.documentVersion = 1;
-        stateA.documentUpdateTimeMicros = Utils.getNowMicrosUtc();
+        stateA.documentUpdateTimeMicros = Utils.getNowMicrosUtc1();
         stateB.documentUpdateTimeMicros = stateA.documentUpdateTimeMicros;
 
         results = ServiceDocument.compare(stateA, stateB,
@@ -149,8 +149,8 @@ public class TestServiceDocument {
         // A higher version, older time, A is preferred
         stateA.documentVersion = 10;
         stateB.documentVersion = 1;
-        stateA.documentUpdateTimeMicros = Utils.getNowMicrosUtc();
-        stateB.documentUpdateTimeMicros = Utils.getNowMicrosUtc()
+        stateA.documentUpdateTimeMicros = Utils.getNowMicrosUtc1();
+        stateB.documentUpdateTimeMicros = Utils.getNowMicrosUtc1()
                 + Utils.getTimeComparisonEpsilonMicros() * 2;
 
         results = ServiceDocument.compare(stateA, stateB,
@@ -165,8 +165,8 @@ public class TestServiceDocument {
         // equal versions, higher time outside epsilon, A is preferred
         stateA.documentVersion = 1;
         stateB.documentVersion = 1;
-        stateB.documentUpdateTimeMicros = Utils.getNowMicrosUtc();
-        stateA.documentUpdateTimeMicros = Utils.getNowMicrosUtc()
+        stateB.documentUpdateTimeMicros = Utils.getNowMicrosUtc1();
+        stateA.documentUpdateTimeMicros = Utils.getNowMicrosUtc1()
                 + Utils.getTimeComparisonEpsilonMicros() * 2;
 
         results = ServiceDocument.compare(stateA, stateB,
@@ -181,8 +181,8 @@ public class TestServiceDocument {
         // equal versions, older time outside epsilon, A is NOT preferred
         stateA.documentVersion = 1;
         stateB.documentVersion = 1;
-        stateA.documentUpdateTimeMicros = Utils.getNowMicrosUtc();
-        stateB.documentUpdateTimeMicros = Utils.getNowMicrosUtc()
+        stateA.documentUpdateTimeMicros = Utils.getNowMicrosUtc1();
+        stateB.documentUpdateTimeMicros = Utils.getNowMicrosUtc1()
                 + Utils.getTimeComparisonEpsilonMicros() * 2;
 
         results = ServiceDocument.compare(stateA, stateB,
@@ -197,8 +197,8 @@ public class TestServiceDocument {
         // equal versions, time within epsilon, states equal, no conflict
         stateA.documentVersion = 1;
         stateB.documentVersion = 1;
-        stateA.documentUpdateTimeMicros = Utils.getNowMicrosUtc();
-        stateB.documentUpdateTimeMicros = Utils.getNowMicrosUtc()
+        stateA.documentUpdateTimeMicros = Utils.getNowMicrosUtc1();
+        stateB.documentUpdateTimeMicros = Utils.getNowMicrosUtc1()
                 + Utils.getTimeComparisonEpsilonMicros() / 2;
 
         results = ServiceDocument.compare(stateA, stateB,
@@ -214,8 +214,8 @@ public class TestServiceDocument {
         stateB.counter = Long.MAX_VALUE;
         stateA.documentVersion = 1;
         stateB.documentVersion = 1;
-        stateA.documentUpdateTimeMicros = Utils.getNowMicrosUtc();
-        stateB.documentUpdateTimeMicros = Utils.getNowMicrosUtc()
+        stateA.documentUpdateTimeMicros = Utils.getNowMicrosUtc1();
+        stateB.documentUpdateTimeMicros = Utils.getNowMicrosUtc1()
                 + Utils.getTimeComparisonEpsilonMicros() / 2;
 
         results = ServiceDocument.compare(stateA, stateB,
@@ -231,9 +231,9 @@ public class TestServiceDocument {
         stateB.counter = Long.MAX_VALUE;
         stateA.documentVersion = 1;
         stateB.documentVersion = 1;
-        stateA.documentUpdateTimeMicros = Utils.getNowMicrosUtc()
+        stateA.documentUpdateTimeMicros = Utils.getNowMicrosUtc1()
                 + Utils.getTimeComparisonEpsilonMicros() / 2;
-        stateB.documentUpdateTimeMicros = Utils.getNowMicrosUtc();
+        stateB.documentUpdateTimeMicros = Utils.getNowMicrosUtc1();
 
         results = ServiceDocument.compare(stateA, stateB,
                 description, Utils.getTimeComparisonEpsilonMicros());

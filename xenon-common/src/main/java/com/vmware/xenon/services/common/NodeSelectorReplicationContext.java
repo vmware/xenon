@@ -29,7 +29,7 @@ public class NodeSelectorReplicationContext {
         this.location = location;
         this.nodes = nodes;
         this.parentOp = op;
-        this.startTimeMicros = Utils.getNowMicrosUtc();
+        this.startTimeMicros = Utils.getSystemNowMicrosUtc();
     }
 
     String location;

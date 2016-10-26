@@ -258,7 +258,7 @@ public class NodeGroupService extends StatefulService {
         }
 
         self.documentVersion++;
-        self.documentUpdateTimeMicros = Utils.getNowMicrosUtc();
+        self.documentUpdateTimeMicros = Utils.getNowMicrosUtc1();
         localState.membershipUpdateTimeMicros = self.documentUpdateTimeMicros;
         localState.localMembershipUpdateTimeMicros = self.documentUpdateTimeMicros;
 
@@ -340,9 +340,9 @@ public class NodeGroupService extends StatefulService {
         JoinPeerRequest joinBody = post.getBody(JoinPeerRequest.class);
         if (joinBody != null && joinBody.memberGroupReference != null) {
             // set a short join operation timeout so that join retries will occur in any environment
-            long joinTimeOutMicrosUtc = Utils.getNowMicrosUtc() +
+            long joinTimeOutMicrosUtc = Utils.fromNowMicrosUtc(
                     Math.max(TimeUnit.SECONDS.toMicros(1),
-                            getHost().getOperationTimeoutMicros() / 10);
+                            getHost().getOperationTimeoutMicros() / 10));
             handleJoinPost(joinBody, post, joinTimeOutMicrosUtc, getState(post), null);
             return;
         }
@@ -387,7 +387,7 @@ public class NodeGroupService extends StatefulService {
         NodeState self = localState.nodes.get(getHost().getId());
 
         if (joinOp != null) {
-            self.documentUpdateTimeMicros = Utils.getNowMicrosUtc();
+            self.documentUpdateTimeMicros = Utils.getNowMicrosUtc1();
             self.documentVersion++;
 
             if (joinBody.membershipQuorum != null) {
@@ -456,7 +456,7 @@ public class NodeGroupService extends StatefulService {
     private void handleJoinFailure(Throwable e, JoinPeerRequest joinBody,
             NodeGroupState localState,
             long expirationMicros) {
-        if (expirationMicros < Utils.getNowMicrosUtc()) {
+        if (Utils.beforeNow(expirationMicros)) {
             logSevere("Failure joining peer %s due to %s, attempt expired, will not retry",
                     joinBody.memberGroupReference, e.toString());
             return;
@@ -529,7 +529,7 @@ public class NodeGroupService extends StatefulService {
         body.groupReference = UriUtils.buildPublicUri(getHost(), getSelfLink());
         body.documentSelfLink = UriUtils.buildUriPath(getSelfLink(), body.id);
         body.documentKind = Utils.buildKind(NodeState.class);
-        body.documentUpdateTimeMicros = Utils.getNowMicrosUtc();
+        body.documentUpdateTimeMicros = Utils.getNowMicrosUtc1();
         return body;
     }
 
@@ -592,13 +592,13 @@ public class NodeGroupService extends StatefulService {
         AtomicInteger remaining = new AtomicInteger(peersToProbe);
         NodeState[] randomizedPeers = shuffleGroupMembers(localState);
         NodeState localNode = localState.nodes.get(getHost().getId());
-        localNode.documentUpdateTimeMicros = Utils.getNowMicrosUtc();
+        localNode.documentUpdateTimeMicros = Utils.getNowMicrosUtc1();
         localNode.groupReference = UriUtils.buildPublicUri(getHost(), getSelfLink());
         localState.documentOwner = getHost().getId();
 
         NodeGroupState patchBody = new NodeGroupState();
         patchBody.documentOwner = getHost().getId();
-        patchBody.documentUpdateTimeMicros = Utils.getNowMicrosUtc();
+        patchBody.documentUpdateTimeMicros = localNode.documentUpdateTimeMicros;
 
         int probeCount = 0;
         for (NodeState peer : randomizedPeers) {
@@ -630,7 +630,8 @@ public class NodeGroupService extends StatefulService {
                     .setRetryCount(0)
                     .setConnectionTag(ServiceClient.CONNECTION_TAG_GOSSIP)
                     .setExpiration(
-                            Utils.getNowMicrosUtc() + localState.config.peerRequestTimeoutMicros)
+                            Utils.fromNowMicrosUtc(
+                                    localState.config.peerRequestTimeoutMicros))
                     .forceRemote()
                     .setCompletion(ch);
 
@@ -639,7 +640,7 @@ public class NodeGroupService extends StatefulService {
                 // If we just detected this is a peer node that used to listen on our address,
                 // but its obviously no longer around, mark it as REPLACED and do not send PATCH
                 peer.status = NodeStatus.REPLACED;
-                peer.documentUpdateTimeMicros = Utils.getNowMicrosUtc();
+                peer.documentUpdateTimeMicros = Utils.getNowMicrosUtc1();
                 peer.documentVersion++;
                 ch.handle(null, null);
             } else {
@@ -668,11 +669,11 @@ public class NodeGroupService extends StatefulService {
 
             long updateTime = localState.membershipUpdateTimeMicros;
             if (e != null) {
-                updateTime = remotePeer.status != NodeStatus.UNAVAILABLE ? Utils.getNowMicrosUtc()
+                updateTime = remotePeer.status != NodeStatus.UNAVAILABLE ? Utils.getNowMicrosUtc1()
                         : updateTime;
 
                 if (remotePeer.status != NodeStatus.UNAVAILABLE) {
-                    remotePeer.documentUpdateTimeMicros = Utils.getNowMicrosUtc();
+                    remotePeer.documentUpdateTimeMicros = Utils.getNowMicrosUtc1();
                     remotePeer.documentVersion++;
                 }
                 remotePeer.status = NodeStatus.UNAVAILABLE;
@@ -690,7 +691,7 @@ public class NodeGroupService extends StatefulService {
                             remotePeer.id);
                     remotePeer.status = NodeStatus.REPLACED;
                     remotePeer.documentVersion++;
-                    updateTime = Utils.getNowMicrosUtc();
+                    updateTime = Utils.getNowMicrosUtc1();
                 }
                 updateTime = Math.max(updateTime, peerState.membershipUpdateTimeMicros);
             }
@@ -747,7 +748,7 @@ public class NodeGroupService extends StatefulService {
         }
 
         boolean isSelfPatch = remotePeerState.documentOwner.equals(getHost().getId());
-        long now = Utils.getNowMicrosUtc();
+        long now = Utils.getNowMicrosUtc1();
 
         NodeState selfEntry = localState.nodes.get(getHost().getId());
 
@@ -800,7 +801,7 @@ public class NodeGroupService extends StatefulService {
                         currentEntry.documentVersion) + 1;
                 currentEntry.documentUpdateTimeMicros = Math.max(
                         remoteEntry.documentUpdateTimeMicros,
-                        Utils.getNowMicrosUtc());
+                        now);
                 currentEntry.status = remoteEntry.status;
                 currentEntry.options = remoteEntry.options;
                 continue;
@@ -834,8 +835,8 @@ public class NodeGroupService extends StatefulService {
             if (remoteEntry.status == NodeStatus.UNAVAILABLE
                     && currentEntry.documentExpirationTimeMicros == 0
                     && remoteEntry.documentExpirationTimeMicros == 0) {
-                remoteEntry.documentExpirationTimeMicros = Utils.getNowMicrosUtc()
-                        + localState.config.nodeRemovalDelayMicros;
+                remoteEntry.documentExpirationTimeMicros = Utils.fromNowMicrosUtc(
+                        localState.config.nodeRemovalDelayMicros);
                 logInfo("Set expiration at %d for unavailable node %s(%s)",
                         remoteEntry.documentExpirationTimeMicros,
                         remoteEntry.id,

@@ -228,7 +228,7 @@ public class UtilityService implements Service {
                 return;
             }
 
-            long now = Utils.getNowMicrosUtc();
+            long now = Utils.getNowMicrosUtc1();
 
             Operation clone = op.clone();
             clone.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_NOTIFICATION);
@@ -256,7 +256,7 @@ public class UtilityService implements Service {
         }
 
         CompletionHandler c = (o, ex) -> {
-            s.documentUpdateTimeMicros = Utils.getNowMicrosUtc();
+            s.documentUpdateTimeMicros = Utils.getNowMicrosUtc1();
             synchronized (s) {
                 if (ex != null) {
                     if (s.failedNotificationCount == null) {
@@ -555,7 +555,7 @@ public class UtilityService implements Service {
                     stat.logHistogram.bins[binIndex]++;
                 }
             }
-            stat.lastUpdateMicrosUtc = Utils.getNowMicrosUtc();
+            stat.lastUpdateMicrosUtc = Utils.getNowMicrosUtc1();
             if (stat.timeSeriesStats != null) {
                 if (stat.sourceTimeMicrosUtc != null) {
                     stat.timeSeriesStats.add(stat.sourceTimeMicrosUtc, newValue);
@@ -582,7 +582,7 @@ public class UtilityService implements Service {
                     stat.logHistogram.bins[binIndex]++;
                 }
             }
-            stat.lastUpdateMicrosUtc = Utils.getNowMicrosUtc();
+            stat.lastUpdateMicrosUtc = Utils.getNowMicrosUtc1();
             if (stat.timeSeriesStats != null) {
                 if (stat.sourceTimeMicrosUtc != null) {
                     stat.timeSeriesStats.add(stat.sourceTimeMicrosUtc, stat.latestValue);

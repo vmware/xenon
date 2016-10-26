@@ -62,7 +62,7 @@ public class TestTransactionService extends BasicReusableHostTestCase {
 
     @Before
     public void prepare() throws Throwable {
-        this.baseAccountId = Utils.getNowMicrosUtc();
+        this.baseAccountId = Utils.getNowMicrosUtc1();
         this.host.waitForServiceAvailable(ExampleService.FACTORY_LINK);
         this.host.waitForServiceAvailable(TransactionFactoryService.SELF_LINK);
         if (this.host.getServiceStage(BankAccountService.FACTORY_LINK) == null) {
@@ -246,7 +246,7 @@ public class TestTransactionService extends BasicReusableHostTestCase {
         assertTrue(committed);
         // verify that two accounts are created (one as part of the transaction and one without)
         countAccounts(null, 2);
-        this.baseAccountId = Utils.getNowMicrosUtc();
+        this.baseAccountId = Utils.getNowMicrosUtc1();
         txid = newTransaction();
         postOp = Operation.createPost(UriUtils.buildUri(this.host, servicePath));
         postOp.setTransactionId(txid);

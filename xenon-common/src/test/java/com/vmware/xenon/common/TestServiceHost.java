@@ -724,7 +724,7 @@ public class TestServiceHost {
         this.host.testStart(1);
         Operation startPost = Operation
                 .createPost(UriUtils.buildUri(this.host, UUID.randomUUID().toString()))
-                .setExpiration(Utils.getNowMicrosUtc() + maintenanceIntervalMicros)
+                .setExpiration(Utils.fromNowMicrosUtc(maintenanceIntervalMicros))
                 .setBody(initialState)
                 .setCompletion(this.host.getExpectedFailureCompletion());
         this.host.startService(startPost, new MinimalTestService());
@@ -842,7 +842,7 @@ public class TestServiceHost {
                 caps,
                 null);
 
-        long start = Utils.getNowMicrosUtc();
+        long start = System.nanoTime() / 1000;
         List<Service> slowMaintServices = this.host.doThroughputServiceStart(null,
                 this.serviceCount, MinimalTestService.class, this.host.buildMinimalTestState(),
                 caps,
@@ -934,7 +934,7 @@ public class TestServiceHost {
             }
             break;
         }
-        long end = Utils.getNowMicrosUtc();
+        long end = System.nanoTime() / 1000;
 
         if (cacheClearStat == null || cacheClearStat.latestValue < 1) {
             throw new IllegalStateException(
@@ -972,7 +972,7 @@ public class TestServiceHost {
         }
 
         long slowMaintInterval = this.host.getMaintenanceIntervalMicros() * 10;
-        end = Utils.getNowMicrosUtc();
+        end = System.nanoTime() / 1000;
         expectedMaintIntervals = Math.max(1, (end - start) / slowMaintInterval);
 
         // verify that services with slow maintenance did not get more than one maint cycle
@@ -1164,7 +1164,7 @@ public class TestServiceHost {
             this.host.send(Operation
                     .createGet(UriUtils.buildUri(this.host, UUID.randomUUID().toString()))
                     .setTargetReplicated(true)
-                    .setExpiration(Utils.getNowMicrosUtc() + TimeUnit.SECONDS.toMicros(1))
+                    .setExpiration(Utils.fromNowMicrosUtc(TimeUnit.SECONDS.toMicros(1)))
                     .setCompletion(this.host.getExpectedFailureCompletion()));
         }
         this.host.testWait();
@@ -1511,7 +1511,8 @@ public class TestServiceHost {
 
         // Wait for the next maintenance interval to trigger. This will pause all the services
         // we just created since the memory limit was set so low.
-        long expectedPauseTime = Utils.getNowMicrosUtc() + this.host.getMaintenanceIntervalMicros() * 5;
+        long expectedPauseTime = Utils.fromNowMicrosUtc(this.host
+                .getMaintenanceIntervalMicros() * 5);
         while (this.host.getState().lastMaintenanceTimeUtcMicros < expectedPauseTime) {
             // memory limits are applied during maintenance, so wait for a few intervals.
             Thread.sleep(this.host.getMaintenanceIntervalMicros() / 1000);
@@ -1560,7 +1561,8 @@ public class TestServiceHost {
         // Long running test. Keep adding services, expecting pause to occur and free up memory so the
         // number of service instances exceeds available memory.
         Date exp = new Date(TimeUnit.MICROSECONDS.toMillis(
-                Utils.getNowMicrosUtc()) + TimeUnit.SECONDS.toMillis(this.testDurationSeconds));
+                Utils.getSystemNowMicrosUtc())
+                + TimeUnit.SECONDS.toMillis(this.testDurationSeconds));
 
         this.host.setOperationTimeOutMicros(
                 TimeUnit.SECONDS.toMicros(this.host.getTimeoutSeconds()));
@@ -1783,7 +1785,7 @@ public class TestServiceHost {
         TestContext ctx = this.host.testCreate(states.size() * count);
         for (ExampleServiceState st : states.values()) {
             for (int i = 0; i < count; i++) {
-                st.name = "updated" + Utils.getNowMicrosUtc() + "";
+                st.name = "updated" + Utils.getNowMicrosUtc1() + "";
                 Operation patch = Operation
                         .createPatch(UriUtils.buildUri(this.host, st.documentSelfLink))
                         .setCompletion((o, e) -> {
@@ -1870,7 +1872,7 @@ public class TestServiceHost {
             Operation get = Operation
                     .createGet(this.host, servicePath)
                     .setCompletion(testContextForGet.getCompletion());
-            beforeLastRequestSentTime = Utils.getNowMicrosUtc();
+            beforeLastRequestSentTime = Utils.getNowMicrosUtc1();
             this.host.send(get);
             Thread.sleep(requestDelayMills);
         }
@@ -1894,7 +1896,7 @@ public class TestServiceHost {
         TestContext ctx = this.host.testCreate(requestCount);
         for (int i = 0; i < requestCount; i++) {
             Operation patch = createMinimalTestServicePatch(servicePath, ctx);
-            beforeLastRequestSentTime = Utils.getNowMicrosUtc();
+            beforeLastRequestSentTime = Utils.getNowMicrosUtc1();
             this.host.send(patch);
             Thread.sleep(requestDelayMills);
         }
@@ -2156,7 +2158,7 @@ public class TestServiceHost {
         int serviceCount = 5;
         List<URI> exampleURIs = new ArrayList<>();
         this.host.createExampleServices(this.host, serviceCount, exampleURIs,
-                Utils.getNowMicrosUtc());
+                Utils.getNowMicrosUtc1());
 
         EnumSet<ServiceOption> options = EnumSet.of(ServiceOption.INSTRUMENTATION,
                 ServiceOption.OWNER_SELECTION, ServiceOption.FACTORY_ITEM);

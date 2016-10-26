@@ -141,7 +141,7 @@ public class TestFactoryService extends BasicReusableHostTestCase {
         // the implementation, it will break, by design
 
         String idHash = this.host.getIdHash();
-        String timeNowPrefix = Utils.getNowMicrosUtc() + "";
+        String timeNowPrefix = Utils.getNowMicrosUtc1() + "";
         timeNowPrefix = timeNowPrefix.substring(0, 8);
         assertTrue(f.buildDefaultChildSelfLink().startsWith(idHash));
 

@@ -219,7 +219,7 @@ public class SimpleTransactionService extends StatefulService {
             String currentStateTransactionId = currentState.documentTransactionId;
 
             if (currentStateTransactionId != null && this.transactionExpirationTimeMicros != 0) {
-                long now = Utils.getNowMicrosUtc();
+                long now = Utils.getSystemNowMicrosUtc();
                 if (this.transactionExpirationTimeMicros <= now) {
                     // the transaction 'locking' this service has expired -
                     // release lock and continue processing
@@ -467,8 +467,8 @@ public class SimpleTransactionService extends StatefulService {
         }
 
         if (state.documentExpirationTimeMicros == 0) {
-            state.documentExpirationTimeMicros = Utils.getNowMicrosUtc()
-                    + DEFAULT_DURATION_MICROS;
+            state.documentExpirationTimeMicros = Utils.fromNowMicrosUtc(
+                    DEFAULT_DURATION_MICROS);
         }
 
         start.setBody(state).complete();

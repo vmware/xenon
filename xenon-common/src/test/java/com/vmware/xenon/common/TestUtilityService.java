@@ -215,7 +215,7 @@ public class TestUtilityService extends BasicReusableHostTestCase {
         // version and accumulated value are updated
         stat.latestValue = 50;
         stat.unit = "unit1";
-        Long updatedMicrosUtc1 = Utils.getNowMicrosUtc();
+        Long updatedMicrosUtc1 = Utils.getNowMicrosUtc1();
         stat.sourceTimeMicrosUtc = updatedMicrosUtc1;
         this.host.sendAndWaitExpectSuccess(Operation.createPost(UriUtils.buildStatsUri(
                 this.host, exampleServiceState.documentSelfLink)).setBody(stat));
@@ -233,7 +233,7 @@ public class TestUtilityService extends BasicReusableHostTestCase {
         stat.name = "key2";
         stat.latestValue = 50;
         stat.unit = "unit2";
-        Long updatedMicrosUtc2 = Utils.getNowMicrosUtc();
+        Long updatedMicrosUtc2 = Utils.getNowMicrosUtc1();
         stat.sourceTimeMicrosUtc = updatedMicrosUtc2;
         this.host.sendAndWaitExpectSuccess(Operation.createPost(UriUtils.buildStatsUri(
                 this.host, exampleServiceState.documentSelfLink)).setBody(stat));

@@ -41,7 +41,7 @@ public class TestServiceContextIndexService extends BasicReusableHostTestCase {
      */
     public int requestCount = 100;
 
-    public long testStartTimeMicros = Utils.getNowMicrosUtc();
+    public long testStartTimeMicros = Utils.getSystemNowMicrosUtc();
 
     @Test
     public void serDesDirect() throws Throwable {
@@ -121,8 +121,8 @@ public class TestServiceContextIndexService extends BasicReusableHostTestCase {
 
     private ServiceRuntimeContext buildRuntimeContext() {
         ServiceRuntimeContext src = new ServiceRuntimeContext();
-        src.selfLink = UriUtils.buildUriPath(this.host.getId(), Utils.getNowMicrosUtc() + "");
-        src.serializationTimeMicros = Utils.getNowMicrosUtc();
+        src.selfLink = UriUtils.buildUriPath(this.host.getId(), Utils.getNowMicrosUtc1() + "");
+        src.serializationTimeMicros = Utils.getNowMicrosUtc1();
         MinimalTestService service = new MinimalTestService();
         service.setSelfLink(src.selfLink);
         service.toggleOption(ServiceOption.INSTRUMENTATION, true);

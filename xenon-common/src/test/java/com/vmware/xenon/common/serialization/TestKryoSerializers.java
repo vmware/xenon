@@ -58,7 +58,7 @@ public class TestKryoSerializers {
                 ExampleService.ExampleServiceState.class, null);
         ExampleServiceState st = new ExampleServiceState();
         st.id = UUID.randomUUID().toString();
-        st.counter = Utils.getNowMicrosUtc();
+        st.counter = Utils.getNowMicrosUtc1();
         st.documentSelfLink = st.id;
         st.keyValues = new HashMap<>();
         st.keyValues.put(st.id, st.id);

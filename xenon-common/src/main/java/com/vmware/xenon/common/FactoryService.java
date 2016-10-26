@@ -828,8 +828,8 @@ public abstract class FactoryService extends StatelessService {
         OperationContext opContext = OperationContext.getOperationContext();
         // Only one node is responsible for synchronizing the child services of a given factory.
         // Ask the runtime if this is the owner node, using the factory self link as the key.
-        Operation selectOwnerOp = maintOp.clone().setExpiration(Utils.getNowMicrosUtc()
-                + getHost().getOperationTimeoutMicros());
+        Operation selectOwnerOp = maintOp.clone().setExpiration(Utils.fromNowMicrosUtc(
+                getHost().getOperationTimeoutMicros()));
         selectOwnerOp.setCompletion((o, e) -> {
             OperationContext.restoreOperationContext(opContext);
             if (e != null) {

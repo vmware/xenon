@@ -174,11 +174,11 @@ public class ExampleTaskService
         task.subStage = SubStage.QUERY_EXAMPLES;
 
         if (task.taskLifetime != null) {
-            task.documentExpirationTimeMicros = Utils.getNowMicrosUtc()
-                    + TimeUnit.SECONDS.toMicros(task.taskLifetime);
+            task.documentExpirationTimeMicros = Utils.fromNowMicrosUtc(
+                    TimeUnit.SECONDS.toMicros(task.taskLifetime));
         } else if (task.documentExpirationTimeMicros != 0) {
-            task.documentExpirationTimeMicros = Utils.getNowMicrosUtc()
-                    + TimeUnit.SECONDS.toMicros(DEFAULT_TASK_LIFETIME);
+            task.documentExpirationTimeMicros = Utils.fromNowMicrosUtc(
+                    TimeUnit.SECONDS.toMicros(DEFAULT_TASK_LIFETIME));
         }
 
         // Do our task-specific logic... This will allow our ExampleTaskService's "default"

@@ -220,7 +220,7 @@ public class TestNodeGroupService {
 
     private Function<ExampleServiceState, Void> exampleStateUpdateBodySetter = (
             ExampleServiceState state) -> {
-        state.name = Utils.getNowMicrosUtc() + "";
+        state.name = Utils.getNowMicrosUtc1() + "";
         return null;
     };
 
@@ -688,7 +688,7 @@ public class TestNodeGroupService {
                 ExampleServiceState.class,
                 (o) -> {
                     ExampleServiceState body = new ExampleServiceState();
-                    body.name = Utils.getNowMicrosUtc() + "";
+                    body.name = Utils.getNowMicrosUtc1() + "";
                     o.setBody(body);
                 },
                 observerFactoryUri);
@@ -1486,7 +1486,7 @@ public class TestNodeGroupService {
                 this.exampleStateConvergenceChecker,
                 childStates);
 
-        long now = Utils.getNowMicrosUtc();
+        long now = Utils.getNowMicrosUtc1();
 
         validatePerOperationReplicationQuorum(childStates, now);
 
@@ -1515,8 +1515,8 @@ public class TestNodeGroupService {
             stopHostsToSimulateFailure(hostRestartCount - 1);
             // add a small bit of time slop since its feasible a host completed a operation *after* we stopped it,
             // the netty handlers are stopped in async (not forced) mode
-            this.expectedFailureStartTimeMicros = Utils.getNowMicrosUtc()
-                    + TimeUnit.MILLISECONDS.toMicros(250);
+            this.expectedFailureStartTimeMicros = Utils.fromNowMicrosUtc(
+                    TimeUnit.MILLISECONDS.toMicros(250));
 
         };
         this.host.schedule(r, 1, TimeUnit.MILLISECONDS);
@@ -2197,7 +2197,7 @@ public class TestNodeGroupService {
             return;
         }
 
-        long delta = Utils.getNowMicrosUtc() - startTime;
+        long delta = (System.nanoTime() / 1000) - startTime;
         elapsedTime.merge(a, delta, (e, n) -> {
             if (e == null) {
                 return n;
@@ -2397,7 +2397,7 @@ public class TestNodeGroupService {
             URI factoryURI = this.host.getNodeGroupToFactoryMap(ExampleService.FACTORY_LINK)
                     .values().iterator().next();
             URI bogusChild = UriUtils.extendUri(factoryURI,
-                    Utils.getNowMicrosUtc() + UUID.randomUUID().toString());
+                    Utils.getNowMicrosUtc1() + UUID.randomUUID().toString());
             Operation patch = Operation.createPatch(bogusChild)
                     .setCompletion(c)
                     .setBody(new ExampleServiceState());
@@ -3076,7 +3076,7 @@ public class TestNodeGroupService {
         // with the same distribution
 
         for (int i = 0; i < c; i++) {
-            keys.add(Utils.getNowMicrosUtc() + "");
+            keys.add(UUID.randomUUID().toString());
         }
 
         for (URI nodeGroup : this.host.getNodeGroupMap().values()) {
@@ -3633,7 +3633,8 @@ public class TestNodeGroupService {
         for (String link : links) {
             Operation selectOp = Operation.createGet(null)
                     .setCompletion(c)
-                    .setExpiration(this.host.getOperationTimeoutMicros() + Utils.getNowMicrosUtc());
+                    .setExpiration(
+                            Utils.fromNowMicrosUtc(this.host.getOperationTimeoutMicros()));
 
             joinedHost.selectOwner(this.replicationNodeSelector, link, selectOp);
         }
@@ -3821,7 +3822,7 @@ public class TestNodeGroupService {
             }
         }
 
-        long before = Utils.getNowMicrosUtc();
+        long before = System.nanoTime() / 1000;
         AtomicInteger failedCount = new AtomicInteger();
         // issue an update to each child service and verify it was reflected
         // among
@@ -3836,7 +3837,7 @@ public class TestNodeGroupService {
 
                 long sentTime = 0;
                 if (this.expectFailure) {
-                    sentTime = Utils.getNowMicrosUtc();
+                    sentTime = System.nanoTime() / 1000;
                 }
                 URI factoryOnRandomPeerUri = this.host
                         .getPeerServiceUri(this.replicationTargetFactoryLink);
@@ -3936,7 +3937,7 @@ public class TestNodeGroupService {
 
         String factoryPath = this.replicationTargetFactoryLink;
         Map<String, ExampleServiceState> serviceStates = new HashMap<>();
-        long before = Utils.getNowMicrosUtc();
+        long before = System.nanoTime() / 1000;
         TestContext testContext = this.host.testCreate(childCount);
         testContext.setTestName("POST replication");
         testContext.logBefore();
@@ -4043,7 +4044,8 @@ public class TestNodeGroupService {
                     TestContext ctx = this.host.testCreate(1);
                     Operation get = Operation.createGet(UriUtils.buildUri(node, link))
                             .setReferer(this.host.getReferer())
-                            .setExpiration(Utils.getNowMicrosUtc() + TimeUnit.SECONDS.toMicros(5))
+                            .setExpiration(
+                                    Utils.fromNowMicrosUtc(TimeUnit.SECONDS.toMicros(5)))
                             .setCompletion(
                                     (o, e) -> {
                                         if (e != null) {

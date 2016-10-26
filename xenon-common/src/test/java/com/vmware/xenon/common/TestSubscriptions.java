@@ -397,7 +397,7 @@ public class TestSubscriptions extends BasicTestCase {
         for (ExampleServiceState state : states) {
             // send a PATCH, to trigger notification
             URI u = UriUtils.buildUri(serviceHost, state.documentSelfLink);
-            state.counter = Utils.getNowMicrosUtc();
+            state.counter = Utils.getNowMicrosUtc1();
             Operation patch = Operation.createPatch(u)
                     .setBody(state)
                     .setCompletion(this.host.getCompletion());
@@ -486,8 +486,8 @@ public class TestSubscriptions extends BasicTestCase {
         // with notifications, allowing for notifications to be processed after the next test starts
         ServiceSubscriber sr = createAndStartNotificationTarget(UUID.randomUUID()
                 .toString(), deletesRemainingCount, false, false);
-        sr.documentExpirationTimeMicros = Utils.getNowMicrosUtc()
-                + this.host.getMaintenanceIntervalMicros() * 2;
+        sr.documentExpirationTimeMicros = Utils.fromNowMicrosUtc(
+                this.host.getMaintenanceIntervalMicros() * 2);
         // Subscribe to notifications from every example service; get notified with current state
         subscribeToServices(childUris, sr);
         verifySubscriberCount(childUris, 1);

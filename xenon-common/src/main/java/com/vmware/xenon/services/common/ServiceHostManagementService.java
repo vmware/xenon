@@ -154,7 +154,7 @@ public class ServiceHostManagementService extends StatefulService {
         ServiceHostState s = getHost().getState();
         s.documentSelfLink = getSelfLink();
         s.documentKind = Utils.buildKind(ServiceHostState.class);
-        s.documentUpdateTimeMicros = Utils.getNowMicrosUtc();
+        s.documentUpdateTimeMicros = Utils.getNowMicrosUtc1();
         get.setBody(s).complete();
     }
 
@@ -324,7 +324,7 @@ public class ServiceHostManagementService extends StatefulService {
                 .buildUri(this.getHost(), ServiceUriPaths.CORE_DOCUMENT_INDEX);
 
         try {
-            File fileToDownload = File.createTempFile("restore-" + Utils.getNowMicrosUtc(), ".zip",
+            File fileToDownload = File.createTempFile("restore-" + Utils.getNowMicrosUtc1(), ".zip",
                     null);
             final URI backupFileUri = fileToDownload.toURI();
 

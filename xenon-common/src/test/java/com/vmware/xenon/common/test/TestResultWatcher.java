@@ -89,7 +89,7 @@ public class TestResultWatcher extends TestWatcher {
             spawnPeriodicStatsService();
             this.trState = TestResultServiceState.populate();
             this.trState.testName = description.getClassName() + "." + description.getMethodName();
-            this.trState.startTimeMicros = Utils.getNowMicrosUtc();
+            this.trState.startTimeMicros = Utils.getNowMicrosUtc1();
             this.trState.gitCommit = ServiceHost.GIT_COMMIT_SOURCE_PROPERTY_COMMIT_ID;
         } catch (Throwable throwable) {
             this.reportTestCase.host.log(Level.INFO, throwable.toString());
@@ -126,7 +126,7 @@ public class TestResultWatcher extends TestWatcher {
     @Override
     protected void finished(Description description) {
         this.trState.testSiteAddress = this.reportTestCase.host.getPreferredAddress();
-        this.trState.endTimeMicros = Utils.getNowMicrosUtc();
+        this.trState.endTimeMicros = Utils.getNowMicrosUtc1();
         this.trState.jvmStats = retrievePeriodicStats();
         postResults();
     }

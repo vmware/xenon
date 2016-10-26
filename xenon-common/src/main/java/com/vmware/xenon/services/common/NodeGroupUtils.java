@@ -132,7 +132,7 @@ public class NodeGroupUtils {
             ch.handle(o, null);
         });
         get.setReferer(host.getPublicUri())
-                .setExpiration(Utils.getNowMicrosUtc() + timeoutMicros);
+                .setExpiration(Utils.fromNowMicrosUtc(timeoutMicros));
 
         URI nodeSelector = UriUtils.buildUri(service, selectorPath);
         SelectAndForwardRequest req = new SelectAndForwardRequest();
@@ -228,7 +228,7 @@ public class NodeGroupUtils {
             }
 
             long expirationMicros = Math.min(
-                    Utils.getNowMicrosUtc() + ngs.config.peerRequestTimeoutMicros,
+                    Utils.fromNowMicrosUtc(ngs.config.peerRequestTimeoutMicros),
                     parentOp.getExpirationMicrosUtc());
             Operation peerOp = Operation.createGet(ns.groupReference)
                     .transferRefererFrom(parentOp)
@@ -285,7 +285,7 @@ public class NodeGroupUtils {
                 + localState.config.stableGroupMaintenanceIntervalCount
                         * maintIntervalMicros;
 
-        if (Utils.getNowMicrosUtc() - threshold < 0) {
+        if (Utils.getSystemNowMicrosUtc() - threshold < 0) {
             return false;
         }
         return true;
@@ -353,7 +353,7 @@ public class NodeGroupUtils {
         CompletionHandler ch = (o, e) -> {
             if (e != null) {
 
-                if (op.getExpirationMicrosUtc() < Utils.getNowMicrosUtc()) {
+                if (op.getExpirationMicrosUtc() < Utils.getSystemNowMicrosUtc()) {
                     String msg = "Failed to check replicated service availability";
                     op.fail(new TimeoutException(msg));
                     return;

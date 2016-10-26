@@ -72,7 +72,7 @@ public class QueryPageService extends StatelessService {
 
         this.documentSelfLink = initState.documentSelfLink;
 
-        long interval = initState.documentExpirationTimeMicros - Utils.getNowMicrosUtc();
+        long interval = initState.documentExpirationTimeMicros - Utils.getSystemNowMicrosUtc();
         if (interval < 0) {
             logWarning("Task expiration is in the past, extending it");
             // task has already expired. Add some more time instead of failing
@@ -92,8 +92,8 @@ public class QueryPageService extends StatelessService {
         QueryTask task = QueryTask.create(clonedSpec);
         task.documentKind = KIND;
         task.documentSelfLink = this.documentSelfLink;
-        task.documentExpirationTimeMicros =
-                getMaintenanceIntervalMicros() + Utils.getNowMicrosUtc();
+        task.documentExpirationTimeMicros = Utils
+                .fromNowMicrosUtc(getMaintenanceIntervalMicros());
         task.taskInfo.stage = TaskStage.CREATED;
         task.taskInfo.isDirect = true;
         task.indexLink = this.indexLink;

@@ -436,7 +436,7 @@ public class TestStatefulService extends BasicReusableHostTestCase {
                 (o) -> {
                     ExampleServiceState s = new ExampleServiceState();
                     s.name = UUID.randomUUID().toString();
-                    s.documentExpirationTimeMicros = Utils.getNowMicrosUtc();
+                    s.documentExpirationTimeMicros = Utils.getNowMicrosUtc1();
                     o.setBody(s);
                 }, factoryService.getUri());
 
@@ -476,9 +476,9 @@ public class TestStatefulService extends BasicReusableHostTestCase {
         TestContext ctx = testCreate(services.size());
         for (Service s : services) {
             MinimalTestServiceState body = new MinimalTestServiceState();
-            body.id = Utils.getNowMicrosUtc() + "";
-            body.documentExpirationTimeMicros = Utils.getNowMicrosUtc()
-                    + TimeUnit.MILLISECONDS.toMicros(expMillis);
+            body.id = Utils.getNowMicrosUtc1() + "";
+            body.documentExpirationTimeMicros = Utils.fromNowMicrosUtc(
+                    TimeUnit.MILLISECONDS.toMicros(expMillis));
             Operation patchExp = Operation.createPatch(s.getUri())
                     .setBody(body)
                     .setCompletion(ctx.getCompletion());

@@ -144,7 +144,7 @@ public class TestNodeGroupManager {
      * Make all hosts join the node group and wait for convergence
      */
     public TestNodeGroupManager joinNodeGroupAndWaitForConvergence() {
-        long startTime = Utils.getNowMicrosUtc();
+        long startTime = Utils.getNowMicrosUtc1();
 
         // set quorum
         int quorum = this.hosts.size();

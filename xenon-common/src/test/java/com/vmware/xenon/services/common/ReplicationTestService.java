@@ -72,8 +72,8 @@ public class ReplicationTestService extends StatefulService {
 
         QueryTask t = new QueryTask();
         // make sure task does not auto-expire during test!
-        t.documentExpirationTimeMicros = Utils.getNowMicrosUtc()
-                + TimeUnit.SECONDS.toMicros(getHost().getOperationTimeoutMicros());
+        t.documentExpirationTimeMicros = Utils.fromNowMicrosUtc(
+                TimeUnit.SECONDS.toMicros(getHost().getOperationTimeoutMicros()));
         t.querySpec = new QuerySpecification();
         t.querySpec.query.setTermPropertyName(ServiceDocument.FIELD_NAME_KIND)
                 .setTermMatchValue(

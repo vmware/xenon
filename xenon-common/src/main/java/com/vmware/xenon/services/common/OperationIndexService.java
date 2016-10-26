@@ -57,10 +57,10 @@ public class OperationIndexService extends LuceneDocumentIndexService {
             return;
         }
 
-        state.documentExpirationTimeMicros = Utils.getNowMicrosUtc()
-                + DEFAULT_EXPIRATION_INTERVAL_MICROS;
+        state.documentExpirationTimeMicros = Utils.fromNowMicrosUtc(
+                DEFAULT_EXPIRATION_INTERVAL_MICROS);
 
-        state.documentUpdateTimeMicros = Utils.getNowMicrosUtc();
+        state.documentUpdateTimeMicros = Utils.getSystemNowMicrosUtc();
         if (state.documentSelfLink == null) {
             state.documentSelfLink = state.documentUpdateTimeMicros + "";
         }

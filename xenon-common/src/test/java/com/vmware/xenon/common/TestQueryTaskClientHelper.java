@@ -112,7 +112,7 @@ public class TestQueryTaskClientHelper extends BasicReusableHostTestCase {
 
     @Test
     public void testQueryUpdatedDocumentSince() throws Throwable {
-        long futureDate = Utils.getNowMicrosUtc() + TimeUnit.DAYS.toMicros(1);
+        long futureDate = Utils.getNowMicrosUtc1() + TimeUnit.DAYS.toMicros(1);
         try {
             this.queryHelper.setUpdatedSince(futureDate);
             fail("IllegalArgumentException expected when date in future.");
@@ -120,7 +120,7 @@ public class TestQueryTaskClientHelper extends BasicReusableHostTestCase {
             //expected
         }
 
-        long startTime = Utils.getNowMicrosUtc();
+        long startTime = Utils.getNowMicrosUtc1();
         this.minimalTestStates = queryDocumentUpdatedSince(startTime, "testLink");
         assertEquals(0, this.minimalTestStates.size());
 
@@ -128,7 +128,7 @@ public class TestQueryTaskClientHelper extends BasicReusableHostTestCase {
         minimalTestState.id = this.idValue1;
         minimalTestState = doPost(minimalTestState);
 
-        long timeAfterPost = Utils.getNowMicrosUtc();
+        long timeAfterPost = Utils.getNowMicrosUtc1();
 
         // match time but invalid link
         this.minimalTestStates = queryDocumentUpdatedSince(startTime, "testLink");
@@ -148,7 +148,7 @@ public class TestQueryTaskClientHelper extends BasicReusableHostTestCase {
         minimalTestState = doPatch(minimalTestState);
         assertEquals(this.idValue2, minimalTestState.id);
 
-        long timeAfterPatch = Utils.getNowMicrosUtc();
+        long timeAfterPatch = Utils.getNowMicrosUtc1();
 
         // the delta for the update should be retrieved
         this.minimalTestStates = queryDocumentUpdatedSince(timeAfterPost,
@@ -163,7 +163,7 @@ public class TestQueryTaskClientHelper extends BasicReusableHostTestCase {
 
         delete(minimalTestState);
 
-        long timeAfterDelete = Utils.getNowMicrosUtc();
+        long timeAfterDelete = Utils.getNowMicrosUtc1();
 
         this.minimalTestStates = queryDocumentUpdatedSince(timeAfterPatch,
                 minimalTestState.documentSelfLink);
@@ -177,7 +177,7 @@ public class TestQueryTaskClientHelper extends BasicReusableHostTestCase {
 
     @Test
     public void testQueryUpdatedSince() throws Throwable {
-        long startTime = Utils.getNowMicrosUtc();
+        long startTime = Utils.getNowMicrosUtc1();
 
         MinimalTestServiceState minimalTestState = new MinimalTestServiceState();
         minimalTestState.id = this.idValue1;
@@ -191,7 +191,7 @@ public class TestQueryTaskClientHelper extends BasicReusableHostTestCase {
 
         int countAfterMinState1 = 2;
         assertEquals(countAfterMinState1, this.minimalTestStates.size());
-        long timeAfterMinState1 = Utils.getNowMicrosUtc();
+        long timeAfterMinState1 = Utils.getNowMicrosUtc1();
 
         minimalTestState = new MinimalTestServiceState();
         minimalTestState.id = this.idValue2;
@@ -205,7 +205,7 @@ public class TestQueryTaskClientHelper extends BasicReusableHostTestCase {
 
         int countAfterMinState2 = 2;
         assertEquals(countAfterMinState1 + countAfterMinState2, this.minimalTestStates.size());
-        long timeAfterMinState2 = Utils.getNowMicrosUtc();
+        long timeAfterMinState2 = Utils.getNowMicrosUtc1();
 
         this.minimalTestStates = queryUpdatedSince(timeAfterMinState1);
         assertEquals(countAfterMinState2, this.minimalTestStates.size());
@@ -222,7 +222,7 @@ public class TestQueryTaskClientHelper extends BasicReusableHostTestCase {
         this.minimalTestStates = queryUpdatedSince(timeAfterMinState2);
         assertEquals(0, this.minimalTestStates.size());
 
-        long timeBeforeDeletion = Utils.getNowMicrosUtc();
+        long timeBeforeDeletion = Utils.getNowMicrosUtc1();
         delete(minimalTestState1);
         this.minimalTestStates = queryUpdatedSince(startTime);
         assertEquals(countAfterMinState1 + countAfterMinState2, this.minimalTestStates.size());
@@ -243,7 +243,7 @@ public class TestQueryTaskClientHelper extends BasicReusableHostTestCase {
             assertTrue(ServiceDocument.isDeleted(state));
         }
 
-        this.minimalTestStates = queryUpdatedSince(Utils.getNowMicrosUtc());
+        this.minimalTestStates = queryUpdatedSince(Utils.getNowMicrosUtc1());
         assertEquals(0, this.minimalTestStates.size());
     }
 
