@@ -44,13 +44,17 @@ import com.vmware.xenon.common.Utils;
 import com.vmware.xenon.services.common.NodeGroupBroadcastResult.PeerNodeResult;
 import com.vmware.xenon.services.common.NodeGroupService.NodeGroupState;
 
-public class NodeGroupUtils {
+public final class NodeGroupUtils {
     public static final String PROPERTY_NAME_OPERATION_TIMEOUT_SECONDS = Utils.PROPERTY_NAME_PREFIX
             + "NodeGroupUtils.operationTimeoutSeconds";
 
     private static final long OPERATION_TIMEOUT_SECONDS = Long.getLong(
             PROPERTY_NAME_OPERATION_TIMEOUT_SECONDS,
             TimeUnit.MICROSECONDS.toSeconds(ServiceHostState.DEFAULT_OPERATION_TIMEOUT_MICROS / 3));
+
+    private NodeGroupUtils() {
+
+    }
 
     /**
      * Issues a GET to service/stats and looks for {@link Service#STAT_NAME_AVAILABLE}

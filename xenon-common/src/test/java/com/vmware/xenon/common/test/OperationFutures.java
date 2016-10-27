@@ -24,7 +24,11 @@ import com.vmware.xenon.common.Operation.CompletionHandler;
 /**
  * Utility methods for composing completable futures.
  */
-public class OperationFutures {
+public final class OperationFutures {
+
+    private OperationFutures() {
+
+    }
 
     /**
      * Converts a native {@link CompletionHandler} to a {@link BiFunction}.

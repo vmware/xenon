@@ -33,7 +33,11 @@ import com.vmware.xenon.services.common.QueryTask.QuerySpecification.QueryOption
 /**
  * Convert {@link QueryTask.QuerySpecification} to native Lucene query.
  */
-class LuceneQueryConverter {
+final class LuceneQueryConverter {
+    private LuceneQueryConverter() {
+
+    }
+
     static Query convertToLuceneQuery(QueryTask.Query query) {
         if (query.occurance == null) {
             query.occurance = QueryTask.Query.Occurance.MUST_OCCUR;

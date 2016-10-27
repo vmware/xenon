@@ -58,7 +58,11 @@ import java.util.regex.Pattern;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
-public class FileUtils {
+public final class FileUtils {
+
+    private FileUtils() {
+
+    }
 
     public static class ContentRange {
         long start;

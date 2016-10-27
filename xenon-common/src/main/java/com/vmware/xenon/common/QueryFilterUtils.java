@@ -20,7 +20,11 @@ import com.vmware.xenon.services.common.QueryFilter;
 /**
  * Query filter utility functions
  */
-public class QueryFilterUtils {
+public final class QueryFilterUtils {
+
+    private QueryFilterUtils() {
+
+    }
 
     /**
      * Infrastructure use only.

@@ -36,9 +36,9 @@ import com.vmware.xenon.services.common.TransactionResolutionService;
 /**
  * URI utility functions
  */
-public class UriUtils {
+public final class UriUtils {
 
-    public static enum ForwardingTarget {
+    public enum ForwardingTarget {
         PEER_ID,
         KEY_HASH,
         ALL
@@ -80,6 +80,11 @@ public class UriUtils {
     public static final String FIELD_NAME_FACTORY_LINK = "FACTORY_LINK";
 
     public static final Pattern pathParamPattern = Pattern.compile(URI_PATH_PARAM_REGEX);
+
+    private UriUtils() {
+
+    }
+
     /**
      * Computes the parent path of the specified path.
      *

@@ -30,7 +30,7 @@ import com.vmware.xenon.services.common.ServiceUriPaths;
 /**
  * Utility class defining helper methods for basic authentication
  */
-public class BasicAuthenticationUtils {
+public final class BasicAuthenticationUtils {
 
     public static final String WWW_AUTHENTICATE_HEADER_NAME = "WWW-Authenticate";
     public static final String WWW_AUTHENTICATE_HEADER_VALUE = "Basic realm=\"xenon\"";
@@ -42,6 +42,10 @@ public class BasicAuthenticationUtils {
     private static final long AUTH_TOKEN_EXPIRATION_MICROS = Long.getLong(
             Utils.PROPERTY_NAME_PREFIX + "BasicAuthenticationService.AUTH_TOKEN_EXPIRATION_MICROS",
             TimeUnit.HOURS.toMicros(1));
+
+    private BasicAuthenticationUtils() {
+
+    }
 
     /**
      * Holds user and auth queries

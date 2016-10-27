@@ -32,7 +32,11 @@ import com.vmware.xenon.services.common.ServiceUriPaths;
  * Query and index manipulation utility methods.
  * Note: For test code only!
  */
-public class QueryTestUtils {
+public final class QueryTestUtils {
+    private QueryTestUtils() {
+
+    }
+
     public static void logVersionInfoForService(TestRequestSender s, URI serviceUri,
             long targetVersion) {
         URI indexUri = UriUtils.buildUri(serviceUri, ServiceUriPaths.CORE_DOCUMENT_INDEX);

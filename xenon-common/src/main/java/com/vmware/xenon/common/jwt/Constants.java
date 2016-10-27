@@ -15,7 +15,11 @@ package com.vmware.xenon.common.jwt;
 
 import java.nio.charset.Charset;
 
-public class Constants {
+public final class Constants {
+    private Constants() {
+
+    }
+
     protected static final Algorithm DEFAULT_ALGORITHM = Algorithm.HS256;
 
     protected static final Charset DEFAULT_CHARSET = Charset.forName("UTF-8");

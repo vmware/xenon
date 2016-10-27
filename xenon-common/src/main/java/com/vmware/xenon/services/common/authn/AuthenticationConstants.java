@@ -13,12 +13,15 @@
 
 package com.vmware.xenon.services.common.authn;
 
-public class AuthenticationConstants {
+public final class AuthenticationConstants {
+
+    private AuthenticationConstants() {
+
+    }
 
     public static final String DEFAULT_JWT_SECRET = "BAD_SECRET_NOT_SECURE";
 
     public static final String DEFAULT_ISSUER = "xn";
 
     public static final String REQUEST_AUTH_TOKEN_COOKIE = "xenon-auth-cookie";
-
 }

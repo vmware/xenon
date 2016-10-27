@@ -20,7 +20,11 @@ import java.util.List;
 
 import com.vmware.xenon.common.Utils;
 
-public class SystemUtils {
+public final class SystemUtils {
+
+    private SystemUtils() {
+
+    }
 
     public static class ProcessInfo {
         public Long parentPid;

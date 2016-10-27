@@ -14,6 +14,7 @@
 package com.vmware.xenon.common;
 
 import java.util.Collections;
+import java.util.Objects;
 import java.util.stream.Stream;
 
 import com.vmware.xenon.services.common.QueryTask;
@@ -47,14 +48,15 @@ public final class QueryResultsProcessor {
      */
     public static QueryResultsProcessor create(Operation op) {
         QueryTask task = op.getBody(QueryTask.class);
-        if (!task.documentKind.equals(QueryTask.KIND)) {
+        if (Objects.equals(task.documentKind, QueryTask.KIND)) {
             ServiceDocumentQueryResult r = op.getBody(ServiceDocumentQueryResult.class);
-            if (ServiceDocumentQueryResult.KIND.equals(r.documentKind) ||
-                    ODataFactoryQueryResult.KIND.equals(r.documentKind)) {
+            if (Objects.equals(task.documentKind, ODataFactoryQueryResult.KIND) ||
+                    Objects.equals(task.documentKind, ServiceDocumentQueryResult.KIND)) {
                 return new QueryResultsProcessor(null, r);
             } else {
                 throw new IllegalArgumentException(
-                        "Cannot create QueryResultsProcessor from a " + r.documentKind + " document");
+                        "Cannot create QueryResultsProcessor from a " + r.documentKind
+                                + " document");
             }
         } else {
             return new QueryResultsProcessor(task, task.results);

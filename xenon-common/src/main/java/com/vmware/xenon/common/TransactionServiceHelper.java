@@ -28,7 +28,12 @@ import com.vmware.xenon.services.common.ServiceUriPaths;
 /**
  * Stateless helpers for transactions
  */
-public class TransactionServiceHelper {
+public final class TransactionServiceHelper {
+
+    private TransactionServiceHelper() {
+
+    }
+
     interface Handler {
         void handler(Operation op);
     }

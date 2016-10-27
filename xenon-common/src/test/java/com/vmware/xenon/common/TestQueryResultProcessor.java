@@ -39,7 +39,7 @@ public class TestQueryResultProcessor {
     public void fromOp() throws Exception {
         QueryTask task = new QueryTask();
         Operation op = Operation.createGet(URI.create("/no/such/uri")).setBody(task);
-        QueryResultsProcessor results = QueryResultsProcessor.create(task);
+        QueryResultsProcessor results = QueryResultsProcessor.create(op);
         assertNotNull(results.getQueryTask());
     }
 

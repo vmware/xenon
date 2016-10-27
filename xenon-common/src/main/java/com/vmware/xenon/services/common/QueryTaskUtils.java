@@ -43,7 +43,11 @@ import com.vmware.xenon.services.common.QueryTask.QuerySpecification.QueryOption
 /**
  * Query task utility functions
  */
-public class QueryTaskUtils {
+public final class QueryTaskUtils {
+
+    private QueryTaskUtils() {
+
+    }
 
     /**
      * The maximum depth level of which to expand the {@link TypeName#PODO} and {@link TypeName#COLLECTION}

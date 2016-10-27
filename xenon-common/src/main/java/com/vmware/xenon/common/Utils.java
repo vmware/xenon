@@ -71,7 +71,7 @@ import com.vmware.xenon.services.common.ServiceUriPaths;
 /**
  * Runtime utility functions
  */
-public class Utils {
+public final class Utils {
     private static final String CHARSET_UTF_8 = "UTF-8";
     public static final String PROPERTY_NAME_PREFIX = "xenon.";
     public static final String CHARSET = CHARSET_UTF_8;
@@ -120,6 +120,10 @@ public class Utils {
     private static final ConcurrentMap<String, String> KINDS = new ConcurrentSkipListMap<>();
 
     private static final StringBuilderThreadLocal builderPerThread = new StringBuilderThreadLocal();
+
+    private Utils() {
+
+    }
 
     private static JsonMapper getJsonMapperFor(Type type) {
         if (type instanceof Class) {

@@ -20,7 +20,11 @@ import com.vmware.xenon.common.UriUtils;
 /**
  * Helper class to start all DNS services
  */
-public class DNSServices {
+public final class DNSServices {
+
+    private DNSServices() {
+
+    }
 
     public static void startServices(ServiceHost host, String[] args) throws Throwable {
 

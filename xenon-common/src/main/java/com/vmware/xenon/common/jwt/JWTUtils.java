@@ -25,9 +25,13 @@ import com.vmware.xenon.common.PrivateKeyReader;
 import com.vmware.xenon.common.Utils;
 import com.vmware.xenon.services.common.authn.AuthenticationConstants;
 
-public class JWTUtils {
+public final class JWTUtils {
 
     private static final Logger logger = Logger.getLogger(JWTUtils.class.getName());
+
+    private JWTUtils() {
+
+    }
 
     /**
      * Default logic to retrieve JWT secret.

@@ -18,8 +18,12 @@ import com.vmware.xenon.common.ServiceDocument;
 /**
  * Wrapper class for a number of package-related stuff.
  */
-public class PerfUtils {
+public final class PerfUtils {
     public static final String BENCH = "/benchmarks";
+
+    private PerfUtils() {
+
+    }
 
     public static class SimpleState extends ServiceDocument {
         public String message;

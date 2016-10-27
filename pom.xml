@@ -366,6 +366,31 @@
           </execution>
         </executions>
       </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-pmd-plugin</artifactId>
+        <version>3.7</version>
+        <configuration>
+          <skip>${skipAnalysis}</skip>
+          <linkXRef>false</linkXRef>
+          <failOnViolation>true</failOnViolation>
+          <includeTests>true</includeTests>
+          <verbose>true</verbose>
+          <targetJdk>1.8</targetJdk>
+          <rulesets>
+            <ruleset>${project.parent.basedir}/contrib/pmd.xml</ruleset>
+          </rulesets>
+        </configuration>
+        <executions>
+          <execution>
+            <id>pmd</id>
+            <phase>validate</phase>
+            <goals>
+              <goal>check</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
 
       <!-- To easily browse the Findbugs problems, do something like this, -->
       <!-- after you have a failed compile phase: -->

@@ -17,5 +17,9 @@ package com.vmware.xenon.examples.classic;
  * Non-xenon service. The LoaderService should not load this class.
  */
 public class UnrelatedService {
+    private UnrelatedService() {
+
+    }
+
     public static final String SELF_LINK = "something unrelated";
 }

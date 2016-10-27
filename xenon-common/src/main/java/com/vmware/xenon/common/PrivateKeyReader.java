@@ -35,7 +35,11 @@ import javax.crypto.spec.PBEKeySpec;
 /**
  *  Read private key file(PKCS#8).
  */
-public class PrivateKeyReader {
+public final class PrivateKeyReader {
+
+    private PrivateKeyReader() {
+
+    }
 
     /**
      * Retrieve {@link PrivateKey} from PEM encoded PKCS#8 file.

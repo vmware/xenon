@@ -1,0 +1,13 @@
+<?xml version="1.0"?>
+<ruleset name="Custom ruleset"
+         xmlns="http://pmd.sourceforge.net/ruleset/2.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://pmd.sourceforge.net/ruleset/2.0.0 http://pmd.sourceforge.net/ruleset_2_0_0.xsd">
+  <description>
+    Xenon minimal ruleset
+  </description>
+  <!-- Only include checks at source level and ones not coverted by checkstyle -->
+  <!-- https://pmd.github.io/pmd-5.5.1/pmd-java/rules/index.html -->
+  <rule ref="rulesets/java/unusedcode.xml/UnusedLocalVariable"/>
+  <rule ref="rulesets/java/unusedcode.xml/UnusedPrivateField"/>
+</ruleset>

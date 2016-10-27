@@ -17,7 +17,7 @@ import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
 import com.vmware.xenon.common.WebSocketService;
 
-public class ServiceUriPaths {
+public final class ServiceUriPaths {
     public static final String SERVICE_URI_SUFFIX_SYNCHRONIZATION = "synch";
 
     public static final String SERVICE_URI_SUFFIX_FORWARDING = "forwarding";
@@ -123,4 +123,8 @@ public class ServiceUriPaths {
      * @see com.vmware.xenon.swagger.SwaggerDescriptorService
      */
     public static final String SWAGGER = "/discovery/swagger";
+
+    private ServiceUriPaths() {
+
+    }
 }

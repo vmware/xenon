@@ -26,7 +26,11 @@ import com.vmware.xenon.services.common.QueryTask.QuerySpecification.QueryOption
 import com.vmware.xenon.services.common.QueryTask.QuerySpecification.SortOrder;
 import com.vmware.xenon.services.common.QueryTask.QueryTerm;
 
-public class ODataUtils {
+public final class ODataUtils {
+
+    private ODataUtils() {
+
+    }
 
     /**
      * Used in OData filter, represents a property term that should includes all fields

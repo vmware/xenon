@@ -35,6 +35,10 @@ package com.vmware.xenon.common;
  */
 public final class MurmurHash3 {
 
+    private MurmurHash3() {
+
+    }
+
     /** 128 bits of state */
     public static final class LongPair {
         public long val1;

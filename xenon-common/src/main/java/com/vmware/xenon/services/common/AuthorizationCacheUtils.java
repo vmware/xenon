@@ -35,7 +35,11 @@ import com.vmware.xenon.services.common.QueryTask.QuerySpecification;
 import com.vmware.xenon.services.common.RoleService.RoleState;
 import com.vmware.xenon.services.common.UserGroupService.UserGroupState;
 
-public class AuthorizationCacheUtils {
+public final class AuthorizationCacheUtils {
+
+    private AuthorizationCacheUtils() {
+
+    }
 
     /**
      * Helper method that nests a completion to clear the service host authz cache for the specified user service.

@@ -26,9 +26,13 @@ import java.util.concurrent.ConcurrentHashMap;
 
 import com.vmware.xenon.common.ServiceDocumentDescription.PropertyDescription;
 
-public class ReflectionUtils {
+public final class ReflectionUtils {
 
     private static final ConcurrentHashMap<Class<?>, Map<String, Field>> DECLARED_FIELDS_CACHE = new ConcurrentHashMap<>();
+
+    private ReflectionUtils() {
+
+    }
 
     public static <T> T instantiate(Class<T> clazz) {
         try {

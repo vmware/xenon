@@ -21,7 +21,11 @@ import com.vmware.xenon.common.ServiceStats.ServiceStatLogHistogram;
 import com.vmware.xenon.common.ServiceStats.TimeSeriesStats;
 import com.vmware.xenon.common.ServiceStats.TimeSeriesStats.AggregationType;
 
-public class ServiceStatUtils {
+public final class ServiceStatUtils {
+
+    private ServiceStatUtils() {
+
+    }
 
     public static ServiceStat getHistogramStat(Service service, String name) {
         if (!service.hasOption(ServiceOption.INSTRUMENTATION)) {
