@@ -32,7 +32,7 @@ public class ServiceErrorResponse {
     public static final int ERROR_CODE_SERVICE_NOT_FOUND_ON_REPLICA = 0x80000004;
     public static final int ERROR_CODE_OWNER_MISMATCH = 0x80000005;
 
-    public static enum ErrorDetail {
+    public enum ErrorDetail {
         SHOULD_RETRY
     }
 

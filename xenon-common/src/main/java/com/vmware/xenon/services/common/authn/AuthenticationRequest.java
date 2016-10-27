@@ -15,7 +15,7 @@ package com.vmware.xenon.services.common.authn;
 
 public class AuthenticationRequest {
 
-    public static enum AuthenticationRequestType {
+    public enum AuthenticationRequestType {
         LOGIN, LOGOUT
     }
 
