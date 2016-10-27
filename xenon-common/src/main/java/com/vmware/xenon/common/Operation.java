@@ -247,7 +247,7 @@ public class Operation implements Cloneable {
         }
     }
 
-    public static enum OperationOption {
+    public enum OperationOption {
         /**
          * Set to request underlying support for overlapping operations on the same connection.
          * For example, if set, and the service client is HTTP/2 aware, the operation will use the

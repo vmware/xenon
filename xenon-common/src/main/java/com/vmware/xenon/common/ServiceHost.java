@@ -378,11 +378,11 @@ public class ServiceHost implements ServiceRequestSender {
     }
 
     public static class ServiceHostState extends ServiceDocument {
-        public static enum MemoryLimitType {
+        public enum MemoryLimitType {
             LOW_WATERMARK, HIGH_WATERMARK, EXACT
         }
 
-        public static enum SslClientAuthMode {
+        public enum SslClientAuthMode {
             NONE, WANT, NEED
         }
 
@@ -819,12 +819,12 @@ public class ServiceHost implements ServiceRequestSender {
     @Override
     public String toString() {
         return String.format("["
-                + "%n isStarted: %s"
-                + "%n httpPort: %d"
-                + "%n httpsPort: %d"
-                + "%n id: %s"
-                + "%n attached services: %d"
-                + "%n]",
+                        + "%n isStarted: %s"
+                        + "%n httpPort: %d"
+                        + "%n httpsPort: %d"
+                        + "%n id: %s"
+                        + "%n attached services: %d"
+                        + "%n]",
                 isStarted(),
                 this.state.httpPort,
                 this.state.httpsPort,
@@ -985,7 +985,7 @@ public class ServiceHost implements ServiceRequestSender {
 
         if (micros < Service.MIN_MAINTENANCE_INTERVAL_MICROS) {
             log(Level.WARNING, "Maintenance interval %d is less than the minimum interval %d"
-                    + ", reducing to min interval", micros,
+                            + ", reducing to min interval", micros,
                     Service.MIN_MAINTENANCE_INTERVAL_MICROS);
             micros = Service.MIN_MAINTENANCE_INTERVAL_MICROS;
         }
@@ -3260,7 +3260,6 @@ public class ServiceHost implements ServiceRequestSender {
                 e);
     }
 
-
     /**
      * Forwards request to a peer, if local node is not the owner for the service. This method is
      * part of the consensus logic for the replication protocol. It serves the following functions:
@@ -4734,14 +4733,12 @@ public class ServiceHost implements ServiceRequestSender {
         this.operationTracker.performMaintenance(now);
     }
 
-
     /**
      * Infrastructure use only. Invoked from the service context index service
      */
     public void resumeService(String path, Service resumedService) {
         this.serviceResourceTracker.resumeService(path, resumedService);
     }
-
 
     public ServiceHost setOperationTimeOutMicros(long timeoutMicros) {
         this.state.operationTimeoutMicros = timeoutMicros;
@@ -5062,7 +5059,8 @@ public class ServiceHost implements ServiceRequestSender {
             Operation get, EnumSet<ServiceOption> exclusionOptions) {
         ServiceDocumentQueryResult r = new ServiceDocumentQueryResult();
 
-        loop: for (Service s : this.attachedServices.values()) {
+        loop:
+        for (Service s : this.attachedServices.values()) {
             if (s.getProcessingStage() != ProcessingStage.AVAILABLE) {
                 continue;
             }

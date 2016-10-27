@@ -1074,7 +1074,7 @@ public class TestSimpleTransactionService extends BasicReusableHostTestCase {
         }
 
         public static class BankAccountServiceRequest {
-            public static enum Kind {
+            public enum Kind {
                 DEPOSIT, WITHDRAW
             }
 
