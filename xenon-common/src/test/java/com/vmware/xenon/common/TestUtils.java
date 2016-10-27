@@ -25,13 +25,13 @@ import java.net.URLEncoder;
 import java.nio.ByteBuffer;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.Calendar;
 import java.util.EnumSet;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -39,7 +39,9 @@ import java.util.Map.Entry;
 import java.util.Set;
 import java.util.TimeZone;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Logger;
 import java.util.zip.GZIPOutputStream;
@@ -59,6 +61,7 @@ import com.vmware.xenon.common.ServiceDocumentDescription.Builder;
 import com.vmware.xenon.common.ServiceDocumentDescription.PropertyIndexingOption;
 import com.vmware.xenon.common.SystemHostInfo.OsFamily;
 import com.vmware.xenon.common.serialization.KryoSerializers;
+import com.vmware.xenon.common.test.TestContext;
 import com.vmware.xenon.common.test.VerificationHost;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
 import com.vmware.xenon.services.common.QueryValidationTestService.QueryValidationServiceState;
@@ -81,25 +84,47 @@ public class TestUtils {
 
     @Test
     public void buildUUID() {
-        String baseId = Utils.computeHash("some id");
-        // warmup
-        Set<String> set = new HashSet<>();
-        int iterations = this.iterationCount;
-        for (int i = 0; i < iterations; i++) {
-            assertTrue(set.add(Utils.buildUUID(baseId)));
-        }
+        CommandLineArgumentParser.parseFromProperties(this);
+        Utils.setTimeDriftThreshold(TimeUnit.HOURS.toMicros(1));
+        try {
+            Logger log = Logger.getAnonymousLogger();
+            String baseId = Utils.computeHash("some id");
+            // verify uniqueness of each value returned, across N threads
+            Set<String> set = new ConcurrentSkipListSet<>();
+            int threadCount = Utils.DEFAULT_THREAD_COUNT;
+            int iterations = this.iterationCount;
+            log.info("Starting uniqueness check, thread count: " + threadCount);
+            TestContext ctx = new TestContext(threadCount, Duration.ofSeconds(30));
+            for (int t = 0; t < threadCount; t++) {
+                ForkJoinPool.commonPool().execute(() -> {
+                    for (int i = 0; i < iterations / threadCount; i++) {
+                        String value = Utils.buildUUID(baseId);
+                        if (!set.add(value)) {
+                            ctx.fail(new IllegalStateException("Duplicate: " + value));
+                        }
+                    }
+                    ctx.complete();
+                });
+            }
+            ctx.await();
+            set.clear();
+            System.gc();
 
-        // keep jvm from optimizing away calls
-        int sum = 0;
-        long start = System.nanoTime();
-        for (int i = 0; i < iterations; i++) {
-            sum += Utils.buildUUID(baseId).length();
+            // keep jvm from optimizing away calls
+            int sum = 0;
+            long start = System.nanoTime();
+            for (int i = 0; i < iterations; i++) {
+                sum += Utils.buildUUID(baseId).length();
+            }
+            long end = System.nanoTime();
+
+            log.info("iterations: " + iterations);
+            log.info("Total chars: " + sum);
+            double thpt = this.iterationCount / ((end - start) / 1000000000.0);
+            log.info("Throughput (calls / sec): " + thpt);
+        } finally {
+            Utils.setTimeDriftThreshold(Utils.DEFAULT_TIME_DRIFT_THRESHOLD_MICROS);
         }
-        long end = System.nanoTime();
-        Logger log = Logger.getAnonymousLogger();
-        log.info("" + sum);
-        double thpt = this.iterationCount / ((end - start) / 1000000000.0);
-        log.info("Throughput: " + thpt);
     }
 
     @Test
