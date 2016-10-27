@@ -1594,7 +1594,8 @@ public class TestQueryTaskService {
         targetHost.testWait();
     }
 
-    private void paginatedBroadcastQueryTasksOnExampleStates(VerificationHost targetHost) throws Throwable {
+    private void paginatedBroadcastQueryTasksOnExampleStates(VerificationHost targetHost)
+            throws Throwable {
 
         // Simulate the scenario that multiple users query documents page by page
         // in broadcast way.
@@ -3020,8 +3021,7 @@ public class TestQueryTaskService {
             throws Throwable {
 
         try {
-            // set some aggressive grooming limits on searchers and files
-            LuceneDocumentIndexService.setSearcherCountThreshold(1);
+            // set some aggressive grooming limits on files
             LuceneDocumentIndexService.setIndexFileCountThresholdForWriterRefresh(10);
 
             doPaginatedQueryTest(task, sc, resultLimit, pageServiceURIs, targetServiceURIs);
@@ -3054,11 +3054,7 @@ public class TestQueryTaskService {
             }
             this.host.testWait();
         } finally {
-            // restore large numbers for remainder
-            LuceneDocumentIndexService.setSearcherCountThreshold(
-                    LuceneDocumentIndexService
-                            .DEFAULT_INDEX_SEARCHER_COUNT_THRESHOLD);
-
+            // restore default numbers
             LuceneDocumentIndexService.setIndexFileCountThresholdForWriterRefresh(
                     LuceneDocumentIndexService
                             .DEFAULT_INDEX_FILE_COUNT_THRESHOLD_FOR_WRITER_REFRESH);

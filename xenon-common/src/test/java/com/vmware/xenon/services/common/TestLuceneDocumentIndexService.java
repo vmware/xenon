@@ -1314,8 +1314,8 @@ public class TestLuceneDocumentIndexService {
 
     @Test
     public void throughputPost() throws Throwable {
-        doThroughputPost(true);
         doThroughputPost(false);
+        doThroughputPost(true);
     }
 
     private void doThroughputPost(boolean interleaveQueries) throws Throwable {
@@ -1389,30 +1389,31 @@ public class TestLuceneDocumentIndexService {
     }
 
     private double getHostPauseCount() {
-        Map<String, ServiceStat> hostStats = this.host.getServiceStats(
-                UriUtils.buildUri(this.host, ServiceHostManagementService.SELF_LINK));
-        ServiceStat st = hostStats.get(Service.STAT_NAME_PAUSE_COUNT);
-        if (st == null) {
-            return 0.0;
-        }
-        return st.latestValue;
+        return getMgmtStat(ServiceHostManagementService.STAT_NAME_PAUSE_COUNT);
     }
 
     private double getHostODLStopCount() {
-        Map<String, ServiceStat> hostStats = this.host.getServiceStats(
-                UriUtils.buildUri(this.host, ServiceHostManagementService.SELF_LINK));
-        ServiceStat st = hostStats.get(ServiceHostManagementService.STAT_NAME_ODL_STOP_COUNT);
-        if (st == null) {
-            return 0.0;
-        }
-        return st.latestValue;
+        return getMgmtStat(ServiceHostManagementService.STAT_NAME_ODL_STOP_COUNT);
     }
 
     private double getMaintCount() {
+        return getMgmtStat(ServiceHostManagementService.STAT_NAME_SERVICE_HOST_MAINTENANCE_COUNT);
+    }
+
+    private ServiceStat getLuceneStat(String name) {
+        Map<String, ServiceStat> hostStats = this.host
+                .getServiceStats(this.host.getDocumentIndexServiceUri());
+        ServiceStat st = hostStats.get(name);
+        if (st == null) {
+            return new ServiceStat();
+        }
+        return st;
+    }
+
+    private double getMgmtStat(String name) {
         Map<String, ServiceStat> hostStats = this.host.getServiceStats(
                 UriUtils.buildUri(this.host, ServiceHostManagementService.SELF_LINK));
-        ServiceStat st = hostStats
-                .get(ServiceHostManagementService.STAT_NAME_SERVICE_HOST_MAINTENANCE_COUNT);
+        ServiceStat st = hostStats.get(name);
         if (st == null) {
             return 0.0;
         }
@@ -1600,12 +1601,18 @@ public class TestLuceneDocumentIndexService {
         if (this.host.isAuthorizationEnabled()) {
             subject = OperationContext.getAuthorizationContext().getClaims().getSubject();
         }
+
+        String timeSeriesStatName = LuceneDocumentIndexService.STAT_NAME_INDEXED_DOCUMENT_COUNT
+                + ServiceStats.STAT_NAME_SUFFIX_PER_HOUR;
+        double docCount = this.getLuceneStat(timeSeriesStatName).accumulatedValue;
+
         this.host.log(
-                "(%s) Factory: %s, Services: %d Ops: %f, Queries: %d, Total result count: %d, POST throughput(ops/sec): %f",
-                subject,
-                factoryUri.getPath(),
-                this.host.getState().serviceCount,
-                ioCount, queryCount, queryResultCount.get(), throughput);
+                        "(%s) Factory: %s, Services: %d Docs: %f, Ops: %f, Queries: %d, Total result count: %d, POST throughput(ops/sec): %f",
+                        subject,
+                        factoryUri.getPath(),
+                        this.host.getState().serviceCount,
+                        docCount,
+                        ioCount, queryCount, queryResultCount.get(), throughput);
     }
 
     @Test
