@@ -98,6 +98,8 @@ public class TestServiceHost {
 
     public long serviceCount = 10;
 
+    public int iterationCount;
+
     public long testDurationSeconds = 0;
 
     public int indexFileThreshold = 100;
@@ -106,6 +108,7 @@ public class TestServiceHost {
 
     @Rule
     public TemporaryFolder tmpFolder = new TemporaryFolder();
+
 
     public void beforeHostStart(VerificationHost host) {
         host.setMaintenanceIntervalMicros(TimeUnit.MILLISECONDS
@@ -819,6 +822,14 @@ public class TestServiceHost {
 
     @Test
     public void maintenanceAndStatsReporting() throws Throwable {
+        CommandLineArgumentParser.parseFromProperties(this);
+        for (int i = 0; i < this.iterationCount; i++) {
+            this.tearDown();
+            doMaintenanceAndStatsReporting();
+        }
+    }
+
+    private void doMaintenanceAndStatsReporting() throws Throwable {
         setUp(true);
 
         // induce host to clear service state cache by setting mem limit low
