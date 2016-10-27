@@ -566,7 +566,7 @@ public class VerificationHost extends ExampleServiceHost {
 
     public MinimalTestServiceState buildMinimalTestState(int bytes) {
         MinimalTestServiceState minState = new MinimalTestServiceState();
-        minState.id = Utils.getNowMicrosUtc() + "";
+        minState.id = new Operation().getId() + "";
         byte[] body = new byte[bytes];
         new Random().nextBytes(body);
         minState.stringValue = DatatypeConverter.printBase64Binary(body);
