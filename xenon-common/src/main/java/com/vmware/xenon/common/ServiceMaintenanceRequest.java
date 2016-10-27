@@ -29,7 +29,7 @@ public class ServiceMaintenanceRequest {
         return r;
     }
 
-    public static enum MaintenanceReason {
+    public enum MaintenanceReason {
         PERIODIC_SCHEDULE, NODE_GROUP_CHANGE, SERVICE_OPTION_TOGGLE
     }
 

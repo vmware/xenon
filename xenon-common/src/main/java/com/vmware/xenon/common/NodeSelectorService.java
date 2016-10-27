@@ -63,7 +63,7 @@ public interface NodeSelectorService extends Service {
      * forward the request
      */
     public static class SelectAndForwardRequest {
-        public static enum ForwardingOption {
+        public enum ForwardingOption {
             REPLICATE,
             BROADCAST,
             UNICAST,
@@ -134,7 +134,7 @@ public interface NodeSelectorService extends Service {
         public static URI buildUriToOwner(SelectOwnerResponse rsp, Operation op) {
             return UriUtils.buildUri(rsp.ownerNodeGroupReference.getScheme(),
                     rsp.ownerNodeGroupReference.getHost(), rsp.ownerNodeGroupReference.getPort(), op
-                    .getUri().getPath(), op.getUri().getQuery());
+                            .getUri().getPath(), op.getUri().getQuery());
         }
     }
 

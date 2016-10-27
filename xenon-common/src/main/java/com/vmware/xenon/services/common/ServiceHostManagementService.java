@@ -85,7 +85,7 @@ public class ServiceHostManagementService extends StatefulService {
         super.toggleOption(ServiceOption.INSTRUMENTATION, true);
     }
 
-    public static enum OperationTracingEnable {
+    public enum OperationTracingEnable {
         START,
         STOP
     }
@@ -256,7 +256,7 @@ public class ServiceHostManagementService extends StatefulService {
         if ((req.enable == OperationTracingEnable.START)) {
             OperationIndexService operationService = new OperationIndexService();
             this.getHost().startService(Operation.createPost(operationTracingServiceUri)
-                    .setCompletion(serviceCompletion),
+                            .setCompletion(serviceCompletion),
                     operationService);
         } else {
             sendRequest(Operation.createDelete(operationTracingServiceUri).setCompletion(

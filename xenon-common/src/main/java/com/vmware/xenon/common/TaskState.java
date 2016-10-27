@@ -18,7 +18,7 @@ package com.vmware.xenon.common;
  */
 public class TaskState {
 
-    public static enum TaskStage {
+    public enum TaskStage {
         /**
          * Task is created
          */

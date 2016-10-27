@@ -93,7 +93,7 @@ public class MigrationTaskService extends StatefulService {
     public static final String STAT_NAME_ESTIMATED_TOTAL_SERVICE_COUNT = "estimatedTotalServiceCount";
     public static final String FACTORY_LINK = ServiceUriPaths.MIGRATION_TASKS;
 
-    public static enum MigrationOption {
+    public enum MigrationOption {
         /**
          * Enables continuous data migration.
          */
@@ -259,8 +259,8 @@ public class MigrationTaskService extends StatefulService {
         }
 
         Operation.createPatch(getUri())
-            .setBody(patchState)
-            .sendWith(this);
+                .setBody(patchState)
+                .sendWith(this);
     }
 
     private State initialize(State initState) {
@@ -364,7 +364,8 @@ public class MigrationTaskService extends StatefulService {
     @Override
     public void handleMaintenance(Operation maintenanceOperation) {
         maintenanceOperation.complete();
-        ServiceMaintenanceRequest serviceMaintenanceRequest = maintenanceOperation.getBody(ServiceMaintenanceRequest.class);
+        ServiceMaintenanceRequest serviceMaintenanceRequest = maintenanceOperation
+                .getBody(ServiceMaintenanceRequest.class);
         if (!serviceMaintenanceRequest.reasons.contains(MaintenanceReason.PERIODIC_SCHEDULE)) {
             return;
         }
@@ -436,26 +437,26 @@ public class MigrationTaskService extends StatefulService {
         Operation destinationGet = Operation.createGet(currentState.destinationNodeGroupReference);
 
         OperationJoin.create(sourceGet, destinationGet)
-            .setCompletion((os, ts) -> {
-                if (ts != null && !ts.isEmpty()) {
-                    failTask(ts.values());
-                    return;
-                }
+                .setCompletion((os, ts) -> {
+                    if (ts != null && !ts.isEmpty()) {
+                        failTask(ts.values());
+                        return;
+                    }
 
-                NodeGroupState sourceGroup = os.get(sourceGet.getId()).getBody(NodeGroupState.class);
-                List<URI> sourceURIs = sourceGroup.nodes.entrySet().stream()
-                        .map(e -> extractBaseUri(e.getValue())).collect(Collectors.toList());
+                    NodeGroupState sourceGroup = os.get(sourceGet.getId()).getBody(NodeGroupState.class);
+                    List<URI> sourceURIs = sourceGroup.nodes.entrySet().stream()
+                            .map(e -> extractBaseUri(e.getValue())).collect(Collectors.toList());
 
-                NodeGroupState destinationGroup = os.get(destinationGet.getId()).getBody(NodeGroupState.class);
-                List<URI> destinationURIs = destinationGroup.nodes.entrySet().stream()
-                        .map(e -> extractBaseUri(e.getValue())).collect(Collectors.toList());
+                    NodeGroupState destinationGroup = os.get(destinationGet.getId()).getBody(NodeGroupState.class);
+                    List<URI> destinationURIs = destinationGroup.nodes.entrySet().stream()
+                            .map(e -> extractBaseUri(e.getValue())).collect(Collectors.toList());
 
-                waitUntilNodeGroupsAreStable(
-                        currentState,
-                        currentState.maximumConvergenceChecks,
-                        () -> computeFirstCurrentPageLinks(currentState, sourceURIs, destinationURIs));
-            })
-            .sendWith(this);
+                    waitUntilNodeGroupsAreStable(
+                            currentState,
+                            currentState.maximumConvergenceChecks,
+                            () -> computeFirstCurrentPageLinks(currentState, sourceURIs, destinationURIs));
+                })
+                .sendWith(this);
     }
 
     private void waitUntilNodeGroupsAreStable(State currentState, int allowedConvergenceChecks, Runnable onSuccess) {
@@ -484,9 +485,11 @@ public class MigrationTaskService extends StatefulService {
         NodeGroupUtils.checkConvergence(getHost(), currentState.sourceNodeGroupReference, sourceOp);
     }
 
-    private void scheduleWaitUntilNodeGroupsAreStable(State currentState, int allowedConvergenceChecks, Runnable onSuccess) {
+    private void scheduleWaitUntilNodeGroupsAreStable(State currentState, int allowedConvergenceChecks,
+            Runnable onSuccess) {
         if (allowedConvergenceChecks <= 0) {
-            failTask(new Exception("Nodegroups did not converge after " + currentState.maximumConvergenceChecks + " retries."));
+            failTask(new Exception(
+                    "Nodegroups did not converge after " + currentState.maximumConvergenceChecks + " retries."));
             return;
         }
         logInfo("Nodegroups are not convereged scheduling retry.");
@@ -494,7 +497,6 @@ public class MigrationTaskService extends StatefulService {
             waitUntilNodeGroupsAreStable(currentState, allowedConvergenceChecks - 1, onSuccess);
         }, currentState.maintenanceIntervalMicros, TimeUnit.MICROSECONDS);
     }
-
 
     private void computeFirstCurrentPageLinks(State currentState, List<URI> sourceURIs, List<URI> destinationURIs) {
         QueryTask queryTask = QueryTask.create(currentState.querySpec).setDirect(true);
@@ -518,38 +520,39 @@ public class MigrationTaskService extends StatefulService {
         queryOps.add(resultCountOperation);
 
         OperationJoin.create(queryOps)
-            .setCompletion((os, ts) -> {
-                if (ts != null && !ts.isEmpty()) {
-                    failTask(ts.values());
-                    return;
-                }
+                .setCompletion((os, ts) -> {
+                    if (ts != null && !ts.isEmpty()) {
+                        failTask(ts.values());
+                        return;
+                    }
 
-                Set<URI> currentPageLinks = os.values().stream()
-                        .filter(operation -> operation.getId() != resultCountOperation.getId())
-                        .filter(operation -> operation.getBody(QueryTask.class).results.nextPageLink != null)
-                        .map(operation -> getNextPageLinkUri(operation))
-                        .collect(Collectors.toSet());
+                    Set<URI> currentPageLinks = os.values().stream()
+                            .filter(operation -> operation.getId() != resultCountOperation.getId())
+                            .filter(operation -> operation.getBody(QueryTask.class).results.nextPageLink != null)
+                            .map(operation -> getNextPageLinkUri(operation))
+                            .collect(Collectors.toSet());
 
-                Long estimatedTotalServiceCount
-                        = os.get(resultCountOperation.getId()).getBody(QueryTask.class).results.documentCount;
+                    Long estimatedTotalServiceCount
+                            = os.get(resultCountOperation.getId()).getBody(QueryTask.class).results.documentCount;
 
-                adjustStat(STAT_NAME_ESTIMATED_TOTAL_SERVICE_COUNT, estimatedTotalServiceCount);
+                    adjustStat(STAT_NAME_ESTIMATED_TOTAL_SERVICE_COUNT, estimatedTotalServiceCount);
 
-                // if there are no next page links we are done early with migration
-                if (currentPageLinks.isEmpty()) {
-                    State patch = new State();
-                    patch.taskInfo = TaskState.createAsFinished();
-                    Operation.createPatch(getUri())
-                        .setBody(patch)
-                        .sendWith(this);
-                } else {
-                    migrate(currentState, currentPageLinks, destinationURIs, new HashMap<String, Long>());
-                }
-            })
-            .sendWith(this);
+                    // if there are no next page links we are done early with migration
+                    if (currentPageLinks.isEmpty()) {
+                        State patch = new State();
+                        patch.taskInfo = TaskState.createAsFinished();
+                        Operation.createPatch(getUri())
+                                .setBody(patch)
+                                .sendWith(this);
+                    } else {
+                        migrate(currentState, currentPageLinks, destinationURIs, new HashMap<String, Long>());
+                    }
+                })
+                .sendWith(this);
     }
 
-    private void migrate(State currentState, Set<URI> currentPageLinks, List<URI> destinationURIs, Map<String, Long> lastUpdateTimesPerOwner) {
+    private void migrate(State currentState, Set<URI> currentPageLinks, List<URI> destinationURIs,
+            Map<String, Long> lastUpdateTimesPerOwner) {
 
         // This method is recursively called. When a page doesn't have nextPageLink, the recursion
         // will call here with empty currentPageLinks.
@@ -569,48 +572,50 @@ public class MigrationTaskService extends StatefulService {
                 .collect(Collectors.toSet());
 
         OperationJoin.create(gets)
-            .setCompletion((os, ts) -> {
-                if (ts != null && !ts.isEmpty()) {
-                    failTask(ts.values());
-                    return;
-                }
-                Set<URI> nextPages = os.values().stream()
-                        .filter(operation -> operation.getBody(QueryTask.class).results.nextPageLink != null)
-                        .map(operation -> getNextPageLinkUri(operation))
-                        .collect(Collectors.toSet());
-                Collection<Object> results = new ArrayList<>();
-                // merging results, only select documents that have the same owner as the query tasks to ensure
-                // we get the most up to date version of the document and documents without owner.
-                for (Operation op : os.values()) {
-                    QueryTask queryTask = op.getBody(QueryTask.class);
-                    for (Object doc : queryTask.results.documents.values()) {
-                        ServiceDocument document = Utils.fromJson(doc, ServiceDocument.class);
-                        String documentOwner = document.documentOwner;
-                        if (documentOwner == null) {
-                            documentOwner = queryTask.results.documentOwner;
-                        }
+                .setCompletion((os, ts) -> {
+                    if (ts != null && !ts.isEmpty()) {
+                        failTask(ts.values());
+                        return;
+                    }
+                    Set<URI> nextPages = os.values().stream()
+                            .filter(operation -> operation.getBody(QueryTask.class).results.nextPageLink != null)
+                            .map(operation -> getNextPageLinkUri(operation))
+                            .collect(Collectors.toSet());
+                    Collection<Object> results = new ArrayList<>();
+                    // merging results, only select documents that have the same owner as the query tasks to ensure
+                    // we get the most up to date version of the document and documents without owner.
+                    for (Operation op : os.values()) {
+                        QueryTask queryTask = op.getBody(QueryTask.class);
+                        for (Object doc : queryTask.results.documents.values()) {
+                            ServiceDocument document = Utils.fromJson(doc, ServiceDocument.class);
+                            String documentOwner = document.documentOwner;
+                            if (documentOwner == null) {
+                                documentOwner = queryTask.results.documentOwner;
+                            }
 
-                        if (documentOwner.equals(queryTask.results.documentOwner)) {
-                            Long lastUpdateTime = lastUpdateTimesPerOwner.getOrDefault(documentOwner, 0L);
-                            lastUpdateTimesPerOwner
-                                .put(document.documentOwner, Math.max(lastUpdateTime, document.documentUpdateTimeMicros));
-                            results.add(doc);
+                            if (documentOwner.equals(queryTask.results.documentOwner)) {
+                                Long lastUpdateTime = lastUpdateTimesPerOwner.getOrDefault(documentOwner, 0L);
+                                lastUpdateTimesPerOwner
+                                        .put(document.documentOwner,
+                                                Math.max(lastUpdateTime, document.documentUpdateTimeMicros));
+                                results.add(doc);
+                            }
                         }
                     }
-                }
 
-                if (results.isEmpty()) {
-                    // The results might be empty if all the local queries returned documents the respective hosts don't own.
-                    // In this case we can just move on to the next set of pages.
-                    migrate(currentState, nextPages, destinationURIs, lastUpdateTimesPerOwner);
-                } else {
-                    transformResults(currentState, results, nextPages, destinationURIs, lastUpdateTimesPerOwner);
-                }
-            })
-            .sendWith(this);
+                    if (results.isEmpty()) {
+                        // The results might be empty if all the local queries returned documents the respective hosts don't own.
+                        // In this case we can just move on to the next set of pages.
+                        migrate(currentState, nextPages, destinationURIs, lastUpdateTimesPerOwner);
+                    } else {
+                        transformResults(currentState, results, nextPages, destinationURIs, lastUpdateTimesPerOwner);
+                    }
+                })
+                .sendWith(this);
     }
 
-    private void transformUsingMap(State state, Collection<Object> cleanJson, Set<URI> nextPageLinks, List<URI> destinationURIs, Map<String, Long> lastUpdateTimesPerOwner) {
+    private void transformUsingMap(State state, Collection<Object> cleanJson, Set<URI> nextPageLinks,
+            List<URI> destinationURIs, Map<String, Long> lastUpdateTimesPerOwner) {
         Collection<Operation> transformations = cleanJson.stream()
                 .map(doc -> {
                     return Operation.createPost(
@@ -641,7 +646,8 @@ public class MigrationTaskService extends StatefulService {
                 .sendWith(this);
     }
 
-    private void transformUsingObject(State state, Collection<Object> cleanJson, Set<URI> nextPageLinks, List<URI> destinationURIs, Map<String, Long> lastUpdateTimesPerOwner) {
+    private void transformUsingObject(State state, Collection<Object> cleanJson, Set<URI> nextPageLinks,
+            List<URI> destinationURIs, Map<String, Long> lastUpdateTimesPerOwner) {
         Collection<Operation> transformations = cleanJson.stream()
                 .map(doc -> {
                     TransformRequest transformRequest = new TransformRequest();
@@ -649,8 +655,8 @@ public class MigrationTaskService extends StatefulService {
                     transformRequest.destinationLink = state.destinationFactoryLink;
 
                     return Operation.createPost(UriUtils.buildUri(
-                                    selectRandomUri(destinationURIs),
-                                    state.transformationServiceLink))
+                            selectRandomUri(destinationURIs),
+                            state.transformationServiceLink))
                             .setBody(transformRequest);
                 })
                 .collect(Collectors.toList());
@@ -673,7 +679,8 @@ public class MigrationTaskService extends StatefulService {
                 .sendWith(this);
     }
 
-    private void transformResults(State state, Collection<Object> results, Set<URI> nextPageLinks, List<URI> destinationURIs, Map<String, Long> lastUpdateTimesPerOwner) {
+    private void transformResults(State state, Collection<Object> results, Set<URI> nextPageLinks,
+            List<URI> destinationURIs, Map<String, Long> lastUpdateTimesPerOwner) {
         // scrub document self links
         Collection<Object> cleanJson = results.stream()
                 .map(d -> {
@@ -688,12 +695,14 @@ public class MigrationTaskService extends StatefulService {
                 transformUsingMap(state, cleanJson, nextPageLinks, destinationURIs, lastUpdateTimesPerOwner);
             }
         } else {
-            Map<Object, String> jsonMap = cleanJson.stream().collect(Collectors.toMap(e -> e, e -> state.destinationFactoryLink));
+            Map<Object, String> jsonMap = cleanJson.stream()
+                    .collect(Collectors.toMap(e -> e, e -> state.destinationFactoryLink));
             migrateEntities(jsonMap, state, nextPageLinks, destinationURIs, lastUpdateTimesPerOwner);
         }
     }
 
-    private void migrateEntities(Map<Object, String> json, State state, Set<URI> nextPageLinks, List<URI> destinationURIs, Map<String, Long> lastUpdateTimesPerOwner) {
+    private void migrateEntities(Map<Object, String> json, State state, Set<URI> nextPageLinks,
+            List<URI> destinationURIs, Map<String, Long> lastUpdateTimesPerOwner) {
         // create objects on destination
         Map<Operation, Object> posts = json.entrySet().stream()
                 .map(d -> {
@@ -707,51 +716,54 @@ public class MigrationTaskService extends StatefulService {
                 .collect(Collectors.toMap(e -> e.getKey(), e -> e.getValue()));
 
         OperationJoin.create(posts.keySet())
-            .setCompletion((os, ts) -> {
-                if (ts != null && !ts.isEmpty()) {
-                    if (state.migrationOptions.contains(MigrationOption.DELETE_AFTER)) {
-                        logWarning("Migrating entities failed with exception: %s; Retrying operation.", ts.values().iterator().next());
-                        useFallBack(state, posts, ts, nextPageLinks, destinationURIs, lastUpdateTimesPerOwner);
+                .setCompletion((os, ts) -> {
+                    if (ts != null && !ts.isEmpty()) {
+                        if (state.migrationOptions.contains(MigrationOption.DELETE_AFTER)) {
+                            logWarning("Migrating entities failed with exception: %s; Retrying operation.",
+                                    ts.values().iterator().next());
+                            useFallBack(state, posts, ts, nextPageLinks, destinationURIs, lastUpdateTimesPerOwner);
+                        } else {
+                            failTask(ts.values());
+                            return;
+                        }
                     } else {
-                        failTask(ts.values());
-                        return;
+                        adjustStat(STAT_NAME_PROCESSED_DOCUMENTS, posts.size());
+                        migrate(state, nextPageLinks, destinationURIs, lastUpdateTimesPerOwner);
                     }
-                } else {
-                    adjustStat(STAT_NAME_PROCESSED_DOCUMENTS, posts.size());
-                    migrate(state, nextPageLinks, destinationURIs, lastUpdateTimesPerOwner);
-                }
-            })
-            .sendWith(this);
+                })
+                .sendWith(this);
     }
 
-    private void useFallBack(State state, Map<Operation, Object> posts, Map<Long, Throwable> operationFailures, Set<URI> nextPageLinks, List<URI> destinationURIs, Map<String, Long> lastUpdateTimesPerOwner) {
+    private void useFallBack(State state, Map<Operation, Object> posts, Map<Long, Throwable> operationFailures,
+            Set<URI> nextPageLinks, List<URI> destinationURIs, Map<String, Long> lastUpdateTimesPerOwner) {
         Map<URI, Operation> entityDestinationUriTofailedOps = getFailedOperations(posts, operationFailures);
         Collection<Operation> deleteOperations = createDeleteOperations(entityDestinationUriTofailedOps.keySet());
 
         OperationJoin.create(deleteOperations)
-            .setCompletion((os ,ts) -> {
-                if (ts != null && !ts.isEmpty()) {
-                    failTask(ts.values());
-                    return;
-                }
-                Collection<Operation> postOperations = createPostOperations(entityDestinationUriTofailedOps, posts);
+                .setCompletion((os, ts) -> {
+                    if (ts != null && !ts.isEmpty()) {
+                        failTask(ts.values());
+                        return;
+                    }
+                    Collection<Operation> postOperations = createPostOperations(entityDestinationUriTofailedOps, posts);
 
-                OperationJoin
-                    .create(postOperations)
-                    .setCompletion((oss, tss) -> {
-                        if (tss != null && !tss.isEmpty()) {
-                            failTask(tss.values());
-                            return;
-                        }
-                        adjustStat(STAT_NAME_PROCESSED_DOCUMENTS, posts.size());
-                        migrate(state, nextPageLinks, destinationURIs, lastUpdateTimesPerOwner);
-                    })
-                    .sendWith(this);
-            })
-            .sendWith(this);
+                    OperationJoin
+                            .create(postOperations)
+                            .setCompletion((oss, tss) -> {
+                                if (tss != null && !tss.isEmpty()) {
+                                    failTask(tss.values());
+                                    return;
+                                }
+                                adjustStat(STAT_NAME_PROCESSED_DOCUMENTS, posts.size());
+                                migrate(state, nextPageLinks, destinationURIs, lastUpdateTimesPerOwner);
+                            })
+                            .sendWith(this);
+                })
+                .sendWith(this);
     }
 
-    private Map<URI, Operation> getFailedOperations(Map<Operation, Object> posts, Map<Long, Throwable> operationFailures) {
+    private Map<URI, Operation> getFailedOperations(Map<Operation, Object> posts,
+            Map<Long, Throwable> operationFailures) {
         Map<URI, Operation> ops = new HashMap<>();
         for (Map.Entry<Operation, Object> entry : posts.entrySet()) {
             Operation op = entry.getKey();
@@ -774,14 +786,14 @@ public class MigrationTaskService extends StatefulService {
 
     private Collection<Operation> createPostOperations(Map<URI, Operation> failedOps, Map<Operation, Object> posts) {
         return failedOps.values().stream()
-               .map(o -> {
-                   Object newBody = posts.get(o);
-                   return Operation.createPost(o.getUri())
-                           .setBodyNoCloning(newBody)
-                           .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_FORCE_INDEX_UPDATE);
+                .map(o -> {
+                    Object newBody = posts.get(o);
+                    return Operation.createPost(o.getUri())
+                            .setBodyNoCloning(newBody)
+                            .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_FORCE_INDEX_UPDATE);
 
-               })
-               .collect(Collectors.toList());
+                })
+                .collect(Collectors.toList());
     }
 
     private boolean verifyPatchedState(State state, Operation operation) {
@@ -847,8 +859,8 @@ public class MigrationTaskService extends StatefulService {
         patch.taskInfo = TaskState.createAsFailed();
         patch.taskInfo.failure = Utils.toServiceErrorResponse(t);
         Operation.createPatch(getUri())
-            .setBody(patch)
-            .sendWith(this);
+                .setBody(patch)
+                .sendWith(this);
     }
 
     private void failTask(Collection<Throwable> t) {

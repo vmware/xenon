@@ -51,7 +51,7 @@ import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
 
 public class LuceneBlobIndexService extends StatelessService {
-    public static enum BlobIndexOption {
+    public enum BlobIndexOption {
         /**
          * Index is created on start. If an older index exists, its deleted.
          */
@@ -329,7 +329,6 @@ public class LuceneBlobIndexService extends StatelessService {
 
         }
     }
-
 
     private IndexSearcher updateSearcher(IndexWriter w)
             throws IOException {

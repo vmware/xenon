@@ -231,7 +231,6 @@ public final class Utils {
         return KryoSerializers.getBuffer(capacity);
     }
 
-
     /**
      * See {@link KryoSerializers#serializeObject(Object, byte[], int)}
      */
@@ -1041,9 +1040,9 @@ public final class Utils {
      * Contains flags describing the result of a state merging operation through the
      * {@link Utils#mergeWithStateAdvanced} method.
      */
-    public static enum MergeResult {
+    public enum MergeResult {
         SPECIAL_MERGE,   // whether the patch body represented a special update request
-                         // (if not set, the patch body is assumed to be a service state)
+        // (if not set, the patch body is assumed to be a service state)
         STATE_CHANGED    // whether the current state was changed as a result of the merge
     }
 
@@ -1205,11 +1204,11 @@ public final class Utils {
     }
 
     /**
-    * Compares a time value with current time. Both time values are in micros since epoch.
-    * Since we can not assume the time came from the same node, we use the concept of a
-    * time epsilon: any two time values within epsilon are considered too close to
-    * globally order in respect to each other and this method will return true.
-    */
+     * Compares a time value with current time. Both time values are in micros since epoch.
+     * Since we can not assume the time came from the same node, we use the concept of a
+     * time epsilon: any two time values within epsilon are considered too close to
+     * globally order in respect to each other and this method will return true.
+     */
     public static boolean isWithinTimeComparisonEpsilon(long timeMicros) {
         long now = Utils.getSystemNowMicrosUtc();
         return Math.abs(timeMicros - now) < timeComparisonEpsilon;
@@ -1254,7 +1253,7 @@ public final class Utils {
         return hasChanged;
     }
 
-    private static enum CollectionOperation {
+    private enum CollectionOperation {
         ADD, REMOVE
     }
 
