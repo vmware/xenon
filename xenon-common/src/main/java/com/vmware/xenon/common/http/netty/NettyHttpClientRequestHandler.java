@@ -455,7 +455,7 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
             this.host.log(Level.SEVERE, "Listener channel exception: %s",
                     cause.getMessage());
         }
-        ctx.channel().attr(NettyChannelContext.OPERATION_KEY).remove();
+        ctx.channel().attr(NettyChannelContext.OPERATION_KEY).set(null);
         ctx.close();
     }
 
@@ -484,7 +484,7 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
             rsp = response;
         }
 
-        ctx.channel().attr(NettyChannelContext.OPERATION_KEY).remove();
+        ctx.channel().attr(NettyChannelContext.OPERATION_KEY).set(null);
 
         ChannelFuture future = ctx.writeAndFlush(rsp);
         if (isClose) {
