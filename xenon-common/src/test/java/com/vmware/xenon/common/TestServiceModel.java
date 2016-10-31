@@ -857,11 +857,13 @@ public class TestServiceModel extends BasicReusableHostTestCase {
         body.id = UUID.randomUUID().toString();
         this.host.startServiceAndWait(factoryService, UUID.randomUUID().toString(), body);
         // try a post on the factory service and assert that the stats are collected for the post operation.
-        Operation post = Operation.createPost(factoryService.getUri())
-                .setBody(body);
-        Operation response = this.host.waitForResponse(post);
-        assertNotNull(response);
         this.host.waitFor("stats not found", () -> {
+            Operation post = Operation.createPost(factoryService.getUri())
+                    .setBody(body);
+            Operation response = this.host.waitForResponse(post);
+            assertNotNull(response);
+            // the stat is updated after the operation is completed, so we might miss the initial
+            // stat
             ServiceStats testStats = host.getServiceState(null, ServiceStats.class, UriUtils
                     .buildStatsUri(factoryService.getUri()));
             if (testStats == null) {
