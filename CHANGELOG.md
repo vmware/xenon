@@ -2,6 +2,10 @@
 
 ## 1.1.1-SNAPSHOT
 
+* Reduce memory usage under heavy query load, using single index searcher
+  per thread, in LuceneDocumentIndexService. See:
+  https://www.pivotaltracker.com/n/projects/1471320/stories/133188647
+
 * Optimize result processing for services with ServiceOption.IMMUTABLE.
   Skip latest version lookup and validation during query result processing
   resulting in 3x throughput increase (links processed / sec)
