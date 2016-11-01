@@ -1615,7 +1615,7 @@ public class TestLuceneDocumentIndexService {
         double docCount = this.getLuceneStat(timeSeriesStatName).accumulatedValue;
 
         this.host.log(
-                        "(%s) Factory: %s, Services: %d Docs: %f, Ops: %f, Queries: %d, Total result count: %d, POST throughput(ops/sec): %f",
+                        "(%s) Factory: %s, Services: %d Docs: %f, Ops: %f, Queries: %d, Per query results: %d, ops/sec: %f",
                         subject,
                         factoryUri.getPath(),
                         this.host.getState().serviceCount,
@@ -1625,8 +1625,15 @@ public class TestLuceneDocumentIndexService {
 
     @Test
     public void throughputPut() throws Throwable {
-        setUpHost(false);
-        doDurableServiceUpdate(Action.PUT, this.serviceCount, this.updateCount, null);
+        try {
+            setUpHost(false);
+            if (this.host.isStressTest()) {
+                Utils.setTimeDriftThreshold(TimeUnit.HOURS.toMicros(1));
+            }
+            doDurableServiceUpdate(Action.PUT, this.serviceCount, this.updateCount, null);
+        } finally {
+            Utils.setTimeDriftThreshold(Utils.DEFAULT_TIME_DRIFT_THRESHOLD_MICROS);
+        }
     }
 
     @Test

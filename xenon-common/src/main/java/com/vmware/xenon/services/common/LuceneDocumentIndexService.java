@@ -125,6 +125,18 @@ public class LuceneDocumentIndexService extends StatelessService {
 
     public static String SELF_LINK = ServiceUriPaths.CORE_DOCUMENT_INDEX;
 
+    public static final int QUERY_THREAD_COUNT = Integer.getInteger(
+            Utils.PROPERTY_NAME_PREFIX
+                    + LuceneDocumentIndexService.class.getSimpleName()
+                    + "QUERY_THREAD_COUNT",
+            Utils.DEFAULT_THREAD_COUNT * 2);
+
+    public static final int UPDATE_THREAD_COUNT = Integer.getInteger(
+            Utils.PROPERTY_NAME_PREFIX
+                    + LuceneDocumentIndexService.class.getSimpleName()
+                    + "UPDATE_THREAD_COUNT",
+            Utils.DEFAULT_THREAD_COUNT / 2);
+
     public static final String FILE_PATH_LUCENE = "lucene";
 
     public static final int DEFAULT_INDEX_FILE_COUNT_THRESHOLD_FOR_WRITER_REFRESH = 10000;
@@ -201,9 +213,6 @@ public class LuceneDocumentIndexService extends StatelessService {
             EnumSet.of(AggregationType.AVG, AggregationType.MAX);
 
     private static final EnumSet<AggregationType> AGGREGATION_TYPE_SUM = EnumSet.of(AggregationType.SUM);
-
-    protected static final int UPDATE_THREAD_COUNT = Utils.DEFAULT_THREAD_COUNT / 2;
-    protected static final int QUERY_THREAD_COUNT = Utils.DEFAULT_THREAD_COUNT;
 
     /**
      * Synchronization object used to coordinate index searcher refresh
