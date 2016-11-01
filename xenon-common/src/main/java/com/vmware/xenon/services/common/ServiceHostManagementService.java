@@ -279,8 +279,8 @@ public class ServiceHostManagementService extends StatefulService {
             }
 
             // upload the result.
-            LuceneDocumentIndexService.BackupRequest r = o
-                    .getBody(LuceneDocumentIndexService.BackupRequest.class);
+            LuceneDocumentIndexService.BackupResponse r = o
+                    .getBody(LuceneDocumentIndexService.BackupResponse.class);
 
             op.nestCompletion((ox, ex) -> {
                 if (ex != null) {

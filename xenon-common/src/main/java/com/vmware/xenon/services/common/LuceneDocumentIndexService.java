@@ -273,12 +273,16 @@ public class LuceneDocumentIndexService extends StatelessService {
     private URI uri;
 
     public static class BackupRequest extends ServiceDocument {
-        URI backupFile;
         static final String KIND = Utils.buildKind(BackupRequest.class);
     }
 
+    public static class BackupResponse extends ServiceDocument {
+        public URI backupFile;
+        static final String KIND = Utils.buildKind(BackupResponse.class);
+    }
+
     public static class RestoreRequest extends ServiceDocument {
-        URI backupFile;
+        public URI backupFile;
         static final String KIND = Utils.buildKind(RestoreRequest.class);
     }
 
@@ -470,7 +474,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         queryIndex(op, options, s, tq, null, Integer.MAX_VALUE, 0, null, rsp, null);
     }
 
-    private void handleBackup(Operation op, BackupRequest req) throws Throwable {
+    private void handleBackup(Operation op) throws Throwable {
         SnapshotDeletionPolicy snapshotter = null;
         IndexCommit commit = null;
         handleMaintenanceImpl(true);
@@ -489,10 +493,11 @@ public class LuceneDocumentIndexService extends StatelessService {
 
             // Add the files in the commit to a zip file.
             List<URI> fileList = FileUtils.filesToUris(indexDirectory, commit.getFileNames());
-            req.backupFile = FileUtils.zipFiles(fileList,
+            BackupResponse response = new BackupResponse();
+            response.backupFile = FileUtils.zipFiles(fileList,
                     this.indexDirectory + "-" + Utils.getNowMicrosUtc());
 
-            op.setBody(req).complete();
+            op.setBody(response).complete();
         } catch (Exception e) {
             this.logSevere(e);
             throw e;
@@ -598,8 +603,7 @@ public class LuceneDocumentIndexService extends StatelessService {
                             break;
                         }
                         if (sd.documentKind.equals(BackupRequest.KIND)) {
-                            BackupRequest backupRequest = (BackupRequest) op.getBodyRaw();
-                            handleBackup(op, backupRequest);
+                            handleBackup(op);
                             break;
                         }
                         if (sd.documentKind.equals(RestoreRequest.KIND)) {

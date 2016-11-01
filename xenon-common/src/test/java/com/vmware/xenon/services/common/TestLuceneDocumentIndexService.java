@@ -2237,8 +2237,8 @@ public class TestLuceneDocumentIndexService {
                                         return;
                                     }
 
-                                    LuceneDocumentIndexService.BackupRequest rsp = o
-                                            .getBody(LuceneDocumentIndexService.BackupRequest
+                                    LuceneDocumentIndexService.BackupResponse rsp = o
+                                            .getBody(LuceneDocumentIndexService.BackupResponse
                                                     .class);
                                     backupFile[0] = rsp.backupFile;
                                     if (rsp.backupFile == null) {
