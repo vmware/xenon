@@ -273,12 +273,12 @@ public class LuceneDocumentIndexService extends StatelessService {
     private URI uri;
 
     public static class BackupRequest extends ServiceDocument {
-        URI backupFile;
+        public URI backupFile;
         static final String KIND = Utils.buildKind(BackupRequest.class);
     }
 
     public static class RestoreRequest extends ServiceDocument {
-        URI backupFile;
+        public URI backupFile;
         static final String KIND = Utils.buildKind(RestoreRequest.class);
     }
 
