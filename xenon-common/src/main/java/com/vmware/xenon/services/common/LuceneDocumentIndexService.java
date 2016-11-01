@@ -42,6 +42,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import com.esotericsoftware.kryo.KryoException;
 import com.esotericsoftware.kryo.io.Output;
+
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
@@ -124,6 +125,8 @@ import com.vmware.xenon.services.common.QueryTask.QueryTerm.MatchType;
 public class LuceneDocumentIndexService extends StatelessService {
 
     public static String SELF_LINK = ServiceUriPaths.CORE_DOCUMENT_INDEX;
+
+    private static final String LUCENE_FIELD_NAME_OLDEST_VERSION = "oldestDocumentVersion";
 
     public static final String PROPERTY_NAME_QUERY_THREAD_COUNT = Utils.PROPERTY_NAME_PREFIX
             + LuceneDocumentIndexService.class.getSimpleName()
@@ -211,6 +214,10 @@ public class LuceneDocumentIndexService extends StatelessService {
 
     public static final String STAT_NAME_DOCUMENT_EXPIRATION_FORCED_MAINTENANCE_COUNT = "expiredDocumentForcedMaintenanceCount";
 
+    public static final String STAT_NAME_OLDEST_VERSION_READ_COUNT = "oldestVersionReadCount";
+
+    public static final String STAT_NAME_OLDEST_VERSION_READ_FAILURE_COUNT = "oldestVersionReadFailureCount";
+
     private static final EnumSet<AggregationType> AGGREGATION_TYPE_AVG_MAX =
             EnumSet.of(AggregationType.AVG, AggregationType.MAX);
 
@@ -256,7 +263,38 @@ public class LuceneDocumentIndexService extends StatelessService {
 
     private long writerCreationTimeMicros;
 
-    private final Map<String, Long> linkAccessTimes = new HashMap<>();
+    /**
+     * This class and the associated {@link #linkAccessInfo} map track the access and version
+     * retention information for running services. Entries are lazily allocated as needed and
+     * are removed under memory pressure during maintenance for services which are no longer
+     * running (see {@link #applyMemoryLimitToLinkAccessTimes()}).
+     */
+    private static class LinkAccessInfo {
+
+        /**
+         * This value represents the last update time for a particular document. It is updated
+         * on each modification to the document and is read in order to determine whether a new
+         * index searcher should be opened for a particular document.
+         *
+         * This value can be null if the oldest version value for a document is read from the
+         * index before the document is updated -- see
+         * {@link #getUpdatedOldestVersion(IndexWriter, ServiceDocument, ServiceDocumentDescription)}.
+         */
+        Long lastAccessTimeMicros;
+
+        /**
+         * This value represents the oldest version in the index for a particular document, and is
+         * used to trigger version retention in a batched fashion -- see
+         * {@link #checkDocumentRetentionLimit(ServiceDocument, ServiceDocumentDescription, long)}.
+         *
+         * This value can be null if a document is read from an existing index without being
+         * updated; in this case, the value is read from the index and cached the first time a
+         * document is created whose version is higher than the retention limit for the service.
+         */
+        Long oldestVersion;
+    }
+
+    private final Map<String, LinkAccessInfo> linkAccessInfo = new HashMap<>();
     private final Map<String, Long> linkDocumentRetentionEstimates = new HashMap<>();
     private long linkAccessMemoryLimitMB;
 
@@ -266,6 +304,8 @@ public class LuceneDocumentIndexService extends StatelessService {
 
     private ExecutorService privateQueryExecutor;
 
+    private Set<String> fieldToLoadVersionLookup;
+    private Set<String> fieldToLoadOldestVersionLookup;
     private Set<String> fieldsToLoadNoExpand;
     private Set<String> fieldsToLoadWithExpand;
 
@@ -348,6 +388,10 @@ public class LuceneDocumentIndexService extends StatelessService {
         this.versionSort = new Sort(new SortedNumericSortField(ServiceDocument.FIELD_NAME_VERSION,
                 SortField.Type.LONG, true));
 
+        this.fieldToLoadVersionLookup = new HashSet<>();
+        this.fieldToLoadVersionLookup.add(ServiceDocument.FIELD_NAME_VERSION);
+        this.fieldToLoadOldestVersionLookup = new HashSet<>();
+        this.fieldToLoadOldestVersionLookup.add(LUCENE_FIELD_NAME_OLDEST_VERSION);
         this.fieldsToLoadNoExpand = new HashSet<>();
         this.fieldsToLoadNoExpand.add(ServiceDocument.FIELD_NAME_SELF_LINK);
         this.fieldsToLoadNoExpand.add(ServiceDocument.FIELD_NAME_VERSION);
@@ -423,7 +467,7 @@ public class LuceneDocumentIndexService extends StatelessService {
 
         synchronized (this.searchSync) {
             this.writer = w;
-            this.linkAccessTimes.clear();
+            this.linkAccessInfo.clear();
             this.writerUpdateTimeMicros = Utils.getNowMicrosUtc();
             this.writerCreationTimeMicros = this.writerUpdateTimeMicros;
         }
@@ -1466,7 +1510,7 @@ public class LuceneDocumentIndexService extends StatelessService {
                 // We then use the latest version to determine if the current document result is relevant.
                 latestVersion = latestVersions.get(link);
                 if (latestVersion == null) {
-                    latestVersion = getLatestVersion(s, link);
+                    latestVersion = readLatestVersionFromIndex(s, link);
                     latestVersions.put(link, latestVersion);
                 }
 
@@ -1649,15 +1693,29 @@ public class LuceneDocumentIndexService extends StatelessService {
         return state;
     }
 
-    private long getLatestVersion(IndexSearcher s, String link) throws IOException {
+    private long readLatestVersionFromIndex(IndexSearcher s, String link) throws IOException {
         IndexableField versionField;
         long latestVersion;
         TopDocs td = searchByVersion(link, s, null);
         Document latestVersionDoc = s.getIndexReader().document(td.scoreDocs[0].doc,
-                this.fieldsToLoadNoExpand);
+                this.fieldToLoadVersionLookup);
         versionField = latestVersionDoc.getField(ServiceDocument.FIELD_NAME_VERSION);
         latestVersion = versionField.numericValue().longValue();
         return latestVersion;
+    }
+
+    private Long readOldestVersionFromIndex(IndexSearcher s, String link) throws IOException {
+        IndexableField versionField;
+        long oldestVersion;
+        TopDocs td = searchByVersion(link, s, null);
+        Document oldestVersionDoc = s.getIndexReader().document(td.scoreDocs[0].doc,
+                this.fieldToLoadOldestVersionLookup);
+        versionField = oldestVersionDoc.getField(LUCENE_FIELD_NAME_OLDEST_VERSION);
+        if (versionField == null) {
+            return null;
+        }
+        oldestVersion = versionField.numericValue().longValue();
+        return oldestVersion;
     }
 
     private void expandLinks(Operation o, Operation get) {
@@ -1717,6 +1775,73 @@ public class LuceneDocumentIndexService extends StatelessService {
         }
     }
 
+    /**
+     * This method returns the updated oldest version value for a particular service, or
+     * {@link ServiceDocumentDescription#FIELD_VALUE_DISABLED_VERSION_RETENTION} if the value
+     * cannot be computed.
+     *
+     * In the common case, oldest document value is written to the cache at document version 1 and
+     * is kept up to date throughout the lifetime of the service. Complications arise when opening
+     * an existing index, however. In this case, the oldest document value is ignored (set to null
+     * in the cache and ignored here) until a new version of the document is created whose version
+     * is higher than the retention limit for the service. In this case, the oldest document value
+     * is read from the index (see {@link #updateIndex(Operation)} or, if the index does not
+     * contain the oldest version value, the service is added to the deferred version retention
+     * list so that retention can be performed during the next maintenance interval and the cached
+     * value updated.
+     *
+     * @param wr Supplies the index writer for the operation.
+     * @param sd Supplies the new document to be written to the index.
+     * @param desc Supplies the template for the new document.
+     * @return The updated oldest version value for the service, or
+     * {@link ServiceDocumentDescription#FIELD_VALUE_DISABLED_VERSION_RETENTION} if the value
+     * cannot be computed.
+     * @throws IOException if reading from the index fails.
+     */
+    private long getUpdatedOldestVersion(IndexWriter wr, ServiceDocument sd,
+            ServiceDocumentDescription desc) throws IOException {
+
+        if (desc.versionRetentionLimit == ServiceDocumentDescription.FIELD_VALUE_DISABLED_VERSION_RETENTION) {
+            return ServiceDocumentDescription.FIELD_VALUE_DISABLED_VERSION_RETENTION;
+        }
+
+        String link = sd.documentSelfLink;
+        long limit = Math.max(1, desc.versionRetentionLimit);
+        boolean fetchFromIndex = false;
+        synchronized (this.searchSync) {
+            LinkAccessInfo linkAccessInfo = this.linkAccessInfo.get(link);
+            if (linkAccessInfo != null
+                    && linkAccessInfo.oldestVersion != null) {
+                return linkAccessInfo.oldestVersion;
+            }
+            if (sd.documentVersion > limit) {
+                fetchFromIndex = true;
+            }
+        }
+
+        if (!fetchFromIndex) {
+            return ServiceDocumentDescription.FIELD_VALUE_DISABLED_VERSION_RETENTION;
+        }
+
+        adjustTimeSeriesStat(STAT_NAME_OLDEST_VERSION_READ_COUNT, AGGREGATION_TYPE_SUM, 1);
+        IndexSearcher s = createOrRefreshSearcher(link, 1, wr, false);
+        Long oldestVersion = readOldestVersionFromIndex(s, link);
+        if (oldestVersion == null) {
+            // Pathological case: the oldest version value was never written to the index, even
+            // though the version retention limit was reached. Add the document to the retention
+            // list so that the value will be updated during the next maintenance operation.
+            synchronized (this.linkDocumentRetentionEstimates) {
+                this.linkDocumentRetentionEstimates.put(link, limit);
+            }
+            adjustTimeSeriesStat(STAT_NAME_OLDEST_VERSION_READ_FAILURE_COUNT, AGGREGATION_TYPE_SUM,
+                    1);
+            return ServiceDocumentDescription.FIELD_VALUE_DISABLED_VERSION_RETENTION;
+        }
+
+        updateLinkAccessInfo(link, null, oldestVersion);
+        return oldestVersion;
+    }
+
     protected void updateIndex(Operation updateOp) throws Throwable {
         UpdateIndexRequest r = updateOp.getBody(UpdateIndexRequest.class);
         ServiceDocument s = r.document;
@@ -1749,6 +1874,14 @@ public class LuceneDocumentIndexService extends StatelessService {
             updateOp.fail(new IllegalArgumentException("description is required"));
             return;
         }
+
+        IndexWriter wr = this.writer;
+        if (wr == null) {
+            updateOp.fail(new CancellationException());
+            return;
+        }
+
+        long oldestVersion = getUpdatedOldestVersion(wr, s, desc);
 
         s.documentDescription = null;
 
@@ -1801,16 +1934,25 @@ public class LuceneDocumentIndexService extends StatelessService {
         addNumericField(doc, ServiceDocument.FIELD_NAME_VERSION,
                 s.documentVersion, true);
 
+        // Note that the oldest version value is written if the document version is greater than
+        // *or equal to* the limit; we don't attempt to fetch this value from the index unless the
+        // document version is *greater than* the limit.
+        long limit = Math.max(1, desc.versionRetentionLimit);
+        if (s.documentVersion >= limit
+                && oldestVersion != ServiceDocumentDescription.FIELD_VALUE_DISABLED_VERSION_RETENTION) {
+            addNumericField(doc, LUCENE_FIELD_NAME_OLDEST_VERSION, oldestVersion, true);
+        }
+
         if (desc.propertyDescriptions == null
                 || desc.propertyDescriptions.isEmpty()) {
             // no additional property type information, so we will add the
             // document with common fields indexed plus the full body
-            addDocumentToIndex(updateOp, doc, s, desc);
+            addDocumentToIndex(wr, updateOp, doc, s, desc, oldestVersion);
             return;
         }
 
         addIndexableFieldsToDocument(doc, s, desc);
-        addDocumentToIndex(updateOp, doc, s, desc);
+        addDocumentToIndex(wr, updateOp, doc, s, desc, oldestVersion);
 
         if (hasOption(ServiceOption.INSTRUMENTATION)) {
             int fieldCount = doc.getFields().size();
@@ -2085,22 +2227,18 @@ public class LuceneDocumentIndexService extends StatelessService {
     }
 
     private void checkDocumentRetentionLimit(ServiceDocument state,
-            ServiceDocumentDescription desc) {
-        if (desc.versionRetentionLimit == ServiceDocumentDescription.FIELD_VALUE_DISABLED_VERSION_RETENTION) {
+            ServiceDocumentDescription desc, long oldestVersion) {
+
+        if (desc.versionRetentionLimit
+                == ServiceDocumentDescription.FIELD_VALUE_DISABLED_VERSION_RETENTION) {
             return;
         }
-        synchronized (this.linkDocumentRetentionEstimates) {
-            if (this.linkDocumentRetentionEstimates.containsKey(state.documentSelfLink)) {
-                return;
-            }
 
-            long limit = Math.max(1, desc.versionRetentionLimit);
-            if (state.documentVersion < limit) {
-                return;
+        long limit = Math.max(1, desc.versionRetentionLimit);
+        if (state.documentVersion - oldestVersion > limit) {
+            synchronized (this.linkDocumentRetentionEstimates) {
+                this.linkDocumentRetentionEstimates.put(state.documentSelfLink, limit);
             }
-
-            // schedule this self link for retention policy: it might have exceeded the version limit
-            this.linkDocumentRetentionEstimates.put(state.documentSelfLink, limit);
         }
     }
 
@@ -2228,28 +2366,20 @@ public class LuceneDocumentIndexService extends StatelessService {
             }
         }
 
-        long now = Utils.getNowMicrosUtc();
-
         // Use time AFTER index was updated to be sure that it can be compared
         // against the time the searcher was updated and have this change
         // be reflected in the new searcher. If the start time would be used,
         // it is possible to race with updating the searcher and NOT have this
         // change be reflected in the searcher.
-        updateLinkAccessTime(now, link);
+        updateLinkAccessInfo(link, Utils.getNowMicrosUtc(), cutOffVersion + 1);
 
         delete.complete();
     }
 
-    private void addDocumentToIndex(Operation op, Document doc, ServiceDocument sd,
-            ServiceDocumentDescription desc) throws IOException {
-        IndexWriter wr = this.writer;
-        if (wr == null) {
-            op.fail(new CancellationException());
-            return;
-        }
+    private void addDocumentToIndex(IndexWriter wr, Operation op, Document doc, ServiceDocument sd,
+            ServiceDocumentDescription desc, long oldestVersion) throws IOException {
 
         long startNanos = System.nanoTime();
-
         wr.addDocument(doc);
         long durationNanos = System.nanoTime() - startNanos;
         setTimeSeriesStat(STAT_NAME_INDEXED_DOCUMENT_COUNT, AGGREGATION_TYPE_SUM, 1);
@@ -2261,21 +2391,34 @@ public class LuceneDocumentIndexService extends StatelessService {
         // be reflected in the new searcher. If the start time would be used,
         // it is possible to race with updating the searcher and NOT have this
         // change be reflected in the searcher.
-        updateLinkAccessTime(Utils.getNowMicrosUtc(), sd.documentSelfLink);
+        updateLinkAccessInfo(sd.documentSelfLink, Utils.getNowMicrosUtc(),
+                sd.documentVersion == 1 ? 1L : null);
         op.setBody(null).complete();
-        checkDocumentRetentionLimit(sd, desc);
+        checkDocumentRetentionLimit(sd, desc, oldestVersion);
         applyActiveQueries(op, sd, desc);
     }
 
-    private void updateLinkAccessTime(long t, String link) {
+    private void updateLinkAccessInfo(String link, Long lastAccessTime, Long oldestVersion) {
         synchronized (this.searchSync) {
-            // This map is cleared in applyMemoryLimit while holding this lock,
-            // so it is added to here while also holding the lock for symmetry.
-            this.linkAccessTimes.put(link, t);
+            LinkAccessInfo linkAccessInfo = this.linkAccessInfo.get(link);
+            if (linkAccessInfo != null) {
+                if (lastAccessTime != null) {
+                    linkAccessInfo.lastAccessTimeMicros = lastAccessTime;
+                }
+                if (oldestVersion != null) {
+                    linkAccessInfo.oldestVersion = oldestVersion;
+                }
+            } else {
+                linkAccessInfo = new LinkAccessInfo();
+                linkAccessInfo.lastAccessTimeMicros = lastAccessTime;
+                linkAccessInfo.oldestVersion = oldestVersion;
+                this.linkAccessInfo.put(link, linkAccessInfo);
+            }
 
             // The index update time may only be increased.
-            if (this.writerUpdateTimeMicros < t) {
-                this.writerUpdateTimeMicros = t;
+            if (lastAccessTime != null
+                    && this.writerUpdateTimeMicros < lastAccessTime) {
+                this.writerUpdateTimeMicros = lastAccessTime;
             }
         }
     }
@@ -2314,9 +2457,10 @@ public class LuceneDocumentIndexService extends StatelessService {
             if (s == null) {
                 needNewSearcher = true;
             } else if (selfLink != null && resultLimit == 1) {
-                Long perLinkUpdateTime = this.linkAccessTimes.get(selfLink);
-                if (perLinkUpdateTime != null
-                        && perLinkUpdateTime.compareTo(this.searcherUpdateTimeMicros.get()) >= 0) {
+                LinkAccessInfo linkAccessInfo = this.linkAccessInfo.get(selfLink);
+                if (linkAccessInfo != null
+                        && linkAccessInfo.lastAccessTimeMicros != null
+                        && linkAccessInfo.lastAccessTimeMicros >= this.searcherUpdateTimeMicros.get()) {
                     needNewSearcher = !doNotRefresh;
                 }
             } else if (this.searcherUpdateTimeMicros.get() < this.writerUpdateTimeMicros) {
@@ -2542,16 +2686,16 @@ public class LuceneDocumentIndexService extends StatelessService {
         // list all together/
         // TODO https://www.pivotaltracker.com/story/show/133390149
         synchronized (this.searchSync) {
-            if (this.linkAccessTimes.isEmpty()) {
+            if (this.linkAccessInfo.isEmpty()) {
                 return;
             }
-            if (memThresholdBytes > this.linkAccessTimes.size() * bytesPerLinkEstimate) {
+            if (memThresholdBytes > this.linkAccessInfo.size() * bytesPerLinkEstimate) {
                 return;
             }
-            count = this.linkAccessTimes.size();
-            Iterator<Entry<String, Long>> li = this.linkAccessTimes.entrySet().iterator();
+            count = this.linkAccessInfo.size();
+            Iterator<Entry<String, LinkAccessInfo>> li = this.linkAccessInfo.entrySet().iterator();
             while (li.hasNext()) {
-                Entry<String, Long> e = li.next();
+                Entry<String, LinkAccessInfo> e = li.next();
                 // remove entries for services no longer attached / started on host
                 if (getHost().getServiceStage(e.getKey()) == null) {
                     count++;
@@ -2565,6 +2709,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         if (count == 0) {
             return;
         }
+
         logInfo("Cleared %d link access times", count);
     }
 
@@ -2592,7 +2737,7 @@ public class LuceneDocumentIndexService extends StatelessService {
             String link = d.get(ServiceDocument.FIELD_NAME_SELF_LINK);
             IndexableField versionField = d.getField(ServiceDocument.FIELD_NAME_VERSION);
             long versionExpired = versionField.numericValue().longValue();
-            long latestVersion = this.getLatestVersion(s, link);
+            long latestVersion = this.readLatestVersionFromIndex(s, link);
             if (versionExpired < latestVersion) {
                 continue;
             }

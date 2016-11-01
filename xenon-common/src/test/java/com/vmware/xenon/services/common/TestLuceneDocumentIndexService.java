@@ -47,6 +47,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 import java.util.logging.Level;
+
 import javax.xml.bind.DatatypeConverter;
 
 import org.junit.After;
@@ -532,12 +533,31 @@ public class TestLuceneDocumentIndexService {
         qps *= TimeUnit.SECONDS.toNanos(1);
 
         this.host.log(
-                "Factory:%S, Results per query:%d, Queries: %d, QPS: %f, Processing thpt (links/sec): %f",
+                "Factory:%s, Results per query:%d, Queries: %d, QPS: %f, Processing thpt (links/sec): %f",
                 factoryUri.getPath(),
                 this.serviceCount,
                 this.iterationCount,
                 qps,
                 thput);
+    }
+
+    public static class MinimalTestServiceWithCustomRetention extends StatefulService {
+
+        public static final String FACTORY_LINK = "test/custom-retention-services";
+
+        private static final long VERSION_RETENTION_LIMIT = 100;
+
+        public MinimalTestServiceWithCustomRetention() {
+            super(MinimalTestServiceState.class);
+            super.toggleOption(ServiceOption.PERSISTENCE, true);
+        }
+
+        @Override
+        public ServiceDocument getDocumentTemplate() {
+            ServiceDocument template = super.getDocumentTemplate();
+            template.documentDescription.versionRetentionLimit = VERSION_RETENTION_LIMIT;
+            return template;
+        }
     }
 
     @Test
@@ -572,16 +592,24 @@ public class TestLuceneDocumentIndexService {
 
             convertExampleFactoryToIdempotent(h);
 
-            String factoryLink = OnDemandLoadFactoryService.create(h);
-            createOnDemandLoadServices(h, factoryLink);
+            String onDemandFactoryLink = OnDemandLoadFactoryService.create(h);
+            createOnDemandLoadServices(h, onDemandFactoryLink);
 
-            verifyInitialStatePost(h);
-
-            ServiceHostState initialState = h.getState();
+            String customRetentionFactoryLink = createCustomRetentionFactoryService(h);
+            List<String> customRetentionServiceLinks = createCustomRetentionServices(h,
+                    customRetentionFactoryLink);
+            updateCustomRetentionServices(h, customRetentionFactoryLink,
+                    customRetentionServiceLinks,
+                    (int) MinimalTestServiceWithCustomRetention.VERSION_RETENTION_LIMIT);
+            verifyCustomRetentionStats(h, null);
 
             List<URI> exampleURIs = new ArrayList<>();
             Map<URI, ExampleServiceState> beforeState = verifyIdempotentServiceStartDeleteWithStats(
                     h, exampleURIs);
+
+            verifyInitialStatePost(h);
+
+            ServiceHostState initialState = h.getState();
 
             // stop the host, create new one
             h.stop();
@@ -600,14 +628,31 @@ public class TestLuceneDocumentIndexService {
                 return;
             }
 
+            this.host.toggleServiceOptions(h.getDocumentIndexServiceUri(),
+                    EnumSet.of(ServiceOption.INSTRUMENTATION),
+                    null);
+
             verifyIdempotentFactoryAfterHostRestart(h, initialState, exampleURIs, beforeState);
 
             verifyOnDemandLoad(h);
+
+            verifyCustomRetentionStats(h, null);
+            createCustomRetentionFactoryService(h);
+            updateCustomRetentionServices(h, customRetentionFactoryLink,
+                    customRetentionServiceLinks, 1);
+            verifyCustomRetentionStats(h, this.serviceCount);
 
         } finally {
             h.stop();
             tmpFolder.delete();
         }
+    }
+
+    private void convertExampleFactoryToIdempotent(VerificationHost h) {
+        URI exampleFactoryUri = UriUtils.buildUri(h, ExampleService.FACTORY_LINK);
+        h.waitForServiceAvailable(exampleFactoryUri);
+        this.host.toggleServiceOptions(exampleFactoryUri,
+                EnumSet.of(ServiceOption.IDEMPOTENT_POST), null);
     }
 
     private void createOnDemandLoadServices(ServiceHost h, String factoryLink)
@@ -625,14 +670,74 @@ public class TestLuceneDocumentIndexService {
         this.host.testWait();
     }
 
-    void convertExampleFactoryToIdempotent(VerificationHost h) {
-        URI exampleFactoryUri = UriUtils.buildUri(h, ExampleService.FACTORY_LINK);
-        h.waitForServiceAvailable(exampleFactoryUri);
-        this.host.toggleServiceOptions(exampleFactoryUri,
-                EnumSet.of(ServiceOption.IDEMPOTENT_POST), null);
+    private String createCustomRetentionFactoryService(ServiceHost h) {
+        this.host.testStart(1);
+        FactoryService s = FactoryService.create(MinimalTestServiceWithCustomRetention.class);
+        assertTrue(s != null);
+        Operation factoryPost = Operation
+                .createPost(UriUtils.buildFactoryUri(h,
+                        MinimalTestServiceWithCustomRetention.class))
+                .setCompletion(this.host.getCompletion());
+        h.startService(factoryPost, s);
+        this.host.testWait();
+        URI factoryUri = s.getUri();
+        this.host.waitForServiceAvailable(factoryUri);
+        h.log(Level.INFO, "Started custom retention factory at %s", factoryUri);
+        return factoryUri.getPath();
     }
 
-    void verifyInitialStatePost(VerificationHost h) throws Throwable {
+    private List<String> createCustomRetentionServices(ServiceHost h, String factoryLink) {
+        List<String> serviceIds = new ArrayList<>((int) this.serviceCount);
+        this.host.testStart(this.serviceCount);
+        for (int i = 0; i < this.serviceCount; i++) {
+            String id = UUID.randomUUID().toString();
+            serviceIds.add(id);
+            MinimalTestServiceState st = new MinimalTestServiceState();
+            st.documentSelfLink = id;
+            st.id = id;
+            st.stringValue = "version 0";
+            this.host.send(Operation
+                    .createPost(UriUtils.buildUri(h, factoryLink))
+                    .setBody(st)
+                    .setCompletion(this.host.getCompletion()));
+        }
+        this.host.testWait();
+        return serviceIds;
+    }
+
+    private void updateCustomRetentionServices(ServiceHost h, String factoryLink,
+            List<String> serviceIds, int updateCount) {
+        this.host.testStart(this.serviceCount * updateCount);
+        for (int i = 0; i < updateCount; i++) {
+            for (String id : serviceIds) {
+                MinimalTestServiceState st = new MinimalTestServiceState();
+                st.id = id;
+                st.stringValue = "version " + i;
+                this.host.send(Operation
+                        .createPut(UriUtils.buildUri(h, UriUtils.buildUriPath(factoryLink, id)))
+                        .setBody(st)
+                        .setCompletion(this.host.getCompletion()));
+            }
+        }
+        this.host.testWait();
+    }
+
+    private void verifyCustomRetentionStats(ServiceHost h, Long expectedValue) {
+        URI luceneStatsUri = UriUtils.buildStatsUri(h, LuceneDocumentIndexService.SELF_LINK);
+        ServiceStats stats = this.host.getServiceState(null, ServiceStats.class, luceneStatsUri);
+        assertTrue(stats.entries.size() > 0);
+        ServiceStat stat = stats.entries.get(
+                LuceneDocumentIndexService.STAT_NAME_OLDEST_VERSION_READ_COUNT
+                        + ServiceStats.STAT_NAME_SUFFIX_PER_DAY);
+        assertTrue(expectedValue == null || stat != null);
+        assertTrue(expectedValue == null || stat.latestValue == expectedValue);
+        stat = stats.entries.get(
+                LuceneDocumentIndexService.STAT_NAME_OLDEST_VERSION_READ_FAILURE_COUNT
+                        + ServiceStats.STAT_NAME_SUFFIX_PER_DAY);
+        assertTrue(stat == null);
+    }
+
+    private void verifyInitialStatePost(VerificationHost h) throws Throwable {
         URI factoryUri = createImmutableFactoryService(h);
         doThroughputPost(false, factoryUri);
         ServiceDocumentQueryResult r = this.host.getFactoryState(factoryUri);
@@ -656,13 +761,10 @@ public class TestLuceneDocumentIndexService {
         h.testWait(ctx);
     }
 
-    void verifyIdempotentFactoryAfterHostRestart(VerificationHost h, ServiceHostState initialState,
-            List<URI> exampleURIs, Map<URI, ExampleServiceState> beforeState) throws Throwable {
+    private void verifyIdempotentFactoryAfterHostRestart(VerificationHost h,
+            ServiceHostState initialState, List<URI> exampleURIs,
+            Map<URI, ExampleServiceState> beforeState) throws Throwable {
         long start = System.nanoTime() / 1000;
-
-        this.host.toggleServiceOptions(h.getDocumentIndexServiceUri(),
-                EnumSet.of(ServiceOption.INSTRUMENTATION),
-                null);
 
         // make sure synchronization has run, so we can verify if synch produced index updates
         this.host.waitForReplicatedFactoryServiceAvailable(
@@ -774,8 +876,8 @@ public class TestLuceneDocumentIndexService {
         verifyFactoryStartedAndSynchronizedAfterNodeSynch(h, statName);
     }
 
-    Map<URI, ExampleServiceState> verifyIdempotentServiceStartDeleteWithStats(VerificationHost h,
-            List<URI> exampleURIs) throws Throwable {
+    private Map<URI, ExampleServiceState> verifyIdempotentServiceStartDeleteWithStats(
+            VerificationHost h, List<URI> exampleURIs) throws Throwable {
         int vc = 2;
         ExampleServiceState bodyBefore = new ExampleServiceState();
         bodyBefore.name = UUID.randomUUID().toString();
@@ -1615,12 +1717,12 @@ public class TestLuceneDocumentIndexService {
         double docCount = this.getLuceneStat(timeSeriesStatName).accumulatedValue;
 
         this.host.log(
-                        "(%s) Factory: %s, Services: %d Docs: %f, Ops: %f, Queries: %d, Per query results: %d, ops/sec: %f",
-                        subject,
-                        factoryUri.getPath(),
-                        this.host.getState().serviceCount,
-                        docCount,
-                        ioCount, queryCount, queryResultCount.get(), throughput);
+                "(%s) Factory: %s, Services: %d Docs: %f, Ops: %f, Queries: %d, Per query results: %d, ops/sec: %f",
+                subject,
+                factoryUri.getPath(),
+                this.host.getState().serviceCount,
+                docCount,
+                ioCount, queryCount, queryResultCount.get(), throughput);
     }
 
     @Test
