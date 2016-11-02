@@ -47,6 +47,8 @@ import com.google.gson.JsonParser;
 
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.core.SimpleAnalyzer;
+import org.apache.lucene.codecs.lucene50.Lucene50StoredFieldsFormat.Mode;
+import org.apache.lucene.codecs.lucene62.Lucene62Codec;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.DoublePoint;
 import org.apache.lucene.document.Field;
@@ -397,6 +399,7 @@ public class LuceneDocumentIndexService extends StatelessService {
     public IndexWriter createWriter(File directory, boolean doUpgrade) throws Exception {
         Analyzer analyzer = new SimpleAnalyzer();
         IndexWriterConfig iwc = new IndexWriterConfig(analyzer);
+        iwc.setCodec(new Lucene62Codec(Mode.BEST_COMPRESSION));
         Long totalMBs = getHost().getServiceMemoryLimitMB(getSelfLink(), MemoryLimitType.EXACT);
         if (totalMBs != null) {
             long cacheSizeMB = (totalMBs * 3) / 4;
