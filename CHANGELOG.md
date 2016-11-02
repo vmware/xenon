@@ -2,6 +2,9 @@
 
 ## 1.2.0-SNAPSHOT
 
+* Roll back to Lucene to version 6.0.1 due to an issue in 6.2.1. See:
+  https://issues.apache.org/jira/browse/LUCENE-7491
+
 * LuceneDocumentIndexService's "backup" API now provides access to the
   backup .zip file location in its `BackupResponse`
 
@@ -9,6 +12,10 @@
   to be a full featured registry with native DNS, hence the change.
 
 ## 1.1.1
+
+* Note: This release has a bug where Lucene will occasionally throw MergeExceptions
+  due to https://issues.apache.org/jira/browse/LUCENE-7491. This release should not
+  be used in production.
 
 * Reduce memory usage under heavy query load, using single index searcher
   per thread, in LuceneDocumentIndexService. See:
@@ -41,6 +48,10 @@
   Collections.empty*, Collections.singleton* and Arrays.asList().
 
 ## 1.1.0
+
+* Note: This release has a bug where Lucene will occasionally throw MergeExceptions
+  due to https://issues.apache.org/jira/browse/LUCENE-7491. This release should not
+  be used in production.
 
 * Remove infrastructure Utils.toDocumentBytes/fromDocumentBytes and related methods,
   KryoSerializers.serialize/deserializeObject are used instead
