@@ -79,6 +79,7 @@ public class ServiceHostManagementService extends StatefulService {
     public static final String STAT_NAME_ODL_STOP_COUNT = "onDemandLoadStopCount";
     public static final String STAT_NAME_ODL_STOP_CONFLICT_COUNT = "onDemandLoadStopConflictCount";
     public static final String STAT_NAME_PAUSE_RESUME_CONFLICT_COUNT = "pauseResumeConflictCount";
+    public static final String STAT_NAME_RATE_LIMITED_OP_COUNT = "rateLimitedOperationCount";
 
     public ServiceHostManagementService() {
         super(ServiceHostState.class);

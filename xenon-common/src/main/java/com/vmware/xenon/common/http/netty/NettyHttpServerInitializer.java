@@ -51,12 +51,15 @@ public class NettyHttpServerInitializer extends ChannelInitializer<SocketChannel
 
     private final SslContext sslContext;
     private ServiceHost host;
+    private NettyHttpListener listener;
     private int responsePayloadSizeLimit;
     private static final boolean debugLogging = false;
 
-    public NettyHttpServerInitializer(ServiceHost host, SslContext sslContext, int responsePayloadSizeLimit) {
+    public NettyHttpServerInitializer(NettyHttpListener listener, ServiceHost host,
+            SslContext sslContext, int responsePayloadSizeLimit) {
         this.sslContext = sslContext;
         this.host = host;
+        this.listener = listener;
         this.responsePayloadSizeLimit = responsePayloadSizeLimit;
         NettyLoggingUtil.setupNettyLogging();
     }
@@ -129,7 +132,8 @@ public class NettyHttpServerInitializer extends ChannelInitializer<SocketChannel
         p.addLast(WEBSOCKET_HANDLER, new NettyWebSocketRequestHandler(this.host,
                 ServiceUriPaths.CORE_WEB_SOCKET_ENDPOINT,
                 ServiceUriPaths.WEB_SOCKET_SERVICE_PREFIX));
-        p.addLast(HTTP_REQUEST_HANDLER, new NettyHttpClientRequestHandler(this.host, sslHandler,
+        p.addLast(HTTP_REQUEST_HANDLER,
+                new NettyHttpClientRequestHandler(this.host, this.listener, sslHandler,
                 this.responsePayloadSizeLimit));
     }
 

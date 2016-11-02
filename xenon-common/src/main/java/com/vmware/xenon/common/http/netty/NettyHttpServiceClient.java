@@ -180,6 +180,7 @@ public class NettyHttpServiceClient implements ServiceClient {
                     });
             this.callbackService = new HttpRequestCallbackService(this);
             this.host.startService(startCallbackPost, this.callbackService);
+            MaintenanceProxyService.start(this.host, this::handleMaintenance);
         }
     }
 
@@ -814,6 +815,7 @@ public class NettyHttpServiceClient implements ServiceClient {
         return this.http2ChannelPool.getFirstValidHttp2Context(tag, host, port);
     }
 
+    @Override
     public ConnectionPoolMetrics getConnectionPoolMetrics(String tag) {
         if (tag == null) {
             throw new IllegalArgumentException("tag is required");
@@ -864,10 +866,12 @@ public class NettyHttpServiceClient implements ServiceClient {
         this.cookieJar = new CookieJar();
     }
 
+    @Override
     public int getRequestPayloadSizeLimit() {
         return this.channelPool.getRequestPayloadSizeLimit();
     }
 
+    @Override
     public ServiceClient setRequestPayloadSizeLimit(int limit) {
         synchronized (this.startSync) {
             if (this.isStarted) {
