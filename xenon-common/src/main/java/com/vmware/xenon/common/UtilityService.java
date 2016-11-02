@@ -29,6 +29,7 @@ import java.util.logging.Level;
 
 import com.vmware.xenon.common.Operation.AuthorizationContext;
 import com.vmware.xenon.common.Operation.CompletionHandler;
+import com.vmware.xenon.common.Operation.OperationOption;
 import com.vmware.xenon.common.ServiceStats.ServiceStat;
 import com.vmware.xenon.common.ServiceStats.TimeSeriesStats;
 import com.vmware.xenon.common.ServiceSubscriptionState.ServiceSubscriber;
@@ -230,6 +231,7 @@ public class UtilityService implements Service {
             long now = Utils.getNowMicrosUtc();
 
             Operation clone = op.clone();
+            clone.toggleOption(OperationOption.REMOTE, false);
             clone.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_NOTIFICATION);
             for (Entry<URI, ServiceSubscriber> e : this.subscriptions.subscribers.entrySet()) {
                 ServiceSubscriber s = e.getValue();

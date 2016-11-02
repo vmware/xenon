@@ -2,6 +2,16 @@
 
 ## 1.2.0-SNAPSHOT
 
+* Improve Service.setRequestRateLimit methods. Apply rate limits only
+  on requests originating from remote nodes
+
+* Operations received from remote clients now have the
+  OperationOption.REMOTE set.
+
+* NodeGroupService.UpdateQuorumRequest PATCH no longer returns the service
+  state as the response. Any subscribers would loose the ability to
+  determine what the PATCH was for.
+
 * LuceneDocumentIndexService's "backup" API now provides access to the
   backup .zip file location in its `BackupResponse`
 

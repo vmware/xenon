@@ -78,6 +78,7 @@ import com.vmware.xenon.common.Service.ProcessingStage;
 import com.vmware.xenon.common.Service.ServiceOption;
 import com.vmware.xenon.common.ServiceDocumentDescription.Builder;
 import com.vmware.xenon.common.ServiceErrorResponse.ErrorDetail;
+import com.vmware.xenon.common.ServiceHost.RequestRateInfo.Option;
 import com.vmware.xenon.common.ServiceHost.ServiceHostState.MemoryLimitType;
 import com.vmware.xenon.common.ServiceHost.ServiceHostState.SslClientAuthMode;
 import com.vmware.xenon.common.ServiceMaintenanceRequest.MaintenanceReason;
@@ -345,7 +346,9 @@ public class ServiceHost implements ServiceRequestSender {
      * 5) Estimated cost of a small number of subscriptions
      */
     public static final int DEFAULT_SERVICE_INSTANCE_COST_BYTES = 4096;
-    private static final long ONE_MINUTE_IN_MICROS = TimeUnit.MINUTES.toMicros(1);
+
+    private static final long ONE_MINUTE_IN_NANOS = TimeUnit.MINUTES.toNanos(1);
+    private static final double ONE_SECOND_IN_NANOS = TimeUnit.SECONDS.toNanos(1);
 
     private static final String PROPERTY_NAME_APPEND_PORT_TO_SANDBOX = Utils.PROPERTY_NAME_PREFIX
             + "ServiceHost.APPEND_PORT_TO_SANDBOX";
@@ -360,7 +363,13 @@ public class ServiceHost implements ServiceRequestSender {
             .getProperty(PROPERTY_NAME_APPEND_PORT_TO_SANDBOX) == null
             || Boolean.getBoolean(PROPERTY_NAME_APPEND_PORT_TO_SANDBOX);
 
+
+
     public static class RequestRateInfo {
+        public enum Option {
+            FAIL, THROTTLE_LISTENER
+        }
+
         /**
          * Request limit (upper bound) in requests per second
          */
@@ -369,12 +378,16 @@ public class ServiceHost implements ServiceRequestSender {
         /**
          * Number of requests since most recent time window
          */
-        public AtomicInteger count = new AtomicInteger();
+        public AtomicInteger count = null;
 
         /**
-         * Start time in microseconds since epoch for the timing window
+         * Start time in nanoseconds for measuring rate limit. This is not a
+         * absolute time value and can only be used for comparison with other
+         * similar values
          */
-        public long startTimeMicros;
+        public long startTimeNanos;
+
+        public EnumSet<Option> options = null;
     }
 
     public static class ServiceHostState extends ServiceDocument {
@@ -3127,6 +3140,10 @@ public class ServiceHost implements ServiceRequestSender {
             service = pendingStopService;
         }
 
+        if (applyRequestRateLimit(inboundOp)) {
+            return;
+        }
+
         if (queueRequestUntilServiceAvailable(inboundOp, service, path)) {
             return;
         }
@@ -3660,11 +3677,6 @@ public class ServiceHost implements ServiceRequestSender {
     private void queueOrScheduleRequest(Service s, Operation op) {
         boolean processRequest = true;
         try {
-            if (applyRequestRateLimit(op)) {
-                processRequest = false;
-                return;
-            }
-
             ProcessingStage stage = s.getProcessingStage();
             if (stage == ProcessingStage.AVAILABLE) {
                 return;
@@ -3695,6 +3707,9 @@ public class ServiceHost implements ServiceRequestSender {
             }
 
             op.fail(new CancellationException("Service not available, in stage:" + stage));
+        } catch (Throwable e) {
+            processRequest = false;
+            op.fail(e);
         } finally {
             if (!processRequest) {
                 return;
@@ -3721,6 +3736,14 @@ public class ServiceHost implements ServiceRequestSender {
             return false;
         }
 
+        if (op.isFromReplication()) {
+            return false;
+        }
+
+        if (!op.isRemote()) {
+            return false;
+        }
+
         AuthorizationContext authCtx = op.getAuthorizationContext();
         if (authCtx == null) {
             return false;
@@ -3736,27 +3759,26 @@ public class ServiceHost implements ServiceRequestSender {
             return false;
         }
 
-        // TODO: use the roles that applied during authorization as the rate limiting key.
-        // We currently just use the subject but this is going to change.
         RequestRateInfo rateInfo = this.state.requestRateLimits.get(subject);
         if (rateInfo == null) {
             return false;
         }
 
+
         double count = rateInfo.count.incrementAndGet();
-        long now = Utils.getSystemNowMicrosUtc();
-        long delta = now - rateInfo.startTimeMicros;
-        double deltaInSeconds = delta / 1000000.0;
+        long now = System.nanoTime();
+        double delta = now - rateInfo.startTimeNanos;
+        double deltaInSeconds = delta / ONE_SECOND_IN_NANOS;
         if (delta < getMaintenanceIntervalMicros()) {
             return false;
         }
 
         double requestsPerSec = count / deltaInSeconds;
-        if (requestsPerSec > rateInfo.limit) {
-            this.failRequestLimitExceeded(op);
+        if (requestsPerSec > rateInfo.limit
+                && rateInfo.options.contains(Option.FAIL)) {
+            failRequestLimitExceeded(op);
             return true;
         }
-
         return false;
     }
 
@@ -4296,18 +4318,44 @@ public class ServiceHost implements ServiceRequestSender {
     }
 
     /**
-     * Infrastructure use only.
-     *
      * Sets an upper limit, in terms of operations per second, for all operations
      * associated with some context. The context is (tenant, user, referrer) is used
      * to derive the key.
+     * To specify advanced options use {@link #setRequestRateLimit(String, RequestRateInfo)}
      */
     public ServiceHost setRequestRateLimit(String key, double operationsPerSecond) {
         RequestRateInfo ri = new RequestRateInfo();
         ri.limit = operationsPerSecond;
-        ri.startTimeMicros = Utils.getSystemNowMicrosUtc();
+        return setRequestRateLimit(key, ri);
+    }
+
+    /**
+     * See {@link #setRequestRateLimit(String, double)}
+     */
+    public ServiceHost setRequestRateLimit(String key, RequestRateInfo ri) {
+        if (ri.limit <= 0.0) {
+            throw new IllegalArgumentException("limit must be a non zero positive number");
+        }
+        ri = Utils.clone(ri);
+        ri.count = new AtomicInteger();
+        if (ri.options == null || ri.options.isEmpty()) {
+            ri.options = EnumSet.of(Option.FAIL);
+        }
+        ri.startTimeNanos = System.nanoTime();
+        // overwrite any existing limit
         this.state.requestRateLimits.put(key, ri);
         return this;
+    }
+
+    /**
+     * Retrieves rate limit configuration for the supplied key
+     */
+    public RequestRateInfo getRequestRateLimit(String key) {
+        RequestRateInfo ri = this.state.requestRateLimits.get(key);
+        if (ri == null) {
+            return null;
+        }
+        return Utils.clone(ri);
     }
 
     /**
@@ -4679,13 +4727,14 @@ public class ServiceHost implements ServiceRequestSender {
         try {
             performPendingOperationMaintenance();
 
+            long nowNanos = System.nanoTime();
             // reset request limits, start new time window
             for (RequestRateInfo rri : this.state.requestRateLimits.values()) {
-                if (now - rri.startTimeMicros < ONE_MINUTE_IN_MICROS) {
+                if (nowNanos - rri.startTimeNanos < ONE_MINUTE_IN_NANOS) {
                     // reset only after a fixed interval
                     return;
                 }
-                rri.startTimeMicros = now;
+                rri.startTimeNanos = nowNanos;
                 rri.count.set(0);
             }
 
