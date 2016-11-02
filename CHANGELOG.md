@@ -7,6 +7,16 @@
 * Roll back to Lucene to version 6.0.0 due to an issue in 6.2.1. See:
   https://issues.apache.org/jira/browse/LUCENE-7491
 
+* Improve Service.setRequestRateLimit methods. Apply rate limits only
+  on requests originating from remote nodes
+
+* Operations received from remote clients now have the
+  OperationOption.REMOTE set.
+
+* NodeGroupService.UpdateQuorumRequest PATCH no longer returns the service
+  state as the response. Any subscribers would loose the ability to
+  determine what the PATCH was for.
+
 * LuceneDocumentIndexService's "backup" API now provides access to the
   backup .zip file location in its `BackupResponse`
 
