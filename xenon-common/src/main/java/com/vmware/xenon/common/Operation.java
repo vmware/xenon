@@ -302,7 +302,12 @@ public class Operation implements Cloneable {
         /**
          * Set by client to disable default logging of operation failures
          */
-        FAILURE_LOGGING_DISABLED
+        FAILURE_LOGGING_DISABLED,
+        /**
+         * Set by a local {@code ServiceRequestListener} instance indicating the operation
+         * originated outside the process / host
+         */
+        REMOTE
     }
 
     public static class SerializedOperation extends ServiceDocument {
@@ -765,12 +770,26 @@ public class Operation implements Cloneable {
     }
 
     public boolean isRemote() {
-        return this.remoteCtx != null && this.remoteCtx.socketCtx != null;
+        return this.options.contains(OperationOption.REMOTE) ||
+                this.remoteCtx != null && this.remoteCtx.socketCtx != null;
     }
 
+    /**
+     * Infrastructure use only. See {@link #setRemote(boolean)}
+     */
     public Operation forceRemote() {
-        allocateRemoteContext();
-        this.remoteCtx.socketCtx = new SocketContext();
+        return setRemote(true);
+    }
+
+    /**
+     * Infrastructure use only. Toggles {@link OperationOption#REMOTE}
+     */
+    public Operation setRemote(boolean enable) {
+        if (enable) {
+            this.options.add(OperationOption.REMOTE);
+        } else {
+            this.options.remove(OperationOption.REMOTE);
+        }
         return this;
     }
 
@@ -782,7 +801,7 @@ public class Operation implements Cloneable {
      * Sets (overwrites) the authorization context of this operation.
      *
      * The visibility of this method is intentionally package-local. It is intended to
-     * only be called by functions in this package, so that we can apply whitelisting
+     * only be called by functions in this package, so that we can apply white listing
      * to limit the set of services that is able to set it.
      *
      * @param ctx the authorization context to set.
