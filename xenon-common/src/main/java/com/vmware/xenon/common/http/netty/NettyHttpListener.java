@@ -17,8 +17,11 @@ import java.io.File;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.URI;
+import java.util.Map;
+import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.logging.Level;
 
 import io.netty.bootstrap.ServerBootstrap;
@@ -31,19 +34,40 @@ import io.netty.handler.ssl.SslContext;
 import io.netty.handler.ssl.SslContextBuilder;
 
 import com.vmware.xenon.common.Operation;
+import com.vmware.xenon.common.Operation.SocketContext;
 import com.vmware.xenon.common.ServiceHost;
 import com.vmware.xenon.common.ServiceRequestListener;
+import com.vmware.xenon.common.Utils;
 
 /**
  * Asynchronous HTTP request listener using the Netty I/O framework. Interacts with a parent service
  * host to deliver HTTP requests from the network, to local services
  */
 public class NettyHttpListener implements ServiceRequestListener {
+
+    public static class NettyListenerChannelContext extends SocketContext {
+
+        private Channel channel;
+
+        public NettyListenerChannelContext setChannel(Channel c) {
+            this.channel = c;
+            super.updateLastUseTime();
+            return this;
+        }
+
+        public Channel getChannel() {
+            return this.channel;
+        }
+
+    }
+
     public static final String UNKNOWN_CLIENT_REFERER_PATH = "unknown-client";
     public static final int EVENT_LOOP_THREAD_COUNT = 2;
+    private AtomicInteger activeChannelCount = new AtomicInteger();
     private int port;
     private ServiceHost host;
     private Channel serverChannel;
+    private Map<String, NettyListenerChannelContext> pausedChannels = new ConcurrentSkipListMap<>();
     private NioEventLoopGroup eventLoopGroup;
     private ExecutorService nettyExecutorService;
     private SslContext sslContext;
@@ -57,9 +81,7 @@ public class NettyHttpListener implements ServiceRequestListener {
 
     @Override
     public long getActiveClientCount() {
-        // TODO Add tracking of client connections by exposing a counter the
-        // NettyHttpRequestHandler instance can increment/decrement
-        return 0;
+        return this.activeChannelCount.get();
     }
 
     @Override
@@ -79,7 +101,8 @@ public class NettyHttpListener implements ServiceRequestListener {
 
         this.eventLoopGroup = new NioEventLoopGroup(EVENT_LOOP_THREAD_COUNT, this.nettyExecutorService);
         if (this.childChannelHandler == null) {
-            this.childChannelHandler = new NettyHttpServerInitializer(this.host, this.sslContext,
+            this.childChannelHandler = new NettyHttpServerInitializer(this, this.host,
+                    this.sslContext,
                     this.responsePayloadSizeLimit);
         }
 
@@ -100,16 +123,61 @@ public class NettyHttpListener implements ServiceRequestListener {
         this.serverChannel.config().setOption(ChannelOption.SO_LINGER, 0);
         this.port = ((InetSocketAddress) this.serverChannel.localAddress()).getPort();
         this.isListening = true;
+
+        MaintenanceProxyService.start(this.host, this::handleMaintenance);
+    }
+
+    void addChannel(Channel c) {
+        this.activeChannelCount.incrementAndGet();
+    }
+
+    void removeChannel(Channel c) {
+        this.pausedChannels.remove(c.id().toString());
+        this.activeChannelCount.decrementAndGet();
+    }
+
+    void pauseChannel(Channel c) {
+        NettyListenerChannelContext ctx = new NettyListenerChannelContext();
+        ctx.setChannel(c);
+        this.host.log(Level.FINE, "Disabling auto-reads on %s", c);
+        c.config().setAutoRead(false);
+        ctx.updateLastUseTime();
+        this.pausedChannels.put(c.id().toString(), ctx);
     }
 
     @Override
     public void handleMaintenance(Operation op) {
-        op.complete();
+        if (this.pausedChannels.isEmpty()) {
+            op.complete();
+            return;
+        }
+        try {
+            long now = Utils.getSystemNowMicrosUtc();
+            for (NettyListenerChannelContext ctx : this.pausedChannels.values()) {
+                Channel c = ctx.getChannel();
+                if (c.config().isAutoRead()) {
+                    continue;
+                }
+
+                if (now - ctx.getLastUseTimeMicros() < this.host.getMaintenanceIntervalMicros()) {
+                    continue;
+                }
+
+                this.host.log(Level.FINE, "Resuming paused channel %s, last use: %d",
+                        c,
+                        ctx.getLastUseTimeMicros());
+                c.config().setAutoRead(true);
+            }
+            op.complete();
+        } catch (Throwable e) {
+            op.fail(e);
+        }
     }
 
     @Override
     public void stop() throws IOException {
         this.isListening = false;
+        this.pausedChannels.clear();
         if (this.serverChannel != null) {
             this.serverChannel.close();
             this.serverChannel = null;
@@ -164,6 +232,7 @@ public class NettyHttpListener implements ServiceRequestListener {
         return this.isListening;
     }
 
+    @Override
     public void setResponsePayloadSizeLimit(int responsePayloadSizeLimit) {
         if (isListening()) {
             throw new IllegalStateException("Already started listening");
@@ -171,6 +240,7 @@ public class NettyHttpListener implements ServiceRequestListener {
         this.responsePayloadSizeLimit = responsePayloadSizeLimit;
     }
 
+    @Override
     public int getResponsePayloadSizeLimit() {
         return this.responsePayloadSizeLimit;
     }
