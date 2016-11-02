@@ -263,7 +263,7 @@ public class NodeGroupService extends StatefulService {
         localState.localMembershipUpdateTimeMicros = self.documentUpdateTimeMicros;
 
         if (!bd.isGroupUpdate) {
-            patch.setBodyNoCloning(localState).complete();
+            patch.complete();
             return;
         }
 
@@ -295,7 +295,7 @@ public class NodeGroupService extends StatefulService {
             if (failures.get() > failureThreshold) {
                 patch.fail(new IllegalStateException("Majority of nodes failed request"));
             } else {
-                patch.setBodyNoCloning(localState).complete();
+                patch.complete();
             }
         };
 

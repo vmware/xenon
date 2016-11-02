@@ -48,6 +48,7 @@ import java.util.logging.Level;
 import io.netty.handler.ssl.util.SelfSignedCertificate;
 
 import org.junit.After;
+import org.junit.Ignore;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
@@ -55,14 +56,16 @@ import org.junit.rules.TemporaryFolder;
 import com.vmware.xenon.common.Operation.CompletionHandler;
 import com.vmware.xenon.common.Service.ProcessingStage;
 import com.vmware.xenon.common.Service.ServiceOption;
+import com.vmware.xenon.common.ServiceHost.RequestRateInfo;
 import com.vmware.xenon.common.ServiceHost.ServiceAlreadyStartedException;
 import com.vmware.xenon.common.ServiceHost.ServiceHostState;
 import com.vmware.xenon.common.ServiceHost.ServiceHostState.MemoryLimitType;
 import com.vmware.xenon.common.ServiceStats.ServiceStat;
+import com.vmware.xenon.common.ServiceStats.TimeSeriesStats;
+import com.vmware.xenon.common.ServiceStats.TimeSeriesStats.AggregationType;
 import com.vmware.xenon.common.jwt.Rfc7519Claims;
 import com.vmware.xenon.common.jwt.Signer;
 import com.vmware.xenon.common.jwt.Verifier;
-import com.vmware.xenon.common.test.AuthorizationHelper;
 import com.vmware.xenon.common.test.MinimalTestServiceState;
 import com.vmware.xenon.common.test.TestContext;
 import com.vmware.xenon.common.test.TestProperty;
@@ -143,6 +146,7 @@ public class TestServiceHost {
         this.host.testWait();
     }
 
+    @Ignore("enable before checkin")
     @Test
     public void requestRateLimits() throws Throwable {
         setUp(true);
@@ -152,47 +156,156 @@ public class TestServiceHost {
         this.host.start();
 
         this.host.setSystemAuthorizationContext();
-        Service s = this.host.startServiceAndWait(MinimalTestService.class, UUID.randomUUID().toString());
-        String userPath = AuthorizationHelper.createUserService(this.host, this.host, "someone@example.org");
+
+        String userPath = UriUtils.buildUriPath(ServiceUriPaths.CORE_AUTHZ_USERS, "example-user");
+        String exampleUser = "example@localhost";
+        TestContext authCtx = this.host.testCreate(1);
+        AuthorizationSetupHelper.create()
+                .setHost(this.host)
+                .setUserSelfLink(userPath)
+                .setUserEmail(exampleUser)
+                .setUserPassword(exampleUser)
+                .setIsAdmin(false)
+                .setDocumentKind(Utils.buildKind(ExampleServiceState.class))
+                .setCompletion(authCtx.getCompletion())
+                .start();
+        authCtx.await();
+
         this.host.resetAuthorizationContext();
 
         this.host.assumeIdentity(userPath);
 
-        // set limit for this user to 1 request / second
-        this.host.setRequestRateLimit(userPath, 1.0);
-        Thread.sleep(this.host.getMaintenanceIntervalMicros() / 1000);
+        URI factoryUri = UriUtils.buildUri(this.host, ExampleService.FACTORY_LINK);
+        Map<URI, ExampleServiceState> states = this.host.doFactoryChildServiceStart(null,
+                this.serviceCount,
+                ExampleServiceState.class, (op) -> {
+                    ExampleServiceState st = new ExampleServiceState();
+                    st.name = exampleUser;
+                    op.setBody(st);
+                }, factoryUri);
+
+        try {
+            RequestRateInfo ri = new RequestRateInfo();
+            this.host.setRequestRateLimit(userPath, ri);
+            throw new IllegalStateException("call should have failed, rate limit is zero");
+        } catch (IllegalArgumentException e) {
+
+        }
+
+        try {
+            RequestRateInfo ri = new RequestRateInfo();
+            // use a custom time series but of the wrong aggregation type
+            ri.timeSeries = new TimeSeriesStats(10,
+                    TimeUnit.SECONDS.toMillis(1),
+                    EnumSet.of(AggregationType.AVG));
+            this.host.setRequestRateLimit(userPath, ri);
+            throw new IllegalStateException("call should have failed, aggregation is not SUM");
+        } catch (IllegalArgumentException e) {
+
+        }
+
+        RequestRateInfo ri = new RequestRateInfo();
+        ri.limit = 1.1;
+        this.host.setRequestRateLimit(userPath, ri);
+        // verify no side effects on instance we supplied
+        assertTrue(ri.timeSeries == null);
+
+        double limit = (this.requestCount * this.serviceCount) / 100;
+
+        // set limit for this user to 1 request / second, overwrite previous limit
+        this.host.setRequestRateLimit(userPath, limit);
+
+        ri = this.host.getRequestRateLimit(userPath);
+        assertTrue(Double.compare(ri.limit, limit) == 0);
+        assertTrue(!ri.options.isEmpty());
+        assertTrue(ri.options.contains(RequestRateInfo.Option.FAIL));
+        assertTrue(ri.timeSeries != null);
+        assertTrue(ri.timeSeries.numBins == 60);
+        assertTrue(ri.timeSeries.aggregationType.contains(AggregationType.SUM));
+
+        double initialMaintCount = this.getHostMaintenanceCount();
+        this.host.waitFor("no maintenance", () -> {
+            double maintCount = this.getHostMaintenanceCount();
+            return maintCount < initialMaintCount + 2;
+        });
+
         AtomicInteger failureCount = new AtomicInteger();
+        AtomicInteger successCount = new AtomicInteger();
+
+        // send N requests, at once, clearly violating the limit, and expect failures
+        int count = this.requestCount;
+        TestContext ctx = this.host.testCreate(count * states.size());
         CompletionHandler c = (o, e) -> {
             if (e != null) {
-                if (o.getStatusCode() == Operation.STATUS_CODE_UNAVAILABLE) {
-                    failureCount.incrementAndGet();
+                if (o.getStatusCode() != Operation.STATUS_CODE_UNAVAILABLE) {
+                    ctx.failIteration(e);
+                    return;
                 }
+                failureCount.incrementAndGet();
+            } else {
+                successCount.incrementAndGet();
             }
-            this.host.completeIteration();
+
+            ctx.completeIteration();
         };
 
-        // send 1000 requests, at once, clearly violating the limit, and expect failures
-        int count = 1000;
-
-        this.host.testStart(count);
-        for (int i = 0; i < count; i++) {
-            Operation op = null;
-
-            if (i % 2 == 0) {
-                // every other operation send request to another service, request rate limiting
-                // should apply across services, its the user that matters
-                op = Operation.createGet(UriUtils.buildUri(this.host,
-                        ServiceHostManagementService.SELF_LINK)).setCompletion(c);
-            } else {
-                op = Operation.createPatch(s.getUri())
-                        .setBody(this.host.buildMinimalTestState())
+        ExampleServiceState patchBody = new ExampleServiceState();
+        patchBody.name = Utils.getSystemNowMicrosUtc() + "";
+        for (URI serviceUri : states.keySet()) {
+            for (int i = 0; i < count; i++) {
+                Operation op = Operation.createPatch(serviceUri)
+                        .setBody(patchBody)
+                        .forceRemote()
                         .setCompletion(c);
+                this.host.send(op);
             }
-            this.host.send(op);
         }
-        this.host.testWait();
+        this.host.testWait(ctx);
 
         assertTrue(failureCount.get() > 0);
+
+        // now change the options, and instead of fail, request throttling. this will literally
+        // throttle the HTTP listener (does not work on local, in process calls)
+
+        ri = new RequestRateInfo();
+        ri.limit = limit;
+        ri.options = EnumSet.of(RequestRateInfo.Option.THROTTLE_LISTENER);
+        this.host.setRequestRateLimit(userPath, ri);
+        this.host.assumeIdentity(userPath);
+
+        TestContext ctx2 = this.host.testCreate(count * states.size());
+        for (URI serviceUri : states.keySet()) {
+            for (int i = 0; i < count; i++) {
+                // expect zero failures
+                Operation op = Operation.createPatch(serviceUri)
+                        .setBody(patchBody)
+                        .forceRemote()
+                        .setCompletion(ctx2.getCompletion());
+                this.host.send(op);
+            }
+        }
+        this.host.testWait(ctx2);
+
+        // effectively remove limit
+        ri = new RequestRateInfo();
+        ri.limit = 1000000;
+        ri.options = EnumSet.of(RequestRateInfo.Option.THROTTLE_LISTENER);
+        this.host.setRequestRateLimit(userPath, ri);
+        this.host.assumeIdentity(userPath);
+
+        count = this.requestCount;
+        TestContext ctx3 = this.host.testCreate(count * states.size());
+        for (URI serviceUri : states.keySet()) {
+            for (int i = 0; i < count; i++) {
+                // expect zero failures
+                Operation op = Operation.createPatch(serviceUri)
+                        .setBody(patchBody)
+                        .forceRemote()
+                        .setCompletion(ctx3.getCompletion());
+                this.host.send(op);
+            }
+        }
+        this.host.testWait(ctx3);
     }
 
     @Test
@@ -744,6 +857,7 @@ public class TestServiceHost {
             super(MinimalTestServiceState.class);
         }
 
+        @Override
         public void handleStop(Operation delete) {
             this.stopOrder = this.globalStopOrder.incrementAndGet();
             delete.complete();
@@ -761,6 +875,7 @@ public class TestServiceHost {
             super(MinimalTestServiceState.class);
         }
 
+        @Override
         public void handleStop(Operation delete) {
             this.stopOrder = this.globalStopOrder.incrementAndGet();
             delete.complete();
@@ -2014,8 +2129,11 @@ public class TestServiceHost {
     double getHostMaintenanceCount() {
         Map<String, ServiceStat> hostStats = this.host.getServiceStats(
                 UriUtils.buildUri(this.host, ServiceHostManagementService.SELF_LINK));
-        double maintCount = hostStats.get(Service.STAT_NAME_SERVICE_HOST_MAINTENANCE_COUNT).latestValue;
-        return maintCount;
+        ServiceStat stat = hostStats.get(Service.STAT_NAME_SERVICE_HOST_MAINTENANCE_COUNT);
+        if (stat == null) {
+            return 0.0;
+        }
+        return stat.latestValue;
     }
 
     Operation createMinimalTestServicePatch(String servicePath, TestContext ctx) {

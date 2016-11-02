@@ -56,7 +56,6 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 import java.util.logging.ConsoleHandler;
@@ -73,14 +72,19 @@ import com.vmware.xenon.common.NodeSelectorService.SelectAndForwardRequest.Forwa
 import com.vmware.xenon.common.NodeSelectorService.SelectOwnerResponse;
 import com.vmware.xenon.common.Operation.AuthorizationContext;
 import com.vmware.xenon.common.Operation.CompletionHandler;
+import com.vmware.xenon.common.Operation.OperationOption;
 import com.vmware.xenon.common.Service.Action;
 import com.vmware.xenon.common.Service.ProcessingStage;
 import com.vmware.xenon.common.Service.ServiceOption;
 import com.vmware.xenon.common.ServiceDocumentDescription.Builder;
 import com.vmware.xenon.common.ServiceErrorResponse.ErrorDetail;
+import com.vmware.xenon.common.ServiceHost.RequestRateInfo.Option;
 import com.vmware.xenon.common.ServiceHost.ServiceHostState.MemoryLimitType;
 import com.vmware.xenon.common.ServiceHost.ServiceHostState.SslClientAuthMode;
 import com.vmware.xenon.common.ServiceMaintenanceRequest.MaintenanceReason;
+import com.vmware.xenon.common.ServiceStats.TimeSeriesStats;
+import com.vmware.xenon.common.ServiceStats.TimeSeriesStats.AggregationType;
+import com.vmware.xenon.common.ServiceStats.TimeSeriesStats.TimeBin;
 import com.vmware.xenon.common.ServiceSubscriptionState.ServiceSubscriber;
 import com.vmware.xenon.common.http.netty.NettyHttpListener;
 import com.vmware.xenon.common.http.netty.NettyHttpServiceClient;
@@ -345,7 +349,6 @@ public class ServiceHost implements ServiceRequestSender {
      * 5) Estimated cost of a small number of subscriptions
      */
     public static final int DEFAULT_SERVICE_INSTANCE_COST_BYTES = 4096;
-    private static final long ONE_MINUTE_IN_MICROS = TimeUnit.MINUTES.toMicros(1);
 
     private static final String PROPERTY_NAME_APPEND_PORT_TO_SANDBOX = Utils.PROPERTY_NAME_PREFIX
             + "ServiceHost.APPEND_PORT_TO_SANDBOX";
@@ -360,21 +363,21 @@ public class ServiceHost implements ServiceRequestSender {
             .getProperty(PROPERTY_NAME_APPEND_PORT_TO_SANDBOX) == null
             || Boolean.getBoolean(PROPERTY_NAME_APPEND_PORT_TO_SANDBOX);
 
+
+
     public static class RequestRateInfo {
+        public enum Option {
+            FAIL, THROTTLE_LISTENER
+        }
+
         /**
          * Request limit (upper bound) in requests per second
          */
         public double limit;
 
-        /**
-         * Number of requests since most recent time window
-         */
-        public AtomicInteger count = new AtomicInteger();
+        public EnumSet<Option> options = null;
 
-        /**
-         * Start time in microseconds since epoch for the timing window
-         */
-        public long startTimeMicros;
+        public TimeSeriesStats timeSeries;
     }
 
     public static class ServiceHostState extends ServiceDocument {
@@ -3127,6 +3130,10 @@ public class ServiceHost implements ServiceRequestSender {
             service = pendingStopService;
         }
 
+        if (applyRequestRateLimit(inboundOp)) {
+            return;
+        }
+
         if (queueRequestUntilServiceAvailable(inboundOp, service, path)) {
             return;
         }
@@ -3660,11 +3667,6 @@ public class ServiceHost implements ServiceRequestSender {
     private void queueOrScheduleRequest(Service s, Operation op) {
         boolean processRequest = true;
         try {
-            if (applyRequestRateLimit(op)) {
-                processRequest = false;
-                return;
-            }
-
             ProcessingStage stage = s.getProcessingStage();
             if (stage == ProcessingStage.AVAILABLE) {
                 return;
@@ -3695,6 +3697,9 @@ public class ServiceHost implements ServiceRequestSender {
             }
 
             op.fail(new CancellationException("Service not available, in stage:" + stage));
+        } catch (Throwable e) {
+            processRequest = false;
+            op.fail(e);
         } finally {
             if (!processRequest) {
                 return;
@@ -3721,6 +3726,15 @@ public class ServiceHost implements ServiceRequestSender {
             return false;
         }
 
+        if (op.isFromReplication() || op.isForwarded()) {
+            // rate limiting is applied on the entry point host
+            return false;
+        }
+
+        if (!op.isRemote()) {
+            return false;
+        }
+
         AuthorizationContext authCtx = op.getAuthorizationContext();
         if (authCtx == null) {
             return false;
@@ -3736,27 +3750,31 @@ public class ServiceHost implements ServiceRequestSender {
             return false;
         }
 
-        // TODO: use the roles that applied during authorization as the rate limiting key.
-        // We currently just use the subject but this is going to change.
         RequestRateInfo rateInfo = this.state.requestRateLimits.get(subject);
         if (rateInfo == null) {
             return false;
         }
 
-        double count = rateInfo.count.incrementAndGet();
-        long now = Utils.getSystemNowMicrosUtc();
-        long delta = now - rateInfo.startTimeMicros;
-        double deltaInSeconds = delta / 1000000.0;
-        if (delta < getMaintenanceIntervalMicros()) {
-            return false;
+
+        synchronized (rateInfo) {
+            rateInfo.timeSeries.add(Utils.getSystemNowMicrosUtc(), 0, 1);
+            TimeBin mostRecentBin = rateInfo.timeSeries.bins
+                    .get(rateInfo.timeSeries.bins.lastKey());
+            if (mostRecentBin.sum < rateInfo.limit) {
+                return false;
+            }
         }
 
-        double requestsPerSec = count / deltaInSeconds;
-        if (requestsPerSec > rateInfo.limit) {
-            this.failRequestLimitExceeded(op);
+        if (rateInfo.options.contains(Option.THROTTLE_LISTENER)) {
+            // Add option as a hint to the request listener to throttle the channel associated with
+            // the operation
+            op.toggleOption(OperationOption.RATE_LIMITED, true);
+        }
+
+        if (rateInfo.options.contains(Option.FAIL)) {
+            failRequestLimitExceeded(op);
             return true;
         }
-
         return false;
     }
 
@@ -3770,6 +3788,7 @@ public class ServiceHost implements ServiceRequestSender {
         op.fail(e);
     }
 
+    @Override
     public void sendRequest(Operation op) {
         prepareRequest(op);
         traceOperation(op);
@@ -4296,18 +4315,53 @@ public class ServiceHost implements ServiceRequestSender {
     }
 
     /**
-     * Infrastructure use only.
-     *
      * Sets an upper limit, in terms of operations per second, for all operations
      * associated with some context. The context is (tenant, user, referrer) is used
      * to derive the key.
+     * To specify advanced options use {@link #setRequestRateLimit(String, RequestRateInfo)}
      */
     public ServiceHost setRequestRateLimit(String key, double operationsPerSecond) {
         RequestRateInfo ri = new RequestRateInfo();
         ri.limit = operationsPerSecond;
-        ri.startTimeMicros = Utils.getSystemNowMicrosUtc();
+        return setRequestRateLimit(key, ri);
+    }
+
+    /**
+     * See {@link #setRequestRateLimit(String, double)}
+     */
+    public ServiceHost setRequestRateLimit(String key, RequestRateInfo ri) {
+        if (ri.limit <= 0.0) {
+            throw new IllegalArgumentException("limit must be a non zero positive number");
+        }
+        ri = Utils.clone(ri);
+        if (ri.timeSeries == null) {
+            ri.timeSeries = new TimeSeriesStats(
+                    60,
+                    TimeUnit.SECONDS.toMillis(1),
+                    EnumSet.of(AggregationType.SUM));
+        } else if (!ri.timeSeries.aggregationType.contains(AggregationType.SUM)) {
+            throw new IllegalArgumentException(
+                    "time series must be of type " + AggregationType.SUM);
+        }
+
+        if (ri.options == null || ri.options.isEmpty()) {
+            ri.options = EnumSet.of(Option.FAIL);
+        }
+
+        // overwrite any existing limit
         this.state.requestRateLimits.put(key, ri);
         return this;
+    }
+
+    /**
+     * Retrieves rate limit configuration for the supplied key
+     */
+    public RequestRateInfo getRequestRateLimit(String key) {
+        RequestRateInfo ri = this.state.requestRateLimits.get(key);
+        if (ri == null) {
+            return null;
+        }
+        return Utils.clone(ri);
     }
 
     /**
@@ -4677,63 +4731,13 @@ public class ServiceHost implements ServiceRequestSender {
     private void performIOMaintenance(Operation post, long now, MaintenanceStage nextStage,
             long deadline) {
         try {
-            performPendingOperationMaintenance();
-
-            // reset request limits, start new time window
-            for (RequestRateInfo rri : this.state.requestRateLimits.values()) {
-                if (now - rri.startTimeMicros < ONE_MINUTE_IN_MICROS) {
-                    // reset only after a fixed interval
-                    return;
-                }
-                rri.startTimeMicros = now;
-                rri.count.set(0);
-            }
-
-            int expected = 0;
-            ServiceClient c = getClient();
-            if (c != null) {
-                expected++;
-            }
-            ServiceRequestListener l = getListener();
-            if (l != null) {
-                expected++;
-            }
-            ServiceRequestListener sl = getSecureListener();
-            if (sl != null) {
-                expected++;
-            }
-
-            AtomicInteger pending = new AtomicInteger(expected);
-            CompletionHandler ch = ((o, e) -> {
-                int r = pending.decrementAndGet();
-                if (r != 0) {
-                    return;
-                }
-                performMaintenanceStage(post, nextStage, deadline);
-            });
-
-            if (c != null) {
-                c.handleMaintenance(Operation.createPost(null).setCompletion(ch));
-            }
-
-            if (l != null) {
-                l.handleMaintenance(Operation.createPost(null).setCompletion(ch));
-            }
-
-            if (sl != null) {
-                sl.handleMaintenance(Operation.createPost(null).setCompletion(ch));
-            }
+            this.operationTracker.performMaintenance(now);
+            performMaintenanceStage(post, nextStage, deadline);
         } catch (Throwable e) {
             log(Level.WARNING, "Exception: %s", Utils.toString(e));
             performMaintenanceStage(post, nextStage, deadline);
         }
     }
-
-    private void performPendingOperationMaintenance() {
-        long now = Utils.getSystemNowMicrosUtc();
-        this.operationTracker.performMaintenance(now);
-    }
-
 
     /**
      * Infrastructure use only. Invoked from the service context index service

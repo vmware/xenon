@@ -20,6 +20,7 @@ import java.net.URISyntaxException;
 import java.util.Map.Entry;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
+
 import javax.net.ssl.SSLSession;
 
 import io.netty.buffer.ByteBuf;
@@ -67,9 +68,12 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
 
     private int responsePayloadSizeLimit;
 
-    public NettyHttpClientRequestHandler(ServiceHost host, SslHandler sslHandler,
+    private NettyHttpListener listener;
+
+    public NettyHttpClientRequestHandler(ServiceHost host, NettyHttpListener listener, SslHandler sslHandler,
             int responsePayloadSizeLimit) {
         this.host = host;
+        this.listener = listener;
         this.sslHandler = sslHandler;
         this.responsePayloadSizeLimit = responsePayloadSizeLimit;
     }
@@ -80,6 +84,18 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
             return true;
         }
         return false;
+    }
+
+    @Override
+    public void channelActive(ChannelHandlerContext ctx) throws Exception {
+        this.listener.addChannel(ctx.channel());
+        super.channelActive(ctx);
+    }
+
+    @Override
+    public void channelInactive(ChannelHandlerContext ctx) throws Exception {
+        this.listener.removeChannel(ctx.channel());
+        super.channelInactive(ctx);
     }
 
     @Override
@@ -94,7 +110,8 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
             URI targetUri = new URI(nettyRequest.uri()).normalize();
             request = Operation.createGet(null);
             request.setAction(Action.valueOf(nettyRequest.method().toString()))
-                    .setExpiration(expMicros);
+                    .setExpiration(expMicros)
+                    .forceRemote();
 
             String query = targetUri.getQuery();
             if (query != null && !query.isEmpty()) {
@@ -333,10 +350,19 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
 
     private void sendResponse(ChannelHandlerContext ctx, Operation request, Integer streamId) {
         try {
+            applyRateLimit(ctx, request);
             writeResponseUnsafe(ctx, request, streamId);
         } catch (Throwable e1) {
             this.host.log(Level.SEVERE, "%s", Utils.toString(e1));
         }
+    }
+
+    private void applyRateLimit(ChannelHandlerContext ctx, Operation request) {
+        if (!request.hasOption(OperationOption.RATE_LIMITED)) {
+            return;
+        }
+
+        this.listener.pauseChannel(ctx.channel());
     }
 
     private void writeResponseUnsafe(ChannelHandlerContext ctx, Operation request, Integer streamId) {
