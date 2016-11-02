@@ -94,7 +94,8 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
             URI targetUri = new URI(nettyRequest.uri()).normalize();
             request = Operation.createGet(null);
             request.setAction(Action.valueOf(nettyRequest.method().toString()))
-                    .setExpiration(expMicros);
+                    .setExpiration(expMicros)
+                    .setRemote(true);
 
             String query = targetUri.getQuery();
             if (query != null && !query.isEmpty()) {

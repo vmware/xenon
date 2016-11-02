@@ -2,6 +2,9 @@
 
 ## 1.2.0-SNAPSHOT
 
+* Improve Service.setRequestRateLimit methods. Apply rate limits only
+  on requests originating from remote nodes
+
 * LuceneDocumentIndexService's "backup" API now provides access to the
   backup .zip file location in its `BackupResponse`
 
