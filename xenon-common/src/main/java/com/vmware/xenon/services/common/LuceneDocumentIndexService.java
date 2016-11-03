@@ -125,16 +125,18 @@ public class LuceneDocumentIndexService extends StatelessService {
 
     public static String SELF_LINK = ServiceUriPaths.CORE_DOCUMENT_INDEX;
 
+    public static final String PROPERTY_NAME_QUERY_THREAD_COUNT = Utils.PROPERTY_NAME_PREFIX
+            + LuceneDocumentIndexService.class.getSimpleName()
+            + ".QUERY_THREAD_COUNT";
     public static final int QUERY_THREAD_COUNT = Integer.getInteger(
-            Utils.PROPERTY_NAME_PREFIX
-                    + LuceneDocumentIndexService.class.getSimpleName()
-                    + "QUERY_THREAD_COUNT",
+            PROPERTY_NAME_QUERY_THREAD_COUNT,
             Utils.DEFAULT_THREAD_COUNT * 2);
 
+    public static final String PROPERTY_NAME_UPDATE_THREAD_COUNT = Utils.PROPERTY_NAME_PREFIX
+            + LuceneDocumentIndexService.class.getSimpleName()
+            + ".UPDATE_THREAD_COUNT";
     public static final int UPDATE_THREAD_COUNT = Integer.getInteger(
-            Utils.PROPERTY_NAME_PREFIX
-                    + LuceneDocumentIndexService.class.getSimpleName()
-                    + "UPDATE_THREAD_COUNT",
+            PROPERTY_NAME_UPDATE_THREAD_COUNT,
             Utils.DEFAULT_THREAD_COUNT / 2);
 
     public static final String FILE_PATH_LUCENE = "lucene";
@@ -2260,7 +2262,6 @@ public class LuceneDocumentIndexService extends StatelessService {
         // it is possible to race with updating the searcher and NOT have this
         // change be reflected in the searcher.
         updateLinkAccessTime(Utils.getNowMicrosUtc(), sd.documentSelfLink);
-
         op.setBody(null).complete();
         checkDocumentRetentionLimit(sd, desc);
         applyActiveQueries(op, sd, desc);
