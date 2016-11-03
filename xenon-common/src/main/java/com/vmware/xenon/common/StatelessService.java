@@ -723,7 +723,12 @@ public class StatelessService implements Service {
         if (selfLink.equals(requestUri) && !UriUtils.URI_PATH_CHAR.equals(requestUri)) {
             // no trailing /, redirect to a location with trailing /
             get.setStatusCode(Operation.STATUS_CODE_MOVED_TEMP);
-            get.addResponseHeader(Operation.LOCATION_HEADER, selfLink + UriUtils.URI_PATH_CHAR);
+
+            String loc = selfLink + UriUtils.URI_PATH_CHAR;
+            if (get.getUri().getRawQuery() != null) {
+                loc += "?" + get.getUri().getRawQuery();
+            }
+            get.addResponseHeader(Operation.LOCATION_HEADER,  loc);
             get.complete();
             return;
         } else {

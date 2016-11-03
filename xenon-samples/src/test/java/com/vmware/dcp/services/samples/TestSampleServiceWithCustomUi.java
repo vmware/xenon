@@ -79,6 +79,21 @@ public class TestSampleServiceWithCustomUi extends BasicReusableHostTestCase {
     }
 
     @Test
+    public void testGetUiWithQueryParams() throws Throwable {
+        Operation op = Operation
+                .createGet(UriUtils.buildUri(this.host, THE_SERVICE_URI + "/ui?hello=world"))
+                .setCompletion(getSafeHandler((o, e) -> {
+                    assertNull(e);
+                    assertEquals("Did not receive temporary redirect", Operation.STATUS_CODE_MOVED_TEMP, o.getStatusCode());
+                    assertTrue("Redirected url did not preserve query params", o.getResponseHeader("location").endsWith("/ui/?hello=world"));
+                }));
+
+        this.host.testStart(1);
+        this.host.send(op);
+        this.host.testWait();
+    }
+
+    @Test
     public void testRootGetForSharedUi() throws Throwable {
         Operation op = Operation
                 .createGet(UriUtils.buildUri(this.host, SampleServiceWithSharedCustomUi.SELF_LINK))
