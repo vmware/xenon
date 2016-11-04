@@ -221,6 +221,8 @@ public class LuceneDocumentIndexService extends StatelessService {
 
     public static final String STAT_NAME_OLDEST_VERSION_READ_FAILURE_COUNT = "oldestVersionReadFailureCount";
 
+    public static final String STAT_NAME_DOCUMENT_RETENTION_DELETION_COUNT = "documentRetentionDeletionCount";
+
     private static final EnumSet<AggregationType> AGGREGATION_TYPE_AVG_MAX =
             EnumSet.of(AggregationType.AVG, AggregationType.MAX);
 
@@ -2237,10 +2239,12 @@ public class LuceneDocumentIndexService extends StatelessService {
             return;
         }
 
-        long limit = Math.max(1, desc.versionRetentionLimit);
+        long limit = Math.max(1L, desc.versionRetentionLimit);
+        long versionsToKeep = Math.max(1L,
+                desc.versionRetentionLimit - desc.versionRetentionLowerBound);
         if (state.documentVersion - oldestVersion > limit) {
             synchronized (this.linkDocumentRetentionEstimates) {
-                this.linkDocumentRetentionEstimates.put(state.documentSelfLink, limit);
+                this.linkDocumentRetentionEstimates.put(state.documentSelfLink, versionsToKeep);
             }
         }
     }
@@ -2340,19 +2344,15 @@ public class LuceneDocumentIndexService extends StatelessService {
         hitDoc = s.doc(hits[(int) versionsToKeep].doc, this.fieldToLoadVersionLookup);
         long cutOffVersion = hitDoc.getField(ServiceDocument.FIELD_NAME_VERSION).numericValue().longValue();
 
+        adjustTimeSeriesStat(STAT_NAME_DOCUMENT_RETENTION_DELETION_COUNT, AGGREGATION_TYPE_SUM,
+                cutOffVersion - versionLowerBound + 1);
+
         Query versionQuery = LongPoint.newRangeQuery(
                 ServiceDocument.FIELD_NAME_VERSION, versionLowerBound, cutOffVersion);
 
         builder.add(versionQuery, Occur.MUST);
         builder.add(linkQuery, Occur.MUST);
         BooleanQuery bq = builder.build();
-
-        results = s.search(bq, Integer.MAX_VALUE);
-
-        logInfo("Version grooming for %s found %d versions from %d to %d. Trimming %d versions from %d to %d",
-                link, versionCount, versionLowerBound, versionUpperBound,
-                results.scoreDocs.length, versionLowerBound, cutOffVersion);
-
         wr.deleteDocuments(bq);
 
         // We have observed that sometimes Lucene search does not return all the document
@@ -2624,9 +2624,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         }
     }
 
-    private void applyDocumentVersionRetentionPolicy()
-            throws Throwable {
-
+    private void applyDocumentVersionRetentionPolicy() throws Throwable {
         Operation dummyDelete = Operation.createDelete(null);
         int count = 0;
         Map<String, Long> links = new HashMap<>();
@@ -2638,8 +2636,10 @@ public class LuceneDocumentIndexService extends StatelessService {
         for (Entry<String, Long> e : links.entrySet()) {
             IndexWriter wr = this.writer;
             if (wr == null) {
+                // Do we need to add the remaining links back to the retention list here?
                 return;
             }
+
             IndexSearcher s = createOrRefreshSearcher(null, Integer.MAX_VALUE, wr, false);
             deleteDocumentsFromIndex(s, dummyDelete, e.getKey(), e.getValue());
             count++;
@@ -2682,13 +2682,13 @@ public class LuceneDocumentIndexService extends StatelessService {
                     logFine("Closing paginated query searcher, expired at %d", entry.getKey());
                     s.getIndexReader().close();
                 } catch (Throwable e) {
-
+                    // Ignore
                 }
             }
         }
     }
 
-    void applyMemoryLimitToLinkAccessTimes() {
+    private void applyMemoryLimitToLinkAccessTimes() {
         long memThresholdBytes = this.linkAccessMemoryLimitMB * 1024 * 1024;
         final int bytesPerLinkEstimate = 256;
         int count = 0;

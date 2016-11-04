@@ -2293,20 +2293,6 @@ public class TestLuceneDocumentIndexService {
     }
 
     @Test
-    public void serviceVersionRetentionAndGrooming() throws Throwable {
-        try {
-            Utils.setTimeDriftThreshold(TimeUnit.HOURS.toMicros(1));
-            for (int i = 0; i < this.iterationCount; i++) {
-                EnumSet<ServiceOption> caps = EnumSet.of(ServiceOption.PERSISTENCE);
-                doServiceVersionGroomingValidation(caps);
-                tearDown();
-            }
-        } finally {
-            Utils.setTimeDriftThreshold(Utils.DEFAULT_TIME_DRIFT_THRESHOLD_MICROS);
-        }
-    }
-
-    @Test
     public void testBackupAndRestoreFromZipFile() throws Throwable {
         setUpHost(false);
         LuceneDocumentIndexService.BackupRequest b = new LuceneDocumentIndexService.BackupRequest();
@@ -2388,6 +2374,20 @@ public class TestLuceneDocumentIndexService {
         }
     }
 
+    @Test
+    public void serviceVersionRetentionAndGrooming() throws Throwable {
+        try {
+            Utils.setTimeDriftThreshold(TimeUnit.HOURS.toMicros(1));
+            for (int i = 0; i < this.iterationCount; i++) {
+                EnumSet<ServiceOption> caps = EnumSet.of(ServiceOption.PERSISTENCE);
+                doServiceVersionGroomingValidation(caps);
+                tearDown();
+            }
+        } finally {
+            Utils.setTimeDriftThreshold(Utils.DEFAULT_TIME_DRIFT_THRESHOLD_MICROS);
+        }
+    }
+
     public static class MinimalTestServiceWithDefaultRetention extends StatefulService {
         public MinimalTestServiceWithDefaultRetention() {
             super(MinimalTestServiceState.class);
@@ -2434,6 +2434,7 @@ public class TestLuceneDocumentIndexService {
                 }
             }
             this.host.testWait();
+
             count = ExampleServiceState.VERSION_RETENTION_LIMIT + offset;
             this.host.testStart(serviceUrisWithCustomRetention.size() * count);
             for (int i = 0; i < count; i++) {
@@ -2448,10 +2449,12 @@ public class TestLuceneDocumentIndexService {
             this.host.testWait();
 
             Collection<URI> serviceUris = serviceUrisWithDefaultRetention;
-            verifyVersionRetention(serviceUris, ServiceDocumentDescription.DEFAULT_VERSION_RETENTION_LIMIT);
+            verifyVersionRetention(serviceUris,
+                    ServiceDocumentDescription.DEFAULT_VERSION_RETENTION_LIMIT, offset);
 
             serviceUris = serviceUrisWithCustomRetention;
-            verifyVersionRetention(serviceUris, ExampleServiceState.VERSION_RETENTION_LIMIT);
+            verifyVersionRetention(serviceUris, ExampleServiceState.VERSION_RETENTION_LIMIT,
+                    offset);
 
             this.host.testStart(this.serviceCount);
             for (URI u : serviceUrisWithDefaultRetention) {
@@ -2470,17 +2473,17 @@ public class TestLuceneDocumentIndexService {
     }
 
     private void verifyVersionRetention(
-            Collection<URI> serviceUris, long limit) throws Throwable {
+            Collection<URI> serviceUris, long limit, long offset) throws Throwable {
 
         long maintIntervalMillis = TimeUnit.MICROSECONDS
                 .toMillis(this.host.getMaintenanceIntervalMicros());
 
-        // let a couple of maintenance intervals pass. not essential, since we loop below
-        // but lets more documents get deleted at once
+        // Let a couple of maintenance intervals pass. This is not essential, since we loop below,
+        // but it lets more documents expire at once.
         Thread.sleep(maintIntervalMillis);
 
         QueryTask finishedTaskWithLinksState = null;
-        // issue a query that verifies we have *less* than the count versions
+        // issue a query which verifies that we have *fewer* than the count versions
         Date exp = this.host.getTestExpiration();
         while (new Date().before(exp)) {
             QueryTask.QuerySpecification q = new QueryTask.QuerySpecification();
@@ -2501,21 +2504,23 @@ public class TestLuceneDocumentIndexService {
             finishedTaskWithLinksState = this.host.waitForQueryTaskCompletion(q,
                     serviceUris.size(), (int) limit, u, false, true);
 
-            long expectedCount = serviceUris.size() * limit;
-            this.host.log("Documents found through count:%d, links:%d expectedCount:%d",
+            long maxExpectedCount = serviceUris.size() * (limit + offset);
+            this.host.log("Documents found through count:%d, links:%d, maxExpectedCount:%d",
                     finishedTaskState.results.documentCount,
                     finishedTaskWithLinksState.results.documentLinks.size(),
-                    expectedCount);
+                    maxExpectedCount);
 
-            if (finishedTaskState.results.documentCount != finishedTaskWithLinksState.results.documentLinks
-                    .size()) {
+            if (finishedTaskState.results.documentCount !=
+                    finishedTaskWithLinksState.results.documentLinks.size()) {
                 Thread.sleep(maintIntervalMillis);
                 continue;
             }
-            if (finishedTaskState.results.documentCount != expectedCount) {
+
+            if (finishedTaskState.results.documentCount > maxExpectedCount) {
                 Thread.sleep(maintIntervalMillis);
                 continue;
             }
+
             return;
         }
 

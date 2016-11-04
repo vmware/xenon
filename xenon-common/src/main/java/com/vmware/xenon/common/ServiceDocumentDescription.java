@@ -41,12 +41,18 @@ import com.vmware.xenon.common.ServiceDocument.UsageOptions;
 
 public class ServiceDocumentDescription {
     /**
-     * Upper bound on the number of document updates per self link. This can be configured per service
-     * using the versionRetentionLimit field
+     * Upper bound on the number of document versions per self link to be retained in the index.
+     * This can be configured per service using the {@link #versionRetentionLimit} field.
      */
     public static final int DEFAULT_VERSION_RETENTION_LIMIT = 1000;
 
     public static final long FIELD_VALUE_DISABLED_VERSION_RETENTION = Long.MIN_VALUE;
+
+    /**
+     * Lower bound on the number of document versions per self link. This can be configured per
+     * service using the {@link #versionRetentionLowerBound} field.
+     */
+    public static final int DEFAULT_VERSION_RETENTION_LOWER_BOUND = 500;
 
     /**
      * Upper bound, in bytes, of serialized state. If the a service state version exceeds this,
@@ -56,7 +62,6 @@ public class ServiceDocumentDescription {
     public static final int DEFAULT_SERIALIZED_STATE_LIMIT = 4096 * 8;
 
     public static final String FIELD_NAME_TENANT_LINKS = "tenantLinks";
-
 
     public enum TypeName {
         LONG,
@@ -213,10 +218,16 @@ public class ServiceDocumentDescription {
     public String userInterfaceResourcePath;
 
     /**
-     * Upper bound on how many state versions to track in the index. Versions that exceed the limit will
-     * be permanently deleted.
+     * Upper bound on how many state versions to track in the index. Versions that exceed the limit
+     * will be permanently deleted.
      */
     public long versionRetentionLimit = DEFAULT_VERSION_RETENTION_LIMIT;
+
+    /**
+     * Lower bound on how many state versions to track in the index. The system may elect to delete
+     * all but this number of versions at any time.
+     */
+    public long versionRetentionLowerBound = DEFAULT_VERSION_RETENTION_LOWER_BOUND;
 
     /**
      * Upper bound, in bytes, of binary serialized state
