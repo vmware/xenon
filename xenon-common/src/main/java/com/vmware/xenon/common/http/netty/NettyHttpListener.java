@@ -139,7 +139,7 @@ public class NettyHttpListener implements ServiceRequestListener {
     void pauseChannel(Channel c) {
         NettyListenerChannelContext ctx = new NettyListenerChannelContext();
         ctx.setChannel(c);
-        this.host.log(Level.FINE, "Disabling auto-reads on %s", c);
+        this.host.log(Level.INFO, "Disabling auto-reads on %s", c);
         c.config().setAutoRead(false);
         ctx.updateLastUseTime();
         this.pausedChannels.put(c.id().toString(), ctx);
@@ -163,7 +163,7 @@ public class NettyHttpListener implements ServiceRequestListener {
                     continue;
                 }
 
-                this.host.log(Level.FINE, "Resuming paused channel %s, last use: %d",
+                this.host.log(Level.INFO, "Resuming paused channel %s, last use: %d",
                         c,
                         ctx.getLastUseTimeMicros());
                 c.config().setAutoRead(true);

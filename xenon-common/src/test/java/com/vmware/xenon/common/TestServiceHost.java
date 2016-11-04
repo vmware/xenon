@@ -305,7 +305,7 @@ public class TestServiceHost {
         assertTrue(rateLimitStatAfter.latestValue > rateLimitStatBefore.latestValue);
 
         this.host.setMaintenanceIntervalMicros(
-                VerificationHost.FAST_MAINT_INTERVAL_MILLIS);
+                TimeUnit.MILLISECONDS.toMicros(VerificationHost.FAST_MAINT_INTERVAL_MILLIS));
 
         // effectively remove limit, verify all requests complete
         ri = new RequestRateInfo();
@@ -316,6 +316,7 @@ public class TestServiceHost {
 
         count = this.rateLimitedRequestCount;
         TestContext ctx3 = this.host.testCreate(count * states.size());
+        ctx3.setTestName("No limit").logBefore();
         for (URI serviceUri : states.keySet()) {
             for (int i = 0; i < count; i++) {
                 // expect zero failures
@@ -327,6 +328,7 @@ public class TestServiceHost {
             }
         }
         this.host.testWait(ctx3);
+        ctx3.logAfter();
 
         // verify rate limiting did not happen
         ServiceStat rateLimitStatExpectSame = getRateLimitOpCountStat();
