@@ -532,7 +532,7 @@ public class TestLuceneDocumentIndexService {
         qps *= TimeUnit.SECONDS.toNanos(1);
 
         this.host.log(
-                "Factory:%S, Results per query:%d, Queries: %d, QPS: %f, Processing thpt (links/sec): %f",
+                "Factory:%s, Results per query:%d, Queries: %d, QPS: %f, Processing thpt (links/sec): %f",
                 factoryUri.getPath(),
                 this.serviceCount,
                 this.iterationCount,

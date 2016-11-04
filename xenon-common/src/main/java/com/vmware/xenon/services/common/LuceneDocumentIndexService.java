@@ -266,6 +266,7 @@ public class LuceneDocumentIndexService extends StatelessService {
 
     private ExecutorService privateQueryExecutor;
 
+    private Set<String> fieldToLoadVersionLookup;
     private Set<String> fieldsToLoadNoExpand;
     private Set<String> fieldsToLoadWithExpand;
 
@@ -348,6 +349,8 @@ public class LuceneDocumentIndexService extends StatelessService {
         this.versionSort = new Sort(new SortedNumericSortField(ServiceDocument.FIELD_NAME_VERSION,
                 SortField.Type.LONG, true));
 
+        this.fieldToLoadVersionLookup = new HashSet<>();
+        this.fieldToLoadVersionLookup.add(ServiceDocument.FIELD_NAME_VERSION);
         this.fieldsToLoadNoExpand = new HashSet<>();
         this.fieldsToLoadNoExpand.add(ServiceDocument.FIELD_NAME_SELF_LINK);
         this.fieldsToLoadNoExpand.add(ServiceDocument.FIELD_NAME_VERSION);
@@ -1653,8 +1656,9 @@ public class LuceneDocumentIndexService extends StatelessService {
         IndexableField versionField;
         long latestVersion;
         TopDocs td = searchByVersion(link, s, null);
-        Document latestVersionDoc = s.getIndexReader().document(td.scoreDocs[0].doc,
-                this.fieldsToLoadNoExpand);
+        Document latestVersionDoc = s.getIndexReader().document(
+                td.scoreDocs[0].doc,
+                this.fieldToLoadVersionLookup);
         versionField = latestVersionDoc.getField(ServiceDocument.FIELD_NAME_VERSION);
         latestVersion = versionField.numericValue().longValue();
         return latestVersion;
