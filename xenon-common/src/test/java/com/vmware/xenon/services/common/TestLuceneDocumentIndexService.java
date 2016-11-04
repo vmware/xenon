@@ -2293,20 +2293,6 @@ public class TestLuceneDocumentIndexService {
     }
 
     @Test
-    public void serviceVersionRetentionAndGrooming() throws Throwable {
-        try {
-            Utils.setTimeDriftThreshold(TimeUnit.HOURS.toMicros(1));
-            for (int i = 0; i < this.iterationCount; i++) {
-                EnumSet<ServiceOption> caps = EnumSet.of(ServiceOption.PERSISTENCE);
-                doServiceVersionGroomingValidation(caps);
-                tearDown();
-            }
-        } finally {
-            Utils.setTimeDriftThreshold(Utils.DEFAULT_TIME_DRIFT_THRESHOLD_MICROS);
-        }
-    }
-
-    @Test
     public void testBackupAndRestoreFromZipFile() throws Throwable {
         setUpHost(false);
         LuceneDocumentIndexService.BackupRequest b = new LuceneDocumentIndexService.BackupRequest();
@@ -2388,6 +2374,20 @@ public class TestLuceneDocumentIndexService {
         }
     }
 
+    @Test
+    public void serviceVersionRetentionAndGrooming() throws Throwable {
+        try {
+            Utils.setTimeDriftThreshold(TimeUnit.HOURS.toMicros(1));
+            for (int i = 0; i < this.iterationCount; i++) {
+                EnumSet<ServiceOption> caps = EnumSet.of(ServiceOption.PERSISTENCE);
+                doServiceVersionGroomingValidation(caps);
+                tearDown();
+            }
+        } finally {
+            Utils.setTimeDriftThreshold(Utils.DEFAULT_TIME_DRIFT_THRESHOLD_MICROS);
+        }
+    }
+
     public static class MinimalTestServiceWithDefaultRetention extends StatefulService {
         public MinimalTestServiceWithDefaultRetention() {
             super(MinimalTestServiceState.class);
@@ -2424,7 +2424,8 @@ public class TestLuceneDocumentIndexService {
                     }, factoryUri);
 
             Collection<URI> serviceUrisWithCustomRetention = exampleStates.keySet();
-            long count = ServiceDocumentDescription.DEFAULT_VERSION_RETENTION_LIMIT + offset;
+            long count = (long) (LuceneDocumentIndexService.getVersionRetentionHighWatermark() *
+                    (ServiceDocumentDescription.DEFAULT_VERSION_RETENTION_LIMIT + offset));
             this.host.testStart(this.serviceCount * count);
             for (int i = 0; i < count; i++) {
                 for (URI u : serviceUrisWithDefaultRetention) {
@@ -2434,7 +2435,8 @@ public class TestLuceneDocumentIndexService {
                 }
             }
             this.host.testWait();
-            count = ExampleServiceState.VERSION_RETENTION_LIMIT + offset;
+            count = (long) (LuceneDocumentIndexService.getVersionRetentionHighWatermark() *
+                    (ExampleServiceState.VERSION_RETENTION_LIMIT + offset));
             this.host.testStart(serviceUrisWithCustomRetention.size() * count);
             for (int i = 0; i < count; i++) {
                 for (URI u : serviceUrisWithCustomRetention) {
@@ -2472,6 +2474,9 @@ public class TestLuceneDocumentIndexService {
     private void verifyVersionRetention(
             Collection<URI> serviceUris, long limit) throws Throwable {
 
+        long expectedDocumentCount = Math.max(1,
+                (long) (limit * LuceneDocumentIndexService.getVersionRetentionLowWatermark()));
+
         long maintIntervalMillis = TimeUnit.MICROSECONDS
                 .toMillis(this.host.getMaintenanceIntervalMicros());
 
@@ -2494,14 +2499,14 @@ public class TestLuceneDocumentIndexService {
             }
             URI u = this.host.createQueryTaskService(QueryTask.create(q), false);
             QueryTask finishedTaskState = this.host.waitForQueryTaskCompletion(q,
-                    serviceUris.size(), (int) limit, u, false, true);
+                    serviceUris.size(), (int) expectedDocumentCount, u, false, true);
             // also do a query that returns the actual links
             q.options = EnumSet.of(QueryOption.INCLUDE_ALL_VERSIONS);
             u = this.host.createQueryTaskService(QueryTask.create(q), false);
             finishedTaskWithLinksState = this.host.waitForQueryTaskCompletion(q,
-                    serviceUris.size(), (int) limit, u, false, true);
+                    serviceUris.size(), (int) expectedDocumentCount, u, false, true);
 
-            long expectedCount = serviceUris.size() * limit;
+            long expectedCount = serviceUris.size() * expectedDocumentCount;
             this.host.log("Documents found through count:%d, links:%d expectedCount:%d",
                     finishedTaskState.results.documentCount,
                     finishedTaskWithLinksState.results.documentLinks.size(),

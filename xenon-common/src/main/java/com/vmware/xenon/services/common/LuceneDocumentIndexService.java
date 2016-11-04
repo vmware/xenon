@@ -154,6 +154,10 @@ public class LuceneDocumentIndexService extends StatelessService {
 
     private static int INDEX_FILE_COUNT_THRESHOLD_FOR_WRITER_REFRESH = DEFAULT_INDEX_FILE_COUNT_THRESHOLD_FOR_WRITER_REFRESH;
 
+    private static double VERSION_RETENTION_LOW_WATERMARK = 0.5;
+
+    private static double VERSION_RETENTION_HIGH_WATERMARK = 1.0;
+
     public static void setIndexFileCountThresholdForWriterRefresh(int count) {
         INDEX_FILE_COUNT_THRESHOLD_FOR_WRITER_REFRESH = count;
     }
@@ -164,6 +168,28 @@ public class LuceneDocumentIndexService extends StatelessService {
 
     public static void setExpiredDocumentSearchThreshold(int count) {
         EXPIRED_DOCUMENT_SEARCH_THRESHOLD = count;
+    }
+
+    public static void setVersionRetentionLowWatermark(double watermark) {
+        if (watermark <= 0.0) {
+            throw new IllegalArgumentException("Watermark value must be positive and nonzero");
+        }
+        VERSION_RETENTION_LOW_WATERMARK = watermark;
+    }
+
+    public static double getVersionRetentionLowWatermark() {
+        return VERSION_RETENTION_LOW_WATERMARK;
+    }
+
+    public static void setVersionRetentionHighWatermark(double watermark) {
+        if (watermark <= 0.0) {
+            throw new IllegalArgumentException("Watermark value must be positive and nonzero");
+        }
+        VERSION_RETENTION_HIGH_WATERMARK = watermark;
+    }
+
+    public static double getVersionRetentionHighWatermark() {
+        return VERSION_RETENTION_HIGH_WATERMARK;
     }
 
     public static int getExpiredDocumentSearchThreshold() {
@@ -2235,7 +2261,8 @@ public class LuceneDocumentIndexService extends StatelessService {
         }
 
         long limit = Math.max(1, desc.versionRetentionLimit);
-        if (state.documentVersion - oldestVersion > limit) {
+        long threshold = Math.max(1, (int) (limit * VERSION_RETENTION_HIGH_WATERMARK));
+        if (state.documentVersion - oldestVersion > threshold) {
             synchronized (this.linkDocumentRetentionEstimates) {
                 this.linkDocumentRetentionEstimates.put(state.documentSelfLink, limit);
             }
@@ -2625,10 +2652,13 @@ public class LuceneDocumentIndexService extends StatelessService {
         for (Entry<String, Long> e : links.entrySet()) {
             IndexWriter wr = this.writer;
             if (wr == null) {
+                // Do we need to add the remaining links back to the retention list here?
                 return;
             }
+
+            int versionsToKeep = Math.max(1, (int) (e.getValue() * VERSION_RETENTION_LOW_WATERMARK));
             IndexSearcher s = createOrRefreshSearcher(null, Integer.MAX_VALUE, wr, false);
-            deleteDocumentsFromIndex(s, dummyDelete, e.getKey(), e.getValue());
+            deleteDocumentsFromIndex(s, dummyDelete, e.getKey(), versionsToKeep);
             count++;
         }
 
@@ -2669,13 +2699,13 @@ public class LuceneDocumentIndexService extends StatelessService {
                     logFine("Closing paginated query searcher, expired at %d", entry.getKey());
                     s.getIndexReader().close();
                 } catch (Throwable e) {
-
+                    // Ignore
                 }
             }
         }
     }
 
-    void applyMemoryLimitToLinkAccessTimes() {
+    private void applyMemoryLimitToLinkAccessTimes() {
         long memThresholdBytes = this.linkAccessMemoryLimitMB * 1024 * 1024;
         final int bytesPerLinkEstimate = 256;
         int count = 0;
