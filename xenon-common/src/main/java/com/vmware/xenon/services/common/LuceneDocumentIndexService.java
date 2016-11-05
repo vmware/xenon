@@ -126,13 +126,14 @@ import com.vmware.xenon.services.common.QueryTask.QueryTerm.MatchType;
 
 public class LuceneDocumentIndexService extends StatelessService {
 
-    public static String SELF_LINK = ServiceUriPaths.CORE_DOCUMENT_INDEX;
+    public static final String SELF_LINK = ServiceUriPaths.CORE_DOCUMENT_INDEX;
 
     private static final String LUCENE_FIELD_NAME_OLDEST_VERSION = "oldestDocumentVersion";
 
     public static final String PROPERTY_NAME_QUERY_THREAD_COUNT = Utils.PROPERTY_NAME_PREFIX
             + LuceneDocumentIndexService.class.getSimpleName()
             + ".QUERY_THREAD_COUNT";
+
     public static final int QUERY_THREAD_COUNT = Integer.getInteger(
             PROPERTY_NAME_QUERY_THREAD_COUNT,
             Utils.DEFAULT_THREAD_COUNT * 2);
@@ -392,14 +393,17 @@ public class LuceneDocumentIndexService extends StatelessService {
 
         this.fieldToLoadVersionLookup = new HashSet<>();
         this.fieldToLoadVersionLookup.add(ServiceDocument.FIELD_NAME_VERSION);
+
         this.fieldToLoadOldestVersionLookup = new HashSet<>();
         this.fieldToLoadOldestVersionLookup.add(LUCENE_FIELD_NAME_OLDEST_VERSION);
+
         this.fieldsToLoadNoExpand = new HashSet<>();
         this.fieldsToLoadNoExpand.add(ServiceDocument.FIELD_NAME_SELF_LINK);
         this.fieldsToLoadNoExpand.add(ServiceDocument.FIELD_NAME_VERSION);
         this.fieldsToLoadNoExpand.add(ServiceDocument.FIELD_NAME_UPDATE_TIME_MICROS);
         this.fieldsToLoadNoExpand.add(ServiceDocument.FIELD_NAME_UPDATE_ACTION);
         this.fieldsToLoadNoExpand.add(ServiceDocument.FIELD_NAME_EXPIRATION_TIME_MICROS);
+
         this.fieldsToLoadWithExpand = new HashSet<>(this.fieldsToLoadNoExpand);
         this.fieldsToLoadWithExpand.add(LUCENE_FIELD_NAME_JSON_SERIALIZED_STATE);
         this.fieldsToLoadWithExpand.add(LUCENE_FIELD_NAME_BINARY_SERIALIZED_STATE);
@@ -992,10 +996,9 @@ public class LuceneDocumentIndexService extends StatelessService {
             return;
         }
 
-        Document doc = s.getIndexReader().document(hits.scoreDocs[0].doc,
-                this.fieldsToLoadWithExpand);
+        Document doc = s.doc(hits.scoreDocs[0].doc, this.fieldsToLoadWithExpand);
 
-        if (checkAndDeleteExpiratedDocuments(selfLink, s, hits.scoreDocs[0].doc, doc,
+        if (checkAndDeleteExpiredDocuments(selfLink, s, hits.scoreDocs[0].doc, doc,
                 Utils.getSystemNowMicrosUtc())) {
             op.complete();
             return;
@@ -1489,7 +1492,7 @@ public class LuceneDocumentIndexService extends StatelessService {
             }
 
             lastDocVisited = sd;
-            Document d = s.getIndexReader().document(sd.doc, fieldsToLoad);
+            Document d = s.doc(sd.doc, fieldsToLoad);
             String link = d.get(ServiceDocument.FIELD_NAME_SELF_LINK);
             String originalLink = link;
 
@@ -1538,7 +1541,7 @@ public class LuceneDocumentIndexService extends StatelessService {
                 }
             }
 
-            if (checkAndDeleteExpiratedDocuments(link, s, sd.doc, d, queryStartTimeMicros)) {
+            if (checkAndDeleteExpiredDocuments(link, s, sd.doc, d, queryStartTimeMicros)) {
                 // ignore all document versions if the link has expired
                 latestVersions.put(link, Long.MAX_VALUE);
                 continue;
@@ -1644,7 +1647,7 @@ public class LuceneDocumentIndexService extends StatelessService {
             // a field with a collection of links. We do not store those in lucene, they are
             // part of the binary serialized state.
             if (state == null) {
-                d = s.getIndexReader().document(docId, this.fieldsToLoadWithExpand);
+                d = s.doc(docId, this.fieldsToLoadWithExpand);
                 state = getStateFromLuceneDocument(d, link);
                 if (state == null) {
                     logWarning("Skipping link %s, can not find serialized state", link);
@@ -1699,8 +1702,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         IndexableField versionField;
         long latestVersion;
         TopDocs td = searchByVersion(link, s, null);
-        Document latestVersionDoc = s.getIndexReader().document(td.scoreDocs[0].doc,
-                this.fieldToLoadVersionLookup);
+        Document latestVersionDoc = s.doc(td.scoreDocs[0].doc, this.fieldToLoadVersionLookup);
         versionField = latestVersionDoc.getField(ServiceDocument.FIELD_NAME_VERSION);
         latestVersion = versionField.numericValue().longValue();
         return latestVersion;
@@ -1710,8 +1712,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         IndexableField versionField;
         long oldestVersion;
         TopDocs td = searchByVersion(link, s, null);
-        Document oldestVersionDoc = s.getIndexReader().document(td.scoreDocs[0].doc,
-                this.fieldToLoadOldestVersionLookup);
+        Document oldestVersionDoc = s.doc(td.scoreDocs[0].doc, this.fieldToLoadOldestVersionLookup);
         versionField = oldestVersionDoc.getField(LUCENE_FIELD_NAME_OLDEST_VERSION);
         if (versionField == null) {
             return null;
@@ -1942,7 +1943,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         long limit = Math.max(1, desc.versionRetentionLimit);
         if (s.documentVersion >= limit
                 && oldestVersion != ServiceDocumentDescription.FIELD_VALUE_DISABLED_VERSION_RETENTION) {
-            addNumericField(doc, LUCENE_FIELD_NAME_OLDEST_VERSION, oldestVersion, true);
+            addStoredOnlyField(doc, LUCENE_FIELD_NAME_OLDEST_VERSION, oldestVersion);
         }
 
         if (desc.propertyDescriptions == null
@@ -2194,7 +2195,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         }
     }
 
-    private boolean checkAndDeleteExpiratedDocuments(String link, IndexSearcher searcher,
+    private boolean checkAndDeleteExpiredDocuments(String link, IndexSearcher searcher,
             Integer docId,
             Document doc, long now)
             throws Throwable {
@@ -2319,11 +2320,11 @@ public class LuceneDocumentIndexService extends StatelessService {
 
         int versionCount = hits.length;
 
-        hitDoc = s.doc(hits[versionCount - 1].doc);
-        long versionLowerBound = Long.parseLong(hitDoc.get(ServiceDocument.FIELD_NAME_VERSION));
+        hitDoc = s.doc(hits[versionCount - 1].doc, this.fieldToLoadVersionLookup);
+        long versionLowerBound = hitDoc.getField(ServiceDocument.FIELD_NAME_VERSION).numericValue().longValue();
 
-        hitDoc = s.doc(hits[0].doc);
-        long versionUpperBound = Long.parseLong(hitDoc.get(ServiceDocument.FIELD_NAME_VERSION));
+        hitDoc = s.doc(hits[0].doc, this.fieldToLoadVersionLookup);
+        long versionUpperBound = hitDoc.getField(ServiceDocument.FIELD_NAME_VERSION).numericValue().longValue();
 
         // If the number of versions found are already less than the limit
         // then there is nothing to delete. Just exit.
@@ -2336,8 +2337,8 @@ public class LuceneDocumentIndexService extends StatelessService {
         // grab the document at the tail of the results, and use it to form a new query
         // that will delete all documents from that document up to the version at the
         // retention limit
-        hitDoc = s.doc(hits[(int) versionsToKeep].doc);
-        long cutOffVersion = Long.parseLong(hitDoc.get(ServiceDocument.FIELD_NAME_VERSION));
+        hitDoc = s.doc(hits[(int) versionsToKeep].doc, this.fieldToLoadVersionLookup);
+        long cutOffVersion = hitDoc.getField(ServiceDocument.FIELD_NAME_VERSION).numericValue().longValue();
 
         Query versionQuery = LongPoint.newRangeQuery(
                 ServiceDocument.FIELD_NAME_VERSION, versionLowerBound, cutOffVersion);
@@ -2756,7 +2757,7 @@ public class LuceneDocumentIndexService extends StatelessService {
             if (!links.add(link)) {
                 continue;
             }
-            checkAndDeleteExpiratedDocuments(link, s, sd.doc, d, now);
+            checkAndDeleteExpiredDocuments(link, s, sd.doc, d, now);
         }
     }
 
@@ -2807,7 +2808,11 @@ public class LuceneDocumentIndexService extends StatelessService {
         }
     }
 
-    public static Document addNumericField(Document doc, String propertyName, long propertyValue,
+    private void addStoredOnlyField(Document doc, String propertyName, long value) {
+        doc.add(new StoredField(propertyName, value));
+    }
+
+    static void addNumericField(Document doc, String propertyName, long propertyValue,
             boolean stored) {
         // StoredField is used if the property needs to be stored in the lucene document
         if (stored) {
@@ -2821,10 +2826,9 @@ public class LuceneDocumentIndexService extends StatelessService {
         // NumericDocValues allow for efficient group operations for a property.
         // TODO Investigate and revert code to use 'sort' to determine the type of DocValuesField
         doc.add(new NumericDocValuesField(propertyName, propertyValue));
-        return doc;
     }
 
-    public static Document addNumericField(Document doc, String propertyName, double propertyValue,
+    private static void addNumericField(Document doc, String propertyName, double propertyValue,
             boolean stored) {
         long longPropertyValue = NumericUtils.doubleToSortableLong(propertyValue);
 
@@ -2840,6 +2844,5 @@ public class LuceneDocumentIndexService extends StatelessService {
         // NumericDocValues allow for efficient group operations for a property.
         // TODO Investigate and revert code to use 'sort' to determine the type of DocValuesField
         doc.add(new NumericDocValuesField(propertyName, longPropertyValue));
-        return doc;
     }
 }
