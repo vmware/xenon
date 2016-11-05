@@ -284,8 +284,8 @@ public class ServiceHost implements ServiceRequestSender {
     public static final Double DEFAULT_PCT_MEMORY_LIMIT_BLOB_INDEX = 0.1;
     public static final Double DEFAULT_PCT_MEMORY_LIMIT_SERVICE_CONTEXT_INDEX = 0.1;
 
-    public static final String LOCAL_HOST = "127.0.0.1";
     public static final String LOOPBACK_ADDRESS = "127.0.0.1";
+    public static final String LOCAL_HOST = LOOPBACK_ADDRESS;
     public static final String DEFAULT_BIND_ADDRESS = ServiceHost.LOCAL_HOST;
 
     public static final int PORT_VALUE_HTTP_DEFAULT = 8000;
@@ -502,7 +502,7 @@ public class ServiceHost implements ServiceRequestSender {
     private ExecutorService executor;
     private ScheduledExecutorService scheduledExecutor;
 
-    private final ConcurrentSkipListMap<String, Service> attachedServices = new ConcurrentSkipListMap<>();
+    private final ConcurrentHashMap<String, Service> attachedServices = new ConcurrentHashMap<>();
     private final ConcurrentSkipListMap<String, Service> attachedNamespaceServices = new ConcurrentSkipListMap<>();
 
     private final ConcurrentSkipListSet<String> coreServices = new ConcurrentSkipListSet<>();
@@ -3103,7 +3103,7 @@ public class ServiceHost implements ServiceRequestSender {
             return false;
         }
 
-        if (!ServiceHost.LOCAL_HOST.equals(inboundOp.getUri().getHost())) {
+        if (ServiceHost.LOCAL_HOST.hashCode() != inboundOp.getUri().getHost().hashCode()) {
             if (!UriUtils.isHostEqual(this, inboundOp.getUri())) {
                 return false;
             }
