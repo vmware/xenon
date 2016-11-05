@@ -18,8 +18,8 @@ import java.util.Collection;
 import java.util.SortedMap;
 import java.util.TreeMap;
 import java.util.concurrent.CancellationException;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
-import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 
@@ -46,7 +46,7 @@ import com.vmware.xenon.services.common.NodeGroupService.UpdateQuorumRequest;
 public class ConsistentHashingNodeSelectorService extends StatelessService implements
         NodeSelectorService {
 
-    private ConcurrentSkipListMap<String, Long> hashedNodeIds = new ConcurrentSkipListMap<>();
+    private ConcurrentHashMap<String, Long> hashedNodeIds = new ConcurrentHashMap<>();
     private ConcurrentLinkedQueue<SelectAndForwardRequest> pendingRequests = new ConcurrentLinkedQueue<>();
 
     // Cached node group state. Refreshed during maintenance
@@ -214,6 +214,7 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
      *  is not an API a service author can call (they have no access to this instance), the change will
      *  be transparent to runtime users.
      */
+    @Override
     public String getNodeGroup() {
         return this.cachedState.nodeGroupLink;
     }
@@ -221,6 +222,7 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
     /**
      *  Infrastructure use only
      */
+    @Override
     public void selectAndForward(Operation op, SelectAndForwardRequest body) {
         selectAndForward(body, op, this.cachedGroupState);
     }
@@ -326,14 +328,10 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
 
             response.availableNodeCount++;
             int nodeIdHash = 0;
-            Long nodeIdHashLong = this.hashedNodeIds.get(m.id);
-            if (nodeIdHashLong == null) {
-                nodeIdHash = MurmurHash3.murmurhash3_x86_32(m.id, 0, m.id.length(), seed);
-                this.hashedNodeIds.put(m.id, (long) nodeIdHash);
-            } else {
-                nodeIdHash = nodeIdHashLong.intValue();
-            }
-
+            Long nodeIdHashLong = this.hashedNodeIds.computeIfAbsent(m.id, (k) -> {
+                return (long) MurmurHash3.murmurhash3_x86_32(m.id, 0, m.id.length(), seed);
+            });
+            nodeIdHash = nodeIdHashLong.intValue();
             long distance = nodeIdHash - keyHash;
             distance *= distance;
             closestNodes.put(distance, m);
@@ -471,6 +469,7 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
      * @param maintOp
      * @param localState
      */
+    @Override
     public void handleMaintenance(Operation maintOp) {
         performPendingRequestMaintenance();
         checkAndScheduleSynchronization(this.cachedGroupState.membershipUpdateTimeMicros);

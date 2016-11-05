@@ -284,8 +284,8 @@ public class ServiceHost implements ServiceRequestSender {
     public static final Double DEFAULT_PCT_MEMORY_LIMIT_BLOB_INDEX = 0.1;
     public static final Double DEFAULT_PCT_MEMORY_LIMIT_SERVICE_CONTEXT_INDEX = 0.1;
 
-    public static final String LOCAL_HOST = "127.0.0.1";
     public static final String LOOPBACK_ADDRESS = "127.0.0.1";
+    public static final String LOCAL_HOST = LOOPBACK_ADDRESS;
     public static final String DEFAULT_BIND_ADDRESS = ServiceHost.LOCAL_HOST;
 
     public static final int PORT_VALUE_HTTP_DEFAULT = 8000;
@@ -454,7 +454,7 @@ public class ServiceHost implements ServiceRequestSender {
          *
          * The empty path, "", is reserved for the host memory limit
          */
-        public Map<String, Double> relativeMemoryLimits = new ConcurrentSkipListMap<>();
+        public ConcurrentHashMap<String, Double> relativeMemoryLimits = new ConcurrentHashMap<>();
 
         /**
          * Request limits, in operations per second. Each limit is associated with a key,
@@ -466,7 +466,7 @@ public class ServiceHost implements ServiceRequestSender {
          * service and any additional throttling applied during service request
          * processing
          */
-        public Map<String, RequestRateInfo> requestRateLimits = new ConcurrentSkipListMap<>();
+        public ConcurrentHashMap<String, RequestRateInfo> requestRateLimits = new ConcurrentHashMap<>();
 
         /**
          * Infrastructure use only.
@@ -493,8 +493,8 @@ public class ServiceHost implements ServiceRequestSender {
     private Logger logger = Logger.getLogger(getClass().getName());
     private FileHandler handler;
 
-    private Map<String, AuthorizationContext> authorizationContextCache = new ConcurrentHashMap<>();
-    private Map<String, Set<String>> userLinktoTokenMap = new ConcurrentHashMap<>();
+    private ConcurrentHashMap<String, AuthorizationContext> authorizationContextCache = new ConcurrentHashMap<>();
+    private ConcurrentHashMap<String, Set<String>> userLinktoTokenMap = new ConcurrentHashMap<>();
 
     private final Map<String, ServiceDocumentDescription> descriptionCache = new HashMap<>();
     private final ServiceDocumentDescription.Builder descriptionBuilder = Builder.create();
@@ -502,15 +502,15 @@ public class ServiceHost implements ServiceRequestSender {
     private ExecutorService executor;
     private ScheduledExecutorService scheduledExecutor;
 
-    private final ConcurrentSkipListMap<String, Service> attachedServices = new ConcurrentSkipListMap<>();
+    private final ConcurrentHashMap<String, Service> attachedServices = new ConcurrentHashMap<>();
     private final ConcurrentSkipListMap<String, Service> attachedNamespaceServices = new ConcurrentSkipListMap<>();
 
     private final ConcurrentSkipListSet<String> coreServices = new ConcurrentSkipListSet<>();
-    private ConcurrentSkipListMap<String, Class<? extends Service>> privilegedServiceTypes = new ConcurrentSkipListMap<>();
+    private ConcurrentHashMap<String, Class<? extends Service>> privilegedServiceTypes = new ConcurrentHashMap<>();
 
     private final Set<String> pendingServiceDeletions = Collections
             .synchronizedSet(new HashSet<String>());
-    private final Map<String, Service> pendingPauseServices = new ConcurrentSkipListMap<>();
+    private final ConcurrentHashMap<String, Service> pendingPauseServices = new ConcurrentHashMap<>();
 
     private ServiceHostState state;
     private Service documentIndexService;
