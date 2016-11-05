@@ -13,6 +13,7 @@
 
 package com.vmware.xenon.common;
 
+
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
@@ -195,15 +196,13 @@ public final class Utils {
         return KryoSerializers.cloneObject(t);
     }
 
-    public static String computeSignature(ServiceDocument s,
-            ServiceDocumentDescription description) {
+    public static String computeSignature(ServiceDocument s, ServiceDocumentDescription description) {
         if (description == null) {
             throw new IllegalArgumentException("description is required");
         }
 
         byte[] buffer = getBuffer(description.serializedStateSizeLimit);
         int position = 0;
-
         for (PropertyDescription pd : description.propertyDescriptions.values()) {
             if (pd.indexingOptions != null) {
                 if (pd.indexingOptions.contains(PropertyIndexingOption.EXCLUDE_FROM_SIGNATURE)) {
@@ -214,14 +213,32 @@ public final class Utils {
             Object fieldValue = ReflectionUtils.getPropertyValue(pd, s);
             if (pd.typeName == TypeName.COLLECTION || pd.typeName == TypeName.MAP
                     || pd.typeName == TypeName.PODO) {
-                String content = Utils.toJson(fieldValue);
-                position = Utils.toBytes(content, buffer, position);
+                int h = Utils.hashJson(fieldValue);
+                buffer[position++] = (byte) (h >>> 24);
+                buffer[position++] = (byte) (h >>> 16);
+                buffer[position++] = (byte) (h >>> 8);
+                buffer[position++] = (byte) h;
             } else if (fieldValue != null) {
                 position = Utils.toBytes(fieldValue, buffer, position);
             }
         }
 
         return computeHash(buffer, 0, position);
+    }
+
+    /**
+     * converts object to json representation and computes a hash of it.
+     * @param body a possibly null object
+     * @return
+     */
+    private static int hashJson(Object body) {
+        if (body instanceof String) {
+            return MurmurHash3.murmurhash3_x86_32((String) body, 0, ((String) body).length(), 0);
+        }
+        StringBuilder content = getBuilder();
+        JsonMapper mapper = getJsonMapperFor(body);
+        mapper.toJson(body, content);
+        return MurmurHash3.murmurhash3_x86_32(content, 0, content.length(), 0);
     }
 
     /**

@@ -14,6 +14,7 @@
 package com.vmware.xenon.services.common;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 import java.util.EnumSet;
@@ -79,7 +80,7 @@ public class TestServiceDocument {
         modifiedState.counter = initialState.counter;
 
         boolean value = ServiceDocument.equals(description, initialState, modifiedState);
-        assertEquals(true, value);
+        assertTrue(value);
 
         initialState = new ExampleService.ExampleServiceState();
         initialState.name = UUID.randomUUID().toString();
@@ -91,7 +92,7 @@ public class TestServiceDocument {
         modifiedState.counter = 10L;
 
         value = ServiceDocument.equals(description, initialState, modifiedState);
-        assertEquals(false, value);
+        assertFalse(value);
 
         // set a core document field to be different between states and still verify
         // the states compare as equals (core fields are ignored)

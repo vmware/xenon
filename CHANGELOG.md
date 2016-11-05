@@ -2,6 +2,10 @@
 
 ## 1.3.0-SNAPSHOT
 
+* Document signature calculation changed to be more efficient while format stays
+  the same. If an older signature is compared to a new one documents may
+  incorrectly be reported as different.
+
 ## 1.2.0
 
 * Note: The release is not recommended for production.
