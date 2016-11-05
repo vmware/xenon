@@ -2169,7 +2169,7 @@ public class LuceneDocumentIndexService extends StatelessService {
                 1);
 
         // update document with one that has all fields, including binary state
-        doc = searcher.getIndexReader().document(docId, this.fieldsToLoadWithExpand);
+        doc = searcher.doc(docId, this.fieldsToLoadWithExpand);
 
         ServiceDocument s = null;
         try {
@@ -2671,7 +2671,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         Set<String> links = new HashSet<>();
         long now = Utils.getNowMicrosUtc();
         for (ScoreDoc sd : results.scoreDocs) {
-            Document d = s.getIndexReader().document(sd.doc, this.fieldsToLoadNoExpand);
+            Document d = s.doc(sd.doc, this.fieldsToLoadNoExpand);
             String link = d.get(ServiceDocument.FIELD_NAME_SELF_LINK);
             IndexableField versionField = d.getField(ServiceDocument.FIELD_NAME_VERSION);
             long versionExpired = versionField.numericValue().longValue();

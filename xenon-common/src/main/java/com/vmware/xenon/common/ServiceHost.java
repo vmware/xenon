@@ -497,8 +497,8 @@ public class ServiceHost implements ServiceRequestSender {
     private Logger logger = Logger.getLogger(getClass().getName());
     private FileHandler handler;
 
-    private ConcurrentHashMap<String, AuthorizationContext> authorizationContextCache = new ConcurrentHashMap<>();
-    private ConcurrentHashMap<String, Set<String>> userLinktoTokenMap = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, AuthorizationContext> authorizationContextCache = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, Set<String>> userLinkToTokenMap = new ConcurrentHashMap<>();
 
     private final Map<String, ServiceDocumentDescription> descriptionCache = new HashMap<>();
     private final ServiceDocumentDescription.Builder descriptionBuilder = Builder.create();
@@ -510,7 +510,7 @@ public class ServiceHost implements ServiceRequestSender {
     private final ConcurrentSkipListMap<String, Service> attachedNamespaceServices = new ConcurrentSkipListMap<>();
 
     private final ConcurrentSkipListSet<String> coreServices = new ConcurrentSkipListSet<>();
-    private ConcurrentHashMap<String, Class<? extends Service>> privilegedServiceTypes = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, Class<? extends Service>> privilegedServiceTypes = new ConcurrentHashMap<>();
 
     private final Set<String> pendingServiceDeletions = Collections
             .synchronizedSet(new HashSet<String>());
@@ -802,44 +802,46 @@ public class ServiceHost implements ServiceRequestSender {
 
     private void loadState(URI storageSandbox, File s) throws IOException, InterruptedException {
         File hostStateFile = new File(s, SERVICE_HOST_STATE_FILE);
-        if (hostStateFile.exists()) {
-            CountDownLatch l = new CountDownLatch(1);
-            FileUtils.readFileAndComplete(
-                    Operation.createGet(null).setCompletion(
-                            (o, e) -> {
-                                if (e != null) {
-                                    log(Level.WARNING, "Failure loading state from %s: %s",
-                                            hostStateFile, Utils.toString(e));
-                                    l.countDown();
-                                    return;
-                                }
-
-                                try {
-                                    ServiceHostState fileState = o.getBody(ServiceHostState.class);
-                                    if (fileState.id == null) {
-                                        log(Level.WARNING, "Invalid state from %s: %s",
-                                                hostStateFile,
-                                                Utils.toJsonHtml(fileState));
-                                        l.countDown();
-                                        return;
-                                    }
-                                    fileState.isStarted = this.state.isStarted;
-                                    fileState.isStopping = this.state.isStopping;
-                                    if (fileState.maintenanceIntervalMicros < Service.MIN_MAINTENANCE_INTERVAL_MICROS) {
-                                        fileState.maintenanceIntervalMicros = Service.MIN_MAINTENANCE_INTERVAL_MICROS;
-                                    }
-                                    this.state = fileState;
-                                    l.countDown();
-                                } catch (Throwable ex) {
-                                    log(Level.WARNING, "Invalid state from %s: %s", hostStateFile,
-                                            Utils.toJsonHtml(o.getBodyRaw()));
-                                    l.countDown();
-                                    return;
-                                }
-                            }),
-                    hostStateFile);
-            l.await();
+        if (!hostStateFile.isFile()) {
+            return;
         }
+
+        CountDownLatch l = new CountDownLatch(1);
+        FileUtils.readFileAndComplete(
+                Operation.createGet(null).setCompletion(
+                        (o, e) -> {
+                            if (e != null) {
+                                log(Level.WARNING, "Failure loading state from %s: %s",
+                                        hostStateFile, Utils.toString(e));
+                                l.countDown();
+                                return;
+                            }
+
+                            try {
+                                ServiceHostState fileState = o.getBody(ServiceHostState.class);
+                                if (fileState.id == null) {
+                                    log(Level.WARNING, "Invalid state from %s: %s",
+                                            hostStateFile,
+                                            Utils.toJsonHtml(fileState));
+                                    l.countDown();
+                                    return;
+                                }
+                                fileState.isStarted = this.state.isStarted;
+                                fileState.isStopping = this.state.isStopping;
+                                if (fileState.maintenanceIntervalMicros < Service.MIN_MAINTENANCE_INTERVAL_MICROS) {
+                                    fileState.maintenanceIntervalMicros = Service.MIN_MAINTENANCE_INTERVAL_MICROS;
+                                }
+                                this.state = fileState;
+                                l.countDown();
+                            } catch (Throwable ex) {
+                                log(Level.WARNING, "Invalid state from %s: %s", hostStateFile,
+                                        Utils.toJsonHtml(o.getBodyRaw()));
+                                l.countDown();
+                                return;
+                            }
+                        }),
+                hostStateFile);
+        l.await();
     }
 
     private void saveState() throws IOException, InterruptedException {
@@ -3381,7 +3383,7 @@ public class ServiceHost implements ServiceRequestSender {
         if (expirationTime != null && expirationTime <= Utils.getSystemNowMicrosUtc()) {
             synchronized (this.state) {
                 this.authorizationContextCache.remove(token);
-                this.userLinktoTokenMap.remove(claims.getSubject());
+                this.userLinkToTokenMap.remove(claims.getSubject());
             }
             return null;
         }
@@ -3396,7 +3398,7 @@ public class ServiceHost implements ServiceRequestSender {
         ctx = b.getResult();
         synchronized (this.state) {
             this.authorizationContextCache.put(token, ctx);
-            addUserToken(this.userLinktoTokenMap, claims.getSubject(), token);
+            addUserToken(this.userLinkToTokenMap, claims.getSubject(), token);
         }
         return ctx;
     }
@@ -5451,7 +5453,7 @@ public class ServiceHost implements ServiceRequestSender {
         }
         synchronized (this.state) {
             this.authorizationContextCache.put(token, ctx);
-            addUserToken(this.userLinktoTokenMap, ctx.getClaims().getSubject(), token);
+            addUserToken(this.userLinkToTokenMap, ctx.getClaims().getSubject(), token);
         }
     }
 
@@ -5463,7 +5465,7 @@ public class ServiceHost implements ServiceRequestSender {
             throw new RuntimeException("Service not allowed to clear authorization token");
         }
         synchronized (this.state) {
-            Set<String> tokenSet = this.userLinktoTokenMap.remove(userLink);
+            Set<String> tokenSet = this.userLinkToTokenMap.remove(userLink);
             if (tokenSet != null) {
                 for (String token : tokenSet) {
                     this.authorizationContextCache.remove(token);

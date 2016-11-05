@@ -17,7 +17,6 @@ import java.lang.management.ManagementFactory;
 import java.lang.management.ThreadMXBean;
 import java.util.EnumSet;
 import java.util.Map;
-import java.util.Objects;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -47,7 +46,7 @@ class ServiceResourceTracker {
      * This class is used for keeping cached transactional state of services under
      * active optimistic transactions.
      */
-    static class CachedServiceStateKey {
+    private static final class CachedServiceStateKey {
         private String servicePath;
         private String transactionId;
 
@@ -57,23 +56,30 @@ class ServiceResourceTracker {
         }
 
         @Override
-        public int hashCode() {
-            return Objects.hash(this.servicePath, this.transactionId);
+        public boolean equals(Object o) {
+            if (this == o) {
+                return true;
+            }
+            if (o == null || getClass() != o.getClass()) {
+                return false;
+            }
+
+            CachedServiceStateKey that = (CachedServiceStateKey) o;
+
+            if (this.servicePath != null ? !this.servicePath.equals(that.servicePath) : that.servicePath != null) {
+                return false;
+            }
+
+            return this.transactionId != null ?
+                    this.transactionId.equals(that.transactionId) :
+                    that.transactionId == null;
         }
 
         @Override
-        public boolean equals(Object o) {
-            if (o == this) {
-                return true;
-            }
-
-            if (o instanceof CachedServiceStateKey) {
-                CachedServiceStateKey that = (CachedServiceStateKey) o;
-                return Objects.equals(this.servicePath, that.servicePath)
-                        && Objects.equals(this.transactionId, that.transactionId);
-            }
-
-            return false;
+        public int hashCode() {
+            int result = this.servicePath != null ? this.servicePath.hashCode() : 0;
+            result = 31 * result + (this.transactionId != null ? this.transactionId.hashCode() : 0);
+            return result;
         }
 
         @Override

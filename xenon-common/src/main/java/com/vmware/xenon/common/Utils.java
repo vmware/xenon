@@ -1004,19 +1004,13 @@ public final class Utils {
      * @return new or existing element value.
      */
     public static <K, V> V atomicGetOrCreate(ConcurrentMap<K, V> map, K key, Callable<V> ctor) {
-        V value = map.get(key);
-        if (value == null) {
+        return map.computeIfAbsent(key, k -> {
             try {
-                value = ctor.call();
+                return ctor.call();
             } catch (Exception e) {
                 throw new RuntimeException("Element constructor should now throw an exception", e);
             }
-            V existing = map.putIfAbsent(key, value);
-            if (existing != null) {
-                return existing;
-            }
-        }
-        return value;
+        });
     }
 
     /**
