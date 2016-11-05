@@ -33,7 +33,7 @@ import java.util.Map.Entry;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.CancellationException;
-import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
@@ -259,7 +259,7 @@ public class LuceneDocumentIndexService extends StatelessService {
 
     protected IndexWriter writer = null;
 
-    protected Map<String, QueryTask> activeQueries = new ConcurrentSkipListMap<>();
+    protected Map<String, QueryTask> activeQueries = new ConcurrentHashMap<>();
 
     private long writerUpdateTimeMicros;
 
