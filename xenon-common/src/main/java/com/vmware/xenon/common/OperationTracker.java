@@ -15,11 +15,10 @@ package com.vmware.xenon.common;
 
 import java.util.Comparator;
 import java.util.Iterator;
-import java.util.Map;
 import java.util.Map.Entry;
 import java.util.SortedSet;
 import java.util.concurrent.CancellationException;
-import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -44,8 +43,8 @@ class OperationTracker {
 
     private ServiceHost host;
     private final SortedSet<Operation> pendingStartOperations = createOperationSet();
-    private final Map<String, SortedSet<Operation>> pendingServiceAvailableCompletions = new ConcurrentSkipListMap<>();
-    private final ConcurrentSkipListMap<Long, Operation> pendingOperationsForRetry = new ConcurrentSkipListMap<>();
+    private final ConcurrentHashMap<String, SortedSet<Operation>> pendingServiceAvailableCompletions = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<Long, Operation> pendingOperationsForRetry = new ConcurrentHashMap<>();
 
     public static OperationTracker create(ServiceHost host) {
         OperationTracker omt = new OperationTracker();
@@ -71,14 +70,12 @@ class OperationTracker {
         this.pendingStartOperations.remove(post);
     }
 
-    public synchronized SortedSet<Operation> trackServiceAvailableCompletion(String link,
+    public SortedSet<Operation> trackServiceAvailableCompletion(String link,
             Operation opTemplate, boolean doOpClone) {
         SortedSet<Operation> pendingOps = this.pendingServiceAvailableCompletions
-                .get(link);
-        if (pendingOps == null) {
-            pendingOps = createOperationSet();
-            this.pendingServiceAvailableCompletions.put(link, pendingOps);
-        }
+                .computeIfAbsent(link, (k) -> {
+                    return createOperationSet();
+                });
         pendingOps.add(doOpClone ? opTemplate.clone() : opTemplate);
         return pendingOps;
     }

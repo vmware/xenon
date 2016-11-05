@@ -14,10 +14,10 @@
 package com.vmware.xenon.common;
 
 import java.util.HashSet;
-import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
 import java.util.concurrent.CancellationException;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
@@ -47,7 +47,7 @@ class ServiceMaintenanceTracker {
 
     private ServiceHost host;
 
-    private Map<String, Long> trackedServices = new ConcurrentSkipListMap<>();
+    private ConcurrentHashMap<String, Long> trackedServices = new ConcurrentHashMap<>();
     private ConcurrentSkipListMap<Long, Set<String>> nextExpiration = new ConcurrentSkipListMap<>();
 
     public void schedule(Service s, long now) {
