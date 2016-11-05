@@ -4,6 +4,9 @@
 
 ## 1.2.0
 
+* Note: The release is not recommended for production. 
+  Document index service leaks one file descriptor every 5 seconds
+
 * Roll back to Lucene to version 6.0.0 due to an issue in 6.2.1. See:
   https://issues.apache.org/jira/browse/LUCENE-7491
 

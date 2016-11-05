@@ -17,6 +17,7 @@ import java.io.File;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -39,6 +40,7 @@ import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Stream;
 
 import com.esotericsoftware.kryo.KryoException;
 import com.esotericsoftware.kryo.io.Output;
@@ -2554,15 +2556,21 @@ public class LuceneDocumentIndexService extends StatelessService {
         }
 
         File directory = new File(new File(getHost().getStorageSandbox()), this.indexDirectory);
+        Stream<Path> stream = null;
         long count;
         try {
-            count = Files.list(directory.toPath()).count();
+            stream = Files.list(directory.toPath());
+            count = stream.count();
             if (!force && count < INDEX_FILE_COUNT_THRESHOLD_FOR_WRITER_REFRESH) {
                 return;
             }
         } catch (IOException e1) {
             logSevere(e1);
             return;
+        } finally {
+            if (stream != null) {
+                stream.close();
+            }
         }
 
         final int acquireReleaseCount = QUERY_THREAD_COUNT + UPDATE_THREAD_COUNT;
@@ -2595,7 +2603,8 @@ public class LuceneDocumentIndexService extends StatelessService {
             }
 
             w = createWriter(directory, false);
-            count = Files.list(directory.toPath()).count();
+            stream = Files.list(directory.toPath());
+            count = stream.count();
             logInfo("(%s) reopened writer, document count: %d, file count: %d",
                     this.writerSync, w.maxDoc(), count);
         } catch (Throwable e) {
@@ -2608,6 +2617,9 @@ public class LuceneDocumentIndexService extends StatelessService {
         } finally {
             // release all but one, so we stay owning one reference to the semaphore
             this.writerSync.release(acquireReleaseCount - 1);
+            if (stream != null) {
+                stream.close();
+            }
         }
     }
 
