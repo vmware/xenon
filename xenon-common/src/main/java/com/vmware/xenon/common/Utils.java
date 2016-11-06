@@ -115,7 +115,7 @@ public final class Utils {
 
     private static final JsonMapper JSON = new JsonMapper();
     private static final ConcurrentMap<Class<?>, JsonMapper> CUSTOM_JSON = new ConcurrentSkipListMap<>(
-            Comparator.comparing(Class::hashCode));
+            Comparator.comparingInt((Class<?> c) -> c.hashCode()).thenComparing(Class::getName));
 
     private static final ConcurrentMap<String, String> KINDS = new ConcurrentSkipListMap<>();
 
