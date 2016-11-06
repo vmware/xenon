@@ -3146,6 +3146,13 @@ public class TestNodeGroupService {
 
     @Test
     public void replicationFullQuorumMissingServiceOnPeer() throws Throwable {
+        for (int i = 0; i < this.iterationCount; i++) {
+            this.tearDown();
+            doReplicationFullQuorumMissingServiceOnPeer();
+        }
+    }
+
+    private void doReplicationFullQuorumMissingServiceOnPeer() throws Throwable {
         // This test verifies the following scenario:
         // A new node joins an existing node-group with
         // services already created. Synchronization is
@@ -3155,7 +3162,7 @@ public class TestNodeGroupService {
         // error, since synchronization hasn't completed.
         // The test verifies that when this happens, the
         // owner node will try to synchronize on-demand
-        // and retry the original update reqeust.
+        // and retry the original update request.
 
         // Artificially setting the replica not found timeout to
         // a lower-value, to reduce the wait time before owner
@@ -3164,84 +3171,63 @@ public class TestNodeGroupService {
                 NodeSelectorReplicationService.PROPERTY_NAME_REPLICA_NOT_FOUND_TIMEOUT_MICROS,
                 Long.toString(TimeUnit.MILLISECONDS.toMicros(VerificationHost.FAST_MAINT_INTERVAL_MILLIS)));
 
-        this.host = VerificationHost.create(0);
-        this.host.setPeerSynchronizationEnabled(false);
-        this.host.setMaintenanceIntervalMicros(TimeUnit.MILLISECONDS.toMicros(
-                VerificationHost.FAST_MAINT_INTERVAL_MILLIS));
-        this.host.start();
+        this.nodeCount = 2;
+        setUp(this.nodeCount);
+        VerificationHost hostOne = null;
+        VerificationHost hostTwo = null;
 
-        // Setup one host and create some example
-        // services on it.
-        List<URI> exampleUris = new ArrayList<>();
-        this.host.createExampleServices(this.host, this.serviceCount, exampleUris, null);
-
-        // Add a second host with synchronization disabled,
-        // Join it to the existing host.
-        VerificationHost host2 = new VerificationHost();
-
-        try {
-            TemporaryFolder tmpFolder = new TemporaryFolder();
-            tmpFolder.create();
-
-            String mainHostId = "main-" + VerificationHost.hostNumber.incrementAndGet();
-            String[] args = {
-                    "--id=" + mainHostId,
-                    "--port=0",
-                    "--bindAddress=127.0.0.1",
-                    "--sandbox="
-                            + tmpFolder.getRoot().getAbsolutePath(),
-                    "--peerNodes=" + this.host.getUri()
-            };
-
-            host2.initialize(args);
-            host2.setPeerSynchronizationEnabled(false);
-            host2.setMaintenanceIntervalMicros(
-                    TimeUnit.MILLISECONDS.toMicros(VerificationHost.FAST_MAINT_INTERVAL_MILLIS));
-            host2.start();
-
-            this.host.addPeerNode(host2);
-
-            // Wait for node-group to converge
-            List<URI> nodeGroupUris = new ArrayList<>();
-            nodeGroupUris.add(UriUtils.buildUri(this.host, ServiceUriPaths.DEFAULT_NODE_GROUP));
-            nodeGroupUris.add(UriUtils.buildUri(host2, ServiceUriPaths.DEFAULT_NODE_GROUP));
-            this.host.waitForNodeGroupConvergence(nodeGroupUris, 2, 2, true);
-
-            // Set the quorum to full.
-            this.host.setNodeGroupQuorum(2, nodeGroupUris.get(0));
-            host2.setNodeGroupQuorum(2);
-
-            // Filter the created examples to only those
-            // that are owned by host-1.
-            List<URI> host1Examples = exampleUris.stream()
-                    .filter(e -> this.host.isOwner(e.getPath(), ServiceUriPaths.DEFAULT_NODE_SELECTOR))
-                    .collect(Collectors.toList());
-
-            // Start patching all filtered examples. Because
-            // synchronization is disabled each of these
-            // example services will not exist on the new
-            // node that we added resulting in a non_found
-            // error. However, the owner will retry this
-            // after on-demand synchronization and hence
-            // patches should succeed.
-            ExampleServiceState state = new ExampleServiceState();
-            state.counter = 1L;
-
-            if (host1Examples.size() > 0) {
-                this.host.log(Level.INFO, "Starting patches");
-                TestContext ctx = this.host.testCreate(host1Examples.size());
-                for (URI exampleUri : host1Examples) {
-                    Operation patch = Operation
-                            .createPatch(exampleUri)
-                            .setBody(state)
-                            .setReferer("localhost")
-                            .setCompletion(ctx.getCompletion());
-                    this.host.sendRequest(patch);
-                }
-                ctx.await();
+        for (VerificationHost h : this.host.getInProcessHostMap().values()) {
+            h.setPeerSynchronizationEnabled(false);
+            if (hostOne == null) {
+                hostOne = h;
+                continue;
             }
-        } finally {
-            host2.tearDown();
+            hostTwo = h;
+        }
+        List<URI> exampleUris = new ArrayList<>();
+        this.host.createExampleServices(hostOne, this.serviceCount, exampleUris, null);
+
+        URI hostOneNodeGroup = UriUtils.buildUri(hostOne, ServiceUriPaths.DEFAULT_NODE_GROUP);
+        URI hostTwoNodeGroup = UriUtils.buildUri(hostTwo, ServiceUriPaths.DEFAULT_NODE_GROUP);
+        JoinPeerRequest joinBody = JoinPeerRequest.create(hostTwoNodeGroup, 1);
+        this.host.log("Joining %s through %s", hostTwoNodeGroup, hostOneNodeGroup);
+        this.host.sendAndWaitExpectSuccess(Operation.createPost(hostOneNodeGroup)
+                .setBody(joinBody));
+
+        this.host.waitForNodeGroupConvergence(2);
+        this.host.setNodeGroupQuorum(2);
+
+        // Filter the created examples to only those
+        // that are owned by host-1.
+        Set<URI> host1Examples = null;
+        this.host.log("Starting owner check on %d services", exampleUris.size());
+        VerificationHost host1 = hostOne;
+        host1Examples = exampleUris.stream()
+                .filter(e -> host1.isOwner(e.getPath(), ServiceUriPaths.DEFAULT_NODE_SELECTOR))
+                .collect(Collectors.toSet());
+
+        // Start patching all filtered examples. Because
+        // synchronization is disabled each of these
+        // example services will not exist on the new
+        // node that we added resulting in a non_found
+        // error. However, the owner will retry this
+        // after on-demand synchronization and hence
+        // patches should succeed.
+        ExampleServiceState state = new ExampleServiceState();
+        state.counter = 1L;
+
+        if (host1Examples.size() > 0) {
+            this.host.log(Level.INFO, "Starting patches");
+            TestContext ctx = this.host.testCreate(host1Examples.size());
+            for (URI exampleUri : host1Examples) {
+                Operation patch = Operation
+                        .createPatch(exampleUri)
+                        .setBody(state)
+                        .setReferer("localhost")
+                        .setCompletion(ctx.getCompletion());
+                this.host.sendRequest(patch);
+            }
+            ctx.await();
         }
     }
 

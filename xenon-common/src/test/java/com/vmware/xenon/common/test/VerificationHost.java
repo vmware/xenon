@@ -719,6 +719,7 @@ public class VerificationHost extends ExampleServiceHost {
 
     public boolean isOwner(String documentSelfLink, String nodeSelector) {
         final boolean[] isOwner = new boolean[1];
+        log("Selecting owner for %s on %s", documentSelfLink, nodeSelector);
         TestContext ctx = this.testCreate(1);
         Operation op = Operation
                 .createPost(null)
@@ -731,6 +732,7 @@ public class VerificationHost extends ExampleServiceHost {
 
                     NodeSelectorService.SelectOwnerResponse rsp =
                             o.getBody(NodeSelectorService.SelectOwnerResponse.class);
+                    log("Is owner: %s for %s", rsp.isLocalHostOwner, rsp.key);
                     isOwner[0] = rsp.isLocalHostOwner;
                     ctx.completeIteration();
                 });
