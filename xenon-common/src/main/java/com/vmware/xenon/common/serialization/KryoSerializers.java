@@ -34,11 +34,13 @@ import java.util.UUID;
 
 import com.esotericsoftware.kryo.Kryo;
 import com.esotericsoftware.kryo.Kryo.DefaultInstantiatorStrategy;
+import com.esotericsoftware.kryo.io.ByteBufferOutput;
 import com.esotericsoftware.kryo.io.Input;
 import com.esotericsoftware.kryo.io.Output;
 import com.esotericsoftware.kryo.serializers.CollectionSerializer;
 import com.esotericsoftware.kryo.serializers.MapSerializer;
 import com.esotericsoftware.kryo.serializers.VersionFieldSerializer;
+import io.netty.buffer.ByteBuf;
 import org.objenesis.strategy.StdInstantiatorStrategy;
 
 import com.vmware.xenon.common.ServiceDocument;
@@ -209,8 +211,24 @@ public final class KryoSerializers {
         return serializeAsDocument(o, maxSize);
     }
 
+    public static void serializeAsDocument(Object o, ByteBuf byteBuffer) {
+        Kryo k = getKryoThreadLocalForDocuments();
+        // for buffer expansion
+        byteBuffer.writerIndex(byteBuffer.capacity() - 1);
+        ByteBuffer buffer = byteBuffer.nioBuffer();
+
+        // restore write index
+        byteBuffer.writerIndex(0);
+
+        // create view
+        ByteBufferOutput out = new ByteBufferOutput(buffer);
+        k.writeClassAndObject(out, o);
+
+        // set the writer index from the view
+        byteBuffer.writerIndex(buffer.position());
+    }
+
     /**
-     * See {@link #serializeDocument(ServiceDocument, byte[], int)}
      */
     public static Output serializeAsDocument(Object o, int maxSize) {
         Kryo k = getKryoThreadLocalForDocuments();

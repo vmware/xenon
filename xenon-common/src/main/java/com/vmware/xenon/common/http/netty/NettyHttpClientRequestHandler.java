@@ -44,6 +44,7 @@ import io.netty.handler.codec.http2.HttpConversionUtil;
 import io.netty.handler.ssl.SslHandler;
 import io.netty.util.AsciiString;
 
+import com.vmware.xenon.common.BodyEncoder;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Operation.AuthorizationContext;
 import com.vmware.xenon.common.Operation.OperationOption;
@@ -59,8 +60,6 @@ import com.vmware.xenon.services.common.authn.AuthenticationConstants;
  * processing
  */
 public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<Object> {
-
-    private static final String ERROR_MSG_DECODING_FAILURE = "Failure decoding HTTP request";
 
     private final ServiceHost host;
 
@@ -102,8 +101,8 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
     protected void channelRead0(ChannelHandlerContext ctx, Object msg) {
         Operation request = null;
         Integer streamId = null;
-        try {
 
+        try {
             // Start of request processing, initialize in-bound operation
             FullHttpRequest nettyRequest = (FullHttpRequest) msg;
             long expMicros = Utils.fromNowMicrosUtc(this.host.getOperationTimeoutMicros());
@@ -143,7 +142,7 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
             if (nettyRequest.decoderResult().isFailure()) {
                 request.setStatusCode(Operation.STATUS_CODE_BAD_REQUEST).setKeepAlive(false);
                 request.setBody(ServiceErrorResponse.create(
-                        new IllegalArgumentException(ERROR_MSG_DECODING_FAILURE),
+                        new IllegalArgumentException(BodyEncoder.ERROR_MSG_DECODING_FAILURE),
                         request.getStatusCode()));
                 sendResponse(ctx, request, streamId);
                 return;
@@ -370,7 +369,7 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
         FullHttpResponse response;
 
         try {
-            byte[] data = Utils.encodeBody(request);
+            bodyBuffer = BodyEncoder.encodeBody(request, request.getBodyRaw(), request.getContentType());
 
             // if some service returns a response that is greater than the maximum allowed size,
             // we return an INTERNAL_SERVER_ERROR.
@@ -380,9 +379,6 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
                 this.host.log(Level.SEVERE, errorMessage);
                 writeInternalServerError(ctx, request, streamId, errorMessage);
                 return;
-            }
-            if (data != null) {
-                bodyBuffer = Unpooled.wrappedBuffer(data);
             }
         } catch (Throwable e1) {
             // Note that this is a program logic error - some service isn't properly checking or setting Content-Type
@@ -463,10 +459,10 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
             response.headers().setInt(HttpConversionUtil.ExtensionHeaderNames.STREAM_ID.text(),
                     streamId);
         }
+
         response.headers().set(HttpHeaderNames.CONTENT_TYPE, Operation.MEDIA_TYPE_TEXT_HTML);
         response.headers().setInt(HttpHeaderNames.CONTENT_LENGTH, response.content().readableBytes());
         writeResponse(ctx, request, response);
-        return;
     }
 
     @Override

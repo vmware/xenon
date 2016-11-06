@@ -31,7 +31,6 @@ import java.util.logging.Logger;
 import javax.net.ssl.SSLContext;
 
 import io.netty.buffer.ByteBuf;
-import io.netty.buffer.Unpooled;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpHeaderValues;
 import io.netty.handler.codec.http.HttpMethod;
@@ -39,6 +38,7 @@ import io.netty.handler.codec.http.HttpVersion;
 import io.netty.handler.codec.http.cookie.ClientCookieDecoder;
 import io.netty.handler.codec.http.cookie.Cookie;
 
+import com.vmware.xenon.common.BodyEncoder;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Operation.AuthorizationContext;
 import com.vmware.xenon.common.Operation.CompletionHandler;
@@ -403,7 +403,8 @@ public class NettyHttpServiceClient implements ServiceClient {
     private void doSendRequest(Operation op) {
         final Object originalBody = op.getBodyRaw();
         try {
-            byte[] body = Utils.encodeBody(op);
+            ByteBuf body = BodyEncoder.encodeBody(op, op.getBodyRaw(), op.getContentType());
+
             if (op.getContentLength() > getRequestPayloadSizeLimit()) {
                 stopTracking(op);
                 Exception e = new IllegalArgumentException(
@@ -411,6 +412,7 @@ public class NettyHttpServiceClient implements ServiceClient {
                         " is greater than max size allowed " + getRequestPayloadSizeLimit());
                 op.setBody(ServiceErrorResponse.create(e, Operation.STATUS_CODE_BAD_REQUEST));
                 op.fail(e);
+                body.release();
                 return;
             }
 
@@ -437,16 +439,11 @@ public class NettyHttpServiceClient implements ServiceClient {
                 pathAndQuery = op.getUri().toString();
             }
 
-            NettyFullHttpRequest request = null;
+            NettyFullHttpRequest request;
             HttpMethod method = HttpMethod.valueOf(op.getAction().toString());
-            if (body == null || body.length == 0) {
-                request = new NettyFullHttpRequest(HttpVersion.HTTP_1_1, method, pathAndQuery,
-                        Unpooled.buffer(0), false);
-            } else {
-                ByteBuf content = Unpooled.wrappedBuffer(body, 0, (int) op.getContentLength());
-                request = new NettyFullHttpRequest(HttpVersion.HTTP_1_1, method, pathAndQuery,
-                        content, false);
-            }
+            request = new NettyFullHttpRequest(HttpVersion.HTTP_1_1, method, pathAndQuery,
+                    body, false);
+
 
             if (useHttp2) {
                 // when operation is cloned, it may contain original streamId header. remove it.

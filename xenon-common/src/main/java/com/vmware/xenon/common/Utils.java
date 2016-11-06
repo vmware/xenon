@@ -14,7 +14,6 @@
 package com.vmware.xenon.common;
 
 import java.io.ByteArrayOutputStream;
-import java.io.File;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringWriter;
@@ -54,6 +53,8 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.google.gson.reflect.TypeToken;
+import io.netty.buffer.ByteBuf;
+import io.netty.util.CharsetUtil;
 
 import com.vmware.xenon.common.Service.Action;
 import com.vmware.xenon.common.Service.ServiceOption;
@@ -101,13 +102,6 @@ public final class Utils {
      * See {@link #setTimeDriftThreshold(long)}
      */
     public static final long DEFAULT_TIME_DRIFT_THRESHOLD_MICROS = TimeUnit.SECONDS.toMicros(1);
-
-    /**
-     * {@link #isReachableByPing} launches a separate ping process to ascertain whether a given IP
-     * address is reachable within a specified timeout. This constant extends the timeout for that
-     * check to account for the start-up overhead of that process.
-     */
-    private static final long PING_LAUNCH_TOLERANCE_MS = 50;
 
     private static final AtomicLong previousTimeValue = new AtomicLong();
     private static long timeComparisonEpsilon = initializeTimeEpsilon();
@@ -227,7 +221,7 @@ public final class Utils {
     /**
      * See {@link KryoSerializers#getBuffer(int)}
      */
-    public static byte[] getBuffer(int capacity) {
+    static byte[] getBuffer(int capacity) {
         return KryoSerializers.getBuffer(capacity);
     }
 
@@ -274,6 +268,36 @@ public final class Utils {
         JsonMapper mapper = getJsonMapperFor(body);
         mapper.toJson(body, content);
         return content.toString();
+    }
+
+    public static void toJson(Object body, ByteBuf byteBuf) {
+        if (body instanceof String) {
+            String s = (String) body;
+            byteBuf.writeCharSequence(s, CharsetUtil.UTF_8);
+            return;
+        }
+
+        JsonMapper mapper = getJsonMapperFor(body);
+        mapper.toJson(body, new Appendable() {
+            @Override
+            public Appendable append(CharSequence csq) throws IOException {
+                byteBuf.writeCharSequence(csq, CharsetUtil.UTF_8);
+                return this;
+            }
+
+            @Override
+            public Appendable append(CharSequence csq, int start, int end) throws IOException {
+                byteBuf.writeCharSequence(csq.subSequence(start, end), CharsetUtil.UTF_8);
+                return this;
+            }
+
+            @Override
+            public Appendable append(char c) throws IOException {
+                // pretty safe cheap conversion: gson calls this to write {,: etc
+                byteBuf.writeByte((byte) c);
+                return this;
+            }
+        });
     }
 
     public static String toJsonHtml(Object body) {
@@ -354,15 +378,6 @@ public final class Utils {
         return writer.toString();
     }
 
-    public static String getCurrentFileDirectory() {
-        try {
-            return new File(".").getCanonicalPath();
-        } catch (IOException e) {
-            Logger.getAnonymousLogger().warning(Utils.toString(e));
-            return null;
-        }
-    }
-
     public static void log(Class<?> type, String classOrUri, Level level, String fmt,
             Object... args) {
         Logger lg = Logger.getLogger(type.getName());
@@ -434,10 +449,6 @@ public final class Utils {
 
     public static ServiceErrorResponse toServiceErrorResponse(Throwable e) {
         return ServiceErrorResponse.create(e, Operation.STATUS_CODE_BAD_REQUEST);
-    }
-
-    public static String toServiceErrorResponseJson(Throwable e) {
-        return Utils.toJson(toServiceErrorResponse(e));
     }
 
     public static ServiceErrorResponse toValidationErrorResponse(Throwable t) {
@@ -668,41 +679,6 @@ public final class Utils {
     }
 
     /**
-     * An alternative to {@link InetAddress#isReachable(int)} which accounts for the Windows
-     * implementation of that method NOT using ICMP. This method invokes the "ping" command
-     * installed in all Windows implementations since Windows XP. For other operating systems it
-     * will fall back on the default implementation of the original method.
-     */
-    public static boolean isReachable(SystemHostInfo systemInfo, InetAddress addr, long timeoutMs)
-            throws IOException {
-        if (systemInfo.osFamily == OsFamily.WINDOWS) {
-            // windows -> delegate to "ping"
-            return isReachableByPing(systemInfo, addr, timeoutMs);
-        }
-
-        // non-windows -> fallback on default impl
-        return addr.isReachable((int) timeoutMs);
-    }
-
-    public static boolean isReachableByPing(SystemHostInfo systemInfo, InetAddress addr,
-            long timeoutMs) throws IOException {
-        try {
-            Process process = new ProcessBuilder("ping",
-                    "-n", "1",
-                    "-w", Long.toString(timeoutMs),
-                    getNormalizedHostAddress(systemInfo, addr))
-                    .start();
-            boolean completed = process.waitFor(
-                    PING_LAUNCH_TOLERANCE_MS + timeoutMs,
-                    TimeUnit.MILLISECONDS);
-            return completed && process.exitValue() == 0;
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            return false;
-        }
-    }
-
-    /**
      * An alternative to {@link InetAddress#getHostAddress()} that formats particular types of IP
      * address in more universal formats.
      *
@@ -730,36 +706,6 @@ public final class Utils {
         }
 
         return addrStr;
-    }
-
-    /**
-     * Infrastructure use. Serializes linked state associated with source operation
-     * and sets the result as the body of the target operation
-     */
-    public static void encodeAndTransferLinkedStateToBody(Operation source, Operation target,
-            boolean useBinary) {
-        if (useBinary && source.getAction() != Action.POST) {
-            try {
-                byte[] encodedBody = Utils.encodeBody(source, source.getLinkedState(),
-                        Operation.MEDIA_TYPE_APPLICATION_KRYO_OCTET_STREAM);
-                source.linkSerializedState(encodedBody);
-            } catch (Throwable e2) {
-                Utils.logWarning("Failure binary serializing, will fallback to JSON: %s",
-                        Utils.toString(e2));
-            }
-        }
-
-        if (!source.hasLinkedSerializedState()) {
-            target.setContentType(Operation.MEDIA_TYPE_APPLICATION_JSON);
-            target.setBodyNoCloning(Utils.toJson(source.getLinkedState()));
-        } else {
-            target.setContentType(Operation.MEDIA_TYPE_APPLICATION_KRYO_OCTET_STREAM);
-            target.setBodyNoCloning(source.getLinkedSerializedState());
-        }
-    }
-
-    public static byte[] encodeBody(Operation op) throws Throwable {
-        return encodeBody(op, op.getBodyRaw(), op.getContentType());
     }
 
     public static byte[] encodeBody(Operation op, Object body, String contentType)

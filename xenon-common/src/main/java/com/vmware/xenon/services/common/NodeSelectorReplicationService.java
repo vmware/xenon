@@ -13,6 +13,7 @@
 
 package com.vmware.xenon.services.common;
 
+
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.Collection;
@@ -21,6 +22,7 @@ import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 
+import com.vmware.xenon.common.BodyEncoder;
 import com.vmware.xenon.common.NodeSelectorService;
 import com.vmware.xenon.common.NodeSelectorService.SelectAndForwardRequest;
 import com.vmware.xenon.common.NodeSelectorService.SelectOwnerResponse;
@@ -242,7 +244,7 @@ public class NodeSelectorReplicationService extends StatelessService {
             update.addRequestHeader(Operation.REPLICATION_PHASE_HEADER, commitHeader);
         }
 
-        Utils.encodeAndTransferLinkedStateToBody(outboundOp, update, BINARY_SERIALIZATION == 1);
+        BodyEncoder.encodeAndTransferLinkedStateToBody(outboundOp, update, BINARY_SERIALIZATION == 1);
 
         update.setFromReplication(true);
         update.setConnectionTag(ServiceClient.CONNECTION_TAG_REPLICATION);
@@ -272,8 +274,7 @@ public class NodeSelectorReplicationService extends StatelessService {
         }
     }
 
-    private void handleReplicationCompletion(
-            NodeSelectorReplicationContext context, Operation o, Throwable e) {
+    private void handleReplicationCompletion(NodeSelectorReplicationContext context, Operation o, Throwable e) {
         // if location is set we require success from nodes in the same location;
         // all other responses are ignored for success calculation purposes
         if (context.location != null &&
