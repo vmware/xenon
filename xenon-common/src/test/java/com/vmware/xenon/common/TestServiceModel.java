@@ -162,13 +162,13 @@ public class TestServiceModel extends BasicReusableHostTestCase {
 
         try {
             // stop the host, observe stop only on remaining service
-            this.host.stop();
+            this.host.tearDown();
             assertTrue(!serviceToBeStopped.gotDeleted);
             assertTrue(serviceToBeStopped.gotStopped);
             assertTrue(factoryService.gotStopped);
+            this.host = null;
         } finally {
-            this.host.setPort(0);
-            this.host.start();
+            setUpOnce();
         }
     }
 
