@@ -28,6 +28,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Date;
 import java.util.EnumSet;
 import java.util.HashMap;
@@ -74,6 +75,7 @@ import com.vmware.xenon.services.common.AuthorizationContextService;
 import com.vmware.xenon.services.common.ExampleService;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
 import com.vmware.xenon.services.common.ExampleServiceHost;
+import com.vmware.xenon.services.common.FileContentService;
 import com.vmware.xenon.services.common.LuceneDocumentIndexService;
 import com.vmware.xenon.services.common.MinimalFactoryTestService;
 import com.vmware.xenon.services.common.MinimalTestService;
@@ -84,6 +86,7 @@ import com.vmware.xenon.services.common.QueryTask.Query;
 import com.vmware.xenon.services.common.ServiceContextIndexService;
 import com.vmware.xenon.services.common.ServiceHostManagementService;
 import com.vmware.xenon.services.common.ServiceUriPaths;
+import com.vmware.xenon.services.common.UiFileContentService;
 import com.vmware.xenon.services.common.UserService;
 
 public class TestServiceHost {
@@ -2361,7 +2364,7 @@ public class TestServiceHost {
     public void testServiceCustomUIPath() throws Throwable {
         setUp(false);
         String resourcePath = "customUiPath";
-        //Service with custom path
+        // Service with custom path
         class CustomUiPathService extends StatelessService {
             public static final String SELF_LINK = "/custom";
 
@@ -2379,18 +2382,86 @@ public class TestServiceHost {
             }
         }
 
-        //Starting the  CustomUiPathService service
-        this.host.startService(Operation.createPost(UriUtils.buildUri(this.host,
-                CustomUiPathService.SELF_LINK)), new CustomUiPathService());
-        this.host.waitForServiceAvailable(CustomUiPathService.SELF_LINK);
+        // Starting the  CustomUiPathService service
+        this.host.startServiceAndWait(new CustomUiPathService(), CustomUiPathService.SELF_LINK, null);
 
         String htmlPath = "/user-interface/resources/" + resourcePath + "/custom.html";
-        //Sending get request for html
+        // Sending get request for html
         String htmlResponse = this.host.sendWithJavaClient(
                 UriUtils.buildUri(this.host, htmlPath),
                 Operation.MEDIA_TYPE_TEXT_HTML, null);
 
         assertEquals("<html>customHtml</html>", htmlResponse);
+    }
+
+    @Test
+    public void testRootUiService() throws Throwable {
+        setUp(false);
+
+        // Stopping the RootNamespaceService
+        this.host.waitForResponse(Operation
+                .createDelete(UriUtils.buildUri(this.host, UriUtils.URI_PATH_CHAR)));
+
+        class RootUiService extends UiFileContentService {
+            public static final String SELF_LINK = UriUtils.URI_PATH_CHAR;
+        }
+
+        // Starting the CustomUiService service
+        this.host.startServiceAndWait(new RootUiService(), RootUiService.SELF_LINK, null);
+
+        // Loading the default page
+        Operation result = this.host.waitForResponse(Operation
+                .createGet(UriUtils.buildUri(this.host, RootUiService.SELF_LINK)));
+        assertEquals("<html><title>Root</title></html>", result.getBodyRaw());
+    }
+
+    @Test
+    public void testClientSideRouting() throws Throwable {
+        setUp(false);
+
+        class AppUiService extends UiFileContentService {
+            public static final String SELF_LINK = "/app";
+        }
+
+        // Starting the AppUiService service
+        AppUiService s = new AppUiService();
+        this.host.startServiceAndWait(s, AppUiService.SELF_LINK, null);
+
+        // Finding the default page file
+        Path baseResourcePath = Utils.getServiceUiResourcePath(s);
+        Path baseUriPath = Paths.get(AppUiService.SELF_LINK);
+        String prefix = baseResourcePath.toString().replace('\\', '/');
+        Map<Path, String> pathToURIPath = new HashMap<>();
+        this.host.discoverJarResources(baseResourcePath, s, pathToURIPath, baseUriPath, prefix);
+        File defaultFile = pathToURIPath.entrySet()
+                .stream()
+                .filter((entry) -> {
+                    return entry.getValue().equals(AppUiService.SELF_LINK +
+                            UriUtils.URI_PATH_CHAR + ServiceUriPaths.UI_RESOURCE_DEFAULT_FILE);
+                })
+                .map(Map.Entry::getKey)
+                .findFirst()
+                .get()
+                .toFile();
+
+        List<String> routes = Arrays.asList("/app/1", "/app/2");
+
+        // Starting all route services
+        for (String route : routes) {
+            this.host.startServiceAndWait(new FileContentService(defaultFile), route, null);
+        }
+
+        // Loading routes
+        for (String route : routes) {
+            Operation result = this.host.waitForResponse(Operation
+                    .createGet(UriUtils.buildUri(this.host, route)));
+            assertEquals("<html><title>App</title></html>", result.getBodyRaw());
+        }
+
+        // Loading the about page
+        Operation about = this.host.waitForResponse(Operation
+                .createGet(UriUtils.buildUri(this.host, AppUiService.SELF_LINK + "/about.html")));
+        assertEquals("<html><title>About</title></html>", about.getBodyRaw());
     }
 
     @Test
