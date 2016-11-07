@@ -612,6 +612,7 @@ public class TestLuceneDocumentIndexService {
             ServiceHostState initialState = h.getState();
 
             // stop the host, create new one
+            logServiceStats(h);
             h.stop();
 
             h = VerificationHost.create();
@@ -643,8 +644,17 @@ public class TestLuceneDocumentIndexService {
             verifyCustomRetentionStats(h, this.serviceCount);
 
         } finally {
+            logServiceStats(h);
             h.stop();
             tmpFolder.delete();
+        }
+    }
+
+    private void logServiceStats(VerificationHost h) {
+        try {
+            this.host.logServiceStats(UriUtils.buildUri(h, LuceneDocumentIndexService.SELF_LINK));
+        } catch (Throwable e) {
+            this.host.log("Error logging stats: %s", e.toString());
         }
     }
 
