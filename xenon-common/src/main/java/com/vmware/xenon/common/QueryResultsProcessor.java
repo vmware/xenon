@@ -17,6 +17,8 @@ import java.util.Collections;
 import java.util.Objects;
 import java.util.stream.Stream;
 
+import com.google.gson.JsonObject;
+
 import com.vmware.xenon.services.common.QueryTask;
 
 /**
@@ -47,19 +49,17 @@ public final class QueryResultsProcessor {
      * @throws IllegalArgumentException if the body is not one of the results-holding documents
      */
     public static QueryResultsProcessor create(Operation op) {
-        QueryTask task = op.getBody(QueryTask.class);
-        if (Objects.equals(task.documentKind, QueryTask.KIND)) {
-            ServiceDocumentQueryResult r = op.getBody(ServiceDocumentQueryResult.class);
-            if (Objects.equals(task.documentKind, ODataFactoryQueryResult.KIND) ||
-                    Objects.equals(task.documentKind, ServiceDocumentQueryResult.KIND)) {
-                return new QueryResultsProcessor(null, r);
-            } else {
-                throw new IllegalArgumentException(
-                        "Cannot create QueryResultsProcessor from a " + r.documentKind
-                                + " document");
-            }
+        QueryTask maybeTask = op.getBody(QueryTask.class);
+
+        if (Objects.equals(maybeTask.documentKind, QueryTask.KIND)) {
+            return new QueryResultsProcessor(maybeTask, maybeTask.results);
+        } else if (Objects.equals(maybeTask.documentKind, ODataFactoryQueryResult.KIND) ||
+                Objects.equals(maybeTask.documentKind, ServiceDocumentQueryResult.KIND)) {
+            return new QueryResultsProcessor(null, op.getBody(ServiceDocumentQueryResult.class));
         } else {
-            return new QueryResultsProcessor(task, task.results);
+            throw new IllegalArgumentException(
+                    "Cannot create QueryResultsProcessor from a " + maybeTask.documentKind
+                            + " document");
         }
     }
 
@@ -69,6 +69,10 @@ public final class QueryResultsProcessor {
      */
     public QueryTask getQueryTask() {
         return this.task;
+    }
+
+    public boolean hasResults() {
+        return this.results != null && this.results.documentCount != null && this.results.documentCount > 0;
     }
 
     /**
@@ -172,9 +176,9 @@ public final class QueryResultsProcessor {
         }
         if (type.isInstance(o)) {
             return type.cast(o);
-        } else if (o instanceof String) {
+        } else if (o instanceof String || o instanceof JsonObject) {
             // assume json serialized string
-            return Utils.fromJson((String) o, type);
+            return Utils.fromJson(o, type);
         } else {
             throw new IllegalArgumentException(
                     String.format("Cannot convert %s to %s", o.getClass().getName(),
