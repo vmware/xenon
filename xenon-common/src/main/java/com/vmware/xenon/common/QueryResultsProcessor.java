@@ -17,6 +17,8 @@ import java.util.Collections;
 import java.util.Objects;
 import java.util.stream.Stream;
 
+import com.google.gson.JsonObject;
+
 import com.vmware.xenon.services.common.QueryTask;
 
 /**
@@ -47,20 +49,27 @@ public final class QueryResultsProcessor {
      * @throws IllegalArgumentException if the body is not one of the results-holding documents
      */
     public static QueryResultsProcessor create(Operation op) {
-        QueryTask task = op.getBody(QueryTask.class);
-        if (Objects.equals(task.documentKind, QueryTask.KIND)) {
-            ServiceDocumentQueryResult r = op.getBody(ServiceDocumentQueryResult.class);
-            if (Objects.equals(task.documentKind, ODataFactoryQueryResult.KIND) ||
-                    Objects.equals(task.documentKind, ServiceDocumentQueryResult.KIND)) {
-                return new QueryResultsProcessor(null, r);
-            } else {
-                throw new IllegalArgumentException(
-                        "Cannot create QueryResultsProcessor from a " + r.documentKind
-                                + " document");
+        Object rawBody = op.getBodyRaw();
+
+        if (rawBody instanceof QueryTask) {
+            QueryTask qt = (QueryTask) rawBody;
+            return new QueryResultsProcessor(qt, qt.results);
+        } else if (rawBody instanceof ServiceDocumentQueryResult) {
+            ServiceDocumentQueryResult qr = (ServiceDocumentQueryResult) rawBody;
+            return new QueryResultsProcessor(null, qr);
+        } else if (rawBody instanceof String || rawBody instanceof JsonObject) {
+            ServiceDocumentQueryResult maybeResult = op.getBody(ServiceDocumentQueryResult.class);
+
+            if (Objects.equals(maybeResult.documentKind, ODataFactoryQueryResult.KIND) ||
+                    Objects.equals(maybeResult.documentKind, ServiceDocumentQueryResult.KIND)) {
+                return new QueryResultsProcessor(null, maybeResult);
+            } else if (Objects.equals(maybeResult.documentKind, QueryTask.KIND)) {
+                QueryTask task = op.getBody(QueryTask.class);
+                return new QueryResultsProcessor(task, task.results);
             }
-        } else {
-            return new QueryResultsProcessor(task, task.results);
         }
+
+        throw new IllegalArgumentException("Cannot create QueryResultsProcessor from a " + op.getUri());
     }
 
     /**
@@ -69,6 +78,10 @@ public final class QueryResultsProcessor {
      */
     public QueryTask getQueryTask() {
         return this.task;
+    }
+
+    public boolean hasResults() {
+        return this.results != null && this.results.documentCount != null && this.results.documentCount > 0;
     }
 
     /**
@@ -172,9 +185,9 @@ public final class QueryResultsProcessor {
         }
         if (type.isInstance(o)) {
             return type.cast(o);
-        } else if (o instanceof String) {
+        } else if (o instanceof String || o instanceof JsonObject) {
             // assume json serialized string
-            return Utils.fromJson((String) o, type);
+            return Utils.fromJson(o, type);
         } else {
             throw new IllegalArgumentException(
                     String.format("Cannot convert %s to %s", o.getClass().getName(),

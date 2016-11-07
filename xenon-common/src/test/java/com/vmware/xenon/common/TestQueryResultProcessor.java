@@ -15,6 +15,7 @@ package com.vmware.xenon.common;
 
 import static junit.framework.TestCase.assertTrue;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertSame;
@@ -38,6 +39,7 @@ public class TestQueryResultProcessor {
     @Test
     public void fromOp() throws Exception {
         QueryTask task = new QueryTask();
+        task.documentKind = QueryTask.KIND;
         Operation op = Operation.createGet(URI.create("/no/such/uri")).setBody(task);
         QueryResultsProcessor results = QueryResultsProcessor.create(op);
         assertNotNull(results.getQueryTask());
@@ -137,6 +139,18 @@ public class TestQueryResultProcessor {
     @Test
     public void selectedLinks() throws Exception {
         assertNotNull(QueryResultsProcessor.create(new QueryTask()).selectedLinks());
+    }
+
+    @Test
+    public void hasResults() {
+        assertFalse(QueryResultsProcessor.create(new QueryTask()).hasResults());
+
+        QueryTask task = new QueryTask();
+        task.results = new ServiceDocumentQueryResult();
+        task.results.documents = new HashMap<>();
+        task.results.documentCount = 1L;
+        task.results.documents.put("link", new ServiceDocument());
+        assertTrue(QueryResultsProcessor.create(task).hasResults());
     }
 
     @Test
