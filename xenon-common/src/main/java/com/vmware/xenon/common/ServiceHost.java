@@ -137,7 +137,6 @@ import com.vmware.xenon.services.common.authn.BasicAuthenticationService;
  * protocols
  */
 public class ServiceHost implements ServiceRequestSender {
-    public static final String UI_DIRECTORY_NAME = "ui";
 
     public static class ServiceAlreadyStartedException extends IllegalStateException {
         private static final long serialVersionUID = -1444810129515584386L;
@@ -1515,7 +1514,7 @@ public class ServiceHost implements ServiceRequestSender {
         return pathToURIPath;
     }
 
-    private void discoverJarResources(Path path, Service s, Map<Path, String> pathToURIPath,
+    public void discoverJarResources(Path path, Service s, Map<Path, String> pathToURIPath,
             Path baseUriPath, String prefix) throws URISyntaxException, IOException {
         for (ResourceEntry entry : FileUtils.findResources(s.getClass(), prefix)) {
             Path resourcePath = path.resolve(entry.suffix);
@@ -1530,7 +1529,7 @@ public class ServiceHost implements ServiceRequestSender {
         }
     }
 
-    private void discoverFileResources(Service s, Map<Path, String> pathToURIPath,
+    public void discoverFileResources(Service s, Map<Path, String> pathToURIPath,
             Path baseUriPath,
             String prefix) {
         File rootDir = new File(new File(this.state.resourceSandboxFileReference), prefix);
