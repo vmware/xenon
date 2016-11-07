@@ -34,6 +34,9 @@
 * Removed public method setAuthorizationContext(ServiceHost, Operation) from
   OperationContext.java
 
+* Added a new UiFileContentService which provides a simpler internal implementation
+  and enables hosting of UI resources in the root application namespace
+
 ## 1.3.0
 
 * Document signature calculation changed to be more efficient while format stays
