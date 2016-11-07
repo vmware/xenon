@@ -3269,4 +3269,32 @@ public class VerificationHost extends ExampleServiceHost {
     public TestRequestSender getTestRequestSender() {
         return this.sender;
     }
+
+    /**
+     * Find a service by its URI path. Useful for manually triggering lifecycle events (like maintenance)
+     * in tests.
+     *
+     * @param uriPath
+     * @return
+     */
+    @Override
+    public Service findService(String uriPath) {
+        return super.findService(uriPath);
+    }
+
+    /**
+     * Find a service by its URI path. Useful for manually triggering lifecycle events (like maintenance)
+     * in tests.
+     *
+     * If doExactMatch is false, this method may return a namespace owner service for the supplied path
+     * if no match is found.
+     *
+     * @param uriPath
+     * @param doExactMatch
+     * @return
+     */
+    @Override
+    public Service findService(String uriPath, boolean doExactMatch) {
+        return super.findService(uriPath, doExactMatch);
+    }
 }
