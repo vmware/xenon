@@ -84,6 +84,7 @@ import com.vmware.xenon.services.common.QueryTask.Query;
 import com.vmware.xenon.services.common.ServiceContextIndexService;
 import com.vmware.xenon.services.common.ServiceHostManagementService;
 import com.vmware.xenon.services.common.ServiceUriPaths;
+import com.vmware.xenon.services.common.UiFileContentService;
 import com.vmware.xenon.services.common.UserService;
 
 public class TestServiceHost {
@@ -2391,6 +2392,52 @@ public class TestServiceHost {
                 Operation.MEDIA_TYPE_TEXT_HTML, null);
 
         assertEquals("<html>customHtml</html>", htmlResponse);
+    }
+
+    @Test
+    public void testRootUiService() throws Throwable {
+        setUp(false);
+
+        //Stopping the RootNamespaceService
+        this.host.testStart(1);
+        this.host.sendRequest(Operation
+                .createDelete(UriUtils.buildUri(this.host, UriUtils.URI_PATH_CHAR))
+                .setReferer(this.host.getReferer())
+                .setCompletion((o, e) -> {
+                    if (e != null) {
+                        this.host.failIteration(e);
+                        return;
+                    }
+                    this.host.completeIteration();
+                }));
+        this.host.testWait();
+
+        class RootUiService extends UiFileContentService {
+            public static final String SELF_LINK = UriUtils.URI_PATH_CHAR;
+        }
+
+        //Starting the CustomUiService service
+        this.host.startService(Operation.createPost(UriUtils.buildUri(this.host,
+                RootUiService.SELF_LINK)), new RootUiService());
+        this.host.waitForServiceAvailable(RootUiService.SELF_LINK);
+
+        final Object[] results = new Object[1];
+        this.host.testStart(1);
+        this.host.sendRequest(Operation
+                .createGet(UriUtils.buildUri(this.host, RootUiService.SELF_LINK))
+                .setContentType(Operation.MEDIA_TYPE_TEXT_HTML)
+                .setReferer(this.host.getReferer())
+                .setCompletion((o, e) -> {
+                    if (e != null) {
+                        this.host.failIteration(e);
+                        return;
+                    }
+                    results[0] = o.getBodyRaw();
+                    this.host.completeIteration();
+                }));
+        this.host.testWait();
+
+        assertEquals("<html><title>Root</title></html>", results[0]);
     }
 
     @Test

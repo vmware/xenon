@@ -137,7 +137,6 @@ import com.vmware.xenon.services.common.authn.BasicAuthenticationUtils;
  * protocols
  */
 public class ServiceHost implements ServiceRequestSender {
-    public static final String UI_DIRECTORY_NAME = "ui";
 
     public static class ServiceAlreadyStartedException extends IllegalStateException {
         private static final long serialVersionUID = -1444810129515584386L;
@@ -1574,7 +1573,10 @@ public class ServiceHost implements ServiceRequestSender {
         return pathToURIPath;
     }
 
-    private void discoverJarResources(Path path, Service s, Map<Path, String> pathToURIPath,
+    /**
+     * Infrastructure use. Discover all jar resources for the specified service.
+     */
+    public void discoverJarResources(Path path, Service s, Map<Path, String> pathToURIPath,
             Path baseUriPath, String prefix) throws URISyntaxException, IOException {
         for (ResourceEntry entry : FileUtils.findResources(s.getClass(), prefix)) {
             Path resourcePath = path.resolve(entry.suffix);
@@ -1589,7 +1591,10 @@ public class ServiceHost implements ServiceRequestSender {
         }
     }
 
-    private void discoverFileResources(Service s, Map<Path, String> pathToURIPath,
+    /**
+     * Infrastructure use. Discover all file system resources for the specified service.
+     */
+    public void discoverFileResources(Service s, Map<Path, String> pathToURIPath,
             Path baseUriPath,
             String prefix) {
         File rootDir = new File(new File(this.state.resourceSandboxFileReference), prefix);
@@ -2351,7 +2356,8 @@ public class ServiceHost implements ServiceRequestSender {
         boolean isIdempotent = service.hasOption(ServiceOption.IDEMPOTENT_POST);
         if (!isIdempotent) {
             // check factory, its more likely to have the IDEMPOTENT option
-            Service parent = findService(UriUtils.getParentPath(servicePath));
+            String parentPath = UriUtils.getParentPath(servicePath);
+            Service parent = parentPath != null ? findService(parentPath) : null;
             isIdempotent = parent != null
                     && parent.hasOption(ServiceOption.IDEMPOTENT_POST);
         }
