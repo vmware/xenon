@@ -203,12 +203,19 @@ public class NettyHttpServerResponseHandler extends SimpleChannelInboundHandler<
                     op.getStatusCode());
             op.setBodyNoCloning(rsp);
         } else if (Operation.MEDIA_TYPE_APPLICATION_JSON.equals(op.getContentType())) {
-            Object originalBody = op.getBodyRaw();
-            ServiceErrorResponse rsp = op.getBody(ServiceErrorResponse.class);
-            if (rsp != null) {
-                errorMsg += " message " + rsp.message;
+            try {
+                Object originalBody = op.getBodyRaw();
+                ServiceErrorResponse rsp = op.getBody(ServiceErrorResponse.class);
+                if (rsp != null) {
+                    errorMsg += " message " + rsp.message;
+                }
+                op.setBodyNoCloning(originalBody);
+            } catch (Throwable e) {
+                this.logger.warning("Error response body not JSON: " + e.getMessage());
+                ServiceErrorResponse rsp = ServiceErrorResponse.create(e,
+                        op.getStatusCode());
+                op.setBodyNoCloning(rsp);
             }
-            op.setBodyNoCloning(originalBody);
         }
 
         op.fail(new ProtocolException(errorMsg));

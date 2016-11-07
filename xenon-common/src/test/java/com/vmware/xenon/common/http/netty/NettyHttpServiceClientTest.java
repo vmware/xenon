@@ -606,7 +606,7 @@ public class NettyHttpServiceClientTest {
     }
 
     @Test
-    public void putSingleWithFailure() throws Throwable {
+    public void updatesWithForcedFailure() throws Throwable {
         long serviceCount = 1;
         List<Service> services = this.host.doThroughputServiceStart(serviceCount,
                 MinimalTestService.class,
@@ -635,9 +635,20 @@ public class NettyHttpServiceClientTest {
                 .setCompletion(this.host.getExpectedFailureCompletion()));
         this.host.testWait();
 
+        // do the same, forceRemote to go over socket I/O
         this.host.testStart(1);
         this.host.send(Operation.createPut(services.get(0).getUri())
                 .setBody("this is not JSON")
+                .forceRemote()
+                .setCompletion(this.host.getExpectedFailureCompletion()));
+        this.host.testWait();
+
+        // request that the service fails the request but returns corrupted JSON
+        MinimalTestServiceState body = new MinimalTestServiceState();
+        this.host.testStart(1);
+        body.id = MinimalTestService.STRING_MARKER_FAIL_REQUEST_WITH_CORRUPTED_JSON_RSP;
+        this.host.send(Operation.createPatch(services.get(0).getUri())
+                .setBody(body)
                 .forceRemote()
                 .setCompletion(this.host.getExpectedFailureCompletion()));
         this.host.testWait();

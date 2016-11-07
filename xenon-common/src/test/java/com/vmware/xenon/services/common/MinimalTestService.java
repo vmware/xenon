@@ -37,6 +37,7 @@ public class MinimalTestService extends StatefulService {
     public static final String CUSTOM_CONTENT_TYPE = "application/vnd.vmware.horizon.manager.error+json;charset=UTF-8";
 
     public static final String STRING_MARKER_FAIL_REQUEST = "fail request";
+    public static final String STRING_MARKER_FAIL_REQUEST_WITH_CORRUPTED_JSON_RSP = "fail request with corrupted JSON response error body";
     public static final String STRING_MARKER_RETRY_REQUEST = "fail request with error that causes retry";
     public static final String STRING_MARKER_TIMEOUT_REQUEST = "do not complete this request";
     public static final String STRING_MARKER_HAS_CONTEXT_ID = "check context id";
@@ -211,6 +212,18 @@ public class MinimalTestService extends StatefulService {
             } catch (InterruptedException e) {
             }
             patch.complete();
+            return;
+        }
+
+        if (STRING_MARKER_FAIL_REQUEST_WITH_CORRUPTED_JSON_RSP.equals(patchBody.id)) {
+            ServiceErrorResponse rsp = ServiceErrorResponse.create(
+                    new IllegalStateException("forced error"),
+                    Operation.STATUS_CODE_BAD_REQUEST);
+            patch.setContentType(Operation.MEDIA_TYPE_APPLICATION_JSON);
+            String jsonBody = Utils.toJson(rsp);
+            // corrupt body, on purpose
+            jsonBody = "corrupted body prefix-" + jsonBody;
+            patch.setBody(jsonBody).fail(Operation.STATUS_CODE_BAD_REQUEST);
             return;
         }
 
