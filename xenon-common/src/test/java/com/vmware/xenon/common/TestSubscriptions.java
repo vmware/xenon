@@ -17,9 +17,11 @@ import java.net.URI;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -50,6 +52,7 @@ public class TestSubscriptions extends BasicTestCase {
     public long updateCount = 10;
     public long iterationCount = 0;
 
+    @Override
     public void beforeHostStart(VerificationHost host) {
         host.setMaintenanceIntervalMicros(TimeUnit.MILLISECONDS
                 .toMicros(VerificationHost.FAST_MAINT_INTERVAL_MILLIS));
@@ -761,16 +764,34 @@ public class TestSubscriptions extends BasicTestCase {
             subUris[i++] = subUri;
         }
 
-        Date exp = this.host.getTestExpiration();
-        while (new Date().before(exp)) {
-            boolean isConverged = true;
-            Map<URI, ServiceSubscriptionState> subStates = this.host.getServiceState(null,
-                    ServiceSubscriptionState.class, subUris);
+        AtomicBoolean isConverged = new AtomicBoolean();
+        this.host.waitFor("subscriber verification timed out", () -> {
+            isConverged.set(true);
+            Map<URI, ServiceSubscriptionState> subStates = new ConcurrentSkipListMap<>();
+            TestContext ctx = this.host.testCreate(uris.length);
+            for (URI u : subUris) {
+                this.host.send(Operation.createGet(u).setCompletion((o, e) -> {
+                    ServiceSubscriptionState s = null;
+                    if (e == null) {
+                        s = o.getBody(ServiceSubscriptionState.class);
+                    } else {
+                        this.host.log("error response from %s: %s", o.getUri(), e.getMessage());
+                        // because we stopped an owner node, if gossip is not updated a GET
+                        // to subscriptions might fail because it was forward to a stale node
+                        s = new ServiceSubscriptionState();
+                        s.subscribers = new HashMap<>();
+                    }
+                    subStates.put(o.getUri(), s);
+                    ctx.complete();
+                }));
+            }
+            ctx.await();
+
             for (ServiceSubscriptionState state : subStates.values()) {
                 int expected = subscriberCount;
                 int actual = state.subscribers.size();
                 if (actual != expected) {
-                    isConverged = false;
+                    isConverged.set(false);
                     break;
                 }
 
@@ -784,22 +805,20 @@ public class TestSubscriptions extends BasicTestCase {
                     }
                     if (sr.failedNotificationCount == null
                             || 0 != sr.failedNotificationCount.compareTo(failedNotificationCount)) {
-                        isConverged = false;
+                        isConverged.set(false);
                         break;
                     }
                 }
 
             }
-            if (isConverged) {
+            if (isConverged.get() || !wait) {
                 return true;
             }
-            if (!wait) {
-                return false;
-            }
-            Thread.sleep(250);
-        }
 
-        throw new TimeoutException("Subscriber count did not converge to " + subscriberCount);
+            return false;
+        });
+
+        return isConverged.get();
     }
 
     private void patchChildren(URI[] uris, boolean expectFailure) throws Throwable {
