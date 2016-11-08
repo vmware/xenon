@@ -453,7 +453,14 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
             return true;
         }
 
-        if (NodeGroupUtils.isNodeGroupAvailable(getHost(), localState)) {
+        if (!this.cachedState.isNodeGroupAvailable) {
+            synchronized (this.cachedState) {
+                this.cachedState.isNodeGroupAvailable = NodeGroupUtils
+                        .isNodeGroupAvailable(getHost(), localState);
+            }
+        }
+
+        if (this.cachedState.isNodeGroupAvailable) {
             return false;
         }
 
@@ -583,9 +590,10 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
     }
 
     private void updateCachedNodeGroupState(NodeGroupState ngs, UpdateQuorumRequest quorumUpdate) {
+        boolean isAvailable = false;
         if (ngs != null) {
             NodeGroupState currentState = this.cachedGroupState;
-            boolean isAvailable = NodeGroupUtils.isNodeGroupAvailable(getHost(), ngs);
+            isAvailable = NodeGroupUtils.isNodeGroupAvailable(getHost(), ngs);
             boolean isCurrentlyAvailable = currentState != null
                     && NodeGroupUtils.isNodeGroupAvailable(getHost(), currentState);
             boolean logMsg = isAvailable != isCurrentlyAvailable
@@ -617,6 +625,7 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
             }
 
             if (this.cachedGroupState.documentUpdateTimeMicros <= ngs.documentUpdateTimeMicros) {
+                this.cachedState.isNodeGroupAvailable = isAvailable;
                 this.cachedState.documentUpdateTimeMicros = now;
                 this.cachedState.membershipUpdateTimeMicros = ngs.membershipUpdateTimeMicros;
                 this.cachedGroupState = ngs;

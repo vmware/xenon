@@ -18,4 +18,5 @@ public class NodeSelectorState extends ServiceDocument {
     public Long replicationFactor;
     public int membershipQuorum;
     public long membershipUpdateTimeMicros;
+    public boolean isNodeGroupAvailable;
 }
