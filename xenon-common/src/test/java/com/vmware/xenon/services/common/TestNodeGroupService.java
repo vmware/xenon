@@ -2753,7 +2753,13 @@ public class TestNodeGroupService {
         setUp(this.nodeCount);
         this.host.joinNodesAndVerifyConvergence(this.nodeCount);
         for (int i = 0; i < this.iterationCount; i++) {
-            directOwnerSelection();
+            directOwnerSelection(true);
+        }
+
+        for (int i = 0; i < this.iterationCount; i++) {
+            directOwnerSelection(false);
+        }
+        for (int i = 0; i < this.iterationCount; i++) {
             forwardingToPeerId();
             forwardingToKeyHashNode();
             broadcast();
@@ -3072,7 +3078,7 @@ public class TestNodeGroupService {
         this.host.toggleDebuggingMode(false);
     }
 
-    private void directOwnerSelection() throws Throwable {
+    private void directOwnerSelection(boolean isDirect) throws Throwable {
         Map<URI, Map<String, Long>> keyToNodeAssignmentsPerNode = new HashMap<>();
         List<String> keys = new ArrayList<>();
 
@@ -3090,14 +3096,35 @@ public class TestNodeGroupService {
 
         this.host.waitForNodeGroupConvergence(this.nodeCount);
 
+        if (isDirect) {
+            TestContext testContextDirect = this.host.testCreate(c * this.nodeCount);
+            testContextDirect.setTestName("selectOwner() direct").logBefore();
+            // measure throughout using direct method call, per host
+            for (VerificationHost node : this.host.getInProcessHostMap().values()) {
+                long exp = Utils.fromNowMicrosUtc(this.host.getOperationTimeoutMicros());
+                for (String key : keys) {
+                    Operation op = Operation.createPost(node.getUri())
+                            .setExpiration(exp)
+                            .setCompletion(testContextDirect.getCompletion());
+                    node.selectOwner(this.replicationNodeSelector, key, op);
+                }
+            }
+            testContextDirect.await();
+            testContextDirect.logAfter();
+            return;
+        }
+
+
         TestContext testContext = this.host.testCreate(c * this.nodeCount);
-        for (URI nodeGroup : this.host.getNodeGroupMap().values()) {
+        testContext.setTestName("select owner POST").logBefore();
+        for (URI peerNodeGroupURI : this.host.getNodeGroupMap().values()) {
+            URI nodeSelectorURI = UriUtils.buildUri(peerNodeGroupURI,
+                    ServiceUriPaths.DEFAULT_NODE_SELECTOR);
             for (String key : keys) {
                 SelectAndForwardRequest body = new SelectAndForwardRequest();
                 body.key = key;
                 Operation post = Operation
-                        .createPost(UriUtils.buildUri(nodeGroup,
-                                ServiceUriPaths.DEFAULT_NODE_SELECTOR))
+                        .createPost(nodeSelectorURI)
                         .setBody(body)
                         .setCompletion(
                                 (o, e) -> {
@@ -3106,14 +3133,14 @@ public class TestNodeGroupService {
                                             SelectOwnerResponse rsp = o
                                                     .getBody(SelectOwnerResponse.class);
                                             Map<String, Long> assignmentsPerNode = keyToNodeAssignmentsPerNode
-                                                    .get(nodeGroup);
+                                                    .get(peerNodeGroupURI);
                                             Long l = assignmentsPerNode.get(rsp.ownerNodeId);
                                             if (l == null) {
                                                 l = 0L;
                                             }
                                             assignmentsPerNode.put(rsp.ownerNodeId, l + 1);
-                                            testContext.complete();
                                         }
+                                        testContext.complete();
                                     } catch (Throwable ex) {
                                         testContext.fail(ex);
                                     }
@@ -3122,7 +3149,7 @@ public class TestNodeGroupService {
             }
         }
         testContext.await();
-        this.host.logThroughput();
+        testContext.logAfter();
 
         Map<String, Long> countPerNode = null;
 
