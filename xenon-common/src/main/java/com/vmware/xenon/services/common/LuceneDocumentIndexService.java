@@ -221,6 +221,15 @@ public class LuceneDocumentIndexService extends StatelessService {
 
     public static final String STAT_NAME_OLDEST_VERSION_READ_FAILURE_COUNT = "oldestVersionReadFailureCount";
 
+    public static final String STAT_NAME_MAINTENANCE_SEARCHER_REFRESH_DURATION_MICROS =
+            "maintenanceSearcherRefreshDurationMicros";
+
+    public static final String STAT_NAME_MAINTENANCE_DOCUMENT_EXPIRATION_DURATION_MICROS =
+            "maintenanceDocumentExpirationDurationMicros";
+
+    public static final String STAT_NAME_MAINTENANCE_VERSION_RETENTION_DURATION_MICROS =
+            "maintenanceVersionRetentionDurationMicros";
+
     private static final EnumSet<AggregationType> AGGREGATION_TYPE_AVG_MAX =
             EnumSet.of(AggregationType.AVG, AggregationType.MAX);
 
@@ -2346,13 +2355,6 @@ public class LuceneDocumentIndexService extends StatelessService {
         builder.add(versionQuery, Occur.MUST);
         builder.add(linkQuery, Occur.MUST);
         BooleanQuery bq = builder.build();
-
-        results = s.search(bq, Integer.MAX_VALUE);
-
-        logInfo("Version grooming for %s found %d versions from %d to %d. Trimming %d versions from %d to %d",
-                link, versionCount, versionLowerBound, versionUpperBound,
-                results.scoreDocs.length, versionLowerBound, cutOffVersion);
-
         wr.deleteDocuments(bq);
 
         // We have observed that sometimes Lucene search does not return all the document
@@ -2517,14 +2519,32 @@ public class LuceneDocumentIndexService extends StatelessService {
                 return;
             }
 
+            long startNanos = System.nanoTime();
             IndexSearcher s = createOrRefreshSearcher(null, Integer.MAX_VALUE, w, false);
+            long endNanos = System.nanoTime();
+            setTimeSeriesHistogramStat(STAT_NAME_MAINTENANCE_SEARCHER_REFRESH_DURATION_MICROS,
+                    AGGREGATION_TYPE_AVG_MAX,
+                    TimeUnit.NANOSECONDS.toMicros(endNanos - startNanos));
 
+            startNanos = endNanos;
             applyDocumentExpirationPolicy(s);
+            endNanos = System.nanoTime();
+            setTimeSeriesHistogramStat(STAT_NAME_MAINTENANCE_DOCUMENT_EXPIRATION_DURATION_MICROS,
+                    AGGREGATION_TYPE_AVG_MAX,
+                    TimeUnit.NANOSECONDS.toMicros(endNanos - startNanos));
+
+            startNanos = endNanos;
             applyDocumentVersionRetentionPolicy();
+            endNanos = System.nanoTime();
+            setTimeSeriesHistogramStat(STAT_NAME_MAINTENANCE_VERSION_RETENTION_DURATION_MICROS,
+                    AGGREGATION_TYPE_AVG_MAX,
+                    TimeUnit.NANOSECONDS.toMicros(endNanos - startNanos));
+
             applyMemoryLimit();
             applyIndexUpdates(w);
 
             applyFileLimitRefreshWriter(false);
+
         } catch (Throwable e) {
             if (this.getHost().isStopping()) {
                 return;

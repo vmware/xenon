@@ -57,6 +57,8 @@ public class MinimalTestService extends StatefulService {
     public static final String STAT_NAME_MAINTENANCE_SUCCESS_COUNT = "maintSuccessCount";
     public static final String STAT_NAME_MAINTENANCE_FAILURE_COUNT = "maintFailureCount";
 
+    public static final int DEFAULT_VERSION_RETENTION_LIMIT = 1000 * 1000;
+
     public static class MinimalTestServiceErrorResponse extends ServiceErrorResponse {
 
         public static final String KIND = Utils.buildKind(MinimalTestServiceErrorResponse.class);
@@ -283,14 +285,13 @@ public class MinimalTestService extends StatefulService {
             return;
         }
 
-
         final MinimalTestServiceState state = getState(get);
         if (params.containsKey(MinimalTestService.QUERY_DELAY_COMPLETION)) {
             long delay = Integer.parseInt(params.get(MinimalTestService.QUERY_DELAY_COMPLETION));
             getHost().schedule(
                     () -> {
                         get.setBody(state).complete();
-                    } ,
+                    },
                     delay, TimeUnit.SECONDS);
             return;
         }
@@ -299,10 +300,10 @@ public class MinimalTestService extends StatefulService {
     }
 
     /**
-    * If we receive a get with the "headers" query, we serialize the incoming
-    * headers and return this. This allows us to test that the right headers
-    * were sent.
-    */
+     * If we receive a get with the "headers" query, we serialize the incoming
+     * headers and return this. This allows us to test that the right headers
+     * were sent.
+     */
     private void respondWithHeaders(Operation get) {
         StringBuilder sb = new StringBuilder();
         Map<String, String> headers = get.getRequestHeaders();
@@ -394,7 +395,7 @@ public class MinimalTestService extends StatefulService {
         // this service is a target of throughput tests so we set the limit high to avoid grooming
         // during the tests. Tests can use the example service to verify throughput while grooming
         // is active
-        template.documentDescription.versionRetentionLimit = 1000 * 1000;
+        template.documentDescription.versionRetentionLimit = DEFAULT_VERSION_RETENTION_LIMIT;
         return template;
     }
 }
