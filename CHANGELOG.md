@@ -2,6 +2,8 @@
 
 ## 1.3.1-SNAPSHOT
 
+* Default logger format now logs timestamps as rfc3339 strings
+
 ## 1.3.0
 
 * Document signature calculation changed to be more efficient while format stays
