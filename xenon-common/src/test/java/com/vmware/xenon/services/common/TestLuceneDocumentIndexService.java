@@ -165,6 +165,18 @@ public class TestLuceneDocumentIndexService {
      */
     public long testDurationSeconds;
 
+    /**
+     * Parameter that specifies the version retention limit for {@link MinimalTestService}
+     * documents.
+     */
+    public long retentionLimit = MinimalTestService.DEFAULT_VERSION_RETENTION_LIMIT;
+
+    /**
+     * Parameter that specifies whether instrumentation is enabled for the
+     * {@link LuceneDocumentIndexService}.
+     */
+    public boolean enableInstrumentation = false;
+
     private final String EXAMPLES_BODIES_FILE = "example_bodies.json";
     private final String INDEX_DIR_NAME = "lucene510";
 
@@ -188,6 +200,8 @@ public class TestLuceneDocumentIndexService {
             this.host.setPeerSynchronizationEnabled(false);
             this.indexService = new FaultInjectionLuceneDocumentIndexService();
             if (this.host.isStressTest) {
+                this.indexService.toggleOption(ServiceOption.INSTRUMENTATION,
+                        this.enableInstrumentation);
                 this.host.setStressTest(this.host.isStressTest);
                 this.host.setMaintenanceIntervalMicros(
                         ServiceHostState.DEFAULT_MAINTENANCE_INTERVAL_MICROS);
@@ -545,11 +559,15 @@ public class TestLuceneDocumentIndexService {
 
         public static final String FACTORY_LINK = "test/custom-retention-services";
 
-        private static final long VERSION_RETENTION_LIMIT = 100;
+        private static long VERSION_RETENTION_LIMIT = MinimalTestService.DEFAULT_VERSION_RETENTION_LIMIT;
 
         public MinimalTestServiceWithCustomRetention() {
             super(MinimalTestServiceState.class);
             super.toggleOption(ServiceOption.PERSISTENCE, true);
+        }
+
+        public static void setVersionRetentionLimit(long versionRetentionLimit) {
+            VERSION_RETENTION_LIMIT = versionRetentionLimit;
         }
 
         @Override
@@ -2561,7 +2579,7 @@ public class TestLuceneDocumentIndexService {
             EnumSet<ServiceOption> caps) throws Throwable {
         EnumSet<TestProperty> props = EnumSet.noneOf(TestProperty.class);
 
-        this.indexService.toggleOption(ServiceOption.INSTRUMENTATION, false);
+        this.indexService.toggleOption(ServiceOption.INSTRUMENTATION, this.enableInstrumentation);
 
         if (caps == null) {
             caps = EnumSet.of(ServiceOption.PERSISTENCE);
@@ -2571,9 +2589,11 @@ public class TestLuceneDocumentIndexService {
             props.add(TestProperty.SINGLE_ITERATION);
         }
 
+        MinimalTestServiceWithCustomRetention.setVersionRetentionLimit(this.retentionLimit);
+
         List<Service> services = this.host.doThroughputServiceStart(
-                serviceCount, MinimalTestService.class, this.host.buildMinimalTestState(), caps,
-                null);
+                serviceCount, MinimalTestServiceWithCustomRetention.class,
+                this.host.buildMinimalTestState(), caps, null);
 
         long count = this.host.computeIterationsFromMemory(props, (int) serviceCount);
         if (caps.contains(Service.ServiceOption.PERSISTENCE)) {
