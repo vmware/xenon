@@ -595,13 +595,14 @@ public class TestLuceneDocumentIndexService {
             String onDemandFactoryLink = OnDemandLoadFactoryService.create(h);
             createOnDemandLoadServices(h, onDemandFactoryLink);
 
-            String customRetentionFactoryLink = createCustomRetentionFactoryService(h);
-            List<String> customRetentionServiceLinks = createCustomRetentionServices(h,
-                    customRetentionFactoryLink);
-            updateCustomRetentionServices(h, customRetentionFactoryLink,
-                    customRetentionServiceLinks,
-                    (int) MinimalTestServiceWithCustomRetention.VERSION_RETENTION_LIMIT);
-            verifyCustomRetentionStats(h, null);
+            // TODO(jungk): https://www.pivotaltracker.com/story/show/133795955
+            //            String customRetentionFactoryLink = createCustomRetentionFactoryService(h);
+            //            List<String> customRetentionServiceLinks = createCustomRetentionServices(h,
+            //                    customRetentionFactoryLink);
+            //            updateCustomRetentionServices(h, customRetentionFactoryLink,
+            //                    customRetentionServiceLinks,
+            //                    (int) MinimalTestServiceWithCustomRetention.VERSION_RETENTION_LIMIT);
+            //            verifyCustomRetentionStats(h, null);
 
             List<URI> exampleURIs = new ArrayList<>();
             Map<URI, ExampleServiceState> beforeState = verifyIdempotentServiceStartDeleteWithStats(
@@ -637,11 +638,11 @@ public class TestLuceneDocumentIndexService {
 
             verifyOnDemandLoad(h);
 
-            verifyCustomRetentionStats(h, null);
-            createCustomRetentionFactoryService(h);
-            updateCustomRetentionServices(h, customRetentionFactoryLink,
-                    customRetentionServiceLinks, 1);
-            verifyCustomRetentionStats(h, this.serviceCount);
+            //            verifyCustomRetentionStats(h, null);
+            //            createCustomRetentionFactoryService(h);
+            //            updateCustomRetentionServices(h, customRetentionFactoryLink,
+            //                    customRetentionServiceLinks, 1);
+            //            verifyCustomRetentionStats(h, this.serviceCount);
 
         } finally {
             logServiceStats(h);
