@@ -13,7 +13,6 @@
 
 package com.vmware.xenon.common;
 
-import static javafx.scene.input.KeyCode.T;
 
 import java.util.Collections;
 import java.util.Objects;
