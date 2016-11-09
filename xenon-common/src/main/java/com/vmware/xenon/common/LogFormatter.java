@@ -13,10 +13,16 @@
 
 package com.vmware.xenon.common;
 
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.logging.Formatter;
 import java.util.logging.LogRecord;
 
 public class LogFormatter extends Formatter {
+
+    public static final DateTimeFormatter DEFAULT_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'Z");
 
     public static class LogItem {
         public String l;
@@ -53,8 +59,11 @@ public class LogFormatter extends Formatter {
         public String toString() {
             StringBuilder sb = new StringBuilder();
             sb.append("[").append(this.id).append("]");
-            sb.append("[").append(this.l.substring(0, 1)).append("]");
-            sb.append("[").append(this.t).append("]");
+            sb.append("[").append(this.l.charAt(0)).append("]");
+
+            ZonedDateTime dt = Instant.ofEpochMilli(this.t).atZone(ZoneId.systemDefault());
+            sb.append("[").append(DEFAULT_FORMAT.format(dt)).append("]");
+
             sb.append("[").append(this.classOrUri).append("]");
             sb.append("[").append(this.method).append("]");
             if (this.m != null && !this.m.isEmpty()) {

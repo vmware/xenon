@@ -13,6 +13,9 @@
 
 package com.vmware.xenon.common.test;
 
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.util.logging.Formatter;
 import java.util.logging.LogRecord;
 
@@ -33,8 +36,11 @@ public class VerificationHostLogFormatter extends LogFormatter {
             // added threadId. the rest is same as LogFormatter
             StringBuilder sb = new StringBuilder();
             sb.append("[").append(logItem.id).append("]");
-            sb.append("[").append(logItem.l.substring(0, 1)).append("]");
-            sb.append("[").append(logItem.t).append("]");
+            sb.append("[").append(logItem.l.charAt(0)).append("]");
+
+            ZonedDateTime dt = Instant.ofEpochMilli(logItem.t).atZone(ZoneId.systemDefault());
+            sb.append("[").append(DEFAULT_FORMAT.format(dt)).append("]");
+
             sb.append("[").append(threadId).append("]");
             sb.append("[").append(logItem.classOrUri).append("]");
             sb.append("[").append(logItem.method).append("]");
