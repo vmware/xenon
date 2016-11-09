@@ -2,8 +2,8 @@
 
 ## 1.3.1-SNAPSHOT
 
-* Default logger format now logs timestamps as rfc3339 strings, for example
-  2016-11-09T18:55:36.037Z+0700
+* Default logger format now produces UTC-offset, rfc3339 formatted strings,
+  for example 2016-11-09T18:55:36.037Z
 
 ## 1.3.0
 

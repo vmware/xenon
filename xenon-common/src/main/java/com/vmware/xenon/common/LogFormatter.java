@@ -17,12 +17,18 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeFormatterBuilder;
 import java.util.logging.Formatter;
 import java.util.logging.LogRecord;
 
 public class LogFormatter extends Formatter {
 
-    public static final DateTimeFormatter DEFAULT_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'Z");
+    public static final DateTimeFormatter DEFAULT_FORMAT = new DateTimeFormatterBuilder()
+            .appendPattern("yyyy-MM-dd'T'HH:mm:ss.SSS")
+            .appendOffsetId()
+            .toFormatter();
+
+    public static final ZoneId TZ_UTC = ZoneId.of("UTC");
 
     public static class LogItem {
         public String l;
@@ -61,7 +67,7 @@ public class LogFormatter extends Formatter {
             sb.append("[").append(this.id).append("]");
             sb.append("[").append(this.l.charAt(0)).append("]");
 
-            ZonedDateTime dt = Instant.ofEpochMilli(this.t).atZone(ZoneId.systemDefault());
+            ZonedDateTime dt = Instant.ofEpochMilli(this.t).atZone(TZ_UTC);
             sb.append("[").append(DEFAULT_FORMAT.format(dt)).append("]");
 
             sb.append("[").append(this.classOrUri).append("]");
