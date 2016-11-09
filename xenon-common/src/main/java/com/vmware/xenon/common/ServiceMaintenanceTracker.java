@@ -57,12 +57,12 @@ class ServiceMaintenanceTracker {
         }
 
         long nextExpirationMicros = Math.max(now, now + interval - SCHEDULING_EPSILON_MICROS);
+        String selfLink = s.getSelfLink();
 
         synchronized (this) {
             // To avoid double scheduling the same self-link
             // we lookup the self-link in our trackedServices map and remove
             // it before adding the new schedule.
-            String selfLink = s.getSelfLink();
             Long expiration = this.trackedServices.get(selfLink);
             if (expiration != null) {
                 Set<String> services = this.nextExpiration.get(expiration);
@@ -82,29 +82,29 @@ class ServiceMaintenanceTracker {
     }
 
     public void performMaintenance(Operation op, long deadline) {
-        long now = Utils.getSystemNowMicrosUtc();
-        while (now < deadline) {
+        long now;
+        while ((now = Utils.getSystemNowMicrosUtc()) < deadline) {
             if (this.host.isStopping()) {
                 op.fail(new CancellationException("Host is stopping"));
                 return;
             }
 
-            Long expiration = null;
-            Set<String> services = null;
+            Entry<Long, Set<String>> e;
 
             // the nextExpiration map is a concurrent data structure, but since each value is a Set, we want
             // to make sure modifications to that Set are not lost if a concurrent add() is happening
             synchronized (this) {
                 // get any services set to expire within the current maintenance interval
-                Entry<Long, Set<String>> e = this.nextExpiration.firstEntry();
+                e = this.nextExpiration.firstEntry();
                 if (e == null || e.getKey() >= now) {
                     // no service requires maintenance, yet
                     return;
                 }
-                expiration = e.getKey();
-                services = e.getValue();
-                this.nextExpiration.remove(expiration);
+                this.nextExpiration.pollFirstEntry();
             }
+
+            Long expiration = e.getKey();
+            Set<String> services = e.getValue();
 
             for (String servicePath : services) {
                 Service s = this.host.findService(servicePath);
@@ -131,7 +131,6 @@ class ServiceMaintenanceTracker {
 
                 performServiceMaintenance(servicePath, s);
             }
-            now = Utils.getSystemNowMicrosUtc();
         }
     }
 
@@ -139,13 +138,13 @@ class ServiceMaintenanceTracker {
         long[] start = new long[1];
         ServiceMaintenanceRequest body = ServiceMaintenanceRequest.create();
         body.reasons.add(MaintenanceReason.PERIODIC_SCHEDULE);
+
         Operation servicePost = Operation
                 .createPost(UriUtils.buildUri(this.host, servicePath))
                 .setReferer(this.host.getUri())
-                .setBody(body)
+                .setBodyNoCloning(body)
                 .setCompletion(
                         (o, ex) -> {
-
                             long now = Utils.getSystemNowMicrosUtc();
                             long actual = now - start[0];
                             long limit = Math.max(this.host.getMaintenanceIntervalMicros(),
@@ -153,7 +152,7 @@ class ServiceMaintenanceTracker {
 
                             if (limit * 2 < actual) {
                                 this.host.log(Level.WARNING,
-                                        "Service %s exceeded maint. interval %d. Actual: %d",
+                                        "Service %s exceeded maintenance interval %d. Actual: %d",
                                         servicePath, limit, actual);
                                 s.adjustStat(
                                         Service.STAT_NAME_MAINTENANCE_COMPLETION_DELAYED_COUNT, 1);
@@ -166,6 +165,7 @@ class ServiceMaintenanceTracker {
                                         servicePath, Utils.toString(ex));
                             }
                         });
+
         this.host.schedule(() -> {
             try {
                 OperationContext.setAuthorizationContext(this.host
