@@ -23,7 +23,7 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 
-import com.vmware.xenon.common.MurmurHash3;
+import com.vmware.xenon.common.FNVHash;
 import com.vmware.xenon.common.NodeSelectorService;
 import com.vmware.xenon.common.NodeSelectorService.SelectAndForwardRequest.ForwardingOption;
 import com.vmware.xenon.common.NodeSelectorState;
@@ -316,10 +316,7 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
             neighbourCount = this.cachedState.replicationFactor;
         }
 
-        final int seed = 0;
-        int keyHash = MurmurHash3.murmurhash3_x86_32(
-                response.key, 0, response.key.length(), seed);
-
+        long keyHash = FNVHash.compute(response.key);
         for (NodeState m : localState.nodes.values()) {
             if (NodeState.isUnAvailable(m)) {
                 availableNodes--;
@@ -327,13 +324,17 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
             }
 
             response.availableNodeCount++;
-            int nodeIdHash = 0;
-            Long nodeIdHashLong = this.hashedNodeIds.computeIfAbsent(m.id, (k) -> {
-                return (long) MurmurHash3.murmurhash3_x86_32(m.id, 0, m.id.length(), seed);
+            Long nodeIdHash = this.hashedNodeIds.computeIfAbsent(m.id, (k) -> {
+                return FNVHash.compute(k);
             });
-            nodeIdHash = nodeIdHashLong.intValue();
+
             long distance = nodeIdHash - keyHash;
             distance *= distance;
+            // We assume first key (smallest) will be one with closest distance. The hashing
+            // function can return negative numbers however, so a distance of zero (closest) will
+            // not be the first key. Take the absolute value to cover that case and create a logical
+            // ring
+            distance = Math.abs(distance);
             closestNodes.put(distance, m);
             if (closestNodes.size() > neighbourCount) {
                 // keep sorted map with only the N closest neighbors to the key
