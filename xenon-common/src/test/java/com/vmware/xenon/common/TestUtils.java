@@ -19,6 +19,7 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 import java.io.ByteArrayOutputStream;
+import java.io.UnsupportedEncodingException;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
 import java.net.URLEncoder;
@@ -32,6 +33,7 @@ import java.time.ZonedDateTime;
 import java.util.Calendar;
 import java.util.EnumSet;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -69,6 +71,11 @@ import com.vmware.xenon.services.common.QueryValidationTestService.QueryValidati
 public class TestUtils {
 
     public int iterationCount = 1000;
+    /**
+     * enables hash collisions in the computeHash methods. Should be set to false when running
+     * large iteration count benchmarks
+     */
+    public boolean checkHashCollisions = true;
 
     @Test
     public void registerKind() {
@@ -125,6 +132,66 @@ public class TestUtils {
         } finally {
             Utils.setTimeDriftThreshold(Utils.DEFAULT_TIME_DRIFT_THRESHOLD_MICROS);
         }
+    }
+
+    @Test
+    public void computeStringHash() {
+        CommandLineArgumentParser.parseFromProperties(this);
+        Set<String> keys = new HashSet<>(this.iterationCount);
+        Set<Long> hashedKeys = new HashSet<>(this.iterationCount);
+        long collisionCount = 0;
+
+        for (int i = 0; i < this.iterationCount; i++) {
+            String k = "-string-" + i;
+            long hash = FNVHash.compute(k);
+            long hash2 = FNVHash.compute(k);
+            assertEquals(hash, hash2);
+            assertTrue(keys.add(k));
+        }
+        Logger.getAnonymousLogger().info("Generated keys: " + keys.size());
+        long s = System.nanoTime() / 1000;
+        for (String key : keys) {
+            long hash = FNVHash.compute(key);
+            assertTrue(hash != 0);
+            if (this.checkHashCollisions && !hashedKeys.add(hash)) {
+                collisionCount++;
+            }
+        }
+        long e = System.nanoTime() / 1000;
+        double thpt = this.iterationCount / ((e - s) / 1000000.0);
+        Logger.getAnonymousLogger().info("Throughput: " + thpt);
+        Logger.getAnonymousLogger().info("Collisions: " + collisionCount);
+    }
+
+    @Test
+    public void computeByteHash() throws UnsupportedEncodingException {
+        CommandLineArgumentParser.parseFromProperties(this);
+        Set<String> keys = new HashSet<>(this.iterationCount);
+        Set<Long> hashedKeys = new HashSet<>(this.iterationCount);
+        long collisionCount = 0;
+
+        for (int i = 0; i < this.iterationCount; i++) {
+            String k = "-string-" + i;
+            byte[] bytes = k.getBytes(Utils.CHARSET);
+            long hash = FNVHash.compute(bytes, 0, bytes.length);
+            long hash2 = FNVHash.compute(bytes, 0, bytes.length);
+            assertEquals(hash, hash2);
+            assertTrue(keys.add(k));
+        }
+        Logger.getAnonymousLogger().info("Generated keys: " + keys.size());
+        long s = System.nanoTime() / 1000;
+        for (String key : keys) {
+            byte[] bytes = key.getBytes(Utils.CHARSET);
+            long hash = FNVHash.compute(bytes, 0, bytes.length);
+            assertTrue(hash != 0);
+            if (!hashedKeys.add(hash)) {
+                collisionCount++;
+            }
+        }
+        long e = System.nanoTime() / 1000;
+        double thpt = this.iterationCount / ((e - s) / 1000000.0);
+        Logger.getAnonymousLogger().info("Throughput: " + thpt);
+        Logger.getAnonymousLogger().info("Collisions: " + collisionCount);
     }
 
     @Test
@@ -286,7 +353,7 @@ public class TestUtils {
             // serialize with defaults, then with custom, and compare sizes
 
             int byteCountToObjectDefault = Utils.toBytes(st, Utils.getBuffer(1024), 0);
-            Output outDocumentImplicitDefault = KryoSerializers.serializeAsDocument((Object) st,
+            Output outDocumentImplicitDefault = KryoSerializers.serializeAsDocument(st,
                     1024);
             Output outDocumentDefault = KryoSerializers.serializeDocument(st, 1024);
 
@@ -295,8 +362,8 @@ public class TestUtils {
                     true);
 
             byte[] objectData = new byte[1024];
-            int byteCountToObjectCustom = Utils.toBytes((Object) st, objectData, 0);
-            Output outDocumentImplicitCustom = KryoSerializers.serializeAsDocument((Object) st,
+            int byteCountToObjectCustom = Utils.toBytes(st, objectData, 0);
+            Output outDocumentImplicitCustom = KryoSerializers.serializeAsDocument(st,
                     1024);
             Output outDocumentCustom = KryoSerializers.serializeDocument(st, 1024);
 
@@ -822,14 +889,6 @@ public class TestUtils {
         assertTrue(val3.size() == 2);
         assertTrue(val3.containsKey("key31"));
         assertTrue(val3.containsKey("key32"));
-    }
-
-    @Test
-    public void testHash() {
-        String string1 = "foofoo";
-        String string2 = "barbar";
-        Assert.assertEquals(Utils.computeHash(string1), Utils.computeHash(string1));
-        Assert.assertNotEquals(Utils.computeHash(string1), Utils.computeHash(string2));
     }
 
     @Test
