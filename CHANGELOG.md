@@ -2,6 +2,13 @@
 
 ## 1.3.1-SNAPSHOT
 
+* The default consistent hashing selector now uses a FNV hashing algorithm,
+  replacing the use of Murmur3. Better performance, no collisions for millions
+  of keys, better key distribution across nodes. Utils.computeHash uses FNV
+  now as well, and so does Utils.computeSignature. This should be a transparent
+  change except in one situation: If nodes are updated in place, owner selection
+  will re-assign documents on node restart
+
 * Default logger format now produces UTC-offset, rfc3339 formatted strings,
   for example 2016-11-09T18:55:36.037Z
 
