@@ -58,6 +58,7 @@ public class MinimalTestService extends StatefulService {
     public static final String STAT_NAME_MAINTENANCE_FAILURE_COUNT = "maintFailureCount";
 
     public static final int DEFAULT_VERSION_RETENTION_LIMIT = 1000 * 1000;
+    public static final int DEFAULT_VERSION_RETENTION_FLOOR = 1000 * 100;
 
     public static class MinimalTestServiceErrorResponse extends ServiceErrorResponse {
 
@@ -396,6 +397,7 @@ public class MinimalTestService extends StatefulService {
         // during the tests. Tests can use the example service to verify throughput while grooming
         // is active
         template.documentDescription.versionRetentionLimit = DEFAULT_VERSION_RETENTION_LIMIT;
+        template.documentDescription.versionRetentionFloor = DEFAULT_VERSION_RETENTION_FLOOR;
         return template;
     }
 }
