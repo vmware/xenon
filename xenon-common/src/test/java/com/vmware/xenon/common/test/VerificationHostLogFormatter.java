@@ -13,8 +13,6 @@
 
 package com.vmware.xenon.common.test;
 
-import java.time.Instant;
-import java.time.ZonedDateTime;
 import java.util.logging.Formatter;
 import java.util.logging.LogRecord;
 
@@ -23,8 +21,9 @@ import com.vmware.xenon.common.LogFormatter;
 
 public class VerificationHostLogFormatter extends LogFormatter {
 
-    public static Formatter NORMAL_FORMAT = new NormalFormat();
-    public static Formatter COLORED_FORMAT = new ColoredFormat();
+    public static final Formatter NORMAL_FORMAT = new NormalFormat();
+
+    public static final Formatter COLORED_FORMAT = new ColoredFormat();
 
     public static class NormalFormat extends LogFormatter {
         @Override
@@ -32,19 +31,19 @@ public class VerificationHostLogFormatter extends LogFormatter {
             long threadId = Thread.currentThread().getId();
             LogItem logItem = LogItem.create(record);
 
+            StringBuilder sb = new StringBuilder(128 + (logItem.m == null ? 0 : logItem.m.length()));
+
             // added threadId. the rest is same as LogFormatter
-            StringBuilder sb = new StringBuilder();
-            sb.append("[").append(logItem.id).append("]");
-            sb.append("[").append(logItem.l.charAt(0)).append("]");
+            sb.append('[').append(logItem.id).append(']');
+            sb.append('[').append(logItem.l.charAt(0)).append(']');
 
-            ZonedDateTime dt = Instant.ofEpochMilli(logItem.t).atZone(TZ_UTC);
-            sb.append("[").append(DEFAULT_FORMAT.format(dt)).append("]");
+            sb.append('[').append(formatTimestampMillis(logItem.t)).append(']');
 
-            sb.append("[").append(threadId).append("]");
-            sb.append("[").append(logItem.classOrUri).append("]");
-            sb.append("[").append(logItem.method).append("]");
+            sb.append('[').append(threadId).append(']');
+            sb.append('[').append(logItem.classOrUri).append(']');
+            sb.append('[').append(logItem.method).append(']');
             if (logItem.m != null && !logItem.m.isEmpty()) {
-                sb.append("[").append(logItem.m).append("]");
+                sb.append('[').append(logItem.m).append(']');
             }
 
             sb.append("\n");
@@ -58,5 +57,4 @@ public class VerificationHostLogFormatter extends LogFormatter {
             return NORMAL_FORMAT.format(record);
         }
     }
-
 }

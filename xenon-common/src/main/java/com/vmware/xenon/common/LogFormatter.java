@@ -13,22 +13,15 @@
 
 package com.vmware.xenon.common;
 
-import java.time.Instant;
-import java.time.ZoneId;
-import java.time.ZonedDateTime;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
-import java.time.format.DateTimeFormatterBuilder;
 import java.util.logging.Formatter;
 import java.util.logging.LogRecord;
 
 public class LogFormatter extends Formatter {
 
-    public static final DateTimeFormatter DEFAULT_FORMAT = new DateTimeFormatterBuilder()
-            .appendPattern("yyyy-MM-dd'T'HH:mm:ss.SSS")
-            .appendOffsetId()
-            .toFormatter();
-
-    public static final ZoneId TZ_UTC = ZoneId.of("UTC");
+    private static final DateTimeFormatter DEFAULT_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'");
 
     public static class LogItem {
         public String l;
@@ -63,21 +56,27 @@ public class LogFormatter extends Formatter {
 
         @Override
         public String toString() {
-            StringBuilder sb = new StringBuilder();
-            sb.append("[").append(this.id).append("]");
-            sb.append("[").append(this.l.charAt(0)).append("]");
+            StringBuilder sb = new StringBuilder(128 + (this.m == null ? 0 : this.m.length()));
+            sb.append('[').append(this.id).append(']');
+            sb.append('[').append(this.l.charAt(0)).append(']');
 
-            ZonedDateTime dt = Instant.ofEpochMilli(this.t).atZone(TZ_UTC);
-            sb.append("[").append(DEFAULT_FORMAT.format(dt)).append("]");
+            sb.append('[').append(formatTimestampMillis(this.t)).append(']');
 
-            sb.append("[").append(this.classOrUri).append("]");
-            sb.append("[").append(this.method).append("]");
+            sb.append('[').append(this.classOrUri).append(']');
+            sb.append('[').append(this.method).append(']');
             if (this.m != null && !this.m.isEmpty()) {
-                sb.append("[").append(this.m).append("]");
+                sb.append('[').append(this.m).append(']');
             }
 
             return sb.toString();
         }
+    }
+
+    public static String formatTimestampMillis(long millis) {
+        long seconds = millis / 1000;
+        int nanos = (int) (millis % 1000) * 1_000_000;
+
+        return DEFAULT_FORMAT.format(LocalDateTime.ofEpochSecond(seconds, nanos, ZoneOffset.UTC));
     }
 
     @Override
