@@ -233,12 +233,12 @@ public final class Utils {
      */
     private static int hashJson(Object body) {
         if (body instanceof String) {
-            return MurmurHash3.murmurhash3_x86_32((String) body, 0, ((String) body).length(), 0);
+            return FNVHash.compute32((String) body);
         }
         StringBuilder content = getBuilder();
         JsonMapper mapper = getJsonMapperFor(body);
         mapper.toJson(body, content);
-        return MurmurHash3.murmurhash3_x86_32(content, 0, content.length(), 0);
+        return FNVHash.compute32(content.toString());
     }
 
     /**
@@ -275,12 +275,11 @@ public final class Utils {
     }
 
     public static String computeHash(String content) {
-        byte[] source = content.getBytes(Charset.forName(CHARSET_UTF_8));
-        return computeHash(source, 0, source.length);
+        return Long.toHexString(FNVHash.compute(content));
     }
 
     private static String computeHash(byte[] content, int offset, int length) {
-        return Integer.toHexString(MurmurHash3.murmurhash3_x86_32(content, offset, length, 0));
+        return Long.toHexString(FNVHash.compute(content, offset, length));
     }
 
     public static String toJson(Object body) {
