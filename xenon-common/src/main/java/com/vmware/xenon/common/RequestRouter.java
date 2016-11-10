@@ -33,6 +33,20 @@ import com.vmware.xenon.common.Service.Action;
  */
 public class RequestRouter implements Predicate<Operation> {
 
+    public static class QueryParam {
+        public String name;
+        public String description;
+        public boolean required;
+        public String defaultValue;
+
+        public QueryParam(String name, String description, boolean required, String defaultValue) {
+            this.name = name;
+            this.description = description;
+            this.required = required;
+            this.defaultValue = defaultValue;
+        }
+    }
+
     public static class Route {
         public Action action;
         public Predicate<Operation> matcher;
@@ -40,6 +54,7 @@ public class RequestRouter implements Predicate<Operation> {
         public String description;
         public Class<?> requestType;
         public Class<?> responseType;
+        public List<QueryParam> queryParams;
 
         public Route(Action action, Predicate<Operation> matcher, Consumer<Operation> handler,
                 String description) {

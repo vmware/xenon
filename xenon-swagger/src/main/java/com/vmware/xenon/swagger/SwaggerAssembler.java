@@ -599,6 +599,17 @@ class SwaggerAssembler {
                         Operation.STATUS_CODE_NOT_FOUND, responseGenericError()
                 ));
 
+                if (route.queryParams != null) {
+                    route.queryParams.forEach(queryParam -> {
+                        QueryParameter p = new QueryParameter();
+                        p.setName(queryParam.name);
+                        p.setType(StringProperty.TYPE);
+                        p.setRequired(queryParam.required);
+                        p.setDescription(queryParam.description);
+                        op.addParameter(p);
+                    });
+                }
+
                 switch (route.action) {
                 case POST:
                     path.post(op);

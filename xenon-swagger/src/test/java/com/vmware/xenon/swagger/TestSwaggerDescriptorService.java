@@ -223,6 +223,7 @@ public class TestSwaggerDescriptorService {
         assertNotNull(p);
         assertNotNull(p.getGet());
         assertNotNull(p.getGet().getResponses());
+        assertNotNull(p.getGet().getParameters());
         assertNotNull(p.getPost());
         assertNotNull(p.getPost().getParameters());
         assertNull(p.getPatch());
