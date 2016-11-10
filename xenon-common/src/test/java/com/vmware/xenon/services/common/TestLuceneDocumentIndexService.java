@@ -559,7 +559,7 @@ public class TestLuceneDocumentIndexService {
 
         public static final String FACTORY_LINK = "test/custom-retention-services";
 
-        private static long VERSION_RETENTION_LIMIT = MinimalTestService.DEFAULT_VERSION_RETENTION_LIMIT;
+        private static long VERSION_RETENTION_LIMIT = 10;
 
         public MinimalTestServiceWithCustomRetention() {
             super(MinimalTestServiceState.class);
@@ -568,6 +568,10 @@ public class TestLuceneDocumentIndexService {
 
         public static void setVersionRetentionLimit(long versionRetentionLimit) {
             VERSION_RETENTION_LIMIT = versionRetentionLimit;
+        }
+
+        public static long getVersionRetentionLimit() {
+            return VERSION_RETENTION_LIMIT;
         }
 
         @Override
@@ -613,14 +617,8 @@ public class TestLuceneDocumentIndexService {
             String onDemandFactoryLink = OnDemandLoadFactoryService.create(h);
             createOnDemandLoadServices(h, onDemandFactoryLink);
 
-            // TODO(jungk): https://www.pivotaltracker.com/story/show/133795955
-            //            String customRetentionFactoryLink = createCustomRetentionFactoryService(h);
-            //            List<String> customRetentionServiceLinks = createCustomRetentionServices(h,
-            //                    customRetentionFactoryLink);
-            //            updateCustomRetentionServices(h, customRetentionFactoryLink,
-            //                    customRetentionServiceLinks,
-            //                    (int) MinimalTestServiceWithCustomRetention.VERSION_RETENTION_LIMIT);
-            //            verifyCustomRetentionStats(h, null);
+            List<String> customRetentionServiceLinks = createCustomRetentionServices(h,
+                    (int) MinimalTestServiceWithCustomRetention.getVersionRetentionLimit());
 
             List<URI> exampleURIs = new ArrayList<>();
             Map<URI, ExampleServiceState> beforeState = verifyIdempotentServiceStartDeleteWithStats(
@@ -656,11 +654,7 @@ public class TestLuceneDocumentIndexService {
 
             verifyOnDemandLoad(h);
 
-            //            verifyCustomRetentionStats(h, null);
-            //            createCustomRetentionFactoryService(h);
-            //            updateCustomRetentionServices(h, customRetentionFactoryLink,
-            //                    customRetentionServiceLinks, 1);
-            //            verifyCustomRetentionStats(h, this.serviceCount);
+            verifyCustomRetentionServices(h, customRetentionServiceLinks);
 
         } finally {
             logServiceStats(h);
@@ -697,6 +691,23 @@ public class TestLuceneDocumentIndexService {
 
         }
         this.host.testWait();
+    }
+
+    private List<String> createCustomRetentionServices(ServiceHost h, int updateCount) {
+        String customRetentionFactoryLink = createCustomRetentionFactoryService(h);
+        List<String> customRetentionServiceLinks = createCustomRetentionServices(h,
+                customRetentionFactoryLink);
+        updateCustomRetentionServices(h, customRetentionFactoryLink,
+                customRetentionServiceLinks, updateCount);
+        verifyCustomRetentionStats(h, null);
+        return customRetentionServiceLinks;
+    }
+
+    private void verifyCustomRetentionServices(ServiceHost h, List<String> serviceLinks) {
+        verifyCustomRetentionStats(h, null);
+        String factoryLink = createCustomRetentionFactoryService(h);
+        updateCustomRetentionServices(h, factoryLink, serviceLinks, 1);
+        verifyCustomRetentionStats(h, this.serviceCount);
     }
 
     private String createCustomRetentionFactoryService(ServiceHost h) {
@@ -1756,14 +1767,17 @@ public class TestLuceneDocumentIndexService {
 
     @Test
     public void throughputPut() throws Throwable {
+        long limit = MinimalTestServiceWithCustomRetention.getVersionRetentionLimit();
         try {
             setUpHost(false);
+            MinimalTestServiceWithCustomRetention.setVersionRetentionLimit(this.retentionLimit);
             if (this.host.isStressTest()) {
                 Utils.setTimeDriftThreshold(TimeUnit.HOURS.toMicros(1));
             }
             doDurableServiceUpdate(Action.PUT, this.serviceCount, this.updateCount, null);
         } finally {
             Utils.setTimeDriftThreshold(Utils.DEFAULT_TIME_DRIFT_THRESHOLD_MICROS);
+            MinimalTestServiceWithCustomRetention.setVersionRetentionLimit(limit);
         }
     }
 
@@ -2588,8 +2602,6 @@ public class TestLuceneDocumentIndexService {
         if (putCount != null && putCount == 1) {
             props.add(TestProperty.SINGLE_ITERATION);
         }
-
-        MinimalTestServiceWithCustomRetention.setVersionRetentionLimit(this.retentionLimit);
 
         List<Service> services = this.host.doThroughputServiceStart(
                 serviceCount, MinimalTestServiceWithCustomRetention.class,
