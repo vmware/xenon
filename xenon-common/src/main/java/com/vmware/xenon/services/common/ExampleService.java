@@ -51,6 +51,7 @@ public class ExampleService extends StatefulService {
         public static final String FIELD_NAME_ID = "id";
         public static final String FIELD_NAME_REQUIRED = "required";
         public static final long VERSION_RETENTION_LIMIT = 100;
+        public static final long VERSION_RETENTION_FLOOR = 20;
 
         @UsageOption(option = PropertyUsageOption.OPTIONAL)
         @PropertyOptions(indexing = { PropertyIndexingOption.EXPAND,
@@ -209,6 +210,7 @@ public class ExampleService extends StatefulService {
 
         // instruct the index to only keep the most recent N versions
         template.documentDescription.versionRetentionLimit = ExampleServiceState.VERSION_RETENTION_LIMIT;
+        template.documentDescription.versionRetentionFloor = ExampleServiceState.VERSION_RETENTION_FLOOR;
         return template;
     }
 }

@@ -479,8 +479,8 @@ public class TestServiceDocument {
         public int[] intArray;
     }
 
-
-    @ServiceDocument.IndexingParameters(serializedStateSize = 8, versionRetention = 44)
+    @ServiceDocument.IndexingParameters(serializedStateSize = 8, versionRetention = 44,
+            versionRetentionFloor = 22)
     private static class AnnotatedDoc extends ServiceDocument {
         @UsageOption(option = ServiceDocumentDescription.PropertyUsageOption.AUTO_MERGE_IF_NOT_NULL)
         @PropertyOptions(indexing = ServiceDocumentDescription.PropertyIndexingOption.STORE_ONLY)
@@ -519,6 +519,7 @@ public class TestServiceDocument {
         ServiceDocumentDescription desc = builder.buildDescription(AnnotatedDoc.class);
         assertEquals(8, desc.serializedStateSizeLimit);
         assertEquals(44, desc.versionRetentionLimit);
+        assertEquals(22, desc.versionRetentionFloor);
 
         ServiceDocumentDescription.PropertyDescription optDesc = desc.propertyDescriptions
                 .get("opt");
