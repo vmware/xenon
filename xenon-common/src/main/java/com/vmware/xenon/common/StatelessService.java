@@ -556,10 +556,15 @@ public class StatelessService implements Service {
     }
 
     protected void doLogging(Level level, Supplier<String> messageSupplier) {
-        String uri = this.host != null && this.selfLink != null ? getUri().toString()
-                : this.getClass().getSimpleName();
         Logger lg = Logger.getLogger(this.getClass().getName());
-        Utils.log(lg, 3, uri, level, messageSupplier);
+        if (!lg.isLoggable(level)) {
+            return;
+        }
+        URI uri;
+        String classOrUri = this.host != null && this.selfLink != null && (uri = getUri()) != null ?
+                uri.toString() :
+                this.getClass().getSimpleName();
+        Utils.log(lg, 3, classOrUri, level, messageSupplier);
     }
 
     @Override

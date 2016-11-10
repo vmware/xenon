@@ -31,22 +31,29 @@ public class VerificationHostLogFormatter extends LogFormatter {
             long threadId = Thread.currentThread().getId();
             LogItem logItem = LogItem.create(record);
 
-            StringBuilder sb = new StringBuilder(128 + (logItem.m == null ? 0 : logItem.m.length()));
+            int mLen = logItem.m == null ? 0 : logItem.m.length();
+            StringBuilder sb = new StringBuilder(128 + mLen);
 
             // added threadId. the rest is same as LogFormatter
             sb.append('[').append(logItem.id).append(']');
             sb.append('[').append(logItem.l.charAt(0)).append(']');
 
-            sb.append('[').append(formatTimestampMillis(logItem.t)).append(']');
+            sb.append('[');
+            formatTimestampMillisTo(logItem.t, sb);
+            sb.append(']');
 
             sb.append('[').append(threadId).append(']');
             sb.append('[').append(logItem.classOrUri).append(']');
             sb.append('[').append(logItem.method).append(']');
-            if (logItem.m != null && !logItem.m.isEmpty()) {
-                sb.append('[').append(logItem.m).append(']');
-            }
 
-            sb.append("\n");
+            // Always include the message brackets to keep consistent log structure.
+            sb.append('[');
+            if (mLen > 0) {
+                sb.append(logItem.m);
+            }
+            sb.append(']');
+
+            sb.append('\n');
             return sb.toString();
         }
     }

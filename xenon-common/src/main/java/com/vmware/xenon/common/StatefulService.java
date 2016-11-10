@@ -1751,10 +1751,14 @@ public class StatefulService implements Service {
     }
 
     protected void doLogging(Level level, Supplier<String> messageSupplier) {
-        String uri = this.context.host != null && getUri() != null ? getUri().toString()
-                : this.getClass().getSimpleName();
         Logger lg = Logger.getLogger(this.getClass().getName());
-        Utils.log(lg, 3, uri, level, messageSupplier);
+        if (!lg.isLoggable(level)) {
+            return;
+        }
+        URI uri;
+        String classOrUri = this.context.host != null && this.context.selfLink != null
+                && (uri = getUri()) != null ? uri.toString() : this.getClass().getSimpleName();
+        Utils.log(lg, 3, classOrUri, level, messageSupplier);
     }
 
     /**

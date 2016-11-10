@@ -123,7 +123,6 @@ public final class Utils {
     private static final StringBuilderThreadLocal builderPerThread = new StringBuilderThreadLocal();
 
     private Utils() {
-
     }
 
     private static JsonMapper getJsonMapperFor(Type type) {
@@ -399,11 +398,11 @@ public final class Utils {
 
     public static void log(Logger lg, Integer nestingLevel, String classOrUri, Level level,
             Supplier<String> messageSupplier) {
-        if (nestingLevel == null) {
-            nestingLevel = 2;
-        }
         if (!lg.isLoggable(level)) {
             return;
+        }
+        if (nestingLevel == null) {
+            nestingLevel = 2;
         }
 
         String message = messageSupplier.get();
