@@ -2,6 +2,10 @@
 
 ## 1.3.1-SNAPSHOT
 
+* Document version retention now uses a watermark approach by which old
+  versions of a document can be deleted in bulk once the retention threshold is
+  reached.
+
 * Default logger format now produces UTC-offset, rfc3339 formatted strings,
   for example 2016-11-09T18:55:36.037Z
 

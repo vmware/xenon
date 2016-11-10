@@ -121,7 +121,43 @@ public class TestLuceneDocumentIndexService {
         public static FactoryService createFactory() {
             return FactoryService.create(ImmutableExampleService.class);
         }
+    }
 
+    public static class MinimalTestServiceWithCustomRetention extends StatefulService {
+
+        public static final String FACTORY_LINK = "test/custom-retention-services";
+
+        private static long VERSION_RETENTION_LIMIT = 10;
+        private static long VERSION_RETENTION_FLOOR = 2;
+
+        public MinimalTestServiceWithCustomRetention() {
+            super(MinimalTestServiceState.class);
+            super.toggleOption(ServiceOption.PERSISTENCE, true);
+        }
+
+        public static void setVersionRetentionLimit(long versionRetentionLimit) {
+            VERSION_RETENTION_LIMIT = versionRetentionLimit;
+        }
+
+        public static long getVersionRetentionLimit() {
+            return VERSION_RETENTION_LIMIT;
+        }
+
+        public static void setVersionRetentionFloor(long versionRetentionFloor) {
+            VERSION_RETENTION_FLOOR = versionRetentionFloor;
+        }
+
+        public static long getVersionRetentionFloor() {
+            return VERSION_RETENTION_FLOOR;
+        }
+
+        @Override
+        public ServiceDocument getDocumentTemplate() {
+            ServiceDocument template = super.getDocumentTemplate();
+            template.documentDescription.versionRetentionLimit = VERSION_RETENTION_LIMIT;
+            template.documentDescription.versionRetentionFloor = VERSION_RETENTION_FLOOR;
+            return template;
+        }
     }
 
     /**
@@ -170,6 +206,12 @@ public class TestLuceneDocumentIndexService {
      * documents.
      */
     public long retentionLimit = MinimalTestService.DEFAULT_VERSION_RETENTION_LIMIT;
+
+    /**
+     * Parameter that specifies the version retention floor for {@link MinimalTestService}
+     * documents.
+     */
+    public long retentionFloor = MinimalTestService.DEFAULT_VERSION_RETENTION_FLOOR;
 
     /**
      * Parameter that specifies whether instrumentation is enabled for the
@@ -555,33 +597,6 @@ public class TestLuceneDocumentIndexService {
                 thput);
     }
 
-    public static class MinimalTestServiceWithCustomRetention extends StatefulService {
-
-        public static final String FACTORY_LINK = "test/custom-retention-services";
-
-        private static long VERSION_RETENTION_LIMIT = 10;
-
-        public MinimalTestServiceWithCustomRetention() {
-            super(MinimalTestServiceState.class);
-            super.toggleOption(ServiceOption.PERSISTENCE, true);
-        }
-
-        public static void setVersionRetentionLimit(long versionRetentionLimit) {
-            VERSION_RETENTION_LIMIT = versionRetentionLimit;
-        }
-
-        public static long getVersionRetentionLimit() {
-            return VERSION_RETENTION_LIMIT;
-        }
-
-        @Override
-        public ServiceDocument getDocumentTemplate() {
-            ServiceDocument template = super.getDocumentTemplate();
-            template.documentDescription.versionRetentionLimit = VERSION_RETENTION_LIMIT;
-            return template;
-        }
-    }
-
     @Test
     public void serviceHostRestartWithDurableServices() throws Throwable {
         for (int i = 0; i < this.iterationCount; i++) {
@@ -617,9 +632,6 @@ public class TestLuceneDocumentIndexService {
             String onDemandFactoryLink = OnDemandLoadFactoryService.create(h);
             createOnDemandLoadServices(h, onDemandFactoryLink);
 
-            List<String> customRetentionServiceLinks = createCustomRetentionServices(h,
-                    (int) MinimalTestServiceWithCustomRetention.getVersionRetentionLimit());
-
             List<URI> exampleURIs = new ArrayList<>();
             Map<URI, ExampleServiceState> beforeState = verifyIdempotentServiceStartDeleteWithStats(
                     h, exampleURIs);
@@ -653,8 +665,6 @@ public class TestLuceneDocumentIndexService {
             verifyIdempotentFactoryAfterHostRestart(h, initialState, exampleURIs, beforeState);
 
             verifyOnDemandLoad(h);
-
-            verifyCustomRetentionServices(h, customRetentionServiceLinks);
 
         } finally {
             logServiceStats(h);
@@ -691,90 +701,6 @@ public class TestLuceneDocumentIndexService {
 
         }
         this.host.testWait();
-    }
-
-    private List<String> createCustomRetentionServices(ServiceHost h, int updateCount) {
-        String customRetentionFactoryLink = createCustomRetentionFactoryService(h);
-        List<String> customRetentionServiceLinks = createCustomRetentionServices(h,
-                customRetentionFactoryLink);
-        updateCustomRetentionServices(h, customRetentionFactoryLink,
-                customRetentionServiceLinks, updateCount);
-        verifyCustomRetentionStats(h, null);
-        return customRetentionServiceLinks;
-    }
-
-    private void verifyCustomRetentionServices(ServiceHost h, List<String> serviceLinks) {
-        verifyCustomRetentionStats(h, null);
-        String factoryLink = createCustomRetentionFactoryService(h);
-        updateCustomRetentionServices(h, factoryLink, serviceLinks, 1);
-        verifyCustomRetentionStats(h, this.serviceCount);
-    }
-
-    private String createCustomRetentionFactoryService(ServiceHost h) {
-        this.host.testStart(1);
-        FactoryService s = FactoryService.create(MinimalTestServiceWithCustomRetention.class);
-        assertTrue(s != null);
-        Operation factoryPost = Operation
-                .createPost(UriUtils.buildFactoryUri(h,
-                        MinimalTestServiceWithCustomRetention.class))
-                .setCompletion(this.host.getCompletion());
-        h.startService(factoryPost, s);
-        this.host.testWait();
-        URI factoryUri = s.getUri();
-        this.host.waitForServiceAvailable(factoryUri);
-        h.log(Level.INFO, "Started custom retention factory at %s", factoryUri);
-        return factoryUri.getPath();
-    }
-
-    private List<String> createCustomRetentionServices(ServiceHost h, String factoryLink) {
-        List<String> serviceIds = new ArrayList<>((int) this.serviceCount);
-        this.host.testStart(this.serviceCount);
-        for (int i = 0; i < this.serviceCount; i++) {
-            String id = UUID.randomUUID().toString();
-            serviceIds.add(id);
-            MinimalTestServiceState st = new MinimalTestServiceState();
-            st.documentSelfLink = id;
-            st.id = id;
-            st.stringValue = "version 0";
-            this.host.send(Operation
-                    .createPost(UriUtils.buildUri(h, factoryLink))
-                    .setBody(st)
-                    .setCompletion(this.host.getCompletion()));
-        }
-        this.host.testWait();
-        return serviceIds;
-    }
-
-    private void updateCustomRetentionServices(ServiceHost h, String factoryLink,
-            List<String> serviceIds, int updateCount) {
-        this.host.testStart(this.serviceCount * updateCount);
-        for (int i = 0; i < updateCount; i++) {
-            for (String id : serviceIds) {
-                MinimalTestServiceState st = new MinimalTestServiceState();
-                st.id = id;
-                st.stringValue = "version " + i;
-                this.host.send(Operation
-                        .createPut(UriUtils.buildUri(h, UriUtils.buildUriPath(factoryLink, id)))
-                        .setBody(st)
-                        .setCompletion(this.host.getCompletion()));
-            }
-        }
-        this.host.testWait();
-    }
-
-    private void verifyCustomRetentionStats(ServiceHost h, Long expectedValue) {
-        URI luceneStatsUri = UriUtils.buildStatsUri(h, LuceneDocumentIndexService.SELF_LINK);
-        ServiceStats stats = this.host.getServiceState(null, ServiceStats.class, luceneStatsUri);
-        assertTrue(stats.entries.size() > 0);
-        ServiceStat stat = stats.entries.get(
-                LuceneDocumentIndexService.STAT_NAME_OLDEST_VERSION_READ_COUNT
-                        + ServiceStats.STAT_NAME_SUFFIX_PER_DAY);
-        assertTrue(expectedValue == null || stat != null);
-        assertTrue(expectedValue == null || stat.latestValue == expectedValue);
-        stat = stats.entries.get(
-                LuceneDocumentIndexService.STAT_NAME_OLDEST_VERSION_READ_FAILURE_COUNT
-                        + ServiceStats.STAT_NAME_SUFFIX_PER_DAY);
-        assertTrue(stat == null);
     }
 
     private void verifyInitialStatePost(VerificationHost h) throws Throwable {
@@ -1768,9 +1694,11 @@ public class TestLuceneDocumentIndexService {
     @Test
     public void throughputPut() throws Throwable {
         long limit = MinimalTestServiceWithCustomRetention.getVersionRetentionLimit();
+        long floor = MinimalTestServiceWithCustomRetention.getVersionRetentionFloor();
         try {
             setUpHost(false);
             MinimalTestServiceWithCustomRetention.setVersionRetentionLimit(this.retentionLimit);
+            MinimalTestServiceWithCustomRetention.setVersionRetentionFloor(this.retentionFloor);
             if (this.host.isStressTest()) {
                 Utils.setTimeDriftThreshold(TimeUnit.HOURS.toMicros(1));
             }
@@ -1778,6 +1706,7 @@ public class TestLuceneDocumentIndexService {
         } finally {
             Utils.setTimeDriftThreshold(Utils.DEFAULT_TIME_DRIFT_THRESHOLD_MICROS);
             MinimalTestServiceWithCustomRetention.setVersionRetentionLimit(limit);
+            MinimalTestServiceWithCustomRetention.setVersionRetentionFloor(floor);
         }
     }
 
@@ -2336,20 +2265,6 @@ public class TestLuceneDocumentIndexService {
     }
 
     @Test
-    public void serviceVersionRetentionAndGrooming() throws Throwable {
-        try {
-            Utils.setTimeDriftThreshold(TimeUnit.HOURS.toMicros(1));
-            for (int i = 0; i < this.iterationCount; i++) {
-                EnumSet<ServiceOption> caps = EnumSet.of(ServiceOption.PERSISTENCE);
-                doServiceVersionGroomingValidation(caps);
-                tearDown();
-            }
-        } finally {
-            Utils.setTimeDriftThreshold(Utils.DEFAULT_TIME_DRIFT_THRESHOLD_MICROS);
-        }
-    }
-
-    @Test
     public void testBackupAndRestoreFromZipFile() throws Throwable {
         setUpHost(false);
         LuceneDocumentIndexService.BackupRequest b = new LuceneDocumentIndexService.BackupRequest();
@@ -2431,6 +2346,20 @@ public class TestLuceneDocumentIndexService {
         }
     }
 
+    @Test
+    public void serviceVersionRetentionAndGrooming() throws Throwable {
+        try {
+            Utils.setTimeDriftThreshold(TimeUnit.HOURS.toMicros(1));
+            for (int i = 0; i < this.iterationCount; i++) {
+                EnumSet<ServiceOption> caps = EnumSet.of(ServiceOption.PERSISTENCE);
+                doServiceVersionGroomingValidation(caps);
+                tearDown();
+            }
+        } finally {
+            Utils.setTimeDriftThreshold(Utils.DEFAULT_TIME_DRIFT_THRESHOLD_MICROS);
+        }
+    }
+
     public static class MinimalTestServiceWithDefaultRetention extends StatefulService {
         public MinimalTestServiceWithDefaultRetention() {
             super(MinimalTestServiceState.class);
@@ -2491,10 +2420,12 @@ public class TestLuceneDocumentIndexService {
             this.host.testWait();
 
             Collection<URI> serviceUris = serviceUrisWithDefaultRetention;
-            verifyVersionRetention(serviceUris, ServiceDocumentDescription.DEFAULT_VERSION_RETENTION_LIMIT);
+            long floor = ServiceDocumentDescription.DEFAULT_VERSION_RETENTION_FLOOR;
+            verifyVersionRetention(serviceUris, floor, floor + offset);
 
             serviceUris = serviceUrisWithCustomRetention;
-            verifyVersionRetention(serviceUris, ExampleServiceState.VERSION_RETENTION_LIMIT);
+            floor = ExampleServiceState.VERSION_RETENTION_FLOOR;
+            verifyVersionRetention(serviceUris, floor, floor + offset);
 
             this.host.testStart(this.serviceCount);
             for (URI u : serviceUrisWithDefaultRetention) {
@@ -2512,8 +2443,8 @@ public class TestLuceneDocumentIndexService {
         } while (Utils.getSystemNowMicrosUtc() < end);
     }
 
-    private void verifyVersionRetention(
-            Collection<URI> serviceUris, long limit) throws Throwable {
+    private void verifyVersionRetention(Collection<URI> serviceUris, long floor, long limit)
+            throws Throwable {
 
         long maintIntervalMillis = TimeUnit.MICROSECONDS
                 .toMillis(this.host.getMaintenanceIntervalMicros());
@@ -2544,21 +2475,25 @@ public class TestLuceneDocumentIndexService {
             finishedTaskWithLinksState = this.host.waitForQueryTaskCompletion(q,
                     serviceUris.size(), (int) limit, u, false, true);
 
-            long expectedCount = serviceUris.size() * limit;
+            long expectedCountCeiling = serviceUris.size() * limit;
             this.host.log("Documents found through count:%d, links:%d expectedCount:%d",
                     finishedTaskState.results.documentCount,
                     finishedTaskWithLinksState.results.documentLinks.size(),
-                    expectedCount);
+                    expectedCountCeiling);
 
             if (finishedTaskState.results.documentCount != finishedTaskWithLinksState.results.documentLinks
                     .size()) {
                 Thread.sleep(maintIntervalMillis);
                 continue;
             }
-            if (finishedTaskState.results.documentCount != expectedCount) {
+
+            if (finishedTaskState.results.documentCount > expectedCountCeiling) {
                 Thread.sleep(maintIntervalMillis);
                 continue;
             }
+
+            long expectedCountFloor = serviceUris.size() * floor;
+            assertTrue(finishedTaskState.results.documentCount >= expectedCountFloor);
             return;
         }
 
