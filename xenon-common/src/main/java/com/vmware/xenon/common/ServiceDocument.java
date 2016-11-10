@@ -107,6 +107,11 @@ public class ServiceDocument {
          * @return
          */
         int versionRetention() default ServiceDocumentDescription.DEFAULT_VERSION_RETENTION_LIMIT;
+
+        /**
+         * Min versions to keep for a document.
+         */
+        int versionRetentionFloor() default ServiceDocumentDescription.DEFAULT_VERSION_RETENTION_LIMIT / 2;
     }
 
     /**

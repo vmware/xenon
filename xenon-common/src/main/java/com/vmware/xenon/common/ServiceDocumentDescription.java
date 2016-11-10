@@ -40,11 +40,20 @@ import com.vmware.xenon.common.ServiceDocument.UsageOption;
 import com.vmware.xenon.common.ServiceDocument.UsageOptions;
 
 public class ServiceDocumentDescription {
+
     /**
-     * Upper bound on the number of document updates per self link. This can be configured per service
-     * using the versionRetentionLimit field
+     * Default limit on the maximum number of document versions per self link retained in the
+     * index. This can be configured on a per-service basis with the {@link #versionRetentionLimit}
+     * field.
      */
     public static final int DEFAULT_VERSION_RETENTION_LIMIT = 1000;
+
+    /**
+     * Default limit on the minimum number of document versions per self link retained in the
+     * index. This can be configured on a per-service basis with the {@link #versionRetentionFloor}
+     * field.
+     */
+    public static final int DEFAULT_VERSION_RETENTION_FLOOR = DEFAULT_VERSION_RETENTION_LIMIT / 2;
 
     public static final long FIELD_VALUE_DISABLED_VERSION_RETENTION = Long.MIN_VALUE;
 
@@ -219,6 +228,12 @@ public class ServiceDocumentDescription {
     public long versionRetentionLimit = DEFAULT_VERSION_RETENTION_LIMIT;
 
     /**
+     * Lower bound on how many state versions should be tracked in the index. Versions above this
+     * limit may be deleted by the system at any time.
+     */
+    public long versionRetentionFloor = DEFAULT_VERSION_RETENTION_FLOOR;
+
+    /**
      * Upper bound, in bytes, of binary serialized state
      */
     public int serializedStateSizeLimit = DEFAULT_SERIALIZED_STATE_LIMIT;
@@ -244,6 +259,7 @@ public class ServiceDocumentDescription {
             if (indexingParameters != null) {
                 desc.serializedStateSizeLimit = indexingParameters.serializedStateSize();
                 desc.versionRetentionLimit = indexingParameters.versionRetention();
+                desc.versionRetentionFloor = indexingParameters.versionRetentionFloor();
             }
 
             desc.propertyDescriptions = root.fieldDescriptions;
