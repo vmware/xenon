@@ -166,7 +166,7 @@ public class NodeSelectorReplicationService extends StatelessService {
                         ns.groupReference.getHost(), ns.groupReference.getPort(), null, null),
                         location))
                 .count();
-        this.nodeCountPerLocation.put(location, Integer.valueOf(intCount));
+        this.nodeCountPerLocation.put(location, intCount);
         return intCount;
     }
 

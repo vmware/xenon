@@ -2067,7 +2067,7 @@ public class VerificationHost extends ExampleServiceHost {
             }
 
             NodeGroupState ngs = op.getBody(NodeGroupState.class);
-            if (ngs.nodes == null && ngs.nodes.isEmpty()) {
+            if (ngs.nodes == null || ngs.nodes.isEmpty()) {
                 return;
             }
 

@@ -43,7 +43,7 @@ public class QueryPageService extends StatelessService {
     public static class LuceneQueryPage {
         public String previousPageLink;
         public ScoreDoc after;
-        public Integer groupOffset;
+        public int groupOffset;
 
         public LuceneQueryPage(String link, int groupOffset) {
             this.previousPageLink = link;

@@ -602,15 +602,10 @@ public class NodeGroupService extends StatefulService {
 
         int probeCount = 0;
         for (NodeState peer : randomizedPeers) {
-            if (peer == null) {
-                continue;
-            }
-
             if (peer.id.equals(getHost().getId())) {
                 continue;
             }
 
-            NodeState remotePeer = peer;
             URI peerUri = peer.groupReference;
             // send a gossip PATCH to the peer, with our state
 
@@ -623,7 +618,7 @@ public class NodeGroupService extends StatefulService {
 
             CompletionHandler ch = (o, e) -> handleGossipPatchCompletion(maint, o, e, localState,
                     patchBody,
-                    remaining, remotePeer);
+                    remaining, peer);
             Operation patch = Operation
                     .createPatch(peerUri)
                     .setBody(localState)
@@ -896,12 +891,11 @@ public class NodeGroupService extends StatefulService {
         // but this works for now and is relatively cheap even for groups with thousands of members
         NodeState[] randomizedPeers = new NodeState[localState.nodes.size()];
         localState.nodes.values().toArray(randomizedPeers);
-        int index;
-        NodeState t;
+
         Random random = new Random();
         for (int i = randomizedPeers.length - 1; i > 0; i--) {
-            index = random.nextInt(i + 1);
-            t = randomizedPeers[index];
+            int index = random.nextInt(i + 1);
+            NodeState t = randomizedPeers[index];
             randomizedPeers[index] = randomizedPeers[i];
             randomizedPeers[i] = t;
         }

@@ -288,22 +288,22 @@ public class LuceneDocumentIndexService extends StatelessService {
          * on each modification to the document and is read in order to determine whether a new
          * index searcher should be opened for a particular document.
          *
-         * This value can be null if the oldest version value for a document is read from the
+         * This value can be -1 if the oldest version value for a document is read from the
          * index before the document is updated -- see
          * {@link #getUpdatedOldestVersion(IndexWriter, ServiceDocument, ServiceDocumentDescription)}.
          */
-        Long lastAccessTimeMicros;
+        long lastAccessTimeMicros = -1;
 
         /**
          * This value represents the oldest version in the index for a particular document, and is
          * used to trigger version retention in a batched fashion -- see
          * {@link #checkDocumentRetentionLimit(ServiceDocument, ServiceDocumentDescription, long)}.
          *
-         * This value can be null if a document is read from an existing index without being
+         * This value can be -1 if a document is read from an existing index without being
          * updated; in this case, the value is read from the index and cached the first time a
          * document is created whose version is higher than the retention limit for the service.
          */
-        Long oldestVersion;
+        long oldestVersion = -1;
     }
 
     private final Map<String, LinkAccessInfo> linkAccessInfo = new HashMap<>();
@@ -1823,7 +1823,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         synchronized (this.searchSync) {
             LinkAccessInfo linkAccessInfo = this.linkAccessInfo.get(link);
             if (linkAccessInfo != null
-                    && linkAccessInfo.oldestVersion != null) {
+                    && linkAccessInfo.oldestVersion > 0) {
                 return linkAccessInfo.oldestVersion;
             }
             if (sd.documentVersion > limit) {
@@ -2415,8 +2415,8 @@ public class LuceneDocumentIndexService extends StatelessService {
                 }
             } else {
                 linkAccessInfo = new LinkAccessInfo();
-                linkAccessInfo.lastAccessTimeMicros = lastAccessTime;
-                linkAccessInfo.oldestVersion = oldestVersion;
+                linkAccessInfo.lastAccessTimeMicros = lastAccessTime == null ? -1 : lastAccessTime;
+                linkAccessInfo.oldestVersion = oldestVersion == null ? -1 : oldestVersion;
                 this.linkAccessInfo.put(link, linkAccessInfo);
             }
 
@@ -2464,7 +2464,6 @@ public class LuceneDocumentIndexService extends StatelessService {
             } else if (selfLink != null && resultLimit == 1) {
                 LinkAccessInfo linkAccessInfo = this.linkAccessInfo.get(selfLink);
                 if (linkAccessInfo != null
-                        && linkAccessInfo.lastAccessTimeMicros != null
                         && linkAccessInfo.lastAccessTimeMicros >= this.searcherUpdateTimeMicros.get()) {
                     needNewSearcher = !doNotRefresh;
                 }

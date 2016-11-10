@@ -219,9 +219,9 @@ public class MigrationTaskService extends StatefulService {
         public Map<String, String> destinationLinks;
     }
 
-    private static final Integer DEFAULT_PAGE_SIZE = 500;
-    private static final Long DEFAULT_MAINTENANCE_INTERVAL_MILLIS = TimeUnit.MINUTES.toMicros(1);
-    private static final Integer DEFAULT_MAXIMUM_CONVERGENCE_CHECKS = 10;
+    private static final int DEFAULT_PAGE_SIZE = 500;
+    private static final long DEFAULT_MAINTENANCE_INTERVAL_MILLIS = TimeUnit.MINUTES.toMicros(1);
+    private static final int DEFAULT_MAXIMUM_CONVERGENCE_CHECKS = 10;
 
     public MigrationTaskService() {
         super(MigrationTaskService.State.class);

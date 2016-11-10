@@ -89,7 +89,7 @@ public abstract class FactoryService extends StatelessService {
         return create(childServiceType, childServiceDocumentType, ServiceOption.IDEMPOTENT_POST);
     }
 
-    public static final Integer SELF_QUERY_RESULT_LIMIT = Integer.getInteger(
+    public static final int SELF_QUERY_RESULT_LIMIT = Integer.getInteger(
             Utils.PROPERTY_NAME_PREFIX
                     + "FactoryService.SELF_QUERY_RESULT_LIMIT", 1000);
     private EnumSet<ServiceOption> childOptions;

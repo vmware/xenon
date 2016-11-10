@@ -77,7 +77,7 @@ public class QueryTaskClientHelper<T extends ServiceDocument> {
     public static final long DEFAULT_EXPIRATION_TIME_IN_MICROS = Long.getLong(
             "xenon.querytaskclienthelper.query.documents.default.expiration.millis",
             TimeUnit.SECONDS.toMicros(120));
-    public static final Integer DEFAULT_QUERY_RESULT_LIMIT = Integer.getInteger(
+    public static final int DEFAULT_QUERY_RESULT_LIMIT = Integer.getInteger(
             "xenon.querytaskclienthelper.query.documents.default.resultLimit", 50);
 
     private final Class<T> type;

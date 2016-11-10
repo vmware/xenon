@@ -688,7 +688,7 @@ public class TestOperation extends BasicReusableHostTestCase {
         assertEquals(op.getUri().getPort(), sop.port);
         assertEquals(op.getUri().getPath(), sop.path);
         assertEquals(op.getUri().getQuery(), sop.query);
-        assertEquals(op.getId(), sop.id.longValue());
+        assertEquals(op.getId(), sop.id);
         assertEquals(op.getReferer(), sop.referer);
         assertEquals(op.getBodyRaw(), sop.jsonBody);
         assertEquals(op.getStatusCode(), sop.statusCode);
