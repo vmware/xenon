@@ -13,18 +13,22 @@
 
 package com.vmware.xenon.swagger;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.Map;
 import java.util.UUID;
 import java.util.logging.Level;
 
 import com.vmware.xenon.common.Operation;
+import com.vmware.xenon.common.RequestRouter.QueryParam;
 import com.vmware.xenon.common.RequestRouter.Route;
 import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.ServiceDocument.UsageOption;
 import com.vmware.xenon.common.ServiceDocumentDescription;
 import com.vmware.xenon.common.ServiceDocumentDescription.PropertyUsageOption;
 import com.vmware.xenon.common.StatelessService;
+import com.vmware.xenon.common.UriUtils;
 
 public class TokenService extends StatelessService {
     public static final String SELF_LINK = "/tokens";
@@ -46,7 +50,12 @@ public class TokenService extends StatelessService {
     @Override
     public void handleGet(Operation op) {
         Token response = new Token();
-        response.token = UUID.randomUUID().toString();
+        Map<String, String> queryParams = UriUtils.parseUriQueryParams(op.getUri());
+        if (queryParams.containsKey("short") && queryParams.get("short").equals("true")) {
+            response.token = Long.toString(UUID.randomUUID().getMostSignificantBits());
+        } else {
+            response.token = UUID.randomUUID().toString();
+        }
         op.setBody(response).complete();
     }
 
@@ -69,7 +78,8 @@ public class TokenService extends StatelessService {
         route.action = Action.GET;
         route.description = "Retrieves a random token";
         route.responseType = Token.class;
-
+        route.queryParams = new ArrayList<>();
+        route.queryParams.add(new QueryParam("short", "Return short token", false, "false"));
         d.documentDescription.serviceRequestRoutes
                 .put(route.action, Collections.singletonList(route));
 
