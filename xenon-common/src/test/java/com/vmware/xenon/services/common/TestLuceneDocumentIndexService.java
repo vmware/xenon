@@ -72,7 +72,6 @@ import com.vmware.xenon.common.ServiceHost;
 import com.vmware.xenon.common.ServiceHost.ServiceHostState;
 import com.vmware.xenon.common.ServiceStats;
 import com.vmware.xenon.common.ServiceStats.ServiceStat;
-import com.vmware.xenon.common.StatefulService;
 import com.vmware.xenon.common.SynchronizationTaskService;
 import com.vmware.xenon.common.TestUtilityService;
 import com.vmware.xenon.common.UriUtils;
@@ -2342,6 +2341,7 @@ public class TestLuceneDocumentIndexService {
     public void serviceVersionRetentionAndGrooming() throws Throwable {
         try {
             Utils.setTimeDriftThreshold(TimeUnit.HOURS.toMicros(1));
+            MinimalTestService.setVersionRetentionLimit(1);
             for (int i = 0; i < this.iterationCount; i++) {
                 EnumSet<ServiceOption> caps = EnumSet.of(ServiceOption.PERSISTENCE);
                 doServiceVersionGroomingValidation(caps);
@@ -2349,59 +2349,50 @@ public class TestLuceneDocumentIndexService {
             }
         } finally {
             Utils.setTimeDriftThreshold(Utils.DEFAULT_TIME_DRIFT_THRESHOLD_MICROS);
-        }
-    }
-
-    public static class MinimalTestServiceWithDefaultRetention extends StatefulService {
-        public MinimalTestServiceWithDefaultRetention() {
-            super(MinimalTestServiceState.class);
+            MinimalTestService.setVersionRetentionLimit(
+                    MinimalTestService.DEFAULT_VERSION_RETENTION_LIMIT);
         }
     }
 
     private void doServiceVersionGroomingValidation(EnumSet<ServiceOption> caps) throws Throwable {
         setUpHost(false);
+        URI documentIndexUri = UriUtils.buildUri(this.host, LuceneDocumentIndexService.SELF_LINK);
+
+        // Start some services which will live for the lifetime of the test
+        Map<URI, ExampleServiceState> exampleStates = this.host.doFactoryChildServiceStart(
+                null,
+                this.serviceCount,
+                ExampleServiceState.class,
+                (o) -> {
+                    ExampleServiceState s1 = new ExampleServiceState();
+                    s1.name = UUID.randomUUID().toString();
+                    o.setBody(s1);
+                },
+                UriUtils.buildUri(this.host, ExampleService.FACTORY_LINK));
+
+        Collection<URI> serviceUrisWithStandardRetention = exampleStates.keySet();
+
         long end = Utils.getSystemNowMicrosUtc()
                 + TimeUnit.SECONDS.toMicros(this.testDurationSeconds);
         final long offset = 10;
+        long updateCount = ExampleServiceState.VERSION_RETENTION_LIMIT + offset;
 
         do {
+            // Start some services which will live only for the current test iteration
             List<Service> services = this.host.doThroughputServiceStart(
-                    this.serviceCount, MinimalTestServiceWithDefaultRetention.class,
+                    this.serviceCount, MinimalTestService.class,
                     this.host.buildMinimalTestState(), caps,
                     null);
 
-            Collection<URI> serviceUrisWithDefaultRetention = new ArrayList<>();
+            Collection<URI> serviceUrisWithCustomRetention = new ArrayList<>();
             for (Service s : services) {
-                serviceUrisWithDefaultRetention.add(s.getUri());
+                serviceUrisWithCustomRetention.add(s.getUri());
             }
 
-            URI factoryUri = UriUtils.buildUri(this.host,
-                    ExampleService.FACTORY_LINK);
-            Map<URI, ExampleServiceState> exampleStates = this.host.doFactoryChildServiceStart(
-                    null,
-                    this.serviceCount,
-                    ExampleServiceState.class,
-                    (o) -> {
-                        ExampleServiceState s = new ExampleServiceState();
-                        s.name = UUID.randomUUID().toString();
-                        o.setBody(s);
-                    }, factoryUri);
-
-            Collection<URI> serviceUrisWithCustomRetention = exampleStates.keySet();
-            long count = ServiceDocumentDescription.DEFAULT_VERSION_RETENTION_LIMIT + offset;
-            this.host.testStart(this.serviceCount * count);
-            for (int i = 0; i < count; i++) {
-                for (URI u : serviceUrisWithDefaultRetention) {
-                    this.host.send(Operation.createPut(u)
-                            .setBody(this.host.buildMinimalTestState())
-                            .setCompletion(this.host.getCompletion()));
-                }
-            }
-            this.host.testWait();
-            count = ExampleServiceState.VERSION_RETENTION_LIMIT + offset;
-            this.host.testStart(serviceUrisWithCustomRetention.size() * count);
-            for (int i = 0; i < count; i++) {
-                for (URI u : serviceUrisWithCustomRetention) {
+            // Verify that interleaved updates to multiple services are honored
+            this.host.testStart(this.serviceCount * updateCount);
+            for (int i = 0; i < updateCount; i++) {
+                for (URI u : serviceUrisWithStandardRetention) {
                     ExampleServiceState st = new ExampleServiceState();
                     st.name = i + "";
                     this.host.send(Operation.createPut(u)
@@ -2410,28 +2401,36 @@ public class TestLuceneDocumentIndexService {
                 }
             }
             this.host.testWait();
+            long floor = ExampleServiceState.VERSION_RETENTION_FLOOR;
+            verifyVersionRetention(serviceUrisWithStandardRetention, floor, floor + offset);
 
-            Collection<URI> serviceUris = serviceUrisWithDefaultRetention;
-            long floor = ServiceDocumentDescription.DEFAULT_VERSION_RETENTION_FLOOR;
-            verifyVersionRetention(serviceUris, floor, floor + offset);
+            // Set the update count for the next iteration so that we'll stay within the retention
+            // window of the persisted documents
+            updateCount = ExampleServiceState.VERSION_RETENTION_LIMIT
+                    - ExampleServiceState.VERSION_RETENTION_FLOOR;
 
-            serviceUris = serviceUrisWithCustomRetention;
-            floor = ExampleServiceState.VERSION_RETENTION_FLOOR;
-            verifyVersionRetention(serviceUris, floor, floor + offset);
-
-            this.host.testStart(this.serviceCount);
-            for (URI u : serviceUrisWithDefaultRetention) {
-                this.host.send(Operation.createDelete(u)
-                        .setCompletion(this.host.getCompletion()));
+            // Verify that services with a low version limit of 1 are honored.
+            this.host.testStart(10 * this.serviceCount);
+            for (int i = 0; i < 10; i++) {
+                for (URI u : serviceUrisWithCustomRetention) {
+                    this.host.send(Operation.createPut(u)
+                            .setBody(this.host.buildMinimalTestState())
+                            .setCompletion(this.host.getCompletion()));
+                }
             }
             this.host.testWait();
+            verifyVersionRetention(serviceUrisWithCustomRetention, 1, 1);
 
+            // Delete the services which are specific to this iteration.
             this.host.testStart(this.serviceCount);
             for (URI u : serviceUrisWithCustomRetention) {
                 this.host.send(Operation.createDelete(u)
                         .setCompletion(this.host.getCompletion()));
             }
             this.host.testWait();
+
+            // This can be removed once we're confident these tests are stable
+            this.host.logServiceStats(documentIndexUri);
         } while (Utils.getSystemNowMicrosUtc() < end);
     }
 
