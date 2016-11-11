@@ -44,10 +44,8 @@ import java.util.stream.Stream;
 
 import com.esotericsoftware.kryo.KryoException;
 import com.esotericsoftware.kryo.io.Output;
-
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.core.SimpleAnalyzer;
 import org.apache.lucene.document.Document;
@@ -149,13 +147,19 @@ public class LuceneDocumentIndexService extends StatelessService {
 
     public static final int DEFAULT_INDEX_SEARCHER_COUNT_THRESHOLD = 200;
 
+    public static final int DEFAULT_VERSION_RETENTION_QUERY_THRESHOLD = 16;
+
     private String indexDirectory;
 
     private static int EXPIRED_DOCUMENT_SEARCH_THRESHOLD = 1000;
 
     private static int INDEX_FILE_COUNT_THRESHOLD_FOR_WRITER_REFRESH = DEFAULT_INDEX_FILE_COUNT_THRESHOLD_FOR_WRITER_REFRESH;
 
-    private static int VERSION_RETENTION_QUERY_THRESHOLD = 16;
+    private static int VERSION_RETENTION_QUERY_THRESHOLD = DEFAULT_VERSION_RETENTION_QUERY_THRESHOLD;
+
+    private static int VERSION_RETENTION_BULK_CLEANUP_THRESHOLD = 10000;
+
+    private static int VERSION_RETENTION_SERVICE_THRESHOLD = 100;
 
     public static void setIndexFileCountThresholdForWriterRefresh(int count) {
         INDEX_FILE_COUNT_THRESHOLD_FOR_WRITER_REFRESH = count;
@@ -179,6 +183,22 @@ public class LuceneDocumentIndexService extends StatelessService {
 
     public static int getVersionRetentionQueryThreshold() {
         return VERSION_RETENTION_QUERY_THRESHOLD;
+    }
+
+    public static void setVersionRetentionBulkCleanupThreshold(int count) {
+        VERSION_RETENTION_BULK_CLEANUP_THRESHOLD = count;
+    }
+
+    public static int getVersionRetentionBulkCleanupThreshold() {
+        return VERSION_RETENTION_BULK_CLEANUP_THRESHOLD;
+    }
+
+    public static void setVersionRetentionServiceThreshold(int count) {
+        VERSION_RETENTION_SERVICE_THRESHOLD = count;
+    }
+
+    public static int getVersionRetentionServiceThreshold() {
+        return VERSION_RETENTION_SERVICE_THRESHOLD;
     }
 
     private static final String LUCENE_FIELD_NAME_BINARY_SERIALIZED_STATE = "binarySerializedState";
@@ -233,6 +253,16 @@ public class LuceneDocumentIndexService extends StatelessService {
 
     public static final String STAT_NAME_MAINTENANCE_VERSION_RETENTION_DURATION_MICROS =
             "maintenanceVersionRetentionDurationMicros";
+
+    private static final String STAT_NAME_MAINTENANCE_MEMORY_LIMIT_DURATION_MICROS =
+            "maintenanceMemoryLimitDurationMicros";
+
+    private static final String STAT_NAME_MAINTENANCE_FILE_LIMIT_REFRESH_DURATION_MICROS =
+            "maintenanceFileLimitRefreshDurationMicros";
+
+    private static final String STAT_NAME_VERSION_RETENTION_SERVICE_COUNT = "versionRetentionServiceCount";
+
+    protected static final String STAT_NAME_VERSION_RETENTION_QUERY_COUNT = "versionRetentionQueryCount";
 
     private static final EnumSet<AggregationType> AGGREGATION_TYPE_AVG_MAX =
             EnumSet.of(AggregationType.AVG, AggregationType.MAX);
@@ -2131,7 +2161,7 @@ public class LuceneDocumentIndexService extends StatelessService {
             logWarning("Error deserializing state for %s: %s", link, e.getMessage());
         }
 
-        deleteAllDocumentsForSelfLink(searcher, Operation.createDelete(null), link, s);
+        deleteAllDocumentsForSelfLink(Operation.createDelete(null), link, s);
         return true;
     }
 
@@ -2152,6 +2182,10 @@ public class LuceneDocumentIndexService extends StatelessService {
         // addition of a new document means that more versions of the document are present in the
         // index than the versionRetentionLimit specified in the service document description.
         long floor = Math.max(1L, desc.versionRetentionFloor);
+        if (floor > limit) {
+            floor = limit;
+        }
+
         long chunkThreshold = Math.max(1L, limit - floor);
         if (((state.documentVersion - limit) % chunkThreshold) != 0) {
             return;
@@ -2165,8 +2199,9 @@ public class LuceneDocumentIndexService extends StatelessService {
             // clean out the index by deleting *all* old versions of a document, not just the ones
             // inside the window of the old chunk. We do this check infrequently in order to
             // amortize the cost of the more expensive query over many retention operations.
+            adjustTimeSeriesStat(STAT_NAME_VERSION_RETENTION_QUERY_COUNT, AGGREGATION_TYPE_SUM, 1);
         } else if (state.documentVersion > limit) {
-            oldestVersion = state.documentVersion - limit + 1;
+            oldestVersion = state.documentVersion - limit;
         }
 
         // Insert the document into the retention list so that the old versions can be deleted at
@@ -2209,10 +2244,9 @@ public class LuceneDocumentIndexService extends StatelessService {
         applyFileLimitRefreshWriter(true);
     }
 
-    private void deleteAllDocumentsForSelfLink(IndexSearcher s, Operation postOrDelete, String link,
-            ServiceDocument state)
-            throws Throwable {
-        deleteDocumentsFromIndex(s, postOrDelete, link, 0, Long.MAX_VALUE);
+    private void deleteAllDocumentsForSelfLink(Operation postOrDelete, String link,
+            ServiceDocument state) throws Throwable {
+        deleteDocumentsFromIndex(postOrDelete, link, 0, Long.MAX_VALUE);
         adjustTimeSeriesStat(STAT_NAME_SERVICE_DELETE_COUNT, AGGREGATION_TYPE_SUM, 1);
         logFine("%s expired", link);
         if (state == null) {
@@ -2227,8 +2261,8 @@ public class LuceneDocumentIndexService extends StatelessService {
                 .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_NO_INDEX_UPDATE));
     }
 
-    private void deleteDocumentsFromIndex(IndexSearcher s, Operation delete, String link,
-            long oldestVersion, long newestVersion) throws Throwable {
+    private void deleteDocumentsFromIndex(Operation delete, String link, long oldestVersion,
+            long newestVersion) throws Throwable {
 
         IndexWriter wr = this.writer;
         if (wr == null) {
@@ -2397,10 +2431,27 @@ public class LuceneDocumentIndexService extends StatelessService {
                     AGGREGATION_TYPE_AVG_MAX,
                     TimeUnit.NANOSECONDS.toMicros(endNanos - startNanos));
 
+            startNanos = endNanos;
             applyMemoryLimit();
-            applyIndexUpdates(w);
+            endNanos = System.nanoTime();
+            setTimeSeriesHistogramStat(STAT_NAME_MAINTENANCE_MEMORY_LIMIT_DURATION_MICROS,
+                    AGGREGATION_TYPE_AVG_MAX,
+                    TimeUnit.NANOSECONDS.toMicros(endNanos - startNanos));
 
+            startNanos = endNanos;
+            w.commit();
+            endNanos = System.nanoTime();
+            adjustTimeSeriesStat(STAT_NAME_COMMIT_COUNT, AGGREGATION_TYPE_SUM, 1);
+            setTimeSeriesHistogramStat(STAT_NAME_COMMIT_DURATION_MICROS,
+                    AGGREGATION_TYPE_AVG_MAX,
+                    TimeUnit.NANOSECONDS.toMicros(endNanos - startNanos));
+
+            startNanos = endNanos;
             applyFileLimitRefreshWriter(false);
+            endNanos = System.nanoTime();
+            setTimeSeriesHistogramStat(STAT_NAME_MAINTENANCE_FILE_LIMIT_REFRESH_DURATION_MICROS,
+                    AGGREGATION_TYPE_AVG_MAX,
+                    TimeUnit.NANOSECONDS.toMicros(endNanos - startNanos));
 
         } catch (Throwable e) {
             if (this.getHost().isStopping()) {
@@ -2410,15 +2461,6 @@ public class LuceneDocumentIndexService extends StatelessService {
             applyFileLimitRefreshWriter(true);
             throw e;
         }
-    }
-
-    void applyIndexUpdates(IndexWriter w) throws IOException {
-        long startNanos = System.nanoTime();
-        w.commit();
-        long durationNanos = System.nanoTime() - startNanos;
-        setTimeSeriesHistogramStat(STAT_NAME_COMMIT_DURATION_MICROS, AGGREGATION_TYPE_AVG_MAX,
-                TimeUnit.NANOSECONDS.toMicros(durationNanos));
-        adjustTimeSeriesStat(STAT_NAME_COMMIT_COUNT, AGGREGATION_TYPE_SUM, 1);
     }
 
     private void applyFileLimitRefreshWriter(boolean force) {
@@ -2502,28 +2544,41 @@ public class LuceneDocumentIndexService extends StatelessService {
     }
 
     private void applyDocumentVersionRetentionPolicy() throws Throwable {
-        Operation dummyDelete = Operation.createDelete(null);
-        int count = 0;
         Map<String, DocumentRetentionRecord> links = new HashMap<>();
+        Iterator<Entry<String, DocumentRetentionRecord>> it;
+        int count = 0;
         synchronized (this.documentRetentionInfo) {
-            links.putAll(this.documentRetentionInfo);
-            this.documentRetentionInfo.clear();
+            int size = this.documentRetentionInfo.size();
+            if (size > VERSION_RETENTION_BULK_CLEANUP_THRESHOLD) {
+                links.putAll(this.documentRetentionInfo);
+                this.documentRetentionInfo.clear();
+            } else {
+                it = this.documentRetentionInfo.entrySet().iterator();
+                while (it.hasNext() && count < VERSION_RETENTION_SERVICE_THRESHOLD) {
+                    Entry<String, DocumentRetentionRecord> e = it.next();
+                    links.put(e.getKey(), e.getValue());
+                    it.remove();
+                    count++;
+                }
+            }
         }
 
+        if (links.isEmpty()) {
+            return;
+        }
+
+        setTimeSeriesStat(STAT_NAME_VERSION_RETENTION_SERVICE_COUNT, AGGREGATION_TYPE_SUM,
+                links.size());
+
+        Operation dummyDelete = Operation.createDelete(null);
         for (Entry<String, DocumentRetentionRecord> e : links.entrySet()) {
             IndexWriter wr = this.writer;
             if (wr == null) {
                 return;
             }
-            IndexSearcher s = createOrRefreshSearcher(null, Integer.MAX_VALUE, wr, false);
             DocumentRetentionRecord record = e.getValue();
-            deleteDocumentsFromIndex(s, dummyDelete, e.getKey(), record.oldestVersion,
+            deleteDocumentsFromIndex(dummyDelete, e.getKey(), record.oldestVersion,
                     record.newestVersion);
-            count++;
-        }
-
-        if (!links.isEmpty()) {
-            logInfo("Applied retention policy to %d links", count);
         }
     }
 
