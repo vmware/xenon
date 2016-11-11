@@ -70,6 +70,18 @@ public interface NodeSelectorService extends Service {
             EXCLUDE_ENTRY_NODE
         }
 
+        public static final EnumSet<ForwardingOption> REPLICATION_OPTIONS = EnumSet
+                .of(ForwardingOption.BROADCAST, ForwardingOption.REPLICATE);
+
+        public static final EnumSet<ForwardingOption> UNICAST_OPTIONS = EnumSet
+                .of(ForwardingOption.UNICAST);
+
+        public static final EnumSet<ForwardingOption> BROADCAST_OPTIONS = EnumSet
+                .of(ForwardingOption.BROADCAST);
+
+        public static final EnumSet<ForwardingOption> BROADCAST_OPTIONS_EXCLUDE_ENTRY_NODE = EnumSet
+                .of(ForwardingOption.BROADCAST, ForwardingOption.EXCLUDE_ENTRY_NODE);
+
         /**
          * Key used in the assignment scheme.
          */
@@ -126,22 +138,27 @@ public interface NodeSelectorService extends Service {
         public long membershipUpdateTimeMicros;
 
         public static URI buildUriToOwner(SelectOwnerResponse rsp, String path, String query) {
-            return UriUtils.buildUri(rsp.ownerNodeGroupReference.getScheme(),
-                    rsp.ownerNodeGroupReference.getHost(), rsp.ownerNodeGroupReference.getPort(), path,
-                    query);
+            return UriUtils.buildServiceUri(rsp.ownerNodeGroupReference.getScheme(),
+                    rsp.ownerNodeGroupReference.getHost(), rsp.ownerNodeGroupReference.getPort(),
+                    path, query, null);
         }
 
         public static URI buildUriToOwner(SelectOwnerResponse rsp, Operation op) {
-            return UriUtils.buildUri(rsp.ownerNodeGroupReference.getScheme(),
-                    rsp.ownerNodeGroupReference.getHost(), rsp.ownerNodeGroupReference.getPort(), op
-                    .getUri().getPath(), op.getUri().getQuery());
+            return UriUtils.buildServiceUri(rsp.ownerNodeGroupReference.getScheme(),
+                    rsp.ownerNodeGroupReference.getHost(), rsp.ownerNodeGroupReference.getPort(),
+                    op.getUri().getPath(), op.getUri().getQuery(), null);
         }
     }
 
     /**
      * Returns the node group path associated with this selector
      */
-    String getNodeGroup();
+    String getNodeGroupPath();
 
+    /**
+     * Selects an available node as the owner for the supplied key. The supplied operation
+     * is forwarded to the owner node if {@link SelectAndForwardRequest#targetPath} is set.
+     * Note: The body should be cloned before queuing or using in a different thread context
+     */
     void selectAndForward(Operation op, SelectAndForwardRequest body);
 }
