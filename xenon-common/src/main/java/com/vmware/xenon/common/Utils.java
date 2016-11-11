@@ -180,8 +180,8 @@ public final class Utils {
      * while others use the user supplied ones
      * @param kryoThreadLocal Thread local variable that supplies the KRYO instance
      * @param isDocumentSerializer True if instance should by used for
-     * {@link Utils#toDocumentBytes(Object, byte[], int)} and
-     * {@link Utils#fromDocumentBytes(byte[], int, int)}
+     * {@link Utils#toBytes(Object, byte[], int)} and
+     * {@link Utils#fromBytes(byte[], int, int)}
      */
     public static void registerCustomKryoSerializer(ThreadLocal<Kryo> kryoThreadLocal,
             boolean isDocumentSerializer) {
@@ -211,12 +211,24 @@ public final class Utils {
                 }
             }
 
+            // Calculate hash of all non-excluded fields, to make sure the following:
+            // {a='1', b=null} != {a=null, b='1'}
             Object fieldValue = ReflectionUtils.getPropertyValue(pd, s);
-            if (pd.typeName == TypeName.COLLECTION
-                    || pd.typeName == TypeName.MAP
-                    || pd.typeName == TypeName.PODO) {
+            if (fieldValue == null) {
+                hash = FNVHash.compute(-1, hash);
+                continue;
+            }
+
+            switch (pd.typeName) {
+            case STRING:
+                hash = FNVHash.compute((String) fieldValue, hash);
+                break;
+            case COLLECTION:
+            case MAP:
+            case PODO:
                 hash = Utils.hashJson(fieldValue, hash);
-            } else if (fieldValue != null) {
+                break;
+            default:
                 int position = Utils.toBytes(fieldValue, buffer, 0);
                 hash = FNVHash.compute(buffer, 0, position, hash);
             }
@@ -427,7 +439,7 @@ public final class Utils {
     }
 
     public static String toDocumentKind(Class<?> type) {
-        return type.getCanonicalName().replace(".", ":");
+        return type.getCanonicalName().replace('.', ':');
     }
 
     /**
@@ -435,7 +447,7 @@ public final class Utils {
      * will use for all services with that state type
      */
     public static String registerKind(Class<?> type, String kind) {
-        return KINDS.put(type.getCanonicalName(), kind);
+        return KINDS.put(type.getName(), kind);
     }
 
     /**
@@ -443,7 +455,7 @@ public final class Utils {
      * mapping. The mapping can be overridden with {@code Utils#registerKind(Class, String)}
      */
     public static String buildKind(Class<?> type) {
-        return KINDS.computeIfAbsent(type.getCanonicalName(), name -> toDocumentKind(type));
+        return KINDS.computeIfAbsent(type.getName(), name -> toDocumentKind(type));
     }
 
     public static ServiceErrorResponse toServiceErrorResponse(Throwable e) {
@@ -1174,7 +1186,17 @@ public final class Utils {
             previousTimeValue.compareAndSet(time + 1, now);
             return previousTimeValue.getAndIncrement();
         } else if (time - now > timeDriftThresholdMicros) {
-            throw new IllegalStateException("Time drift is " + (time - now));
+            Throwable e = new IllegalStateException("Time drift is " + (time - now));
+            log(Utils.class, Utils.class.getSimpleName(), Level.SEVERE, "%s",
+                    Utils.toString(e));
+
+            // Sleep to let the system catchup
+            // TODO find better way to avoid drift
+            try {
+                TimeUnit.MICROSECONDS.sleep(time - now);
+            } catch (InterruptedException t) {
+                Thread.currentThread().interrupt();
+            }
         }
 
         return time;

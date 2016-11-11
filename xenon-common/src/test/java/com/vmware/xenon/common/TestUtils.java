@@ -15,6 +15,7 @@ package com.vmware.xenon.common;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
@@ -982,5 +983,54 @@ public class TestUtils {
         gzip.write(str.getBytes(Utils.CHARSET));
         gzip.close();
         return out.toByteArray();
+    }
+
+    @Test
+    public void testTimeDrift() throws Exception {
+        Utils.setTimeDriftThreshold(TimeUnit.SECONDS.toMicros(2));
+        final long timeDriftThresholdMillis = TimeUnit.SECONDS.toMillis(1);
+        final long timeout = System.currentTimeMillis() + TimeUnit.MINUTES.toMillis(1);
+        while (true) {
+            long startMillis = System.currentTimeMillis();
+            Utils.getNowMicrosUtc();
+            long endMillis = System.currentTimeMillis();
+
+            if (endMillis - startMillis > timeDriftThresholdMillis) {
+                return;
+            }
+
+            assertTrue(endMillis < timeout);
+        }
+    }
+
+    public static class TestInvalidComputerSignatureState extends ServiceDocument {
+        public String key1;
+        public String key2;
+    }
+
+    @Test
+    public void testComputeSignature() throws Exception {
+        ServiceDocumentDescription sdd = TestUtils.buildStateDescription(
+                TestInvalidComputerSignatureState.class, null);
+
+        TestInvalidComputerSignatureState state1 = new TestInvalidComputerSignatureState();
+        state1.key1 = "1";
+        state1.key2 = null;
+
+        TestInvalidComputerSignatureState state2 = new TestInvalidComputerSignatureState();
+        state2.key1 = null;
+        state2.key2 = "1";
+
+        TestInvalidComputerSignatureState state3 = new TestInvalidComputerSignatureState();
+        state3.key1 = "1";
+        state3.key2 = "";
+
+        String sign1 = Utils.computeSignature(state1, sdd);
+        String sign2 = Utils.computeSignature(state2, sdd);
+        String sign3 = Utils.computeSignature(state3, sdd);
+
+        assertNotEquals(sign1, sign2);
+        assertNotEquals(sign2, sign3);
+        assertNotEquals(sign1, sign3);
     }
 }
