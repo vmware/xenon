@@ -123,43 +123,6 @@ public class TestLuceneDocumentIndexService {
         }
     }
 
-    public static class MinimalTestServiceWithCustomRetention extends StatefulService {
-
-        public static final String FACTORY_LINK = "test/custom-retention-services";
-
-        private static long VERSION_RETENTION_LIMIT = 10;
-        private static long VERSION_RETENTION_FLOOR = 2;
-
-        public MinimalTestServiceWithCustomRetention() {
-            super(MinimalTestServiceState.class);
-            super.toggleOption(ServiceOption.PERSISTENCE, true);
-        }
-
-        public static void setVersionRetentionLimit(long versionRetentionLimit) {
-            VERSION_RETENTION_LIMIT = versionRetentionLimit;
-        }
-
-        public static long getVersionRetentionLimit() {
-            return VERSION_RETENTION_LIMIT;
-        }
-
-        public static void setVersionRetentionFloor(long versionRetentionFloor) {
-            VERSION_RETENTION_FLOOR = versionRetentionFloor;
-        }
-
-        public static long getVersionRetentionFloor() {
-            return VERSION_RETENTION_FLOOR;
-        }
-
-        @Override
-        public ServiceDocument getDocumentTemplate() {
-            ServiceDocument template = super.getDocumentTemplate();
-            template.documentDescription.versionRetentionLimit = VERSION_RETENTION_LIMIT;
-            template.documentDescription.versionRetentionFloor = VERSION_RETENTION_FLOOR;
-            return template;
-        }
-    }
-
     /**
      * Parameter that specifies number of durable service instances to create
      */
@@ -205,13 +168,13 @@ public class TestLuceneDocumentIndexService {
      * Parameter that specifies the version retention limit for {@link MinimalTestService}
      * documents.
      */
-    public long retentionLimit = MinimalTestService.DEFAULT_VERSION_RETENTION_LIMIT;
+    public Long retentionLimit = MinimalTestService.DEFAULT_VERSION_RETENTION_LIMIT;
 
     /**
      * Parameter that specifies the version retention floor for {@link MinimalTestService}
      * documents.
      */
-    public long retentionFloor = MinimalTestService.DEFAULT_VERSION_RETENTION_FLOOR;
+    public Long retentionFloor = MinimalTestService.DEFAULT_VERSION_RETENTION_FLOOR;
 
     /**
      * Parameter that specifies whether instrumentation is enabled for the
@@ -1692,25 +1655,6 @@ public class TestLuceneDocumentIndexService {
     }
 
     @Test
-    public void throughputPut() throws Throwable {
-        long limit = MinimalTestServiceWithCustomRetention.getVersionRetentionLimit();
-        long floor = MinimalTestServiceWithCustomRetention.getVersionRetentionFloor();
-        try {
-            setUpHost(false);
-            MinimalTestServiceWithCustomRetention.setVersionRetentionLimit(this.retentionLimit);
-            MinimalTestServiceWithCustomRetention.setVersionRetentionFloor(this.retentionFloor);
-            if (this.host.isStressTest()) {
-                Utils.setTimeDriftThreshold(TimeUnit.HOURS.toMicros(1));
-            }
-            doDurableServiceUpdate(Action.PUT, this.serviceCount, this.updateCount, null);
-        } finally {
-            Utils.setTimeDriftThreshold(Utils.DEFAULT_TIME_DRIFT_THRESHOLD_MICROS);
-            MinimalTestServiceWithCustomRetention.setVersionRetentionLimit(limit);
-            MinimalTestServiceWithCustomRetention.setVersionRetentionFloor(floor);
-        }
-    }
-
-    @Test
     public void putWithFailureAndCacheValidation() throws Throwable {
         setUpHost(false);
         List<Service> services = this.host.doThroughputServiceStart(
@@ -2523,6 +2467,25 @@ public class TestLuceneDocumentIndexService {
         throw new TimeoutException();
     }
 
+    @Test
+    public void throughputPut() throws Throwable {
+        long limit = MinimalTestService.getVersionRetentionLimit();
+        long floor = MinimalTestService.getVersionRetentionFloor();
+        try {
+            setUpHost(false);
+            MinimalTestService.setVersionRetentionLimit(this.retentionLimit);
+            MinimalTestService.setVersionRetentionFloor(this.retentionFloor);
+            if (this.host.isStressTest()) {
+                Utils.setTimeDriftThreshold(TimeUnit.HOURS.toMicros(1));
+            }
+            doDurableServiceUpdate(Action.PUT, this.serviceCount, this.updateCount, null);
+        } finally {
+            Utils.setTimeDriftThreshold(Utils.DEFAULT_TIME_DRIFT_THRESHOLD_MICROS);
+            MinimalTestService.setVersionRetentionLimit(limit);
+            MinimalTestService.setVersionRetentionFloor(floor);
+        }
+    }
+
     private void doDurableServiceUpdate(Action action, long serviceCount,
             Integer putCount,
             EnumSet<ServiceOption> caps) throws Throwable {
@@ -2539,7 +2502,7 @@ public class TestLuceneDocumentIndexService {
         }
 
         List<Service> services = this.host.doThroughputServiceStart(
-                serviceCount, MinimalTestServiceWithCustomRetention.class,
+                serviceCount, MinimalTestService.class,
                 this.host.buildMinimalTestState(), caps, null);
 
         long count = this.host.computeIterationsFromMemory(props, (int) serviceCount);

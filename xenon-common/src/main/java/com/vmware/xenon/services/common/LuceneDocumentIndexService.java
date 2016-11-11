@@ -2685,10 +2685,6 @@ public class LuceneDocumentIndexService extends StatelessService {
         }
     }
 
-    private void addStoredOnlyField(Document doc, String propertyName, long value) {
-        doc.add(new StoredField(propertyName, value));
-    }
-
     static void addNumericField(Document doc, String propertyName, long propertyValue,
             boolean stored) {
         // StoredField is used if the property needs to be stored in the lucene document
