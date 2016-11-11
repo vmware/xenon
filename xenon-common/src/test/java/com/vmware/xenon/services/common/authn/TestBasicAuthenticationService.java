@@ -71,6 +71,7 @@ public class TestBasicAuthenticationService extends BasicTestCase {
             // initialize users
             UserState state = new UserState();
             state.email = USER;
+            state.documentSelfLink = USER;
             AuthCredentialsServiceState authServiceState = new AuthCredentialsServiceState();
             authServiceState.userEmail = USER;
             authServiceState.privateKey = PASSWORD;
@@ -295,7 +296,40 @@ public class TestBasicAuthenticationService extends BasicTestCase {
                             this.host.completeIteration();
                         }));
         this.host.testWait();
-
+        // delete the user and issue a remote request as the user
+        // we should see a 200 response as xenon invokes this
+        // request with the guest context
+        this.host.setSystemAuthorizationContext();
+        this.host.sendAndWait(
+                Operation.createDelete(UriUtils.buildUri(this.host,
+                        UriUtils.buildUriPath(UserService.FACTORY_LINK, USER)))
+                .setCompletion((o, e) -> {
+                    if (e != null) {
+                        this.host.failIteration(e);
+                        return;
+                    }
+                    this.host.completeIteration();
+                }));
+        this.host.resetSystemAuthorizationContext();
+        this.host.assumeIdentity(UriUtils.buildUriPath(UserService.FACTORY_LINK, USER));
+        this.host.testStart(1);
+        this.host.send(Operation
+                .createGet(UriUtils.buildUri(this.host, UserService.FACTORY_LINK))
+                 .forceRemote()
+                .setCompletion(
+                        (o, e) -> {
+                            if (e != null) {
+                                this.host.failIteration(e);
+                                return;
+                            }
+                            if (o.getStatusCode() != Operation.STATUS_CODE_OK) {
+                                this.host.failIteration(new IllegalStateException(
+                                        "Invalid status code returned"));
+                                return;
+                            }
+                            this.host.completeIteration();
+                        }));
+        this.host.testWait();
     }
 
     @Test
