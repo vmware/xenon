@@ -79,9 +79,14 @@ public final class UriUtils {
     public static final String FIELD_NAME_FACTORY_LINK = "FACTORY_LINK";
 
     public static final Pattern pathParamPattern = Pattern.compile(URI_PATH_PARAM_REGEX);
+    private static final Pattern TRIM_PATH_SLASHES_PATTERN = Pattern.compile("^/*|/*$");
+
+    private static final char URI_PATH_CHAR_CONST = '/';
+    private static final char URI_QUERY_CHAR_CONST = '?';
+    private static final char URI_QUERY_PARAM_LINK_CHAR_CONST = '&';
+    private static final char URI_QUERY_PARAM_KV_CHAR_CONST = '=';
 
     private UriUtils() {
-
     }
 
     /**
@@ -92,7 +97,7 @@ public final class UriUtils {
      *         {@code "/"}.
      */
     public static String getParentPath(String path) {
-        int parentPathIndex = path.lastIndexOf(UriUtils.URI_PATH_CHAR);
+        int parentPathIndex = path.lastIndexOf(URI_PATH_CHAR_CONST);
         if (parentPathIndex > 0) {
             return path.substring(0, parentPathIndex);
         }
@@ -181,15 +186,16 @@ public final class UriUtils {
     public static URI extendUri(URI uri, String path) {
         String query = null;
         if (path != null) {
-            final int indexOfFirstQueryChar = path.indexOf(UriUtils.URI_QUERY_CHAR);
+            final int indexOfFirstQueryChar = path.indexOf(URI_QUERY_CHAR_CONST);
             if (indexOfFirstQueryChar >= 0) {
                 if (indexOfFirstQueryChar < path.length() - 1) {
-                    query = path.substring(indexOfFirstQueryChar + 1, path.length());
+                    query = path.substring(indexOfFirstQueryChar + 1);
                 }
                 path = path.substring(0, indexOfFirstQueryChar);
             }
         }
-        return buildUri(uri.getScheme(), uri.getHost(), uri.getPort(), normalizeUriPath(uri.getPath()) + normalizeUriPath(path), query);
+        return buildUri(uri.getScheme(), uri.getHost(), uri.getPort(),
+                buildUriPath(uri.getPath(), path), query);
     }
 
     public static URI buildUri(String host, int port, String path, String query) {
@@ -227,16 +233,15 @@ public final class UriUtils {
     public static URI buildUri(String scheme, String host, int port, String path, String query, String userInfo) {
         try {
             if (path != null) {
-                final int indexOfFirstQueryChar = path.indexOf(UriUtils.URI_QUERY_CHAR);
+                final int indexOfFirstQueryChar = path.indexOf(URI_QUERY_CHAR_CONST);
                 if (indexOfFirstQueryChar >= 0) {
                     if (indexOfFirstQueryChar < path.length() - 1) {
-                        query = path.substring(indexOfFirstQueryChar + 1, path.length());
+                        query = path.substring(indexOfFirstQueryChar + 1);
                     }
                     path = path.substring(0, indexOfFirstQueryChar);
                 }
             }
-            path = normalizeUriPath(path);
-            return new URI(scheme, userInfo, host, port, path, query, null).normalize();
+            return new URI(scheme, userInfo, host, port, normalizeUriPath(path), query, null).normalize();
         } catch (URISyntaxException e) {
             Utils.log(UriUtils.class, Utils.class.getSimpleName(), Level.SEVERE, "%s",
                     Utils.toString(e));
@@ -260,8 +265,25 @@ public final class UriUtils {
         }
         if (path.startsWith(URI_PATH_CHAR)) {
             return path;
-        } else {
-            return URI_PATH_CHAR + path;
+        }
+        return URI_PATH_CHAR + path;
+    }
+
+    private static void normalizeUriPathTo(String path, StringBuilder sb) {
+        if (path == null || path.isEmpty()) {
+            return;
+        }
+
+        if (path.charAt(0) != URI_PATH_CHAR_CONST) {
+            sb.append(URI_PATH_CHAR_CONST);
+        }
+
+        sb.append(path);
+
+        int lastIndex = sb.length() - 1;
+        if (sb.charAt(lastIndex) == URI_PATH_CHAR_CONST) {
+            // Trim trailing slash
+            sb.setLength(lastIndex);
         }
     }
 
@@ -271,14 +293,9 @@ public final class UriUtils {
         }
         StringBuilder sb = new StringBuilder();
         for (String s : segments) {
-            s = normalizeUriPath(s);
-            if (s.endsWith(URI_PATH_CHAR)) {
-                sb.append(s.substring(0, s.length() - 1));
-            } else {
-                sb.append(s);
-            }
+            normalizeUriPathTo(s, sb);
         }
-        return normalizeUriPath(sb.toString());
+        return sb.toString();
     }
 
     public static String buildUriQuery(String... keyValues) {
@@ -293,11 +310,11 @@ public final class UriUtils {
         for (String s : keyValues) {
             if (doKey) {
                 if (!isFirst) {
-                    sb.append("&");
+                    sb.append(URI_QUERY_PARAM_LINK_CHAR_CONST);
                 } else {
                     isFirst = false;
                 }
-                sb.append(s).append("=");
+                sb.append(s).append(URI_QUERY_PARAM_KV_CHAR_CONST);
             } else {
                 sb.append(s);
             }
@@ -339,19 +356,19 @@ public final class UriUtils {
      * from the path argument
      */
     public static URI buildUri(URI baseUri, String... path) {
-        String query = null;
-        String buildPath = null;
         if (path == null || path.length == 0) {
             return baseUri;
         }
+        String query = null;
+        StringBuilder buildPath = null;
         for (String p : path) {
             if (p == null) {
                 continue;
             }
-            final int indexOfFirstQueryChar = p.indexOf(UriUtils.URI_QUERY_CHAR);
+            final int indexOfFirstQueryChar = p.indexOf(URI_QUERY_CHAR_CONST);
             if (indexOfFirstQueryChar >= 0) {
                 if (indexOfFirstQueryChar < p.length() - 1) {
-                    final String curQuery = p.substring(indexOfFirstQueryChar + 1, p.length());
+                    final String curQuery = p.substring(indexOfFirstQueryChar + 1);
                     if (query == null) {
                         query = curQuery;
                     } else {
@@ -360,17 +377,15 @@ public final class UriUtils {
                 }
                 p = p.substring(0, indexOfFirstQueryChar);
             }
-            p = normalizeUriPath(p);
             if (buildPath == null) {
-                buildPath = p;
-            } else {
-                buildPath += p;
+                buildPath = new StringBuilder();
             }
+            normalizeUriPathTo(p, buildPath);
         }
 
         try {
             return new URI(baseUri.getScheme(), baseUri.getUserInfo(), baseUri.getHost(),
-                    baseUri.getPort(), buildPath, query, null).normalize();
+                    baseUri.getPort(), buildPath == null ? null : buildPath.toString(), query, null).normalize();
         } catch (Throwable e) {
             Utils.log(Utils.class, Utils.class.getSimpleName(), Level.SEVERE,
                     "Failure building uri %s, %s: %s", baseUri, path,
@@ -393,22 +408,21 @@ public final class UriUtils {
     }
 
     public static URI extendUriWithQuery(URI u, String... keyValues) {
-        StringBuilder sb = new StringBuilder();
-        if (u.getQuery() != null) {
-            sb.append("&");
+        String query = u.getQuery();
+        if (query != null && !query.isEmpty()) {
+            query += URI_QUERY_PARAM_LINK_CHAR_CONST + buildUriQuery(keyValues);
+        } else {
+            query = buildUriQuery(keyValues);
         }
-        sb.append(buildUriQuery(keyValues));
 
         try {
-            String query = u.getQuery() == null ? sb.toString() : u.getQuery() + sb.toString();
-            u = new URI(u.getScheme(), null, u.getHost(),
+            return new URI(u.getScheme(), null, u.getHost(),
                     u.getPort(), u.getPath(), query, null);
-            return u;
         } catch (URISyntaxException e) {
             Utils.log(UriUtils.class, Utils.class.getSimpleName(), Level.SEVERE, "%s",
                     Utils.toString(e));
-            return null;
         }
+        return null;
     }
 
     public static URI buildDocumentQueryUri(ServiceHost host,
@@ -486,36 +500,33 @@ public final class UriUtils {
     }
 
     public static URI appendQueryParam(URI uri, String param, String value) {
-        List<String> queryArgs = new ArrayList<>();
-        queryArgs.add(param);
-        queryArgs.add(value);
-        return extendUriWithQuery(uri, queryArgs.toArray(new String[queryArgs.size()]));
+        return extendUriWithQuery(uri, param, value);
     }
 
     public static Map<String, String> parseUriQueryParams(URI uri) {
-        Map<String, String> params = new HashMap<String, String>();
         String query = uri.getQuery();
         if (query == null || query.isEmpty()) {
-            return params;
+            return new HashMap<>();
         }
 
         String[] keyValuePairs = query.split(URI_QUERY_PARAM_LINK_CHAR);
+        Map<String, String> params = new HashMap<>(keyValuePairs.length);
         for (String kvPair : keyValuePairs) {
-            String[] kvSplit = kvPair.split(URI_QUERY_PARAM_KV_CHAR);
-            if (kvSplit.length < 2) {
+            String key;
+            String value;
+            int i = kvPair.indexOf(URI_QUERY_PARAM_KV_CHAR_CONST);
+            if (i != -1) {
+                key = kvPair.substring(0, i);
+                value = kvPair.substring(i + 1);
+            } else {
+                key = kvPair;
+                value = "";
+            }
+
+            if (key.isEmpty()) {
                 continue;
             }
-            String key = kvSplit[0];
-            String value = kvSplit[1];
-            if (kvSplit.length > 2) {
-                StringBuilder sb = new StringBuilder();
-                sb.append(value);
-                for (int i = 2; i < kvSplit.length; i++) {
-                    sb.append(URI_QUERY_PARAM_KV_CHAR);
-                    sb.append(kvSplit[i]);
-                }
-                value = sb.toString();
-            }
+
             params.put(key, value);
         }
         return params;
@@ -540,8 +551,6 @@ public final class UriUtils {
 
         String[] pathSplit = path.split(URI_PATH_CHAR);
         String[] templatePathSplit = templatePath.split(URI_PATH_CHAR);
-
-
 
         for (int index = 0; index < templatePathSplit.length && index < pathSplit.length; index++) {
             String templateStr = templatePathSplit[index];
@@ -595,18 +604,17 @@ public final class UriUtils {
      * If the key argument is supplied, it is used instead
      */
     public static URI buildForwardRequestUri(URI targetService, String key, String selectorPath) {
-        URI u = UriUtils.buildUri(targetService, UriUtils.buildUriPath(
-                selectorPath,
-                ServiceUriPaths.SERVICE_URI_SUFFIX_FORWARDING));
         if (key == null) {
             key = targetService.getPath();
         }
+        URI u = UriUtils.buildUri(targetService, UriUtils.buildUriPath(
+                selectorPath,
+                ServiceUriPaths.SERVICE_URI_SUFFIX_FORWARDING));
 
-        u = UriUtils.extendUriWithQuery(u, FORWARDING_URI_PARAM_NAME_PATH,
+        return UriUtils.extendUriWithQuery(u, FORWARDING_URI_PARAM_NAME_PATH,
                 key,
                 FORWARDING_URI_PARAM_NAME_TARGET,
                 ForwardingTarget.KEY_HASH.toString());
-        return u;
     }
 
     public static URI buildForwardToPeerUri(URI targetService, String peerId, String selectorPath,
@@ -617,11 +625,9 @@ public final class UriUtils {
         String query = targetService.getQuery();
         if (query == null) {
             query = "";
-        } else {
-            query += "";
         }
 
-        u = UriUtils.extendUriWithQuery(u, FORWARDING_URI_PARAM_NAME_PEER,
+        return UriUtils.extendUriWithQuery(u, FORWARDING_URI_PARAM_NAME_PEER,
                 peerId,
                 FORWARDING_URI_PARAM_NAME_PATH,
                 targetService.getPath(),
@@ -629,7 +635,6 @@ public final class UriUtils {
                 query,
                 FORWARDING_URI_PARAM_NAME_TARGET,
                 ForwardingTarget.PEER_ID.toString());
-        return u;
     }
 
     /**
@@ -640,11 +645,10 @@ public final class UriUtils {
     public static URI buildBroadcastRequestUri(URI targetService, String selectorPath) {
         URI u = UriUtils.buildUri(targetService, UriUtils.buildUriPath(selectorPath,
                 ServiceUriPaths.SERVICE_URI_SUFFIX_FORWARDING));
-        u = UriUtils.extendUriWithQuery(u, FORWARDING_URI_PARAM_NAME_PATH,
+        return UriUtils.extendUriWithQuery(u, FORWARDING_URI_PARAM_NAME_PATH,
                 targetService.getPath(),
                 FORWARDING_URI_PARAM_NAME_TARGET,
                 ForwardingTarget.ALL.toString());
-        return u;
     }
 
     /**
@@ -656,14 +660,13 @@ public final class UriUtils {
             String selectorPath, String selectionKey) {
         URI u = UriUtils.buildUri(targetService, UriUtils.buildUriPath(selectorPath,
                 ServiceUriPaths.SERVICE_URI_SUFFIX_FORWARDING));
-        u = UriUtils.extendUriWithQuery(u,
+        return UriUtils.extendUriWithQuery(u,
                 FORWARDING_URI_PARAM_NAME_KEY,
                 selectionKey,
                 FORWARDING_URI_PARAM_NAME_PATH,
                 targetService.getPath(),
                 FORWARDING_URI_PARAM_NAME_TARGET,
                 ForwardingTarget.ALL.toString());
-        return u;
     }
 
     public static URI updateUriPort(URI uri, int newPort) {
@@ -718,7 +721,7 @@ public final class UriUtils {
 
     public static boolean getODataCountParamValue(URI uri) {
         String paramValue = getODataParamValueAsString(uri, URI_PARAM_ODATA_COUNT);
-        return Boolean.valueOf(paramValue);
+        return Boolean.parseBoolean(paramValue);
     }
 
     public static Integer getODataLimitParamValue(URI uri) {
@@ -853,19 +856,17 @@ public final class UriUtils {
      *     /core/examples?expand&count=1 -> core-examples
      */
     public static String convertPathCharsFromLink(String path) {
-        String uriPath;
         try {
-            uriPath = (new URI(path)).getPath();
+            String uriPath = (new URI(path)).getPath();
+            return trimPathSlashes(uriPath).replace(URI_PATH_CHAR_CONST, '-');
         } catch (URISyntaxException ex) {
             return null;
         }
-        return UriUtils.trimPathSlashes(uriPath)
-                .replace('/', '-');
     }
 
     public static String trimPathSlashes(String path) {
         // removes beginning and trailing slashes from a URI path.
-        return path.replaceAll("^/*|/*$", "");
+        return TRIM_PATH_SLASHES_PATTERN.matcher(path).replaceAll("");
     }
 
     public static boolean hasODataExpandParamValue(URI uri) {
@@ -874,11 +875,8 @@ public final class UriUtils {
             return false;
         }
 
-        boolean doExpand = query.contains(UriUtils.URI_PARAM_ODATA_EXPAND);
-        if (!doExpand) {
-            doExpand = query.contains(UriUtils.URI_PARAM_ODATA_EXPAND_NO_DOLLAR_SIGN);
-        }
-        return doExpand;
+        return query.contains(UriUtils.URI_PARAM_ODATA_EXPAND)
+                || query.contains(UriUtils.URI_PARAM_ODATA_EXPAND_NO_DOLLAR_SIGN);
     }
 
     /**
