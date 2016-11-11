@@ -126,15 +126,15 @@ public interface NodeSelectorService extends Service {
         public long membershipUpdateTimeMicros;
 
         public static URI buildUriToOwner(SelectOwnerResponse rsp, String path, String query) {
-            return UriUtils.buildUri(rsp.ownerNodeGroupReference.getScheme(),
-                    rsp.ownerNodeGroupReference.getHost(), rsp.ownerNodeGroupReference.getPort(), path,
-                    query);
+            return UriUtils.buildServiceUri(rsp.ownerNodeGroupReference.getScheme(),
+                    rsp.ownerNodeGroupReference.getHost(), rsp.ownerNodeGroupReference.getPort(),
+                    path, query, null);
         }
 
         public static URI buildUriToOwner(SelectOwnerResponse rsp, Operation op) {
-            return UriUtils.buildUri(rsp.ownerNodeGroupReference.getScheme(),
-                    rsp.ownerNodeGroupReference.getHost(), rsp.ownerNodeGroupReference.getPort(), op
-                    .getUri().getPath(), op.getUri().getQuery());
+            return UriUtils.buildServiceUri(rsp.ownerNodeGroupReference.getScheme(),
+                    rsp.ownerNodeGroupReference.getHost(), rsp.ownerNodeGroupReference.getPort(),
+                    op.getUri().getPath(), op.getUri().getQuery(), null);
         }
     }
 

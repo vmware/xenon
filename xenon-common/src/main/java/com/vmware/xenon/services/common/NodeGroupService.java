@@ -20,7 +20,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
-import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -130,7 +130,7 @@ public class NodeGroupService extends StatefulService {
          * The map of peer nodes, updated through random probing of a limited number of peers and
          * two way state merges
          */
-        public Map<String, NodeState> nodes = new ConcurrentSkipListMap<>();
+        public Map<String, NodeState> nodes = new ConcurrentHashMap<>();
         /**
          * The maximum value among all reported times from the peers. If one peer has significant
          * time drift compared to others, this value will appears in the future or past, compared to local time.
