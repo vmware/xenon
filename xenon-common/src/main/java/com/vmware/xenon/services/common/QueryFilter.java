@@ -120,10 +120,7 @@ public class QueryFilter {
             this.negate = negate;
 
             if (term.matchType == MatchType.WILDCARD) {
-                String normalize = term.matchValue
-                        .replace("*", ".*")
-                        .replace("+", ".+");
-                String regex = "^(" + normalize + ")$";
+                String regex = wildcardToRegex(term.matchValue);
                 this.pattern = Pattern.compile(regex);
             } else {
                 this.pattern = null;
@@ -134,6 +131,46 @@ public class QueryFilter {
             List<String> tmp = Arrays.asList(this.term.propertyName
                     .split(QueryTask.QuerySpecification.FIELD_NAME_REGEXP));
             this.propertyParts = Collections.unmodifiableList(tmp);
+        }
+
+        private static String wildcardToRegex(String wildcard) {
+            int len = wildcard.length();
+            StringBuilder sb = new StringBuilder(len + 10);
+            sb.append('^');
+            for (int i = 0; i < len; i++) {
+                char c = wildcard.charAt(i);
+                switch (c) {
+                case '*':
+                    sb.append(".*");
+                    break;
+                case '+':
+                    // TODO workaround for '+' in url query? if yes, need to properly decode url
+                    sb.append(".+");
+                    break;
+                case '?':
+                    sb.append('.');
+                    break;
+                case '(':
+                case ')':
+                case '[':
+                case ']':
+                case '$':
+                case '^':
+                case '.':
+                case '{':
+                case '}':
+                case '|':
+                case '\\':
+                    sb.append('\\');
+                    sb.append(c);
+                    break;
+                default:
+                    sb.append(c);
+                    break;
+                }
+            }
+            sb.append('$');
+            return sb.toString();
         }
     }
 

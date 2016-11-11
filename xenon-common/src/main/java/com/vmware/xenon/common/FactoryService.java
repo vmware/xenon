@@ -477,11 +477,13 @@ public abstract class FactoryService extends StatelessService {
                             getHost().prepareForwardRequest(forwardOp);
 
                             // fix up selfLink so it does not have factory prefix
-                        initialState.documentSelfLink = initialState.documentSelfLink
-                                .replace(getSelfLink(), "");
+                            if (initialState.documentSelfLink.startsWith(getSelfLink())) {
+                                initialState.documentSelfLink = initialState.documentSelfLink
+                                        .substring(getSelfLink().length());
+                            }
 
-                        getHost().sendRequest(forwardOp);
-                    });
+                            getHost().sendRequest(forwardOp);
+                        });
         getHost().selectOwner(getPeerNodeSelectorPath(),
                 o.getUri().getPath(), selectOp);
     }

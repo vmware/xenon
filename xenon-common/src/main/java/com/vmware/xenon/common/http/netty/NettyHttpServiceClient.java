@@ -621,15 +621,15 @@ public class NettyHttpServiceClient implements ServiceClient {
         }
 
         if (!isRetryRequested) {
-            LOGGER.fine(String.format("Send of %d, from %s to %s failed with %s",
-                    op.getId(), op.getRefererAsString(), op.getUri(), e.toString()));
+            LOGGER.fine(() -> String.format("Send of %d, from %s to %s failed with %s",
+                    op.getId(), op.getRefererAsString(), op.getUri(), e));
             op.fail(e);
             return;
         }
 
         LOGGER.info(String.format("Retry %d of request %d from %s to %s due to %s",
                 op.getRetryCount() - op.getRetriesRemaining(), op.getId(), op.getRefererAsString(),
-                op.getUri(), e.toString()));
+                op.getUri(), e));
 
         int delaySeconds = op.getRetryCount() - op.getRetriesRemaining();
 
@@ -651,21 +651,13 @@ public class NettyHttpServiceClient implements ServiceClient {
         Throwable e = null;
         if (op.getUri() == null) {
             e = new IllegalArgumentException("Uri is required");
-        }
-
-        if (e == null && op.getUri().getHost() == null) {
+        } else if (op.getUri().getHost() == null) {
             e = new IllegalArgumentException("Missing host in URI");
-        }
-
-        if (e == null && op.getAction() == null) {
+        } else if (op.getAction() == null) {
             e = new IllegalArgumentException("Action is required");
-        }
-
-        if (e == null && !op.hasReferer()) {
+        } else if (!op.hasReferer()) {
             e = new IllegalArgumentException("Referer is required");
-        }
-
-        if (e == null) {
+        } else {
             boolean needsBody = op.getAction() != Action.GET && op.getAction() != Action.DELETE &&
                     op.getAction() != Action.POST && op.getAction() != Action.OPTIONS;
             if (!op.hasBody() && needsBody) {
@@ -673,15 +665,16 @@ public class NettyHttpServiceClient implements ServiceClient {
             }
         }
 
-        CompletionHandler c = op.getCompletion();
-        if (e != null) {
-            if (c != null) {
-                c.handle(op, e);
-                return false;
-            }
-            throw new RuntimeException(e);
+        if (e == null) {
+            return true;
         }
-        return true;
+
+        CompletionHandler c = op.getCompletion();
+        if (c != null) {
+            c.handle(op, e);
+            return false;
+        }
+        throw new RuntimeException(e);
     }
 
     @Override

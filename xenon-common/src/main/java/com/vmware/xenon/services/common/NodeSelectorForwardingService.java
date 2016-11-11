@@ -74,7 +74,7 @@ public class NodeSelectorForwardingService extends StatelessService {
         SelectAndForwardRequest body = new SelectAndForwardRequest();
         body.key = key;
         body.targetPath = link;
-        body.targetQuery = query;
+        body.targetQuery = query == null || query.isEmpty() ? null : query;
         body.options = EnumSet.noneOf(ForwardingOption.class);
         if (destination.equals(UriUtils.ForwardingTarget.ALL.toString())) {
             body.options.add(ForwardingOption.BROADCAST);
