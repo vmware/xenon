@@ -75,7 +75,7 @@ class ServiceSynchronizationTracker {
         if (nss == null) {
             throw new IllegalArgumentException("Node selector not found: " + nodeSelectorPath);
         }
-        String ngPath = nss.getNodeGroup();
+        String ngPath = nss.getNodeGroupPath();
         Operation get = Operation
                 .createGet(UriUtils.buildUri(this.host, ngPath))
                 .setReferer(this.host.getUri())

@@ -2,6 +2,11 @@
 
 ## 1.3.1-SNAPSHOT
 
+* NodeSelectorService.getNodeGroup() is renamed to getNodeGroupPath()
+
+* Custom node selector implementations must queue SelectAndForwardRequest instance
+  before queuing or using in a different thread context
+
 * Document version retention now uses a watermark approach by which old
   versions of a document can be deleted in bulk once the retention threshold is
   reached.

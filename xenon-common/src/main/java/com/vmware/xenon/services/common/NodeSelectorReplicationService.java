@@ -14,7 +14,6 @@
 package com.vmware.xenon.services.common;
 
 import java.net.URI;
-import java.net.URISyntaxException;
 import java.util.Collection;
 import java.util.Map;
 import java.util.Objects;
@@ -93,7 +92,8 @@ public class NodeSelectorReplicationService extends StatelessService {
 
         // location is usually null, unless set explicitly
         String location = getHost().getLocation();
-        NodeSelectorReplicationContext context = new NodeSelectorReplicationContext(location, selectedNodes, outboundOp);
+        NodeSelectorReplicationContext context = new NodeSelectorReplicationContext(
+                location, selectedNodes, outboundOp);
 
         // success threshold is determined based on the following precedence:
         // 1. request replication quorum header (if exists)
@@ -162,8 +162,10 @@ public class NodeSelectorReplicationService extends StatelessService {
         int intCount = (int) nodes.stream()
                 .filter(ns -> Objects.equals(location,
                         ns.customProperties.get(NodeState.PROPERTY_NAME_LOCATION)))
-                .peek(ns -> this.locationPerNodeURI.put(UriUtils.buildUri(
-                        ns.groupReference.getHost(), ns.groupReference.getPort(), null, null),
+                .peek(ns -> this.locationPerNodeURI.put(UriUtils.buildServiceUri(
+                        ns.groupReference.getScheme(),
+                        ns.groupReference.getHost(), ns.groupReference.getPort(),
+                        null, null, null),
                         location))
                 .count();
         this.nodeCountPerLocation.put(location, Integer.valueOf(intCount));
@@ -181,8 +183,9 @@ public class NodeSelectorReplicationService extends StatelessService {
         }
 
         URI remotePeerService = remotePeerResponse.getUri();
-        URI remoteNodeUri = UriUtils.buildUri(remotePeerService.getHost(),
-                remotePeerService.getPort(), null, null);
+        URI remoteNodeUri = UriUtils.buildServiceUri(remotePeerService.getScheme(),
+                remotePeerService.getHost(),
+                remotePeerService.getPort(), null, null, null);
 
         String remoteNodeLocation = this.locationPerNodeURI.get(remoteNodeUri);
         return location.equals(remoteNodeLocation);
@@ -259,17 +262,9 @@ public class NodeSelectorReplicationService extends StatelessService {
     }
 
     private URI createReplicaUri(URI remoteHost, Operation outboundOp) {
-        String path = outboundOp.getUri().getPath();
-        String query = outboundOp.getUri().getQuery();
-        try {
-            return new URI(remoteHost.getScheme(),
-                    null, remoteHost.getHost(), remoteHost.getPort(),
-                    path, query, null);
-        } catch (URISyntaxException ex) {
-            logSevere("Failed to create replicaUri for %s %s %s",
-                    remoteHost, path, query);
-            return null;
-        }
+        return UriUtils.buildServiceUri(remoteHost.getScheme(),
+                remoteHost.getHost(), remoteHost.getPort(),
+                outboundOp.getUri().getPath(), outboundOp.getUri().getQuery(), null);
     }
 
     private void handleReplicationCompletion(

@@ -281,7 +281,7 @@ public final class Utils {
         return Long.toHexString(FNVHash.compute(content));
     }
 
-    private static String computeHash(byte[] content, int offset, int length) {
+    public static String computeHash(byte[] content, int offset, int length) {
         return Long.toHexString(FNVHash.compute(content, offset, length));
     }
 

@@ -173,9 +173,9 @@ public class TestUtils {
         for (int i = 0; i < this.iterationCount; i++) {
             String k = "-string-" + i;
             byte[] bytes = k.getBytes(Utils.CHARSET);
-            long hash = FNVHash.compute(bytes, 0, bytes.length);
-            long hash2 = FNVHash.compute(bytes, 0, bytes.length);
-            assertEquals(hash, hash2);
+            String stringHash = Utils.computeHash(bytes, 0, bytes.length);
+            String stringHash2 = Utils.computeHash(bytes, 0, bytes.length);
+            assertEquals(stringHash, stringHash2);
             assertTrue(keys.add(k));
         }
         Logger.getAnonymousLogger().info("Generated keys: " + keys.size());
