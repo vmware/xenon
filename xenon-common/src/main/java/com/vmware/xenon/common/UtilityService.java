@@ -555,7 +555,7 @@ public class UtilityService implements Service {
                     stat.logHistogram.bins[binIndex]++;
                 }
             }
-            stat.lastUpdateMicrosUtc = Utils.getNowMicrosUtc();
+            stat.lastUpdateMicrosUtc = Utils.getSystemNowMicrosUtc();
             if (stat.timeSeriesStats != null) {
                 if (stat.sourceTimeMicrosUtc != null) {
                     stat.timeSeriesStats.add(stat.sourceTimeMicrosUtc, newValue, newValue);
@@ -581,7 +581,7 @@ public class UtilityService implements Service {
                     stat.logHistogram.bins[binIndex]++;
                 }
             }
-            stat.lastUpdateMicrosUtc = Utils.getNowMicrosUtc();
+            stat.lastUpdateMicrosUtc = Utils.getSystemNowMicrosUtc();
             if (stat.timeSeriesStats != null) {
                 if (stat.sourceTimeMicrosUtc != null) {
                     stat.timeSeriesStats.add(stat.sourceTimeMicrosUtc, stat.latestValue, delta);

@@ -43,6 +43,12 @@ public class FNVHash {
         return hash;
     }
 
+    public static long compute(int code, long hash) {
+        hash ^= code + code << 8;
+        hash *= FNV_PRIME;
+        return hash;
+    }
+
     public static int compute32(CharSequence data) {
         return compute32(data, FNV_OFFSET_MINUS_MSB);
     }

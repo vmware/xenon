@@ -1081,10 +1081,9 @@ public class ServiceHost implements ServiceRequestSender {
         if (this.documentIndexService == null) {
             return null;
         }
-        if (this.documentIndexServiceUri != null) {
-            return this.documentIndexServiceUri;
+        if (this.documentIndexServiceUri == null) {
+            this.documentIndexServiceUri = this.documentIndexService.getUri();
         }
-        this.documentIndexServiceUri = this.documentIndexService.getUri();
         return this.documentIndexServiceUri;
     }
 
@@ -1092,10 +1091,9 @@ public class ServiceHost implements ServiceRequestSender {
         if (this.authorizationService == null) {
             return null;
         }
-        if (this.authorizationServiceUri != null) {
-            return this.authorizationServiceUri;
+        if (this.authorizationServiceUri == null) {
+            this.authorizationServiceUri = this.authorizationService.getUri();
         }
-        this.authorizationServiceUri = this.authorizationService.getUri();
         return this.authorizationServiceUri;
     }
 
@@ -1103,10 +1101,9 @@ public class ServiceHost implements ServiceRequestSender {
         if (this.transactionService == null) {
             return null;
         }
-        if (this.transactionServiceUri != null) {
-            return this.transactionServiceUri;
+        if (this.transactionServiceUri == null) {
+            this.transactionServiceUri = this.transactionService.getUri();
         }
-        this.transactionServiceUri = this.transactionService.getUri();
         return this.transactionServiceUri;
     }
 
@@ -1114,10 +1111,9 @@ public class ServiceHost implements ServiceRequestSender {
         if (this.managementService == null) {
             return null;
         }
-        if (this.managementServiceUri != null) {
-            return this.managementServiceUri;
+        if (this.managementServiceUri == null) {
+            this.managementServiceUri = this.managementService.getUri();
         }
-        this.managementServiceUri = this.managementService.getUri();
         return this.managementServiceUri;
     }
 
@@ -1170,10 +1166,9 @@ public class ServiceHost implements ServiceRequestSender {
         if (this.authenticationService == null) {
             return null;
         }
-        if (this.authenticationServiceUri != null) {
-            return this.authenticationServiceUri;
+        if (this.authenticationServiceUri == null) {
+            this.authenticationServiceUri = this.authenticationService.getUri();
         }
-        this.authenticationServiceUri = this.authenticationService.getUri();
         return this.authenticationServiceUri;
     }
 
@@ -1186,10 +1181,9 @@ public class ServiceHost implements ServiceRequestSender {
         if (this.basicAuthenticationService == null) {
             return null;
         }
-        if (this.basicAuthenticationServiceUri != null) {
-            return this.basicAuthenticationServiceUri;
+        if (this.basicAuthenticationServiceUri == null) {
+            this.basicAuthenticationServiceUri = this.basicAuthenticationService.getUri();
         }
-        this.basicAuthenticationServiceUri = this.basicAuthenticationService.getUri();
         return this.basicAuthenticationServiceUri;
     }
 
@@ -1687,7 +1681,7 @@ public class ServiceHost implements ServiceRequestSender {
         NodeSelectorState initialState = new NodeSelectorState();
         initialState.nodeGroupLink = ServiceUriPaths.DEFAULT_NODE_GROUP;
         initialState.replicationFactor = factor;
-        startPost.setBody(initialState);
+        startPost.setBodyNoCloning(initialState);
         startNodeSelectorPosts.add(startPost);
         nodeSelectorServices.add(new ConsistentHashingNodeSelectorService());
     }
@@ -2064,7 +2058,7 @@ public class ServiceHost implements ServiceRequestSender {
         ServiceSubscriber unSubscribeBody = new ServiceSubscriber();
         unSubscribeBody.reference = notificationTarget;
         sendRequest(unsubscribe
-                .setBody(unSubscribeBody)
+                .setBodyNoCloning(unSubscribeBody)
                 .nestCompletion(
                         (deleteOp, deleteEx) -> {
                             if (deleteEx != null) {
@@ -3452,7 +3446,6 @@ public class ServiceHost implements ServiceRequestSender {
      * @return
      */
     private boolean queueOrForwardRequest(Service s, String path, Operation op) {
-
         if (s == null && op.isFromReplication()) {
             if (op.getAction() == Action.DELETE) {
                 op.complete();
@@ -3464,7 +3457,7 @@ public class ServiceHost implements ServiceRequestSender {
 
         String nodeSelectorPath;
         Service parent = null;
-        EnumSet<ServiceOption> options = null;
+        EnumSet<ServiceOption> options;
         if (s != null) {
             // Common path, service is known.
             options = s.getOptions();
@@ -3653,7 +3646,6 @@ public class ServiceHost implements ServiceRequestSender {
             handleRequest(null, op);
         });
         registerForServiceAvailability(op, path);
-        return;
     }
 
     void failRequestOwnerMismatch(Operation op, String id, ServiceDocument body) {
@@ -3860,11 +3852,7 @@ public class ServiceHost implements ServiceRequestSender {
             processRequest = false;
             op.fail(e);
         } finally {
-            if (!processRequest) {
-                return;
-            }
-
-            if (!s.queueRequest(op)) {
+            if (processRequest && !s.queueRequest(op)) {
                 Runnable r = () -> {
                     OperationContext opCtx = extractAndApplyContext(op);
                     try {
@@ -3976,7 +3964,7 @@ public class ServiceHost implements ServiceRequestSender {
 
     private void traceOperation(Operation op) {
         // Post to operation tracing service if tracing is enabled.
-        if (this.getOperationTracingLevel().intValue() == Level.OFF.intValue()) {
+        if (getOperationTracingLevel().intValue() == Level.OFF.intValue()) {
             return;
         }
 
@@ -4046,16 +4034,14 @@ public class ServiceHost implements ServiceRequestSender {
      * and a brief expiration window is set allowing it to complete any shutdown tasks
      */
     public void stop() {
-
-        Set<Service> servicesToClose = null;
+        Set<Service> servicesToClose;
 
         synchronized (this.state) {
             if (!this.state.isStarted || this.state.isStopping) {
                 return;
             }
             this.state.isStopping = true;
-            servicesToClose = new HashSet<Service>(
-                    this.attachedServices.values());
+            servicesToClose = new HashSet<>(this.attachedServices.values());
         }
 
         this.serviceResourceTracker.close();
@@ -4217,7 +4203,7 @@ public class ServiceHost implements ServiceRequestSender {
                 .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_NO_INDEX_UPDATE)
                 .setReplicationDisabled(true)
                 .setCompletion(removeServiceCompletion)
-                .setReferer(UriUtils.buildUri(this, ""));
+                .setReferer(getUri());
         try {
             queueOrScheduleRequest(s, delete);
         } catch (Throwable e) {
@@ -4478,8 +4464,7 @@ public class ServiceHost implements ServiceRequestSender {
         Operation o = op;
         if (doClone) {
             o = op.clone().setUri(UriUtils.buildUri(this, link));
-        }
-        if (o.getUri() == null) {
+        } else if (o.getUri() == null) {
             o.setUri(UriUtils.buildUri(this, link));
         }
         return o;
@@ -4610,10 +4595,7 @@ public class ServiceHost implements ServiceRequestSender {
      */
     public boolean checkServiceAvailable(String servicePath) {
         Service s = this.findService(servicePath, true);
-        if (s == null) {
-            return false;
-        }
-        return s.getProcessingStage() == ProcessingStage.AVAILABLE;
+        return s != null && s.getProcessingStage() == ProcessingStage.AVAILABLE;
     }
 
     /**
@@ -4669,9 +4651,7 @@ public class ServiceHost implements ServiceRequestSender {
             this.info.properties.put(k, v);
         }
 
-        for (Entry<String, String> e : System.getenv().entrySet()) {
-            this.info.environmentVariables.put(e.getKey(), e.getValue());
-        }
+        this.info.environmentVariables.putAll(System.getenv());
 
         if (!enumerateNetworkInterfaces) {
             return Utils.clone(this.info);
@@ -4851,7 +4831,6 @@ public class ServiceHost implements ServiceRequestSender {
      * when the final stage is complete.
      */
     void performMaintenanceStage(Operation post, MaintenanceStage stage, long deadline) {
-
         try {
             long now = Utils.getSystemNowMicrosUtc();
 
@@ -4920,7 +4899,6 @@ public class ServiceHost implements ServiceRequestSender {
     public void resumeService(String path, Service resumedService) {
         this.serviceResourceTracker.resumeService(path, resumedService);
     }
-
 
     public ServiceHost setOperationTimeOutMicros(long timeoutMicros) {
         this.state.operationTimeoutMicros = timeoutMicros;
@@ -5315,7 +5293,7 @@ public class ServiceHost implements ServiceRequestSender {
 
         // Use the service type name to describe this state because its state class might be
         // shared between multiple services. This way, each service will have its own instance.
-        String serviceTypeName = s.getClass().getCanonicalName();
+        String serviceTypeName = s.getClass().getName();
         synchronized (this.descriptionCache) {
             ServiceDocumentDescription desc = this.descriptionCache.get(serviceTypeName);
             if (desc != null) {
@@ -5345,10 +5323,11 @@ public class ServiceHost implements ServiceRequestSender {
             ServiceDocumentDescription augmentedDesc = s.getDocumentTemplate().documentDescription;
             if (augmentedDesc != null) {
                 desc = augmentedDesc;
+
+                // 3) Update the cached entry
+                this.descriptionCache.put(serviceTypeName, desc);
             }
 
-            // 3) Update the cached entry
-            this.descriptionCache.put(serviceTypeName, desc);
             return desc;
         }
     }

@@ -254,10 +254,7 @@ public class ServiceDocument {
     }
 
     public static boolean isDeleted(ServiceDocument document) {
-        if (document == null) {
-            return false;
-        }
-        return Action.DELETE.toString().equals(document.documentUpdateAction);
+        return document != null && Action.DELETE.toString().equals(document.documentUpdateAction);
     }
 
     /**
@@ -334,12 +331,11 @@ public class ServiceDocument {
      */
     public static boolean equals(ServiceDocumentDescription description,
             ServiceDocument currentDocument, ServiceDocument newDocument) {
+        if (currentDocument == null || newDocument == null) {
+            throw new IllegalArgumentException(
+                    "Null Service documents cannot be checked for equality.");
+        }
         try {
-            if (currentDocument == null || newDocument == null) {
-                throw new IllegalArgumentException(
-                        "Null Service documents cannot be checked for equality.");
-            }
-
             String currentSignature = Utils.computeSignature(currentDocument, description);
             String newSignature = Utils.computeSignature(newDocument, description);
             return currentSignature.equals(newSignature);

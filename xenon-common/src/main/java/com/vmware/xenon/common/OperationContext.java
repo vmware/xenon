@@ -21,52 +21,58 @@ import com.vmware.xenon.common.Operation.AuthorizationContext;
  * by the service host or the Operation object
  * OperationContext instances are immutable.
  */
-public class OperationContext {
-
-    private AuthorizationContext authContext;
-    private String contextId;
-    private String transactionId;
-
-    private OperationContext(AuthorizationContext authContext, String contextId, String transactionId) {
-        this.authContext = authContext;
-        this.contextId = contextId;
-        this.transactionId = transactionId;
-    }
+public final class OperationContext implements Cloneable {
 
     /**
-     * Variable to store the contextId in thread-local
+     * Variable to store the OperationContext in thread-local
      */
-    private static final ThreadLocal<String> threadContextId = new ThreadLocal<>();
+    private static final ThreadLocal<OperationContext> threadOperationContext = ThreadLocal.withInitial(
+            OperationContext::new);
+
+    AuthorizationContext authContext;
+    String contextId;
+    String transactionId;
+
+    private OperationContext() {
+    }
+
+    public OperationContext clone() {
+        try {
+            return (OperationContext) super.clone();
+        } catch (CloneNotSupportedException e) {
+            throw new AssertionError(e);
+        }
+    }
+
+    static OperationContext getOperationContextNoCloning() {
+        return threadOperationContext.get();
+    }
 
     /**
      * Variable to store the transactionId in thread-local
      */
-    private static final ThreadLocal<String> threadTransactionId = new ThreadLocal<>();
-
-    private static final ThreadLocal<AuthorizationContext> threadAuthContext = new ThreadLocal<>();
-
     public static void setContextId(String contextId) {
-        threadContextId.set(contextId);
+        threadOperationContext.get().contextId = contextId;
     }
 
     public static String getContextId() {
-        return threadContextId.get();
+        return threadOperationContext.get().contextId;
     }
 
     static void setAuthorizationContext(AuthorizationContext ctx) {
-        threadAuthContext.set(ctx);
+        threadOperationContext.get().authContext = ctx;
     }
 
     public static void setTransactionId(String transactionId) {
-        threadTransactionId.set(transactionId);
+        threadOperationContext.get().transactionId = transactionId;
     }
 
     public static String getTransactionId() {
-        return threadTransactionId.get();
+        return threadOperationContext.get().transactionId;
     }
 
     public static AuthorizationContext getAuthorizationContext() {
-        return threadAuthContext.get();
+        return threadOperationContext.get().authContext;
     }
 
     /**
@@ -74,17 +80,18 @@ public class OperationContext {
      * @return OperationContext instance
      */
     public static OperationContext getOperationContext() {
-        return new OperationContext(threadAuthContext.get(), threadContextId.get(), threadTransactionId.get());
+        return threadOperationContext.get().clone();
     }
 
     /**
      * Set the OperationContext associated with the thread based on the specified OperationContext
-     * @param opContext Input OperationContext
+     * @param opCtx Input OperationContext
      */
-    public static void setFrom(OperationContext opContext) {
-        threadAuthContext.set(opContext.authContext);
-        threadContextId.set(opContext.contextId);
-        threadTransactionId.set(opContext.transactionId);
+    public static void setFrom(OperationContext opCtx) {
+        OperationContext currentOpCtx = threadOperationContext.get();
+        currentOpCtx.authContext = opCtx.authContext;
+        currentOpCtx.transactionId = opCtx.transactionId;
+        currentOpCtx.contextId = opCtx.contextId;
     }
 
     /**
@@ -92,27 +99,30 @@ public class OperationContext {
      * @param op Operation to build the OperationContext
      */
     public static void setFrom(Operation op) {
-        threadAuthContext.set(op.getAuthorizationContext());
-        threadContextId.set(op.getContextId());
-        threadTransactionId.set(op.getTransactionId());
+        OperationContext currentOpCtx = threadOperationContext.get();
+        currentOpCtx.authContext = op.getAuthorizationContext();
+        currentOpCtx.transactionId = op.getTransactionId();
+        currentOpCtx.contextId = op.getContextId();
     }
 
     /**
      * reset the OperationContext associated with the thread
      */
     public static void reset() {
-        threadAuthContext.set(null);
-        threadContextId.set(null);
-        threadTransactionId.set(null);
+        OperationContext opCtx = threadOperationContext.get();
+        opCtx.authContext = null;
+        opCtx.transactionId = null;
+        opCtx.contextId = null;
     }
 
     /**
      * Restore the OperationContext associated with this thread to the value passed in
-     * @param ctx OperationContext instance to restore to
+     * @param opCtx OperationContext instance to restore to
      */
-    public static void restoreOperationContext(OperationContext ctx) {
-        setAuthorizationContext(ctx.authContext);
-        setContextId(ctx.contextId);
-        setTransactionId(ctx.transactionId);
+    public static void restoreOperationContext(OperationContext opCtx) {
+        OperationContext currentOpCtx = threadOperationContext.get();
+        currentOpCtx.authContext = opCtx.authContext;
+        currentOpCtx.transactionId = opCtx.transactionId;
+        currentOpCtx.contextId = opCtx.contextId;
     }
 }

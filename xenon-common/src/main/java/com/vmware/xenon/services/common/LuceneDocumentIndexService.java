@@ -1240,11 +1240,11 @@ public class LuceneDocumentIndexService extends StatelessService {
                 results = s.searchAfter(after, tq, count, sort, false, false);
             }
 
-            long end = Utils.getNowMicrosUtc();
-
             if (results == null) {
                 return rsp;
             }
+
+            long end = Utils.getNowMicrosUtc();
 
             hits = results.scoreDocs;
 
@@ -1254,7 +1254,7 @@ public class LuceneDocumentIndexService extends StatelessService {
             rsp.queryTimeMicros += queryTime;
             ScoreDoc bottom = null;
             if (shouldProcessResults) {
-                start = Utils.getNowMicrosUtc();
+                start = end;
                 bottom = processQueryResults(qs, options, count, s, rsp, hits,
                         queryStartTimeMicros);
                 end = Utils.getNowMicrosUtc();
@@ -2554,12 +2554,13 @@ public class LuceneDocumentIndexService extends StatelessService {
 
         for (Entry<Long, List<IndexSearcher>> entry : entriesToClose.entrySet()) {
             List<IndexSearcher> searchers = entry.getValue();
+            if (!searchers.isEmpty()) {
+                logFine("Closing paginated query searcher, expired at %d", entry.getKey());
+            }
             for (IndexSearcher s : searchers) {
                 try {
-                    logFine("Closing paginated query searcher, expired at %d", entry.getKey());
                     s.getIndexReader().close();
                 } catch (Throwable e) {
-
                 }
             }
         }

@@ -649,7 +649,7 @@ public class StatelessService implements Service {
         ServiceConfiguration cfg = new ServiceConfiguration();
         cfg.options = getOptions();
         cfg.maintenanceIntervalMicros = getMaintenanceIntervalMicros();
-        request.setBody(cfg).complete();
+        request.setBodyNoCloning(cfg).complete();
     }
 
     /**
@@ -764,7 +764,7 @@ public class StatelessService implements Service {
         Operation operation = get.clone();
         operation.setUri(UriUtils.buildUri(getHost(), uiResourcePath, uri.getQuery()))
                 .setCompletion((o, e) -> {
-                    get.setBody(o.getBodyRaw())
+                    get.setBodyNoCloning(o.getBodyRaw())
                             .setStatusCode(o.getStatusCode())
                             .setContentType(o.getContentType());
                     if (e != null) {

@@ -632,6 +632,22 @@ public class TestQueryFilter {
         document.documentSelfLink = "aaatestaaa";
         assertFalse(filter.evaluate(document, this.description));
 
+        q = createTerm(ServiceDocument.FIELD_NAME_SELF_LINK, "*[t]est");
+        q.term.matchType = MatchType.WILDCARD;
+        filter = QueryFilter.create(q);
+
+        document = new QueryFilterDocument();
+        document.documentSelfLink = "/test.com/test";
+        assertFalse(filter.evaluate(document, this.description));
+
+        q = createTerm(ServiceDocument.FIELD_NAME_SELF_LINK, "*/t?st");
+        q.term.matchType = MatchType.WILDCARD;
+        filter = QueryFilter.create(q);
+
+        document = new QueryFilterDocument();
+        document.documentSelfLink = "/test.com/test";
+        assertTrue(filter.evaluate(document, this.description));
+
         q = createTerm(ServiceDocument.FIELD_NAME_SELF_LINK, "abc()*test*");
         q.term.matchType = MatchType.WILDCARD;
         filter = QueryFilter.create(q);
