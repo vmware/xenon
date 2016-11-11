@@ -209,6 +209,21 @@ public final class UriUtils {
         return buildUri(host, path, query, null);
     }
 
+    /**
+     * Builds a fully qualified URI. Attempts no normalization, assumes well formed path and query
+     */
+    public static URI buildServiceUri(String scheme, String host, int port, String path,
+            String query,
+            String userInfo) {
+        try {
+            return new URI(scheme, userInfo, host, port, path, query, null);
+        } catch (URISyntaxException e) {
+            Utils.log(UriUtils.class, Utils.class.getSimpleName(), Level.SEVERE, "%s",
+                    Utils.toString(e));
+            return null;
+        }
+    }
+
     public static URI buildUri(String scheme, String host, int port, String path, String query, String userInfo) {
         try {
             if (path != null) {

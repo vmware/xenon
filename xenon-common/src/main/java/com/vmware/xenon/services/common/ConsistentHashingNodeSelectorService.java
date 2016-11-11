@@ -275,10 +275,10 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
         }
 
         // If targetPath != null, we need to forward the operation.
-        URI remoteService = UriUtils.buildUri(response.ownerNodeGroupReference.getScheme(),
+        URI remoteService = UriUtils.buildServiceUri(response.ownerNodeGroupReference.getScheme(),
                 response.ownerNodeGroupReference.getHost(),
                 response.ownerNodeGroupReference.getPort(),
-                body.targetPath, body.targetQuery);
+                body.targetPath, body.targetQuery, null);
 
         Operation fwdOp = op.clone()
                 .setCompletion(
