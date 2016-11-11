@@ -291,7 +291,7 @@ public class TransactionService extends StatefulService {
 
         // Check if this is a conflict resolution check from another coordinator
         if (Operation.TX_ENSURE_COMMIT
-                .equals(patch.getRequestHeader(Operation.TRANSACTION_HEADER))) {
+                .equals(patch.getRequestHeaderAsIs(Operation.TRANSACTION_HEADER))) {
             handleCheckConflicts(patch);
             return;
         }

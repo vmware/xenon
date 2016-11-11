@@ -182,17 +182,17 @@ public final class TransactionServiceHelper {
     static boolean handleOperationInTransaction(StatefulService s,
             Class<? extends ServiceDocument> st,
             Operation request) {
-        if (request.getRequestHeader(Operation.TRANSACTION_HEADER) == null) {
+        if (request.getRequestHeaderAsIs(Operation.TRANSACTION_HEADER) == null) {
             return false;
         }
 
-        if (request.getRequestHeader(Operation.TRANSACTION_HEADER)
+        if (request.getRequestHeaderAsIs(Operation.TRANSACTION_HEADER)
                 .equals(Operation.TX_ENSURE_COMMIT)) {
             // this request is targeting a transaction service - let it 'fall through'
             return false;
         }
 
-        if (request.getRequestHeader(Operation.TRANSACTION_HEADER).equals(
+        if (request.getRequestHeaderAsIs(Operation.TRANSACTION_HEADER).equals(
                 Operation.TX_COMMIT)) {
             // commit should expose latest state, i.e., remove shadow and bump the version
             // and remove transaction from pending
@@ -221,7 +221,7 @@ public final class TransactionServiceHelper {
                     .setCompletion((o, f) -> unshadowQueryCompletion(s, st, o, f, request));
             s.sendRequest(startPost);
 
-        } else if (request.getRequestHeader(Operation.TRANSACTION_HEADER).equals(
+        } else if (request.getRequestHeaderAsIs(Operation.TRANSACTION_HEADER).equals(
                 Operation.TX_ABORT)) {
             // abort should just remove transaction from pending
             s.removePendingTransaction(request.getReferer().getPath());

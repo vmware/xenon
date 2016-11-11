@@ -14,7 +14,6 @@
 package com.vmware.xenon.services.common;
 
 import java.net.URI;
-import java.net.URISyntaxException;
 import java.util.Collection;
 import java.util.Map;
 import java.util.Objects;
@@ -93,13 +92,15 @@ public class NodeSelectorReplicationService extends StatelessService {
 
         // location is usually null, unless set explicitly
         String location = getHost().getLocation();
-        NodeSelectorReplicationContext context = new NodeSelectorReplicationContext(location, selectedNodes, outboundOp);
+        NodeSelectorReplicationContext context = new NodeSelectorReplicationContext(
+                location, selectedNodes, outboundOp);
 
         // success threshold is determined based on the following precedence:
         // 1. request replication quorum header (if exists)
         // 2. group membership quorum (in case of OWNER_SELECTION)
         // 3. at least one remote node (in case one exists)
-        String rplQuorumValue = outboundOp.getRequestHeader(Operation.REPLICATION_QUORUM_HEADER);
+        String rplQuorumValue = outboundOp
+                .getRequestHeaderAsIs(Operation.REPLICATION_QUORUM_HEADER);
         if (rplQuorumValue != null) {
             // replicate using success threshold based on request quorum header
             try {
@@ -162,8 +163,10 @@ public class NodeSelectorReplicationService extends StatelessService {
         int intCount = (int) nodes.stream()
                 .filter(ns -> Objects.equals(location,
                         ns.customProperties.get(NodeState.PROPERTY_NAME_LOCATION)))
-                .peek(ns -> this.locationPerNodeURI.put(UriUtils.buildUri(
-                        ns.groupReference.getHost(), ns.groupReference.getPort(), null, null),
+                .peek(ns -> this.locationPerNodeURI.put(UriUtils.buildServiceUri(
+                        ns.groupReference.getScheme(),
+                        ns.groupReference.getHost(), ns.groupReference.getPort(),
+                        null, null, null),
                         location))
                 .count();
         this.nodeCountPerLocation.put(location, Integer.valueOf(intCount));
@@ -181,8 +184,9 @@ public class NodeSelectorReplicationService extends StatelessService {
         }
 
         URI remotePeerService = remotePeerResponse.getUri();
-        URI remoteNodeUri = UriUtils.buildUri(remotePeerService.getHost(),
-                remotePeerService.getPort(), null, null);
+        URI remoteNodeUri = UriUtils.buildServiceUri(remotePeerService.getScheme(),
+                remotePeerService.getHost(),
+                remotePeerService.getPort(), null, null, null);
 
         String remoteNodeLocation = this.locationPerNodeURI.get(remoteNodeUri);
         return location.equals(remoteNodeLocation);
@@ -231,13 +235,13 @@ public class NodeSelectorReplicationService extends StatelessService {
                 .setExpiration(outboundOp.getExpirationMicrosUtc())
                 .transferRefererFrom(outboundOp);
 
-        String pragmaHeader = outboundOp.getRequestHeader(Operation.PRAGMA_HEADER);
+        String pragmaHeader = outboundOp.getRequestHeaderAsIs(Operation.PRAGMA_HEADER);
         if (pragmaHeader != null && !Operation.PRAGMA_DIRECTIVE_FORWARDED.equals(pragmaHeader)) {
             update.addRequestHeader(Operation.PRAGMA_HEADER, pragmaHeader);
             update.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_REPLICATED);
         }
 
-        String commitHeader = outboundOp.getRequestHeader(Operation.REPLICATION_PHASE_HEADER);
+        String commitHeader = outboundOp.getRequestHeaderAsIs(Operation.REPLICATION_PHASE_HEADER);
         if (commitHeader != null) {
             update.addRequestHeader(Operation.REPLICATION_PHASE_HEADER, commitHeader);
         }
@@ -259,17 +263,9 @@ public class NodeSelectorReplicationService extends StatelessService {
     }
 
     private URI createReplicaUri(URI remoteHost, Operation outboundOp) {
-        String path = outboundOp.getUri().getPath();
-        String query = outboundOp.getUri().getQuery();
-        try {
-            return new URI(remoteHost.getScheme(),
-                    null, remoteHost.getHost(), remoteHost.getPort(),
-                    path, query, null);
-        } catch (URISyntaxException ex) {
-            logSevere("Failed to create replicaUri for %s %s %s",
-                    remoteHost, path, query);
-            return null;
-        }
+        return UriUtils.buildServiceUri(remoteHost.getScheme(),
+                remoteHost.getHost(), remoteHost.getPort(),
+                outboundOp.getUri().getPath(), outboundOp.getUri().getQuery(), null);
     }
 
     private void handleReplicationCompletion(

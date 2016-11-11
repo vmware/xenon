@@ -474,9 +474,7 @@ public abstract class FactoryService extends StatelessService {
                             Operation forwardOp = o.clone().setUri(remotePeerService)
                                     .setCompletion(fc);
 
-                            forwardOp.setConnectionTag(ServiceClient.CONNECTION_TAG_FORWARDING);
-                            forwardOp.toggleOption(NodeSelectorService.FORWARDING_OPERATION_OPTION,
-                                    true);
+                            getHost().prepareForwardRequest(forwardOp);
 
                             // fix up selfLink so it does not have factory prefix
                         initialState.documentSelfLink = initialState.documentSelfLink
@@ -703,10 +701,12 @@ public abstract class FactoryService extends StatelessService {
         sendRequest(query);
     }
 
+    @Override
     public void handleOptions(Operation op) {
         op.setBody(null).complete();
     }
 
+    @Override
     public void handlePost(Operation op) {
         if (op.hasBody()) {
             ServiceDocument body = op.getBody(this.stateType);

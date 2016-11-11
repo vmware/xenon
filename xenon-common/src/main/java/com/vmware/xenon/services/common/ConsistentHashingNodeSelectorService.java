@@ -243,7 +243,7 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
      *  be transparent to runtime users.
      */
     @Override
-    public String getNodeGroup() {
+    public String getNodeGroupPath() {
         return this.cachedState.nodeGroupLink;
     }
 
@@ -303,10 +303,10 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
         }
 
         // If targetPath != null, we need to forward the operation.
-        URI remoteService = UriUtils.buildUri(response.ownerNodeGroupReference.getScheme(),
+        URI remoteService = UriUtils.buildServiceUri(response.ownerNodeGroupReference.getScheme(),
                 response.ownerNodeGroupReference.getHost(),
                 response.ownerNodeGroupReference.getPort(),
-                body.targetPath, body.targetQuery);
+                body.targetPath, body.targetQuery, null);
 
         Operation fwdOp = op.clone()
                 .setCompletion(
@@ -487,6 +487,10 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
         }
 
         adjustStat(STAT_NAME_QUEUED_REQUEST_COUNT, 1);
+
+        body.associatedOp = null;
+        body = Utils.clone(body);
+        body.associatedOp = op;
 
         this.pendingRequests.add(body);
         return true;

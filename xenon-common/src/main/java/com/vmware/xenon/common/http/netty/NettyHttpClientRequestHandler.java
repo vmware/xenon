@@ -268,7 +268,7 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
             request.addRequestHeader(Operation.HOST_HEADER, host);
         }
 
-        if (request.getRequestHeader(Operation.RESPONSE_CALLBACK_STATUS_HEADER) != null) {
+        if (request.getRequestHeaderAsIs(Operation.RESPONSE_CALLBACK_STATUS_HEADER) != null) {
             request.setReferer(request.getUri());
         }
 

@@ -281,7 +281,7 @@ public final class Utils {
         return Long.toHexString(FNVHash.compute(content));
     }
 
-    private static String computeHash(byte[] content, int offset, int length) {
+    public static String computeHash(byte[] content, int offset, int length) {
         return Long.toHexString(FNVHash.compute(content, offset, length));
     }
 
@@ -824,9 +824,9 @@ public final class Utils {
 
     public static void decodeBody(Operation op, ByteBuffer buffer) {
         boolean isRequest = false;
-        String contentEncodingHeader = op.getResponseHeader(Operation.CONTENT_ENCODING_HEADER);
+        String contentEncodingHeader = op.getResponseHeaderAsIs(Operation.CONTENT_ENCODING_HEADER);
         if (contentEncodingHeader == null) {
-            contentEncodingHeader = op.getRequestHeader(Operation.CONTENT_ENCODING_HEADER);
+            contentEncodingHeader = op.getRequestHeaderAsIs(Operation.CONTENT_ENCODING_HEADER);
             isRequest = true;
         }
 

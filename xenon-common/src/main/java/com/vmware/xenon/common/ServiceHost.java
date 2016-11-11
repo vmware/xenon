@@ -2652,7 +2652,7 @@ public class ServiceHost implements ServiceRequestSender {
                     return;
                 }
 
-                String factoryPath = post.getRequestHeader(Operation.REPLICATION_PARENT_HEADER);
+                String factoryPath = post.getRequestHeaderAsIs(Operation.REPLICATION_PARENT_HEADER);
                 post.setUri(UriUtils.buildUri(this, factoryPath));
 
                 ServiceDocument initialState = post.getBody(s.getStateType());
@@ -2990,7 +2990,7 @@ public class ServiceHost implements ServiceRequestSender {
                         stateFromStore.documentSelfLink,
                         stateFromStore.documentVersion,
                         initState.documentVersion,
-                        serviceStartPost.getRequestHeader(Operation.PRAGMA_HEADER));
+                        serviceStartPost.getRequestHeaderAsIs(Operation.PRAGMA_HEADER));
                 failRequestServiceMarkedDeleted(stateFromStore, serviceStartPost);
                 return false;
             }
@@ -3610,13 +3610,9 @@ public class ServiceHost implements ServiceRequestSender {
             // and retries, to whatever peer we select, on each retry.
             forwardOp.setExpiration(Utils.fromNowMicrosUtc(
                     this.state.operationTimeoutMicros / 10));
-            forwardOp.setUri(SelectOwnerResponse.buildUriToOwner(rsp, op))
-                    .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_FORWARDED);
+            forwardOp.setUri(SelectOwnerResponse.buildUriToOwner(rsp, op));
 
-            forwardOp.setConnectionTag(ServiceClient.CONNECTION_TAG_FORWARDING);
-
-            forwardOp.toggleOption(NodeSelectorService.FORWARDING_OPERATION_OPTION, true);
-
+            prepareForwardRequest(forwardOp);
             // Local host is not the owner, but is the entry host for a client. Forward to owner
             // node
             sendRequest(forwardOp);
@@ -3998,6 +3994,13 @@ public class ServiceHost implements ServiceRequestSender {
         sendRequest(Operation.createPost(UriUtils.buildUri(this, OperationIndexService.class))
                 .setReferer(getUri())
                 .setBodyNoCloning(tracingOp));
+    }
+
+    void prepareForwardRequest(Operation fwdOp) {
+        fwdOp.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_FORWARDED);
+        fwdOp.setConnectionTag(ServiceClient.CONNECTION_TAG_FORWARDING);
+        fwdOp.toggleOption(NodeSelectorService.FORWARDING_OPERATION_OPTION,
+                true);
     }
 
     private void prepareRequest(Operation op) {
@@ -5052,12 +5055,6 @@ public class ServiceHost implements ServiceRequestSender {
             request.fail(new ServiceNotFoundException());
             return null;
         }
-        if (!(s instanceof NodeSelectorService)) {
-            String msg = String.format("path '%s' (%s) is not a node selector service",
-                    path, s.getClass().getName());
-            request.fail(new IllegalArgumentException(msg));
-            return null;
-        }
         return (NodeSelectorService) s;
     }
 
@@ -5088,8 +5085,9 @@ public class ServiceHost implements ServiceRequestSender {
         }
 
         SelectAndForwardRequest req = new SelectAndForwardRequest();
-        req.options = EnumSet.of(ForwardingOption.BROADCAST);
+        req.options = SelectAndForwardRequest.BROADCAST_OPTIONS;
         if (excludeThisHost) {
+            req.options = SelectAndForwardRequest.BROADCAST_OPTIONS_EXCLUDE_ENTRY_NODE;
             req.options.add(ForwardingOption.EXCLUDE_ENTRY_NODE);
         }
         req.key = key;
@@ -5097,6 +5095,15 @@ public class ServiceHost implements ServiceRequestSender {
         req.targetQuery = request.getUri().getQuery();
         nss.selectAndForward(request, req);
     }
+
+    private ThreadLocal<SelectAndForwardRequest> selectOwnerRequests = new ThreadLocal<SelectAndForwardRequest>() {
+
+        @Override
+        public SelectAndForwardRequest initialValue() {
+            return new SelectAndForwardRequest();
+        }
+
+    };
 
     /**
      * Convenience method that issues a {@code SelectOwnerRequest} to the node selector service. If
@@ -5108,7 +5115,7 @@ public class ServiceHost implements ServiceRequestSender {
             return;
         }
 
-        SelectAndForwardRequest body = new SelectAndForwardRequest();
+        SelectAndForwardRequest body = this.selectOwnerRequests.get();
         body.key = key;
 
         NodeSelectorService nss = findNodeSelectorService(selectorPath, op);
@@ -5147,7 +5154,7 @@ public class ServiceHost implements ServiceRequestSender {
         body.targetPath = request.getUri().getPath();
         body.targetQuery = request.getUri().getQuery();
         body.key = key;
-        body.options = EnumSet.of(ForwardingOption.UNICAST);
+        body.options = SelectAndForwardRequest.UNICAST_OPTIONS;
         nss.selectAndForward(request, body);
     }
 
@@ -5176,7 +5183,7 @@ public class ServiceHost implements ServiceRequestSender {
         req.key = selectionKey;
         req.targetPath = op.getUri().getPath();
         req.targetQuery = op.getUri().getQuery();
-        req.options = EnumSet.of(ForwardingOption.BROADCAST, ForwardingOption.REPLICATE);
+        req.options = SelectAndForwardRequest.REPLICATION_OPTIONS;
         req.serviceOptions = serviceOptions;
         nss.selectAndForward(op, req);
     }

@@ -291,7 +291,7 @@ public class NettyHttpServiceClient implements ServiceClient {
     }
 
     private void updateCookieJarFromResponseHeaders(Operation op) {
-        String value = op.getResponseHeader(Operation.SET_COOKIE_HEADER);
+        String value = op.getResponseHeaderAsIs(Operation.SET_COOKIE_HEADER);
         if (value == null) {
             return;
         }
@@ -438,7 +438,7 @@ public class NettyHttpServiceClient implements ServiceClient {
             }
 
             NettyFullHttpRequest request = null;
-            HttpMethod method = HttpMethod.valueOf(op.getAction().toString());
+            HttpMethod method = toHttpMethod(op.getAction());
             if (body == null || body.length == 0) {
                 request = new NettyFullHttpRequest(HttpVersion.HTTP_1_1, method, pathAndQuery,
                         Unpooled.buffer(0), false);
@@ -460,7 +460,7 @@ public class NettyHttpServiceClient implements ServiceClient {
 
             }
 
-            String pragmaHeader = op.getRequestHeader(Operation.PRAGMA_HEADER);
+            String pragmaHeader = op.getRequestHeaderAsIs(Operation.PRAGMA_HEADER);
 
             if (op.isFromReplication() && pragmaHeader == null) {
                 request.headers().set(HttpHeaderNames.PRAGMA,
@@ -513,7 +513,7 @@ public class NettyHttpServiceClient implements ServiceClient {
                 }
 
                 request.headers().set(HttpHeaderNames.USER_AGENT, this.userAgent);
-                if (op.getRequestHeader(Operation.ACCEPT_HEADER) == null) {
+                if (op.getRequestHeaderAsIs(Operation.ACCEPT_HEADER) == null) {
                     request.headers().set(HttpHeaderNames.ACCEPT,
                             Operation.MEDIA_TYPE_EVERYTHING_WILDCARDS);
                 }
@@ -548,6 +548,26 @@ public class NettyHttpServiceClient implements ServiceClient {
             op.setBody(ServiceErrorResponse.create(e, Operation.STATUS_CODE_BAD_REQUEST,
                     EnumSet.of(ErrorDetail.SHOULD_RETRY)));
             fail(e, op, originalBody);
+        }
+    }
+
+    private static HttpMethod toHttpMethod(Action a) {
+        switch (a) {
+        case DELETE:
+            return HttpMethod.DELETE;
+        case GET:
+            return HttpMethod.GET;
+        case OPTIONS:
+            return HttpMethod.OPTIONS;
+        case PATCH:
+            return HttpMethod.PATCH;
+        case POST:
+            return HttpMethod.POST;
+        case PUT:
+            return HttpMethod.PUT;
+        default:
+            throw new IllegalArgumentException("unknown method " + a);
+
         }
     }
 

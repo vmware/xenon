@@ -570,7 +570,7 @@ public class StatefulService implements Service {
             return false;
         }
 
-        if (request.getRequestHeader(Operation.TRANSACTION_HEADER) != null) {
+        if (request.getRequestHeaderAsIs(Operation.TRANSACTION_HEADER) != null) {
             // Skip update checking in case of a transaction control operation
             return false;
         }
@@ -622,6 +622,7 @@ public class StatefulService implements Service {
         delete.complete();
     }
 
+    @Override
     public void handleStop(Operation delete) {
         // nested completion from Service will take care of actually shutting
         // down the service
@@ -972,7 +973,7 @@ public class StatefulService implements Service {
 
             commitOp.linkState(latestState);
 
-            String replQuorum = op.getRequestHeader(Operation.REPLICATION_QUORUM_HEADER);
+            String replQuorum = op.getRequestHeaderAsIs(Operation.REPLICATION_QUORUM_HEADER);
             if (Operation.REPLICATION_QUORUM_HEADER_VALUE_ALL.equals(replQuorum)) {
                 // skip next processing stage until we get commit completion
                 indexState = false;
@@ -2014,6 +2015,7 @@ public class StatefulService implements Service {
     /**
      * Set authorization context on operation.
      */
+    @Override
     public final void setAuthorizationContext(Operation op, AuthorizationContext ctx) {
         if (getHost().isPrivilegedService(this)) {
             op.setAuthorizationContext(ctx);
@@ -2036,6 +2038,7 @@ public class StatefulService implements Service {
     /**
      * Returns the system user's authorization context.
      */
+    @Override
     public final AuthorizationContext getSystemAuthorizationContext() {
         if (getHost().isPrivilegedService(this)) {
             return getHost().getSystemAuthorizationContext();
