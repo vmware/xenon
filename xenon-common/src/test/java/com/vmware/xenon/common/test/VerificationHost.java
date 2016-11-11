@@ -151,7 +151,7 @@ public class VerificationHost extends ExampleServiceHost {
     public String[] peerNodes;
 
     /**
-     * When {@link peerNodes} is configured this flag will trigger join of the remote nodes.
+     * When {@link #peerNodes} is configured this flag will trigger join of the remote nodes.
      */
     public boolean joinNodes;
     /**
@@ -2566,9 +2566,11 @@ public class VerificationHost extends ExampleServiceHost {
         StringBuilder sb = new StringBuilder();
         sb.append(String.format("Stats for %s%n", uri));
         sb.append(String.format("\tCount\t\tAvg\t\tTotal\t\t\tName%n"));
-        for (ServiceStat st : stats.entries.values()) {
-            logStat(uri, st, sb);
-        }
+
+        stats.entries.values().stream()
+                .sorted((s1, s2) -> s1.name.compareTo(s2.name))
+                .forEach((s) -> logStat(uri, s, sb));
+
         log(sb.toString());
     }
 
