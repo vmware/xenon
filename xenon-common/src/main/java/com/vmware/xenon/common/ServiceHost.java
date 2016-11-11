@@ -3596,13 +3596,9 @@ public class ServiceHost implements ServiceRequestSender {
             // and retries, to whatever peer we select, on each retry.
             forwardOp.setExpiration(Utils.fromNowMicrosUtc(
                     this.state.operationTimeoutMicros / 10));
-            forwardOp.setUri(SelectOwnerResponse.buildUriToOwner(rsp, op))
-                    .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_FORWARDED);
+            forwardOp.setUri(SelectOwnerResponse.buildUriToOwner(rsp, op));
 
-            forwardOp.setConnectionTag(ServiceClient.CONNECTION_TAG_FORWARDING);
-
-            forwardOp.toggleOption(NodeSelectorService.FORWARDING_OPERATION_OPTION, true);
-
+            prepareForwardRequest(forwardOp);
             // Local host is not the owner, but is the entry host for a client. Forward to owner
             // node
             sendRequest(forwardOp);
@@ -3984,6 +3980,13 @@ public class ServiceHost implements ServiceRequestSender {
         sendRequest(Operation.createPost(UriUtils.buildUri(this, OperationIndexService.class))
                 .setReferer(getUri())
                 .setBodyNoCloning(tracingOp));
+    }
+
+    void prepareForwardRequest(Operation fwdOp) {
+        fwdOp.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_FORWARDED);
+        fwdOp.setConnectionTag(ServiceClient.CONNECTION_TAG_FORWARDING);
+        fwdOp.toggleOption(NodeSelectorService.FORWARDING_OPERATION_OPTION,
+                true);
     }
 
     private void prepareRequest(Operation op) {
