@@ -15,10 +15,8 @@ package com.vmware.xenon.services.common;
 
 import java.net.URI;
 import java.util.Collection;
-import java.util.SortedMap;
 import java.util.TreeMap;
 import java.util.concurrent.CancellationException;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
@@ -46,7 +44,6 @@ import com.vmware.xenon.services.common.NodeGroupService.UpdateQuorumRequest;
 public class ConsistentHashingNodeSelectorService extends StatelessService implements
         NodeSelectorService {
 
-    private ConcurrentHashMap<String, Long> hashedNodeIds = new ConcurrentHashMap<>();
     private ConcurrentLinkedQueue<SelectAndForwardRequest> pendingRequests = new ConcurrentLinkedQueue<>();
 
     // Cached node group state. Refreshed during maintenance
@@ -62,6 +59,37 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
     private volatile boolean isSynchronizationRequired;
     private boolean isNodeGroupConverged;
     private int synchQuorumWarningCount;
+
+    private static final class ClosestNNeighbours extends TreeMap<Long, NodeState> {
+        private static final long serialVersionUID = 0L;
+
+        private final int maxN;
+
+        public ClosestNNeighbours(int maxN) {
+            super(Long::compare);
+            this.maxN = maxN;
+        }
+
+        @Override
+        public NodeState put(Long key, NodeState value) {
+            if (size() < this.maxN) {
+                return super.put(key, value);
+            } else {
+                // only attempt to write if new key can displace one of the top N entries
+                if (comparator().compare(key, this.lastKey()) <= 0) {
+                    NodeState old = super.put(key, value);
+                    if (old == null) {
+                        // sth. was added, remove last
+                        this.remove(this.lastKey());
+                    }
+
+                    return old;
+                }
+
+                return null;
+            }
+        }
+    }
 
     public ConsistentHashingNodeSelectorService() {
         super(NodeSelectorState.class);
@@ -310,11 +338,12 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
             return;
         }
 
-        SortedMap<Long, NodeState> closestNodes = new TreeMap<>();
-        long neighbourCount = 1;
+        int neighbourCount = 1;
         if (this.cachedState.replicationFactor != null) {
-            neighbourCount = this.cachedState.replicationFactor;
+            neighbourCount = this.cachedState.replicationFactor.intValue();
         }
+
+        ClosestNNeighbours closestNodes = new ClosestNNeighbours(neighbourCount);
 
         long keyHash = FNVHash.compute(response.key);
         for (NodeState m : localState.nodes.values()) {
@@ -324,11 +353,8 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
             }
 
             response.availableNodeCount++;
-            Long nodeIdHash = this.hashedNodeIds.computeIfAbsent(m.id, (k) -> {
-                return FNVHash.compute(k);
-            });
 
-            long distance = nodeIdHash - keyHash;
+            long distance = m.getNodeIdHash() - keyHash;
             distance *= distance;
             // We assume first key (smallest) will be one with closest distance. The hashing
             // function can return negative numbers however, so a distance of zero (closest) will
@@ -336,19 +362,14 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
             // ring
             distance = Math.abs(distance);
             closestNodes.put(distance, m);
-            if (closestNodes.size() > neighbourCount) {
-                // keep sorted map with only the N closest neighbors to the key
-                closestNodes.remove(closestNodes.lastKey());
-            }
         }
 
         if (availableNodes < quorum) {
-            op.fail(new IllegalStateException("Available nodes: "
-                    + availableNodes + ", quorum:" + quorum));
+            op.fail(new IllegalStateException("Available nodes: " + availableNodes + ", quorum:" + quorum));
             return;
         }
 
-        NodeState closest = closestNodes.get(closestNodes.firstKey());
+        NodeState closest = closestNodes.firstEntry().getValue();
         response.ownerNodeId = closest.id;
         response.isLocalHostOwner = response.ownerNodeId.equals(getHost().getId());
         response.ownerNodeGroupReference = closest.groupReference;
@@ -475,7 +496,6 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
      * Invoked by parent during its maintenance interval
      *
      * @param maintOp
-     * @param localState
      */
     @Override
     public void handleMaintenance(Operation maintOp) {
@@ -573,8 +593,6 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
                                     this.synchQuorumWarningCount++;
                                     return;
                                 }
-
-                                this.hashedNodeIds.clear();
 
                                 // if node group changed since we kicked of this check, we need to wait for
                                 // newer convergence completions

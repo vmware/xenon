@@ -202,7 +202,8 @@ public final class Utils {
         }
 
         byte[] buffer = getBuffer(description.serializedStateSizeLimit);
-        int position = 0;
+        long hash = FNVHash.FNV_OFFSET_MINUS_MSB;
+
         for (PropertyDescription pd : description.propertyDescriptions.values()) {
             if (pd.indexingOptions != null) {
                 if (pd.indexingOptions.contains(PropertyIndexingOption.EXCLUDE_FROM_SIGNATURE)) {
@@ -211,19 +212,17 @@ public final class Utils {
             }
 
             Object fieldValue = ReflectionUtils.getPropertyValue(pd, s);
-            if (pd.typeName == TypeName.COLLECTION || pd.typeName == TypeName.MAP
+            if (pd.typeName == TypeName.COLLECTION
+                    || pd.typeName == TypeName.MAP
                     || pd.typeName == TypeName.PODO) {
-                int h = Utils.hashJson(fieldValue);
-                buffer[position++] = (byte) (h >>> 24);
-                buffer[position++] = (byte) (h >>> 16);
-                buffer[position++] = (byte) (h >>> 8);
-                buffer[position++] = (byte) h;
+                hash = Utils.hashJson(fieldValue, hash);
             } else if (fieldValue != null) {
-                position = Utils.toBytes(fieldValue, buffer, position);
+                int position = Utils.toBytes(fieldValue, buffer, 0);
+                hash = FNVHash.compute(buffer, 0, position, hash);
             }
         }
 
-        return computeHash(buffer, 0, position);
+        return Long.toHexString(hash);
     }
 
     /**
@@ -231,14 +230,18 @@ public final class Utils {
      * @param body a possibly null object
      * @return
      */
-    private static int hashJson(Object body) {
+    private static long hashJson(Object body) {
+        return hashJson(body, FNVHash.FNV_OFFSET_MINUS_MSB);
+    }
+
+    private static long hashJson(Object body, long hash) {
         if (body instanceof String) {
-            return FNVHash.compute32((String) body);
+            return FNVHash.compute((String) body, hash);
         }
         StringBuilder content = getBuilder();
         JsonMapper mapper = getJsonMapperFor(body);
         mapper.toJson(body, content);
-        return FNVHash.compute32(content);
+        return FNVHash.compute(content, hash);
     }
 
     /**
