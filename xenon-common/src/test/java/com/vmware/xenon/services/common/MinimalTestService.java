@@ -57,8 +57,27 @@ public class MinimalTestService extends StatefulService {
     public static final String STAT_NAME_MAINTENANCE_SUCCESS_COUNT = "maintSuccessCount";
     public static final String STAT_NAME_MAINTENANCE_FAILURE_COUNT = "maintFailureCount";
 
-    public static final int DEFAULT_VERSION_RETENTION_LIMIT = 1000 * 1000;
-    public static final int DEFAULT_VERSION_RETENTION_FLOOR = 1000 * 100;
+    public static final long DEFAULT_VERSION_RETENTION_LIMIT = 1000 * 1000;
+    public static final long DEFAULT_VERSION_RETENTION_FLOOR = 1000 * 100;
+
+    private static long VERSION_RETENTION_LIMIT = DEFAULT_VERSION_RETENTION_LIMIT;
+    private static long VERSION_RETENTION_FLOOR = DEFAULT_VERSION_RETENTION_FLOOR;
+
+    public static void setVersionRetentionLimit(long versionRetentionLimit) {
+        VERSION_RETENTION_LIMIT = versionRetentionLimit;
+    }
+
+    public static long getVersionRetentionLimit() {
+        return VERSION_RETENTION_LIMIT;
+    }
+
+    public static void setVersionRetentionFloor(long versionRetentionFloor) {
+        VERSION_RETENTION_FLOOR = versionRetentionFloor;
+    }
+
+    public static long getVersionRetentionFloor() {
+        return VERSION_RETENTION_FLOOR;
+    }
 
     public static class MinimalTestServiceErrorResponse extends ServiceErrorResponse {
 
@@ -396,8 +415,8 @@ public class MinimalTestService extends StatefulService {
         // this service is a target of throughput tests so we set the limit high to avoid grooming
         // during the tests. Tests can use the example service to verify throughput while grooming
         // is active
-        template.documentDescription.versionRetentionLimit = DEFAULT_VERSION_RETENTION_LIMIT;
-        template.documentDescription.versionRetentionFloor = DEFAULT_VERSION_RETENTION_FLOOR;
+        template.documentDescription.versionRetentionLimit = VERSION_RETENTION_LIMIT;
+        template.documentDescription.versionRetentionFloor = VERSION_RETENTION_FLOOR;
         return template;
     }
 }
