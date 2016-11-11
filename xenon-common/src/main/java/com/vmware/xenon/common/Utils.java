@@ -76,6 +76,7 @@ public final class Utils {
     private static final String CHARSET_UTF_8 = "UTF-8";
     public static final String PROPERTY_NAME_PREFIX = "xenon.";
     public static final String CHARSET = CHARSET_UTF_8;
+    public static final Charset CHARSET_OBJECT = Charset.forName(CHARSET);
     public static final String UI_DIRECTORY_NAME = "ui";
     public static final String PROPERTY_NAME_TIME_COMPARISON = "timeComparisonEpsilonMicros";
 
@@ -425,9 +426,7 @@ public final class Utils {
     }
 
     public static String toDocumentKind(Class<?> type) {
-        String name = type.getCanonicalName();
-        String kind = name.replace(".", ":");
-        return kind;
+        return type.getCanonicalName().replace(".", ":");
     }
 
     /**
@@ -443,10 +442,7 @@ public final class Utils {
      * mapping. The mapping can be overridden with {@code Utils#registerKind(Class, String)}
      */
     public static String buildKind(Class<?> type) {
-        String kind = KINDS.computeIfAbsent(type.getCanonicalName(), (name) -> {
-            return toDocumentKind(type);
-        });
-        return kind;
+        return KINDS.computeIfAbsent(type.getCanonicalName(), name -> toDocumentKind(type));
     }
 
     public static ServiceErrorResponse toServiceErrorResponse(Throwable e) {
@@ -541,6 +537,10 @@ public final class Utils {
 
     public static String validateServiceOption(EnumSet<ServiceOption> options,
             ServiceOption option) {
+        if (!options.contains(option)) {
+            return null;
+        }
+
         EnumSet<ServiceOption> reqs = null;
         EnumSet<ServiceOption> antiReqs = null;
         switch (option) {
@@ -605,10 +605,6 @@ public final class Utils {
             break;
         }
 
-        if (!options.contains(option)) {
-            return null;
-        }
-
         if (reqs == null && antiReqs == null) {
             return null;
         }
@@ -650,7 +646,7 @@ public final class Utils {
         for (ServiceOption o : service.getOptions()) {
             String error = Utils.validateServiceOption(service.getOptions(), o);
             if (error != null) {
-                host.log(Level.WARNING, error);
+                host.log(Level.WARNING, "%s", error);
                 post.fail(new IllegalArgumentException(error));
                 return false;
             }
@@ -660,7 +656,7 @@ public final class Utils {
                 service.getMaintenanceIntervalMicros() < host.getMaintenanceIntervalMicros()) {
             host.log(
                     Level.WARNING,
-                    "Service maint. interval %d is less than host interval %d, reducing host interval",
+                    "Service maintenance interval %d is less than host interval %d, reducing host interval",
                     service.getMaintenanceIntervalMicros(), host.getMaintenanceIntervalMicros());
             host.setMaintenanceIntervalMicros(service.getMaintenanceIntervalMicros());
         }
@@ -781,13 +777,12 @@ public final class Utils {
 
     public static byte[] encodeBody(Operation op, Object body, String contentType)
             throws Throwable {
-        byte[] data = null;
-
         if (body == null) {
             op.setContentLength(0);
             return null;
         }
 
+        byte[] data = null;
         if (body instanceof String) {
             data = ((String) body).getBytes(Utils.CHARSET);
             op.setContentLength(data.length);
@@ -886,15 +881,15 @@ public final class Utils {
 
     public static String decodeIfText(ByteBuffer buffer, String contentType)
             throws CharacterCodingException {
-        String body = null;
         if (contentType == null) {
             return null;
         }
 
+        String body = null;
         if (isContentTypeText(contentType)) {
-            body = Charset.forName(Utils.CHARSET).newDecoder().decode(buffer).toString();
+            body = CHARSET_OBJECT.newDecoder().decode(buffer).toString();
         } else if (contentType.contains(Operation.MEDIA_TYPE_APPLICATION_X_WWW_FORM_ENCODED)) {
-            body = Charset.forName(Utils.CHARSET).newDecoder().decode(buffer).toString();
+            body = CHARSET_OBJECT.newDecoder().decode(buffer).toString();
             try {
                 body = URLDecoder.decode(body, Utils.CHARSET);
             } catch (UnsupportedEncodingException e) {
@@ -1132,9 +1127,8 @@ public final class Utils {
     }
 
     private static long initializeTimeEpsilon() {
-        Long l = Long.getLong(Utils.PROPERTY_NAME_PREFIX + PROPERTY_NAME_TIME_COMPARISON,
+        return Long.getLong(Utils.PROPERTY_NAME_PREFIX + PROPERTY_NAME_TIME_COMPARISON,
                 ServiceHostState.DEFAULT_OPERATION_TIMEOUT_MICROS);
-        return l;
     }
 
     /**
@@ -1228,8 +1222,7 @@ public final class Utils {
     * globally order in respect to each other and this method will return true.
     */
     public static boolean isWithinTimeComparisonEpsilon(long timeMicros) {
-        long now = Utils.getSystemNowMicrosUtc();
-        return Math.abs(timeMicros - now) < timeComparisonEpsilon;
+        return Math.abs(timeMicros - Utils.getSystemNowMicrosUtc()) < timeComparisonEpsilon;
     }
 
     /**

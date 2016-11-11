@@ -187,8 +187,7 @@ public final class KryoSerializers {
         if (tl == null) {
             tl = kryoForDocumentPerThread;
         }
-        Kryo k = tl.get();
-        return k;
+        return tl.get();
     }
 
     private static Kryo getKryoThreadLocalForObjects() {
@@ -196,8 +195,7 @@ public final class KryoSerializers {
         if (tl == null) {
             tl = kryoForObjectPerThread;
         }
-        Kryo k = tl.get();
-        return k;
+        return tl.get();
     }
 
     /**
@@ -256,8 +254,7 @@ public final class KryoSerializers {
 
     public static <T> T clone(T t) {
         Kryo k = getKryoThreadLocalForDocuments();
-        T clone = k.copy(t);
-        return clone;
+        return k.copy(t);
     }
 
     public static <T> T cloneObject(T t) {
@@ -273,12 +270,7 @@ public final class KryoSerializers {
             return new byte[capacity];
         }
         byte[] buffer = bufferPerThread.get();
-        if (buffer.length < capacity) {
-            buffer = new byte[capacity];
-            bufferPerThread.set(buffer);
-        }
-
-        if (buffer.length > capacity * 10) {
+        if (buffer.length < capacity || buffer.length > capacity * 10) {
             buffer = new byte[capacity];
             bufferPerThread.set(buffer);
         }
