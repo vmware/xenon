@@ -93,6 +93,10 @@ public class TestUriUtils {
         assertEquals(basePath, u.getPath());
         assertEquals(8000, u.getPort());
         assertEquals(u.getQuery(), query);
+
+        u = UriUtils.extendUriWithQuery(new URI("http://localhost/path?param1=value1"), "key1", "value1", "key2", "value2");
+        assertEquals("/path", u.getPath());
+        assertEquals(u.getQuery(), "param1=value1&key1=value1&key2=value2");
     }
 
     @Test
@@ -330,5 +334,20 @@ public class TestUriUtils {
         assertTrue(pathParams.keySet().contains("site"));
         assertTrue(pathParams.get("location").equals("pa"));
         assertTrue(pathParams.get("site").equals("prom-e"));
+    }
+
+
+    @Test
+    public void testParseUriQueryParams() {
+        URI u = UriUtils.buildUri("http://example.com:8000/?a=b&c=d&d&e=f=g&h=&=z");
+
+        Map<String, String> queryParams = UriUtils.parseUriQueryParams(u);
+
+        assertEquals(5, queryParams.size());
+        assertTrue(queryParams.get("a").equals("b"));
+        assertTrue(queryParams.get("c").equals("d"));
+        assertTrue(queryParams.get("d").equals(""));
+        assertTrue(queryParams.get("e").equals("f=g"));
+        assertTrue(queryParams.get("h").equals(""));
     }
 }
