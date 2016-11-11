@@ -3329,9 +3329,21 @@ public class ServiceHost implements ServiceRequestSender {
                                 }
                             } else {
                                 Claims claims = resultOp.getBody(Claims.class);
-                                AuthorizationContext authCtx = checkAndGetAuthorizationContext(
-                                        null, claims, token, parentOp);
-                                authorizationContextHandler.accept(authCtx);
+                                // check to see if the subject is valid
+                                Operation getUserOp = Operation.createGet(this, claims.getSubject())
+                                        .setReferer(parentOp.getUri())
+                                        .setCompletion((getOp, getEx) -> {
+                                            if (getEx != null) {
+                                                log(Level.WARNING, "Error obtaining subject: %s", getEx);
+                                                authorizationContextHandler.accept(null);
+                                                return;
+                                            }
+                                            AuthorizationContext authCtx = checkAndGetAuthorizationContext(
+                                                    null, claims, token, parentOp);
+                                            authorizationContextHandler.accept(authCtx);
+                                        });
+                                getUserOp.setAuthorizationContext(getSystemAuthorizationContext());
+                                sendRequest(getUserOp);
                             }
                         });
         sendRequest(verifyOp);
