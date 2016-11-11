@@ -18,6 +18,7 @@ import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.Map;
 
+import com.vmware.xenon.common.FNVHash;
 import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.Utils;
 
@@ -26,6 +27,8 @@ public class NodeState extends ServiceDocument {
             + "NodeState.membershipQuorum";
     public static final String PROPERTY_NAME_LOCATION = Utils.PROPERTY_NAME_PREFIX
             + "NodeState.location";
+
+    private transient  long nodeIdHash;
 
     public enum NodeStatus {
         /**
@@ -114,5 +117,16 @@ public class NodeState extends ServiceDocument {
             return false;
         }
         return true;
+    }
+
+    long getNodeIdHash() {
+        // just like String::hashCode
+        long h = this.nodeIdHash;
+        if (h == 0) {
+            h = FNVHash.compute(this.id);
+            this.nodeIdHash = h;
+        }
+
+        return h;
     }
 }

@@ -3159,7 +3159,16 @@ public class TestNodeGroupService {
                 countPerNode = assignmentsPerNode;
             }
 
-            this.host.log("Node group %s assignments: %s", nodeGroup, assignmentsPerNode);
+            double sum = assignmentsPerNode.values().stream().mapToDouble(x -> x).sum();
+            double mean = sum / assignmentsPerNode.size();
+            double stddev = assignmentsPerNode.values().stream()
+                    .map(x -> (x - mean) * (x - mean))
+                    .mapToDouble(x -> x)
+                    .sum();
+            stddev = Math.sqrt(stddev / assignmentsPerNode.size());
+
+            this.host.log("Node group %s, perNode=%.2f stddev=%.2f assignments: %s", nodeGroup, mean, stddev,
+                    assignmentsPerNode);
 
             for (Entry<String, Long> e : assignmentsPerNode.entrySet()) {
                 // we assume that with random keys, and random node ids, each node will get at least
