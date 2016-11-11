@@ -80,7 +80,7 @@ public class ServiceHostLogService extends StatelessService {
         Map<String, String> params = UriUtils.parseUriQueryParams(get.getUri());
 
         String generation = params.get("logFileNumber");
-        if (generation == null) {
+        if (generation == null || generation.isEmpty()) {
             generation = "0";
         }
         String file = this.logFileName.replaceFirst("%g", generation);

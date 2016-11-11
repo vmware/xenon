@@ -2005,7 +2005,7 @@ public class StatefulService implements Service {
             cfg.maintenanceIntervalMicros = getMaintenanceIntervalMicros();
             cfg.epoch = this.context.epoch;
             cfg.operationQueueLimit = this.context.operationQueue.getLimit();
-            request.setBody(cfg).complete();
+            request.setBodyNoCloning(cfg).complete();
             return;
         }
 
