@@ -20,7 +20,6 @@ import java.util.Arrays;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Map.Entry;
 import java.util.Set;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicLong;
@@ -52,10 +51,6 @@ public class Operation implements Cloneable {
     }
 
     public static class SocketContext {
-
-        public SocketContext() {
-        }
-
         private long lastUseTimeMicros;
 
         public long getLastUseTimeMicros() {
@@ -76,11 +71,11 @@ public class Operation implements Cloneable {
     }
 
     static class InstrumentationContext {
-        public long handleInvokeTimeMicros;
-        public long enqueueTimeMicros;
-        public long documentStoreCompletionTimeMicros;
-        public long handlerCompletionTimeMicros;
-        public long operationCompletionTimeMicros;
+        long handleInvokeTimeMicros;
+        long enqueueTimeMicros;
+        long documentStoreCompletionTimeMicros;
+        long handlerCompletionTimeMicros;
+        long operationCompletionTimeMicros;
     }
 
     /**
@@ -105,12 +100,12 @@ public class Operation implements Cloneable {
     }
 
     static class RemoteContext {
-        public SocketContext socketCtx;
-        public Map<String, String> requestHeaders;
-        public Map<String, String> responseHeaders;
-        public Principal peerPrincipal;
-        public X509Certificate[] peerCertificateChain;
-        public String connectionTag;
+        SocketContext socketCtx;
+        Map<String, String> requestHeaders;
+        Map<String, String> responseHeaders;
+        Principal peerPrincipal;
+        X509Certificate[] peerCertificateChain;
+        String connectionTag;
     }
 
     /**
@@ -584,10 +579,12 @@ public class Operation implements Cloneable {
     public static final String HEADER_FIELD_VALUE_SEPARATOR = ":";
     public static final String CR_LF = "\r\n";
 
-    private static AtomicLong idCounter = new AtomicLong();
-    private static AtomicReferenceFieldUpdater<Operation, CompletionHandler> completionUpdater = AtomicReferenceFieldUpdater
-            .newUpdater(Operation.class, CompletionHandler.class,
-                    "completion");
+    private static final char DIRECTIVE_PRAGMA_VALUE_SEPARATOR_CHAR_CONST = ';';
+    private static final char HEADER_FIELD_VALUE_SEPARATOR_CHAR_CONST = ':';
+
+    private static final AtomicLong idCounter = new AtomicLong();
+    private static final AtomicReferenceFieldUpdater<Operation, CompletionHandler> completionUpdater = AtomicReferenceFieldUpdater
+            .newUpdater(Operation.class, CompletionHandler.class, "completion");
 
     private URI uri;
     private Object referer;
@@ -631,9 +628,10 @@ public class Operation implements Cloneable {
         // which means that derivative operations will automatically inherit this context.
         // It is set as early as possible since there is a possibility that it is
         // overridden by the service implementation (i.e. when it impersonates).
-        this.authorizationCtx = OperationContext.getAuthorizationContext();
-        this.transactionId = OperationContext.getTransactionId();
-        this.contextId = OperationContext.getContextId();
+        OperationContext opCtx = OperationContext.getOperationContextNoCloning();
+        this.authorizationCtx = opCtx.authContext;
+        this.transactionId = opCtx.transactionId;
+        this.contextId = opCtx.contextId;
     }
 
     static Operation createOperation(Action action, URI uri) {
@@ -736,19 +734,12 @@ public class Operation implements Cloneable {
         try {
             clone = (Operation) super.clone();
         } catch (CloneNotSupportedException e) {
-            clone = new Operation();
+            throw new AssertionError(e);
         }
 
+        // Clone mutable fields
+        // body is always cloned on set, so no need to re-clone
         clone.options = EnumSet.copyOf(this.options);
-        clone.action = this.action;
-        clone.completion = this.completion;
-        clone.expirationMicrosUtc = this.expirationMicrosUtc;
-        clone.referer = this.referer;
-        clone.uri = this.uri;
-        clone.contentLength = this.contentLength;
-        clone.contentType = this.contentType;
-        clone.retriesRemaining = this.retriesRemaining;
-        clone.retryCount = this.retryCount;
 
         if (this.cookies != null) {
             clone.cookies = new HashMap<>(this.cookies);
@@ -770,21 +761,13 @@ public class Operation implements Cloneable {
             clone.remoteCtx.connectionTag = this.remoteCtx.connectionTag;
         }
 
-        // Direct copy of authorization context; it is immutable
-        clone.authorizationCtx = this.authorizationCtx;
-        clone.transactionId = this.transactionId;
-        clone.contextId = this.contextId;
-
-        // body is always cloned on set, so no need to re-clone
-        clone.body = this.body;
         return clone;
     }
 
     private void allocateRemoteContext() {
-        if (this.remoteCtx != null) {
-            return;
+        if (this.remoteCtx == null) {
+            this.remoteCtx = new RemoteContext();
         }
-        this.remoteCtx = new RemoteContext();
     }
 
     private void allocateRequestHeaders() {
@@ -1002,13 +985,13 @@ public class Operation implements Cloneable {
      */
     public Operation setCompletion(Consumer<Operation> successHandler,
             CompletionHandler failureHandler) {
-        setCompletion((op, e) -> {
+        this.completion = (op, e) -> {
             if (e != null) {
                 failureHandler.handle(op, e);
                 return;
             }
             successHandler.accept(op);
-        });
+        };
         return this;
     }
 
@@ -1071,10 +1054,7 @@ public class Operation implements Cloneable {
     }
 
     public URI getReferer() {
-        if (this.referer == null) {
-            return null;
-        }
-        if (!(this.referer instanceof URI)) {
+        if (this.referer instanceof String) {
             try {
                 this.referer = new URI((String) this.referer);
             } catch (Throwable e) {
@@ -1088,11 +1068,7 @@ public class Operation implements Cloneable {
         if (this.referer == null) {
             return null;
         }
-        if (this.referer instanceof String) {
-            return (String) this.referer;
-        } else {
-            return ((URI) this.referer).toString();
-        }
+        return this.referer.toString();
     }
 
     public Operation setAction(Action action) {
@@ -1206,8 +1182,7 @@ public class Operation implements Cloneable {
                 rsp = Utils.toServiceErrorResponse(e);
             }
             rsp.statusCode = this.statusCode;
-            setBodyNoCloning(rsp).setContentType(
-                    Operation.MEDIA_TYPE_APPLICATION_JSON);
+            setBodyNoCloning(rsp).setContentType(Operation.MEDIA_TYPE_APPLICATION_JSON);
         }
 
         completeOrFail(e);
@@ -1260,18 +1235,17 @@ public class Operation implements Cloneable {
      */
     public Operation nestCompletion(CompletionHandler h) {
         CompletionHandler existing = this.completion;
-
-        setCompletion((o, e) -> {
+        this.completion = (o, e) -> {
             this.statusCode = o.statusCode;
             this.completion = existing;
             h.handle(o, e);
-        });
+        };
         return this;
     }
 
     public void nestCompletion(Consumer<Operation> successHandler) {
         CompletionHandler existing = this.completion;
-        setCompletion((o, e) -> {
+        this.completion = (o, e) -> {
             this.statusCode = o.statusCode;
             this.completion = existing;
             if (e != null) {
@@ -1283,7 +1257,7 @@ public class Operation implements Cloneable {
             } catch (Throwable ex) {
                 fail(ex);
             }
-        });
+        };
     }
 
     /**
@@ -1302,12 +1276,12 @@ public class Operation implements Cloneable {
     public Operation appendCompletion(CompletionHandler h) {
         CompletionHandler existing = this.completion;
         if (existing == null) {
-            setCompletion(h);
+            this.completion = h;
         } else {
-            setCompletion((o, e) -> {
+            this.completion = (o, e) -> {
                 o.nestCompletion(h);
                 existing.handle(o, e);
-            });
+            };
         }
         return this;
     }
@@ -1317,8 +1291,8 @@ public class Operation implements Cloneable {
             throw new IllegalArgumentException("headerLine is required");
         }
 
-        int idx = headerLine.indexOf(HEADER_FIELD_VALUE_SEPARATOR);
-        if (idx == -1 || idx < 3) {
+        int idx = headerLine.indexOf(HEADER_FIELD_VALUE_SEPARATOR_CHAR_CONST);
+        if (idx < 3) {
             throw new IllegalArgumentException("headerLine does not appear valid");
         }
 
@@ -1333,42 +1307,61 @@ public class Operation implements Cloneable {
     }
 
     public Operation addRequestHeader(String name, String value) {
+        return addRequestHeader(name, value, true);
+    }
+
+    private Operation addRequestHeader(String name, String value, boolean normalize) {
         allocateRemoteContext();
         allocateRequestHeaders();
-        value = value.replace(CR_LF, "").trim();
-        this.remoteCtx.requestHeaders.put(name.toLowerCase(), value);
+        if (normalize) {
+            value = removeString(value, CR_LF).trim();
+            name = name.toLowerCase();
+        }
+        this.remoteCtx.requestHeaders.put(name, value);
         return this;
     }
 
     public Operation addResponseHeader(String name, String value) {
         allocateRemoteContext();
         allocateResponseHeaders();
-        value = value.replace(CR_LF, "");
+        value = removeString(value, CR_LF).trim();
         this.remoteCtx.responseHeaders.put(name.toLowerCase(), value);
         return this;
     }
 
     public Operation addResponseCookie(String key, String value) {
-        StringBuilder buf = new StringBuilder()
-                .append(key)
-                .append('=')
-                .append(value);
-        addResponseHeader(SET_COOKIE_HEADER, buf.toString());
+        addResponseHeader(SET_COOKIE_HEADER, key + '=' + value);
         return this;
     }
 
-    public Operation addPragmaDirective(String directive) {
-        allocateRemoteContext();
-        directive = directive.toLowerCase();
-        String existingDirectives = getRequestHeader(PRAGMA_HEADER, false);
-        if (existingDirectives != null) {
-            if (!existingDirectives.contains(directive)) {
-                directive = existingDirectives + ";" + directive;
+    private String removeString(String value, String delete) {
+        int i = 0;
+        while ((i = value.indexOf(delete, i)) != -1) {
+            if (i == 0) {
+                value = value.substring(i + delete.length());
+            } else if (i + delete.length() == value.length()) {
+                value = value.substring(0, i);
             } else {
-                directive = existingDirectives;
+                value = value.substring(0, i) + value.substring(i + delete.length());
             }
         }
-        addRequestHeader(PRAGMA_HEADER, directive);
+        return value;
+    }
+
+    /**
+     * Add a directive. Lower case strings must be used.
+     */
+    public Operation addPragmaDirective(String directive) {
+        String existingDirectives = getRequestHeader(PRAGMA_HEADER, false);
+        if (existingDirectives != null) {
+            if (indexOfPragmaDirective(existingDirectives, directive) != -1) {
+                return this;
+            }
+
+            directive = existingDirectives + DIRECTIVE_PRAGMA_VALUE_SEPARATOR_CHAR_CONST + directive;
+        }
+        directive = removeString(directive, CR_LF).trim();
+        addRequestHeader(PRAGMA_HEADER, directive, false);
         return this;
     }
 
@@ -1377,27 +1370,51 @@ public class Operation implements Cloneable {
      */
     public boolean hasPragmaDirective(String directive) {
         String existingDirectives = getRequestHeader(PRAGMA_HEADER, false);
-        if (existingDirectives != null
-                && existingDirectives.contains(directive)) {
-            return true;
-        }
-        return false;
+        return existingDirectives != null
+                && indexOfPragmaDirective(existingDirectives, directive) != -1;
     }
 
     /**
-     * Removes a directive. Lower case strings must be used
+     * Removes a directive. Lower case strings must be used.
      */
     public Operation removePragmaDirective(String directive) {
         String existingDirectives = getRequestHeader(PRAGMA_HEADER, false);
         if (existingDirectives != null) {
-            directive = existingDirectives.replace(directive, "");
-            addRequestHeader(PRAGMA_HEADER, directive);
+            int i = indexOfPragmaDirective(existingDirectives, directive);
+            if (i == -1) {
+                return this;
+            }
+
+            if (i == 0) {
+                existingDirectives = existingDirectives.substring(i + directive.length());
+            } else {
+                existingDirectives = existingDirectives.substring(0, i - 1) + existingDirectives
+                        .substring(i + directive.length());
+            }
+
+            addRequestHeader(PRAGMA_HEADER, existingDirectives, false);
         }
         return this;
     }
 
+    int indexOfPragmaDirective(String existingDirectives, String directive) {
+        int i = 0;
+        while ((i = existingDirectives.indexOf(directive, i)) != -1) {
+            // make sure sure we fully match the directive
+            if (i + directive.length() == existingDirectives.length()
+                    || existingDirectives.charAt(i + directive.length())
+                    == DIRECTIVE_PRAGMA_VALUE_SEPARATOR_CHAR_CONST) {
+                return i;
+            }
+
+            i++;
+        }
+
+        return -1;
+    }
+
     public boolean isKeepAlive() {
-        return this.remoteCtx == null ? false : hasOption(OperationOption.KEEP_ALIVE);
+        return this.remoteCtx != null && hasOption(OperationOption.KEEP_ALIVE);
     }
 
     public Operation setKeepAlive(boolean isKeepAlive) {
@@ -1519,11 +1536,13 @@ public class Operation implements Cloneable {
     }
 
     public boolean hasResponseHeaders() {
-        return this.remoteCtx != null && this.remoteCtx.responseHeaders != null;
+        return this.remoteCtx != null && this.remoteCtx.responseHeaders != null
+                && !this.remoteCtx.responseHeaders.isEmpty();
     }
 
     public boolean hasRequestHeaders() {
-        return this.remoteCtx != null && this.remoteCtx.requestHeaders != null;
+        return this.remoteCtx != null && this.remoteCtx.requestHeaders != null
+                && !this.remoteCtx.requestHeaders.isEmpty();
     }
 
     public String getRequestHeader(String headerName) {
@@ -1538,20 +1557,21 @@ public class Operation implements Cloneable {
     }
 
     private String getRequestHeader(String headerName, boolean normalize) {
-        if (this.remoteCtx == null) {
-            return null;
-        }
-        if (this.remoteCtx.requestHeaders == null) {
+        if (!hasRequestHeaders()) {
             return null;
         }
         String value = this.remoteCtx.requestHeaders.get(headerName);
-        if (normalize && value == null) {
+        if (!normalize) {
+            return value;
+        }
+
+        if (value == null) {
             value = this.remoteCtx.requestHeaders.get(headerName.toLowerCase());
+            if (value == null) {
+                return null;
+            }
         }
-        if (normalize && value != null) {
-            value = value.trim().replace(CR_LF, "");
-        }
-        return value;
+        return removeString(value.trim(), CR_LF);
     }
 
     public String getResponseHeader(String headerName) {
@@ -1566,20 +1586,21 @@ public class Operation implements Cloneable {
     }
 
     private String getResponseHeader(String headerName, boolean normalize) {
-        if (this.remoteCtx == null) {
-            return null;
-        }
-        if (this.remoteCtx.responseHeaders == null) {
+        if (!hasResponseHeaders()) {
             return null;
         }
         String value = this.remoteCtx.responseHeaders.get(headerName);
-        if (normalize && value == null) {
+        if (!normalize) {
+            return value;
+        }
+
+        if (value == null) {
             value = this.remoteCtx.responseHeaders.get(headerName.toLowerCase());
+            if (value == null) {
+                return null;
+            }
         }
-        if (normalize && value != null) {
-            value = value.trim().replace(CR_LF, "");
-        }
-        return value;
+        return removeString(value.trim(), CR_LF);
     }
 
     public Principal getPeerPrincipal() {
@@ -1673,25 +1694,23 @@ public class Operation implements Cloneable {
     }
 
     public String getRequestCallbackLocation() {
-        if (this.remoteCtx == null || this.remoteCtx.requestHeaders == null) {
+        if (!hasRequestHeaders()) {
             return null;
         }
 
-        return this.remoteCtx.requestHeaders
-                .get(REQUEST_CALLBACK_LOCATION_HEADER);
+        return this.remoteCtx.requestHeaders.get(REQUEST_CALLBACK_LOCATION_HEADER);
     }
 
     public String getResponseCallbackStatus() {
-        if (this.remoteCtx == null || this.remoteCtx.responseHeaders == null) {
+        if (!hasRequestHeaders()) {
             return null;
         }
-        return this.remoteCtx.requestHeaders
-                .get(RESPONSE_CALLBACK_STATUS_HEADER);
+        return this.remoteCtx.requestHeaders.get(RESPONSE_CALLBACK_STATUS_HEADER);
     }
 
     public Operation removeRequestCallbackLocation() {
-        if (this.remoteCtx == null || this.remoteCtx.requestHeaders == null) {
-            return null;
+        if (!hasRequestHeaders()) {
+            return this;
         }
         this.remoteCtx.requestHeaders.remove(REQUEST_CALLBACK_LOCATION_HEADER);
         return this;
@@ -1700,8 +1719,7 @@ public class Operation implements Cloneable {
     public Operation setRequestCallbackLocation(String location) {
         allocateRemoteContext();
         allocateRequestHeaders();
-        this.remoteCtx.requestHeaders.put(REQUEST_CALLBACK_LOCATION_HEADER,
-                location == null ? null : location);
+        this.remoteCtx.requestHeaders.put(REQUEST_CALLBACK_LOCATION_HEADER, location);
         return this;
     }
 
@@ -1718,16 +1736,13 @@ public class Operation implements Cloneable {
      * headers with the same name already present on this instance will be overwritten.
      */
     public Operation transferResponseHeadersFrom(Operation op) {
-        if (op.remoteCtx == null || op.remoteCtx.responseHeaders == null
-                || op.remoteCtx.responseHeaders.isEmpty()) {
+        if (!op.hasResponseHeaders()) {
             return this;
         }
 
         allocateRemoteContext();
         allocateResponseHeaders();
-        for (Entry<String, String> e : op.getResponseHeaders().entrySet()) {
-            this.remoteCtx.responseHeaders.put(e.getKey(), e.getValue());
-        }
+        this.remoteCtx.responseHeaders.putAll(op.getResponseHeaders());
         return this;
     }
 
@@ -1736,44 +1751,35 @@ public class Operation implements Cloneable {
      * headers with the same name already present on this instance will be overwritten.
      */
     public Operation transferRequestHeadersFrom(Operation op) {
-        if (op.remoteCtx == null || op.remoteCtx.requestHeaders == null
-                || op.remoteCtx.requestHeaders.isEmpty()) {
+        if (!op.hasRequestHeaders()) {
             return this;
         }
 
         allocateRemoteContext();
         allocateRequestHeaders();
-        for (Entry<String, String> e : op.getRequestHeaders().entrySet()) {
-            this.remoteCtx.requestHeaders.put(e.getKey(), e.getValue());
-        }
+        this.remoteCtx.requestHeaders.putAll(op.getRequestHeaders());
         return this;
     }
 
     public Operation transferResponseHeadersToRequestHeadersFrom(Operation op) {
-        if (op.remoteCtx == null || op.remoteCtx.responseHeaders == null
-                || op.remoteCtx.responseHeaders.isEmpty()) {
+        if (!op.hasResponseHeaders()) {
             return this;
         }
 
         allocateRemoteContext();
         allocateRequestHeaders();
-        for (Entry<String, String> e : op.getResponseHeaders().entrySet()) {
-            this.remoteCtx.requestHeaders.put(e.getKey(), e.getValue());
-        }
+        this.remoteCtx.requestHeaders.putAll(op.getResponseHeaders());
         return this;
     }
 
     public Operation transferRequestHeadersToResponseHeadersFrom(Operation op) {
-        if (op.remoteCtx == null || op.remoteCtx.requestHeaders == null
-                || op.remoteCtx.requestHeaders.isEmpty()) {
+        if (!op.hasRequestHeaders()) {
             return this;
         }
 
         allocateRemoteContext();
         allocateResponseHeaders();
-        for (Entry<String, String> e : op.getRequestHeaders().entrySet()) {
-            this.remoteCtx.responseHeaders.put(e.getKey(), e.getValue());
-        }
+        this.remoteCtx.responseHeaders.putAll(op.getRequestHeaders());
         return this;
     }
 

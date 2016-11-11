@@ -208,6 +208,7 @@ public class ReliableSubscriptionService extends StatelessService {
         // self DELETE. The client, if they implemented handleRequest on the service instance
         // will be able to tell something went wrong
         sendRequest(Operation.createDelete(getUri())
+                .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_NOTIFICATION)
                 .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_SKIPPED_NOTIFICATIONS));
     }
 }

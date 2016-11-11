@@ -181,8 +181,8 @@ public final class Utils {
      * while others use the user supplied ones
      * @param kryoThreadLocal Thread local variable that supplies the KRYO instance
      * @param isDocumentSerializer True if instance should by used for
-     * {@link Utils#toDocumentBytes(Object, byte[], int)} and
-     * {@link Utils#fromDocumentBytes(byte[], int, int)}
+     * {@link Utils#toBytes(Object, byte[], int)} and
+     * {@link Utils#fromBytes(byte[], int, int)}
      */
     public static void registerCustomKryoSerializer(ThreadLocal<Kryo> kryoThreadLocal,
             boolean isDocumentSerializer) {
@@ -212,12 +212,24 @@ public final class Utils {
                 }
             }
 
+            // Calculate hash of all non-excluded fields, to make sure the following:
+            // {a='1', b=null} != {a=null, b='1'}
             Object fieldValue = ReflectionUtils.getPropertyValue(pd, s);
-            if (pd.typeName == TypeName.COLLECTION
-                    || pd.typeName == TypeName.MAP
-                    || pd.typeName == TypeName.PODO) {
+            if (fieldValue == null) {
+                hash = FNVHash.compute(-1, hash);
+                continue;
+            }
+
+            switch (pd.typeName) {
+            case STRING:
+                hash = FNVHash.compute((String) fieldValue, hash);
+                break;
+            case COLLECTION:
+            case MAP:
+            case PODO:
                 hash = Utils.hashJson(fieldValue, hash);
-            } else if (fieldValue != null) {
+                break;
+            default:
                 int position = Utils.toBytes(fieldValue, buffer, 0);
                 hash = FNVHash.compute(buffer, 0, position, hash);
             }
@@ -428,11 +440,11 @@ public final class Utils {
     }
 
     public static String toDocumentKind(Class<?> type) {
-        return type.getCanonicalName().replace(".", ":");
+        return type.getCanonicalName().replace('.', ':');
     }
 
     /**
-     * Obtain the canonical name for a class from the entry in the documenKind field
+     * Obtain the canonical name for a class from the entry in the documentKind field
      */
     public static String fromDocumentKind(String kind) {
         return kind.replace(':', '.');
@@ -443,8 +455,8 @@ public final class Utils {
      * will use for all services with that state type
      */
     public static String registerKind(Class<?> type, String kind) {
-        KIND_TO_TYPE.put(type.getCanonicalName(), type);
-        return KINDS.put(type.getCanonicalName(), kind);
+        KIND_TO_TYPE.put(kind, type);
+        return KINDS.put(type.getName(), kind);
     }
 
     /**
@@ -452,7 +464,7 @@ public final class Utils {
      * {@code Utils#registerKind(Class, String)} will be returned
      */
     public static Class<?> getTypeFromKind(String kind) {
-        return KIND_TO_TYPE.get(fromDocumentKind(kind));
+        return KIND_TO_TYPE.get(kind);
     }
 
     /**
@@ -460,7 +472,7 @@ public final class Utils {
      * mapping. The mapping can be overridden with {@code Utils#registerKind(Class, String)}
      */
     public static String buildKind(Class<?> type) {
-        return KINDS.computeIfAbsent(type.getCanonicalName(), name -> toDocumentKind(type));
+        return KINDS.computeIfAbsent(type.getName(), name -> toDocumentKind(type));
     }
 
     public static ServiceErrorResponse toServiceErrorResponse(Throwable e) {

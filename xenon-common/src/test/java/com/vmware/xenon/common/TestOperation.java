@@ -128,6 +128,17 @@ public class TestOperation extends BasicReusableHostTestCase {
         op = Operation.createGet(this.host.getUri());
         op.removePragmaDirective(Operation.PRAGMA_DIRECTIVE_INDEX_CHECK);
         assertTrue(!op.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_INDEX_CHECK));
+
+        // check overlapping directives
+        op = Operation.createGet(this.host.getUri());
+        op.addPragmaDirective("x-abc");
+        assertTrue(op.hasPragmaDirective("x-abc"));
+        assertTrue(!op.hasPragmaDirective("x-ab"));
+        op.addPragmaDirective("x-123");
+        assertTrue(op.hasPragmaDirective("x-abc"));
+        assertTrue(!op.hasPragmaDirective("x-ab"));
+        assertTrue(op.hasPragmaDirective("x-123"));
+        assertTrue(!op.hasPragmaDirective("x-12"));
     }
 
     @Test
@@ -436,6 +447,18 @@ public class TestOperation extends BasicReusableHostTestCase {
         op.addResponseHeader(ctLower, ctValue);
         ctV = op.getResponseHeader(ctLower);
         assertEquals(ctValue, ctV);
+        op.addRequestHeader("req", " \r\n 123 \r\n ");
+        assertEquals(op.getRequestHeader("req"), "123");
+        op.addRequestHeader("req", "123\r\n");
+        assertEquals(op.getRequestHeader("req"), "123");
+        op.addRequestHeader("req", "\r\n123");
+        assertEquals(op.getRequestHeader("req"), "123");
+        op.addRequestHeader("req", "\r\n123\r\n456");
+        assertEquals(op.getRequestHeader("req"), "123456");
+        op.addRequestHeader("req", "\r\n");
+        assertEquals(op.getRequestHeader("req"), "");
+        op.addResponseHeader("res", " - \r\n\r\n - 123 - \r\n\r\n - ");
+        assertEquals(op.getResponseHeader("res"), "-  - 123 -  -");
     }
 
     @Test
@@ -698,5 +721,24 @@ public class TestOperation extends BasicReusableHostTestCase {
         assertEquals(op.getUri().getUserInfo(), sop.userInfo);
         assertEquals(SerializedOperation.KIND, sop.documentKind);
         assertEquals(op.getExpirationMicrosUtc(), sop.documentExpirationTimeMicros);
+    }
+
+    @Test
+    public void testIsNotification() throws Throwable {
+        // making sure we only do a full directive match to 'xn-nt' (PRAGMA_DIRECTIVE_NOTIFICATION)
+        Operation op = Operation.createGet(null);
+        assertFalse(op.isNotification());
+
+        op.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_SKIPPED_NOTIFICATIONS);
+        assertFalse(op.isNotification());
+
+        op.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_NOTIFICATION);
+        assertTrue(op.isNotification());
+
+        op.removePragmaDirective(Operation.PRAGMA_DIRECTIVE_SKIPPED_NOTIFICATIONS);
+        assertTrue(op.isNotification());
+
+        op.removePragmaDirective(Operation.PRAGMA_DIRECTIVE_NOTIFICATION);
+        assertFalse(op.isNotification());
     }
 }
