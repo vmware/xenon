@@ -184,6 +184,18 @@ public class QueryTask extends ServiceDocument {
         public QueryTerm groupSortTerm;
 
         /**
+         * Properties to be used for sort. Used in combination with {@code QueryOption#SORT}
+         * Takes precedence over sortTerm.
+         */
+        public List<QueryTerm> sortTerms;
+
+        /**
+         * Properties to be used for group sort. Used in combination with {@code QueryOption#GROUP_BY}
+         * Takes precedence over groupSortTerm.
+         */
+        public List<QueryTerm> groupSortTerms;
+
+        /**
          * Property name to use for grouping. Used in combination with {@code QueryOption#GROUP_BY}
          */
         public QueryTerm groupByTerm;
@@ -438,6 +450,7 @@ public class QueryTask extends ServiceDocument {
         public String matchValue;
         public MatchType matchType;
         public NumericRange<?> range;
+        public SortOrder sortOrder;
 
         @Override
         public boolean equals(Object obj) {

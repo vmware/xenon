@@ -13,6 +13,9 @@
 
 package com.vmware.xenon.services.common;
 
+import java.util.ArrayList;
+import java.util.List;
+
 import org.apache.lucene.document.DoublePoint;
 import org.apache.lucene.document.LongPoint;
 import org.apache.lucene.index.Term;
@@ -199,7 +202,9 @@ final class LuceneQueryConverter {
                 ? querySpecification.groupSortOrder
                 : querySpecification.sortOrder;
 
-        validateSortTerm(sortTerm);
+        List<QueryTask.QueryTerm> sortTerms = isGroupSort ? querySpecification.groupSortTerms
+                : querySpecification.sortTerms;
+
 
         if (querySpecification.options.contains(QueryOption.TOP_RESULTS)) {
             if (querySpecification.resultLimit <= 0
@@ -219,7 +224,32 @@ final class LuceneQueryConverter {
 
         boolean order = sortOrder != QueryTask.QuerySpecification.SortOrder.ASC;
 
-        SortField sortField = null;
+        if (sortTerms == null || sortTerms.size() == 0 && sortTerm != null) {
+            sortTerms = new ArrayList<>();
+            sortTerms.add(sortTerm);
+        }
+
+        SortField[] sortFields = new SortField[sortTerms.size()];
+
+        for (int sortIndex = 0; sortIndex < sortTerms.size(); sortIndex++ ) {
+            QueryTask.QueryTerm term = sortTerms.get(sortIndex);
+
+            boolean termOrder = order;
+
+            if (term.sortOrder != null) {
+                termOrder = term.sortOrder != QueryTask.QuerySpecification.SortOrder.ASC;
+            }
+
+            validateSortTerm(term);
+            sortFields[sortIndex] = convertToLuceneSortField(term, termOrder);
+        }
+
+        return new Sort(sortFields);
+    }
+
+    private static SortField convertToLuceneSortField(QueryTask.QueryTerm sortTerm,
+                                                      boolean order) {
+        SortField sortField;
         SortField.Type type = convertToLuceneType(sortTerm.propertyType);
 
         switch (type) {
@@ -233,17 +263,18 @@ final class LuceneQueryConverter {
                     sortTerm.propertyName, type, order);
             break;
         }
-        return new Sort(sortField);
+
+        return sortField;
     }
 
     static void validateSortTerm(QueryTask.QueryTerm term) {
 
         if (term.propertyType == null) {
-            throw new IllegalArgumentException("term.propertyType is required");
+            throw new IllegalArgumentException("term.propertyType is required for sortTerm");
         }
 
         if (term.propertyName == null) {
-            throw new IllegalArgumentException("term.propertyName is required");
+            throw new IllegalArgumentException("term.propertyName is required for sortTerm");
         }
     }
 

@@ -1103,12 +1103,14 @@ public class LuceneDocumentIndexService extends StatelessService {
         LuceneQueryPage page = (LuceneQueryPage) qs.context.nativePage;
         Query tq = (Query) qs.context.nativeQuery;
         Sort sort = (Sort) qs.context.nativeSort;
-        if (sort == null && qs.sortTerm != null) {
+
+        if (sort == null && (qs.sortTerms != null || qs.sortTerm != null)) {
             sort = LuceneQueryConverter.convertToLuceneSort(qs, false);
         }
 
         Sort groupSort = null;
-        if (qs.groupSortTerm != null) {
+
+        if (qs.groupSortTerms != null || qs.groupSortTerm != null) {
             groupSort = LuceneQueryConverter.convertToLuceneSort(qs, true);
         }
 
