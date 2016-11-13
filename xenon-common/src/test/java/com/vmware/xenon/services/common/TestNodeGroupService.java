@@ -3240,6 +3240,7 @@ public class TestNodeGroupService {
 
         this.host.waitForNodeGroupConvergence(2);
         this.host.setNodeGroupQuorum(2);
+        this.host.waitForNodeGroupIsAvailableConvergence();
 
         // Filter the created examples to only those
         // that are owned by host-1.
