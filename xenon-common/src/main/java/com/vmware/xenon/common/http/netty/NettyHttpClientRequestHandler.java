@@ -227,9 +227,12 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
             request.setFromReplication(true).setTargetReplicated(true);
         } else if (pragma != null) {
             request.addRequestHeader(Operation.PRAGMA_HEADER, pragma);
+            if (pragma.contains(Operation.PRAGMA_DIRECTIVE_FORWARDED)) {
+                request.toggleOption(OperationOption.FORWARDED, true);
+            }
         }
 
-        if (request.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_REPLICATED)) {
+        if (pragma != null && pragma.contains(Operation.PRAGMA_DIRECTIVE_REPLICATED)) {
             // synchronization requests will have additional directives, so check again here
             // if the request is replicated
             request.setFromReplication(true).setTargetReplicated(true);

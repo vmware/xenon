@@ -3599,7 +3599,7 @@ public class ServiceHost implements ServiceRequestSender {
                 return;
             }
 
-            if (op.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_FORWARDED)) {
+            if (op.isForwarded()) {
                 // this was forwarded from another node, but we do not think we own the service
                 failRequestOwnerMismatch(op, op.getUri().getPath(), null);
                 return;
@@ -3997,6 +3997,7 @@ public class ServiceHost implements ServiceRequestSender {
     }
 
     void prepareForwardRequest(Operation fwdOp) {
+        fwdOp.toggleOption(OperationOption.FORWARDED, true);
         fwdOp.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_FORWARDED);
         fwdOp.setConnectionTag(ServiceClient.CONNECTION_TAG_FORWARDING);
         fwdOp.toggleOption(NodeSelectorService.FORWARDING_OPERATION_OPTION,

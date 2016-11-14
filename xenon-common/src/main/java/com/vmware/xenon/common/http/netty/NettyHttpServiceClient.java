@@ -480,7 +480,7 @@ public class NettyHttpServiceClient implements ServiceClient {
                 request.headers().set(Operation.REQUEST_AUTH_TOKEN_HEADER, ctx.getToken());
             }
 
-            boolean isXenonToXenon = op.isFromReplication();
+            boolean isXenonToXenon = op.isFromReplication() || op.isForwarded();
             boolean isRequestWithCallback = false;
             if (hasRequestHeaders) {
                 for (Entry<String, String> nameValue : op.getRequestHeaders().entrySet()) {

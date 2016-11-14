@@ -281,6 +281,12 @@ public class Operation implements Cloneable {
          * Set on both out-bound and in-bound replicated updates
          */
         REPLICATED,
+
+        /**
+         * Set on both out-bound and in-bound forwarded requests
+         */
+        FORWARDED,
+
         /**
          * Set to prevent replication
          */
@@ -1656,7 +1662,7 @@ public class Operation implements Cloneable {
      * Value indicating whether this operation was forwarded from a peer node
      */
     public boolean isForwarded() {
-        return this.hasPragmaDirective(PRAGMA_DIRECTIVE_FORWARDED);
+        return this.hasOption(OperationOption.FORWARDED);
     }
 
     public String getRequestCallbackLocation() {
