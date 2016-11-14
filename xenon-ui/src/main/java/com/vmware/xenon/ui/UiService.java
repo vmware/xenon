@@ -13,16 +13,44 @@
 
 package com.vmware.xenon.ui;
 
+import java.util.EnumSet;
+
 import com.vmware.xenon.common.Operation;
+import com.vmware.xenon.common.ServiceDocument;
+import com.vmware.xenon.common.Utils;
 import com.vmware.xenon.services.common.ServiceUriPaths;
 import com.vmware.xenon.services.common.UiContentService;
 
 public class UiService extends UiContentService {
     public static final String SELF_LINK = ServiceUriPaths.UI_SERVICE_CORE_PATH;
 
+    public static class QueryRequest extends ServiceDocument {
+        public static final String KIND = Utils.buildKind(QueryRequest.class);
+
+        public String kind;
+    }
+
     @Override
     public void authorizeRequest(Operation op) {
         // default UI is a single page app and should be publicly accessible.
         op.complete();
+    }
+
+    @Override
+    public void handlePost(Operation post) {
+        if (!post.hasBody()) {
+            post.fail(new IllegalArgumentException("structured body is required"));
+            return;
+        }
+
+        QueryRequest body = post.getBody(QueryRequest.class);
+
+        if (body.kind == null) {
+            post.fail(new IllegalArgumentException("body kind is required"));
+            return;
+        }
+
+        EnumSet<ServiceOption> options = EnumSet.of(ServiceOption.FACTORY);
+        getHost().queryServiceUris(options, false, post);
     }
 }
