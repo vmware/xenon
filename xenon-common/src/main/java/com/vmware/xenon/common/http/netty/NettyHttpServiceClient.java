@@ -476,7 +476,7 @@ public class NettyHttpServiceClient implements ServiceClient {
             }
 
             AuthorizationContext ctx = op.getAuthorizationContext();
-            if (ctx != null && ctx.getToken() != null) {
+            if (ctx != null && ctx.shouldPropagateToClient() && ctx.getToken() != null) {
                 request.headers().set(Operation.REQUEST_AUTH_TOKEN_HEADER, ctx.getToken());
             }
 

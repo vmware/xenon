@@ -3374,6 +3374,7 @@ public class ServiceHost implements ServiceRequestSender {
         }
 
         AuthorizationContext.Builder b = AuthorizationContext.Builder.create();
+        b.setPropagateToClient(this.isAuthorizationEnabled());
         b.setClaims(claims);
         b.setToken(token);
         ctx = b.getResult();
@@ -5512,7 +5513,7 @@ public class ServiceHost implements ServiceRequestSender {
         AuthorizationContext.Builder ab = AuthorizationContext.Builder.create();
         ab.setClaims(claims);
         ab.setToken(token);
-        ab.setPropagateToClient(false);
+        ab.setPropagateToClient(isAuthorizationEnabled());
         return ab.getResult();
     }
 

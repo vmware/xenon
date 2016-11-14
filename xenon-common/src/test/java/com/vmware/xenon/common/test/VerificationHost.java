@@ -2808,6 +2808,7 @@ public class VerificationHost extends ExampleServiceHost {
         AuthorizationContext.Builder ab = AuthorizationContext.Builder.create();
         ab.setClaims(claims);
         ab.setToken(token);
+        ab.setPropagateToClient(true);
 
         // Associate resulting authorization context with this thread
         AuthorizationContext authContext = ab.getResult();

@@ -465,6 +465,7 @@ public class AuthorizationContextService extends StatelessService {
             AuthorizationContext.Builder builder = AuthorizationContext.Builder.create();
             builder.setClaims(ctx.getClaims());
             builder.setToken(ctx.getToken());
+            builder.setPropagateToClient(this.getHost().isAuthorizationEnabled());
 
             if (!roles.isEmpty()) {
                 Map<Action, Collection<Role>> roleListByAction = new HashMap<>(

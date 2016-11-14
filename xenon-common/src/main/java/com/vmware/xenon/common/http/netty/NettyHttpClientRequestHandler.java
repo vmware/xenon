@@ -427,7 +427,7 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
             response.headers().add(Operation.REQUEST_AUTH_TOKEN_HEADER, token);
 
             // Client can also use the cookie if they prefer
-            StringBuilder buf = new StringBuilder()
+            StringBuilder buf = new StringBuilder(token.length() + 64)
                     .append(AuthenticationConstants.REQUEST_AUTH_TOKEN_COOKIE)
                     .append('=')
                     .append(token);

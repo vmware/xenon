@@ -123,6 +123,7 @@ public class TestAuthorizationContext extends BasicTestCase {
         Claims claims = builder.getResult();
         AuthorizationContext.Builder ab = AuthorizationContext.Builder.create();
         ab.setClaims(claims);
+        ab.setPropagateToClient(host.isAuthorizationEnabled());
         ab.setToken(host.getTokenSigner().sign(claims));
 
         return ab.getResult();
