@@ -18,6 +18,7 @@ import java.util.logging.Level;
 import com.vmware.xenon.common.ServiceHost;
 import com.vmware.xenon.services.common.ExampleService;
 import com.vmware.xenon.services.common.RootNamespaceService;
+import com.vmware.xenon.services.common.UiNamespaceService;
 import com.vmware.xenon.ui.UiService;
 
 /**
@@ -45,6 +46,8 @@ public class DecentralizedControlPlaneHost extends ServiceHost {
         setAuthorizationContext(this.getSystemAuthorizationContext());
 
         super.startService(new RootNamespaceService());
+
+        super.startService(new UiNamespaceService());
 
         // start an example factory for folks that want to experiment with service instances
         super.startFactory(ExampleService.class, ExampleService::createFactory);

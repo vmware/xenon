@@ -7,7 +7,7 @@ export class URL {
     static STATS_SUFFIX: string = '/stats';
     static NODE_SELECTOR: string = '/core/node-selectors';
 
-    static Root: string = '/';
+    static Root: string = '/core/documents';
 
     static Authentication: string = '/core/authn/basic';
     static CoreManagement: string = '/core/management';
