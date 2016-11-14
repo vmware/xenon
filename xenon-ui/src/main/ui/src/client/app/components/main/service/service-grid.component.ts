@@ -8,7 +8,7 @@ import * as _ from 'lodash';
 import { BaseComponent } from '../../../frameworks/core/index';
 
 import { URL } from '../../../frameworks/app/enums/index';
-import { EventContext, ModalContext, Node, ServiceDocument } from '../../../frameworks/app/interfaces/index';
+import { EventContext, ModalContext, Node, ServiceDocument, ServiceDocumentQueryResult } from '../../../frameworks/app/interfaces/index';
 import { StringUtil } from '../../../frameworks/app/utils/index';
 
 import { BaseService, NodeSelectorService, NotificationService } from '../../../frameworks/app/services/index';
@@ -133,10 +133,10 @@ export class ServiceGridComponent implements OnInit, OnDestroy {
 
     private _getData(): void {
         this._baseServiceGetLinksSubscription =
-            this._baseService.getDocumentLinks(URL.Root).subscribe(
-                (links: string[]) => {
+            this._baseService.post(URL.Root, { kind: 'com:vmware:xenon:ui:UiService:QueryRequest' }).subscribe(
+                (document: ServiceDocumentQueryResult) => {
                     this._baseServiceGetDocumentSubscription =
-                        this._baseService.getDocuments(links).subscribe(
+                        this._baseService.getDocuments(document.documentLinks).subscribe(
                             (services: ServiceDocument[]) => {
                                 this._coreServices = _.filter(services, (service: ServiceDocument) => {
                                     return this._coreServiceRegExp.test(service.documentSelfLink);
