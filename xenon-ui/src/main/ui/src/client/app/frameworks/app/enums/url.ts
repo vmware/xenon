@@ -7,7 +7,8 @@ export class URL {
     static STATS_SUFFIX: string = '/stats';
     static NODE_SELECTOR: string = '/core/node-selectors';
 
-    static Root: string = '/';
+    // NOTE: Root need to be POSTed to with any non-empty body
+    static Root: string = '/core/ui/default';
 
     static Authentication: string = '/core/authn/basic';
     static CoreManagement: string = '/core/management';

@@ -8,7 +8,7 @@ import * as _ from 'lodash';
 import { BaseComponent } from '../../../frameworks/core/index';
 
 import { URL } from '../../../frameworks/app/enums/index';
-import { ModalContext, Node, ServiceDocument } from '../../../frameworks/app/interfaces/index';
+import { ModalContext, Node, ServiceDocument, ServiceDocumentQueryResult } from '../../../frameworks/app/interfaces/index';
 import { StringUtil } from '../../../frameworks/app/utils/index';
 
 import { BaseService, NodeSelectorService, NotificationService } from '../../../frameworks/app/services/index';
@@ -175,9 +175,9 @@ export class ServiceDetailComponent implements OnInit, OnDestroy {
             this._serviceInstancesLinks = [];
 
             this._baseServiceGetLinksSubscription =
-                this._baseService.getDocumentLinks(URL.Root).subscribe(
-                    (serviceLinks: string[]) => {
-                        this._serviceLinks = serviceLinks;
+                this._baseService.post(URL.Root, {}).subscribe(
+                    (document: ServiceDocumentQueryResult) => {
+                        this._serviceLinks = document.documentLinks;
                     },
                     (error) => {
                         // TODO: Better error handling

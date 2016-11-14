@@ -13,7 +13,10 @@
 
 package com.vmware.xenon.ui;
 
+import java.util.EnumSet;
+
 import com.vmware.xenon.common.Operation;
+import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.services.common.ServiceUriPaths;
 import com.vmware.xenon.services.common.UiContentService;
 
@@ -24,5 +27,26 @@ public class UiService extends UiContentService {
     public void authorizeRequest(Operation op) {
         // default UI is a single page app and should be publicly accessible.
         op.complete();
+    }
+
+    @Override
+    public void handlePost(Operation post) {
+        if (post.hasBody()) {
+            ServiceDocument body = post.getBody(ServiceDocument.class);
+
+            if (body == null) {
+                post.fail(new IllegalArgumentException("structured body is required"));
+                return;
+            }
+            if (body.documentSourceLink != null) {
+                post.fail(new IllegalArgumentException("clone request not supported"));
+                return;
+            }
+
+            EnumSet<ServiceOption> options = EnumSet.of(ServiceOption.FACTORY);
+            getHost().queryServiceUris(options, false, post);
+
+            post.complete();
+        }
     }
 }
