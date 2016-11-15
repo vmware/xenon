@@ -175,7 +175,7 @@ export class DashboardGridComponent implements OnInit, OnDestroy {
         var warningLogCount: number = 0;
         var errorLogCount: number = 0;
         _.each(this._log.items, (logItem: string) => {
-            var logItemTypeSegments = logItem.match(/\[\d*\]\[[IWS]\]\[\d*\]/i);
+            var logItemTypeSegments = logItem.match(StringUtil.LOG_ITEM_TYPE_REGEX);
 
             if (!logItemTypeSegments || _.isEmpty(logItemTypeSegments)) {
                 return;
