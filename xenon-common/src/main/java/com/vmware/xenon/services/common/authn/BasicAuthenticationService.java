@@ -25,7 +25,7 @@ import com.vmware.xenon.services.common.authn.BasicAuthenticationUtils.BasicAuth
 
 public class BasicAuthenticationService extends StatelessService {
 
-    public static String SELF_LINK = ServiceUriPaths.CORE_AUTHN_BASIC;
+    public static final String SELF_LINK = ServiceUriPaths.CORE_AUTHN_BASIC;
 
     public static final String WWW_AUTHENTICATE_HEADER_NAME = BasicAuthenticationUtils.WWW_AUTHENTICATE_HEADER_NAME;
     public static final String WWW_AUTHENTICATE_HEADER_VALUE = BasicAuthenticationUtils.WWW_AUTHENTICATE_HEADER_VALUE;
@@ -58,14 +58,16 @@ public class BasicAuthenticationService extends StatelessService {
                 return;
             }
             BasicAuthenticationContext authContext = new BasicAuthenticationContext();
-            authContext.userQuery = Query.Builder.create().addKindFieldClause(UserState.class)
-            .addFieldClause(UserState.FIELD_NAME_EMAIL, userNameAndPassword[0])
-            .build();
+            authContext.userQuery = Query.Builder.create()
+                    .addKindFieldClause(UserState.class)
+                    .addFieldClause(UserState.FIELD_NAME_EMAIL, userNameAndPassword[0])
+                    .build();
 
-            authContext.authQuery = Query.Builder.create().addKindFieldClause(AuthCredentialsServiceState.class)
-            .addFieldClause(AuthCredentialsServiceState.FIELD_NAME_EMAIL, userNameAndPassword[0])
-            .addFieldClause(AuthCredentialsServiceState.FIELD_NAME_PRIVATE_KEY, userNameAndPassword[1])
-            .build();
+            authContext.authQuery = Query.Builder.create()
+                    .addKindFieldClause(AuthCredentialsServiceState.class)
+                    .addFieldClause(AuthCredentialsServiceState.FIELD_NAME_EMAIL, userNameAndPassword[0])
+                    .addFieldClause(AuthCredentialsServiceState.FIELD_NAME_PRIVATE_KEY, userNameAndPassword[1])
+                    .build();
             BasicAuthenticationUtils.handleLogin(this, op, authContext);
             break;
         case LOGOUT:

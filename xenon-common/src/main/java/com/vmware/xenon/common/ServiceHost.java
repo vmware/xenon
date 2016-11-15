@@ -137,7 +137,6 @@ import com.vmware.xenon.services.common.authn.BasicAuthenticationUtils;
  * protocols
  */
 public class ServiceHost implements ServiceRequestSender {
-    public static final String UI_DIRECTORY_NAME = "ui";
 
     public static class ServiceAlreadyStartedException extends IllegalStateException {
         private static final long serialVersionUID = -1444810129515584386L;
@@ -3280,9 +3279,26 @@ public class ServiceHost implements ServiceRequestSender {
         String token = BasicAuthenticationUtils.getAuthToken(op);
 
         if (token == null ||
-                op.getUri().equals(this.getAuthenticationServiceUri()) ||
+                op.getUri().equals(getAuthenticationServiceUri()) ||
                 op.getUri().equals(getBasicAuthenticationServiceUri())) {
-            authorizationContextHandler.accept(null);
+
+            if (op.isFromReplication()) {
+                String header = op.getRequestHeaderAsIs(Operation.REPLICATION_AUTH_HEADER);
+                if (header == null) {
+                    authorizationContextHandler.accept(null);
+                } else {
+                    String challenge = op.getUri().getPath();
+                    if (getTokenVerifier().verifyMessage(challenge, header)) {
+                        // a replicated request with a short header is treated as system-user
+                        authorizationContextHandler.accept(getSystemAuthorizationContext());
+                    } else {
+                        authorizationContextHandler.accept(null);
+                    }
+                }
+            } else {
+                authorizationContextHandler.accept(null);
+            }
+
             return;
         }
 
@@ -3963,6 +3979,18 @@ public class ServiceHost implements ServiceRequestSender {
         if (this.isStopping()) {
             op.fail(new CancellationException("host is stopping"));
             return;
+        }
+
+        // replicated requests are added a header that's ~4x shorter
+        if (op.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_REPLICATED)) {
+            try {
+                String challenge = op.getUri().getPath();
+                String token = getTokenSigner().signMessage(challenge);
+                op.addRequestHeader(Operation.REPLICATION_AUTH_HEADER, token);
+            } catch (GeneralSecurityException e) {
+                op.fail(e);
+                return;
+            }
         }
 
         ServiceClient c = this.client;
