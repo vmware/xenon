@@ -410,6 +410,8 @@ public class Operation implements Cloneable {
             + "auth-token";
     public static final String REPLICATION_PHASE_HEADER = HEADER_NAME_PREFIX
             + "rpl-phase";
+    public static final String REPLICATION_AUTH_HEADER = HEADER_NAME_PREFIX
+            + "rpl-auth";
     public static final String REPLICATION_QUORUM_HEADER = HEADER_NAME_PREFIX
             + "rpl-quorum";
 
