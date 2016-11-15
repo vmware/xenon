@@ -42,6 +42,29 @@ public class Verifier {
         return verify(jwt, Rfc7519Claims.class);
     }
 
+    /**
+     * Verifies a message against a signature. All errors related to signing cause this method to return false.
+     * @param message
+     * @param signature
+     * @return
+     */
+    public boolean verifyMessage(String message, String signature) {
+        if (message == null) {
+            message = "";
+        }
+
+        byte[] bytesToSign = message.getBytes(Constants.DEFAULT_CHARSET);
+        byte[] expectedSignature;
+        try {
+            expectedSignature = Constants.DEFAULT_ALGORITHM.sign(bytesToSign, this.secret);
+        } catch (GeneralSecurityException e) {
+            return false;
+        }
+        byte[] actualSignature = decode(signature);
+
+        return MessageDigest.isEqual(expectedSignature, actualSignature);
+    }
+
     public <T extends Rfc7519Claims> T verify(String jwt, Class<T> klass) throws TokenException,
             GeneralSecurityException {
         int headerIndex = jwt.indexOf(Constants.JWT_SEPARATOR, 0);

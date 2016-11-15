@@ -13,8 +13,11 @@
 
 package com.vmware.xenon.common.jwt;
 
+import static junit.framework.TestCase.assertFalse;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
 
+import java.security.GeneralSecurityException;
 import java.util.Map.Entry;
 
 import com.google.gson.JsonElement;
@@ -31,6 +34,45 @@ public class TestSigner extends TestCase {
         assertEquals(
                 "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.e30.DMCAvRgzrcf5w0Z879BsqzcrnDFKBY_GN6c3qKOUFtQ",
                 jwt);
+    }
+
+    @Test
+    public void testMsg() throws GeneralSecurityException {
+        byte[] secret = "secret".getBytes();
+
+        Signer signer = new Signer(secret);
+        String payload = "sfdasfsfasg";
+        String signature = signer.signMessage(payload);
+
+        Verifier verifier = new Verifier(secret);
+
+        assertTrue(verifier.verifyMessage(payload, signature));
+    }
+
+    @Test
+    public void testMsgNull() throws GeneralSecurityException {
+        byte[] secret = "secret".getBytes();
+
+        Signer signer = new Signer(secret);
+        String payload = null;
+        String signature = signer.signMessage(payload);
+
+        Verifier verifier = new Verifier(secret);
+
+        assertTrue(verifier.verifyMessage(payload, signature));
+    }
+
+    @Test
+    public void testMsgBadSecret() throws GeneralSecurityException {
+        byte[] secret = "secret".getBytes();
+
+        Signer signer = new Signer(secret);
+        String payload = "sfdasfsfasg";
+        String signature = signer.signMessage(payload);
+
+        Verifier verifier = new Verifier("anotherSecret".getBytes());
+
+        assertFalse(verifier.verifyMessage(payload, signature));
     }
 
     @Test

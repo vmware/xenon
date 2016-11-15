@@ -67,8 +67,8 @@ public class NettyHttpServiceClient implements ServiceClient {
      */
     public static final int DEFAULT_CONNECTIONS_PER_HOST = ServiceClient.DEFAULT_CONNECTION_LIMIT_PER_HOST;
 
-    public static final Logger LOGGER = Logger.getLogger(ServiceClient.class
-            .getName());
+    private static final Logger LOGGER = Logger.getLogger(ServiceClient.class.getName());
+
     private static final String ENV_VAR_NAME_HTTP_PROXY = "http_proxy";
 
     private URI httpProxy;
@@ -475,10 +475,6 @@ public class NettyHttpServiceClient implements ServiceClient {
                 request.headers().set(Operation.CONTEXT_ID_HEADER, op.getContextId());
             }
 
-            AuthorizationContext ctx = op.getAuthorizationContext();
-            if (ctx != null && ctx.getToken() != null) {
-                request.headers().set(Operation.REQUEST_AUTH_TOKEN_HEADER, ctx.getToken());
-            }
 
             boolean isXenonToXenon = op.isFromReplication() || op.isForwarded();
             boolean isRequestWithCallback = false;
@@ -495,6 +491,11 @@ public class NettyHttpServiceClient implements ServiceClient {
                     }
                     request.headers().set(nameValue.getKey(), nameValue.getValue());
                 }
+            }
+
+            AuthorizationContext ctx = op.getAuthorizationContext();
+            if (ctx != null && ctx.getToken() != null && !op.isFromReplication()) {
+                request.headers().set(Operation.REQUEST_AUTH_TOKEN_HEADER, ctx.getToken());
             }
 
             request.headers().set(HttpHeaderNames.CONTENT_LENGTH,

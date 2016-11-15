@@ -4,6 +4,9 @@
 
 * NodeSelectorService.getNodeGroup() is renamed to getNodeGroupPath()
 
+* Replication between nodes uses a custom auth scheme based on the shared secret
+  used for JWT validation. Newer nodes will fail to replicate to pre-1.3.1 nodes.
+
 * Custom node selector implementations must queue SelectAndForwardRequest instance
   before queuing or using in a different thread context
 

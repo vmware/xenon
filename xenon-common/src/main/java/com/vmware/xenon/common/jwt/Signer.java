@@ -40,6 +40,19 @@ public class Signer {
         return sign(claims, null);
     }
 
+    /**
+     * Signs an arbitrary string using the secret and the default algorithm.
+     * @param message
+     * @return
+     * @throws GeneralSecurityException
+     */
+    public String signMessage(String message) throws GeneralSecurityException {
+        if (message == null) {
+            message = "";
+        }
+        return encode(Constants.DEFAULT_ALGORITHM.sign(message.getBytes(Constants.DEFAULT_CHARSET), this.secret));
+    }
+
     public <T extends Rfc7519Claims> String sign(T claims, Algorithm algorithm)
             throws GeneralSecurityException {
         if (algorithm == null) {
