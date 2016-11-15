@@ -15,7 +15,7 @@ package com.vmware.xenon.common;
 
 import java.util.List;
 import java.util.concurrent.CompletionException;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiConsumer;
 import java.util.function.Supplier;
@@ -106,7 +106,7 @@ public class TestDeferredResult {
 
     @Test
     public void testThenApply() throws Throwable {
-        TestContext ctx = TestContext.create(1, TimeUnit.SECONDS.toMicros(1));
+        TestContext ctx = new TestContext(1, TestContext.DEFAULT_WAIT_DURATION);
         DeferredResult<Integer> original = new DeferredResult<>();
         DeferredResult<Integer> result = original
                 .thenApply(i -> i + 1);
@@ -118,7 +118,7 @@ public class TestDeferredResult {
 
     @Test
     public void testThenCompose() throws Throwable {
-        TestContext ctx = TestContext.create(1, TimeUnit.SECONDS.toMicros(1));
+        TestContext ctx = new TestContext(1, TestContext.DEFAULT_WAIT_DURATION);
         DeferredResult<String> result = DeferredResult.completed(12345)
                 .thenCompose(ignore -> {
                     DeferredResult<String> nested = new DeferredResult<>();
@@ -132,7 +132,7 @@ public class TestDeferredResult {
 
     @Test
     public void testThenComposeNestedStageException() throws Throwable {
-        TestContext ctx = TestContext.create(1, TimeUnit.SECONDS.toMicros(1));
+        TestContext ctx = new TestContext(1, TestContext.DEFAULT_WAIT_DURATION);
         DeferredResult.completed(12345)
             .thenCompose(ignore -> {
                 DeferredResult<String> nested = new DeferredResult<>();
@@ -145,7 +145,7 @@ public class TestDeferredResult {
 
     @Test
     public void testThenAccept() throws Throwable {
-        TestContext ctx = TestContext.create(1, TimeUnit.SECONDS.toMicros(1));
+        TestContext ctx = new TestContext(1, TestContext.DEFAULT_WAIT_DURATION);
         AtomicInteger invocations = new AtomicInteger();
         DeferredResult<Integer> original = new DeferredResult<>();
         original
@@ -161,7 +161,7 @@ public class TestDeferredResult {
 
     @Test
     public void testThenAcceptCanThrowException() throws Throwable {
-        TestContext ctx = TestContext.create(1, TimeUnit.SECONDS.toMicros(1));
+        TestContext ctx = new TestContext(1, TestContext.DEFAULT_WAIT_DURATION);
         DeferredResult<Integer> original = new DeferredResult<>();
         original
             .thenAccept(i -> {
@@ -174,7 +174,7 @@ public class TestDeferredResult {
 
     @Test
     public void testThenRun() throws Throwable {
-        TestContext ctx = TestContext.create(1, TimeUnit.SECONDS.toMicros(1));
+        TestContext ctx = new TestContext(1, TestContext.DEFAULT_WAIT_DURATION);
         AtomicInteger invocations = new AtomicInteger();
         DeferredResult<Integer> original = new DeferredResult<>();
         original
@@ -189,7 +189,7 @@ public class TestDeferredResult {
 
     @Test
     public void testThenCombine() throws Throwable {
-        TestContext ctx = TestContext.create(1, TimeUnit.SECONDS.toMicros(1));
+        TestContext ctx = new TestContext(1, TestContext.DEFAULT_WAIT_DURATION);
         DeferredResult<Integer> original = new DeferredResult<>();
         DeferredResult<Integer> other = new DeferredResult<>();
         DeferredResult<Integer> result = original
@@ -202,7 +202,7 @@ public class TestDeferredResult {
     }
 
     private void verifyThenAcceptBoth(long waitOriginal, long waitOther) throws Throwable {
-        TestContext ctx = TestContext.create(1, TimeUnit.SECONDS.toMicros(1));
+        TestContext ctx = new TestContext(1, TestContext.DEFAULT_WAIT_DURATION);
         DeferredResult<Integer> original = new DeferredResult<>();
         DeferredResult<Integer> other = new DeferredResult<>();
         AtomicInteger invocations = new AtomicInteger();
@@ -226,7 +226,7 @@ public class TestDeferredResult {
     }
 
     private void verifyRunAfterBoth(long waitOriginal, long waitOther) throws Throwable {
-        TestContext ctx = TestContext.create(1, TimeUnit.SECONDS.toMicros(1));
+        TestContext ctx = new TestContext(1, TestContext.DEFAULT_WAIT_DURATION);
         DeferredResult<Integer> original = new DeferredResult<>();
         DeferredResult<Integer> other = new DeferredResult<>();
         AtomicInteger invocations = new AtomicInteger();
@@ -250,7 +250,7 @@ public class TestDeferredResult {
     }
 
     private void verifyApplyToEither(long wait, boolean originalFirst) throws Throwable {
-        TestContext ctx = TestContext.create(1, TimeUnit.SECONDS.toMicros(1));
+        TestContext ctx = new TestContext(1, TestContext.DEFAULT_WAIT_DURATION);
         DeferredResult<Integer> original = new DeferredResult<>();
         DeferredResult<Integer> other = new DeferredResult<>();
         AtomicInteger invocations = new AtomicInteger();
@@ -262,7 +262,7 @@ public class TestDeferredResult {
         result.whenComplete(ctx.getCompletionDeferred());
         int originalValue = 10;
         int otherValue = 20;
-        TestContext synchCtx = TestContext.create(1, TimeUnit.SECONDS.toMicros(1));
+        TestContext synchCtx = new TestContext(1, TestContext.DEFAULT_WAIT_DURATION);
         if (originalFirst) {
             runAfterAndComplete(wait, () -> original.complete(originalValue), synchCtx);
             runAfter(synchCtx, () -> other.complete(otherValue));
@@ -283,7 +283,7 @@ public class TestDeferredResult {
     }
 
     private void verifyAcceptEither(long wait, boolean originalFirst) throws Throwable {
-        TestContext ctx = TestContext.create(1, TimeUnit.SECONDS.toMicros(1));
+        TestContext ctx = new TestContext(1, TestContext.DEFAULT_WAIT_DURATION);
         DeferredResult<Integer> original = new DeferredResult<>();
         DeferredResult<Integer> other = new DeferredResult<>();
         AtomicInteger invocations = new AtomicInteger();
@@ -299,7 +299,7 @@ public class TestDeferredResult {
                 Assert.assertFalse(originalFirst ? other.isDone() : original.isDone());
             })
             .whenComplete(ctx.getCompletionDeferred());
-        TestContext synchCtx = TestContext.create(1, TimeUnit.SECONDS.toMicros(1));
+        TestContext synchCtx = new TestContext(1, TestContext.DEFAULT_WAIT_DURATION);
         if (originalFirst) {
             runAfterAndComplete(wait, () -> original.complete(originalValue), synchCtx);
             runAfter(synchCtx, wait, () -> other.complete(otherValue));
@@ -318,7 +318,7 @@ public class TestDeferredResult {
     }
 
     private void verifyRunAfterEither(long wait, boolean originalFirst) throws Throwable {
-        TestContext ctx = TestContext.create(1, TimeUnit.SECONDS.toMicros(1));
+        TestContext ctx = new TestContext(1, TestContext.DEFAULT_WAIT_DURATION);
         DeferredResult<Integer> original = new DeferredResult<>();
         DeferredResult<Integer> other = new DeferredResult<>();
         AtomicInteger invocations = new AtomicInteger();
@@ -337,7 +337,7 @@ public class TestDeferredResult {
                 Assert.assertFalse(originalFirst ? other.isDone() : original.isDone());
             })
             .whenComplete(ctx.getCompletionDeferred());
-        TestContext synchCtx = TestContext.create(1, TimeUnit.SECONDS.toMicros(1));
+        TestContext synchCtx = new TestContext(1, TestContext.DEFAULT_WAIT_DURATION);
         if (originalFirst) {
             runAfterAndComplete(wait, () -> original.complete(originalValue), synchCtx);
             runAfter(synchCtx, wait, () -> other.complete(otherValue));
@@ -357,7 +357,7 @@ public class TestDeferredResult {
 
     @Test
     public void testExceptionally() throws Throwable {
-        TestContext ctx = TestContext.create(1, TimeUnit.SECONDS.toMicros(1));
+        TestContext ctx = new TestContext(1, TestContext.DEFAULT_WAIT_DURATION);
         AtomicInteger invocations = new AtomicInteger();
         DeferredResult<Integer> original = new DeferredResult<>();
         int recoverValue = 5;
@@ -378,7 +378,7 @@ public class TestDeferredResult {
 
     @Test
     public void testExceptionallyNoException() throws Throwable {
-        TestContext ctx = TestContext.create(1, TimeUnit.SECONDS.toMicros(1));
+        TestContext ctx = new TestContext(1, TestContext.DEFAULT_WAIT_DURATION);
         AtomicInteger invocations = new AtomicInteger();
         DeferredResult<Integer> original = new DeferredResult<>();
         int recoverValue = 5;
@@ -397,7 +397,7 @@ public class TestDeferredResult {
 
     @Test
     public void testExceptionallyRethrow() throws Throwable {
-        TestContext ctx = TestContext.create(1, TimeUnit.SECONDS.toMicros(1));
+        TestContext ctx = new TestContext(1, TestContext.DEFAULT_WAIT_DURATION);
         AtomicInteger invocations = new AtomicInteger();
         DeferredResult<Integer> original = new DeferredResult<>();
         original
@@ -415,7 +415,7 @@ public class TestDeferredResult {
 
     @Test
     public void testWhenCompleteWithException() throws Throwable {
-        TestContext ctx = TestContext.create(1, TimeUnit.SECONDS.toMicros(1));
+        TestContext ctx = new TestContext(1, TestContext.DEFAULT_WAIT_DURATION);
         AtomicInteger invocations = new AtomicInteger();
         DeferredResult<Integer> original = new DeferredResult<>();
         original
@@ -432,7 +432,7 @@ public class TestDeferredResult {
 
     @Test
     public void testHandle() throws Throwable {
-        TestContext ctx = TestContext.create(1, TimeUnit.SECONDS.toMicros(1));
+        TestContext ctx = new TestContext(1, TestContext.DEFAULT_WAIT_DURATION);
         AtomicInteger invocations = new AtomicInteger();
         DeferredResult<Integer> original = new DeferredResult<>();
         DeferredResult<Integer> result = original
@@ -450,7 +450,7 @@ public class TestDeferredResult {
 
     @Test
     public void testHandleException() throws Throwable {
-        TestContext ctx = TestContext.create(1, TimeUnit.SECONDS.toMicros(1));
+        TestContext ctx = new TestContext(1, TestContext.DEFAULT_WAIT_DURATION);
         AtomicInteger invocations = new AtomicInteger();
         int recoveredValue = 5;
         DeferredResult<Integer> original = new DeferredResult<>();
@@ -471,7 +471,7 @@ public class TestDeferredResult {
 
     @Test
     public void testHandleRethrow() throws Throwable {
-        TestContext ctx = TestContext.create(1, TimeUnit.SECONDS.toMicros(1));
+        TestContext ctx = new TestContext(1, TestContext.DEFAULT_WAIT_DURATION);
         AtomicInteger invocations = new AtomicInteger();
         AtomicInteger postExceptionInvocations = new AtomicInteger();
         DeferredResult<Integer> original = new DeferredResult<>();
@@ -494,25 +494,29 @@ public class TestDeferredResult {
 
     @Test
     public void testGetNowWithValue() throws Throwable {
-        TestContext ctx = TestContext.create(1, TimeUnit.SECONDS.toMicros(1));
+        TestContext ctx = new TestContext(1, TestContext.DEFAULT_WAIT_DURATION);
+        TestContext synchCtx = new TestContext(1, TestContext.DEFAULT_WAIT_DURATION);
         int defaultValue = 0;
         int value = 10;
         DeferredResult<Integer> deferredResult = new DeferredResult<>();
         deferredResult.whenComplete(ctx.getCompletionDeferred());
-        runAfter(10, () -> deferredResult.complete(value));
+        runAfter(synchCtx, () -> deferredResult.complete(value));
         Assert.assertEquals(defaultValue, deferredResult.getNow(defaultValue).intValue());
+        synchCtx.complete();
         ctx.await();
         Assert.assertEquals(value, deferredResult.getNow(defaultValue).intValue());
     }
 
     @Test
     public void testGetNowWithValueFailed() throws Throwable {
-        TestContext ctx = TestContext.create(1, TimeUnit.SECONDS.toMicros(1));
+        TestContext ctx = new TestContext(1, TestContext.DEFAULT_WAIT_DURATION);
+        TestContext synchCtx = new TestContext(1, TestContext.DEFAULT_WAIT_DURATION);
         int defaultValue = 0;
         DeferredResult<Integer> deferredResult = new DeferredResult<>();
         deferredResult.whenComplete(getExpectedExceptionCompletion(ctx));
-        runAfter(10, () -> deferredResult.fail(new TestException()));
+        runAfter(synchCtx, () -> deferredResult.fail(new TestException()));
         Assert.assertEquals(defaultValue, deferredResult.getNow(defaultValue).intValue());
+        synchCtx.complete();
         ctx.await();
         try {
             deferredResult.getNow(defaultValue);
@@ -525,33 +529,37 @@ public class TestDeferredResult {
 
     @Test
     public void testGetNow() throws Throwable {
-        TestContext ctx = TestContext.create(1, TimeUnit.SECONDS.toMicros(1));
+        TestContext ctx = new TestContext(1, TestContext.DEFAULT_WAIT_DURATION);
+        TestContext synchCtx = new TestContext(1, TestContext.DEFAULT_WAIT_DURATION);
         int value = 10;
         DeferredResult<Integer> deferredResult = new DeferredResult<>();
         deferredResult.whenComplete(ctx.getCompletionDeferred());
-        runAfter(10, () -> deferredResult.complete(value));
+        runAfter(synchCtx, () -> deferredResult.complete(value));
         try {
             deferredResult.getNow(exceptionSupplier("expected"));
             Assert.fail();
         } catch (RuntimeException e) {
             Assert.assertEquals("expected", e.getMessage());
         }
+        synchCtx.complete();
         ctx.await();
         Assert.assertEquals(value, deferredResult.getNow(exceptionSupplier()).intValue());
     }
 
     @Test
     public void testGetNowFailed() throws Throwable {
-        TestContext ctx = TestContext.create(1, TimeUnit.SECONDS.toMicros(1));
+        TestContext ctx = new TestContext(1, TestContext.DEFAULT_WAIT_DURATION);
+        TestContext synchCtx = new TestContext(1, TestContext.DEFAULT_WAIT_DURATION);
         DeferredResult<Integer> deferredResult = new DeferredResult<>();
         deferredResult.whenComplete(getExpectedExceptionCompletion(ctx));
-        runAfter(10, () -> deferredResult.fail(new TestException()));
+        runAfter(synchCtx, () -> deferredResult.fail(new TestException()));
         try {
             deferredResult.getNow(exceptionSupplier("expected"));
             Assert.fail();
         } catch (RuntimeException e) {
             Assert.assertEquals("expected", e.getMessage());
         }
+        synchCtx.complete();
         ctx.await();
         try {
             deferredResult.getNow(exceptionSupplier());
@@ -564,7 +572,7 @@ public class TestDeferredResult {
 
     @Test
     public void testExecutionAfterException() throws Throwable {
-        TestContext ctx = TestContext.create(1, TimeUnit.SECONDS.toMicros(1));
+        TestContext ctx = new TestContext(1, TestContext.DEFAULT_WAIT_DURATION);
         AtomicInteger invocations = new AtomicInteger();
         DeferredResult<Integer> other = DeferredResult.completed(1);
         DeferredResult<Integer> deferredResult = new DeferredResult<>();
@@ -601,7 +609,7 @@ public class TestDeferredResult {
 
     @Test
     public void testAllOf() throws Throwable {
-        TestContext ctx = TestContext.create(1, TimeUnit.SECONDS.toMicros(1));
+        TestContext ctx = new TestContext(1, TestContext.DEFAULT_WAIT_DURATION);
         int count = 10;
         List<DeferredResult<Integer>> deferredResults = IntStream.range(0, count)
                 .mapToObj(ignore -> new DeferredResult<Integer>())
@@ -620,7 +628,7 @@ public class TestDeferredResult {
 
     @Test
     public void testAllOfOneFail() throws Throwable {
-        TestContext ctx = TestContext.create(1, TimeUnit.SECONDS.toMicros(1));
+        TestContext ctx = new TestContext(1, TestContext.DEFAULT_WAIT_DURATION);
         int count = 10;
         List<DeferredResult<Integer>> deferredResults = IntStream.range(0, count)
                 .mapToObj(ignore -> new DeferredResult<Integer>())
@@ -646,7 +654,7 @@ public class TestDeferredResult {
 
     @Test
     public void testAnyOf() throws Throwable {
-        TestContext ctx = TestContext.create(1, TimeUnit.SECONDS.toMicros(1));
+        TestContext ctx = new TestContext(1, TestContext.DEFAULT_WAIT_DURATION);
         int count = 10;
         List<DeferredResult<Integer>> deferredResults = IntStream.range(0, count)
                 .mapToObj(ignore -> new DeferredResult<Integer>())
@@ -654,12 +662,21 @@ public class TestDeferredResult {
         DeferredResult<Integer> deferredResult = DeferredResult.anyOf(deferredResults);
         deferredResult.whenComplete(ctx.getCompletionDeferred());
         int fastest = 7;
-        TestContext synchCtx = TestContext.create(1, TimeUnit.SECONDS.toMicros(1));
+        CountDownLatch latch = new CountDownLatch(1);
         IntStream.range(0, count).forEach(i -> {
             if (i == fastest) {
-                runAfterAndComplete(1, () -> deferredResults.get(i).complete(i), synchCtx);
+                runAfter(1, () -> {
+                    deferredResults.get(i).complete(i);
+                    latch.countDown();
+                });
             } else {
-                runAfter(synchCtx, () -> deferredResults.get(i).complete(i));
+                runAfter(1, () -> {
+                    try {
+                        latch.await();
+                    } catch (InterruptedException e) {
+                    }
+                    deferredResults.get(i).complete(i);
+                });
             }
         });
         ctx.await();
@@ -668,7 +685,7 @@ public class TestDeferredResult {
 
     @Test
     public void testGetNowWithSlowWhenComplete() throws Throwable {
-        TestContext ctx = TestContext.create(1, TimeUnit.SECONDS.toMicros(1));
+        TestContext ctx = new TestContext(1, TestContext.DEFAULT_WAIT_DURATION);
         DeferredResult<String> original = new DeferredResult<>();
         DeferredResult<String> result = original
                 .whenComplete((ignore, error) -> {
