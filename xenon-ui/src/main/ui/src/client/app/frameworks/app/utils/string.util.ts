@@ -5,6 +5,12 @@ import { DocumentLink, UrlFragment } from '../interfaces/index';
 
 export class StringUtil {
     /**
+     * RegEx used to locate the type of the log item. Also select its surrounding
+     * areas to prevent potential mis-select.
+     */
+    static LOG_ITEM_TYPE_REGEX: RegExp = /\[\d*\]\[[IWS]\]\[\d{4}-[0-1]\d-[0-3]\dT[0-2]\d:[0-5]\d:[0-5]\d\.\d{3}Z\]/i;
+
+    /**
      * Converts a string into a valid HTML id attribute [A-Za-z0-9_-]
      * Useful for producing readable window.location.hash fragments
      * From: https://gist.github.com/chrisjacob/421217

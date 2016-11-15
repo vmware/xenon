@@ -9,6 +9,7 @@ import { BaseComponent } from '../../../frameworks/core/index';
 import { URL } from '../../../frameworks/app/enums/index';
 import { Node, ProcessLog } from '../../../frameworks/app/interfaces/index';
 import { BaseService, NodeSelectorService, NotificationService } from '../../../frameworks/app/services/index';
+import { StringUtil } from '../../../frameworks/app/utils/index';
 
 import { ProcessLogTypeUtil } from './process-log-type.util';
 
@@ -46,12 +47,6 @@ export class ProcessLogComponent implements OnInit, OnDestroy {
      * Cached the log items that are severe.
      */
     private _severeLogItems: string[] = [];
-
-    /**
-     * RegEx used to locate the type of the log item. Also select its surrounding
-     * areas to prevent potential mis-select.
-     */
-    private _logItemTypeRegEx: any = /\[\d*\]\[[IWS]\]\[\d*\]/i;
 
     /**
      * Subscriptions to services.
@@ -113,7 +108,7 @@ export class ProcessLogComponent implements OnInit, OnDestroy {
     }
 
     getLogItemType(logItem: string): string {
-        var logItemTypeSegments = logItem.match(this._logItemTypeRegEx);
+        var logItemTypeSegments = logItem.match(StringUtil.LOG_ITEM_TYPE_REGEX);
 
         if (!logItemTypeSegments || _.isEmpty(logItemTypeSegments)) {
             return '';
