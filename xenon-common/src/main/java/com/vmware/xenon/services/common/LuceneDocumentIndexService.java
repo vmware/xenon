@@ -329,6 +329,10 @@ public class LuceneDocumentIndexService extends StatelessService {
         static final String KIND = Utils.buildKind(RestoreRequest.class);
     }
 
+    public static class MaintenanceRequest {
+        static final String KIND = Utils.buildKind(MaintenanceRequest.class);
+    }
+
     public LuceneDocumentIndexService() {
         this(FILE_PATH_LUCENE);
     }
@@ -524,7 +528,7 @@ public class LuceneDocumentIndexService extends StatelessService {
     private void handleBackup(Operation op) throws Throwable {
         SnapshotDeletionPolicy snapshotter = null;
         IndexCommit commit = null;
-        handleMaintenanceImpl(true);
+        handleMaintenanceImpl(Operation.createPost(null));
         IndexWriter w = this.writer;
         if (w == null) {
             op.fail(new CancellationException());
@@ -686,9 +690,19 @@ public class LuceneDocumentIndexService extends StatelessService {
                     handleDeleteImpl(op);
                     break;
                 case POST:
-                    updateIndex(op);
+                    Object o = op.getBodyRaw();
+                    if (o != null) {
+                        if (o instanceof UpdateIndexRequest) {
+                            updateIndex(op);
+                            break;
+                        }
+                        if (o instanceof MaintenanceRequest) {
+                            handleMaintenanceImpl(op);
+                            break;
+                        }
+                    }
+                    getHost().failRequestActionNotSupported(op);
                     break;
-
                 default:
                     break;
                 }
@@ -909,14 +923,17 @@ public class LuceneDocumentIndexService extends StatelessService {
     }
 
     private String getSubject(Operation op) {
-        String subject = null;
-        if (!getHost().isAuthorizationEnabled()
-                || op.getAuthorizationContext().isSystemUser()) {
-            subject = SystemUserService.SELF_LINK;
-        } else {
-            subject = op.getAuthorizationContext().getClaims().getSubject();
+
+        if (op.getAuthorizationContext() != null
+                && op.getAuthorizationContext().isSystemUser()) {
+            return SystemUserService.SELF_LINK;
         }
-        return subject;
+
+        if (getHost().isAuthorizationEnabled()) {
+            return op.getAuthorizationContext().getClaims().getSubject();
+        }
+
+        return GuestUserService.SELF_LINK;
     }
 
     private boolean queryIndex(
@@ -2413,25 +2430,29 @@ public class LuceneDocumentIndexService extends StatelessService {
     }
 
     @Override
-    public void handleMaintenance(final Operation post) {
-        this.privateIndexingExecutor.execute(() -> {
-            try {
-                this.writerSync.acquire();
-                handleMaintenanceImpl(false);
-                post.complete();
-            } catch (Throwable e) {
-                post.fail(e);
-            } finally {
-                this.writerSync.release();
-            }
+    public void handleMaintenance(Operation post) {
 
-        });
+        Operation maintenanceOp = Operation
+                .createPost(this.getUri())
+                .setBodyNoCloning(new MaintenanceRequest())
+                .setReferer(this.getHost().getUri())
+                .setCompletion((o, ex) -> {
+                    if (ex != null) {
+                        post.fail(ex);
+                        return;
+                    }
+                    post.complete();
+                });
+
+        setAuthorizationContext(maintenanceOp, this.getSystemAuthorizationContext());
+        sendRequest(maintenanceOp);
     }
 
-    private void handleMaintenanceImpl(boolean forceMerge) throws Throwable {
+    private void handleMaintenanceImpl(Operation op) throws Throwable {
         try {
             IndexWriter w = this.writer;
             if (w == null) {
+                op.fail(new CancellationException());
                 return;
             }
 
@@ -2461,13 +2482,16 @@ public class LuceneDocumentIndexService extends StatelessService {
 
             applyFileLimitRefreshWriter(false);
 
+            op.complete();
+
         } catch (Throwable e) {
             if (this.getHost().isStopping()) {
+                op.fail(new CancellationException());
                 return;
             }
             logWarning("Attempting recovery due to error: %s", Utils.toString(e));
             applyFileLimitRefreshWriter(true);
-            throw e;
+            op.fail(e);
         }
     }
 
