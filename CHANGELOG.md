@@ -2,6 +2,9 @@
 
 ## 1.3.1-SNAPSHOT
 
+* Created a SampleAuthenticationService outlining the contract between
+  framework and a custom authentication service
+
 * NodeSelectorService.getNodeGroup() is renamed to getNodeGroupPath()
 
 * Custom node selector implementations must queue SelectAndForwardRequest instance
