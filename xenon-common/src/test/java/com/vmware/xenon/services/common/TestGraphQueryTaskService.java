@@ -649,7 +649,10 @@ public class TestGraphQueryTaskService extends BasicTestCase {
         double edgeCount = 0;
         double nodeCount = 0;
         for (QueryTask stage : finalState.stages) {
-            if (stage.results != null && stage.results.selectedLinks != null) {
+            if (stage.results == null) {
+                continue;
+            }
+            if (stage.results.selectedLinks != null) {
                 edgeCount += stage.results.selectedLinks.size();
             }
             nodeCount += stage.results.documentCount;

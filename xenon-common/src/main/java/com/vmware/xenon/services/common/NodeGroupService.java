@@ -153,6 +153,10 @@ public class NodeGroupService extends StatefulService {
     public static final String STAT_NAME_RESTARTING_SERVICES_COUNT = "restartingServicesCount";
     public static final String STAT_NAME_RESTARTING_SERVICES_FAILURE_COUNT = "restartingServicesFailureCount";
 
+    private URI uri;
+
+    private URI publicUri;
+
     public NodeGroupService() {
         super(NodeGroupState.class);
         super.toggleOption(ServiceOption.INSTRUMENTATION, true);
@@ -182,6 +186,11 @@ public class NodeGroupService extends StatefulService {
         }
 
         initState.nodes.put(self.id, self);
+
+        // cache self URIs since we use them during maintenance
+        this.uri = UriUtils.buildUri(getHost(), getSelfLink());
+        this.publicUri = UriUtils.buildPublicUri(getHost(), getSelfLink());
+
         startPost.setBody(initState).complete();
     }
 
@@ -245,7 +254,7 @@ public class NodeGroupService extends StatefulService {
         }
 
         localNodeState.status = NodeStatus.AVAILABLE;
-        this.sendAvailableSelfPatch(localNodeState);
+        sendAvailableSelfPatch(localNodeState);
     }
 
     private void handleUpdateQuorumPatch(Operation patch,
@@ -502,7 +511,7 @@ public class NodeGroupService extends StatefulService {
         local.status = NodeStatus.AVAILABLE;
         body.nodes.put(local.id, local);
 
-        sendRequest(Operation.createPatch(getUri()).setBody(
+        sendRequest(Operation.createPatch(this.uri).setBody(
                 body));
     }
 
@@ -535,7 +544,7 @@ public class NodeGroupService extends StatefulService {
 
     @Override
     public void handleMaintenance(Operation op) {
-        sendRequest(Operation.createGet(getUri())
+        sendRequest(Operation.createGet(this.uri)
                 .setCompletion((o, e) -> performGroupMaintenance(op, o, e)));
     }
 
@@ -563,7 +572,7 @@ public class NodeGroupService extends StatefulService {
         if (localState.nodes.size() <= 1) {
             if (!isAvailable()) {
                 // self patch at least once, so we update availability
-                sendRequest(Operation.createPatch(getUri())
+                sendRequest(Operation.createPatch(this.uri)
                         .setBodyNoCloning(localState)
                         .setCompletion((o, e) -> {
                             maint.complete();
@@ -593,7 +602,7 @@ public class NodeGroupService extends StatefulService {
         NodeState[] randomizedPeers = shuffleGroupMembers(localState);
         NodeState localNode = localState.nodes.get(getHost().getId());
         localNode.documentUpdateTimeMicros = Utils.getNowMicrosUtc();
-        localNode.groupReference = UriUtils.buildPublicUri(getHost(), getSelfLink());
+        localNode.groupReference = this.publicUri;
         localState.documentOwner = getHost().getId();
 
         NodeGroupState patchBody = new NodeGroupState();
