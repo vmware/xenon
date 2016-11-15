@@ -15,6 +15,8 @@ package com.vmware.xenon.common.jwt;
 
 import java.nio.charset.Charset;
 
+import com.vmware.xenon.common.Utils;
+
 public final class Constants {
     private Constants() {
 
@@ -22,7 +24,7 @@ public final class Constants {
 
     protected static final Algorithm DEFAULT_ALGORITHM = Algorithm.HS256;
 
-    protected static final Charset DEFAULT_CHARSET = Charset.forName("UTF-8");
+    protected static final Charset DEFAULT_CHARSET = Utils.CHARSET_OBJECT;
 
     protected static final String JWT_TYPE = "JWT";
 
