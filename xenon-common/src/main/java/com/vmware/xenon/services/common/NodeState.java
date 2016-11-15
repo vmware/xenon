@@ -15,7 +15,6 @@ package com.vmware.xenon.services.common;
 
 import java.net.URI;
 import java.util.EnumSet;
-import java.util.HashMap;
 import java.util.Map;
 
 import com.vmware.xenon.common.FNVHash;
@@ -94,7 +93,7 @@ public class NodeState extends ServiceDocument {
     /**
      * Bag of additional properties, like {@link #PROPERTY_NAME_LOCATION}
      */
-    public Map<String, String> customProperties = new HashMap<>();
+    public Map<String, String> customProperties;
 
     public static boolean isUnAvailable(NodeState ns) {
         return isUnAvailable(ns, NodeOption.OBSERVER);

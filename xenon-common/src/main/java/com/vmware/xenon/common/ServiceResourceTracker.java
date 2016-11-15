@@ -121,6 +121,8 @@ class ServiceResourceTracker {
 
     private long startTimeMicros;
 
+    private ThreadMXBean threadBean;
+
     public static ServiceResourceTracker create(ServiceHost host, Map<String, Service> services,
             Map<String, Service> pendingPauseServices) {
         ServiceResourceTracker srt = new ServiceResourceTracker(host, services,
@@ -223,8 +225,10 @@ class ServiceResourceTracker {
                 ServiceHostManagementService.STAT_NAME_AVAILABLE_DISK_BYTES_PER_DAY,
                 shi.freeDiskByteCount);
 
-        ThreadMXBean threadBean = ManagementFactory.getThreadMXBean();
-        if (!threadBean.isCurrentThreadCpuTimeSupported()) {
+        if (this.threadBean == null) {
+            this.threadBean = ManagementFactory.getThreadMXBean();
+        }
+        if (!this.threadBean.isCurrentThreadCpuTimeSupported()) {
             return;
         }
 
@@ -232,9 +236,9 @@ class ServiceResourceTracker {
         // we assume a low number of threads since the runtime uses just a thread per core, plus
         // a small multiple of that dedicated to I/O threads. So the thread CPU usage calculation
         // should have a small overhead
-        long[] threadIds = threadBean.getAllThreadIds();
+        long[] threadIds = this.threadBean.getAllThreadIds();
         for (long threadId : threadIds) {
-            totalTime += threadBean.getThreadCpuTime(threadId);
+            totalTime += this.threadBean.getThreadCpuTime(threadId);
         }
 
         double runningTime = now - this.startTimeMicros;

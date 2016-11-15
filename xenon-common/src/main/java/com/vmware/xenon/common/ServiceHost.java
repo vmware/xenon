@@ -4597,7 +4597,7 @@ public class ServiceHost implements ServiceRequestSender {
     }
 
     public ProcessingStage getServiceStage(String servicePath) {
-        Service s = this.findService(servicePath);
+        Service s = findService(servicePath);
         if (s == null) {
             return null;
         }

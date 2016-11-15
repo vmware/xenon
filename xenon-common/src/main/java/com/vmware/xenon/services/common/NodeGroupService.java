@@ -153,10 +153,30 @@ public class NodeGroupService extends StatefulService {
     public static final String STAT_NAME_RESTARTING_SERVICES_COUNT = "restartingServicesCount";
     public static final String STAT_NAME_RESTARTING_SERVICES_FAILURE_COUNT = "restartingServicesFailureCount";
 
+    private URI uri;
+
+    private URI publicUri;
+
+    private NodeGroupState cachedState;
+
     public NodeGroupService() {
         super(NodeGroupState.class);
         super.toggleOption(ServiceOption.INSTRUMENTATION, true);
         super.toggleOption(ServiceOption.PERIODIC_MAINTENANCE, true);
+    }
+
+    public URI getUri() {
+        if (this.uri == null) {
+            this.uri = super.getUri();
+        }
+        return this.uri;
+    }
+
+    private URI getPublicUri() {
+        if (this.publicUri == null) {
+            this.publicUri = UriUtils.buildPublicUri(getHost(), getSelfLink());
+        }
+        return this.publicUri;
     }
 
     @Override
@@ -182,7 +202,8 @@ public class NodeGroupService extends StatefulService {
         }
 
         initState.nodes.put(self.id, self);
-        startPost.setBody(initState).complete();
+        this.cachedState = Utils.clone(initState);
+        startPost.setBody(this.cachedState).complete();
     }
 
     @Override
@@ -199,8 +220,11 @@ public class NodeGroupService extends StatefulService {
             return;
         }
 
+        patch.setContentType(Operation.MEDIA_TYPE_APPLICATION_JSON);
+
         NodeGroupState localState = getState(patch);
         if (localState == null || localState.nodes == null) {
+            this.cachedState = localState;
             logWarning("Invalid local state");
             patch.fail(Operation.STATUS_CODE_FAILURE_THRESHOLD);
             return;
@@ -218,6 +242,7 @@ public class NodeGroupService extends StatefulService {
 
         if (body.config != null && body.nodes.isEmpty()) {
             localState.config = body.config;
+            this.cachedState = Utils.clone(localState);
             patch.complete();
             return;
         }
@@ -227,13 +252,16 @@ public class NodeGroupService extends StatefulService {
                 localState,
                 body,
                 changes);
+
         patch.setNotificationDisabled(changes.isEmpty());
 
         localState.documentOwner = getHost().getId();
         NodeState localNodeState = localState.nodes.get(getHost().getId());
-        localNodeState.groupReference = UriUtils.buildPublicUri(getHost(), getSelfLink());
+        localNodeState.groupReference = getPublicUri();
 
-        patch.setBody(localState).complete();
+        this.cachedState = localState;
+
+        patch.setBodyNoCloning(this.cachedState).complete();
 
         if (!isAvailable()) {
             boolean isAvailable = NodeGroupUtils.isNodeGroupAvailable(getHost(), localState);
@@ -245,7 +273,7 @@ public class NodeGroupService extends StatefulService {
         }
 
         localNodeState.status = NodeStatus.AVAILABLE;
-        this.sendAvailableSelfPatch(localNodeState);
+        sendAvailableSelfPatch(localNodeState);
     }
 
     private void handleUpdateQuorumPatch(Operation patch,
@@ -261,6 +289,8 @@ public class NodeGroupService extends StatefulService {
         self.documentUpdateTimeMicros = Utils.getNowMicrosUtc();
         localState.membershipUpdateTimeMicros = self.documentUpdateTimeMicros;
         localState.localMembershipUpdateTimeMicros = self.documentUpdateTimeMicros;
+
+        this.cachedState = Utils.clone(localState);
 
         if (!bd.isGroupUpdate) {
             patch.complete();
@@ -368,7 +398,8 @@ public class NodeGroupService extends StatefulService {
         }
 
         localState.nodes.put(body.id, body);
-        post.setBody(localState).complete();
+        this.cachedState = Utils.clone(localState);
+        post.setBodyNoCloning(this.cachedState).complete();
     }
 
     private void handleJoinPost(JoinPeerRequest joinBody,
@@ -406,6 +437,7 @@ public class NodeGroupService extends StatefulService {
             }
 
             localState.membershipUpdateTimeMicros = self.documentUpdateTimeMicros;
+            this.cachedState = Utils.clone(localState);
 
             // complete the join POST, continue with state merge
             joinOp.complete();
@@ -523,10 +555,13 @@ public class NodeGroupService extends StatefulService {
         }
         if (getHost().getLocation() != null) {
             logInfo("Setting node %s location to %s", body.id, getHost().getLocation());
+            if (body.customProperties == null) {
+                body.customProperties = new HashMap<>();
+            }
             body.customProperties.put(NodeState.PROPERTY_NAME_LOCATION,
                     getHost().getLocation());
         }
-        body.groupReference = UriUtils.buildPublicUri(getHost(), getSelfLink());
+        body.groupReference = getPublicUri();
         body.documentSelfLink = UriUtils.buildUriPath(getSelfLink(), body.id);
         body.documentKind = Utils.buildKind(NodeState.class);
         body.documentUpdateTimeMicros = Utils.getNowMicrosUtc();
@@ -534,26 +569,9 @@ public class NodeGroupService extends StatefulService {
     }
 
     @Override
-    public void handleMaintenance(Operation op) {
-        sendRequest(Operation.createGet(getUri())
-                .setCompletion((o, e) -> performGroupMaintenance(op, o, e)));
-    }
+    public void handleMaintenance(Operation maint) {
 
-    private void performGroupMaintenance(Operation maint, Operation get, Throwable getEx) {
-        // we ignore any body associated with the PUT
-
-        if (getEx != null) {
-            logWarning("Failure getting state: %s", getEx.toString());
-            maint.complete();
-            return;
-        }
-
-        if (!get.hasBody()) {
-            maint.complete();
-            return;
-        }
-
-        NodeGroupState localState = get.getBody(NodeGroupState.class);
+        NodeGroupState localState = this.cachedState;
 
         if (localState == null || localState.nodes == null) {
             maint.complete();
@@ -624,9 +642,9 @@ public class NodeGroupService extends StatefulService {
             CompletionHandler ch = (o, e) -> handleGossipPatchCompletion(maint, o, e, localState,
                     patchBody,
                     remaining, remotePeer);
+
             Operation patch = Operation
                     .createPatch(peerUri)
-                    .setBody(localState)
                     .setRetryCount(0)
                     .setConnectionTag(ServiceClient.CONNECTION_TAG_GOSSIP)
                     .setExpiration(
@@ -644,6 +662,7 @@ public class NodeGroupService extends StatefulService {
                 peer.documentVersion++;
                 ch.handle(null, null);
             } else {
+                setBinaryStateAsBody(patch, localState);
                 sendRequest(patch);
             }
 
@@ -711,10 +730,25 @@ public class NodeGroupService extends StatefulService {
             // to merge updated state, issue a self PATCH. It contains NodeState entries for every
             // peer node we just talked to
             sendRequest(Operation.createPatch(getUri())
-                    .setBody(patchBody));
+                    .setBodyNoCloning(patchBody));
 
             maint.complete();
         }
+    }
+
+    private void setBinaryStateAsBody(Operation patch, NodeGroupState localState) {
+        try {
+            String contentType = Operation.MEDIA_TYPE_APPLICATION_KRYO_OCTET_STREAM;
+            byte[] body = Utils.encodeBody(patch,
+                    localState,
+                    Operation.MEDIA_TYPE_APPLICATION_KRYO_OCTET_STREAM);
+            patch.setBodyNoCloning(body).setContentType(contentType);
+        } catch (Throwable e) {
+            logSevere(e);
+            patch.setBodyNoCloning(localState)
+                    .setContentType(Operation.MEDIA_TYPE_APPLICATION_JSON);
+        }
+
     }
 
     /**
