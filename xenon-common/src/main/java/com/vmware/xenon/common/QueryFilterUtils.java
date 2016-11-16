@@ -57,9 +57,13 @@ public final class QueryFilterUtils {
     public static boolean evaluate(QueryFilter filter, ServiceDocument state, ServiceHost host) {
         ServiceDocumentDescription sdd = host.buildDocumentDescription(state.documentSelfLink);
         if (sdd == null) {
-            host.log(Level.WARNING, "Service %s not found", state.documentSelfLink);
+            host.log(Level.WARNING, "Description not found for %s", state.documentSelfLink);
             return false;
         }
+        return evaluate(filter, state, sdd);
+    }
+
+    public static boolean evaluate(QueryFilter filter, ServiceDocument state, ServiceDocumentDescription sdd) {
         return filter.evaluate(state, sdd);
     }
 }
