@@ -25,6 +25,7 @@ import com.vmware.xenon.common.FNVHash;
 import com.vmware.xenon.common.NodeSelectorService;
 import com.vmware.xenon.common.NodeSelectorService.SelectAndForwardRequest.ForwardingOption;
 import com.vmware.xenon.common.NodeSelectorState;
+import com.vmware.xenon.common.NodeSelectorState.Status;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Operation.CompletionHandler;
 import com.vmware.xenon.common.Service;
@@ -475,14 +476,14 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
             return true;
         }
 
-        if (!this.cachedState.isNodeGroupAvailable) {
+        // if not running, routing requests, update cached 'active' state
+        if (Status.IS_BUSY.contains(this.cachedState.nodeSelectorGroupStatus)) {
             synchronized (this.cachedState) {
-                this.cachedState.isNodeGroupAvailable = NodeGroupUtils
-                        .isNodeGroupAvailable(getHost(), localState);
+                this.cachedState.nodeSelectorGroupStatus = NodeGroupUtils.getNodeSelectorGroupStatus(getHost(), localState);
             }
         }
 
-        if (this.cachedState.isNodeGroupAvailable) {
+        if ( Status.IS_RUNNING.contains(this.cachedState.nodeSelectorGroupStatus) ) {
             return false;
         }
 
@@ -514,7 +515,7 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
         }
 
         while (!this.pendingRequests.isEmpty()) {
-            if (!NodeGroupUtils.isNodeGroupAvailable(getHost(), this.cachedGroupState)) {
+            if ( ! Status.IS_RUNNING.contains(NodeGroupUtils.getNodeSelectorGroupStatus(getHost(), this.cachedGroupState)) ) {
                 // Optimization: if the node group is not ready do not evaluate each
                 // request. We check for availability in the selectAndForward method as well.
                 return;
@@ -615,15 +616,16 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
     private void updateCachedNodeGroupState(NodeGroupState ngs, UpdateQuorumRequest quorumUpdate) {
         if (ngs != null) {
             NodeGroupState currentState = this.cachedGroupState;
-            boolean isAvailable = NodeGroupUtils.isNodeGroupAvailable(getHost(), ngs);
-            boolean isCurrentlyAvailable = currentState != null
-                    && NodeGroupUtils.isNodeGroupAvailable(getHost(), currentState);
-            boolean logMsg = isAvailable != isCurrentlyAvailable
+            NodeSelectorState.Status cachedSelectorGroupStatus = NodeGroupUtils.getNodeSelectorGroupStatus(getHost(), ngs);
+            NodeSelectorState.Status currentNodeSelectorGroupStatus =
+                    ( currentState != null ? NodeGroupUtils.getNodeSelectorGroupStatus(getHost(), currentState)
+                            : Status.UNAVAILABLE_STATUS );
+            boolean logMsg = cachedSelectorGroupStatus != currentNodeSelectorGroupStatus
                     || (currentState != null && currentState.nodes.size() != ngs.nodes.size());
             if (currentState != null && logMsg) {
-                logInfo("Node count: %d, available: %s, update time: %d (%d)",
+                logInfo("Node count: %d, status: %s, update time: %d (%d)",
                         ngs.nodes.size(),
-                        isAvailable,
+                        cachedSelectorGroupStatus,
                         ngs.membershipUpdateTimeMicros, ngs.localMembershipUpdateTimeMicros);
             }
         } else {
@@ -632,7 +634,7 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
 
         long now = Utils.getNowMicrosUtc();
         synchronized (this.cachedState) {
-            this.cachedState.isNodeGroupAvailable = false;
+            this.cachedState.nodeSelectorGroupStatus = Status.UNAVAILABLE_STATUS; // start w/unavailable.
             if (quorumUpdate != null) {
                 this.cachedState.documentUpdateTimeMicros = now;
                 this.cachedState.membershipQuorum = quorumUpdate.membershipQuorum;
@@ -648,7 +650,7 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
             }
 
             if (this.cachedGroupState.documentUpdateTimeMicros <= ngs.documentUpdateTimeMicros) {
-                this.cachedState.isNodeGroupAvailable = NodeGroupUtils.isNodeGroupAvailable(
+                this.cachedState.nodeSelectorGroupStatus = NodeGroupUtils.getNodeSelectorGroupStatus(
                         getHost(),
                         ngs);
                 this.cachedState.documentUpdateTimeMicros = now;

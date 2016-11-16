@@ -24,6 +24,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import com.vmware.xenon.common.NodeSelectorState;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Operation.CompletionHandler;
 import com.vmware.xenon.common.ServiceClient;
@@ -263,9 +264,11 @@ public class NodeGroupService extends StatefulService {
 
         patch.setBodyNoCloning(this.cachedState).complete();
 
+        // controls 503 behavior when busy.
         if (!isAvailable()) {
-            boolean isAvailable = NodeGroupUtils.isNodeGroupAvailable(getHost(), localState);
-            setAvailable(isAvailable);
+            boolean isRunning = NodeSelectorState.Status.IS_RUNNING
+                    .contains( NodeGroupUtils.getNodeSelectorGroupStatus(getHost(), localState) );
+            setAvailable(isRunning);
         }
 
         if (localNodeState.status == NodeStatus.AVAILABLE) {
@@ -637,7 +640,7 @@ public class NodeGroupService extends StatefulService {
             // 2a) if the peer is healthy, they will merge our state with theirs and return
             // the merged state in the response. We will then update our state and mark the
             // peer AVAILABLE. We just update peer node, we don't currently merge their state
-            // 2b) if the PATCH failed, we mark the PEER it UNAVAILABLE
+            // 2b) if the PATCH failed, we mark the PEER it UNAVAILABLE_STATUS
 
             CompletionHandler ch = (o, e) -> handleGossipPatchCompletion(maint, o, e, localState,
                     patchBody,
@@ -755,7 +758,7 @@ public class NodeGroupService extends StatefulService {
      * receives.
      *
      * - A node should never increment the version of a node entry, for other nodes, unless that node
-     * entry is marked UNAVAILABLE
+     * entry is marked UNAVAILABLE_STATUS
      *
      * - When a status changes during gossip version must be incremented - Versions always move forward
      */
