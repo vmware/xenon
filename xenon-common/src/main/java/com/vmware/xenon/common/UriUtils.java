@@ -210,6 +210,14 @@ public final class UriUtils {
     }
 
     /**
+     * Build the URI for the auth provider host
+     */
+    public static URI buildAuthProviderHostUri(ServiceHost host, String serviceLink) {
+        URI baseUri =  (host.getAuthProviderUri() != null) ? host.getAuthProviderUri() : host.getUri();
+        return UriUtils.extendUri(baseUri, serviceLink);
+    }
+
+    /**
      * Builds a fully qualified URI. Attempts no normalization, assumes well formed path and query
      */
     public static URI buildServiceUri(String scheme, String host, int port, String path,
