@@ -32,6 +32,7 @@ import java.util.logging.Level;
 
 import com.vmware.xenon.common.NodeSelectorService.SelectAndForwardRequest;
 import com.vmware.xenon.common.NodeSelectorService.SelectOwnerResponse;
+import com.vmware.xenon.common.NodeSelectorState;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Service;
 import com.vmware.xenon.common.ServiceHost;
@@ -291,7 +292,7 @@ public class TestNodeGroupManager {
                 Operation nodeGroupStateGetOp = Operation.createGet(host, nodeGroupPath);
                 NodeGroupState nodeGroupState = sender.sendAndWait(nodeGroupStateGetOp, NodeGroupState.class);
 
-                boolean isAvailable = NodeGroupUtils.isNodeGroupAvailable(host, nodeGroupState);
+                boolean isAvailable = NodeSelectorState.GroupStatus.IS_RUNNING.contains(NodeGroupUtils.getNodeSelectorGroupStatus(host, nodeGroupState));
                 if (!isAvailable) {
                     return false;
                 }

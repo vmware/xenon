@@ -24,6 +24,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import com.vmware.xenon.common.NodeSelectorState;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Operation.CompletionHandler;
 import com.vmware.xenon.common.ServiceClient;
@@ -263,9 +264,11 @@ public class NodeGroupService extends StatefulService {
 
         patch.setBodyNoCloning(this.cachedState).complete();
 
+        // controls 503 behavior when busy.
         if (!isAvailable()) {
-            boolean isAvailable = NodeGroupUtils.isNodeGroupAvailable(getHost(), localState);
-            setAvailable(isAvailable);
+            boolean isRunning = NodeSelectorState.GroupStatus.IS_RUNNING
+                    .contains( NodeGroupUtils.getNodeSelectorGroupStatus(getHost(), localState) );
+            setAvailable(isRunning);
         }
 
         if (localNodeState.status == NodeStatus.AVAILABLE) {

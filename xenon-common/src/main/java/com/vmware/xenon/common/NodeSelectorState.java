@@ -13,10 +13,43 @@
 
 package com.vmware.xenon.common;
 
+import java.util.EnumSet;
+
 public class NodeSelectorState extends ServiceDocument {
+
+    public enum GroupStatus {
+        /*
+         * NodeGroup is unavailable
+         */
+        UNAVAILABLE,
+
+        /*
+         * NodeGroup is paused (queuing but not taking requests; otherwise active & alive)
+         */
+        PAUSED,
+
+        /*
+         * NodeGroup is fully available
+         */
+        RUNNING,
+        ;
+
+        // IS_RUNNING means that it is actively taking and routing requests
+        public static final EnumSet<GroupStatus> IS_RUNNING = EnumSet
+                .of(GroupStatus.RUNNING);
+
+        // IS_ONLINE means that it is up, alive, has quorum, etc and can handle (but not necessarily process) requests
+        public static final EnumSet<GroupStatus> IS_ONLINE = EnumSet
+                .of(GroupStatus.PAUSED, GroupStatus.RUNNING);
+
+        // GROUPSTATUS_QUEUEING means that it is up and queueing requests
+        public static final EnumSet<GroupStatus> IS_BUSY = EnumSet
+                .of(GroupStatus.PAUSED, GroupStatus.UNAVAILABLE);
+    }
+
     public String nodeGroupLink;
     public Long replicationFactor;
     public int membershipQuorum;
     public long membershipUpdateTimeMicros;
-    public boolean isNodeGroupAvailable;
+    public GroupStatus nodeSelectorGroupStatus;
 }

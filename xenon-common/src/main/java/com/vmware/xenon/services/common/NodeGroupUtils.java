@@ -29,6 +29,7 @@ import java.util.logging.Level;
 
 import com.vmware.xenon.common.NodeSelectorService.SelectAndForwardRequest;
 import com.vmware.xenon.common.NodeSelectorService.SelectOwnerResponse;
+import com.vmware.xenon.common.NodeSelectorState;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Operation.CompletionHandler;
 import com.vmware.xenon.common.OperationJoin;
@@ -43,6 +44,7 @@ import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
 import com.vmware.xenon.services.common.NodeGroupBroadcastResult.PeerNodeResult;
 import com.vmware.xenon.services.common.NodeGroupService.NodeGroupState;
+
 
 public final class NodeGroupUtils {
     public static final String PROPERTY_NAME_OPERATION_TIMEOUT_SECONDS = Utils.PROPERTY_NAME_PREFIX
@@ -342,7 +344,10 @@ public final class NodeGroupUtils {
     }
 
     /**
-     * Evaluates current node group state and returns true if requests should be process,
+     * Returns the current status of the NodeGroup.  Can be one of:
+     * Unknown, Unavailable, Paused, Running
+     *
+     * Evaluates current node group state and returns true if requests should be processed,
      * forwarded, etc
      * The conditions are:
      *
@@ -351,15 +356,16 @@ public final class NodeGroupUtils {
      *
      * 2) The number of node group members in available stage is >= membershipQuorum
      */
-    public static boolean isNodeGroupAvailable(ServiceHost host, NodeGroupState localState) {
+    public static NodeSelectorState.GroupStatus getNodeSelectorGroupStatus(ServiceHost host, NodeGroupService.NodeGroupState localState) {
         // we invoke the isMembershipSettled first because it has low overhead, does not walk all
         // nodes in the group
         if (NodeGroupUtils.isMembershipSettled(host, host
                 .getMaintenanceIntervalMicros(), localState)
                 && NodeGroupUtils.hasMembershipQuorum(host, localState)) {
-            return true;
+
+            return NodeSelectorState.GroupStatus.RUNNING;
         }
-        return false;
+        return NodeSelectorState.GroupStatus.UNAVAILABLE;
     }
 
     /**
