@@ -212,8 +212,13 @@ public class AuthorizationContextService extends StatelessService {
                         failThrowable(claims.getSubject(), e);
                         return;
                     }
-
-                    ServiceDocument userState = QueryFilterUtils.getServiceState(o, getHost());
+                    ServiceDocument userState = null;
+                    Object rawBody = o.getBodyRaw();
+                    if (rawBody instanceof String) {
+                        userState = Utils.getServiceDocumentFromJson(rawBody, this.getClass().getClassLoader());
+                    } else {
+                        userState = (ServiceDocument)o.getBody(rawBody.getClass());
+                    }
                     // If the native user state could not be extracted, we are sure no roles
                     // will apply and we can populate the authorization context.
                     if (userState == null) {
@@ -301,7 +306,7 @@ public class AuthorizationContextService extends StatelessService {
                                 UserGroupState.class);
                         try {
                             QueryFilter f = QueryFilter.create(userGroupState.query);
-                            if (QueryFilterUtils.evaluate(f, userServiceDocument, getHost())) {
+                            if (QueryFilterUtils.evaluate(f, userServiceDocument)) {
                                 userGroupStates.add(userGroupState);
                             }
                         } catch (QueryFilterException qfe) {

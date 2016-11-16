@@ -50,7 +50,6 @@ import java.util.zip.GZIPInputStream;
 
 import com.esotericsoftware.kryo.Kryo;
 import com.esotericsoftware.kryo.io.Output;
-
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
@@ -427,6 +426,39 @@ public final class Utils {
         String name = type.getCanonicalName();
         String kind = name.replace(".", ":");
         return kind;
+    }
+
+    /**
+     * Extract a ServiceDocument from a JSON object
+     * @param json json object to extract the service document from
+     * @param classLoader Class loader to use to load the service state
+     * @return
+     */
+    public static ServiceDocument getServiceDocumentFromJson(Object json, ClassLoader classLoader) {
+        Class<?> serviceStateClass = null;
+        String kind = null;
+        try {
+            kind = Utils.getJsonMapValue(json, ServiceDocument.FIELD_NAME_KIND,
+                    String.class);
+            if (kind == null) {
+                return null;
+            }
+            kind = kind.replace(":", ".");
+            serviceStateClass = Class.forName(kind, true, classLoader);
+        } catch (ClassNotFoundException e) {
+            int lastPos = kind.lastIndexOf(".");
+            if (lastPos == -1) {
+                return null;
+            }
+            kind = new StringBuilder(kind.substring(0, lastPos))
+                .append("$").append(kind.substring(lastPos + 1, kind.length())).toString();
+            try {
+                serviceStateClass = Class.forName(kind, true, classLoader);
+            } catch (ClassNotFoundException e1) {
+                return null;
+            }
+        }
+        return (ServiceDocument)Utils.fromJson(json, serviceStateClass);
     }
 
     /**
