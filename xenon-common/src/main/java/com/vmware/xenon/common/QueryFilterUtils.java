@@ -57,7 +57,19 @@ public final class QueryFilterUtils {
     public static boolean evaluate(QueryFilter filter, ServiceDocument state, ServiceHost host) {
         ServiceDocumentDescription sdd = host.buildDocumentDescription(state.documentSelfLink);
         if (sdd == null) {
-            host.log(Level.WARNING, "Service %s not found", state.documentSelfLink);
+            // try and get the service description based on the parent
+            String parentLink = UriUtils.getParentPath(state.documentSelfLink);
+            if (parentLink == null) {
+                return false;
+            }
+            FactoryService factoryService = (FactoryService)host.findService(parentLink);
+            if (factoryService == null) {
+                return false;
+            }
+            sdd = host.getDocumentDescription(factoryService.getChildServiceClass());
+        }
+        if (sdd == null) {
+            host.log(Level.WARNING, "Description not found for %s", state.documentSelfLink);
             return false;
         }
         return filter.evaluate(state, sdd);

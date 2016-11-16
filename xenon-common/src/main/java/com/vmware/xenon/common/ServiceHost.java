@@ -526,6 +526,7 @@ public class ServiceHost implements ServiceRequestSender {
     private ServiceRequestListener httpsListener;
 
     private URI documentIndexServiceUri;
+    private URI authProviderURI;
     private URI authorizationServiceUri;
     private URI transactionServiceUri;
     private URI managementServiceUri;
@@ -1175,6 +1176,18 @@ public class ServiceHost implements ServiceRequestSender {
         }
         this.authenticationServiceUri = this.authenticationService.getUri();
         return this.authenticationServiceUri;
+    }
+
+    public URI getAuthProviderUri() {
+        return this.authProviderURI;
+    }
+
+    public ServiceHost setAuthProviderUri(URI authProviderURI) {
+        if (this.state.isStarted) {
+            throw new IllegalStateException("Host is started");
+        }
+        this.authProviderURI = authProviderURI;
+        return this;
     }
 
     private ServiceHost setBasicAuthenticationService(Service service) {
@@ -3330,7 +3343,8 @@ public class ServiceHost implements ServiceRequestSender {
                             } else {
                                 Claims claims = resultOp.getBody(Claims.class);
                                 // check to see if the subject is valid
-                                Operation getUserOp = Operation.createGet(this, claims.getSubject())
+                                Operation getUserOp = Operation.createGet(
+                                        UriUtils.buildAuthProviderUri(this, claims.getSubject()))
                                         .setReferer(parentOp.getUri())
                                         .setCompletion((getOp, getEx) -> {
                                             if (getEx != null) {
@@ -5289,6 +5303,16 @@ public class ServiceHost implements ServiceRequestSender {
     }
 
     /**
+     * Infrastructure use only. Get service document description.
+     */
+    ServiceDocumentDescription getDocumentDescription(Class<? extends Service> serviceClass) {
+        String serviceClassName = serviceClass.getCanonicalName();
+        synchronized (this.descriptionCache) {
+            return this.descriptionCache.get(serviceClassName);
+        }
+    }
+
+    /**
      * Infrastructure use only. Create service document description.
      */
     ServiceDocumentDescription buildDocumentDescription(String servicePath) {
@@ -5336,7 +5360,6 @@ public class ServiceHost implements ServiceRequestSender {
                 // document type
                 desc.versionRetentionLimit = ServiceDocumentDescription.FIELD_VALUE_DISABLED_VERSION_RETENTION;
             }
-
             this.descriptionCache.put(serviceTypeName, desc);
 
             // 2) Call the service's getDocumentTemplate() to allow the service author to modify it
