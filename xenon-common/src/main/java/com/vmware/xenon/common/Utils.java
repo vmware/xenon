@@ -50,7 +50,6 @@ import java.util.zip.GZIPInputStream;
 
 import com.esotericsoftware.kryo.Kryo;
 import com.esotericsoftware.kryo.io.Output;
-
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
@@ -120,6 +119,8 @@ public final class Utils {
             Comparator.comparingInt((Class<?> c) -> c.hashCode()).thenComparing(Class::getName));
 
     private static final ConcurrentMap<String, String> KINDS = new ConcurrentSkipListMap<>();
+    private static final ConcurrentMap<String, Class<?>> STATETYPES = new ConcurrentSkipListMap<>();
+
 
     private static final StringBuilderThreadLocal builderPerThread = new StringBuilderThreadLocal();
 
@@ -435,7 +436,15 @@ public final class Utils {
      * will use for all services with that state type
      */
     public static String registerKind(Class<?> type, String kind) {
+        STATETYPES.put(type.getCanonicalName(), type);
         return KINDS.put(type.getCanonicalName(), kind);
+    }
+
+    /**
+     * Obtain the class for the specified kind
+     */
+    public static Class<?> getStateType(String kind) {
+        return STATETYPES.get(kind.replace(":", "."));
     }
 
     /**

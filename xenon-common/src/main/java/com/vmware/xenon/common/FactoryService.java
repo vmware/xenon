@@ -96,6 +96,7 @@ public abstract class FactoryService extends StatelessService {
     private String nodeSelectorLink = ServiceUriPaths.DEFAULT_NODE_SELECTOR;
     private int selfQueryResultLimit = SELF_QUERY_RESULT_LIMIT;
     private ServiceDocument childTemplate;
+    private Class<? extends Service> childServiceClass;
 
     /**
      * Creates a default instance of a factory service that can create and start instances
@@ -115,6 +116,7 @@ public abstract class FactoryService extends StatelessService {
         }
         setSelfLink(null);
         this.childOptions = s.getOptions();
+        this.childServiceClass = s.getClass();
     }
 
     /**
@@ -791,6 +793,10 @@ public abstract class FactoryService extends StatelessService {
     @Override
     public void setPeerNodeSelectorPath(String link) {
         this.nodeSelectorLink = link;
+    }
+
+    public Class<? extends Service> getChildServiceClass() {
+        return this.childServiceClass;
     }
 
     @Override

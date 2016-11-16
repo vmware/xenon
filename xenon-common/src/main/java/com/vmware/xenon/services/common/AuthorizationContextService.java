@@ -204,7 +204,7 @@ public class AuthorizationContextService extends StatelessService {
     }
 
     private void getSubject(AuthorizationContext ctx, Claims claims) {
-        URI getSubjectUri = UriUtils.buildUri(getHost(), claims.getSubject());
+        URI getSubjectUri = UriUtils.buildAuthProviderUri(getHost(), claims.getSubject());
         Operation get = Operation.createGet(getSubjectUri)
                 .setConnectionSharing(true)
                 .setCompletion((o, e) -> {
@@ -212,8 +212,21 @@ public class AuthorizationContextService extends StatelessService {
                         failThrowable(claims.getSubject(), e);
                         return;
                     }
-
                     ServiceDocument userState = QueryFilterUtils.getServiceState(o, getHost());
+                    if (userState == null) {
+                        Object rawBody = o.getBodyRaw();
+                        Class<?> serviceTypeClass = null;
+                        if (rawBody instanceof String) {
+                            String kind = Utils.getJsonMapValue(rawBody, ServiceDocument.FIELD_NAME_KIND,
+                                    String.class);
+                            serviceTypeClass = Utils.getStateType(kind);
+                        } else {
+                            serviceTypeClass = rawBody.getClass();
+                        }
+                        if (serviceTypeClass != null) {
+                            userState = (ServiceDocument)Utils.fromJson(rawBody, serviceTypeClass);
+                        }
+                    }
                     // If the native user state could not be extracted, we are sure no roles
                     // will apply and we can populate the authorization context.
                     if (userState == null) {
@@ -266,7 +279,7 @@ public class AuthorizationContextService extends StatelessService {
         };
         Collection<Operation> gets = new HashSet<>();
         for (String userGroupLink : userGroupLinks) {
-            Operation get = Operation.createGet(this, userGroupLink).setReferer(getUri());
+            Operation get = Operation.createGet(UriUtils.buildAuthProviderUri(getHost(), userGroupLink)).setReferer(getUri());
             setAuthorizationContext(get, getSystemAuthorizationContext());
             gets.add(get);
         }
@@ -283,7 +296,7 @@ public class AuthorizationContextService extends StatelessService {
             return;
         }
 
-        URI getUserGroupsUri = UriUtils.buildUri(getHost(), ServiceUriPaths.CORE_AUTHZ_USER_GROUPS);
+        URI getUserGroupsUri = UriUtils.buildAuthProviderUri(getHost(), ServiceUriPaths.CORE_AUTHZ_USER_GROUPS);
         getUserGroupsUri = UriUtils.buildExpandLinksQueryUri(getUserGroupsUri);
         Operation get = Operation.createGet(getUserGroupsUri)
                 .setConnectionSharing(true)
@@ -369,7 +382,7 @@ public class AuthorizationContextService extends StatelessService {
                 EnumSet.of(QueryTask.QuerySpecification.QueryOption.EXPAND_CONTENT);
         queryTask.setDirect(true);
 
-        URI postQueryUri = UriUtils.buildUri(getHost(), ServiceUriPaths.CORE_LOCAL_QUERY_TASKS);
+        URI postQueryUri = UriUtils.buildAuthProviderUri(getHost(), ServiceUriPaths.CORE_LOCAL_QUERY_TASKS);
         Operation post = Operation.createPost(postQueryUri)
                 .setBody(queryTask)
                 .setConnectionSharing(true)
@@ -445,7 +458,8 @@ public class AuthorizationContextService extends StatelessService {
         // Fire off GET for every resource group
         Collection<Operation> gets = new LinkedList<>();
         for (String resourceGroupLink : rolesByResourceGroup.keySet()) {
-            Operation get = Operation.createGet(this, resourceGroupLink).setReferer(getUri());
+            Operation get = Operation.createGet(UriUtils.buildAuthProviderUri(getHost(),
+                                resourceGroupLink)).setReferer(getUri());
             setAuthorizationContext(get, getSystemAuthorizationContext());
             gets.add(get);
         }
