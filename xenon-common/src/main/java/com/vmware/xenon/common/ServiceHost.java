@@ -262,6 +262,10 @@ public class ServiceHost implements ServiceRequestSender {
         public boolean isAuthorizationEnabled = false;
 
         /**
+         * Base URI of the xenon instance that acts as the auth source for this service host
+         */
+        public String authProviderHostUri;
+        /**
          * File directory path to resource files. If specified resources will loaded from here instead of
          * the JAR file of the host
          */
@@ -447,6 +451,7 @@ public class ServiceHost implements ServiceRequestSender {
         public Properties codeProperties;
         public long serviceCount;
         public String location;
+        public URI authProviderHostURI;
 
         /**
          * Relative memory limit per service path. The limit is expressed as
@@ -725,6 +730,9 @@ public class ServiceHost implements ServiceRequestSender {
         this.state.peerSynchronizationTimeLimitSeconds = args.perFactoryPeerSynchronizationLimitSeconds;
         this.state.isPeerSynchronizationEnabled = args.isPeerSynchronizationEnabled;
         this.state.isAuthorizationEnabled = args.isAuthorizationEnabled;
+        if (args.authProviderHostUri != null) {
+            this.state.authProviderHostURI = new URI(args.authProviderHostUri);
+        }
 
         File hostStateFile = new File(s, SERVICE_HOST_STATE_FILE);
         String errorFmt = hostStateFile.getPath()
@@ -3331,7 +3339,8 @@ public class ServiceHost implements ServiceRequestSender {
                             } else {
                                 Claims claims = resultOp.getBody(Claims.class);
                                 // check to see if the subject is valid
-                                Operation getUserOp = Operation.createGet(this, claims.getSubject())
+                                Operation getUserOp = Operation.createGet(
+                                        AuthUtils.buildAuthProviderHostUri(this, claims.getSubject()))
                                         .setReferer(parentOp.getUri())
                                         .setCompletion((getOp, getEx) -> {
                                             if (getEx != null) {
@@ -5343,7 +5352,6 @@ public class ServiceHost implements ServiceRequestSender {
                 // document type
                 desc.versionRetentionLimit = ServiceDocumentDescription.FIELD_VALUE_DISABLED_VERSION_RETENTION;
             }
-
             this.descriptionCache.put(serviceTypeName, desc);
 
             // 2) Call the service's getDocumentTemplate() to allow the service author to modify it

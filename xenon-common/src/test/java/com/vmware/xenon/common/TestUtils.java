@@ -87,6 +87,8 @@ public class TestUtils {
         Utils.registerKind(ExampleServiceState.class, kindBefore);
         kindAfter = Utils.buildKind(ExampleServiceState.class);
         assertEquals(kindBefore, kindAfter);
+        Class<?> stateClass = Utils.getTypeFromKind(kindAfter);
+        assertEquals(stateClass.getCanonicalName(), ExampleServiceState.class.getCanonicalName());
     }
 
     @Test

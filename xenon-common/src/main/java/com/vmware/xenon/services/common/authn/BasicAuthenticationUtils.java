@@ -20,6 +20,7 @@ import java.util.Base64;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
+import com.vmware.xenon.common.AuthUtils;
 import com.vmware.xenon.common.Claims;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Operation.AuthorizationContext;
@@ -178,7 +179,7 @@ public final class BasicAuthenticationUtils {
         };
 
         Operation queryOp = Operation
-                .createPost(service, ServiceUriPaths.CORE_QUERY_TASKS)
+                .createPost(AuthUtils.buildAuthProviderHostUri(service.getHost(), ServiceUriPaths.CORE_QUERY_TASKS))
                 .setBody(q)
                 .setCompletion(userServiceCompletion);
         service.setAuthorizationContext(queryOp, service.getSystemAuthorizationContext());
@@ -234,7 +235,7 @@ public final class BasicAuthenticationUtils {
         };
 
         Operation queryAuth = Operation
-                .createPost(service, ServiceUriPaths.CORE_QUERY_TASKS)
+                .createPost(AuthUtils.buildAuthProviderHostUri(service.getHost(), ServiceUriPaths.CORE_QUERY_TASKS))
                 .setBody(authQuery)
                 .setCompletion(authCompletionHandler);
         service.setAuthorizationContext(queryAuth, service.getSystemAuthorizationContext());
