@@ -37,7 +37,6 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Random;
 import java.util.Set;
-import java.util.TreeSet;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.ForkJoinPool;
@@ -47,7 +46,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 import java.util.logging.Level;
-
 import javax.xml.bind.DatatypeConverter;
 
 import org.junit.After;
@@ -2393,78 +2391,24 @@ public class TestLuceneDocumentIndexService {
         long maintIntervalMillis = TimeUnit.MICROSECONDS
                 .toMillis(this.host.getMaintenanceIntervalMicros());
 
-        // let a couple of maintenance intervals pass. not essential, since we loop below
+        // let at least one maintenance interval pass. not essential, since we loop below
         // but lets more documents get deleted at once
         Thread.sleep(maintIntervalMillis);
 
-        QueryTask finishedTaskWithLinksState = null;
-        // issue a query that verifies we have *less* than the count versions
-        Date exp = this.host.getTestExpiration();
-        while (new Date().before(exp)) {
-            QueryTask.QuerySpecification q = new QueryTask.QuerySpecification();
-            q.options = EnumSet.of(QueryOption.COUNT, QueryOption.INCLUDE_ALL_VERSIONS);
-            for (URI u : serviceUris) {
-                QueryTask.Query linkClause = new QueryTask.Query();
-                linkClause.setTermPropertyName(ServiceDocument.FIELD_NAME_SELF_LINK)
-                        .setTermMatchValue(u.getPath());
-                linkClause.occurance = Occurance.SHOULD_OCCUR;
-                q.query.addBooleanClause(linkClause);
-            }
-            URI u = this.host.createQueryTaskService(QueryTask.create(q), false);
-            QueryTask finishedTaskState = this.host.waitForQueryTaskCompletion(q,
-                    serviceUris.size(), (int) limit, u, false, true);
-            // also do a query that returns the actual links
-            q.options = EnumSet.of(QueryOption.INCLUDE_ALL_VERSIONS);
-            u = this.host.createQueryTaskService(QueryTask.create(q), false);
-            finishedTaskWithLinksState = this.host.waitForQueryTaskCompletion(q,
-                    serviceUris.size(), (int) limit, u, false, true);
+        QueryTask.Query.Builder b = QueryTask.Query.Builder.create();
+        serviceUris.forEach((u) -> b.addFieldClause(ServiceDocument.FIELD_NAME_SELF_LINK,
+                u.getPath(), Occurance.SHOULD_OCCUR));
 
-            long expectedCountCeiling = serviceUris.size() * limit;
-            this.host.log("Documents found through count:%d, links:%d expectedCount:%d",
-                    finishedTaskState.results.documentCount,
-                    finishedTaskWithLinksState.results.documentLinks.size(),
-                    expectedCountCeiling);
+        QueryTask.QuerySpecification q = new QueryTask.QuerySpecification();
+        q.query = b.build();
+        q.options = EnumSet.of(QueryOption.COUNT, QueryOption.INCLUDE_ALL_VERSIONS);
 
-            if (finishedTaskState.results.documentCount != finishedTaskWithLinksState.results.documentLinks
-                    .size()) {
-                Thread.sleep(maintIntervalMillis);
-                continue;
-            }
-
-            if (finishedTaskState.results.documentCount > expectedCountCeiling) {
-                Thread.sleep(maintIntervalMillis);
-                continue;
-            }
-
-            long expectedCountFloor = serviceUris.size() * floor;
-            assertTrue(finishedTaskState.results.documentCount >= expectedCountFloor);
-            return;
-        }
-
-        // Verification failed. Logging all self-links that returned
-        // more document versions than expected
-        if (finishedTaskWithLinksState != null) {
-            HashMap<String, TreeSet<Integer>> aggregated = new HashMap<>();
-            for (String link : finishedTaskWithLinksState.results.documentLinks) {
-                String documentSelfLink = link.split("\\?")[0];
-                TreeSet<Integer> versions = aggregated.get(documentSelfLink);
-                if (versions == null) {
-                    versions = new TreeSet<>();
-                }
-                versions.add(Integer.parseInt(link.split("=")[1]));
-                aggregated.put(documentSelfLink, versions);
-            }
-            aggregated.entrySet().stream().filter(aggregate -> aggregate.getValue().size() > limit)
-                    .forEach(aggregate -> {
-                        String documentSelfLink = aggregate.getKey();
-                        Integer lowerVersion = aggregate.getValue().first();
-                        Integer upperVersion = aggregate.getValue().last();
-                        this.host.log("Failed documentSelfLink:%s. lowerVersion:%d, upperVersion:%d, count:%d",
-                                documentSelfLink, lowerVersion, upperVersion, aggregate.getValue().size());
-                    });
-        }
-
-        throw new TimeoutException();
+        this.host.waitFor("Version retention failed to remove some documents", () -> {
+            QueryTask qt = QueryTask.create(q).setDirect(true);
+            this.host.createQueryTaskService(qt, false, true, qt, null);
+            return qt.results.documentCount >= serviceUris.size() * floor
+                    && qt.results.documentCount <= serviceUris.size() * limit;
+        });
     }
 
     @Test
