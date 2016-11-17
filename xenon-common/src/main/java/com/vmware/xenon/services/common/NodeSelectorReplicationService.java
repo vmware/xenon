@@ -115,7 +115,6 @@ public class NodeSelectorReplicationService extends StatelessService {
                             context.successThreshold, eligibleMemberCount);
                     throw new IllegalArgumentException(errorMsg);
                 }
-                outboundOp.getRequestHeaders().remove(Operation.REPLICATION_QUORUM_HEADER);
             } catch (Throwable e) {
                 outboundOp.setRetryCount(0).fail(e);
                 return;

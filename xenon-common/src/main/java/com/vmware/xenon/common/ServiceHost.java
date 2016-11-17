@@ -2668,7 +2668,6 @@ public class ServiceHost implements ServiceRequestSender {
                 post.nestCompletion((replicatedOp) -> {
                     clonedInitState.documentSelfLink = originalLink;
                     post.setBodyNoCloning(clonedInitState);
-
                     processServiceStart(ProcessingStage.AVAILABLE, s, post,
                             hasClientSuppliedInitialState);
                 });
@@ -2691,7 +2690,6 @@ public class ServiceHost implements ServiceRequestSender {
                 if (!isServiceImmutable(s)) {
                     startUiFileContentServices(s);
                     scheduleServiceMaintenance(s);
-                    log(Level.FINEST, "Started %s", s.getSelfLink());
                 }
                 post.complete();
 
@@ -3590,7 +3588,6 @@ public class ServiceHost implements ServiceRequestSender {
             };
 
             Operation forwardOp = op.clone().setCompletion(fc);
-
             if (rsp.isLocalHostOwner) {
                 if (s == null) {
                     queueOrFailRequestForServiceNotFoundOnOwner(servicePath, op);

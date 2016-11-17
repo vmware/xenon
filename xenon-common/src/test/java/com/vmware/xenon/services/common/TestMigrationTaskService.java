@@ -74,7 +74,8 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
     private static VerificationHost destinationHost;
 
     public long serviceCount = 10;
-    private int nodeCount = 3;
+    public int nodeCount = 3;
+    public int iterationCount = 1;
 
     @Before
     public void setUp() throws Throwable {
@@ -545,51 +546,39 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
                 ExampleService.FACTORY_LINK);
         migrationState.migrationOptions = EnumSet.of(MigrationOption.DELETE_AFTER);
 
-        TestContext ctx = testCreate(1);
-        String[] out = new String[1];
         Operation op = Operation.createPost(this.destinationFactoryUri)
-                .setBody(migrationState)
-                .setCompletion((o, e) -> {
-                    if (e != null) {
-                        this.host.log("Post service error: %s", Utils.toString(e));
-                        ctx.failIteration(e);
-                        return;
-                    }
-                    out[0] = o.getBody(State.class).documentSelfLink;
-                    ctx.completeIteration();
-                });
-        getDestinationHost().send(op);
-        testWait(ctx);
+                .setBody(migrationState);
+        op = getDestinationHost().getTestRequestSender().sendAndWait(op);
+        String migrationTaskLink = op.getBody(State.class).documentSelfLink;
 
-        State waitForServiceCompletion = waitForServiceCompletion(out[0], getDestinationHost());
-        ServiceStats stats = getStats(out[0], getDestinationHost());
-        Long processedDocuments = Long.valueOf((long) stats.entries.get(MigrationTaskService.STAT_NAME_PROCESSED_DOCUMENTS).latestValue);
-        assertEquals(TaskStage.FINISHED, waitForServiceCompletion.taskInfo.stage);
-        assertEquals(Long.valueOf(this.serviceCount), processedDocuments);
-
-        TestContext ctx2 = testCreate(1);
-        migrationState.documentSelfLink = null;
-        op = Operation.createPost(this.destinationFactoryUri)
-                .setBody(migrationState)
-                .setCompletion((o, e) -> {
-                    if (e != null) {
-                        this.host.log("Post service error: %s", Utils.toString(e));
-                        ctx2.failIteration(e);
-                        return;
-                    }
-                    out[0] = o.getBody(State.class).documentSelfLink;
-                    ctx2.completeIteration();
-                });
-        getDestinationHost().send(op);
-        testWait(ctx2);
-
-        waitForServiceCompletion = waitForServiceCompletion(out[0], getDestinationHost());
+        State waitForServiceCompletion = waitForServiceCompletion(migrationTaskLink,
+                getDestinationHost());
+        ServiceStats stats = getStats(migrationTaskLink, getDestinationHost());
+        Long processedDocuments = Long.valueOf((long) stats.entries.get(
+                MigrationTaskService.STAT_NAME_PROCESSED_DOCUMENTS).latestValue);
         assertEquals(waitForServiceCompletion.taskInfo.stage, TaskStage.FINISHED);
-        stats = getStats(out[0], getDestinationHost());
-        processedDocuments = Long.valueOf((long) stats.entries.get(MigrationTaskService.STAT_NAME_PROCESSED_DOCUMENTS).latestValue);
         assertEquals(Long.valueOf(this.serviceCount), processedDocuments);
-        stats = getStats(out[0], getDestinationHost());
-        processedDocuments = Long.valueOf((long) stats.entries.get(MigrationTaskService.STAT_NAME_PROCESSED_DOCUMENTS).latestValue);
+
+        // start second migration, which should use the DELETE -> POST logic since the documents already exist
+        for (int i = 0; i < this.iterationCount; i++) {
+            this.host.log("Start migration with pre-existing target documents (%d)", i);
+            migrationState.documentSelfLink = null;
+            op = Operation.createPost(this.destinationFactoryUri)
+                    .setBody(migrationState);
+            op = getDestinationHost().getTestRequestSender().sendAndWait(op);
+            migrationTaskLink = op.getBody(State.class).documentSelfLink;
+            this.host.log("Created task %s", migrationTaskLink);
+            waitForServiceCompletion = waitForServiceCompletion(migrationTaskLink,
+                    getDestinationHost());
+            assertEquals(TaskStage.FINISHED, waitForServiceCompletion.taskInfo.stage);
+            stats = getStats(migrationTaskLink, getDestinationHost());
+            processedDocuments = Long.valueOf((long) stats.entries
+                    .get(MigrationTaskService.STAT_NAME_PROCESSED_DOCUMENTS).latestValue);
+            assertEquals(Long.valueOf(this.serviceCount), processedDocuments);
+            stats = getStats(migrationTaskLink, getDestinationHost());
+            processedDocuments = Long.valueOf((long) stats.entries
+                    .get(MigrationTaskService.STAT_NAME_PROCESSED_DOCUMENTS).latestValue);
+        }
 
         // check if object is in new host
         Collection<URI> uris = links.stream()
