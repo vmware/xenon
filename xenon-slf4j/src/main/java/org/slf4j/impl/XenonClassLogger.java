@@ -189,7 +189,7 @@ public class XenonClassLogger extends MarkerIgnoringBase implements Logger {
 
     private void doLog(Level lvl, String msg) {
         if (this.logger.isLoggable(lvl)) {
-            Utils.log(this.logger, 3, name, lvl, "%s", msg);
+            Utils.log(this.logger, 4, name, lvl, "%s", msg);
         }
     }
 
@@ -216,9 +216,9 @@ public class XenonClassLogger extends MarkerIgnoringBase implements Logger {
 
     private void doLog(Level lvl, FormattingTuple tuple) {
         if (tuple.getThrowable() == null) {
-            Utils.log(this.logger, 3, this.name, lvl, "%s", tuple.getMessage());
+            Utils.log(this.logger, 5, this.name, lvl, "%s", tuple.getMessage());
         } else {
-            Utils.log(this.logger, 3, this.name, lvl, "%s: %s", tuple.getMessage(), Utils.toString(tuple.getThrowable()));
+            Utils.log(this.logger, 5, this.name, lvl, "%s: %s", tuple.getMessage(), Utils.toString(tuple.getThrowable()));
         }
     }
 
