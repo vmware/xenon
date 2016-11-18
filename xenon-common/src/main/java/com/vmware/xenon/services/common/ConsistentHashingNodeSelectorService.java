@@ -112,7 +112,7 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
                 NodeSelectorService.REPLICATION_TAG_CONNECTION_LIMIT);
 
         getHost().getClient().setConnectionLimitPerTag(
-                ServiceClient.CONNECTION_TAG_FORWARDING,
+                ServiceClient.CONNECTION_TAG_P2P_FORWARDING,
                 FORWARDING_TAG_CONNECTION_LIMIT);
 
         state.documentSelfLink = getSelfLink();
@@ -437,6 +437,7 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
                     .setCompletion(c)
                     .transferRefererFrom(op)
                     .setExpiration(op.getExpirationMicrosUtc())
+                    .setConnectionSharing(true)
                     .setBody(op.getBodyRaw());
 
             rsp.receivers.add(remoteService);
@@ -539,7 +540,9 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
             return;
         }
 
-        if (!NodeGroupUtils.isMembershipSettled(getHost(), getHost().getMaintenanceIntervalMicros(),
+        if (!this.isNodeGroupConverged
+                && !NodeGroupUtils.isMembershipSettled(getHost(),
+                        getHost().getMaintenanceIntervalMicros(),
                 this.cachedGroupState)) {
             checkConvergence(membershipUpdateMicros);
             return;

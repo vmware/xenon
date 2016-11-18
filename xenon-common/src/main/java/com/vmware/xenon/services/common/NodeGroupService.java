@@ -165,6 +165,7 @@ public class NodeGroupService extends StatefulService {
         super.toggleOption(ServiceOption.PERIODIC_MAINTENANCE, true);
     }
 
+    @Override
     public URI getUri() {
         if (this.uri == null) {
             this.uri = super.getUri();
@@ -646,7 +647,8 @@ public class NodeGroupService extends StatefulService {
             Operation patch = Operation
                     .createPatch(peerUri)
                     .setRetryCount(0)
-                    .setConnectionTag(ServiceClient.CONNECTION_TAG_GOSSIP)
+                    .setConnectionTag(ServiceClient.CONNECTION_TAG_P2P_FORWARDING)
+                    .setConnectionSharing(true)
                     .setExpiration(
                             Utils.fromNowMicrosUtc(
                                     localState.config.peerRequestTimeoutMicros))

@@ -4004,7 +4004,7 @@ public class ServiceHost implements ServiceRequestSender {
     void prepareForwardRequest(Operation fwdOp) {
         fwdOp.toggleOption(OperationOption.FORWARDED, true);
         fwdOp.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_FORWARDED);
-        fwdOp.setConnectionTag(ServiceClient.CONNECTION_TAG_FORWARDING);
+        fwdOp.setConnectionTag(ServiceClient.CONNECTION_TAG_P2P_FORWARDING);
         fwdOp.toggleOption(NodeSelectorService.FORWARDING_OPERATION_OPTION,
                 true);
     }
