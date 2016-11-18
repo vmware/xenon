@@ -23,6 +23,7 @@ import org.junit.Test;
 
 import com.vmware.xenon.common.Claims;
 import com.vmware.xenon.common.Operation;
+import com.vmware.xenon.common.Operation.AuthorizationContext;
 import com.vmware.xenon.common.http.netty.CookieJar;
 import com.vmware.xenon.common.test.TestRequestSender;
 import com.vmware.xenon.common.test.VerificationHost;
@@ -58,6 +59,9 @@ public class TestSampleAuthenticationService {
 
         // test token verification of valid token
         testTokenVerification(host);
+
+        // test logout request
+        testLogout(host);
     }
 
     private void testUnauthenticatedRequestRedirect(VerificationHost host) {
@@ -102,6 +106,22 @@ public class TestSampleAuthenticationService {
         Operation responseOp = host.getTestRequestSender().sendAndWait(requestOp);
         Claims claims = responseOp.getBody(Claims.class);
         assertNotNull(claims);
+
+        TestRequestSender.clearAuthToken();
+    }
+
+    private void testLogout(VerificationHost host) {
+        TestRequestSender.setAuthToken(SampleAuthenticationService.ACCESS_TOKEN);
+        // make a request to verification service for logout
+        Operation requestOp = Operation.createPost(host, SampleAuthenticationService.SELF_LINK)
+                .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_LOGOUT);
+
+        Operation responseOp = host.getTestRequestSender().sendAndWait(requestOp);
+
+        // check the expirationTime of the Claims object in the AuthorizationContext
+        AuthorizationContext authorizationContext = responseOp.getAuthorizationContext();
+        Claims claims = authorizationContext.getClaims();
+        assertEquals(Long.valueOf(0L), claims.getExpirationTime());
 
         TestRequestSender.clearAuthToken();
     }

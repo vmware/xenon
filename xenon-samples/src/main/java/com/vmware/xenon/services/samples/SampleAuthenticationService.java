@@ -63,9 +63,15 @@ public class SampleAuthenticationService extends StatelessService {
         // get an accessToken and then use the access token to create an authorization
         // context and use it.
 
+        // actual implementations will need to generate the Claims object
+        // by decoding the access token provided from the external authentication provider
+
+        // the sample service is using a locally created Claims object
+        Claims claims = getClaims(false);
+
         // just use the predefined ACCESS_TOKEN to create an authorization context
         // and set it.
-        associateAuthorizationContext(this, op, ACCESS_TOKEN);
+        associateAuthorizationContext(claims, this, op, ACCESS_TOKEN);
         op.complete();
     }
 
@@ -81,34 +87,44 @@ public class SampleAuthenticationService extends StatelessService {
         // invalidate a token for logout based on the pragma header.
 
         // the sample service is just doing a token verification based on pragma header
-        if (!op.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_VERIFY_TOKEN)) {
-            op.fail(new IllegalStateException("Invalid request"));
-            return;
-        }
-        op.removePragmaDirective(Operation.PRAGMA_DIRECTIVE_VERIFY_TOKEN);
-        String token = BasicAuthenticationUtils.getAuthToken(op);
-        if (token == null) {
-            op.fail(new IllegalArgumentException("Token is empty"));
-            return;
-        }
+        if (op.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_VERIFY_TOKEN)) {
+            op.removePragmaDirective(Operation.PRAGMA_DIRECTIVE_VERIFY_TOKEN);
+            String token = BasicAuthenticationUtils.getAuthToken(op);
+            if (token == null) {
+                op.fail(new IllegalArgumentException("Token is empty"));
+                return;
+            }
 
-        if (token.equals(ACCESS_TOKEN)) {
-            // create and return a claims object for system user since our test uses system user
-            Claims claims = getClaims();
-            op.setBodyNoCloning(claims);
+            if (token.equals(ACCESS_TOKEN)) {
+                // create and return a claims object for system user since our test uses system user
+                Claims claims = getClaims(false);
+                op.setBodyNoCloning(claims);
+                op.complete();
+                return;
+            }
+            op.fail(new IllegalArgumentException("Invalid Token!"));
+        } else if (op.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_LOGOUT)) {
+            op.removePragmaDirective(Operation.PRAGMA_DIRECTIVE_LOGOUT);
+
+            // create claims object with ZERO expiration time
+            Claims claims = getClaims(true);
+            associateAuthorizationContext(claims, this, op, ACCESS_TOKEN);
             op.complete();
             return;
+        } else {
+            // default is authentication, no need to check for Pragma header
+
+            // the sample service is using a locally created Claims object
+            Claims claims = getClaims(false);
+
+            // just use the predefined ACCESS_TOKEN to create an authorization context
+            // and set it.
+            associateAuthorizationContext(claims, this, op, ACCESS_TOKEN);
+            op.complete();
         }
-        op.fail(new IllegalArgumentException("Invalid Token!"));
     }
 
-    private void associateAuthorizationContext(Service service, Operation op, String token) {
-        // actual implementations will need to generate the Claims object
-        // by decoding the access token provided from the external authentication provider
-
-        // the sample service is using a locally created Claims object
-        Claims claims = getClaims();
-
+    private void associateAuthorizationContext(Claims claims, Service service, Operation op, String token) {
         AuthorizationContext.Builder ab = AuthorizationContext.Builder.create();
         ab.setClaims(claims);
         ab.setToken(token);
@@ -121,7 +137,7 @@ public class SampleAuthenticationService extends StatelessService {
         service.setAuthorizationContext(op, ab.getResult());
     }
 
-    private Claims getClaims() {
+    private Claims getClaims(boolean isLogout) {
         Claims.Builder builder = new Claims.Builder();
         builder.setIssuer(AuthenticationConstants.DEFAULT_ISSUER);
 
@@ -129,6 +145,11 @@ public class SampleAuthenticationService extends StatelessService {
         // in case of actual implementation this user if already does not exist
         // will have to be created.
         builder.setSubject(SystemUserService.SELF_LINK);
+
+        if (isLogout) {
+            builder.setExpirationTime(0L);
+        }
+
         return builder.getResult();
     }
 
