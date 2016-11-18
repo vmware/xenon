@@ -17,6 +17,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
+import java.lang.reflect.Field;
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -465,6 +466,62 @@ public class TestNodeGroupService {
     }
 
     @Test
+    public void recognizeSelfInPeerNodesByPublicUri() throws Throwable {
+        String id = "node-" + VerificationHost.hostNumber.incrementAndGet();
+        String publicUri = "http://myhostname.local:";
+
+        // In order not to hardcode a port, 0 is used which will pick random port.
+        // The value of the random port is then used to set the initialPeerNodes and publicUri is if they
+        // used the assigned port to begin with.
+        ExampleServiceHost nodeA = new ExampleServiceHost() {
+            @Override
+            public List<URI> getInitialPeerHosts() {
+                try {
+                    Field field = ServiceHost.class.getDeclaredField("state");
+                    field.setAccessible(true);
+                    ServiceHostState s = (ServiceHostState) field.get(this);
+                    s.initialPeerNodes = new String[] { publicUri + getPort() };
+                    s.publicUri = URI.create(publicUri + getPort());
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
+                }
+
+                return super.getInitialPeerHosts();
+            }
+        };
+        TemporaryFolder tmpFolderA = new TemporaryFolder();
+        tmpFolderA.create();
+        try {
+            String[] args = {
+                    "--port=0",
+                    "--id=" + id,
+                    "--publicUri=" + publicUri,
+                    "--bindAddress=127.0.0.1",
+                    "--sandbox=" + tmpFolderA.getRoot().getAbsolutePath()
+            };
+
+            nodeA.initialize(args);
+            nodeA.setMaintenanceIntervalMicros(TimeUnit.MILLISECONDS
+                    .toMicros(VerificationHost.FAST_MAINT_INTERVAL_MILLIS));
+            nodeA.start();
+
+            URI nodeGroupUri = UriUtils.buildUri(nodeA, ServiceUriPaths.DEFAULT_NODE_GROUP, null);
+
+            TestRequestSender sender = new TestRequestSender(nodeA);
+            Operation op = Operation.createGet(nodeGroupUri)
+                    .setReferer(nodeA.getUri());
+
+            NodeGroupState nodeGroupState = sender.sendAndWait(op, NodeGroupState.class);
+
+            assertEquals(1, nodeGroupState.nodes.size());
+            assertEquals(1, nodeGroupState.nodes.values().iterator().next().membershipQuorum);
+        } finally {
+            tmpFolderA.delete();
+            nodeA.stop();
+        }
+    }
+
+    @Test
     public void commandLineJoinRetries() throws Throwable {
         this.host = VerificationHost.create(0);
         this.host.start();
@@ -484,8 +541,7 @@ public class TestNodeGroupService {
                     "--port=0",
                     "--id=" + id,
                     "--bindAddress=127.0.0.1",
-                    "--sandbox="
-                            + tmpFolderA.getRoot().getAbsolutePath(),
+                    "--sandbox=" + tmpFolderA.getRoot().getAbsolutePath(),
                     "--peerNodes=" + "http://127.0.0.1:" + bogusPort
             };
 
@@ -1123,9 +1179,7 @@ public class TestNodeGroupService {
     }
 
     @Test
-    public void synchronizationWithPeerNodeListAndDuplicates()
-            throws Throwable {
-
+    public void synchronizationWithPeerNodeListAndDuplicates() throws Throwable {
         ExampleServiceHost h = null;
 
         TemporaryFolder tmpFolder = new TemporaryFolder();
