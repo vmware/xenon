@@ -432,18 +432,20 @@ public class TestGraphQueryTaskService extends BasicTestCase {
         return validateStageResults(stage, 0, expectedResultCount, false, isFinalStage);
     }
 
-    private boolean validateStageResults(ServiceDocumentQueryResult stage,
+    private boolean validateStageResults(ServiceDocumentQueryResult stageResults,
             int stageIndex,
             int expectedResultCount, boolean isRecursive, boolean isFinalStage) {
-        assertTrue(stage != null);
-        assertTrue(stage.queryTimeMicros > 0);
-        if (stage.documentCount != expectedResultCount) {
+        if (stageResults == null) {
             return false;
         }
-        if (stage.documentLinks.size() != expectedResultCount) {
+        assertTrue(stageResults.queryTimeMicros > 0);
+        if (stageResults.documentCount != expectedResultCount) {
             return false;
         }
-        if (!isFinalStage && stage.selectedLinks == null) {
+        if (stageResults.documentLinks.size() != expectedResultCount) {
+            return false;
+        }
+        if (!isFinalStage && stageResults.selectedLinks == null) {
             if (expectedResultCount > 0) {
                 throw new IllegalStateException("null selectedLinks");
             }
@@ -452,7 +454,7 @@ public class TestGraphQueryTaskService extends BasicTestCase {
             if (isRecursive) {
                 expectedLinkCount *= this.linkCount;
             }
-            if (stage.selectedLinks.size() != expectedLinkCount) {
+            if (stageResults.selectedLinks.size() != expectedLinkCount) {
                 return false;
             }
         }
