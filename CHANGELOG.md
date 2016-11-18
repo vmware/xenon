@@ -2,6 +2,9 @@
 
 ## 1.3.1-SNAPSHOT
 
+* Added methods to NodeSelectorState to support a 'PAUSE' state for the
+  NodeSelectorService (ConsistentHashingNodeSelectorService).
+
 * Created a SampleAuthenticationService outlining the contract between
   framework and a custom authentication service
 
