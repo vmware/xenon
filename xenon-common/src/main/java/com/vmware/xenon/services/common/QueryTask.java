@@ -153,7 +153,7 @@ public class QueryTask extends ServiceDocument {
             SELECT_LINKS,
 
             /**
-             * Groups results using the {@link QuerySpecification#groupByTerms}
+             * Groups results using the {@link QuerySpecification::groupByTerms}
              */
             GROUP_BY
         }
@@ -182,6 +182,16 @@ public class QueryTask extends ServiceDocument {
          * Property name to use for group sort. Used in combination with {@code QueryOption#GROUP_BY}
          */
         public QueryTerm groupSortTerm;
+
+        /**
+         * Property name to use for additional sort. Used in combination with {@code QueryOption#SORT}
+         */
+        public List<QueryTerm> additionalSortTerms;
+
+        /**
+         * Property name to use for additional group sort. Used in combination with {@code QueryOption#GROUP_BY}
+         */
+        public List<QueryTerm> additionalGroupSortTerms;
 
         /**
          * Property name to use for grouping. Used in combination with {@code QueryOption#GROUP_BY}
@@ -438,6 +448,7 @@ public class QueryTask extends ServiceDocument {
         public String matchValue;
         public MatchType matchType;
         public NumericRange<?> range;
+        public SortOrder sortOrder;
 
         @Override
         public boolean equals(Object obj) {
@@ -1024,8 +1035,16 @@ public class QueryTask extends ServiceDocument {
             QueryTerm sortTerm = new QueryTerm();
             sortTerm.propertyName = fieldName;
             sortTerm.propertyType = fieldType;
-            this.querySpec.sortTerm = sortTerm;
-            this.querySpec.sortOrder = sortOrder;
+            if (this.querySpec.sortTerm == null) {
+                this.querySpec.sortTerm = sortTerm;
+                this.querySpec.sortOrder = sortOrder;
+            } else {
+                sortTerm.sortOrder = sortOrder;
+                if (this.querySpec.additionalSortTerms == null) {
+                    this.querySpec.additionalSortTerms = new ArrayList<>();
+                }
+                this.querySpec.additionalSortTerms.add(sortTerm);
+            }
             addOption(QueryOption.SORT);
             return this;
         }
