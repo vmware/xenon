@@ -28,8 +28,13 @@ public class RoundRobinOperationQueue {
         return new RoundRobinOperationQueue();
     }
 
-    private NavigableMap<String, Queue<Operation>> queues = new ConcurrentSkipListMap<>();
+    private final NavigableMap<String, Queue<Operation>> queues = new ConcurrentSkipListMap<>();
+
     private String activeKey = "";
+
+    private RoundRobinOperationQueue() {
+
+    }
 
     /**
      * Queue the operation on the queue associated with the key
@@ -38,10 +43,9 @@ public class RoundRobinOperationQueue {
         if (key == null || op == null) {
             throw new IllegalArgumentException("key and operation are required");
         }
-        Queue<Operation> q = null;
-        q = this.queues.computeIfAbsent(key, (k) -> {
-            return new ArrayDeque<>(INITIAL_CAPACITY);
-        });
+
+        Queue<Operation> q = this.queues.computeIfAbsent(key, (k) -> new ArrayDeque<>(INITIAL_CAPACITY));
+
         if (!q.offer(op)) {
             op.setStatusCode(Operation.STATUS_CODE_UNAVAILABLE);
             op.fail(new CancellationException("queue limit exceeded"));
@@ -59,21 +63,19 @@ public class RoundRobinOperationQueue {
      */
     public synchronized Operation poll() {
         while (!this.queues.isEmpty()) {
-            Entry<String, Queue<Operation>> nextActive = this.queues
-                    .higherEntry(this.activeKey);
+            Entry<String, Queue<Operation>> nextActive = this.queues.higherEntry(this.activeKey);
             if (nextActive == null) {
                 nextActive = this.queues.firstEntry();
             }
             this.activeKey = nextActive.getKey();
             Operation op = nextActive.getValue().poll();
-            if (nextActive.getValue().isEmpty()) {
-                // queue is empty, remove from active map
-                this.queues.remove(nextActive.getKey());
-            }
             if (op != null) {
                 return op;
+            } else {
+                this.queues.remove(nextActive.getKey());
             }
         }
+
         return null;
     }
 
