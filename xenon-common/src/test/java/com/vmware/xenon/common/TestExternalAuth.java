@@ -35,6 +35,7 @@ public class TestExternalAuth extends BasicTestCase {
 
     private String userServiceJane = null;
     private String userServiceJohn = null;
+    VerificationHost externalAuthHost = null;
     private static final String USER_JANE = "jane";
     private static final String USER_JANE_EMAIL = "jane@doe.com";
     private static final String USER_JOHN = "john";
@@ -45,26 +46,31 @@ public class TestExternalAuth extends BasicTestCase {
     public void initializeHost(VerificationHost host) throws Exception {
         try {
             // create a xenon service host housing just the user authz rules
-            VerificationHost externalAuthHost = createHost();
-            externalAuthHost.setAuthorizationService(new AuthorizationContextService());
-            externalAuthHost.setAuthorizationEnabled(true);
+            this.externalAuthHost = createHost();
+            this.externalAuthHost.setAuthorizationService(new AuthorizationContextService());
+            this.externalAuthHost.setAuthorizationEnabled(true);
             ServiceHost.Arguments args = VerificationHost.buildDefaultServiceHostArguments(0);
-            VerificationHost.initialize(externalAuthHost, args);
-            externalAuthHost.start();
-            externalAuthHost.setSystemAuthorizationContext();
+            VerificationHost.initialize(this.externalAuthHost, args);
+            this.externalAuthHost.start();
+            this.externalAuthHost.setSystemAuthorizationContext();
             // create two users
-            this.userServiceJane = createUsers(externalAuthHost, USER_JANE, USER_JANE_EMAIL);
-            this.userServiceJohn = createUsers(externalAuthHost, USER_JOHN, USER_JOHN_EMAIL);
-            externalAuthHost.resetAuthorizationContext();
+            this.userServiceJane = createUsers(this.externalAuthHost, USER_JANE, USER_JANE_EMAIL);
+            this.userServiceJohn = createUsers(this.externalAuthHost, USER_JOHN, USER_JOHN_EMAIL);
+            this.externalAuthHost.resetAuthorizationContext();
             // start test verification host with an external auth provider
             args = VerificationHost.buildDefaultServiceHostArguments(0);
-            args.authProviderHostUri = externalAuthHost.getUri().toString();
+            args.authProviderHostUri = this.externalAuthHost.getUri().toString();
             args.isAuthorizationEnabled = true;
             VerificationHost.initialize(this.host, args);
             Utils.registerKind(UserService.UserState.class, Utils.buildKind(UserService.UserState.class));
         } catch (Throwable e) {
             throw new Exception(e);
         }
+    }
+
+    @Override
+    public void beforeHostTearDown(VerificationHost host) {
+        this.externalAuthHost.tearDown();
     }
 
     private String createUsers(VerificationHost host, String userName, String email) throws Throwable {
