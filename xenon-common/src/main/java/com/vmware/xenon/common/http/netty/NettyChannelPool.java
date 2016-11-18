@@ -23,6 +23,8 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.logging.Logger;
 import javax.net.ssl.SSLContext;
 
@@ -675,6 +677,7 @@ public class NettyChannelPool {
      */
     private void closeIdleChannelContexts(NettyChannelGroup group,
             boolean forceClose, long now) {
+        final long epsilonMicros = TimeUnit.SECONDS.toMicros(5);
         synchronized (group) {
             Iterator<NettyChannelContext> it = group.availableChannels.iterator();
             while (it.hasNext()) {
@@ -695,6 +698,25 @@ public class NettyChannelPool {
                 it.remove();
                 LOGGER.info("Closing expired channel " + c.getKey());
                 c.close();
+            }
+
+            // The HTTP client is responsible for failing expired operations and maintains
+            // an independent tracking list. As a defense-in-depth check however, warn when
+            // operations remain in our pending list AFTER they are expired
+            final int searchLimit = 1000;
+            int count = 0;
+            Iterator<Operation> pendingOpIt = group.pendingRequests.iterator();
+            while (pendingOpIt.hasNext() && ++count < searchLimit) {
+                Operation pendingOp = pendingOpIt.next();
+                if (!Utils.beforeNow(epsilonMicros + pendingOp.getExpirationMicrosUtc())) {
+                    continue;
+                }
+                pendingOpIt.remove();
+                LOGGER.info("Found expired op in pending list: " + pendingOp.toString());
+                Throwable e = new TimeoutException(
+                        pendingOp.getUri() + ":" + pendingOp.getExpirationMicrosUtc());
+                pendingOp.setStatusCode(Operation.STATUS_CODE_TIMEOUT);
+                pendingOp.fail(e);
             }
         }
     }
