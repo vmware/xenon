@@ -13,6 +13,7 @@
 
 package org.slf4j.test;
 
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
 import java.util.List;
@@ -68,6 +69,8 @@ public class Slf4JLoggerTest extends BasicTestCase {
                 "argument1", "argument2", "argument3", exceptionMsgSegment,
                 new IllegalStateException("Some cause"));
 
+        logger.info("hello methodName");
+        logger.info("hello methodName {}", "param");
         logger.info("This is a info test with no args");
         logger.info("This is a info test with no args");
         logger.info("This is a info test with 1 arg: {}", "argument");
@@ -192,7 +195,15 @@ public class Slf4JLoggerTest extends BasicTestCase {
 
         checkLogLineNegative(state.items, "This message should not present");
 
+        // "testLogger" is the name of this test; test if it is correctly extracted and logged
         count = 0;
+        count = checkLogLine(state.items, "[testLogger][hello methodName", count);
+        assertEquals(1, count);
+
+
+        count = 0;
+        count = checkLogLine(state.items, "[testLogger][hello methodName param", count);
+        assertEquals(1, count);
         // multi line log statements can be pre empted by xenon logs so we can rely on exact match.
         // Instead just verify the beginning is present
         for (String line : state.items) {
