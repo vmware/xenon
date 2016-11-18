@@ -13,10 +13,50 @@
 
 package com.vmware.xenon.common;
 
+
+import java.util.EnumSet;
+
+import com.vmware.xenon.services.common.NodeGroupService.NodeGroupState;
+import com.vmware.xenon.services.common.NodeGroupUtils;
+
+
 public class NodeSelectorState extends ServiceDocument {
+
+    public enum Status {
+        UNAVAILABLE,
+        PAUSED,
+        AVAILABLE
+    }
+
+    public static final EnumSet<Status> UNAVAILABLE = EnumSet.of(Status.UNAVAILABLE);
+    public static final EnumSet<Status> PAUSED = EnumSet.of(Status.PAUSED, Status.AVAILABLE);
+    public static final EnumSet<Status> AVAILABLE = EnumSet.of(Status.AVAILABLE);
+    public static final EnumSet<Status> PAUSED_UNAVAILABLE = EnumSet.of(Status.PAUSED, Status.UNAVAILABLE);
+
+    /**
+     * Calculates the status of the Node Selector by inspecting the NodeGroup and local
+     * 'pause'/'resume' status.
+     */
+    public static Status calculateNodeSelectorStatus(ServiceHost host, NodeGroupState localState) {
+        boolean isAvailable = NodeGroupUtils.isNodeGroupAvailable(host, localState);
+        return (isAvailable ? Status.AVAILABLE : Status.UNAVAILABLE);
+    }
+
+    public static boolean isNodeSelectorAvailable(ServiceHost h, NodeGroupState s) {
+        return AVAILABLE.contains(calculateNodeSelectorStatus(h, s));
+    }
+
+    public void updateNodeSelectorStatus(ServiceHost host, NodeGroupState localState) {
+        this.nodeSelectorStatus = calculateNodeSelectorStatus(host, localState);
+    }
+
+    public boolean isNodeSelectorAvailable() {
+        return AVAILABLE.contains(this.nodeSelectorStatus);
+    }
+
     public String nodeGroupLink;
     public Long replicationFactor;
     public int membershipQuorum;
     public long membershipUpdateTimeMicros;
-    public boolean isNodeGroupAvailable;
+    public Status nodeSelectorStatus;
 }
