@@ -960,8 +960,15 @@ public class LuceneDocumentIndexService extends StatelessService {
         if (tq == null) {
             return false;
         }
-        ServiceDocumentQueryResult result = queryIndexPaginated(op, options, s, tq, page,
-                count, expiration, indexLink, rsp, qs);
+
+        ServiceDocumentQueryResult result;
+        if (options.contains(QueryOption.COUNT)) {
+            result = queryIndexCount(options, s, tq, rsp, qs);
+        } else {
+            result = queryIndexPaginated(op, options, s, tq, page, count, expiration, indexLink,
+                    rsp, qs);
+        }
+
         result.documentOwner = getHost().getId();
         if (!options.contains(QueryOption.COUNT) && result.documentLinks.isEmpty()) {
             return false;
@@ -1181,6 +1188,48 @@ public class LuceneDocumentIndexService extends StatelessService {
         op.setBodyNoCloning(rsp).complete();
     }
 
+    private ServiceDocumentQueryResult queryIndexCount(
+            EnumSet<QueryOption> queryOptions,
+            IndexSearcher searcher,
+            Query termQuery,
+            ServiceDocumentQueryResult response,
+            QuerySpecification querySpec)
+            throws Throwable {
+
+        long queryStartTimeMicros = Utils.getNowMicrosUtc();
+
+        if (queryOptions.contains(QueryOption.INCLUDE_ALL_VERSIONS)) {
+            // Special handling for queries which include all versions in order to avoid allocating
+            // a large, unnecessary ScoreDocs array.
+            response.documentCount = (long) searcher.count(termQuery);
+            long queryTimeMicros = Utils.getNowMicrosUtc() - queryStartTimeMicros;
+            response.queryTimeMicros = queryTimeMicros;
+            setTimeSeriesHistogramStat(STAT_NAME_QUERY_ALL_VERSIONS_DURATION_MICROS,
+                    AGGREGATION_TYPE_AVG_MAX, queryTimeMicros);
+            return response;
+        }
+
+        response.queryTimeMicros = 0L;
+        TopDocs results = searcher.search(termQuery, Integer.MAX_VALUE);
+        if (results == null) {
+            return response;
+        }
+
+        long queryEndTimeMicros = Utils.getNowMicrosUtc();
+        long queryDurationMicros = queryEndTimeMicros - queryStartTimeMicros;
+        response.queryTimeMicros = queryDurationMicros;
+        setTimeSeriesHistogramStat(STAT_NAME_QUERY_ALL_VERSIONS_DURATION_MICROS,
+                AGGREGATION_TYPE_AVG_MAX, queryDurationMicros);
+
+        processQueryResults(querySpec, queryOptions, Integer.MAX_VALUE, searcher, response,
+                results.scoreDocs, queryStartTimeMicros);
+
+        setTimeSeriesHistogramStat(STAT_NAME_RESULT_PROCESSING_DURATION_MICROS,
+                AGGREGATION_TYPE_AVG_MAX, Utils.getNowMicrosUtc() - queryEndTimeMicros);
+
+        return response;
+    }
+
     private ServiceDocumentQueryResult queryIndexPaginated(Operation op,
             EnumSet<QueryOption> options,
             IndexSearcher s,
@@ -1213,18 +1262,15 @@ public class LuceneDocumentIndexService extends StatelessService {
             rsp.documentCount = 1L;
         }
 
-        Sort sort = null;
-        if (!options.contains(QueryOption.COUNT)) {
-            sort = this.versionSort;
-            if (qs != null && qs.sortTerm != null) {
-                // see if query is part of a task and already has a cached sort
-                if (qs.context != null) {
-                    sort = (Sort) qs.context.nativeSort;
-                }
+        Sort sort = this.versionSort;
+        if (qs != null && qs.sortTerm != null) {
+            // see if query is part of a task and already has a cached sort
+            if (qs.context != null) {
+                sort = (Sort) qs.context.nativeSort;
+            }
 
-                if (sort == null) {
-                    sort = LuceneQueryConverter.convertToLuceneSort(qs, false);
-                }
+            if (sort == null) {
+                sort = LuceneQueryConverter.convertToLuceneSort(qs, false);
             }
         }
 
