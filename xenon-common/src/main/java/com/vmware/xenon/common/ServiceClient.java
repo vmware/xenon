@@ -53,11 +53,6 @@ public interface ServiceClient extends ServiceRequestSender {
             PROPERTY_NAME_REQUEST_PAYLOAD_SIZE_LIMIT, 1024 * 1024 * 64);
 
     /**
-     * Connection tag used by node group service for peer to peer random probing and liveness checks
-     */
-    public static final String CONNECTION_TAG_GOSSIP = "xn-cnx-tag-gossip";
-
-    /**
      * Connection tag used by node selector services for request related to replication and multiple
      * node processes
      */
@@ -67,7 +62,7 @@ public interface ServiceClient extends ServiceRequestSender {
      * Connection tag used by service host for peer to peer forwarding during load
      * balancing and node selection
      */
-    public static final String CONNECTION_TAG_FORWARDING = "xn-cnx-tag-p2p-fwd";
+    public static final String CONNECTION_TAG_P2P_FORWARDING = "xn-cnx-tag-p2p-fwd";
 
     /**
      * Well known connection tag used when no explicit tag is specified. It will use the per
