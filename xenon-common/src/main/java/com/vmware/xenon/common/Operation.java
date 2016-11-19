@@ -249,24 +249,7 @@ public class Operation implements Cloneable {
          * same connection as many others, pending, operations
          */
         CONNECTION_SHARING,
-        /**
-         * Experimental
-         *
-         * Sends a request using the asynchronous HTTP pattern, allowing greater connection re-use. The
-         * send method creates a lightweight service that serves as the callback URI for receiving the
-         * completion status from the remote node. The callback URI is set as a header on the out bound
-         * request.
-         *
-         * The remote node, if it detects the presence of the callback location header, will create a
-         * new, local request, send it to the local service, and when that local request completes, it
-         * will issues a PATCH to the callback service on this node. The original request will then be
-         * completed and the client will see the response.
-         *
-         * The end result is that a TCP connection is not "blocked" while we wait for the remote node to
-         * return a response (similar to the benefits of the asynchronous REST pattern for services that
-         * implement it)
-         */
-        SEND_WITH_CALLBACK,
+
         /**
          * Set by the client to both request a long lived connection on out-bound requests,
          * or indicate the operation was received on a long lived connection, for in-bound requests
@@ -313,7 +296,15 @@ public class Operation implements Cloneable {
          * The operation exceeded the rate limit associated with it logical context
          * (authorization subject by default)
          */
-        RATE_LIMITED
+        RATE_LIMITED,
+
+        /**
+         * Infrastructure use only
+         *
+         * Set by transport/client to indicate the operation has an active socket
+         * channel associated with it.
+         */
+        SOCKET_ACTIVE
     }
 
     public static class SerializedOperation extends ServiceDocument {
@@ -608,7 +599,8 @@ public class Operation implements Cloneable {
     private short retryCount;
     private short retriesRemaining;
 
-    private EnumSet<OperationOption> options = EnumSet.noneOf(OperationOption.class);
+    private EnumSet<OperationOption> options = EnumSet
+            .of(OperationOption.KEEP_ALIVE);
 
     public static Operation create(SerializedOperation ctx, ServiceHost host) {
         Operation op = new Operation();

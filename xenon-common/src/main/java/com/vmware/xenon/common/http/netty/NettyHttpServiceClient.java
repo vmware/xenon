@@ -15,9 +15,7 @@ package com.vmware.xenon.common.http.netty;
 
 import java.net.URI;
 import java.net.URISyntaxException;
-import java.util.ArrayList;
 import java.util.EnumSet;
-import java.util.List;
 import java.util.Map.Entry;
 import java.util.SortedMap;
 import java.util.concurrent.CancellationException;
@@ -26,7 +24,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
-import java.util.logging.Level;
 import java.util.logging.Logger;
 import javax.net.ssl.SSLContext;
 
@@ -54,7 +51,6 @@ import com.vmware.xenon.common.ServiceHost.ServiceHostState;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
 import com.vmware.xenon.common.http.netty.NettyChannelPool.NettyChannelGroupKey;
-import com.vmware.xenon.services.common.ServiceUriPaths;
 
 /**
  * Asynchronous request / response client with concurrent connection management
@@ -87,13 +83,11 @@ public class NettyHttpServiceClient implements ServiceClient {
 
     private ServiceHost host;
 
-    private HttpRequestCallbackService callbackService;
-
     private CookieJar cookieJar = new CookieJar();
 
     private boolean isStarted;
 
-    private boolean warnHttp2ConversionToCallbacks = false;
+    private boolean warnHttp2DisablingConnectionSharing = false;
 
     private final Object startSync = new Object();
 
@@ -169,17 +163,6 @@ public class NettyHttpServiceClient implements ServiceClient {
         }
 
         if (this.host != null) {
-            Operation startCallbackPost = Operation
-                    .createPost(UriUtils.buildUri(this.host, ServiceUriPaths.CORE_CALLBACKS))
-                    .setCompletion((o, e) -> {
-                        if (e != null) {
-                            this.host.log(Level.WARNING, "Failed to start %s: %s",
-                                    ServiceUriPaths.CORE_CALLBACKS,
-                                    e.toString());
-                        }
-                    });
-            this.callbackService = new HttpRequestCallbackService(this);
-            this.host.startService(startCallbackPost, this.callbackService);
             MaintenanceProxyService.start(this.host, this::handleMaintenance);
         }
     }
@@ -197,11 +180,6 @@ public class NettyHttpServiceClient implements ServiceClient {
         this.channelPool.stop();
         this.sslChannelPool.stop();
         this.http2ChannelPool.stop();
-
-        if (this.host != null) {
-            this.host.stopService(this.callbackService);
-        }
-
         this.pendingRequests.clear();
     }
 
@@ -268,28 +246,6 @@ public class NettyHttpServiceClient implements ServiceClient {
         this.pendingRequests.remove(op.getId());
     }
 
-    /**
-     * @see OperationOption#SEND_WITH_CALLBACK
-     * @param op
-     */
-    private Operation prepareCallback(Operation op) {
-        // Queue operation, then send it to remote target. At some point later the remote host will
-        // send a PATCH to the callback service to complete this pending operation
-        String u = this.callbackService.queueUntilCallback(op);
-        Operation remoteOp = op.clone();
-        remoteOp.setRequestCallbackLocation(u);
-        remoteOp.setCompletion((o, e) -> {
-            if (e != null) {
-                // we do not remove the operation from the callback service, it will be removed
-                // it times out
-                stopTracking(op);
-                op.setExpiration(0).fail(e);
-                return;
-            }
-        });
-        return remoteOp;
-    }
-
     private void updateCookieJarFromResponseHeaders(Operation op) {
         String value = op.getResponseHeaderAsIs(Operation.SET_COOKIE_HEADER);
         if (value == null) {
@@ -345,17 +301,15 @@ public class NettyHttpServiceClient implements ServiceClient {
             port = httpScheme ? UriUtils.HTTP_DEFAULT_PORT : UriUtils.HTTPS_DEFAULT_PORT;
         }
 
-        // We do not support TLS with Http/2. This is because currently
-        // netty requires taking dependency on their native binaries.
+        // We do not support TLS with HTTP/2. This is because currently
+        // NETTY requires taking dependency on their native binaries.
         // http://netty.io/wiki/requirements-for-4.x.html
         if (op.isConnectionSharing() && httpsScheme) {
             op.setConnectionSharing(false);
-            op.toggleOption(OperationOption.SEND_WITH_CALLBACK, true);
-
-            if (!this.warnHttp2ConversionToCallbacks) {
-                this.warnHttp2ConversionToCallbacks = true;
-                LOGGER.warning("Converting Http/2 TLS requests to use " +
-                        "Http/1.1 with SEND_WITH_CALLBACK.");
+            if (!this.warnHttp2DisablingConnectionSharing) {
+                this.warnHttp2DisablingConnectionSharing = true;
+                LOGGER.warning(
+                        "HTTP/2 requests are not supported on HTTPS. Falling back to HTTP1.1");
             }
         }
 
@@ -372,15 +326,11 @@ public class NettyHttpServiceClient implements ServiceClient {
             op.setConnectionSharing(false);
         }
 
-        // If the caller opted for SEND_WITH_CALLBACK, let's prepare the callback uri.
-        if (op.hasOption(OperationOption.SEND_WITH_CALLBACK)) {
-            op = prepareCallback(op);
-        }
-
         connectChannel(pool, op, remoteHost, port);
     }
 
-    private void connectChannel(NettyChannelPool pool, Operation op, String remoteHost, int port) {
+    private void connectChannel(NettyChannelPool pool, Operation op,
+            String remoteHost, int port) {
         op.nestCompletion((o, e) -> {
             if (o.getStatusCode() == Operation.STATUS_CODE_TIMEOUT) {
                 failWithTimeout(op, op.getBodyRaw());
@@ -410,7 +360,7 @@ public class NettyHttpServiceClient implements ServiceClient {
                         "Content-Length " + op.getContentLength() +
                         " is greater than max size allowed " + getRequestPayloadSizeLimit());
                 op.setBody(ServiceErrorResponse.create(e, Operation.STATUS_CODE_BAD_REQUEST));
-                op.fail(e);
+                fail(e, op, originalBody);
                 return;
             }
 
@@ -457,7 +407,6 @@ public class NettyHttpServiceClient implements ServiceClient {
                 // the correspondence between the streamId and operation: this will let us
                 // handle responses properly later.
                 request.setOperation(op);
-
             }
 
             String pragmaHeader = op.getRequestHeaderAsIs(Operation.PRAGMA_HEADER);
@@ -500,7 +449,9 @@ public class NettyHttpServiceClient implements ServiceClient {
             request.headers().set(HttpHeaderNames.CONTENT_LENGTH,
                     Long.toString(op.getContentLength()));
             request.headers().set(HttpHeaderNames.CONTENT_TYPE, op.getContentType());
-            request.headers().set(HttpHeaderNames.CONNECTION, HttpHeaderValues.KEEP_ALIVE);
+            if (op.isKeepAlive()) {
+                request.headers().set(HttpHeaderNames.CONNECTION, HttpHeaderValues.KEEP_ALIVE);
+            }
 
             if (!isXenonToXenon) {
                 if (op.getCookies() != null) {
@@ -536,7 +487,6 @@ public class NettyHttpServiceClient implements ServiceClient {
                 if (doCookieJarUpdate) {
                     updateCookieJarFromResponseHeaders(o);
                 }
-
                 // After request is sent control is transferred to the
                 // NettyHttpServerResponseHandler. The response handler will nest completions
                 // and call complete() when response is received, which will invoke this completion
@@ -588,14 +538,16 @@ public class NettyHttpServiceClient implements ServiceClient {
                 pool = this.sslChannelPool;
             }
 
+            ExecutorService exec = this.host != null ? this.host.getExecutor() : this.executor;
+
             if (nettyCtx.getProtocol() == NettyChannelContext.Protocol.HTTP2) {
                 // For HTTP/2, we multiple streams so we don't close the connection.
                 pool = this.http2ChannelPool;
-                pool.returnOrClose(nettyCtx, false);
+                exec.execute(() -> this.http2ChannelPool.returnOrClose(nettyCtx, false));
             } else {
-                // for HTTP/1.1, we close the stream to ensure we don't use a bad connection
                 op.setSocketContext(null);
-                pool.returnOrClose(nettyCtx, !op.isKeepAlive());
+                NettyChannelPool finalPool = pool;
+                exec.execute(() -> finalPool.returnOrClose(nettyCtx, !op.isKeepAlive()));
             }
         }
 
@@ -686,9 +638,10 @@ public class NettyHttpServiceClient implements ServiceClient {
         if (this.http2ChannelPool != null) {
             this.http2ChannelPool.handleMaintenance(Operation.createPost(op.getUri()));
         }
-        this.channelPool.handleMaintenance(op);
+        this.channelPool.handleMaintenance(Operation.createPost(op.getUri()));
 
         failExpiredRequests(now);
+        op.complete();
     }
 
     /**
@@ -703,7 +656,6 @@ public class NettyHttpServiceClient implements ServiceClient {
      * a complete() and non atomic roll back of the nested completions.
      */
     private void failExpiredRequests(long now) {
-        List<Operation> expired = null;
         if (this.pendingRequests.isEmpty()) {
             return;
         }
@@ -716,6 +668,7 @@ public class NettyHttpServiceClient implements ServiceClient {
         // have different expirations. We limit the search so we don't take too much time when
         // millions of operations are pending
         final int searchLimit = 1000;
+        int expiredCount = 0;
         int i = 0;
         for (Operation o : this.pendingRequests.values()) {
             if (i++ >= searchLimit) {
@@ -725,27 +678,18 @@ public class NettyHttpServiceClient implements ServiceClient {
             if (exp > now) {
                 continue;
             }
-            if (o.getStatusCode() == Operation.STATUS_CODE_TIMEOUT) {
-                if (expired == null) {
-                    expired = new ArrayList<>();
-                }
-                expired.add(o);
-            } else {
-                // first pass, just mark as expired, but do not fail.
-                o.setStatusCode(Operation.STATUS_CODE_TIMEOUT);
-            }
-        }
 
-        if (expired == null) {
+            if (!o.hasOption(OperationOption.SOCKET_ACTIVE)) {
+                continue;
+            }
+
+            o.fail(Operation.STATUS_CODE_TIMEOUT);
+            expiredCount++;
+        }
+        if (expiredCount == 0) {
             return;
         }
-
-        LOGGER.info("Failed expired operations, count: " + expired.size());
-
-        // second pass, fail operation already marked as expired
-        for (Operation o : expired) {
-            failWithTimeout(o, o.getBodyRaw());
-        }
+        LOGGER.info("Failed expired operations, count: " + expiredCount);
     }
 
     /**
@@ -855,6 +799,7 @@ public class NettyHttpServiceClient implements ServiceClient {
         } else if (secureTagInfo != null) {
             tagInfo.inUseConnectionCount += secureTagInfo.inUseConnectionCount;
             tagInfo.pendingRequestCount += secureTagInfo.pendingRequestCount;
+            tagInfo.availableConnectionCount += secureTagInfo.availableConnectionCount;
         }
 
         return tagInfo;

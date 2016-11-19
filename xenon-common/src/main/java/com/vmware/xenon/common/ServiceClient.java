@@ -22,6 +22,7 @@ public interface ServiceClient extends ServiceRequestSender {
      */
     public static class ConnectionPoolMetrics {
         public int inUseConnectionCount;
+        public int availableConnectionCount;
         public int pendingRequestCount;
     }
 

@@ -24,6 +24,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Random;
 import java.util.UUID;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -44,7 +45,6 @@ import com.vmware.xenon.common.AuthorizationSetupHelper;
 import com.vmware.xenon.common.CommandLineArgumentParser;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Operation.CompletionHandler;
-import com.vmware.xenon.common.Operation.OperationOption;
 import com.vmware.xenon.common.Service;
 import com.vmware.xenon.common.ServiceClient;
 import com.vmware.xenon.common.ServiceClient.ConnectionPoolMetrics;
@@ -88,6 +88,8 @@ public class NettyHttpServiceClientTest {
 
     // Operation timeout is in seconds
     public int operationTimeout = 0;
+
+    public int iterationCount = 1;
 
     @BeforeClass
     public static void setUpOnce() throws Throwable {
@@ -258,7 +260,8 @@ public class NettyHttpServiceClientTest {
             if (tagInfo == null) {
                 return false;
             }
-            if (tagInfo.pendingRequestCount != 0) {
+            this.host.log("%s", Utils.toJson(tagInfo));
+            if (tagInfo.pendingRequestCount != 0 || tagInfo.inUseConnectionCount > 0) {
                 this.host.log("Requests still pending: %s", Utils.toJson(tagInfo));
                 return false;
             }
@@ -350,38 +353,39 @@ public class NettyHttpServiceClientTest {
 
     @Test
     public void sendRequestWithTimeout() throws Throwable {
-        doRemotePatchWithTimeout(false);
+        for (int i = 0; i < this.iterationCount; i++) {
+            doRemotePatchWithTimeout();
+        }
     }
 
-    @Test
-    public void sendRequestWithCallbackWithTimeout() throws Throwable {
-        doRemotePatchWithTimeout(true);
-    }
-
-    private void doRemotePatchWithTimeout(boolean useCallback) throws Throwable {
+    private void doRemotePatchWithTimeout() throws Throwable {
         List<Service> services = this.host.doThroughputServiceStart(1,
                 MinimalTestService.class,
                 this.host.buildMinimalTestState(),
                 EnumSet.noneOf(Service.ServiceOption.class), null);
         try {
             this.host.toggleNegativeTestMode(true);
-            this.host.setOperationTimeOutMicros(TimeUnit.MILLISECONDS.toMicros(250));
+            this.host.setOperationTimeOutMicros(TimeUnit.MILLISECONDS.toMicros(500));
 
             // send a request to the MinimalTestService, with a body that makes it NOT complete it
             MinimalTestServiceState body = new MinimalTestServiceState();
             body.id = MinimalTestService.STRING_MARKER_TIMEOUT_REQUEST;
 
-            this.host.getClient()
-                    .setConnectionLimitPerHost(NettyHttpServiceClient.DEFAULT_CONNECTIONS_PER_HOST);
-            int count = NettyHttpServiceClient.DEFAULT_CONNECTIONS_PER_HOST * 2;
+            int connectionLimit = NettyHttpServiceClient.DEFAULT_CONNECTIONS_PER_HOST;
+            int count = connectionLimit;
+            this.host.getClient().setConnectionLimitPerHost(connectionLimit);
 
-            // timeout tracking currently works only for remote requests ...
+            // Use a random boolean to test the keep-alive and close code paths
+            Random r = new Random();
+
+            // timeout tracking currently works only for remote requests
             this.host.testStart(count);
             for (int i = 0; i < count; i++) {
                 Operation request = Operation
                         .createPatch(services.get(0).getUri())
                         .forceRemote()
                         .setBody(body)
+                        .setKeepAlive(r.nextBoolean())
                         .setCompletion((o, e) -> {
                             if (e != null) {
                                 // timeout occurred, good
@@ -392,7 +396,6 @@ public class NettyHttpServiceClientTest {
                                     "Request should have timed out"));
                         });
 
-                request.toggleOption(OperationOption.SEND_WITH_CALLBACK, useCallback);
                 this.host.send(request);
 
             }
@@ -417,13 +420,6 @@ public class NettyHttpServiceClientTest {
                 services);
         this.host.doPutPerService(
                 EnumSet.of(TestProperty.FORCE_REMOTE, TestProperty.SINGLE_ITERATION),
-                services);
-        this.host.doPutPerService(
-                EnumSet.of(TestProperty.CALLBACK_SEND, TestProperty.SINGLE_ITERATION),
-                services);
-        this.host.doPutPerService(
-                EnumSet.of(TestProperty.FORCE_REMOTE, TestProperty.CALLBACK_SEND,
-                        TestProperty.SINGLE_ITERATION),
                 services);
 
         String tag = ServiceClient.CONNECTION_TAG_DEFAULT;
@@ -620,6 +616,7 @@ public class NettyHttpServiceClientTest {
                 });
         this.host.send(put);
         this.host.testWait();
+        validateTagInfo(ServiceClient.CONNECTION_TAG_DEFAULT);
     }
 
     @Test
@@ -875,27 +872,6 @@ public class NettyHttpServiceClientTest {
     }
 
     @Test
-    public void throughputPutRemoteWithCallback() throws Throwable {
-        this.host.setOperationTimeOutMicros(TimeUnit.SECONDS.toMicros(120));
-        List<Service> services = this.host.doThroughputServiceStart(this.serviceCount,
-                MinimalTestService.class,
-                this.host.buildMinimalTestState(),
-                null, null);
-
-        for (int i = 0; i < 5; i++) {
-            this.host.doPutPerService(
-                    this.requestCount,
-                    EnumSet.of(TestProperty.FORCE_REMOTE, TestProperty.CALLBACK_SEND),
-                    services);
-            this.host.doPutPerService(
-                    this.requestCount,
-                    EnumSet.of(TestProperty.FORCE_REMOTE, TestProperty.BINARY_SERIALIZATION,
-                            TestProperty.CALLBACK_SEND),
-                    services);
-        }
-    }
-
-    @Test
     public void throughputNonPersistedServiceGetSingleConnection() throws Throwable {
         long serviceCount = 256;
         this.host.getClient().setConnectionLimitPerHost(1);
@@ -936,12 +912,6 @@ public class NettyHttpServiceClientTest {
         // using loop back, sockets
         for (int i = 0; i < 3; i++) {
             doGetThroughputTest(EnumSet.of(TestProperty.FORCE_REMOTE), body, c, services);
-        }
-
-        // using loop back, sockets, and callback pattern
-        for (int i = 0; i < 3; i++) {
-            doGetThroughputTest(EnumSet.of(TestProperty.FORCE_REMOTE, TestProperty.CALLBACK_SEND),
-                    body, c, services);
         }
 
         // again but skip serialization, ask service to return string for response
@@ -993,10 +963,6 @@ public class NettyHttpServiceClientTest {
 
         if (props.contains(TestProperty.TEXT_RESPONSE)) {
             get.addRequestHeader("Accept", Operation.MEDIA_TYPE_TEXT_PLAIN);
-        }
-
-        if (props.contains(TestProperty.CALLBACK_SEND)) {
-            get.toggleOption(OperationOption.SEND_WITH_CALLBACK, true);
         }
 
         for (int i = 0; i < c; i++) {
