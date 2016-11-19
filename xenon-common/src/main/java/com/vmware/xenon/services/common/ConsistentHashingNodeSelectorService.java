@@ -149,7 +149,7 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
                     if (e == null) {
                         NodeGroupState ngs = o.getBody(NodeGroupState.class);
                         updateCachedNodeGroupState(ngs, null);
-                    } else {
+                    } else if (!getHost().isStopping()) {
                         logSevere(e);
                     }
                     h.handle(o, e);
@@ -571,11 +571,17 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
 
         CompletionHandler c = (o, e) -> {
             if (e != null) {
-                logSevere(e);
+                if (getHost().isStopping()) {
+                    logSevere(e);
+                }
                 return;
             }
 
             final int quorumWarningsBeforeQuiet = 10;
+            if (!o.hasBody()) {
+                logWarning("Missing node group state");
+                return;
+            }
             NodeGroupState ngs = o.getBody(NodeGroupState.class);
             updateCachedNodeGroupState(ngs, null);
             Operation op = Operation.createPost(null)
