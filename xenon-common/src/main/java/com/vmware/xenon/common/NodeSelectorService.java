@@ -49,9 +49,7 @@ public interface NodeSelectorService extends Service {
     static OperationOption getOperationOption(String name, OperationOption defaultOpt) {
         String paramName = Utils.PROPERTY_NAME_PREFIX + name;
         String paramValue = System.getProperty(paramName);
-        if (OperationOption.SEND_WITH_CALLBACK.name().equals(paramValue)) {
-            return OperationOption.SEND_WITH_CALLBACK;
-        } else if (OperationOption.CONNECTION_SHARING.name().equals(paramValue)) {
+        if (OperationOption.CONNECTION_SHARING.name().equals(paramValue)) {
             return OperationOption.CONNECTION_SHARING;
         } else {
             return defaultOpt;

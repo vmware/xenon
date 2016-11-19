@@ -2,6 +2,17 @@
 
 ## 1.3.1-SNAPSHOT
 
+* Remove OperationOption.SEND_WITH_CALLBACK. This was an experimental custom
+  protocol that allows re-use of the same http connection across multiple
+  requests. Same functionality as HTTP/2 but supported on HTTPS. Default
+  protocol on HTTPS will now be HTTP1.1 even if OperationOption.CONNECTION_SHARING
+  is enabled. Future support for HTTP/2 with TLS will provide connection
+  re-use in HTTPS connections
+
+* Fix connection keep-alive behavior. The http client was not keeping
+  connections alive because the default Operation options did not have
+  OperationOption.KEEP_ALIVE. This is a transparent optimization/fix
+
 * Added methods to NodeSelectorState to support a 'PAUSE' state for the
   NodeSelectorService (ConsistentHashingNodeSelectorService).
 

@@ -31,7 +31,6 @@ import java.util.concurrent.TimeUnit;
 import org.junit.Test;
 
 import com.vmware.xenon.common.Operation.CompletionHandler;
-import com.vmware.xenon.common.Operation.OperationOption;
 import com.vmware.xenon.common.Service.Action;
 import com.vmware.xenon.common.Service.ProcessingStage;
 import com.vmware.xenon.common.Service.ServiceOption;
@@ -381,28 +380,28 @@ public class TestServiceModel extends BasicReusableHostTestCase {
         // test get
         this.host.testStart(serviceCount * 4);
         doOperationWithContextId(servicesWithContextId, Action.GET,
-                stateWithContextId.getContextId, false);
+                stateWithContextId.getContextId);
         doOperationWithContextId(servicesWithContextId, Action.GET,
-                stateWithContextId.getContextId, true);
-        doOperationWithContextId(servicesWithOutContextId, Action.GET, null, false);
-        doOperationWithContextId(servicesWithOutContextId, Action.GET, null, true);
+                stateWithContextId.getContextId);
+        doOperationWithContextId(servicesWithOutContextId, Action.GET, null);
+        doOperationWithContextId(servicesWithOutContextId, Action.GET, null);
         this.host.testWait();
 
         // test put
         this.host.testStart(serviceCount * 4);
         doOperationWithContextId(servicesWithContextId, Action.PUT,
-                stateWithContextId.putContextId, false);
+                stateWithContextId.putContextId);
         doOperationWithContextId(servicesWithContextId, Action.PUT,
-                stateWithContextId.putContextId, true);
-        doOperationWithContextId(servicesWithOutContextId, Action.PUT, null, false);
-        doOperationWithContextId(servicesWithOutContextId, Action.PUT, null, true);
+                stateWithContextId.putContextId);
+        doOperationWithContextId(servicesWithOutContextId, Action.PUT, null);
+        doOperationWithContextId(servicesWithOutContextId, Action.PUT, null);
         this.host.testWait();
 
         // test patch
         this.host.testStart(serviceCount * 2);
         doOperationWithContextId(servicesWithContextId, Action.PATCH,
-                stateWithContextId.patchContextId, false);
-        doOperationWithContextId(servicesWithOutContextId, Action.PATCH, null, false);
+                stateWithContextId.patchContextId);
+        doOperationWithContextId(servicesWithOutContextId, Action.PATCH, null);
         this.host.testWait();
 
         // check end state
@@ -433,7 +432,7 @@ public class TestServiceModel extends BasicReusableHostTestCase {
     }
 
     public void doOperationWithContextId(List<Service> services, Service.Action action,
-            String contextId, boolean useCallback) {
+            String contextId) {
         for (Service service : services) {
             Operation op;
             switch (action) {
@@ -461,8 +460,6 @@ public class TestServiceModel extends BasicReusableHostTestCase {
 
                         this.host.completeIteration();
                     });
-
-            op.toggleOption(OperationOption.SEND_WITH_CALLBACK, useCallback);
             this.host.send(op);
         }
         // reset context id, since its set in the main thread
