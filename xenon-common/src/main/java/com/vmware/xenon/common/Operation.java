@@ -313,7 +313,9 @@ public class Operation implements Cloneable {
          * The operation exceeded the rate limit associated with it logical context
          * (authorization subject by default)
          */
-        RATE_LIMITED
+        RATE_LIMITED,
+
+        PENDING_CONNECT
     }
 
     public static class SerializedOperation extends ServiceDocument {
@@ -608,7 +610,8 @@ public class Operation implements Cloneable {
     private short retryCount;
     private short retriesRemaining;
 
-    private EnumSet<OperationOption> options = EnumSet.noneOf(OperationOption.class);
+    private EnumSet<OperationOption> options = EnumSet
+            .of(OperationOption.KEEP_ALIVE);
 
     public static Operation create(SerializedOperation ctx, ServiceHost host) {
         Operation op = new Operation();

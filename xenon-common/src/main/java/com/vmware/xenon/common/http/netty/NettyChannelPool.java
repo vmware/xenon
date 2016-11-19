@@ -23,8 +23,6 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import java.util.logging.Logger;
 import javax.net.ssl.SSLContext;
 
@@ -38,6 +36,7 @@ import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioSocketChannel;
 
 import com.vmware.xenon.common.Operation;
+import com.vmware.xenon.common.Operation.OperationOption;
 import com.vmware.xenon.common.ServiceClient;
 import com.vmware.xenon.common.ServiceClient.ConnectionPoolMetrics;
 import com.vmware.xenon.common.ServiceHost.ServiceHostState;
@@ -262,11 +261,12 @@ public class NettyChannelPool {
             }
             tagInfo.pendingRequestCount += g.pendingRequests.size();
             tagInfo.inUseConnectionCount += g.inUseChannels.size();
+            tagInfo.availableConnectionCount += g.availableChannels.size();
         }
         return tagInfo;
     }
 
-    public void connectOrReuse(NettyChannelGroupKey key, Operation request) {
+    public void connectOrReuse(NettyChannelGroupKey key, Operation request, Operation originalOp) {
 
         if (request == null) {
             throw new IllegalArgumentException("request is required");
@@ -280,7 +280,6 @@ public class NettyChannelPool {
         try {
             NettyChannelGroup group = getChannelGroup(key);
             final NettyChannelContext context = selectContext(request, group);
-
             if (context == null) {
                 // We have no available connections, request has been queued
                 return;
@@ -289,9 +288,15 @@ public class NettyChannelPool {
             // If the connection is open, send immediately
             if (context.getChannel() != null) {
                 context.setOperation(request);
+
+                request.toggleOption(OperationOption.PENDING_CONNECT, true);
+                if (originalOp != null) {
+                    originalOp.toggleOption(OperationOption.PENDING_CONNECT, true);
+                }
                 request.complete();
                 return;
             }
+
 
             // Connect, then wait for the connection to complete before either
             // sending data (HTTP/1.1) or negotiating settings (HTTP/2)
@@ -315,6 +320,12 @@ public class NettyChannelPool {
                         } else {
                             context.setOpenInProgress(false);
                             context.setChannel(channel).setOperation(request);
+
+                            request.toggleOption(OperationOption.PENDING_CONNECT, true);
+                            if (originalOp != null) {
+                                originalOp.toggleOption(OperationOption.PENDING_CONNECT, true);
+                            }
+
                             sendAfterConnect(channel, context, request, null);
                         }
                     } else {
@@ -439,6 +450,9 @@ public class NettyChannelPool {
 
         closeBadChannelContext(badContext);
         context.updateLastUseTime();
+        if (request != null) {
+            request.setSocketContext(context);
+        }
         return context;
     }
 
@@ -472,6 +486,7 @@ public class NettyChannelPool {
                 context.setOpenInProgress(true);
             }
             group.inUseChannels.add(context);
+            request.setSocketContext(context);
         }
 
         closeBadChannelContext(badContext);
@@ -511,11 +526,13 @@ public class NettyChannelPool {
                         group.pendingRequests.clear();
                     }
 
+                    request.toggleOption(OperationOption.PENDING_CONNECT, true);
                     sendAfterConnect(future.channel(), contextFinal, request, group);
 
                     // trigger pending operations
                     for (Operation pendingOp : pendingOps) {
                         pendingOp.setSocketContext(contextFinal);
+
                         pendingOp.complete();
                     }
 
@@ -536,12 +553,6 @@ public class NettyChannelPool {
         if (request.getStatusCode() < Operation.STATUS_CODE_FAILURE_THRESHOLD) {
             request.complete();
         } else {
-            // The expiration tracking code runs in parallel with request connection and send. It uses two
-            // passes: it first sets the status code of an expired operation to timed out, then, on the next
-            // maintenance interval, calls fail. Calling fail twice on an operation is fine, but, we want to avoid
-            // calling complete, while an operation is marked timed out because the nestCompletion() call
-            // in connect() is not atomic: it can restore the original completion, which is the clients, and
-            // call the client completion directly.
             request.fail(request.getStatusCode());
         }
     }
@@ -579,7 +590,7 @@ public class NettyChannelPool {
         // so we'll close the connection.
         if (this.isHttp2Only) {
             isClose = isClose || !ch.isOpen() || !context.isValid();
-        } else {
+        } else if (ch != null) {
             isClose = isClose || !ch.isWritable() || !ch.isOpen();
         }
         NettyChannelGroup group = this.channelGroups.get(context.getKey());
@@ -619,9 +630,10 @@ public class NettyChannelPool {
         }
 
         if (isClose) {
-            connectOrReuse(context.getKey(), pendingOp);
+            connectOrReuse(context.getKey(), pendingOp, null);
         } else {
             context.setOperation(pendingOp);
+            pendingOp.toggleOption(OperationOption.PENDING_CONNECT, true);
             pendingOp.complete();
         }
     }
@@ -677,7 +689,6 @@ public class NettyChannelPool {
      */
     private void closeIdleChannelContexts(NettyChannelGroup group,
             boolean forceClose, long now) {
-        final long epsilonMicros = TimeUnit.SECONDS.toMicros(5);
         synchronized (group) {
             Iterator<NettyChannelContext> it = group.availableChannels.iterator();
             while (it.hasNext()) {
@@ -696,43 +707,44 @@ public class NettyChannelPool {
                 }
 
                 it.remove();
-                LOGGER.info("Closing expired channel " + c.getKey());
+                LOGGER.warning("Closing expired channel " + c.getKey());
                 c.close();
             }
-
-            if (group.pendingRequests.isEmpty()) {
-                return;
-            }
-
-            // The HTTP client is responsible for failing expired operations and maintains
-            // an independent tracking list. As a defense-in-depth check however, warn when
-            // operations remain in our pending list AFTER they are expired
-            final int searchLimit = 1000;
-            int count = 0;
-
-            Iterator<Operation> pendingOpIt = group.pendingRequests.iterator();
-            while (pendingOpIt.hasNext() && ++count < searchLimit) {
-                Operation pendingOp = pendingOpIt.next();
-
-                if (!Utils.beforeNow(epsilonMicros + pendingOp.getExpirationMicrosUtc())) {
-                    if (count > 10) {
-                        // We are using a FIFO queue, so if oldest operations have not expired,
-                        // assume no others have. This is not always true, for operations with
-                        // widely different expirations, but this is defense in depth, not a primary
-                        // mechanism for expiration and we want to keep the overhead small
-                        break;
-                    } else {
-                        continue;
-                    }
-                }
-                pendingOpIt.remove();
-                LOGGER.info("Found expired op in pending list: " + pendingOp.toString());
-                Throwable e = new TimeoutException(
-                        pendingOp.getUri() + ":" + pendingOp.getExpirationMicrosUtc());
-                pendingOp.setStatusCode(Operation.STATUS_CODE_TIMEOUT);
-                this.executor.execute(() -> pendingOp.fail(e));
-            }
         }
+
+        if (group.pendingRequests.isEmpty()) {
+            return;
+        }
+
+        // The HTTP client is responsible for failing expired operations and maintains
+        // an independent tracking list. As a defense-in-depth check however, warn when
+        // operations remain in our pending list AFTER they are expired
+        final int searchLimit = 1000;
+        int count = 0;
+        int expiredCount = 0;
+        Iterator<Operation> pendingOpIt = group.pendingRequests.iterator();
+        while (pendingOpIt.hasNext() && ++count < searchLimit) {
+            Operation pendingOp = pendingOpIt.next();
+
+            if (pendingOp.getStatusCode() < Operation.STATUS_CODE_FAILURE_THRESHOLD) {
+                if (count > 10) {
+                    // We are using a FIFO queue, so if oldest operations have not expired,
+                    // assume no others have. This is not always true, for operations with
+                    // widely different expirations, but this is defense in depth, not a primary
+                    // mechanism for expiration and we want to keep the overhead small
+                    break;
+                } else {
+                    continue;
+                }
+            }
+            pendingOpIt.remove();
+            expiredCount++;
+        }
+
+        if (expiredCount == 0) {
+            return;
+        }
+        LOGGER.warning("Expired, pending op count: " + expiredCount);
     }
 
     /**
@@ -765,6 +777,7 @@ public class NettyChannelPool {
                 it.remove();
                 http2Channel.close();
             }
+
         }
     }
 

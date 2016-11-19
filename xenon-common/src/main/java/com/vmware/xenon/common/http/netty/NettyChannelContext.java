@@ -246,11 +246,9 @@ public class NettyChannelContext extends SocketContext {
             return;
         }
 
-        if (c.isOpen()) {
-            try {
-                c.close();
-            } catch (Throwable e) {
-            }
+        try {
+            c.close();
+        } catch (Throwable e) {
         }
 
         Operation op = getOperation();

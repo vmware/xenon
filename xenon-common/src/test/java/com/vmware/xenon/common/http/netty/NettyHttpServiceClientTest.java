@@ -24,6 +24,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Random;
 import java.util.UUID;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -88,6 +89,8 @@ public class NettyHttpServiceClientTest {
 
     // Operation timeout is in seconds
     public int operationTimeout = 0;
+
+    public int iterationCount = 1;
 
     @BeforeClass
     public static void setUpOnce() throws Throwable {
@@ -258,7 +261,8 @@ public class NettyHttpServiceClientTest {
             if (tagInfo == null) {
                 return false;
             }
-            if (tagInfo.pendingRequestCount != 0) {
+            this.host.log("%s", Utils.toJson(tagInfo));
+            if (tagInfo.pendingRequestCount != 0 || tagInfo.inUseConnectionCount > 0) {
                 this.host.log("Requests still pending: %s", Utils.toJson(tagInfo));
                 return false;
             }
@@ -350,12 +354,16 @@ public class NettyHttpServiceClientTest {
 
     @Test
     public void sendRequestWithTimeout() throws Throwable {
-        doRemotePatchWithTimeout(false);
+        for (int i = 0; i < this.iterationCount; i++) {
+            doRemotePatchWithTimeout(false);
+        }
     }
 
     @Test
     public void sendRequestWithCallbackWithTimeout() throws Throwable {
-        doRemotePatchWithTimeout(true);
+        for (int i = 0; i < this.iterationCount; i++) {
+            doRemotePatchWithTimeout(true);
+        }
     }
 
     private void doRemotePatchWithTimeout(boolean useCallback) throws Throwable {
@@ -365,23 +373,27 @@ public class NettyHttpServiceClientTest {
                 EnumSet.noneOf(Service.ServiceOption.class), null);
         try {
             this.host.toggleNegativeTestMode(true);
-            this.host.setOperationTimeOutMicros(TimeUnit.MILLISECONDS.toMicros(250));
+            this.host.setOperationTimeOutMicros(TimeUnit.MILLISECONDS.toMicros(500));
 
             // send a request to the MinimalTestService, with a body that makes it NOT complete it
             MinimalTestServiceState body = new MinimalTestServiceState();
             body.id = MinimalTestService.STRING_MARKER_TIMEOUT_REQUEST;
 
-            this.host.getClient()
-                    .setConnectionLimitPerHost(NettyHttpServiceClient.DEFAULT_CONNECTIONS_PER_HOST);
-            int count = NettyHttpServiceClient.DEFAULT_CONNECTIONS_PER_HOST * 2;
+            int connectionLimit = NettyHttpServiceClient.DEFAULT_CONNECTIONS_PER_HOST;
+            int count = connectionLimit * 2;
+            this.host.getClient().setConnectionLimitPerHost(connectionLimit);
 
-            // timeout tracking currently works only for remote requests ...
+            // Use a random boolean to test the keep-alive and close code paths
+            Random r = new Random();
+
+            // timeout tracking currently works only for remote requests
             this.host.testStart(count);
             for (int i = 0; i < count; i++) {
                 Operation request = Operation
                         .createPatch(services.get(0).getUri())
                         .forceRemote()
                         .setBody(body)
+                        .setKeepAlive(r.nextBoolean())
                         .setCompletion((o, e) -> {
                             if (e != null) {
                                 // timeout occurred, good
@@ -620,6 +632,7 @@ public class NettyHttpServiceClientTest {
                 });
         this.host.send(put);
         this.host.testWait();
+        validateTagInfo(ServiceClient.CONNECTION_TAG_DEFAULT);
     }
 
     @Test
