@@ -477,7 +477,7 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
 
         if (!NodeSelectorState.isAvailable(this.cachedState)) {
             synchronized (this.cachedState) {
-                NodeSelectorState.updateStatus(this.cachedState, getHost(), localState);
+                NodeSelectorState.updateStatus(getHost(), this.cachedState, localState);
             }
         }
 
@@ -513,7 +513,9 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
         }
 
         while (!this.pendingRequests.isEmpty()) {
-            if (! NodeSelectorState.isAvailable(getHost(), this.cachedGroupState)) {
+            if (!NodeSelectorState.isAvailable(this.cachedState)) {
+                // update status in cause group state changed
+                NodeSelectorState.updateStatus(getHost(), this.cachedState, this.cachedGroupState);
                 // Optimization: if the node group is not ready do not evaluate each
                 // request. We check for availability in the selectAndForward method as well.
                 return;
@@ -535,6 +537,11 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
 
     private void checkAndScheduleSynchronization(long membershipUpdateMicros) {
         if (getHost().isStopping()) {
+            return;
+        }
+
+        if (!this.isSynchronizationRequired) {
+            // this boolean is set to false on notifications for node group changes
             return;
         }
 
@@ -647,7 +654,7 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
             }
 
             if (this.cachedGroupState.documentUpdateTimeMicros <= ngs.documentUpdateTimeMicros) {
-                NodeSelectorState.updateStatus(this.cachedState, getHost(), ngs);
+                NodeSelectorState.updateStatus(getHost(), this.cachedState, ngs);
                 this.cachedState.documentUpdateTimeMicros = now;
                 this.cachedState.membershipUpdateTimeMicros = ngs.membershipUpdateTimeMicros;
                 this.cachedGroupState = ngs;
