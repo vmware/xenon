@@ -89,6 +89,8 @@ public class NettyHttpServiceClientTest {
     // Operation timeout is in seconds
     public int operationTimeout = 0;
 
+    public int iterationCount = 1;
+
     @BeforeClass
     public static void setUpOnce() throws Throwable {
         HOST = VerificationHost.create(0);
@@ -350,7 +352,9 @@ public class NettyHttpServiceClientTest {
 
     @Test
     public void sendRequestWithTimeout() throws Throwable {
-        doRemotePatchWithTimeout(false);
+        for (int i = 0; i < this.iterationCount; i++) {
+            doRemotePatchWithTimeout(false);
+        }
     }
 
     @Test
