@@ -608,7 +608,8 @@ public class Operation implements Cloneable {
     private short retryCount;
     private short retriesRemaining;
 
-    private EnumSet<OperationOption> options = EnumSet.noneOf(OperationOption.class);
+    private EnumSet<OperationOption> options = EnumSet
+            .of(OperationOption.KEEP_ALIVE);
 
     public static Operation create(SerializedOperation ctx, ServiceHost host) {
         Operation op = new Operation();

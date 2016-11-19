@@ -165,6 +165,7 @@ public class NodeGroupService extends StatefulService {
         super.toggleOption(ServiceOption.PERIODIC_MAINTENANCE, true);
     }
 
+    @Override
     public URI getUri() {
         if (this.uri == null) {
             this.uri = super.getUri();
