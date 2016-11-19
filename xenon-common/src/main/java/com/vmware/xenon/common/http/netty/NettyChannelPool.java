@@ -700,10 +700,6 @@ public class NettyChannelPool {
                 c.close();
             }
 
-            if (group.pendingRequests.isEmpty()) {
-                return;
-            }
-
             // The HTTP client is responsible for failing expired operations and maintains
             // an independent tracking list. As a defense-in-depth check however, warn when
             // operations remain in our pending list AFTER they are expired

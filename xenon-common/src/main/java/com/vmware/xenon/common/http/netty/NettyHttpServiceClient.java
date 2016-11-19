@@ -500,7 +500,9 @@ public class NettyHttpServiceClient implements ServiceClient {
             request.headers().set(HttpHeaderNames.CONTENT_LENGTH,
                     Long.toString(op.getContentLength()));
             request.headers().set(HttpHeaderNames.CONTENT_TYPE, op.getContentType());
-            request.headers().set(HttpHeaderNames.CONNECTION, HttpHeaderValues.KEEP_ALIVE);
+            if (op.isKeepAlive()) {
+                request.headers().set(HttpHeaderNames.CONNECTION, HttpHeaderValues.KEEP_ALIVE);
+            }
 
             if (!isXenonToXenon) {
                 if (op.getCookies() != null) {
@@ -588,14 +590,17 @@ public class NettyHttpServiceClient implements ServiceClient {
                 pool = this.sslChannelPool;
             }
 
+            ExecutorService exec = this.host != null ? this.host.getExecutor() : this.executor;
+
             if (nettyCtx.getProtocol() == NettyChannelContext.Protocol.HTTP2) {
                 // For HTTP/2, we multiple streams so we don't close the connection.
                 pool = this.http2ChannelPool;
-                pool.returnOrClose(nettyCtx, false);
+                exec.execute(() -> this.http2ChannelPool.returnOrClose(nettyCtx, false));
             } else {
                 // for HTTP/1.1, we close the stream to ensure we don't use a bad connection
                 op.setSocketContext(null);
-                pool.returnOrClose(nettyCtx, !op.isKeepAlive());
+                NettyChannelPool finalPool = pool;
+                exec.execute(() -> finalPool.returnOrClose(nettyCtx, !op.isKeepAlive()));
             }
         }
 
