@@ -37,21 +37,22 @@ public class NodeSelectorState extends ServiceDocument {
      * Calculates the status of the Node Selector by inspecting the NodeGroup and local
      * 'pause'/'resume' status.
      */
-    public static Status calculateStatus(ServiceHost host, NodeGroupState localState) {
-        boolean isAvailable = NodeGroupUtils.isNodeGroupAvailable(host, localState);
+    public static Status calculateStatus(ServiceHost host, NodeGroupState groupState) {
+        boolean isAvailable = NodeGroupUtils.isNodeGroupAvailable(host, groupState);
         return (isAvailable ? Status.AVAILABLE : Status.UNAVAILABLE);
     }
 
-    public static void updateStatus(NodeSelectorState ns, ServiceHost host, NodeGroupState localState) {
-        ns.nodeSelectorStatus = calculateStatus(host, localState);
+    public static void updateStatus(ServiceHost host,
+            NodeGroupState groupState, NodeSelectorState ns) {
+        ns.nodeSelectorStatus = calculateStatus(host, groupState);
     }
 
     public static boolean isAvailable(NodeSelectorState ns) {
         return AVAILABLE.contains(ns.nodeSelectorStatus);
     }
 
-    public static boolean isAvailable(ServiceHost host, NodeGroupState localstate) {
-        return AVAILABLE.contains(calculateStatus(host, localstate));
+    public static boolean isAvailable(ServiceHost host, NodeGroupState groupState) {
+        return AVAILABLE.contains(calculateStatus(host, groupState));
     }
 
     public String nodeGroupLink;
