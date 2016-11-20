@@ -2054,6 +2054,117 @@ public class TestQueryTaskService {
         }
     }
 
+    @Test
+    public void multiFieldSortTestOnExampleStates() throws Throwable {
+        doMultiFieldSortTestOnExampleStates(false, Integer.MAX_VALUE);
+        doMultiFieldSortTestOnExampleStates(true, Integer.MAX_VALUE);
+    }
+
+    @Test
+    public void topResultsWithMultiFieldSort() throws Throwable {
+        doMultiFieldSortTestOnExampleStates(true, 10);
+    }
+
+    public void doMultiFieldSortTestOnExampleStates(boolean isDirect, int resultLimit) throws Throwable {
+        setUpHost();
+        int serviceCount = 100;
+        URI exampleFactoryURI = UriUtils.buildFactoryUri(this.host, ExampleService.class);
+        List<URI> exampleServices = new ArrayList<>();
+        this.host.testStart(serviceCount);
+        for (int i = 0; i < serviceCount; i++) {
+            ExampleServiceState s = new ExampleServiceState();
+            s.name = UUID.randomUUID().toString();
+            s.documentSelfLink = s.name;
+            s.sortedCounter = i % 5L;
+            exampleServices.add(UriUtils.buildUri(this.host.getUri(),
+                    ExampleService.FACTORY_LINK, s.documentSelfLink));
+            this.host.send(Operation.createPost(exampleFactoryURI)
+                    .setBody(s)
+                    .setCompletion(this.host.getCompletion()));
+
+        }
+        this.host.testWait();
+        Query kindClause = Query.Builder.create()
+                .addKindFieldClause(ExampleServiceState.class)
+                .build();
+
+        QueryTask.Builder queryTaskBuilder = isDirect ? QueryTask.Builder.createDirectTask()
+                : QueryTask.Builder.create();
+        QueryTask task = queryTaskBuilder
+                .setQuery(kindClause)
+                .orderDescending(ExampleServiceState.FIELD_NAME_SORTED_COUNTER, TypeName.LONG)
+                .orderAscending(ExampleServiceState.FIELD_NAME_NAME, TypeName.STRING)
+                .build();
+
+        task.querySpec.resultLimit = resultLimit;
+        if (resultLimit < Integer.MAX_VALUE) {
+            task.querySpec.options.add(QueryOption.TOP_RESULTS);
+        }
+
+        task.querySpec.options.add(QueryOption.EXPAND_CONTENT);
+
+        if (task.documentExpirationTimeMicros != 0) {
+            // the value was set as an interval by the calling test. Make absolute here so
+            // account for service creation above
+            task.documentExpirationTimeMicros = Utils.fromNowMicrosUtc(
+                    task.documentExpirationTimeMicros);
+        }
+
+        this.host.logThroughput();
+        URI taskURI = this.host.createQueryTaskService(task, false,
+                task.taskInfo.isDirect, task, null);
+
+        if (!task.taskInfo.isDirect) {
+            task = this.host.waitForQueryTaskCompletion(task.querySpec, 0, 0,
+                    taskURI, false, false);
+        }
+
+        assertTrue(task.results.nextPageLink == null);
+
+        if (task.querySpec.options.contains(QueryOption.TOP_RESULTS)) {
+            assertTrue(task.results.documentLinks.size() == resultLimit);
+        }
+
+        validateMultiFieldSortedList(task.results);
+
+        deleteServices(exampleServices);
+    }
+
+    private void validateMultiFieldSortedList(ServiceDocumentQueryResult result) {
+        List<ExampleServiceState> sortedDocuments = new ArrayList<>();
+
+        assertTrue(result.documents != null);
+        result.documentLinks
+                .forEach(k -> sortedDocuments.add(Utils.fromJson(result.documents.get(k), ExampleServiceState.class)));
+
+        String lastName = null;
+        Long lastSortedCount = null;
+        for (ExampleServiceState state : sortedDocuments) {
+            if (lastName == null && lastSortedCount == null) {
+                lastName = state.name;
+                lastSortedCount = state.sortedCounter;
+                continue;
+            }
+
+            if (lastSortedCount != null) {
+                // Verify that sorted counter is always sorted in descending
+                assertTrue("Multi-sort on first field failed.", lastSortedCount >= state.sortedCounter);
+                if (lastSortedCount.equals(state.sortedCounter)) {
+                    // Verify that name is sorted ascending with in the same sortedCounter
+                    // Will be skipped if name is the first element of sub-set
+                    if (lastName != null) {
+                        assertTrue("Multi-sort on second field failed.", state.name.compareTo(lastName) > 0);
+                    }
+                    lastName = state.name;
+                } else {
+                    // Switch to next sub-set
+                    lastName = null;
+                }
+                lastSortedCount = state.sortedCounter;
+            }
+        }
+    }
+
     private void getNextPageResults(String nextPageLink, int resultLimit,
             final int[] numberOfDocumentLinks, final List<URI> toDelete,
             List<ExampleServiceState> documents, List<URI> pageLinks) {

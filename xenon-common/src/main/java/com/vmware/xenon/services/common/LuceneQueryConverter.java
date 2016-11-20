@@ -13,6 +13,8 @@
 
 package com.vmware.xenon.services.common;
 
+import java.util.List;
+
 import org.apache.lucene.document.DoublePoint;
 import org.apache.lucene.document.LongPoint;
 import org.apache.lucene.index.Term;
@@ -199,8 +201,6 @@ final class LuceneQueryConverter {
                 ? querySpecification.groupSortOrder
                 : querySpecification.sortOrder;
 
-        validateSortTerm(sortTerm);
-
         if (querySpecification.options.contains(QueryOption.TOP_RESULTS)) {
             if (querySpecification.resultLimit <= 0
                     || querySpecification.resultLimit == Integer.MAX_VALUE) {
@@ -212,28 +212,54 @@ final class LuceneQueryConverter {
         if (sortOrder == null) {
             if (isGroupSort) {
                 querySpecification.groupSortOrder = QueryTask.QuerySpecification.SortOrder.ASC;
+
             } else {
                 querySpecification.sortOrder = QueryTask.QuerySpecification.SortOrder.ASC;
             }
         }
 
-        boolean order = sortOrder != QueryTask.QuerySpecification.SortOrder.ASC;
+        sortTerm.sortOrder = sortOrder;
 
-        SortField sortField = null;
+        List<QueryTask.QueryTerm> additionalSortTerms = isGroupSort ? querySpecification.additionalGroupSortTerms
+                : querySpecification.additionalSortTerms;
+
+        if (additionalSortTerms == null) {
+            return new Sort(convertToLuceneSortField(sortTerm));
+        }
+
+        SortField[] sortFields = new SortField[additionalSortTerms.size() + 1];
+        sortFields[0] = convertToLuceneSortField(sortTerm);
+
+        for (int index = 1; index < sortFields.length; index++) {
+            sortFields[index] = convertToLuceneSortField(additionalSortTerms.get(index - 1));
+        }
+
+        return new Sort(sortFields);
+    }
+
+    private static SortField convertToLuceneSortField(QueryTask.QueryTerm sortTerm) {
+
+        validateSortTerm(sortTerm);
+
+        if (sortTerm.sortOrder == null) {
+            sortTerm.sortOrder = QueryTask.QuerySpecification.SortOrder.ASC;
+        }
+
+        boolean order = sortTerm.sortOrder != QueryTask.QuerySpecification.SortOrder.ASC;
+
+        SortField sortField;
         SortField.Type type = convertToLuceneType(sortTerm.propertyType);
 
         switch (type) {
         case LONG:
         case DOUBLE:
-            sortField = new SortedNumericSortField(
-                    sortTerm.propertyName, type, order);
+            sortField = new SortedNumericSortField(sortTerm.propertyName, type, order);
             break;
         default:
-            sortField = new SortField(
-                    sortTerm.propertyName, type, order);
+            sortField = new SortField(sortTerm.propertyName, type, order);
             break;
         }
-        return new Sort(sortField);
+        return sortField;
     }
 
     static void validateSortTerm(QueryTask.QueryTerm term) {
