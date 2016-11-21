@@ -15,6 +15,7 @@ package com.vmware.xenon.common;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
@@ -58,6 +59,9 @@ import com.vmware.xenon.services.common.MinimalTestService;
 import com.vmware.xenon.services.common.QueryTask;
 import com.vmware.xenon.services.common.QueryTask.Query;
 import com.vmware.xenon.services.common.QueryTask.Query.Builder;
+import com.vmware.xenon.services.common.QueryTask.QueryTerm.MatchType;
+import com.vmware.xenon.services.common.RoleService;
+import com.vmware.xenon.services.common.RoleService.Policy;
 import com.vmware.xenon.services.common.RoleService.RoleState;
 import com.vmware.xenon.services.common.UserGroupService;
 import com.vmware.xenon.services.common.UserGroupService.UserGroupState;
@@ -66,6 +70,7 @@ import com.vmware.xenon.services.common.UserService.UserState;
 public class TestAuthorization extends BasicTestCase {
 
     public static class AuthzStatelessService extends StatelessService {
+        @Override
         public void handleRequest(Operation op) {
             if (op.getAction() == Action.PATCH) {
                 op.complete();
@@ -414,6 +419,91 @@ public class TestAuthorization extends BasicTestCase {
     }
 
     @Test
+    public void testAllowAndDenyRoles() throws Exception {
+        // 1) Create example services state as the system user
+        OperationContext.setAuthorizationContext(this.host.getSystemAuthorizationContext());
+        ExampleServiceState state = createExampleServiceState("testExampleOK", 1L);
+
+        Operation response = this.host.waitForResponse(
+                Operation.createPost(UriUtils.buildUri(this.host, ExampleService.FACTORY_LINK))
+                        .setBody(state));
+        assertEquals(Operation.STATUS_CODE_OK, response.getStatusCode());
+        state = response.getBody(ExampleServiceState.class);
+
+        // 2) verify Jane cannot POST or GET
+        assertAccess(Policy.DENY);
+
+        // 3) build ALLOW role and verify access
+        buildRole("AllowRole", Policy.ALLOW);
+        assertAccess(Policy.ALLOW);
+
+        // 4) build DENY role and verify access
+        buildRole("DenyRole", Policy.DENY);
+        assertAccess(Policy.DENY);
+
+        // 5) build another ALLOW role and verify access
+        buildRole("AnotherAllowRole", Policy.ALLOW);
+        assertAccess(Policy.DENY);
+
+        // 6) delete deny role and verify access
+        OperationContext.setAuthorizationContext(this.host.getSystemAuthorizationContext());
+        response = this.host.waitForResponse(Operation.createDelete(
+                UriUtils.buildUri(this.host,
+                        UriUtils.buildUriPath(RoleService.FACTORY_LINK, "DenyRole"))));
+        assertEquals(Operation.STATUS_CODE_OK, response.getStatusCode());
+        assertAccess(Policy.ALLOW);
+    }
+
+    private void buildRole(String roleName, Policy policy) {
+        OperationContext.setAuthorizationContext(this.host.getSystemAuthorizationContext());
+        TestContext ctx = this.host.testCreate(1);
+        AuthorizationSetupHelper.create().setHost(this.host)
+                .setRoleName(roleName)
+                .setUserGroupQuery(Query.Builder.create()
+                        .addCollectionItemClause(UserState.FIELD_NAME_EMAIL, "jane@doe.com")
+                        .build())
+                .setResourceQuery(Query.Builder.create()
+                        .addFieldClause(ServiceDocument.FIELD_NAME_SELF_LINK,
+                                ExampleService.FACTORY_LINK,
+                                MatchType.PREFIX)
+                        .build())
+                .setVerbs(EnumSet.of(Action.POST, Action.PUT, Action.PATCH, Action.GET,
+                        Action.DELETE))
+                .setPolicy(policy)
+                .setCompletion((authEx) -> {
+                    if (authEx != null) {
+                        ctx.failIteration(authEx);
+                        return;
+                    }
+                    ctx.completeIteration();
+                }).setupRole();
+        this.host.testWait(ctx);
+    }
+
+    private void assertAccess(Policy policy) throws Exception {
+        this.host.assumeIdentity(this.userServicePath);
+        Operation response = this.host.waitForResponse(
+                Operation.createPost(UriUtils.buildUri(this.host, ExampleService.FACTORY_LINK))
+                        .setBody(createExampleServiceState("testExampleDeny", 2L)));
+        if (policy == Policy.DENY) {
+            assertEquals(Operation.STATUS_CODE_FORBIDDEN, response.getStatusCode());
+        } else {
+            assertEquals(Operation.STATUS_CODE_OK, response.getStatusCode());
+        }
+
+        response = this.host.waitForResponse(
+                Operation.createGet(UriUtils.buildUri(this.host, ExampleService.FACTORY_LINK)));
+        assertEquals(Operation.STATUS_CODE_OK, response.getStatusCode());
+        ServiceDocumentQueryResult result = response.getBody(ServiceDocumentQueryResult.class);
+        if (policy == Policy.DENY) {
+            assertEquals(Long.valueOf(0L), result.documentCount);
+        } else {
+            assertNotNull(result.documentCount);
+            assertNotEquals(Long.valueOf(0L), result.documentCount);
+        }
+    }
+
+    @Test
     public void statefulServiceAuthorization() throws Throwable {
         // Create example services not accessible by jane (as the system user)
         OperationContext.setAuthorizationContext(this.host.getSystemAuthorizationContext());
@@ -422,7 +512,7 @@ public class TestAuthorization extends BasicTestCase {
         // try to create services with no user context set; we should get a 403
         OperationContext.setAuthorizationContext(null);
         ExampleServiceState state = createExampleServiceState("jane", new Long("100"));
-        this.host.testStart(1);
+        TestContext ctx1 = this.host.testCreate(1);
         this.host.send(
                 Operation.createPost(UriUtils.buildUri(this.host, ExampleService.FACTORY_LINK))
                         .setBody(state)
@@ -431,21 +521,21 @@ public class TestAuthorization extends BasicTestCase {
                                 String message = String.format("Expected %d, got %s",
                                         Operation.STATUS_CODE_FORBIDDEN,
                                         o.getStatusCode());
-                                this.host.failIteration(new IllegalStateException(message));
+                                ctx1.failIteration(new IllegalStateException(message));
                                 return;
                             }
 
-                            this.host.completeIteration();
+                            ctx1.completeIteration();
                         }));
-        this.host.testWait();
+        this.host.testWait(ctx1);
 
         // issue a GET on a factory with no auth context, no documents should be returned
-        this.host.testStart(1);
+        TestContext ctx2 = this.host.testCreate(1);
         this.host.send(
                 Operation.createGet(UriUtils.buildUri(this.host, ExampleService.FACTORY_LINK))
                 .setCompletion((o, e) -> {
                     if (e != null) {
-                        this.host.failIteration(new IllegalStateException(e));
+                        ctx2.failIteration(new IllegalStateException(e));
                         return;
                     }
                     ServiceDocumentQueryResult res = o
@@ -453,13 +543,13 @@ public class TestAuthorization extends BasicTestCase {
                     if (!res.documentLinks.isEmpty()) {
                         String message = String.format("Expected 0 results; Got %d",
                                 res.documentLinks.size());
-                        this.host.failIteration(new IllegalStateException(message));
+                        ctx2.failIteration(new IllegalStateException(message));
                         return;
                     }
 
-                    this.host.completeIteration();
+                    ctx2.completeIteration();
                 }));
-        this.host.testWait();
+        this.host.testWait(ctx2);
 
         // Assume Jane's identity
         this.host.assumeIdentity(this.userServicePath);
@@ -469,22 +559,21 @@ public class TestAuthorization extends BasicTestCase {
         verifyJaneAccess(exampleServices, null);
 
         // Execute get on factory trying to get all example services
+        TestContext ctx3 = this.host.testCreate(1);
         final ServiceDocumentQueryResult[] factoryGetResult = new ServiceDocumentQueryResult[1];
         Operation getFactory = Operation.createGet(
                 UriUtils.buildUri(this.host, ExampleService.FACTORY_LINK))
                 .setCompletion((o, e) -> {
                     if (e != null) {
-                        this.host.failIteration(e);
+                        ctx3.failIteration(e);
                         return;
                     }
 
                     factoryGetResult[0] = o.getBody(ServiceDocumentQueryResult.class);
-                    this.host.completeIteration();
+                    ctx3.completeIteration();
                 });
-
-        this.host.testStart(1);
         this.host.send(getFactory);
-        this.host.testWait();
+        this.host.testWait(ctx3);
 
         // Make sure only the authorized services were returned
         assertAuthorizedServicesInResult("jane", exampleServices, factoryGetResult[0]);
@@ -633,7 +722,7 @@ public class TestAuthorization extends BasicTestCase {
                 UserGroupService.FACTORY_LINK, authHelperForFoo.getUserGroupName(email)));
         authHelperForFoo.patchUserService(this.host, fooUserLink, patchState);
         // create a user group based on a query for userGroupLink
-        authHelperForFoo.createRoles(this.host, email, true);
+        authHelperForFoo.createRoles(this.host, email);
         // spin up a privileged service to query for auth context
         MinimalTestService s = new MinimalTestService();
         this.host.addPrivilegedService(MinimalTestService.class);
