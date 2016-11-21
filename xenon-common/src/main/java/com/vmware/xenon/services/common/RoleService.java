@@ -154,11 +154,6 @@ public class RoleService extends StatefulService {
             return false;
         }
 
-        if (state.policy == Policy.DENY) {
-            op.fail(new IllegalArgumentException("DENY policy is not supported"));
-            return false;
-        }
-
         return true;
     }
 }
