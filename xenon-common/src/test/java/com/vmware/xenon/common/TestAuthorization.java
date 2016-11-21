@@ -15,6 +15,7 @@ package com.vmware.xenon.common;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
@@ -58,6 +59,9 @@ import com.vmware.xenon.services.common.MinimalTestService;
 import com.vmware.xenon.services.common.QueryTask;
 import com.vmware.xenon.services.common.QueryTask.Query;
 import com.vmware.xenon.services.common.QueryTask.Query.Builder;
+import com.vmware.xenon.services.common.QueryTask.QueryTerm.MatchType;
+import com.vmware.xenon.services.common.RoleService;
+import com.vmware.xenon.services.common.RoleService.Policy;
 import com.vmware.xenon.services.common.RoleService.RoleState;
 import com.vmware.xenon.services.common.UserGroupService;
 import com.vmware.xenon.services.common.UserGroupService.UserGroupState;
@@ -414,6 +418,91 @@ public class TestAuthorization extends BasicTestCase {
     }
 
     @Test
+    public void testAllowAndDenyRoles() throws Exception {
+        // 1) Create example services state as the system user
+        OperationContext.setAuthorizationContext(this.host.getSystemAuthorizationContext());
+        ExampleServiceState state = createExampleServiceState("testExampleOK", 1L);
+
+        Operation response = this.host.waitForResponse(
+                Operation.createPost(UriUtils.buildUri(this.host, ExampleService.FACTORY_LINK))
+                        .setBody(state));
+        assertEquals(Operation.STATUS_CODE_OK, response.getStatusCode());
+        state = response.getBody(ExampleServiceState.class);
+
+        // 2) verify Jane cannot POST or GET
+        assertAccess(Policy.DENY);
+
+        // 3) build ALLOW role and verify access
+        buildRole("AllowRole", Policy.ALLOW);
+        assertAccess(Policy.ALLOW);
+
+        // 4) build DENY role and verify access
+        buildRole("DenyRole", Policy.DENY);
+        assertAccess(Policy.DENY);
+
+        // 5) build another ALLOW role and verify access
+        buildRole("AnotherAllowRole", Policy.ALLOW);
+        assertAccess(Policy.DENY);
+
+        // 6) delete deny role and verify access
+        OperationContext.setAuthorizationContext(this.host.getSystemAuthorizationContext());
+        response = this.host.waitForResponse(Operation.createDelete(
+                UriUtils.buildUri(this.host,
+                        UriUtils.buildUriPath(RoleService.FACTORY_LINK, "DenyRole"))));
+        assertEquals(Operation.STATUS_CODE_OK, response.getStatusCode());
+        assertAccess(Policy.ALLOW);
+    }
+
+    private void buildRole(String roleName, Policy policy) {
+        OperationContext.setAuthorizationContext(this.host.getSystemAuthorizationContext());
+        this.host.testStart(1);
+        AuthorizationSetupHelper.create().setHost(this.host)
+                .setRoleName(roleName)
+                .setUserGroupQuery(Query.Builder.create()
+                        .addCollectionItemClause(UserState.FIELD_NAME_EMAIL, "jane@doe.com")
+                        .build())
+                .setResourceQuery(Query.Builder.create()
+                        .addFieldClause(ServiceDocument.FIELD_NAME_SELF_LINK,
+                                ExampleService.FACTORY_LINK,
+                                MatchType.PREFIX)
+                        .build())
+                .setVerbs(EnumSet.of(Action.POST, Action.PUT, Action.PATCH, Action.GET,
+                        Action.DELETE))
+                .setPolicy(policy)
+                .setCompletion((authEx) -> {
+                    if (authEx != null) {
+                        this.host.failIteration(authEx);
+                        return;
+                    }
+                    this.host.completeIteration();
+                }).setupRole();
+        this.host.testWait();
+    }
+
+    private void assertAccess(Policy policy) throws Exception {
+        this.host.assumeIdentity(this.userServicePath);
+        Operation response = this.host.waitForResponse(
+                Operation.createPost(UriUtils.buildUri(this.host, ExampleService.FACTORY_LINK))
+                        .setBody(createExampleServiceState("testExampleDeny", 2L)));
+        if (policy == Policy.DENY) {
+            assertEquals(Operation.STATUS_CODE_FORBIDDEN, response.getStatusCode());
+        } else {
+            assertEquals(Operation.STATUS_CODE_OK, response.getStatusCode());
+        }
+
+        response = this.host.waitForResponse(
+                Operation.createGet(UriUtils.buildUri(this.host, ExampleService.FACTORY_LINK)));
+        assertEquals(Operation.STATUS_CODE_OK, response.getStatusCode());
+        ServiceDocumentQueryResult result = response.getBody(ServiceDocumentQueryResult.class);
+        if (policy == Policy.DENY) {
+            assertEquals(Long.valueOf(0L), result.documentCount);
+        } else {
+            assertNotNull(result.documentCount);
+            assertNotEquals(Long.valueOf(0L), result.documentCount);
+        }
+    }
+
+    @Test
     public void statefulServiceAuthorization() throws Throwable {
         // Create example services not accessible by jane (as the system user)
         OperationContext.setAuthorizationContext(this.host.getSystemAuthorizationContext());
@@ -633,7 +722,7 @@ public class TestAuthorization extends BasicTestCase {
                 UserGroupService.FACTORY_LINK, authHelperForFoo.getUserGroupName(email)));
         authHelperForFoo.patchUserService(this.host, fooUserLink, patchState);
         // create a user group based on a query for userGroupLink
-        authHelperForFoo.createRoles(this.host, email, true);
+        authHelperForFoo.createRoles(this.host, email);
         // spin up a privileged service to query for auth context
         MinimalTestService s = new MinimalTestService();
         this.host.addPrivilegedService(MinimalTestService.class);

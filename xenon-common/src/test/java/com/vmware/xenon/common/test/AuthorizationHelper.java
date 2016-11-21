@@ -34,12 +34,10 @@ import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
 import com.vmware.xenon.services.common.QueryTask;
 import com.vmware.xenon.services.common.QueryTask.Query;
 import com.vmware.xenon.services.common.QueryTask.Query.Builder;
-import com.vmware.xenon.services.common.QueryTask.QuerySpecification;
 import com.vmware.xenon.services.common.ResourceGroupService.ResourceGroupState;
 import com.vmware.xenon.services.common.RoleService.Policy;
 import com.vmware.xenon.services.common.RoleService.RoleState;
 import com.vmware.xenon.services.common.ServiceUriPaths;
-import com.vmware.xenon.services.common.UserGroupService;
 import com.vmware.xenon.services.common.UserGroupService.UserGroupState;
 import com.vmware.xenon.services.common.UserService.UserState;
 import com.vmware.xenon.services.common.authn.AuthenticationRequest;
@@ -216,35 +214,17 @@ public class AuthorizationHelper {
         return createUserService(this.host, target, email);
     }
 
-    public Collection<String> createRoles(ServiceHost target, String email) throws Throwable {
-        return createRoles(target, email, true);
-    }
-
     public String getUserGroupName(String email) {
         String emailPrefix = email.substring(0, email.indexOf("@"));
         return emailPrefix + "-user-group";
     }
 
-    public Collection<String> createRoles(ServiceHost target, String email, boolean createUserGroupByEmail) throws Throwable {
+    public Collection<String> createRoles(ServiceHost target, String email) throws Throwable {
         String emailPrefix = email.substring(0, email.indexOf("@"));
-        String userGroupLink = null;
-        // Create user group
-        if (createUserGroupByEmail) {
-            userGroupLink =  createUserGroup(target, getUserGroupName(email), Builder.create()
-                        .addFieldClause(
-                                "email",
-                                email)
-                        .build());
 
-        } else {
-            String groupName = getUserGroupName(email);
-            userGroupLink =  createUserGroup(target, groupName, Builder.create()
-                    .addFieldClause(
-                            QuerySpecification
-                            .buildCollectionItemName(UserState.FIELD_NAME_USER_GROUP_LINKS),
-                            UriUtils.buildUriPath(UserGroupService.FACTORY_LINK, groupName))
-                    .build());
-        }
+        // Create user group
+        String userGroupLink = createUserGroup(target, getUserGroupName(email),
+                Builder.create().addFieldClause("email", email).build());
         setUserGroupLink(userGroupLink);
 
         // Create resource group for example service state

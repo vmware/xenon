@@ -134,6 +134,7 @@ public class AuthorizationSetupHelper {
     private Query userGroupQuery;
     private Query resourceQuery;
     private EnumSet<Action> verbs;
+    private Policy policy = Policy.ALLOW;
 
     private String failureMessage;
 
@@ -216,6 +217,11 @@ public class AuthorizationSetupHelper {
 
     public AuthorizationSetupHelper setVerbs(EnumSet<Action> verbs) {
         this.verbs = verbs;
+        return this;
+    }
+
+    public AuthorizationSetupHelper setPolicy(Policy policy) {
+        this.policy = policy;
         return this;
     }
 
@@ -606,7 +612,7 @@ public class AuthorizationSetupHelper {
         role.userGroupLink = this.userGroupSelfLink;
         role.resourceGroupLink = this.resourceGroupSelfLink;
         role.verbs = this.verbs;
-        role.policy = Policy.ALLOW;
+        role.policy = this.policy;
         role.documentSelfLink = this.roleSelfLink;
 
         URI roleFactoryUri = UriUtils.buildUri(this.host, ServiceUriPaths.CORE_AUTHZ_ROLES);
