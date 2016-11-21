@@ -323,7 +323,7 @@ public class StatefulService implements Service {
 
                 if (hasOption(ServiceOption.IMMUTABLE)
                         && (request.getAction() == Action.PATCH
-                        || request.getAction() == Action.PUT)) {
+                                || request.getAction() == Action.PUT)) {
                     processPending(request);
                     getHost().failRequestActionNotSupported(request);
                     return;
@@ -952,7 +952,7 @@ public class StatefulService implements Service {
 
             if (latestState.documentVersion < this.context.version
                     || (latestState.documentEpoch != null
-                    && latestState.documentEpoch < this.context.epoch)) {
+                            && latestState.documentEpoch < this.context.epoch)) {
                 return;
             }
 
@@ -1050,7 +1050,8 @@ public class StatefulService implements Service {
         // Notify transaction coordinator before completing the operation;
         // unless this service is not visible inside the transaction
         if (op.isWithinTransaction() && this.getHost().getTransactionServiceUri() != null
-                && op.getStatusCode() != Operation.STATUS_CODE_NOT_FOUND) {
+                && op.getStatusCode() != Operation.STATUS_CODE_NOT_FOUND
+                && !op.isFromReplication()) {
             allocatePendingTransactions();
             notifyTransactionCoordinatorOp(this, op, e)
                     .setCompletion((txOp, txE) -> {
@@ -1505,7 +1506,7 @@ public class StatefulService implements Service {
 
         if (option == ServiceOption.PERIODIC_MAINTENANCE && hasOption(ServiceOption.ON_DEMAND_LOAD)
                 || option == ServiceOption.ON_DEMAND_LOAD
-                && hasOption(ServiceOption.PERIODIC_MAINTENANCE)) {
+                        && hasOption(ServiceOption.PERIODIC_MAINTENANCE)) {
             throw new IllegalArgumentException("Service option PERIODIC_MAINTENANCE and " +
                     "ON_DEMAND_LOAD cannot co-exist.");
         }
@@ -1592,7 +1593,8 @@ public class StatefulService implements Service {
                     }
 
                     if (this.context.isUpdateActive ||
-                            (this.context.synchQueue != null && !this.context.synchQueue.isEmpty()) ||
+                            (this.context.synchQueue != null && !this.context.synchQueue.isEmpty())
+                            ||
                             !this.context.operationQueue.isEmpty()) {
                         failure = new IllegalStateException("Service has active updates");
                         return null;
@@ -1649,6 +1651,12 @@ public class StatefulService implements Service {
     @Override
     public void sendRequest(Operation op) {
         prepareRequest(op);
+        if (op.getUri().getPath().contains("/core/transactions")
+                && op.getAction().equals(Action.PUT)) {
+            logInfo("%s to %s, Referer: %s", op.getAction(),
+                    op.getUri().getPath(),
+                    op.getReferer());
+        }
         this.context.host.sendRequest(op);
     }
 
@@ -1940,7 +1948,7 @@ public class StatefulService implements Service {
 
         if (micros > 0 && micros < Service.MIN_MAINTENANCE_INTERVAL_MICROS) {
             logWarning("Maintenance interval %d is less than the minimum interval %d"
-                            + ", reducing to min interval", micros,
+                    + ", reducing to min interval", micros,
                     Service.MIN_MAINTENANCE_INTERVAL_MICROS);
             micros = Service.MIN_MAINTENANCE_INTERVAL_MICROS;
         }

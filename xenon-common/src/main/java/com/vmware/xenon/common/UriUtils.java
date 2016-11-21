@@ -30,7 +30,6 @@ import java.util.regex.Pattern;
 
 import com.vmware.xenon.common.Service.ServiceOption;
 import com.vmware.xenon.services.common.ServiceUriPaths;
-import com.vmware.xenon.services.common.TransactionResolutionService;
 
 /**
  * URI utility functions
@@ -38,9 +37,7 @@ import com.vmware.xenon.services.common.TransactionResolutionService;
 public final class UriUtils {
 
     public enum ForwardingTarget {
-        PEER_ID,
-        KEY_HASH,
-        ALL
+        PEER_ID, KEY_HASH, ALL
     }
 
     public static final String FORWARDING_URI_PARAM_NAME_QUERY = "query";
@@ -144,7 +141,7 @@ public final class UriUtils {
 
     public static URI buildTransactionResolutionUri(ServiceHost host, String txid) {
         return buildUri(host.getUri(), ServiceUriPaths.CORE_TRANSACTIONS, txid,
-                TransactionResolutionService.RESOLUTION_SUFFIX);
+                ServiceHost.SERVICE_URI_SUFFIX_CONFIG);
     }
 
     public static URI buildSubscriptionUri(ServiceHost host, String path) {
@@ -208,7 +205,8 @@ public final class UriUtils {
 
     public static URI buildUri(ServiceHost host, String path, String query, String userInfo) {
         URI base = host.getUri();
-        return UriUtils.buildUri(base.getScheme(), base.getHost(), base.getPort(), path, query, userInfo);
+        return UriUtils.buildUri(base.getScheme(), base.getHost(), base.getPort(), path, query,
+                userInfo);
     }
 
     public static URI buildUri(ServiceHost host, String path, String query) {
@@ -230,7 +228,8 @@ public final class UriUtils {
         }
     }
 
-    public static URI buildUri(String scheme, String host, int port, String path, String query, String userInfo) {
+    public static URI buildUri(String scheme, String host, int port, String path, String query,
+            String userInfo) {
         try {
             if (path != null) {
                 final int indexOfFirstQueryChar = path.indexOf(URI_QUERY_CHAR_CONST);
@@ -241,7 +240,8 @@ public final class UriUtils {
                     path = path.substring(0, indexOfFirstQueryChar);
                 }
             }
-            return new URI(scheme, userInfo, host, port, normalizeUriPath(path), query, null).normalize();
+            return new URI(scheme, userInfo, host, port, normalizeUriPath(path), query, null)
+                    .normalize();
         } catch (URISyntaxException e) {
             Utils.log(UriUtils.class, Utils.class.getSimpleName(), Level.SEVERE, "%s",
                     Utils.toString(e));
@@ -385,7 +385,8 @@ public final class UriUtils {
 
         try {
             return new URI(baseUri.getScheme(), baseUri.getUserInfo(), baseUri.getHost(),
-                    baseUri.getPort(), buildPath == null ? null : buildPath.toString(), query, null).normalize();
+                    baseUri.getPort(), buildPath == null ? null : buildPath.toString(), query, null)
+                            .normalize();
         } catch (Throwable e) {
             Utils.log(Utils.class, Utils.class.getSimpleName(), Level.SEVERE,
                     "Failure building uri %s, %s: %s", baseUri, path,
