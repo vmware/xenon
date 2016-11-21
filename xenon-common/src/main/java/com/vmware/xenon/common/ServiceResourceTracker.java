@@ -140,7 +140,8 @@ class ServiceResourceTracker {
         }
         this.startTimeMicros = Utils.getNowMicrosUtc();
         if (this.host.getManagementService() == null) {
-            this.host.log(Level.WARNING, "Management service not found, stats will not be available");
+            this.host.log(Level.WARNING,
+                    "Management service not found, stats will not be available");
             return;
         }
 
@@ -292,7 +293,7 @@ class ServiceResourceTracker {
     }
 
     public void updateCachedServiceState(Service s,
-             ServiceDocument st, Operation op) {
+            ServiceDocument st, Operation op) {
 
         if (ServiceHost.isServiceIndexed(s) && !isTransactional(op)) {
             this.persistedServiceLastAccessTimes.put(s.getSelfLink(), Utils.getNowMicrosUtc());
@@ -507,7 +508,7 @@ class ServiceResourceTracker {
 
             if (lastAccessTime != null &&
                     hostState.lastMaintenanceTimeUtcMicros - lastAccessTime < service
-                    .getMaintenanceIntervalMicros() * 2) {
+                            .getMaintenanceIntervalMicros() * 2) {
                 // Skip pause for services that have been active within a maintenance interval
                 continue;
             }
@@ -668,7 +669,11 @@ class ServiceResourceTracker {
         String factoryPath = UriUtils.getParentPath(key);
         FactoryService factoryService = null;
         if (factoryPath != null) {
-            factoryService = (FactoryService)this.host.findService(factoryPath);
+            Service s = this.host.findService(factoryPath);
+            if (!(s instanceof FactoryService)) {
+                this.host.log(Level.INFO, "original path: %s", inboundOp.getUri().getPath());
+            }
+            factoryService = (FactoryService) s;
         }
 
         if (factoryService != null
@@ -813,7 +818,7 @@ class ServiceResourceTracker {
                     // local stop of idle service raced with client request to load it. Retry.
                     this.host.log(Level.WARNING, "Stop of idle service %s detected, retrying",
                             inboundOp
-                            .getUri().getPath());
+                                    .getUri().getPath());
                     this.host.schedule(() -> {
                         checkAndOnDemandStartService(inboundOp, parentService);
                     }, 1, TimeUnit.SECONDS);

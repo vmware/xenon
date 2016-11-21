@@ -31,7 +31,6 @@ import java.util.regex.Pattern;
 import com.vmware.xenon.common.Service.ServiceOption;
 import com.vmware.xenon.common.ServiceHost.ServiceHostState;
 import com.vmware.xenon.services.common.ServiceUriPaths;
-import com.vmware.xenon.services.common.TransactionResolutionService;
 
 /**
  * URI utility functions
@@ -39,9 +38,7 @@ import com.vmware.xenon.services.common.TransactionResolutionService;
 public final class UriUtils {
 
     public enum ForwardingTarget {
-        PEER_ID,
-        KEY_HASH,
-        ALL
+        PEER_ID, KEY_HASH, ALL
     }
 
     public static final String FORWARDING_URI_PARAM_NAME_QUERY = "query";
@@ -140,7 +137,7 @@ public final class UriUtils {
 
     public static URI buildTransactionResolutionUri(ServiceHost host, String txid) {
         return buildUri(host.getUri(), ServiceUriPaths.CORE_TRANSACTIONS, txid,
-                TransactionResolutionService.RESOLUTION_SUFFIX);
+                ServiceHost.SERVICE_URI_SUFFIX_CONFIG);
     }
 
     public static URI buildSubscriptionUri(ServiceHost host, String path) {
@@ -190,7 +187,8 @@ public final class UriUtils {
                 path = path.substring(0, indexOfFirstQueryChar);
             }
         }
-        return buildUri(uri.getScheme(), uri.getHost(), uri.getPort(), normalizeUriPath(uri.getPath()) + normalizeUriPath(path), query);
+        return buildUri(uri.getScheme(), uri.getHost(), uri.getPort(),
+                normalizeUriPath(uri.getPath()) + normalizeUriPath(path), query);
     }
 
     public static URI buildUri(String host, int port, String path, String query) {
@@ -203,14 +201,16 @@ public final class UriUtils {
 
     public static URI buildUri(ServiceHost host, String path, String query, String userInfo) {
         URI base = host.getUri();
-        return UriUtils.buildUri(base.getScheme(), base.getHost(), base.getPort(), path, query, userInfo);
+        return UriUtils.buildUri(base.getScheme(), base.getHost(), base.getPort(), path, query,
+                userInfo);
     }
 
     public static URI buildUri(ServiceHost host, String path, String query) {
         return buildUri(host, path, query, null);
     }
 
-    public static URI buildUri(String scheme, String host, int port, String path, String query, String userInfo) {
+    public static URI buildUri(String scheme, String host, int port, String path, String query,
+            String userInfo) {
         try {
             if (path != null) {
                 final int indexOfFirstQueryChar = path.indexOf(UriUtils.URI_QUERY_CHAR);
@@ -526,8 +526,6 @@ public final class UriUtils {
 
         String[] pathSplit = path.split(URI_PATH_CHAR);
         String[] templatePathSplit = templatePath.split(URI_PATH_CHAR);
-
-
 
         for (int index = 0; index < templatePathSplit.length && index < pathSplit.length; index++) {
             String templateStr = templatePathSplit[index];

@@ -185,6 +185,8 @@ public class TransactionService extends StatefulService {
         public Set<String> failedLinks;
     }
 
+    private TransactionResolutionService resolutionHelper;
+
     /**
      * Using increased guarantees to make sure the coordinator can sustain failures.
      */
@@ -235,7 +237,8 @@ public class TransactionService extends StatefulService {
                     }
                     op.complete();
                 });
-        getHost().startService(startResolutionService, new TransactionResolutionService(this));
+        this.resolutionHelper = new TransactionResolutionService(this);
+        getHost().startService(startResolutionService, this.resolutionHelper);
     }
 
     /**
@@ -276,6 +279,12 @@ public class TransactionService extends StatefulService {
         put.complete();
     }
 
+    @Override
+    public void handleConfigurationRequest(Operation request) {
+        // resolution requests arriving directly from clients need to be routed through the resolution helper
+        this.resolutionHelper.handleResolutionRequest(request);
+    }
+
     /**
      * Handles commits and aborts (requests to cancel/rollback).
      * TODO 1: Should allow receiving number of transactions in flight
@@ -298,7 +307,7 @@ public class TransactionService extends StatefulService {
 
         // Handle ResolutionRequest
         ResolutionRequest resolution = patch.getBody(ResolutionRequest.class);
-        if (resolution.kind != ResolutionRequest.KIND) {
+        if (!resolution.kind.equals(ResolutionRequest.KIND)) {
             patch.fail(new IllegalArgumentException(
                     "Unrecognized request kind: " + resolution.kind));
             return;
@@ -578,6 +587,7 @@ public class TransactionService extends StatefulService {
                 return;
             }
 
+            this.logInfo("All services have been notified: self-patching to COMMITTED");
             selfPatch(ResolutionKind.COMMITTED);
         }).sendWith(getHost());
     }
@@ -608,6 +618,7 @@ public class TransactionService extends StatefulService {
      * Prepare a delete request to a service
      */
     private Operation createDeleteOp(String service) {
+        logInfo("Creating DELETE op for service: %s", service);
         return Operation
                 .createDelete(this, service)
                 .setReferer(getUri())
