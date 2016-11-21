@@ -475,6 +475,51 @@ public class TestLuceneDocumentIndexService {
     }
 
     @Test
+    public void immutableServiceQueryLongRunning() throws Throwable {
+        setUpHost(false);
+        URI factoryUri = createImmutableFactoryService(this.host);
+
+        QueryTask.Query prefixQuery = QueryTask.Query.Builder.create()
+                .addFieldClause(ServiceDocument.FIELD_NAME_SELF_LINK, factoryUri.getPath(),
+                        QueryTask.QueryTerm.MatchType.PREFIX)
+                .build();
+
+        ExampleServiceState state = new ExampleServiceState();
+        state.counter = 123L;
+        state.name = "name";
+
+        Date testExpiration = this.host.getTestExpiration();
+        do {
+
+            state.documentExpirationTimeMicros = Utils.getSystemNowMicrosUtc()
+                    + TimeUnit.HOURS.toMicros(1);
+
+            this.host.testStart(this.serviceCount);
+            for (int i = 0; i < this.serviceCount; i++) {
+                this.host.send(Operation.createPost(factoryUri)
+                        .setBody(state)
+                        .setCompletion(this.host.getCompletion()));
+            }
+            this.host.testWait();
+
+            QueryTask queryTask = QueryTask.Builder.createDirectTask()
+                    .addOption(QueryOption.SORT)
+                    .addOption(QueryOption.TOP_RESULTS)
+                    .addOption(QueryOption.EXPAND_CONTENT)
+                    .addOption(QueryOption.INCLUDE_ALL_VERSIONS)
+                    .orderDescending(ServiceDocument.FIELD_NAME_SELF_LINK,
+                            ServiceDocumentDescription.TypeName.STRING)
+                    .setResultLimit((int) this.serviceCount)
+                    .setQuery(prefixQuery)
+                    .build();
+
+            this.host.createQueryTaskService(queryTask, false, true, queryTask, null);
+            assertTrue(queryTask.results.documentLinks.size() == this.serviceCount);
+
+        } while (this.testDurationSeconds > 0 && new Date().before(testExpiration));
+    }
+
+    @Test
     public void immutableServiceLifecycle() throws Throwable {
         setUpHost(false);
         URI factoryUri = createImmutableFactoryService(this.host);
