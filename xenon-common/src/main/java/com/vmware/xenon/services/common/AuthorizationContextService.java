@@ -47,6 +47,7 @@ import com.vmware.xenon.services.common.QueryTask.Query.Occurance;
 import com.vmware.xenon.services.common.QueryTask.QuerySpecification;
 import com.vmware.xenon.services.common.QueryTask.QueryTerm.MatchType;
 import com.vmware.xenon.services.common.ResourceGroupService.ResourceGroupState;
+import com.vmware.xenon.services.common.RoleService.Policy;
 import com.vmware.xenon.services.common.RoleService.RoleState;
 import com.vmware.xenon.services.common.UserGroupService.UserGroupState;
 import com.vmware.xenon.services.common.UserService.UserState;
@@ -532,7 +533,11 @@ public class AuthorizationContextService extends StatelessService {
                             continue;
                         }
                         Query resourceGroupQuery = role.resourceGroupState.query;
-                        resourceGroupQuery.occurance = Occurance.SHOULD_OCCUR;
+                        if (role.roleState.policy == Policy.ALLOW) {
+                            resourceGroupQuery.occurance = Occurance.SHOULD_OCCUR;
+                        } else {
+                            resourceGroupQuery.occurance = Occurance.MUST_NOT_OCCUR;
+                        }
                         q.addBooleanClause(resourceGroupQuery);
                     }
 
