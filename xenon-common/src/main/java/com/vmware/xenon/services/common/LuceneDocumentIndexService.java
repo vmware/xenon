@@ -1246,6 +1246,8 @@ public class LuceneDocumentIndexService extends StatelessService {
                 && !options.contains(QueryOption.TOP_RESULTS);
         boolean hasPage = page != null;
         boolean shouldProcessResults = true;
+        boolean useDirectSearch = options.contains(QueryOption.TOP_RESULTS)
+                && options.contains(QueryOption.INCLUDE_ALL_VERSIONS);
         int resultLimit = count;
 
         if (hasPage) {
@@ -1281,10 +1283,20 @@ public class LuceneDocumentIndexService extends StatelessService {
         long start = queryStartTimeMicros;
 
         do {
-            if (sort == null) {
-                results = s.searchAfter(after, tq, count);
+            // Special-case handling of single-version documents to use search() instead of
+            // searchAfter(). This will prevent Lucene from holding the full result set in memory.
+            if (useDirectSearch) {
+                if (sort == null) {
+                    results = s.search(tq, count);
+                } else {
+                    results = s.search(tq, count, sort, false, false);
+                }
             } else {
-                results = s.searchAfter(after, tq, count, sort, false, false);
+                if (sort == null) {
+                    results = s.searchAfter(after, tq, count);
+                } else {
+                    results = s.searchAfter(after, tq, count, sort, false, false);
+                }
             }
 
             if (results == null) {
@@ -1316,7 +1328,7 @@ public class LuceneDocumentIndexService extends StatelessService {
                 }
             }
 
-            if (!isPaginatedQuery && !options.contains(QueryOption.TOP_RESULTS)) {
+            if (count == Integer.MAX_VALUE || useDirectSearch) {
                 // single pass
                 break;
             }
