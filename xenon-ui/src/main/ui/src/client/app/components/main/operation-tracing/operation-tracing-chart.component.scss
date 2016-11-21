@@ -1,0 +1,53 @@
+@import "colors";
+@import "variables";
+
+#timeline-container {
+    padding: baselinerem(.5) baselinerem(.5) baselinerem(.5) baselinerem(1.5);
+
+    #timeline {
+        width: 100%;
+        position: relative;
+    }
+}
+
+.modal {
+    .modal-body {
+        .group-detail-container {
+            .group-detail-timeline-container {
+                margin: -15px -15px baselinerem(1);
+                padding: 15px;
+                background: $grey-50;
+                border-bottom: 1px solid $grey-300;
+
+                .group-detail-timeline {
+                    position: relative;
+                    height: 16px;
+                    margin: baselinerem(1);
+
+                    hr {
+                        margin: 8px 0;
+                        border-width: 2px;
+                        position: absolute;
+                        left: baselinerem(-1);
+                        right: baselinerem(-1);
+                    }
+
+                    a {
+                        width: 16px;
+                        height: 16px;
+                        border-radius: 50%;
+                        position: absolute;
+                        display: block;
+                        cursor: pointer;
+                        background: transparentize($light-blue-400, .3);
+                        @include transition(background);
+
+                        &:hover, &:focus, &.active {
+                            background: $light-green-400;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

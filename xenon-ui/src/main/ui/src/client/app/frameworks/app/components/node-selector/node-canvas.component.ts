@@ -131,15 +131,15 @@ export class NodeCanvasComponent implements AfterViewInit, OnChanges, OnDestroy 
 
                 var stateSuffix: string = states.length !==  0 ? ` (${states.join(', ')})` : '';
 
-                return `<p>Node: <strong>${node.id}</strong><small>${stateSuffix}</small></p>
-                        <p>Status: <strong>${node.status}</strong></p>
-                        <p>Membership Quorum: <strong>${node.membershipQuorum}</strong></p>
-                        <p class="m-b-0">Options: <strong>${node.options.join(' ')}</strong></p>`;
+                return `Node: <strong>${node.id}</strong><small>${stateSuffix}</small><br>
+                        Status: <strong>${node.status}</strong><br>
+                        Membership Quorum: <strong>${node.membershipQuorum}</strong><br>
+                        Options: <strong>${node.options.join(' ')}</strong><br>`;
             });
 
         this._groupTooltip = d3.tip()
             .attr('class', 'chart-tooltip')
-            .offset([-12, 0])
+            .offset([-9, 0])
             .html((group: NodeGroupCircle) => {
                 return `Group: <strong>${group.group}</strong>`;
             });

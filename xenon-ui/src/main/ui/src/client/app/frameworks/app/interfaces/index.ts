@@ -8,6 +8,8 @@ export * from './ui/key-value-pair';
 export * from './ui/link';
 export * from './ui/modal-context';
 export * from './ui/node-group-circle';
+export * from './ui/timeline-event';
+export * from './ui/timeline';
 export * from './ui/notification';
 export * from './ui/url-fragment';
 
@@ -19,6 +21,7 @@ export * from './core/process-log';
 export * from './core/query-specification';
 export * from './core/query-task';
 export * from './core/query-term';
+export * from './core/serialized-operation';
 export * from './core/service-configuration';
 export * from './core/service-document-query-result';
 export * from './core/service-document';

@@ -1,0 +1,51 @@
+<div id="timeline-container">
+    <div id="timeline" class="timeline-pf"></div>
+</div>
+
+<div id="operationDetailModal" class="modal fade"
+    tabindex="-1" role="dialog"
+    aria-labelledby="operationDetailLabel"
+    aria-hidden="true">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                  <span aria-hidden="true">&times;</span>
+                </button>
+                <h4 id="operationDetailLabel" class="modal-title">
+                    {{ operationDetailModalContext.name }}
+                </h4>
+            </div>
+            <div class="modal-body">
+                <div class="group-detail-container"
+                    *ngIf="operationDetailModalContext.data.operations?.length > 0">
+                    <div class="group-detail-timeline-container">
+                        <div class="group-detail-timeline">
+                            <hr>
+                            <a *ngFor="let operation of operationDetailModalContext.data.operations"
+                                [class.active]="operationDetailModalContext.data.selectedOperation === operation"
+                                [style.left]="getGroupDetailModalTimelineLeftPosition(operation)"
+                                (click)="operationDetailModalContext.data.selectedOperation = operation"
+                                title="Operation ID: {{ operation.details?.object?.id }}">
+                            </a>
+                        </div>
+                    </div>
+                    <div class="group-detail">
+                        <xe-operation-tracing-chart-detail
+                            [event]="operationDetailModalContext.data.selectedOperation">
+                        </xe-operation-tracing-chart-detail>
+                    </div>
+                </div>
+                <xe-operation-tracing-chart-detail
+                    *ngIf="operationDetailModalContext.data.operations?.length === 0"
+                    [event]="operationDetailModalContext.data.operation">
+                </xe-operation-tracing-chart-detail>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-primary" data-dismiss="modal">
+                    {{ 'ACTION_CLOSE' | translate }}
+                </button>
+            </div>
+        </div>
+    </div>
+</div>

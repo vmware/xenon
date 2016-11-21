@@ -52,3 +52,169 @@
         }
     }
 }
+
+/** Patternfly Timeline **/
+.timeline-pf {
+    .timeline-pf-zoom-area {
+        fill: transparent;
+        cursor: pointer;
+    }
+
+    .timeline-pf-y-tick {
+        stroke: $black-base;
+        fill: none;
+        stroke-width: 1px;
+    }
+
+    .timeline-pf-axes {
+        fill: $grey-50;
+    }
+
+    .timeline-pf-x-axis {
+        position: absolute;
+        z-index: 50;
+        stroke: $grey-300;
+        fill: none;
+        stroke-width: 1px;
+        shape-rendering: crispEdges;
+    }
+
+    .timeline-pf-x-axis text {
+        stroke: none;
+        fill: $black-base;
+        font-family: $default-font-family;
+        font-size: 12px;
+    }
+
+    .timeline-pf-label {
+        font-weight: 400;
+        font-size: 12px;
+    }
+
+    text.timeline-pf-drop {
+        text-rendering: auto;
+        font-size: 10px;
+        font-family: $default-font-for-icons;
+        opacity: .7;
+        stroke: none;
+        cursor: pointer;
+    }
+
+    text.timeline-pf-drop:hover {
+        font-size: 21px;
+        font-weight: bold;
+        paint-order: stroke;
+    }
+
+    text.timeline-pf-event-group {
+        font-size: 18px;
+    }
+
+    .timeline-pf-grid {
+        stroke: $grey-300;
+        cursor: all-scroll;
+        shape-rendering: crispEdges;
+    }
+
+    .timeline-pf-graph-body .timeline-pf-line {
+        height: 20px;
+        padding: 10px;
+    }
+
+    .timeline-pf-timestamp text {
+        fill: $white-base;
+        font-size: 12px;
+    }
+
+    .timeline-pf-timestamp rect {
+        fill: transparentize($grey-900, .25);
+        opacity: 1;
+    }
+
+    .timeline-pf-marker {
+        pointer-events: none;
+    }
+
+    .timeline-pf-brush .extent {
+        stroke: none;
+        fill: $light-blue-300;
+        fill-opacity: .25;
+        shape-rendering: crispEdges;
+    }
+
+    .timeline-pf-graph-body .timeline-pf-line {
+        height: 20px;
+        padding: 10px;
+    }
+
+    .timeline-pf-zoom {
+        position: absolute;
+
+        &.btn.btn-default {
+            color: $grey-600;
+            background-color: $white;
+            border-color: #ccc;
+            padding: 2px 6px;
+        }
+    }
+
+    .timeline-pf-context .timeline-pf-bar {
+        fill: $grey-400;
+        shape-rendering: crispEdges;
+    }
+
+    .timeline-pf-slider {
+        -webkit-transform: rotate(-90deg);
+        transform: rotate(-90deg);
+        margin-left: 5px;
+    }
+
+    .timeline-pf-grid-stripes rect {
+        fill: $grey-50;
+        shape-rendering: crispEdges;
+    }
+
+    .timeline-pf-grid-stripes line {
+        stroke: $grey-300;
+        stroke-width: 1px;
+        shape-rendering: crispEdges;
+    }
+}
+
+.form-timeline-popover {
+    padding: 0;
+    font-size: 14px;
+
+    .form-group {
+        margin-bottom: 0;
+
+        .col-form-label {
+            line-height: 1.25;
+        }
+
+        .form-control-static {
+            margin: 0;
+            max-height: 72px;
+            text-overflow: ellipsis;
+            overflow: hidden;
+            border-width: 0;
+        }
+
+        .tags-container {
+            padding: rem(.25) 0;
+            margin-bottom: 0;
+
+            .tag {
+                display: inline-block;
+                padding: baselinerem(.25) baselinerem(.25);
+                margin: baselinerem(.125) baselinerem(.25) baselinerem(.125) 0;
+                font-size: 10px;
+                color: $light-blue-900;
+                background: transparentize($light-blue-400, .9);
+                border: 1px solid $light-blue-400;
+                border-radius: baselinerem(.5);
+                font-weight: normal;
+            }
+        }
+    }
+}

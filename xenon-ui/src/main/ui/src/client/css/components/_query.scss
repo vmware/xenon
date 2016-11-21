@@ -1,0 +1,266 @@
+@import "colors";
+@import "variables";
+
+.component-container {
+    .content-area {
+        padding: 0;
+
+        .query-builder {
+            padding: baselinerem(1) baselinerem(1.5);
+            border-bottom: 1px solid $grey-300;
+
+            .content-divider {
+                width: auto;
+                margin-left: baselinerem(-1.5);
+                margin-right: baselinerem(-1.5);
+            }
+
+            .option-container {
+                > label, > select, > input {
+                    margin-bottom: 0;
+                    margin-right: baselinerem(.25);
+                }
+
+                aside {
+                    display: inline-block;
+                    margin-left: baselinerem(1.75);
+                    padding-left: baselinerem(1);
+
+                    .form-check-inline {
+                        padding-left: baselinerem(1);
+
+                        & + .form-check-inline {
+                            margin-left: 0;
+                        }
+                    }
+                }
+            }
+
+            .query-clause-container {
+                position: relative;
+
+                > .connector {
+                    position: absolute;
+                    z-index: 1;
+                    left: 65px;
+                    top: 14px;
+                    width: 0;
+                    border-right: 1px dashed $grey-300;
+                    bottom: baselinerem(1);
+                }
+
+                .query-clause {
+                    @include flexbox();
+                    flex-flow: row nowrap;
+                    margin-bottom: baselinerem(.75);
+                    position: relative;
+
+                    > .connector {
+                        position: absolute;
+                        z-index: 1;
+                        left: 65px;
+                        top: 14px;
+                        height: 0;
+                        border-bottom: 1px dashed $grey-300;
+                        right: baselinerem(1.5);
+                    }
+
+                    &:first-of-type {
+                        padding-left: baselinerem(7);
+
+                        .control-group {
+                            padding-right: 30px;
+
+                            .btn.btn-link {
+                                margin-right: -31px;
+                            }
+                        }
+                    }
+
+                    .static-control {
+                        height: rem(1.8125);
+                        background-color: $grey-300;
+                        border: 1px solid $grey-300;
+                        color: $grey-600;
+                        padding: rem(.3125) rem(.5);
+                        font-size: rem(.875);
+                        border-radius: rem(.2);
+                    }
+
+                    .occurance-group {
+                        @include flex(0 0 baselinerem(7));
+                        z-index: 2;
+
+                        .static-control {
+                            width: 130px;
+                            text-align: center;
+                        }
+
+                        .btn {
+                            height: rem(1.8125);
+                            line-height: 19px;
+                            vertical-align: middle;
+                            margin-bottom: 0;
+                        }
+                    }
+
+                    .term-group {
+                        @include flex(1 1 auto);
+                        z-index: 2;
+
+                        .form-control {
+                            margin-right: baselinerem(.5);
+                        }
+
+                        .form-control-group {
+                            margin-right: baselinerem(.5);
+                            display: inline-table;
+
+                            .form-control {
+                                margin-right: 0;
+                                display: table-cell;
+                            }
+
+                            .form-control:first-child {
+                                border-top-right-radius: 0;
+                                border-bottom-right-radius: 0;
+                            }
+
+                            // Hacks to fake a border for select, in order to fix select radius
+                            // dictated by the border appearence.
+                            .form-control-select-wrapper {
+                                display: table-cell;
+                                background: $grey-100;
+                                border-radius: 0 rem(.2) rem(.2) 0;
+                                box-shadow: rpx(-1) rpx(-1) 0 rgba(0, 0, 0, .15) inset, 0 rpx(1) 0 rgba(0, 0, 0, .15) inset;
+
+                                &:focus, &:active {
+                                    box-shadow: rpx(-1) rpx(-1) 0 $light-blue-300 inset, 0 rpx(1) 0 $light-blue-300 inset;
+                                }
+
+                                select {
+                                    border: none;
+                                    background: transparent;
+                                }
+                            }
+                        }
+
+                        .nested-clause {
+                            position: relative;
+                            display: inline-block;
+                            background: $grey-100;
+                            padding: baselinerem(.5);
+                            border-radius: rem(.2);
+                            width: 100%;
+
+                            .connector {
+                                position: absolute;
+                                z-index: 1;
+                                left: 77px;
+                                top: 14px;
+                                width: 0;
+                                border-right: 1px dashed $grey-300;
+                                bottom: baselinerem(1.5);
+                            }
+
+                            .query-clause {
+                                @include flexbox();
+                                flex-flow: column nowrap;
+                                margin-bottom: baselinerem(.75);
+                                position: relative;
+
+                                &:first-of-type {
+                                    padding-left: 0;
+
+                                    .control-group {
+                                        padding-right: 30px;
+
+                                        .btn.btn-link {
+                                            margin-right: -31px;
+                                        }
+                                    }
+                                }
+
+                                .occurance-group {
+                                    z-index: 2;
+                                    margin-bottom: baselinerem(.75);
+                                    @include flex(0 0 auto);
+
+                                    .btn {
+                                        height: rem(1.8125);
+                                        line-height: 19px;
+                                        vertical-align: middle;
+                                        margin-bottom: 0;
+                                    }
+                                }
+
+                                .clause-group {
+                                    @include flexbox();
+                                    flex-flow: row nowrap;
+
+                                    .control-group {
+                                        @include flex(1 0 baselinerem(5));
+                                        text-align: right;
+                                        z-index: 2;
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    .control-group {
+                        @include flex(0 0 baselinerem(6));
+                        text-align: right;
+                        z-index: 2;
+                    }
+                }
+
+                .btn.btn-add-clause {
+                    border: 1px solid $light-blue-400;
+                    border-radius: 50%;
+                    padding: 0;
+                    width: baselinerem(1);
+                    height: baselinerem(1);
+                    margin-left: 53px;
+                    z-index: 2;
+
+                    &::before {
+                        content: "+";
+                        line-height: 1;
+                        font-size: 18px;
+                        display: inline-block;
+                        margin-top: 0;
+                        vertical-align: top;
+                    }
+
+                    &:hover, &:active {
+                        background: $light-blue-100;
+                    }
+                }
+            }
+        }
+
+        .action-bar {
+            padding: baselinerem(.5) baselinerem(1.5);
+            border-bottom: 1px solid $grey-300;
+            background: $grey-50;
+            @include flexbox();
+            @include flex(0 0 63px);
+
+            > .btn {
+                margin-right: baselinerem(.5);
+            }
+
+            .result-count {
+                margin-left: baselinerem(1);
+                display: inline-block;
+                padding: 4px 0;
+            }
+
+            aside {
+                flex: 1 1 auto;
+                text-align: right;
+            }
+        }
+    }
+}

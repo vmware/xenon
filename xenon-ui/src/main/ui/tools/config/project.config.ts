@@ -35,13 +35,15 @@ export class ProjectConfig extends SeedAdvancedConfig {
             { src: 'codemirror/addon/edit/matchbrackets.js', inject: 'libs' },
             { src: 'codemirror/addon/selection/active-line.js', inject: 'libs' },
             { src: 'codemirror/mode/javascript/javascript.js', inject: 'libs' },
+
             { src: 'codemirror/lib/codemirror.css', inject: true }
         ];
 
         // Add `local` third-party libraries to be injected/bundled.
         this.APP_ASSETS = [
             ...this.APP_ASSETS,
-            { src: `${this.ASSETS_SRC}/main.scss`, inject: true },
+            { src: `${this.ASSETS_SRC}/libs/patternfly-timeline.min.js`, inject: 'libs' },
+            { src: `${this.ASSETS_SRC}/libs/patternfly-timeline.min.css`, inject: true }
         ];
 
         /* Add to or override NPM module configurations: */

@@ -20,74 +20,6 @@
         padding: 0;
 
         .query-builder {
-            padding: baselinerem(1) baselinerem(1.5);
-            border-bottom: 1px solid $grey-300;
-
-            .content-divider {
-                width: auto;
-                margin-left: baselinerem(-1.5);
-                margin-right: baselinerem(-1.5);
-            }
-
-            .option-container {
-                > label, > select, > input {
-                    margin-bottom: 0;
-                    margin-right: baselinerem(.25);
-                }
-
-                aside {
-                    display: inline-block;
-                    margin-left: baselinerem(1.75);
-                    padding-left: baselinerem(1);
-
-                    .form-check-inline {
-                        padding-left: baselinerem(1);
-
-                        & + .form-check-inline {
-                            margin-left: 0;
-                        }
-                    }
-                }
-            }
-
-            .query-clause-container {
-                position: relative;
-
-                > .connector {
-                    position: absolute;
-                    z-index: 1;
-                    left: 65px;
-                    top: 14px;
-                    width: 0;
-                    border-right: 1px dashed $grey-300;
-                    bottom: baselinerem(1);
-                }
-
-                // Style that applies to all the children components
-                /deep/ .btn.btn-add-clause {
-                    border: 1px solid $light-blue-400;
-                    border-radius: 50%;
-                    padding: 0;
-                    width: baselinerem(1);
-                    height: baselinerem(1);
-                    margin: baselinerem(.5) 0 0 53px;
-                    z-index: 2;
-
-                    &::before {
-                        content: "+";
-                        line-height: 1;
-                        font-size: 18px;
-                        display: inline-block;
-                        margin-top: 0;
-                        vertical-align: top;
-                    }
-
-                    &:hover, &:active {
-                        background: $light-blue-100;
-                    }
-                }
-            }
-
             .query-spec-container {
                 @include flexbox();
                 flex-flow: row nowrap;
@@ -98,6 +30,7 @@
                     @include flex(1 1 auto);
                     overflow: hidden;
 
+                    // Style that applies to all the children components
                     /deep/ .CodeMirror {
                         height: 100%;
                     }
@@ -108,29 +41,6 @@
                     margin-left: baselinerem(1);
                     overflow-y: scroll;
                 }
-            }
-        }
-
-        .action-bar {
-            padding: baselinerem(.5) baselinerem(1.5);
-            border-bottom: 1px solid $grey-300;
-            background: $grey-50;
-            @include flexbox();
-            @include flex(0 0 63px);
-
-            > .btn {
-                margin-right: baselinerem(.5);
-            }
-
-            .result-count {
-                margin-left: baselinerem(1);
-                display: inline-block;
-                padding: 4px 0;
-            }
-
-            aside {
-                flex: 1 1 auto;
-                text-align: right;
             }
         }
 

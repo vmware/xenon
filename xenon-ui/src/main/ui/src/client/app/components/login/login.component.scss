@@ -1,6 +1,14 @@
 @import "colors";
 @import "variables";
 
+.background-logo {
+    position: absolute;
+    top: -320px;
+    left: -232px;
+    width: 580px;
+    opacity: .1;
+}
+
 .login {
     @include flex(0 0 baselinerem(19));
 

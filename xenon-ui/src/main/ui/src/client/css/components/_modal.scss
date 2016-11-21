@@ -11,6 +11,8 @@
                 max-height: 72px;
                 text-overflow: ellipsis;
                 overflow: hidden;
+                border-width: 0;
+                line-height: $default-line-height;
 
                 &.form-control-static-multiline {
                     display: -webkit-box;
@@ -21,6 +23,12 @@
 
             table, .table {
                 margin: 24px 0;
+            }
+
+            pre {
+                font-size: $default-font-size;
+                line-height: $default-line-height;
+                @include break-word();
             }
         }
     }

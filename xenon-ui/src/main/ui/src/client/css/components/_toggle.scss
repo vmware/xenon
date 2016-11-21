@@ -1,0 +1,116 @@
+@import "../colors";
+@import "../variables";
+
+//Toggle Properties
+$toggle-height: baselinerem(1);
+$toggle-switch-base-height: baselinerem(.75);
+$toggle-switch-base-width: baselinerem(1.375);
+$toggle-switch-height: $toggle-switch-base-height - 4;
+
+//Distance between the toggle switch label and the switch (Switch is on the right)
+$toggle-switch-base-left-spacing: baselinerem(.375);
+
+//1px extra because we want a 1px distance between the base and the switch
+$toggle-switch-left-spacing: ($toggle-switch-base-width - $toggle-switch-base-left-spacing) + 1px;
+
+//Toggle Transition Properties
+$toggle-transition-time: .15s;
+$toggle-transition-animation: ease-in;
+
+.toggle-switch {
+    @include flexbox();
+
+    height: $toggle-height;
+    margin-right: baselinerem(1);
+    position: relative;
+
+    label {
+        display: inline-block;
+        position: relative;
+        cursor: pointer;
+        height: $toggle-height;
+        line-height: $toggle-height;
+        margin-right: baselinerem(2);
+    }
+
+    input[type="checkbox"] {
+        position: absolute;
+        top: baselinerem(.25);
+        right: baselinerem(.25);
+        opacity: 0;
+
+        -webkit-appearance: none;
+        -moz-appearance: none;
+        -ms-appearance: none;
+        -o-appearance: none;
+    }
+
+    input[type="checkbox"] + label::before {
+        position: absolute;
+        display: inline-block;
+        content: '';
+        height: $toggle-switch-base-height;
+        width: $toggle-switch-base-width;
+        border: 2px solid;
+        border-radius: baselinerem(.375);
+        border-color: $grey-400;
+        background-color: $grey-400;
+        top: ($toggle-height - $toggle-switch-base-height) / 2;
+        right: -1 * ($toggle-switch-base-width + $toggle-switch-base-left-spacing);
+        transition: $toggle-transition-time $toggle-transition-animation;
+        transition-property: border-color, background-color;
+    }
+
+    input[type="checkbox"]:focus + label::before {
+        outline: 0;
+    }
+
+    input[type="checkbox"]:checked + label::before {
+        border-color: $light-green-500;
+        background-color: $light-green-500;
+        transition: $toggle-transition-time $toggle-transition-animation;
+        transition-property: border-color, background-color;
+    }
+
+    //Toggle Switch
+    input[type="checkbox"] + label::after {
+        position: absolute;
+        display: inline-block;
+        content: '';
+        height: $toggle-switch-height;
+        width: $toggle-switch-height;
+        border: 1px solid $white-base;
+        border-radius: 50%;
+        background-color: $white-base;
+        top: ($toggle-height - $toggle-switch-height) / 2;
+        right: -1 * $toggle-switch-left-spacing;
+        transition: right $toggle-transition-time $toggle-transition-animation;
+    }
+
+    input[type="checkbox"]:checked + label::after {
+        right: -1 * ($toggle-switch-base-width + $toggle-switch-base-left-spacing - 2px);
+        transition: right $toggle-transition-time $toggle-transition-animation;
+    }
+
+    &.disabled {
+        label {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
+        input[type="checkbox"]:checked + label::before {
+            border-color: $grey-400;
+            background-color: $grey-400;
+        }
+    }
+
+    input[type="checkbox"]:disabled + label {
+        opacity: 0.4;
+        cursor: not-allowed;
+    }
+
+    input[type="checkbox"]:checked:disabled + label::before {
+        border-color: $grey-400;
+        background-color: $grey-400;
+    }
+}

@@ -5,6 +5,10 @@ export * from './main.component';
 
 export * from './dashboard/dashboard-card.component';
 export * from './dashboard/dashboard-grid.component';
+export * from './operation-tracing/operation-tracing-chart-detail.component';
+export * from './operation-tracing/operation-tracing-chart.component';
+export * from './operation-tracing/operation-tracing-clause.component';
+export * from './operation-tracing/operation-tracing.component';
 export * from './process-log/process-log.component';
 export * from './query/query-clause-nested.component';
 export * from './query/query-clause.component';

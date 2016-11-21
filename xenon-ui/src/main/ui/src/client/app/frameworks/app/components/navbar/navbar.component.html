@@ -21,12 +21,12 @@
     </a>
     <a class="nav-link" title="{{ 'QUERY_TITLE' | translate }}"
         [routerLink]="['./query']" preserveQueryParams="true" routerLinkActive="active">
-        <span class="nav-icon fa fa-search fa-fw"></span>
+        <span class="nav-icon fa fa-asterisk fa-fw"></span>
     </a>
-    <!-- <a class="nav-link" title="Operation Tracing"
-        [routerLink]="['./process-log']" preserveQueryParams="true" routerLinkActive="active">
-        <span class="nav-icon fa fa-retweet fa-fw"></span>
-    </a> -->
+    <a class="nav-link" title="{{ 'OPERATION_TRACING_TITLE' | translate }}"
+        [routerLink]="['./operation-tracing']" preserveQueryParams="true" routerLinkActive="active">
+        <span class="nav-icon fa fa-tasks fa-fw"></span>
+    </a>
 </div>
 
 <div class="settings">

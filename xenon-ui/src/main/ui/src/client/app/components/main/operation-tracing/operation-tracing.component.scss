@@ -1,0 +1,23 @@
+@import "colors";
+@import "variables";
+
+.component-container {
+    .content-area {
+        padding: 0;
+
+        .query-builder {
+            .query-spec-container {
+                @include flexbox();
+                flex-flow: row nowrap;
+                height: 346px;
+                margin-bottom: 0;
+            }
+        }
+
+        .content-area.component-container {
+            padding: 0;
+            min-height: baselinerem(18);
+            @include flex(1 1 auto);
+        }
+    }
+}

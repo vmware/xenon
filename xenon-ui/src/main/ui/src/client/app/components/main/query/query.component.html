@@ -54,7 +54,7 @@
                     <hr class="content-divider">
                     <div class="query-clause-container">
                         <div class="connector"></div>
-                        <xe-query-clause *ngFor="let clause of interactiveQueryClauses"
+                        <xe-query-clause class="query-clause" *ngFor="let clause of interactiveQueryClauses"
                             [id]="clause.id" [isFirst]="clause.id === 1"
                             (deleteClause)="onDeleteClause($event)"></xe-query-clause>
                         <button class="btn btn-link btn-add-clause"
@@ -95,7 +95,7 @@
             </aside>
         </div>
         <main class="content-area content-area-with-nested-container component-container horizontal"
-                *ngIf="getQueryResult().results?.documentLinks.length > 0">
+                *ngIf="getQueryResultCount() > 0">
             <div class="left-side-area area">
                 <div class="list-group">
                     <a class="list-group-item list-group-item-action"

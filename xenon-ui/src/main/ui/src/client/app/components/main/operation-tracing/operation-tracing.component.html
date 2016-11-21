@@ -1,0 +1,74 @@
+<div class="component-container vertical">
+    <nav class="nav-area">
+        <h4 class="title">{{ 'OPERATION_TRACING_TITLE' | translate }}</h4>
+        <aside>
+            <div class="toggle-switch">
+                <input type="checkbox" id="traceSwitch" [ngModel]="isRecordingOn" (click)="onToggleTrace($event)">
+                <label for="traceSwitch">{{ 'OPERATION_TRACING_RECORDING' | translate }}</label>
+            </div>
+        </aside>
+    </nav>
+    <main class="content-area component-container vertical">
+        <section id="traceBuilderContainer" class="collapse in" aria-expanded="true">
+            <div class="query-builder">
+                <form class="form-inline">
+                    <div class="form-group option-container">
+                        <label for="versionsOption">{{ 'ACTION_TRACE' | translate }}</label>
+                        <select class="form-control form-control-sm" id="traceMethodsOption"
+                            (change)="onTraceMethodOptionChanged($event)">
+                            <option [value]="method" *ngFor="let method of traceMethods">{{ method }}</option>
+                        </select>
+                        <label for="pathOption">{{ 'OPERATION_TRACING_BUILDER_TITLE_PATH' | translate }}</label>
+                        <input class="form-control form-control-sm" id="pathOption"
+                            type="text" name="path" autocomplete="off"
+                            placeholder="{{ 'OPERATION_TRACING_HELPER_PATH' | translate }}"
+                            (change)="onTracePathOptionChanged($event)"/>
+                        <label for="refererOption">{{ 'OPERATION_TRACING_BUILDER_TITLE_REFERER' | translate }}</label>
+                        <input class="form-control form-control-sm" id="refererOption"
+                            type="text" name="path" autocomplete="off"
+                            placeholder="{{ 'OPERATION_TRACING_HELPER_REFERER' | translate }}"
+                            (change)="onTraceRefererOptionChanged($event)"/>
+                    </div>
+                    <hr class="content-divider">
+                    <div class="query-clause-container">
+                        <div class="connector"></div>
+                        <xe-operation-tracing-clause class="query-clause" *ngFor="let clause of traceClauses"
+                            [id]="clause.id" [isFirst]="clause.id === 1" [hasMoreThanOne]="traceClauses.length > 1"
+                            (deleteClause)="onDeleteClause($event)"></xe-operation-tracing-clause>
+                        <button class="btn btn-link btn-add-clause"
+                            (click)="onAddClause($event)"></button>
+                    </div>
+                </form>
+            </div>
+        </section>
+        <div class="action-bar">
+            <button type="button" class="btn btn-primary"
+                (click)="onTrace($event)">
+                {{'ACTION_TRACE' | translate}}
+            </button>
+            <button type="button" class="btn btn-secondary"
+                (click)="onClearTrace($event)">
+                {{'ACTION_CLEAR' | translate}}
+            </button>
+            <div class="result-count">
+                <div class="stats stats-horizontal" *ngIf="getTraceResult().results">
+                    <span class="stats-number">{{getTraceResultCount()}}</span>
+                    <span class="stats-label">
+                        {{'OPERATION' | translate}}<br>{{'AVAILABLE' | translate }}
+                    </span>
+                </div>
+            </div>
+            <aside>
+                <a class="btn btn-link btn-collapse-expand" data-toggle="collapse" href="#traceBuilderContainer"
+                    aria-expanded="true" aria-controls="traceBuilderContainer"
+                    title="{{ 'ACTION_COLLAPSE_HELP' | translate }}">
+                </a>
+            </aside>
+        </div>
+        <main class="content-area component-container vertical"
+            *ngIf="getTraceResultCount() > 0">
+            <xe-operation-tracing-chart [traceResult]="getTraceResult()">
+            </xe-operation-tracing-chart>
+        </main>
+    </main>
+</div>

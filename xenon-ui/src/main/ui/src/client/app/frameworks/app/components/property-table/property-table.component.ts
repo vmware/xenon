@@ -11,7 +11,7 @@ import { StringUtil } from '../../utils/index';
     selector: 'xe-property-table',
     moduleId: module.id,
     templateUrl: './property-table.component.html',
-    styleUrls: ['./property-table.component.css'],
+    styleUrls: ['./property-table.component.css']
 })
 
 export class PropertyTableComponent {

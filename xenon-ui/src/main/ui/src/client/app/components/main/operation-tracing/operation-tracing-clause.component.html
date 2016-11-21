@@ -1,18 +1,7 @@
 <div class="connector"></div>
 <div class="occurance-group"
-    *ngIf="isFirst === false"
-    [ngSwitch]="type">
-    <div *ngSwitchCase="'sort'">
-        <span class="form-control static-control">
-            {{ 'QUERY_BUILDER_HELPER_SORT_BY' | translate }}
-        </span>
-    </div>
-    <div *ngSwitchCase="'group'">
-        <span class="form-control static-control">
-            {{ 'QUERY_BUILDER_HELPER_GROUP_BY' | translate }}
-        </span>
-    </div>
-    <div class="btn-group" data-toggle="buttons" *ngSwitchDefault>
+    *ngIf="isFirst === false">
+    <div class="btn-group" data-toggle="buttons">
         <label class="btn btn-sm btn-secondary"
             [class.active]="occurance === 'MUST_OCCUR'"
             (click)="occurance = 'MUST_OCCUR'">
@@ -107,34 +96,6 @@
             </div>
         </div>
     </div>
-    <div *ngSwitchCase="'sort'">
-        <input class="form-control form-control-sm"
-            type="text" name="propertyName" autocomplete="off"
-            placeholder="{{ 'QUERY_BUILDER_HELPER_PROPERTY_NAME' | translate }}"
-            (change)="propertyName = $event.target['value']"/>
-        <span class="form-control static-control">
-            {{ 'QUERY_BUILDER_HELPER_IN' | translate }}
-        </span>
-        <select class="form-control form-control-sm"
-            name="sortOrder"
-            (change)="sortOrder = $event.target['value']">
-            <option value="ASC">
-                {{ 'QUERY_BUILDER_OPTION_ASC' | translate }}
-            </option>
-            <option value="DESC">
-                {{ 'QUERY_BUILDER_OPTION_DESC' | translate }}
-            </option>
-        </select>
-    </div>
-    <div *ngSwitchCase="'group'">
-        <input class="form-control form-control-sm"
-            type="text" name="propertyName" autocomplete="off"
-            placeholder="{{ 'QUERY_BUILDER_HELPER_PROPERTY_NAME' | translate }}"
-            (change)="propertyName = $event.target['value']"/>
-    </div>
-    <div *ngSwitchCase="'nested'">
-        <xe-query-nested></xe-query-nested>
-    </div>
 </div>
 <div class="control-group">
     <select class="form-control form-control-sm" name="queryClauseType"
@@ -145,19 +106,8 @@
         <option value="range">
             {{ 'QUERY_BUILDER_OPTION_RANGE' | translate }}
         </option>
-        <option value="sort" *ngIf="isFirst === false">
-            {{ 'QUERY_BUILDER_OPTION_SORT' | translate }}
-        </option>
-        <!-- TODO Temporary disable group until better understand how it works -->
-        <!-- <option value="group" *ngIf="isFirst === false">
-            {{ 'QUERY_BUILDER_OPTION_GROUP' | translate }}
-        </option> -->
-        <option disabled>────</option>
-        <option value="nested">
-            {{ 'QUERY_BUILDER_OPTION_NESTED' | translate }}
-        </option>
     </select>
     <button class="btn btn-sm btn-link"
-        *ngIf="isFirst === false"
+        *ngIf="isFirst === false || hasMoreThanOne === false"
         (click)="onDeleteClauseClicked($event)">&times;</button>
 </div>

@@ -1,0 +1,80 @@
+<form *ngIf="isNullOrUndefined(event) === false">
+    <div class="form-group row">
+        <label for="address" class="col-sm-3 col-form-label">
+            {{ 'ID' | translate }}
+        </label>
+        <div class="col-sm-9">
+            <p class="form-control-static">
+                {{ event.details?.object?.id }}
+            </p>
+        </div>
+    </div>
+    <div class="form-group row">
+        <label for="address" class="col-sm-3 col-form-label">
+            {{ 'METHOD' | translate }}
+        </label>
+        <div class="col-sm-9">
+            <p class="form-control-static">
+                {{ event.details?.event }}
+            </p>
+        </div>
+    </div>
+    <div class="form-group row">
+        <label for="address" class="col-sm-3 col-form-label">
+            {{ 'STATUS' | translate }}
+        </label>
+        <div class="col-sm-9">
+            <p class="form-control-static">
+                {{ event.details?.object?.statusCode }}
+            </p>
+        </div>
+    </div>
+    <div class="form-group row">
+        <label for="address" class="col-sm-3 col-form-label">
+            {{ 'REFERER' | translate }}
+        </label>
+        <div class="col-sm-9">
+            <p class="form-control-static">
+                {{ event.details?.object?.referer }}
+            </p>
+        </div>
+    </div>
+    <div class="form-group row">
+        <label for="address" class="col-sm-3 col-form-label">
+            {{ 'OPTIONS' | translate }}
+        </label>
+        <div class="col-sm-9">
+            <div class="tags-container">
+                <div class="tag" *ngFor="let option of event.details?.object?.options">
+                    {{ option }}
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="form-group row">
+        <label for="address" class="col-sm-3 col-form-label">
+            {{ 'HOST' | translate }}
+        </label>
+        <div class="col-sm-9">
+            <p class="form-control-static">
+                {{ event.details?.object?.host }}:{{ event.details?.object?.port }}
+            </p>
+        </div>
+    </div>
+    <div class="form-group row" *ngIf="event.details?.object?.jsonBody !== 'null'">
+        <label class="col-sm-4 col-form-label">Body</label>
+        <div class="col-sm-8">
+            <pre class="form-control-static">{{ getJSONString(event.details?.object?.jsonBody) }}</pre>
+        </div>
+    </div>
+    <div class="form-group row">
+        <label for="address" class="col-sm-3 col-form-label">
+            {{ 'DATE' | translate }}
+        </label>
+        <div class="col-sm-9">
+            <p class="form-control-static">
+                {{ getTimeStamp(event.date) }}
+            </p>
+        </div>
+    </div>
+</form>

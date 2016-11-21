@@ -1,6 +1,6 @@
 <div class="nested-clause">
     <div class="connector"></div>
-    <xe-query-clause-nested *ngFor="let clause of clauses"
+    <xe-query-clause-nested class="query-clause" *ngFor="let clause of clauses"
         [id]="clause.id" [isFirst]="clause.id === 1"
         (deleteClause)="onDeleteClause($event)"></xe-query-clause-nested>
     <button class="btn btn-link btn-add-clause"

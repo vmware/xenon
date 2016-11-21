@@ -1,6 +1,6 @@
 {
     "name": "xenon-ui",
-    "version": "0.1.0",
+    "version": "0.2.0",
     "description": "Xenon UI",
     "scripts": {
         "build.desktop.mac": "rimraf desktop/mac/* && gulp desktop.mac",
@@ -173,7 +173,7 @@
         "angular2-cookie": "^1.2.2",
         "angulartics2": "^1.4.3",
         "angular2-websocket": "^0.6.3",
-        "bootstrap": "^4.0.0-alpha.3",
+        "bootstrap": "^4.0.0-alpha.5",
         "chart.js": "^2.2.1",
         "codemirror": "^5.19.0",
         "core-js": "^2.4.1",

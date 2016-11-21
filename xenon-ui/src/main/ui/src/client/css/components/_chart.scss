@@ -70,7 +70,7 @@
 }
 
 .chart-tooltip {
-    line-height: 1;
+    line-height: $default-line-height;
     padding: baselinerem(.5);
     background: transparentize($grey-900, .25);
     color: $grey-100;
@@ -81,18 +81,16 @@
         color: $white-base;
     }
 
-    &::after {
-        box-sizing: border-box;
-        display: inline-block;
-        font-size: $default-font-size;
-        width: 100%;
-        color: transparentize($grey-900, .25);
-        content: "\25BC";
+    &::before {
         position: absolute;
-        left: 0;
-        top: 100%;
-        text-align: center;
-        line-height: 10px;
+        bottom: -5px;
+        left: 50%;
+        margin-left: -5px;
+        content: "";
+        border-width: 5px 5px 0;
+        border-color: transparent;
+        border-top-color: transparentize($grey-900, .25);
+        border-style: solid;
     }
 }
 

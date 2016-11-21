@@ -36,7 +36,25 @@
     }
 }
 
+form, .form {
+    .form-group {
+        .tags-container {
+            padding: 2px 0;
+            margin-bottom: rem(1);
+        }
+    }
+}
+
 /* Empty Message */
+.mask {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    background: transparentize($white-base, .4);
+}
+
 .empty-message-container {
     padding: baselinerem(1);
     width: 100%;

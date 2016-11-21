@@ -19,7 +19,10 @@ import { AppComponent,
     StarCanvasComponent, LoginComponent,
 
     // main
-    DashboardCardComponent, DashboardGridComponent, ProcessLogComponent,
+    DashboardCardComponent, DashboardGridComponent,
+    OperationTracingChartDetailComponent, OperationTracingChartComponent,
+    OperationTracingClauseComponent, OperationTracingComponent,
+    ProcessLogComponent,
     QueryClauseNestedComponent, QueryClauseComponent, QueryNestedComponent,
     QueryResultDetailComponent, QuerySpecReferenceComponent, QueryComponent,
     ServiceCardComponent, ServiceDetailComponent, ServiceGridComponent,
@@ -82,6 +85,10 @@ export function cons() {
         // main
         DashboardCardComponent,
         DashboardGridComponent,
+        OperationTracingChartDetailComponent,
+        OperationTracingChartComponent,
+        OperationTracingClauseComponent,
+        OperationTracingComponent,
         ProcessLogComponent,
         QueryClauseNestedComponent,
         QueryClauseComponent,

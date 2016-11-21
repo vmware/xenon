@@ -10,7 +10,9 @@ export class URL {
     // NOTE: Root need to be POSTed to with body
     // { "kind": "com:vmware:xenon:ui:UiService:QueryRequest" }
     static Root: string = '/core/ui/default';
-    static RootPostBody: any = { kind: 'com:vmware:xenon:ui:UiService:QueryRequest' };
+    static RootPostBody: any = {
+        kind: 'com:vmware:xenon:ui:UiService:QueryRequest'
+    };
 
     static Authentication: string = '/core/authn/basic';
     static CoreManagement: string = '/core/management';
