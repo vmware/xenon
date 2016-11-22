@@ -292,7 +292,8 @@ public class NettyHttpServiceClient implements ServiceClient {
             op.setRetryCount(0);
             fail(new IllegalArgumentException(
                     "HTTPS not enabled, set SSL context before starting client:"
-                            + op.getUri().getScheme()), op, op.getBodyRaw());
+                            + op.getUri().getScheme()),
+                    op, op.getBodyRaw());
             return;
         }
 
@@ -355,10 +356,10 @@ public class NettyHttpServiceClient implements ServiceClient {
         try {
             byte[] body = Utils.encodeBody(op);
             if (op.getContentLength() > getRequestPayloadSizeLimit()) {
-                stopTracking(op);
                 Exception e = new IllegalArgumentException(
                         "Content-Length " + op.getContentLength() +
-                        " is greater than max size allowed " + getRequestPayloadSizeLimit());
+                                " is greater than max size allowed "
+                                + getRequestPayloadSizeLimit());
                 op.setBody(ServiceErrorResponse.create(e, Operation.STATUS_CODE_BAD_REQUEST));
                 fail(e, op, originalBody);
                 return;
@@ -430,18 +431,8 @@ public class NettyHttpServiceClient implements ServiceClient {
             }
 
             boolean isXenonToXenon = op.isFromReplication() || op.isForwarded();
-            boolean isRequestWithCallback = false;
             if (hasRequestHeaders) {
                 for (Entry<String, String> nameValue : op.getRequestHeaders().entrySet()) {
-                    String key = nameValue.getKey();
-                    if (!isXenonToXenon) {
-                        if (Operation.REQUEST_CALLBACK_LOCATION_HEADER.equals(key)) {
-                            isRequestWithCallback = true;
-                            isXenonToXenon = true;
-                        } else if (Operation.RESPONSE_CALLBACK_STATUS_HEADER.equals(key)) {
-                            isXenonToXenon = true;
-                        }
-                    }
                     request.headers().set(nameValue.getKey(), nameValue.getValue());
                 }
             }
@@ -473,16 +464,13 @@ public class NettyHttpServiceClient implements ServiceClient {
             }
 
             boolean doCookieJarUpdate = !isXenonToXenon;
-            boolean stopTracking = !isRequestWithCallback;
             op.nestCompletion((o, e) -> {
                 if (e != null) {
                     fail(e, op, originalBody);
                     return;
                 }
 
-                if (stopTracking) {
-                    stopTracking(op);
-                }
+                stopTracking(op);
 
                 if (doCookieJarUpdate) {
                     updateCookieJarFromResponseHeaders(o);
@@ -677,6 +665,10 @@ public class NettyHttpServiceClient implements ServiceClient {
             long exp = o.getExpirationMicrosUtc();
             if (exp > now) {
                 continue;
+            }
+
+            if (exp - now > TimeUnit.SECONDS.toMicros(1)) {
+                LOGGER.info("Request expired but not active: " + o.toString());
             }
 
             if (!o.hasOption(OperationOption.SOCKET_ACTIVE)) {

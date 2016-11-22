@@ -394,10 +394,6 @@ public class Operation implements Cloneable {
     // Proprietary header definitions
     public static final String HEADER_NAME_PREFIX = "x-xenon-";
     public static final String CONTEXT_ID_HEADER = HEADER_NAME_PREFIX + "ctx-id";
-    public static final String REQUEST_CALLBACK_LOCATION_HEADER = HEADER_NAME_PREFIX
-            + "req-location";
-    public static final String RESPONSE_CALLBACK_STATUS_HEADER = HEADER_NAME_PREFIX
-            + "rsp-status";
     public static final String REQUEST_AUTH_TOKEN_HEADER = HEADER_NAME_PREFIX
             + "auth-token";
     public static final String REPLICATION_PHASE_HEADER = HEADER_NAME_PREFIX
@@ -526,7 +522,6 @@ public class Operation implements Cloneable {
      * logout and invalidate the auth token
      */
     public static final String PRAGMA_DIRECTIVE_AUTHN_INVALIDATE = "xn-authn-invalidate";
-
 
     public static final String TX_ENSURE_COMMIT = "ensure-commit";
     public static final String TX_COMMIT = "commit";
@@ -1350,7 +1345,8 @@ public class Operation implements Cloneable {
                 return this;
             }
 
-            directive = existingDirectives + DIRECTIVE_PRAGMA_VALUE_SEPARATOR_CHAR_CONST + directive;
+            directive = existingDirectives + DIRECTIVE_PRAGMA_VALUE_SEPARATOR_CHAR_CONST
+                    + directive;
         }
         directive = removeString(directive, CR_LF).trim();
         addRequestHeader(PRAGMA_HEADER, directive, false);
@@ -1394,8 +1390,8 @@ public class Operation implements Cloneable {
         while ((i = existingDirectives.indexOf(directive, i)) != -1) {
             // make sure sure we fully match the directive
             if (i + directive.length() == existingDirectives.length()
-                    || existingDirectives.charAt(i + directive.length())
-                    == DIRECTIVE_PRAGMA_VALUE_SEPARATOR_CHAR_CONST) {
+                    || existingDirectives.charAt(i
+                            + directive.length()) == DIRECTIVE_PRAGMA_VALUE_SEPARATOR_CHAR_CONST) {
                 return i;
             }
 
@@ -1683,44 +1679,6 @@ public class Operation implements Cloneable {
      */
     public boolean isForwarded() {
         return this.hasOption(OperationOption.FORWARDED);
-    }
-
-    public String getRequestCallbackLocation() {
-        if (!hasRequestHeaders()) {
-            return null;
-        }
-
-        return this.remoteCtx.requestHeaders.get(REQUEST_CALLBACK_LOCATION_HEADER);
-    }
-
-    public String getResponseCallbackStatus() {
-        if (!hasRequestHeaders()) {
-            return null;
-        }
-        return this.remoteCtx.requestHeaders.get(RESPONSE_CALLBACK_STATUS_HEADER);
-    }
-
-    public Operation removeRequestCallbackLocation() {
-        if (!hasRequestHeaders()) {
-            return this;
-        }
-        this.remoteCtx.requestHeaders.remove(REQUEST_CALLBACK_LOCATION_HEADER);
-        return this;
-    }
-
-    public Operation setRequestCallbackLocation(String location) {
-        allocateRemoteContext();
-        allocateRequestHeaders();
-        this.remoteCtx.requestHeaders.put(REQUEST_CALLBACK_LOCATION_HEADER, location);
-        return this;
-    }
-
-    public Operation setResponseCallbackStatus(int status) {
-        allocateRemoteContext();
-        allocateRequestHeaders();
-        this.remoteCtx.requestHeaders.put(RESPONSE_CALLBACK_STATUS_HEADER,
-                Integer.toString(status));
-        return this;
     }
 
     /**
