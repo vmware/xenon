@@ -44,7 +44,8 @@ public interface NodeSelectorService extends Service {
 
     public static final int FORWARDING_TAG_CONNECTION_LIMIT = Integer.getInteger(
             Utils.PROPERTY_NAME_PREFIX
-                    + "NodeSelectorService.FORWARDING_TAG_CONNECTION_LIMIT", 32);
+                    + "NodeSelectorService.FORWARDING_TAG_CONNECTION_LIMIT",
+            256);
 
     static OperationOption getOperationOption(String name, OperationOption defaultOpt) {
         String paramName = Utils.PROPERTY_NAME_PREFIX + name;
