@@ -291,8 +291,8 @@ public class NettyHttpServiceClient implements ServiceClient {
         if (httpsScheme && this.getSSLContext() == null) {
             op.setRetryCount(0);
             fail(new IllegalArgumentException(
-                    "HTTPS not enabled, set SSL context before starting client:"
-                            + op.getUri().getScheme()), op, op.getBodyRaw());
+                    "HTTPS not enabled, set SSL context before starting client:" + op.getUri()),
+                    op, op.getBodyRaw());
             return;
         }
 
@@ -342,6 +342,7 @@ public class NettyHttpServiceClient implements ServiceClient {
                 fail(e, op, op.getBodyRaw());
                 return;
             }
+            op.toggleOption(OperationOption.SOCKET_ACTIVE, true);
             doSendRequest(op);
         });
 
@@ -355,10 +356,9 @@ public class NettyHttpServiceClient implements ServiceClient {
         try {
             byte[] body = Utils.encodeBody(op);
             if (op.getContentLength() > getRequestPayloadSizeLimit()) {
-                stopTracking(op);
-                Exception e = new IllegalArgumentException(
-                        "Content-Length " + op.getContentLength() +
-                        " is greater than max size allowed " + getRequestPayloadSizeLimit());
+                String error = String.format("Content length %d, limit is %d",
+                        op.getContentLength(), getRequestPayloadSizeLimit());
+                Exception e = new IllegalArgumentException(error);
                 op.setBody(ServiceErrorResponse.create(e, Operation.STATUS_CODE_BAD_REQUEST));
                 fail(e, op, originalBody);
                 return;
@@ -430,18 +430,8 @@ public class NettyHttpServiceClient implements ServiceClient {
             }
 
             boolean isXenonToXenon = op.isFromReplication() || op.isForwarded();
-            boolean isRequestWithCallback = false;
             if (hasRequestHeaders) {
                 for (Entry<String, String> nameValue : op.getRequestHeaders().entrySet()) {
-                    String key = nameValue.getKey();
-                    if (!isXenonToXenon) {
-                        if (Operation.REQUEST_CALLBACK_LOCATION_HEADER.equals(key)) {
-                            isRequestWithCallback = true;
-                            isXenonToXenon = true;
-                        } else if (Operation.RESPONSE_CALLBACK_STATUS_HEADER.equals(key)) {
-                            isXenonToXenon = true;
-                        }
-                    }
                     request.headers().set(nameValue.getKey(), nameValue.getValue());
                 }
             }
@@ -473,16 +463,13 @@ public class NettyHttpServiceClient implements ServiceClient {
             }
 
             boolean doCookieJarUpdate = !isXenonToXenon;
-            boolean stopTracking = !isRequestWithCallback;
             op.nestCompletion((o, e) -> {
                 if (e != null) {
                     fail(e, op, originalBody);
                     return;
                 }
 
-                if (stopTracking) {
-                    stopTracking(op);
-                }
+                stopTracking(op);
 
                 if (doCookieJarUpdate) {
                     updateCookieJarFromResponseHeaders(o);
@@ -538,16 +525,21 @@ public class NettyHttpServiceClient implements ServiceClient {
                 pool = this.sslChannelPool;
             }
 
-            ExecutorService exec = this.host != null ? this.host.getExecutor() : this.executor;
-
+            Runnable r = null;
             if (nettyCtx.getProtocol() == NettyChannelContext.Protocol.HTTP2) {
                 // For HTTP/2, we multiple streams so we don't close the connection.
-                pool = this.http2ChannelPool;
-                exec.execute(() -> this.http2ChannelPool.returnOrClose(nettyCtx, false));
+                r = () -> this.http2ChannelPool.returnOrClose(nettyCtx, false);
             } else {
                 op.setSocketContext(null);
                 NettyChannelPool finalPool = pool;
-                exec.execute(() -> finalPool.returnOrClose(nettyCtx, !op.isKeepAlive()));
+                r = () -> finalPool.returnOrClose(nettyCtx, !op.isKeepAlive());
+            }
+
+            ExecutorService exec = this.host != null ? this.host.getExecutor() : this.executor;
+            if (exec != null) {
+                exec.execute(r);
+            } else {
+                r.run();
             }
         }
 
@@ -660,6 +652,7 @@ public class NettyHttpServiceClient implements ServiceClient {
             return;
         }
 
+
         // We do a limited search of pending operation, in each maintenance period, to
         // determine if any have expired. The operations are kept in a sorted map,
         // with the key being the operation id. The operation id increments monotonically
@@ -668,28 +661,42 @@ public class NettyHttpServiceClient implements ServiceClient {
         // have different expirations. We limit the search so we don't take too much time when
         // millions of operations are pending
         final int searchLimit = 1000;
+        final long epsilonMicros = TimeUnit.SECONDS.toMicros(1);
         int expiredCount = 0;
+        int forcedExpiredCount = 0;
         int i = 0;
         for (Operation o : this.pendingRequests.values()) {
             if (i++ >= searchLimit) {
                 break;
             }
             long exp = o.getExpirationMicrosUtc();
+
             if (exp > now) {
                 continue;
             }
 
-            if (!o.hasOption(OperationOption.SOCKET_ACTIVE)) {
+            // Bad HTTP/2 connections will not close until idle detection kicks in, which can
+            // be much longer than operation expiration. We force expiration even if the operation
+            // has not been written to the channel, if it has expired and some additional time has
+            // passed.
+            boolean forceExpiration = o.hasOption(OperationOption.CONNECTION_SHARING) &&
+                    now - exp > epsilonMicros;
+
+            if (!forceExpiration && !o.hasOption(OperationOption.SOCKET_ACTIVE)) {
                 continue;
             }
-
             o.fail(Operation.STATUS_CODE_TIMEOUT);
             expiredCount++;
+            if (forceExpiration) {
+                forcedExpiredCount++;
+            }
         }
+
         if (expiredCount == 0) {
             return;
         }
-        LOGGER.info("Failed expired operations, count: " + expiredCount);
+        LOGGER.info("Failed expired operations, count: " + expiredCount + " forced count: "
+                + forcedExpiredCount);
     }
 
     /**

@@ -315,12 +315,12 @@ public class NettyChannelPool {
                         } else {
                             context.setOpenInProgress(false);
                             context.setChannel(channel).setOperation(request);
-
                             request.toggleOption(OperationOption.SOCKET_ACTIVE, true);
                             sendAfterConnect(channel, context, request, null);
                         }
                     } else {
                         returnOrClose(context, true);
+                        request.setSocketContext(null);
                         fail(request, future.cause());
                     }
                 }
@@ -441,9 +441,6 @@ public class NettyChannelPool {
 
         closeBadChannelContext(badContext);
         context.updateLastUseTime();
-        if (request != null) {
-            request.setSocketContext(context);
-        }
         return context;
     }
 
@@ -477,7 +474,6 @@ public class NettyChannelPool {
                 context.setOpenInProgress(true);
             }
             group.inUseChannels.add(context);
-            request.setSocketContext(context);
         }
 
         closeBadChannelContext(badContext);
@@ -507,26 +503,24 @@ public class NettyChannelPool {
                     throws Exception {
 
                 if (future.isSuccess()) {
-
                     // retrieve pending operations
                     List<Operation> pendingOps = new ArrayList<>();
                     synchronized (group) {
                         contextFinal.setOpenInProgress(false);
                         contextFinal.setChannel(future.channel()).setOperation(request);
+                        request.toggleOption(OperationOption.SOCKET_ACTIVE, true);
                         pendingOps.addAll(group.pendingRequests);
                         group.pendingRequests.clear();
                     }
 
-                    request.toggleOption(OperationOption.SOCKET_ACTIVE, true);
                     sendAfterConnect(future.channel(), contextFinal, request, group);
 
                     // trigger pending operations
                     for (Operation pendingOp : pendingOps) {
                         pendingOp.setSocketContext(contextFinal);
-
+                        pendingOp.toggleOption(OperationOption.SOCKET_ACTIVE, true);
                         pendingOp.complete();
                     }
-
                 } else {
                     returnOrClose(contextFinal, true);
                     fail(request, future.cause());
@@ -598,9 +592,6 @@ public class NettyChannelPool {
         returnOrCloseDirect(context, group, isClose);
     }
 
-    /**
-     * The implementation for returnOrCloseDirect when using HTTP/1.1
-     */
     private void returnOrCloseDirect(NettyChannelContext context, NettyChannelGroup group,
             boolean isClose) {
         Operation pendingOp = null;

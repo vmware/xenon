@@ -606,7 +606,7 @@ public class NettyHttpServiceClientTest {
                 .setBody(largeState)
                 .setCompletion((o, e) -> {
                     if (e != null && e instanceof IllegalArgumentException &&
-                            e.getMessage().contains("is greater than max size allowed")) {
+                            e.getMessage().contains("limit")) {
                         this.host.completeIteration();
                         return;
                     }
