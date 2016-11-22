@@ -40,10 +40,12 @@ import org.junit.Before;
 import org.junit.Test;
 
 import com.vmware.xenon.common.BasicReusableHostTestCase;
+import com.vmware.xenon.common.NodeSelectorState;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Service.ServiceOption;
 import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.ServiceDocumentQueryResult;
+import com.vmware.xenon.common.ServiceHost.ServiceHostState;
 import com.vmware.xenon.common.ServiceStats;
 import com.vmware.xenon.common.StatelessService;
 import com.vmware.xenon.common.TaskState;
@@ -57,11 +59,20 @@ import com.vmware.xenon.common.test.VerificationHost.WaitHandler;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
 import com.vmware.xenon.services.common.MigrationTaskService.MigrationOption;
 import com.vmware.xenon.services.common.MigrationTaskService.State;
+import com.vmware.xenon.services.common.NodeState.NodeOption;
 import com.vmware.xenon.services.common.QueryTask.NumericRange;
 import com.vmware.xenon.services.common.QueryTask.Query;
 import com.vmware.xenon.services.common.QueryTask.QuerySpecification;
+import com.vmware.xenon.services.common.TestNodeGroupService.ExampleFactoryServiceWithCustomSelector;
 
 public class TestMigrationTaskService extends BasicReusableHostTestCase {
+    private static final String CUSTOM_NODE_GROUP_NAME = "custom";
+    private static final String CUSTOM_NODE_GROUP = UriUtils.buildUriPath(
+            ServiceUriPaths.NODE_GROUP_FACTORY,
+            CUSTOM_NODE_GROUP_NAME);
+    private static final String CUSTOM_GROUP_NODE_SELECTOR = UriUtils.buildUriPath(
+            ServiceUriPaths.NODE_SELECTOR_PREFIX,
+            CUSTOM_NODE_GROUP_NAME);
     private static final int UNACCESSABLE_PORT = 123;
     private static final URI FAKE_URI = UriUtils.buildUri("127.0.0.1", UNACCESSABLE_PORT, null, null);
     private static final String TRANSFORMATION = "transformation";
@@ -76,6 +87,8 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
     public long serviceCount = 10;
     public int nodeCount = 3;
     public int iterationCount = 1;
+    private URI exampleWithCustomSelectorDestinationFactory;
+    private URI destinationCustomNodeGroupOnObserver;
 
     @Before
     public void setUp() throws Throwable {
@@ -111,6 +124,8 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
                 host.waitForServiceAvailable(ExampleService.FACTORY_LINK);
                 host.waitForServiceAvailable(MigrationTaskService.FACTORY_LINK);
             }
+
+            setupCustomNodeGroup(destinationHost);
         }
         for (VerificationHost host : destinationHost.getInProcessHostMap().values()) {
             host.toggleServiceOptions(UriUtils.buildUri(host, ExampleService.FACTORY_LINK),
@@ -129,6 +144,52 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
         this.host.waitForReplicatedFactoryServiceAvailable(this.sourceFactoryUri);
         this.host.waitForReplicatedFactoryServiceAvailable(this.exampleSourceFactory);
         this.host.waitForReplicatedFactoryServiceAvailable(this.exampleDestinationFactory);
+    }
+
+    private void setupCustomNodeGroup(VerificationHost testHost) throws Throwable {
+        URI observerHostUri = testHost.getPeerHostUri();
+        ServiceHostState observerHostState = testHost.getServiceState(null,
+                ServiceHostState.class,
+                UriUtils.buildUri(observerHostUri, ServiceUriPaths.CORE_MANAGEMENT));
+        Map<URI, NodeState> selfStatePerNode = new HashMap<>();
+        NodeState observerSelfState = new NodeState();
+        observerSelfState.id = observerHostState.id;
+        observerSelfState.options = EnumSet.of(NodeOption.OBSERVER);
+
+        selfStatePerNode.put(observerHostUri, observerSelfState);
+        testHost.createCustomNodeGroupOnPeers(CUSTOM_NODE_GROUP_NAME, selfStatePerNode);
+
+        final String customFactoryLink = "custom-factory";
+        // start a node selector attached to the custom group
+        for (VerificationHost h : testHost.getInProcessHostMap().values()) {
+            NodeSelectorState initialState = new NodeSelectorState();
+            initialState.nodeGroupLink = CUSTOM_NODE_GROUP;
+            h.startServiceAndWait(new ConsistentHashingNodeSelectorService(),
+                    CUSTOM_GROUP_NODE_SELECTOR, initialState);
+            // start the factory that is attached to the custom group selector
+            h.startServiceAndWait(ExampleFactoryServiceWithCustomSelector.class, customFactoryLink);
+
+            if (this.exampleWithCustomSelectorDestinationFactory == null
+                    && !h.getUri().equals(observerHostUri)) {
+                // use the factory link on a non observer node
+                this.exampleWithCustomSelectorDestinationFactory = UriUtils.buildUri(h,
+                        customFactoryLink);
+            }
+        }
+
+        this.destinationCustomNodeGroupOnObserver = UriUtils
+                .buildUri(observerHostUri, CUSTOM_NODE_GROUP);
+        Map<URI, EnumSet<NodeOption>> expectedOptionsPerNode = new HashMap<>();
+        expectedOptionsPerNode.put(this.destinationCustomNodeGroupOnObserver,
+                observerSelfState.options);
+
+        testHost.joinNodesAndVerifyConvergence(CUSTOM_NODE_GROUP, this.nodeCount,
+                this.nodeCount, expectedOptionsPerNode);
+        // one of the nodes is observer, so we must set quorum to 2 explicitly
+        testHost.setNodeGroupQuorum(2, this.destinationCustomNodeGroupOnObserver);
+        testHost.waitForNodeSelectorQuorumConvergence(CUSTOM_GROUP_NODE_SELECTOR, 2);
+        testHost.waitForNodeGroupIsAvailableConvergence(CUSTOM_NODE_GROUP);
+
     }
 
     private VerificationHost getDestinationHost() {
@@ -166,11 +227,11 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
         destinationHost.stop();
     }
 
-    State validMigrationState() throws Throwable {
+    private State validMigrationState() throws Throwable {
         return validMigrationState("");
     }
 
-    State validMigrationState(String factory) throws Throwable {
+    private State validMigrationState(String factory) throws Throwable {
         State state = new State();
         state.destinationFactoryLink = factory;
         state.destinationNodeGroupReference
@@ -178,6 +239,20 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
         state.sourceFactoryLink = factory;
         state.sourceNodeGroupReference
             = UriUtils.buildUri(getSourceHost().getPublicUri(), ServiceUriPaths.DEFAULT_NODE_GROUP);
+        state.maintenanceIntervalMicros = TimeUnit.MILLISECONDS.toMicros(100);
+        return state;
+    }
+
+
+    private State validMigrationStateForCustomNodeGroup(String factory) throws Throwable {
+        State state = new State();
+        state.destinationFactoryLink = this.exampleWithCustomSelectorDestinationFactory.getPath();
+        // intentionally use an observer node for the target. The migration service should retrieve
+        // all nodes, filter out the OBSERVER ones, and then send POSTs only on available PEER nodes
+        state.destinationNodeGroupReference = this.destinationCustomNodeGroupOnObserver;
+        state.sourceFactoryLink = factory;
+        state.sourceNodeGroupReference = UriUtils.buildUri(getSourceHost().getPublicUri(),
+                ServiceUriPaths.DEFAULT_NODE_GROUP);
         state.maintenanceIntervalMicros = TimeUnit.MILLISECONDS.toMicros(100);
         return state;
     }
@@ -267,6 +342,93 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
                 .collect(Collectors.toList());
         getDestinationHost().getServiceState(EnumSet.noneOf(TestProperty.class),
                 ExampleServiceState.class, uris);
+    }
+
+    @Test
+    public void successMigrateDocumentsCustomNodeGroupWithObserver() throws Throwable {
+        // create object in host
+        Collection<String> links = createExampleDocuments(this.exampleSourceFactory,
+                getSourceHost(),
+                this.serviceCount);
+
+        Collection<URI> uris = links.stream().map(link -> UriUtils.buildUri(getSourceHost(), link))
+                .collect(Collectors.toList());
+
+        List<SimpleEntry<String, Long>> timePerNode = getSourceHost()
+                .getServiceState(EnumSet.noneOf(TestProperty.class), ExampleServiceState.class,
+                        uris)
+                .values()
+                .stream()
+                .map(d -> new AbstractMap.SimpleEntry<>(d.documentOwner,
+                        d.documentUpdateTimeMicros))
+                .collect(Collectors.toList());
+        Map<String, Long> times = new HashMap<>();
+        for (SimpleEntry<String, Long> entry : timePerNode) {
+            times.put(entry.getKey(),
+                    Math.max(times.getOrDefault(entry.getKey(), 0L), entry.getValue()));
+        }
+        long time = times.values().stream().mapToLong(i -> i).min().orElse(0);
+
+        // start migration. using custom node group destination, using default node group
+        // and default example service as the source
+        MigrationTaskService.State migrationState = validMigrationStateForCustomNodeGroup(
+                ExampleService.FACTORY_LINK);
+
+        TestContext ctx = testCreate(1);
+        String[] out = new String[1];
+        Operation op = Operation.createPost(this.destinationFactoryUri)
+                .setBody(migrationState)
+                .setCompletion((o, e) -> {
+                    if (e != null) {
+                        this.host.log("Post service error: %s", Utils.toString(e));
+                        ctx.failIteration(e);
+                        return;
+                    }
+                    out[0] = o.getBody(State.class).documentSelfLink;
+                    ctx.completeIteration();
+                });
+        getDestinationHost().send(op);
+        testWait(ctx);
+
+        State finalServiceState = waitForServiceCompletion(out[0], getDestinationHost());
+        ServiceStats stats = getStats(out[0], getDestinationHost());
+
+        assertEquals(TaskStage.FINISHED, finalServiceState.taskInfo.stage);
+        Long processedDocuments = Long.valueOf((long) stats.entries
+                .get(MigrationTaskService.STAT_NAME_PROCESSED_DOCUMENTS).latestValue);
+        Long estimatedTotalServiceCount = Long.valueOf((long) stats.entries
+                .get(MigrationTaskService.STAT_NAME_ESTIMATED_TOTAL_SERVICE_COUNT).latestValue);
+        assertEquals(Long.valueOf(this.serviceCount), processedDocuments);
+        assertEquals(Long.valueOf(this.serviceCount), estimatedTotalServiceCount);
+        assertEquals(Long.valueOf(time), finalServiceState.latestSourceUpdateTimeMicros);
+
+        // check if object is in new host
+        uris = links.stream().map(link -> {
+            link = link.replace(ExampleService.FACTORY_LINK,
+                    this.exampleWithCustomSelectorDestinationFactory.getPath());
+            URI exampleUriAtDestination = UriUtils.buildUri(getDestinationHost(), link);
+            return exampleUriAtDestination;
+        }).collect(Collectors.toList());
+
+        getDestinationHost().getServiceState(EnumSet.noneOf(TestProperty.class),
+                ExampleServiceState.class, uris);
+
+        // verify custom factory, on *observer* node, in custom group, has no children
+        URI customExampleFactoryOnObserver = UriUtils.buildUri(
+                this.destinationCustomNodeGroupOnObserver,
+                this.exampleWithCustomSelectorDestinationFactory.getPath());
+
+        ServiceDocumentQueryResult res = getDestinationHost()
+                .getFactoryState(customExampleFactoryOnObserver);
+        assertEquals(0L, (long) res.documentCount);
+        assertTrue(res.documentLinks.isEmpty());
+
+        // verify custom factory on PEER node, in custom group, has all the children
+        URI customExampleFactoryOnPeer = this.exampleWithCustomSelectorDestinationFactory;
+
+        res = getDestinationHost().getFactoryState(customExampleFactoryOnPeer);
+        assertEquals(uris.size(), (long) res.documentCount);
+        assertEquals(uris.size(), res.documentLinks.size());
     }
 
     @Test
