@@ -436,26 +436,38 @@ public class MigrationTaskService extends StatefulService {
         Operation destinationGet = Operation.createGet(currentState.destinationNodeGroupReference);
 
         OperationJoin.create(sourceGet, destinationGet)
-            .setCompletion((os, ts) -> {
-                if (ts != null && !ts.isEmpty()) {
-                    failTask(ts.values());
-                    return;
-                }
+                .setCompletion((os, ts) -> {
+                    if (ts != null && !ts.isEmpty()) {
+                        failTask(ts.values());
+                        return;
+                    }
 
-                NodeGroupState sourceGroup = os.get(sourceGet.getId()).getBody(NodeGroupState.class);
-                List<URI> sourceURIs = sourceGroup.nodes.entrySet().stream()
-                        .map(e -> extractBaseUri(e.getValue())).collect(Collectors.toList());
+                    NodeGroupState sourceGroup = os.get(sourceGet.getId())
+                            .getBody(NodeGroupState.class);
+                    List<URI> sourceURIs = filterAvailabeNodeUris(sourceGroup);
 
-                NodeGroupState destinationGroup = os.get(destinationGet.getId()).getBody(NodeGroupState.class);
-                List<URI> destinationURIs = destinationGroup.nodes.entrySet().stream()
-                        .map(e -> extractBaseUri(e.getValue())).collect(Collectors.toList());
+                    NodeGroupState destinationGroup = os.get(destinationGet.getId())
+                            .getBody(NodeGroupState.class);
+                    List<URI> destinationURIs = filterAvailabeNodeUris(destinationGroup);
 
-                waitUntilNodeGroupsAreStable(
-                        currentState,
-                        currentState.maximumConvergenceChecks,
-                        () -> computeFirstCurrentPageLinks(currentState, sourceURIs, destinationURIs));
-            })
-            .sendWith(this);
+                    waitUntilNodeGroupsAreStable(
+                            currentState,
+                            currentState.maximumConvergenceChecks,
+                            () -> computeFirstCurrentPageLinks(currentState, sourceURIs,
+                                    destinationURIs));
+                }).sendWith(this);
+    }
+
+    private List<URI> filterAvailabeNodeUris(NodeGroupState destinationGroup) {
+        return destinationGroup.nodes.values().stream()
+                .map(e -> {
+                    if (NodeState.isUnAvailable(e)) {
+                        return null;
+                    }
+                    return extractBaseUri(e);
+                })
+                .filter(uri -> uri != null)
+                .collect(Collectors.toList());
     }
 
     private void waitUntilNodeGroupsAreStable(State currentState, int allowedConvergenceChecks, Runnable onSuccess) {
