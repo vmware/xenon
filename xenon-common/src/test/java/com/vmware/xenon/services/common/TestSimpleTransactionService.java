@@ -500,14 +500,13 @@ public class TestSimpleTransactionService extends BasicReusableHostTestCase {
                 StrictUpdateCheckFactoryService.SELF_LINK);
 
         // create a document in the transaction
-        String txid = newTransaction();
         StrictUpdateCheckService.StrictUpdateCheckServiceState initialState = new StrictUpdateCheckService.StrictUpdateCheckServiceState();
         String id = UUID.randomUUID().toString();
         initialState.documentSelfLink = id;
         this.defaultHost.testStart(1);
         Operation post = Operation.createPost(
                 UriUtils.buildUri(this.defaultHost, StrictUpdateCheckFactoryService.SELF_LINK))
-                .setBody(initialState).setTransactionId(txid)
+                .setBody(initialState)
                 .setCompletion((o, e) -> {
                     if (e != null) {
                         this.defaultHost.failIteration(e);
@@ -524,7 +523,7 @@ public class TestSimpleTransactionService extends BasicReusableHostTestCase {
                 StrictUpdateCheckFactoryService.SELF_LINK + "/" + id);
         StrictUpdateCheckService.StrictUpdateCheckServiceState[] state = new StrictUpdateCheckService.StrictUpdateCheckServiceState[1];
         this.defaultHost.testStart(1);
-        Operation get = Operation.createGet(childUri).setTransactionId(txid)
+        Operation get = Operation.createGet(childUri)
                 .setCompletion((o, e) -> {
                     if (e != null) {
                         this.defaultHost.failIteration(e);
@@ -538,6 +537,7 @@ public class TestSimpleTransactionService extends BasicReusableHostTestCase {
         this.defaultHost.send(get);
         this.defaultHost.testWait();
 
+        String txid = newTransaction();
         this.defaultHost.testStart(1);
         Operation patch = Operation.createPatch(childUri).setTransactionId(txid).setBody(state[0])
                 .setCompletion((o, e) -> {
