@@ -51,7 +51,6 @@ import com.vmware.xenon.common.test.AuthorizationHelper;
 import com.vmware.xenon.common.test.QueryTestUtils;
 import com.vmware.xenon.common.test.TestContext;
 import com.vmware.xenon.common.test.VerificationHost;
-import com.vmware.xenon.services.common.AuthorizationCacheUtils;
 import com.vmware.xenon.services.common.AuthorizationContextService;
 import com.vmware.xenon.services.common.ExampleService;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
