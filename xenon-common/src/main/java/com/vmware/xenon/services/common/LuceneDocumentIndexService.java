@@ -46,6 +46,7 @@ import com.esotericsoftware.kryo.KryoException;
 import com.esotericsoftware.kryo.io.Output;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.core.SimpleAnalyzer;
 import org.apache.lucene.document.Document;
@@ -290,6 +291,8 @@ public class LuceneDocumentIndexService extends StatelessService {
     protected IndexWriter writer = null;
 
     protected Map<String, QueryTask> activeQueries = new ConcurrentHashMap<>();
+
+    protected Map<String, String> subjectMapForContinuousQueries = new ConcurrentHashMap<>();
 
     private long writerUpdateTimeMicros;
 
@@ -778,6 +781,9 @@ public class LuceneDocumentIndexService extends StatelessService {
             clonedTask.querySpec = task.querySpec;
             clonedTask.querySpec.context.filter = QueryFilter.create(qs.query);
             this.activeQueries.put(task.documentSelfLink, clonedTask);
+            if (getSubject(op) != null) {
+                this.subjectMapForContinuousQueries.put(task.documentSelfLink, getSubject(op));
+            }
             adjustTimeSeriesStat(STAT_NAME_ACTIVE_QUERY_FILTERS, AGGREGATION_TYPE_SUM,
                     1);
             logInfo("Activated continuous query task: %s", task.documentSelfLink);
@@ -2759,8 +2765,18 @@ public class LuceneDocumentIndexService extends StatelessService {
 
             // Send PATCH to continuous query task with document that passed the query filter.
             // Any subscribers will get notified with the body containing just this document
-            sendRequest(Operation.createPatch(this, activeTask.documentSelfLink).setBodyNoCloning(
-                    patchBody));
+            Operation patchOperation = Operation.createPatch(this, activeTask.documentSelfLink)
+                    .setBodyNoCloning(
+                            patchBody);
+            // Set the authorization context to the user who created the continous query.
+
+            String subjectForQueryTask = this.subjectMapForContinuousQueries
+                    .get(activeTask.documentSelfLink);
+            if (subjectForQueryTask != null) {
+                setAuthorizationContext(patchOperation,
+                        getAuthorizationContextForSubject(subjectForQueryTask));
+            }
+            sendRequest(patchOperation);
         }
     }
 

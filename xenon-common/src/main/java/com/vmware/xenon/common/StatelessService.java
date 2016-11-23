@@ -697,6 +697,18 @@ public class StatelessService implements Service {
     }
 
     /**
+     * Returns the authorization context associated with a given subject.
+     */
+    public final AuthorizationContext getAuthorizationContextForSubject(String subject) {
+        if (getHost().isPrivilegedService(this)) {
+            return getHost().getAuthorizationContextForSubject(subject);
+        } else {
+            throw new RuntimeException(
+                    "Service not allowed to get authorization context for a subject");
+        }
+    }
+
+    /**
      * @see #handleUiGet(String, Service, Operation)
      * @param get
      */

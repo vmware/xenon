@@ -240,9 +240,11 @@ public class TestAuthorization extends BasicTestCase {
         Consumer<Operation> notify = (o) -> {
             o.complete();
             String subject = o.getAuthorizationContext().getClaims().getSubject();
-            if (!this.userServicePath.equals(subject)) {
+            String systemUserSubject = this.host.getSystemAuthorizationContext().getClaims()
+                    .getSubject();
+            if (!systemUserSubject.equals(subject)) {
                 notifyCtx.fail(new IllegalStateException(
-                        "Invalid aith subject in notification: " + subject));
+                        "Invalid auth subject in notification: " + subject));
                 return;
             }
             this.host.log("Received authorized notification for index patch: %s", o.toString());
@@ -254,12 +256,18 @@ public class TestAuthorization extends BasicTestCase {
                 .build();
         QueryTask cqt = QueryTask.Builder.create().setQuery(q).build();
 
+        // Create and subscribe to the continous query as a system user.
+        // The patch sent back to the subscriber would have the auth context
+        // of the system user.
+        this.host.setSystemAuthorizationContext();
         // do a continuous query, verify we receive some notifications
         URI notifyURI = QueryTestUtils.startAndSubscribeToContinuousQuery(
                 this.host.getTestRequestSender(), this.host, cqt,
                 notify);
+        this.host.resetSystemAuthorizationContext();
 
         // issue updates, create some services
+        this.host.assumeIdentity(this.userServicePath);
         createExampleServices("jane");
         this.host.log("Waiting on continiuous query task notifications (%d)", requestCount);
         notifyCtx.await();

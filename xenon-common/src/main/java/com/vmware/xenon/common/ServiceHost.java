@@ -555,6 +555,8 @@ public class ServiceHost implements ServiceRequestSender {
     private AuthorizationContext systemAuthorizationContext;
     private AuthorizationContext guestAuthorizationContext;
 
+    private Map<String, AuthorizationContext> subjectAuthorizationContextMap = new ConcurrentHashMap<>();
+
     protected ServiceHost() {
         this.state = new ServiceHostState();
         this.state.id = UUID.randomUUID().toString();
@@ -5540,6 +5542,21 @@ public class ServiceHost implements ServiceRequestSender {
             // No locking needed; duplicate work is benign
             ctx = createAuthorizationContext(SystemUserService.SELF_LINK);
             this.systemAuthorizationContext = ctx;
+        }
+
+        return ctx;
+    }
+
+    /**
+     * Creates and returns an authorization context for a given user.
+     *
+     * @return authorization context.
+     */
+    protected AuthorizationContext getAuthorizationContextForSubject(String subject) {
+        AuthorizationContext ctx = this.subjectAuthorizationContextMap.get(subject);
+        if (ctx == null) {
+            ctx = createAuthorizationContext(subject);
+            this.subjectAuthorizationContextMap.put(subject, ctx);
         }
 
         return ctx;
