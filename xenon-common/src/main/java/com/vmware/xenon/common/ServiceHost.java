@@ -93,6 +93,8 @@ import com.vmware.xenon.common.jwt.Signer;
 import com.vmware.xenon.common.jwt.Verifier;
 import com.vmware.xenon.services.common.AuthCredentialsService;
 import com.vmware.xenon.services.common.AuthorizationContextService;
+import com.vmware.xenon.services.common.AuthorizationTokenCacheService;
+import com.vmware.xenon.services.common.AuthorizationTokenCacheService.AuthorizationTokenCacheServiceState;
 import com.vmware.xenon.services.common.ConsistentHashingNodeSelectorService;
 import com.vmware.xenon.services.common.FileContentService;
 import com.vmware.xenon.services.common.GraphQueryTaskService;
@@ -1407,6 +1409,14 @@ public class ServiceHost implements ServiceRequestSender {
             }
         }
 
+        if (this.authorizationService != null) {
+            // start the factory and one well known service instance as a child
+            addPrivilegedService(AuthorizationTokenCacheService.class);
+            startFactoryServicesSynchronously(AuthorizationTokenCacheService.createFactory());
+            AuthorizationTokenCacheServiceState serviceState = new AuthorizationTokenCacheServiceState();
+            serviceState.documentSelfLink = UriUtils.getLastPathSegment(AuthorizationTokenCacheService.INSTANCE_LINK);
+            startFactoryChildServiceSynchronously(AuthorizationTokenCacheService.FACTORY_LINK, serviceState);
+        }
 
         List<Service> coreServices = new ArrayList<>();
         coreServices.add(this.managementService);
@@ -1888,6 +1898,29 @@ public class ServiceHost implements ServiceRequestSender {
 
         OperationContext.setAuthorizationContext(originalContext);
 
+        if (failure[0] != null) {
+            throw failure[0];
+        }
+    }
+
+    protected void startFactoryChildServiceSynchronously(String factoryLink, ServiceDocument serviceState) throws Throwable {
+        CountDownLatch latch = new CountDownLatch(1);
+        Throwable[] failure = new Throwable[1];
+        sendRequest(Operation.createPost(UriUtils.buildUri(this, factoryLink))
+                                 .setBody(serviceState)
+                                 .setReferer(getUri())
+                                 .setCompletion((postOp, postEx) -> {
+                                     try {
+                                         if (postEx != null) {
+                                             failure[0] = postEx;
+                                             log(Level.SEVERE, "Exception creating service %s", Utils.toString(postEx));
+                                             return;
+                                         }
+                                     } finally {
+                                         latch.countDown();
+                                     }
+                                 }));
+        latch.await();
         if (failure[0] != null) {
             throw failure[0];
         }
