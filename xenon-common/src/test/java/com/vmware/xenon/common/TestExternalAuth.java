@@ -13,20 +13,27 @@
 
 package com.vmware.xenon.common;
 
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
 import java.net.URI;
+import java.util.UUID;
 
 import org.junit.Test;
 
+import com.vmware.xenon.common.Operation.AuthorizationContext;
 import com.vmware.xenon.common.test.AuthorizationHelper;
+import com.vmware.xenon.common.test.TestContext;
 import com.vmware.xenon.common.test.TestRequestSender;
 import com.vmware.xenon.common.test.VerificationHost;
 import com.vmware.xenon.services.common.AuthCredentialsService;
 import com.vmware.xenon.services.common.AuthCredentialsService.AuthCredentialsServiceState;
 import com.vmware.xenon.services.common.AuthorizationContextService;
+import com.vmware.xenon.services.common.AuthorizationTokenCacheService;
+import com.vmware.xenon.services.common.AuthorizationTokenCacheService.AuthorizationTokenCacheServiceState;
 import com.vmware.xenon.services.common.ExampleService;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
+import com.vmware.xenon.services.common.MinimalTestService;
 import com.vmware.xenon.services.common.UserService;
 import com.vmware.xenon.services.common.authn.BasicAuthenticationService;
 import com.vmware.xenon.services.common.authn.BasicAuthenticationUtils;
@@ -47,11 +54,13 @@ public class TestExternalAuth extends BasicTestCase {
         try {
             // create a xenon service host housing just the user authz rules
             this.externalAuthHost = createHost();
-            this.externalAuthHost.setAuthorizationService(new AuthorizationContextService());
-            this.externalAuthHost.setAuthorizationEnabled(true);
             ServiceHost.Arguments args = VerificationHost.buildDefaultServiceHostArguments(0);
             VerificationHost.initialize(this.externalAuthHost, args);
+            this.externalAuthHost.setAuthorizationService(new AuthorizationContextService());
+            this.externalAuthHost.setAuthorizationEnabled(true);
             this.externalAuthHost.start();
+            this.externalAuthHost.waitForReplicatedFactoryServiceAvailable(UriUtils.buildUri(this.externalAuthHost,
+                    AuthorizationTokenCacheService.FACTORY_LINK));
             this.externalAuthHost.setSystemAuthorizationContext();
             // create two users
             this.userServiceJane = createUsers(this.externalAuthHost, USER_JANE, USER_JANE_EMAIL);
@@ -90,7 +99,7 @@ public class TestExternalAuth extends BasicTestCase {
     public void testAuthentication() throws Throwable {
         String headerVal = BasicAuthenticationUtils.constructBasicAuth(USER_JANE_EMAIL, USER_JANE_EMAIL);
         URI authServiceUri = UriUtils.buildUri(this.host, BasicAuthenticationService.SELF_LINK);
-        TestRequestSender sender = new TestRequestSender(host);
+        TestRequestSender sender = new TestRequestSender(this.host);
         Operation returnOp = sender.sendAndWait((Operation
                 .createPost(authServiceUri)
                 .setBody(new Object())
@@ -100,6 +109,8 @@ public class TestExternalAuth extends BasicTestCase {
 
     @Test
     public void testDocumentAccess() throws Throwable {
+        this.host.waitForReplicatedFactoryServiceAvailable(UriUtils.buildUri(this.host,
+                AuthorizationTokenCacheService.FACTORY_LINK));
         URI factoryUri = UriUtils.buildFactoryUri(this.host, ExampleService.class);
         this.host.assumeIdentity(this.userServiceJane);
         this.host.doFactoryChildServiceStart(null,
@@ -122,6 +133,32 @@ public class TestExternalAuth extends BasicTestCase {
         this.host.setSystemAuthorizationContext();
         res = this.host.getFactoryState(factoryUri);
         assertTrue(res.documentCount == 2);
+
+        MinimalTestService s = new MinimalTestService();
+        this.host.addPrivilegedService(MinimalTestService.class);
+        this.host.startServiceAndWait(s, UUID.randomUUID().toString(), null);
+        // check to make sure the auth context is not null on the the test host
+        AuthorizationContext authContext = this.host.assumeIdentity(this.userServiceJane);
+        assertNotNull(this.host.getAuthorizationContext(s, authContext.getToken()));
+        this.host.setSystemAuthorizationContext();
+        TestContext notifyWaitContext = testCreate(1);
+        TestRequestSender sender = new TestRequestSender(this.host);
+        // subscribe to any updates from the auth token service
+        this.host.startSubscriptionService(Operation.createPost(this.externalAuthHost,
+                AuthorizationTokenCacheService.INSTANCE_LINK)
+                    .setReferer(this.host.getUri()), (op) -> {
+                    // act as a relay and patch the local AuthTokenCacheInstance
+                    sender.sendAndWait(Operation.createPatch(this.host,
+                            AuthorizationTokenCacheService.INSTANCE_LINK)
+                            .setBody(op.getBody(AuthorizationTokenCacheServiceState.class)));
+                    // check to see if the local authz cache does not have a token for the user
+                    if (this.host.getAuthorizationContext(s, authContext.getToken()) != null) {
+                        notifyWaitContext.failIteration(new IllegalStateException("Auth context was not null"));
+                    }
+                    notifyWaitContext.completeIteration();
+                });
+        sender.sendAndWait(Operation.createDelete(this.externalAuthHost, this.userServiceJane));
+        testWait(notifyWaitContext);
         this.host.resetAuthorizationContext();
     }
 }
