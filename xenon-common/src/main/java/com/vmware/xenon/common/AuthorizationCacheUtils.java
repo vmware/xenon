@@ -11,7 +11,7 @@
  * specific language governing permissions and limitations under the License.
  */
 
-package com.vmware.xenon.services.common;
+package com.vmware.xenon.common;
 
 import java.util.EnumSet;
 import java.util.Objects;
@@ -21,18 +21,16 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import java.util.logging.Level;
 
-import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Operation.CompletionHandler;
-import com.vmware.xenon.common.Service;
 import com.vmware.xenon.common.Service.Action;
-import com.vmware.xenon.common.ServiceDocument;
-import com.vmware.xenon.common.ServiceDocumentQueryResult;
-import com.vmware.xenon.common.UriUtils;
-import com.vmware.xenon.common.Utils;
+import com.vmware.xenon.services.common.AuthorizationTokenCacheService;
+import com.vmware.xenon.services.common.AuthorizationTokenCacheService.AuthorizationTokenCacheServiceState;
+import com.vmware.xenon.services.common.QueryTask;
 import com.vmware.xenon.services.common.QueryTask.Query;
 import com.vmware.xenon.services.common.QueryTask.Query.Builder;
 import com.vmware.xenon.services.common.QueryTask.QuerySpecification;
 import com.vmware.xenon.services.common.RoleService.RoleState;
+import com.vmware.xenon.services.common.ServiceUriPaths;
 import com.vmware.xenon.services.common.UserGroupService.UserGroupState;
 
 public final class AuthorizationCacheUtils {
@@ -60,9 +58,14 @@ public final class AuthorizationCacheUtils {
                 op.complete();
                 return;
             }
-            AuthorizationCacheClearRequest request = AuthorizationCacheClearRequest.create(userPath);
-            Operation postClearCacheRequest = Operation.createPost(s.getHost(), ServiceUriPaths.CORE_AUTHZ_VERIFICATION)
-                    .setBody(request)
+            if (!AuthorizationCacheUtils.isAuthzCacheClearApplicableOperation(s, op)) {
+                return;
+            }
+            AuthorizationTokenCacheServiceState cacheClearState = new AuthorizationTokenCacheServiceState();
+            cacheClearState.serviceLink = userPath;
+            Operation postClearCacheRequest = Operation.createPatch(s.getHost(),
+                                AuthorizationTokenCacheService.INSTANCE_LINK)
+                    .setBody(cacheClearState)
                     .setCompletion((clearOp, clearEx) -> {
                         if (clearEx != null) {
                             s.getHost().log(Level.SEVERE, Utils.toString(clearEx));
@@ -71,7 +74,6 @@ public final class AuthorizationCacheUtils {
                         }
                         op.complete();
                     });
-            postClearCacheRequest.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_CLEAR_AUTH_CACHE);
             s.setAuthorizationContext(postClearCacheRequest, s.getSystemAuthorizationContext());
             s.sendRequest(postClearCacheRequest);
         });
@@ -286,8 +288,11 @@ public final class AuthorizationCacheUtils {
         return state;
     }
 
-    public static boolean isAuthzCacheClearApplicableOperation(Operation op) {
+    public static boolean isAuthzCacheClearApplicableOperation(Service s, Operation op) {
 
+        if (!s.getHost().isDocumentOwner(s)) {
+            return false;
+        }
         // do not clear cache for GET request
         if (op.getAction() == Action.GET) {
             return false;

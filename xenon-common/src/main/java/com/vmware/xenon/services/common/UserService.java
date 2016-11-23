@@ -16,6 +16,7 @@ package com.vmware.xenon.services.common;
 import java.util.Set;
 import java.util.concurrent.CancellationException;
 
+import com.vmware.xenon.common.AuthorizationCacheUtils;
 import com.vmware.xenon.common.FactoryService;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Service;
@@ -58,7 +59,7 @@ public class UserService extends StatefulService {
 
     @Override
     public void processCompletionStageUpdateAuthzArtifacts(Operation op) {
-        if (AuthorizationCacheUtils.isAuthzCacheClearApplicableOperation(op)) {
+        if (AuthorizationCacheUtils.isAuthzCacheClearApplicableOperation(this, op)) {
             AuthorizationCacheUtils.clearAuthzCacheForUser(this, op);
         }
         op.complete();
