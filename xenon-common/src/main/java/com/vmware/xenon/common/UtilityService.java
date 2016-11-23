@@ -159,6 +159,7 @@ public class UtilityService implements Service {
         case POST:
             // synchronize to avoid concurrent modification during serialization for GET
             synchronized (this.subscriptions) {
+                System.out.println("Adding subscription for: " + body.reference);
                 this.subscriptions.subscribers.put(body.reference, body);
             }
             if (!body.replayState) {
@@ -219,12 +220,14 @@ public class UtilityService implements Service {
     }
 
     public void notifySubscribers(Operation op) {
+        System.out.println("NOTIFYING subscribers for: " + this.parent.getSelfLink());
         try {
             if (op.getAction() == Action.GET) {
                 return;
             }
 
             if (!this.hasSubscribers()) {
+                System.out.println("NO subscribers for: " + this.parent.getSelfLink());
                 return;
             }
 
@@ -275,7 +278,8 @@ public class UtilityService implements Service {
                 }
             }
         };
-
+        System.out.println("Sending notification request to: " + s.reference);
+        System.out.println("parent is: " + this.parent.getSelfLink());
         this.parent.sendRequest(clone.setUri(s.reference).setCompletion(c));
     }
 
@@ -326,6 +330,7 @@ public class UtilityService implements Service {
 
         if (subscribersToDelete != null) {
             for (URI subscriber : subscribersToDelete) {
+                System.out.println("Deleting subscription from:" + subscriber);
                 this.parent.sendRequest(Operation.createDelete(subscriber));
             }
         }
