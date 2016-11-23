@@ -25,6 +25,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.logging.Logger;
+
 import javax.net.ssl.SSLContext;
 
 import io.netty.buffer.ByteBuf;
@@ -442,15 +443,14 @@ public class NettyHttpServiceClient implements ServiceClient {
             if (op.isKeepAlive()) {
                 request.headers().set(HttpHeaderNames.CONNECTION, HttpHeaderValues.KEEP_ALIVE);
             }
+            if (op.hasReferer()) {
+                request.headers().set(HttpHeaderNames.REFERER, op.getRefererAsString());
+            }
 
             if (!isXenonToXenon) {
                 if (op.getCookies() != null) {
                     String header = CookieJar.encodeCookies(op.getCookies());
                     request.headers().set(HttpHeaderNames.COOKIE, header);
-                }
-
-                if (op.hasReferer()) {
-                    request.headers().set(HttpHeaderNames.REFERER, op.getRefererAsString());
                 }
 
                 request.headers().set(HttpHeaderNames.USER_AGENT, this.userAgent);
@@ -651,7 +651,6 @@ public class NettyHttpServiceClient implements ServiceClient {
         if (this.pendingRequests.isEmpty()) {
             return;
         }
-
 
         // We do a limited search of pending operation, in each maintenance period, to
         // determine if any have expired. The operations are kept in a sorted map,
