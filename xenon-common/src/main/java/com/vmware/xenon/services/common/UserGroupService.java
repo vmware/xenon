@@ -15,6 +15,7 @@ package com.vmware.xenon.services.common;
 
 import java.util.concurrent.CancellationException;
 
+import com.vmware.xenon.common.AuthorizationCacheUtils;
 import com.vmware.xenon.common.FactoryService;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Service;
@@ -47,7 +48,7 @@ public class UserGroupService extends StatefulService {
     }
 
     private static void checkAndNestCompletionForAuthzCacheClear(Service s, Operation op) {
-        if (AuthorizationCacheUtils.isAuthzCacheClearApplicableOperation(op)) {
+        if (AuthorizationCacheUtils.isAuthzCacheClearApplicableOperation(s, op)) {
             UserGroupState state = AuthorizationCacheUtils.extractBody(op, s, UserGroupState.class);
             if (state != null) {
                 AuthorizationCacheUtils.clearAuthzCacheForUserGroup(s, op, state);
