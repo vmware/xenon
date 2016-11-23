@@ -16,6 +16,7 @@ package com.vmware.xenon.services.common;
 import java.util.Set;
 import java.util.concurrent.CancellationException;
 
+import com.vmware.xenon.common.AuthorizationCacheUtils;
 import com.vmware.xenon.common.FactoryService;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Service;
@@ -47,7 +48,7 @@ public class RoleService extends StatefulService {
     }
 
     private static void checkAndNestCompletionForAuthzCacheClear(Service s, Operation op) {
-        if (AuthorizationCacheUtils.isAuthzCacheClearApplicableOperation(op)) {
+        if (AuthorizationCacheUtils.isAuthzCacheClearApplicableOperation(s, op)) {
             RoleState state = AuthorizationCacheUtils.extractBody(op, s, RoleState.class);
             if (state != null) {
                 AuthorizationCacheUtils.clearAuthzCacheForRole(s, op, state);

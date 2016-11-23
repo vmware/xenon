@@ -92,6 +92,8 @@ public final class ServiceUriPaths {
             ServiceUriPaths.CORE_AUTHZ, "users");
     public static final String CORE_AUTHZ_VERIFICATION = UriUtils.buildUriPath(
             ServiceUriPaths.CORE_AUTHZ, "verification");
+    public static final String CORE_AUTHZ_CLEAR = UriUtils.buildUriPath(
+            ServiceUriPaths.CORE_AUTHZ, "clear");
     public static final String CORE_AUTHZ_SYSTEM_USER = UriUtils.buildUriPath(
             ServiceUriPaths.CORE_AUTHZ, "system-user");
     public static final String CORE_AUTHZ_GUEST_USER = UriUtils.buildUriPath(

@@ -93,6 +93,7 @@ import com.vmware.xenon.common.jwt.Signer;
 import com.vmware.xenon.common.jwt.Verifier;
 import com.vmware.xenon.services.common.AuthCredentialsService;
 import com.vmware.xenon.services.common.AuthorizationContextService;
+import com.vmware.xenon.services.common.AuthzCacheClearService;
 import com.vmware.xenon.services.common.ConsistentHashingNodeSelectorService;
 import com.vmware.xenon.services.common.FileContentService;
 import com.vmware.xenon.services.common.GraphQueryTaskService;
@@ -1405,6 +1406,15 @@ public class ServiceHost implements ServiceRequestSender {
             }
         }
 
+        if (this.authorizationService != null) {
+            addPrivilegedService(AuthzCacheClearService.class);
+            AuthzCacheClearService.AuthzCacheClearServiceState clearState = new AuthzCacheClearService.AuthzCacheClearServiceState();
+            clearState.documentSelfLink = AuthzCacheClearService.SELF_LINK;
+            Operation authPost = Operation.createPost(UriUtils.buildUri(this, AuthzCacheClearService.SELF_LINK))
+                                     .setBody(clearState);
+            startCoreServicesSynchronously(Collections.singletonList(authPost),
+                    Collections.singletonList(new AuthzCacheClearService()));
+        }
 
         List<Service> coreServices = new ArrayList<>();
         coreServices.add(this.managementService);
