@@ -17,8 +17,6 @@ import java.util.EnumSet;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicInteger;
 
-
-
 import java.util.logging.Level;
 
 import com.vmware.xenon.common.Operation;
@@ -29,6 +27,7 @@ import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.ServiceDocumentQueryResult;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
+import com.vmware.xenon.services.common.AuthorizationTokenCacheService.AuthorizationTokenCacheServiceState;
 import com.vmware.xenon.services.common.QueryTask.Query;
 import com.vmware.xenon.services.common.QueryTask.Query.Builder;
 import com.vmware.xenon.services.common.QueryTask.QuerySpecification;
@@ -50,7 +49,7 @@ public final class AuthorizationCacheUtils {
      * @param op Operation to mark completion/failure
      */
     public static void clearAuthzCacheForUser(Service s,  Operation op) {
-        String userPath = op.getUri().getPath();
+        String userLink = op.getUri().getPath();
         op.nestCompletion((o, e) -> {
             if (e != null) {
                 op.fail(e);
@@ -60,9 +59,14 @@ public final class AuthorizationCacheUtils {
                 op.complete();
                 return;
             }
-            AuthorizationCacheClearRequest request = AuthorizationCacheClearRequest.create(userPath);
-            Operation postClearCacheRequest = Operation.createPost(s.getHost(), ServiceUriPaths.CORE_AUTHZ_VERIFICATION)
-                    .setBody(request)
+            if (!AuthorizationCacheUtils.isAuthzCacheClearApplicableOperation(op)) {
+                return;
+            }
+            AuthorizationTokenCacheServiceState cacheClearState = new AuthorizationTokenCacheServiceState();
+            cacheClearState.serviceLink = userLink;
+            Operation postClearCacheRequest = Operation.createPatch(s.getHost(),
+                    AuthorizationTokenCacheService.SELF_LINK)
+                    .setBody(cacheClearState)
                     .setCompletion((clearOp, clearEx) -> {
                         if (clearEx != null) {
                             s.getHost().log(Level.SEVERE, Utils.toString(clearEx));
@@ -71,7 +75,6 @@ public final class AuthorizationCacheUtils {
                         }
                         op.complete();
                     });
-            postClearCacheRequest.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_CLEAR_AUTH_CACHE);
             s.setAuthorizationContext(postClearCacheRequest, s.getSystemAuthorizationContext());
             s.sendRequest(postClearCacheRequest);
         });
@@ -287,7 +290,6 @@ public final class AuthorizationCacheUtils {
     }
 
     public static boolean isAuthzCacheClearApplicableOperation(Operation op) {
-
         // do not clear cache for GET request
         if (op.getAction() == Action.GET) {
             return false;
