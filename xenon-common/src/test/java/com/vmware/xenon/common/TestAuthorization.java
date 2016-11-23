@@ -240,9 +240,11 @@ public class TestAuthorization extends BasicTestCase {
         Consumer<Operation> notify = (o) -> {
             o.complete();
             String subject = o.getAuthorizationContext().getClaims().getSubject();
-            if (!this.userServicePath.equals(subject)) {
+            String systemUserSubject = this.host.getSystemAuthorizationContext().getClaims()
+                    .getSubject();
+            if (!systemUserSubject.equals(subject)) {
                 notifyCtx.fail(new IllegalStateException(
-                        "Invalid aith subject in notification: " + subject));
+                        "Invalid auth subject in notification: " + subject));
                 return;
             }
             this.host.log("Received authorized notification for index patch: %s", o.toString());

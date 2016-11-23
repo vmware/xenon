@@ -46,6 +46,7 @@ import com.esotericsoftware.kryo.KryoException;
 import com.esotericsoftware.kryo.io.Output;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.core.SimpleAnalyzer;
 import org.apache.lucene.document.Document;
@@ -2763,8 +2764,15 @@ public class LuceneDocumentIndexService extends StatelessService {
 
             // Send PATCH to continuous query task with document that passed the query filter.
             // Any subscribers will get notified with the body containing just this document
-            sendRequest(Operation.createPatch(this, activeTask.documentSelfLink).setBodyNoCloning(
-                    patchBody));
+            Operation patchOperation = Operation.createPatch(this, activeTask.documentSelfLink)
+                    .setBodyNoCloning(
+                            patchBody);
+            // Set the authorization context to the system user so that the patch back to the
+            // continous query subscriber succeeds irrespective of the user context with which
+            // the continuous query subscription was created.
+
+            setAuthorizationContext(patchOperation, getSystemAuthorizationContext());
+            sendRequest(patchOperation);
         }
     }
 
