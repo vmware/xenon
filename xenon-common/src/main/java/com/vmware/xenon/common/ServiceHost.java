@@ -5546,6 +5546,15 @@ public class ServiceHost implements ServiceRequestSender {
     }
 
     /**
+     * Creates and returns an authorization context for a given user.
+     *
+     * @return authorization context.
+     */
+    protected AuthorizationContext getAuthorizationContextForSubject(String subject) {
+        return createAuthorizationContext(subject);
+    }
+
+    /**
      * Return the guest user's authorization context.
      *
      * @return authorization context.

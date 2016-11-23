@@ -46,6 +46,7 @@ import com.esotericsoftware.kryo.KryoException;
 import com.esotericsoftware.kryo.io.Output;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.core.SimpleAnalyzer;
 import org.apache.lucene.document.Document;
@@ -777,6 +778,7 @@ public class LuceneDocumentIndexService extends StatelessService {
             clonedTask.documentSelfLink = task.documentSelfLink;
             clonedTask.querySpec = task.querySpec;
             clonedTask.querySpec.context.filter = QueryFilter.create(qs.query);
+            clonedTask.subjectLink = getSubject(op);
             this.activeQueries.put(task.documentSelfLink, clonedTask);
             adjustTimeSeriesStat(STAT_NAME_ACTIVE_QUERY_FILTERS, AGGREGATION_TYPE_SUM,
                     1);
@@ -2759,8 +2761,15 @@ public class LuceneDocumentIndexService extends StatelessService {
 
             // Send PATCH to continuous query task with document that passed the query filter.
             // Any subscribers will get notified with the body containing just this document
-            sendRequest(Operation.createPatch(this, activeTask.documentSelfLink).setBodyNoCloning(
-                    patchBody));
+            Operation patchOperation = Operation.createPatch(this, activeTask.documentSelfLink)
+                    .setBodyNoCloning(
+                            patchBody);
+            // Set the authorization context to the user who created the continous query.
+            if (activeTask.subjectLink != null) {
+                setAuthorizationContext(patchOperation,
+                        getAuthorizationContextForSubject(activeTask.subjectLink));
+            }
+            sendRequest(patchOperation);
         }
     }
 

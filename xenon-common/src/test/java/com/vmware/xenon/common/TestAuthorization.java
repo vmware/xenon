@@ -237,12 +237,16 @@ public class TestAuthorization extends BasicTestCase {
         int requestCount = this.serviceCount;
         TestContext notifyCtx = this.testCreate(requestCount);
 
+        // Verify that even though updates to the index are performed
+        // as a system user; the notification received by the subscriber of
+        // the continuous query has the same authorization context as that of
+        // user that created the continuous query.
         Consumer<Operation> notify = (o) -> {
             o.complete();
             String subject = o.getAuthorizationContext().getClaims().getSubject();
             if (!this.userServicePath.equals(subject)) {
                 notifyCtx.fail(new IllegalStateException(
-                        "Invalid aith subject in notification: " + subject));
+                        "Invalid auth subject in notification: " + subject));
                 return;
             }
             this.host.log("Received authorized notification for index patch: %s", o.toString());
@@ -254,16 +258,20 @@ public class TestAuthorization extends BasicTestCase {
                 .build();
         QueryTask cqt = QueryTask.Builder.create().setQuery(q).build();
 
+        // Create and subscribe to the continous query as an ordinary user.
         // do a continuous query, verify we receive some notifications
         URI notifyURI = QueryTestUtils.startAndSubscribeToContinuousQuery(
                 this.host.getTestRequestSender(), this.host, cqt,
                 notify);
 
-        // issue updates, create some services
+        // issue updates, create some services as the system user
+        this.host.setSystemAuthorizationContext();
         createExampleServices("jane");
         this.host.log("Waiting on continiuous query task notifications (%d)", requestCount);
         notifyCtx.await();
+        this.host.resetSystemAuthorizationContext();
 
+        this.host.assumeIdentity(this.userServicePath);
         QueryTestUtils.stopContinuousQuerySubscription(
                 this.host.getTestRequestSender(), this.host, notifyURI,
                 cqt);
