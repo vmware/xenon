@@ -210,14 +210,23 @@ public class ServiceHost implements ServiceRequestSender {
         public String bindAddress = DEFAULT_BIND_ADDRESS;
 
         /**
-         * Optional public URI the host uses to advertise itself to peers. If its
+         * Optional public URI the host uses to advertise itself to peers. If it's
          * not set, the bind address and port will be used to form the host URI
          */
         public String publicUri;
 
         /**
+         * Optional public URI the host uses to advertise itself to peers. If it's not
+         * set defaults to the the {@link #publicUri}. If it'set  users have to make sure to start an
+         * http(s) listener to handle p2p traffic from other service
+         */
+        public String peerUri;
+
+        /**
          * Comma separated list of one or more peer nodes to join through Nodes
-         * must be defined in URI form, e.g --peerNodes=http://192.168.1.59:8000,http://192.168.1.82
+         * must be defined in URI form, e.g --peerNodes=http://192.168.1.59:8000,http://192.168.1.82.
+         * Runtime will detect if it is declared as a peer of itself by checking agains IP or --publicUri. It will
+         * however not check if a hostname in the peerNodes resolve to itself.
          */
         public String[] peerNodes;
 
@@ -404,6 +413,7 @@ public class ServiceHost implements ServiceRequestSender {
     }
 
     public static class ServiceHostState extends ServiceDocument {
+
         public enum MemoryLimitType {
             LOW_WATERMARK, HIGH_WATERMARK, EXACT
         }
@@ -420,6 +430,7 @@ public class ServiceHost implements ServiceRequestSender {
         public int httpPort;
         public int httpsPort;
         public URI publicUri;
+        public URI peerUri;
         public long maintenanceIntervalMicros = DEFAULT_MAINTENANCE_INTERVAL_MICROS;
         public long operationTimeoutMicros = DEFAULT_OPERATION_TIMEOUT_MICROS;
         public long serviceCacheClearDelayMicros = DEFAULT_OPERATION_TIMEOUT_MICROS;
@@ -614,6 +625,14 @@ public class ServiceHost implements ServiceRequestSender {
             }
         }
 
+        if (args.peerUri != null) {
+            URI u = new URI(args.peerUri);
+            if (!u.isAbsolute() || u.getHost() == null || u.getHost().isEmpty()) {
+                throw new IllegalArgumentException("peerUri should be a non empty absolute URI");
+            }
+        }
+
+
         if (args.bindAddress != null && args.bindAddress.equals("")) {
             throw new IllegalArgumentException(
                     "bindAddress should be a non empty valid IP address");
@@ -745,11 +764,20 @@ public class ServiceHost implements ServiceRequestSender {
 
         setBindAddress(args.bindAddress);
         if (args.publicUri != null) {
-            setPublicUri(new URI(args.publicUri));
+            setPublicUri(URI.create(args.publicUri));
+        }
+
+        if (args.peerUri != null) {
+            setPeerUri(URI.create(args.peerUri));
         }
 
         this.state.initialPeerNodes = args.peerNodes;
         this.state.location = args.location;
+    }
+
+    private ServiceHost setPeerUri(URI uri) {
+        this.state.peerUri = uri;
+        return this;
     }
 
     public String getLocation() {
@@ -5370,6 +5398,18 @@ public class ServiceHost implements ServiceRequestSender {
             return getUri();
         }
         return this.state.publicUri;
+    }
+
+    /**
+     * URI the peers use to communicate with this host.
+     * @return
+     */
+    public URI getPeerUri() {
+        if (this.state.peerUri == null) {
+            return getPublicUri();
+        }
+
+        return this.state.peerUri;
     }
 
     public URI getUri() {

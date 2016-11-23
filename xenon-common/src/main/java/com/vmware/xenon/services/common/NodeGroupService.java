@@ -175,7 +175,7 @@ public class NodeGroupService extends StatefulService {
 
     private URI getPublicUri() {
         if (this.publicUri == null) {
-            this.publicUri = UriUtils.buildPublicUri(getHost(), getSelfLink());
+            this.publicUri = UriUtils.buildPeerUri(getHost(), getSelfLink());
         }
         return this.publicUri;
     }

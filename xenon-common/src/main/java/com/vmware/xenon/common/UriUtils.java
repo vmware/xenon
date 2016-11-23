@@ -600,6 +600,18 @@ public final class UriUtils {
     }
 
     /**
+     * Build an URI to a service so that it can be accessed by a peer, this means it uses --peerUri if given otherwise
+     * uses --publicUri property of the host.
+     * @param host
+     * @param selfLink
+     * @return
+     */
+    public static URI buildPeerUri(ServiceHost host, String selfLink) {
+        URI base = host.getPeerUri();
+        return UriUtils.buildUri(base.getScheme(), base.getHost(), base.getPort(), selfLink, null, null);
+    }
+
+    /**
      * Builds a forwarder service URI using the target service path as the node selection key.
      * If the key argument is supplied, it is used instead
      */

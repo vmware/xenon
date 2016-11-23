@@ -55,6 +55,18 @@ public class TestSampleHost extends BasicReportTestCase {
         }
     }
 
+    @Test
+    public void testStateWithPeerUri() throws Throwable {
+        try {
+            this.tmpFolder.create();
+            startSampleHostWithPeerUri();
+            verifySampleHost();
+        } finally {
+            stopSampleHost();
+            this.tmpFolder.delete();
+        }
+    }
+
     /**
      * Starts the sample host and does some validation that it started correctly.
      *
@@ -80,6 +92,31 @@ public class TestSampleHost extends BasicReportTestCase {
         assertEquals(bindAddress, this.sampleHost.getUri().getHost());
         assertEquals(hostId, this.sampleHost.getId());
         assertEquals(this.sampleHost.getUri(), this.sampleHost.getPublicUri());
+    }
+
+    private void startSampleHostWithPeerUri() throws Throwable {
+
+        this.sampleHost = new SampleHost();
+        String bindAddress = "127.0.0.1";
+        String peerUri = "http://10.0.0.5:7777";
+        String hostId = UUID.randomUUID().toString();
+
+        String[] args = {
+                "--port=0",
+                "--peerUri=" + peerUri,
+                "--bindAddress=" + bindAddress,
+                "--sandbox=" + this.tmpFolder.getRoot().getAbsolutePath(),
+                "--id=" + hostId
+        };
+
+        this.sampleHost.initialize(args);
+        this.sampleHost.start();
+
+        assertEquals(bindAddress, this.sampleHost.getPreferredAddress());
+        assertEquals(bindAddress, this.sampleHost.getUri().getHost());
+        assertEquals(hostId, this.sampleHost.getId());
+        assertEquals(this.sampleHost.getUri(), this.sampleHost.getPublicUri());
+        assertEquals(URI.create(peerUri), this.sampleHost.getPeerUri());
     }
 
     /**
