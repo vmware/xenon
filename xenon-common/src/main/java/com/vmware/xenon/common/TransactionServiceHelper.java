@@ -156,6 +156,7 @@ public final class TransactionServiceHelper {
         operationsLogRecord.isSuccessful = e == null;
 
         Operation notifyCoordinatorOp = Operation.createPut(txCoordinator).setTransactionId(null);
+        notifyCoordinatorOp.addRequestHeader(Operation.TRANSACTION_REFLINK_HEADER, s.getSelfLink());
         return s.setPendingTransactionsAsBody(notifyCoordinatorOp, operationsLogRecord);
     }
 
@@ -196,14 +197,15 @@ public final class TransactionServiceHelper {
                 Operation.TX_COMMIT)) {
             // commit should expose latest state, i.e., remove shadow and bump the version
             // and remove transaction from pending
-            s.removePendingTransaction(request.getReferer().getPath());
+            String txRefLink = request.getRequestHeader(Operation.TRANSACTION_REFLINK_HEADER);
+            s.removePendingTransaction(txRefLink);
             s.getHost().clearTransactionalCachedServiceState(s,
-                    UriUtils.getLastPathSegment(request.getReferer().getPath()));
+                    UriUtils.getLastPathSegment(txRefLink));
 
             QueryTask.QuerySpecification q = new QueryTask.QuerySpecification();
             QueryTask.Query txnIdClause = new QueryTask.Query().setTermPropertyName(
                     ServiceDocument.FIELD_NAME_TRANSACTION_ID)
-                    .setTermMatchValue(UriUtils.getLastPathSegment(request.getReferer()));
+                    .setTermMatchValue(UriUtils.getLastPathSegment(txRefLink));
             txnIdClause.occurance = QueryTask.Query.Occurance.MUST_OCCUR;
             q.query.addBooleanClause(txnIdClause);
             QueryTask.Query selfLinkClause = new QueryTask.Query().setTermPropertyName(
@@ -224,9 +226,10 @@ public final class TransactionServiceHelper {
         } else if (request.getRequestHeaderAsIs(Operation.TRANSACTION_HEADER).equals(
                 Operation.TX_ABORT)) {
             // abort should just remove transaction from pending
-            s.removePendingTransaction(request.getReferer().getPath());
+            String txRefLink = request.getRequestHeader(Operation.TRANSACTION_REFLINK_HEADER);
+            s.removePendingTransaction(txRefLink);
             s.getHost().clearTransactionalCachedServiceState(s,
-                    UriUtils.getLastPathSegment(request.getReferer().getPath()));
+                    UriUtils.getLastPathSegment(txRefLink));
             request.complete();
         } else {
             request.fail(new IllegalArgumentException(

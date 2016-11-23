@@ -406,6 +406,7 @@ public class Operation implements Cloneable {
     public static final String TRANSACTION_HEADER = HEADER_NAME_PREFIX
             + "tx-phase";
     public static final String TRANSACTION_ID_HEADER = HEADER_NAME_PREFIX + "tx-id";
+    public static final String TRANSACTION_REFLINK_HEADER = HEADER_NAME_PREFIX + "tx-reflink";
     public static final String REPLICATION_PARENT_HEADER = HEADER_NAME_PREFIX + "rpl-parent";
 
     /**

@@ -185,6 +185,8 @@ public class TransactionService extends StatefulService {
         public Set<String> failedLinks;
     }
 
+    private TransactionResolutionService resolutionHelper;
+
     /**
      * Using increased guarantees to make sure the coordinator can sustain failures.
      */
@@ -235,7 +237,8 @@ public class TransactionService extends StatefulService {
                     }
                     op.complete();
                 });
-        getHost().startService(startResolutionService, new TransactionResolutionService(this));
+        this.resolutionHelper = new TransactionResolutionService(this);
+        getHost().startService(startResolutionService, this.resolutionHelper);
     }
 
     /**
@@ -250,30 +253,37 @@ public class TransactionService extends StatefulService {
         TransactionContext record = put.getBody(TransactionContext.class);
         TransactionServiceState existing = getState(put);
 
+        String serviceLink = put.getRequestHeader(Operation.TRANSACTION_REFLINK_HEADER);
         if (record.action == Action.GET) {
-            existing.readLinks.add(put.getReferer().getPath());
+            existing.readLinks.add(serviceLink);
         } else {
-            existing.modifiedLinks.add(put.getReferer().getPath());
+            existing.modifiedLinks.add(serviceLink);
         }
         if (record.action == Action.POST) {
-            existing.createdLinks.add(put.getReferer().getPath());
+            existing.createdLinks.add(serviceLink);
         }
         if (record.action == Action.DELETE) {
-            existing.deletedLinks.add(put.getReferer().getPath());
+            existing.deletedLinks.add(serviceLink);
         }
 
         // This has the possibility of overwriting existing pending, but that's OK, because it means the service
         // evolved, either by (being asked to) commit/abort or having seen more operations -- in any case, this
         // "pending" is the most recent one, so we're good.
         if (record.coordinatorLinks != null) {
-            existing.servicesToCoordinators.put(put.getReferer().getPath(),
+            existing.servicesToCoordinators.put(serviceLink,
                     record.coordinatorLinks);
         }
         if (!record.isSuccessful) {
-            existing.failedLinks.add(put.getReferer().getPath());
+            existing.failedLinks.add(serviceLink);
         }
         setState(put, existing);
         put.complete();
+    }
+
+    @Override
+    public void handleConfigurationRequest(Operation request) {
+        // resolution requests arriving directly from clients need to be routed through the resolution helper
+        this.resolutionHelper.handleResolutionRequest(request);
     }
 
     /**
@@ -298,7 +308,7 @@ public class TransactionService extends StatefulService {
 
         // Handle ResolutionRequest
         ResolutionRequest resolution = patch.getBody(ResolutionRequest.class);
-        if (resolution.kind != ResolutionRequest.KIND) {
+        if (!resolution.kind.equals(ResolutionRequest.KIND)) {
             patch.fail(new IllegalArgumentException(
                     "Unrecognized request kind: " + resolution.kind));
             return;
@@ -438,9 +448,10 @@ public class TransactionService extends StatefulService {
         if (existing.taskSubStage == SubStage.COLLECTING
                 || existing.taskSubStage == SubStage.RESOLVING) {
             // potential conflict - resolve deterministically
-            if (!compareTo(op.getReferer().getPath())) {
+            String txLink = op.getRequestHeader(Operation.TRANSACTION_REFLINK_HEADER);
+            if (!compareTo(txLink)) {
                 logInfo("Conflicting transaction %s is trying to commit, aborting this transaction...",
-                        op.getReferer().getPath());
+                        txLink);
                 abort = true;
                 updateStage(op, SubStage.ABORTING);
             }
@@ -595,6 +606,7 @@ public class TransactionService extends StatefulService {
                 // just an empty body
                 .setBody(new TransactionServiceState())
                 .setReferer(getUri())
+                .addRequestHeader(Operation.TRANSACTION_REFLINK_HEADER, getSelfLink())
                 .setCompletion((o, e) -> {
                     if (e != null) {
                         logWarning("Notification of service %s failed: %s", service, e);
@@ -611,6 +623,7 @@ public class TransactionService extends StatefulService {
         return Operation
                 .createDelete(this, service)
                 .setReferer(getUri())
+                .addRequestHeader(Operation.TRANSACTION_REFLINK_HEADER, getSelfLink())
                 .setCompletion((o, e) -> {
                     if (e != null) {
                         logWarning("Deletion of service %s failed: %s", service, e);
@@ -632,6 +645,7 @@ public class TransactionService extends StatefulService {
                 .addRequestHeader(Operation.TRANSACTION_HEADER, header)
                 .setBody(body)
                 .setReferer(getUri())
+                .addRequestHeader(Operation.TRANSACTION_REFLINK_HEADER, getSelfLink())
                 .setCompletion(callback);
     }
 

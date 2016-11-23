@@ -1057,7 +1057,8 @@ public class StatefulService implements Service {
         // Notify transaction coordinator before completing the operation;
         // unless this service is not visible inside the transaction
         if (op.isWithinTransaction() && this.getHost().getTransactionServiceUri() != null
-                && op.getStatusCode() != Operation.STATUS_CODE_NOT_FOUND) {
+                && op.getStatusCode() != Operation.STATUS_CODE_NOT_FOUND
+                && !op.isFromReplication()) {
             allocatePendingTransactions();
             notifyTransactionCoordinatorOp(this, op, e)
                     .setCompletion((txOp, txE) -> {
