@@ -93,6 +93,7 @@ import com.vmware.xenon.common.jwt.Signer;
 import com.vmware.xenon.common.jwt.Verifier;
 import com.vmware.xenon.services.common.AuthCredentialsService;
 import com.vmware.xenon.services.common.AuthorizationContextService;
+import com.vmware.xenon.services.common.AuthorizationTokenCacheService;
 import com.vmware.xenon.services.common.ConsistentHashingNodeSelectorService;
 import com.vmware.xenon.services.common.FileContentService;
 import com.vmware.xenon.services.common.GraphQueryTaskService;
@@ -1380,7 +1381,8 @@ public class ServiceHost implements ServiceRequestSender {
         // Start authorization service first since it sits in the dispatch path
         if (this.authorizationService != null) {
             addPrivilegedService(this.authorizationService.getClass());
-            startCoreServicesSynchronously(this.authorizationService);
+            addPrivilegedService(AuthorizationTokenCacheService.class);
+            startCoreServicesSynchronously(this.authorizationService, new AuthorizationTokenCacheService());
         }
 
         // Normalize peer list and find our external address
@@ -1406,7 +1408,6 @@ public class ServiceHost implements ServiceRequestSender {
                 startCoreServicesSynchronously(queryServiceArray);
             }
         }
-
 
         List<Service> coreServices = new ArrayList<>();
         coreServices.add(this.managementService);
@@ -1629,42 +1630,11 @@ public class ServiceHost implements ServiceRequestSender {
         // start the node group factory allowing for N number of independent groups
         startCoreServicesSynchronously(new NodeGroupFactoryService());
 
-        Throwable[] error = new Throwable[1];
-        CountDownLatch c = new CountDownLatch(1);
-
-        CompletionHandler comp = (o, e) -> {
-            if (e != null) {
-                error[0] = e;
-                log(Level.SEVERE, "Node group failed start: %s:", e.toString());
-                stop();
-                c.countDown();
-                return;
-            }
-            log(Level.FINE, "started %s", o.getUri().getPath());
-            this.coreServices.add(o.getUri().getPath());
-            c.countDown();
-
-        };
-
-        // create a default node group, asynchronously. Replication services
-        // that depend on a node group will register availability notifications
-        // before using it
-
+        // create a default node group
+        ServiceDocument serviceState = new ServiceDocument();
+        serviceState.documentSelfLink = ServiceUriPaths.DEFAULT_NODE_GROUP_NAME;
         log(Level.FINE, "starting %s", ServiceUriPaths.DEFAULT_NODE_GROUP);
-        this.registerForServiceAvailability(comp, ServiceUriPaths.DEFAULT_NODE_GROUP);
-
-        Operation post = NodeGroupFactoryService.createNodeGroupPostOp(this,
-                ServiceUriPaths.DEFAULT_NODE_GROUP_NAME)
-                .setReferer(UriUtils.buildUri(this, ""));
-        post.setAuthorizationContext(getSystemAuthorizationContext());
-        sendRequest(post);
-
-        if (!c.await(getState().operationTimeoutMicros, TimeUnit.MICROSECONDS)) {
-            throw new TimeoutException();
-        }
-        if (error[0] != null) {
-            throw error[0];
-        }
+        startFactoryChildServiceSynchronously(NodeGroupFactoryService.SELF_LINK, serviceState);
 
         List<Operation> startNodeSelectorPosts = new ArrayList<>();
         List<Service> nodeSelectorServices = new ArrayList<>();
@@ -1893,6 +1863,40 @@ public class ServiceHost implements ServiceRequestSender {
         }
     }
 
+    protected void startFactoryChildServiceSynchronously(String factoryLink, ServiceDocument serviceState) throws Throwable {
+        CountDownLatch latch = new CountDownLatch(1);
+        Throwable[] failure = new Throwable[1];
+        CompletionHandler comp = (o, e) -> {
+            if (e != null) {
+                failure[0] = e;
+                log(Level.SEVERE, "Exception creating service %s:", e.toString());
+                stop();
+                latch.countDown();
+                return;
+            }
+            log(Level.FINE, "started %s", o.getUri().getPath());
+            this.coreServices.add(o.getUri().getPath());
+            latch.countDown();
+        };
+        if (serviceState.documentSelfLink == null) {
+            serviceState.documentSelfLink = Utils.buildUUID(getIdHash());
+        }
+        this.registerForServiceAvailability(comp, UriUtils.buildUriPath(factoryLink, serviceState.documentSelfLink));
+
+        Operation post = Operation.createPost(UriUtils.buildUri(this, factoryLink))
+                            .setBody(serviceState)
+                            .setReferer(getUri());
+        post.setAuthorizationContext(getSystemAuthorizationContext());
+        sendRequest(post);
+
+        if (!latch.await(getState().operationTimeoutMicros, TimeUnit.MICROSECONDS)) {
+            throw new TimeoutException();
+        }
+        if (failure[0] != null) {
+            throw failure[0];
+        }
+    }
+
     protected void setAuthorizationContext(AuthorizationContext context) {
         OperationContext.setAuthorizationContext(context);
     }
@@ -2046,10 +2050,8 @@ public class ServiceHost implements ServiceRequestSender {
                         subscribe.fail(e);
                         return;
                     }
-
                     sendRequest(subscribe);
                 });
-
         if (notificationTarget.getProcessingStage() == ProcessingStage.CREATED) {
             this.startService(post, notificationTarget);
         } else {
