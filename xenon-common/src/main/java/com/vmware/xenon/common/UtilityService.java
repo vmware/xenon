@@ -275,7 +275,6 @@ public class UtilityService implements Service {
                 }
             }
         };
-
         this.parent.sendRequest(clone.setUri(s.reference).setCompletion(c));
     }
 

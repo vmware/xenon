@@ -16,6 +16,7 @@ package com.vmware.xenon.services.common;
 import java.util.Objects;
 import java.util.concurrent.CancellationException;
 
+import com.vmware.xenon.common.AuthorizationCacheUtils;
 import com.vmware.xenon.common.FactoryService;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Service;
@@ -83,7 +84,7 @@ public class ResourceGroupService extends StatefulService {
 
     @Override
     public void processCompletionStageUpdateAuthzArtifacts(Operation op) {
-        if (AuthorizationCacheUtils.isAuthzCacheClearApplicableOperation(op)) {
+        if (AuthorizationCacheUtils.isAuthzCacheClearApplicableOperation(this, op)) {
             AuthorizationCacheUtils.clearAuthzCacheForResourceGroup(this, op);
         }
         op.complete();
