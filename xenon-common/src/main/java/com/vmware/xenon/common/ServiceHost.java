@@ -1357,7 +1357,7 @@ public class ServiceHost implements ServiceRequestSender {
         scheduleMaintenance();
 
         clearUriAndLogPrefix();
-        log(Level.INFO, "%s listening on %s", userAgent, getPublicUri());
+        log(Level.INFO, "%s listening on %s", userAgent, getUri());
 
         return this;
     }
