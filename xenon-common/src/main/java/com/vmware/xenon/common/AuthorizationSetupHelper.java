@@ -468,6 +468,7 @@ public class AuthorizationSetupHelper {
         URI userGroupFactoryUri = UriUtils.buildUri(this.host,
                 ServiceUriPaths.CORE_AUTHZ_USER_GROUPS);
         Operation postGroup = Operation.createPost(userGroupFactoryUri)
+                .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_FORCE_INDEX_UPDATE)
                 .setBody(group)
                 .setReferer(this.referer)
                 .setCompletion((op, ex) -> {
@@ -577,6 +578,7 @@ public class AuthorizationSetupHelper {
         URI resourceGroupFactoryUri = UriUtils.buildUri(this.host,
                 ServiceUriPaths.CORE_AUTHZ_RESOURCE_GROUPS);
         Operation postGroup = Operation.createPost(resourceGroupFactoryUri)
+                .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_FORCE_INDEX_UPDATE)
                 .setBody(group)
                 .setReferer(this.referer)
                 .setCompletion((op, ex) -> {
@@ -617,6 +619,7 @@ public class AuthorizationSetupHelper {
 
         URI roleFactoryUri = UriUtils.buildUri(this.host, ServiceUriPaths.CORE_AUTHZ_ROLES);
         Operation postRole = Operation.createPost(roleFactoryUri)
+                .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_FORCE_INDEX_UPDATE)
                 .setBody(role)
                 .setReferer(this.referer)
                 .setCompletion((op, ex) -> {

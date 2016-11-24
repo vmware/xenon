@@ -16,6 +16,8 @@ package com.vmware.xenon.common;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
+import static com.vmware.xenon.common.UriUtils.buildUriPath;
+
 import java.net.URI;
 import java.util.EnumSet;
 import java.util.UUID;
@@ -36,15 +38,16 @@ import com.vmware.xenon.services.common.QueryTask.Query;
 import com.vmware.xenon.services.common.QueryTask.Query.Occurance;
 import com.vmware.xenon.services.common.ResourceGroupService;
 import com.vmware.xenon.services.common.ResourceGroupService.ResourceGroupState;
+import com.vmware.xenon.services.common.RoleService;
 import com.vmware.xenon.services.common.RoleService.RoleState;
 import com.vmware.xenon.services.common.ServiceHostManagementService;
 import com.vmware.xenon.services.common.ServiceUriPaths;
 import com.vmware.xenon.services.common.UserGroupService;
 import com.vmware.xenon.services.common.UserGroupService.UserGroupState;
 
-// Note that we can't use BasicReusableHostTestCase here because we need to enable
-// authorization on the host before it's started, and BasicReusableHostTestCase
-// doesn't have authorization enabled.
+// Note that we can't use BasicReusableHostTestCase here because we need to
+// enable authorization on the host before it's started, and
+// BasicReusableHostTestCase doesn't have authorization enabled.
 public class TestAuthSetupHelper extends BasicTestCase {
 
     private static final String GUEST_ROLE = "guest-role";
@@ -103,6 +106,94 @@ public class TestAuthSetupHelper extends BasicTestCase {
         getManagementState(exampleAuthToken, false);
 
         this.host.log("AuthorizationSetupHelper is working");
+    }
+
+    @Test
+    public void testIdempotentCreation() throws Throwable {
+        this.host.waitForServiceAvailable(ServiceHostManagementService.SELF_LINK);
+        OperationContext.setAuthorizationContext(this.host.getSystemAuthorizationContext());
+
+        TestContext ctx1 = this.host.testCreate(1);
+        AuthorizationSetupHelper.create()
+                .setHost(this.host)
+                .setUserSelfLink(ServiceUriPaths.CORE_AUTHZ_GUEST_USER)
+                .setDocumentLink(ServiceUriPaths.SWAGGER)
+                .setUserGroupName(GUEST_USER_GROUP)
+                .setResourceGroupName(GUEST_RESOURCE_GROUP)
+                .setRoleName(GUEST_ROLE)
+                .setVerbs(EnumSet.of(Action.GET))
+                .setCompletion(e -> {
+                    if (e != null) {
+                        ctx1.failIteration(e);
+                    }
+                    ctx1.completeIteration();
+                })
+                .setupRole();
+        this.host.testWait(ctx1);
+
+        // Delete Role, UserGroup, ResourceGroup
+        Operation response;
+        response = this.host.waitForResponse(
+                createDeleteOp(
+                        buildUriPath(ResourceGroupService.FACTORY_LINK, GUEST_RESOURCE_GROUP)));
+        assertEquals(Operation.STATUS_CODE_OK, response.getStatusCode());
+
+        response = this.host.waitForResponse(
+                createDeleteOp(
+                        buildUriPath(UserGroupService.FACTORY_LINK, GUEST_USER_GROUP)));
+        assertEquals(Operation.STATUS_CODE_OK, response.getStatusCode());
+
+        response = this.host.waitForResponse(
+                createDeleteOp(
+                        buildUriPath(RoleService.FACTORY_LINK, GUEST_ROLE)));
+        assertEquals(Operation.STATUS_CODE_OK, response.getStatusCode());
+
+        // create again after delete
+        TestContext ctx2 = this.host.testCreate(1);
+        AuthorizationSetupHelper.create()
+                .setHost(this.host)
+                .setUserSelfLink(ServiceUriPaths.CORE_AUTHZ_GUEST_USER)
+                .setDocumentLink(ServiceUriPaths.SWAGGER)
+                .setUserGroupName(GUEST_USER_GROUP)
+                .setResourceGroupName(GUEST_RESOURCE_GROUP)
+                .setRoleName(GUEST_ROLE)
+                .setVerbs(EnumSet.of(Action.GET))
+                .setCompletion(e -> {
+                    if (e != null) {
+                        ctx2.failIteration(e);
+                    }
+                    ctx2.completeIteration();
+                })
+                .setupRole();
+        this.host.testWait(ctx2);
+
+        // create again already created
+        TestContext ctx3 = this.host.testCreate(1);
+        AuthorizationSetupHelper.create()
+                .setHost(this.host)
+                .setUserSelfLink(ServiceUriPaths.CORE_AUTHZ_GUEST_USER)
+                .setDocumentLink(ServiceUriPaths.SWAGGER)
+                .setUserGroupName(GUEST_USER_GROUP)
+                .setResourceGroupName(GUEST_RESOURCE_GROUP)
+                .setRoleName(GUEST_ROLE)
+                .setVerbs(EnumSet.of(Action.GET))
+                .setCompletion(e -> {
+                    if (e != null) {
+                        ctx3.failIteration(e);
+                    }
+                    ctx3.completeIteration();
+                })
+                .setupRole();
+        this.host.testWait(ctx3);
+    }
+
+    private Operation createDeleteOp(String link) {
+        // pragma to make delete synchronous (would be necessary in multi-node
+        // scenario)
+        return Operation.createDelete(this.host, link)
+                .addRequestHeader(
+                        Operation.REPLICATION_QUORUM_HEADER,
+                        Operation.REPLICATION_QUORUM_HEADER_VALUE_ALL);
     }
 
     @Test
