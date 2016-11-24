@@ -34,6 +34,7 @@ import com.vmware.xenon.common.ServiceDocumentQueryResult;
 import com.vmware.xenon.common.TaskState;
 import com.vmware.xenon.common.TaskState.TaskStage;
 import com.vmware.xenon.common.UriUtils;
+import com.vmware.xenon.common.Utils;
 import com.vmware.xenon.common.test.TestRequestSender;
 import com.vmware.xenon.common.test.TestRequestSender.FailureResponse;
 import com.vmware.xenon.common.test.VerificationHost;
@@ -65,10 +66,14 @@ public class TestExampleTaskService extends BasicReusableHostTestCase {
 
         createExampleServices();
 
+        long customExpiration = Utils.fromNowMicrosUtc(TimeUnit.HOURS.toMicros(1));
         ExampleTaskServiceState initialState = new ExampleTaskServiceState();
+        initialState.documentExpirationTimeMicros = customExpiration;
 
         Operation post = Operation.createPost(this.host, ExampleTaskService.FACTORY_LINK).setBody(initialState);
         ServiceDocument doc = this.sender.sendAndWait(post, ServiceDocument.class);
+
+        assertEquals(customExpiration, doc.documentExpirationTimeMicros);
 
         String taskLink = doc.documentSelfLink;
         assertNotNull(taskLink);

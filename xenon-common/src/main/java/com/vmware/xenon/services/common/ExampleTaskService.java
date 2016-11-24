@@ -132,6 +132,7 @@ public class ExampleTaskService
      * non-example tasks will normally have parameters, so this is an example of how they
      * could be validated.
      */
+    @Override
     protected ExampleTaskServiceState validateStartPost(Operation taskOperation) {
         ExampleTaskServiceState task = super.validateStartPost(taskOperation);
         if (task == null) {
@@ -170,13 +171,14 @@ public class ExampleTaskService
      * If your task does significant initialization, you may prefer to do it in the
      * CREATED state.
      */
+    @Override
     protected void initializeState(ExampleTaskServiceState task, Operation taskOperation) {
         task.subStage = SubStage.QUERY_EXAMPLES;
 
         if (task.taskLifetime != null) {
             task.documentExpirationTimeMicros = Utils.fromNowMicrosUtc(
                     TimeUnit.SECONDS.toMicros(task.taskLifetime));
-        } else if (task.documentExpirationTimeMicros != 0) {
+        } else if (task.documentExpirationTimeMicros == 0) {
             task.documentExpirationTimeMicros = Utils.fromNowMicrosUtc(
                     TimeUnit.SECONDS.toMicros(DEFAULT_TASK_LIFETIME));
         }
@@ -245,6 +247,7 @@ public class ExampleTaskService
     /**
      * Validate that the PATCH we got requests reasonanble changes to our state
      */
+    @Override
     protected boolean validateTransition(Operation patch, ExampleTaskServiceState currentTask,
             ExampleTaskServiceState patchBody) {
         super.validateTransition(patch, currentTask, patchBody);
