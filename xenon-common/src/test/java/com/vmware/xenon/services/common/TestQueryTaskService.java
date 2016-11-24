@@ -70,7 +70,9 @@ import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
 import com.vmware.xenon.common.test.MinimalTestServiceState;
 import com.vmware.xenon.common.test.TestContext;
+import com.vmware.xenon.common.test.TestRequestSender;
 import com.vmware.xenon.common.test.VerificationHost;
+
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
 import com.vmware.xenon.services.common.QueryTask.NumericRange;
 import com.vmware.xenon.services.common.QueryTask.Query;
@@ -1980,22 +1982,25 @@ public class TestQueryTaskService {
 
     public void doSortTestOnExampleStates(boolean isDirect, int resultLimit) throws Throwable {
         setUpHost();
-        int serviceCount = 100;
         URI exampleFactoryURI = UriUtils.buildFactoryUri(this.host, ExampleService.class);
         List<URI> exampleServices = new ArrayList<>();
-        this.host.testStart(serviceCount);
-        for (int i = 0; i < serviceCount; i++) {
+        TestRequestSender testRequestSender = this.host.getTestRequestSender();
+        TestContext ctx = this.host.testCreate(this.serviceCount);
+        ctx.logBefore();
+        for (int i = 0; i < this.serviceCount; i++) {
             ExampleServiceState s = new ExampleServiceState();
             s.name = UUID.randomUUID().toString();
             s.documentSelfLink = s.name;
             exampleServices.add(UriUtils.buildUri(this.host.getUri(),
                     ExampleService.FACTORY_LINK, s.documentSelfLink));
-            this.host.send(Operation.createPost(exampleFactoryURI)
+            testRequestSender.sendRequest(Operation.createPost(exampleFactoryURI)
                     .setBody(s)
-                    .setCompletion(this.host.getCompletion()));
+                    .setCompletion(ctx.getCompletion()));
 
         }
-        this.host.testWait();
+
+        ctx.await();
+
         Query kindClause = Query.Builder.create()
                 .addKindFieldClause(ExampleServiceState.class)
                 .build();
@@ -2028,6 +2033,8 @@ public class TestQueryTaskService {
                     taskURI, false, false);
         }
 
+        ctx.logAfter();
+
         assertTrue(task.results.nextPageLink == null);
 
         if (task.querySpec.options.contains(QueryOption.TOP_RESULTS)) {
@@ -2051,6 +2058,118 @@ public class TestQueryTaskService {
             String currentLink = documentLinks.get(i);
             assertTrue("Sort Test Failed", currentLink.compareTo(prevLink) > 0);
             prevLink = currentLink;
+        }
+    }
+
+    @Test
+    public void multiFieldSortTestOnExampleStates() throws Throwable {
+        doMultiFieldSortTestOnExampleStates(false, Integer.MAX_VALUE);
+        doMultiFieldSortTestOnExampleStates(true, Integer.MAX_VALUE);
+    }
+
+    @Test
+    public void topResultsWithMultiFieldSort() throws Throwable {
+        doMultiFieldSortTestOnExampleStates(true, 10);
+    }
+
+    public void doMultiFieldSortTestOnExampleStates(boolean isDirect, int resultLimit) throws Throwable {
+        setUpHost();
+        URI exampleFactoryURI = UriUtils.buildFactoryUri(this.host, ExampleService.class);
+        List<URI> exampleServices = new ArrayList<>();
+        TestRequestSender testRequestSender = this.host.getTestRequestSender();
+        TestContext ctx = this.host.testCreate(this.serviceCount);
+        for (int i = 0; i < this.serviceCount; i++) {
+            ExampleServiceState s = new ExampleServiceState();
+            s.name = UUID.randomUUID().toString();
+            s.documentSelfLink = s.name;
+            s.sortedCounter = i % 5L;
+            exampleServices.add(UriUtils.buildUri(this.host.getUri(),
+                    ExampleService.FACTORY_LINK, s.documentSelfLink));
+            testRequestSender.sendRequest(Operation.createPost(exampleFactoryURI)
+                    .setBody(s)
+                    .setCompletion(ctx.getCompletion()));
+
+        }
+
+        ctx.await();
+
+        Query kindClause = Query.Builder.create()
+                .addKindFieldClause(ExampleServiceState.class)
+                .build();
+
+        QueryTask.Builder queryTaskBuilder = isDirect ? QueryTask.Builder.createDirectTask()
+                : QueryTask.Builder.create();
+        QueryTask task = queryTaskBuilder
+                .setQuery(kindClause)
+                .orderDescending(ExampleServiceState.FIELD_NAME_SORTED_COUNTER, TypeName.LONG)
+                .orderAscending(ExampleServiceState.FIELD_NAME_NAME, TypeName.STRING)
+                .build();
+
+        task.querySpec.resultLimit = resultLimit;
+        if (resultLimit < Integer.MAX_VALUE) {
+            task.querySpec.options.add(QueryOption.TOP_RESULTS);
+        }
+
+        task.querySpec.options.add(QueryOption.EXPAND_CONTENT);
+
+        if (task.documentExpirationTimeMicros != 0) {
+            // the value was set as an interval by the calling test. Make absolute here so
+            // account for service creation above
+            task.documentExpirationTimeMicros = Utils.fromNowMicrosUtc(
+                    task.documentExpirationTimeMicros);
+        }
+
+        URI taskURI = this.host.createQueryTaskService(task, false,
+                task.taskInfo.isDirect, task, null);
+
+        if (!task.taskInfo.isDirect) {
+            task = this.host.waitForQueryTaskCompletion(task.querySpec, 0, 0,
+                    taskURI, false, false);
+        }
+
+        assertTrue(task.results.nextPageLink == null);
+
+        if (task.querySpec.options.contains(QueryOption.TOP_RESULTS)) {
+            assertTrue(task.results.documentLinks.size() == resultLimit);
+        }
+
+        validateMultiFieldSortedList(task.results);
+
+        deleteServices(exampleServices);
+    }
+
+    private void validateMultiFieldSortedList(ServiceDocumentQueryResult result) {
+        List<ExampleServiceState> sortedDocuments = new ArrayList<>();
+
+        assertTrue(result.documents != null);
+        result.documentLinks
+                .forEach(k -> sortedDocuments.add(Utils.fromJson(result.documents.get(k), ExampleServiceState.class)));
+
+        String lastName = null;
+        Long lastSortedCount = null;
+        for (ExampleServiceState state : sortedDocuments) {
+            if (lastName == null && lastSortedCount == null) {
+                lastName = state.name;
+                lastSortedCount = state.sortedCounter;
+                continue;
+            }
+
+            if (lastSortedCount != null) {
+                // Verify that sorted counter is always sorted in descending
+                assertTrue("Multi-sort on first field failed.", lastSortedCount >= state.sortedCounter);
+                if (lastSortedCount.equals(state.sortedCounter)) {
+                    // Verify that name is sorted ascending with in the same sortedCounter
+                    // Will be skipped if name is the first element of sub-set
+                    if (lastName != null) {
+                        assertTrue("Multi-sort on second field failed.", state.name.compareTo(lastName) > 0);
+                    }
+                    lastName = state.name;
+                } else {
+                    // Switch to next sub-set
+                    lastName = null;
+                }
+                lastSortedCount = state.sortedCounter;
+            }
         }
     }
 
