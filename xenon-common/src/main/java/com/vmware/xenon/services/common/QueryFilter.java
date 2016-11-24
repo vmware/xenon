@@ -539,11 +539,21 @@ public class QueryFilter {
                 if (pd.elementDescription.typeName == TypeName.STRING) {
                     Collection<String> cs = (Collection<String>) o;
                     if (term.negate) {
-                        if (cs.contains(term.term.matchValue)) {
-                            return false;
+                        for (String s : cs) {
+                            if (evaluateString(term, s)) {
+                                return false;
+                            }
                         }
                     } else {
-                        if (!cs.contains(term.term.matchValue)) {
+                        boolean found = false;
+                        for (String s : cs) {
+                            if (evaluateString(term, s)) {
+                                found = true;
+                                break;
+                            }
+                        }
+
+                        if (!found) {
                             return false;
                         }
                     }

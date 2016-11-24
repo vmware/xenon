@@ -96,6 +96,13 @@ public class TestQueryFilter {
         return query;
     }
 
+    Query createTerm(String key, String value, Occurance occurance, MatchType matchType) {
+        Query query = createTerm(key, value);
+        query.setTermMatchType(matchType);
+        query.occurance = occurance;
+        return query;
+    }
+
     /**
      * Create DNF from query. Returns a set with the string representations
      * of the conjunctions in the DNF.
@@ -687,6 +694,30 @@ public class TestQueryFilter {
 
         document.documentSelfLink = "foobar";
         assertFalse(filter.evaluate(document, this.description));
+    }
+
+    Query createWithListOfStringWithPrefixQuery() {
+        String n1 = QueryTask.QuerySpecification.buildCollectionItemName("l1");
+        Query t1 = createTerm(n1, "v2", Occurance.MUST_OCCUR, MatchType.PREFIX);
+
+        Query q = new Query();
+        q.addBooleanClause(t1);
+        return q;
+    }
+
+    @Test
+    public void matchTypePrefixForCollections() throws QueryFilterException {
+        QueryFilter filter = QueryFilter.create(createWithListOfStringWithPrefixQuery());
+        QueryFilterDocument document;
+
+        document = new QueryFilterDocument();
+        document.l1 = new LinkedList<>();
+        document.l1.add("v1-v2");
+        assertFalse(filter.evaluate(document, this.description));
+
+        document.l1.add("v2-foo");
+        assertTrue(filter.evaluate(document, this.description));
+
     }
 
     @Test(expected = UnsupportedMatchTypeException.class)
