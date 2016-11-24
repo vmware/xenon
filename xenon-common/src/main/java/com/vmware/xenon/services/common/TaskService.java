@@ -100,7 +100,6 @@ public abstract class TaskService<T extends TaskService.TaskServiceState>
         if (task == null) {
             return;
         }
-        taskOperation.complete();
 
         if (!ServiceHost.isServiceCreate(taskOperation)
                 || (task.taskInfo != null && !TaskState.isCreated(task.taskInfo))) {
@@ -108,10 +107,12 @@ public abstract class TaskService<T extends TaskService.TaskServiceState>
             // other than CREATED.
             // Tasks that handle restart should override handleStart and decide if they should
             // continue processing on restart, or fail
+            taskOperation.complete();
             return;
         }
 
         initializeState(task, taskOperation);
+        taskOperation.complete();
 
         sendSelfPatch(task);
     }
