@@ -190,7 +190,7 @@ public class NettyHttpServiceClient implements ServiceClient {
 
     @Override
     public void send(Operation op) {
-        this.sendRequest(op);
+        sendRequest(op);
     }
 
     @Override
@@ -275,20 +275,20 @@ public class NettyHttpServiceClient implements ServiceClient {
             scheme = this.httpProxy.getScheme();
         }
 
-        boolean httpScheme = false;
-        boolean httpsScheme = scheme.equals(UriUtils.HTTPS_SCHEME);
-        if (!httpsScheme) {
-            httpScheme = scheme.equals(UriUtils.HTTP_SCHEME);
+        boolean isHttpScheme = false;
+        boolean isHttpsScheme = scheme.equals(UriUtils.HTTPS_SCHEME);
+        if (!isHttpsScheme) {
+            isHttpScheme = scheme.equals(UriUtils.HTTP_SCHEME);
         }
 
-        if (!httpScheme && !httpsScheme) {
+        if (!isHttpScheme && !isHttpsScheme) {
             op.setRetryCount(0);
             fail(new IllegalArgumentException(
                     "Scheme is not supported: " + op.getUri().getScheme()), op, op.getBodyRaw());
             return;
         }
 
-        if (httpsScheme && this.getSSLContext() == null) {
+        if (isHttpsScheme && this.getSSLContext() == null) {
             op.setRetryCount(0);
             fail(new IllegalArgumentException(
                     "HTTPS not enabled, set SSL context before starting client:" + op.getUri()),
@@ -298,13 +298,13 @@ public class NettyHttpServiceClient implements ServiceClient {
 
         // if there are no ports specified, choose the default ports http or https
         if (port == -1) {
-            port = httpScheme ? UriUtils.HTTP_DEFAULT_PORT : UriUtils.HTTPS_DEFAULT_PORT;
+            port = isHttpScheme ? UriUtils.HTTP_DEFAULT_PORT : UriUtils.HTTPS_DEFAULT_PORT;
         }
 
         // We do not support TLS with HTTP/2. This is because currently
         // NETTY requires taking dependency on their native binaries.
         // http://netty.io/wiki/requirements-for-4.x.html
-        if (op.isConnectionSharing() && httpsScheme) {
+        if (op.isConnectionSharing() && isHttpsScheme) {
             op.setConnectionSharing(false);
             if (!this.warnHttp2DisablingConnectionSharing) {
                 this.warnHttp2DisablingConnectionSharing = true;
@@ -320,7 +320,7 @@ public class NettyHttpServiceClient implements ServiceClient {
             pool = this.http2ChannelPool;
         }
 
-        if (scheme.equals(UriUtils.HTTPS_SCHEME)) {
+        if (isHttpsScheme) {
             pool = this.sslChannelPool;
             // SSL does not use connection sharing, HTTP/2, so disable it
             op.setConnectionSharing(false);
