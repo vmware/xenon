@@ -53,6 +53,11 @@
 * Added a new UiFileContentService which provides a simpler internal implementation
   and enables hosting of UI resources in the root application namespace
 
+* Support sorting by multiple fields using query task. The order(asc/desc) methods
+  on QueryTask builder can be called multiple times to select more than one sort
+  fields. QueryTask.QuerySpecification now includes additionalSortTerms and
+  additionalGroupSortTerms to capture the same.
+
 ## 1.3.0
 
 * Document signature calculation changed to be more efficient while format stays
