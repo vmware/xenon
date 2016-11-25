@@ -3554,6 +3554,9 @@ public class TestNodeGroupService {
         this.host.setNodeGroupConfig(cfg);
 
         this.host.stopHostAndPreserveState(hostToStop);
+
+        assertTrue(hostToStop.getServiceStage(ServiceUriPaths.CORE_AUTHZ_VERIFICATION) == null);
+
         this.host.waitForNodeGroupConvergence(2, 2);
         VerificationHost existingHost = this.host.getInProcessHostMap().values().iterator().next();
 

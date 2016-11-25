@@ -113,7 +113,9 @@ public class AuthorizationContextService extends StatelessService {
      */
     @Override
     public boolean queueRequest(Operation op) {
-
+        if (op.getAction() == Action.DELETE && op.getUri().getPath().equals(getSelfLink())) {
+            return false;
+        }
         AuthorizationContext ctx = op.getAuthorizationContext();
         if (ctx == null) {
             op.fail(new IllegalArgumentException("no authorization context"));
@@ -181,6 +183,11 @@ public class AuthorizationContextService extends StatelessService {
 
     @Override
     public void handleRequest(Operation op) {
+        if (op.getAction() == Action.DELETE && op.getUri().getPath().equals(getSelfLink())) {
+            super.handleRequest(op);
+            return;
+        }
+
         AuthorizationContext ctx = op.getAuthorizationContext();
         if (ctx == null) {
             op.fail(new IllegalArgumentException("no authorization context"));
