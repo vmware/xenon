@@ -62,6 +62,7 @@ public class ExampleService extends StatefulService {
         @PropertyOptions(indexing = PropertyIndexingOption.SORT)
         public Long sortedCounter;
         @UsageOption(option = PropertyUsageOption.AUTO_MERGE_IF_NOT_NULL)
+        @PropertyOptions(indexing = PropertyIndexingOption.SORT)
         public String name;
         @UsageOption(option = PropertyUsageOption.AUTO_MERGE_IF_NOT_NULL)
         public Set<String> tags = new HashSet<>();
