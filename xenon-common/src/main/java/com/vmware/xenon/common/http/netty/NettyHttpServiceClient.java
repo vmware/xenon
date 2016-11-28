@@ -436,6 +436,10 @@ public class NettyHttpServiceClient implements ServiceClient {
                 }
             }
 
+            if (op.hasReferer()) {
+                request.headers().set(HttpHeaderNames.REFERER, op.getRefererAsString());
+            }
+
             request.headers().set(HttpHeaderNames.CONTENT_LENGTH,
                     Long.toString(op.getContentLength()));
             request.headers().set(HttpHeaderNames.CONTENT_TYPE, op.getContentType());
@@ -447,10 +451,6 @@ public class NettyHttpServiceClient implements ServiceClient {
                 if (op.getCookies() != null) {
                     String header = CookieJar.encodeCookies(op.getCookies());
                     request.headers().set(HttpHeaderNames.COOKIE, header);
-                }
-
-                if (op.hasReferer()) {
-                    request.headers().set(HttpHeaderNames.REFERER, op.getRefererAsString());
                 }
 
                 request.headers().set(HttpHeaderNames.USER_AGENT, this.userAgent);

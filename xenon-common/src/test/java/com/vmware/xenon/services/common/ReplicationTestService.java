@@ -31,6 +31,7 @@ import com.vmware.xenon.services.common.QueryTask.QuerySpecification;
  * Test service used to validate document queries
  */
 public class ReplicationTestService extends StatefulService {
+    public static final String REFERER_TOKEN = UUID.randomUUID().toString();
     public static final String STRING_MARKER_FAIL_WITH_CONFLICT_CODE = "fail request withconflict error code, verify no retry";
     public static final String ERROR_MESSAGE_STRING_FIELD_IS_REQUIRED = "stringField is required";
 
@@ -123,6 +124,15 @@ public class ReplicationTestService extends StatefulService {
 
     private String retryRequestContextId;
     public AtomicInteger retryCount = new AtomicInteger();
+
+    @Override
+    public void handleGet(Operation get) {
+        if (get.getUri().getQuery() != null && !get.getRefererAsString().contains(REFERER_TOKEN)) {
+            get.fail(new IllegalArgumentException("invalid referer"));
+            return;
+        }
+        get.setBody(getState(get)).complete();
+    }
 
     @Override
     public void handlePut(Operation put) {

@@ -1727,8 +1727,7 @@ public class TestNodeGroupService {
         // expect results for strict and regular service instances
         int expectedServiceCount = this.serviceCount * 3;
 
-        Date exp = this.host.getTestExpiration();
-        while (exp.after(new Date())) {
+        this.host.waitFor("query tasks missing results", () -> {
             // create N direct query tasks. Direct tasks complete in the context of the POST to the
             // query task factory
             int count = 10;
@@ -1763,28 +1762,17 @@ public class TestNodeGroupService {
             testContext.await();
             this.host.logThroughput();
 
-            boolean converged = true;
             for (QueryTask qt : taskResults.values()) {
                 if (qt.results == null || qt.results.documentLinks == null) {
-                    throw new IllegalStateException("Missing results");
+                    return false;
                 }
                 if (qt.results.documentLinks.size() != expectedServiceCount) {
                     this.host.log("%s", Utils.toJsonHtml(qt));
-                    converged = false;
-                    break;
+                    return false;
                 }
             }
-
-            if (!converged) {
-                Thread.sleep(250);
-                continue;
-            }
-            break;
-        }
-
-        if (exp.before(new Date())) {
-            throw new TimeoutException();
-        }
+            return true;
+        });
 
         // Negative tests: Make sure custom error response body is preserved
         URI childUri = ownerSelectedServices.keySet().iterator().next();
@@ -1841,31 +1829,20 @@ public class TestNodeGroupService {
 
         }
 
-        exp = this.host.getTestExpiration();
-        while (new Date().before(exp)) {
-            boolean isConverged = true;
+        this.host.waitFor("factory results not expected", () -> {
             // verify all factories report same number of children
             for (VerificationHost peerHost : this.host.getInProcessHostMap().values()) {
-                factoryUri = UriUtils.buildUri(peerHost,
+                URI fUri = UriUtils.buildUri(peerHost,
                         ReplicationFactoryTestService.SIMPLE_REPL_SELF_LINK);
-                ServiceDocumentQueryResult rsp = this.host.getFactoryState(factoryUri);
+                ServiceDocumentQueryResult rsp = this.host.getFactoryState(fUri);
                 if (rsp.documentLinks.size() != latestState.size()) {
-                    this.host.log("Factory %s reporting %d children, expected %d", factoryUri,
+                    this.host.log("Factory %s reporting %d children, expected %d", fUri,
                             rsp.documentLinks.size(), latestState.size());
-                    isConverged = false;
-                    break;
+                    return false;
                 }
             }
-            if (!isConverged) {
-                Thread.sleep(250);
-                continue;
-            }
-            break;
-        }
-
-        if (new Date().after(exp)) {
-            throw new TimeoutException("factories did not converge");
-        }
+            return true;
+        });
 
         this.host.log("Inducing synchronization");
         // Induce synchronization on stable node group. No changes should be observed since
@@ -1885,6 +1862,16 @@ public class TestNodeGroupService {
             assertEquals(beforeState.documentVersion, afterState.documentVersion);
         }
 
+        // verify referrer propagation through forwarded requests
+        List<Operation> ops = new ArrayList<>();
+        TestRequestSender sender = new TestRequestSender(this.host);
+        URI referer = UriUtils.buildUri(this.host, ReplicationTestService.REFERER_TOKEN);
+        sender.setReferer(referer);
+        for (URI u : ownerSelectedServices.keySet()) {
+            u = UriUtils.extendUriWithQuery(u, "k", "v");
+            ops.add(Operation.createGet(u));
+        }
+        sender.sendAndWait(ops);
         verifyOperationJoinAcrossPeers(latestStateAfter);
     }
 
