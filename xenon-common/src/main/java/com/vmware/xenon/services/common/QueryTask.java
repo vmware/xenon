@@ -21,11 +21,14 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 
+import com.esotericsoftware.kryo.serializers.VersionFieldSerializer.Since;
+
 import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.ServiceDocumentDescription.TypeName;
 import com.vmware.xenon.common.ServiceDocumentQueryResult;
 import com.vmware.xenon.common.TaskState;
 import com.vmware.xenon.common.Utils;
+import com.vmware.xenon.common.serialization.ReleaseConstants;
 import com.vmware.xenon.services.common.QueryTask.QuerySpecification.QueryOption;
 import com.vmware.xenon.services.common.QueryTask.QuerySpecification.SortOrder;
 import com.vmware.xenon.services.common.QueryTask.QueryTerm.MatchType;
@@ -186,11 +189,13 @@ public class QueryTask extends ServiceDocument {
         /**
          * Property name to use for additional sort. Used in combination with {@code QueryOption#SORT}
          */
+        @Since(ReleaseConstants.RELEASE_VERSION_1_3_1)
         public List<QueryTerm> additionalSortTerms;
 
         /**
          * Property name to use for additional group sort. Used in combination with {@code QueryOption#GROUP_BY}
          */
+        @Since(ReleaseConstants.RELEASE_VERSION_1_3_1)
         public List<QueryTerm> additionalGroupSortTerms;
 
         /**
@@ -448,6 +453,8 @@ public class QueryTask extends ServiceDocument {
         public String matchValue;
         public MatchType matchType;
         public NumericRange<?> range;
+
+        @Since(ReleaseConstants.RELEASE_VERSION_1_3_1)
         public SortOrder sortOrder;
 
         @Override
