@@ -49,6 +49,7 @@ import java.util.stream.Collectors;
 
 import org.junit.After;
 import org.junit.Before;
+import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 
@@ -79,6 +80,7 @@ import com.vmware.xenon.common.ServiceStats.ServiceStat;
 import com.vmware.xenon.common.StatefulService;
 import com.vmware.xenon.common.SynchronizationTaskService;
 import com.vmware.xenon.common.TaskState;
+import com.vmware.xenon.common.TestResults;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
 import com.vmware.xenon.common.serialization.KryoSerializers;
@@ -149,6 +151,9 @@ public class TestNodeGroupService {
         }
 
     }
+
+    @Rule
+    public TestResults testResults = new TestResults();
 
     private static final String CUSTOM_EXAMPLE_SERVICE_KIND = "xenon:examplestate";
     private static final String CUSTOM_NODE_GROUP_NAME = "custom";
@@ -230,6 +235,8 @@ public class TestNodeGroupService {
     private HttpScheme replicationUriScheme;
     private boolean skipAvailabilityChecks = false;
     private boolean isMultiLocationTest = false;
+
+    public boolean isPerformanceTest = false;
 
     private void setUp(int localHostCount) throws Throwable {
         if (this.host != null) {
@@ -2798,6 +2805,7 @@ public class TestNodeGroupService {
         this.host.joinNodesAndVerifyConvergence(this.host.getPeerCount());
     }
 
+
     @Test
     public void forwardingAndSelection() throws Throwable {
         this.isPeerSynchronizationEnabled = false;
@@ -2805,6 +2813,10 @@ public class TestNodeGroupService {
         this.host.joinNodesAndVerifyConvergence(this.nodeCount);
         for (int i = 0; i < this.iterationCount; i++) {
             directOwnerSelection(true);
+        }
+
+        if (this.isPerformanceTest) {
+            return;
         }
 
         for (int i = 0; i < this.iterationCount; i++) {
@@ -3161,7 +3173,8 @@ public class TestNodeGroupService {
                 }
             }
             testContextDirect.await();
-            testContextDirect.logAfter();
+            double v = testContextDirect.logAfter();
+            this.testResults.getReport().all(TestResults.KEY_THROUGHPUT, v);
             return;
         }
 
