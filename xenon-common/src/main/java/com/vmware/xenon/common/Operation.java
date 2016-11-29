@@ -372,6 +372,7 @@ public class Operation implements Cloneable {
 
     // HTTP Header definitions
     public static final String REFERER_HEADER = "referer";
+    public static final String CONNECTION_HEADER = "connection";
     public static final String CONTENT_TYPE_HEADER = "content-type";
     public static final String CONTENT_ENCODING_HEADER = "content-encoding";
     public static final String CONTENT_LENGTH_HEADER = "content-length";
@@ -400,14 +401,13 @@ public class Operation implements Cloneable {
             + "rpl-phase";
     public static final String REPLICATION_QUORUM_HEADER = HEADER_NAME_PREFIX
             + "rpl-quorum";
-
+    public static final String REPLICATION_PARENT_HEADER = HEADER_NAME_PREFIX + "rpl-parent";
     public static final String REPLICATION_QUORUM_HEADER_VALUE_ALL = HEADER_NAME_PREFIX
             + "all";
     public static final String TRANSACTION_HEADER = HEADER_NAME_PREFIX
             + "tx-phase";
     public static final String TRANSACTION_ID_HEADER = HEADER_NAME_PREFIX + "tx-id";
     public static final String TRANSACTION_REFLINK_HEADER = HEADER_NAME_PREFIX + "tx-reflink";
-    public static final String REPLICATION_PARENT_HEADER = HEADER_NAME_PREFIX + "rpl-parent";
 
     /**
      * Infrastructure use only. Set when a service is first created due to a client request. Since
@@ -1542,6 +1542,16 @@ public class Operation implements Cloneable {
      */
     public String getRequestHeaderAsIs(String headerName) {
         return getRequestHeader(headerName, false);
+    }
+
+    /**
+     * Retrieves and removes header from request headers, skipping normalization
+     */
+    public String getAndRemoveRequestHeaderAsIs(String headerName) {
+        if (!hasRequestHeaders()) {
+            return null;
+        }
+        return this.remoteCtx.requestHeaders.remove(headerName);
     }
 
     private String getRequestHeader(String headerName, boolean normalize) {

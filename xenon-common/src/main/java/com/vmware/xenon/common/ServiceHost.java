@@ -2672,7 +2672,8 @@ public class ServiceHost implements ServiceRequestSender {
                     return;
                 }
 
-                String factoryPath = post.getRequestHeaderAsIs(Operation.REPLICATION_PARENT_HEADER);
+                String factoryPath = post.getAndRemoveRequestHeaderAsIs(
+                        Operation.REPLICATION_PARENT_HEADER);
                 post.setUri(UriUtils.buildUri(this, factoryPath));
 
                 ServiceDocument initialState = post.getBody(s.getStateType());
