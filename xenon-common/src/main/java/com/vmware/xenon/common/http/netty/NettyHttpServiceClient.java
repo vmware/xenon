@@ -24,6 +24,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.logging.Level;
 import java.util.logging.Logger;
 import javax.net.ssl.SSLContext;
 
@@ -31,10 +32,12 @@ import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpHeaderValues;
+import io.netty.handler.codec.http.HttpHeaders;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpVersion;
 import io.netty.handler.codec.http.cookie.ClientCookieDecoder;
 import io.netty.handler.codec.http.cookie.Cookie;
+import io.netty.util.AsciiString;
 
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Operation.AuthorizationContext;
@@ -67,8 +70,29 @@ public class NettyHttpServiceClient implements ServiceClient {
             .getName());
     private static final String ENV_VAR_NAME_HTTP_PROXY = "http_proxy";
 
+    static final AsciiString TRANSACTION_ID_HEADER_ASCII = new AsciiString(
+            Operation.TRANSACTION_ID_HEADER);
+
+    static final AsciiString CONTEXT_ID_HEADER_ASCII = new AsciiString(
+            Operation.CONTEXT_ID_HEADER);
+
+    static final AsciiString AUTH_TOKEN_HEADER_ASCII = new AsciiString(
+            Operation.REQUEST_AUTH_TOKEN_HEADER);
+
+    static final AsciiString DEFAULT_MEDIA_TYPE_ASCII = new AsciiString(
+            Operation.MEDIA_TYPE_EVERYTHING_WILDCARDS);
+
+    static final AsciiString PRAGMA_DIRECTIVE_REPLICATED_ASCII = new AsciiString(
+            Operation.PRAGMA_DIRECTIVE_REPLICATED);
+
+    static final AsciiString MEDIA_TYPE_JSON_ASCII = new AsciiString(
+            Operation.MEDIA_TYPE_APPLICATION_JSON);
+
+    static final AsciiString MEDIA_TYPE_KRYO_OCTET_STREAM_ASCII = new AsciiString(
+            Operation.MEDIA_TYPE_APPLICATION_KRYO_OCTET_STREAM);
+
     private URI httpProxy;
-    private String userAgent;
+    private AsciiString userAgentAscii;
 
     private NettyChannelPool sslChannelPool;
     private NettyChannelPool channelPool;
@@ -102,7 +126,7 @@ public class NettyHttpServiceClient implements ServiceClient {
             ScheduledExecutorService scheduledExecutor,
             ServiceHost host) throws URISyntaxException {
         NettyHttpServiceClient sc = new NettyHttpServiceClient();
-        sc.userAgent = userAgent;
+        sc.userAgentAscii = new AsciiString(userAgent);
         sc.scheduledExecutor = scheduledExecutor;
         sc.executor = executor;
         sc.host = host;
@@ -343,7 +367,7 @@ public class NettyHttpServiceClient implements ServiceClient {
                 return;
             }
             op.toggleOption(OperationOption.SOCKET_ACTIVE, true);
-            doSendRequest(op);
+            sendHttpRequest(op);
         });
 
         NettyChannelGroupKey key = new NettyChannelGroupKey(
@@ -351,7 +375,7 @@ public class NettyHttpServiceClient implements ServiceClient {
         pool.connectOrReuse(key, op);
     }
 
-    private void doSendRequest(Operation op) {
+    private void sendHttpRequest(Operation op) {
         final Object originalBody = op.getBodyRaw();
         try {
             byte[] body = Utils.encodeBody(op);
@@ -375,13 +399,6 @@ public class NettyHttpServiceClient implements ServiceClient {
                 pathAndQuery = path;
             }
 
-            /**
-             * NOTE: Pay close attention to calls that access the operation request headers, since
-             * they will cause a memory allocation. We avoid the allocation by first checking if
-             * the operation has any custom headers to begin with, then we check for the specific
-             * header
-             */
-            boolean hasRequestHeaders = op.hasRequestHeaders();
             boolean useHttp2 = op.isConnectionSharing();
             if (this.httpProxy != null || useHttp2 || userInfo != null) {
                 pathAndQuery = op.getUri().toString();
@@ -398,10 +415,20 @@ public class NettyHttpServiceClient implements ServiceClient {
                         content, false);
             }
 
+            HttpHeaders httpHeaders = request.headers();
+
+            /**
+             * NOTE: Pay close attention to calls that access the operation request headers, since
+             * they will cause a memory allocation. We avoid the allocation by first checking if
+             * the operation has any custom headers to begin with, then we check for the specific
+             * header
+             */
+            boolean hasRequestHeaders = op.hasRequestHeaders();
+
             if (useHttp2) {
                 // when operation is cloned, it may contain original streamId header. remove it.
                 if (hasRequestHeaders) {
-                    op.getRequestHeaders().remove(Operation.STREAM_ID_HEADER);
+                    op.getAndRemoveRequestHeaderAsIs(Operation.STREAM_ID_HEADER);
                 }
                 // We set the operation so that once a streamId is assigned, we can record
                 // the correspondence between the streamId and operation: this will let us
@@ -409,57 +436,84 @@ public class NettyHttpServiceClient implements ServiceClient {
                 request.setOperation(op);
             }
 
-            String pragmaHeader = op.getRequestHeaderAsIs(Operation.PRAGMA_HEADER);
+            String pragmaValue = op.getAndRemoveRequestHeaderAsIs(Operation.PRAGMA_HEADER);
+            String acceptValue = op.getAndRemoveRequestHeaderAsIs(Operation.ACCEPT_HEADER);
+            String authTokenValue = op
+                    .getAndRemoveRequestHeaderAsIs(Operation.REQUEST_AUTH_TOKEN_HEADER);
 
-            if (op.isFromReplication() && pragmaHeader == null) {
-                request.headers().set(HttpHeaderNames.PRAGMA,
-                        Operation.PRAGMA_DIRECTIVE_REPLICATED);
+            if (op.isFromReplication() && pragmaValue == null) {
+                httpHeaders.add(HttpHeaderNames.PRAGMA, PRAGMA_DIRECTIVE_REPLICATED_ASCII);
+            } else if (pragmaValue != null) {
+                httpHeaders.add(HttpHeaderNames.PRAGMA, pragmaValue);
             }
 
             if (op.getTransactionId() != null) {
-                request.headers().set(Operation.TRANSACTION_ID_HEADER, op.getTransactionId());
+                httpHeaders.add(TRANSACTION_ID_HEADER_ASCII, op.getTransactionId());
             }
 
             if (op.getContextId() != null) {
-                request.headers().set(Operation.CONTEXT_ID_HEADER, op.getContextId());
+                httpHeaders.add(CONTEXT_ID_HEADER_ASCII, op.getContextId());
             }
 
-            AuthorizationContext ctx = op.getAuthorizationContext();
-            if (ctx != null && ctx.getToken() != null) {
-                request.headers().set(Operation.REQUEST_AUTH_TOKEN_HEADER, ctx.getToken());
-            }
-
+            hasRequestHeaders = op.hasRequestHeaders();
             boolean isXenonToXenon = op.isFromReplication() || op.isForwarded();
             if (hasRequestHeaders) {
+                // remove all headers that we will set explicitly
+                op.getAndRemoveRequestHeaderAsIs(Operation.CONTENT_LENGTH_HEADER);
+                op.getAndRemoveRequestHeaderAsIs(Operation.CONTENT_TYPE_HEADER);
+                op.getAndRemoveRequestHeaderAsIs(Operation.CONNECTION_HEADER);
+                op.getAndRemoveRequestHeaderAsIs(Operation.REFERER_HEADER);
+                op.getAndRemoveRequestHeaderAsIs(Operation.HOST_HEADER);
+                op.getAndRemoveRequestHeaderAsIs(Operation.USER_AGENT_HEADER);
+                hasRequestHeaders = op.hasRequestHeaders();
+            }
+
+            if (hasRequestHeaders) {
                 for (Entry<String, String> nameValue : op.getRequestHeaders().entrySet()) {
-                    request.headers().set(nameValue.getKey(), nameValue.getValue());
+                    httpHeaders.add(nameValue.getKey(), nameValue.getValue());
                 }
             }
 
-            if (op.hasReferer()) {
-                request.headers().set(HttpHeaderNames.REFERER, op.getRefererAsString());
+            if (authTokenValue != null) {
+                httpHeaders.add(AUTH_TOKEN_HEADER_ASCII, authTokenValue);
+            } else {
+                AuthorizationContext ctx = op.getAuthorizationContext();
+                if (ctx != null && ctx.getToken() != null) {
+                    httpHeaders.add(AUTH_TOKEN_HEADER_ASCII, ctx.getToken());
+                }
             }
 
-            request.headers().set(HttpHeaderNames.CONTENT_LENGTH,
+            setAsciiContentType(op, httpHeaders);
+
+            httpHeaders.add(HttpHeaderNames.CONTENT_LENGTH,
                     Long.toString(op.getContentLength()));
-            request.headers().set(HttpHeaderNames.CONTENT_TYPE, op.getContentType());
+
             if (op.isKeepAlive()) {
-                request.headers().set(HttpHeaderNames.CONNECTION, HttpHeaderValues.KEEP_ALIVE);
+                httpHeaders.add(HttpHeaderNames.CONNECTION, HttpHeaderValues.KEEP_ALIVE);
+            }
+
+            if (op.hasReferer() && !op.isFromReplication()) {
+                httpHeaders.add(HttpHeaderNames.REFERER, op.getRefererAsString());
             }
 
             if (!isXenonToXenon) {
                 if (op.getCookies() != null) {
                     String header = CookieJar.encodeCookies(op.getCookies());
-                    request.headers().set(HttpHeaderNames.COOKIE, header);
+                    httpHeaders.set(HttpHeaderNames.COOKIE, header);
                 }
 
-                request.headers().set(HttpHeaderNames.USER_AGENT, this.userAgent);
-                if (op.getRequestHeaderAsIs(Operation.ACCEPT_HEADER) == null) {
-                    request.headers().set(HttpHeaderNames.ACCEPT,
-                            Operation.MEDIA_TYPE_EVERYTHING_WILDCARDS);
+                request.headers().set(HttpHeaderNames.USER_AGENT, this.userAgentAscii);
+                if (acceptValue == null) {
+                    httpHeaders.add(HttpHeaderNames.ACCEPT, DEFAULT_MEDIA_TYPE_ASCII);
+                } else {
+                    httpHeaders.add(HttpHeaderNames.ACCEPT, acceptValue);
                 }
 
-                request.headers().set(HttpHeaderNames.HOST, op.getUri().getHost());
+                httpHeaders.add(HttpHeaderNames.HOST, op.getUri().getHost());
+            }
+
+            if (LOGGER.isLoggable(Level.FINEST)) {
+                logRequestFraming(op, request);
             }
 
             boolean doCookieJarUpdate = !isXenonToXenon;
@@ -486,6 +540,38 @@ public class NettyHttpServiceClient implements ServiceClient {
                     EnumSet.of(ErrorDetail.SHOULD_RETRY)));
             fail(e, op, originalBody);
         }
+    }
+
+    private void setAsciiContentType(Operation op, HttpHeaders httpHeaders) {
+        String contentType = op.getContentType();
+        /*
+         * Optimization that saves char sequence to byte[] conversion on the content type, which
+         * is non trivial overhead on small HTTP requests.
+         * We first check for a specific char at a index in the string, then the hash code to nearly
+         * eliminate the false positives from hash code alone.
+         */
+        if (contentType.charAt(12) == 'k'
+                && Operation.MEDIA_TYPE_APPLICATION_KRYO_OCTET_STREAM.hashCode() == contentType
+                        .hashCode()) {
+            httpHeaders.add(HttpHeaderNames.CONTENT_TYPE, MEDIA_TYPE_KRYO_OCTET_STREAM_ASCII);
+        } else if (contentType.charAt(12) == 'j'
+                && Operation.MEDIA_TYPE_APPLICATION_JSON.hashCode() == contentType.hashCode()) {
+            httpHeaders.add(HttpHeaderNames.CONTENT_TYPE, MEDIA_TYPE_JSON_ASCII);
+        } else {
+            httpHeaders.add(HttpHeaderNames.CONTENT_TYPE, op.getContentType());
+        }
+    }
+
+    private void logRequestFraming(Operation op, NettyFullHttpRequest request) {
+        StringBuilder s = new StringBuilder();
+        s.append(op.getAction().toString())
+                .append(" ")
+                .append(op.getUri().toString())
+                .append("\n");
+        request.headers().forEach((e) -> {
+            s.append(e.toString()).append("\n");
+        });
+        LOGGER.info(s.toString());
     }
 
     private static HttpMethod toHttpMethod(Action a) {

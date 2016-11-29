@@ -198,6 +198,11 @@ public class TestNodeGroupService {
      */
     public long totalOperationLimit = Long.MAX_VALUE;
 
+    /**
+     * Command line argument used to delay test start, useful for attaching memory profiler
+     */
+    public int waitDurationBeforeStartSeconds;
+
     private NodeGroupConfig nodeGroupConfig = new NodeGroupConfig();
     private EnumSet<ServiceOption> postCreationServiceOptions = EnumSet.noneOf(ServiceOption.class);
     private boolean expectFailure;
@@ -221,7 +226,7 @@ public class TestNodeGroupService {
 
     private Function<ExampleServiceState, Void> exampleStateUpdateBodySetter = (
             ExampleServiceState state) -> {
-        state.name = Utils.getNowMicrosUtc() + "";
+        state.name = Utils.getSystemNowMicrosUtc() + "";
         return null;
     };
 
@@ -235,6 +240,11 @@ public class TestNodeGroupService {
         if (this.host != null) {
             return;
         }
+
+        if (this.waitDurationBeforeStartSeconds > 0) {
+            Thread.sleep(TimeUnit.SECONDS.toMillis(this.waitDurationBeforeStartSeconds));
+        }
+
         CommandLineArgumentParser.parseFromProperties(this);
         this.host = VerificationHost.create(0);
         this.host.setAuthorizationEnabled(this.isAuthorizationEnabled);
@@ -2206,7 +2216,7 @@ public class TestNodeGroupService {
                 elapsedTimePerAction.clear();
             }
 
-        } while (new Date().before(expiration) && this.totalOperationLimit > totalOperations);
+        } while (new Date().before(expiration) && this.totalOperationLimit >= totalOperations);
 
         logHostStats();
         logPerActionThroughput(elapsedTimePerAction, countPerAction);
