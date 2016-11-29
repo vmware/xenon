@@ -43,6 +43,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 
 import org.junit.After;
+import org.junit.Rule;
 import org.junit.Test;
 
 import com.vmware.xenon.common.CommandLineArgumentParser;
@@ -66,6 +67,7 @@ import com.vmware.xenon.common.ServiceStats.ServiceStat;
 import com.vmware.xenon.common.ServiceSubscriptionState.ServiceSubscriber;
 import com.vmware.xenon.common.TaskState;
 import com.vmware.xenon.common.TaskState.TaskStage;
+import com.vmware.xenon.common.TestResults;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
 import com.vmware.xenon.common.test.MinimalTestServiceState;
@@ -97,6 +99,9 @@ public class TestQueryTaskService {
     public int queryCount = 10;
 
     private VerificationHost host;
+
+    @Rule
+    public TestResults testResults = new TestResults();
 
     private void setUpHost() throws Throwable {
         setUpHost(0);
@@ -752,7 +757,7 @@ public class TestQueryTaskService {
         // test search performance using a single version per service, single match
         newState = putSimpleStateOnQueryTargetServices(services, newState);
         for (int i = 0; i < 5; i++) {
-            this.host.createAndWaitSimpleDirectQuery("id", newState.id, services.size(), 1);
+            this.host.createAndWaitSimpleDirectQuery("id", newState.id, services.size(), 1, this.testResults);
         }
 
         // all expected as results
@@ -763,7 +768,7 @@ public class TestQueryTaskService {
                     QueryValidationServiceState.FIELD_NAME_TEXT_VALUE,
                     newState.textValue,
                     services.size(),
-                    services.size());
+                    services.size(), this.testResults);
         }
 
         // make sure throughput is not degraded when multiple versions are added per service
@@ -772,7 +777,7 @@ public class TestQueryTaskService {
         }
 
         for (int i = 0; i < 5; i++) {
-            this.host.createAndWaitSimpleDirectQuery("id", newState.id, services.size(), 1);
+            this.host.createAndWaitSimpleDirectQuery("id", newState.id, services.size(), 1, this.testResults);
         }
 
     }
@@ -810,33 +815,33 @@ public class TestQueryTaskService {
             this.host.log("%d", i);
             this.host.createAndWaitSimpleDirectQuery(
                     QuerySpecification.buildCompositeFieldName("exampleValue", "name"),
-                    newState.exampleValue.name, services.size(), 1);
+                    newState.exampleValue.name, services.size(), 1, this.testResults);
 
             this.host.createAndWaitSimpleDirectQuery(
                     QuerySpecification.buildCompositeFieldName("nestedComplexValue", "id"),
-                    newState.nestedComplexValue.id, services.size(), services.size());
+                    newState.nestedComplexValue.id, services.size(), services.size(), this.testResults);
 
             this.host.createAndWaitSimpleDirectQuery(
                     QuerySpecification.buildCompositeFieldName("listOfExampleValues", "item",
                             "name"),
-                    newState.listOfExampleValues.get(0).name, services.size(), services.size());
+                    newState.listOfExampleValues.get(0).name, services.size(), services.size(), this.testResults);
 
             this.host.createAndWaitSimpleDirectQuery(
                     QuerySpecification.buildCompositeFieldName("arrayOfExampleValues", "item",
                             "name"),
-                    newState.arrayOfExampleValues[0].name, services.size(), services.size());
+                    newState.arrayOfExampleValues[0].name, services.size(), services.size(), this.testResults);
 
             this.host.createAndWaitSimpleDirectQuery(
                     QuerySpecification.buildCollectionItemName("listOfStrings"),
-                    newState.listOfStrings.get(0), services.size(), services.size());
+                    newState.listOfStrings.get(0), services.size(), services.size(), this.testResults);
 
             this.host.createAndWaitSimpleDirectQuery(
                     QuerySpecification.buildCollectionItemName("arrayOfStrings"),
-                    newState.arrayOfStrings[1], services.size(), services.size());
+                    newState.arrayOfStrings[1], services.size(), services.size(), this.testResults);
 
             this.host.createAndWaitSimpleDirectQuery(
                     "id",
-                    newState.id, services.size(), 1);
+                    newState.id, services.size(), 1, this.testResults);
 
             doInQuery("id",
                     newState.id, services.size(), 1);
@@ -852,16 +857,16 @@ public class TestQueryTaskService {
 
             this.host.createAndWaitSimpleDirectQuery(
                     QuerySpecification.buildCompositeFieldName("mapOfNestedTypes", "nested", "id"),
-                    newState.mapOfNestedTypes.get("nested").id, services.size(), services.size());
+                    newState.mapOfNestedTypes.get("nested").id, services.size(), services.size(), this.testResults);
 
             // query for a field that SHOULD be ignored. We should get zero links back
             this.host.createAndWaitSimpleDirectQuery(
                     QueryValidationServiceState.FIELD_NAME_IGNORED_STRING_VALUE,
-                    newState.ignoredStringValue, services.size(), 0);
+                    newState.ignoredStringValue, services.size(), 0, this.testResults);
 
             this.host.createAndWaitSimpleDirectQuery(
                     QuerySpecification.buildCollectionItemName("ignoredArrayOfStrings"),
-                    newState.ignoredArrayOfStrings[1], services.size(), 0);
+                    newState.ignoredArrayOfStrings[1], services.size(), 0, this.testResults);
         }
         verifyNoPaginatedIndexSearchers();
     }
@@ -873,7 +878,7 @@ public class TestQueryTaskService {
             Entry e = (Entry) o;
             this.host.createAndWaitSimpleDirectQuery(
                     QuerySpecification.buildCompositeFieldName(mapName, (String) e.getKey()),
-                    e.getValue().toString(), documentCount, expectedResultCount);
+                    e.getValue().toString(), documentCount, expectedResultCount, this.testResults);
         }
     }
 

@@ -1762,8 +1762,7 @@ public class TestServiceHost {
                         // check the document index, if we ever created this service
                         try {
                             this.host.createAndWaitSimpleDirectQuery(
-                                    ServiceDocument.FIELD_NAME_SELF_LINK, o.getUri().getPath(), 1,
-                                    1);
+                                    ServiceDocument.FIELD_NAME_SELF_LINK, o.getUri().getPath(), 1, 1);
                         } catch (Throwable e1) {
                             getCtx.fail(e1);
                             return;

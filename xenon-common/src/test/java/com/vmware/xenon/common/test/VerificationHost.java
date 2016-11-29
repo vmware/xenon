@@ -92,6 +92,7 @@ import com.vmware.xenon.common.ServiceStats;
 import com.vmware.xenon.common.ServiceStats.ServiceStat;
 import com.vmware.xenon.common.ServiceStats.ServiceStatLogHistogram;
 import com.vmware.xenon.common.TaskState;
+import com.vmware.xenon.common.TestResults;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
 import com.vmware.xenon.common.http.netty.NettyHttpServiceClient;
@@ -772,28 +773,47 @@ public class VerificationHost extends ExampleServiceHost {
     }
 
     public ServiceDocumentQueryResult createAndWaitSimpleDirectQuery(
-            String fieldName, String fieldValue, long documentCount, long expectedResultCount) {
+            String fieldName, String fieldValue, long documentCount, long expectedResultCount, TestResults testResults) {
         return createAndWaitSimpleDirectQuery(this.getUri(), fieldName, fieldValue, documentCount,
-                expectedResultCount);
+                expectedResultCount, testResults);
+    }
+
+    public ServiceDocumentQueryResult createAndWaitSimpleDirectQuery(
+            String fieldName, String fieldValue, long documentCount, long expectedResultCount) {
+        return createAndWaitSimpleDirectQuery(fieldName, fieldValue, documentCount,
+                expectedResultCount, null);
     }
 
     public ServiceDocumentQueryResult createAndWaitSimpleDirectQuery(URI hostUri,
             String fieldName, String fieldValue, long documentCount, long expectedResultCount) {
+        return createAndWaitSimpleDirectQuery(hostUri, fieldName, fieldValue,
+                documentCount, expectedResultCount, null);
+    }
+
+    public ServiceDocumentQueryResult createAndWaitSimpleDirectQuery(URI hostUri,
+            String fieldName, String fieldValue, long documentCount, long expectedResultCount, TestResults testResults) {
         QueryTask.QuerySpecification q = new QueryTask.QuerySpecification();
         q.query.setTermPropertyName(fieldName).setTermMatchValue(fieldValue);
         return createAndWaitSimpleDirectQuery(hostUri, q,
-                documentCount, expectedResultCount);
+                documentCount, expectedResultCount, testResults);
     }
 
     public ServiceDocumentQueryResult createAndWaitSimpleDirectQuery(
             QueryTask.QuerySpecification spec,
             long documentCount, long expectedResultCount) {
+        return createAndWaitSimpleDirectQuery(spec,
+                documentCount, expectedResultCount, null);
+    }
+
+    public ServiceDocumentQueryResult createAndWaitSimpleDirectQuery(
+            QuerySpecification spec,
+            long documentCount, long expectedResultCount, TestResults testResults) {
         return createAndWaitSimpleDirectQuery(this.getUri(), spec,
-                documentCount, expectedResultCount);
+                documentCount, expectedResultCount, testResults);
     }
 
     public ServiceDocumentQueryResult createAndWaitSimpleDirectQuery(URI hostUri,
-            QueryTask.QuerySpecification spec, long documentCount, long expectedResultCount) {
+            QuerySpecification spec, long documentCount, long expectedResultCount, TestResults testResults) {
         long start = System.nanoTime() / 1000;
 
         QueryTask[] tasks = new QueryTask[1];
@@ -821,6 +841,11 @@ public class VerificationHost extends ExampleServiceHost {
         double thpt = documentCount / delta;
         log("Document count: %d, Expected match count: %d, Documents / sec: %f",
                 documentCount, expectedResultCount, thpt);
+
+        if (testResults != null) {
+            String key = spec.query.term.propertyName + " docs/s";
+            testResults.getReport().all(key, thpt);
+        }
         return resultTask.results;
     }
 
@@ -1134,7 +1159,7 @@ public class VerificationHost extends ExampleServiceHost {
         doServiceUpdates(Action.PUT, count, properties, services);
     }
 
-    public void doServiceUpdates(Action action, long count,
+    public double doServiceUpdates(Action action, long count,
             EnumSet<TestProperty> properties,
             List<Service> services) throws Throwable {
 
@@ -1353,15 +1378,15 @@ public class VerificationHost extends ExampleServiceHost {
         }
 
         testWait(ctx);
-        ctx.logAfter();
+        double throughput = ctx.logAfter();
 
         if (isFailureExpected) {
             this.toggleNegativeTestMode(false);
-            return;
+            return throughput;
         }
 
         if (properties.contains(TestProperty.BINARY_PAYLOAD)) {
-            return;
+            return throughput;
         }
 
         List<URI> getUris = new ArrayList<>();
@@ -1404,7 +1429,7 @@ public class VerificationHost extends ExampleServiceHost {
         }
 
         logMemoryInfo();
-
+        return throughput;
     }
 
     public void logMemoryInfo() {
@@ -2553,17 +2578,24 @@ public class VerificationHost extends ExampleServiceHost {
         return this.testDurationSeconds > 0;
     }
 
-    public void logServiceStats(URI uri) {
+    public void logServiceStats(URI uri, TestResults testResults) {
+        ServiceStats serviceStats = logServiceStats(uri);
+        if (testResults != null) {
+            testResults.getReport().stats(uri, serviceStats);
+        }
+    }
+
+    public ServiceStats logServiceStats(URI uri) {
+        ServiceStats stats = null;
         try {
-            ServiceStats stats = getServiceState(null, ServiceStats.class,
-                    UriUtils.buildStatsUri(uri));
+            stats = getServiceState(null, ServiceStats.class, UriUtils.buildStatsUri(uri));
             if (stats == null || stats.entries == null) {
-                return;
+                return null;
             }
 
             StringBuilder sb = new StringBuilder();
             sb.append(String.format("Stats for %s%n", uri));
-            sb.append(String.format("\tCount\t\tAvg\t\tTotal\t\t\tName%n"));
+            sb.append(String.format("\tCount\t\t\tAvg\t\tTotal\t\t\tName%n"));
 
             stats.entries.values().stream()
                     .sorted((s1, s2) -> s1.name.compareTo(s2.name))
@@ -2573,6 +2605,8 @@ public class VerificationHost extends ExampleServiceHost {
         } catch (Throwable e) {
             log("Failure getting stats: %s", e.getMessage());
         }
+
+        return stats;
     }
 
     private void logStat(URI serviceUri, ServiceStat st, StringBuilder sb) {

@@ -30,10 +30,12 @@ import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import org.junit.Rule;
 import org.junit.Test;
 
 import com.vmware.xenon.common.DefaultHandlerTestService.DefaultHandlerState;
 import com.vmware.xenon.common.Operation.CompletionHandler;
+import com.vmware.xenon.common.Service.Action;
 import com.vmware.xenon.common.Service.ServiceOption;
 import com.vmware.xenon.common.ServiceStats.ServiceStat;
 import com.vmware.xenon.common.test.MinimalTestServiceState;
@@ -195,6 +197,9 @@ class IdempotentPostService extends StatefulService {
 
 public class TestStatefulService extends BasicReusableHostTestCase {
 
+    @Rule
+    public TestResults testResults = new TestResults();
+
     @Test
     public void optionsValidation() throws Throwable {
         ExampleServiceState body = new ExampleServiceState();
@@ -344,7 +349,8 @@ public class TestStatefulService extends BasicReusableHostTestCase {
         this.host.testWait();
 
         for (int i = 0; i < 5; i++) {
-            this.host.doPutPerService(c, props, services);
+            double tput = this.host.doServiceUpdates(Action.PUT, c, props, services);
+            this.testResults.getReport().all(TestResults.KEY_THROUGHPUT, tput);
         }
     }
 

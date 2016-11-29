@@ -50,6 +50,7 @@ import java.util.logging.Level;
 import javax.xml.bind.DatatypeConverter;
 
 import org.junit.After;
+import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 
@@ -73,6 +74,7 @@ import com.vmware.xenon.common.ServiceHost.ServiceHostState;
 import com.vmware.xenon.common.ServiceStats;
 import com.vmware.xenon.common.ServiceStats.ServiceStat;
 import com.vmware.xenon.common.SynchronizationTaskService;
+import com.vmware.xenon.common.TestResults;
 import com.vmware.xenon.common.TestUtilityService;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
@@ -189,6 +191,9 @@ public class TestLuceneDocumentIndexService {
 
     private VerificationHost host;
 
+    @Rule
+    public TestResults testResults = new TestResults();
+
     private void setUpHost(boolean isAuthEnabled) throws Throwable {
         if (this.host != null) {
             return;
@@ -248,7 +253,7 @@ public class TestLuceneDocumentIndexService {
         }
         try {
             this.host.setSystemAuthorizationContext();
-            this.host.logServiceStats(this.host.getDocumentIndexServiceUri());
+            this.host.logServiceStats(this.host.getDocumentIndexServiceUri(), this.testResults);
         } catch (Throwable e) {
             this.host.log("Error logging stats: %s", e.toString());
         }
@@ -601,6 +606,7 @@ public class TestLuceneDocumentIndexService {
                 this.iterationCount,
                 qps,
                 thput);
+        this.testResults.getReport().all("selflinks/sec", thput);
     }
 
     @Test
@@ -681,7 +687,7 @@ public class TestLuceneDocumentIndexService {
 
     private void logServiceStats(VerificationHost h) {
         try {
-            this.host.logServiceStats(UriUtils.buildUri(h, LuceneDocumentIndexService.SELF_LINK));
+            this.host.logServiceStats(UriUtils.buildUri(h, LuceneDocumentIndexService.SELF_LINK), this.testResults);
         } catch (Throwable e) {
             this.host.log("Error logging stats: %s", e.toString());
         }
@@ -1695,6 +1701,8 @@ public class TestLuceneDocumentIndexService {
                 this.host.getState().serviceCount,
                 docCount,
                 ioCount, queryCount, queryResultCount.get(), throughput);
+
+        this.testResults.getReport().all("POSTs/sec", throughput);
     }
 
     @Test
@@ -2439,7 +2447,7 @@ public class TestLuceneDocumentIndexService {
             this.host.testWait();
 
             // This can be removed once we're confident these tests are stable
-            this.host.logServiceStats(documentIndexUri);
+            this.host.logServiceStats(documentIndexUri, this.testResults);
         } while (Utils.getSystemNowMicrosUtc() < end);
     }
 
@@ -2558,7 +2566,8 @@ public class TestLuceneDocumentIndexService {
 
         int repeat = 5;
         for (int i = 0; i < repeat; i++) {
-            this.host.doServiceUpdates(action, count, props, services);
+            double throughput = this.host.doServiceUpdates(action, count, props, services);
+            this.testResults.getReport().all(TestResults.KEY_THROUGHPUT, throughput);
             logQuerySingleStat();
         }
 

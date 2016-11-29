@@ -29,14 +29,14 @@ import java.util.concurrent.TimeUnit;
 
 import org.junit.Test;
 
-import com.vmware.xenon.common.BasicReportTestCase;
+import com.vmware.xenon.common.BasicTestCase;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.ServiceStats;
 import com.vmware.xenon.common.SystemHostInfo.OsFamily;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.test.VerificationHost;
 
-public class TestProcessService extends BasicReportTestCase {
+public class TestProcessService extends BasicTestCase {
 
     public void beforeHostStart(VerificationHost host) {
         host.setMaintenanceIntervalMicros(TimeUnit.MILLISECONDS

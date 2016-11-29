@@ -431,7 +431,7 @@ public class TestAuthSetupHelper extends BasicTestCase {
         q.options = EnumSet
                 .of(QueryTask.QuerySpecification.QueryOption.EXPAND_CONTENT);
         return this.host
-                .createAndWaitSimpleDirectQuery(this.host.getUri(), q, desiredCount, desiredCount);
+                .createAndWaitSimpleDirectQuery(this.host.getUri(), q, desiredCount, desiredCount, null);
     }
 
     @Test

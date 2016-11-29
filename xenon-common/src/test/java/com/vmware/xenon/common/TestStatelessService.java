@@ -17,6 +17,7 @@ import java.net.URI;
 import java.time.Duration;
 
 import org.junit.Before;
+import org.junit.Rule;
 import org.junit.Test;
 
 import com.vmware.xenon.common.StatelessTestService.ComputeSquare;
@@ -47,6 +48,9 @@ public class TestStatelessService extends BasicReusableHostTestCase {
     public int requestCount = 1000;
 
     public int iterationCount = 3;
+
+    @Rule
+    public TestResults testResults = new TestResults();
 
     @Before
     public void setUp() {
@@ -103,7 +107,8 @@ public class TestStatelessService extends BasicReusableHostTestCase {
                     }));
         }
         ctx.await();
-        ctx.logAfter();
+        double tput = ctx.logAfter();
+        this.testResults.getReport().lastValue(TestResults.KEY_THROUGHPUT, tput);
 
     }
 }

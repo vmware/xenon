@@ -23,7 +23,7 @@ import org.junit.Test;
 
 import com.vmware.xenon.common.Service.Action;
 
-public class TestValidationError extends BasicReportTestCase {
+public class TestValidationError extends BasicTestCase {
     private static final String ERROR_MSG_NAME_REQUIRED = "name is required";
     private TestValidationServiceState state;
 

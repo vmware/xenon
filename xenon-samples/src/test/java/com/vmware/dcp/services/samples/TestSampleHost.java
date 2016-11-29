@@ -22,7 +22,7 @@ import java.util.UUID;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 
-import com.vmware.xenon.common.BasicReportTestCase;
+import com.vmware.xenon.common.BasicTestCase;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.ServiceDocumentQueryResult;
 import com.vmware.xenon.common.UriUtils;
@@ -38,7 +38,7 @@ import com.vmware.xenon.services.common.RootNamespaceService;
  * VerificationHost.
  *
  */
-public class TestSampleHost extends BasicReportTestCase {
+public class TestSampleHost extends BasicTestCase {
 
     private TemporaryFolder tmpFolder = new TemporaryFolder();
     private SampleHost sampleHost;

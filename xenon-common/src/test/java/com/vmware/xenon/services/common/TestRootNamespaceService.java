@@ -18,11 +18,11 @@ import java.net.URI;
 import org.junit.Before;
 import org.junit.Test;
 
-import com.vmware.xenon.common.BasicReportTestCase;
+import com.vmware.xenon.common.BasicTestCase;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.UriUtils;
 
-public class TestRootNamespaceService extends BasicReportTestCase {
+public class TestRootNamespaceService extends BasicTestCase {
 
     @Before
     public void prepare() throws Throwable {
