@@ -591,10 +591,10 @@ public class TestQueryFilter {
         document = new QueryFilterDocument();
         document.nc1 = new NestedClass();
         document.nc1.ns1 = "v2";
-        assertFalse(filter.evaluate(document,  this.description));
+        assertFalse(filter.evaluate(document, this.description));
 
         document = new QueryFilterDocument();
-        assertFalse(filter.evaluate(document,  this.description));
+        assertFalse(filter.evaluate(document, this.description));
     }
 
     @Test()
@@ -792,6 +792,56 @@ public class TestQueryFilter {
         }
 
         return q;
+    }
+
+    private Query createComposedNegationQuery() {
+        Query inner = new Query();
+        inner.addBooleanClause(createTerm("c2", "match", Occurance.MUST_OCCUR));
+        inner.addBooleanClause(createTerm("c3", "match", Occurance.MUST_NOT_OCCUR));
+        inner.occurance = Occurance.MUST_NOT_OCCUR;
+
+        Query q = new Query();
+        q.addBooleanClause(createTerm("c1", "match", Occurance.MUST_OCCUR));
+        q.addBooleanClause(inner);
+        return q;
+    }
+
+    @Test
+    public void simpleComposedNegation() {
+        Set<String> dnf = createDisjunctiveNormalForm(createComposedNegationQuery());
+        assertEquals(2, dnf.size());
+        assertTrue(dnf.contains("c1=match AND NOT(c2=match)"));
+        assertTrue(dnf.contains("c1=match AND c3=match"));
+    }
+
+    @Test
+    public void evaluateSimpleComposedNegation() throws QueryFilterException {
+        QueryFilter filter = QueryFilter.create(createComposedNegationQuery());
+        QueryFilterDocument document;
+        document = new QueryFilterDocument();
+        assertFalse(filter.evaluate(document, this.description));
+
+        document = new QueryFilterDocument();
+        document.c1 = "match";
+        assertTrue(filter.evaluate(document, this.description));
+
+        document = new QueryFilterDocument();
+        document.c1 = "match";
+        document.c2 = "match";
+        document.c3 = "match";
+        assertTrue(filter.evaluate(document, this.description));
+
+        document = new QueryFilterDocument();
+        document.c1 = "match";
+        document.c2 = "other";
+        document.c3 = "other";
+        assertTrue(filter.evaluate(document, this.description));
+
+        document = new QueryFilterDocument();
+        document.c1 = "match";
+        document.c2 = "match";
+        document.c3 = "other";
+        assertFalse(filter.evaluate(document, this.description));
     }
 
     @Test

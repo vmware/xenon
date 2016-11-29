@@ -360,41 +360,73 @@ public class QueryFilter {
             return;
         }
 
-        // MUST and MUST_NOT makes a set of clauses into a conjunction.
-        // Any SHOULD_OCCUR clauses in that set can then be discarded.
-        int shouldClauses = 0;
-        for (Query clause : q.booleanClauses) {
-            Occurance o = clause.occurance;
-            if (o == null) {
-                o = Occurance.MUST_OCCUR;
-            }
-
-            switch (o) {
-            case MUST_OCCUR:
-                createDisjunctiveNormalForm(clause, prefixes, negate);
-                break;
-            case MUST_NOT_OCCUR:
-                createDisjunctiveNormalForm(clause, prefixes, !negate);
-                break;
-            case SHOULD_OCCUR:
-                shouldClauses++;
-                break;
-            default:
-                throw new RuntimeException("Unknown occurance: " + o.toString());
-            }
-        }
-
-        // The set of clauses only is a disjunction IFF ALL of the clauses have SHOULD_OCCUR.
-        if (shouldClauses == q.booleanClauses.size()) {
-            ArrayList<Conjunction> originalPrefixes = new ArrayList<>(prefixes);
-            prefixes.clear();
-
-            // Expand prefixes such that for every original prefix, there are N returned prefixes.
-            // One for every clause in this disjunction.
+        if (negate) {
+            // Apply DeMorgan's laws by converting MUST to SHOULD and vice versa.
+            int mustClauses = 0;
             for (Query clause : q.booleanClauses) {
-                ArrayList<Conjunction> clausePrefixes = new ArrayList<>(originalPrefixes);
-                createDisjunctiveNormalForm(clause, clausePrefixes, negate);
-                prefixes.addAll(clausePrefixes);
+                Occurance o = clause.occurance;
+                if (o == null) {
+                    o = Occurance.MUST_OCCUR;
+                }
+                switch (o) {
+                case MUST_OCCUR:
+                case MUST_NOT_OCCUR:
+                    mustClauses++;
+                    break;
+                case SHOULD_OCCUR:
+                    createDisjunctiveNormalForm(clause, prefixes, true);
+                    break;
+                default:
+                    throw new RuntimeException("Unknown occurrance: " + o.toString());
+                }
+            }
+
+            if (mustClauses == q.booleanClauses.size()) {
+                ArrayList<Conjunction> originalPrefixes = new ArrayList<>(prefixes);
+                prefixes.clear();
+                for (Query clause : q.booleanClauses) {
+                    ArrayList<Conjunction> clausePrefixes = new ArrayList<>(originalPrefixes);
+                    createDisjunctiveNormalForm(clause, clausePrefixes,
+                            clause.occurance != Occurance.MUST_NOT_OCCUR);
+                    prefixes.addAll(clausePrefixes);
+                }
+            }
+        } else {
+            // MUST and MUST_NOT makes a set of clauses into a conjunction.
+            // Any SHOULD_OCCUR clauses in that set can then be discarded.
+            int shouldClauses = 0;
+            for (Query clause : q.booleanClauses) {
+                Occurance o = clause.occurance;
+                if (o == null) {
+                    o = Occurance.MUST_OCCUR;
+                }
+                switch (o) {
+                case MUST_OCCUR:
+                    createDisjunctiveNormalForm(clause, prefixes, false);
+                    break;
+                case MUST_NOT_OCCUR:
+                    createDisjunctiveNormalForm(clause, prefixes, true);
+                    break;
+                case SHOULD_OCCUR:
+                    shouldClauses++;
+                    break;
+                default:
+                    throw new RuntimeException("Unknown occurrance: " + o.toString());
+                }
+            }
+
+            // The set of clauses is only a disjunction IFF ALL of the clauses have SHOULD_OCCUR.
+            if (shouldClauses == q.booleanClauses.size()) {
+                ArrayList<Conjunction> originalPrefixes = new ArrayList<>(prefixes);
+                prefixes.clear();
+
+                // Expand prefixes such that for every original prefix, there are N returned
+                // prefixes. One for every clause in this disjunction.
+                for (Query clause : q.booleanClauses) {
+                    ArrayList<Conjunction> clausePrefixes = new ArrayList<>(originalPrefixes);
+                    createDisjunctiveNormalForm(clause, clausePrefixes, false);
+                    prefixes.addAll(clausePrefixes);
+                }
             }
         }
     }
@@ -498,7 +530,7 @@ public class QueryFilter {
                 }
 
                 if (term.negate) {
-                    if (evaluateString(term, (String)o)) {
+                    if (evaluateString(term, (String) o)) {
                         return false;
                     }
                 } else {
