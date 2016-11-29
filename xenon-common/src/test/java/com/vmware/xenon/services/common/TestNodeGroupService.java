@@ -49,6 +49,7 @@ import java.util.stream.Collectors;
 
 import org.junit.After;
 import org.junit.Before;
+import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 
@@ -79,6 +80,7 @@ import com.vmware.xenon.common.ServiceStats.ServiceStat;
 import com.vmware.xenon.common.StatefulService;
 import com.vmware.xenon.common.SynchronizationTaskService;
 import com.vmware.xenon.common.TaskState;
+import com.vmware.xenon.common.TestResults;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
 import com.vmware.xenon.common.serialization.KryoSerializers;
@@ -149,6 +151,9 @@ public class TestNodeGroupService {
         }
 
     }
+
+    @Rule
+    public TestResults testResults = new TestResults();
 
     private static final String CUSTOM_EXAMPLE_SERVICE_KIND = "xenon:examplestate";
     private static final String CUSTOM_NODE_GROUP_NAME = "custom";
@@ -2799,6 +2804,16 @@ public class TestNodeGroupService {
     }
 
     @Test
+    public void directOwnerSelection() throws Throwable {
+        this.isPeerSynchronizationEnabled = false;
+        setUp(this.nodeCount);
+        this.host.joinNodesAndVerifyConvergence(this.nodeCount);
+        for (int i = 0; i < this.iterationCount; i++) {
+            directOwnerSelection(true);
+        }
+    }
+
+    @Test
     public void forwardingAndSelection() throws Throwable {
         this.isPeerSynchronizationEnabled = false;
         setUp(this.nodeCount);
@@ -3161,7 +3176,8 @@ public class TestNodeGroupService {
                 }
             }
             testContextDirect.await();
-            testContextDirect.logAfter();
+            double v = testContextDirect.logAfter();
+            this.testResults.getReport().all("throughput", v);
             return;
         }
 

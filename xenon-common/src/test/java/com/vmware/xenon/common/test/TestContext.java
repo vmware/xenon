@@ -287,12 +287,13 @@ public class TestContext {
         Logger.getAnonymousLogger().info(msg);
     }
 
-    public void logAfter() {
+    public double logAfter() {
         double delta = Duration.between(this.creationInstant, this.finishInstant).toNanos();
         delta /= (double) TimeUnit.SECONDS.toNanos(1);
         double thpt = ((double) this.initialCount) / delta;
         String msg = String.format("%s throughput: %f, count = %d", this.name, thpt,
                 this.initialCount);
         Logger.getAnonymousLogger().info(msg);
+        return thpt;
     }
 }
