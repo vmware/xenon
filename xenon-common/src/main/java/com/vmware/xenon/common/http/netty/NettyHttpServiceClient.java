@@ -24,6 +24,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.logging.Level;
 import java.util.logging.Logger;
 import javax.net.ssl.SSLContext;
 
@@ -375,6 +376,11 @@ public class NettyHttpServiceClient implements ServiceClient {
                 pathAndQuery = path;
             }
 
+            String pragmaValue = op.getAndRemoveRequestHeaderAsIs(Operation.PRAGMA_HEADER);
+            String acceptValue = op.getAndRemoveRequestHeaderAsIs(Operation.ACCEPT_HEADER);
+            String authTokenValue = op
+                    .getAndRemoveRequestHeaderAsIs(Operation.REQUEST_AUTH_TOKEN_HEADER);
+
             /**
              * NOTE: Pay close attention to calls that access the operation request headers, since
              * they will cause a memory allocation. We avoid the allocation by first checking if
@@ -401,7 +407,7 @@ public class NettyHttpServiceClient implements ServiceClient {
             if (useHttp2) {
                 // when operation is cloned, it may contain original streamId header. remove it.
                 if (hasRequestHeaders) {
-                    op.getRequestHeaders().remove(Operation.STREAM_ID_HEADER);
+                    op.getAndRemoveRequestHeaderAsIs(Operation.STREAM_ID_HEADER);
                 }
                 // We set the operation so that once a streamId is assigned, we can record
                 // the correspondence between the streamId and operation: this will let us
@@ -409,11 +415,11 @@ public class NettyHttpServiceClient implements ServiceClient {
                 request.setOperation(op);
             }
 
-            String pragmaHeader = op.getRequestHeaderAsIs(Operation.PRAGMA_HEADER);
-
-            if (op.isFromReplication() && pragmaHeader == null) {
+            if (op.isFromReplication() && pragmaValue == null) {
                 request.headers().set(HttpHeaderNames.PRAGMA,
                         Operation.PRAGMA_DIRECTIVE_REPLICATED);
+            } else if (pragmaValue != null) {
+                request.headers().set(HttpHeaderNames.PRAGMA, pragmaValue);
             }
 
             if (op.getTransactionId() != null) {
@@ -424,20 +430,27 @@ public class NettyHttpServiceClient implements ServiceClient {
                 request.headers().set(Operation.CONTEXT_ID_HEADER, op.getContextId());
             }
 
-            AuthorizationContext ctx = op.getAuthorizationContext();
-            if (ctx != null && ctx.getToken() != null) {
-                request.headers().set(Operation.REQUEST_AUTH_TOKEN_HEADER, ctx.getToken());
-            }
-
             boolean isXenonToXenon = op.isFromReplication() || op.isForwarded();
             if (hasRequestHeaders) {
+                if (isXenonToXenon) {
+                    // remove all headers that we will set explicitly
+                    op.getAndRemoveRequestHeaderAsIs(Operation.HOST_HEADER);
+                    op.getAndRemoveRequestHeaderAsIs(Operation.USER_AGENT_HEADER);
+                    op.getAndRemoveRequestHeaderAsIs(Operation.REFERER_HEADER);
+                    op.getAndRemoveRequestHeaderAsIs(Operation.CONNECTION_HEADER);
+                }
                 for (Entry<String, String> nameValue : op.getRequestHeaders().entrySet()) {
                     request.headers().set(nameValue.getKey(), nameValue.getValue());
                 }
             }
 
-            if (op.hasReferer()) {
-                request.headers().set(HttpHeaderNames.REFERER, op.getRefererAsString());
+            if (authTokenValue != null) {
+                request.headers().set(Operation.REQUEST_AUTH_TOKEN_HEADER, authTokenValue);
+            } else {
+                AuthorizationContext ctx = op.getAuthorizationContext();
+                if (ctx != null && ctx.getToken() != null) {
+                    request.headers().set(Operation.REQUEST_AUTH_TOKEN_HEADER, ctx.getToken());
+                }
             }
 
             request.headers().set(HttpHeaderNames.CONTENT_LENGTH,
@@ -447,6 +460,10 @@ public class NettyHttpServiceClient implements ServiceClient {
                 request.headers().set(HttpHeaderNames.CONNECTION, HttpHeaderValues.KEEP_ALIVE);
             }
 
+            if (op.hasReferer() && !op.isFromReplication()) {
+                request.headers().set(HttpHeaderNames.REFERER, op.getRefererAsString());
+            }
+
             if (!isXenonToXenon) {
                 if (op.getCookies() != null) {
                     String header = CookieJar.encodeCookies(op.getCookies());
@@ -454,12 +471,18 @@ public class NettyHttpServiceClient implements ServiceClient {
                 }
 
                 request.headers().set(HttpHeaderNames.USER_AGENT, this.userAgent);
-                if (op.getRequestHeaderAsIs(Operation.ACCEPT_HEADER) == null) {
+                if (acceptValue == null) {
                     request.headers().set(HttpHeaderNames.ACCEPT,
                             Operation.MEDIA_TYPE_EVERYTHING_WILDCARDS);
+                } else {
+                    request.headers().set(HttpHeaderNames.ACCEPT, acceptValue);
                 }
 
                 request.headers().set(HttpHeaderNames.HOST, op.getUri().getHost());
+            }
+
+            if (LOGGER.isLoggable(Level.FINEST)) {
+                logRequestFraming(op, request);
             }
 
             boolean doCookieJarUpdate = !isXenonToXenon;
@@ -486,6 +509,18 @@ public class NettyHttpServiceClient implements ServiceClient {
                     EnumSet.of(ErrorDetail.SHOULD_RETRY)));
             fail(e, op, originalBody);
         }
+    }
+
+    private void logRequestFraming(Operation op, NettyFullHttpRequest request) {
+        StringBuilder s = new StringBuilder();
+        s.append(op.getAction().toString())
+                .append(" ")
+                .append(op.getUri().toString())
+                .append("\n");
+        request.headers().forEach((e) -> {
+            s.append(e.toString()).append("\n");
+        });
+        LOGGER.info(s.toString());
     }
 
     private static HttpMethod toHttpMethod(Action a) {
