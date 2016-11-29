@@ -375,6 +375,17 @@ public class NettyHttpServiceClient implements ServiceClient {
                 pathAndQuery = path;
             }
 
+            String pragmaValue = op.getAndRemoveRequestHeaderAsIs(Operation.PRAGMA_HEADER);
+            String acceptValue = op.getAndRemoveRequestHeaderAsIs(Operation.ACCEPT_HEADER);
+            String authTokenValue = op
+                    .getAndRemoveRequestHeaderAsIs(Operation.REQUEST_AUTH_TOKEN_HEADER);
+
+            // remove all headers that we will set explicitly
+            op.removeRequestHeaderAsIs(
+                    Operation.HOST_HEADER,
+                    Operation.USER_AGENT_HEADER,
+                    Operation.REFERER_HEADER,
+                    Operation.CONNECTION_HEADER);
             /**
              * NOTE: Pay close attention to calls that access the operation request headers, since
              * they will cause a memory allocation. We avoid the allocation by first checking if
@@ -401,7 +412,7 @@ public class NettyHttpServiceClient implements ServiceClient {
             if (useHttp2) {
                 // when operation is cloned, it may contain original streamId header. remove it.
                 if (hasRequestHeaders) {
-                    op.getRequestHeaders().remove(Operation.STREAM_ID_HEADER);
+                    op.removeRequestHeaderAsIs(Operation.STREAM_ID_HEADER);
                 }
                 // We set the operation so that once a streamId is assigned, we can record
                 // the correspondence between the streamId and operation: this will let us
@@ -409,11 +420,11 @@ public class NettyHttpServiceClient implements ServiceClient {
                 request.setOperation(op);
             }
 
-            String pragmaHeader = op.getRequestHeaderAsIs(Operation.PRAGMA_HEADER);
-
-            if (op.isFromReplication() && pragmaHeader == null) {
+            if (op.isFromReplication() && pragmaValue == null) {
                 request.headers().set(HttpHeaderNames.PRAGMA,
                         Operation.PRAGMA_DIRECTIVE_REPLICATED);
+            } else if (pragmaValue != null) {
+                request.headers().set(HttpHeaderNames.PRAGMA, pragmaValue);
             }
 
             if (op.getTransactionId() != null) {
@@ -424,11 +435,6 @@ public class NettyHttpServiceClient implements ServiceClient {
                 request.headers().set(Operation.CONTEXT_ID_HEADER, op.getContextId());
             }
 
-            AuthorizationContext ctx = op.getAuthorizationContext();
-            if (ctx != null && ctx.getToken() != null) {
-                request.headers().set(Operation.REQUEST_AUTH_TOKEN_HEADER, ctx.getToken());
-            }
-
             boolean isXenonToXenon = op.isFromReplication() || op.isForwarded();
             if (hasRequestHeaders) {
                 for (Entry<String, String> nameValue : op.getRequestHeaders().entrySet()) {
@@ -436,8 +442,13 @@ public class NettyHttpServiceClient implements ServiceClient {
                 }
             }
 
-            if (op.hasReferer()) {
-                request.headers().set(HttpHeaderNames.REFERER, op.getRefererAsString());
+            if (authTokenValue != null) {
+                request.headers().set(Operation.REQUEST_AUTH_TOKEN_HEADER, authTokenValue);
+            } else {
+                AuthorizationContext ctx = op.getAuthorizationContext();
+                if (ctx != null && ctx.getToken() != null) {
+                    request.headers().set(Operation.REQUEST_AUTH_TOKEN_HEADER, ctx.getToken());
+                }
             }
 
             request.headers().set(HttpHeaderNames.CONTENT_LENGTH,
@@ -448,18 +459,40 @@ public class NettyHttpServiceClient implements ServiceClient {
             }
 
             if (!isXenonToXenon) {
+                if (op.hasReferer()) {
+                    request.headers().set(HttpHeaderNames.REFERER, op.getRefererAsString());
+                }
+
                 if (op.getCookies() != null) {
                     String header = CookieJar.encodeCookies(op.getCookies());
                     request.headers().set(HttpHeaderNames.COOKIE, header);
                 }
 
                 request.headers().set(HttpHeaderNames.USER_AGENT, this.userAgent);
-                if (op.getRequestHeaderAsIs(Operation.ACCEPT_HEADER) == null) {
+                if (acceptValue == null) {
                     request.headers().set(HttpHeaderNames.ACCEPT,
                             Operation.MEDIA_TYPE_EVERYTHING_WILDCARDS);
+                } else {
+                    request.headers().set(HttpHeaderNames.ACCEPT, acceptValue);
                 }
 
                 request.headers().set(HttpHeaderNames.HOST, op.getUri().getHost());
+            } else {
+                // Optimize (reduce) HTTP framing for infrastructure operations by eliminating
+                // redundant headers. We omit most default headers, except client supplied referrer
+                if (op.hasReferer() && !op.isFromReplication()) {
+                    Object referer = op.getRefererAsIs();
+                    if (referer instanceof URI) {
+                        URI refererUri = (URI) referer;
+                        // only propagate non default, client specified referrer values, reducing
+                        // overhead for replicated and forwarded requests that have default value
+                        if (refererUri.getPath() != null) {
+                            request.headers().set(HttpHeaderNames.REFERER, referer);
+                        }
+                    } else {
+                        request.headers().set(HttpHeaderNames.REFERER, (String) referer);
+                    }
+                }
             }
 
             boolean doCookieJarUpdate = !isXenonToXenon;

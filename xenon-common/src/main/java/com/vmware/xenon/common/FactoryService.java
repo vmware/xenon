@@ -341,10 +341,7 @@ public abstract class FactoryService extends StatelessService {
             } else {
                 serviceUri = UriUtils.extendUri(getUri(), suffix);
             }
-
-            o.addRequestHeader(Operation.REPLICATION_PARENT_HEADER, getSelfLink());
             o.setUri(serviceUri);
-
         } catch (Throwable e) {
             logSevere(e);
             o.fail(e);
@@ -371,6 +368,7 @@ public abstract class FactoryService extends StatelessService {
             return;
         }
 
+        // complete request, initiate local service start
         completePostRequest(o, childService);
     }
 
@@ -453,6 +451,10 @@ public abstract class FactoryService extends StatelessService {
                             }
 
                             if (rsp.isLocalHostOwner) {
+                                // add parent link header only on requests that target this node, to avoid the overhead
+                                // if we need to forward.
+                                o.addRequestHeader(Operation.REPLICATION_PARENT_HEADER,
+                                        getSelfLink());
                                 completePostRequest(o, childService);
                                 return;
                             }
@@ -473,6 +475,7 @@ public abstract class FactoryService extends StatelessService {
 
                             Operation forwardOp = o.clone().setUri(remotePeerService)
                                     .setCompletion(fc);
+
 
                             getHost().prepareForwardRequest(forwardOp);
 
