@@ -823,6 +823,8 @@ public class NettyHttpServiceClientTest {
                 this.host.buildMinimalTestState(),
                 null, null);
 
+        String tag = ServiceClient.CONNECTION_TAG_DEFAULT;
+
         if (!this.host.isStressTest()) {
             this.host.log("Single connection runs");
             this.host.getClient().setConnectionLimitPerHost(1);
@@ -832,13 +834,11 @@ public class NettyHttpServiceClientTest {
                     services);
             this.host.getClient()
                     .setConnectionLimitPerHost(NettyHttpServiceClient.DEFAULT_CONNECTIONS_PER_HOST);
+            validateTagInfo(tag);
         } else {
             this.host.setOperationTimeOutMicros(
                     TimeUnit.SECONDS.toMicros(this.host.getTimeoutSeconds()));
         }
-
-        String tag = ServiceClient.CONNECTION_TAG_DEFAULT;
-        validateTagInfo(tag);
 
         // use global limit, which applies by default to all tags
         int limit = this.host.getClient().getConnectionLimitPerHost();

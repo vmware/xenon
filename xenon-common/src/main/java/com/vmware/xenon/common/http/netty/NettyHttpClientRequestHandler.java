@@ -187,7 +187,7 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
         HttpHeaders headers = nettyRequest.headers();
         boolean hasHeaders = !headers.isEmpty();
 
-        String referer = getAndRemove(headers, Operation.REFERER_HEADER);
+        String referer = getAndRemove(headers, HttpHeaderNames.REFERER);
         if (referer != null) {
             request.setReferer(referer);
         }
@@ -199,10 +199,10 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
         request.setKeepAlive(HttpUtil.isKeepAlive(nettyRequest));
         if (HttpUtil.isContentLengthSet(nettyRequest)) {
             request.setContentLength(HttpUtil.getContentLength(nettyRequest));
-            getAndRemove(headers, Operation.CONTENT_LENGTH_HEADER);
+            getAndRemove(headers, HttpHeaderNames.CONTENT_LENGTH);
         }
 
-        String pragma = getAndRemove(headers, Operation.PRAGMA_HEADER);
+        String pragma = getAndRemove(headers, HttpHeaderNames.PRAGMA);
         if (Operation.PRAGMA_DIRECTIVE_REPLICATED.equals(pragma)) {
             // replication requests will have a single PRAGMA directive. Set the right
             // options and remove the header to avoid further allocations
@@ -220,21 +220,22 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
             request.setFromReplication(true).setTargetReplicated(true);
         }
 
-        request.setContextId(getAndRemove(headers, Operation.CONTEXT_ID_HEADER));
+        request.setContextId(getAndRemove(headers, NettyHttpServiceClient.CONTEXT_ID_HEADER_ASCII));
 
-        request.setTransactionId(getAndRemove(headers, Operation.TRANSACTION_ID_HEADER));
+        request.setTransactionId(
+                getAndRemove(headers, NettyHttpServiceClient.TRANSACTION_ID_HEADER_ASCII));
 
-        String contentType = getAndRemove(headers, Operation.CONTENT_TYPE_HEADER);
+        String contentType = getAndRemove(headers, HttpHeaderNames.CONTENT_TYPE);
         if (contentType != null) {
             request.setContentType(contentType);
         }
 
-        String cookie = getAndRemove(headers, Operation.COOKIE_HEADER);
+        String cookie = getAndRemove(headers, HttpHeaderNames.COOKIE);
         if (cookie != null) {
             request.setCookies(CookieJar.decodeCookies(cookie));
         }
 
-        String host = getAndRemove(headers, Operation.HOST_HEADER);
+        String host = getAndRemove(headers, HttpHeaderNames.HOST);
 
         for (Entry<String, String> h : headers) {
             String key = h.getKey();
@@ -274,7 +275,7 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
         }
     }
 
-    private String getAndRemove(HttpHeaders headers, String headerName) {
+    private String getAndRemove(HttpHeaders headers, AsciiString headerName) {
         String headerValue = headers.get(headerName);
         headers.remove(headerName);
         return headerValue;

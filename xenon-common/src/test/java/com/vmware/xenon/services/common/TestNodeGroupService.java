@@ -221,7 +221,7 @@ public class TestNodeGroupService {
 
     private Function<ExampleServiceState, Void> exampleStateUpdateBodySetter = (
             ExampleServiceState state) -> {
-        state.name = Utils.getNowMicrosUtc() + "";
+        state.name = Utils.getSystemNowMicrosUtc() + "";
         return null;
     };
 
