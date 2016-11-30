@@ -1228,6 +1228,10 @@ public class LuceneDocumentIndexService extends StatelessService {
         }
 
         response.queryTimeMicros = 0L;
+        
+        int count = searcher.count(termQuery);
+        response.documentCount = Long.valueOf(count);
+
         TopDocs results = searcher.search(termQuery, Integer.MAX_VALUE);
         if (results == null) {
             return response;
@@ -1238,9 +1242,6 @@ public class LuceneDocumentIndexService extends StatelessService {
         response.queryTimeMicros = queryDurationMicros;
         setTimeSeriesHistogramStat(STAT_NAME_QUERY_ALL_VERSIONS_DURATION_MICROS,
                 AGGREGATION_TYPE_AVG_MAX, queryDurationMicros);
-
-        processQueryResults(querySpec, queryOptions, Integer.MAX_VALUE, searcher, response,
-                results.scoreDocs, queryStartTimeMicros);
 
         setTimeSeriesHistogramStat(STAT_NAME_RESULT_PROCESSING_DURATION_MICROS,
                 AGGREGATION_TYPE_AVG_MAX, Utils.getNowMicrosUtc() - queryEndTimeMicros);
