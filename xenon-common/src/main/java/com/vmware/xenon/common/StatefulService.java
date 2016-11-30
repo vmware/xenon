@@ -2057,6 +2057,18 @@ public class StatefulService implements Service {
     }
 
     /**
+     * Returns the authorization context associated with a given subject.
+     */
+    public final AuthorizationContext getAuthorizationContextForSubject(String subject) {
+        if (getHost().isPrivilegedService(this)) {
+            return getHost().getAuthorizationContextForSubject(subject);
+        } else {
+            throw new RuntimeException(
+                    "Service not allowed to get authorization context for a subject");
+        }
+    }
+
+    /**
      * Adds the specified coordinator link to this service' pending transactions
      */
     void addPendingTransaction(String txCoordinatorLink) {

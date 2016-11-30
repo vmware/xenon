@@ -46,6 +46,7 @@ import org.junit.Test;
 import com.vmware.xenon.common.Operation.AuthorizationContext;
 import com.vmware.xenon.common.Operation.CompletionHandler;
 import com.vmware.xenon.common.Service.Action;
+import com.vmware.xenon.common.TestAuthorization.AuthzStatefulService.AuthzState;
 import com.vmware.xenon.common.test.AuthorizationHelper;
 import com.vmware.xenon.common.test.QueryTestUtils;
 import com.vmware.xenon.common.test.TestContext;
@@ -77,6 +78,31 @@ public class TestAuthorization extends BasicTestCase {
                 return;
             }
             super.handleRequest(op);
+        }
+    }
+
+    public static class AuthzStatefulService extends StatefulService {
+
+        public static class AuthzState extends ServiceDocument {
+            public String userLink;
+        }
+
+        public AuthzStatefulService() {
+            super(AuthzState.class);
+        }
+
+        @Override
+        public void handleStart(Operation post) {
+            AuthzState body = post.getBody(AuthzState.class);
+            AuthorizationContext authorizationContext = getAuthorizationContextForSubject(
+                    body.userLink);
+
+            if (authorizationContext == null ||
+                    !authorizationContext.getClaims().getSubject().equals(body.userLink)) {
+                post.fail(Operation.STATUS_CODE_INTERNAL_ERROR);
+                return;
+            }
+            post.complete();
         }
     }
 
@@ -604,6 +630,16 @@ public class TestAuthorization extends BasicTestCase {
         String authToken = generateAuthToken(this.userServicePath);
 
         verifyJaneAccess(exampleServices, authToken);
+
+        // test user impersonation
+        this.host.setSystemAuthorizationContext();
+        AuthzStatefulService s = new AuthzStatefulService();
+        this.host.addPrivilegedService(AuthzStatefulService.class);
+
+        AuthzState body = new AuthzState();
+        body.userLink = this.userServicePath;
+        this.host.startServiceAndWait(s, UUID.randomUUID().toString(), body);
+        this.host.resetSystemAuthorizationContext();
     }
 
     private AuthorizationContext assumeIdentityAndGetContext(String userLink,
