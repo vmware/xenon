@@ -333,6 +333,7 @@ public interface Service extends ServiceRequestSender {
     static final String STAT_NAME_VERSION_IN_CONFLICT = "stateVersionInConflict";
     static final String STAT_NAME_PAUSE_COUNT = "pauseCount";
     static final String STAT_NAME_RESUME_COUNT = "resumeCount";
+    static final String STAT_NAME_MAINTENANCE_DURATION = "maintenanceDuration";
 
     /**
      * Estimate on run time context cost in bytes, per service instance. Services should not use instanced
