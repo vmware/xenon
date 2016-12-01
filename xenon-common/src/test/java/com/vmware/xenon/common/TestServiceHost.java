@@ -1285,6 +1285,7 @@ public class TestServiceHost {
         ts.toggleOption(ServiceOption.INSTRUMENTATION, true);
         MinimalTestServiceState body = new MinimalTestServiceState();
         body.id = UUID.randomUUID().toString();
+        ServiceStat durationStat = null;
         ts = (MinimalTestService) this.host.startServiceAndWait(ts, UUID.randomUUID().toString(),
                 body);
         Date exp = this.host.getTestExpiration();
@@ -1298,6 +1299,7 @@ public class TestServiceHost {
 
             ServiceStat delayStat = stats.entries
                     .get(Service.STAT_NAME_MAINTENANCE_COMPLETION_DELAYED_COUNT);
+            durationStat = stats.entries.get(Service.STAT_NAME_MAINTENANCE_DURATION);
             if (delayStat == null) {
                 Thread.sleep(intervalMicros / 1000);
                 continue;
@@ -1308,6 +1310,9 @@ public class TestServiceHost {
         if (new Date().after(exp)) {
             throw new TimeoutException("Maintenance delay stat never reported");
         }
+
+        assertNotNull(durationStat);
+        assertNotNull(durationStat.logHistogram);
 
         ts.toggleOption(ServiceOption.PERIODIC_MAINTENANCE, false);
     }
