@@ -95,6 +95,7 @@
     <module>xenon-swagger</module>
     <module>xenon-ui</module>
     <module>xenon-websocket-test</module>
+    <module>xenon-quickstart</module>
   </modules>
 
   <properties>

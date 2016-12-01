@@ -1,0 +1,96 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>${groupId}</groupId>
+    <artifactId>${artifactId}</artifactId>
+    <version>${version}</version>
+    <packaging>jar</packaging>
+
+    <name>VMware Xenon Quickstart</name>
+    <url>http://www.vmware.com</url>
+
+    <properties>
+        <xenon.version>RELEASE</xenon.version>
+        <junit.version>4.12</junit.version>
+
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.vmware.xenon</groupId>
+            <artifactId>xenon-common</artifactId>
+            <version>${xenon.version}</version>
+        </dependency>
+
+        <!-- The following is only required if you want to run the UiService Xenon Service -->
+        <dependency>
+            <groupId>com.vmware.xenon</groupId>
+            <artifactId>xenon-ui</artifactId>
+            <version>${xenon.version}</version>
+        </dependency>
+
+        <!-- Note the "classifier" field - this specifically pulls in the '-tests' jar, but only the test scope -->
+        <dependency>
+            <groupId>com.vmware.xenon</groupId>
+            <artifactId>xenon-common</artifactId>
+            <version>${xenon.version}</version>
+            <classifier>tests</classifier>
+            <scope>test</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>junit</groupId>
+            <artifactId>junit</artifactId>
+            <version>${junit.version}</version>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.1</version>
+                <configuration>
+                    <target>1.8</target>
+                    <source>1.8</source>
+                    <compilerId>javac</compilerId>
+                    <compilerArgs>
+                        <arg>-Werror</arg>
+                        <arg>-Xlint</arg>
+                    </compilerArgs>
+                    <showWarnings>true</showWarnings>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-assembly-plugin</artifactId>
+                <version>2.4.1</version>
+                <configuration>
+                    <descriptorRefs>
+                        <descriptorRef>jar-with-dependencies</descriptorRef>
+                    </descriptorRefs>
+                    <archive>
+                        <manifest>
+                            <mainClass>${groupId}.QuickstartHost</mainClass>
+                        </manifest>
+                    </archive>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>make-assembly</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>single</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+
+</project>
