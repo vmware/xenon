@@ -2820,11 +2820,10 @@ public class TestNodeGroupService {
         for (int i = 0; i < this.iterationCount; i++) {
             directOwnerSelection(false);
         }
-        for (int i = 0; i < this.iterationCount; i++) {
-            forwardingToPeerId();
-            forwardingToKeyHashNode();
-            broadcast();
-        }
+
+        forwardingToPeerId();
+        forwardingToKeyHashNode();
+        broadcast();
     }
 
     public void broadcast() throws Throwable {
@@ -2833,7 +2832,7 @@ public class TestNodeGroupService {
         // to a single node
         URI nodeGroup = this.host.getPeerNodeGroupUri();
 
-        long c = this.updateCount * this.nodeCount;
+        long c = Utils.DEFAULT_THREAD_COUNT * this.nodeCount;
         List<ServiceDocument> initialStates = new ArrayList<>();
         for (int i = 0; i < c; i++) {
             ServiceDocument s = this.host.buildMinimalTestState();
@@ -2889,7 +2888,7 @@ public class TestNodeGroupService {
     }
 
     public void forwardingToKeyHashNode() throws Throwable {
-        long c = this.updateCount * this.nodeCount;
+        long c = Utils.DEFAULT_THREAD_COUNT * this.nodeCount;
         Map<String, List<String>> ownersPerServiceLink = new HashMap<>();
 
         // 0) Create N service instances, in each peer host. Services are NOT replicated
@@ -2991,7 +2990,7 @@ public class TestNodeGroupService {
     }
 
     public void forwardingToPeerId() throws Throwable {
-        long c = this.updateCount * this.nodeCount;
+        long c = Utils.DEFAULT_THREAD_COUNT * this.nodeCount;
         // 0) Create N service instances, in each peer host. Services are NOT replicated
         // 1) issue a forward request to a specific peer id, per service link
         // 2) verify the request ended up on the peer we targeted
@@ -3139,7 +3138,7 @@ public class TestNodeGroupService {
         this.host.toggleDebuggingMode(false);
     }
 
-    private void directOwnerSelection(boolean isDirect) throws Throwable {
+    private void directOwnerSelection(boolean useHostMethod) throws Throwable {
         Map<URI, Map<String, Long>> keyToNodeAssignmentsPerNode = new HashMap<>();
         List<String> keys = new ArrayList<>();
 
@@ -3157,7 +3156,7 @@ public class TestNodeGroupService {
 
         this.host.waitForNodeGroupConvergence(this.nodeCount);
 
-        if (isDirect) {
+        if (useHostMethod) {
             TestContext testContextDirect = this.host.testCreate(c * this.nodeCount);
             testContextDirect.setTestName("selectOwner() direct").logBefore();
             // measure throughout using direct method call, per host
@@ -3175,6 +3174,11 @@ public class TestNodeGroupService {
             return;
         }
 
+        c = Math.max(this.nodeCount, c / 100);
+        keys.clear();
+        for (int i = 0; i < c; i++) {
+            keys.add(UUID.randomUUID().toString());
+        }
 
         TestContext testContext = this.host.testCreate(c * this.nodeCount);
         testContext.setTestName("select owner POST").logBefore();
@@ -3203,6 +3207,7 @@ public class TestNodeGroupService {
                                         }
                                         testContext.complete();
                                     } catch (Throwable ex) {
+                                        this.host.log("%s", Utils.toString(ex));
                                         testContext.fail(ex);
                                     }
                                 });
