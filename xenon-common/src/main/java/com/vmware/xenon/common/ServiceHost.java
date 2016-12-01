@@ -3298,9 +3298,7 @@ public class ServiceHost implements ServiceRequestSender {
     void getAuthorizationContext(Operation op, Consumer<AuthorizationContext> authorizationContextHandler) {
         String token = BasicAuthenticationUtils.getAuthToken(op);
 
-        if (token == null ||
-                op.getUri().equals(this.getAuthenticationServiceUri()) ||
-                op.getUri().equals(getBasicAuthenticationServiceUri())) {
+        if (token == null) {
             authorizationContextHandler.accept(null);
             return;
         }
@@ -3368,6 +3366,7 @@ public class ServiceHost implements ServiceRequestSender {
                                 sendRequest(getUserOp);
                             }
                         });
+        verifyOp.setAuthorizationContext(getSystemAuthorizationContext());
         sendRequest(verifyOp);
     }
 
