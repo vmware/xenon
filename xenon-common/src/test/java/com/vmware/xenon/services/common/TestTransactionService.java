@@ -482,6 +482,58 @@ public class TestTransactionService extends BasicReusableHostTestCase {
         countAccounts(null, 0);
     }
 
+    @Test
+    public void testTransactionStop() throws Throwable {
+        String[] txids = new String[this.accountCount];
+
+        // create each account in its own transaction and commit
+        for (int i = 0; i < this.accountCount; i++) {
+            txids[i] = newTransaction();
+            createAccount(txids[i], buildAccountId(i), 100.0, null);
+            boolean committed = commit(txids[i]);
+            assertTrue(committed);
+        }
+
+        // verify all transactions have cleared
+        for (int i = 0; i < this.accountCount; i++) {
+            final int finalI = i;
+            this.defaultHost.waitFor(String.format("Transaction %s hasn't cleared yet", txids[i]),
+                    () -> {
+                        return this.defaultHost.getServiceStage(
+                                UriUtils.buildUriPath(ServiceUriPaths.CORE_TRANSACTIONS,
+                                        txids[finalI])) == null;
+                    });
+        }
+
+        // verify the same with multiple operations, concurrent active transaction and commit/abort
+        for (int i = 0; i < this.accountCount; i++) {
+            txids[i] = newTransaction();
+            withdrawFromAccount(txids[i], buildAccountId(i), 50.0, null);
+            depositToAccount(txids[i], buildAccountId(i), 50.0, null);
+        }
+        for (int i = 0; i < this.accountCount; i++) {
+            if (i % 2 == 0) {
+                boolean committed = commit(txids[i]);
+                assertTrue(committed);
+            } else {
+                abort(txids[i]);
+            }
+        }
+
+        for (int i = 0; i < this.accountCount; i++) {
+            final int finalI = i;
+            this.defaultHost.waitFor(String.format("Transaction %s hasn't cleared yet", txids[i]),
+                    () -> {
+                        return this.defaultHost.getServiceStage(
+                                UriUtils.buildUriPath(ServiceUriPaths.CORE_TRANSACTIONS,
+                                        txids[finalI])) == null;
+                    });
+        }
+
+        // cleanup
+        deleteAccounts(null, this.accountCount);
+    }
+
     private void sendWithdrawDepositOperationPairs(String[] txids, int numOfTransfers,
             TestContext ctx) throws Throwable {
         boolean independentTest = ctx == null;
