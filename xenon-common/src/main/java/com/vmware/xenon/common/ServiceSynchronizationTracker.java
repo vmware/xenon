@@ -289,7 +289,9 @@ class ServiceSynchronizationTracker {
             op.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_SYNCH_PEER);
 
             // The remote peers have a more recent state than the one we loaded from the store.
-            // Use the peer service state as the initial state.
+            // Use the peer service state as the initial state. Also update the linked state,
+            // so that the correct documentVersion is indexed during startService.
+            op.linkState(selectedState);
             op.setBodyNoCloning(selectedState).complete();
         };
 

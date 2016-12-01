@@ -389,6 +389,123 @@ public class TestNodeGroupService {
     }
 
     @Test
+    public void synchronizationAfterStaleHostRestart() throws Throwable {
+        // This test verifies that if a stale host joins
+        // a node-group after restart and becomes OWNER for services
+        // that are stale in the local index, synchronization will kick-in
+        // and update the local state with the latest state from peers
+
+        this.isPeerSynchronizationEnabled = false;
+        setUp(this.nodeCount);
+
+        ExampleServiceState state = new ExampleServiceState();
+        state.name = "testing";
+
+        // Create the same services on all the hosts.
+        ConcurrentSkipListSet<String> links = new ConcurrentSkipListSet<>();
+        TestContext ctx = this.host.testCreate(this.serviceCount * this.nodeCount);
+        for (VerificationHost h : this.host.getInProcessHostMap().values()) {
+            for (int i = 0; i < this.serviceCount; i++) {
+                state.documentSelfLink = "example-" + i;
+                Operation postOp = Operation
+                        .createPost(h, ExampleService.FACTORY_LINK)
+                        .setBody(state)
+                        .setReferer(this.host.getUri())
+                        .setCompletion((o, e) -> {
+                            if (e != null) {
+                                ctx.failIteration(e);
+                                return;
+                            }
+                            ExampleServiceState rsp = o.getBody(ExampleServiceState.class);
+                            links.add(rsp.documentSelfLink);
+                            ctx.completeIteration();
+                        });
+                this.host.sendRequest(postOp);
+            }
+        }
+        ctx.await();
+
+        VerificationHost[] hosts = this.host.getInProcessHostMap().values()
+                .toArray(new VerificationHost[this.host.getPeerCount()]);
+
+        // On one of the hosts, patch all services to get a higher documentVersion
+        VerificationHost peerHost = hosts[0];
+        ExampleServiceState patchState = new ExampleServiceState();
+        for (int i = 0; i < this.updateCount; i++) {
+            TestContext patchCtx = this.host.testCreate(links.size());
+            patchState.counter = (long)(i + 10);
+
+            for (String documentSelfLink : links) {
+                Operation patchOp = Operation
+                        .createPatch(peerHost, documentSelfLink)
+                        .setBody(patchState)
+                        .setReferer(this.host.getUri())
+                        .setCompletion(patchCtx.getCompletion());
+                this.host.sendRequest(patchOp);
+            }
+            patchCtx.await();
+        }
+
+        // Restart one of the hosts by reusing the same storage sandboxes. Also
+        // disable synchronization so that the example services we created
+        // are not started.
+        this.host.stopHostAndPreserveState(hosts[1]);
+        hosts[1].setPort(0);
+
+        hosts[1].setPeerSynchronizationEnabled(false);
+        assertTrue(VerificationHost.restartStatefulHost(hosts[1]));
+        this.host.addPeerNode(hosts[1]);
+
+        // Verify services have not been started on the restarted host.
+        String svcLink = links.iterator().next();
+        TestContext getCtx = this.host.testCreate(1);
+        Operation getOp = Operation
+                .createGet(UriUtils.buildUri(hosts[1], svcLink))
+                .setReferer(this.host.getUri())
+                .setCompletion((o, e) -> {
+                    if (o.getStatusCode() == Operation.STATUS_CODE_NOT_FOUND) {
+                        getCtx.completeIteration();
+                        return;
+                    }
+                    getCtx.failIteration(new IllegalStateException("NOT_FOUND error was expected"));
+                });
+        this.host.sendRequest(getOp);
+        getCtx.await();
+
+        // Join the nodes and wait for node-group convergence.
+        this.host.joinNodesAndVerifyConvergence(this.nodeCount);
+
+        // Kick-off Synchronization
+        VerificationHost owner = null;
+        for (VerificationHost peer : this.host.getInProcessHostMap().values()) {
+            if (peer.isOwner(ExampleService.FACTORY_LINK, ServiceUriPaths.DEFAULT_NODE_SELECTOR)) {
+                owner = peer;
+                break;
+            }
+        }
+        startSynchronizationTaskAndWait(owner,
+                ExampleService.FACTORY_LINK, ExampleServiceState.class, 1L);
+
+        // Verify all factories return exactly the same documentVersion and
+        // documentEpoch for each service.
+        HashMap<String, ServiceDocument> services = new HashMap<>(this.serviceCount);
+        for (VerificationHost h : hosts) {
+            ServiceDocumentQueryResult r = this.host.getFactoryState(
+                    UriUtils.buildExpandLinksQueryUri(UriUtils.buildUri(h, ExampleService.FACTORY_LINK)));
+            for (Entry<String, Object> e : r.documents.entrySet()) {
+                ServiceDocument newDoc = Utils.fromJson(e.getValue(), ServiceDocument.class);
+                ServiceDocument prevDoc = services.get(e.getKey());
+                if (prevDoc == null) {
+                    services.put(e.getKey(), newDoc);
+                    continue;
+                }
+                assertTrue(newDoc.documentVersion == prevDoc.documentVersion &&
+                        newDoc.documentEpoch == prevDoc.documentEpoch);
+            }
+        }
+    }
+
+    @Test
     public void synchronizationCollisionWithPosts() throws Throwable {
         // POST requests go through the FactoryService
         // and do not get queued with Synchronization
@@ -435,25 +552,11 @@ public class TestNodeGroupService {
         // synchronization. All POSTs should succeed!
         ExampleServiceState state = new ExampleServiceState();
         state.name = "testing";
-        TestContext ctx = this.host.testCreate((this.serviceCount * 10) + 1);
+        TestContext ctx = this.host.testCreate(this.serviceCount * 10);
         for (int i = 0; i < this.serviceCount * 10; i++) {
             if (i == 5) {
-                SynchronizationTaskService.State task = new SynchronizationTaskService.State();
-                task.documentSelfLink = UriUtils.convertPathCharsFromLink(ExampleService.FACTORY_LINK);
-                task.factorySelfLink = ExampleService.FACTORY_LINK;
-                task.factoryStateKind = Utils.buildKind(ExampleService.ExampleServiceState.class);
-                task.membershipUpdateTimeMicros = membershipUpdateTimeMicros + 1;
-                task.nodeSelectorLink = ServiceUriPaths.DEFAULT_NODE_SELECTOR;
-                task.queryResultLimit = 1000;
-                task.taskInfo = TaskState.create();
-                task.taskInfo.isDirect = true;
-
-                Operation post = Operation
-                        .createPost(owner, SynchronizationTaskService.FACTORY_LINK)
-                        .setBody(task)
-                        .setReferer(this.host.getUri())
-                        .setCompletion(ctx.getCompletion());
-                this.host.sendRequest(post);
+                startSynchronizationTaskAndWait(owner,
+                        ExampleService.FACTORY_LINK, ExampleServiceState.class, membershipUpdateTimeMicros + 1);
             }
             Operation post = Operation
                     .createPost(factoryUri)
@@ -463,6 +566,28 @@ public class TestNodeGroupService {
             this.host.sendRequest(post);
         }
         ctx.await();
+    }
+
+    private void startSynchronizationTaskAndWait(VerificationHost owner,
+              String factoryLink, Class<?> stateType, long membershipUpdateTimeMicros) {
+        SynchronizationTaskService.State task = new SynchronizationTaskService.State();
+        task.documentSelfLink = UriUtils.convertPathCharsFromLink(factoryLink);
+        task.factorySelfLink = factoryLink;
+        task.factoryStateKind = Utils.buildKind(stateType);
+        task.membershipUpdateTimeMicros = membershipUpdateTimeMicros;
+        task.nodeSelectorLink = ServiceUriPaths.DEFAULT_NODE_SELECTOR;
+        task.queryResultLimit = 1000;
+        task.taskInfo = TaskState.create();
+        task.taskInfo.isDirect = true;
+
+        TestContext synchCtx = this.host.testCreate(1);
+        Operation synchPost = Operation
+                .createPost(owner, SynchronizationTaskService.FACTORY_LINK)
+                .setBody(task)
+                .setReferer(this.host.getUri())
+                .setCompletion(synchCtx.getCompletion());
+        this.host.sendRequest(synchPost);
+        synchCtx.await();
     }
 
     @Test
