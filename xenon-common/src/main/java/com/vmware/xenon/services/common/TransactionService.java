@@ -25,7 +25,6 @@ import com.vmware.xenon.common.OperationJoin;
 import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.StatefulService;
 import com.vmware.xenon.common.TaskState;
-import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
 
 /**
@@ -228,17 +227,8 @@ public class TransactionService extends StatefulService {
      * until the resolution is complete.
      */
     private void allocateResolutionService(Operation op) {
-        Operation startResolutionService = Operation.createPost(
-                UriUtils.extendUri(getUri(), TransactionResolutionService.RESOLUTION_SUFFIX))
-                .setCompletion((o, e) -> {
-                    if (e != null) {
-                        op.fail(e);
-                        return;
-                    }
-                    op.complete();
-                });
         this.resolutionHelper = new TransactionResolutionService(this);
-        getHost().startService(startResolutionService, this.resolutionHelper);
+        op.complete();
     }
 
     /**
