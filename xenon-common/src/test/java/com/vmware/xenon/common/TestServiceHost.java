@@ -1814,6 +1814,13 @@ public class TestServiceHost {
 
     @Test
     public void onDemandServiceStopCheckWithReadAndWriteAccess() throws Throwable {
+        for (int i = 0; i < this.iterationCount; i++) {
+            tearDown();
+            doOnDemandServiceStopCheckWithReadAndWriteAccess();
+        }
+    }
+
+    private void doOnDemandServiceStopCheckWithReadAndWriteAccess() throws Throwable {
         setUp(true);
 
         long maintenanceIntervalMicros = TimeUnit.MILLISECONDS.toMicros(100);
@@ -1935,7 +1942,7 @@ public class TestServiceHost {
         for (int i = 0; i < requestCount; i++) {
             patch = createMinimalTestServicePatch(servicePath, ctx);
             this.host.send(patch);
-            if (i == requestCount / 2) {
+            if (i == Math.min(10, requestCount / 2)) {
                 Operation deleteStop = Operation.createDelete(this.host, servicePath)
                         .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_NO_INDEX_UPDATE);
                 this.host.send(deleteStop);
