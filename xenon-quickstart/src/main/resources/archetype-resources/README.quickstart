@@ -1,0 +1,130 @@
+Welcome to Xenon!
+
+### Quick Start
+
+You have successfully created the source code for your first Xenon application. First verify that it works:
+
+    mvn package    # download dependencies, compile source code, run tests, build jar files
+
+    java -jar target/xenon-quickstart-1.0-SNAPSHOT-jar-with-dependencies.jar   # run Xenon standalone java application
+
+    # Now point your browser or your REST client (such as Postman - https://www.getpostman.com/) at
+    http://localhost:8000/
+
+    # Create an employee
+    curl -X POST -H "Content-type: application/json" -d '{"documentSelfLink":"niki","name":"niki"}' http://localhost:8000/quickstart/employees
+
+    # See a list of employees
+    curl http://localhost:8000/quickstart/employees
+
+    # Fetch a specific employee
+    curl http://localhost:8000/quickstart/employees/niki
+
+    # Create a record for the CEO
+    curl -X POST -H "Content-type: application/json" -d '{"documentSelfLink":"jon","name":"Jon (CEO)"}' http://localhost:8000/quickstart/employees
+
+    # Make Jon Niki's manager (notice documentVersion increments)
+    curl -X PATCH -H "Content-type: application/json" -d '{"managerLink": "/quickstart/employees/jon"}' http://localhost:8000/quickstart/employees/niki
+
+    # Query for users named niki
+    curl -X POST -H "Content-type: application/json" -d '
+    {
+        "taskInfo": {
+            "isDirect": true
+        },
+        "querySpec": {
+            "query": {
+                "term": {
+                    "matchType": "TERM",
+                    "propertyName": "name",
+                    "matchValue": "niki"
+                }
+            }
+        }
+    }' http://localhost:8000/core/query-tasks
+
+    # Query for all employees that report directly to Jon
+    curl -X POST -H "Content-type: application/json" -d '
+    {
+        "taskInfo": {
+            "isDirect": true
+        },
+        "querySpec": {
+            "query": {
+                "term": {
+                    "matchType": "TERM",
+                    "propertyName": "managerLink",
+                    "matchValue": "/quickstart/employees/jon"
+                }
+            }
+        }
+    }' http://localhost:8000/core/query-tasks
+
+### Overview
+
+This Xenon quickstart provides the basic framework you need to get you started building a Xenon applicaiton. It has
+the necessary Maven pom.xml to build the application and to pull in necessary dependencies, a basic QuickstartHost
+class to launch and control your Xenon cluster, and an example stateful service that can be easily copied and
+extended for your own use. This quickstart also includes a small set of example tests to enable you to very quickly
+get up to speed writing tests against your Xenon application.
+
+### Tour of your Xenon application code
+
+    src/main/java/QuickstartHost.java -> A Xenon ServiceHost represents a single node in a distributed cluster. 
+        QuickstartHost extends ServiceHost, and adds a main function that launches and configures that host. It can 
+        also be easily tweaked to launch multiple QuickstartHost in a single JVM, emulating multi-node for testing.
+
+    src/main/java/EmployeeService.java -> a simple example of how to create a stateful service in Xenon. With a
+        surprisingly small number of lines of code, we can store employee records, query them in rich ways,
+        expose a REST API for them, and can validate parameters.
+
+    src/test/java/EmployeeServiceTest.java -> some examples of testing Xenon services. Demonstrates Xenon's
+        client for constructing REST queries, and how to deal with asynchrony that is a key element of Xenon.
+
+    src/test/java/TestUtils.java -> provides a few helpful utilities to deal with Xenon asynchrony in tests
+
+
+### Interacting with the build
+
+    mvn package -> compile everything, run all tests, create the jar files in target/ directory
+    mvn compile -> just compile
+    mvn test -> compile and run tests
+    mvn install -> everything in mvn package, plus install package in the local (~/.m2) Maven repo
+    mvn clean -> remove all generated artifacts
+
+    for package and clean, you can skip the tests by adding '-DskipTests'
+
+
+### The database
+
+Without any parameters, xenon will store its data in a hard to find directory. For convenience, we specify
+the location of the data and index directory by settig the sandbox property in QuickstartHost. As you can see in
+XeonHost.java, it is currently set to /tmp/xenondb.
+
+If you start multiple QuickstartHost instances on the same node, they should each be listening on a different port.
+The files for that QuickstartHost will be stored in a subdirectory of the sandbox directory (/tmp/xenondb) with the name
+the same as the port number.
+
+Frequently you will want to remove/reset the database - simply shut down Xenon, and
+
+        rm -rf /tmp/xenondb
+
+For the tests, an random tmp directory is created prior to each test and that directory is removed after the test.
+
+### Multi-node
+
+By default, the QuickstartHost main() class start Xenon as a single node. The tests will automatically start Xenon in three
+node emulation mode (three nodes in a single JVM, each listening on a different port). You with a quick tweak to the
+QuickstartHost.NUM_NODES static field (and rebuild), you can have QuickstartHost main() class start in multi-node if you want to
+do some experimentation with multi-node.
+
+### Next Steps
+
+Make a copy of EmployeeService, and create your own Stateful service!
+
+
+### For more information
+
+    You can find lots of rich information & tutorials on the Xenon wiki
+
+    https://github.com/vmware/xenon/wiki
