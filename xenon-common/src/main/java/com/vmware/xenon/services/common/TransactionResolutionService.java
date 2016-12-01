@@ -15,7 +15,6 @@ package com.vmware.xenon.services.common;
 
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.StatefulService;
-import com.vmware.xenon.common.StatelessService;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.services.common.TransactionService.ResolutionKind;
 import com.vmware.xenon.services.common.TransactionService.ResolutionRequest;
@@ -23,23 +22,11 @@ import com.vmware.xenon.services.common.TransactionService.ResolutionRequest;
 /**
  * Transaction-specific "utility" service responsible for masking commit resolution asynchrony during commit phase.
  */
-public class TransactionResolutionService extends StatelessService {
-    public static final String RESOLUTION_SUFFIX = "/resolve";
-
+public class TransactionResolutionService {
     StatefulService parent;
 
     public TransactionResolutionService(StatefulService parent) {
         this.parent = parent;
-    }
-
-    @Override
-    public void authorizeRequest(Operation op) {
-        op.complete();
-    }
-
-    @Override
-    public void handlePost(Operation op) {
-        handleResolutionRequest(op);
     }
 
     /**
@@ -66,31 +53,47 @@ public class TransactionResolutionService extends StatelessService {
                                     op.fail(e2);
                                     return;
                                 }
-                                logInfo("Transaction resolution request has been accepted by %s", this.parent.getSelfLink());
+                                this.parent.logInfo(
+                                        "Transaction resolution request has been accepted by %s",
+                                        this.parent.getSelfLink());
                             });
-                    logInfo("Sending transaction resolution request to %s with kind %s", this.parent.getSelfLink(), resolutionRequest.resolutionKind);
-                    sendRequest(operation);
-                }).setReferer(getUri());
+                    this.parent.logInfo("Sending transaction resolution request to %s with kind %s",
+                            this.parent.getSelfLink(), resolutionRequest.resolutionKind);
+                    this.parent.sendRequest(operation);
+                }).setReferer(this.parent.getUri());
 
-        logInfo("Subscribing to transaction resolution on %s", this.parent.getSelfLink());
-        getHost().startSubscriptionService(subscribeToCoordinator, (notifyOp) -> {
+        this.parent.logInfo("Subscribing to transaction resolution on %s",
+                this.parent.getSelfLink());
+        this.parent.getHost().startSubscriptionService(subscribeToCoordinator, (notifyOp) -> {
             ResolutionRequest resolve = notifyOp.getBody(ResolutionRequest.class);
             notifyOp.complete();
-            logInfo("Received notification: action=%s, resolution=%s", notifyOp.getAction(), resolve.resolutionKind);
+            this.parent.logInfo("Received notification: action=%s, resolution=%s",
+                    notifyOp.getAction(),
+                    resolve.resolutionKind);
             if (isNotComplete(resolve.resolutionKind)) {
                 return;
             }
-            if ((resolve.resolutionKind == ResolutionKind.COMMITTED && resolutionRequest.resolutionKind == ResolutionKind.COMMIT) ||
-                    (resolve.resolutionKind == ResolutionKind.ABORTED && resolutionRequest.resolutionKind == ResolutionKind.ABORT)) {
-                logInfo("Resolution of transaction %s is complete", this.parent.getSelfLink());
+            if ((resolve.resolutionKind == ResolutionKind.COMMITTED
+                    && resolutionRequest.resolutionKind == ResolutionKind.COMMIT) ||
+                    (resolve.resolutionKind == ResolutionKind.ABORTED
+                            && resolutionRequest.resolutionKind == ResolutionKind.ABORT)) {
+                this.parent.logInfo("Resolution of transaction %s is complete",
+                        this.parent.getSelfLink());
                 op.setBodyNoCloning(notifyOp.getBodyRaw());
                 op.setStatusCode(notifyOp.getStatusCode());
                 op.complete();
             } else {
-                String errorMsg = String.format("Resolution %s of transaction %s is different than requested", resolve.resolutionKind, this.parent.getSelfLink());
-                logWarning(errorMsg);
+                String errorMsg = String.format(
+                        "Resolution %s of transaction %s is different than requested",
+                        resolve.resolutionKind, this.parent.getSelfLink());
+                this.parent.logWarning(errorMsg);
                 op.fail(new IllegalStateException(errorMsg));
             }
+
+            // stop transaction instance to free up memory
+            Operation.createDelete(this.parent.getUri())
+                    .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_NO_INDEX_UPDATE)
+                    .sendWith(this.parent);
         });
     }
 
