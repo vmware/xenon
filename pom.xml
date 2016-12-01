@@ -128,6 +128,7 @@
       <modules>
         <module>xenon-host</module>
         <module>xenon-samples</module>
+        <module>xenon-quickstart</module>
         <module>xenon-websocket-test</module>
         <module>xenon-client</module>
       </modules>
@@ -155,6 +156,7 @@
       <modules>
         <module>xenon-host</module>
         <module>xenon-samples</module>
+        <module>xenon-quickstart</module>
         <module>xenon-websocket-test</module>
         <module>xenon-client</module>
       </modules>
