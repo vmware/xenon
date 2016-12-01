@@ -229,7 +229,13 @@ public class StatefulService implements Service {
             if (o.isFromReplication() && o.getAction() == Action.DELETE) {
                 o.complete();
             } else {
-                o.fail(new CancellationException(getSelfLink()));
+                if (hasOption(ServiceOption.ON_DEMAND_LOAD)
+                        && (!stop || !ServiceHost.isServiceDeleteAndStop(op))) {
+                    // Pending requests need to be retried on ODL services that are being stopped.
+                    getHost().retryPauseOrOnDemandLoadConflict(o, true);
+                } else {
+                    o.fail(new CancellationException(getSelfLink()));
+                }
             }
         }
 
