@@ -79,6 +79,11 @@ public final class KryoSerializers {
 
     public static Kryo create(boolean isObjectSerializer) {
         Kryo k = new Kryo();
+
+        // ensure kryo3-serialized classes with ge  neric fields can be read back
+        // https://github.com/EsotericSoftware/kryo/releases/tag/kryo-parent-4.0.0
+        k.getFieldSerializerConfig().setOptimizedGenerics(true);
+
         // handle classes with missing default constructors
         k.setInstantiatorStrategy(new DefaultInstantiatorStrategy(new StdInstantiatorStrategy()));
         // supports addition of fields if the @since annotation is used
@@ -90,6 +95,7 @@ public final class KryoSerializers {
         // Add non-cloning serializers for all immutable types bellow
         k.addDefaultSerializer(UUID.class, UUIDSerializer.INSTANCE);
         k.addDefaultSerializer(URI.class, URISerializer.INSTANCE);
+        k.addDefaultSerializer(ByteBuffer.class, ByteBufferSerializer.INSTANCE);
 
         configureJdkCollections(k);
 
@@ -212,7 +218,8 @@ public final class KryoSerializers {
      */
     public static Output serializeAsDocument(Object o, int maxSize) {
         Kryo k = getKryoThreadLocalForDocuments();
-        Output out = new Output(getBuffer(OUTPUT_BUFFER_SIZE_BYTES), maxSize);
+        byte[] buffer = getBuffer(OUTPUT_BUFFER_SIZE_BYTES);
+        Output out = new Output(buffer, Math.max(buffer.length, maxSize));
         k.writeClassAndObject(out, o);
         return out;
     }
@@ -247,7 +254,7 @@ public final class KryoSerializers {
      */
     public static ByteBuffer serializeObject(Object o, int maxSize) {
         Kryo k = getKryoThreadLocalForObjects();
-        Output out = new Output(OUTPUT_BUFFER_SIZE_BYTES, maxSize);
+        Output out = new Output(maxSize, Math.max(OUTPUT_BUFFER_SIZE_BYTES, maxSize));
         k.writeClassAndObject(out, o);
         return ByteBuffer.wrap(out.getBuffer(), 0, out.position());
     }

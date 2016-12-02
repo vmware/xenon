@@ -26,7 +26,7 @@ public final class OutputWithRoot extends Output {
     }
 
     public OutputWithRoot(byte[] buffer, int maxSize, Object root) {
-        super(buffer, maxSize);
+        super(buffer, Math.max(maxSize, buffer.length));
         this.root = root;
     }
 }
