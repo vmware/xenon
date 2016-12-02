@@ -8,6 +8,10 @@
 
 * Bug fix when clearing the AuthZ cach for a user.
 
+* Change the contract for infrastructure method Utils.decodeBody(). It
+  no longer calls operation complete or fail in the supplied operation. The
+  method will now throw an exception on decoding errors
+
 ## 1.3.2
 
 ## 1.3.1
