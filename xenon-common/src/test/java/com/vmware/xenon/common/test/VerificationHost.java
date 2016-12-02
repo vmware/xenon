@@ -1319,7 +1319,7 @@ public class VerificationHost extends ExampleServiceHost {
             }
 
             URI sUri = s.getUri();
-            updateOp.setUri(sUri).setReferer(getReferer());
+            updateOp.setUri(sUri);
 
             for (int i = 0; i < count; i++) {
                 if (!isFailureExpected) {
@@ -1359,10 +1359,10 @@ public class VerificationHost extends ExampleServiceHost {
                     Operation putClone = updateOp.clone();
                     putClone.setBody(b).setUri(sUri);
                     run(() -> {
-                        send(putClone);
+                        s.sendRequest(putClone);
                     });
                 } else {
-                    send(updateOp.setBody(b));
+                    s.sendRequest(updateOp.setBody(b));
                 }
                 if (s.hasOption(ServiceOption.STRICT_UPDATE_CHECKING)) {
                     // we have to serialize requests and properly set version

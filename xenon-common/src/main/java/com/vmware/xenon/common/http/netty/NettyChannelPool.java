@@ -48,13 +48,35 @@ import com.vmware.xenon.common.Utils;
  */
 public class NettyChannelPool {
 
+    static ThreadLocal<NettyChannelGroupKey> lookupChannelKeyPerThread = new ThreadLocal<NettyChannelGroupKey>() {
+        @Override
+        public NettyChannelGroupKey initialValue() {
+            return new NettyChannelGroupKey();
+        }
+    };
+
+    static NettyChannelGroupKey getChannelKey(String tag, String host, int port, boolean isHttp2) {
+        NettyChannelGroupKey key = lookupChannelKeyPerThread.get();
+        return key.set(tag, host, port, isHttp2);
+    }
+
     public static class NettyChannelGroupKey implements Comparable<NettyChannelGroupKey> {
-        private final String connectionTag;
-        private final String host;
-        private final int port;
+        private String connectionTag;
+        private String host;
+        private int port;
         private int hashcode;
 
-        public NettyChannelGroupKey(String tag, String host, int port, boolean isHttp2) {
+        public NettyChannelGroupKey() {
+
+        }
+
+        NettyChannelGroupKey(NettyChannelGroupKey other) {
+            this.connectionTag = other.connectionTag;
+            this.host = other.host;
+            this.port = other.port;
+        }
+
+        public NettyChannelGroupKey set(String tag, String host, int port, boolean isHttp2) {
             if (tag == null) {
                 tag = isHttp2 ? ServiceClient.CONNECTION_TAG_HTTP2_DEFAULT
                         : ServiceClient.CONNECTION_TAG_DEFAULT;
@@ -67,6 +89,8 @@ public class NettyChannelPool {
                 port = UriUtils.HTTP_DEFAULT_PORT;
             }
             this.port = port;
+            this.hashcode = 0;
+            return this;
         }
 
         @Override
@@ -234,17 +258,18 @@ public class NettyChannelPool {
     }
 
     private NettyChannelGroup getChannelGroup(String tag, String host, int port) {
-        NettyChannelGroupKey key = new NettyChannelGroupKey(tag, host, port, this.isHttp2Only);
+        NettyChannelGroupKey key = getChannelKey(tag, host, port, this.isHttp2Only);
         return getChannelGroup(key);
     }
 
-    private NettyChannelGroup getChannelGroup(NettyChannelGroupKey key) {
+    private NettyChannelGroup getChannelGroup(NettyChannelGroupKey threadLocalKey) {
         NettyChannelGroup group;
         synchronized (this.channelGroups) {
-            group = this.channelGroups.get(key);
+            group = this.channelGroups.get(threadLocalKey);
             if (group == null) {
-                group = new NettyChannelGroup(key);
-                this.channelGroups.put(key, group);
+                NettyChannelGroupKey clonedKey = new NettyChannelGroupKey(threadLocalKey);
+                group = new NettyChannelGroup(clonedKey);
+                this.channelGroups.put(clonedKey, group);
             }
         }
         return group;
@@ -266,19 +291,19 @@ public class NettyChannelPool {
         return tagInfo;
     }
 
-    public void connectOrReuse(NettyChannelGroupKey key, Operation request) {
+    public void connectOrReuse(NettyChannelGroupKey threadLocalKey, Operation request) {
 
         if (request == null) {
             throw new IllegalArgumentException("request is required");
         }
 
-        if (key == null) {
+        if (threadLocalKey == null) {
             request.fail(new IllegalArgumentException("connection key is required"));
             return;
         }
 
         try {
-            NettyChannelGroup group = getChannelGroup(key);
+            NettyChannelGroup group = getChannelGroup(threadLocalKey);
             final NettyChannelContext context = selectContext(request, group);
             if (context == null) {
                 // We have no available connections, request has been queued
@@ -295,7 +320,7 @@ public class NettyChannelPool {
 
             // Connect, then wait for the connection to complete before either
             // sending data (HTTP/1.1) or negotiating settings (HTTP/2)
-            ChannelFuture connectFuture = this.bootStrap.connect(key.host, key.port);
+            ChannelFuture connectFuture = this.bootStrap.connect(threadLocalKey.host, threadLocalKey.port);
             connectFuture.addListener(new ChannelFutureListener() {
 
                 @Override

@@ -27,10 +27,12 @@ import java.util.NavigableMap;
 import java.util.NavigableSet;
 import java.util.Set;
 import java.util.UUID;
+import java.util.logging.Logger;
 
 import com.esotericsoftware.kryo.io.Output;
 import org.junit.Test;
 
+import com.vmware.xenon.common.CommandLineArgumentParser;
 import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.ServiceDocumentDescription;
 import com.vmware.xenon.common.TestUtils;
@@ -39,6 +41,8 @@ import com.vmware.xenon.services.common.ExampleService;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
 
 public class TestKryoSerializers {
+
+    public int iterationCount = 1;
 
     @Test
     public void serializeDocumentForIndexing() {
@@ -57,6 +61,7 @@ public class TestKryoSerializers {
 
     @Test
     public void serializeDeserializeDocument() throws Throwable {
+        CommandLineArgumentParser.parseFromProperties(this);
         ServiceDocumentDescription sdd = TestUtils.buildStateDescription(
                 ExampleService.ExampleServiceState.class, null);
         ExampleServiceState st = new ExampleServiceState();
@@ -66,10 +71,16 @@ public class TestKryoSerializers {
         st.keyValues = new HashMap<>();
         st.keyValues.put(st.id, st.id);
         st.documentKind = Utils.buildKind(ExampleServiceState.class);
-        Output o = KryoSerializers.serializeDocument(st, 1024);
-        ExampleServiceState deserializedSt = (ExampleServiceState) KryoSerializers
-                .deserializeDocument(o.getBuffer(), 0, o.position());
-        assertTrue(ServiceDocument.equals(sdd, st, deserializedSt));
+        long s = System.nanoTime();
+        for (int i = 0; i < this.iterationCount; i++) {
+            Output o = KryoSerializers.serializeDocument(st, 1024);
+            ExampleServiceState deserializedSt = (ExampleServiceState) KryoSerializers
+                    .deserializeDocument(o.getBuffer(), 0, o.position());
+            assertTrue(ServiceDocument.equals(sdd, st, deserializedSt));
+        }
+        long e = System.nanoTime();
+        double thpt = this.iterationCount / ((e - s) / 1000000000.0);
+        Logger.getAnonymousLogger().info("Throughput: " + thpt);
     }
 
     @Test
