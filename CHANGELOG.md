@@ -15,6 +15,8 @@
   over documents with multiple versions. This change is transparent to clients
   and does not change the document query API
 
+* Kryo is upgraded to 4.0.0. Index and API compatibility is kept.
+
 ## 1.3.4
 
 * Enforce implicit query result limits. All queries
