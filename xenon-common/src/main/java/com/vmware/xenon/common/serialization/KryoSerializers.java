@@ -91,6 +91,7 @@ public final class KryoSerializers {
         k.addDefaultSerializer(UUID.class, UUIDSerializer.INSTANCE);
         k.addDefaultSerializer(URI.class, URISerializer.INSTANCE);
 
+        k.addDefaultSerializer(ByteBuffer.class, ByteBufferSerializer.INSTANCE);
         configureJdkCollections(k);
 
         if (!isObjectSerializer) {
