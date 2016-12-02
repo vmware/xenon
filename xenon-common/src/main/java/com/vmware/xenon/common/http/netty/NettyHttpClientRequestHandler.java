@@ -227,7 +227,14 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
 
         String contentType = getAndRemove(headers, HttpHeaderNames.CONTENT_TYPE);
         if (contentType != null) {
-            request.setContentType(contentType);
+            // use static well known strings and free up string reference allocated by netty
+            if (Utils.isContentTypeKryoBinary(contentType)) {
+                request.setContentType(Operation.MEDIA_TYPE_APPLICATION_KRYO_OCTET_STREAM);
+            } else if (Utils.isContentTypeJson(contentType)) {
+                request.setContentType(Operation.MEDIA_TYPE_APPLICATION_JSON);
+            } else {
+                request.setContentType(contentType);
+            }
         }
 
         String cookie = getAndRemove(headers, HttpHeaderNames.COOKIE);
@@ -236,6 +243,9 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
         }
 
         String host = getAndRemove(headers, HttpHeaderNames.HOST);
+        if (host != null) {
+            request.addRequestHeader(Operation.HOST_HEADER, host);
+        }
 
         for (Entry<String, String> h : headers) {
             String key = h.getKey();
@@ -248,10 +258,6 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
             }
 
             request.addRequestHeader(key, value);
-        }
-
-        if (host != null) {
-            request.addRequestHeader(Operation.HOST_HEADER, host);
         }
 
         if (!request.hasReferer() && request.isFromReplication()) {

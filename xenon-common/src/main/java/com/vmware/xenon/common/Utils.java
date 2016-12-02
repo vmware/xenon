@@ -947,7 +947,39 @@ public final class Utils {
         return ByteBuffer.wrap(out.toByteArray());
     }
 
+    public static boolean isContentTypeKryoBinary(String contentType) {
+        return contentType.length() == Operation.MEDIA_TYPE_APPLICATION_KRYO_OCTET_STREAM.length()
+                && contentType.charAt(12) == 'k'
+                && contentType.charAt(13) == 'r'
+                && contentType.charAt(14) == 'y'
+                && contentType.charAt(15) == 'o';
+    }
+
+    public static boolean isContentTypeJson(String contentType) {
+        return contentType.length() == Operation.MEDIA_TYPE_APPLICATION_JSON.length()
+                && contentType.charAt(12) == 'j'
+                && contentType.charAt(13) == 's'
+                && contentType.charAt(14) == 'o'
+                && contentType.charAt(15) == 'n';
+    }
+
     private static boolean isContentTypeText(String contentType) {
+        if (isContentTypeKryoBinary(contentType)) {
+            return false;
+        }
+
+        if (isContentTypeJson(contentType)) {
+            return true;
+        }
+
+        if (contentType.length() == Operation.MEDIA_TYPE_APPLICATION_JSON.length()
+                && contentType.charAt(12) == 'j'
+                && contentType.charAt(13) == 's'
+                && contentType.charAt(14) == 'o'
+                && contentType.charAt(15) == 'n') {
+            return true;
+        }
+
         return Operation.MEDIA_TYPE_APPLICATION_JSON.equals(contentType)
                 || contentType.contains(Operation.MEDIA_TYPE_APPLICATION_JSON)
                 || contentType.contains("text")
