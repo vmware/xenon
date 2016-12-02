@@ -46,7 +46,6 @@ import com.esotericsoftware.kryo.KryoException;
 import com.esotericsoftware.kryo.io.Output;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.core.SimpleAnalyzer;
 import org.apache.lucene.document.Document;
@@ -1282,7 +1281,10 @@ public class LuceneDocumentIndexService extends StatelessService {
             rsp.documentCount = 1L;
         }
 
-        Sort sort = this.versionSort;
+        Sort sort = null;
+        if (options.contains(QueryOption.INCLUDE_ALL_VERSIONS)) {
+            sort = this.versionSort;
+        }
         if (qs != null && qs.sortTerm != null) {
             // see if query is part of a task and already has a cached sort
             if (qs.context != null) {
