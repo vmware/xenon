@@ -2,6 +2,9 @@
 
 ## 1.3.3-SNAPSHOT
 
+* Change the contract for infrastructure method Utils.decodeBody(). It
+  no longer call operation complete or fail in the supplied operation
+
 ## 1.3.2
 
 ## 1.3.1

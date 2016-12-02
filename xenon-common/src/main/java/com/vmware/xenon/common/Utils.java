@@ -851,12 +851,17 @@ public final class Utils {
         return data;
     }
 
-    public static void decodeBody(Operation op, ByteBuffer buffer) {
-        boolean isRequest = false;
-        String contentEncodingHeader = op.getResponseHeaderAsIs(Operation.CONTENT_ENCODING_HEADER);
-        if (contentEncodingHeader == null) {
+    /**
+     * Decodes the byte buffer, using the content type as a hint. It sets the operation body
+     * to the decoded instance. It does not complete the operation.
+     */
+    public static void decodeBody(Operation op, ByteBuffer buffer, boolean isRequest)
+            throws Exception {
+        String contentEncodingHeader = null;
+        if (!isRequest) {
+            contentEncodingHeader = op.getResponseHeaderAsIs(Operation.CONTENT_ENCODING_HEADER);
+        } else if (!op.isFromReplication()) {
             contentEncodingHeader = op.getRequestHeaderAsIs(Operation.CONTENT_ENCODING_HEADER);
-            isRequest = true;
         }
 
         boolean compressed = false;
@@ -867,46 +872,48 @@ public final class Utils {
         decodeBody(op, buffer, isRequest, compressed);
     }
 
+    /**
+     * See {@link #decodeBody(Operation, ByteBuffer, boolean)}
+     */
     public static void decodeBody(
-            Operation op, ByteBuffer buffer, boolean isRequest, boolean compressed) {
+            Operation op, ByteBuffer buffer, boolean isRequest, boolean compressed)
+            throws Exception {
         if (op.getContentLength() == 0) {
-            op.setContentType(Operation.MEDIA_TYPE_APPLICATION_JSON).complete();
+            op.setContentType(Operation.MEDIA_TYPE_APPLICATION_JSON);
+            return;
+        }
+        if (compressed) {
+            buffer = decompressGZip(buffer);
+            if (isRequest) {
+                op.getRequestHeaders().remove(Operation.CONTENT_ENCODING_HEADER);
+            } else {
+                op.getResponseHeaders().remove(Operation.CONTENT_ENCODING_HEADER);
+            }
+        }
+
+        String contentType = op.getContentType();
+        Object body = decodeIfText(buffer, contentType);
+        if (body != null) {
+            op.setBodyNoCloning(body);
             return;
         }
 
-        try {
-            if (compressed) {
-                buffer = decompressGZip(buffer);
-                if (isRequest) {
-                    op.getRequestHeaders().remove(Operation.CONTENT_ENCODING_HEADER);
-                } else {
-                    op.getResponseHeaders().remove(Operation.CONTENT_ENCODING_HEADER);
-                }
+        if (Operation.MEDIA_TYPE_APPLICATION_KRYO_OCTET_STREAM.equals(contentType)) {
+            body = KryoSerializers.deserializeDocument(buffer);
+            if (op.isFromReplication()) {
+                // optimization to avoid having to serialize state again, during indexing
+                byte[] data = new byte[(int) op.getContentLength()];
+                buffer.rewind();
+                buffer.get(data);
+                op.linkSerializedState(data);
             }
-
-            String contentType = op.getContentType();
-            Object body = decodeIfText(buffer, contentType);
-            if (body != null) {
-                op.setBodyNoCloning(body).complete();
-                return;
-            }
-
+        } else {
             // unrecognized or binary body, use the raw bytes
             byte[] data = new byte[(int) op.getContentLength()];
             buffer.get(data);
-            if (Operation.MEDIA_TYPE_APPLICATION_KRYO_OCTET_STREAM.equals(contentType)) {
-                body = KryoSerializers.deserializeDocument(data, 0, data.length);
-                if (op.isFromReplication()) {
-                    // optimization to avoid having to serialize state again, during indexing
-                    op.linkSerializedState(data);
-                }
-            } else {
-                body = data;
-            }
-            op.setBodyNoCloning(body).complete();
-        } catch (Throwable e) {
-            op.fail(e);
+            body = data;
         }
+        op.setBodyNoCloning(body);
     }
 
     public static String decodeIfText(ByteBuffer buffer, String contentType)
