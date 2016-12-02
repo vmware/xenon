@@ -855,7 +855,7 @@ class ServiceResourceTracker {
                         if (a != Action.POST
                                 && response.errorCode == ServiceErrorResponse.ERROR_CODE_SERVICE_ALREADY_EXISTS) {
                             // service exists, action is not attempt to recreate, so complete as success
-                            inboundOp.complete();
+                            this.host.handleRequest(null, inboundOp);
                             return;
                         }
 
