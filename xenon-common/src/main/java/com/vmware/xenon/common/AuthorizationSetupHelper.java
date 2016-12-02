@@ -20,6 +20,9 @@ import java.util.logging.Level;
 
 import com.vmware.xenon.common.Operation.CompletionHandler;
 import com.vmware.xenon.common.Service.Action;
+import com.vmware.xenon.common.builder.ResourceGroupStateBuilder;
+import com.vmware.xenon.common.builder.RoleStateBuilder;
+import com.vmware.xenon.common.builder.UserGroupStateBuilder;
 import com.vmware.xenon.services.common.AuthCredentialsService.AuthCredentialsServiceState;
 import com.vmware.xenon.services.common.QueryTask;
 import com.vmware.xenon.services.common.QueryTask.Query;
@@ -461,9 +464,10 @@ public class AuthorizationSetupHelper {
             userGroupQuery = this.userGroupQuery;
         }
 
-        UserGroupState group = new UserGroupState();
-        group.query = userGroupQuery;
-        group.documentSelfLink = this.userGroupSelfLink;
+        UserGroupState group = UserGroupStateBuilder.userGroupState()
+                .withQuery(userGroupQuery)
+                .withUserGroupSelfLink(this.userGroupSelfLink)
+                .build();
 
         URI userGroupFactoryUri = UriUtils.buildUri(this.host,
                 ServiceUriPaths.CORE_AUTHZ_USER_GROUPS);
@@ -571,9 +575,10 @@ public class AuthorizationSetupHelper {
             resourceQuery = this.resourceQuery;
         }
 
-        ResourceGroupState group = new ResourceGroupState();
-        group.query = resourceQuery;
-        group.documentSelfLink = this.resourceGroupSelfLink;
+        ResourceGroupState group = ResourceGroupStateBuilder.resourceGroupState()
+                .withQuery(resourceQuery)
+                .withUserGroupSelfLink(this.resourceGroupSelfLink)
+                .build();
 
         URI resourceGroupFactoryUri = UriUtils.buildUri(this.host,
                 ServiceUriPaths.CORE_AUTHZ_RESOURCE_GROUPS);
@@ -610,12 +615,12 @@ public class AuthorizationSetupHelper {
             Collections.addAll(this.verbs, Action.values());
         }
 
-        RoleState role = new RoleState();
-        role.userGroupLink = this.userGroupSelfLink;
-        role.resourceGroupLink = this.resourceGroupSelfLink;
-        role.verbs = this.verbs;
-        role.policy = this.policy;
-        role.documentSelfLink = this.roleSelfLink;
+        RoleState role = RoleStateBuilder.roleState().withUserGroupLink(this.userGroupSelfLink)
+                .withResourceGroupSelfLink(this.resourceGroupSelfLink)
+                .withRoleSelfLink(this.roleSelfLink)
+                .withPolicy(this.policy)
+                .withVerbs(this.verbs)
+                .build();
 
         URI roleFactoryUri = UriUtils.buildUri(this.host, ServiceUriPaths.CORE_AUTHZ_ROLES);
         Operation postRole = Operation.createPost(roleFactoryUri)
