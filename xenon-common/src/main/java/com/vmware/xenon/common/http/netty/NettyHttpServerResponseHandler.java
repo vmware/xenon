@@ -110,6 +110,7 @@ public class NettyHttpServerResponseHandler extends SimpleChannelInboundHandler<
         }
 
         request.setKeepAlive(HttpUtil.isKeepAlive(nettyResponse));
+        headers.remove(HttpHeaderNames.CONNECTION);
         if (HttpUtil.isContentLengthSet(nettyResponse)) {
             request.setContentLength(HttpUtil.getContentLength(nettyResponse));
             headers.remove(HttpHeaderNames.CONTENT_LENGTH);
@@ -119,6 +120,11 @@ public class NettyHttpServerResponseHandler extends SimpleChannelInboundHandler<
         headers.remove(HttpHeaderNames.CONTENT_TYPE);
         if (contentType != null) {
             request.setContentType(contentType);
+        }
+
+        if (request.isFromReplication()) {
+            // skip any further header processing
+            return;
         }
 
         for (Entry<String, String> h : headers) {
@@ -149,18 +155,16 @@ public class NettyHttpServerResponseHandler extends SimpleChannelInboundHandler<
             return;
         }
 
-        request.nestCompletion((o, e) -> {
-            if (e != null) {
-                request.fail(e);
-                return;
-            }
+        try {
+            Utils.decodeBody(request, content.nioBuffer(), false);
             if (checkResponseForError(request)) {
                 return;
             }
             completeRequest(request);
-        });
-
-        Utils.decodeBody(request, content.nioBuffer());
+        } catch (Throwable e) {
+            request.fail(e);
+            return;
+        }
     }
 
     private void completeRequest(Operation request) {
