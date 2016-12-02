@@ -13,6 +13,8 @@
   latest versions of documents as on a given time. QuerySpecification#timeSnapshotBoundaryMicros
   will allow specifying the time.
 
+* Kryo is upgraded to 4.0.0. Index and API compatibility is kept.
+
 ## 1.3.6
 
 * Integrations with 3rd party libraries are migrated to a [new repository](https://github.com/vmware/xenon-utils)
