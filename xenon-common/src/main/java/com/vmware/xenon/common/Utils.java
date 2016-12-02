@@ -816,6 +816,9 @@ public final class Utils {
         if (body instanceof String) {
             data = ((String) body).getBytes(Utils.CHARSET);
             op.setContentLength(data.length);
+        } else if (body instanceof ByteBuffer) {
+            ByteBuffer byteBuf = (ByteBuffer) body;
+            data = byteBuf.array();
         } else if (body instanceof byte[]) {
             data = (byte[]) body;
             if (contentType == null) {
@@ -851,12 +854,14 @@ public final class Utils {
         return data;
     }
 
-    public static void decodeBody(Operation op, ByteBuffer buffer) {
-        boolean isRequest = false;
+    public static void decodeBody(Operation op, ByteBuffer buffer, boolean isRequest) {
+        decodeBody(op, buffer, isRequest, false);
+    }
+
+    static void decodeBody(Operation op, ByteBuffer buffer, boolean isRequest, boolean isSynch) {
         String contentEncodingHeader = op.getResponseHeaderAsIs(Operation.CONTENT_ENCODING_HEADER);
         if (contentEncodingHeader == null) {
             contentEncodingHeader = op.getRequestHeaderAsIs(Operation.CONTENT_ENCODING_HEADER);
-            isRequest = true;
         }
 
         boolean compressed = false;
@@ -864,13 +869,17 @@ public final class Utils {
             compressed = Operation.CONTENT_ENCODING_GZIP.equals(contentEncodingHeader);
         }
 
-        decodeBody(op, buffer, isRequest, compressed);
+        decodeBody(op, buffer, isRequest, compressed, isSynch);
     }
 
-    public static void decodeBody(
-            Operation op, ByteBuffer buffer, boolean isRequest, boolean compressed) {
+    private static void decodeBody(
+            Operation op, ByteBuffer buffer, boolean isRequest, boolean compressed,
+            boolean isSynch) {
         if (op.getContentLength() == 0) {
-            op.setContentType(Operation.MEDIA_TYPE_APPLICATION_JSON).complete();
+            op.setContentType(Operation.MEDIA_TYPE_APPLICATION_JSON);
+            if (!isSynch) {
+                op.complete();
+            }
             return;
         }
 
@@ -887,7 +896,10 @@ public final class Utils {
             String contentType = op.getContentType();
             Object body = decodeIfText(buffer, contentType);
             if (body != null) {
-                op.setBodyNoCloning(body).complete();
+                op.setBodyNoCloning(body);
+                if (!isSynch) {
+                    op.complete();
+                }
                 return;
             }
 
@@ -903,9 +915,16 @@ public final class Utils {
             } else {
                 body = data;
             }
-            op.setBodyNoCloning(body).complete();
+            op.setBodyNoCloning(body);
+            if (!isSynch) {
+                op.complete();
+            }
         } catch (Throwable e) {
-            op.fail(e);
+            if (!isSynch) {
+                op.fail(e);
+            } else {
+                throw new RuntimeException(e);
+            }
         }
     }
 

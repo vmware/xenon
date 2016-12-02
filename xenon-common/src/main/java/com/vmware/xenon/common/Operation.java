@@ -15,6 +15,7 @@ package com.vmware.xenon.common;
 
 import java.net.HttpURLConnection;
 import java.net.URI;
+import java.nio.ByteBuffer;
 import java.security.Principal;
 import java.util.Arrays;
 import java.util.EnumSet;
@@ -859,6 +860,10 @@ public class Operation implements Cloneable {
      */
     @SuppressWarnings("unchecked")
     public <T> T getBody(Class<T> type) {
+        if (this.body != null && this.body instanceof ByteBuffer) {
+            decodeBody();
+        }
+
         if (this.body != null && this.body.getClass() == type) {
             return (T) this.body;
         }
@@ -881,6 +886,7 @@ public class Operation implements Cloneable {
             if (this.body instanceof String) {
                 this.serializedBody = this.body;
             }
+
             // Request must specify a Content-Type we understand
             if (this.contentType != null
                     && this.contentType.contains(MEDIA_TYPE_APPLICATION_JSON)) {
@@ -899,6 +905,15 @@ public class Operation implements Cloneable {
         }
 
         throw new IllegalStateException();
+    }
+
+    /**
+     * Lazily decode body if its in ByteBuffer form. This only occurs on in-bound requests
+     * which benefit from lazy decoding since we can avoid decoding until the request
+     * is forwarded and lands on the owner node.
+     */
+    private void decodeBody() {
+        Utils.decodeBody(this, (ByteBuffer) this.body, true, true);
     }
 
     public Object getBodyRaw() {

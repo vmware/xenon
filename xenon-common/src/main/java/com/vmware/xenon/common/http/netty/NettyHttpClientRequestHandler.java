@@ -167,6 +167,13 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
             return;
         }
 
+        if (request.getAction() != Action.POST) {
+            // defer decoding until after owner selection occurs
+            request.setBodyNoCloning(content.nioBuffer());
+            submitRequest(ctx, request, streamId);
+            return;
+        }
+
         request.nestCompletion((o, e) -> {
             if (e != null) {
                 request.setStatusCode(Operation.STATUS_CODE_BAD_REQUEST);
@@ -174,11 +181,10 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
                 sendResponse(ctx, request, streamId);
                 return;
             }
-
             submitRequest(ctx, request, streamId);
         });
 
-        Utils.decodeBody(request, content.nioBuffer());
+        Utils.decodeBody(request, content.nioBuffer(), true);
     }
 
     private void parseRequestHeaders(ChannelHandlerContext ctx, Operation request,
