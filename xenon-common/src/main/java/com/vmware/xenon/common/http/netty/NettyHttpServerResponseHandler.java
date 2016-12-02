@@ -160,7 +160,7 @@ public class NettyHttpServerResponseHandler extends SimpleChannelInboundHandler<
             completeRequest(request);
         });
 
-        Utils.decodeBody(request, content.nioBuffer());
+        Utils.decodeBody(request, content.nioBuffer(), false);
     }
 
     private void completeRequest(Operation request) {

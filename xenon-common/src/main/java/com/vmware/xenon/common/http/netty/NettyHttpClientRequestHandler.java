@@ -160,25 +160,17 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
 
     private void decodeRequestBody(ChannelHandlerContext ctx, Operation request,
             ByteBuf content, Integer streamId) {
+        content.retain();
         if (!content.isReadable()) {
             // skip body decode, request had no body
             request.setContentLength(0);
-            submitRequest(ctx, request, streamId);
+            submitRequest(ctx, content, request, streamId);
             return;
         }
 
-        request.nestCompletion((o, e) -> {
-            if (e != null) {
-                request.setStatusCode(Operation.STATUS_CODE_BAD_REQUEST);
-                request.setBody(ServiceErrorResponse.create(e, request.getStatusCode()));
-                sendResponse(ctx, request, streamId);
-                return;
-            }
-
-            submitRequest(ctx, request, streamId);
-        });
-
-        Utils.decodeBody(request, content.nioBuffer());
+        // defer decoding until after owner selection occurs
+        request.setBodyNoCloning(content.nioBuffer());
+        submitRequest(ctx, content, request, streamId);
     }
 
     private void parseRequestHeaders(ChannelHandlerContext ctx, Operation request,
@@ -281,9 +273,10 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
         return headerValue;
     }
 
-    private void submitRequest(ChannelHandlerContext ctx, Operation request,
+    private void submitRequest(ChannelHandlerContext ctx, ByteBuf content, Operation request,
             Integer streamId) {
         request.nestCompletion((o, e) -> {
+            content.release();
             request.setBodyNoCloning(o.getBodyRaw());
             sendResponse(ctx, request, streamId);
         });

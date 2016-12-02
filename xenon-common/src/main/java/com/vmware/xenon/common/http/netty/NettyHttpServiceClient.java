@@ -15,6 +15,7 @@ package com.vmware.xenon.common.http.netty;
 
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.nio.ByteBuffer;
 import java.util.EnumSet;
 import java.util.Map.Entry;
 import java.util.SortedMap;
@@ -378,7 +379,16 @@ public class NettyHttpServiceClient implements ServiceClient {
     private void sendHttpRequest(Operation op) {
         final Object originalBody = op.getBodyRaw();
         try {
-            byte[] body = Utils.encodeBody(op);
+            ByteBuf content = null;
+            if (!(originalBody instanceof ByteBuffer)) {
+                byte[] body = Utils.encodeBody(op);
+                if (body != null && body.length > 0) {
+                    content = Unpooled.wrappedBuffer(body, 0, (int) op.getContentLength());
+                }
+            } else {
+                content = Unpooled.wrappedBuffer((ByteBuffer) originalBody);
+            }
+
             if (op.getContentLength() > getRequestPayloadSizeLimit()) {
                 String error = String.format("Content length %d, limit is %d",
                         op.getContentLength(), getRequestPayloadSizeLimit());
@@ -406,11 +416,10 @@ public class NettyHttpServiceClient implements ServiceClient {
 
             NettyFullHttpRequest request = null;
             HttpMethod method = toHttpMethod(op.getAction());
-            if (body == null || body.length == 0) {
+            if (content == null) {
                 request = new NettyFullHttpRequest(HttpVersion.HTTP_1_1, method, pathAndQuery,
                         Unpooled.buffer(0), false);
             } else {
-                ByteBuf content = Unpooled.wrappedBuffer(body, 0, (int) op.getContentLength());
                 request = new NettyFullHttpRequest(HttpVersion.HTTP_1_1, method, pathAndQuery,
                         content, false);
             }

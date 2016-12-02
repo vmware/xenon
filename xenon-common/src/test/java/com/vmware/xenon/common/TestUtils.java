@@ -937,7 +937,7 @@ public class TestUtils {
                         Operation.CONTENT_ENCODING_GZIP)
                 .addResponseHeader(Operation.CONTENT_TYPE_HEADER, Operation.MEDIA_TYPE_TEXT_PLAIN);
 
-        Utils.decodeBody(op, ByteBuffer.wrap(gzippedBody));
+        Utils.decodeBody(op, ByteBuffer.wrap(gzippedBody), false);
 
         assertEquals(body, op.getBody(String.class));
 
@@ -957,7 +957,7 @@ public class TestUtils {
                         Operation.CONTENT_ENCODING_GZIP)
                 .addRequestHeader(Operation.CONTENT_TYPE_HEADER, Operation.MEDIA_TYPE_TEXT_PLAIN);
 
-        Utils.decodeBody(op, ByteBuffer.wrap(gzippedBody));
+        Utils.decodeBody(op, ByteBuffer.wrap(gzippedBody), true);
 
         assertEquals(body, op.getBody(String.class));
 
@@ -974,7 +974,7 @@ public class TestUtils {
                 .setContentLength(gzippedBody.length)
                 .addResponseHeader(Operation.CONTENT_TYPE_HEADER, Operation.MEDIA_TYPE_TEXT_PLAIN);
 
-        Utils.decodeBody(op, ByteBuffer.wrap(gzippedBody));
+        Utils.decodeBody(op, ByteBuffer.wrap(gzippedBody), true);
 
         assertEquals(Operation.STATUS_CODE_SERVER_FAILURE_THRESHOLD, op.getStatusCode());
     }

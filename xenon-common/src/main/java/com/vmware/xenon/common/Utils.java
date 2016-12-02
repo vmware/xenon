@@ -830,7 +830,7 @@ public final class Utils {
                     ServiceClient.MAX_BINARY_SERIALIZED_BODY_LIMIT);
             // incur a memory copy since the byte array can be used across many threads in the
             // I/O path
-            data = o.toBytes();
+            data = o.getBuffer();
             op.setContentLength(data.length);
         }
 
@@ -851,12 +851,14 @@ public final class Utils {
         return data;
     }
 
-    public static void decodeBody(Operation op, ByteBuffer buffer) {
-        boolean isRequest = false;
+    public static void decodeBody(Operation op, ByteBuffer buffer, boolean isRequest) {
+        decodeBody(op, buffer, isRequest, false);
+    }
+
+    static void decodeBody(Operation op, ByteBuffer buffer, boolean isRequest, boolean isSynch) {
         String contentEncodingHeader = op.getResponseHeaderAsIs(Operation.CONTENT_ENCODING_HEADER);
         if (contentEncodingHeader == null) {
             contentEncodingHeader = op.getRequestHeaderAsIs(Operation.CONTENT_ENCODING_HEADER);
-            isRequest = true;
         }
 
         boolean compressed = false;
@@ -864,13 +866,17 @@ public final class Utils {
             compressed = Operation.CONTENT_ENCODING_GZIP.equals(contentEncodingHeader);
         }
 
-        decodeBody(op, buffer, isRequest, compressed);
+        decodeBody(op, buffer, isRequest, compressed, isSynch);
     }
 
-    public static void decodeBody(
-            Operation op, ByteBuffer buffer, boolean isRequest, boolean compressed) {
+    private static void decodeBody(
+            Operation op, ByteBuffer buffer, boolean isRequest, boolean compressed,
+            boolean isSynch) {
         if (op.getContentLength() == 0) {
-            op.setContentType(Operation.MEDIA_TYPE_APPLICATION_JSON).complete();
+            op.setContentType(Operation.MEDIA_TYPE_APPLICATION_JSON);
+            if (!isSynch) {
+                op.complete();
+            }
             return;
         }
 
@@ -887,25 +893,39 @@ public final class Utils {
             String contentType = op.getContentType();
             Object body = decodeIfText(buffer, contentType);
             if (body != null) {
-                op.setBodyNoCloning(body).complete();
+                op.setBodyNoCloning(body);
+                if (!isSynch) {
+                    op.complete();
+                }
                 return;
             }
 
             // unrecognized or binary body, use the raw bytes
-            byte[] data = new byte[(int) op.getContentLength()];
-            buffer.get(data);
             if (Operation.MEDIA_TYPE_APPLICATION_KRYO_OCTET_STREAM.equals(contentType)) {
-                body = KryoSerializers.deserializeDocument(data, 0, data.length);
                 if (op.isFromReplication()) {
                     // optimization to avoid having to serialize state again, during indexing
-                    op.linkSerializedState(data);
+                    //byte[] data = new byte[buffer.limit()];
+                    //buffer.get(data);
+                    //op.linkSerializedState(data);
+                    //buffer.rewind();
                 }
+                body = KryoSerializers.deserializeDocument(buffer);
+
             } else {
+                byte[] data = new byte[(int) op.getContentLength()];
+                buffer.get(data);
                 body = data;
             }
-            op.setBodyNoCloning(body).complete();
+            op.setBodyNoCloning(body);
+            if (!isSynch) {
+                op.complete();
+            }
         } catch (Throwable e) {
-            op.fail(e);
+            if (!isSynch) {
+                op.fail(e);
+            } else {
+                throw new RuntimeException(e);
+            }
         }
     }
 
