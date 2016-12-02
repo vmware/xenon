@@ -830,10 +830,10 @@ class ServiceResourceTracker {
                     // we can get back a 409 status code i.e. the service has already been started or was
                     // deleted previously. Differentiate based on action, if we need to fail or succeed
                     if (response.statusCode == Operation.STATUS_CODE_CONFLICT) {
-                        if (a != Action.POST
+                        if (!ServiceHost.isServiceCreate(inboundOp)
                                 && response.errorCode == ServiceErrorResponse.ERROR_CODE_SERVICE_ALREADY_EXISTS) {
                             // service exists, action is not attempt to recreate, so complete as success
-                            inboundOp.complete();
+                            this.host.handleRequest(null, inboundOp);
                             return;
                         }
 
