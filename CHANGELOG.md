@@ -2,6 +2,8 @@
 
 ## 1.5.0-SNAPSHOT
 
+* Kryo is upgraded to 4.0.0. Index and API compatibility is kept.
+
 ## 1.4.2
 
 * Add ability to expand only selected fields in queries
