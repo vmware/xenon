@@ -2293,28 +2293,11 @@ public class TestNodeGroupService {
                     elapsedTimePerAction);
 
             totalOperations += opCount;
+            expectedVersion += 1;
 
-            Date queryExp = this.host.getTestExpiration();
-            if (expiration.after(queryExp)) {
-                queryExp = expiration;
-            }
-            while (new Date().before(queryExp)) {
-                Set<String> links = verifyReplicatedServiceCountWithBroadcastQueries();
-                if (links.size() < this.serviceCount) {
-                    this.host.log("Found only %d links across nodes, retrying", links.size());
-                    Thread.sleep(500);
-                    continue;
-                }
-                break;
-            }
-
+            verifyReplicatedServiceCountWithBroadcastQuery(expiration);
             totalOperations += this.serviceCount;
 
-            if (queryExp.before(new Date())) {
-                throw new TimeoutException();
-            }
-
-            expectedVersion += 1;
             doStateUpdateReplicationTest(Action.DELETE, this.serviceCount, 1,
                     expectedVersion,
                     this.exampleStateUpdateBodySetter,
@@ -2342,10 +2325,11 @@ public class TestNodeGroupService {
                     totalOperations,
                     totalBytes);
 
-            if (iterationCount++ < 2 && this.testDurationSeconds > 0) {
-                // ignore data during JVM warm-up, first two iterations
+            if (iterationCount++ < 3 && this.testDurationSeconds > 0) {
+                // ignore data during JVM warm-up
                 countPerAction.clear();
                 elapsedTimePerAction.clear();
+                this.host.log("Warm-up iteration, results will be ignored");
             }
 
         } while (new Date().before(expiration) && this.totalOperationLimit >= totalOperations);
@@ -2354,6 +2338,28 @@ public class TestNodeGroupService {
         logPerActionThroughput(elapsedTimePerAction, countPerAction);
 
         this.host.doNodeGroupStatsVerification(this.host.getNodeGroupMap());
+    }
+
+    private void verifyReplicatedServiceCountWithBroadcastQuery(Date expiration)
+            throws Throwable, InterruptedException, TimeoutException {
+        Date queryExp = this.host.getTestExpiration();
+        if (expiration.after(queryExp)) {
+            queryExp = expiration;
+        }
+
+        while (new Date().before(queryExp)) {
+            Set<String> links = doBroadcastQuery();
+            if (links.size() < this.serviceCount) {
+                this.host.log("Found only %d links across nodes, retrying", links.size());
+                Thread.sleep(500);
+                continue;
+            }
+            break;
+        }
+
+        if (queryExp.before(new Date())) {
+            throw new TimeoutException();
+        }
     }
 
     private void logHostStats() {
@@ -2501,7 +2507,7 @@ public class TestNodeGroupService {
         this.host.waitFor("available check timeout for " + this.replicationTargetFactoryLink, wh);
     }
 
-    private Set<String> verifyReplicatedServiceCountWithBroadcastQueries()
+    private Set<String> doBroadcastQuery()
             throws Throwable {
         // create a query task, which will execute on a randomly selected node. Since there is no guarantee the node
         // selected to execute the query task is the one with all the replicated services, broadcast to all nodes, then
@@ -4060,23 +4066,23 @@ public class TestNodeGroupService {
 
         long before = System.nanoTime() / 1000;
         AtomicInteger failedCount = new AtomicInteger();
-        // issue an update to each child service and verify it was reflected
-        // among
-        // peers
+
         for (T initState : initialStatesPerChild.values()) {
+            // Pick a new random "entry" peer for each child. The runtime will forward request to
+            // owner
+            URI factoryOnRandomPeerUri = this.host
+                    .getPeerServiceUri(this.replicationTargetFactoryLink);
+
             // change a field in the initial state of each service but keep it
             // the same across all updates so potential re ordering of the
             // updates does not cause spurious test breaks
             updateBodySetter.apply(initState);
 
             for (int i = 0; i < updateCount; i++) {
-
                 long sentTime = 0;
                 if (this.expectFailure) {
                     sentTime = System.nanoTime() / 1000;
                 }
-                URI factoryOnRandomPeerUri = this.host
-                        .getPeerServiceUri(this.replicationTargetFactoryLink);
 
                 long finalSentTime = sentTime;
                 this.host
