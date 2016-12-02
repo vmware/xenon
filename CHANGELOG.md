@@ -2,6 +2,8 @@
 
 ## 1.3.2-SNAPSHOT
 
+* Upgrade Kryo to 4.0.0
+
 ## 1.3.1
 
 * Remove OperationOption.SEND_WITH_CALLBACK. This was an experimental custom
