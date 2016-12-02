@@ -25,6 +25,7 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
 import java.net.URLEncoder;
 import java.nio.ByteBuffer;
+import java.nio.charset.MalformedInputException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Duration;
@@ -937,7 +938,7 @@ public class TestUtils {
                         Operation.CONTENT_ENCODING_GZIP)
                 .addResponseHeader(Operation.CONTENT_TYPE_HEADER, Operation.MEDIA_TYPE_TEXT_PLAIN);
 
-        Utils.decodeBody(op, ByteBuffer.wrap(gzippedBody));
+        Utils.decodeBody(op, ByteBuffer.wrap(gzippedBody), false);
 
         assertEquals(body, op.getBody(String.class));
 
@@ -957,7 +958,7 @@ public class TestUtils {
                         Operation.CONTENT_ENCODING_GZIP)
                 .addRequestHeader(Operation.CONTENT_TYPE_HEADER, Operation.MEDIA_TYPE_TEXT_PLAIN);
 
-        Utils.decodeBody(op, ByteBuffer.wrap(gzippedBody));
+        Utils.decodeBody(op, ByteBuffer.wrap(gzippedBody), true);
 
         assertEquals(body, op.getBody(String.class));
 
@@ -974,9 +975,12 @@ public class TestUtils {
                 .setContentLength(gzippedBody.length)
                 .addResponseHeader(Operation.CONTENT_TYPE_HEADER, Operation.MEDIA_TYPE_TEXT_PLAIN);
 
-        Utils.decodeBody(op, ByteBuffer.wrap(gzippedBody));
+        try {
+            Utils.decodeBody(op, ByteBuffer.wrap(gzippedBody), false);
+            throw new IllegalStateException("should have failed");
+        } catch (MalformedInputException e) {
 
-        assertEquals(Operation.STATUS_CODE_SERVER_FAILURE_THRESHOLD, op.getStatusCode());
+        }
     }
 
     private static byte[] compress(String str) throws Exception {

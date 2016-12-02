@@ -13,6 +13,8 @@
 
 package com.vmware.xenon.common.serialization;
 
+import java.io.IOException;
+import java.io.InputStream;
 import java.net.URI;
 import java.nio.ByteBuffer;
 import java.time.Instant;
@@ -42,6 +44,32 @@ import com.esotericsoftware.kryo.serializers.VersionFieldSerializer;
 import org.objenesis.strategy.StdInstantiatorStrategy;
 
 import com.vmware.xenon.common.ServiceDocument;
+
+class ByteBufferInputStream extends InputStream {
+    ByteBuffer buffer;
+
+    public ByteBufferInputStream(ByteBuffer buf) {
+        this.buffer = buf;
+    }
+
+    public int read() throws IOException {
+        if (!this.buffer.hasRemaining()) {
+            return -1;
+        }
+        return this.buffer.get() & 0xFF;
+    }
+
+    public int read(byte[] bytes, int off, int len)
+            throws IOException {
+        if (!this.buffer.hasRemaining()) {
+            return -1;
+        }
+
+        len = Math.min(len, this.buffer.remaining());
+        this.buffer.get(bytes, off, len);
+        return len;
+    }
+}
 
 public final class KryoSerializers {
     /**
@@ -301,6 +329,13 @@ public final class KryoSerializers {
     public static Object deserializeDocument(byte[] bytes, int position, int length) {
         Kryo k = getKryoThreadLocalForDocuments();
         Input in = new Input(bytes, position, length);
+        return k.readClassAndObject(in);
+    }
+
+    public static Object deserializeDocument(ByteBuffer buffer) {
+        Kryo k = getKryoThreadLocalForDocuments();
+        ByteBufferInputStream bbis = new ByteBufferInputStream(buffer);
+        Input in = new Input(bbis);
         return k.readClassAndObject(in);
     }
 
