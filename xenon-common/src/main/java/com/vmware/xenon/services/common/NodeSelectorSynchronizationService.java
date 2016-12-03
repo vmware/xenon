@@ -240,16 +240,14 @@ public class NodeSelectorSynchronizationService extends StatelessService {
                     bestPeerRsp, request.stateDescription, Utils.getTimeComparisonEpsilonMicros());
         }
 
-        if (bestPeerRsp == null &&
-                request.options.contains(ServiceOption.ON_DEMAND_LOAD)) {
-            // For ODL services we only synchronize at access time.
-            // If the service is not found on the OWNER node, the
-            // owner will kick off synchronization to check if
-            // any of the peers has the requested service. Since none
-            // of the peers had the requested state we return 404.
-            post.setStatusCode(Operation.STATUS_CODE_NOT_FOUND);
-            post.setBody(null);
-            post.complete();
+        if (bestPeerRsp == null && request.state.documentVersion == -1) {
+            // If we did not find any documents from peers for the provided self-link
+            // and the owner also did not provide a valid document, then we fail
+            // the request with 404 - NOT FOUND error.
+            // Note, documentVersion is set to -1 by the owner in
+            // ServiceSynchronizationTracker to indicate that the owner does not have
+            // a document for the self-link.
+            post.fail(Operation.STATUS_CODE_NOT_FOUND);
             return;
         }
 

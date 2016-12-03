@@ -259,6 +259,7 @@ class ServiceSynchronizationTracker {
             }
 
             if (e != null) {
+                op.setStatusCode(o.getStatusCode());
                 op.fail(e);
                 return;
             }
@@ -268,7 +269,6 @@ class ServiceSynchronizationTracker {
             } else {
                 // peers did not have a better state to offer
                 op.linkState(null);
-                op.setStatusCode(o.getStatusCode());
                 op.complete();
                 return;
             }

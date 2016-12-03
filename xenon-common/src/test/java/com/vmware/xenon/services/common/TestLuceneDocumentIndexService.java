@@ -1071,12 +1071,12 @@ public class TestLuceneDocumentIndexService {
                     .setCompletion(this.host.getCompletion());
             this.host.sendAndWait(delete);
 
-            // do a DELETE for a completely unknown service, expect 404
-            this.host.log("Doing DELETE on unknown, expect not found");
+            // do a DELETE for a completely unknown service, expect 200.
+            // The 200 status is to stay consistent with the behavior for
+            // non-ODL services.
             delete = Operation
                     .createDelete(new URI(factoryUri.toString() + "/unknown"))
-                    .setCompletion(
-                            this.host.getExpectedFailureCompletion(Operation.STATUS_CODE_NOT_FOUND));
+                    .setCompletion(this.host.getCompletion());
             this.host.sendAndWait(delete);
         }
 

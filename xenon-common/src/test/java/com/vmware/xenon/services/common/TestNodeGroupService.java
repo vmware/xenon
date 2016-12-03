@@ -1673,6 +1673,24 @@ public class TestNodeGroupService {
             this.host.sendRequest(op);
         }
         ctx.await();
+
+        synchState.documentSelfLink = "unknown-service";
+        TestContext notFoundCtx = this.host.testCreate(1);
+        Operation notFoundOp = Operation
+                .createPost(peerHost, ExampleService.FACTORY_LINK)
+                .setBody(synchState)
+                .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_SYNCH_OWNER)
+                .setReferer(this.host.getUri())
+                .setCompletion((o, e) -> {
+                    if (e != null && o.getStatusCode() == Operation.STATUS_CODE_NOT_FOUND) {
+                        notFoundCtx.completeIteration();
+                        return;
+                    }
+                    notFoundCtx.failIteration(
+                            new IllegalStateException("Failure expected with 404 NOT FOUND error"));
+                });
+        this.host.sendRequest(notFoundOp);
+        notFoundCtx.await();
     }
 
     @Test
