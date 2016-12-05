@@ -24,6 +24,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.NoSuchElementException;
+import java.util.Objects;
 import java.util.regex.Pattern;
 
 import com.vmware.xenon.common.ReflectionUtils;
@@ -475,11 +476,11 @@ public class QueryFilter {
 
         private boolean evaluateString(Term term, String o) {
             if (term.term.matchType == MatchType.WILDCARD) {
-                return term.pattern.matcher(o).matches();
+                return term.pattern.matcher(o == null ? "" : o).matches();
             } else if (term.term.matchType == MatchType.PREFIX) {
-                return o.startsWith(term.term.matchValue);
+                return o != null && o.startsWith(term.term.matchValue);
             }
-            return o.equals(term.term.matchValue);
+            return Objects.equals(o, term.term.matchValue);
         }
 
         private boolean evaluateNumber(Term term, Number o) {
@@ -502,12 +503,8 @@ public class QueryFilter {
 
         @SuppressWarnings("unchecked")
         private boolean evaluateTerm(Term term, Object o, PropertyDescription pd, int depth) {
-            if (o == null) {
-                return term.negate;
-            }
-
             if (pd.typeName == TypeName.STRING) {
-                if (!(o instanceof String)) {
+                if (o != null && !(o instanceof String)) {
                     return term.negate;
                 }
 
@@ -554,14 +551,15 @@ public class QueryFilter {
                     Collection<String> cs = (Collection<String>) o;
                     if (term.negate) {
                         for (String s : cs) {
-                            if (evaluateString(term, s)) {
+                            if (evaluateTerm(new Term(term.term, false), s, pd.elementDescription,
+                                    depth + 1)) {
                                 return false;
                             }
                         }
                     } else {
                         boolean found = false;
                         for (String s : cs) {
-                            if (evaluateString(term, s)) {
+                            if (evaluateTerm(term, s, pd.elementDescription, depth + 1)) {
                                 found = true;
                                 break;
                             }
