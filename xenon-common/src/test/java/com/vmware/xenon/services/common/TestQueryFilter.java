@@ -475,6 +475,10 @@ public class TestQueryFilter {
 
         document.l2.add("v3");
         assertFalse(filter.evaluate(document, this.description));
+
+        document.l1 = new LinkedList<>();
+        document.l1.add(null);
+        assertFalse(filter.evaluate(document, this.description));
     }
 
     Query createWithMapOfStringToString() {
@@ -611,6 +615,12 @@ public class TestQueryFilter {
         document.documentSelfLink = "\\*a@#$%$^%&%^&/ttt/uri";
         assertTrue(filter.evaluate(document, this.description));
 
+        document.documentSelfLink = "";
+        assertTrue(filter.evaluate(document, this.description));
+
+        document.documentSelfLink = null;
+        assertTrue(filter.evaluate(document, this.description));
+
         q = createTerm(ServiceDocument.FIELD_NAME_SELF_LINK, "/test*");
         q.term.matchType = MatchType.WILDCARD;
         filter = QueryFilter.create(q);
@@ -693,6 +703,12 @@ public class TestQueryFilter {
         assertTrue(filter.evaluate(document, this.description));
 
         document.documentSelfLink = "foobar";
+        assertFalse(filter.evaluate(document, this.description));
+
+        document.documentSelfLink = null;
+        assertFalse(filter.evaluate(document, this.description));
+
+        document.documentSelfLink = "";
         assertFalse(filter.evaluate(document, this.description));
     }
 
@@ -841,6 +857,18 @@ public class TestQueryFilter {
         document.c1 = "match";
         document.c2 = "match";
         document.c3 = "other";
+        assertFalse(filter.evaluate(document, this.description));
+
+        document = new QueryFilterDocument();
+        document.c1 = "match";
+        document.c2 = null;
+        document.c3 = "match";
+        assertTrue(filter.evaluate(document, this.description));
+
+        document = new QueryFilterDocument();
+        document.c1 = "match";
+        document.c2 = "match";
+        document.c3 = null;
         assertFalse(filter.evaluate(document, this.description));
     }
 
