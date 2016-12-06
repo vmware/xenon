@@ -2,6 +2,12 @@
 
 ## 1.3.4-SNAPSHOT
 
+ * Introduce ServiceStateMapUpdateRequest to allow deleting map items in a
+   service state through a PATCH request. Passing a null map value in a
+   regular service state PATCH body to delete the corresponding map key does
+   not work in remote requests (due to gson serialization ignoring null
+   values).
+
 ## 1.3.3
 
 * Bug fixes in QueryFilter when matching null strings.

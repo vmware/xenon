@@ -19,7 +19,7 @@ import java.util.Map;
 /**
  * Request used for adding and removing elements from a collection
  */
-public  class ServiceStateCollectionUpdateRequest {
+public class ServiceStateCollectionUpdateRequest {
     public static final String KIND = Utils.buildKind(ServiceStateCollectionUpdateRequest.class);
     /**
      * Key is the field name of the collection
