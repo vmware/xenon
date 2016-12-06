@@ -34,6 +34,7 @@ import java.util.Objects;
 import java.util.Random;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.CountDownLatch;
@@ -199,11 +200,6 @@ public class TestNodeGroupService {
     public long iterationCount = 1;
 
     /**
-     * Command line argument used by replication long running tests
-     */
-    public long totalOperationLimit = Long.MAX_VALUE;
-
-    /**
      * Command line argument used to delay test start, useful for attaching memory profiler
      */
     public int waitDurationBeforeStartSeconds;
@@ -216,6 +212,9 @@ public class TestNodeGroupService {
     private String replicationTargetFactoryLink = ExampleService.FACTORY_LINK;
     private String replicationNodeSelector = ServiceUriPaths.DEFAULT_NODE_SELECTOR;
     private long replicationFactor;
+
+    private Map<String, URI> replicationTargetLinks;
+    private Map<String, URI> replicationTargetLinksOriginal;
 
     private BiPredicate<ExampleServiceState, ExampleServiceState> exampleStateConvergenceChecker = (
             initial, current) -> {
@@ -231,7 +230,7 @@ public class TestNodeGroupService {
 
     private Function<ExampleServiceState, Void> exampleStateUpdateBodySetter = (
             ExampleServiceState state) -> {
-        state.name = Utils.getSystemNowMicrosUtc() + "";
+        state.name = "new name";
         return null;
     };
 
@@ -242,6 +241,8 @@ public class TestNodeGroupService {
     private boolean isMultiLocationTest = false;
 
     public boolean isStressTest = false;
+
+    public int warmUpIterationCount = 3;
 
     private void setUp(int localHostCount) throws Throwable {
         if (this.host != null) {
@@ -2220,7 +2221,7 @@ public class TestNodeGroupService {
         Map<Action, Long> countPerAction = new HashMap<>();
 
         long totalOperations = 0;
-        int iterationCount = 0;
+        int ic = 0;
         do {
             if (this.host == null) {
                 setUp(this.nodeCount);
@@ -2244,6 +2245,7 @@ public class TestNodeGroupService {
                     }
                 }
 
+                prepareForReplicationProfiling();
             }
 
             Map<String, ExampleServiceState> childStates = doExampleFactoryPostReplicationTest(
@@ -2319,25 +2321,76 @@ public class TestNodeGroupService {
                     + (this.nodeCount - 1) * byteCount * totalOperations;
 
             this.host.log(
-                    "Bytes per json:%d, per binary: %d, Total operations: %d, Total bytes:%d",
+                    "(%d)(%d)Bytes per json:%d, per binary: %d, Total operations: %d, Total bytes:%d",
+                    ic,
+                    this.iterationCount - ic,
                     jsonByteCount,
                     byteCount,
                     totalOperations,
                     totalBytes);
 
-            if (iterationCount++ < 3 && this.testDurationSeconds > 0) {
+            if (++ic <= this.warmUpIterationCount && this.testDurationSeconds > 0) {
                 // ignore data during JVM warm-up
                 countPerAction.clear();
                 elapsedTimePerAction.clear();
                 this.host.log("Warm-up iteration, results will be ignored");
             }
 
-        } while (new Date().before(expiration) && this.totalOperationLimit >= totalOperations);
+        } while (new Date().before(expiration) && ic < this.iterationCount);
 
-        logHostStats();
         logPerActionThroughput(elapsedTimePerAction, countPerAction);
+        if (this.testDurationSeconds == 0) {
+            this.host.doNodeGroupStatsVerification(this.host.getNodeGroupMap());
+        }
+    }
 
-        this.host.doNodeGroupStatsVerification(this.host.getNodeGroupMap());
+    private void prepareForReplicationProfiling() {
+        if (this.waitDurationBeforeStartSeconds == 0 && this.testDurationSeconds == 0) {
+            return;
+        }
+
+        this.replicationTargetLinks = new ConcurrentHashMap<>();
+        // Compute all self links for services we plan to create and update. In addition, compute the target node
+        // we plan to submit the request to, ensuring its NOT the owner, so forwarding always happens
+        long c = this.iterationCount * this.serviceCount;
+        TestContext testContext = this.host.testCreate(c);
+        testContext.setTestName("compute owners for links").logBefore();
+        for (int i = 0; i < c; i++) {
+            String link = UriUtils.buildUriPath(this.replicationTargetFactoryLink,
+                    "something-" + i);
+            URI nodeSelectorURI = this.host.getPeerServiceUri(this.replicationNodeSelector);
+            SelectAndForwardRequest body = new SelectAndForwardRequest();
+            body.key = link;
+            Operation post = Operation
+                    .createPost(nodeSelectorURI)
+                    .setBody(body)
+                    .setCompletion(
+                            (o, e) -> {
+                                if (e != null) {
+                                    testContext.fail(e);
+                                    return;
+                                }
+                                SelectOwnerResponse rsp = o
+                                        .getBody(SelectOwnerResponse.class);
+
+                                // pick a peer OTHER than the assigned owner, to guarantee forwarding
+                                URI nonOwner = null;
+                                for (URI u : this.host.getNodeGroupMap().keySet()) {
+                                    if (u.getHost().equals(rsp.ownerNodeGroupReference.getHost())
+                                            && u.getPort() != rsp.ownerNodeGroupReference
+                                                    .getPort()) {
+                                        nonOwner = u;
+                                        break;
+                                    }
+                                }
+                                this.replicationTargetLinks.put(rsp.key, nonOwner);
+                                testContext.complete();
+                            });
+            this.host.send(post);
+        }
+        testContext.await();
+        testContext.logAfter();
+        this.replicationTargetLinksOriginal = new HashMap<>(this.replicationTargetLinks);
     }
 
     private void verifyReplicatedServiceCountWithBroadcastQuery(Date expiration)
@@ -2359,15 +2412,6 @@ public class TestNodeGroupService {
 
         if (queryExp.before(new Date())) {
             throw new TimeoutException();
-        }
-    }
-
-    private void logHostStats() {
-        for (URI u : this.host.getNodeGroupMap().keySet()) {
-            URI mgmtUri = UriUtils.buildUri(u, ServiceHostManagementService.SELF_LINK);
-            mgmtUri = UriUtils.buildStatsUri(mgmtUri);
-            ServiceStats stats = this.host.getServiceState(null, ServiceStats.class, mgmtUri);
-            this.host.log("%s: %s", u, Utils.toJsonHtml(stats));
         }
     }
 
@@ -4068,10 +4112,23 @@ public class TestNodeGroupService {
         AtomicInteger failedCount = new AtomicInteger();
 
         for (T initState : initialStatesPerChild.values()) {
-            // Pick a new random "entry" peer for each child. The runtime will forward request to
-            // owner
-            URI factoryOnRandomPeerUri = this.host
-                    .getPeerServiceUri(this.replicationTargetFactoryLink);
+            URI factoryURI = null;
+            if (this.replicationTargetLinksOriginal == null
+                    || this.replicationTargetLinksOriginal.isEmpty()) {
+                // Pick a new random "entry" peer for each child. The runtime will forward request to
+                // owner
+                factoryURI = this.host
+                        .getPeerServiceUri(this.replicationTargetFactoryLink);
+            } else {
+                // use computed nodes as the "entry" nodes for the requests
+                URI targetNonOwnerNodeURI = this.replicationTargetLinksOriginal
+                        .get(initState.documentSelfLink);
+                if (targetNonOwnerNodeURI == null) {
+                    throw new IllegalStateException();
+                }
+                factoryURI = UriUtils.buildUri(targetNonOwnerNodeURI,
+                        this.replicationTargetFactoryLink);
+            }
 
             // change a field in the initial state of each service but keep it
             // the same across all updates so potential re ordering of the
@@ -4087,7 +4144,7 @@ public class TestNodeGroupService {
                 long finalSentTime = sentTime;
                 this.host
                         .send(Operation
-                                .createPatch(UriUtils.buildUri(factoryOnRandomPeerUri,
+                                .createPatch(UriUtils.buildUri(factoryURI,
                                         initState.documentSelfLink))
                                 .setAction(action)
                                 .forceRemote()
@@ -4184,29 +4241,33 @@ public class TestNodeGroupService {
         testContext.setTestName("POST replication");
         testContext.logBefore();
         for (int i = 0; i < childCount; i++) {
-            URI factoryOnRandomPeerUri = this.host.getPeerServiceUri(factoryPath);
+            String link = null;
+            URI targetNodeURI = null;
             Operation post = Operation
-                    .createPost(factoryOnRandomPeerUri)
+                    .createPost(null)
                     .setCompletion(testContext.getCompletion());
 
-            ExampleServiceState initialState = new ExampleServiceState();
-            initialState.name = "" + post.getId();
-            initialState.counter = Long.MIN_VALUE;
+            if (this.replicationTargetLinks == null || this.replicationTargetLinks.isEmpty()) {
+                link = UriUtils.buildUriPath(factoryPath, "" + post.getId());
+                targetNodeURI = this.host.getPeerHostUri();
+            } else {
+                Entry<String, URI> e = this.replicationTargetLinks.entrySet().iterator().next();
+                link = e.getKey();
+                targetNodeURI = e.getValue();
+                this.replicationTargetLinks.remove(e.getKey());
+            }
 
-            // set the self link as a hint so the child service URI is
-            // predefined instead of random
-            initialState.documentSelfLink = "" + post.getId();
+            post.setUri(UriUtils.buildUri(targetNodeURI, factoryPath));
+
+            ExampleServiceState initialState = new ExampleServiceState();
+            initialState.name = "name";
+            initialState.counter = Long.MIN_VALUE;
+            initialState.documentSelfLink = link;
 
             // factory service is started on all hosts. Now issue a POST to one,
             // to create a child service with some initial state.
             post.setReferer(this.host.getReferer());
             this.host.sendRequest(post.setBody(initialState));
-
-            // initial state is cloned and sent, now we can change self link per
-            // child to reflect its runtime URI, which will
-            // contain the factory service path
-            initialState.documentSelfLink = UriUtils.buildUriPath(factoryPath,
-                    initialState.documentSelfLink);
             serviceStates.put(initialState.documentSelfLink, initialState);
         }
 
