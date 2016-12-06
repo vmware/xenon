@@ -149,15 +149,9 @@ class ServiceMaintenanceTracker {
                             long actual = now - start[0];
                             long limit = Math.max(this.host.getMaintenanceIntervalMicros(),
                                     s.getMaintenanceIntervalMicros());
-
-                            if (limit * 2 < actual) {
-                                this.host.log(Level.WARNING,
-                                        "Service %s exceeded maintenance interval %d. Actual: %d",
-                                        servicePath, limit, actual);
-                                s.adjustStat(
-                                        Service.STAT_NAME_MAINTENANCE_COMPLETION_DELAYED_COUNT, 1);
+                            if (s.hasOption(ServiceOption.INSTRUMENTATION)) {
+                                updateStats(s, actual, limit, servicePath);
                             }
-
                             // schedule again, for next maintenance interval
                             schedule(s, now);
                             if (ex != null) {
@@ -190,5 +184,18 @@ class ServiceMaintenanceTracker {
     public synchronized void close() {
         this.trackedServices.clear();
         this.nextExpiration.clear();
+    }
+
+    private void updateStats(Service s, long actual, long limit, String servicePath) {
+        ServiceStats.ServiceStat durationStat = ServiceStatUtils.getHistogramStat(s,
+                Service.STAT_NAME_MAINTENANCE_DURATION);
+        s.setStat(durationStat, actual);
+        if (limit * 2 < actual) {
+            this.host.log(Level.WARNING,
+                    "Service %s exceeded maintenance interval %d. Actual: %d",
+                    servicePath, limit, actual);
+            s.adjustStat(
+                    Service.STAT_NAME_MAINTENANCE_COMPLETION_DELAYED_COUNT, 1);
+        }
     }
 }

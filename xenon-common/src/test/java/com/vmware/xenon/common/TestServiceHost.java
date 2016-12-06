@@ -40,7 +40,6 @@ import java.util.UUID;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
@@ -1287,27 +1286,28 @@ public class TestServiceHost {
         body.id = UUID.randomUUID().toString();
         ts = (MinimalTestService) this.host.startServiceAndWait(ts, UUID.randomUUID().toString(),
                 body);
-        Date exp = this.host.getTestExpiration();
-        while (new Date().before(exp)) {
+        MinimalTestService finalTs = ts;
+        this.host.waitFor("Maintenance delay stat never reported", () -> {
             ServiceStats stats = this.host.getServiceState(null, ServiceStats.class,
-                    UriUtils.buildStatsUri(ts.getUri()));
+                    UriUtils.buildStatsUri(finalTs.getUri()));
             if (stats.entries == null || stats.entries.isEmpty()) {
                 Thread.sleep(intervalMicros / 1000);
-                continue;
+                return false;
             }
 
             ServiceStat delayStat = stats.entries
                     .get(Service.STAT_NAME_MAINTENANCE_COMPLETION_DELAYED_COUNT);
+            ServiceStat durationStat = stats.entries.get(Service.STAT_NAME_MAINTENANCE_DURATION);
             if (delayStat == null) {
                 Thread.sleep(intervalMicros / 1000);
-                continue;
+                return false;
             }
-            break;
-        }
 
-        if (new Date().after(exp)) {
-            throw new TimeoutException("Maintenance delay stat never reported");
-        }
+            if (durationStat == null || (durationStat != null && durationStat.logHistogram == null)) {
+                return false;
+            }
+            return true;
+        });
 
         ts.toggleOption(ServiceOption.PERIODIC_MAINTENANCE, false);
     }
