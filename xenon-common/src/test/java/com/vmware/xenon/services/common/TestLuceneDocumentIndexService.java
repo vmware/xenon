@@ -1947,7 +1947,8 @@ public class TestLuceneDocumentIndexService {
         setUpHost(false);
         this.host.waitForServiceAvailable(ExampleService.FACTORY_LINK);
 
-        LuceneDocumentIndexService.setExpiredDocumentSearchThreshold(2);
+        long threshold = this.host.isLongDurationTest() ? this.serviceCount / 2 : 2;
+        LuceneDocumentIndexService.setExpiredDocumentSearchThreshold((int) threshold);
 
         Date expiration = this.host.getTestExpiration();
 
@@ -2017,7 +2018,8 @@ public class TestLuceneDocumentIndexService {
         for (ExampleServiceState st : states.values()) {
             assertTrue(names.contains(st.name));
             // verify expiration is properly set
-            assertTrue(st.documentExpirationTimeMicros > TimeUnit.DAYS.toMicros(1) / 2);
+            assertTrue(st.documentExpirationTimeMicros > Utils.fromNowMicrosUtc(
+                    TimeUnit.DAYS.toMicros(1) / 2));
         }
 
         Map<String, ServiceStat> stats = this.host.getServiceStats(
@@ -2029,14 +2031,18 @@ public class TestLuceneDocumentIndexService {
             deletedCountBeforeExpiration = new ServiceStat();
         }
 
-        stats = this.host.getServiceStats(
-                this.host.getDocumentIndexServiceUri());
         ServiceStat expiredCountBeforeExpiration = stats.get(
                 LuceneDocumentIndexService.STAT_NAME_DOCUMENT_EXPIRATION_COUNT
                         + ServiceStats.STAT_NAME_SUFFIX_PER_DAY);
-
         if (expiredCountBeforeExpiration == null) {
             expiredCountBeforeExpiration = new ServiceStat();
+        }
+
+        ServiceStat forcedMaintenanceCountBeforeExpiration = stats.get(
+                LuceneDocumentIndexService.STAT_NAME_DOCUMENT_EXPIRATION_FORCED_MAINTENANCE_COUNT
+                        + ServiceStats.STAT_NAME_SUFFIX_PER_DAY);
+        if (forcedMaintenanceCountBeforeExpiration == null) {
+            forcedMaintenanceCountBeforeExpiration = new ServiceStat();
         }
 
         long expTime = 0;
@@ -2052,24 +2058,18 @@ public class TestLuceneDocumentIndexService {
         patchOrDeleteWithExpiration(factoryUri, services, expTime, expectedCount);
         this.host.log("All example services expired");
 
+        // In the long-running test case, sleep for a couple of maintenance intervals in order to
+        // avoid generating unnecessary log spam.
+        if (this.host.isLongDurationTest()) {
+            Thread.sleep(2 * TimeUnit.MICROSECONDS.toMillis(
+                    this.host.getMaintenanceIntervalMicros()));
+        }
+
         ServiceStat deletedCountBaseline = expiredCountBeforeExpiration;
+        ServiceStat forcedMaintenanceCountBaseline = forcedMaintenanceCountBeforeExpiration;
 
         Map<URI, ExampleServiceState> servicesFinal = services;
         this.host.waitFor("expiration stats did not converge", () -> {
-            boolean isConverged = true;
-            // confirm services are stopped
-            for (URI u : servicesFinal.keySet()) {
-                ProcessingStage s = this.host.getServiceStage(u.getPath());
-                if (s != null && s != ProcessingStage.STOPPED) {
-                    this.host.log("Found service %s in unexpected state %s", u.getPath(),
-                            s.toString());
-                    isConverged = false;
-                }
-            }
-
-            if (!isConverged) {
-                return false;
-            }
 
             Map<String, ServiceStat> stMap = this.host.getServiceStats(
                     this.host.getDocumentIndexServiceUri());
@@ -2087,7 +2087,8 @@ public class TestLuceneDocumentIndexService {
                     this.host.log("Forced maintenance count was null");
                     return false;
                 }
-                if (expiredDocumentForcedMaintenanceCount.latestValue < 2) {
+                if (expiredDocumentForcedMaintenanceCount.latestValue <
+                        forcedMaintenanceCountBaseline.latestValue) {
                     this.host.log("Forced maintenance count was %f",
                             expiredDocumentForcedMaintenanceCount.latestValue);
                     return false;
@@ -2115,6 +2116,16 @@ public class TestLuceneDocumentIndexService {
                 this.host.log("No service expirations seen, currently at %f",
                         expCountAfter.latestValue);
                 return false;
+            }
+
+            // confirm services are stopped
+            for (URI u : servicesFinal.keySet()) {
+                ProcessingStage s = this.host.getServiceStage(u.getPath());
+                if (s != null && s != ProcessingStage.STOPPED) {
+                    this.host.log("Found service %s in unexpected state %s", u.getPath(),
+                            s.toString());
+                    return false;
+                }
             }
 
             return true;
@@ -2152,11 +2163,11 @@ public class TestLuceneDocumentIndexService {
         // to avoid expirations occurring during, or before service start.
         // We give the system a couple of seconds per 500 services, which is about 100x more
         // than it needs, but CI will sometimes get overloaded and cause false negatives
-        long interval = Math.max(1, this.serviceCount / 500) * TimeUnit.SECONDS.toMicros(1);
+        long intervalMicros = Math.max(1, this.serviceCount / 500) * TimeUnit.SECONDS.toMicros(1);
         Consumer<Operation> maintExpSetBody = (o) -> {
             ExampleServiceState body = new ExampleServiceState();
             body.name = UUID.randomUUID().toString();
-            body.documentExpirationTimeMicros = Utils.fromNowMicrosUtc(interval);
+            body.documentExpirationTimeMicros = Utils.fromNowMicrosUtc(intervalMicros);
             o.setBody(body);
         };
 
@@ -2171,6 +2182,14 @@ public class TestLuceneDocumentIndexService {
                 null,
                 this.serviceCount, ExampleServiceState.class,
                 maintExpSetBody, factoryUri);
+
+        // In the long-running test case, sleep for the expiration period plus one maintenance
+        // interval in order to avoid generating unnecessary log spam
+        if (this.host.isLongDurationTest()) {
+            Thread.sleep(TimeUnit.MICROSECONDS.toMillis(intervalMicros
+                    + this.host.getMaintenanceIntervalMicros()));
+        }
+
         // do not do anything on the services, rely on the maintenance interval to expire them
         this.host.waitFor("Lucene service maintenanance never expired services", () -> {
             Map<String, ServiceStat> statMap = this.host.getServiceStats(

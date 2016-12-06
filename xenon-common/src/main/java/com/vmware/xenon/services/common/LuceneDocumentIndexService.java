@@ -46,7 +46,6 @@ import com.esotericsoftware.kryo.KryoException;
 import com.esotericsoftware.kryo.io.Output;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.core.SimpleAnalyzer;
 import org.apache.lucene.document.Document;
@@ -401,9 +400,9 @@ public class LuceneDocumentIndexService extends StatelessService {
         this.fieldsToLoadNoExpand.add(ServiceDocument.FIELD_NAME_VERSION);
         this.fieldsToLoadNoExpand.add(ServiceDocument.FIELD_NAME_UPDATE_TIME_MICROS);
         this.fieldsToLoadNoExpand.add(ServiceDocument.FIELD_NAME_UPDATE_ACTION);
-        this.fieldsToLoadNoExpand.add(ServiceDocument.FIELD_NAME_EXPIRATION_TIME_MICROS);
 
         this.fieldsToLoadWithExpand = new HashSet<>(this.fieldsToLoadNoExpand);
+        this.fieldsToLoadWithExpand.add(ServiceDocument.FIELD_NAME_EXPIRATION_TIME_MICROS);
         this.fieldsToLoadWithExpand.add(LUCENE_FIELD_NAME_JSON_SERIALIZED_STATE);
         this.fieldsToLoadWithExpand.add(LUCENE_FIELD_NAME_BINARY_SERIALIZED_STATE);
     }
@@ -522,7 +521,8 @@ public class LuceneDocumentIndexService extends StatelessService {
         Operation op = Operation.createGet(getUri());
         EnumSet<QueryOption> options = EnumSet.of(QueryOption.INCLUDE_ALL_VERSIONS);
         IndexSearcher s = new IndexSearcher(DirectoryReader.open(this.writer, true, true));
-        queryIndexPaginated(op, options, s, tq, null, Integer.MAX_VALUE, 0, null, rsp, null);
+        queryIndexPaginated(op, options, s, tq, null, Integer.MAX_VALUE, 0, null, rsp, null,
+                Utils.getNowMicrosUtc());
     }
 
     private void handleBackup(Operation op) throws Throwable {
@@ -974,17 +974,18 @@ public class LuceneDocumentIndexService extends StatelessService {
                     options.contains(QueryOption.DO_NOT_REFRESH));
         }
 
-        tq = updateQuery(op, tq);
+        long queryStartTimeMicros = Utils.getNowMicrosUtc();
+        tq = updateQuery(op, tq, queryStartTimeMicros);
         if (tq == null) {
             return false;
         }
 
         ServiceDocumentQueryResult result;
         if (options.contains(QueryOption.COUNT)) {
-            result = queryIndexCount(options, s, tq, rsp, qs);
+            result = queryIndexCount(options, s, tq, rsp, qs, queryStartTimeMicros);
         } else {
             result = queryIndexPaginated(op, options, s, tq, page, count, expiration, indexLink,
-                    rsp, qs);
+                    rsp, qs, queryStartTimeMicros);
         }
 
         result.documentOwner = getHost().getId();
@@ -1018,8 +1019,15 @@ public class LuceneDocumentIndexService extends StatelessService {
 
         Document doc = s.doc(hits.scoreDocs[0].doc, this.fieldsToLoadWithExpand);
 
-        if (checkAndDeleteExpiredDocuments(selfLink, s, hits.scoreDocs[0].doc, doc,
-                Utils.getSystemNowMicrosUtc())) {
+        boolean hasExpired = false;
+        IndexableField expirationField = doc.getField(
+                ServiceDocument.FIELD_NAME_EXPIRATION_TIME_MICROS);
+        if (expirationField != null) {
+            long expiration = expirationField.numericValue().longValue();
+            hasExpired = expiration <= Utils.getSystemNowMicrosUtc();
+        }
+
+        if (hasExpired) {
             op.complete();
             return;
         }
@@ -1076,25 +1084,28 @@ public class LuceneDocumentIndexService extends StatelessService {
     }
 
     /**
-     * Augment the query argument with the resource group query specified
-     * by the operation's authorization context.
+     * This routine modifies a user-specified query to include clauses which
+     * apply the resource group query specified by the operation's authorization
+     * context and which exclude expired documents.
      *
-     * If the operation was executed by the system user, the query argument
-     * is returned unmodified.
+     * If the operation was executed by the system user, no resource group query
+     * is applied.
      *
      * If no query needs to be executed return null
      *
      * @return Augmented query.
      */
-    private Query updateQuery(Operation op, Query tq) {
-        Query rq = null;
-        AuthorizationContext ctx = op.getAuthorizationContext();
-
-        // Allow operation if isAuthorizationEnabled is set to false
-        if (!this.getHost().isAuthorizationEnabled()) {
-            return tq;
+    private Query updateQuery(Operation op, Query tq, long now) {
+        Query expirationClause = LongPoint.newRangeQuery(
+                ServiceDocument.FIELD_NAME_EXPIRATION_TIME_MICROS, 1, now);
+        BooleanQuery.Builder builder = new BooleanQuery.Builder()
+                .add(expirationClause, Occur.MUST_NOT)
+                .add(tq, Occur.FILTER);
+        if (!getHost().isAuthorizationEnabled()) {
+            return builder.build();
         }
 
+        AuthorizationContext ctx = op.getAuthorizationContext();
         if (ctx == null) {
             // Don't allow operation if no authorization context and auth is enabled
             return null;
@@ -1102,21 +1113,21 @@ public class LuceneDocumentIndexService extends StatelessService {
 
         // Allow unconditionally if this is the system user
         if (ctx.isSystemUser()) {
-            return tq;
+            return builder.build();
         }
 
         // If the resource query in the authorization context is unspecified,
         // use a Lucene query that doesn't return any documents so that every
         // result will be empty.
-        if (ctx.getResourceQuery(Action.GET) == null) {
+        QueryTask.Query resourceQuery = ctx.getResourceQuery(Action.GET);
+        Query rq = null;
+        if (resourceQuery == null) {
             rq = new MatchNoDocsQuery();
         } else {
-            rq = LuceneQueryConverter.convertToLuceneQuery(ctx.getResourceQuery(Action.GET));
+            rq = LuceneQueryConverter.convertToLuceneQuery(resourceQuery);
         }
 
-        BooleanQuery.Builder builder = new BooleanQuery.Builder()
-                .add(rq, Occur.FILTER)
-                .add(tq, Occur.FILTER);
+        builder.add(rq, Occur.FILTER);
         return builder.build();
     }
 
@@ -1211,10 +1222,9 @@ public class LuceneDocumentIndexService extends StatelessService {
             IndexSearcher searcher,
             Query termQuery,
             ServiceDocumentQueryResult response,
-            QuerySpecification querySpec)
+            QuerySpecification querySpec,
+            long queryStartTimeMicros)
             throws Throwable {
-
-        long queryStartTimeMicros = Utils.getNowMicrosUtc();
 
         if (queryOptions.contains(QueryOption.INCLUDE_ALL_VERSIONS)) {
             // Special handling for queries which include all versions in order to avoid allocating
@@ -1257,7 +1267,8 @@ public class LuceneDocumentIndexService extends StatelessService {
             long expiration,
             String indexLink,
             ServiceDocumentQueryResult rsp,
-            QuerySpecification qs) throws Throwable {
+            QuerySpecification qs,
+            long queryStartTimeMicros) throws Throwable {
         ScoreDoc[] hits;
         ScoreDoc after = null;
         boolean isPaginatedQuery = count != Integer.MAX_VALUE
@@ -1297,7 +1308,6 @@ public class LuceneDocumentIndexService extends StatelessService {
         TopDocs results = null;
 
         rsp.queryTimeMicros = 0L;
-        long queryStartTimeMicros = Utils.getNowMicrosUtc();
         long start = queryStartTimeMicros;
 
         do {
@@ -1366,16 +1376,14 @@ public class LuceneDocumentIndexService extends StatelessService {
 
                     boolean createNextPageLink = true;
                     if (hasPage) {
-                        createNextPageLink = checkNextPageHasEntry(bottom, options, s, tq, sort,
-                                count, qs, queryStartTimeMicros);
+                        createNextPageLink = checkNextPageHasEntry(bottom, options, s,
+                                tq, sort, count, qs, queryStartTimeMicros);
                     }
 
                     if (createNextPageLink) {
                         expiration += queryTime;
-                        rsp.nextPageLink = createNextPage(op, s, qs, tq, sort, bottom, null,
-                                expiration,
-                                indexLink,
-                                hasPage);
+                        rsp.nextPageLink = createNextPage(op, s, qs, tq, sort, bottom,
+                                null, expiration, indexLink, hasPage);
                     }
 
                     break;
@@ -1613,12 +1621,6 @@ public class LuceneDocumentIndexService extends StatelessService {
                     }
                     continue;
                 }
-            }
-
-            if (checkAndDeleteExpiredDocuments(link, s, sd.doc, d, queryStartTimeMicros)) {
-                // ignore all document versions if the link has expired
-                latestVersions.put(link, Long.MAX_VALUE);
-                continue;
             }
 
             if (hasCountOption) {
@@ -2178,40 +2180,6 @@ public class LuceneDocumentIndexService extends StatelessService {
         }
     }
 
-    private boolean checkAndDeleteExpiredDocuments(String link, IndexSearcher searcher,
-            Integer docId,
-            Document doc, long now)
-            throws Throwable {
-        long expiration = 0;
-        boolean hasExpired = false;
-        IndexableField expirationValue = doc
-                .getField(ServiceDocument.FIELD_NAME_EXPIRATION_TIME_MICROS);
-        if (expirationValue != null) {
-            expiration = expirationValue.numericValue().longValue();
-            hasExpired = expiration <= now;
-        }
-
-        if (!hasExpired) {
-            return false;
-        }
-
-        adjustTimeSeriesStat(STAT_NAME_DOCUMENT_EXPIRATION_COUNT, AGGREGATION_TYPE_SUM,
-                1);
-
-        // update document with one that has all fields, including binary state
-        doc = searcher.doc(docId, this.fieldsToLoadWithExpand);
-
-        ServiceDocument s = null;
-        try {
-            s = getStateFromLuceneDocument(doc, link);
-        } catch (Throwable e) {
-            logWarning("Error deserializing state for %s: %s", link, e.getMessage());
-        }
-
-        deleteAllDocumentsForSelfLink(Operation.createDelete(null), link, s);
-        return true;
-    }
-
     private void checkDocumentRetentionLimit(ServiceDocument state, ServiceDocumentDescription desc) {
 
         if (desc.versionRetentionLimit
@@ -2700,22 +2668,40 @@ public class LuceneDocumentIndexService extends StatelessService {
                     AGGREGATION_TYPE_SUM, 1);
         }
 
-        // The expiration query will return all versions for a link. Use a set so we only delete once per link
-        Set<String> links = new HashSet<>();
-        long now = Utils.getNowMicrosUtc();
-        for (ScoreDoc sd : results.scoreDocs) {
-            Document d = s.doc(sd.doc, this.fieldsToLoadNoExpand);
-            String link = d.get(ServiceDocument.FIELD_NAME_SELF_LINK);
-            IndexableField versionField = d.getField(ServiceDocument.FIELD_NAME_VERSION);
-            long versionExpired = versionField.numericValue().longValue();
-            long latestVersion = this.readLatestVersionFromIndex(s, link);
-            if (versionExpired < latestVersion) {
+        Map<String, Long> latestVersions = new HashMap<>();
+        Operation dummyDelete = null;
+        for (ScoreDoc scoreDoc : results.scoreDocs) {
+            Document doc = s.doc(scoreDoc.doc, this.fieldsToLoadNoExpand);
+            String documentSelfLink = doc.get(ServiceDocument.FIELD_NAME_SELF_LINK);
+            Long latestVersion = latestVersions.get(documentSelfLink);
+            if (latestVersion == null) {
+                latestVersion = readLatestVersionFromIndex(s, documentSelfLink);
+                latestVersions.put(documentSelfLink, latestVersion);
+            }
+
+            IndexableField versionField = doc.getField(ServiceDocument.FIELD_NAME_VERSION);
+            long expiredVersion = versionField.numericValue().longValue();
+            if (expiredVersion < latestVersion) {
                 continue;
             }
-            if (!links.add(link)) {
-                continue;
+
+            adjustTimeSeriesStat(STAT_NAME_DOCUMENT_EXPIRATION_COUNT, AGGREGATION_TYPE_SUM, 1);
+
+            // update document with one that has all fields, including binary state
+            doc = s.doc(scoreDoc.doc, this.fieldsToLoadWithExpand);
+            ServiceDocument serviceDocument = null;
+            try {
+                serviceDocument = getStateFromLuceneDocument(doc, documentSelfLink);
+            } catch (Throwable e) {
+                logWarning("Error deserializing state for %s: %s", documentSelfLink,
+                        e.getMessage());
             }
-            checkAndDeleteExpiredDocuments(link, s, sd.doc, d, now);
+
+            if (dummyDelete == null) {
+                dummyDelete = Operation.createDelete(null);
+            }
+
+            deleteAllDocumentsForSelfLink(dummyDelete, documentSelfLink, serviceDocument);
         }
     }
 
