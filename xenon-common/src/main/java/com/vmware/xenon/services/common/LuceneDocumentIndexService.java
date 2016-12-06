@@ -46,7 +46,6 @@ import com.esotericsoftware.kryo.KryoException;
 import com.esotericsoftware.kryo.io.Output;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.core.SimpleAnalyzer;
 import org.apache.lucene.document.Document;
@@ -1018,8 +1017,7 @@ public class LuceneDocumentIndexService extends StatelessService {
 
         Document doc = s.doc(hits.scoreDocs[0].doc, this.fieldsToLoadWithExpand);
 
-        if (checkAndDeleteExpiredDocuments(selfLink, s, hits.scoreDocs[0].doc, doc,
-                Utils.getSystemNowMicrosUtc())) {
+        if (checkExpiredDocuments(doc, Utils.getSystemNowMicrosUtc())) {
             op.complete();
             return;
         }
@@ -1615,7 +1613,7 @@ public class LuceneDocumentIndexService extends StatelessService {
                 }
             }
 
-            if (checkAndDeleteExpiredDocuments(link, s, sd.doc, d, queryStartTimeMicros)) {
+            if (checkExpiredDocuments(d, queryStartTimeMicros)) {
                 // ignore all document versions if the link has expired
                 latestVersions.put(link, Long.MAX_VALUE);
                 continue;
@@ -2178,38 +2176,16 @@ public class LuceneDocumentIndexService extends StatelessService {
         }
     }
 
-    private boolean checkAndDeleteExpiredDocuments(String link, IndexSearcher searcher,
-            Integer docId,
-            Document doc, long now)
-            throws Throwable {
-        long expiration = 0;
+    private boolean checkExpiredDocuments(Document doc, long now) {
         boolean hasExpired = false;
-        IndexableField expirationValue = doc
-                .getField(ServiceDocument.FIELD_NAME_EXPIRATION_TIME_MICROS);
-        if (expirationValue != null) {
-            expiration = expirationValue.numericValue().longValue();
+        IndexableField expirationField = doc.getField(
+                ServiceDocument.FIELD_NAME_EXPIRATION_TIME_MICROS);
+        if (expirationField != null) {
+            long expiration = expirationField.numericValue().longValue();
             hasExpired = expiration <= now;
         }
 
-        if (!hasExpired) {
-            return false;
-        }
-
-        adjustTimeSeriesStat(STAT_NAME_DOCUMENT_EXPIRATION_COUNT, AGGREGATION_TYPE_SUM,
-                1);
-
-        // update document with one that has all fields, including binary state
-        doc = searcher.doc(docId, this.fieldsToLoadWithExpand);
-
-        ServiceDocument s = null;
-        try {
-            s = getStateFromLuceneDocument(doc, link);
-        } catch (Throwable e) {
-            logWarning("Error deserializing state for %s: %s", link, e.getMessage());
-        }
-
-        deleteAllDocumentsForSelfLink(Operation.createDelete(null), link, s);
-        return true;
+        return hasExpired;
     }
 
     private void checkDocumentRetentionLimit(ServiceDocument state, ServiceDocumentDescription desc) {
@@ -2703,6 +2679,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         // The expiration query will return all versions for a link. Use a set so we only delete once per link
         Set<String> links = new HashSet<>();
         long now = Utils.getNowMicrosUtc();
+        Operation dummyDelete = null;
         for (ScoreDoc sd : results.scoreDocs) {
             Document d = s.doc(sd.doc, this.fieldsToLoadNoExpand);
             String link = d.get(ServiceDocument.FIELD_NAME_SELF_LINK);
@@ -2715,7 +2692,27 @@ public class LuceneDocumentIndexService extends StatelessService {
             if (!links.add(link)) {
                 continue;
             }
-            checkAndDeleteExpiredDocuments(link, s, sd.doc, d, now);
+            if (!checkExpiredDocuments(d, now)) {
+                continue;
+            }
+
+            adjustTimeSeriesStat(STAT_NAME_DOCUMENT_EXPIRATION_COUNT, AGGREGATION_TYPE_SUM, 1);
+
+            // update document with one that has all fields, including binary state
+            d = s.doc(sd.doc, this.fieldsToLoadWithExpand);
+
+            ServiceDocument serviceDocument = null;
+            try {
+                serviceDocument = getStateFromLuceneDocument(d, link);
+            } catch (Throwable e) {
+                logWarning("Error deserializing state for %s: %s", link, e.getMessage());
+            }
+
+            if (dummyDelete == null) {
+                dummyDelete = Operation.createDelete(null);
+            }
+
+            deleteAllDocumentsForSelfLink(dummyDelete, link, serviceDocument);
         }
     }
 
