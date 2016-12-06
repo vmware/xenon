@@ -40,7 +40,6 @@ import java.util.UUID;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
@@ -468,7 +467,7 @@ public class TestServiceHost {
             s = new File(s, ServiceHost.SERVICE_HOST_STATE_FILE);
 
             this.host.testStart(1);
-            ServiceHostState [] state = new ServiceHostState[1];
+            ServiceHostState[] state = new ServiceHostState[1];
             Operation get = Operation.createGet(h.getUri()).setCompletion((o, e) -> {
                 if (e != null) {
                     this.host.failIteration(e);
@@ -493,7 +492,7 @@ public class TestServiceHost {
             bindAddress = "localhost";
             hostId = UUID.randomUUID().toString();
 
-            String [] args2 = {
+            String[] args2 = {
                     "--port=" + 0,
                     "--bindAddress=" + bindAddress,
                     "--sandbox=" + this.tmpFolder.getRoot().toURI(),
@@ -696,7 +695,7 @@ public class TestServiceHost {
         }
 
         // with wrong password
-        args = new String[] {
+        args = new String[]{
                 "--sandbox=" + tmpFolderPath,
                 "--port=0",
                 "--securePort=0",
@@ -745,7 +744,7 @@ public class TestServiceHost {
         }
 
         // with wrong password
-        args = new String[] {
+        args = new String[]{
                 "--sandbox=" + tmpFolderPath,
                 "--port=0",
                 "--securePort=0",
@@ -764,7 +763,7 @@ public class TestServiceHost {
         }
 
         // with no password
-        args = new String[] {
+        args = new String[]{
                 "--sandbox=" + tmpFolderPath,
                 "--port=0",
                 "--securePort=0",
@@ -1285,29 +1284,29 @@ public class TestServiceHost {
         ts.toggleOption(ServiceOption.INSTRUMENTATION, true);
         MinimalTestServiceState body = new MinimalTestServiceState();
         body.id = UUID.randomUUID().toString();
+        final ServiceStat[] durationStat = {null};
         ts = (MinimalTestService) this.host.startServiceAndWait(ts, UUID.randomUUID().toString(),
                 body);
-        Date exp = this.host.getTestExpiration();
-        while (new Date().before(exp)) {
+        MinimalTestService finalTs = ts;
+        this.host.waitFor("Maintenance delay stat never reported", () -> {
             ServiceStats stats = this.host.getServiceState(null, ServiceStats.class,
-                    UriUtils.buildStatsUri(ts.getUri()));
+                    UriUtils.buildStatsUri(finalTs.getUri()));
             if (stats.entries == null || stats.entries.isEmpty()) {
                 Thread.sleep(intervalMicros / 1000);
-                continue;
+                return false;
             }
 
             ServiceStat delayStat = stats.entries
                     .get(Service.STAT_NAME_MAINTENANCE_COMPLETION_DELAYED_COUNT);
+            durationStat[0] = stats.entries.get(Service.STAT_NAME_MAINTENANCE_DURATION);
             if (delayStat == null) {
                 Thread.sleep(intervalMicros / 1000);
-                continue;
+                return false;
             }
-            break;
-        }
-
-        if (new Date().after(exp)) {
-            throw new TimeoutException("Maintenance delay stat never reported");
-        }
+            return true;
+        });
+        assertNotNull(durationStat[0]);
+        assertNotNull(durationStat[0].logHistogram);
 
         ts.toggleOption(ServiceOption.PERIODIC_MAINTENANCE, false);
     }
@@ -1367,7 +1366,7 @@ public class TestServiceHost {
         }
 
         public static class SomeExampleServiceState extends ServiceDocument {
-            public String name ;
+            public String name;
         }
     }
 
@@ -1400,12 +1399,12 @@ public class TestServiceHost {
         setUp(true);
         this.host.setMaintenanceIntervalMicros(TimeUnit.MILLISECONDS.toMicros(100));
 
-        String[] links = new String[] {
+        String[] links = new String[]{
                 ExampleService.FACTORY_LINK,
                 ServiceUriPaths.CORE_AUTHZ_RESOURCE_GROUPS,
                 ServiceUriPaths.CORE_AUTHZ_USERS,
                 ServiceUriPaths.CORE_AUTHZ_ROLES,
-                ServiceUriPaths.CORE_AUTHZ_USER_GROUPS };
+                ServiceUriPaths.CORE_AUTHZ_USER_GROUPS};
 
         // register multiple factories, before host start
         TestContext ctx = this.host.testCreate(links.length * 10);
