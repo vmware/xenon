@@ -245,6 +245,46 @@ public class TestServiceDocument {
     }
 
     @Test
+    public void testMapsUpdateThroughMergeMethod() throws Throwable {
+        MergeTest state = new MergeTest();
+
+        // add map entries
+        Map<Object, Object> newEntries = new HashMap<>();
+        newEntries.put("key-1", "value-1");
+        newEntries.put("key-2", "value-2");
+        Map<String, Map<Object, Object>> entriesToAdd = new HashMap<>();
+        entriesToAdd.put("mapOfStrings", newEntries);
+
+        ServiceStateMapUpdateRequest request = ServiceStateMapUpdateRequest.create(entriesToAdd, null);
+        Operation patchOperation = Operation.createPatch(new URI("http://test")).setBody(request);
+        ServiceDocumentDescription desc = ServiceDocumentDescription.Builder.create()
+                .buildDescription(MergeTest.class);
+        EnumSet<MergeResult> result = Utils.mergeWithStateAdvanced(desc, state, MergeTest.class,
+                patchOperation);
+        assertTrue(result.contains(MergeResult.SPECIAL_MERGE));
+        assertTrue(result.contains(MergeResult.STATE_CHANGED));
+        assertEquals(state.mapOfStrings.size(), 2);
+
+        // remove map keys
+        Map<String, Collection<Object>> keysToRemove = new HashMap<>();
+        keysToRemove.put("mapOfStrings", Arrays.asList("key-1"));
+
+        request = ServiceStateMapUpdateRequest.create(null, keysToRemove);
+        patchOperation = Operation.createPatch(new URI("http://test")).setBody(request);
+        result = Utils.mergeWithStateAdvanced(desc, state, MergeTest.class, patchOperation);
+        assertTrue(result.contains(MergeResult.SPECIAL_MERGE));
+        assertTrue(result.contains(MergeResult.STATE_CHANGED));
+        assertEquals(state.mapOfStrings.size(), 1);
+        assertTrue(state.mapOfStrings.containsKey("key-2"));
+        assertFalse(state.mapOfStrings.containsKey("key-1"));
+
+        // repeating the update should not change the state anymore
+        result = Utils.mergeWithStateAdvanced(desc, state, MergeTest.class, patchOperation);
+        assertTrue(result.contains(MergeResult.SPECIAL_MERGE));
+        assertFalse(result.contains(MergeResult.STATE_CHANGED));
+    }
+
+    @Test
     public void testMergeWithStateAdvanced() throws Throwable {
         MergeTest state = new MergeTest();
         state.s = "one";

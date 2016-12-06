@@ -1064,12 +1064,20 @@ public final class Utils {
      */
     public static <T extends ServiceDocument> boolean mergeWithState(T currentState, Operation op)
             throws NoSuchFieldException, IllegalAccessException {
-        ServiceStateCollectionUpdateRequest requestBody =
+        ServiceStateCollectionUpdateRequest collectionUpdateRequest =
                 op.getBody(ServiceStateCollectionUpdateRequest.class);
-        if (ServiceStateCollectionUpdateRequest.KIND.equals(requestBody.kind)) {
-            Utils.updateCollections(currentState, requestBody);
+        if (ServiceStateCollectionUpdateRequest.KIND.equals(collectionUpdateRequest.kind)) {
+            Utils.updateCollections(currentState, collectionUpdateRequest);
             return true;
         }
+
+        ServiceStateMapUpdateRequest mapUpdateRequest =
+                op.getBody(ServiceStateMapUpdateRequest.class);
+        if (ServiceStateMapUpdateRequest.KIND.equals(mapUpdateRequest.kind)) {
+            Utils.updateMaps(currentState, mapUpdateRequest);
+            return true;
+        }
+
         return false;
     }
 
@@ -1113,14 +1121,25 @@ public final class Utils {
             if (Utils.updateCollections(currentState, requestBody)) {
                 result.add(MergeResult.STATE_CHANGED);
             }
-        } else {
-            // if not a special update request patch body, assume it is a new service state
-            T patchState = op.getBody(type);
-            if (Utils.mergeWithState(desc, currentState, patchState)) {
-                result.add(MergeResult.STATE_CHANGED);
-            }
+            return result;
         }
 
+        // check for a ServiceStateMapUpdateRequest patch body
+        ServiceStateMapUpdateRequest mapUpdateRequest =
+                op.getBody(ServiceStateMapUpdateRequest.class);
+        if (ServiceStateMapUpdateRequest.KIND.equals(mapUpdateRequest.kind)) {
+            result.add(MergeResult.SPECIAL_MERGE);
+            if (Utils.updateMaps(currentState, mapUpdateRequest)) {
+                result.add(MergeResult.STATE_CHANGED);
+            }
+            return result;
+        }
+
+        // if not a special update request patch body, assume it is a new service state
+        T patchState = op.getBody(type);
+        if (Utils.mergeWithState(desc, currentState, patchState)) {
+            result.add(MergeResult.STATE_CHANGED);
+        }
         return result;
     }
 
@@ -1258,7 +1277,7 @@ public final class Utils {
     }
 
     /**
-     * add/remove elements from specified collections; If both are specified elements are removed
+     * Adds/removes elements from specified collections; if both are specified elements are removed
      * before new elements added
      *
      * @param currentState currentState of the service
@@ -1283,6 +1302,35 @@ public final class Utils {
                     patchBody.itemsToAdd.entrySet()) {
                 hasChanged |= processCollection(collectionItem.getValue(), collectionItem.getKey(),
                         currentState, CollectionOperation.ADD);
+            }
+        }
+        return hasChanged;
+    }
+
+    /**
+     * Adds/removes elements from specified maps; if both are specified elements are removed
+     * before new elements added
+     *
+     * @param currentState currentState of the service
+     * @param patchBody request of processing maps
+     * @return {@code true} if the currentState has changed as a result of the call
+     * @throws NoSuchFieldException
+     * @throws IllegalAccessException
+     */
+    public static <T extends ServiceDocument> boolean updateMaps(T currentState,
+            ServiceStateMapUpdateRequest patchBody)
+            throws NoSuchFieldException, IllegalAccessException {
+        boolean hasChanged = false;
+        if (patchBody.keysToRemove != null) {
+            for (Entry<String, Collection<Object>> mapItem : patchBody.keysToRemove.entrySet()) {
+                hasChanged |= processMapKeyRemoval(mapItem.getValue(), mapItem.getKey(),
+                        currentState);
+            }
+        }
+        if (patchBody.entriesToAdd != null) {
+            for (Entry<String, Map<Object, Object>> mapItem : patchBody.entriesToAdd.entrySet()) {
+                hasChanged |= processMapEntryAddition(mapItem.getValue(), mapItem.getKey(),
+                        currentState);
             }
         }
         return hasChanged;
@@ -1320,6 +1368,55 @@ public final class Utils {
                     break;
                 default:
                     break;
+                }
+            }
+        }
+        return hasChanged;
+    }
+
+    private static <T extends ServiceDocument> boolean processMapKeyRemoval(
+            Collection<Object> keysToRemove, String mapName, T currentState)
+            throws NoSuchFieldException, IllegalAccessException {
+        boolean hasChanged = false;
+        if (keysToRemove != null && !keysToRemove.isEmpty()) {
+            Class<? extends ServiceDocument> clazz = currentState.getClass();
+            Field field = clazz.getField(mapName);
+            if (field != null && Map.class.isAssignableFrom(field.getType())) {
+                @SuppressWarnings("rawtypes")
+                Map mapObj = (Map) field.get(currentState);
+                if (mapObj != null) {
+                    for (Object key : keysToRemove) {
+                        hasChanged |= mapObj.remove(key) != null;
+                    }
+                }
+            }
+        }
+        return hasChanged;
+    }
+
+    private static <T extends ServiceDocument> boolean processMapEntryAddition(
+            Map<Object, Object> entriesToAdd, String mapName, T currentState)
+            throws NoSuchFieldException, IllegalAccessException {
+        boolean hasChanged = false;
+        if (entriesToAdd != null && !entriesToAdd.isEmpty()) {
+            Class<? extends ServiceDocument> clazz = currentState.getClass();
+            Field field = clazz.getField(mapName);
+            if (field != null && Map.class.isAssignableFrom(field.getType())) {
+                @SuppressWarnings("rawtypes")
+                Map mapObj = (Map) field.get(currentState);
+                if (mapObj == null) {
+                    field.set(currentState, entriesToAdd);
+                    hasChanged = true;
+                } else {
+                    for (Entry<Object, Object> entry : entriesToAdd.entrySet()) {
+                        @SuppressWarnings("unchecked")
+                        Object oldValue = mapObj.put(entry.getKey(), entry.getValue());
+                        if (oldValue == null) {
+                            hasChanged |= entry.getValue() != null;
+                        } else {
+                            hasChanged |= !oldValue.equals(entry.getValue());
+                        }
+                    }
                 }
             }
         }
