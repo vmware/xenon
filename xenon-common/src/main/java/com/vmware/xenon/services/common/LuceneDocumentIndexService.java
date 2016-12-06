@@ -46,7 +46,6 @@ import com.esotericsoftware.kryo.KryoException;
 import com.esotericsoftware.kryo.io.Output;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.core.SimpleAnalyzer;
 import org.apache.lucene.document.Document;
@@ -1018,8 +1017,7 @@ public class LuceneDocumentIndexService extends StatelessService {
 
         Document doc = s.doc(hits.scoreDocs[0].doc, this.fieldsToLoadWithExpand);
 
-        if (checkAndDeleteExpiredDocuments(selfLink, s, hits.scoreDocs[0].doc, doc,
-                Utils.getSystemNowMicrosUtc())) {
+        if (checkExpiredDocuments(doc, Utils.getSystemNowMicrosUtc())) {
             op.complete();
             return;
         }
@@ -1615,7 +1613,7 @@ public class LuceneDocumentIndexService extends StatelessService {
                 }
             }
 
-            if (checkAndDeleteExpiredDocuments(link, s, sd.doc, d, queryStartTimeMicros)) {
+            if (checkExpiredDocuments(d, queryStartTimeMicros)) {
                 // ignore all document versions if the link has expired
                 latestVersions.put(link, Long.MAX_VALUE);
                 continue;
@@ -2178,20 +2176,24 @@ public class LuceneDocumentIndexService extends StatelessService {
         }
     }
 
+    private boolean checkExpiredDocuments(Document doc, long now) {
+        boolean hasExpired = false;
+        IndexableField expirationField = doc.getField(
+                ServiceDocument.FIELD_NAME_EXPIRATION_TIME_MICROS);
+        if (expirationField != null) {
+            long expiration = expirationField.numericValue().longValue();
+            hasExpired = expiration <= now;
+        }
+
+        return hasExpired;
+    }
+
     private boolean checkAndDeleteExpiredDocuments(String link, IndexSearcher searcher,
             Integer docId,
             Document doc, long now)
             throws Throwable {
-        long expiration = 0;
-        boolean hasExpired = false;
-        IndexableField expirationValue = doc
-                .getField(ServiceDocument.FIELD_NAME_EXPIRATION_TIME_MICROS);
-        if (expirationValue != null) {
-            expiration = expirationValue.numericValue().longValue();
-            hasExpired = expiration <= now;
-        }
 
-        if (!hasExpired) {
+        if (!checkExpiredDocuments(doc, now)) {
             return false;
         }
 
