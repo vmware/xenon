@@ -888,12 +888,17 @@ class ServiceResourceTracker {
 
                     // there is a possibility the user requests we queue and wait for service to show up
                     if (response.statusCode == Operation.STATUS_CODE_NOT_FOUND) {
+                        this.host.log(Level.WARNING,
+                                "Failed to start odl service %s with 404 status code.", finalServicePath);
                         this.host.checkPragmaAndRegisterForAvailability(finalServicePath,
                                 inboundOp);
                         return;
                     }
                 }
 
+                this.host.log(Level.SEVERE,
+                        "Failed to start odl service %s with statusCode %d",
+                        finalServicePath, o.getStatusCode());
                 inboundOp.setBodyNoCloning(o.getBodyRaw()).setStatusCode(o.getStatusCode());
                 inboundOp.fail(e);
                 return;

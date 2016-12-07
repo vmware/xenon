@@ -361,6 +361,8 @@ public class TestNodeGroupService {
         this.skipAvailabilityChecks = true;
         // create node group, join nodes and set majority quorum
         setUp(this.nodeCount);
+        this.host.log("Setting up node-group with ODL ExampleService Factory");
+
         toggleOnDemandLoad();
         this.host.joinNodesAndVerifyConvergence(this.host.getPeerCount());
         this.host.setNodeGroupQuorum(this.host.getPeerCount() / 2 + 1);
@@ -1494,11 +1496,12 @@ public class TestNodeGroupService {
     public void replicationWithQuorumAfterAbruptNodeStopOnDemandLoad() throws Throwable {
         tearDown();
         for (int i = 0; i < this.testIterationCount; i++) {
-
             setUpOnDemandLoad();
 
+            this.host.log("Running replication test with abrupt node stop");
             int hostStopCount = 2;
             doReplicationWithQuorumAfterAbruptNodeStop(hostStopCount);
+
             this.host.log("Done with iteration %d", i);
             tearDown();
             this.host = null;
@@ -4175,6 +4178,9 @@ public class TestNodeGroupService {
                                                     testContext.complete();
                                                     return;
                                                 }
+                                                this.host.log(Level.SEVERE,
+                                                        "PATCH failed for service %s with status code %d",
+                                                        o.getUri().getPath(), o.getStatusCode());
                                                 testContext.fail(e);
                                                 return;
                                             }
