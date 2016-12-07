@@ -417,6 +417,110 @@ public class TestNodeGroupService {
     }
 
     @Test
+    public void synchronizationServiceNotFoundOnNewOwner() throws Throwable {
+        this.isPeerSynchronizationEnabled = false;
+        setUp(this.nodeCount);
+
+        this.host.joinNodesAndVerifyConvergence(this.host.getPeerCount());
+        this.host.setNodeGroupQuorum(this.nodeCount);
+        this.host.waitForNodeGroupConvergence(this.nodeCount);
+
+        VerificationHost peer = this.host.getPeerHost();
+        List<URI> exampleUris = new ArrayList<>();
+        this.host.createExampleServices(peer, this.serviceCount * 3, exampleUris, null);
+
+        List<ServiceHost> inMemoryHosts = new ArrayList<>();
+        this.host.getInProcessHostMap().values().forEach(h -> inMemoryHosts.add(h));
+
+        // Add a new host
+        this.host.testStart(1);
+        VerificationHost newHost = this.host.setUpLocalPeerHost(
+                0, peer.getMaintenanceIntervalMicros(), inMemoryHosts);
+        this.host.testWait();
+
+        List<URI> peerUris = new ArrayList<>();
+        peerUris.add(peer.getUri());
+        newHost.joinPeers(peerUris, ServiceUriPaths.DEFAULT_NODE_GROUP);
+        this.host.setNodeGroupQuorum(this.nodeCount + 1);
+        this.host.waitForNodeGroupConvergence(this.nodeCount + 1);
+
+        // Determine the host who is the factory owner.
+        VerificationHost factoryOwner = null;
+        for (VerificationHost peerHost : this.host.getInProcessHostMap().values()) {
+            if (peerHost.isOwner(ExampleService.FACTORY_LINK, this.replicationNodeSelector)) {
+                factoryOwner = peerHost;
+                break;
+            }
+        }
+
+        // Since we have disabled synchronization, none of the factories
+        // should be marked available.
+        Map<String, ServiceStat> stats = factoryOwner
+                .getServiceStats(UriUtils.buildUri(factoryOwner, ExampleService.FACTORY_LINK));
+        ServiceStat stat = stats.get(Service.STAT_NAME_AVAILABLE);
+        assertTrue(stat == null || stat.latestValue == FactoryService.STAT_VALUE_FALSE);
+
+        List<URI> filteredUris = exampleUris.stream()
+                .filter(u -> newHost.isOwner(u.getPath(), this.replicationNodeSelector))
+                .collect(Collectors.toList());
+
+        // Try to patch the documents that are owned by the new host. Since
+        // none of these documents exist on the new-host on-demand synch should
+        // kick-in.
+        if (filteredUris.size() > 1) {
+            TestContext ctx = this.host.testCreate(filteredUris.size() - 1);
+            for (int i = 1; i < filteredUris.size(); i++) {
+                URI exampleUri = filteredUris.get(i);
+                ExampleServiceState state = new ExampleServiceState();
+                state.name = UUID.randomUUID().toString();
+                state.counter = 100L;
+                Operation patchOp = Operation
+                        .createPatch(exampleUri)
+                        .setBody(state)
+                        .setReferer(this.host.getUri())
+                        .setCompletion(ctx.getCompletion());
+                this.host.send(patchOp);
+            }
+            ctx.await();
+        }
+
+        // Explicitly mark the factory as available and try to
+        // PATCH one last document on the new host. Now we should
+        // get back a 404 failure.
+        ServiceStats.ServiceStat body = new ServiceStats.ServiceStat();
+        body.name = Service.STAT_NAME_AVAILABLE;
+        body.latestValue = FactoryService.STAT_VALUE_TRUE;
+
+        TestContext factoryCtx = this.host.testCreate(1);
+        Operation put = Operation.createPut(
+                UriUtils.buildAvailableUri(factoryOwner, ExampleService.FACTORY_LINK))
+                .setBody(body)
+                .setCompletion(factoryCtx.getCompletion());
+        this.host.send(put);
+        factoryCtx.await();
+
+        TestContext patchCtx = this.host.testCreate(1);
+        URI exampleUri = filteredUris.get(0);
+        ExampleServiceState state = new ExampleServiceState();
+        state.name = UUID.randomUUID().toString();
+        state.counter = 100L;
+        Operation patchOp = Operation
+                .createPatch(exampleUri)
+                .setBody(state)
+                .setReferer(this.host.getUri())
+                .setCompletion((o, e) -> {
+                    if (e != null && o.getStatusCode() == Operation.STATUS_CODE_NOT_FOUND) {
+                        patchCtx.completeIteration();
+                        return;
+                    }
+                    patchCtx.failIteration(
+                            new IllegalStateException("Operation was expected to fail with 404"));
+                });
+        this.host.send(patchOp);
+        patchCtx.await();
+    }
+
+    @Test
     public void synchronizationAfterStaleHostRestart() throws Throwable {
         // This test verifies that if a stale host joins
         // a node-group after restart and becomes OWNER for services
@@ -483,22 +587,6 @@ public class TestNodeGroupService {
         hosts[1].setPeerSynchronizationEnabled(false);
         assertTrue(VerificationHost.restartStatefulHost(hosts[1]));
         this.host.addPeerNode(hosts[1]);
-
-        // Verify services have not been started on the restarted host.
-        String svcLink = links.iterator().next();
-        TestContext getCtx = this.host.testCreate(1);
-        Operation getOp = Operation
-                .createGet(UriUtils.buildUri(hosts[1], svcLink))
-                .setReferer(this.host.getUri())
-                .setCompletion((o, e) -> {
-                    if (o.getStatusCode() == Operation.STATUS_CODE_NOT_FOUND) {
-                        getCtx.completeIteration();
-                        return;
-                    }
-                    getCtx.failIteration(new IllegalStateException("NOT_FOUND error was expected"));
-                });
-        this.host.sendRequest(getOp);
-        getCtx.await();
 
         // Join the nodes and wait for node-group convergence.
         this.host.joinNodesAndVerifyConvergence(this.nodeCount);
