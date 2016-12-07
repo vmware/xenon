@@ -98,8 +98,14 @@ public class NodeGroupService extends StatefulService {
             return this;
         }
 
+        public UpdateQuorumRequest setLocationQuorum(int count) {
+            this.locationQuorum = count;
+            return this;
+        }
+
         public boolean isGroupUpdate;
         public Integer membershipQuorum;
+        public Integer locationQuorum;
         public String kind;
     }
 
@@ -286,6 +292,10 @@ public class NodeGroupService extends StatefulService {
             self.membershipQuorum = Math.max(1, bd.membershipQuorum);
         }
 
+        if (bd.locationQuorum != null) {
+            self.locationQuorum = Math.max(1, bd.locationQuorum);
+        }
+
         self.documentVersion++;
         self.documentUpdateTimeMicros = Utils.getNowMicrosUtc();
         localState.membershipUpdateTimeMicros = self.documentUpdateTimeMicros;
@@ -337,6 +347,10 @@ public class NodeGroupService extends StatefulService {
             }
             if (bd.membershipQuorum != null) {
                 node.membershipQuorum = bd.membershipQuorum;
+            }
+
+            if (bd.locationQuorum != null) {
+                node.locationQuorum = bd.locationQuorum;
             }
 
             Operation p = Operation
@@ -554,8 +568,15 @@ public class NodeGroupService extends StatefulService {
             int quorum = (total / 2) + 1;
             body.membershipQuorum = Math.max(1, quorum);
         }
+        Integer lq = Integer.getInteger(NodeState.PROPERTY_NAME_LOCATION_QUORUM);
+        if (lq != null) {
+            body.locationQuorum = lq;
+        } else {
+            body.locationQuorum = 1;
+        }
         if (getHost().getLocation() != null) {
-            logInfo("Setting node %s location to %s", body.id, getHost().getLocation());
+            logInfo("Setting node %s location to %s, location quorum is %d",
+                    body.id, getHost().getLocation(), body.locationQuorum);
             if (body.customProperties == null) {
                 body.customProperties = new HashMap<>();
             }
@@ -571,9 +592,7 @@ public class NodeGroupService extends StatefulService {
 
     @Override
     public void handleMaintenance(Operation maint) {
-
         NodeGroupState localState = this.cachedState;
-
         if (localState == null || localState.nodes == null) {
             maint.complete();
             return;

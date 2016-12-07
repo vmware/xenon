@@ -639,7 +639,7 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
                         isAvailable,
                         ngs.membershipUpdateTimeMicros, ngs.localMembershipUpdateTimeMicros);
             }
-        } else {
+        } else if (quorumUpdate.membershipQuorum != null) {
             logInfo("Quorum update: %d", quorumUpdate.membershipQuorum);
         }
 
