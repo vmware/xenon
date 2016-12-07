@@ -182,6 +182,18 @@ public class TestLuceneDocumentIndexService {
      */
     public boolean enableInstrumentation = false;
 
+    /**
+     * Parameter used to control query interleaving in {@link #throughputPostWithExpiration()}.
+     */
+    @SuppressWarnings("WeakerAccess")
+    public boolean interleaveQueries = true;
+
+    /**
+     * Parameter used to set the expiration time in {@link #throughputPostWithExpiration()}.
+     */
+    @SuppressWarnings("WeakerAccess")
+    public Integer expirationSeconds = null;
+
     private final String EXAMPLES_BODIES_FILE = "example_bodies.json";
     private final String INDEX_DIR_NAME = "lucene510";
 
@@ -527,7 +539,7 @@ public class TestLuceneDocumentIndexService {
     public void immutableServiceLifecycle() throws Throwable {
         setUpHost(false);
         URI factoryUri = createImmutableFactoryService(this.host);
-        doThroughputPost(false, factoryUri);
+        doThroughputPost(false, factoryUri, null);
         ServiceDocumentQueryResult res = this.host.getFactoryState(factoryUri);
         assertEquals(this.serviceCount, res.documentLinks.size());
 
@@ -580,7 +592,7 @@ public class TestLuceneDocumentIndexService {
     }
 
     private void doThroughputSelfLinkQuery(URI factoryUri) throws Throwable {
-        doThroughputPost(false, factoryUri);
+        doThroughputPost(false, factoryUri, null);
 
         double durationNanos = 0;
         long s = System.nanoTime();
@@ -717,7 +729,7 @@ public class TestLuceneDocumentIndexService {
 
     private void verifyInitialStatePost(VerificationHost h) throws Throwable {
         URI factoryUri = createImmutableFactoryService(h);
-        doThroughputPost(false, factoryUri);
+        doThroughputPost(false, factoryUri, null);
         ServiceDocumentQueryResult r = this.host.getFactoryState(factoryUri);
         assertEquals(this.serviceCount, (long) r.documentCount);
         TestContext ctx = h.testCreate(this.serviceCount);
@@ -1406,6 +1418,37 @@ public class TestLuceneDocumentIndexService {
         doThroughputPost(false);
     }
 
+    @Test
+    public void throughputPostWithExpiration() throws Throwable {
+        if (this.serviceCacheClearIntervalSeconds == 0) {
+            // effectively disable ODL stop/start behavior while running throughput tests
+            this.serviceCacheClearIntervalSeconds = TimeUnit.MICROSECONDS.toSeconds(
+                    ServiceHostState.DEFAULT_OPERATION_TIMEOUT_MICROS);
+        }
+
+        // Set the document expiration limit to something high enough that we won't allow the index
+        // to grow
+        LuceneDocumentIndexService.setExpiredDocumentSearchThreshold(100000);
+
+        setUpHost(false);
+        this.host.log("Starting throughput POST, expiration: %d", this.expirationSeconds);
+        Long expirationMicros = null;
+        if (this.expirationSeconds != null) {
+            expirationMicros = TimeUnit.SECONDS.toMicros(this.expirationSeconds);
+        }
+
+        Date testExpiration = this.host.getTestExpiration();
+        URI factoryUri = createImmutableFactoryService(this.host);
+        do {
+            for (int ic = 0; ic < this.iterationCount; ic++) {
+                this.host.log("(%d) Starting POST test to %s, count:%d", ic, factoryUri,
+                        this.serviceCount);
+                doThroughputPost(this.interleaveQueries, factoryUri, expirationMicros);
+                logQuerySingleStat();
+            }
+        } while (this.testDurationSeconds > 0 && new Date().before(testExpiration));
+    }
+
     private void doThroughputPost(boolean interleaveQueries) throws Throwable {
         if (this.serviceCacheClearIntervalSeconds == 0) {
             // effectively disable ODL stop/start behavior while running throughput tests
@@ -1434,7 +1477,7 @@ public class TestLuceneDocumentIndexService {
                 factoryUri);
         long serviceCountCached = this.serviceCount;
         this.serviceCount = this.documentCountAtStart;
-        doThroughputPost(false, factoryUri);
+        doThroughputPost(false, factoryUri, null);
         this.serviceCount = serviceCountCached;
     }
 
@@ -1515,7 +1558,7 @@ public class TestLuceneDocumentIndexService {
             this.host.log("(%d) Starting POST test to %s, count:%d",
                     ic, factoryUri, this.serviceCount);
 
-            doThroughputPost(interleaveQueries, factoryUri);
+            doThroughputPost(interleaveQueries, factoryUri, null);
             this.host.deleteOrStopAllChildServices(factoryUri, true);
             logQuerySingleStat();
         }
@@ -1541,7 +1584,7 @@ public class TestLuceneDocumentIndexService {
                     0,
                     OperationContext.getAuthorizationContext().getClaims().getSubject(),
                     this.serviceCount);
-            doThroughputPost(false, factoryUri);
+            doThroughputPost(false, factoryUri, null);
             this.host.deleteAllChildServices(factoryUri);
         }
 
@@ -1559,7 +1602,7 @@ public class TestLuceneDocumentIndexService {
                             OperationContext.getAuthorizationContext().getClaims().getSubject(),
                             this.serviceCount);
                     long start = System.nanoTime();
-                    doThroughputPost(false, factoryUri);
+                    doThroughputPost(false, factoryUri, null);
                     long end = System.nanoTime();
                     durationPerSubject.put(userLink, end - start);
                     ctx.complete();
@@ -1625,10 +1668,10 @@ public class TestLuceneDocumentIndexService {
         this.host.resetAuthorizationContext();
     }
 
-    private void doThroughputPost(boolean interleaveQueries,
-            URI factoryUri)
+    private void doThroughputPost(boolean interleaveQueries, URI factoryUri, Long expirationMicros)
             throws Throwable {
-        long startTimeMicros = System.nanoTime() / 1000;
+
+        long startTimeNanos = System.nanoTime();
         int queryCount = 0;
         AtomicLong queryResultCount = new AtomicLong();
         long totalQueryCount = this.serviceCount / this.updatesPerQuery;
@@ -1642,6 +1685,9 @@ public class TestLuceneDocumentIndexService {
             body.name = i + "";
             body.id = i + "";
             body.counter = (long) i;
+            if (expirationMicros != null) {
+                body.documentExpirationTimeMicros = Utils.fromNowMicrosUtc(expirationMicros);
+            }
             createPost.setBody(body);
 
             // create a start service POST with an initial state
@@ -1681,10 +1727,9 @@ public class TestLuceneDocumentIndexService {
         if (interleaveQueries) {
             this.host.testWait(queryCtx);
         }
-        long endTimeMicros = System.nanoTime() / 1000;
-        double deltaSeconds = (endTimeMicros - startTimeMicros) / 1000000.0;
-        double ioCount = this.serviceCount;
-        double throughput = ioCount / deltaSeconds;
+
+        double durationSeconds = (double) (System.nanoTime() - startTimeNanos) / 1000000000.0;
+
         String subject = "(none)";
         if (this.host.isAuthorizationEnabled()) {
             subject = OperationContext.getAuthorizationContext().getClaims().getSubject();
@@ -1692,17 +1737,28 @@ public class TestLuceneDocumentIndexService {
 
         String timeSeriesStatName = LuceneDocumentIndexService.STAT_NAME_INDEXED_DOCUMENT_COUNT
                 + ServiceStats.STAT_NAME_SUFFIX_PER_HOUR;
-        double docCount = this.getLuceneStat(timeSeriesStatName).accumulatedValue;
+        double documentCount = getLuceneStat(timeSeriesStatName).accumulatedValue;
+        double operationCount = this.serviceCount + totalQueryCount;
+        double operationsPerSecond = operationCount / durationSeconds;
+        double postCount = this.serviceCount;
+        double postsPerSecond = postCount / durationSeconds;
+        double queriesPerSecond = queryCount / durationSeconds;
 
-        this.host.log(
-                "(%s) Factory: %s, Services: %d Docs: %f, Ops: %f, Queries: %d, Per query results: %d, ops/sec: %f",
+        this.host.log("%s Factory: %s, Services: %d, Docs: %f, Ops: %f, Ops/sec: %f, POSTs: %f, "
+                        + "POSTs/sec: %f, Queries: %d, Queries/sec: %f, Total query results: %d",
                 subject,
                 factoryUri.getPath(),
                 this.host.getState().serviceCount,
-                docCount,
-                ioCount, queryCount, queryResultCount.get(), throughput);
+                documentCount,
+                operationCount,
+                operationsPerSecond,
+                postCount,
+                postsPerSecond,
+                queryCount,
+                queriesPerSecond,
+                queryResultCount.get());
 
-        this.testResults.getReport().all("POSTs/sec", throughput);
+        this.testResults.getReport().all("POSTs/sec", postsPerSecond);
     }
 
     @Test
