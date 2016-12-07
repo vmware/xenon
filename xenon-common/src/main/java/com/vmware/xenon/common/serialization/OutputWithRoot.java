@@ -19,14 +19,14 @@ import com.esotericsoftware.kryo.io.Output;
  * An Output the knows the root of the serialization call.
  */
 public final class OutputWithRoot extends Output {
-    private final Object root;
+    private Object root;
+
+    public OutputWithRoot(byte[] buffer, int maxSize, Object o) {
+        super(buffer, maxSize);
+        this.root = o;
+    }
 
     public Object getRoot() {
         return this.root;
-    }
-
-    public OutputWithRoot(byte[] buffer, int maxSize, Object root) {
-        super(buffer, maxSize);
-        this.root = root;
     }
 }

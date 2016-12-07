@@ -25,6 +25,7 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
 import java.net.URLEncoder;
 import java.nio.ByteBuffer;
+import java.nio.charset.MalformedInputException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Duration;
@@ -358,7 +359,9 @@ public class TestUtils {
             int byteCountToObjectDefault = Utils.toBytes(st, Utils.getBuffer(1024), 0);
             Output outDocumentImplicitDefault = KryoSerializers.serializeAsDocument(st,
                     1024);
+            int pDefaultImplicit = outDocumentImplicitDefault.position();
             Output outDocumentDefault = KryoSerializers.serializeDocument(st, 1024);
+            int pDefault = outDocumentDefault.position();
 
             Utils.registerCustomKryoSerializer(new CustomKryoForObjectThreadLocal(), false);
             Utils.registerCustomKryoSerializer(new CustomKryoForDocumentThreadLocal(),
@@ -368,12 +371,12 @@ public class TestUtils {
             int byteCountToObjectCustom = Utils.toBytes(st, objectData, 0);
             Output outDocumentImplicitCustom = KryoSerializers.serializeAsDocument(st,
                     1024);
+            int p = outDocumentImplicitCustom.position();
             Output outDocumentCustom = KryoSerializers.serializeDocument(st, 1024);
 
             assertTrue(byteCountToObjectCustom != byteCountToObjectDefault);
-            assertTrue(outDocumentImplicitCustom.position() != outDocumentImplicitDefault
-                    .position());
-            assertTrue(outDocumentCustom.position() != outDocumentDefault.position());
+            assertTrue(p != pDefaultImplicit);
+            assertTrue(outDocumentCustom.position() != pDefault);
 
             ExampleServiceState stDeserializedFromObject = (ExampleServiceState) Utils.fromBytes(
                     objectData);
@@ -937,7 +940,7 @@ public class TestUtils {
                         Operation.CONTENT_ENCODING_GZIP)
                 .addResponseHeader(Operation.CONTENT_TYPE_HEADER, Operation.MEDIA_TYPE_TEXT_PLAIN);
 
-        Utils.decodeBody(op, ByteBuffer.wrap(gzippedBody));
+        Utils.decodeBody(op, ByteBuffer.wrap(gzippedBody), false);
 
         assertEquals(body, op.getBody(String.class));
 
@@ -957,7 +960,7 @@ public class TestUtils {
                         Operation.CONTENT_ENCODING_GZIP)
                 .addRequestHeader(Operation.CONTENT_TYPE_HEADER, Operation.MEDIA_TYPE_TEXT_PLAIN);
 
-        Utils.decodeBody(op, ByteBuffer.wrap(gzippedBody));
+        Utils.decodeBody(op, ByteBuffer.wrap(gzippedBody), true);
 
         assertEquals(body, op.getBody(String.class));
 
@@ -973,10 +976,12 @@ public class TestUtils {
                 .createGet(null)
                 .setContentLength(gzippedBody.length)
                 .addResponseHeader(Operation.CONTENT_TYPE_HEADER, Operation.MEDIA_TYPE_TEXT_PLAIN);
+        try {
+            Utils.decodeBody(op, ByteBuffer.wrap(gzippedBody), false);
+            throw new IllegalStateException("should have failed");
+        } catch (MalformedInputException e) {
 
-        Utils.decodeBody(op, ByteBuffer.wrap(gzippedBody));
-
-        assertEquals(Operation.STATUS_CODE_SERVER_FAILURE_THRESHOLD, op.getStatusCode());
+        }
     }
 
     private static byte[] compress(String str) throws Exception {

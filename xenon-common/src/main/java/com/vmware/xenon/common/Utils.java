@@ -29,6 +29,7 @@ import java.net.URLDecoder;
 import java.nio.ByteBuffer;
 import java.nio.charset.CharacterCodingException;
 import java.nio.charset.Charset;
+import java.nio.charset.CharsetDecoder;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Collection;
@@ -109,6 +110,13 @@ public final class Utils {
      * check to account for the start-up overhead of that process.
      */
     private static final long PING_LAUNCH_TOLERANCE_MS = 50;
+
+    private static final ThreadLocal<CharsetDecoder> decodersPerThread = new ThreadLocal<CharsetDecoder>() {
+        @Override
+        public CharsetDecoder initialValue() {
+            return CHARSET_OBJECT.newDecoder();
+        }
+    };
 
     private static final AtomicLong previousTimeValue = new AtomicLong();
     private static long timeComparisonEpsilon = initializeTimeEpsilon();
@@ -851,12 +859,17 @@ public final class Utils {
         return data;
     }
 
-    public static void decodeBody(Operation op, ByteBuffer buffer) {
-        boolean isRequest = false;
-        String contentEncodingHeader = op.getResponseHeaderAsIs(Operation.CONTENT_ENCODING_HEADER);
-        if (contentEncodingHeader == null) {
+    /**
+     * Decodes the byte buffer, using the content type as a hint. It sets the operation body
+     * to the decoded instance. It does not complete the operation.
+     */
+    public static void decodeBody(Operation op, ByteBuffer buffer, boolean isRequest)
+            throws Exception {
+        String contentEncodingHeader = null;
+        if (!isRequest) {
+            contentEncodingHeader = op.getResponseHeaderAsIs(Operation.CONTENT_ENCODING_HEADER);
+        } else if (!op.isFromReplication()) {
             contentEncodingHeader = op.getRequestHeaderAsIs(Operation.CONTENT_ENCODING_HEADER);
-            isRequest = true;
         }
 
         boolean compressed = false;
@@ -867,46 +880,50 @@ public final class Utils {
         decodeBody(op, buffer, isRequest, compressed);
     }
 
+    /**
+     * See {@link #decodeBody(Operation, ByteBuffer, boolean)}
+     */
     public static void decodeBody(
-            Operation op, ByteBuffer buffer, boolean isRequest, boolean compressed) {
+            Operation op, ByteBuffer buffer, boolean isRequest, boolean compressed)
+            throws Exception {
         if (op.getContentLength() == 0) {
-            op.setContentType(Operation.MEDIA_TYPE_APPLICATION_JSON).complete();
+            op.setContentType(Operation.MEDIA_TYPE_APPLICATION_JSON);
+            return;
+        }
+        if (compressed) {
+            buffer = decompressGZip(buffer);
+            if (isRequest) {
+                op.getRequestHeaders().remove(Operation.CONTENT_ENCODING_HEADER);
+            } else {
+                op.getResponseHeaders().remove(Operation.CONTENT_ENCODING_HEADER);
+            }
+        }
+
+        String contentType = op.getContentType();
+        boolean isKryoBinary = isContentTypeKryoBinary(contentType);
+
+        if (isKryoBinary) {
+            byte[] data = new byte[(int) op.getContentLength()];
+            buffer.get(data);
+            Object body = KryoSerializers.deserializeDocument(data, 0, data.length);
+            if (op.isFromReplication()) {
+                // optimization to avoid having to serialize state again, during indexing
+                op.linkSerializedState(data);
+            }
+            op.setBodyNoCloning(body);
             return;
         }
 
-        try {
-            if (compressed) {
-                buffer = decompressGZip(buffer);
-                if (isRequest) {
-                    op.getRequestHeaders().remove(Operation.CONTENT_ENCODING_HEADER);
-                } else {
-                    op.getResponseHeaders().remove(Operation.CONTENT_ENCODING_HEADER);
-                }
-            }
-
-            String contentType = op.getContentType();
-            Object body = decodeIfText(buffer, contentType);
-            if (body != null) {
-                op.setBodyNoCloning(body).complete();
-                return;
-            }
-
-            // unrecognized or binary body, use the raw bytes
-            byte[] data = new byte[(int) op.getContentLength()];
-            buffer.get(data);
-            if (Operation.MEDIA_TYPE_APPLICATION_KRYO_OCTET_STREAM.equals(contentType)) {
-                body = KryoSerializers.deserializeDocument(data, 0, data.length);
-                if (op.isFromReplication()) {
-                    // optimization to avoid having to serialize state again, during indexing
-                    op.linkSerializedState(data);
-                }
-            } else {
-                body = data;
-            }
-            op.setBodyNoCloning(body).complete();
-        } catch (Throwable e) {
-            op.fail(e);
+        Object body = decodeIfText(buffer, contentType);
+        if (body != null) {
+            op.setBodyNoCloning(body);
+            return;
         }
+
+        // unrecognized or binary body, use the raw bytes
+        byte[] data = new byte[(int) op.getContentLength()];
+        buffer.get(data);
+        op.setBodyNoCloning(data);
     }
 
     public static String decodeIfText(ByteBuffer buffer, String contentType)
@@ -917,9 +934,11 @@ public final class Utils {
 
         String body = null;
         if (isContentTypeText(contentType)) {
-            body = CHARSET_OBJECT.newDecoder().decode(buffer).toString();
+            CharsetDecoder decoder = decodersPerThread.get().reset();
+            body = decoder.decode(buffer).toString();
         } else if (contentType.contains(Operation.MEDIA_TYPE_APPLICATION_X_WWW_FORM_ENCODED)) {
-            body = CHARSET_OBJECT.newDecoder().decode(buffer).toString();
+            CharsetDecoder decoder = decodersPerThread.get().reset();
+            body = decoder.decode(buffer).toString();
             try {
                 body = URLDecoder.decode(body, Utils.CHARSET);
             } catch (UnsupportedEncodingException e) {
@@ -945,6 +964,14 @@ public final class Utils {
             out.close();
         }
         return ByteBuffer.wrap(out.toByteArray());
+    }
+
+    public static boolean isContentTypeKryoBinary(String contentType) {
+        return contentType.length() == Operation.MEDIA_TYPE_APPLICATION_KRYO_OCTET_STREAM.length()
+                && contentType.charAt(12) == 'k'
+                && contentType.charAt(13) == 'r'
+                && contentType.charAt(14) == 'y'
+                && contentType.charAt(15) == 'o';
     }
 
     private static boolean isContentTypeText(String contentType) {
@@ -1253,7 +1280,7 @@ public final class Utils {
      * Return a non-null, zero-length thread-local instance.
      * @return
      */
-    private static StringBuilder getBuilder() {
+    static StringBuilder getBuilder() {
         return builderPerThread.get();
     }
 

@@ -425,36 +425,33 @@ public class NettyHttpServiceClientTest {
         String tag = ServiceClient.CONNECTION_TAG_DEFAULT;
         validateTagInfo(tag);
 
-        // check that content type is set and preserved
+        // check that query and fragment make it to the service
         URI u = services.get(0).getUri();
-        this.host.testStart(1);
+        u = new URI(u.getScheme(), null, u.getHost(), u.getPort(), u.getPath(), "k=v", "fragment");
         MinimalTestServiceState body = new MinimalTestServiceState();
-        body.id = MinimalTestService.STRING_MARKER_USE_DIFFERENT_CONTENT_TYPE;
+        body.id = MinimalTestService.STRING_MARKER_URI_HAS_QUERY_AND_FRAGMENT;
         Operation patch = Operation
                 .createPatch(u)
-                .setBody(body)
-                .setCompletion(
-                        (o, e) -> {
-                            if (e != null) {
-                                this.host.failIteration(e);
-                                return;
-                            }
+                .setBody(body);
+        TestRequestSender sender = this.host.getTestRequestSender();
 
-                            if (!Operation.MEDIA_TYPE_APPLICATION_X_WWW_FORM_ENCODED.equals(o
-                                    .getContentType())) {
-                                this.host.failIteration(new IllegalArgumentException(
-                                        "unexpected content type: " + o.getContentType()));
-                                return;
-                            }
+        Operation resOp = sender.sendAndWait(patch);
 
-                            this.host.completeIteration();
-                        });
-        this.host.send(patch);
-        this.host.testWait();
+        // check that content type is set and preserved
+        body = new MinimalTestServiceState();
+        body.id = MinimalTestService.STRING_MARKER_USE_DIFFERENT_CONTENT_TYPE;
+        patch = Operation
+                .createPatch(u)
+                .setBody(body);
+        resOp = sender.sendAndWait(patch);
+        if (!Operation.MEDIA_TYPE_APPLICATION_X_WWW_FORM_ENCODED.equals(resOp
+                .getContentType())) {
+            throw new IllegalArgumentException(
+                    "unexpected content type: " + resOp.getContentType());
+        }
 
         // verify content de-serializes with slightly different content type
         String contentType = "application/json; charset=UTF-8";
-        this.host.testStart(1);
         MinimalTestServiceState body1 = new MinimalTestServiceState();
         body1.id = UUID.randomUUID().toString();
         body1.stringValue = UUID.randomUUID().toString();
@@ -464,24 +461,10 @@ public class NettyHttpServiceClientTest {
                 .setContentType(contentType)
                 .forceRemote();
 
-        Operation p = patch;
-        p.setCompletion((o, e) -> {
-            if (e != null) {
-                this.host.failIteration(e);
-                return;
-            }
-            try {
-                MinimalTestServiceState rsp = o.getBody(MinimalTestServiceState.class);
-                assertEquals(body1.stringValue, rsp.stringValue);
-                assertEquals(o.getContentType(), p.getContentType());
-                this.host.completeIteration();
-            } catch (Throwable ex) {
-                this.host.failIteration(ex);
-            }
-        });
-        this.host.send(p);
-        this.host.testWait();
-
+        resOp = sender.sendAndWait(patch);
+        MinimalTestServiceState rsp = resOp.getBody(MinimalTestServiceState.class);
+        assertEquals(body1.stringValue, rsp.stringValue);
+        assertEquals(resOp.getContentType(), patch.getContentType());
     }
 
     @Test

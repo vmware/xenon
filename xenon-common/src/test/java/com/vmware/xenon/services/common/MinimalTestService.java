@@ -42,6 +42,7 @@ public class MinimalTestService extends StatefulService {
     public static final String STRING_MARKER_TIMEOUT_REQUEST = "do not complete this request";
     public static final String STRING_MARKER_HAS_CONTEXT_ID = "check context id";
     public static final String STRING_MARKER_USE_DIFFERENT_CONTENT_TYPE = "change content type on response";
+    public static final String STRING_MARKER_URI_HAS_QUERY_AND_FRAGMENT = "check uri has query and fragment";
     public static final String STRING_MARKER_DELAY_COMPLETION = "do a tight loop";
     public static final String STRING_MARKER_FAIL_WITH_PLAIN_TEXT_RESPONSE = "fail with plain text content type";
     public static final String STRING_MARKER_FAIL_WITH_CUSTOM_CONTENT_TYPE_RESPONSE = "fail with "
@@ -186,6 +187,16 @@ public class MinimalTestService extends StatefulService {
         if (patchBody.id == null) {
             patch.fail(new IllegalArgumentException(ERROR_MESSAGE_ID_IS_REQUIRED),
                     MinimalTestServiceErrorResponse.create(ERROR_MESSAGE_ID_IS_REQUIRED));
+            return;
+        }
+
+        if (patchBody.id.equals(STRING_MARKER_URI_HAS_QUERY_AND_FRAGMENT)) {
+            if (patch.getUri().getQuery() == null || patch.getUri().getQuery().isEmpty()
+                    || patch.getUri().getFragment() == null) {
+                patch.fail(new IllegalStateException("Expected uri to have query and fragment"));
+                return;
+            }
+            patch.complete();
             return;
         }
 

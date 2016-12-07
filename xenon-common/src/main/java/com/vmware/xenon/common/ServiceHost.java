@@ -549,6 +549,7 @@ public class ServiceHost implements ServiceRequestSender {
     private String hashedId;
     private String logPrefix;
     private URI cachedUri;
+    private String cachedPublicUriString;
 
     private Signer tokenSigner;
     private Verifier tokenVerifier;
@@ -4768,6 +4769,7 @@ public class ServiceHost implements ServiceRequestSender {
 
     private void clearUriAndLogPrefix() {
         this.cachedUri = null;
+        this.cachedPublicUriString = null;
         this.logPrefix = null;
     }
 
@@ -5372,6 +5374,17 @@ public class ServiceHost implements ServiceRequestSender {
             return getUri();
         }
         return this.state.publicUri;
+    }
+
+    public String getPublicUriAsString() {
+        if (this.cachedPublicUriString == null) {
+            this.cachedPublicUriString = getPublicUri().toString();
+            if (this.cachedPublicUriString.endsWith(UriUtils.URI_PATH_CHAR)) {
+                this.cachedPublicUriString = this.cachedPublicUriString.substring(0,
+                        this.cachedPublicUriString.length() - 1);
+            }
+        }
+        return this.cachedPublicUriString;
     }
 
     public URI getUri() {
