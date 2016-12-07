@@ -383,6 +383,21 @@ public class TestAuthorization extends BasicTestCase {
     }
 
     @Test
+    public void testInvalidResourceGroup() throws Throwable {
+        OperationContext.setAuthorizationContext(this.host.getSystemAuthorizationContext());
+        AuthorizationHelper authsetupHelper = new AuthorizationHelper(this.host);
+        String email = "foo@foo.com";
+        String userLink = authsetupHelper.createUserService(this.host, email);
+        Query userGroupQuery = Query.Builder.create().addFieldClause(UserState.FIELD_NAME_EMAIL, email).build();
+        String userGroupLink = authsetupHelper.createUserGroup(this.host, email, userGroupQuery);
+        authsetupHelper.createRole(this.host, userGroupLink, "foo", EnumSet.allOf(Action.class));
+        // Assume identity
+        this.host.assumeIdentity(userLink);
+        this.host.sendAndWaitExpectSuccess(
+                Operation.createGet(UriUtils.buildUri(this.host, ExampleService.FACTORY_LINK)));
+    }
+
+    @Test
     public void actionBasedAuthorization() throws Throwable {
 
         // Assume Jane's identity
