@@ -35,6 +35,7 @@ import com.vmware.xenon.common.ServiceMaintenanceRequest.MaintenanceReason;
 import com.vmware.xenon.common.ServiceStats.ServiceStat;
 import com.vmware.xenon.services.common.NodeGroupService;
 import com.vmware.xenon.services.common.NodeGroupService.NodeGroupState;
+import com.vmware.xenon.services.common.NodeGroupUtils;
 import com.vmware.xenon.services.common.NodeSelectorSynchronizationService.SynchronizePeersRequest;
 import com.vmware.xenon.services.common.ServiceUriPaths;
 
@@ -128,34 +129,97 @@ class ServiceSynchronizationTracker {
                     "%s not available on owner node, on-demand synchronizing ...",
                     service.getSelfLink());
 
-            ServiceDocument d = new ServiceDocument();
-            d.documentSelfLink = startRsp.getLinkedState().documentSelfLink;
-            Operation synchRequest = Operation
-                    .createPost(startRsp.getUri())
-                    .setBody(d)
-                    .setReferer(this.host.getUri())
-                    .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_SYNCH_OWNER)
-                    .setExpiration(
-                            Utils.fromNowMicrosUtc(
-                                    NodeGroupService.PEER_REQUEST_TIMEOUT_MICROS))
-                    .setCompletion((synchOp, t) -> {
-                        if (t != null) {
-                            this.host.log(Level.SEVERE, "Synch failed for %s. Exception: %s",
-                                    service.getSelfLink(), t.toString());
-                        }
-                        // It's important that we fail the original POST request with the same
-                        // failure, statusCode and body.
-                        start.fail(startRsp.getStatusCode(), startEx, startRsp.getBodyRaw());
-                        this.host.processPendingServiceAvailableOperations(
-                                service, startEx, !start.isFailureLoggingDisabled());
-                    });
-            this.host.handleRequest(null, synchRequest);
+            URI factoryUri = startRsp.getUri();
+            String selfLink = startRsp.getLinkedState().documentSelfLink;
+            sendSynchRequest(factoryUri, selfLink, (synchOp, t) -> {
+                if (t != null) {
+                    this.host.log(Level.SEVERE, "Synch failed for %s. Exception: %s",
+                            service.getSelfLink(), t.toString());
+                }
+                // It's important that we fail the original POST request with the same
+                // failure, statusCode and body.
+                start.fail(startRsp.getStatusCode(), startEx, startRsp.getBodyRaw());
+                this.host.processPendingServiceAvailableOperations(
+                        service, startEx, !start.isFailureLoggingDisabled());
+            });
             return;
         }
 
         start.fail(startRsp.getStatusCode(), startEx, startRsp.getBodyRaw());
         this.host.processPendingServiceAvailableOperations(
                 service, startEx, !start.isFailureLoggingDisabled());
+    }
+
+    void failWithNotFoundOrSynchronize(Service parent, String path, Operation op) {
+        CompletionHandler ch = (completedOp, ex) -> {
+            if (ex != null) {
+                this.host.log(Level.INFO,
+                        "Service %s not found on owner. On-demand synchronizing.", op.getUri());
+                // Factory service is not available. This indicates that the node-group
+                // hasn't reached steady state for this factory. We kick-off on-demand
+                // synchronization.
+                String documentSelfLink = UriUtils.getLastPathSegment(op.getUri());
+                sendSynchRequest(parent.getUri(), documentSelfLink, (o, e) -> {
+                    if (e == null) {
+                        // Service was found on a remote peer and has been
+                        // synchronized successfully. We go ahead and retry
+                        // the original request now.
+                        this.host.handleRequest(null, op);
+                        return;
+                    }
+
+                    boolean markedDeleted = false;
+                    boolean notFound = o.getStatusCode() == Operation.STATUS_CODE_NOT_FOUND;
+
+                    if (o.getStatusCode() == Operation.STATUS_CODE_CONFLICT) {
+                        if (o.hasBody()) {
+                            ServiceErrorResponse error = o.getBody(ServiceErrorResponse.class);
+                            markedDeleted = error.getErrorCode() ==
+                                    ServiceErrorResponse.ERROR_CODE_STATE_MARKED_DELETED;
+                        }
+                    }
+
+                    if (notFound || markedDeleted) {
+                        if (op.getAction() == Action.DELETE) {
+                            // do not queue DELETE actions for services not present, complete with success
+                            op.complete();
+                            return;
+                        }
+                        this.host.failRequestServiceNotFound(op);
+                        return;
+                    }
+
+                    this.host.log(Level.SEVERE, "Failed to synch service not found on owner. Failure: %s", e);
+                    op.fail(e);
+                });
+                return;
+            }
+
+            if (op.getAction() == Action.DELETE) {
+                op.complete();
+                return;
+            }
+            // Since the factory is marked available, we assume steady state for the node-group
+            // and fail the request with NOT-FOUND.
+            this.host.failRequestServiceNotFound(op);
+        };
+
+        NodeGroupUtils.checkServiceAvailability(ch, parent);
+    }
+
+    private void sendSynchRequest(URI parentUri, String documentSelfLink, CompletionHandler ch) {
+        ServiceDocument synchState = new ServiceDocument();
+        synchState.documentSelfLink = documentSelfLink;
+
+        Operation synchOp = Operation
+                .createPost(this.host, parentUri.getPath())
+                .setBody(synchState)
+                .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_SYNCH_OWNER)
+                .setReferer(this.host.getUri())
+                .setExpiration(Utils.fromNowMicrosUtc(NodeGroupService.PEER_REQUEST_TIMEOUT_MICROS))
+                .setCompletion((o, e) -> ch.handle(o, e));
+
+        this.host.handleRequest(null, synchOp);
     }
 
     /**

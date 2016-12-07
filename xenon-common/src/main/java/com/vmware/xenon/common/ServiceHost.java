@@ -3594,6 +3594,7 @@ public class ServiceHost implements ServiceRequestSender {
         op.setStatusCode(Operation.STATUS_CODE_OK);
 
         String servicePath = path;
+        Service parentService = parent;
         CompletionHandler ch = (o, e) -> {
             if (e != null) {
                 log(Level.SEVERE, "Owner selection failed for service %s, op %d. Error: %s", op
@@ -3636,7 +3637,8 @@ public class ServiceHost implements ServiceRequestSender {
             Operation forwardOp = op.clone().setCompletion(fc);
             if (rsp.isLocalHostOwner) {
                 if (s == null) {
-                    queueOrFailRequestForServiceNotFoundOnOwner(servicePath, op);
+                    queueOrFailRequestForServiceNotFoundOnOwner(
+                            parentService, servicePath, op, rsp.availableNodeCount);
                     return;
                 }
                 queueOrScheduleRequest(s, forwardOp);
@@ -3670,18 +3672,30 @@ public class ServiceHost implements ServiceRequestSender {
         return true;
     }
 
-    private void queueOrFailRequestForServiceNotFoundOnOwner(String path, Operation op) {
+    private void queueOrFailRequestForServiceNotFoundOnOwner(
+            Service parent, String path, Operation op, int availableNodeCount) {
         if (this.serviceResourceTracker.checkAndResumeService(op)) {
             return;
         }
 
-        if (op.getAction() == Action.DELETE) {
-            // do not queue DELETE actions for services not present, complete with success
-            op.complete();
+        boolean synchService = parent != null &&
+                parent.hasOption(ServiceOption.FACTORY) &&
+                parent.hasOption(ServiceOption.REPLICATION) &&
+                op.getAction() != Action.POST &&
+                availableNodeCount > 1 &&
+                !op.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_QUEUE_FOR_SERVICE_AVAILABILITY);
+
+        if (!synchService) {
+            if (op.getAction() == Action.DELETE) {
+                // do not queue DELETE actions for services not present, complete with success
+                op.complete();
+                return;
+            }
+            checkPragmaAndRegisterForAvailability(path, op);
             return;
         }
 
-        checkPragmaAndRegisterForAvailability(path, op);
+        this.serviceSynchTracker.failWithNotFoundOrSynchronize(parent, path, op);
     }
 
     void checkPragmaAndRegisterForAvailability(String path, Operation op) {
