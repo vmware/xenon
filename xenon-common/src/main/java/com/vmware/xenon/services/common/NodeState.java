@@ -24,6 +24,18 @@ import com.vmware.xenon.common.Utils;
 public class NodeState extends ServiceDocument {
     public static final String PROPERTY_NAME_MEMBERSHIP_QUORUM = Utils.PROPERTY_NAME_PREFIX
             + "NodeState.membershipQuorum";
+
+    public static final String PROPERTY_NAME_LOCATION_QUORUM = Utils.PROPERTY_NAME_PREFIX
+            + "NodeState.locationQuorum";
+
+    /**
+     * Key of a custom property associated with a node, set in {@link #customProperties}.
+     * The location value is used as an opaque tag and affects consensus updates.
+     * If {@link #locationQuorum} is set, the location values are used to enforce how
+     * many nodes from different locations must participate in each update. If its not
+     * specified, and locations are set in each node, then quorum can be satisfied from
+     * within a single location
+     */
     public static final String PROPERTY_NAME_LOCATION = Utils.PROPERTY_NAME_PREFIX
             + "NodeState.location";
 
@@ -89,6 +101,14 @@ public class NodeState extends ServiceDocument {
      * and synchronization
      */
     public int membershipQuorum;
+
+    /**
+     * Minimum number of locations required for consensus operations and
+     * synchronization. If set, this value adds an additional constraint
+     * on which nodes must participate in each update.
+     * See {@link #PROPERTY_NAME_LOCATION}
+     */
+    public int locationQuorum;
 
     /**
      * Bag of additional properties, like {@link #PROPERTY_NAME_LOCATION}

@@ -2332,43 +2332,63 @@ public class VerificationHost extends ExampleServiceHost {
         resetAuthorizationContext();
     }
 
-    public void setNodeGroupQuorum(Integer quorum)
-            throws Throwable {
-        // we can issue the update to any one node and it will update
-        // everyone in the group
+    public void setNodeGroupQuorum(Integer quorum, URI nodeGroup) {
+        setNodeGroupQuorum(quorum, null, nodeGroup);
+    }
 
-        setSystemAuthorizationContext();
+    public void setNodeGroupQuorum(Integer quorum, Integer locationQuorum, URI nodeGroup) {
+        UpdateQuorumRequest body = UpdateQuorumRequest.create(true);
 
-        for (URI nodeGroup : getNodeGroupMap().values()) {
-            log("Changing quorum to %d on group %s", quorum, nodeGroup);
-            setNodeGroupQuorum(quorum, nodeGroup);
-            // nodes might not be joined, so we need to ask each node to set quorum
+        if (quorum != null) {
+            body.setMembershipQuorum(quorum);
         }
 
-        Date exp = getTestExpiration();
-        while (new Date().before(exp)) {
-            boolean isConverged = true;
+        if (locationQuorum != null) {
+            body.setLocationQuorum(locationQuorum);
+        }
+
+        this.sender.sendAndWait(Operation.createPatch(nodeGroup).setBody(body));
+    }
+
+    public void setNodeGroupQuorum(Integer quorum) throws Throwable {
+        setNodeGroupQuorum(quorum, (Integer) null);
+    }
+
+    public void setNodeGroupQuorum(Integer quorum, Integer locationQuorum) throws Throwable {
+        // we can issue the update to any one node and it will update
+        // everyone in the group
+        setSystemAuthorizationContext();
+        for (URI nodeGroup : getNodeGroupMap().values()) {
+            if (quorum != null) {
+                log("Changing quorum to %d on group %s", quorum, nodeGroup);
+            }
+            if (locationQuorum != null) {
+                log("Changing location quorum to %d on group %s", locationQuorum, nodeGroup);
+            }
+            setNodeGroupQuorum(quorum, locationQuorum, nodeGroup);
+            // nodes might not be joined, so we need to ask each node to set quorum
+        }
+        resetAuthorizationContext();
+
+        waitFor("quorum did not converge", () -> {
             setSystemAuthorizationContext();
             for (URI n : this.peerNodeGroups.values()) {
                 NodeGroupState s = getServiceState(null, NodeGroupState.class, n);
                 for (NodeState ns : s.nodes.values()) {
+                    if (!NodeStatus.AVAILABLE.equals(ns.status)) {
+                        continue;
+                    }
                     if (quorum != ns.membershipQuorum) {
-                        isConverged = false;
+                        return false;
+                    }
+                    if (locationQuorum != null && !locationQuorum.equals(ns.locationQuorum)) {
+                        return false;
                     }
                 }
             }
             resetAuthorizationContext();
-            if (isConverged) {
-
-                log("converged");
-                return;
-            }
-            Thread.sleep(500);
-        }
-        waitForNodeSelectorQuorumConvergence(ServiceUriPaths.DEFAULT_NODE_SELECTOR, quorum);
-        resetAuthorizationContext();
-
-        throw new TimeoutException();
+            return true;
+        });
     }
 
     public void waitForNodeSelectorQuorumConvergence(String nodeSelectorPath, int quorum) {
@@ -2383,16 +2403,6 @@ public class VerificationHost extends ExampleServiceHost {
             }
             return true;
         });
-    }
-
-    public void setNodeGroupQuorum(Integer quorum, URI nodeGroup) {
-        UpdateQuorumRequest body = UpdateQuorumRequest.create(true);
-
-        if (quorum != null) {
-            body.setMembershipQuorum(quorum);
-        }
-
-        this.sender.sendAndWait(Operation.createPatch(nodeGroup).setBody(body));
     }
 
     public <T extends ServiceDocument> void validateDocumentPartitioning(

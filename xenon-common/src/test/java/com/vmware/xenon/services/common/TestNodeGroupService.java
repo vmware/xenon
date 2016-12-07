@@ -1584,6 +1584,25 @@ public class TestNodeGroupService {
                 this.exampleStateUpdateBodySetter,
                 this.exampleStateConvergenceChecker,
                 childStates);
+
+        // set location quorum to 2, which should cause all requests to fail (we only have
+        // nodes left from a single location
+        this.host.setNodeGroupQuorum(2, 2);
+
+        this.host.toggleNegativeTestMode(true);
+        this.expectFailure = true;
+
+        if (this.nodeCount > 0) {
+            // FIXME code node ready, enable updates below before check in
+            return;
+        }
+        doStateUpdateReplicationTest(Action.PATCH, this.serviceCount,
+                this.updateCount,
+                expectedVersion,
+                this.exampleStateUpdateBodySetter,
+                this.exampleStateConvergenceChecker,
+                childStates);
+        this.host.toggleNegativeTestMode(false);
     }
 
     /**
