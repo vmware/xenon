@@ -43,10 +43,12 @@ public class TestUserGroupService extends BasicReusableHostTestCase {
 
     @Test
     public void testFactoryPost() throws Throwable {
-        UserGroupState state = new UserGroupState();
-        state.query = new Query();
-        state.query.setTermPropertyName("name");
-        state.query.setTermMatchValue("value");
+        Query query = new Query();
+        query.setTermPropertyName("name");
+        query.setTermMatchValue("value");
+        UserGroupState state = UserGroupState.Builder.create()
+                .withQuery(query)
+                .build();
 
         final UserGroupState[] outState = new UserGroupState[1];
 
@@ -72,11 +74,13 @@ public class TestUserGroupService extends BasicReusableHostTestCase {
 
     @Test
     public void testFactoryIdempotentPost() throws Throwable {
-        UserGroupState state = new UserGroupState();
-        state.documentSelfLink = UUID.randomUUID().toString();
-        state.query = new Query();
-        state.query.setTermPropertyName("name");
-        state.query.setTermMatchValue("value");
+        Query query = new Query();
+        query.setTermPropertyName("name");
+        query.setTermMatchValue("value");
+        UserGroupState state = UserGroupState.Builder.create()
+                .withSelfLink(UUID.randomUUID().toString())
+                .withQuery(query)
+                .build();
 
         UserGroupState responseState = (UserGroupState) this.host.verifyPost(UserGroupState.class,
                 ServiceUriPaths.CORE_AUTHZ_USER_GROUPS,
@@ -107,8 +111,9 @@ public class TestUserGroupService extends BasicReusableHostTestCase {
 
     @Test
     public void testFactoryPostFailure() throws Throwable {
-        UserGroupState state = new UserGroupState();
-        state.query = null;
+        UserGroupState state = UserGroupState.Builder.create()
+                .withQuery(null)
+                .build();
 
         Operation[] outOp = new Operation[1];
         Throwable[] outEx = new Throwable[1];

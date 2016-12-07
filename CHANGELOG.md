@@ -2,6 +2,8 @@
 
 ## 1.3.4-SNAPSHOT
 
+* Add builders for UserGroupState, RoleState, ResourceGroupState
+
 ## 1.3.3
 
 * Bug fixes in QueryFilter when matching null strings.
