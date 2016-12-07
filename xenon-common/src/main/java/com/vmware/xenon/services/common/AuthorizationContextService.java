@@ -429,8 +429,7 @@ public class AuthorizationContextService extends StatelessService {
                     QueryTask queryTaskResult = o.getBody(QueryTask.class);
                     ServiceDocumentQueryResult result = queryTaskResult.results;
                     if (result.documents == null || result.documents.isEmpty()) {
-                        // TODO(DCP-782): Add negative cache
-                        failForbidden(claims.getSubject());
+                        populateAuthorizationContext(ctx, claims, null);
                         return;
                     }
 
@@ -465,14 +464,27 @@ public class AuthorizationContextService extends StatelessService {
         }
 
         JoinedCompletionHandler handler = (ops, failures) -> {
+            Collection<Operation> resourceGroupOps = null;
             if (failures != null && !failures.isEmpty()) {
-                failThrowable(claims.getSubject(), failures.values().iterator().next());
-                return;
+                resourceGroupOps = new HashSet<>(ops.values());
+                for (Operation getOp : ops.values()) {
+                    if (getOp.getStatusCode() == Operation.STATUS_CODE_OK) {
+                        continue;
+                    } else if (getOp.getStatusCode() == Operation.STATUS_CODE_NOT_FOUND) {
+                        // ignore ops resulting in a 404 response code
+                        resourceGroupOps.remove(getOp);
+                        continue;
+                    }
+                    failThrowable(claims.getSubject(), failures.values().iterator().next());
+                    return;
+                }
+            } else {
+                resourceGroupOps = ops.values();
             }
 
             try {
                 // Add every resource group state to every role that references it
-                for (Operation op : ops.values()) {
+                for (Operation op : resourceGroupOps) {
                     ResourceGroupState resourceGroupState = op.getBody(ResourceGroupState.class);
                     Collection<Role> rolesForResourceGroup = rolesByResourceGroup
                             .get(resourceGroupState.documentSelfLink);
@@ -548,13 +560,15 @@ public class AuthorizationContextService extends StatelessService {
                         q.addBooleanClause(resourceGroupQuery);
                     }
 
-                    try {
-                        queryFilterByAction.put(entry.getKey(), QueryFilter.create(q));
-                        queryByAction.put(entry.getKey(), q);
-                    } catch (QueryFilterException qfe) {
-                        logWarning("Error creating query filter: %s", qfe.toString());
-                        failThrowable(claims.getSubject(), qfe);
-                        return;
+                    if (q.booleanClauses != null) {
+                        try {
+                            queryFilterByAction.put(entry.getKey(), QueryFilter.create(q));
+                            queryByAction.put(entry.getKey(), q);
+                        } catch (QueryFilterException qfe) {
+                            logWarning("Error creating query filter: %s", qfe.toString());
+                            failThrowable(claims.getSubject(), qfe);
+                            return;
+                        }
                     }
                 }
 
@@ -604,12 +618,6 @@ public class AuthorizationContextService extends StatelessService {
         }
         for (Operation op : getPendingOperations(subject)) {
             op.fail(e);
-        }
-    }
-
-    private void failForbidden(String subject) {
-        for (Operation op : getPendingOperations(subject)) {
-            op.fail(Operation.STATUS_CODE_FORBIDDEN);
         }
     }
 
