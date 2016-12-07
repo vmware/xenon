@@ -645,7 +645,7 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
 
         long now = Utils.getNowMicrosUtc();
         synchronized (this.cachedState) {
-            this.cachedState.nodeSelectorStatus = NodeSelectorState.Status.UNAVAILABLE;
+            this.cachedState.status = NodeSelectorState.Status.UNAVAILABLE;
             if (quorumUpdate != null) {
                 this.cachedState.documentUpdateTimeMicros = now;
                 this.cachedState.membershipQuorum = quorumUpdate.membershipQuorum;

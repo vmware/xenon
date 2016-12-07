@@ -2,6 +2,11 @@
 
 ## 1.3.4-SNAPSHOT
 
+* NodeSelectorStatus.nodeSelectorStatus has been renamed to status, so
+  it is consistent with NodeState.status. This is a in-memory infrastructure
+  service and the field was just added in 1.3.0, so this change should have
+  minimal side-effects
+
 * Change the contract for infrastructure method Utils.decodeBody(). It
   no longer calls operation complete or fail in the supplied operation. The
   method will now throw an exception on decoding error

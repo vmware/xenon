@@ -44,11 +44,11 @@ public class NodeSelectorState extends ServiceDocument {
 
     public static void updateStatus(ServiceHost host,
             NodeGroupState groupState, NodeSelectorState ns) {
-        ns.nodeSelectorStatus = calculateStatus(host, groupState);
+        ns.status = calculateStatus(host, groupState);
     }
 
     public static boolean isAvailable(NodeSelectorState ns) {
-        return AVAILABLE.contains(ns.nodeSelectorStatus);
+        return AVAILABLE.contains(ns.status);
     }
 
     public static boolean isAvailable(ServiceHost host, NodeGroupState groupState) {
@@ -59,5 +59,5 @@ public class NodeSelectorState extends ServiceDocument {
     public Long replicationFactor;
     public int membershipQuorum;
     public long membershipUpdateTimeMicros;
-    public Status nodeSelectorStatus;
+    public Status status;
 }
