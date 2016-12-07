@@ -406,6 +406,52 @@ public class TestNodeGroupService {
     }
 
     @Test
+    public void synchronizationServiceNotFoundOnNewOwner() throws Throwable {
+        this.isPeerSynchronizationEnabled = false;
+        setUp(this.nodeCount);
+
+        this.host.joinNodesAndVerifyConvergence(this.host.getPeerCount());
+        this.host.setNodeGroupQuorum(this.nodeCount);
+        this.host.waitForNodeGroupConvergence(this.nodeCount);
+
+        VerificationHost peer = this.host.getPeerHost();
+        List<URI> exampleUris = new ArrayList<>();
+        this.host.createExampleServices(peer, this.serviceCount, exampleUris, null);
+
+        List<ServiceHost> inMemoryHosts = new ArrayList<>();
+        this.host.getInProcessHostMap().values().forEach(h -> inMemoryHosts.add(h));
+
+        // Add a new host
+        this.host.testStart(1);
+        VerificationHost newHost = this.host.setUpLocalPeerHost(
+                0, peer.getMaintenanceIntervalMicros(), inMemoryHosts);
+        this.host.testWait();
+
+        List<URI> peerUris = new ArrayList<>();
+        peerUris.add(peer.getUri());
+        newHost.joinPeers(peerUris, ServiceUriPaths.DEFAULT_NODE_GROUP);
+        this.host.setNodeGroupQuorum(this.nodeCount + 1);
+        this.host.waitForNodeGroupConvergence(this.nodeCount + 1);
+
+        for (URI exampleUri : exampleUris) {
+            if (newHost.isOwner(exampleUri.getPath(), this.replicationNodeSelector)) {
+                TestContext ctx = this.host.testCreate(1);
+                ExampleServiceState state = new ExampleServiceState();
+                state.name = UUID.randomUUID().toString();
+                state.counter = 100L;
+                Operation patchOp = Operation
+                        .createPatch(exampleUri)
+                        .setBody(state)
+                        .setReferer(this.host.getUri())
+                        .setCompletion(ctx.getCompletion());
+                this.host.send(patchOp);
+                ctx.await();
+                break;
+            }
+        }
+    }
+
+    @Test
     public void synchronizationAfterStaleHostRestart() throws Throwable {
         // This test verifies that if a stale host joins
         // a node-group after restart and becomes OWNER for services
@@ -472,22 +518,6 @@ public class TestNodeGroupService {
         hosts[1].setPeerSynchronizationEnabled(false);
         assertTrue(VerificationHost.restartStatefulHost(hosts[1]));
         this.host.addPeerNode(hosts[1]);
-
-        // Verify services have not been started on the restarted host.
-        String svcLink = links.iterator().next();
-        TestContext getCtx = this.host.testCreate(1);
-        Operation getOp = Operation
-                .createGet(UriUtils.buildUri(hosts[1], svcLink))
-                .setReferer(this.host.getUri())
-                .setCompletion((o, e) -> {
-                    if (o.getStatusCode() == Operation.STATUS_CODE_NOT_FOUND) {
-                        getCtx.completeIteration();
-                        return;
-                    }
-                    getCtx.failIteration(new IllegalStateException("NOT_FOUND error was expected"));
-                });
-        this.host.sendRequest(getOp);
-        getCtx.await();
 
         // Join the nodes and wait for node-group convergence.
         this.host.joinNodesAndVerifyConvergence(this.nodeCount);

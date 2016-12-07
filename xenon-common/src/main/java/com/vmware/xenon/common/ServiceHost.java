@@ -102,6 +102,7 @@ import com.vmware.xenon.services.common.LocalQueryTaskFactoryService;
 import com.vmware.xenon.services.common.LuceneBlobIndexService;
 import com.vmware.xenon.services.common.LuceneDocumentIndexService;
 import com.vmware.xenon.services.common.NodeGroupFactoryService;
+import com.vmware.xenon.services.common.NodeGroupService;
 import com.vmware.xenon.services.common.NodeGroupService.JoinPeerRequest;
 import com.vmware.xenon.services.common.NodeGroupUtils;
 import com.vmware.xenon.services.common.ODataQueryService;
@@ -3569,6 +3570,7 @@ public class ServiceHost implements ServiceRequestSender {
         op.setStatusCode(Operation.STATUS_CODE_OK);
 
         String servicePath = path;
+        Service parentService = parent;
         CompletionHandler ch = (o, e) -> {
             if (e != null) {
                 log(Level.SEVERE, "Owner selection failed for service %s, op %d. Error: %s", op
@@ -3611,7 +3613,8 @@ public class ServiceHost implements ServiceRequestSender {
             Operation forwardOp = op.clone().setCompletion(fc);
             if (rsp.isLocalHostOwner) {
                 if (s == null) {
-                    queueOrFailRequestForServiceNotFoundOnOwner(servicePath, op);
+                    queueOrFailRequestForServiceNotFoundOnOwner(
+                            parentService, servicePath, op, rsp.availableNodeCount);
                     return;
                 }
                 queueOrScheduleRequest(s, forwardOp);
@@ -3645,18 +3648,74 @@ public class ServiceHost implements ServiceRequestSender {
         return true;
     }
 
-    private void queueOrFailRequestForServiceNotFoundOnOwner(String path, Operation op) {
+    private void queueOrFailRequestForServiceNotFoundOnOwner(
+            Service parent, String path, Operation op, int availableNodeCount) {
         if (this.serviceResourceTracker.checkAndResumeService(op)) {
             return;
         }
 
-        if (op.getAction() == Action.DELETE) {
-            // do not queue DELETE actions for services not present, complete with success
-            op.complete();
+        boolean synchService = availableNodeCount > 1 &&
+                parent != null &&
+                parent.hasOption(ServiceOption.FACTORY) &&
+                parent.hasOption(ServiceOption.REPLICATION) &&
+                op.getAction() != Action.POST &&
+                !op.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_QUEUE_FOR_SERVICE_AVAILABILITY);
+
+        if (!synchService) {
+            if (op.getAction() == Action.DELETE) {
+                // do not queue DELETE actions for services not present, complete with success
+                op.complete();
+                return;
+            }
+
+            checkPragmaAndRegisterForAvailability(path, op);
             return;
         }
 
-        checkPragmaAndRegisterForAvailability(path, op);
+        ServiceDocument synchState = new ServiceDocument();
+        synchState.documentSelfLink = UriUtils.getLastPathSegment(op.getUri());
+
+        Operation synchOp = Operation
+                .createPost(this, parent.getUri().getPath())
+                .setBody(synchState)
+                .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_SYNCH_OWNER)
+                .setReferer(this.getUri())
+                .setExpiration(Utils.fromNowMicrosUtc(NodeGroupService.PEER_REQUEST_TIMEOUT_MICROS))
+                .setCompletion((o, e) -> {
+                    if (e == null) {
+                        // Service was found on a remote peer and has been
+                        // synchronized successfully. We go ahead and retry
+                        // the original request now.
+                        this.handleRequest(null, op);
+                        return;
+                    }
+
+                    boolean markedDeleted = false;
+                    boolean notFound = o.getStatusCode() == Operation.STATUS_CODE_NOT_FOUND;
+
+                    if (o.getStatusCode() == Operation.STATUS_CODE_CONFLICT) {
+                        if (o.hasBody()) {
+                            ServiceErrorResponse error = o.getBody(ServiceErrorResponse.class);
+                            markedDeleted = error.getErrorCode() ==
+                                    ServiceErrorResponse.ERROR_CODE_STATE_MARKED_DELETED;
+                        }
+                    }
+
+                    if (notFound || markedDeleted) {
+                        if (op.getAction() == Action.DELETE) {
+                            // do not queue DELETE actions for services not present, complete with success
+                            op.complete();
+                            return;
+                        }
+
+                        this.failRequestServiceNotFound(op);
+                        return;
+                    }
+
+                    this.log(Level.SEVERE, "Failed to synch service not found on owner. Failure: %s", e);
+                    op.fail(e);
+                });
+        this.handleRequest(null, synchOp);
     }
 
     void checkPragmaAndRegisterForAvailability(String path, Operation op) {
