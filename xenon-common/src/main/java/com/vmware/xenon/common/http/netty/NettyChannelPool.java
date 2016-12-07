@@ -48,25 +48,48 @@ import com.vmware.xenon.common.Utils;
  */
 public class NettyChannelPool {
 
+    static ThreadLocal<NettyChannelGroupKey> lookupChannelKeyPerThread = new ThreadLocal<NettyChannelGroupKey>() {
+        @Override
+        public NettyChannelGroupKey initialValue() {
+            return new NettyChannelGroupKey();
+        }
+    };
+
+    static NettyChannelGroupKey buildLookupKey(String tag, String host, int port, boolean isHttp2) {
+        NettyChannelGroupKey key = lookupChannelKeyPerThread.get();
+        return key.set(tag, host, port, isHttp2);
+    }
+
     public static class NettyChannelGroupKey implements Comparable<NettyChannelGroupKey> {
-        private final String connectionTag;
-        private final String host;
-        private final int port;
+        private static final String NO_HOST = "";
+        private String connectionTag;
+        private String host;
+        private int port;
         private int hashcode;
 
-        public NettyChannelGroupKey(String tag, String host, int port, boolean isHttp2) {
+        public NettyChannelGroupKey() {
+
+        }
+
+        NettyChannelGroupKey(NettyChannelGroupKey other) {
+            this.connectionTag = other.connectionTag;
+            this.host = other.host;
+            this.port = other.port;
+        }
+
+        public NettyChannelGroupKey set(String tag, String host, int port, boolean isHttp2) {
             if (tag == null) {
                 tag = isHttp2 ? ServiceClient.CONNECTION_TAG_HTTP2_DEFAULT
                         : ServiceClient.CONNECTION_TAG_DEFAULT;
             }
             this.connectionTag = tag;
-            // a null host is not valid but we do URI validation elsewhere. If we are called with null host
-            // here it means we are trying to fail the operation that failed the validation, so use empty string
-            this.host = host == null ? "" : host;
+            this.host = host == null ? NO_HOST : host;
             if (port <= 0) {
                 port = UriUtils.HTTP_DEFAULT_PORT;
             }
             this.port = port;
+            this.hashcode = 0;
+            return this;
         }
 
         @Override
@@ -234,17 +257,18 @@ public class NettyChannelPool {
     }
 
     private NettyChannelGroup getChannelGroup(String tag, String host, int port) {
-        NettyChannelGroupKey key = new NettyChannelGroupKey(tag, host, port, this.isHttp2Only);
+        NettyChannelGroupKey key = buildLookupKey(tag, host, port, this.isHttp2Only);
         return getChannelGroup(key);
     }
 
-    private NettyChannelGroup getChannelGroup(NettyChannelGroupKey key) {
+    private NettyChannelGroup getChannelGroup(NettyChannelGroupKey threadLocalKey) {
         NettyChannelGroup group;
         synchronized (this.channelGroups) {
-            group = this.channelGroups.get(key);
+            group = this.channelGroups.get(threadLocalKey);
             if (group == null) {
-                group = new NettyChannelGroup(key);
-                this.channelGroups.put(key, group);
+                NettyChannelGroupKey clonedKey = new NettyChannelGroupKey(threadLocalKey);
+                group = new NettyChannelGroup(clonedKey);
+                this.channelGroups.put(clonedKey, group);
             }
         }
         return group;

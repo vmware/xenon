@@ -96,6 +96,7 @@ public abstract class FactoryService extends StatelessService {
     private String nodeSelectorLink = ServiceUriPaths.DEFAULT_NODE_SELECTOR;
     private int selfQueryResultLimit = SELF_QUERY_RESULT_LIMIT;
     private ServiceDocument childTemplate;
+    private URI uri;
 
     /**
      * Creates a default instance of a factory service that can create and start instances
@@ -796,6 +797,14 @@ public abstract class FactoryService extends StatelessService {
     @Override
     public void setPeerNodeSelectorPath(String link) {
         this.nodeSelectorLink = link;
+    }
+
+    @Override
+    public URI getUri() {
+        if (this.uri == null) {
+            this.uri = super.getUri();
+        }
+        return this.uri;
     }
 
     @Override

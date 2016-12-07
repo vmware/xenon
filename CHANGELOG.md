@@ -2,6 +2,10 @@
 
 ## 1.3.4-SNAPSHOT
 
+* Change the contract for infrastructure method Utils.decodeBody(). It
+  no longer calls operation complete or fail in the supplied operation. The
+  method will now throw an exception on decoding error
+
 ## 1.3.3
 
 * Bug fixes in QueryFilter when matching null strings.
