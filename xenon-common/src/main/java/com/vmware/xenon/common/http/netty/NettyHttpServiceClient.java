@@ -370,7 +370,7 @@ public class NettyHttpServiceClient implements ServiceClient {
             sendHttpRequest(op);
         });
 
-        NettyChannelGroupKey key = new NettyChannelGroupKey(
+        NettyChannelGroupKey key = NettyChannelPool.buildLookupKey(
                 op.getConnectionTag(), remoteHost, port, pool.isHttp2Only());
         pool.connectOrReuse(key, op);
     }

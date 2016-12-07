@@ -1673,7 +1673,11 @@ public class StatefulService implements Service {
             // hit due to the availability registration and instant completion
             op.setTargetReplicated(true);
         }
-        op.setReferer(UriUtils.buildUri(getHost().getPublicUri(), getSelfLink()));
+
+        // avoid URI allocation and parsing by using cached host URI string
+        StringBuilder sb = Utils.getBuilder();
+        sb.append(getHost().getPublicUriAsString()).append(getSelfLink());
+        op.setReferer(sb.toString());
     }
 
     /**

@@ -44,6 +44,28 @@ import org.objenesis.strategy.StdInstantiatorStrategy;
 import com.vmware.xenon.common.ServiceDocument;
 
 public final class KryoSerializers {
+
+    private static final ThreadLocal<Input> kryoInputPerThread = new ThreadLocal<Input>() {
+        @Override
+        public Input initialValue() {
+            return new Input();
+        }
+    };
+
+    private static final ThreadLocal<Output> kryoOutputPerThread = new ThreadLocal<Output>() {
+        @Override
+        public Output initialValue() {
+            return new Output();
+        }
+    };
+
+    private static final ThreadLocal<OutputWithRoot> kryoOutputWithRootPerThread = new ThreadLocal<OutputWithRoot>() {
+        @Override
+        public OutputWithRoot initialValue() {
+            return new OutputWithRoot();
+        }
+    };
+
     /**
      * Binary serialization thread local instances that track object references
      */
@@ -74,7 +96,7 @@ public final class KryoSerializers {
     private static ThreadLocal<Kryo> kryoForDocumentPerThreadCustom;
 
     public static final long THREAD_LOCAL_BUFFER_LIMIT_BYTES = 1024 * 1024;
-    private static final int OUTPUT_BUFFER_SIZE_BYTES = 4096;
+    private static final int DEFAULT_BUFFER_SIZE_BYTES = 4096;
     private static final BufferThreadLocal bufferPerThread = new BufferThreadLocal();
 
     public static Kryo create(boolean isObjectSerializer) {
@@ -212,7 +234,8 @@ public final class KryoSerializers {
      */
     public static Output serializeAsDocument(Object o, int maxSize) {
         Kryo k = getKryoThreadLocalForDocuments();
-        Output out = new Output(getBuffer(OUTPUT_BUFFER_SIZE_BYTES), maxSize);
+        Output out = kryoOutputPerThread.get();
+        out.setBuffer(getBuffer(DEFAULT_BUFFER_SIZE_BYTES), maxSize);
         k.writeClassAndObject(out, o);
         return out;
     }
@@ -223,8 +246,10 @@ public final class KryoSerializers {
      */
     public static Output serializeDocumentForIndexing(Object o, int maxSize) {
         Kryo k = getKryoThreadLocalForDocuments();
-        byte[] buffer = getBuffer(OUTPUT_BUFFER_SIZE_BYTES);
-        Output out = new OutputWithRoot(buffer, maxSize, o);
+        byte[] buffer = getBuffer(DEFAULT_BUFFER_SIZE_BYTES);
+        OutputWithRoot out = kryoOutputWithRootPerThread.get();
+        out.setBuffer(buffer, maxSize);
+        out.setRoot(o);
         k.writeClassAndObject(out, o);
         return out;
     }
@@ -236,7 +261,8 @@ public final class KryoSerializers {
      */
     public static int serializeObject(Object o, byte[] buffer, int position) {
         Kryo k = getKryoThreadLocalForObjects();
-        Output out = new Output(buffer);
+        Output out = kryoOutputPerThread.get();
+        out.setBuffer(buffer, buffer.length);
         out.setPosition(position);
         k.writeClassAndObject(out, o);
         return out.position();
@@ -247,7 +273,7 @@ public final class KryoSerializers {
      */
     public static ByteBuffer serializeObject(Object o, int maxSize) {
         Kryo k = getKryoThreadLocalForObjects();
-        Output out = new Output(OUTPUT_BUFFER_SIZE_BYTES, maxSize);
+        Output out = new Output(DEFAULT_BUFFER_SIZE_BYTES, maxSize);
         k.writeClassAndObject(out, o);
         return ByteBuffer.wrap(out.getBuffer(), 0, out.position());
     }
@@ -290,7 +316,8 @@ public final class KryoSerializers {
      */
     public static Object deserializeObject(byte[] bytes, int position, int length) {
         Kryo k = getKryoThreadLocalForObjects();
-        Input in = new Input(bytes, position, length);
+        Input in = kryoInputPerThread.get();
+        in.setBuffer(bytes, position, length);
         return k.readClassAndObject(in);
     }
 
@@ -300,7 +327,8 @@ public final class KryoSerializers {
      */
     public static Object deserializeDocument(byte[] bytes, int position, int length) {
         Kryo k = getKryoThreadLocalForDocuments();
-        Input in = new Input(bytes, position, length);
+        Input in = kryoInputPerThread.get();
+        in.setBuffer(bytes, position, length);
         return k.readClassAndObject(in);
     }
 

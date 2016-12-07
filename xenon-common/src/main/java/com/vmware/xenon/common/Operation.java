@@ -106,6 +106,7 @@ public class Operation implements Cloneable {
         Principal peerPrincipal;
         X509Certificate[] peerCertificateChain;
         String connectionTag;
+        Map<String, String> cookies;
     }
 
     /**
@@ -390,6 +391,7 @@ public class Operation implements Cloneable {
 
     // HTTP2 Header definitions
     public static final String STREAM_ID_HEADER = "x-http2-stream-id";
+    public static final String STREAM_WEIGHT_HEADER = "x-http2-stream-weight";
     public static final String HTTP2_SCHEME_HEADER = "x-http2-scheme";
 
     // Proprietary header definitions
@@ -576,7 +578,7 @@ public class Operation implements Cloneable {
     private URI uri;
     private Object referer;
     private final long id = idCounter.incrementAndGet();
-    private int statusCode = HttpURLConnection.HTTP_OK;
+    private int statusCode = Operation.STATUS_CODE_OK;
     private Action action;
     private ServiceDocument linkedState;
     private byte[] linkedSerializedState;
@@ -591,7 +593,6 @@ public class Operation implements Cloneable {
     private RemoteContext remoteCtx;
     private AuthorizationContext authorizationCtx;
     private InstrumentationContext instrumentationCtx;
-    private Map<String, String> cookies;
     private short retryCount;
     private short retriesRemaining;
 
@@ -728,12 +729,11 @@ public class Operation implements Cloneable {
         // body is always cloned on set, so no need to re-clone
         clone.options = EnumSet.copyOf(this.options);
 
-        if (this.cookies != null) {
-            clone.cookies = new HashMap<>(this.cookies);
-        }
-
         if (this.remoteCtx != null) {
             clone.remoteCtx = new RemoteContext();
+            if (this.remoteCtx.cookies != null) {
+                clone.remoteCtx.cookies = new HashMap<>(this.remoteCtx.cookies);
+            }
             // do not clone socket context
             clone.remoteCtx.socketCtx = null;
             if (this.remoteCtx.requestHeaders != null && !this.remoteCtx.requestHeaders.isEmpty()) {
@@ -924,11 +924,15 @@ public class Operation implements Cloneable {
     }
 
     public void setCookies(Map<String, String> cookies) {
-        this.cookies = cookies;
+        allocateRemoteContext();
+        this.remoteCtx.cookies = cookies;
     }
 
     public Map<String, String> getCookies() {
-        return this.cookies;
+        if (this.remoteCtx == null) {
+            return null;
+        }
+        return this.remoteCtx.cookies;
     }
 
     public int getRetriesRemaining() {
@@ -1581,6 +1585,16 @@ public class Operation implements Cloneable {
      */
     public String getResponseHeaderAsIs(String headerName) {
         return getResponseHeader(headerName, false);
+    }
+
+    /**
+     * Retrieves and removes header from response headers, skipping normalization
+     */
+    public String getAndRemoveResponseHeaderAsIs(String headerName) {
+        if (!hasResponseHeaders()) {
+            return null;
+        }
+        return this.remoteCtx.responseHeaders.remove(headerName);
     }
 
     private String getResponseHeader(String headerName, boolean normalize) {

@@ -16,6 +16,7 @@ package com.vmware.xenon.common.http.netty;
 import java.net.ProtocolException;
 import java.util.EnumSet;
 import java.util.Map.Entry;
+import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import io.netty.buffer.ByteBuf;
@@ -39,6 +40,8 @@ import com.vmware.xenon.common.Utils;
  * channel
  */
 public class NettyHttpServerResponseHandler extends SimpleChannelInboundHandler<HttpObject> {
+    public static final Logger LOGGER = Logger.getLogger(NettyHttpServerResponseHandler.class
+            .getName());
 
     private NettyChannelPool pool;
     private Logger logger = Logger.getLogger(getClass().getName());
@@ -109,7 +112,13 @@ public class NettyHttpServerResponseHandler extends SimpleChannelInboundHandler<
             return;
         }
 
+        if (LOGGER.isLoggable(Level.FINEST)) {
+            logResponseFraming(request, nettyResponse);
+        }
+
         request.setKeepAlive(HttpUtil.isKeepAlive(nettyResponse));
+        headers.remove(HttpHeaderNames.CONNECTION);
+
         if (HttpUtil.isContentLengthSet(nettyResponse)) {
             request.setContentLength(HttpUtil.getContentLength(nettyResponse));
             headers.remove(HttpHeaderNames.CONTENT_LENGTH);
@@ -119,6 +128,15 @@ public class NettyHttpServerResponseHandler extends SimpleChannelInboundHandler<
         headers.remove(HttpHeaderNames.CONTENT_TYPE);
         if (contentType != null) {
             request.setContentType(contentType);
+        }
+
+        if (request.isConnectionSharing()) {
+            headers.remove(HttpConversionUtil.ExtensionHeaderNames.STREAM_WEIGHT.text());
+            headers.remove(HttpConversionUtil.ExtensionHeaderNames.STREAM_ID.text());
+        }
+
+        if (headers.isEmpty()) {
+            return;
         }
 
         for (Entry<String, String> h : headers) {
@@ -149,18 +167,16 @@ public class NettyHttpServerResponseHandler extends SimpleChannelInboundHandler<
             return;
         }
 
-        request.nestCompletion((o, e) -> {
-            if (e != null) {
-                request.fail(e);
-                return;
-            }
+        try {
+            Utils.decodeBody(request, content.nioBuffer(), false);
             if (checkResponseForError(request)) {
                 return;
             }
             completeRequest(request);
-        });
-
-        Utils.decodeBody(request, content.nioBuffer());
+        } catch (Throwable e) {
+            request.fail(e);
+            return;
+        }
     }
 
     private void completeRequest(Operation request) {
@@ -222,4 +238,18 @@ public class NettyHttpServerResponseHandler extends SimpleChannelInboundHandler<
         return true;
     }
 
+    public static void logResponseFraming(Operation op, HttpResponse response) {
+        if (response.headers().isEmpty()) {
+            return;
+        }
+        StringBuilder s = new StringBuilder();
+        s.append(op.getAction().toString())
+                .append(" ")
+                .append(op.getUri().toString())
+                .append("\n");
+        response.headers().forEach((e) -> {
+            s.append(e.toString()).append("\n");
+        });
+        LOGGER.info(s.toString());
+    }
 }
