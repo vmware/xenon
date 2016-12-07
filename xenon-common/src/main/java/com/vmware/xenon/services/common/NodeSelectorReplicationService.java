@@ -49,6 +49,8 @@ public class NodeSelectorReplicationService extends StatelessService {
     private Map<URI, String> locationPerNodeURI;
     private long peerTimeoutMicros;
 
+    private String nodeGroupLink;
+
     public NodeSelectorReplicationService(Service parent) {
         this.parent = parent;
         super.setHost(parent.getHost());
@@ -94,6 +96,7 @@ public class NodeSelectorReplicationService extends StatelessService {
         String location = getHost().getLocation();
         NodeSelectorReplicationContext context = new NodeSelectorReplicationContext(
                 location, selectedNodes, outboundOp);
+        context.locationThreshold = selfNode.locationQuorum;
 
         // success threshold is determined based on the following precedence:
         // 1. request replication quorum header (if exists)
@@ -132,8 +135,10 @@ public class NodeSelectorReplicationService extends StatelessService {
                 context.failureThreshold = (eligibleMemberCount - context.successThreshold) + 1;
             } else {
                 int localNodeCount = getNodeCountInLocation(location, selectedNodes);
-                context.successThreshold = Math.min(localNodeCount, selfNode.membershipQuorum);
-                context.failureThreshold = (localNodeCount - context.successThreshold) + 1;
+                if (selfNode.locationQuorum == 1) {
+                    context.successThreshold = Math.min(localNodeCount, selfNode.membershipQuorum);
+                    context.failureThreshold = (localNodeCount - context.successThreshold) + 1;
+                }
             }
             replicateUpdateToNodes(context);
             return;
@@ -162,33 +167,25 @@ public class NodeSelectorReplicationService extends StatelessService {
         int intCount = (int) nodes.stream()
                 .filter(ns -> Objects.equals(location,
                         ns.customProperties.get(NodeState.PROPERTY_NAME_LOCATION)))
-                .peek(ns -> this.locationPerNodeURI.put(UriUtils.buildServiceUri(
-                        ns.groupReference.getScheme(),
-                        ns.groupReference.getHost(), ns.groupReference.getPort(),
-                        null, null, null),
-                        location))
+                .peek(ns -> this.locationPerNodeURI.put(ns.groupReference, location))
                 .count();
         this.nodeCountPerLocation.put(location, Integer.valueOf(intCount));
         return intCount;
     }
 
-    /**
-     * Returns true if the specified response is from one of the specified nodes
-     * in the specified location
-     */
-    private boolean isResponseFromLocation(Operation remotePeerResponse, String location,
-            Collection<NodeState> nodes) {
-        if (remotePeerResponse == null) {
-            return true;
-        }
+    private void updateLocation(NodeState node) {
+        this.nodeGroupLink = node.groupReference.getPath();
+        this.locationPerNodeURI.computeIfAbsent(node.groupReference,
+                (u) -> node.customProperties.get(NodeState.PROPERTY_NAME_LOCATION));
+    }
 
+    private String getLocation(Operation remotePeerResponse) {
         URI remotePeerService = remotePeerResponse.getUri();
         URI remoteNodeUri = UriUtils.buildServiceUri(remotePeerService.getScheme(),
                 remotePeerService.getHost(),
-                remotePeerService.getPort(), null, null, null);
+                remotePeerService.getPort(), this.nodeGroupLink, null, null);
 
-        String remoteNodeLocation = this.locationPerNodeURI.get(remoteNodeUri);
-        return location.equals(remoteNodeLocation);
+        return this.locationPerNodeURI.get(remoteNodeUri);
     }
 
     private void replicateUpdateToNodes(NodeSelectorReplicationContext context) {
@@ -209,6 +206,10 @@ public class NodeSelectorReplicationService extends StatelessService {
 
             URI updateUri = createReplicaUri(m.groupReference, context.parentOp);
             update.setUri(updateUri);
+
+            if (context.location != null) {
+                updateLocation(m);
+            }
 
             if (NodeState.isUnAvailable(m)) {
                 int originalStatusCode = update.getStatusCode();
@@ -270,11 +271,18 @@ public class NodeSelectorReplicationService extends StatelessService {
 
     private void handleReplicationCompletion(
             NodeSelectorReplicationContext context, Operation o, Throwable e) {
-        // if location is set we require success from nodes in the same location;
-        // all other responses are ignored for success calculation purposes
-        if (context.location != null &&
-                !isResponseFromLocation(o, context.location, context.nodes)) {
-            return;
+        String remoteLocation = context.location;
+        if (context.location != null) {
+            if (o != null) {
+                remoteLocation = getLocation(o);
+            }
+            // if location is set and locationQuorum == 1 we require completion
+            // from nodes in the same location. All other responses are ignored
+            if (context.locationThreshold == 1
+                    && !context.location.equals(remoteLocation)) {
+                return;
+            }
+            // locationQuorum is greater than one, so proceed with regular completion processing
         }
 
         if (e == null && o != null
@@ -286,7 +294,7 @@ public class NodeSelectorReplicationService extends StatelessService {
             return;
         }
 
-        context.checkAndCompleteOperation(getHost(), e, o);
+        context.checkAndCompleteOperation(getHost(), e, o, remoteLocation);
     }
 
     private boolean handleServiceNotFoundOnReplica(NodeSelectorReplicationContext context, Operation o) {

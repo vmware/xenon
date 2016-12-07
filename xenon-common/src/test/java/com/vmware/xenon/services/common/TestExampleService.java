@@ -361,8 +361,8 @@ public class TestExampleService {
         // check current quorum is 3
         verifyCurrentQuorum(groupA, 3);
 
-        // relax quorum to 2
-        groupA.updateQuorum(2);
+        // relax quorum to 2, location quorum stays at 1
+        groupA.updateQuorum(2, 1);
 
         // internally updateQuorum() checks the new quorum value, so this check is not required but
         // just for demo purpose.

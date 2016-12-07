@@ -378,6 +378,7 @@ public class TestNodeGroupService {
 
     @After
     public void tearDown() throws InterruptedException {
+        this.expectFailure = false;
         Utils.registerKind(ExampleServiceState.class,
                 Utils.toDocumentKind(ExampleServiceState.class));
         if (this.host == null) {
@@ -1584,6 +1585,68 @@ public class TestNodeGroupService {
                 this.exampleStateUpdateBodySetter,
                 this.exampleStateConvergenceChecker,
                 childStates);
+    }
+
+    @Test
+    public void replicationWithLocationQuorum() throws Throwable {
+        for (int i = 0; i < this.iterationCount; i++) {
+            this.tearDown();
+            this.setUp();
+            doReplicationWithLocationQuorum();
+            this.host.log("Done with iteration %d", i);
+        }
+    }
+
+    private void doReplicationWithLocationQuorum() throws Throwable {
+        this.isPeerSynchronizationEnabled = true;
+        this.isMultiLocationTest = true;
+
+        if (this.host == null) {
+            // create node group, join nodes. The setup code will create
+            // two location tags and assign half the nodes in each location
+            setUp(this.nodeCount);
+            this.host.joinNodesAndVerifyConvergence(this.nodeCount);
+
+            // set location quorum to 2, and verify requests succeed. This should only happen
+            // when we receive responses from nodes across two locations
+            this.host.setNodeGroupQuorum(this.nodeCount, 2);
+        }
+
+        this.host.waitForReplicatedFactoryServiceAvailable(
+                this.host.getPeerServiceUri(this.replicationTargetFactoryLink));
+
+        // create some documents
+        Map<String, ExampleServiceState> childStates = doExampleFactoryPostReplicationTest(
+                this.serviceCount, null, null);
+        updateExampleServiceOptions(childStates);
+
+        // do some updates
+        int expectedVersion = this.updateCount;
+        childStates = doStateUpdateReplicationTest(Action.PATCH, this.serviceCount,
+                this.updateCount,
+                expectedVersion,
+                this.exampleStateUpdateBodySetter,
+                this.exampleStateConvergenceChecker,
+                childStates);
+
+        // set location quorum to 3, which is more than available locations. We now
+        // expect requests to timeout, so set timeout to something short
+        this.host.setNodeGroupQuorum(this.nodeCount, 3);
+
+        this.host.setOperationTimeOutMicros(TimeUnit.MILLISECONDS.toMicros(100));
+        for (VerificationHost peer : this.host.getInProcessHostMap().values()) {
+            peer.setOperationTimeOutMicros(TimeUnit.MILLISECONDS.toMicros(100));
+        }
+
+        this.expectFailure = true;
+        this.host.toggleNegativeTestMode(true);
+        doStateUpdateReplicationTest(Action.PATCH, this.serviceCount,
+                1,
+                expectedVersion,
+                this.exampleStateUpdateBodySetter,
+                this.exampleStateConvergenceChecker,
+                childStates);
+        this.host.toggleNegativeTestMode(false);
     }
 
     /**
