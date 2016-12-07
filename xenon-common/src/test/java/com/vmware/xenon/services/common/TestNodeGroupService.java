@@ -1494,11 +1494,13 @@ public class TestNodeGroupService {
     public void replicationWithQuorumAfterAbruptNodeStopOnDemandLoad() throws Throwable {
         tearDown();
         for (int i = 0; i < this.testIterationCount; i++) {
-
+            this.host.log("Setting up node-group with ODL ExampleService Factory");
             setUpOnDemandLoad();
 
+            this.host.log("Running replication test with abrupt node stop");
             int hostStopCount = 2;
             doReplicationWithQuorumAfterAbruptNodeStop(hostStopCount);
+
             this.host.log("Done with iteration %d", i);
             tearDown();
             this.host = null;
@@ -4175,6 +4177,9 @@ public class TestNodeGroupService {
                                                     testContext.complete();
                                                     return;
                                                 }
+                                                this.host.log(Level.SEVERE,
+                                                        "PATCH failed for service %s with status code %d",
+                                                        o.getUri().getPath(), o.getStatusCode());
                                                 testContext.fail(e);
                                                 return;
                                             }

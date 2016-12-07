@@ -888,6 +888,8 @@ class ServiceResourceTracker {
 
                     // there is a possibility the user requests we queue and wait for service to show up
                     if (response.statusCode == Operation.STATUS_CODE_NOT_FOUND) {
+                        this.host.log(Level.WARNING,
+                                "Failed to start service on demand %s", finalServicePath);
                         this.host.checkPragmaAndRegisterForAvailability(finalServicePath,
                                 inboundOp);
                         return;
