@@ -14,7 +14,6 @@
 package com.vmware.xenon.common;
 
 import java.net.URI;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
@@ -264,7 +263,7 @@ public class TestSubscriptions extends BasicTestCase {
     }
 
     @Test
-    public void testSubscriptionsWithAuth() throws Throwable {
+    public void subscriptionsWithAuth() throws Throwable {
         VerificationHost hostWithAuth = null;
         try {
             String testUserEmail = "foo@vmware.com";
@@ -272,7 +271,7 @@ public class TestSubscriptions extends BasicTestCase {
             hostWithAuth.setAuthorizationEnabled(true);
             hostWithAuth.start();
             hostWithAuth.setSystemAuthorizationContext();
-            TestContext waitContext = new TestContext(1, Duration.ofSeconds(5));
+            TestContext waitContext = hostWithAuth.testCreate(1);
             AuthorizationSetupHelper.create()
                     .setHost(hostWithAuth)
                     .setDocumentKind(Utils.buildKind(MinimalTestServiceState.class))
@@ -288,7 +287,7 @@ public class TestSubscriptions extends BasicTestCase {
             MinimalTestServiceState serviceState = new MinimalTestServiceState();
             serviceState.id = UUID.randomUUID().toString();
             String minimalServiceUUID = UUID.randomUUID().toString();
-            TestContext notifyContext = new TestContext(1, Duration.ofSeconds(5));
+            TestContext notifyContext = hostWithAuth.testCreate(1);
             hostWithAuth.startServiceAndWait(s, minimalServiceUUID, serviceState);
 
             Consumer<Operation> notifyC = (nOp) -> {
