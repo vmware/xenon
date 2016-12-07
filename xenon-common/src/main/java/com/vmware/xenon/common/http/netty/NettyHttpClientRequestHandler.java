@@ -108,20 +108,11 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
             // Start of request processing, initialize in-bound operation
             FullHttpRequest nettyRequest = (FullHttpRequest) msg;
             long expMicros = Utils.fromNowMicrosUtc(this.host.getOperationTimeoutMicros());
-            URI targetUri = new URI(nettyRequest.uri()).normalize();
+
             request = Operation.createGet(null);
             request.setAction(Action.valueOf(nettyRequest.method().toString()))
                     .setExpiration(expMicros)
                     .forceRemote();
-
-            String query = targetUri.getQuery();
-            if (query != null && !query.isEmpty()) {
-                query = QueryStringDecoder.decodeComponent(targetUri.getQuery());
-            }
-
-            URI uri = new URI(UriUtils.HTTP_SCHEME, targetUri.getUserInfo(), ServiceHost.LOCAL_HOST,
-                    this.host.getPort(), targetUri.getPath(), query, null);
-            request.setUri(uri);
 
             // The streamId will be null for HTTP/1.1 connections, and valid for HTTP/2 connections
             streamId = nettyRequest.headers().getInt(
@@ -142,6 +133,8 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
 
             parseRequestHeaders(ctx, request, nettyRequest);
 
+            parseRequestUri(request, nettyRequest);
+
             decodeRequestBody(ctx, request, nettyRequest.content(), streamId);
         } catch (Throwable e) {
             this.host.log(Level.SEVERE, "Uncaught exception: %s", Utils.toString(e));
@@ -158,8 +151,35 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
         }
     }
 
+    private void parseRequestUri(Operation request, FullHttpRequest nettyRequest)
+            throws URISyntaxException {
+        URI targetUri = new URI(nettyRequest.uri());
+        String decodedQuery = null;
+
+        if (!request.isForwarded() && !request.isFromReplication()) {
+            // do conservative parsing, normalization and decoding for non peer requests
+            targetUri = targetUri.normalize();
+            decodedQuery = targetUri.getQuery();
+            if (decodedQuery != null && !decodedQuery.isEmpty()) {
+                decodedQuery = QueryStringDecoder.decodeComponent(targetUri.getQuery());
+            }
+        }
+
+        String query = decodedQuery == null ? targetUri.getRawQuery() : decodedQuery;
+        URI uri = new URI(UriUtils.HTTP_SCHEME, targetUri.getUserInfo(),
+                ServiceHost.LOCAL_HOST,
+                this.host.getPort(), targetUri.getPath(), query, targetUri.getFragment());
+        request.setUri(uri);
+
+        if (!request.hasReferer() && request.isFromReplication()) {
+            // we assume referrer is the same service, but from the remote node. Do not
+            // bother with rewriting the URI with the remote host, at avoid allocations
+            request.setReferer(request.getUri());
+        }
+    }
+
     private void decodeRequestBody(ChannelHandlerContext ctx, Operation request,
-            ByteBuf content, Integer streamId) {
+            ByteBuf content, Integer streamId) throws Exception {
         if (!content.isReadable()) {
             // skip body decode, request had no body
             request.setContentLength(0);
@@ -167,18 +187,8 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
             return;
         }
 
-        request.nestCompletion((o, e) -> {
-            if (e != null) {
-                request.setStatusCode(Operation.STATUS_CODE_BAD_REQUEST);
-                request.setBody(ServiceErrorResponse.create(e, request.getStatusCode()));
-                sendResponse(ctx, request, streamId);
-                return;
-            }
-
-            submitRequest(ctx, request, streamId);
-        });
-
-        Utils.decodeBody(request, content.nioBuffer());
+        Utils.decodeBody(request, content.nioBuffer(), true);
+        submitRequest(ctx, request, streamId);
     }
 
     private void parseRequestHeaders(ChannelHandlerContext ctx, Operation request,
@@ -252,12 +262,6 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
 
         if (host != null) {
             request.addRequestHeader(Operation.HOST_HEADER, host);
-        }
-
-        if (!request.hasReferer() && request.isFromReplication()) {
-            // we assume referrer is the same service, but from the remote node. Do not
-            // bother with rewriting the URI with the remote host, at avoid allocations
-            request.setReferer(request.getUri());
         }
 
         if (this.sslHandler == null) {
@@ -357,6 +361,10 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
             response.headers().setInt(HttpConversionUtil.ExtensionHeaderNames.STREAM_ID.text(),
                     streamId);
         }
+
+        // remove optional HTTP/2 stream weight header, all our streams are equal
+        request.getAndRemoveResponseHeaderAsIs(Operation.STREAM_WEIGHT_HEADER);
+
         response.headers().set(HttpHeaderNames.CONTENT_TYPE,
                 request.getContentType());
         response.headers().setInt(HttpHeaderNames.CONTENT_LENGTH,
