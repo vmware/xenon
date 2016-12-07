@@ -193,7 +193,13 @@ public class TestNodeGroupManager {
      * Method will wait until all requests return successful responses
      */
     public TestNodeGroupManager updateQuorum(int quorum) {
+        return updateQuorum(quorum, null);
+    }
 
+    /**
+     * See {@link #updateQuorum(int)}
+     */
+    public TestNodeGroupManager updateQuorum(int quorum, Integer locationQuorum) {
         TestRequestSender sender = getTestRequestSender();
 
         List<Operation> ops = this.hosts.stream()
@@ -201,6 +207,9 @@ public class TestNodeGroupManager {
                     String nodeGroupPath = getNodeGroupPath();
                     UpdateQuorumRequest body = UpdateQuorumRequest.create(false);
                     body.setMembershipQuorum(quorum);
+                    if (locationQuorum != null) {
+                        body.setLocationQuorum(locationQuorum);
+                    }
                     return Operation.createPatch(host, nodeGroupPath).setBodyNoCloning(body);
                 })
                 .collect(toList());
@@ -216,7 +225,25 @@ public class TestNodeGroupManager {
                     .distinct()
                     .collect(toSet());
 
-            return quorums.size() == 1 && quorums.contains(quorum);
+            if (quorums.size() != 1 || !quorums.contains(quorum)) {
+                return false;
+            }
+
+            if (locationQuorum == null) {
+                return true;
+            }
+
+            Set<Integer> locationQuorums = nodeGroupStates.stream()
+                    .flatMap(state -> state.nodes.values().stream())
+                    .map(nodeState -> nodeState.locationQuorum)
+                    .distinct()
+                    .collect(toSet());
+
+            if (locationQuorums.size() != 1 || !locationQuorums.contains(locationQuorum)) {
+                return false;
+            }
+
+            return true;
         }, () -> "Failed to set quorum to = " + quorum);
 
         return this;

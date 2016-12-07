@@ -1586,6 +1586,41 @@ public class TestNodeGroupService {
                 childStates);
     }
 
+    @Test
+    public void replicationWithLocationQuorum()
+            throws Throwable {
+        this.isPeerSynchronizationEnabled = true;
+        this.isMultiLocationTest = true;
+
+        if (this.host == null) {
+            // create node group, join nodes. The setup code will create
+            // two location tags and assign half the nodes in each location
+            setUp(this.nodeCount);
+            this.host.joinNodesAndVerifyConvergence(this.nodeCount);
+
+            // set location quorum to 2, and verify requests succeed. This should only happen
+            // when we receive responses from nodes across two locations
+            this.host.setNodeGroupQuorum(this.nodeCount, 2);
+        }
+
+        this.host.waitForReplicatedFactoryServiceAvailable(
+                this.host.getPeerServiceUri(this.replicationTargetFactoryLink));
+
+        // create some documents
+        Map<String, ExampleServiceState> childStates = doExampleFactoryPostReplicationTest(
+                this.serviceCount, null, null);
+        updateExampleServiceOptions(childStates);
+
+        // do some updates
+        int expectedVersion = this.updateCount;
+        childStates = doStateUpdateReplicationTest(Action.PATCH, this.serviceCount,
+                this.updateCount,
+                expectedVersion,
+                this.exampleStateUpdateBodySetter,
+                this.exampleStateConvergenceChecker,
+                childStates);
+    }
+
     /**
      * This test validates that if a host, joined in a peer node group, stops/fails and another
      * host, listening on the same address:port, rejoins, the existing peer members will mark the

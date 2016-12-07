@@ -639,7 +639,7 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
                         isAvailable,
                         ngs.membershipUpdateTimeMicros, ngs.localMembershipUpdateTimeMicros);
             }
-        } else {
+        } else if (quorumUpdate.membershipQuorum != null) {
             logInfo("Quorum update: %d", quorumUpdate.membershipQuorum);
         }
 
@@ -648,10 +648,18 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
             this.cachedState.status = NodeSelectorState.Status.UNAVAILABLE;
             if (quorumUpdate != null) {
                 this.cachedState.documentUpdateTimeMicros = now;
-                this.cachedState.membershipQuorum = quorumUpdate.membershipQuorum;
+                if (quorumUpdate.membershipQuorum != null) {
+                    this.cachedState.membershipQuorum = quorumUpdate.membershipQuorum;
+                }
                 if (this.cachedGroupState != null) {
-                    this.cachedGroupState.nodes.get(
-                            getHost().getId()).membershipQuorum = quorumUpdate.membershipQuorum;
+                    if (quorumUpdate.membershipQuorum != null) {
+                        this.cachedGroupState.nodes.get(
+                                getHost().getId()).membershipQuorum = quorumUpdate.membershipQuorum;
+                    }
+                    if (quorumUpdate.locationQuorum != null) {
+                        this.cachedGroupState.nodes.get(
+                                getHost().getId()).locationQuorum = quorumUpdate.locationQuorum;
+                    }
                 }
                 return;
             }

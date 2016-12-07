@@ -16,7 +16,9 @@ package com.vmware.xenon.services.common;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.EnumSet;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.logging.Level;
 
 import com.vmware.xenon.common.Operation;
@@ -37,9 +39,11 @@ public class NodeSelectorReplicationContext {
     Operation parentOp;
     int successThreshold;
     int failureThreshold;
+    int locationThreshold;
     long startTimeMicros;
     private int successCount;
     private int failureCount;
+    private Set<String> locations;
     private int failureStatus;
     private List<Integer> failureErrorCodes;
     private Status completionStatus = Status.PENDING;
@@ -48,7 +52,8 @@ public class NodeSelectorReplicationContext {
         SUCCEEDED, FAILED, PENDING
     }
 
-    public void checkAndCompleteOperation(ServiceHost h, Throwable e, Operation o) {
+    public void checkAndCompleteOperation(ServiceHost h, Throwable e, Operation o,
+            String remoteLocation) {
         Status ct;
         String failureMsg = null;
         Operation op = this.parentOp;
@@ -66,9 +71,11 @@ public class NodeSelectorReplicationContext {
 
         synchronized (this) {
             this.saveErrorCode(errorCode);
+
             if (this.completionStatus != Status.PENDING) {
                 return;
             }
+
             if (e == null && ++this.successCount == this.successThreshold) {
                 this.completionStatus = Status.SUCCEEDED;
             } else if (e != null && ++this.failureCount == this.failureThreshold) {
@@ -84,6 +91,24 @@ public class NodeSelectorReplicationContext {
                                 this.successThreshold,
                                 this.failureThreshold);
             }
+
+            if (remoteLocation != null) {
+                if (this.locations == null) {
+                    this.locations = new HashSet<>();
+                }
+                this.locations.add(remoteLocation);
+
+                // enforce additional constraint when location awareness is required:
+                // Requests must come from at least locationQuorum worth of locations
+                if (this.successCount >= this.successThreshold) {
+                    if (this.locations.size() < this.locationThreshold) {
+                        this.completionStatus = Status.PENDING;
+                    } else {
+                        this.completionStatus = Status.SUCCEEDED;
+                    }
+                }
+            }
+
             ct = this.completionStatus;
         }
 
