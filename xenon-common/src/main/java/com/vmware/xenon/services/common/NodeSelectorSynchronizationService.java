@@ -247,6 +247,8 @@ public class NodeSelectorSynchronizationService extends StatelessService {
             // Note, documentVersion is set to -1 by the owner in
             // ServiceSynchronizationTracker to indicate that the owner does not have
             // a document for the self-link.
+            this.logWarning("Synch failed to find any documents for self-link %s",
+                    request.state.documentSelfLink);
             post.fail(Operation.STATUS_CODE_NOT_FOUND);
             return;
         }
