@@ -1323,9 +1323,9 @@ public class StatefulService implements Service {
     }
 
     private void handleSynchronizeWithPeersCompletion(Operation request, Throwable failure,
-            boolean wasOwner, Operation o, Throwable e) {
+            boolean wasOwner, Operation synchRsp, Throwable e) {
         if (e != null) {
-            failRequest(request, e, true);
+            handleSynchFailure(request, synchRsp, e);
             return;
         }
 
@@ -1333,7 +1333,7 @@ public class StatefulService implements Service {
         boolean isStateUpdated = false;
 
         // update and index using latest state from peers
-        ServiceDocument state = (ServiceDocument) o.getBodyRaw();
+        ServiceDocument state = (ServiceDocument) synchRsp.getBodyRaw();
         if (state != null) {
             if (hasOption(ServiceOption.DOCUMENT_OWNER)) {
                 state.documentOwner = getHost().getId();
@@ -1369,6 +1369,37 @@ public class StatefulService implements Service {
         if (wasOwner) {
             return;
         }
+    }
+
+    private void handleSynchFailure(Operation request, Operation synchRsp, Throwable e) {
+        boolean isMarkedDeleted = false;
+        if (synchRsp.getStatusCode() == Operation.STATUS_CODE_CONFLICT && synchRsp.hasBody()) {
+            ServiceErrorResponse rsp = synchRsp.getBody(ServiceErrorResponse.class);
+            isMarkedDeleted = rsp != null && rsp.getErrorCode() ==
+                    ServiceErrorResponse.ERROR_CODE_STATE_MARKED_DELETED;
+        }
+
+        // If the synch failure was caused because this service is marked
+        // deleted on a peer node (with a newer version), then stop this
+        // service (on the owner node).
+        if (isMarkedDeleted) {
+            logWarning("On-demand synch failed because more recent version of service" +
+                    "is deleted on peer node. Stopping service on owner ...");
+            Operation stopOp = Operation
+                    .createDelete(null)
+                    .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_NO_INDEX_UPDATE)
+                    .setCompletion((o, innerEx) -> {
+                        if (innerEx != null) {
+                            logSevere("Failed to stop service. Failure %s", innerEx.toString());
+                        }
+                        failRequest(request, e, false);
+                    });
+            handleStopCompletion(stopOp);
+            return;
+        }
+
+        failRequest(request, e, true);
+        return;
     }
 
     private void completeSynchronizationRequest(Operation request, Throwable failure,
