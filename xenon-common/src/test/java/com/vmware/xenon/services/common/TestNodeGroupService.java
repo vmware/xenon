@@ -2397,8 +2397,8 @@ public class TestNodeGroupService {
                                 // pick a peer OTHER than the assigned owner, to guarantee forwarding
                                 URI nonOwner = null;
                                 for (URI u : this.host.getNodeGroupMap().keySet()) {
-                                    if (u.getHost().equals(rsp.ownerNodeGroupReference.getHost())
-                                            && u.getPort() != rsp.ownerNodeGroupReference
+                                    if (!u.getHost().equals(rsp.ownerNodeGroupReference.getHost())
+                                            || u.getPort() != rsp.ownerNodeGroupReference
                                                     .getPort()) {
                                         nonOwner = u;
                                         break;
