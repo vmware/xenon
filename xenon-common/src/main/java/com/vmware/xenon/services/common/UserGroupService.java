@@ -60,6 +60,32 @@ public class UserGroupService extends StatefulService {
      */
     public static class UserGroupState extends ServiceDocument {
         public Query query;
+
+        public static class Builder {
+            private UserGroupService.UserGroupState userGroupState;
+
+            private Builder() {
+                this.userGroupState = new UserGroupState();
+            }
+
+            public static Builder create() {
+                return  new Builder();
+            }
+
+            public Builder withQuery(QueryTask.Query query) {
+                this.userGroupState.query = query;
+                return this;
+            }
+
+            public Builder withSelfLink(String userGroupSelfLink) {
+                this.userGroupState.documentSelfLink = userGroupSelfLink;
+                return this;
+            }
+
+            public UserGroupService.UserGroupState build() {
+                return this.userGroupState;
+            }
+        }
     }
 
     public UserGroupService() {

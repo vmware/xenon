@@ -2868,8 +2868,9 @@ public class TestNodeGroupService {
         Query updateResourceGroupQuery = Builder.create()
                 .addFieldClause(ExampleServiceState.FIELD_NAME_NAME, "bar")
                 .build();
-        ResourceGroupState resourceGroupState = new ResourceGroupState();
-        resourceGroupState.query = updateResourceGroupQuery;
+        ResourceGroupState resourceGroupState = ResourceGroupState.Builder.create()
+                .withQuery(updateResourceGroupQuery)
+                .build();
         this.host.sendAndWaitExpectSuccess(
                 Operation.createPut(UriUtils.buildUri(groupHost, newResourceGroupLink))
                         .setBody(resourceGroupState));

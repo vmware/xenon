@@ -55,6 +55,32 @@ public class ResourceGroupService extends StatefulService {
          * of documents you want a user to have access to.
          */
         public Query query;
+
+        public static class Builder {
+            private ResourceGroupService.ResourceGroupState resourceGroupState;
+
+            private Builder() {
+                this.resourceGroupState = new ResourceGroupState();
+            }
+
+            public static Builder create() {
+                return  new Builder();
+            }
+
+            public Builder withQuery(QueryTask.Query query) {
+                this.resourceGroupState.query = query;
+                return this;
+            }
+
+            public Builder withSelfLink(String userGroupSelfLink) {
+                this.resourceGroupState.documentSelfLink = userGroupSelfLink;
+                return this;
+            }
+
+            public ResourceGroupService.ResourceGroupState build() {
+                return this.resourceGroupState;
+            }
+        }
     }
 
     public ResourceGroupService() {
