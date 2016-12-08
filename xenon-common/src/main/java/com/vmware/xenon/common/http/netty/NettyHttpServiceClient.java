@@ -550,11 +550,14 @@ public class NettyHttpServiceClient implements ServiceClient {
          * We first check for a specific char at a index in the string, then the hash code to nearly
          * eliminate the false positives from hash code alone.
          */
-        if (contentType.charAt(12) == 'k'
+        int applicationTypeStartIndex = 12;
+        if (contentType.length() >= applicationTypeStartIndex
+                && contentType.charAt(applicationTypeStartIndex) == 'k'
                 && Operation.MEDIA_TYPE_APPLICATION_KRYO_OCTET_STREAM.hashCode() == contentType
                         .hashCode()) {
             httpHeaders.add(HttpHeaderNames.CONTENT_TYPE, MEDIA_TYPE_KRYO_OCTET_STREAM_ASCII);
-        } else if (contentType.charAt(12) == 'j'
+        } else if (contentType.length() >= applicationTypeStartIndex
+                && contentType.charAt(applicationTypeStartIndex) == 'j'
                 && Operation.MEDIA_TYPE_APPLICATION_JSON.hashCode() == contentType.hashCode()) {
             httpHeaders.add(HttpHeaderNames.CONTENT_TYPE, MEDIA_TYPE_JSON_ASCII);
         } else {
