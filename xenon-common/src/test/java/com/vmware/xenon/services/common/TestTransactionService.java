@@ -496,6 +496,8 @@ public class TestTransactionService extends BasicReusableHostTestCase {
             assertTrue(committed);
         }
 
+        Thread.sleep(TimeUnit.SECONDS
+                .toMillis(TransactionResolutionService.TRANSACTION_CLEAR_GRACE_PERIOD_SECONDS));
         // verify all transactions have cleared
         for (int i = 0; i < this.accountCount; i++) {
             final int finalI = i;
@@ -522,6 +524,8 @@ public class TestTransactionService extends BasicReusableHostTestCase {
             }
         }
 
+        Thread.sleep(TimeUnit.SECONDS
+                .toMillis(TransactionResolutionService.TRANSACTION_CLEAR_GRACE_PERIOD_SECONDS));
         for (int i = 0; i < this.accountCount; i++) {
             final int finalI = i;
             this.defaultHost.waitFor(String.format("Transaction %s hasn't cleared yet", txids[i]),
