@@ -70,6 +70,12 @@
       <organization>VMware</organization>
       <organizationUrl>https://www.vmware.com/</organizationUrl>
     </developer>
+    <developer>
+      <name>Julian Vassev</name>
+      <email>jvassev@vmware.com</email>
+      <organization>VMware</organization>
+      <organizationUrl>https://www.vmware.com/</organizationUrl>
+    </developer>
   </developers>
 
   <scm>
