@@ -101,6 +101,13 @@ class ServiceSynchronizationTracker {
 
     void failStartServiceOrSynchronize(
             Service service, Operation start, Operation startRsp, Throwable startEx) {
+
+        boolean isMarkedDeleted = false;
+        if (startRsp.getStatusCode() == Operation.STATUS_CODE_CONFLICT && startRsp.hasBody()) {
+            ServiceErrorResponse rsp = startRsp.getBody(ServiceErrorResponse.class);
+            isMarkedDeleted = rsp.getErrorCode() == ServiceErrorResponse.ERROR_CODE_STATE_MARKED_DELETED;
+        }
+
         // We check if if this was a failure because of
         // a 409 error from a replica node. If it was,
         // then this is mostly likely a new owner who does
@@ -110,7 +117,8 @@ class ServiceSynchronizationTracker {
         // we will kick-off on-demand synchronization by kicking
         // off a synch-post request (like the synch-task). This will
         // start the service locally.
-        boolean isReplicaConflict = ServiceHost.isServiceCreate(start) &&
+        boolean isReplicaConflict = !isMarkedDeleted &&
+                ServiceHost.isServiceCreate(start) &&
                 service.hasOption(ServiceOption.REPLICATION) &&
                 start.getAction() == Action.POST &&
                 !start.isFromReplication() &&
@@ -274,11 +282,16 @@ class ServiceSynchronizationTracker {
             }
 
             if (ServiceDocument.isDeleted(selectedState)) {
-                op.fail(new IllegalStateException(
-                        "Document marked deleted by peers: " + s.getSelfLink()));
+                Exception ex = new IllegalStateException(
+                        "Document marked deleted by peers: " + s.getSelfLink());
+                ServiceErrorResponse rsp = ServiceErrorResponse.create(ex, Operation.STATUS_CODE_CONFLICT);
+                rsp.setInternalErrorCode(ServiceErrorResponse.ERROR_CODE_STATE_MARKED_DELETED);
+                op.setStatusCode(Operation.STATUS_CODE_CONFLICT);
+                op.fail(ex, rsp);
+
+                // delete local version
                 selectedState.documentSelfLink = s.getSelfLink();
                 selectedState.documentUpdateAction = Action.DELETE.toString();
-                // delete local version
                 this.host.saveServiceState(s, Operation.createDelete(UriUtils.buildUri(this.host,
                         s.getSelfLink())).setReferer(s.getUri()),
                         selectedState);
