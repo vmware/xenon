@@ -46,20 +46,24 @@ public class TestResourceGroupService extends BasicReusableHostTestCase {
 
     @Test
     public void testFactoryPost() throws Throwable {
-        ResourceGroupState state = new ResourceGroupState();
-        state.query = new Query();
-        state.query.setTermPropertyName("name");
-        state.query.setTermMatchValue("value");
+        Query query = new Query();
+        query.setTermPropertyName("name");
+        query.setTermMatchValue("value");
+        ResourceGroupState state = ResourceGroupState.Builder.create()
+                .withQuery(query)
+                .build();
         postHelper(state);
     }
 
     @Test
     public void testIdempotentPost() throws Throwable {
-        ResourceGroupState state = new ResourceGroupState();
-        state.documentSelfLink = "test-idemp-post";
-        state.query = new Query();
-        state.query.setTermPropertyName("name");
-        state.query.setTermMatchValue("value");
+        Query query = new Query();
+        query.setTermPropertyName("name");
+        query.setTermMatchValue("value");
+        ResourceGroupState state = ResourceGroupState.Builder.create()
+                .withSelfLink("test-idemp-post")
+                .withQuery(query)
+                .build();
         postHelper(state);
 
         // Post to same service with new values.
@@ -70,11 +74,13 @@ public class TestResourceGroupService extends BasicReusableHostTestCase {
 
     @Test
     public void testPatch() throws Throwable {
-        ResourceGroupState state = new ResourceGroupState();
-        state.documentSelfLink = "test-patch";
-        state.query = new Query();
-        state.query.setTermPropertyName("name");
-        state.query.setTermMatchValue("value");
+        Query query = new Query();
+        query.setTermPropertyName("name");
+        query.setTermMatchValue("value");
+        ResourceGroupState state = ResourceGroupState.Builder.create()
+                .withSelfLink("test-patch")
+                .withQuery(query)
+                .build();
         ResourceGroupState returnState = this.postOrPatchHelper(state, Action.POST, this.factoryUri);
 
         // issue a PATCH with a query clause to add
@@ -99,11 +105,13 @@ public class TestResourceGroupService extends BasicReusableHostTestCase {
 
     @Test
     public void testFactoryIdempotentPost() throws Throwable {
-        ResourceGroupState state = new ResourceGroupState();
-        state.documentSelfLink = UUID.randomUUID().toString();
-        state.query = new Query();
-        state.query.setTermPropertyName("name");
-        state.query.setTermMatchValue("value");
+        Query query = new Query();
+        query.setTermPropertyName("name");
+        query.setTermMatchValue("value");
+        ResourceGroupState state = ResourceGroupState.Builder.create()
+                .withSelfLink(UUID.randomUUID().toString())
+                .withQuery(query)
+                .build();
 
         ResourceGroupState responseState = (ResourceGroupState) this.host.verifyPost(ResourceGroupState.class,
                 ServiceUriPaths.CORE_AUTHZ_RESOURCE_GROUPS,
@@ -134,8 +142,9 @@ public class TestResourceGroupService extends BasicReusableHostTestCase {
 
     @Test
     public void testFactoryPostFailure() throws Throwable {
-        ResourceGroupState state = new ResourceGroupState();
-        state.query = null;
+        ResourceGroupState state = ResourceGroupState.Builder.create()
+                .withQuery(null)
+                .build();
 
         Operation[] outOp = new Operation[1];
         Throwable[] outEx = new Throwable[1];
