@@ -79,12 +79,16 @@
   </scm>
 
   <modules>
+    <module>xenon-client</module>
     <module>xenon-common</module>
-    <module>xenon-loader</module>
-    <module>xenon-slf4j</module>
-    <module>xenon-ui</module>
-    <module>xenon-swagger</module>
+    <module>xenon-host</module>
     <module>xenon-loader-test</module>
+    <module>xenon-loader</module>
+    <module>xenon-samples</module>
+    <module>xenon-slf4j</module>
+    <module>xenon-swagger</module>
+    <module>xenon-ui</module>
+    <module>xenon-websocket-test</module>
   </modules>
 
   <properties>
@@ -131,26 +135,7 @@
 
   <profiles>
     <profile>
-      <id>development</id>
-      <modules>
-        <module>xenon-host</module>
-        <module>xenon-samples</module>
-        <module>xenon-websocket-test</module>
-        <module>xenon-client</module>
-      </modules>
-      <activation>
-        <activeByDefault>true</activeByDefault>
-      </activation>
-    </profile>
-
-    <profile>
       <id>performance</id>
-      <modules>
-        <module>xenon-host</module>
-        <module>xenon-samples</module>
-        <module>xenon-websocket-test</module>
-        <module>xenon-client</module>
-      </modules>
       <properties>
         <testHeapSizeMb>8192</testHeapSizeMb>
         <testThreadStackSizeKb>1024</testThreadStackSizeKb>
@@ -159,12 +144,6 @@
 
     <profile>
       <id>coverage</id>
-      <modules>
-        <module>xenon-host</module>
-        <module>xenon-samples</module>
-        <module>xenon-websocket-test</module>
-        <module>xenon-client</module>
-      </modules>
       <build>
         <plugins>
           <!-- Add JaCoCo arguments to surefire execution -->
@@ -172,7 +151,7 @@
             <groupId>org.apache.maven.plugins</groupId>
             <artifactId>maven-surefire-plugin</artifactId>
             <configuration>
-              <argLine>-Xss${testThreadStackSizeKb}k -Xmx${testHeapSizeMb}m ${jacocoSurefireArgLine}</argLine>
+              <argLine>-Xss${testThreadStackSizeKb}k -Xmx${testHeapSizeMb}m ${jacocoSurefireArgLine} ${testJvmOpts}</argLine>
             </configuration>
           </plugin>
           <!-- Depend on JaCoCo for coverage reports -->
@@ -544,5 +523,4 @@
       </plugins>
     </pluginManagement>
   </build>
-
 </project>
