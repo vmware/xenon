@@ -13,6 +13,8 @@
 
 package com.vmware.xenon.services.common;
 
+import java.util.concurrent.TimeUnit;
+
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.StatefulService;
 import com.vmware.xenon.common.UriUtils;
@@ -23,6 +25,8 @@ import com.vmware.xenon.services.common.TransactionService.ResolutionRequest;
  * Transaction-specific "utility" service responsible for masking commit resolution asynchrony during commit phase.
  */
 public class TransactionResolutionService {
+    public final static int TRANSACTION_CLEAR_GRACE_PERIOD_SECONDS = 10;
+
     StatefulService parent;
 
     public TransactionResolutionService(StatefulService parent) {
@@ -53,26 +57,19 @@ public class TransactionResolutionService {
                                     op.fail(e2);
                                     return;
                                 }
-                                this.parent.logInfo(
-                                        "Transaction resolution request has been accepted by %s",
-                                        this.parent.getSelfLink());
                             });
-                    this.parent.logInfo("Sending transaction resolution request to %s with kind %s",
-                            this.parent.getSelfLink(), resolutionRequest.resolutionKind);
                     this.parent.sendRequest(operation);
                 }).setReferer(this.parent.getUri());
 
-        this.parent.logInfo("Subscribing to transaction resolution on %s",
-                this.parent.getSelfLink());
         this.parent.getHost().startSubscriptionService(subscribeToCoordinator, (notifyOp) -> {
             ResolutionRequest resolve = notifyOp.getBody(ResolutionRequest.class);
             notifyOp.complete();
-            this.parent.logInfo("Received notification: action=%s, resolution=%s",
-                    notifyOp.getAction(),
-                    resolve.resolutionKind);
             if (isNotComplete(resolve.resolutionKind)) {
                 return;
             }
+            this.parent.logInfo("Received notification: action=%s, resolution=%s",
+                    notifyOp.getAction(),
+                    resolve.resolutionKind);
             if ((resolve.resolutionKind == ResolutionKind.COMMITTED
                     && resolutionRequest.resolutionKind == ResolutionKind.COMMIT) ||
                     (resolve.resolutionKind == ResolutionKind.ABORTED
@@ -90,10 +87,13 @@ public class TransactionResolutionService {
                 op.fail(new IllegalStateException(errorMsg));
             }
 
-            // stop transaction instance to free up memory
-            Operation.createDelete(this.parent.getUri())
-                    .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_NO_INDEX_UPDATE)
-                    .sendWith(this.parent);
+            // schedule transaction instance stop to free up memory.
+            // give grace period for potentially conflicting transactions to get this transaction stage.
+            this.parent.getHost().schedule(() -> {
+                Operation.createDelete(this.parent.getUri())
+                        .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_NO_INDEX_UPDATE)
+                        .sendWith(this.parent);
+            }, TRANSACTION_CLEAR_GRACE_PERIOD_SECONDS, TimeUnit.SECONDS);
         });
     }
 

@@ -27,7 +27,6 @@ import java.util.concurrent.TimeUnit;
 
 import org.junit.After;
 import org.junit.Before;
-import org.junit.Ignore;
 import org.junit.Test;
 
 import com.vmware.xenon.common.BasicReusableHostTestCase;
@@ -483,7 +482,6 @@ public class TestTransactionService extends BasicReusableHostTestCase {
         countAccounts(null, 0);
     }
 
-    @Ignore
     @Test
     public void testTransactionStop() throws Throwable {
         String[] txids = new String[this.accountCount];
@@ -496,6 +494,8 @@ public class TestTransactionService extends BasicReusableHostTestCase {
             assertTrue(committed);
         }
 
+        Thread.sleep(TimeUnit.SECONDS
+                .toMillis(TransactionResolutionService.TRANSACTION_CLEAR_GRACE_PERIOD_SECONDS));
         // verify all transactions have cleared
         for (int i = 0; i < this.accountCount; i++) {
             final int finalI = i;
@@ -522,6 +522,8 @@ public class TestTransactionService extends BasicReusableHostTestCase {
             }
         }
 
+        Thread.sleep(TimeUnit.SECONDS
+                .toMillis(TransactionResolutionService.TRANSACTION_CLEAR_GRACE_PERIOD_SECONDS));
         for (int i = 0; i < this.accountCount; i++) {
             final int finalI = i;
             this.defaultHost.waitFor(String.format("Transaction %s hasn't cleared yet", txids[i]),
