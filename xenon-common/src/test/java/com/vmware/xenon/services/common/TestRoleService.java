@@ -18,6 +18,7 @@ import static org.junit.Assert.assertTrue;
 
 import java.net.URI;
 import java.util.HashSet;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.Supplier;
 
@@ -46,13 +47,15 @@ public class TestRoleService extends BasicReusableHostTestCase {
     }
 
     RoleState validRoleState() {
-        RoleState state = new RoleState();
-        state.userGroupLink = "/mock-user-group-link";
-        state.resourceGroupLink = "/mock-resource-group-link";
-        state.verbs = new HashSet<>();
-        state.verbs.add(Action.GET);
-        state.verbs.add(Action.POST);
-        state.policy = Policy.ALLOW;
+        Set<Action> verbs = new HashSet<>();
+        verbs.add(Action.GET);
+        verbs.add(Action.POST);
+        RoleState state = RoleState.Builder.create()
+                .withUserGroupLink("/mock-user-group-link")
+                .withResourceGroupLink("/mock-resource-group-link")
+                .withVerbs(verbs)
+                .withPolicy(Policy.ALLOW)
+                .build();
         return state;
     }
 

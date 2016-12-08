@@ -17,6 +17,8 @@
   not work in remote requests (due to gson serialization ignoring null
   values).
 
+* Add builders for UserGroupState, RoleState, ResourceGroupState
+
 ## 1.3.3
 
 * Bug fixes in QueryFilter when matching null strings.

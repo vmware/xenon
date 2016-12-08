@@ -273,9 +273,10 @@ public class AuthorizationHelper {
                 UriUtils.extendUri(postUserGroupsUri, name).getPath();
 
         // Create user group
-        UserGroupState userGroupState = new UserGroupState();
-        userGroupState.documentSelfLink = selfLink;
-        userGroupState.query = q;
+        UserGroupState userGroupState = UserGroupState.Builder.create()
+                .withSelfLink(selfLink)
+                .withQuery(q)
+                .build();
 
         this.host.sendAndWaitExpectSuccess(Operation
                 .createPost(postUserGroupsUri)
@@ -289,9 +290,10 @@ public class AuthorizationHelper {
         String selfLink =
                 UriUtils.extendUri(postResourceGroupsUri, name).getPath();
 
-        ResourceGroupState resourceGroupState = new ResourceGroupState();
-        resourceGroupState.documentSelfLink = selfLink;
-        resourceGroupState.query = q;
+        ResourceGroupState resourceGroupState = ResourceGroupState.Builder.create()
+                .withSelfLink(selfLink)
+                .withQuery(q)
+                .build();
         this.host.sendAndWaitExpectSuccess(Operation
                 .createPost(postResourceGroupsUri)
                 .setBody(resourceGroupState));
@@ -312,12 +314,13 @@ public class AuthorizationHelper {
         }
         String selfLink = userGroupSegment + "-" + resourceGroupSegment + "-" + verbSegment;
 
-        RoleState roleState = new RoleState();
-        roleState.documentSelfLink = UriUtils.buildUriPath(ServiceUriPaths.CORE_AUTHZ_ROLES, selfLink);
-        roleState.userGroupLink = userGroupLink;
-        roleState.resourceGroupLink = resourceGroupLink;
-        roleState.verbs = verbs;
-        roleState.policy = Policy.ALLOW;
+        RoleState roleState = RoleState.Builder.create()
+                .withSelfLink(UriUtils.buildUriPath(ServiceUriPaths.CORE_AUTHZ_ROLES, selfLink))
+                .withUserGroupLink(userGroupLink)
+                .withResourceGroupLink(resourceGroupLink)
+                .withVerbs(verbs)
+                .withPolicy(Policy.ALLOW)
+                .build();
         this.host.sendAndWaitExpectSuccess(Operation
                 .createPost(UriUtils.buildUri(target, ServiceUriPaths.CORE_AUTHZ_ROLES))
                 .setBody(roleState));

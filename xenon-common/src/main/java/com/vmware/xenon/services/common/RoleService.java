@@ -74,6 +74,47 @@ public class RoleService extends StatefulService {
         public Set<Action> verbs;
         public Policy policy;
         public int priority;
+
+        public static class Builder {
+            private RoleService.RoleState roleState;
+
+            private Builder() {
+                this.roleState = new RoleState();
+            }
+
+            public static Builder create() {
+                return  new Builder();
+            }
+
+            public Builder withUserGroupLink(String userGroupLink) {
+                this.roleState.userGroupLink = userGroupLink;
+                return this;
+            }
+
+            public Builder withResourceGroupLink(String resourceGroupLink) {
+                this.roleState.resourceGroupLink = resourceGroupLink;
+                return this;
+            }
+
+            public Builder withVerbs(Set<Service.Action> verbs) {
+                this.roleState.verbs = verbs;
+                return this;
+            }
+
+            public Builder withPolicy(RoleService.Policy policy) {
+                this.roleState.policy = policy;
+                return this;
+            }
+
+            public Builder withSelfLink(String selfLink) {
+                this.roleState.documentSelfLink = selfLink;
+                return this;
+            }
+
+            public RoleService.RoleState build() {
+                return this.roleState;
+            }
+        }
     }
 
     public RoleService() {

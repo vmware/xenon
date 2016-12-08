@@ -21,6 +21,7 @@ import java.security.GeneralSecurityException;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -408,31 +409,37 @@ public class TestAuthorizationContext extends BasicTestCase {
         UserState userState = new UserState();
         userState.email = user;
         userState.documentSelfLink = user;
-        UserGroupState userGroupState = new UserGroupState();
-        userGroupState.documentSelfLink = user + "-user-group";
-        userGroupState.query = new Query();
-        userGroupState.query.setTermPropertyName("email");
-        userGroupState.query.setTermMatchType(MatchType.TERM);
-        userGroupState.query.setTermMatchValue(userState.email);
-        ResourceGroupState resourceGroupState = new ResourceGroupState();
-        resourceGroupState.documentSelfLink = user + "-resource-group";
-        resourceGroupState.query = new Query();
+        Query userGroupQuery = new Query();
+        userGroupQuery.setTermPropertyName("email");
+        userGroupQuery.setTermMatchType(MatchType.TERM);
+        userGroupQuery.setTermMatchValue(userState.email);
+        UserGroupState userGroupState = UserGroupState.Builder.create()
+                .withSelfLink(user + "-user-group")
+                .withQuery(userGroupQuery)
+                .build();
 
+        Query resourceGroupQuery = new Query();
         Query kindClause = new Query();
         kindClause.setTermPropertyName(ServiceDocument.FIELD_NAME_SELF_LINK);
         kindClause.setTermMatchValue(serviceLink);
         kindClause.setTermMatchType(MatchType.TERM);
-        resourceGroupState.query.addBooleanClause(kindClause);
+        resourceGroupQuery.addBooleanClause(kindClause);
+        ResourceGroupState resourceGroupState = ResourceGroupState.Builder.create()
+                .withSelfLink( user + "-resource-group")
+                .withQuery(resourceGroupQuery)
+                .build();
 
-        RoleState roleState = new RoleState();
-        roleState.userGroupLink = UriUtils.buildUriPath(ServiceUriPaths.CORE_AUTHZ_USER_GROUPS,
-                userGroupState.documentSelfLink);
-        roleState.resourceGroupLink = UriUtils.buildUriPath(
-                ServiceUriPaths.CORE_AUTHZ_RESOURCE_GROUPS, resourceGroupState.documentSelfLink);
-        roleState.verbs = new HashSet<>();
-        roleState.verbs.add(Action.GET);
-        roleState.verbs.add(Action.POST);
-        roleState.policy = Policy.ALLOW;
+        Set<Action> verbs = new HashSet<>();
+        verbs.add(Action.GET);
+        verbs.add(Action.POST);
+        RoleState roleState = RoleState.Builder.create()
+                .withUserGroupLink(UriUtils.buildUriPath(ServiceUriPaths.CORE_AUTHZ_USER_GROUPS,
+                        userGroupState.documentSelfLink))
+                .withResourceGroupLink(UriUtils.buildUriPath(
+                        ServiceUriPaths.CORE_AUTHZ_RESOURCE_GROUPS, resourceGroupState.documentSelfLink))
+                .withVerbs(verbs)
+                .withPolicy(Policy.ALLOW)
+                .build();
 
         OperationContext.setAuthorizationContext(this.host.getSystemAuthorizationContext());
         URI postUserUri = UriUtils.buildUri(this.host, ServiceUriPaths.CORE_AUTHZ_USERS);

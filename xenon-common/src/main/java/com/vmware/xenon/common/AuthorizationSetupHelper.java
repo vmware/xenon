@@ -461,9 +461,10 @@ public class AuthorizationSetupHelper {
             userGroupQuery = this.userGroupQuery;
         }
 
-        UserGroupState group = new UserGroupState();
-        group.query = userGroupQuery;
-        group.documentSelfLink = this.userGroupSelfLink;
+        UserGroupState group = UserGroupState.Builder.create()
+                .withQuery(userGroupQuery)
+                .withSelfLink(this.userGroupSelfLink)
+                .build();
 
         URI userGroupFactoryUri = UriUtils.buildUri(this.host,
                 ServiceUriPaths.CORE_AUTHZ_USER_GROUPS);
@@ -571,9 +572,10 @@ public class AuthorizationSetupHelper {
             resourceQuery = this.resourceQuery;
         }
 
-        ResourceGroupState group = new ResourceGroupState();
-        group.query = resourceQuery;
-        group.documentSelfLink = this.resourceGroupSelfLink;
+        ResourceGroupState group = ResourceGroupState.Builder.create()
+                .withQuery(resourceQuery)
+                .withSelfLink(this.resourceGroupSelfLink)
+                .build();
 
         URI resourceGroupFactoryUri = UriUtils.buildUri(this.host,
                 ServiceUriPaths.CORE_AUTHZ_RESOURCE_GROUPS);
@@ -610,12 +612,12 @@ public class AuthorizationSetupHelper {
             Collections.addAll(this.verbs, Action.values());
         }
 
-        RoleState role = new RoleState();
-        role.userGroupLink = this.userGroupSelfLink;
-        role.resourceGroupLink = this.resourceGroupSelfLink;
-        role.verbs = this.verbs;
-        role.policy = this.policy;
-        role.documentSelfLink = this.roleSelfLink;
+        RoleState role = RoleState.Builder.create().withUserGroupLink(this.userGroupSelfLink)
+                .withResourceGroupLink(this.resourceGroupSelfLink)
+                .withSelfLink(this.roleSelfLink)
+                .withPolicy(this.policy)
+                .withVerbs(this.verbs)
+                .build();
 
         URI roleFactoryUri = UriUtils.buildUri(this.host, ServiceUriPaths.CORE_AUTHZ_ROLES);
         Operation postRole = Operation.createPost(roleFactoryUri)
