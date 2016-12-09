@@ -1271,7 +1271,7 @@ public class TestQueryTaskService {
                 .addOption(QueryOption.EXPAND_CONTENT)
                 .setResultLimit(this.serviceCount / 5)
                 .orderAscending(ExampleServiceState.FIELD_NAME_ID, TypeName.STRING)
-                .groupOrder(ExampleServiceState.FIELD_NAME_NAME, TypeName.STRING, SortOrder.ASC)
+                .groupOrder(ExampleServiceState.FIELD_NAME_SORTED_COUNTER, TypeName.LONG, SortOrder.ASC)
                 .setQuery(query).build();
         URI queryTaskURI = this.host.createQueryTaskService(queryTask);
         QueryTask finalState = this.host.waitForQueryTask(queryTaskURI, TaskStage.FINISHED);
@@ -1340,6 +1340,7 @@ public class TestQueryTaskService {
             for (int i = 0; i < this.serviceCount; i++) {
                 ExampleServiceState s = new ExampleServiceState();
                 s.name = group;
+                s.sortedCounter = (long) i;
                 s.documentSelfLink = UUID.randomUUID().toString();
                 exampleServices.add(UriUtils.buildUri(this.host.getUri(),
                         ExampleService.FACTORY_LINK, s.documentSelfLink));
