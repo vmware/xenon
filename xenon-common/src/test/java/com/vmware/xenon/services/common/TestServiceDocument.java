@@ -133,6 +133,34 @@ public class TestServiceDocument {
         assertTrue(!results.contains(DocumentRelationship.PREFERRED));
         assertTrue(!results.contains(DocumentRelationship.IN_CONFLICT));
 
+        // different epochs, equal time, B should be preferred
+        stateA.documentEpoch = 1L;
+        stateB.documentEpoch = 2L;
+        stateA.documentUpdateTimeMicros = Utils.getNowMicrosUtc();
+        stateB.documentUpdateTimeMicros = stateA.documentUpdateTimeMicros;
+
+        results = ServiceDocument.compare(stateA, stateB,
+                description, Utils.getTimeComparisonEpsilonMicros());
+        assertTrue(results.contains(DocumentRelationship.EQUAL_TIME));
+        assertTrue(!results.contains(DocumentRelationship.NEWER_VERSION));
+        assertTrue(!results.contains(DocumentRelationship.PREFERRED));
+        assertTrue(!results.contains(DocumentRelationship.IN_CONFLICT));
+
+        // same epochs, different versions, equal time, B should be preferred
+        stateA.documentEpoch = 1L;
+        stateB.documentEpoch = 1L;
+        stateA.documentVersion = 1;
+        stateB.documentVersion = 2;
+        stateA.documentUpdateTimeMicros = Utils.getNowMicrosUtc();
+        stateB.documentUpdateTimeMicros = stateA.documentUpdateTimeMicros;
+
+        results = ServiceDocument.compare(stateA, stateB,
+                description, Utils.getTimeComparisonEpsilonMicros());
+        assertTrue(results.contains(DocumentRelationship.EQUAL_TIME));
+        assertTrue(!results.contains(DocumentRelationship.NEWER_VERSION));
+        assertTrue(!results.contains(DocumentRelationship.PREFERRED));
+        assertTrue(!results.contains(DocumentRelationship.IN_CONFLICT));
+
         // equal versions, equal time, neither is preferred
         stateA.documentVersion = 1;
         stateB.documentVersion = 1;

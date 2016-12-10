@@ -295,12 +295,19 @@ class ServiceSynchronizationTracker {
                 op.setStatusCode(Operation.STATUS_CODE_CONFLICT);
                 op.fail(ex, rsp);
 
-                // delete local version
-                selectedState.documentSelfLink = s.getSelfLink();
-                selectedState.documentUpdateAction = Action.DELETE.toString();
-                this.host.saveServiceState(s, Operation.createDelete(UriUtils.buildUri(this.host,
-                        s.getSelfLink())).setReferer(s.getUri()),
-                        selectedState);
+                boolean isVersionSame = ServiceDocument
+                        .compare(selectedState, t.state, t.stateDescription, Utils.getTimeComparisonEpsilonMicros())
+                        .contains(ServiceDocument.DocumentRelationship.EQUAL_VERSION);
+
+                // Only save the document, if the selected state is a newer version of the document
+                // than the local copy.
+                if (!isVersionSame ) {
+                    selectedState.documentSelfLink = s.getSelfLink();
+                    selectedState.documentUpdateAction = Action.DELETE.toString();
+                    this.host.saveServiceState(s, Operation.createDelete(UriUtils.buildUri(this.host,
+                                    s.getSelfLink())).setReferer(s.getUri()),
+                            selectedState);
+                }
                 return;
             }
 

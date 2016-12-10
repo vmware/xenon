@@ -3798,6 +3798,13 @@ public class TestNodeGroupService {
             return;
         }
 
+        // Wait for all child services to get started. This allows us
+        // to verify that after synchronization runs, services that have
+        // been deleted get stopped on this (restarted) host.
+        hostToStop.waitForReplicatedFactoryServiceAvailable(
+                UriUtils.buildUri(hostToStop, ExampleService.FACTORY_LINK),
+                ServiceUriPaths.DEFAULT_NODE_SELECTOR);
+
         // restart host, rejoin it
         URI nodeGroupU = UriUtils.buildUri(hostToStop, ServiceUriPaths.DEFAULT_NODE_GROUP);
         URI eNodeGroupU = UriUtils.buildUri(existingHost, ServiceUriPaths.DEFAULT_NODE_GROUP);

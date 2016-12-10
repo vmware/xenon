@@ -2989,9 +2989,13 @@ public class ServiceHost implements ServiceRequestSender {
         boolean isDeleted = ServiceDocument.isDeleted(stateFromStore)
                 || this.pendingServiceDeletions.contains(s.getSelfLink());
 
+        if (isDeleted && serviceStartPost.isSynchronizeOwner()) {
+            return true;
+        }
+
         if (!serviceStartPost.hasBody()) {
-            // this POST is due to a restart, or synchronization attempt which will never have a body
             if (isDeleted) {
+                // this POST is due to a restart which will never have a body
                 failRequestServiceMarkedDeleted(stateFromStore, serviceStartPost);
                 return false;
             } else {
