@@ -2,6 +2,14 @@
 
 ## 1.3.4-SNAPSHOT
 
+* Enforce implicit query result limits. All queries
+  that do not specify a resultLimit, including GETs to factory services, will
+  now be limited to the default, which is 10,000 results. For well behaved
+  clients, this change will be transparent. For clients that issued queries
+  that returned large number of results, without pagination enabled, this change
+  will be noticed and will *fail* their queries.
+  See https://www.pivotaltracker.com/story/show/130467457
+
 * NodeSelectorStatus.nodeSelectorStatus has been renamed to status, so
   it is consistent with NodeState.status. This is a in-memory infrastructure
   service and the field was just added in 1.3.0, so this change should have

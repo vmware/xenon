@@ -147,6 +147,8 @@ public class LuceneDocumentIndexService extends StatelessService {
 
     public static final int DEFAULT_INDEX_SEARCHER_COUNT_THRESHOLD = 200;
 
+    public static final int DEFAULT_QUERY_RESULT_LIMIT = 10000;
+
     private String indexDirectory;
 
     private static int EXPIRED_DOCUMENT_SEARCH_THRESHOLD = 1000;
@@ -156,6 +158,16 @@ public class LuceneDocumentIndexService extends StatelessService {
     private static int VERSION_RETENTION_BULK_CLEANUP_THRESHOLD = 10000;
 
     private static int VERSION_RETENTION_SERVICE_THRESHOLD = 100;
+
+    private static int QUERY_RESULT_LIMIT = DEFAULT_QUERY_RESULT_LIMIT;
+
+    public static void setImplicitQueryResultLimit(int limit) {
+        QUERY_RESULT_LIMIT = limit;
+    }
+
+    public static int getImplicitQueryResultLimit() {
+        return QUERY_RESULT_LIMIT;
+    }
 
     public static void setIndexFileCountThresholdForWriterRefresh(int count) {
         INDEX_FILE_COUNT_THRESHOLD_FOR_WRITER_REFRESH = count;
@@ -1291,6 +1303,11 @@ public class LuceneDocumentIndexService extends StatelessService {
             resultLimit = 1;
             shouldProcessResults = false;
             rsp.documentCount = 1L;
+        } else {
+            // The query does not have a explicit limit set. We still use a limit, to avoid out of memory
+            // exceptions, since lucene will use the limit to allocated a score / sorted values array!
+            // If the number of hits returned by lucene is higher than the default limit, we will fail the query
+            resultLimit = QUERY_RESULT_LIMIT;
         }
 
         Sort sort = this.versionSort;
@@ -1315,15 +1332,15 @@ public class LuceneDocumentIndexService extends StatelessService {
             // searchAfter(). This will prevent Lucene from holding the full result set in memory.
             if (useDirectSearch) {
                 if (sort == null) {
-                    results = s.search(tq, count);
+                    results = s.search(tq, resultLimit);
                 } else {
-                    results = s.search(tq, count, sort, false, false);
+                    results = s.search(tq, resultLimit, sort, false, false);
                 }
             } else {
                 if (sort == null) {
-                    results = s.searchAfter(after, tq, count);
+                    results = s.searchAfter(after, tq, resultLimit);
                 } else {
-                    results = s.searchAfter(after, tq, count, sort, false, false);
+                    results = s.searchAfter(after, tq, resultLimit, sort, false, false);
                 }
             }
 
@@ -1332,6 +1349,12 @@ public class LuceneDocumentIndexService extends StatelessService {
             }
 
             long end = Utils.getNowMicrosUtc();
+
+            if (!hasPage && !isPaginatedQuery && results.totalHits > resultLimit) {
+                throw new IllegalStateException(
+                        "Query returned large number of results, please specify a resultLimit. Results:"
+                                + results.totalHits);
+            }
 
             hits = results.scoreDocs;
 

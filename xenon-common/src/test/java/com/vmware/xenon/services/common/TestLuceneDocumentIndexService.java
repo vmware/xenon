@@ -81,6 +81,7 @@ import com.vmware.xenon.common.Utils;
 import com.vmware.xenon.common.test.MinimalTestServiceState;
 import com.vmware.xenon.common.test.TestContext;
 import com.vmware.xenon.common.test.TestProperty;
+import com.vmware.xenon.common.test.TestRequestSender;
 import com.vmware.xenon.common.test.VerificationHost;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
 import com.vmware.xenon.services.common.QueryTask.Query;
@@ -574,6 +575,23 @@ public class TestLuceneDocumentIndexService {
                         ServiceOption.IMMUTABLE, ServiceOption.INSTRUMENTATION));
         // should fail, has INSTRUMENTATION
         this.host.sendAndWaitExpectFailure(post);
+    }
+
+    @Test
+    public void implicitQueryResultLimit() throws Throwable {
+        try {
+            LuceneDocumentIndexService.setImplicitQueryResultLimit((int) (this.serviceCount / 2));
+            setUpHost(false);
+            URI factoryUri = UriUtils.buildUri(this.host, ExampleService.FACTORY_LINK);
+            doThroughputPost(false, factoryUri, null, null);
+            // a GET to the factory is a query without a result limit explicitly set. Since we
+            // created 2x the documents of the new, low, implicit result limit, we expect failure
+            TestRequestSender sender = this.host.getTestRequestSender();
+            sender.sendAndWaitFailure(Operation.createGet(factoryUri));
+        } finally {
+            LuceneDocumentIndexService.setImplicitQueryResultLimit(
+                    LuceneDocumentIndexService.DEFAULT_QUERY_RESULT_LIMIT);
+        }
     }
 
     @Test
@@ -1478,7 +1496,7 @@ public class TestLuceneDocumentIndexService {
             stringBuilder.append(String.format("%15d: %8d (%.2f percent)\n",
                     (long) Math.pow(10.0, i),
                     logHistogram.bins[i],
-                    (float) logHistogram.bins[i] * 100.0 / stat.version));
+                    logHistogram.bins[i] * 100.0 / stat.version));
         }
 
         this.host.log(stringBuilder.toString());
