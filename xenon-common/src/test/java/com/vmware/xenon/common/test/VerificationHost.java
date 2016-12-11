@@ -674,10 +674,6 @@ public class VerificationHost extends ExampleServiceHost {
             startPost.forceRemote();
         }
 
-        log("Starting query with options:%s, resultLimit: %d",
-                create.querySpec.options,
-                create.querySpec.resultLimit);
-
         QueryTask result;
         try {
             result = this.sender.sendAndWait(startPost, QueryTask.class);

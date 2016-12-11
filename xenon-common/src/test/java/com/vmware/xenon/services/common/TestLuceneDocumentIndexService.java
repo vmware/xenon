@@ -81,6 +81,7 @@ import com.vmware.xenon.common.Utils;
 import com.vmware.xenon.common.test.MinimalTestServiceState;
 import com.vmware.xenon.common.test.TestContext;
 import com.vmware.xenon.common.test.TestProperty;
+import com.vmware.xenon.common.test.TestRequestSender;
 import com.vmware.xenon.common.test.VerificationHost;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
 import com.vmware.xenon.services.common.QueryTask.Query;
@@ -220,6 +221,7 @@ public class TestLuceneDocumentIndexService {
                 this.host.setMaintenanceIntervalMicros(
                         ServiceHostState.DEFAULT_MAINTENANCE_INTERVAL_MICROS);
                 Utils.setTimeDriftThreshold(TimeUnit.SECONDS.toMicros(120));
+                LuceneDocumentIndexService.setImplicitQueryResultLimit(10000000);
             } else {
                 this.indexService.toggleOption(ServiceOption.INSTRUMENTATION, true);
                 this.host.setMaintenanceIntervalMicros(TimeUnit.MILLISECONDS
@@ -574,6 +576,23 @@ public class TestLuceneDocumentIndexService {
                         ServiceOption.IMMUTABLE, ServiceOption.INSTRUMENTATION));
         // should fail, has INSTRUMENTATION
         this.host.sendAndWaitExpectFailure(post);
+    }
+
+    @Test
+    public void implicitQueryResultLimit() throws Throwable {
+        try {
+            LuceneDocumentIndexService.setImplicitQueryResultLimit((int) (this.serviceCount / 2));
+            setUpHost(false);
+            URI factoryUri = UriUtils.buildUri(this.host, ExampleService.FACTORY_LINK);
+            doThroughputPost(false, factoryUri, null, null);
+            // a GET to the factory is a query without a result limit explicitly set. Since we
+            // created 2x the documents of the new, low, implicit result limit, we expect failure
+            TestRequestSender sender = this.host.getTestRequestSender();
+            sender.sendAndWaitFailure(Operation.createGet(factoryUri));
+        } finally {
+            LuceneDocumentIndexService.setImplicitQueryResultLimit(
+                    LuceneDocumentIndexService.DEFAULT_QUERY_RESULT_LIMIT);
+        }
     }
 
     @Test
@@ -1478,7 +1497,7 @@ public class TestLuceneDocumentIndexService {
             stringBuilder.append(String.format("%15d: %8d (%.2f percent)\n",
                     (long) Math.pow(10.0, i),
                     logHistogram.bins[i],
-                    (float) logHistogram.bins[i] * 100.0 / stat.version));
+                    logHistogram.bins[i] * 100.0 / stat.version));
         }
 
         this.host.log(stringBuilder.toString());
@@ -1947,7 +1966,7 @@ public class TestLuceneDocumentIndexService {
         setUpHost(false);
         this.host.waitForServiceAvailable(ExampleService.FACTORY_LINK);
 
-        long threshold = this.host.isLongDurationTest() ? this.serviceCount / 2 : 2;
+        long threshold = this.host.isLongDurationTest() ? this.serviceCount : 2;
         LuceneDocumentIndexService.setExpiredDocumentSearchThreshold((int) threshold);
 
         Date expiration = this.host.getTestExpiration();
@@ -2122,8 +2141,10 @@ public class TestLuceneDocumentIndexService {
             for (URI u : servicesFinal.keySet()) {
                 ProcessingStage s = this.host.getServiceStage(u.getPath());
                 if (s != null && s != ProcessingStage.STOPPED) {
-                    this.host.log("Found service %s in unexpected state %s", u.getPath(),
-                            s.toString());
+                    if (!this.host.isLongDurationTest()) {
+                        this.host.log("Found service %s in unexpected state %s", u.getPath(),
+                                s.toString());
+                    }
                     return false;
                 }
             }
@@ -2150,20 +2171,19 @@ public class TestLuceneDocumentIndexService {
         waitForFactoryResults(factoryUri, 0);
         this.host.log("All minimal services deleted");
 
-        stats = this.host.getServiceStats(
-                this.host.getDocumentIndexServiceUri());
-        ServiceStat stAll = stats.get(
+        ServiceStat stAll = getLuceneStat(
                 LuceneDocumentIndexService.STAT_NAME_INDEXED_DOCUMENT_COUNT
                         + ServiceStats.STAT_NAME_SUFFIX_PER_DAY);
+
         if (stAll != null) {
             this.host.log("total versions: %f", stAll.latestValue);
         }
 
         // the more services we start, the more we should wait before we expire them
         // to avoid expirations occurring during, or before service start.
-        // We give the system a couple of seconds per 500 services, which is about 100x more
+        // We give the system a couple of seconds per N services, which is about 100x more
         // than it needs, but CI will sometimes get overloaded and cause false negatives
-        long intervalMicros = Math.max(1, this.serviceCount / 500) * TimeUnit.SECONDS.toMicros(1);
+        long intervalMicros = Math.max(1, this.serviceCount / 2000) * TimeUnit.SECONDS.toMicros(1);
         Consumer<Operation> maintExpSetBody = (o) -> {
             ExampleServiceState body = new ExampleServiceState();
             body.name = UUID.randomUUID().toString();
@@ -2186,8 +2206,11 @@ public class TestLuceneDocumentIndexService {
         // In the long-running test case, sleep for the expiration period plus one maintenance
         // interval in order to avoid generating unnecessary log spam
         if (this.host.isLongDurationTest()) {
-            Thread.sleep(TimeUnit.MICROSECONDS.toMillis(intervalMicros
-                    + this.host.getMaintenanceIntervalMicros()));
+            long sleepMillis = TimeUnit.MICROSECONDS.toMillis(intervalMicros
+                    + this.host.getMaintenanceIntervalMicros());
+            this.host.log("sleeping to wait for expiration maintenance (%d millis)", sleepMillis);
+            Thread.sleep(sleepMillis);
+            this.host.log("done sleeping");
         }
 
         // do not do anything on the services, rely on the maintenance interval to expire them
@@ -2215,9 +2238,7 @@ public class TestLuceneDocumentIndexService {
 
         this.host.log("Documents expired through maintenance");
 
-        if (this.host.isLongDurationTest()) {
-            Thread.sleep(1000);
-        } else {
+        if (!this.host.isLongDurationTest()) {
             return;
         }
 
@@ -2225,10 +2246,6 @@ public class TestLuceneDocumentIndexService {
         ServiceHostState s = this.host.getState();
         this.host.log("number of documents: %d, num services: %s", r.documentLinks.size(),
                 s.serviceCount);
-
-        Map<String, ServiceStat> hostStats = this.host.getServiceStats(
-                UriUtils.buildUri(this.host, ServiceHostManagementService.SELF_LINK));
-        this.host.log("host stats: %s", Utils.toJsonHtml(hostStats));
         assertEquals(0, r.documentLinks.size());
 
         validateTimeSeriesStats();
@@ -2348,13 +2365,22 @@ public class TestLuceneDocumentIndexService {
 
     private void waitForFactoryResults(URI factoryUri, int expectedCount)
             throws Throwable, InterruptedException {
-        ServiceDocumentQueryResult rsp = null;
 
-        long start = Utils.getSystemNowMicrosUtc();
-        while (Utils.getSystemNowMicrosUtc() - start < this.host.getOperationTimeoutMicros()) {
+        ServiceDocumentQueryResult[] rsp = new ServiceDocumentQueryResult[1];
+        this.host.waitFor("services never expired", () -> {
             int actualCount = 0;
-            rsp = this.host.getFactoryState(factoryUri);
-            for (String link : rsp.documentLinks) {
+            TestContext ctx = this.host.testCreate(1);
+            Operation op = Operation.createGet(factoryUri).setCompletion((o, e) -> {
+                if (e != null) {
+                    ctx.fail(e);
+                    return;
+                }
+                rsp[0] = o.getBody(ServiceDocumentQueryResult.class);
+                ctx.complete();
+            });
+            this.host.queryServiceUris(factoryUri.getPath() + "/*", op);
+            this.host.testWait(ctx);
+            for (String link : rsp[0].documentLinks) {
                 ProcessingStage ps = this.host.getServiceStage(link);
                 if (ps != ProcessingStage.AVAILABLE) {
                     continue;
@@ -2362,21 +2388,17 @@ public class TestLuceneDocumentIndexService {
                 actualCount++;
             }
 
-            this.host.log("Expected example service count: %d, current: %d", expectedCount,
-                    actualCount);
-
-            if (actualCount == expectedCount && rsp.documentLinks.size() == expectedCount) {
-                break;
+            if (actualCount == expectedCount && rsp[0].documentLinks.size() == expectedCount) {
+                return true;
             }
 
-            Thread.sleep(100);
-        }
+            if (!this.host.isLongDurationTest()) {
+                this.host.log("Expected example service count: %d, current: %d", expectedCount,
+                        actualCount);
+            }
 
-        if (rsp.documentLinks.size() == expectedCount) {
-            return;
-        }
-
-        throw new IllegalArgumentException("Services not expired:" + Utils.toJsonHtml(rsp));
+            return false;
+        });
     }
 
     @Test
