@@ -17,6 +17,12 @@ COMMIT=$(git rev-parse HEAD)
 XENON_LOCAL_REPO=$(git rev-parse --show-toplevel)
 CHANGE_LOG_FILE=CHANGELOG.md
 
+if [ "$(uname)" == "Darwin" ]; then
+  SED_PARAMS="-i ''"
+else
+  SED_PARAMS="-i"
+fi
+
 if [ "${NEXT_DEV_VERSION}:-" == "" ]; then
   echo Must specify NEXT_DEV_VERSION
   exit 1
@@ -54,14 +60,14 @@ echo You are going to release ${RELEASE_VERSION} from ${COMMIT}
 git checkout -b prepare-release-${RELEASE_VERSION}
 
 # create release version
-sed -i '' "s/${CURRENT_VERSION}/${RELEASE_VERSION}/" ${CHANGE_LOG_FILE}
+sed ${SED_PARAMS} "s/${CURRENT_VERSION}/${RELEASE_VERSION}/" ${CHANGE_LOG_FILE}
 ./mvnw versions:set -DgenerateBackupPoms=false -DnewVersion=${RELEASE_VERSION}
 git commit -a -m "Mark ${RELEASE_VERSION} for release"
 
 
 # create next developmenet version
-sed -i '' "1d" ${CHANGE_LOG_FILE}
-sed -i '' "1i\\
+sed ${SED_PARAMS} "1d" ${CHANGE_LOG_FILE}
+sed ${SED_PARAMS} "1i\\
 # CHANGELOG\\
 \\
 ## ${NEXT_DEV_VERSION}\\
