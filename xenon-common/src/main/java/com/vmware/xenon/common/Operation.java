@@ -388,6 +388,7 @@ public class Operation implements Cloneable {
     public static final String HOST_HEADER = "host";
     public static final String ACCEPT_HEADER = "accept";
     public static final String AUTHORIZATION_HEADER = "Authorization";
+    public static final String ACCEPT_LANGUAGE_HEADER = "accept-language";
 
     // HTTP2 Header definitions
     public static final String STREAM_ID_HEADER = "x-http2-stream-id";
@@ -1170,7 +1171,7 @@ public class Operation implements Cloneable {
                 this.statusCode = STATUS_CODE_BAD_REQUEST;
                 rsp = Utils.toValidationErrorResponse(e);
             } else {
-                rsp = Utils.toServiceErrorResponse(e);
+                rsp = Utils.toServiceErrorResponse(e, this);
             }
             rsp.statusCode = this.statusCode;
             setBodyNoCloning(rsp).setContentType(Operation.MEDIA_TYPE_APPLICATION_JSON);

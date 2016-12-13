@@ -215,6 +215,7 @@ public class StatelessService implements Service {
         delete.complete();
     }
 
+    @Override
     public void handleStop(Operation delete) {
         delete.complete();
     }
@@ -655,6 +656,7 @@ public class StatelessService implements Service {
     /**
      * Set authorization context on operation.
      */
+    @Override
     public final void setAuthorizationContext(Operation op, AuthorizationContext ctx) {
         if (getHost().isPrivilegedService(this)) {
             op.setAuthorizationContext(ctx);
@@ -688,6 +690,7 @@ public class StatelessService implements Service {
     /**
      * Returns the system user's authorization context.
      */
+    @Override
     public final AuthorizationContext getSystemAuthorizationContext() {
         if (getHost().isPrivilegedService(this)) {
             return getHost().getSystemAuthorizationContext();
@@ -739,7 +742,7 @@ public class StatelessService implements Service {
         if (requestUri.startsWith(uiResourcePath)) {
             Exception e = new ServiceNotFoundException(UriUtils.buildUri(uri.getScheme(), uri.getHost(),
                     uri.getPort(), uri.getPath().substring(uiResourcePath.length()), uri.getQuery()).toString());
-            ServiceErrorResponse r = Utils.toServiceErrorResponse(e);
+            ServiceErrorResponse r = Utils.toServiceErrorResponse(e, get);
             r.statusCode = Operation.STATUS_CODE_NOT_FOUND;
             r.stackTrace = null;
 
