@@ -4473,7 +4473,15 @@ public class TestNodeGroupService {
             TestContext testContext = this.host.testCreate(factories.size());
             Map<URI, ServiceDocumentQueryResult> childServicesPerNode = new HashMap<>();
             for (URI remoteFactory : factories.values()) {
-                URI factoryUriWithExpand = UriUtils.buildExpandLinksQueryUri(remoteFactory);
+                // supply a ODATA $top argument, to set the result limit, so the remote node
+                // does not use the implicit default query limit, which is very low. Instead,
+                // use the query limit from this node, the test client, which will be set high
+                // on long running or stress tests
+                URI factoryUriWithExpand = UriUtils.extendUriWithQuery(remoteFactory,
+                        UriUtils.URI_PARAM_ODATA_EXPAND,
+                        ServiceDocumentQueryResult.FIELD_NAME_DOCUMENT_LINKS,
+                        UriUtils.URI_PARAM_ODATA_TOP,
+                        "" + LuceneDocumentIndexService.getImplicitQueryResultLimit() * 2);
                 Operation get = Operation.createGet(factoryUriWithExpand)
                         .setCompletion(
                                 (o, e) -> {
