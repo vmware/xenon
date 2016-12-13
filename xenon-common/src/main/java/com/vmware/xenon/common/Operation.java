@@ -45,6 +45,8 @@ public class Operation implements Cloneable {
      */
     private static final int TO_STRING_SERIALIZED_BODY_LIMIT = 256;
 
+    public static final String ACCEPT_LANGUAGE_HEADER = "accept-language";
+
     @FunctionalInterface
     public interface CompletionHandler {
         void handle(Operation completedOp, Throwable failure);
@@ -1170,7 +1172,7 @@ public class Operation implements Cloneable {
                 this.statusCode = STATUS_CODE_BAD_REQUEST;
                 rsp = Utils.toValidationErrorResponse(e);
             } else {
-                rsp = Utils.toServiceErrorResponse(e);
+                rsp = Utils.toServiceErrorResponse(e, this);
             }
             rsp.statusCode = this.statusCode;
             setBodyNoCloning(rsp).setContentType(Operation.MEDIA_TYPE_APPLICATION_JSON);
