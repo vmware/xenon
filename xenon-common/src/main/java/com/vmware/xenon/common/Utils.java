@@ -484,11 +484,25 @@ public final class Utils {
     }
 
     public static ServiceErrorResponse toServiceErrorResponse(Throwable e) {
-        return ServiceErrorResponse.create(e, Operation.STATUS_CODE_BAD_REQUEST);
+        return toServiceErrorResponse(e, null);
+    }
+
+    public static ServiceErrorResponse toServiceErrorResponse(Throwable e, Operation op) {
+        ServiceErrorResponse serviceErrorResponse = ServiceErrorResponse.create(e, Operation.STATUS_CODE_BAD_REQUEST);
+        if (e instanceof LocalizableValidationException) {
+            String localizedMessage = LocalizationUtil.resolveMessage((LocalizableValidationException) e, op);
+            serviceErrorResponse.message = localizedMessage;
+        }
+
+        return serviceErrorResponse;
     }
 
     public static String toServiceErrorResponseJson(Throwable e) {
-        return Utils.toJson(toServiceErrorResponse(e));
+        return toServiceErrorResponseJson(e, null);
+    }
+
+    public static String toServiceErrorResponseJson(Throwable e, Operation op) {
+        return Utils.toJson(toServiceErrorResponse(e, op));
     }
 
     public static ServiceErrorResponse toValidationErrorResponse(Throwable t) {
