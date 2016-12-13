@@ -1250,22 +1250,37 @@ public class LuceneDocumentIndexService extends StatelessService {
         }
 
         response.queryTimeMicros = 0L;
-        TopDocs results = searcher.search(termQuery, Integer.MAX_VALUE);
-        if (results == null) {
-            return response;
-        }
+        TopDocs results = null;
+        ScoreDoc after = null;
+        long start = queryStartTimeMicros;
+        int resultLimit = 10000;
 
-        long queryEndTimeMicros = Utils.getNowMicrosUtc();
-        long queryDurationMicros = queryEndTimeMicros - queryStartTimeMicros;
-        response.queryTimeMicros = queryDurationMicros;
-        setTimeSeriesHistogramStat(STAT_NAME_QUERY_ALL_VERSIONS_DURATION_MICROS,
-                AGGREGATION_TYPE_AVG_MAX, queryDurationMicros);
+        do {
+            results = searcher.searchAfter(after, termQuery, resultLimit);
+            long queryEndTimeMicros = Utils.getNowMicrosUtc();
+            long queryDurationMicros = queryEndTimeMicros - queryStartTimeMicros;
+            response.queryTimeMicros = queryDurationMicros;
 
-        processQueryResults(querySpec, queryOptions, Integer.MAX_VALUE, searcher, response,
-                results.scoreDocs, queryStartTimeMicros);
+            setTimeSeriesHistogramStat(STAT_NAME_QUERY_ALL_VERSIONS_DURATION_MICROS,
+                    AGGREGATION_TYPE_AVG_MAX, queryDurationMicros);
+            if (results == null || results.scoreDocs == null || results.scoreDocs.length == 0) {
+                break;
+            }
 
-        setTimeSeriesHistogramStat(STAT_NAME_RESULT_PROCESSING_DURATION_MICROS,
-                AGGREGATION_TYPE_AVG_MAX, Utils.getNowMicrosUtc() - queryEndTimeMicros);
+            after = processQueryResults(querySpec, queryOptions, resultLimit, searcher,
+                    response,
+                    results.scoreDocs, start);
+
+            long now = Utils.getNowMicrosUtc();
+            setTimeSeriesHistogramStat(STAT_NAME_RESULT_PROCESSING_DURATION_MICROS,
+                    AGGREGATION_TYPE_AVG_MAX, now - queryEndTimeMicros);
+
+            if (after == results.scoreDocs[results.scoreDocs.length - 1]) {
+                break;
+            }
+
+            start = now;
+        } while (true);
 
         return response;
     }

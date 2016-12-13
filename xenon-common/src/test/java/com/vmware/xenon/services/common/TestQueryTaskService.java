@@ -1060,6 +1060,10 @@ public class TestQueryTaskService {
                 QueryOption.INCLUDE_ALL_VERSIONS);
         createWaitAndValidateQueryTask((int) versionCount, services, queryTask.querySpec,
                 forceRemote);
+        // COUNT, latest version only
+        queryTask.querySpec.options = EnumSet.of(QueryOption.COUNT);
+        createWaitAndValidateQueryTask(0, services, queryTask.querySpec,
+                forceRemote);
 
         // now make sure expand works. Issue same query, but enable expand
         queryTask.querySpec.options = EnumSet.of(QueryOption.EXPAND_CONTENT);
