@@ -39,6 +39,7 @@ import org.junit.After;
 import org.junit.AfterClass;
 import org.junit.Before;
 import org.junit.BeforeClass;
+import org.junit.Rule;
 import org.junit.Test;
 
 import com.vmware.xenon.common.AuthorizationSetupHelper;
@@ -52,6 +53,7 @@ import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.ServiceHost.ServiceHostState;
 import com.vmware.xenon.common.StatefulService;
 import com.vmware.xenon.common.StatelessService;
+import com.vmware.xenon.common.TestResults;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
 import com.vmware.xenon.common.test.AuthorizationHelper;
@@ -90,6 +92,9 @@ public class NettyHttpServiceClientTest {
     public int operationTimeout = 0;
 
     public int iterationCount = 1;
+
+    @Rule
+    public TestResults testResults = new TestResults();
 
     @BeforeClass
     public static void setUpOnce() throws Throwable {
@@ -151,6 +156,7 @@ public class NettyHttpServiceClientTest {
     @Before
     public void setUp() throws Throwable {
         CommandLineArgumentParser.parseFromProperties(this);
+
         this.host = HOST;
         this.host.log("restoring operation timeout");
         if (this.operationTimeout == 0) {
@@ -829,15 +835,17 @@ public class NettyHttpServiceClientTest {
         this.host.log("Using client global connection limit %d", limit);
 
         for (int i = 0; i < 5; i++) {
-            this.host.doPutPerService(
+            double throughput = this.host.doPutPerService(
                     this.requestCount,
                     EnumSet.of(TestProperty.FORCE_REMOTE),
                     services);
+            this.testResults.getReport().all("HTTP1.1 JSON PUTS/sec", throughput);
             this.host.waitForGC();
-            this.host.doPutPerService(
+            throughput = this.host.doPutPerService(
                     this.requestCount,
                     EnumSet.of(TestProperty.FORCE_REMOTE, TestProperty.BINARY_SERIALIZATION),
                     services);
+            this.testResults.getReport().all("HTTP1.1 binary PUTS/sec", throughput);
             this.host.waitForGC();
         }
 

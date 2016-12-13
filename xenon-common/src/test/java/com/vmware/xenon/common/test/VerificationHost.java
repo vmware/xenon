@@ -1132,27 +1132,27 @@ public class VerificationHost extends ExampleServiceHost {
 
     }
 
-    public <T> void doPutPerService(List<Service> services)
+    public <T> double doPutPerService(List<Service> services)
             throws Throwable {
-        doPutPerService(EnumSet.noneOf(TestProperty.class), services);
+        return doPutPerService(EnumSet.noneOf(TestProperty.class), services);
     }
 
-    public <T> void doPutPerService(EnumSet<TestProperty> properties,
+    public <T> double doPutPerService(EnumSet<TestProperty> properties,
             List<Service> services) throws Throwable {
-        doPutPerService(computeIterationsFromMemory(properties, services.size()),
+        return doPutPerService(computeIterationsFromMemory(properties, services.size()),
                 properties,
                 services);
     }
 
-    public <T> void doPatchPerService(long count,
+    public <T> double doPatchPerService(long count,
             EnumSet<TestProperty> properties,
             List<Service> services) throws Throwable {
-        doServiceUpdates(Action.PATCH, count, properties, services);
+        return doServiceUpdates(Action.PATCH, count, properties, services);
     }
 
-    public <T> void doPutPerService(long count, EnumSet<TestProperty> properties,
+    public <T> double doPutPerService(long count, EnumSet<TestProperty> properties,
             List<Service> services) throws Throwable {
-        doServiceUpdates(Action.PUT, count, properties, services);
+        return doServiceUpdates(Action.PUT, count, properties, services);
     }
 
     public double doServiceUpdates(Action action, long count,

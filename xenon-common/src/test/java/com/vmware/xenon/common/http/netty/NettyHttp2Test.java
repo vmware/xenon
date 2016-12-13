@@ -26,6 +26,7 @@ import org.junit.AfterClass;
 import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Ignore;
+import org.junit.Rule;
 import org.junit.Test;
 
 import com.vmware.xenon.common.CommandLineArgumentParser;
@@ -34,6 +35,7 @@ import com.vmware.xenon.common.Service;
 import com.vmware.xenon.common.ServiceClient;
 import com.vmware.xenon.common.ServiceClient.ConnectionPoolMetrics;
 import com.vmware.xenon.common.ServiceHost;
+import com.vmware.xenon.common.TestResults;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
 import com.vmware.xenon.common.test.MinimalTestServiceState;
@@ -60,6 +62,9 @@ public class NettyHttp2Test {
 
     // Number of service instances to target
     public int serviceCount = 32;
+
+    @Rule
+    public TestResults testResults = new TestResults();
 
     @BeforeClass
     public static void setUpOnce() throws Exception {
@@ -413,16 +418,18 @@ public class NettyHttp2Test {
         this.host.log("Using default http2 connection limit %d", limit);
         //this.host.getClient().setConnectionLimitPerHost(limit);
         for (int i = 0; i < 5; i++) {
-            this.host.doPutPerService(
+            double throughput = this.host.doPutPerService(
                     this.requestCount,
                     EnumSet.of(TestProperty.FORCE_REMOTE, TestProperty.HTTP2),
                     services);
+            this.testResults.getReport().all("HTTP/2 JSON PUTS/sec", throughput);
             this.host.waitForGC();
-            this.host.doPutPerService(
+            throughput = this.host.doPutPerService(
                     this.requestCount,
                     EnumSet.of(TestProperty.FORCE_REMOTE, TestProperty.HTTP2,
                             TestProperty.BINARY_SERIALIZATION),
                     services);
+            this.testResults.getReport().all("HTTP/2 binary PUTS/sec", throughput);
             this.host.waitForGC();
         }
 
