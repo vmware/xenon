@@ -1250,23 +1250,38 @@ public class LuceneDocumentIndexService extends StatelessService {
         }
 
         response.queryTimeMicros = 0L;
-        TopDocs results = searcher.search(termQuery, Integer.MAX_VALUE);
-        if (results == null) {
-            return response;
+        TopDocs results = null;
+        ScoreDoc after = null;
+        long start = queryStartTimeMicros;
+        int resultLimit = queryResultLimit;
+        if (querySpec.resultLimit != null && querySpec.resultLimit != Integer.MAX_VALUE) {
+            resultLimit = querySpec.resultLimit;
         }
+        do {
+            results = searcher.searchAfter(after, termQuery, resultLimit);
+            long queryEndTimeMicros = Utils.getNowMicrosUtc();
+            long queryDurationMicros = queryEndTimeMicros - queryStartTimeMicros;
+            response.queryTimeMicros = queryDurationMicros;
 
-        long queryEndTimeMicros = Utils.getNowMicrosUtc();
-        long queryDurationMicros = queryEndTimeMicros - queryStartTimeMicros;
-        response.queryTimeMicros = queryDurationMicros;
-        setTimeSeriesHistogramStat(STAT_NAME_QUERY_ALL_VERSIONS_DURATION_MICROS,
-                AGGREGATION_TYPE_AVG_MAX, queryDurationMicros);
+            if (results == null || results.scoreDocs == null || results.scoreDocs.length == 0) {
+                break;
+            }
 
-        processQueryResults(querySpec, queryOptions, Integer.MAX_VALUE, searcher, response,
-                results.scoreDocs, queryStartTimeMicros);
+            setTimeSeriesHistogramStat(STAT_NAME_QUERY_ALL_VERSIONS_DURATION_MICROS,
+                    AGGREGATION_TYPE_AVG_MAX, queryDurationMicros);
 
-        setTimeSeriesHistogramStat(STAT_NAME_RESULT_PROCESSING_DURATION_MICROS,
-                AGGREGATION_TYPE_AVG_MAX, Utils.getNowMicrosUtc() - queryEndTimeMicros);
+            after = processQueryResults(querySpec, queryOptions, resultLimit, searcher,
+                    response,
+                    results.scoreDocs, start);
 
+            long now = Utils.getNowMicrosUtc();
+            setTimeSeriesHistogramStat(STAT_NAME_RESULT_PROCESSING_DURATION_MICROS,
+                    AGGREGATION_TYPE_AVG_MAX, now - queryEndTimeMicros);
+
+            start = now;
+        } while (true);
+
+        response.documentLinks.clear();
         return response;
     }
 
@@ -1283,13 +1298,15 @@ public class LuceneDocumentIndexService extends StatelessService {
             long queryStartTimeMicros) throws Throwable {
         ScoreDoc[] hits;
         ScoreDoc after = null;
-        boolean isPaginatedQuery = count != Integer.MAX_VALUE
+        boolean hasExplicitLimit = count != Integer.MAX_VALUE;
+        boolean isPaginatedQuery = hasExplicitLimit
                 && !options.contains(QueryOption.TOP_RESULTS);
         boolean hasPage = page != null;
         boolean shouldProcessResults = true;
         boolean useDirectSearch = options.contains(QueryOption.TOP_RESULTS)
                 && options.contains(QueryOption.INCLUDE_ALL_VERSIONS);
         int resultLimit = count;
+
 
         if (hasPage) {
             // For example, via GET of QueryTask.nextPageLink
@@ -1303,7 +1320,7 @@ public class LuceneDocumentIndexService extends StatelessService {
             resultLimit = 1;
             shouldProcessResults = false;
             rsp.documentCount = 1L;
-        } else {
+        } else if (!hasExplicitLimit) {
             // The query does not have a explicit limit set. We still use a limit, to avoid out of memory
             // exceptions, since lucene will use the limit to allocated a score / sorted values array!
             // If the number of hits returned by lucene is higher than the default limit, we will fail the query
@@ -1350,7 +1367,8 @@ public class LuceneDocumentIndexService extends StatelessService {
 
             long end = Utils.getNowMicrosUtc();
 
-            if (!hasPage && !isPaginatedQuery && results.totalHits > resultLimit) {
+            if (!hasExplicitLimit && !hasPage && !isPaginatedQuery
+                    && results.totalHits > resultLimit) {
                 throw new IllegalStateException(
                         "Query returned large number of results, please specify a resultLimit. Results:"
                                 + results.totalHits);
@@ -1592,7 +1610,7 @@ public class LuceneDocumentIndexService extends StatelessService {
 
         Map<String, Long> latestVersions = new HashMap<>();
         for (ScoreDoc sd : hits) {
-            if (uniques.size() >= resultLimit) {
+            if (!hasCountOption && uniques.size() >= resultLimit) {
                 break;
             }
 
@@ -1695,14 +1713,9 @@ public class LuceneDocumentIndexService extends StatelessService {
             uniques.add(link);
         }
 
-        if (hasCountOption) {
-            rsp.documentCount = (long) uniques.size();
-        } else {
-            rsp.documentLinks.clear();
-            rsp.documentLinks.addAll(uniques);
-            rsp.documentCount = (long) rsp.documentLinks.size();
-        }
-
+        rsp.documentLinks.clear();
+        rsp.documentLinks.addAll(uniques);
+        rsp.documentCount = (long) rsp.documentLinks.size();
         return lastDocVisited;
     }
 

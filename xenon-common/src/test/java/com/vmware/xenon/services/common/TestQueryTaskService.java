@@ -139,6 +139,8 @@ public class TestQueryTaskService {
 
     @After
     public void tearDown() throws Exception {
+        LuceneDocumentIndexService
+                .setImplicitQueryResultLimit(LuceneDocumentIndexService.DEFAULT_QUERY_RESULT_LIMIT);
         if (this.host == null) {
             return;
         }
@@ -1051,18 +1053,39 @@ public class TestQueryTaskService {
                 .addKindFieldClause(QueryValidationServiceState.class)
                 .build();
         QueryTask queryTask = QueryTask.Builder.create().setQuery(query).build();
+        queryTask.querySpec.options = EnumSet.of(QueryOption.TOP_RESULTS);
+        queryTask.querySpec.resultLimit = (int) (this.serviceCount * versionCount * 10);
 
         createWaitAndValidateQueryTask((int) versionCount, services, queryTask.querySpec,
                 forceRemote);
 
-        // same as above, but ask for COUNT only, no links
+        // same as above, but ask for COUNT only, no links, explicit limit
+        queryTask.querySpec.resultLimit = (int) (this.serviceCount * versionCount * 10);
         queryTask.querySpec.options = EnumSet.of(QueryOption.COUNT,
                 QueryOption.INCLUDE_ALL_VERSIONS);
         createWaitAndValidateQueryTask((int) versionCount, services, queryTask.querySpec,
                 forceRemote);
 
+        // COUNT, latest version only, explicit resultLimit
+        queryTask.querySpec.options = EnumSet.of(QueryOption.COUNT);
+        queryTask.querySpec.resultLimit = (int) (this.serviceCount * versionCount * 10);
+        createWaitAndValidateQueryTask(0, services, queryTask.querySpec,
+                forceRemote);
+
+        // COUNT, latest version only, implicit resultLimit, reduce default so we trigger
+        // "paginated" logic
+        LuceneDocumentIndexService.setImplicitQueryResultLimit(this.serviceCount / 2);
+        queryTask.querySpec.options = EnumSet.of(QueryOption.COUNT);
+        queryTask.querySpec.resultLimit = null;
+        createWaitAndValidateQueryTask(0, services, queryTask.querySpec,
+                forceRemote);
+        LuceneDocumentIndexService
+                .setImplicitQueryResultLimit(LuceneDocumentIndexService.DEFAULT_QUERY_RESULT_LIMIT);
+
         // now make sure expand works. Issue same query, but enable expand
-        queryTask.querySpec.options = EnumSet.of(QueryOption.EXPAND_CONTENT);
+        queryTask.querySpec.options = EnumSet.of(QueryOption.EXPAND_CONTENT,
+                QueryOption.TOP_RESULTS);
+        queryTask.querySpec.resultLimit = (int) (this.serviceCount * versionCount * 10);
         createWaitAndValidateQueryTask(versionCount, services, queryTask.querySpec, forceRemote);
 
         // now for the minimal test service
@@ -1070,7 +1093,8 @@ public class TestQueryTaskService {
                 .addKindFieldClause(MinimalTestServiceState.class)
                 .build();
         queryTask = QueryTask.Builder.create().setQuery(query).build();
-
+        queryTask.querySpec.options = EnumSet.of(QueryOption.TOP_RESULTS);
+        queryTask.querySpec.resultLimit = (int) (this.serviceCount * versionCount * 10);
         createWaitAndValidateQueryTask(versionCount, minimalTestServices, queryTask.querySpec,
                 forceRemote);
     }
