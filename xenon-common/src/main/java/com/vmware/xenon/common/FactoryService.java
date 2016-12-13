@@ -500,9 +500,9 @@ public abstract class FactoryService extends StatelessService {
 
     private void handleGetCompletion(Operation op) {
         String query = op.getUri().getQuery();
-        String oDataFilter = UriUtils.getODataFilterParamValue(op.getUri());
+        boolean isODataQuery = UriUtils.hasODataQueryParams(op.getUri());
         boolean expand = UriUtils.hasODataExpandParamValue(op.getUri());
-        if (query == null || (oDataFilter == null && expand)) {
+        if (query == null || (!isODataQuery && expand)) {
             completeGetWithQuery(op, this.childOptions);
         } else {
             handleGetOdataCompletion(op);

@@ -684,6 +684,26 @@ public final class UriUtils {
                 uri.getQuery());
     }
 
+    public static String getPathParamValue(URI uri) {
+        return getODataParamValueAsString(uri, FORWARDING_URI_PARAM_NAME_PATH);
+    }
+
+    public static String getPeerParamValue(URI uri) {
+        return getODataParamValueAsString(uri, FORWARDING_URI_PARAM_NAME_PEER);
+    }
+
+    public static boolean hasODataQueryParams(URI uri) {
+        if (uri.getQuery() == null) {
+            return false;
+        }
+        String q = uri.getQuery();
+        return q.contains(URI_PARAM_ODATA_TOP)
+                || q.contains(URI_PARAM_ODATA_COUNT)
+                || q.contains(URI_PARAM_ODATA_LIMIT)
+                || q.contains(URI_PARAM_ODATA_SKIP)
+                || q.contains(URI_PARAM_ODATA_FILTER);
+    }
+
     public static Integer getODataSkipParamValue(URI uri) {
         return getODataParamValue(uri, URI_PARAM_ODATA_SKIP);
     }
@@ -706,14 +726,6 @@ public final class UriUtils {
         }
 
         return filterParamValue;
-    }
-
-    public static String getPathParamValue(URI uri) {
-        return getODataParamValueAsString(uri, FORWARDING_URI_PARAM_NAME_PATH);
-    }
-
-    public static String getPeerParamValue(URI uri) {
-        return getODataParamValueAsString(uri, FORWARDING_URI_PARAM_NAME_PEER);
     }
 
     public static Integer getODataTopParamValue(URI uri) {
