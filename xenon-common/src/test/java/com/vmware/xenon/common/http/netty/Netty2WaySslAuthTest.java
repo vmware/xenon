@@ -26,11 +26,16 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.logging.Level;
 import javax.net.ssl.KeyManagerFactory;
-import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManagerFactory;
 
+import io.netty.handler.codec.http2.Http2SecurityUtil;
+import io.netty.handler.ssl.ApplicationProtocolConfig;
+import io.netty.handler.ssl.ApplicationProtocolNames;
+import io.netty.handler.ssl.OpenSsl;
 import io.netty.handler.ssl.SslContext;
 import io.netty.handler.ssl.SslContextBuilder;
+import io.netty.handler.ssl.SslProvider;
+import io.netty.handler.ssl.SupportedCipherSuiteFilter;
 import org.junit.After;
 import org.junit.AfterClass;
 import org.junit.Assert;
@@ -197,7 +202,6 @@ public class Netty2WaySslAuthTest {
                 Executors.newFixedThreadPool(4),
                 Executors.newScheduledThreadPool(1));
 
-        SSLContext clientContext = SSLContext.getInstance(ServiceClient.TLS_PROTOCOL_NAME);
         TrustManagerFactory trustManagerFactory = TrustManagerFactory
                 .getInstance(TrustManagerFactory.getDefaultAlgorithm());
         trustManagerFactory.init((KeyStore) null);
@@ -208,8 +212,22 @@ public class Netty2WaySslAuthTest {
             keyStore.load(stream, "changeit".toCharArray());
         }
         kmf.init(keyStore, "changeit".toCharArray());
-        clientContext.init(kmf.getKeyManagers(), trustManagerFactory.getTrustManagers(), null);
-        client.setSSLContext(clientContext);
+
+        SslProvider provider = OpenSsl.isAlpnSupported() ? SslProvider.OPENSSL : SslProvider.JDK;
+        SslContext clientContext = SslContextBuilder.forClient()
+                .trustManager(trustManagerFactory)
+                .keyManager(kmf)
+                .sslProvider(provider)
+                .ciphers(Http2SecurityUtil.CIPHERS, SupportedCipherSuiteFilter.INSTANCE)
+                .applicationProtocolConfig(new ApplicationProtocolConfig(
+                        ApplicationProtocolConfig.Protocol.ALPN,
+                        ApplicationProtocolConfig.SelectorFailureBehavior.NO_ADVERTISE,
+                        ApplicationProtocolConfig.SelectedListenerFailureBehavior.ACCEPT,
+                        ApplicationProtocolNames.HTTP_2,
+                        ApplicationProtocolNames.HTTP_1_1))
+                .build();
+
+        client.setNettySslContext(clientContext);
         client.start();
 
         // Perform request and validate that detected principal is correct

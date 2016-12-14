@@ -13,7 +13,7 @@
 
 package com.vmware.xenon.common;
 
-import javax.net.ssl.SSLContext;
+import io.netty.handler.ssl.SslContext;
 
 public interface ServiceClient extends ServiceRequestSender {
 
@@ -82,9 +82,9 @@ public interface ServiceClient extends ServiceRequestSender {
      */
     public static final String CONNECTION_TAG_HTTP2_DEFAULT = "xn-cnx-tag-http2-default";
 
-    public ServiceClient setSSLContext(SSLContext context);
+    public ServiceClient setNettySslContext(SslContext sslContext);
 
-    public SSLContext getSSLContext();
+    public SslContext getNettySslContext();
 
     void start();
 

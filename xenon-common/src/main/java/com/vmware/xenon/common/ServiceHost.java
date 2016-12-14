@@ -62,9 +62,16 @@ import java.util.logging.ConsoleHandler;
 import java.util.logging.FileHandler;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-
-import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManagerFactory;
+
+import io.netty.handler.codec.http2.Http2SecurityUtil;
+import io.netty.handler.ssl.ApplicationProtocolConfig;
+import io.netty.handler.ssl.ApplicationProtocolNames;
+import io.netty.handler.ssl.OpenSsl;
+import io.netty.handler.ssl.SslContext;
+import io.netty.handler.ssl.SslContextBuilder;
+import io.netty.handler.ssl.SslProvider;
+import io.netty.handler.ssl.SupportedCipherSuiteFilter;
 
 import com.vmware.xenon.common.FileUtils.ResourceEntry;
 import com.vmware.xenon.common.NodeSelectorService.SelectAndForwardRequest;
@@ -366,9 +373,6 @@ public class ServiceHost implements ServiceRequestSender {
     public static final boolean APPEND_PORT_TO_SANDBOX = System
             .getProperty(PROPERTY_NAME_APPEND_PORT_TO_SANDBOX) == null
             || Boolean.getBoolean(PROPERTY_NAME_APPEND_PORT_TO_SANDBOX);
-
-
-
 
     /**
      * Request rate limiting configuration and real time statistics
@@ -861,12 +865,12 @@ public class ServiceHost implements ServiceRequestSender {
     @Override
     public String toString() {
         return String.format("["
-                + "%n isStarted: %s"
-                + "%n httpPort: %d"
-                + "%n httpsPort: %d"
-                + "%n id: %s"
-                + "%n attached services: %d"
-                + "%n]",
+                        + "%n isStarted: %s"
+                        + "%n httpPort: %d"
+                        + "%n httpsPort: %d"
+                        + "%n id: %s"
+                        + "%n attached services: %d"
+                        + "%n]",
                 isStarted(),
                 this.state.httpPort,
                 this.state.httpsPort,
@@ -1027,7 +1031,7 @@ public class ServiceHost implements ServiceRequestSender {
 
         if (micros < Service.MIN_MAINTENANCE_INTERVAL_MICROS) {
             log(Level.WARNING, "Maintenance interval %d is less than the minimum interval %d"
-                    + ", reducing to min interval", micros,
+                            + ", reducing to min interval", micros,
                     Service.MIN_MAINTENANCE_INTERVAL_MICROS);
             micros = Service.MIN_MAINTENANCE_INTERVAL_MICROS;
         }
@@ -1337,12 +1341,25 @@ public class ServiceHost implements ServiceRequestSender {
                     null,
                     this.scheduledExecutor,
                     this);
-            SSLContext clientContext = SSLContext.getInstance(ServiceClient.TLS_PROTOCOL_NAME);
-            TrustManagerFactory trustManagerFactory = TrustManagerFactory
-                    .getInstance(TrustManagerFactory.getDefaultAlgorithm());
+
+            TrustManagerFactory trustManagerFactory = TrustManagerFactory.getInstance(
+                    TrustManagerFactory.getDefaultAlgorithm());
             trustManagerFactory.init((KeyStore) null);
-            clientContext.init(null, trustManagerFactory.getTrustManagers(), null);
-            this.client.setSSLContext(clientContext);
+
+            SslProvider provider = OpenSsl.isAlpnSupported() ? SslProvider.OPENSSL : SslProvider.JDK;
+            SslContext clientContext = SslContextBuilder.forClient()
+                    .trustManager(trustManagerFactory)
+                    .sslProvider(provider)
+                    .ciphers(Http2SecurityUtil.CIPHERS, SupportedCipherSuiteFilter.INSTANCE)
+                    .applicationProtocolConfig(new ApplicationProtocolConfig(
+                            ApplicationProtocolConfig.Protocol.ALPN,
+                            ApplicationProtocolConfig.SelectorFailureBehavior.NO_ADVERTISE,
+                            ApplicationProtocolConfig.SelectedListenerFailureBehavior.ACCEPT,
+                            ApplicationProtocolNames.HTTP_2,
+                            ApplicationProtocolNames.HTTP_1_1))
+                    .build();
+
+            this.client.setNettySslContext(clientContext);
         }
 
         if (this.state.requestPayloadSizeLimit > 0) {
@@ -1433,7 +1450,7 @@ public class ServiceHost implements ServiceRequestSender {
         coreServices.add(new SystemUserService());
         coreServices.add(new GuestUserService());
 
-        if (this.authenticationService != null ) {
+        if (this.authenticationService != null) {
             if (!(this.authenticationService instanceof BasicAuthenticationService)) {
                 addPrivilegedService(this.authenticationService.getClass());
                 startCoreServicesSynchronously(this.authenticationService);
@@ -1864,7 +1881,8 @@ public class ServiceHost implements ServiceRequestSender {
         }
     }
 
-    protected void startFactoryChildServiceSynchronously(String factoryLink, ServiceDocument serviceState) throws Throwable {
+    protected void startFactoryChildServiceSynchronously(String factoryLink, ServiceDocument serviceState)
+            throws Throwable {
         CountDownLatch latch = new CountDownLatch(1);
         Throwable[] failure = new Throwable[1];
         CompletionHandler comp = (o, e) -> {
@@ -1885,8 +1903,8 @@ public class ServiceHost implements ServiceRequestSender {
         this.registerForServiceAvailability(comp, UriUtils.buildUriPath(factoryLink, serviceState.documentSelfLink));
 
         Operation post = Operation.createPost(UriUtils.buildUri(this, factoryLink))
-                            .setBody(serviceState)
-                            .setReferer(getUri());
+                .setBody(serviceState)
+                .setReferer(getUri());
         post.setAuthorizationContext(getSystemAuthorizationContext());
         sendRequest(post);
 
@@ -3456,7 +3474,6 @@ public class ServiceHost implements ServiceRequestSender {
                 e);
     }
 
-
     /**
      * Forwards request to a peer, if local node is not the owner for the service. This method is
      * part of the consensus logic for the replication protocol. It serves the following functions:
@@ -3936,7 +3953,6 @@ public class ServiceHost implements ServiceRequestSender {
         if (rateInfo == null) {
             return false;
         }
-
 
         synchronized (rateInfo) {
             rateInfo.timeSeries.add(Utils.getSystemNowMicrosUtc(), 0, 1);
@@ -5265,7 +5281,8 @@ public class ServiceHost implements ServiceRequestSender {
             Operation get, EnumSet<ServiceOption> exclusionOptions) {
         ServiceDocumentQueryResult r = new ServiceDocumentQueryResult();
 
-        loop: for (Service s : this.attachedServices.values()) {
+        loop:
+        for (Service s : this.attachedServices.values()) {
             if (s.getProcessingStage() != ProcessingStage.AVAILABLE) {
                 continue;
             }
@@ -5503,7 +5520,8 @@ public class ServiceHost implements ServiceRequestSender {
         return this.authorizationContextCache.get(token);
     }
 
-    private void populateAuthorizationContext(Operation op, Consumer<AuthorizationContext> authorizationContextHandler) {
+    private void populateAuthorizationContext(Operation op,
+            Consumer<AuthorizationContext> authorizationContextHandler) {
         getAuthorizationContext(op, authorizationContext -> {
             if (authorizationContext == null) {
                 // No (valid) authorization context, fall back to guest context

@@ -26,7 +26,6 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import javax.net.ssl.SSLContext;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
@@ -37,6 +36,7 @@ import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpVersion;
 import io.netty.handler.codec.http.cookie.ClientCookieDecoder;
 import io.netty.handler.codec.http.cookie.Cookie;
+import io.netty.handler.ssl.SslContext;
 import io.netty.util.AsciiString;
 
 import com.vmware.xenon.common.Operation;
@@ -105,7 +105,7 @@ public class NettyHttpServiceClient implements ServiceClient {
 
     private ExecutorService executor;
 
-    private SSLContext sslContext;
+    private SslContext sslContext;
 
     private ServiceHost host;
 
@@ -184,7 +184,7 @@ public class NettyHttpServiceClient implements ServiceClient {
             this.sslChannelPool.setThreadTag(buildThreadTag());
             this.sslChannelPool.setThreadCount(Utils.DEFAULT_IO_THREAD_COUNT);
             this.sslChannelPool.setExecutor(this.executor);
-            this.sslChannelPool.setSSLContext(this.sslContext);
+            this.sslChannelPool.setNettySslContext(this.sslContext);
             this.sslChannelPool.start();
         }
 
@@ -314,10 +314,10 @@ public class NettyHttpServiceClient implements ServiceClient {
             return;
         }
 
-        if (isHttpsScheme && this.getSSLContext() == null) {
+        if (isHttpsScheme && this.getNettySslContext() == null) {
             op.setRetryCount(0);
             fail(new IllegalArgumentException(
-                    "HTTPS not enabled, set SSL context before starting client:" + op.getUri()),
+                            "HTTPS not enabled, set SSL context before starting client:" + op.getUri()),
                     op, op.getBodyRaw());
             return;
         }
@@ -555,7 +555,7 @@ public class NettyHttpServiceClient implements ServiceClient {
         if (contentType.length() >= MEDIA_TYPE_APPLICATION_PREFIX_LENGTH
                 && contentType.charAt(MEDIA_TYPE_APPLICATION_PREFIX_LENGTH) == 'k'
                 && Operation.MEDIA_TYPE_APPLICATION_KRYO_OCTET_STREAM.hashCode() == contentType
-                        .hashCode()) {
+                .hashCode()) {
             httpHeaders.add(HttpHeaderNames.CONTENT_TYPE, MEDIA_TYPE_KRYO_OCTET_STREAM_ASCII);
         } else if (contentType.length() >= MEDIA_TYPE_APPLICATION_PREFIX_LENGTH
                 && contentType.charAt(MEDIA_TYPE_APPLICATION_PREFIX_LENGTH) == 'j'
@@ -742,7 +742,6 @@ public class NettyHttpServiceClient implements ServiceClient {
             return;
         }
 
-
         // We do a limited search of pending operation, in each maintenance period, to
         // determine if any have expired. The operations are kept in a sorted map,
         // with the key being the operation id. The operation id increments monotonically
@@ -836,13 +835,13 @@ public class NettyHttpServiceClient implements ServiceClient {
     }
 
     @Override
-    public ServiceClient setSSLContext(SSLContext context) {
+    public ServiceClient setNettySslContext(SslContext context) {
         this.sslContext = context;
         return this;
     }
 
     @Override
-    public SSLContext getSSLContext() {
+    public SslContext getNettySslContext() {
         return this.sslContext;
     }
 

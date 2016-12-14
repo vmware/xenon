@@ -14,7 +14,6 @@
 package com.vmware.xenon.common.http.netty;
 
 import java.util.logging.Level;
-import javax.net.ssl.SSLEngine;
 
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
@@ -38,7 +37,6 @@ import io.netty.handler.codec.http2.Http2Settings;
 import io.netty.handler.codec.http2.InboundHttp2ToHttpAdapter;
 import io.netty.handler.codec.http2.InboundHttp2ToHttpAdapterBuilder;
 import io.netty.handler.logging.LogLevel;
-import io.netty.handler.ssl.SslHandler;
 
 import com.vmware.xenon.common.Utils;
 
@@ -83,13 +81,8 @@ public class NettyHttpClientRequestInitializer extends ChannelInitializer<Socket
         ch.config().setAllocator(NettyChannelContext.ALLOCATOR);
         ch.config().setSendBufferSize(NettyChannelContext.BUFFER_SIZE);
         ch.config().setReceiveBufferSize(NettyChannelContext.BUFFER_SIZE);
-        if (this.pool.getSSLContext() != null) {
-            if (this.isHttp2Only) {
-                throw new IllegalArgumentException("HTTP/2 with SSL is not supported");
-            }
-            SSLEngine engine = this.pool.getSSLContext().createSSLEngine();
-            engine.setUseClientMode(true);
-            p.addLast(SSL_HANDLER, new SslHandler(engine));
+        if (this.pool.getNettySslContext() != null) {
+            p.addLast(this.pool.getNettySslContext().newHandler(ch.alloc()));
         }
 
         HttpClientCodec http1_codec = new HttpClientCodec(
@@ -185,12 +178,12 @@ public class NettyHttpClientRequestInitializer extends ChannelInitializer<Socket
     }
 
     /**
-    * This handler does just one thing: it informs us (via a promise) that we've received
-    * an HTTP/2 settings frame. We do this because when we connect to the HTTP/2 server,
-    * we have to wait until the settings have been negotiated before we send data.
-    * NettyChannelPool uses this promise.
-    *
-    */
+     * This handler does just one thing: it informs us (via a promise) that we've received
+     * an HTTP/2 settings frame. We do this because when we connect to the HTTP/2 server,
+     * we have to wait until the settings have been negotiated before we send data.
+     * NettyChannelPool uses this promise.
+     *
+     */
     private static class Http2SettingsHandler extends SimpleChannelInboundHandler<Http2Settings> {
         private ChannelPromise promise;
 

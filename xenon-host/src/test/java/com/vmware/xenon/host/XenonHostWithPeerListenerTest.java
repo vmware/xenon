@@ -27,16 +27,20 @@ import java.security.KeyStoreException;
 import java.security.NoSuchAlgorithmException;
 import java.security.UnrecoverableKeyException;
 import java.security.cert.CertificateException;
-import java.security.cert.X509Certificate;
 import java.util.UUID;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
-
 import javax.net.ssl.KeyManagerFactory;
-import javax.net.ssl.SSLContext;
-import javax.net.ssl.TrustManager;
-import javax.net.ssl.X509TrustManager;
 
+import io.netty.handler.codec.http2.Http2SecurityUtil;
+import io.netty.handler.ssl.ApplicationProtocolConfig;
+import io.netty.handler.ssl.ApplicationProtocolNames;
+import io.netty.handler.ssl.OpenSsl;
+import io.netty.handler.ssl.SslContext;
+import io.netty.handler.ssl.SslContextBuilder;
+import io.netty.handler.ssl.SslProvider;
+import io.netty.handler.ssl.SupportedCipherSuiteFilter;
+import io.netty.handler.ssl.util.InsecureTrustManagerFactory;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 
@@ -185,7 +189,6 @@ public class XenonHostWithPeerListenerTest {
                 Executors.newFixedThreadPool(4),
                 Executors.newScheduledThreadPool(1));
 
-        SSLContext clientContext = SSLContext.getInstance(ServiceClient.TLS_PROTOCOL_NAME);
         KeyManagerFactory kmf = KeyManagerFactory.getInstance(KeyManagerFactory
                 .getDefaultAlgorithm());
         KeyStore keyStore = KeyStore.getInstance("PKCS12");
@@ -193,26 +196,22 @@ public class XenonHostWithPeerListenerTest {
             keyStore.load(stream, "changeit".toCharArray());
         }
         kmf.init(keyStore, "changeit".toCharArray());
-        clientContext.init(kmf.getKeyManagers(), new TrustManager[] {
-                new X509TrustManager() {
-                    @Override
-                    public void checkClientTrusted(X509Certificate[] x509Certificates, String s)
-                            throws CertificateException {
 
-                    }
+        SslProvider provider = OpenSsl.isAlpnSupported() ? SslProvider.OPENSSL : SslProvider.JDK;
+        SslContext clientContext = SslContextBuilder.forClient()
+                .trustManager(InsecureTrustManagerFactory.INSTANCE)
+                .keyManager(kmf)
+                .sslProvider(provider)
+                .ciphers(Http2SecurityUtil.CIPHERS, SupportedCipherSuiteFilter.INSTANCE)
+                .applicationProtocolConfig(new ApplicationProtocolConfig(
+                        ApplicationProtocolConfig.Protocol.ALPN,
+                        ApplicationProtocolConfig.SelectorFailureBehavior.NO_ADVERTISE,
+                        ApplicationProtocolConfig.SelectedListenerFailureBehavior.ACCEPT,
+                        ApplicationProtocolNames.HTTP_2,
+                        ApplicationProtocolNames.HTTP_1_1))
+                .build();
 
-                    @Override
-                    public void checkServerTrusted(X509Certificate[] x509Certificates, String s)
-                            throws CertificateException {
-
-                    }
-
-                    @Override public X509Certificate[] getAcceptedIssuers() {
-                        return new X509Certificate[0];
-                    }
-                }
-        }, null);
-        client.setSSLContext(clientContext);
+        client.setNettySslContext(clientContext);
         client.start();
         return client;
     }

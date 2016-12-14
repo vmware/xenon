@@ -17,13 +17,18 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 
 import java.util.concurrent.Executors;
-import javax.net.ssl.SSLContext;
 
+import io.netty.handler.codec.http2.Http2SecurityUtil;
+import io.netty.handler.ssl.ApplicationProtocolConfig;
+import io.netty.handler.ssl.ApplicationProtocolNames;
+import io.netty.handler.ssl.OpenSsl;
+import io.netty.handler.ssl.SslContext;
+import io.netty.handler.ssl.SslContextBuilder;
+import io.netty.handler.ssl.SslProvider;
+import io.netty.handler.ssl.SupportedCipherSuiteFilter;
 import io.netty.handler.ssl.util.InsecureTrustManagerFactory;
 import org.junit.Before;
 import org.junit.Test;
-
-import com.vmware.xenon.common.ServiceClient;
 
 public class NettyHttpServiceClientChannelPoolsTest {
     private NettyHttpServiceClient client;
@@ -35,9 +40,20 @@ public class NettyHttpServiceClientChannelPoolsTest {
                 Executors.newFixedThreadPool(4),
                 Executors.newScheduledThreadPool(1));
 
-        SSLContext clientContext = SSLContext.getInstance(ServiceClient.TLS_PROTOCOL_NAME);
-        clientContext.init(null, InsecureTrustManagerFactory.INSTANCE.getTrustManagers(), null);
-        this.client.setSSLContext(clientContext);
+        SslProvider provider = OpenSsl.isAlpnSupported() ? SslProvider.OPENSSL : SslProvider.JDK;
+        SslContext clientContext = SslContextBuilder.forClient()
+                .trustManager(InsecureTrustManagerFactory.INSTANCE)
+                .sslProvider(provider)
+                .ciphers(Http2SecurityUtil.CIPHERS, SupportedCipherSuiteFilter.INSTANCE)
+                .applicationProtocolConfig(new ApplicationProtocolConfig(
+                        ApplicationProtocolConfig.Protocol.ALPN,
+                        ApplicationProtocolConfig.SelectorFailureBehavior.NO_ADVERTISE,
+                        ApplicationProtocolConfig.SelectedListenerFailureBehavior.ACCEPT,
+                        ApplicationProtocolNames.HTTP_2,
+                        ApplicationProtocolNames.HTTP_1_1))
+                .build();
+
+        this.client.setNettySslContext(clientContext);
     }
 
     @Test

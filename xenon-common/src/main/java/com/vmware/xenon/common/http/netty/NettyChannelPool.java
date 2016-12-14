@@ -24,7 +24,6 @@ import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.logging.Logger;
-import javax.net.ssl.SSLContext;
 
 import io.netty.bootstrap.Bootstrap;
 import io.netty.channel.Channel;
@@ -34,6 +33,7 @@ import io.netty.channel.ChannelPromise;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioSocketChannel;
+import io.netty.handler.ssl.SslContext;
 
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Operation.OperationOption;
@@ -68,7 +68,6 @@ public class NettyChannelPool {
         private int hashcode;
 
         public NettyChannelGroupKey() {
-
         }
 
         NettyChannelGroupKey(NettyChannelGroupKey other) {
@@ -169,7 +168,7 @@ public class NettyChannelPool {
 
     private int connectionLimit = 1;
 
-    private SSLContext sslContext;
+    private SslContext nettySslContext;
 
     private int requestPayloadSizeLimit;
 
@@ -791,14 +790,14 @@ public class NettyChannelPool {
         }
     }
 
-    public void setSSLContext(SSLContext context) {
+    public void setNettySslContext(SslContext sslContext) {
         if (isStarted()) {
             throw new IllegalStateException("Already started");
         }
-        this.sslContext = context;
+        this.nettySslContext = sslContext;
     }
 
-    public SSLContext getSSLContext() {
-        return this.sslContext;
+    public SslContext getNettySslContext() {
+        return this.nettySslContext;
     }
 }
