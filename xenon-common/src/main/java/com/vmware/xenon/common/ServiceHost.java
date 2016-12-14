@@ -3219,10 +3219,18 @@ public class ServiceHost implements ServiceRequestSender {
         if (this.authenticationService != null
                 && BasicAuthenticationUtils.getAuthToken(inboundOp) == null) {
 
-            if (!this.getAuthenticationServiceUri().getPath().equals(inboundOp.getUri().getPath())
-                    && !(this.authenticationService instanceof BasicAuthenticationService)) {
-                // not calling queueRequest if BasicAuthenticationService otherwise let the
-                // authenticationService handle it.
+            if (!this.getAuthenticationServiceUri().getPath().equals(inboundOp.getUri().getPath())) {
+                inboundOp.nestCompletion(op -> {
+                    // if the status was anything but OK, terminate the processing chain; else
+                    // proceed with the original request using the guest context
+                    if (op.getStatusCode() != Operation.STATUS_CODE_OK) {
+                        inboundOp.complete();
+                        return;
+                    }
+                    populateAuthorizationContext(inboundOp, authorizationContext -> {
+                        checkAndPopulateAuthzContext(service, inboundOp);
+                    });
+                });
                 queueOrScheduleRequest(this.authenticationService, inboundOp);
             } else {
                 // allow the call to authenticationService to pass through using

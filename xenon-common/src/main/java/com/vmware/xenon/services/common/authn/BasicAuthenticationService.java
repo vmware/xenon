@@ -38,6 +38,18 @@ public class BasicAuthenticationService extends StatelessService {
     }
 
     @Override
+    public boolean queueRequest(Operation op) {
+        // if the incoming request is for self proceed with handling the request, else mark
+        // the operation complete, the caller can then proceed with a null auth context
+        // that will default to the guest context
+        if (getSelfLink().equals(op.getUri().getPath())) {
+            return false;
+        }
+        op.complete();
+        return true;
+    }
+
+    @Override
     public void handlePost(Operation op) {
         // not changing the other requestTypes to pragma header  for backward compatibility
         if (op.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_VERIFY_TOKEN)) {
