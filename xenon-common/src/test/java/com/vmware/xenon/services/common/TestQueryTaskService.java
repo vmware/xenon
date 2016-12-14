@@ -787,7 +787,8 @@ public class TestQueryTaskService {
     @Test
     public void throughputComplexQueryDocumentSearch() throws Throwable {
         setUpHost();
-
+        LuceneDocumentIndexService
+                .setImplicitQueryResultLimit(this.serviceCount * 10);
         List<URI> services = createQueryTargetServices(this.serviceCount);
 
         // start two different types of services, creating two sets of documents
@@ -870,6 +871,17 @@ public class TestQueryTaskService {
                     QuerySpecification.buildCollectionItemName("ignoredArrayOfStrings"),
                     newState.ignoredArrayOfStrings[1], services.size(), 0, this.testResults);
         }
+
+        ServiceStat lookupSt = getLuceneStat(
+                LuceneDocumentIndexService.STAT_NAME_VERSION_CACHE_LOOKUP_COUNT);
+        ServiceStat missSt = getLuceneStat(
+                LuceneDocumentIndexService.STAT_NAME_VERSION_CACHE_MISS_COUNT);
+        ServiceStat entryCountSt = getLuceneStat(
+                LuceneDocumentIndexService.STAT_NAME_VERSION_CACHE_ENTRY_COUNT);
+        this.host.log("Version cache size: %f Version cache lookups: %f, misses: %f",
+                entryCountSt.latestValue,
+                lookupSt.latestValue,
+                missSt.latestValue);
         verifyNoPaginatedIndexSearchers();
     }
 
@@ -3783,5 +3795,15 @@ public class TestQueryTaskService {
                 .addKindFieldClause(TenantState.class, Occurance.SHOULD_OCCUR)
                 .build();
         this.host.createAndWaitSimpleDirectQuery(spec, 2, 2);
+    }
+
+    private ServiceStat getLuceneStat(String name) {
+        Map<String, ServiceStat> hostStats = this.host
+                .getServiceStats(this.host.getDocumentIndexServiceUri());
+        ServiceStat st = hostStats.get(name);
+        if (st == null) {
+            return new ServiceStat();
+        }
+        return st;
     }
 }

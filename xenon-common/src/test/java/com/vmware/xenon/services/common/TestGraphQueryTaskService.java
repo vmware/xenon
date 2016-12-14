@@ -291,6 +291,8 @@ public class TestGraphQueryTaskService extends BasicTestCase {
         initialState.taskInfo = new TaskState();
         initialState.taskInfo.isDirect = true;
 
+        this.host.log("Starting verification for graph query with %s", initialState.options);
+
         // The test code created a set of target service documents that form a fully
         // connected tree: each layer N, is fully connected to layer N+1. To check if
         // stage filtering really works we need to have a last stage query specification that
@@ -304,11 +306,14 @@ public class TestGraphQueryTaskService extends BasicTestCase {
                         NumericRange.createLongRange((long) stageCount - 1, (long) stageCount - 1,
                                 true, true));
 
-
         this.host.waitFor("query result mismatch", () -> {
             QueryTask task = QueryTask.create(q);
             this.host.createQueryTaskService(this.queryFactoryUri,
                     task, false, true, task, null);
+            this.host.log("Executing query for document with stage %d, results: %d (%d)",
+                    stageCount - 1,
+                    task.results.documentLinks.size(),
+                    task.results.documentCount);
             Object doc = task.results.documents.values().iterator().next();
             QueryValidationServiceState st = Utils.fromJson(doc, QueryValidationServiceState.class);
 
@@ -318,6 +323,8 @@ public class TestGraphQueryTaskService extends BasicTestCase {
             initialState.stages.get(initialState.stages.size() - 1).querySpec.query
                     .addBooleanClause(specificDocClause);
 
+            this.host.log("Executing graph query for document with id %s",
+                    st.id);
             GraphQueryTask finalState = this.createTask(initialState);
             logGraphQueryThroughput(finalState);
 
@@ -326,6 +333,14 @@ public class TestGraphQueryTaskService extends BasicTestCase {
             // pruned the results in stages 1 and 0 to just a single result each.
             for (int i = 0; i < finalState.stages.size(); i++) {
                 QueryTask stage = finalState.stages.get(i);
+                this.host.log(
+                        "Stage %d, results: %d (%d), selectedLinksPerDoc: %d, selectedLinks: %d",
+                        i,
+                        stage.results.documentLinks.size(),
+                        stage.results.documentCount,
+                        stage.results.selectedLinksPerDocument.size(),
+                        stage.results.selectedLinks.size());
+
                 if (1 != (long) stage.results.documentCount) {
                     return false;
                 }
