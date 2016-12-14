@@ -214,7 +214,7 @@ public class TestLuceneDocumentIndexService {
             // on index stats.
             this.host.setPeerSynchronizationEnabled(false);
             this.indexService = new FaultInjectionLuceneDocumentIndexService();
-            if (this.host.isStressTest) {
+            if (this.host.isStressTest()) {
                 this.indexService.toggleOption(ServiceOption.INSTRUMENTATION,
                         this.enableInstrumentation);
                 this.host.setStressTest(this.host.isStressTest);
@@ -601,32 +601,71 @@ public class TestLuceneDocumentIndexService {
     @Test
     public void throughputSelfLinkQuery() throws Throwable {
         setUpHost(false);
-        URI factoryUri = createImmutableFactoryService(this.host);
-        doThroughputSelfLinkQuery(factoryUri, null);
-        factoryUri = UriUtils.buildUri(this.host, ExampleService.FACTORY_LINK);
-        doThroughputSelfLinkQuery(factoryUri, this.updateCount);
+
+        // Immutable factory first:
+        // we perform two passes per factory: first pass creates new services and
+        // does NOT interleave updates in between queries.
+        boolean doPostOrUpdates = true;
+        boolean interleaveUpdate = false;
+        URI immutableFactoryUri = createImmutableFactoryService(this.host);
+        doThroughputSelfLinkQuery(immutableFactoryUri, null, doPostOrUpdates, interleaveUpdate);
+        // second pass does not create new services, but does do interleaving
+        doPostOrUpdates = false;
+        interleaveUpdate = true;
+        doThroughputSelfLinkQuery(immutableFactoryUri, null, doPostOrUpdates, interleaveUpdate);
+
+        // repeat for example factory (mutable)
+        doPostOrUpdates = true;
+        interleaveUpdate = false;
+        URI exampleFactoryUri = UriUtils.buildUri(this.host, ExampleService.FACTORY_LINK);
+        // notice that we also create K versions per link, for the mutable factory to
+        // better quantify query processing throughput when multiple versions per link are
+        // present in the index results
+        doThroughputSelfLinkQuery(exampleFactoryUri, this.updateCount, doPostOrUpdates,
+                interleaveUpdate);
+        doPostOrUpdates = false;
+        interleaveUpdate = true;
+        doThroughputSelfLinkQuery(exampleFactoryUri, this.updateCount, doPostOrUpdates,
+                interleaveUpdate);
     }
 
-    private void doThroughputSelfLinkQuery(URI factoryUri, Integer updateCount) throws Throwable {
-        doThroughputPostWithNoQueryResults(false, factoryUri);
-        if (updateCount != null && updateCount > 0) {
+    private void doThroughputSelfLinkQuery(URI factoryUri, Integer updateCount,
+            boolean doPostOrUpdates,
+            boolean interleaveUpdates) throws Throwable {
+        if (doPostOrUpdates) {
+            doThroughputPostWithNoQueryResults(false, factoryUri);
+        }
+
+        if (doPostOrUpdates && updateCount != null && updateCount > 0) {
             doUpdates(factoryUri, updateCount);
         }
 
         double durationNanos = 0;
         long s = System.nanoTime();
         TestContext ctx = this.host.testCreate(this.iterationCount);
+        TestContext postCtx = this.host.testCreate(this.iterationCount % this.updatesPerQuery);
         for (int i = 0; i < this.iterationCount; i++) {
             this.host.send(Operation.createGet(factoryUri).setCompletion(ctx.getCompletion()));
+            if (interleaveUpdates && i % this.updatesPerQuery == 0) {
+                ExampleServiceState st = new ExampleServiceState();
+                st.name = "a-" + i;
+                this.host.send(Operation.createPost(factoryUri)
+                        .setBody(st)
+                        .setCompletion(postCtx.getCompletion()));
+            }
         }
-        ctx.await();
+        this.host.testWait(ctx);
+        if (interleaveUpdates) {
+            this.host.testWait(postCtx);
+        }
 
         long e = System.nanoTime();
         durationNanos += e - s;
         double thput = this.serviceCount * this.iterationCount;
         if (updateCount != null) {
-            // self link processing has to filter out old versions, so include that overhead
-            thput *= updateCount;
+            // self link processing has to filter out old versions, so include that overhead. We
+            // add one to account for the initial version
+            thput *= (updateCount + 1);
         }
         thput /= durationNanos;
         thput *= TimeUnit.SECONDS.toNanos(1);
@@ -635,13 +674,26 @@ public class TestLuceneDocumentIndexService {
         qps *= TimeUnit.SECONDS.toNanos(1);
 
         this.host.log(
-                "Factory:%s, Results per query:%d, Queries: %d, QPS: %f, Processing thpt (links/sec): %f",
+                "Interleave: %s, Factory:%s, Results per query:%d, Queries: %d, QPS: %f, Thpt (links/sec): %f",
+                interleaveUpdates,
                 factoryUri.getPath(),
                 this.serviceCount,
                 this.iterationCount,
                 qps,
                 thput);
-        this.testResults.getReport().all("selflinks/sec", thput);
+        String m = String.format("GET %s links/sec thpt (upd: %s) ",
+                factoryUri.getPath(), interleaveUpdates);
+        this.testResults.getReport().all(m, thput);
+        ServiceStat lookupSt = getLuceneStat(
+                LuceneDocumentIndexService.STAT_NAME_VERSION_CACHE_LOOKUP_COUNT);
+        ServiceStat missSt = getLuceneStat(
+                LuceneDocumentIndexService.STAT_NAME_VERSION_CACHE_MISS_COUNT);
+        ServiceStat entryCountSt = getLuceneStat(
+                LuceneDocumentIndexService.STAT_NAME_VERSION_CACHE_ENTRY_COUNT);
+        this.host.log("Version cache size: %f Version cache lookups: %f, misses: %f",
+                entryCountSt.latestValue,
+                lookupSt.latestValue,
+                missSt.latestValue);
     }
 
     private void doUpdates(URI factoryUri, Integer updateCount) {
@@ -651,6 +703,7 @@ public class TestLuceneDocumentIndexService {
         ServiceDocumentQueryResult res = this.host.getFactoryState(factoryUri);
         assertEquals(this.serviceCount, (long) res.documentCount);
         TestContext ctx = this.host.testCreate(this.serviceCount * updateCount);
+        ctx.setTestName("PATCH").logBefore();
         for (String link : res.documentLinks) {
             for (int i = 0; i < updateCount; i++) {
                 ExampleServiceState st = new ExampleServiceState();
@@ -661,6 +714,7 @@ public class TestLuceneDocumentIndexService {
             }
         }
         this.host.testWait(ctx);
+        ctx.logAfter();
     }
 
     @Test
@@ -677,7 +731,6 @@ public class TestLuceneDocumentIndexService {
         TemporaryFolder tmpFolder = new TemporaryFolder();
         tmpFolder.create();
         try {
-
             if (this.host.isStressTest()) {
                 this.host.setOperationTimeOutMicros(TimeUnit.MINUTES.toMicros(5));
             }

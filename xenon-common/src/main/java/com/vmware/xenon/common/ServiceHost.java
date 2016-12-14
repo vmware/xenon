@@ -284,9 +284,9 @@ public class ServiceHost implements ServiceRequestSender {
     public static final String SERVICE_HOST_STATE_FILE = "serviceHostState.json";
 
     public static final Double DEFAULT_PCT_MEMORY_LIMIT = 0.49;
-    public static final Double DEFAULT_PCT_MEMORY_LIMIT_DOCUMENT_INDEX = 0.3;
-    public static final Double DEFAULT_PCT_MEMORY_LIMIT_BLOB_INDEX = 0.1;
-    public static final Double DEFAULT_PCT_MEMORY_LIMIT_SERVICE_CONTEXT_INDEX = 0.1;
+    public static final Double DEFAULT_PCT_MEMORY_LIMIT_DOCUMENT_INDEX = 0.45;
+    public static final Double DEFAULT_PCT_MEMORY_LIMIT_BLOB_INDEX = 0.01;
+    public static final Double DEFAULT_PCT_MEMORY_LIMIT_SERVICE_CONTEXT_INDEX = 0.01;
 
     public static final String LOOPBACK_ADDRESS = "127.0.0.1";
     public static final String LOCAL_HOST = LOOPBACK_ADDRESS;
