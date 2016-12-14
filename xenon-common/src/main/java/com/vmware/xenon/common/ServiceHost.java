@@ -4101,6 +4101,9 @@ public class ServiceHost implements ServiceRequestSender {
         this.pendingServiceDeletions.clear();
         this.state.isStarted = false;
 
+        this.authorizationContextCache.clear();
+        this.authorizationServiceUri = null;
+
         removeLogging();
 
         try {

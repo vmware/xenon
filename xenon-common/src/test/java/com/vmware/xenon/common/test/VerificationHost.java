@@ -3261,6 +3261,9 @@ public class VerificationHost extends ExampleServiceHost {
         do {
             Thread.sleep(2000);
             try {
+                if (host.isAuthorizationEnabled()) {
+                    host.setAuthenticationService(new AuthorizationContextService());
+                }
                 host.start();
                 return true;
             } catch (Throwable e) {
