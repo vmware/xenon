@@ -144,6 +144,18 @@ public class TestAuthentication {
         }
     }
 
+    public static class FailQueueAuthenticationService extends TestAuthenticationService {
+        @Override
+        public boolean queueRequest(Operation op) {
+            if (op.getUri().getPath().equals(SELF_LINK)) {
+                return false;
+            }
+            op.setStatusCode(Operation.STATUS_CODE_FORBIDDEN);
+            op.fail(new IllegalStateException("fail request"));
+            return true;
+        }
+    }
+
     @Test
     public void testSettingAuthenticationService() throws Throwable {
         VerificationHost host = createAndStartHost(true, new TestAuthenticationService());
@@ -193,6 +205,19 @@ public class TestAuthentication {
                 responseOp.getResponseHeader(Operation.LOCATION_HEADER));
 
         host.log("AuthenticationService redirect is working.");
+    }
+
+    @Test
+    public void testAuthServiceFailure() throws Throwable {
+
+        VerificationHost host = createAndStartHost(true, new FailQueueAuthenticationService());
+
+        TestRequestSender sender = new TestRequestSender(host);
+
+        // make a un-authenticated request on the host and expect it to fail
+        Operation requestOp = Operation.createGet(host.getUri());
+        FailureResponse response = sender.sendAndWaitFailure(requestOp);
+        assertEquals(Operation.STATUS_CODE_FORBIDDEN, response.op.getStatusCode());
     }
 
     @Test
