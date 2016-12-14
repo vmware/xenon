@@ -2331,6 +2331,10 @@ public class TestQueryTaskService {
                 pageLinks);
         this.host.testWait();
 
+        if (exampleServices.size() != numberOfDocumentLinks[0]) {
+            throw new IllegalStateException();
+        }
+
         assertEquals(exampleServices.size(), numberOfDocumentLinks[0]);
         validateSortedResults(documents, propertyName);
 
@@ -2364,6 +2368,9 @@ public class TestQueryTaskService {
                 pageLinks);
         this.host.testWait();
 
+        if (exampleServices.size() != numberOfDocumentLinks[0]) {
+            throw new IllegalStateException();
+        }
         assertEquals(exampleServices.size(), numberOfDocumentLinks[0]);
         validateSortedResults(documents, ServiceDocument.FIELD_NAME_SELF_LINK);
 
