@@ -214,7 +214,7 @@ public class TestLuceneDocumentIndexService {
             // on index stats.
             this.host.setPeerSynchronizationEnabled(false);
             this.indexService = new FaultInjectionLuceneDocumentIndexService();
-            if (this.host.isStressTest) {
+            if (this.host.isStressTest()) {
                 this.indexService.toggleOption(ServiceOption.INSTRUMENTATION,
                         this.enableInstrumentation);
                 this.host.setStressTest(this.host.isStressTest);
@@ -622,8 +622,9 @@ public class TestLuceneDocumentIndexService {
         durationNanos += e - s;
         double thput = this.serviceCount * this.iterationCount;
         if (updateCount != null) {
-            // self link processing has to filter out old versions, so include that overhead
-            thput *= updateCount;
+            // self link processing has to filter out old versions, so include that overhead. We
+            // add one to account for the initial version
+            thput *= (updateCount + 1);
         }
         thput /= durationNanos;
         thput *= TimeUnit.SECONDS.toNanos(1);
@@ -639,6 +640,13 @@ public class TestLuceneDocumentIndexService {
                 qps,
                 thput);
         this.testResults.getReport().all("selflinks/sec", thput);
+        ServiceStat lookupSt = this
+                .getLuceneStat(LuceneDocumentIndexService.STAT_NAME_VERSION_CACHE_LOOKUP_COUNT);
+        ServiceStat missSt = this
+                .getLuceneStat(LuceneDocumentIndexService.STAT_NAME_VERSION_CACHE_MISS_COUNT);
+
+        this.host.log("Version cache lookups: %f, misses: %f", lookupSt.latestValue,
+                missSt.latestValue);
     }
 
     private void doUpdates(URI factoryUri, Integer updateCount) {
@@ -648,6 +656,7 @@ public class TestLuceneDocumentIndexService {
         ServiceDocumentQueryResult res = this.host.getFactoryState(factoryUri);
         assertEquals(this.serviceCount, (long) res.documentCount);
         TestContext ctx = this.host.testCreate(this.serviceCount * updateCount);
+        ctx.setTestName("PATCH").logBefore();
         for (String link : res.documentLinks) {
             for (int i = 0; i < updateCount; i++) {
                 ExampleServiceState st = new ExampleServiceState();
@@ -658,6 +667,7 @@ public class TestLuceneDocumentIndexService {
             }
         }
         this.host.testWait(ctx);
+        ctx.logAfter();
     }
 
     @Test
