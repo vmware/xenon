@@ -102,10 +102,10 @@ public class TestProcessService extends BasicTestCase {
         }
 
         final ProcessState[] state = { new ProcessState() };
-        // issue a sleep for a random number of seconds between 100 and 200
+        // issue a sleep for a random number of seconds between 5 and 10
         String processCommandLine = "sleep";
         Random r = new Random();
-        String sleepTime = Integer.toString((r.nextInt(100) + 100));
+        String sleepTime = Integer.toString((r.nextInt(5) + 10));
         state[0].arguments = new String[] { processCommandLine, sleepTime };
         state[0].isRestartRequired = false;
 
