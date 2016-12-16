@@ -27,6 +27,7 @@ import java.util.concurrent.TimeoutException;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLException;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
@@ -37,6 +38,12 @@ import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpVersion;
 import io.netty.handler.codec.http.cookie.ClientCookieDecoder;
 import io.netty.handler.codec.http.cookie.Cookie;
+import io.netty.handler.codec.http2.Http2SecurityUtil;
+import io.netty.handler.ssl.ApplicationProtocolConfig;
+import io.netty.handler.ssl.ApplicationProtocolNames;
+import io.netty.handler.ssl.SslContext;
+import io.netty.handler.ssl.SslContextBuilder;
+import io.netty.handler.ssl.SupportedCipherSuiteFilter;
 import io.netty.util.AsciiString;
 
 import com.vmware.xenon.common.Operation;
@@ -98,6 +105,7 @@ public class NettyHttpServiceClient implements ServiceClient {
 
     private NettyChannelPool sslChannelPool;
     private NettyChannelPool channelPool;
+    private NettyChannelPool http2SslChannelPool;
     private NettyChannelPool http2ChannelPool;
     private SortedMap<Long, Operation> pendingRequests = new ConcurrentSkipListMap<>();
 
@@ -105,6 +113,7 @@ public class NettyHttpServiceClient implements ServiceClient {
 
     private ExecutorService executor;
 
+    private SslContext http2SslContext;
     private SSLContext sslContext;
 
     private ServiceHost host;
@@ -135,6 +144,7 @@ public class NettyHttpServiceClient implements ServiceClient {
         sc.channelPool = new NettyChannelPool();
         sc.http2ChannelPool = new NettyChannelPool();
         sc.sslChannelPool = new NettyChannelPool();
+        sc.http2SslChannelPool = new NettyChannelPool();
         String proxy = System.getenv(ENV_VAR_NAME_HTTP_PROXY);
         if (proxy != null) {
             sc.setHttpProxy(new URI(proxy));
@@ -166,10 +176,24 @@ public class NettyHttpServiceClient implements ServiceClient {
             this.isStarted = true;
         }
 
+        if (NettyChannelContext.isALPNEnabled() && this.http2SslContext == null) {
+            try {
+                this.http2SslContext = SslContextBuilder.forClient()
+                        .ciphers(Http2SecurityUtil.CIPHERS, SupportedCipherSuiteFilter.INSTANCE)
+                        .applicationProtocolConfig(new ApplicationProtocolConfig(
+                                ApplicationProtocolConfig.Protocol.ALPN,
+                                ApplicationProtocolConfig.SelectorFailureBehavior.NO_ADVERTISE,
+                                ApplicationProtocolConfig.SelectedListenerFailureBehavior.ACCEPT,
+                                ApplicationProtocolNames.HTTP_2))
+                        .build();
+            } catch (SSLException e) {
+                throw new RuntimeException("SSL context builder exception", e);
+            }
+        }
+
         this.channelPool.setThreadTag(buildThreadTag());
         this.channelPool.setThreadCount(Utils.DEFAULT_IO_THREAD_COUNT);
         this.channelPool.setExecutor(this.executor);
-
         this.channelPool.start();
 
         // We make a separate pool for HTTP/2. We want to have only one connection per host
@@ -186,6 +210,15 @@ public class NettyHttpServiceClient implements ServiceClient {
             this.sslChannelPool.setExecutor(this.executor);
             this.sslChannelPool.setSSLContext(this.sslContext);
             this.sslChannelPool.start();
+        }
+
+        if (this.http2SslContext != null) {
+            this.http2SslChannelPool.setThreadTag(buildThreadTag());
+            this.http2SslChannelPool.setThreadCount(Utils.DEFAULT_IO_THREAD_COUNT);
+            this.http2SslChannelPool.setExecutor(this.executor);
+            this.http2SslChannelPool.setHttp2Only();
+            this.http2SslChannelPool.setHttp2SslContext(this.http2SslContext);
+            this.http2SslChannelPool.start();
         }
 
         if (this.host != null) {
@@ -327,10 +360,7 @@ public class NettyHttpServiceClient implements ServiceClient {
             port = isHttpScheme ? UriUtils.HTTP_DEFAULT_PORT : UriUtils.HTTPS_DEFAULT_PORT;
         }
 
-        // We do not support TLS with HTTP/2. This is because currently
-        // NETTY requires taking dependency on their native binaries.
-        // http://netty.io/wiki/requirements-for-4.x.html
-        if (op.isConnectionSharing() && isHttpsScheme) {
+        if (op.isConnectionSharing() && isHttpsScheme && !NettyChannelContext.isALPNEnabled()) {
             op.setConnectionSharing(false);
             if (!this.warnHttp2DisablingConnectionSharing) {
                 this.warnHttp2DisablingConnectionSharing = true;
@@ -343,13 +373,13 @@ public class NettyHttpServiceClient implements ServiceClient {
         NettyChannelPool pool = this.channelPool;
 
         if (op.isConnectionSharing()) {
-            pool = this.http2ChannelPool;
-        }
-
-        if (isHttpsScheme) {
+            if (isHttpsScheme) {
+                pool = this.http2SslChannelPool;
+            } else {
+                pool = this.http2ChannelPool;
+            }
+        } else if (isHttpsScheme) {
             pool = this.sslChannelPool;
-            // SSL does not use connection sharing, HTTP/2, so disable it
-            op.setConnectionSharing(false);
         }
 
         connectChannel(pool, op, remoteHost, port);
@@ -609,20 +639,26 @@ public class NettyHttpServiceClient implements ServiceClient {
         SocketContext ctx = op.getSocketContext();
         if (ctx != null && ctx instanceof NettyChannelContext) {
             NettyChannelContext nettyCtx = (NettyChannelContext) op.getSocketContext();
-            NettyChannelPool pool = this.channelPool;
-
-            if (this.sslChannelPool != null && this.sslChannelPool.isContextInUse(nettyCtx)) {
-                pool = this.sslChannelPool;
-            }
-
+            NettyChannelPool pool;
             Runnable r = null;
             if (nettyCtx.getProtocol() == NettyChannelContext.Protocol.HTTP2) {
-                // For HTTP/2, we multiple streams so we don't close the connection.
-                r = () -> this.http2ChannelPool.returnOrClose(nettyCtx, false);
+                if (this.http2SslChannelPool != null
+                        && this.http2SslChannelPool.isContextInUse(nettyCtx)) {
+                    pool = this.http2SslChannelPool;
+                } else {
+                    pool = this.http2ChannelPool;
+                }
+                // For HTTP/2, we maintain multiple streams, so we don't close the connection.
+                r = () -> pool.returnOrClose(nettyCtx, false);
             } else {
                 op.setSocketContext(null);
-                NettyChannelPool finalPool = pool;
-                r = () -> finalPool.returnOrClose(nettyCtx, !op.isKeepAlive());
+                if (this.sslChannelPool != null
+                        && this.sslChannelPool.isContextInUse(nettyCtx)) {
+                    pool = this.sslChannelPool;
+                } else {
+                    pool = this.channelPool;
+                }
+                r = () -> pool.returnOrClose(nettyCtx, !op.isKeepAlive());
             }
 
             ExecutorService exec = this.host != null ? this.host.getExecutor() : this.executor;
@@ -720,6 +756,9 @@ public class NettyHttpServiceClient implements ServiceClient {
         if (this.http2ChannelPool != null) {
             this.http2ChannelPool.handleMaintenance(Operation.createPost(op.getUri()));
         }
+        if (this.http2SslChannelPool != null) {
+            this.http2SslChannelPool.handleMaintenance(Operation.createPost(op.getUri()));
+        }
         this.channelPool.handleMaintenance(Operation.createPost(op.getUri()));
 
         failExpiredRequests(now);
@@ -801,6 +840,9 @@ public class NettyHttpServiceClient implements ServiceClient {
         if (this.http2ChannelPool != null) {
             this.http2ChannelPool.setConnectionLimitPerHost(limit);
         }
+        if (this.http2SslChannelPool != null) {
+            this.http2SslChannelPool.setConnectionLimitPerHost(limit);
+        }
         return this;
     }
 
@@ -824,6 +866,9 @@ public class NettyHttpServiceClient implements ServiceClient {
         if (this.http2ChannelPool != null) {
             this.http2ChannelPool.setConnectionLimitPerTag(tag, limit);
         }
+        if (this.http2SslChannelPool != null) {
+            this.http2SslChannelPool.setConnectionLimitPerTag(tag, limit);
+        }
         return this;
     }
 
@@ -833,6 +878,15 @@ public class NettyHttpServiceClient implements ServiceClient {
     @Override
     public int getConnectionLimitPerTag(String tag) {
         return this.channelPool.getConnectionLimitPerTag(tag);
+    }
+
+    public ServiceClient setHttp2SslContext(SslContext context) {
+        this.http2SslContext = context;
+        return this;
+    }
+
+    public SslContext getHttp2SslContext() {
+        return this.http2SslContext;
     }
 
     @Override
@@ -858,6 +912,13 @@ public class NettyHttpServiceClient implements ServiceClient {
         return this.sslChannelPool;
     }
 
+    public NettyChannelContext getInUseHttp2SslContext(String tag, String host, int port) {
+        if (this.http2SslChannelPool == null) {
+            throw new IllegalStateException("Internal error: No HTTP/2 SSL channel pool");
+        }
+        return this.http2SslChannelPool.getFirstValidHttp2Context(tag, host, port);
+    }
+
     /**
      * Find the HTTP/2 context that is currently being used to talk to a given host.
      * This is intended for infrastructure test purposes.
@@ -879,14 +940,26 @@ public class NettyHttpServiceClient implements ServiceClient {
         if (this.http2ChannelPool != null) {
             tagInfo = this.http2ChannelPool.getConnectionTagInfo(tag);
         }
+        ConnectionPoolMetrics secureTagInfo = null;
+        if (this.http2SslChannelPool != null) {
+            secureTagInfo = this.http2SslChannelPool.getConnectionTagInfo(tag);
+        }
+
+        if (tagInfo == null) {
+            tagInfo = secureTagInfo;
+        } else if (secureTagInfo != null) {
+            tagInfo.inUseConnectionCount += secureTagInfo.inUseConnectionCount;
+            tagInfo.pendingRequestCount += secureTagInfo.pendingRequestCount;
+            tagInfo.availableConnectionCount += secureTagInfo.availableConnectionCount;
+        }
+
         if (tagInfo != null) {
             return tagInfo;
         }
+
         if (this.channelPool != null) {
             tagInfo = this.channelPool.getConnectionTagInfo(tag);
         }
-
-        ConnectionPoolMetrics secureTagInfo = null;
         if (this.sslChannelPool != null) {
             secureTagInfo = this.sslChannelPool.getConnectionTagInfo(tag);
         }
@@ -939,6 +1012,9 @@ public class NettyHttpServiceClient implements ServiceClient {
             }
             if (this.http2ChannelPool != null) {
                 this.http2ChannelPool.setRequestPayloadSizeLimit(limit);
+            }
+            if (this.http2SslChannelPool != null) {
+                this.http2SslChannelPool.setRequestPayloadSizeLimit(limit);
             }
         }
 
