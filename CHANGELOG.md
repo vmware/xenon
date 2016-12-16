@@ -2,6 +2,11 @@
 
 ## 1.3.4-SNAPSHOT
 
+* Enable HTTP/2 over TLS. Xenon consumers can enable this behavior by including
+  a netty-tcnative jar (for OpenSSL) or a jetty-alpn jar (for JDK support) in
+  their classpath. Otherwise, the default behavior of using HTTP1.1 for all
+  HTTPS operations is maintained.
+
 * Enforce implicit query result limits. All queries
   that do not specify a resultLimit, including GETs to factory services, will
   now be limited to the default, which is 10,000 results. For well behaved
