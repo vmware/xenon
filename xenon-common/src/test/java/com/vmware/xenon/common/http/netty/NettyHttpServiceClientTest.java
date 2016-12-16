@@ -33,6 +33,13 @@ import java.util.concurrent.atomic.AtomicInteger;
 import javax.net.ssl.SSLContext;
 
 import io.netty.handler.codec.http.HttpHeaderNames;
+import io.netty.handler.codec.http2.Http2SecurityUtil;
+import io.netty.handler.ssl.ApplicationProtocolConfig;
+import io.netty.handler.ssl.ApplicationProtocolNames;
+import io.netty.handler.ssl.SslContext;
+import io.netty.handler.ssl.SslContextBuilder;
+import io.netty.handler.ssl.SslProvider;
+import io.netty.handler.ssl.SupportedCipherSuiteFilter;
 import io.netty.handler.ssl.util.InsecureTrustManagerFactory;
 import io.netty.handler.ssl.util.SelfSignedCertificate;
 import org.junit.After;
@@ -111,6 +118,19 @@ public class NettyHttpServiceClientTest {
                 NettyHttpServiceClientTest.class.getSimpleName(),
                 Executors.newFixedThreadPool(4),
                 Executors.newScheduledThreadPool(1), HOST);
+
+        SslContext http2ClientContext = SslContextBuilder.forClient()
+                .trustManager(InsecureTrustManagerFactory.INSTANCE)
+                .sslProvider(SslProvider.OPENSSL)
+                .ciphers(Http2SecurityUtil.CIPHERS, SupportedCipherSuiteFilter.INSTANCE)
+                .applicationProtocolConfig(new ApplicationProtocolConfig(
+                        ApplicationProtocolConfig.Protocol.ALPN,
+                        ApplicationProtocolConfig.SelectorFailureBehavior.NO_ADVERTISE,
+                        ApplicationProtocolConfig.SelectedListenerFailureBehavior.ACCEPT,
+                        ApplicationProtocolNames.HTTP_2,
+                        ApplicationProtocolNames.HTTP_1_1))
+                .build();
+        client.setHttp2SslContext(http2ClientContext);
 
         SSLContext clientContext = SSLContext.getInstance(ServiceClient.TLS_PROTOCOL_NAME);
         clientContext.init(null, InsecureTrustManagerFactory.INSTANCE.getTrustManagers(), null);
@@ -601,7 +621,7 @@ public class NettyHttpServiceClientTest {
                     }
                     this.host.failIteration(
                             new IllegalStateException("Operation was expected to fail because " +
-                            "op.getContentLength() is more than allowed"));
+                                    "op.getContentLength() is more than allowed"));
                 });
         this.host.send(put);
         this.host.testWait();
