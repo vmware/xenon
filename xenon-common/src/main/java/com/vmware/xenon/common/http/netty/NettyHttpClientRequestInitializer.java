@@ -38,6 +38,8 @@ import io.netty.handler.codec.http2.Http2Settings;
 import io.netty.handler.codec.http2.InboundHttp2ToHttpAdapter;
 import io.netty.handler.codec.http2.InboundHttp2ToHttpAdapterBuilder;
 import io.netty.handler.logging.LogLevel;
+import io.netty.handler.ssl.ApplicationProtocolNames;
+import io.netty.handler.ssl.ApplicationProtocolNegotiationHandler;
 import io.netty.handler.ssl.SslHandler;
 
 import com.vmware.xenon.common.Utils;
@@ -51,8 +53,34 @@ import com.vmware.xenon.common.Utils;
  */
 public class NettyHttpClientRequestInitializer extends ChannelInitializer<SocketChannel> {
 
+    private static class Http2NegotiationHandler extends ApplicationProtocolNegotiationHandler {
+
+        private NettyHttpClientRequestInitializer initializer;
+        private ChannelPromise settingsPromise;
+
+        public Http2NegotiationHandler(NettyHttpClientRequestInitializer initializer,
+                ChannelPromise settingsPromise) {
+            super("");
+            this.initializer = initializer;
+            this.settingsPromise = settingsPromise;
+        }
+
+        @Override
+        protected void configurePipeline(ChannelHandlerContext ctx, String protocol)
+                throws Exception {
+            if (ApplicationProtocolNames.HTTP_2.equals(protocol)) {
+                this.initializer.initializeHttp2Pipeline(ctx.pipeline(), this.settingsPromise);
+                return;
+            }
+            ctx.close();
+            throw new IllegalStateException("Unexpected protocol: " + protocol);
+        }
+    }
+
+    public static final String ALPN_HANDLER = "alpn";
     public static final String SSL_HANDLER = "ssl";
     public static final String HTTP1_CODEC = "http1-codec";
+    public static final String HTTP2_HANDLER = "http2-handler";
     public static final String UPGRADE_HANDLER = "upgrade-handler";
     public static final String UPGRADE_REQUEST = "upgrade-request";
     public static final String AGGREGATOR_HANDLER = "aggregator";
@@ -83,6 +111,18 @@ public class NettyHttpClientRequestInitializer extends ChannelInitializer<Socket
         ch.config().setAllocator(NettyChannelContext.ALLOCATOR);
         ch.config().setSendBufferSize(NettyChannelContext.BUFFER_SIZE);
         ch.config().setReceiveBufferSize(NettyChannelContext.BUFFER_SIZE);
+        ChannelPromise settingsPromise = ch.newPromise();
+        ch.attr(NettyChannelContext.SETTINGS_PROMISE_KEY).set(settingsPromise);
+
+        if (this.pool.getHttp2SslContext() != null) {
+            if (!this.isHttp2Only) {
+                throw new IllegalStateException("HTTP/2 must be enabled to set an SSL context");
+            }
+            p.addLast(SSL_HANDLER, this.pool.getHttp2SslContext().newHandler(ch.alloc()));
+            p.addLast(ALPN_HANDLER, new Http2NegotiationHandler(this, settingsPromise));
+            return;
+        }
+
         if (this.pool.getSSLContext() != null) {
             if (this.isHttp2Only) {
                 throw new IllegalArgumentException("HTTP/2 with SSL is not supported");
@@ -113,12 +153,7 @@ public class NettyHttpClientRequestInitializer extends ChannelInitializer<Socket
 
                 p.addLast(UPGRADE_HANDLER, upgradeHandler);
                 p.addLast(UPGRADE_REQUEST, new UpgradeRequestHandler());
-
-                // This promise will be triggered when we negotiate the settings.
-                // That's important because we can't send user data until the negotiation is done
-                ChannelPromise settingsPromise = ch.newPromise();
                 p.addLast("settings-handler", new Http2SettingsHandler(settingsPromise));
-                ch.attr(NettyChannelContext.SETTINGS_PROMISE_KEY).set(settingsPromise);
                 p.addLast(EVENT_LOGGER, new NettyHttp2UserEventLogger(this.debugLogging));
             } catch (Throwable ex) {
                 Utils.log(NettyHttpClientRequestInitializer.class,
@@ -132,6 +167,13 @@ public class NettyHttpClientRequestInitializer extends ChannelInitializer<Socket
             p.addLast(AGGREGATOR_HANDLER,
                     new HttpObjectAggregator(this.requestPayloadSizeLimit));
         }
+        p.addLast(XENON_HANDLER, new NettyHttpServerResponseHandler(this.pool));
+    }
+
+    public void initializeHttp2Pipeline(ChannelPipeline p, ChannelPromise settingsPromise) {
+        p.addLast(HTTP2_HANDLER, makeHttp2ConnectionHandler());
+        p.addLast("settings-handler", new Http2SettingsHandler(settingsPromise));
+        p.addLast(EVENT_LOGGER, new NettyHttp2UserEventLogger(this.debugLogging));
         p.addLast(XENON_HANDLER, new NettyHttpServerResponseHandler(this.pool));
     }
 
@@ -185,12 +227,12 @@ public class NettyHttpClientRequestInitializer extends ChannelInitializer<Socket
     }
 
     /**
-    * This handler does just one thing: it informs us (via a promise) that we've received
-    * an HTTP/2 settings frame. We do this because when we connect to the HTTP/2 server,
-    * we have to wait until the settings have been negotiated before we send data.
-    * NettyChannelPool uses this promise.
-    *
-    */
+     * This handler does just one thing: it informs us (via a promise) that we've received
+     * an HTTP/2 settings frame. We do this because when we connect to the HTTP/2 server,
+     * we have to wait until the settings have been negotiated before we send data.
+     * NettyChannelPool uses this promise.
+     *
+     */
     private static class Http2SettingsHandler extends SimpleChannelInboundHandler<Http2Settings> {
         private ChannelPromise promise;
 
