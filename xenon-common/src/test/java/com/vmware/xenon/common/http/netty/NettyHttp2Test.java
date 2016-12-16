@@ -22,9 +22,7 @@ import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
 import org.junit.After;
-import org.junit.AfterClass;
 import org.junit.Before;
-import org.junit.BeforeClass;
 import org.junit.Ignore;
 import org.junit.Rule;
 import org.junit.Test;
@@ -48,8 +46,6 @@ import com.vmware.xenon.services.common.MinimalTestService;
  */
 public class NettyHttp2Test {
 
-    private static VerificationHost HOST;
-
     private VerificationHost host;
 
     // Large operation body size used in basicHttp test.
@@ -66,39 +62,52 @@ public class NettyHttp2Test {
     @Rule
     public TestResults testResults = new TestResults();
 
-    @BeforeClass
-    public static void setUpOnce() throws Exception {
-        HOST = VerificationHost.create(0);
-        HOST.setRequestPayloadSizeLimit(1024 * 512);
-        HOST.setResponsePayloadSizeLimit(1024 * 512);
-        CommandLineArgumentParser.parseFromProperties(HOST);
-        HOST.setMaintenanceIntervalMicros(
+    @Before
+    public void setUp() {
+        CommandLineArgumentParser.parseFromProperties(this);
+    }
+
+    private void setUpHost(boolean forceHttps) throws Throwable {
+        this.host = VerificationHost.create(0);
+        this.host.setRequestPayloadSizeLimit(1024 * 512);
+        this.host.setResponsePayloadSizeLimit(1024 * 512);
+        CommandLineArgumentParser.parseFromProperties(this.host);
+        this.host.setMaintenanceIntervalMicros(
                 TimeUnit.MILLISECONDS.toMicros(VerificationHost.FAST_MAINT_INTERVAL_MILLIS));
+        this.host.setStressTest(this.host.isStressTest);
+        this.host.setOperationTimeOutMicros(
+                TimeUnit.SECONDS.toMicros(this.host.getTimeoutSeconds()));
+
+        if (forceHttps) {
+            this.host.setPort(ServiceHost.PORT_VALUE_LISTENER_DISABLED);
+            this.host.setSecurePort(0);
+        }
+
+        VerificationHost.createAndAttachSSLClient(this.host);
 
         try {
-            HOST.start();
+            this.host.start();
         } catch (Throwable e) {
             throw new RuntimeException(e);
         }
     }
 
-    @Before
-    public void setUp() {
-        CommandLineArgumentParser.parseFromProperties(this);
-        this.host = HOST;
-        this.host.setStressTest(HOST.isStressTest);
-        this.host
-                .setOperationTimeOutMicros(TimeUnit.SECONDS.toMicros(this.host.getTimeoutSeconds()));
-    }
-
-    @AfterClass
-    public static void tearDown() {
-        HOST.tearDown();
-    }
-
     @After
-    public void cleanUp() {
+    public void tearDown() throws Throwable {
         NettyChannelContext.setMaxStreamId(Integer.MAX_VALUE / 2);
+        this.host.tearDown();
+    }
+
+    @Test
+    public void basicHttp2() throws Throwable {
+        setUpHost(false);
+        doBasicHttp2();
+    }
+
+    @Test
+    public void basicHttp2OverSsl() throws Throwable {
+        setUpHost(true);
+        doBasicHttp2();
     }
 
     /**
@@ -115,8 +124,7 @@ public class NettyHttp2Test {
      *
      * It works with Netty 4.1.
      */
-    @Test
-    public void basicHttp2() throws Throwable {
+    private void doBasicHttp2() throws Throwable {
         this.host.log("Starting test: basicHttp2");
         MinimalTestService service = new MinimalTestService();
         MinimalTestServiceState initialState = new MinimalTestServiceState();
@@ -188,17 +196,26 @@ public class NettyHttp2Test {
         this.host.log("Test passed: basicHttp2");
     }
 
+    @Test
+    public void validateHttp2Multiplexing() throws Throwable {
+        setUpHost(false);
+        doValidateHttp2Multiplexing();
+    }
+
+    @Test
+    public void validateHttp2MultiplexingOverSsl() throws Throwable {
+        setUpHost(true);
+        doValidateHttp2Multiplexing();
+    }
+
     /**
      * When using HTTP/2, we only use a single connection. A naive implementation would see
      * requests completed in the same order that they were sent. HTTP/2 supports multiplexing,
      * so in general we may get responses in a different order. We verify this works by sending
      * a series of requests and forcing the first one to have a significant delay: we should
      * receive the response after the others.
-     * @param useCallback
-     * @throws Throwable
      */
-    @Test
-    public void validateHttp2Multiplexing() throws Throwable {
+    private void doValidateHttp2Multiplexing() throws Throwable {
         this.host.log("Starting test: validateHttp2Multiplexing");
         MinimalTestService service = new MinimalTestService();
         MinimalTestServiceState initialState = new MinimalTestServiceState();
@@ -256,16 +273,43 @@ public class NettyHttp2Test {
         this.host.log("Test passed: validateHttp2Multiplexing");
     }
 
+    @Test
+    public void validateHttp2Timeouts() throws Throwable {
+        setUpHost(false);
+        doValidateHttp2Timeouts();
+
+        // Validate that we used a single connection for this. We do this indirectly:
+        // We know that each request will create a new stream. Also client-initiated streams
+        // are only odd-numbered (1, 3, ...). So if we have 2*count streams, we re-used a single
+        // connection for the entire test.
+        NettyHttpServiceClient client = (NettyHttpServiceClient) this.host.getClient();
+        NettyChannelContext context = client.getInUseHttp2Context(
+                this.host.connectionTag, ServiceHost.LOCAL_HOST, this.host.getPort());
+        assertTrue(context.getLargestStreamId() > 20);
+    }
+
+    @Test
+    public void validateHttp2TimeoutsOverSsl() throws Throwable {
+        setUpHost(true);
+        doValidateHttp2Timeouts();
+
+        // Validate that we used a single connection for this. We do this indirectly:
+        // We know that each request will create a new stream. Also client-initiated streams
+        // are only odd-numbered (1, 3, ...). So if we have 2*count streams, we re-used a single
+        // connection for the entire test.
+        NettyHttpServiceClient client = (NettyHttpServiceClient) this.host.getClient();
+        NettyChannelContext context = client.getInUseHttp2SslContext(
+                this.host.connectionTag, ServiceHost.LOCAL_HOST, this.host.getSecurePort());
+        assertTrue(context.getLargestStreamId() > 20);
+    }
+
     /**
      * Validate that when we have a request that times out, everything proceeds as expected.
      *
      * Note that this test throws a lot of log spew because operations that are timed out are
      * logged.
-     *
-     * @throws Throwable
      */
-    @Test
-    public void validateHttp2Timeouts() throws Throwable {
+    private void doValidateHttp2Timeouts() throws Throwable {
         this.host.log("Starting test: validateHttp2Timeouts");
         MinimalTestService service = new MinimalTestService();
         MinimalTestServiceState initialState = new MinimalTestServiceState();
@@ -305,16 +349,6 @@ public class NettyHttp2Test {
         }
         this.host.testWait();
         this.host.toggleNegativeTestMode(false);
-
-        // Validate that we used a single connection for this. We do this indirectly:
-        // We know that each request will create a new stream. Also client-initiated streams
-        // are only odd-numbered (1, 3, ...). So if we have 2*count streams, we re-used a single
-        // connection for the entire test.
-        NettyHttpServiceClient client = (NettyHttpServiceClient) this.host.getClient();
-        NettyChannelContext context = client.getInUseHttp2Context(
-                this.host.connectionTag, ServiceHost.LOCAL_HOST, this.host.getPort());
-        assertTrue(context.getLargestStreamId() > count * 2);
-        this.host.log("Test passed: validateHttp2Timeouts");
     }
 
     /**
@@ -406,6 +440,18 @@ public class NettyHttp2Test {
 
     @Test
     public void throughputPutRemote() throws Throwable {
+        setUpHost(false);
+        doThroughputPutRemote();
+    }
+
+    @Test
+    public void throughputPutRemoteOverSsl() throws Throwable {
+        setUpHost(true);
+        doThroughputPutRemote();
+    }
+
+    private void doThroughputPutRemote() throws Throwable {
+
         List<Service> services = this.host.doThroughputServiceStart(this.serviceCount,
                 MinimalTestService.class,
                 this.host.buildMinimalTestState(),
