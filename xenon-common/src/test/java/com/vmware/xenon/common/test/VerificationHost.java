@@ -58,13 +58,18 @@ import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-
 import javax.net.ssl.SSLContext;
 import javax.xml.bind.DatatypeConverter;
 
+import io.netty.handler.codec.http2.Http2SecurityUtil;
+import io.netty.handler.ssl.ApplicationProtocolConfig;
+import io.netty.handler.ssl.ApplicationProtocolNames;
+import io.netty.handler.ssl.SslContext;
+import io.netty.handler.ssl.SslContextBuilder;
+import io.netty.handler.ssl.SslProvider;
+import io.netty.handler.ssl.SupportedCipherSuiteFilter;
 import io.netty.handler.ssl.util.InsecureTrustManagerFactory;
 import io.netty.handler.ssl.util.SelfSignedCertificate;
-
 import org.apache.lucene.store.LockObtainFailedException;
 import org.junit.rules.TemporaryFolder;
 
@@ -235,6 +240,19 @@ public class VerificationHost extends ExampleServiceHost {
         ServiceClient client = NettyHttpServiceClient.create(UUID.randomUUID().toString(),
                 null,
                 h.getScheduledExecutor(), h);
+
+        SslContext http2ClientContext = SslContextBuilder.forClient()
+                .trustManager(InsecureTrustManagerFactory.INSTANCE)
+                .sslProvider(SslProvider.OPENSSL)
+                .ciphers(Http2SecurityUtil.CIPHERS, SupportedCipherSuiteFilter.INSTANCE)
+                .applicationProtocolConfig(new ApplicationProtocolConfig(
+                        ApplicationProtocolConfig.Protocol.ALPN,
+                        ApplicationProtocolConfig.SelectorFailureBehavior.NO_ADVERTISE,
+                        ApplicationProtocolConfig.SelectedListenerFailureBehavior.ACCEPT,
+                        ApplicationProtocolNames.HTTP_2,
+                        ApplicationProtocolNames.HTTP_1_1))
+                .build();
+        client.setHttp2SslContext(http2ClientContext);
 
         SSLContext clientContext = SSLContext.getInstance(ServiceClient.TLS_PROTOCOL_NAME);
         clientContext.init(null, InsecureTrustManagerFactory.INSTANCE.getTrustManagers(), null);
@@ -769,7 +787,8 @@ public class VerificationHost extends ExampleServiceHost {
     }
 
     public ServiceDocumentQueryResult createAndWaitSimpleDirectQuery(
-            String fieldName, String fieldValue, long documentCount, long expectedResultCount, TestResults testResults) {
+            String fieldName, String fieldValue, long documentCount, long expectedResultCount,
+            TestResults testResults) {
         return createAndWaitSimpleDirectQuery(this.getUri(), fieldName, fieldValue, documentCount,
                 expectedResultCount, testResults);
     }
@@ -787,7 +806,8 @@ public class VerificationHost extends ExampleServiceHost {
     }
 
     public ServiceDocumentQueryResult createAndWaitSimpleDirectQuery(URI hostUri,
-            String fieldName, String fieldValue, long documentCount, long expectedResultCount, TestResults testResults) {
+            String fieldName, String fieldValue, long documentCount, long expectedResultCount,
+            TestResults testResults) {
         QueryTask.QuerySpecification q = new QueryTask.QuerySpecification();
         q.query.setTermPropertyName(fieldName).setTermMatchValue(fieldValue);
         return createAndWaitSimpleDirectQuery(hostUri, q,
@@ -1172,7 +1192,6 @@ public class VerificationHost extends ExampleServiceHost {
 
         Map<URI, MinimalTestServiceState> statesBeforeUpdate = getServiceState(properties,
                 MinimalTestServiceState.class, services);
-
 
         long startTimeMicros = System.nanoTime() / 1000;
         TestContext ctx = testCreate(count * services.size());

@@ -15,6 +15,8 @@ package com.vmware.xenon.common;
 
 import javax.net.ssl.SSLContext;
 
+import io.netty.handler.ssl.SslContext;
+
 public interface ServiceClient extends ServiceRequestSender {
 
     /**
@@ -81,6 +83,10 @@ public interface ServiceClient extends ServiceRequestSender {
      * tag default connection limit
      */
     public static final String CONNECTION_TAG_HTTP2_DEFAULT = "xn-cnx-tag-http2-default";
+
+    public ServiceClient setHttp2SslContext(SslContext context);
+
+    public SslContext getHttp2SslContext();
 
     public ServiceClient setSSLContext(SSLContext context);
 

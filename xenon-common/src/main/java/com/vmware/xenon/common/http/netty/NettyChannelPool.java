@@ -34,6 +34,7 @@ import io.netty.channel.ChannelPromise;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioSocketChannel;
+import io.netty.handler.ssl.SslContext;
 
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Operation.OperationOption;
@@ -169,6 +170,7 @@ public class NettyChannelPool {
 
     private int connectionLimit = 1;
 
+    private SslContext http2SslContext;
     private SSLContext sslContext;
 
     private int requestPayloadSizeLimit;
@@ -789,6 +791,17 @@ public class NettyChannelPool {
             }
 
         }
+    }
+
+    public void setHttp2SslContext(SslContext context) {
+        if (isStarted()) {
+            throw new IllegalStateException("Already started");
+        }
+        this.http2SslContext = context;
+    }
+
+    public SslContext getHttp2SslContext() {
+        return this.http2SslContext;
     }
 
     public void setSSLContext(SSLContext context) {
