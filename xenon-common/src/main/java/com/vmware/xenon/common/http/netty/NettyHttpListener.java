@@ -30,8 +30,14 @@ import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelOption;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
+import io.netty.handler.codec.http2.Http2SecurityUtil;
+import io.netty.handler.ssl.ApplicationProtocolConfig;
+import io.netty.handler.ssl.ApplicationProtocolNames;
+import io.netty.handler.ssl.OpenSsl;
 import io.netty.handler.ssl.SslContext;
 import io.netty.handler.ssl.SslContextBuilder;
+import io.netty.handler.ssl.SslProvider;
+import io.netty.handler.ssl.SupportedCipherSuiteFilter;
 
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Operation.SocketContext;
@@ -217,9 +223,24 @@ public class NettyHttpListener implements ServiceRequestListener {
         if (isListening()) {
             throw new IllegalStateException("listener already started");
         }
-        this.sslContext = SslContextBuilder.forServer(
-                new File(certFile), new File(keyFile), keyPassphrase)
-                .build();
+
+        SslContextBuilder builder = SslContextBuilder.forServer(new File(certFile),
+                new File(keyFile), keyPassphrase);
+
+        if (OpenSsl.isAlpnSupported()) {
+            builder = builder.sslProvider(SslProvider.OPENSSL)
+                    .ciphers(Http2SecurityUtil.CIPHERS, SupportedCipherSuiteFilter.INSTANCE)
+                    .applicationProtocolConfig(new ApplicationProtocolConfig(
+                            ApplicationProtocolConfig.Protocol.ALPN,
+                            ApplicationProtocolConfig.SelectorFailureBehavior.NO_ADVERTISE,
+                            ApplicationProtocolConfig.SelectedListenerFailureBehavior.ACCEPT,
+                            ApplicationProtocolNames.HTTP_2,
+                            ApplicationProtocolNames.HTTP_1_1));
+        } else {
+            builder.sslProvider(SslProvider.JDK);
+        }
+
+        this.sslContext = builder.build();
     }
 
     @Override
