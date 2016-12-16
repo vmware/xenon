@@ -62,9 +62,17 @@ import java.util.logging.ConsoleHandler;
 import java.util.logging.FileHandler;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManagerFactory;
+
+import io.netty.handler.codec.http2.Http2SecurityUtil;
+import io.netty.handler.ssl.ApplicationProtocolConfig;
+import io.netty.handler.ssl.ApplicationProtocolNames;
+import io.netty.handler.ssl.OpenSsl;
+import io.netty.handler.ssl.SslContext;
+import io.netty.handler.ssl.SslContextBuilder;
+import io.netty.handler.ssl.SslProvider;
+import io.netty.handler.ssl.SupportedCipherSuiteFilter;
 
 import com.vmware.xenon.common.FileUtils.ResourceEntry;
 import com.vmware.xenon.common.NodeSelectorService.SelectAndForwardRequest;
@@ -1337,6 +1345,21 @@ public class ServiceHost implements ServiceRequestSender {
                     null,
                     this.scheduledExecutor,
                     this);
+
+            if (OpenSsl.isAlpnSupported()) {
+                SslContext clientHttp2Context = SslContextBuilder.forClient()
+                        .sslProvider(SslProvider.OPENSSL)
+                        .ciphers(Http2SecurityUtil.CIPHERS, SupportedCipherSuiteFilter.INSTANCE)
+                        .applicationProtocolConfig(new ApplicationProtocolConfig(
+                                ApplicationProtocolConfig.Protocol.ALPN,
+                                ApplicationProtocolConfig.SelectorFailureBehavior.NO_ADVERTISE,
+                                ApplicationProtocolConfig.SelectedListenerFailureBehavior.ACCEPT,
+                                ApplicationProtocolNames.HTTP_2,
+                                ApplicationProtocolNames.HTTP_1_1))
+                        .build();
+                ((NettyHttpServiceClient) this.client).setHttp2SslContext(clientHttp2Context);
+            }
+
             SSLContext clientContext = SSLContext.getInstance(ServiceClient.TLS_PROTOCOL_NAME);
             TrustManagerFactory trustManagerFactory = TrustManagerFactory
                     .getInstance(TrustManagerFactory.getDefaultAlgorithm());
