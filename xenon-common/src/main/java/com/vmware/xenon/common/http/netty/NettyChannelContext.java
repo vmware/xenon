@@ -23,11 +23,13 @@ import java.util.logging.Logger;
 import io.netty.buffer.PooledByteBufAllocator;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelPromise;
+import io.netty.handler.ssl.OpenSsl;
 import io.netty.util.AttributeKey;
 
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Operation.SocketContext;
 import com.vmware.xenon.common.ServiceErrorResponse;
+import com.vmware.xenon.common.Utils;
 import com.vmware.xenon.common.http.netty.NettyChannelPool.NettyChannelGroupKey;
 
 public class NettyChannelContext extends SocketContext {
@@ -77,6 +79,20 @@ public class NettyChannelContext extends SocketContext {
         // maxOrder determines the allocation chunk size as a multiple of page size
         int maxOrder = 4;
         return new PooledByteBufAllocator(true, 2, 2, 8192, maxOrder, 64, 32, 16);
+    }
+
+    public static final String ENABLE_ALPN_PROPERTY_NAME =
+            Utils.PROPERTY_NAME_PREFIX + "NettyChannelContext.isALPNEnabled";
+
+    private static boolean initializeALPNEnabled() {
+        String property = System.getProperty(ENABLE_ALPN_PROPERTY_NAME);
+        return (property != null) ? Boolean.parseBoolean(property) : OpenSsl.isAlpnSupported();
+    }
+
+    private static boolean isALPNEnabled = initializeALPNEnabled();
+
+    public static boolean isALPNEnabled() {
+        return isALPNEnabled;
     }
 
     private Channel channel;
