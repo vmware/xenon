@@ -33,6 +33,12 @@ import java.util.concurrent.atomic.AtomicInteger;
 import javax.net.ssl.SSLContext;
 
 import io.netty.handler.codec.http.HttpHeaderNames;
+import io.netty.handler.codec.http2.Http2SecurityUtil;
+import io.netty.handler.ssl.ApplicationProtocolConfig;
+import io.netty.handler.ssl.ApplicationProtocolNames;
+import io.netty.handler.ssl.SslContext;
+import io.netty.handler.ssl.SslContextBuilder;
+import io.netty.handler.ssl.SupportedCipherSuiteFilter;
 import io.netty.handler.ssl.util.InsecureTrustManagerFactory;
 import io.netty.handler.ssl.util.SelfSignedCertificate;
 import org.junit.After;
@@ -111,6 +117,19 @@ public class NettyHttpServiceClientTest {
                 NettyHttpServiceClientTest.class.getSimpleName(),
                 Executors.newFixedThreadPool(4),
                 Executors.newScheduledThreadPool(1), HOST);
+
+        if (NettyChannelContext.isALPNEnabled()) {
+            SslContext http2ClientContext = SslContextBuilder.forClient()
+                    .trustManager(InsecureTrustManagerFactory.INSTANCE)
+                    .ciphers(Http2SecurityUtil.CIPHERS, SupportedCipherSuiteFilter.INSTANCE)
+                    .applicationProtocolConfig(new ApplicationProtocolConfig(
+                            ApplicationProtocolConfig.Protocol.ALPN,
+                            ApplicationProtocolConfig.SelectorFailureBehavior.NO_ADVERTISE,
+                            ApplicationProtocolConfig.SelectedListenerFailureBehavior.ACCEPT,
+                            ApplicationProtocolNames.HTTP_2))
+                    .build();
+            ((NettyHttpServiceClient) client).setHttp2SslContext(http2ClientContext);
+        }
 
         SSLContext clientContext = SSLContext.getInstance(ServiceClient.TLS_PROTOCOL_NAME);
         clientContext.init(null, InsecureTrustManagerFactory.INSTANCE.getTrustManagers(), null);
