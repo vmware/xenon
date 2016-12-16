@@ -19,7 +19,6 @@ import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.ServiceHost;
 import com.vmware.xenon.common.StatelessService;
 import com.vmware.xenon.common.UriUtils;
-import com.vmware.xenon.common.Utils;
 import com.vmware.xenon.services.common.ServiceUriPaths;
 
 public class MaintenanceProxyService extends StatelessService {
@@ -27,7 +26,7 @@ public class MaintenanceProxyService extends StatelessService {
     public static void start(ServiceHost host, Consumer<Operation> parentHandler) {
         MaintenanceProxyService s = new MaintenanceProxyService(parentHandler);
         String path = UriUtils.buildUriPath(ServiceUriPaths.CORE, "netty-maint-proxies",
-                Utils.buildUUID(host.getIdHash()));
+                host.nextUUID());
         host.startService(Operation.createPost(UriUtils.buildUri(host, path)), s);
     }
 

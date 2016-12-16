@@ -140,9 +140,7 @@ public class TestFactoryService extends BasicReusableHostTestCase {
         // this test assumes how the implementation works. If we change
         // the implementation, it will break, by design
 
-        String idHash = this.host.getIdHash();
-        String timeNowPrefix = Utils.getNowMicrosUtc() + "";
-        timeNowPrefix = timeNowPrefix.substring(0, 8);
+        String idHash = Utils.computeHash(this.host.getId());
         assertTrue(f.buildDefaultChildSelfLink().startsWith(idHash));
 
         long s = System.nanoTime();

@@ -375,7 +375,7 @@ public abstract class FactoryService extends StatelessService {
     }
 
     protected String buildDefaultChildSelfLink() {
-        return Utils.buildUUID(getHost().getIdHash());
+        return getHost().nextUUID();
     }
 
     @Override

@@ -397,8 +397,6 @@ public class TestServiceHost {
 
             h.start();
 
-            assertEquals(Utils.computeHash(hostId), h.getIdHash());
-
             assertTrue(UriUtils.isHostEqual(h, publicUri));
             assertTrue(UriUtils.isHostEqual(h, new URI("http://127.0.0.1:" + h.getPort())));
             assertFalse(UriUtils.isHostEqual(h, new URI("https://somehost.com:" + h.getPort())));

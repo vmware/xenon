@@ -1066,8 +1066,12 @@ public class ServiceHost implements ServiceRequestSender {
         return this.state.id;
     }
 
-    public String getIdHash() {
-        return this.hashedId;
+    /**
+     * Returns a unique version 1 UUID-like string based on the node id and the current time.
+     * @return
+     */
+    public String nextUUID() {
+        return Utils.buildUUID(this.hashedId);
     }
 
     public long getOperationTimeoutMicros() {
@@ -1880,7 +1884,7 @@ public class ServiceHost implements ServiceRequestSender {
             latch.countDown();
         };
         if (serviceState.documentSelfLink == null) {
-            serviceState.documentSelfLink = Utils.buildUUID(getIdHash());
+            serviceState.documentSelfLink = nextUUID();
         }
         this.registerForServiceAvailability(comp, UriUtils.buildUriPath(factoryLink, serviceState.documentSelfLink));
 

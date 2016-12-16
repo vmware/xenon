@@ -1215,7 +1215,7 @@ public class TestLuceneDocumentIndexService {
         // verify request gets queued, for a ODL service, not YET created
         // attempt to on demand load a service that *never* existed
         body = new ExampleServiceState();
-        body.documentSelfLink = Utils.buildUUID(this.host.getIdHash());
+        body.documentSelfLink = this.host.nextUUID();
         body.name = "queue-for-avail-" + UUID.randomUUID().toString();
         URI yetToBeCreatedChildUri = UriUtils.extendUri(factoryUri, body.documentSelfLink);
 
