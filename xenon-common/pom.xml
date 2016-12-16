@@ -16,6 +16,7 @@
     <lucene.version>6.0.0</lucene.version>
     <netty.version>4.1.6.Final</netty.version>
     <hpack.version>v1.0.1</hpack.version>
+    <tcnative.version>1.1.33.Fork23</tcnative.version>
   </properties>
 
   <dependencies>
@@ -68,6 +69,11 @@
       <groupId>com.twitter</groupId>
       <artifactId>hpack</artifactId>
       <version>${hpack.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>io.netty</groupId>
+      <artifactId>netty-tcnative-boringssl-static</artifactId>
+      <version>${tcnative.version}</version>
     </dependency>
   </dependencies>
   <build>
