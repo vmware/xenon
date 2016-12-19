@@ -2,7 +2,17 @@
 
 ## 1.3.6-SNAPSHOT
 
+* Integrations with 3rd party libraries are migrated to a [new repository](https://github.com/vmware/xenon-utils)
+  and now have their own release cycle. There are no API changes but the Maven coordinates are different. Update
+  your pom.xml's using this table:
+
+  | Old Dependency| New Dependency |
+  |---|---|
+  | com.vmware.xenon:xenon-swagger:1.3.6 | com.vmware.xenon:xenon-swagger-adapter:0.0.1 |
+  | com.vmware.xenon:xenon-slf4j:1.3.6   | com.vmware.xenon:slf4j-xenon:0.0.1  |
+
 ## 1.3.5
+
 * Add a new GatewayService to facilitate with blue/green upgrades of xenon
   node-groups. The GatewayService can be used during upgrades to pause incoming
   traffic while data is being migrated to the new node-group. Once data has
