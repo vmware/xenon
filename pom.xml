@@ -196,6 +196,14 @@
 
     <profile>
       <id>release</id>
+      <modules>
+        <module>xenon-common</module>
+        <module>xenon-loader</module>
+        <module>xenon-loader-test</module>
+        <module>xenon-slf4j</module>
+        <module>xenon-swagger</module>
+        <module>xenon-ui</module>
+      </modules>
       <properties>
         <additionalparam>-Xdoclint:none</additionalparam>
       </properties>
