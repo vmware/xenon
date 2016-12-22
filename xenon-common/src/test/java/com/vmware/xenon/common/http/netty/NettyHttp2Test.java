@@ -276,31 +276,13 @@ public class NettyHttp2Test {
     @Test
     public void validateHttp2Timeouts() throws Throwable {
         setUpHost(false);
-        doValidateHttp2Timeouts();
-
-        // Validate that we used a single connection for this. We do this indirectly:
-        // We know that each request will create a new stream. Also client-initiated streams
-        // are only odd-numbered (1, 3, ...). So if we have 2*count streams, we re-used a single
-        // connection for the entire test.
-        NettyHttpServiceClient client = (NettyHttpServiceClient) this.host.getClient();
-        NettyChannelContext context = client.getInUseHttp2Context(
-                this.host.connectionTag, ServiceHost.LOCAL_HOST, this.host.getPort());
-        assertTrue(context.getLargestStreamId() > 20);
+        doValidateHttp2Timeouts(false);
     }
 
     @Test
     public void validateHttp2TimeoutsOverSsl() throws Throwable {
         setUpHost(true);
-        doValidateHttp2Timeouts();
-
-        // Validate that we used a single connection for this. We do this indirectly:
-        // We know that each request will create a new stream. Also client-initiated streams
-        // are only odd-numbered (1, 3, ...). So if we have 2*count streams, we re-used a single
-        // connection for the entire test.
-        NettyHttpServiceClient client = (NettyHttpServiceClient) this.host.getClient();
-        NettyChannelContext context = client.getInUseHttp2SslContext(
-                this.host.connectionTag, ServiceHost.LOCAL_HOST, this.host.getSecurePort());
-        assertTrue(context.getLargestStreamId() > 20);
+        doValidateHttp2Timeouts(true);
     }
 
     /**
@@ -309,7 +291,7 @@ public class NettyHttp2Test {
      * Note that this test throws a lot of log spew because operations that are timed out are
      * logged.
      */
-    private void doValidateHttp2Timeouts() throws Throwable {
+    private void doValidateHttp2Timeouts(boolean useHttps) throws Throwable {
         this.host.log("Starting test: validateHttp2Timeouts");
         MinimalTestService service = new MinimalTestService();
         MinimalTestServiceState initialState = new MinimalTestServiceState();
@@ -349,6 +331,33 @@ public class NettyHttp2Test {
         }
         this.host.testWait();
         this.host.toggleNegativeTestMode(false);
+
+        // Validate that we used a single connection for this. We do this indirectly:
+        // We know that each request will create a new stream. Also client-initiated streams
+        // are only odd-numbered (1, 3, ...). So if we have 2*count streams, we re-used a single
+        // connection for the entire test.
+        //
+        // Note that the operations can be cancelled by the HTTP client (and thus for the
+        // completion handlers to be invoked) before the stream is ready and the HTTP/2 settings
+        // have been negotiated, so it's necessary to wait here for the stream to be ready.
+        NettyHttpServiceClient client = (NettyHttpServiceClient) this.host.getClient();
+        this.host.waitFor("Channel context failed to become ready", () -> {
+            NettyChannelContext context;
+            if (useHttps) {
+                context = client.getInUseHttp2SslContext(this.host.connectionTag,
+                        ServiceHost.LOCAL_HOST, this.host.getSecurePort());
+            } else {
+                context = client.getInUseHttp2Context(this.host.connectionTag,
+                        ServiceHost.LOCAL_HOST, this.host.getPort());
+            }
+
+            if (context == null) {
+                return false;
+            }
+            int largestStreamId = context.getLargestStreamId();
+            this.host.log("Largest stream ID: %d", largestStreamId);
+            return (largestStreamId > 20);
+        });
     }
 
     /**
