@@ -429,7 +429,9 @@ public class NettyChannelPool {
                 if (context.isOpenInProgress() || !group.pendingRequests.isEmpty()) {
                     // If the channel is being opened, indicate that caller should
                     // queue the operation to be delivered later.
-                    group.pendingRequests.add(request);
+                    if (request != null) {
+                        group.pendingRequests.add(request);
+                    }
                     return null;
                 }
             }

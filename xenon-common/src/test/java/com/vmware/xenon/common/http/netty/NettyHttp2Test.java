@@ -282,10 +282,21 @@ public class NettyHttp2Test {
         // We know that each request will create a new stream. Also client-initiated streams
         // are only odd-numbered (1, 3, ...). So if we have 2*count streams, we re-used a single
         // connection for the entire test.
+        //
+        // Note that the operations can be cancelled by the HTTP client (and thus for the
+        // completion handlers to be invoked) before the stream is ready and the HTTP/2 settings
+        // have been negotiated, so it's necessary to wait here for the stream to be ready.
         NettyHttpServiceClient client = (NettyHttpServiceClient) this.host.getClient();
-        NettyChannelContext context = client.getInUseHttp2Context(
-                this.host.connectionTag, ServiceHost.LOCAL_HOST, this.host.getPort());
-        assertTrue(context.getLargestStreamId() > 20);
+        this.host.waitFor("Channel context failed to become ready", () -> {
+            NettyChannelContext context = client.getInUseHttp2Context(
+                    this.host.connectionTag, ServiceHost.LOCAL_HOST, this.host.getPort());
+            if (context == null) {
+                return false;
+            }
+            int largestStreamId = context.getLargestStreamId();
+            this.host.log("Largest stream ID: %d", largestStreamId);
+            return (largestStreamId > 20);
+        });
     }
 
     @Test
@@ -297,10 +308,21 @@ public class NettyHttp2Test {
         // We know that each request will create a new stream. Also client-initiated streams
         // are only odd-numbered (1, 3, ...). So if we have 2*count streams, we re-used a single
         // connection for the entire test.
+        //
+        // Note that the operations can be cancelled by the HTTP client (and thus for the
+        // completion handlers to be invoked) before the stream is ready and the HTTP/2 settings
+        // have been negotiated, so it's necessary to wait here for the stream to be ready.
         NettyHttpServiceClient client = (NettyHttpServiceClient) this.host.getClient();
-        NettyChannelContext context = client.getInUseHttp2SslContext(
-                this.host.connectionTag, ServiceHost.LOCAL_HOST, this.host.getSecurePort());
-        assertTrue(context.getLargestStreamId() > 20);
+        this.host.waitFor("Channel context failed to become ready", () -> {
+            NettyChannelContext context = client.getInUseHttp2SslContext(
+                    this.host.connectionTag, ServiceHost.LOCAL_HOST, this.host.getSecurePort());
+            if (context == null) {
+                return false;
+            }
+            int largestStreamId = context.getLargestStreamId();
+            this.host.log("Largest stream ID: %d", largestStreamId);
+            return (largestStreamId > 20);
+        });
     }
 
     /**
