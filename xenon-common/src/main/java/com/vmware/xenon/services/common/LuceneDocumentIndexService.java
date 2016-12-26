@@ -1840,9 +1840,11 @@ public class LuceneDocumentIndexService extends StatelessService {
             adjustStat(STAT_NAME_VERSION_CACHE_LOOKUP_COUNT, 1);
         }
 
-        DocumentUpdateInfo dui = this.updatesPerLink.get(link);
-        if (dui != null && dui.updateTimeMicros <= searcherUpdateTime) {
-            return Math.max(version, dui.version);
+        synchronized (this.searchSync) {
+            DocumentUpdateInfo dui = this.updatesPerLink.get(link);
+            if (dui != null && dui.updateTimeMicros <= searcherUpdateTime) {
+                return Math.max(version, dui.version);
+            }
         }
 
         if (hasOption(ServiceOption.INSTRUMENTATION)) {

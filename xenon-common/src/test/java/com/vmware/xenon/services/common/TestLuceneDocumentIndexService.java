@@ -1374,7 +1374,8 @@ public class TestLuceneDocumentIndexService {
         // prefix query, while at the same time issuing updates to the existing services and
         // creating new services. Verify that that the results from the query are always the
         // same
-        long endTime = Utils.getSystemNowMicrosUtc() + TimeUnit.SECONDS.toMicros(1);
+        int expSeconds = this.expirationSeconds == null ? 1 : this.expirationSeconds;
+        long endTime = Utils.getSystemNowMicrosUtc() + TimeUnit.SECONDS.toMicros(expSeconds);
         Throwable[] failure = new Throwable[1];
 
         AtomicInteger inFlightRequests = new AtomicInteger();
@@ -1456,7 +1457,11 @@ public class TestLuceneDocumentIndexService {
             Thread.sleep(50);
         } while (endTime > Utils.getSystemNowMicrosUtc());
 
-        Date exp = this.host.getTestExpiration();
+        Date exp = new Date(TimeUnit.MICROSECONDS.toMillis(Utils.getSystemNowMicrosUtc())
+                + TimeUnit.SECONDS.toMillis(expSeconds));
+        if (exp.before(this.host.getTestExpiration())) {
+            exp = this.host.getTestExpiration();
+        }
         while (inFlightRequests.get() > 0) {
             Thread.sleep(100);
             if (failure[0] != null) {
