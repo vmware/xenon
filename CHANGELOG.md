@@ -1,6 +1,11 @@
 # CHANGELOG
 
 ## 1.3.5-SNAPSHOT
+* Add a new GatewayService to facilitate with blue/green upgrades of xenon
+  node-groups. The GatewayService can be used during upgrades to pause incoming
+  traffic while data is being migrated to the new node-group. Once data has
+  been migrated, the gateway can be resumed to point all incoming traffic to
+  the new node-group.
 
 * Remove xenon-client from xenon project. The same is available in xenon-utils.
   Also removed GO toolchain in xenon-common.
