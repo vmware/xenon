@@ -1105,7 +1105,7 @@ public class VerificationHost extends ExampleServiceHost {
         }
     }
 
-    private void doServiceUpdates(Collection<URI> serviceUris, Action action,
+    public void doServiceUpdates(Collection<URI> serviceUris, Action action,
             ServiceDocument body) {
         List<Operation> ops = new ArrayList<>();
         for (URI u : serviceUris) {
@@ -2462,9 +2462,18 @@ public class VerificationHost extends ExampleServiceHost {
 
     }
 
+    public void createExampleServices(ServiceHost h,
+            long serviceCount, List<URI> exampleURIs, Long expiration) {
+        createExampleServices(h, serviceCount, exampleURIs, expiration, false);
+    }
+
     public void createExampleServices(ServiceHost h, long serviceCount, List<URI> exampleURIs,
-            Long expiration) {
-        waitForServiceAvailable(ExampleService.FACTORY_LINK);
+            Long expiration, boolean skipAvailabilityCheck) {
+
+        if (!skipAvailabilityCheck) {
+            waitForServiceAvailable(ExampleService.FACTORY_LINK);
+        }
+
         ExampleServiceState initialState = new ExampleServiceState();
         URI exampleFactoryUri = UriUtils.buildFactoryUri(h,
                 ExampleService.class);
