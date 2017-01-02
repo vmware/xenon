@@ -2635,7 +2635,7 @@ public class TestLuceneDocumentIndexService {
             }
             this.host.testWait();
             long floor = ExampleServiceState.VERSION_RETENTION_FLOOR;
-            verifyVersionRetention(serviceUrisWithStandardRetention, floor, floor + offset);
+            verifyVersionRetention(serviceUrisWithStandardRetention, floor, floor + updateCount);
 
             // Set the update count for the next iteration so that we'll stay within the retention
             // window of the persisted documents
@@ -2693,6 +2693,7 @@ public class TestLuceneDocumentIndexService {
                         && qt.results.documentCount <= serviceUris.size() * limit;
             });
         } catch (Throwable t) {
+            long upperBound = serviceUris.size() * limit;
             // Get the set of document links which caused the failure
             q.options = EnumSet.of(QueryOption.INCLUDE_ALL_VERSIONS);
             QueryTask qt = QueryTask.create(q).setDirect(true);
@@ -2714,8 +2715,9 @@ public class TestLuceneDocumentIndexService {
                         String documentSelfLink = entry.getKey();
                         TreeSet<Integer> versions = entry.getValue();
                         this.host.log("Failing documentSelfLink:%s, "
-                                        + "lowestVersion:%d, highestVersion:%d, count:%d",
-                                documentSelfLink, versions.first(), versions.last(), versions.size());
+                                + "lowestVersion:%d, highestVersion:%d, count:%d, expected count (ceil): %d",
+                                documentSelfLink, versions.first(), versions.last(),
+                                versions.size(), upperBound);
                     });
             throw t;
         }
