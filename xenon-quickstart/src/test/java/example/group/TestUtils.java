@@ -13,15 +13,11 @@
 
 package example.group;
 
-import static org.junit.Assert.fail;
-
-import java.time.Duration;
 import java.util.logging.Level;
 
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.ServiceHost;
-import com.vmware.xenon.common.test.TestContext;
 import com.vmware.xenon.common.test.TestRequestSender;
 import com.vmware.xenon.services.common.QueryTask;
 import com.vmware.xenon.services.common.QueryTask.Query;
@@ -34,43 +30,42 @@ public class TestUtils {
     private TestUtils() {}
 
     /**
-     * Repeatedly ask a query until the results reach a certain count.
+     * Create and wait for specified query until the results reach a certain count.
      *
      * @param h - Xenon Service host, used to form URLs and get logger
      * @param query - usually built with QueryTask.Builder.createDirectTask()
      * @param count - result count desired.
-     * @param timeout - millisconds to wait before giving up.
      */
-    static void waitUntilQueryResultsCountEquals(ServiceHost h, Query query, int count, long timeout) {
-        TestRequestSender sender = new TestRequestSender(h);
+    static void waitUntilQueryResultsCountEquals(ServiceHost host, Query query, int count) {
+        TestRequestSender sender = new TestRequestSender(host);
         QueryTask queryTask = QueryTask.Builder.createDirectTask()
                 .setQuery(query)
                 .build();
-        TestContext.waitFor(Duration.ofMillis(timeout), () -> {
-            Operation post = Operation.createPost(h, ServiceUriPaths.CORE_QUERY_TASKS).setBody(queryTask);
-            QueryTask result = sender.sendAndWait(post, QueryTask.class);
-            return result.results.documentCount == count;
-        }, () -> {
-                fail("wait timed out");
-                return "wait timed out";
-            });
+        // setting expectedResultCount in the query specification to keep query
+        // from completing until result count is satisfied
+        queryTask.querySpec.expectedResultCount = (long)count;
+        Operation post = Operation.createPost(host, ServiceUriPaths.CORE_QUERY_TASKS).setBody(queryTask);
+        sender.sendAndWait(post, QueryTask.class);
     }
 
     /**
+     * Creates a query task that will not complete unless the result count
+     * of the query matches the supplied value.
+     * Note that a GET to the factory, and counting the results would be
+     * equivalent to this query, but would have requird a polling loop
+     * and the use of TestContext.waitFor()
      *
      * @param host - used to construct URL base and also get the logger
      * @param stateClass - document class to be queried
      * @param count - number of documents expected
-     * @param timeout - time to wait before giving up
      */
-    static void checkServiceCountEquals(ServiceHost host,
-                                        Class<? extends ServiceDocument> stateClass,
-                                        int count,
-                                        long timeout) {
+    static void waitForServiceCountEquals(ServiceHost host,
+                                    Class<? extends ServiceDocument> stateClass,
+                                    int count) {
         host.log(Level.INFO, "Checking service count for " + stateClass.toString());
         QueryTask.Query query = QueryTask.Query.Builder.create()
                 .addKindFieldClause(stateClass)
                 .build();
-        TestUtils.waitUntilQueryResultsCountEquals(host, query, count, timeout);
+        waitUntilQueryResultsCountEquals(host, query, count);
     }
 }

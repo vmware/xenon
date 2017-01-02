@@ -24,8 +24,9 @@ import java.util.List;
 import java.util.logging.Level;
 
 import example.group.EmployeeService.Employee;
-import org.junit.AfterClass;
-import org.junit.BeforeClass;
+
+import org.junit.After;
+import org.junit.Before;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 
@@ -49,9 +50,10 @@ import com.vmware.xenon.services.common.QueryTask;
  *   @see <a href="https://github.com/vmware/xenon/wiki/Testing-Guide">Testing Guide</a>
  */
 public class EmployeeServiceTest {
-    private static ServiceHost h;
-    private static TemporaryFolder folder = new TemporaryFolder();
-    private static URI employeeUri;
+    private ServiceHost clientHost;
+    private TestNodeGroupManager nodeGroupManager;
+    private TemporaryFolder folder = new TemporaryFolder();
+    private URI employeeUri;
 
     private class TimeRange {
         long startTime = System.currentTimeMillis();
@@ -65,15 +67,15 @@ public class EmployeeServiceTest {
      * Start up a multi-node emulated cluster within a single JVM for all tests.
      * @throws Throwable - exception encountered while starting up
      */
-    @BeforeClass
-    public static void startHosts() throws Throwable {
+    @Before
+    public void startHosts() throws Throwable {
         int numNodes = 3;
-        folder.create();
+        this.folder.create();
         Arguments args = new Arguments();
         QuickstartHost[] hostList = new QuickstartHost[numNodes];
         for (int i = 0; i < numNodes; i++) {
             args.id = "host" + i;   // human readable name instead of GUID
-            args.sandbox = Paths.get(folder.getRoot().toString() + i);
+            args.sandbox = Paths.get(this.folder.getRoot().toString() + i);
             args.port = 0;
             hostList[i] = startHost(new String[0], args);
         }
@@ -87,13 +89,15 @@ public class EmployeeServiceTest {
         // before the nodes are in sync, then your changes will trigger additional synchronization, which will take
         // longer for startup to complete.
         nodeGroup.waitForConvergence();
-        h = nodeGroup.getHost();  // grabs a random one of the hosts.
-        employeeUri = UriUtils.buildFactoryUri(h, EmployeeService.class);
+        this.clientHost = nodeGroup.getHost();  // grabs a random one of the hosts.
+        this.employeeUri = UriUtils.buildFactoryUri(this.clientHost, EmployeeService.class);
+        this.nodeGroupManager = nodeGroup;
     }
 
-    @AfterClass
-    public static void cleanup() {
-        folder.delete();
+    @After
+    public void cleanup() {
+        this.nodeGroupManager.getAllHosts().forEach((h) -> h.stop());
+        this.folder.delete();
     }
 
     /**
@@ -107,11 +111,11 @@ public class EmployeeServiceTest {
         TimeRange timer = new TimeRange();
         createTestEmployees(numEmployees, prefix);
 
-        TestUtils.checkServiceCountEquals(h, Employee.class, numEmployees, 10000);
-        h.log(Level.INFO, "Created %d records in %d ms", numEmployees, timer.end());
+        TestUtils.waitForServiceCountEquals(this.clientHost, Employee.class, numEmployees);
+        this.clientHost.log(Level.INFO, "Created %d records in %d ms", numEmployees, timer.end());
 
         deleteTestEmployees(numEmployees, prefix);
-        TestUtils.checkServiceCountEquals(h, Employee.class, 0, 10000);
+        TestUtils.waitForServiceCountEquals(this.clientHost, Employee.class, 0);
     }
 
     /**
@@ -129,7 +133,7 @@ public class EmployeeServiceTest {
          * So to test PUT, we have to create the instances via POST.
          */
         createTestEmployees(numEmployees, prefix);
-        TestUtils.checkServiceCountEquals(h, Employee.class, numEmployees, 20000);
+        TestUtils.waitForServiceCountEquals(this.clientHost, Employee.class, numEmployees);
 
         /*
          * In createTestEmployees, we demonstrate one pattern for synchronous testing that
@@ -143,10 +147,10 @@ public class EmployeeServiceTest {
         for (int i = 0; i < numEmployees; i++) {
             employee.name = "PUT : " + prefix + ": " + i ;
             employee.documentSelfLink = prefix + i;
-            Operation op = Operation.createPut(UriUtils.extendUri(employeeUri, employee.documentSelfLink))
+            Operation op = Operation.createPut(UriUtils.extendUri(this.employeeUri, employee.documentSelfLink))
                     .setBody(employee)
-                    .setReferer(h.getUri());
-            h.sendWithDeferredResult(op, Employee.class)
+                    .setReferer(this.clientHost.getUri());
+            this.clientHost.sendWithDeferredResult(op, Employee.class)
                     .whenComplete((emp, throwable) -> {
                         if (throwable != null) {
                             testContext.fail(throwable);
@@ -163,11 +167,11 @@ public class EmployeeServiceTest {
                 .addFieldClause("name", "PUT", QueryTask.QueryTerm.MatchType.PREFIX)
                 .build();
 
-        TestUtils.waitUntilQueryResultsCountEquals(h, query, numEmployees, 20000);
-        h.log(Level.INFO, "Updated %d records in %d ms", numEmployees, timer.end());
+        TestUtils.waitUntilQueryResultsCountEquals(this.clientHost, query, numEmployees);
+        this.clientHost.log(Level.INFO, "Updated %d records in %d ms", numEmployees, timer.end());
 
         deleteTestEmployees(numEmployees, prefix);
-        TestUtils.checkServiceCountEquals(h, Employee.class, 0, 10000);
+        TestUtils.waitForServiceCountEquals(this.clientHost, Employee.class, 0);
     }
 
     /**
@@ -178,7 +182,7 @@ public class EmployeeServiceTest {
         String prefix = "testPatch";
         int numEmployees = 100;
         createTestEmployees(numEmployees, prefix);
-        TestUtils.checkServiceCountEquals(h, Employee.class, numEmployees, 20000);
+        TestUtils.waitForServiceCountEquals(this.clientHost, Employee.class, numEmployees);
 
         TestContext testContext = new TestContext(numEmployees, Duration.ofSeconds(10));
         TimeRange timer = new TimeRange();
@@ -186,10 +190,10 @@ public class EmployeeServiceTest {
         for (int i = 0; i < numEmployees; i++) {
             employee.name = "PATCH : " + prefix + ": " + i ;
             employee.documentSelfLink = prefix + i;
-            Operation op = Operation.createPatch(UriUtils.extendUri(employeeUri, employee.documentSelfLink))
+            Operation op = Operation.createPatch(UriUtils.extendUri(this.employeeUri, employee.documentSelfLink))
                     .setBody(employee)
-                    .setReferer(h.getUri());
-            h.sendWithDeferredResult(op, Employee.class)
+                    .setReferer(this.clientHost.getUri());
+            this.clientHost.sendWithDeferredResult(op, Employee.class)
                     .whenComplete((emp, throwable) -> {
                         if (throwable != null) {
                             testContext.fail(throwable);
@@ -206,11 +210,11 @@ public class EmployeeServiceTest {
                 .addFieldClause("name", "PATCH", QueryTask.QueryTerm.MatchType.PREFIX)
                 .build();
 
-        TestUtils.waitUntilQueryResultsCountEquals(h, query, numEmployees, 20000);
-        h.log(Level.INFO, "Updated %d records in %d ms", numEmployees, timer.end());
+        TestUtils.waitUntilQueryResultsCountEquals(this.clientHost, query, numEmployees);
+        this.clientHost.log(Level.INFO, "Updated %d records in %d ms", numEmployees, timer.end());
 
         deleteTestEmployees(numEmployees, prefix);
-        TestUtils.checkServiceCountEquals(h, Employee.class, 0, 10000);
+        TestUtils.waitForServiceCountEquals(this.clientHost, Employee.class, 0);
     }
 
     /**
@@ -238,14 +242,14 @@ public class EmployeeServiceTest {
         Employee employee = new Employee();
 
         // A useful xenon test helper class
-        TestRequestSender sender = new TestRequestSender(h);
+        TestRequestSender sender = new TestRequestSender(this.clientHost);
 
         // First create the CEO
         employee.name = prefix + ": " + 0 + " (CEO)";
         employee.documentSelfLink = prefix + 0;
-        Operation op = Operation.createPost(employeeUri)
+        Operation op = Operation.createPost(this.employeeUri)
                 .setBody(employee)
-                .setReferer(h.getUri());
+                .setReferer(this.clientHost.getUri());
 
         // sendAndWait both waits for the callback, but also verifies that there is no
         // error or exception in the call before returning. This method will throw an exception
@@ -259,11 +263,11 @@ public class EmployeeServiceTest {
         for (int i = 1; i < numEmployees; i++) {
             employee.name = prefix + ": " + i;
             employee.documentSelfLink = prefix + i;
-            employee.managerLink = EmployeeService.FACTORY_LINK + '/' + prefix + 0;
+            employee.managerLink = UriUtils.buildUriPath(EmployeeService.FACTORY_LINK, prefix + 0);
             opList.add(
-                    Operation.createPost(employeeUri)
+                    Operation.createPost(this.employeeUri)
                     .setBody(employee)
-                    .setReferer(h.getUri())
+                    .setReferer(this.clientHost.getUri())
             );
         }
 
@@ -274,10 +278,11 @@ public class EmployeeServiceTest {
         for (int i = 1; i < numEmployees; i++) {
             employee.name = prefix + ": " + i;
             employee.documentSelfLink = prefix + i;
-            employee.managerLink = EmployeeService.FACTORY_LINK + '/' + prefix + 0;
+            employee.managerLink = UriUtils.buildUriPath(EmployeeService.FACTORY_LINK, prefix + 0);
             assertEquals(employee.name, rspList.get(i - 1).name);
             assertEquals(employee.managerLink, rspList.get(i - 1).managerLink);
-            assertEquals(EmployeeService.FACTORY_LINK + '/' + employee.documentSelfLink, rspList.get(i - 1).documentSelfLink);
+            assertEquals(UriUtils.buildUriPath(EmployeeService.FACTORY_LINK, employee.documentSelfLink),
+                    rspList.get(i - 1).documentSelfLink);
         }
     }
 
@@ -288,13 +293,13 @@ public class EmployeeServiceTest {
      * @param prefix - prefix of employees to be deleted - should match what was passed to deleteTestEmployees.
      */
     private void deleteTestEmployees(int numEmployees, String prefix) {
-        TestRequestSender sender = new TestRequestSender(h);
+        TestRequestSender sender = new TestRequestSender(this.clientHost);
         List<Operation> opList = new ArrayList<>(numEmployees);
 
         for (int i = 0; i < numEmployees; i++) {
             opList.add(
-                    Operation.createDelete(UriUtils.extendUri(employeeUri, prefix + i))
-                    .setReferer(h.getUri())
+                    Operation.createDelete(UriUtils.extendUri(this.employeeUri, prefix + i))
+                    .setReferer(this.clientHost.getUri())
             );
         }
         sender.sendAndWait(opList);
