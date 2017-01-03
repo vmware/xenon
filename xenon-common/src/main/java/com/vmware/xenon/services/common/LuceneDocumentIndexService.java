@@ -1170,7 +1170,13 @@ public class LuceneDocumentIndexService extends StatelessService {
             groupSort = LuceneQueryConverter.convertToLuceneSort(qs, true);
         }
 
-        GroupingSearch groupingSearch = new GroupingSearch(qs.groupByTerm.propertyName);
+        GroupingSearch groupingSearch;
+        if (qs.groupByTerm.propertyType == TypeName.LONG || qs.groupByTerm.propertyType == TypeName.DOUBLE) {
+            groupingSearch = new GroupingSearch(qs.groupByTerm.propertyName + "_1");
+        } else {
+            groupingSearch = new GroupingSearch(qs.groupByTerm.propertyName);
+        }
+
         groupingSearch.setGroupSort(groupSort);
         groupingSearch.setSortWithinGroup(sort);
 
@@ -2005,15 +2011,15 @@ public class LuceneDocumentIndexService extends StatelessService {
         }
 
         addNumericField(doc, ServiceDocument.FIELD_NAME_UPDATE_TIME_MICROS,
-                s.documentUpdateTimeMicros, true);
+                s.documentUpdateTimeMicros, true, true);
 
         if (s.documentExpirationTimeMicros > 0) {
             addNumericField(doc, ServiceDocument.FIELD_NAME_EXPIRATION_TIME_MICROS,
-                    s.documentExpirationTimeMicros, true);
+                    s.documentExpirationTimeMicros, true, true);
         }
 
         addNumericField(doc, ServiceDocument.FIELD_NAME_VERSION,
-                s.documentVersion, true);
+                s.documentVersion, true, true);
 
         if (desc.propertyDescriptions == null
                 || desc.propertyDescriptions.isEmpty()) {
@@ -2148,14 +2154,14 @@ public class LuceneDocumentIndexService extends StatelessService {
             }
         } else if (pd.typeName.equals(TypeName.LONG)) {
             long value = ((Number) v).longValue();
-            addNumericField(doc, fieldName, value, isStored);
+            addNumericField(doc, fieldName, value, isStored, isSorted);
         } else if (pd.typeName.equals(TypeName.DATE)) {
             // Index as microseconds since UNIX epoch
             long value = ((Date) v).getTime() * 1000;
-            addNumericField(doc, fieldName, value, isStored);
+            addNumericField(doc, fieldName, value, isStored, isSorted);
         } else if (pd.typeName.equals(TypeName.DOUBLE)) {
             double value = ((Number) v).doubleValue();
-            addNumericField(doc, fieldName, value, isStored);
+            addNumericField(doc, fieldName, value, isStored, isSorted);
         } else if (pd.typeName.equals(TypeName.BOOLEAN)) {
             String booleanValue = QuerySpecification.toMatchValue((boolean) v);
             luceneField = new StringField(fieldName, booleanValue, fsv);
@@ -2863,7 +2869,7 @@ public class LuceneDocumentIndexService extends StatelessService {
     }
 
     static void addNumericField(Document doc, String propertyName, long propertyValue,
-            boolean stored) {
+            boolean stored, boolean sorted) {
         // StoredField is used if the property needs to be stored in the lucene document
         if (stored) {
             doc.add(new StoredField(propertyName, propertyValue));
@@ -2876,10 +2882,15 @@ public class LuceneDocumentIndexService extends StatelessService {
         // NumericDocValues allow for efficient group operations for a property.
         // TODO Investigate and revert code to use 'sort' to determine the type of DocValuesField
         doc.add(new NumericDocValuesField(propertyName, propertyValue));
+
+        if (sorted) {
+            doc.add(new SortedDocValuesField(propertyName + "_1",
+                    new BytesRef(Long.toString(propertyValue))));
+        }
     }
 
     private static void addNumericField(Document doc, String propertyName, double propertyValue,
-            boolean stored) {
+            boolean stored, boolean sorted) {
         long longPropertyValue = NumericUtils.doubleToSortableLong(propertyValue);
 
         // StoredField is used if the property needs to be stored in the lucene document
@@ -2894,5 +2905,10 @@ public class LuceneDocumentIndexService extends StatelessService {
         // NumericDocValues allow for efficient group operations for a property.
         // TODO Investigate and revert code to use 'sort' to determine the type of DocValuesField
         doc.add(new NumericDocValuesField(propertyName, longPropertyValue));
+
+        if (sorted) {
+            doc.add(new SortedDocValuesField(propertyName + "_1",
+                    new BytesRef(Double.toString(propertyValue))));
+        }
     }
 }
