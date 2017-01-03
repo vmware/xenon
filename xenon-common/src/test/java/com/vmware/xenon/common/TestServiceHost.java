@@ -150,6 +150,47 @@ public class TestServiceHost {
     }
 
     @Test
+    public void buildDocumentDescription() throws Throwable {
+        setUp(false);
+        URI factoryUri = UriUtils.buildUri(this.host, ExampleService.FACTORY_LINK);
+        Map<URI, ExampleServiceState> states = this.host.doFactoryChildServiceStart(null,
+                this.serviceCount,
+                ExampleServiceState.class, (op) -> {
+                    ExampleServiceState st = new ExampleServiceState();
+                    st.name = "foo";
+                    op.setBody(st);
+                }, factoryUri);
+
+        // verify we have valid descriptions for all example services we created
+        // explicitly
+        validateDescriptions(states);
+
+        // verify we can recover a description, even for services that are stopped
+        TestContext ctx = this.host.testCreate(states.size());
+        for (URI childUri : states.keySet()) {
+            Operation delete = Operation.createDelete(childUri)
+                    .setCompletion(ctx.getCompletion());
+            this.host.send(delete);
+        }
+        this.host.testWait(ctx);
+
+        // do the description lookup again, on stopped services
+        validateDescriptions(states);
+    }
+
+    private void validateDescriptions(Map<URI, ExampleServiceState> states) {
+        for (URI childUri : states.keySet()) {
+            ServiceDocumentDescription desc = this.host
+                    .buildDocumentDescription(childUri.getPath());
+            // do simple verification of returned description, its not exhaustive
+            assertTrue(desc != null);
+            assertTrue(desc.serviceCapabilities.contains(ServiceOption.PERSISTENCE));
+            assertTrue(desc.serviceCapabilities.contains(ServiceOption.INSTRUMENTATION));
+            assertTrue(desc.propertyDescriptions.size() > 1);
+        }
+    }
+
+    @Test
     public void requestRateLimits() throws Throwable {
         CommandLineArgumentParser.parseFromProperties(this);
         for (int i = 0; i < this.iterationCount; i++) {
