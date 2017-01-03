@@ -502,6 +502,7 @@ public class ServiceHost implements ServiceRequestSender {
     private final ConcurrentHashMap<String, Set<String>> userLinkToTokenMap = new ConcurrentHashMap<>();
 
     private final Map<String, ServiceDocumentDescription> descriptionCache = new HashMap<>();
+    private final Map<String, ServiceDocumentDescription> descriptionCachePerFactoryLink = new HashMap<>();
     private final ServiceDocumentDescription.Builder descriptionBuilder = Builder.create();
 
     private ExecutorService executor;
@@ -3054,10 +3055,11 @@ public class ServiceHost implements ServiceRequestSender {
     }
 
     /**
-     * Detaches service from service host, sets processing stage to stop. This method should only be
-     * invoked by the service itself (and in most cases that is the only possible way since its the only
-     * one with access to its reference)
-     * @param service
+     * Infrastructure use only. Service authors should never call this method.
+     * To stop a service issue a DELETE operation to its a URI. To only stop but not
+     * mark as deleted in the index, use {@link Operation#PRAGMA_DIRECTIVE_NO_INDEX_UPDATE}
+     *
+     * Detaches service from service host, sets processing stage to stop.
      */
     public void stopService(Service service) {
         if (service == null) {
@@ -5346,12 +5348,21 @@ public class ServiceHost implements ServiceRequestSender {
     }
 
     /**
-     * Infrastructure use only. Create service document description.
+     * Infrastructure use only
+     *
+     * Create service document description. The servicePath is used to
+     * lookup the service implementation class and its state class type. If the service is not
+     * currently attached to the host, an attempt is made to lookup the class types using the
+     * parent path, and only if the parent is a factory. Otherwise, the call will return null
      */
-    ServiceDocumentDescription buildDocumentDescription(String servicePath) {
+    public ServiceDocumentDescription buildDocumentDescription(String servicePath) {
         Service s = findService(servicePath);
         if (s == null) {
-            return null;
+            // on demand load or paused services will not be attached, but will still have
+            // valid descriptions cached. Look up their description using their parent (factory)
+            // link
+            String parentPath = UriUtils.getParentPath(servicePath);
+            return this.descriptionCachePerFactoryLink.get(parentPath);
         }
         return buildDocumentDescription(s);
     }
@@ -5406,6 +5417,16 @@ public class ServiceHost implements ServiceRequestSender {
                 this.descriptionCache.put(serviceTypeName, desc);
             }
 
+            // Cache entry also under the parent (factory) path so we can lookup descriptions even if the
+            // service (child) is not loaded. This is common for on demand load services and authorization
+            // checks on their documents
+            if (s.hasOption(ServiceOption.FACTORY_ITEM) && s.getSelfLink() != null) {
+                String parentPath = UriUtils.getParentPath(s.getSelfLink());
+                Service factoryService = findService(parentPath);
+                if (factoryService != null && factoryService.hasOption(ServiceOption.FACTORY)) {
+                    this.descriptionCachePerFactoryLink.put(parentPath, desc);
+                }
+            }
             return desc;
         }
     }
