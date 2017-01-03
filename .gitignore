@@ -24,12 +24,6 @@ pom.xml.releaseBackup
 *.pmd
 *.pmdruleset.xml
 
-# go artifacts
-xenon-client/bin
-xenon-client/src/main/resources/*
-xenon-client/src/main/go/_vendor/src/*
-xenon-common/src/main/go/_vendor/src/*
-
 # vagrant
 vagrant/
 .vagrant/

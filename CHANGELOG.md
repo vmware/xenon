@@ -2,6 +2,9 @@
 
 ## 1.3.5-SNAPSHOT
 
+* Remove xenon-client from xenon project. The same is available in xenon-utils.
+  Also removed GO toolchain in xenon-common.
+
 * Enable HTTP/2 over TLS. Xenon consumers can enable this behavior by including
   a netty-tcnative jar (for OpenSSL) or a jetty-alpn jar (for JDK support) in
   their classpath. Otherwise, the default behavior of using HTTP1.1 for all

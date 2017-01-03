@@ -85,7 +85,6 @@
   </scm>
 
   <modules>
-    <module>xenon-client</module>
     <module>xenon-common</module>
     <module>xenon-host</module>
     <module>xenon-loader-test</module>
