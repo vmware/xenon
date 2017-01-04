@@ -50,7 +50,9 @@
                     <filesets>
                         <fileset>
                             <directory>src/main/resources/archetype-resources</directory>
-                            <includes>src/**/*.java</includes>
+                            <includes>
+                                <include>src/**/*.java</include>
+                            </includes>
                         </fileset>
                     </filesets>
                 </configuration>
