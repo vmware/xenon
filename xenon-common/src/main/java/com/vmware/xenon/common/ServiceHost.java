@@ -3225,8 +3225,10 @@ public class ServiceHost implements ServiceRequestSender {
         if (this.authenticationService != null
                 && BasicAuthenticationUtils.getAuthToken(inboundOp) == null) {
 
-            if (!this.getAuthenticationServiceUri().getPath()
-                    .equals(inboundOp.getUri().getPath())) {
+            if (!getAuthenticationServiceUri().getPath()
+                    .equals(inboundOp.getUri().getPath()) &&
+                    !getBasicAuthenticationServiceUri().getPath().equals(
+                            inboundOp.getUri().getPath())) {
                 inboundOp.nestCompletion((op, ex) -> {
                     if (ex != null) {
                         inboundOp.setBodyNoCloning(op.getBodyRaw())

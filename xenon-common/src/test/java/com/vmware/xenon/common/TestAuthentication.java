@@ -16,6 +16,7 @@ package com.vmware.xenon.common;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
+import static com.vmware.xenon.services.common.authn.BasicAuthenticationUtils.constructBasicAuth;
 
 import java.time.Duration;
 import java.util.ArrayList;
@@ -38,12 +39,15 @@ import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
 import com.vmware.xenon.services.common.ServiceUriPaths;
 import com.vmware.xenon.services.common.SystemUserService;
 import com.vmware.xenon.services.common.authn.AuthenticationConstants;
+import com.vmware.xenon.services.common.authn.AuthenticationRequest;
+import com.vmware.xenon.services.common.authn.AuthenticationRequest.AuthenticationRequestType;
 import com.vmware.xenon.services.common.authn.BasicAuthenticationService;
 import com.vmware.xenon.services.common.authn.BasicAuthenticationUtils;
 
 public class TestAuthentication {
 
     private static final String FOO_USER_ID = "foo@vmware.com";
+    private static final String FOO_PASSWORD = "password";
 
     private static final String FOO_USER_PATH = "/" + FOO_USER_ID;
 
@@ -254,7 +258,7 @@ public class TestAuthentication {
                 .setHost(host)
                 .setUserSelfLink(FOO_USER_ID)
                 .setUserEmail(FOO_USER_ID)
-                .setUserPassword("password")
+                .setUserPassword(FOO_PASSWORD)
                 .setDocumentKind(Utils.buildKind(ExampleServiceState.class))
                 .setCompletion(waitContext.getCompletion());
 
@@ -332,6 +336,31 @@ public class TestAuthentication {
 
         TestRequestSender.clearAuthToken();
         host.log("Expected behavoir for external authentication request with valid token");
+    }
+
+    @Test
+    public void testAuthenticationViaBasicAuth() throws Throwable {
+        VerificationHost host = createAndStartHost(true, new TestAuthenticationService());
+
+        // create user foo@vmware.com
+        createTestUsers(host);
+
+        TestRequestSender sender = new TestRequestSender(host);
+
+        // login as foo@vmware.com
+        String headerVal = constructBasicAuth(FOO_USER_ID, FOO_PASSWORD);
+        AuthenticationRequest authReq = new AuthenticationRequest();
+        authReq.requestType = AuthenticationRequestType.LOGIN;
+        Operation requestOp = Operation
+                .createPost(UriUtils.buildUri(host, BasicAuthenticationService.SELF_LINK))
+                .setBody(authReq)
+                .forceRemote()
+                .addRequestHeader(BasicAuthenticationUtils.AUTHORIZATION_HEADER_NAME, headerVal);
+        Operation response = sender.sendAndWait(requestOp);
+        assertEquals(Operation.STATUS_CODE_OK, response.getStatusCode());
+        assertNotNull(response.getResponseHeader(SET_COOKIE_HEADER));
+
+        TestRequestSender.clearAuthToken();
     }
 
     @Test
