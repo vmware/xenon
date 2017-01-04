@@ -2022,7 +2022,8 @@ public class ServiceHost implements ServiceRequestSender {
             }
         } else {
             if (notificationTargetSelfLink == null) {
-                notificationTargetSelfLink = UUID.randomUUID().toString();
+                notificationTargetSelfLink = UriUtils.buildUriPath(ServiceUriPaths.CORE_CALLBACKS,
+                        nextUUID());
             }
             if (request.usePublicUri) {
                 subscriptionUri = UriUtils.buildPublicUri(this, notificationTargetSelfLink);

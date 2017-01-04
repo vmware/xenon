@@ -341,6 +341,12 @@ public class NodeGroupService extends StatefulService {
             if (failures.get() > failureThreshold) {
                 patch.fail(new IllegalStateException("Majority of nodes failed request"));
             } else {
+                if (bd.membershipQuorum != null) {
+                    logInfo("Quorum updated across all peers to %d", bd.membershipQuorum);
+                }
+                if (bd.locationQuorum != null) {
+                    logInfo("Location quorum updated across all peers to %d", bd.locationQuorum);
+                }
                 patch.complete();
             }
         };
