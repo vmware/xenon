@@ -290,6 +290,34 @@ public class LuceneDocumentIndexService extends StatelessService {
      */
     protected Map<Long, IndexSearcher> searchers = new HashMap<>();
 
+    private ThreadLocal<Map<String, StoredField>> storedFields = new ThreadLocal<Map<String, StoredField>>() {
+        @Override
+        public Map<String, StoredField> initialValue() {
+            return new HashMap<>();
+        }
+    };
+
+    private ThreadLocal<Map<String, LongPoint>> longPointFields = new ThreadLocal<Map<String, LongPoint>>() {
+        @Override
+        public Map<String, LongPoint> initialValue() {
+            return new HashMap<>();
+        }
+    };
+
+    private ThreadLocal<Map<String, DoublePoint>> doublePointFields = new ThreadLocal<Map<String, DoublePoint>>() {
+        @Override
+        public Map<String, DoublePoint> initialValue() {
+            return new HashMap<>();
+        }
+    };
+
+    private ThreadLocal<Map<String, NumericDocValuesField>> numericFields = new ThreadLocal<Map<String, NumericDocValuesField>>() {
+        @Override
+        public Map<String, NumericDocValuesField> initialValue() {
+            return new HashMap<>();
+        }
+    };
+
     /**
      * Searcher refresh time, per searcher (using hash code)
      */
@@ -2865,37 +2893,66 @@ public class LuceneDocumentIndexService extends StatelessService {
         }
     }
 
-    static void addNumericField(Document doc, String propertyName, long propertyValue,
+    void addNumericField(Document doc, String propertyName, long propertyValue,
             boolean stored) {
-        // StoredField is used if the property needs to be stored in the lucene document
         if (stored) {
-            doc.add(new StoredField(propertyName, propertyValue));
+            // StoredField is used if the property needs to be stored in the lucene document
+            Field field = this.storedFields.get().computeIfAbsent(propertyName, (k) -> {
+                return new StoredField(propertyName, propertyValue);
+            });
+            field.setLongValue(propertyValue);
+            doc.add(field);
         }
 
         // LongPoint adds an index field to the document that allows for efficient search
         // and range queries
-        doc.add(new LongPoint(propertyName, propertyValue));
+        LongPoint lpField = this.longPointFields.get().computeIfAbsent(propertyName, (k) -> {
+            logInfo("lp %s", propertyName);
+            return new LongPoint(propertyName, propertyValue);
+        });
+        lpField.setLongValue(propertyValue);
+        doc.add(lpField);
 
         // NumericDocValues allow for efficient group operations for a property.
         // TODO Investigate and revert code to use 'sort' to determine the type of DocValuesField
-        doc.add(new NumericDocValuesField(propertyName, propertyValue));
+        NumericDocValuesField ndField = this.numericFields.get().computeIfAbsent(propertyName,
+                (k) -> {
+                    return new NumericDocValuesField(propertyName, propertyValue);
+                });
+        ndField.setLongValue(propertyValue);
+        doc.add(ndField);
     }
 
-    private static void addNumericField(Document doc, String propertyName, double propertyValue,
+    private void addNumericField(Document doc, String propertyName, double propertyValue,
             boolean stored) {
         long longPropertyValue = NumericUtils.doubleToSortableLong(propertyValue);
 
-        // StoredField is used if the property needs to be stored in the lucene document
         if (stored) {
-            doc.add(new StoredField(propertyName, propertyValue));
+            // StoredField is used if the property needs to be stored in the lucene document
+            Field field = this.storedFields.get().computeIfAbsent(propertyName, (k) -> {
+                return new StoredField(propertyName, propertyValue);
+            });
+            field.setDoubleValue(propertyValue);
+
+            doc.add(field);
         }
 
         // DoublePoint adds an index field to the document that allows for efficient search
         // and range queries
-        doc.add(new DoublePoint(propertyName, propertyValue));
+        DoublePoint dpField = this.doublePointFields.get().computeIfAbsent(propertyName, (k) -> {
+            logInfo("dp %s", propertyName);
+            return new DoublePoint(propertyName, propertyValue);
+        });
+        dpField.setDoubleValue(propertyValue);
+        doc.add(dpField);
 
         // NumericDocValues allow for efficient group operations for a property.
         // TODO Investigate and revert code to use 'sort' to determine the type of DocValuesField
-        doc.add(new NumericDocValuesField(propertyName, longPropertyValue));
+        NumericDocValuesField ndField = this.numericFields.get().computeIfAbsent(propertyName,
+                (k) -> {
+                    return new NumericDocValuesField(propertyName, longPropertyValue);
+                });
+        ndField.setLongValue(longPropertyValue);
+        doc.add(ndField);
     }
 }
