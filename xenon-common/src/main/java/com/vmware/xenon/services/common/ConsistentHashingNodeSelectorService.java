@@ -170,6 +170,9 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
         return (notifyOp) -> {
             notifyOp.complete();
 
+            if (notifyOp.hasBody()) {
+                logInfo("%s", Utils.toJsonHtml(notifyOp.getBodyRaw()));
+            }
             NodeGroupState ngs = null;
             if (notifyOp.getAction() == Action.PATCH) {
                 UpdateQuorumRequest bd = notifyOp.getBody(UpdateQuorumRequest.class);
