@@ -1786,6 +1786,9 @@ public class LuceneDocumentIndexService extends StatelessService {
                 continue;
             }
             Object fieldValue = linkCollectionField.get(state);
+            if (fieldValue == null) {
+                continue;
+            }
             if (!(fieldValue instanceof Collection<?>)) {
                 logWarning("Skipping link %s, field is not a collection", link);
                 continue;
