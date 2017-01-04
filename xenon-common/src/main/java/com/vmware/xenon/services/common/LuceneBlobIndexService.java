@@ -25,6 +25,8 @@ import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.core.SimpleAnalyzer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
+import org.apache.lucene.document.LongPoint;
+import org.apache.lucene.document.NumericDocValuesField;
 import org.apache.lucene.document.StoredField;
 import org.apache.lucene.document.StringField;
 import org.apache.lucene.index.DirectoryReader;
@@ -278,8 +280,7 @@ public class LuceneBlobIndexService extends StatelessService {
                     Field.Store.NO);
             doc.add(keyField);
 
-            LuceneDocumentIndexService.addNumericField(
-                    doc, URI_PARAM_NAME_UPDATE_TIME, updateTime, true);
+            addNumericField(doc, URI_PARAM_NAME_UPDATE_TIME, updateTime, true);
 
             wr.addDocument(doc);
             this.indexUpdateTimeMicros = Utils.getNowMicrosUtc();
@@ -288,6 +289,21 @@ public class LuceneBlobIndexService extends StatelessService {
             logSevere(e);
             post.fail(e);
         }
+    }
+
+    void addNumericField(Document doc, String propertyName, long propertyValue,
+            boolean stored) {
+        if (stored) {
+            Field field = new StoredField(propertyName, propertyValue);
+            doc.add(field);
+        }
+        // LongPoint adds an index field to the document that allows for efficient search
+        // and range queries
+        doc.add(new LongPoint(propertyName, propertyValue));
+
+        // NumericDocValues allow for efficient group operations for a property.
+        // TODO Investigate and revert code to use 'sort' to determine the type of DocValuesField
+        doc.add(new NumericDocValuesField(propertyName, propertyValue));
     }
 
     /**
