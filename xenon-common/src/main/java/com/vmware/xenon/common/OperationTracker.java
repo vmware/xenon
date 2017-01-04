@@ -55,7 +55,7 @@ class OperationTracker {
     public void trackOperationForRetry(long expirationMicros, Throwable e, Operation op) {
         this.host.log(Level.WARNING,
                 "Retrying id %d to %s (retries: %d). Failure: %s",
-                op.getId(), op.getUri().getHost() + ":" + op.getUri().getPort(),
+                op.getId(), op.getUri(),
                 op.getRetryCount(),
                 e.toString());
         op.incrementRetryCount();

@@ -4836,7 +4836,6 @@ public class TestNodeGroupService {
         // messages do not flood the logs
         this.nodeGroupConfig.nodeRemovalDelayMicros = remainingHost.getMaintenanceIntervalMicros();
         this.host.setNodeGroupConfig(this.nodeGroupConfig);
-        this.setOperationTimeoutMicros(TimeUnit.SECONDS.toMicros(10));
 
         // relax quorum to single remaining host
         this.host.setNodeGroupQuorum(1);

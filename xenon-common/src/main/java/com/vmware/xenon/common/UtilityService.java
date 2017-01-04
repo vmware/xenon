@@ -306,6 +306,9 @@ public class UtilityService implements Service {
                             && s.failedNotificationCount > ServiceSubscriber.NOTIFICATION_FAILURE_LIMIT) {
                         if (now - s.initialFailedNotificationTimeMicros > getHost()
                                 .getMaintenanceIntervalMicros()) {
+                            getHost().log(Level.INFO,
+                                    "removing subscriber, failed notifications: %d",
+                                    s.failedNotificationCount);
                             remove = true;
                         }
                     }
