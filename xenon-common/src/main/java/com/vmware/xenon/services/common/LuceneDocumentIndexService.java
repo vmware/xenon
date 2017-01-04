@@ -291,6 +291,62 @@ public class LuceneDocumentIndexService extends StatelessService {
      */
     protected Map<Long, IndexSearcher> searchers = new HashMap<>();
 
+    private ThreadLocal<Document> document = new ThreadLocal<Document>() {
+        @Override
+        public Document initialValue() {
+            return new Document();
+        }
+    };
+
+    private ThreadLocal<Map<String, StoredField>> storedFields = new ThreadLocal<Map<String, StoredField>>() {
+        @Override
+        public Map<String, StoredField> initialValue() {
+            return new HashMap<>();
+        }
+    };
+
+    private ThreadLocal<Map<String, StringField>> stringFields = new ThreadLocal<Map<String, StringField>>() {
+        @Override
+        public Map<String, StringField> initialValue() {
+            return new HashMap<>();
+        }
+    };
+
+    private ThreadLocal<Map<String, StringField>> storedStringFields = new ThreadLocal<Map<String, StringField>>() {
+        @Override
+        public Map<String, StringField> initialValue() {
+            return new HashMap<>();
+        }
+    };
+
+    private ThreadLocal<Map<String, SortedDocValuesField>> sortedStringFields = new ThreadLocal<Map<String, SortedDocValuesField>>() {
+        @Override
+        public Map<String, SortedDocValuesField> initialValue() {
+            return new HashMap<>();
+        }
+    };
+
+    private ThreadLocal<Map<String, LongPoint>> longPointFields = new ThreadLocal<Map<String, LongPoint>>() {
+        @Override
+        public Map<String, LongPoint> initialValue() {
+            return new HashMap<>();
+        }
+    };
+
+    private ThreadLocal<Map<String, DoublePoint>> doublePointFields = new ThreadLocal<Map<String, DoublePoint>>() {
+        @Override
+        public Map<String, DoublePoint> initialValue() {
+            return new HashMap<>();
+        }
+    };
+
+    private ThreadLocal<Map<String, NumericDocValuesField>> numericFields = new ThreadLocal<Map<String, NumericDocValuesField>>() {
+        @Override
+        public Map<String, NumericDocValuesField> initialValue() {
+            return new HashMap<>();
+        }
+    };
+
     /**
      * Searcher refresh time, per searcher (using hash code)
      */
@@ -1973,54 +2029,53 @@ public class LuceneDocumentIndexService extends StatelessService {
 
         s.documentDescription = null;
 
-        Document doc = new Document();
+        Document doc = this.document.get();
+        // thread local document is cleared after we index, no need to clear fields again
 
-        Field updateActionField = new StoredField(ServiceDocument.FIELD_NAME_UPDATE_ACTION,
+        Field updateActionField = getAndSetStoredField(ServiceDocument.FIELD_NAME_UPDATE_ACTION,
                 s.documentUpdateAction);
+
         doc.add(updateActionField);
 
         addBinaryStateFieldToDocument(s, r.serializedDocument, desc, doc);
 
-        Field selfLinkField = new StringField(ServiceDocument.FIELD_NAME_SELF_LINK,
-                link,
-                Field.Store.YES);
+        Field selfLinkField = getAndSetStoredField(ServiceDocument.FIELD_NAME_SELF_LINK, link);
         doc.add(selfLinkField);
-        Field sortedSelfLinkField = new SortedDocValuesField(ServiceDocument.FIELD_NAME_SELF_LINK,
-                new BytesRef(link));
+        Field sortedSelfLinkField = getAndSetSortedStoredField(ServiceDocument.FIELD_NAME_SELF_LINK,
+                link);
         doc.add(sortedSelfLinkField);
 
         String kind = s.documentKind;
         if (kind != null) {
-            Field kindField = new StringField(ServiceDocument.FIELD_NAME_KIND,
-                    kind,
-                    Field.Store.NO);
+            Field kindField = getAndSetStringField(ServiceDocument.FIELD_NAME_KIND,
+                    kind);
             doc.add(kindField);
         }
 
         if (s.documentAuthPrincipalLink != null) {
-            Field principalField = new StringField(ServiceDocument.FIELD_NAME_AUTH_PRINCIPAL_LINK,
-                    s.documentAuthPrincipalLink,
-                    Field.Store.NO);
+            Field principalField = getAndSetStringField(
+                    ServiceDocument.FIELD_NAME_AUTH_PRINCIPAL_LINK,
+                    s.documentAuthPrincipalLink);
             doc.add(principalField);
         }
 
         if (s.documentTransactionId != null) {
-            Field transactionField = new StringField(ServiceDocument.FIELD_NAME_TRANSACTION_ID,
-                    s.documentTransactionId,
-                    Field.Store.NO);
+            Field transactionField = getAndSetStringField(
+                    ServiceDocument.FIELD_NAME_TRANSACTION_ID,
+                    s.documentTransactionId);
             doc.add(transactionField);
         }
 
         addNumericField(doc, ServiceDocument.FIELD_NAME_UPDATE_TIME_MICROS,
-                s.documentUpdateTimeMicros, true);
+                s.documentUpdateTimeMicros, true, false);
 
         if (s.documentExpirationTimeMicros > 0) {
             addNumericField(doc, ServiceDocument.FIELD_NAME_EXPIRATION_TIME_MICROS,
-                    s.documentExpirationTimeMicros, true);
+                    s.documentExpirationTimeMicros, true, false);
         }
 
         addNumericField(doc, ServiceDocument.FIELD_NAME_VERSION,
-                s.documentVersion, true);
+                s.documentVersion, true, false);
 
         if (desc.propertyDescriptions == null
                 || desc.propertyDescriptions.isEmpty()) {
@@ -2039,6 +2094,71 @@ public class LuceneDocumentIndexService extends StatelessService {
             ServiceStat st = getHistogramStat(STAT_NAME_FIELD_COUNT_PER_DOCUMENT);
             setStat(st, fieldCount);
         }
+    }
+
+    private Field getAndSetSortedStoredField(String name, String value) {
+        Field f = this.sortedStringFields.get().computeIfAbsent(name, (k) -> {
+            return new SortedDocValuesField(name, new BytesRef(value));
+        });
+        f.setBytesValue(new BytesRef(value));
+        return f;
+    }
+
+    private Field getAndSetStringField(String name, String value, Field.Store fsv,
+            boolean isCollectionItem) {
+        if (isCollectionItem) {
+            return new StringField(name, value, fsv);
+        }
+        if (fsv == Field.Store.YES) {
+            return getAndSetStoredField(name, value);
+        } else {
+            return getAndSetStringField(name, value);
+        }
+    }
+
+    private Field getAndSetStringField(String name, String value) {
+        Field f = this.stringFields.get().computeIfAbsent(name, (k) -> {
+            return new StringField(name, value, Field.Store.NO);
+        });
+        f.setStringValue(value);
+        return f;
+    }
+
+    private Field getAndSetStoredField(String name, String value) {
+        Field f = this.storedStringFields.get().computeIfAbsent(name, (k) -> {
+            return new StringField(name, value, Field.Store.YES);
+        });
+        f.setStringValue(value);
+        return f;
+    }
+
+    private Field getAndSetStoredField(String name, Long value) {
+        Field f = this.storedFields.get().computeIfAbsent(name, (k) -> {
+            return new StoredField(name, value);
+        });
+        f.setLongValue(value);
+        return f;
+    }
+
+    private Field getAndSetStoredField(String name, Double value) {
+        Field f = this.storedFields.get().computeIfAbsent(name, (k) -> {
+            return new StoredField(name, value);
+        });
+        f.setDoubleValue(value);
+        return f;
+    }
+
+    private NumericDocValuesField getAndSetNumericField(String propertyName, long propertyValue,
+            boolean isCollectionItem) {
+        if (isCollectionItem) {
+            return new NumericDocValuesField(propertyName, propertyValue);
+        }
+        NumericDocValuesField ndField = this.numericFields.get().computeIfAbsent(propertyName,
+                (k) -> {
+                    return new NumericDocValuesField(propertyName, propertyValue);
+                });
+        ndField.setLongValue(propertyValue);
+        return ndField;
     }
 
     private void addBinaryStateFieldToDocument(ServiceDocument s, byte[] serializedDocument,
@@ -2076,7 +2196,7 @@ public class LuceneDocumentIndexService extends StatelessService {
                 continue;
             }
             Object v = ReflectionUtils.getPropertyValue(pd, podo);
-            addIndexableFieldToDocument(doc, v, pd, name);
+            addIndexableFieldToDocument(doc, v, pd, name, false);
         }
     }
 
@@ -2085,11 +2205,11 @@ public class LuceneDocumentIndexService extends StatelessService {
      * This function recurses if the field value is a PODO, map, array, or collection.
      */
     private void addIndexableFieldToDocument(Document doc, Object podo, PropertyDescription pd,
-            String fieldName) {
+            String fieldName, boolean isCollectionItem) {
         Field luceneField = null;
         Field luceneDocValuesField = null;
         Field.Store fsv = Field.Store.NO;
-        boolean isSorted = false;
+        boolean isSortedString = false;
         boolean expandField = false;
         Object v = podo;
         if (v == null) {
@@ -2103,7 +2223,7 @@ public class LuceneDocumentIndexService extends StatelessService {
                 return;
             }
             if (opts.contains(PropertyIndexingOption.SORT)) {
-                isSorted = true;
+                isSortedString = true;
             }
             if (opts.contains(PropertyIndexingOption.EXPAND)) {
                 expandField = true;
@@ -2124,7 +2244,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         if (v instanceof String) {
             String stringValue = v.toString();
             if (opts == null) {
-                luceneField = new StringField(fieldName, stringValue, fsv);
+                luceneField = getAndSetStringField(fieldName, stringValue, fsv, isCollectionItem);
             } else {
                 if (opts.contains(PropertyIndexingOption.CASE_INSENSITIVE)) {
                     stringValue = stringValue.toLowerCase();
@@ -2132,46 +2252,36 @@ public class LuceneDocumentIndexService extends StatelessService {
                 if (opts.contains(PropertyIndexingOption.TEXT)) {
                     luceneField = new TextField(fieldName, stringValue, fsv);
                 } else {
-                    luceneField = new StringField(fieldName, stringValue, fsv);
+                    luceneField = getAndSetStringField(fieldName, stringValue, fsv,
+                            isCollectionItem);
                 }
             }
-            if (isSorted) {
-                luceneDocValuesField = new SortedDocValuesField(fieldName, new BytesRef(
-                        stringValue));
-            }
+
         } else if (v instanceof URI) {
             String uriValue = QuerySpecification.toMatchValue((URI) v);
-            luceneField = new StringField(fieldName, uriValue, fsv);
-            if (isSorted) {
-                luceneDocValuesField = new SortedDocValuesField(fieldName, new BytesRef(
-                        v.toString()));
-            }
+            luceneField = getAndSetStringField(fieldName, uriValue, fsv, isCollectionItem);
         } else if (pd.typeName.equals(TypeName.ENUM)) {
             String enumValue = QuerySpecification.toMatchValue((Enum<?>) v);
-            luceneField = new StringField(fieldName, enumValue, fsv);
-            if (isSorted) {
-                luceneDocValuesField = new SortedDocValuesField(fieldName, new BytesRef(
-                        v.toString()));
-            }
+            luceneField = getAndSetStringField(fieldName, enumValue, fsv, isCollectionItem);
         } else if (pd.typeName.equals(TypeName.LONG)) {
             long value = ((Number) v).longValue();
-            addNumericField(doc, fieldName, value, isStored);
+            addNumericField(doc, fieldName, value, isStored, isCollectionItem);
+            isSortedString = false;
         } else if (pd.typeName.equals(TypeName.DATE)) {
             // Index as microseconds since UNIX epoch
             long value = ((Date) v).getTime() * 1000;
-            addNumericField(doc, fieldName, value, isStored);
+            addNumericField(doc, fieldName, value, isStored, isCollectionItem);
+            isSortedString = false;
         } else if (pd.typeName.equals(TypeName.DOUBLE)) {
             double value = ((Number) v).doubleValue();
-            addNumericField(doc, fieldName, value, isStored);
+            addNumericField(doc, fieldName, value, isStored, isCollectionItem);
+            isSortedString = false;
         } else if (pd.typeName.equals(TypeName.BOOLEAN)) {
             String booleanValue = QuerySpecification.toMatchValue((boolean) v);
-            luceneField = new StringField(fieldName, booleanValue, fsv);
-            if (isSorted) {
-                luceneDocValuesField = new SortedDocValuesField(fieldName, new BytesRef(
-                        (booleanValue)));
-            }
+            luceneField = getAndSetStringField(fieldName, booleanValue, fsv, isCollectionItem);
         } else if (pd.typeName.equals(TypeName.BYTES)) {
             // Don't store bytes in the index
+            isSortedString = false;
         } else if (pd.typeName.equals(TypeName.PODO)) {
             // Ignore all complex fields if they are not explicitly marked with EXPAND.
             // We special case all fields of TaskState to ensure task based services have
@@ -2188,11 +2298,11 @@ public class LuceneDocumentIndexService extends StatelessService {
             addCollectionIndexableFieldToDocument(doc, v, pd, fieldName);
             return;
         } else {
-            luceneField = new StringField(fieldName, v.toString(), fsv);
-            if (isSorted) {
-                luceneDocValuesField = new SortedDocValuesField(fieldName, new BytesRef(
-                        v.toString()));
-            }
+            luceneField = getAndSetStringField(fieldName, v.toString(), fsv, isCollectionItem);
+        }
+
+        if (isSortedString) {
+            luceneDocValuesField = getAndSetSortedStoredField(fieldName, v.toString());
         }
 
         if (luceneField != null) {
@@ -2208,13 +2318,16 @@ public class LuceneDocumentIndexService extends StatelessService {
             String fieldNamePrefix) {
         for (Entry<String, PropertyDescription> e : pd.fieldDescriptions.entrySet()) {
             PropertyDescription fieldDescription = e.getValue();
+            Object fieldValue = ReflectionUtils.getPropertyValue(fieldDescription, v);
+            if (v == null) {
+                continue;
+            }
             if (pd.indexingOptions.contains(PropertyIndexingOption.SORT)) {
                 fieldDescription.indexingOptions.add(PropertyIndexingOption.SORT);
             }
-            Object fieldValue = ReflectionUtils.getPropertyValue(fieldDescription, v);
             String fieldName = QuerySpecification.buildCompositeFieldName(fieldNamePrefix,
                     e.getKey());
-            addIndexableFieldToDocument(doc, fieldValue, fieldDescription, fieldName);
+            addIndexableFieldToDocument(doc, fieldValue, fieldDescription, fieldName, false);
         }
     }
 
@@ -2235,15 +2348,20 @@ public class LuceneDocumentIndexService extends StatelessService {
                 throw new IllegalArgumentException(errorMsg);
             }
 
+            // There is a risk our field thread local maps grow too much from discrete field names
+            // built from map keys. It should be unlikely however: "keys" need to be a set of well known
+            // names for queries to be useful. Even 1M discrete field names should be OK on a loaded
+            // node
             addIndexableFieldToDocument(doc, entry.getValue(), pd.elementDescription,
-                    QuerySpecification.buildCompositeFieldName(fieldNamePrefix, (String) mapKey));
+                    QuerySpecification.buildCompositeFieldName(fieldNamePrefix, (String) mapKey),
+                    false);
 
             if (pd.indexingOptions.contains(PropertyIndexingOption.FIXED_ITEM_NAME)) {
                 addIndexableFieldToDocument(doc, entry.getKey(), new PropertyDescription(),
-                        fieldNamePrefix);
+                        fieldNamePrefix, true);
 
                 addIndexableFieldToDocument(doc, entry.getValue(), pd.elementDescription,
-                        fieldNamePrefix);
+                        fieldNamePrefix, true);
             }
         }
     }
@@ -2267,7 +2385,7 @@ public class LuceneDocumentIndexService extends StatelessService {
                 continue;
             }
 
-            addIndexableFieldToDocument(doc, cv, pd.elementDescription, fieldNamePrefix);
+            addIndexableFieldToDocument(doc, cv, pd.elementDescription, fieldNamePrefix, true);
         }
     }
 
@@ -2371,13 +2489,19 @@ public class LuceneDocumentIndexService extends StatelessService {
 
     private void addDocumentToIndex(IndexWriter wr, Operation op, Document doc, ServiceDocument sd,
             ServiceDocumentDescription desc) throws IOException {
-
-        long startNanos = System.nanoTime();
+        long startNanos = 0;
+        if (hasOption(ServiceOption.INSTRUMENTATION)) {
+            startNanos = System.nanoTime();
+        }
         wr.addDocument(doc);
-        long durationNanos = System.nanoTime() - startNanos;
-        setTimeSeriesStat(STAT_NAME_INDEXED_DOCUMENT_COUNT, AGGREGATION_TYPE_SUM, 1);
-        setTimeSeriesHistogramStat(STAT_NAME_INDEXING_DURATION_MICROS, AGGREGATION_TYPE_AVG_MAX,
-                TimeUnit.NANOSECONDS.toMicros(durationNanos));
+        doc.clear();
+
+        if (hasOption(ServiceOption.INSTRUMENTATION)) {
+            long durationNanos = System.nanoTime() - startNanos;
+            setTimeSeriesStat(STAT_NAME_INDEXED_DOCUMENT_COUNT, AGGREGATION_TYPE_SUM, 1);
+            setTimeSeriesHistogramStat(STAT_NAME_INDEXING_DURATION_MICROS, AGGREGATION_TYPE_AVG_MAX,
+                    TimeUnit.NANOSECONDS.toMicros(durationNanos));
+        }
 
         // Use time AFTER index was updated to be sure that it can be compared
         // against the time the searcher was updated and have this change
@@ -2869,37 +2993,57 @@ public class LuceneDocumentIndexService extends StatelessService {
         }
     }
 
-    static void addNumericField(Document doc, String propertyName, long propertyValue,
-            boolean stored) {
-        // StoredField is used if the property needs to be stored in the lucene document
-        if (stored) {
-            doc.add(new StoredField(propertyName, propertyValue));
+    void addNumericField(Document doc, String propertyName, long propertyValue,
+            boolean isStored, boolean isCollectionItem) {
+        if (isStored) {
+            Field field = isCollectionItem ? new StoredField(propertyName, propertyValue)
+                    : getAndSetStoredField(propertyName, propertyValue);
+            doc.add(field);
         }
 
         // LongPoint adds an index field to the document that allows for efficient search
         // and range queries
-        doc.add(new LongPoint(propertyName, propertyValue));
+        if (isCollectionItem) {
+            doc.add(new LongPoint(propertyName, propertyValue));
+        } else {
+            LongPoint lpField = this.longPointFields.get().computeIfAbsent(propertyName, (k) -> {
+                return new LongPoint(propertyName, propertyValue);
+            });
+            lpField.setLongValue(propertyValue);
+            doc.add(lpField);
+        }
 
         // NumericDocValues allow for efficient group operations for a property.
-        // TODO Investigate and revert code to use 'sort' to determine the type of DocValuesField
-        doc.add(new NumericDocValuesField(propertyName, propertyValue));
+        NumericDocValuesField ndField = getAndSetNumericField(propertyName, propertyValue,
+                isCollectionItem);
+        doc.add(ndField);
     }
 
-    private static void addNumericField(Document doc, String propertyName, double propertyValue,
-            boolean stored) {
+    private void addNumericField(Document doc, String propertyName, double propertyValue,
+            boolean stored, boolean isCollectionItem) {
         long longPropertyValue = NumericUtils.doubleToSortableLong(propertyValue);
 
-        // StoredField is used if the property needs to be stored in the lucene document
         if (stored) {
-            doc.add(new StoredField(propertyName, propertyValue));
+            Field field = isCollectionItem ? new StoredField(propertyName, propertyValue)
+                    : getAndSetStoredField(propertyName, propertyValue);
+            doc.add(field);
         }
 
         // DoublePoint adds an index field to the document that allows for efficient search
         // and range queries
-        doc.add(new DoublePoint(propertyName, propertyValue));
+        if (isCollectionItem) {
+            doc.add(new DoublePoint(propertyName, propertyValue));
+        } else {
+            DoublePoint dpField = this.doublePointFields.get().computeIfAbsent(propertyName,
+                    (k) -> {
+                        return new DoublePoint(propertyName, propertyValue);
+                    });
+            dpField.setDoubleValue(propertyValue);
+            doc.add(dpField);
+        }
 
-        // NumericDocValues allow for efficient group operations for a property.
-        // TODO Investigate and revert code to use 'sort' to determine the type of DocValuesField
-        doc.add(new NumericDocValuesField(propertyName, longPropertyValue));
+        NumericDocValuesField ndField = getAndSetNumericField(propertyName, longPropertyValue,
+                isCollectionItem);
+        doc.add(ndField);
     }
 }
