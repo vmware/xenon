@@ -48,35 +48,30 @@ public class TransactionResolutionService {
                     Operation operation = Operation
                             .createPatch(this.parent.getUri())
                             .setBody(resolutionRequest)
+                            .setTransactionId(null)
                             .setCompletion((o2, e2) -> {
                                 if (e2 != null) {
                                     op.fail(e2);
                                     return;
                                 }
-                                this.parent.logInfo(
-                                        "Transaction resolution request has been accepted by %s",
-                                        this.parent.getSelfLink());
                             });
-                    this.parent.logInfo("Sending transaction resolution request to %s with kind %s",
-                            this.parent.getSelfLink(), resolutionRequest.resolutionKind);
                     this.parent.sendRequest(operation);
                 }).setReferer(this.parent.getUri());
 
-        this.parent.logInfo("Subscribing to transaction resolution on %s",
-                this.parent.getSelfLink());
         this.parent.getHost().startSubscriptionService(subscribeToCoordinator, (notifyOp) -> {
             ResolutionRequest resolve = notifyOp.getBody(ResolutionRequest.class);
             notifyOp.complete();
-            this.parent.logInfo("Received notification: action=%s, resolution=%s",
-                    notifyOp.getAction(),
-                    resolve.resolutionKind);
             if (isNotComplete(resolve.resolutionKind)) {
                 return;
             }
-            if ((resolve.resolutionKind == ResolutionKind.COMMITTED
-                    && resolutionRequest.resolutionKind == ResolutionKind.COMMIT) ||
-                    (resolve.resolutionKind == ResolutionKind.ABORTED
-                            && resolutionRequest.resolutionKind == ResolutionKind.ABORT)) {
+            this.parent.logInfo("Received notification: action=%s, resolution=%s",
+                    notifyOp.getAction(),
+                    resolve.resolutionKind);
+
+            if ((resolve.resolutionKind.equals(ResolutionKind.COMMITTED)
+                    && resolutionRequest.resolutionKind.equals(ResolutionKind.COMMIT)) ||
+                    (resolve.resolutionKind.equals(ResolutionKind.ABORTED)
+                            && resolutionRequest.resolutionKind.equals(ResolutionKind.ABORT))) {
                 this.parent.logInfo("Resolution of transaction %s is complete",
                         this.parent.getSelfLink());
                 op.setBodyNoCloning(notifyOp.getBodyRaw());

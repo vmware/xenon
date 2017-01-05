@@ -17,7 +17,6 @@ import java.util.Collection;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.Set;
-import java.util.stream.Collectors;
 
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Operation.TransactionContext;
@@ -399,7 +398,8 @@ public class TransactionService extends StatefulService {
                         logWarning("Failure self patching: %s", e.getMessage());
                     }
                 })
-                .setBody(resolve);
+                .setBody(resolve)
+                .setTransactionId(null);
         sendRequest(operation);
     }
 
@@ -444,6 +444,7 @@ public class TransactionService extends StatefulService {
                         txLink);
                 abort = true;
                 updateStage(op, SubStage.ABORTING);
+                res.subStage = SubStage.ABORTING;
             }
         }
 
@@ -536,15 +537,16 @@ public class TransactionService extends StatefulService {
         Collection<Operation> operations = new HashSet<>();
         for (String service : state.createdLinks) {
             operations.add(createDeleteOp(service));
-            state.readLinks.remove(service);
-            state.modifiedLinks.remove(service);
         }
         for (String service : state.readLinks) {
-            state.modifiedLinks.remove(service);
-            operations.add(createNotifyOp(service, Operation.TX_ABORT));
+            if (!state.createdLinks.contains(service)) {
+                operations.add(createNotifyOp(service, Operation.TX_ABORT));
+            }
         }
         for (String service : state.modifiedLinks) {
-            operations.add(createNotifyOp(service, Operation.TX_ABORT));
+            if (!state.createdLinks.contains(service) && !state.readLinks.contains(service)) {
+                operations.add(createNotifyOp(service, Operation.TX_ABORT));
+            }
         }
         return operations;
     }
@@ -556,16 +558,17 @@ public class TransactionService extends StatefulService {
         Collection<Operation> operations = new HashSet<>();
         for (String service : state.deletedLinks) {
             operations.add(createDeleteOp(service));
-            state.readLinks.remove(service);
-            state.modifiedLinks.remove(service);
         }
-        operations.addAll(state.readLinks.stream()
-                .peek(service -> state.modifiedLinks.remove(service))
-                .map(service -> createNotifyOp(service, Operation.TX_COMMIT))
-                .collect(Collectors.toSet()));
-        operations.addAll(state.modifiedLinks.stream()
-                .map(service -> createNotifyOp(service, Operation.TX_COMMIT))
-                .collect(Collectors.toSet()));
+        for (String service : state.readLinks) {
+            if (!state.deletedLinks.contains(service)) {
+                operations.add(createNotifyOp(service, Operation.TX_COMMIT));
+            }
+        }
+        for (String service : state.modifiedLinks) {
+            if (!state.deletedLinks.contains(service) && !state.readLinks.contains(service)) {
+                operations.add(createNotifyOp(service, Operation.TX_COMMIT));
+            }
+        }
 
         if (operations.isEmpty()) {
             selfPatch(ResolutionKind.COMMITTED);
@@ -597,11 +600,12 @@ public class TransactionService extends StatefulService {
                 .setBody(new TransactionServiceState())
                 .setReferer(getUri())
                 .addRequestHeader(Operation.TRANSACTION_REFLINK_HEADER, getSelfLink())
+                .setTransactionId(null)
                 .setCompletion((o, e) -> {
                     if (e != null) {
-                        logWarning("Notification of service %s failed: %s", service, e);
+                        logWarning("Notification %s of service %s failed: %s", header, service, e);
                     } else {
-                        logInfo("Notification of service %s succeeded", service);
+                        logInfo("Notification %s of service %s succeeded", header, service);
                     }
                 });
     }
@@ -614,6 +618,7 @@ public class TransactionService extends StatefulService {
                 .createDelete(this, service)
                 .setReferer(getUri())
                 .addRequestHeader(Operation.TRANSACTION_REFLINK_HEADER, getSelfLink())
+                .setTransactionId(null)
                 .setCompletion((o, e) -> {
                     if (e != null) {
                         logWarning("Deletion of service %s failed: %s", service, e);
@@ -636,6 +641,7 @@ public class TransactionService extends StatefulService {
                 .setBody(body)
                 .setReferer(getUri())
                 .addRequestHeader(Operation.TRANSACTION_REFLINK_HEADER, getSelfLink())
+                .setTransactionId(null)
                 .setCompletion(callback);
     }
 
