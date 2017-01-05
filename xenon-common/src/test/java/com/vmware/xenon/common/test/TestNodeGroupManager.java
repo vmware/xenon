@@ -28,6 +28,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 
 import com.vmware.xenon.common.NodeSelectorService.SelectAndForwardRequest;
@@ -63,6 +64,8 @@ public class TestNodeGroupManager {
     private Set<ServiceHost> hosts = new HashSet<>();
 
     private Duration timeout = TestContext.DEFAULT_WAIT_DURATION;
+
+    private Duration maintenance;
 
     private String nodeGroupName = ServiceUriPaths.DEFAULT_NODE_GROUP_NAME;
 
@@ -159,6 +162,7 @@ public class TestNodeGroupManager {
         List<Operation> ops = this.hosts.stream()
                 .filter(host -> !Objects.equals(host, peer))
                 .map(host -> {
+                    // set maintenance interval to small value for quick convergence
                     URI peerNodeGroup = UriUtils.buildUri(peer, nodeGroupPath);
                     URI newNodeGroup = UriUtils.buildUri(host, nodeGroupPath);
                     host.log(Level.INFO, "Joining %s through %s", newNodeGroup, peerNodeGroup);
@@ -389,15 +393,28 @@ public class TestNodeGroupManager {
         return this.timeout;
     }
 
-    public void setTimeout(Duration timeout) {
+    public TestNodeGroupManager setTimeout(Duration timeout) {
         this.timeout = timeout;
+        return this;
+    }
+
+    public Duration getMaintenanceInterval() {
+        return this.maintenance;
+    }
+
+    public TestNodeGroupManager setMaintenanceInterval(Duration maint) {
+        this.maintenance = maint;
+        this.hosts.forEach((h) -> h.setMaintenanceIntervalMicros(
+                TimeUnit.MILLISECONDS.toMicros(maint.toMillis())));
+        return this;
     }
 
     public String getNodeGroupName() {
         return this.nodeGroupName;
     }
 
-    public void setNodeGroupName(String nodeGroupName) {
+    public TestNodeGroupManager setNodeGroupName(String nodeGroupName) {
         this.nodeGroupName = nodeGroupName;
+        return this;
     }
 }

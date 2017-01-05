@@ -13,6 +13,7 @@
 
 package com.vmware.dcp.services.samples;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -51,6 +52,7 @@ public class TestWordCountingSampleService {
             ServiceHost host = createHost();
             this.group.addHost(host);
         }
+        this.group.setMaintenanceInterval(Duration.ofMillis(100));
         this.group.joinNodeGroupAndWaitForConvergence();
     }
 
