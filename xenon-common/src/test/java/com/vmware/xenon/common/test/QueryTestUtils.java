@@ -65,16 +65,14 @@ public final class QueryTestUtils {
         qt.querySpec.options.add(QueryOption.CONTINUOUS);
         qt.querySpec.options.add(QueryOption.EXPAND_CONTENT);
 
-        Operation post = Operation.createPost(
-                UriUtils.buildUri(host.getUri(), ServiceUriPaths.CORE_LOCAL_QUERY_TASKS))
-                .setBody(qt);
-        post = s.sendAndWait(post);
-        QueryTask activeTask = post.getBody(QueryTask.class);
+        QueryTask activeTask = s.sendPostAndWait(
+                UriUtils.buildUri(host.getUri(), ServiceUriPaths.CORE_LOCAL_QUERY_TASKS),
+                qt, QueryTask.class);
         URI queryTaskURI = UriUtils.buildUri(host.getUri(), activeTask.documentSelfLink);
 
         // Wait for query task to have data
         TestContext.waitFor(s.getTimeout(), () -> {
-            QueryTask queryTaskResponse = s.sendGetAndWait(queryTaskURI.toString(),
+            QueryTask queryTaskResponse = s.sendGetAndWait(queryTaskURI,
                     QueryTask.class);
             if (queryTaskResponse.results != null
                     && queryTaskResponse.results.documentLinks != null

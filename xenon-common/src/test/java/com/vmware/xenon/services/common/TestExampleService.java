@@ -104,7 +104,7 @@ public class TestExampleService {
         // verify template GET works on factory
         URI factoryUri = UriUtils.buildUri(host, ExampleService.FACTORY_LINK);
         URI uri = UriUtils.extendUri(factoryUri, ServiceHost.SERVICE_URI_SUFFIX_TEMPLATE);
-        ServiceDocumentQueryResult templateResult = sender.sendGetAndWait(uri.toString(),
+        ServiceDocumentQueryResult templateResult = sender.sendGetAndWait(uri,
                 ServiceDocumentQueryResult.class);
 
         assertTrue(templateResult.documentLinks.size() == templateResult.documents.size());

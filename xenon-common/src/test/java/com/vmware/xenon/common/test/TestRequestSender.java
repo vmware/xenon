@@ -206,7 +206,14 @@ public class TestRequestSender implements ServiceRequestSender {
      * @return body document
      */
     public <T extends ServiceDocument> T sendGetAndWait(String url, Class<T> bodyType) {
-        return sendAndWait(Operation.createGet(URI.create(url)), bodyType);
+        return sendGetAndWait(URI.create(url), bodyType);
+    }
+
+    /**
+     * See {@link #sendGetAndWait(String, Class)}
+     */
+    public <T extends ServiceDocument> T sendGetAndWait(URI uri, Class<T> bodyType) {
+        return sendAndWait(Operation.createGet(uri), bodyType);
     }
 
     /**
@@ -219,8 +226,15 @@ public class TestRequestSender implements ServiceRequestSender {
      * @param <T>      ServiceDocument
      * @return body document
      */
-    public <T extends ServiceDocument> T sendPostAndWait(String url, Class<T> bodyType) {
-        return sendAndWait(Operation.createPost(URI.create(url)), bodyType);
+    public <T extends ServiceDocument> T sendPostAndWait(String url, T body, Class<T> bodyType) {
+        return sendPostAndWait(URI.create(url), body, bodyType);
+    }
+
+    /**
+     * See {@link #sendPostAndWait(String, Class)}
+     */
+    public <T extends ServiceDocument> T sendPostAndWait(URI uri, T body, Class<T> bodyType) {
+        return sendAndWait(Operation.createPost(uri).setBody(body), bodyType);
     }
 
 
