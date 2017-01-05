@@ -26,16 +26,17 @@ public class LocalizableValidationException extends RuntimeException {
     private Object[] arguments;
     private Throwable cause;
 
-    public LocalizableValidationException(String systemMsg, String errorMessageCode) {
-        this.systemMessage = systemMsg;
-        this.errorMessageCode = errorMessageCode;
-    }
-
     public LocalizableValidationException(String systemMsg, String errorMessageCode,
-            Object[] errorMessageArguments) {
+            Object... errorMessageArguments) {
         this.systemMessage = systemMsg;
         this.errorMessageCode = errorMessageCode;
         this.arguments = errorMessageArguments.clone();
+    }
+
+    public LocalizableValidationException(Throwable ex, String systemMsg, String errorMessageCode,
+            Object... errorMessageArguments) {
+        this(systemMsg, errorMessageCode, errorMessageArguments);
+        this.cause = ex;
     }
 
     public String getErrorMessageCode() {
@@ -65,9 +66,5 @@ public class LocalizableValidationException extends RuntimeException {
     @Override
     public Throwable getCause() {
         return this.cause;
-    }
-
-    public void setCause(Throwable cause) {
-        this.cause = cause;
     }
 }
