@@ -37,7 +37,7 @@ public class TestLocalizationUtil {
 
     @Before
     public void setUp() {
-        this.ex = new LocalizableValidationException(SYSTEM_EX_MESSAGE, ERROR_MESSAGE_CODE, new String[] { EX_ARG_VALUE });
+        this.ex = new LocalizableValidationException(SYSTEM_EX_MESSAGE, ERROR_MESSAGE_CODE, EX_ARG_VALUE);
     }
 
     @Test
@@ -82,7 +82,7 @@ public class TestLocalizationUtil {
 
     @Test
     public void testMissingErrorCodeResolution() {
-        this.ex = new LocalizableValidationException(SYSTEM_EX_MESSAGE, "missing.error.code", new String[] { EX_ARG_VALUE });
+        this.ex = new LocalizableValidationException(SYSTEM_EX_MESSAGE, "missing.error.code", EX_ARG_VALUE);
         String message = LocalizationUtil.resolveMessage(this.ex, null);
         assertEquals(SYSTEM_EX_MESSAGE, message);
     }

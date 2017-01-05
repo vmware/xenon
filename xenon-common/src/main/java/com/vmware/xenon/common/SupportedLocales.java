@@ -20,6 +20,7 @@ import java.net.URL;
 import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
+import java.util.logging.Logger;
 
 public class SupportedLocales {
 
@@ -63,7 +64,8 @@ public class SupportedLocales {
                     }
                 });
             } catch (URISyntaxException e) {
-                e.printStackTrace();
+                Logger.getAnonymousLogger().warning(
+                        String.format("Unable to load message files from %s: %s ", url, e));
             }
         }
 
