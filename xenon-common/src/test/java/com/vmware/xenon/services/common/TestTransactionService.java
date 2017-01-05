@@ -432,6 +432,7 @@ public class TestTransactionService extends BasicReusableHostTestCase {
         countAccounts(null, 0);
     }
 
+    @Ignore
     @Test
     public void testSingleClientMultiDocumentConcurrentTransactions() throws Throwable {
         String txid = newTransaction();
