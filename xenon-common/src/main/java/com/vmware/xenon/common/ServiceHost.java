@@ -3886,18 +3886,17 @@ public class ServiceHost implements ServiceRequestSender {
     }
 
     private void queueOrScheduleRequest(Service s, Operation op) {
-        boolean processRequest = true;
         try {
             ProcessingStage stage = s.getProcessingStage();
             if (stage == ProcessingStage.AVAILABLE) {
+                queueOrScheduleRequestInternal(s, op);
                 return;
             }
 
             if (op.getAction() == Action.DELETE) {
+                queueOrScheduleRequestInternal(s, op);
                 return;
             }
-
-            processRequest = false;
 
             if (stage == ProcessingStage.STOPPED) {
                 if (op.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_POST_TO_PUT)) {
@@ -3917,28 +3916,25 @@ public class ServiceHost implements ServiceRequestSender {
                 return;
             }
 
-            op.fail(new CancellationException("Service not available, in stage:" + stage));
+            op.fail(new CancellationException("Service not available, in stage: " + stage));
         } catch (Throwable e) {
-            processRequest = false;
             op.fail(e);
-        } finally {
-            if (!processRequest) {
-                return;
-            }
+        }
+    }
 
-            if (!s.queueRequest(op)) {
-                Runnable r = () -> {
-                    OperationContext opCtx = extractAndApplyContext(op);
-                    try {
-                        s.handleRequest(op);
-                    } catch (Throwable e) {
-                        handleUncaughtException(s, op, e);
-                    } finally {
-                        OperationContext.setFrom(opCtx);
-                    }
-                };
-                this.executor.execute(r);
-            }
+    private void queueOrScheduleRequestInternal(Service s, Operation op) {
+        if (!s.queueRequest(op)) {
+            Runnable r = () -> {
+                OperationContext opCtx = extractAndApplyContext(op);
+                try {
+                    s.handleRequest(op);
+                } catch (Throwable e) {
+                    handleUncaughtException(s, op, e);
+                } finally {
+                    OperationContext.setFrom(opCtx);
+                }
+            };
+            this.executor.execute(r);
         }
     }
 
