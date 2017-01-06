@@ -3888,59 +3888,51 @@ public class ServiceHost implements ServiceRequestSender {
     }
 
     private void queueOrScheduleRequest(Service s, Operation op) {
-        boolean processRequest = true;
-        try {
-            ProcessingStage stage = s.getProcessingStage();
-            if (stage == ProcessingStage.AVAILABLE) {
+        ProcessingStage stage = s.getProcessingStage();
+        if (stage == ProcessingStage.AVAILABLE) {
+            queueOrScheduleRequestInternal(s, op);
+            return;
+        }
+
+        if (op.getAction() == Action.DELETE) {
+            queueOrScheduleRequestInternal(s, op);
+            return;
+        }
+
+        if (stage == ProcessingStage.STOPPED) {
+            if (op.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_POST_TO_PUT)) {
+                // service stopped after we decided it already existed and attempted
+                // a IDEMPOTENT POST->PUT. Retry the original POST.
+                restoreActionOnChildServiceToPostOnFactory(s.getSelfLink(), op);
+                handleRequest(null, op);
                 return;
             }
-
-            if (op.getAction() == Action.DELETE) {
+            if (s.hasOption(ServiceOption.ON_DEMAND_LOAD)) {
+                retryPauseOrOnDemandLoadConflict(op, true);
                 return;
             }
+            op.setStatusCode(Operation.STATUS_CODE_NOT_FOUND);
+        } else if (stage == ProcessingStage.PAUSED) {
+            retryPauseOrOnDemandLoadConflict(op, false);
+            return;
+        }
 
-            processRequest = false;
+        op.fail(new CancellationException("Service not available, in stage: " + stage));
+    }
 
-            if (stage == ProcessingStage.STOPPED) {
-                if (op.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_POST_TO_PUT)) {
-                    // service stopped after we decided it already existed and attempted
-                    // a IDEMPOTENT POST->PUT. Retry the original POST.
-                    restoreActionOnChildServiceToPostOnFactory(s.getSelfLink(), op);
-                    handleRequest(null, op);
-                    return;
+    private void queueOrScheduleRequestInternal(Service s, Operation op) {
+        if (!s.queueRequest(op)) {
+            Runnable r = () -> {
+                OperationContext opCtx = extractAndApplyContext(op);
+                try {
+                    s.handleRequest(op);
+                } catch (Throwable e) {
+                    handleUncaughtException(s, op, e);
+                } finally {
+                    OperationContext.setFrom(opCtx);
                 }
-                if (s.hasOption(ServiceOption.ON_DEMAND_LOAD)) {
-                    retryPauseOrOnDemandLoadConflict(op, true);
-                    return;
-                }
-                op.setStatusCode(Operation.STATUS_CODE_NOT_FOUND);
-            } else if (stage == ProcessingStage.PAUSED) {
-                retryPauseOrOnDemandLoadConflict(op, false);
-                return;
-            }
-
-            op.fail(new CancellationException("Service not available, in stage:" + stage));
-        } catch (Throwable e) {
-            processRequest = false;
-            op.fail(e);
-        } finally {
-            if (!processRequest) {
-                return;
-            }
-
-            if (!s.queueRequest(op)) {
-                Runnable r = () -> {
-                    OperationContext opCtx = extractAndApplyContext(op);
-                    try {
-                        s.handleRequest(op);
-                    } catch (Throwable e) {
-                        handleUncaughtException(s, op, e);
-                    } finally {
-                        OperationContext.setFrom(opCtx);
-                    }
-                };
-                this.executor.execute(r);
-            }
+            };
+            this.executor.execute(r);
         }
     }
 
