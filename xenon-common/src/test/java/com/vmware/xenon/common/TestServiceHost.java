@@ -2076,6 +2076,13 @@ public class TestServiceHost {
         this.host.startServiceAndWait(factoryService, "/service", null);
 
         final double stopCount = getODLStopCountStat() != null ? getODLStopCountStat().latestValue : 0;
+        
+        // Test DELETE works on ODL service as it works on non-ODL service.
+        // Delete on non-existent service should fail, and should not leave any side effects behind.
+        Operation deleteOp = Operation.createDelete(this.host, "/service/foo")
+                .setBody(new ServiceDocument());
+
+        this.host.sendAndWaitExpectFailure(deleteOp, null);
 
         // create a ON_DEMAND_LOAD service
         MinimalTestServiceState initialState = new MinimalTestServiceState();
