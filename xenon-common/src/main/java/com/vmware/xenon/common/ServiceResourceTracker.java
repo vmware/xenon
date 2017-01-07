@@ -786,7 +786,11 @@ class ServiceResourceTracker {
         boolean doProbe = inboundOp.hasPragmaDirective(
                 Operation.PRAGMA_DIRECTIVE_QUEUE_FOR_SERVICE_AVAILABILITY);
 
-        if (!doProbe) {
+        /**
+         * Do not start the service right away if it is a DELETE request
+         * or if we need to wait for its availability.
+         */
+        if (!doProbe && inboundOp.getAction() != Action.DELETE) {
             startServiceOnDemand(inboundOp, parentService, factoryService, finalServicePath);
             return true;
         }
