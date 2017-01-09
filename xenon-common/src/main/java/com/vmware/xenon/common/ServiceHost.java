@@ -2386,7 +2386,8 @@ public class ServiceHost implements ServiceRequestSender {
         }
 
         if (!isIdempotent && !post.isSynchronize()) {
-            if (ServiceHost.isServiceStarting(existing.getProcessingStage())) {
+            ProcessingStage ps = existing.getProcessingStage();
+            if (ps == ProcessingStage.STOPPED || ServiceHost.isServiceStarting(ps)) {
                 // there is a possibility of collision with a synchronization attempt: The sync task
                 // attaches a child it enumerated from a peer, starts in stage CREATED while loading
                 // state from index, and then discovers service is deleted. In the meantime a legitimate

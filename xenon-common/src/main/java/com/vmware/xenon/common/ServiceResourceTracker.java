@@ -786,6 +786,17 @@ class ServiceResourceTracker {
         boolean doProbe = inboundOp.hasPragmaDirective(
                 Operation.PRAGMA_DIRECTIVE_QUEUE_FOR_SERVICE_AVAILABILITY);
 
+        if (!factoryService.hasOption(ServiceOption.REPLICATION)
+                && inboundOp.getAction() == Action.DELETE) {
+            // do a probe (GET) to avoid starting a service on a DELETE request. We only do this
+            // for non replicated services since its safe to do a local only probe. By doing a GET
+            // first, we avoid the following race on local services:
+            // DELETE -> starts service to determine if it exists
+            // client issues POST for same self link while service is starting during ODL start
+            // client sees conflict, even if the service never existed
+            doProbe = true;
+        }
+
         if (!doProbe) {
             startServiceOnDemand(inboundOp, parentService, factoryService, finalServicePath);
             return true;
