@@ -85,3 +85,12 @@ $list-group-active-text-color:  $grey-600;
 $list-group-link-color:         $black-base;
 $list-group-link-hover-color:   $black-base;
 $list-group-link-heading-color: $black-base;
+
+// Tooltip
+$tooltip-color: $grey-100;
+$tooltip-bg: transparentize($grey-900, .25);
+$tooltip-opacity: 1;
+$tooltip-padding-y: baselinerem(.25);
+$tooltip-padding-x: baselinerem(.5);
+
+$zindex-tooltip: $highest-z-index;

@@ -1,5 +1,5 @@
 // angular
-import { ChangeDetectionStrategy, OnInit, OnDestroy } from '@angular/core';
+import { AfterViewInit, ChangeDetectionStrategy, OnInit, OnDestroy } from '@angular/core';
 import { Router } from '@angular/router';
 import { Subscription } from 'rxjs/Subscription';
 import * as _ from 'lodash';
@@ -11,6 +11,8 @@ import { Node } from '../../interfaces/index';
 import { AuthenticationService, NodeSelectorService, NotificationService } from '../../services/index';
 import { ProcessingStageUtil } from '../../utils/index';
 
+declare var jQuery: any;
+
 @BaseComponent({
     moduleId: module.id,
     selector: 'xe-navbar',
@@ -18,7 +20,7 @@ import { ProcessingStageUtil } from '../../utils/index';
     styleUrls: ['navbar.component.css'],
     changeDetection: ChangeDetectionStrategy.Default
 })
-export class NavbarComponent implements OnInit, OnDestroy {
+export class NavbarComponent implements OnInit, AfterViewInit, OnDestroy {
     /**
      * The node that hosts the current application.
      */
@@ -88,6 +90,13 @@ export class NavbarComponent implements OnInit, OnDestroy {
                         messages: [`Failed to retrieve node selector states: [${error.statusCode}] ${error.message}`]
                     }]);
                 });
+    }
+
+    ngAfterViewInit(): void {
+        jQuery('.nav-link').tooltip({
+            placement: 'bottom',
+            trigger: 'hover'
+        });
     }
 
     ngOnDestroy(): void {
