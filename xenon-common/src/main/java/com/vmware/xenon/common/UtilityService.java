@@ -13,6 +13,9 @@
 
 package com.vmware.xenon.common;
 
+import static com.vmware.xenon.common.Service.Action.DELETE;
+import static com.vmware.xenon.common.Service.Action.POST;
+
 import java.io.NotActiveException;
 import java.io.UnsupportedEncodingException;
 import java.net.URI;
@@ -147,7 +150,14 @@ public class UtilityService implements Service {
         }
 
         ServiceSubscriber body = null;
-        if (op.hasBody()) {
+
+        // validate and populate body for POST & DELETE
+        Action action = op.getAction();
+        if (action == POST || action == DELETE) {
+            if (!op.hasBody()) {
+                op.fail(new IllegalStateException("body is required"));
+                return;
+            }
             body = op.getBody(ServiceSubscriber.class);
             if (body.reference == null) {
                 op.fail(new IllegalArgumentException("reference is required"));
@@ -155,7 +165,7 @@ public class UtilityService implements Service {
             }
         }
 
-        switch (op.getAction()) {
+        switch (action) {
         case POST:
             // synchronize to avoid concurrent modification during serialization for GET
             synchronized (this.subscriptions) {

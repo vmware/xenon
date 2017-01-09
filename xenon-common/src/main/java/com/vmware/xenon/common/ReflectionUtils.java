@@ -154,17 +154,12 @@ public final class ReflectionUtils {
                         .collect(toMap(Field::getName, identity()))
                 );
 
-        Field field = fieldMap.get(name);
-        if (field == null) {
-            return null;
-        }
-
-        if (!field.isAccessible()) {
-            synchronized (field) {
+        return fieldMap.computeIfPresent(name, (k, field) -> {
+            if (!field.isAccessible()) {
                 field.setAccessible(true);
             }
-        }
-        return field;
+            return field;
+        });
     }
 
 }
