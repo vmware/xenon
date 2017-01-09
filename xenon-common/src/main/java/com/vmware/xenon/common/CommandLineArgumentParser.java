@@ -200,7 +200,7 @@ public final class CommandLineArgumentParser {
     }
 
     private static Path safeConvertToPath(String v) {
-        return Paths.get(v);
+        return Paths.get(v).normalize();
     }
 
     private static void configureLogging() {

@@ -1017,7 +1017,7 @@ public final class Utils {
         if (sdd != null && sdd.userInterfaceResourcePath != null) {
             String resourcePath = sdd.userInterfaceResourcePath;
             if (!resourcePath.isEmpty()) {
-                return Paths.get(resourcePath);
+                return Paths.get(resourcePath).normalize();
             } else {
                 log(Utils.class, Utils.class.getSimpleName(), Level.SEVERE,
                         "UserInterface resource path field empty for service document %s",
