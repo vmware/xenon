@@ -593,8 +593,8 @@ public final class Utils {
             return null;
         }
 
-        EnumSet<ServiceOption> reqs = null;
-        EnumSet<ServiceOption> antiReqs = null;
+        EnumSet<ServiceOption> reqs = EnumSet.noneOf(ServiceOption.class);
+        EnumSet<ServiceOption> antiReqs = EnumSet.noneOf(ServiceOption.class);
         switch (option) {
         case CONCURRENT_UPDATE_HANDLING:
             antiReqs = EnumSet.of(ServiceOption.OWNER_SELECTION,
@@ -657,11 +657,11 @@ public final class Utils {
             break;
         }
 
-        if (reqs == null && antiReqs == null) {
+        if (reqs.isEmpty() && antiReqs.isEmpty()) {
             return null;
         }
 
-        if (reqs != null) {
+        if (!reqs.isEmpty()) {
             EnumSet<ServiceOption> missingReqs = EnumSet.noneOf(ServiceOption.class);
             for (ServiceOption r : reqs) {
                 if (!options.contains(r)) {

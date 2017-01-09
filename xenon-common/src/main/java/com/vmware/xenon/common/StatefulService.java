@@ -755,54 +755,44 @@ public class StatefulService implements Service {
             return;
         }
 
-        boolean processPending = true;
-        try {
-            if (op.getAction() == Action.DELETE && op.getTransactionId() == null
-                    && handleDeleteCompletion(op)) {
-                processPending = false;
+        if (op.getAction() == Action.DELETE && op.getTransactionId() == null && handleDeleteCompletion(op)) {
+            return;
+        }
+
+        if (op.getAction() == Action.OPTIONS) {
+            handleOptionsCompletion(op);
+            processPending(op);
+            return;
+        }
+
+        if (isStateUpdated && linkedState != null) {
+            // defense in depth: conform state so core fields are properly set
+            if (linkedState.documentDescription != null) {
+                linkedState.documentDescription = null;
+            }
+
+            linkedState.documentSelfLink = this.context.selfLink;
+            linkedState.documentUpdateAction = op.getAction().name();
+            if (linkedState.documentKind == null) {
+                linkedState.documentKind = Utils.buildKind(this.context.stateType);
+            }
+            if (op.getTransactionId() != null && linkedState.documentTransactionId == null) {
+                // reset transaction id in case it got overwritten by the service handler;
+                // unless it's a transaction control op
+                if (op.getRequestHeader(Operation.TRANSACTION_HEADER) == null) {
+                    linkedState.documentTransactionId = op.getTransactionId();
+                }
+            }
+
+            if (processCompletionStageReplicationProposal(op)) {
                 return;
             }
 
-            if (op.getAction() == Action.OPTIONS) {
-                handleOptionsCompletion(op);
-                return;
-            }
-
-            if (isStateUpdated && linkedState != null) {
-                // defense in depth: conform state so core fields are properly set
-                if (linkedState.documentDescription != null) {
-                    linkedState.documentDescription = null;
-                }
-
-                linkedState.documentSelfLink = this.context.selfLink;
-                linkedState.documentUpdateAction = op.getAction().name();
-                if (linkedState.documentKind == null) {
-                    linkedState.documentKind = Utils.buildKind(this.context.stateType);
-                }
-                if (op.getTransactionId() != null && linkedState.documentTransactionId == null) {
-                    // reset transaction id in case it got overwritten by the service handler;
-                    // unless it's a transaction control op
-                    if (op.getRequestHeader(Operation.TRANSACTION_HEADER) == null) {
-                        linkedState.documentTransactionId = op.getTransactionId();
-                    }
-                }
-
-                if (processCompletionStageReplicationProposal(op)) {
-                    processPending = false;
-                    return;
-                }
-
-                // next stage will process pending operations, disable finally clause from
-                // duplicating work
-                processPending = false;
-                processCompletionStageIndexing(op);
-            } else {
-                processCompletionStagePublishAndComplete(op);
-            }
-        } finally {
-            if (!processPending) {
-                return;
-            }
+            // next stage will process pending operations, disable finally clause from
+            // duplicating work
+            processCompletionStageIndexing(op);
+        } else {
+            processCompletionStagePublishAndComplete(op);
             processPending(op);
         }
     }

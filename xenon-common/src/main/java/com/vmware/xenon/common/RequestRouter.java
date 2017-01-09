@@ -82,16 +82,7 @@ public class RequestRouter implements Predicate<Operation> {
         public RequestBodyMatcher(Class<T> typeParameterClass, String fieldName, Object fieldValue) {
             this.typeParameterClass = typeParameterClass;
 
-            Field f;
-            try {
-                f = typeParameterClass.getField(fieldName);
-                //PODO's fields are public, just in case
-                f.setAccessible(true);
-            } catch (ReflectiveOperationException e) {
-                f = null;
-            }
-            this.field = f;
-
+            this.field = ReflectionUtils.getField(typeParameterClass, fieldName);
             this.fieldValue = fieldValue;
         }
 
