@@ -3226,44 +3226,54 @@ public class ServiceHost implements ServiceRequestSender {
             checkAndPopulateAuthzContext(service, inboundOp);
             return;
         }
-        if (this.authenticationService != null
-                && BasicAuthenticationUtils.getAuthToken(inboundOp) == null) {
 
-            if (!getAuthenticationServiceUri().getPath()
-                    .equals(inboundOp.getUri().getPath()) &&
-                    !getBasicAuthenticationServiceUri().getPath().equals(
-                            inboundOp.getUri().getPath())) {
-                inboundOp.nestCompletion((op, ex) -> {
-                    if (ex != null) {
-                        inboundOp.setBodyNoCloning(op.getBodyRaw())
-                            .setStatusCode(op.getStatusCode()).fail(ex);
-                        return;
-                    }
-                    // if the status code was anything but 200, and the operation
-                    // was not marked as failed, terminate the processing chain;
-                    // else proceed with the original request using the guest context
-                    if (op.getStatusCode() != Operation.STATUS_CODE_OK) {
-                        inboundOp.setBodyNoCloning(op.getBodyRaw())
-                            .setStatusCode(op.getStatusCode()).complete();
-                        return;
-                    }
-                    populateAuthorizationContext(inboundOp, authorizationContext -> {
-                        checkAndPopulateAuthzContext(service, inboundOp);
-                    });
-                });
-                queueOrScheduleRequest(this.authenticationService, inboundOp);
-            } else {
-                // allow the call to authenticationService to pass through using
-                // guest context this is needed for getting the token
-                populateAuthorizationContext(inboundOp, authorizationContext -> {
-                    checkAndPopulateAuthzContext(service, inboundOp);
-                });
-            }
-        } else {
+        if (BasicAuthenticationUtils.getAuthToken(inboundOp) != null) {
+            populateAuthorizationContext(inboundOp, (authorizationContext) -> {
+                checkAndPopulateAuthzContext(service, inboundOp);
+            });
+            return;
+        }
+
+        // If the inbound op targets a valid authentication service, then allow it to proceed using
+        // the guest context; this is needed so that clients can get the token.
+        URI authServiceUri = getAuthenticationServiceUri();
+        if (authServiceUri != null
+                && authServiceUri.getPath().equals(inboundOp.getUri().getPath())) {
+            populateAuthorizationContext(inboundOp, (authorizationContext) -> {
+                checkAndPopulateAuthzContext(service, inboundOp);
+            });
+            return;
+        }
+
+        URI basicAuthServiceUri = getBasicAuthenticationServiceUri();
+        if (basicAuthServiceUri != null
+                && basicAuthServiceUri.getPath().equals(inboundOp.getUri().getPath())) {
             populateAuthorizationContext(inboundOp, authorizationContext -> {
                 checkAndPopulateAuthzContext(service, inboundOp);
             });
+            return;
         }
+
+        // Dispatch the operation to the authentication service for handling.
+        inboundOp.nestCompletion((op, ex) -> {
+            if (ex != null) {
+                inboundOp.setBodyNoCloning(op.getBodyRaw())
+                        .setStatusCode(op.getStatusCode()).fail(ex);
+                return;
+            }
+            // If the status code was anything but 200, and the operation
+            // was not marked as failed, terminate the processing chain;
+            // else proceed with the original request using the guest context
+            if (op.getStatusCode() != Operation.STATUS_CODE_OK) {
+                inboundOp.setBodyNoCloning(op.getBodyRaw())
+                        .setStatusCode(op.getStatusCode()).complete();
+                return;
+            }
+            populateAuthorizationContext(inboundOp, authorizationContext -> {
+                checkAndPopulateAuthzContext(service, inboundOp);
+            });
+        });
+        queueOrScheduleRequest(this.authenticationService, inboundOp);
     }
 
     private void checkAndPopulateAuthzContext(Service service, Operation inboundOp) {
