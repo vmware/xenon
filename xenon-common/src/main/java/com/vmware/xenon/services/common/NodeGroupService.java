@@ -15,6 +15,7 @@ package com.vmware.xenon.services.common;
 
 import java.net.URI;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.List;
@@ -647,7 +648,7 @@ public class NodeGroupService extends StatefulService {
         peersToProbe = Math.min(localState.nodes.size() - 1, peersToProbe);
 
         AtomicInteger remaining = new AtomicInteger(peersToProbe);
-        NodeState[] randomizedPeers = shuffleGroupMembers(localState);
+        List<NodeState> randomizedPeers = shuffleGroupMembers(localState);
         NodeState localNode = localState.nodes.get(getHost().getId());
         localNode.documentUpdateTimeMicros = Utils.getNowMicrosUtc();
         localNode.groupReference = UriUtils.buildPublicUri(getHost(), getSelfLink());
@@ -763,17 +764,16 @@ public class NodeGroupService extends StatefulService {
 
         } finally {
             int r = remaining.decrementAndGet();
-            if (r != 0) {
-                return;
+            if (r <= 0) {
+                // to merge updated state, issue a self PATCH. It contains NodeState entries for every
+                // peer node we just talked to
+                sendRequest(Operation.createPatch(getUri())
+                        .setBodyNoCloning(patchBody));
+
+                maint.complete();
             }
-
-            // to merge updated state, issue a self PATCH. It contains NodeState entries for every
-            // peer node we just talked to
-            sendRequest(Operation.createPatch(getUri())
-                    .setBodyNoCloning(patchBody));
-
-            maint.complete();
         }
+
     }
 
     /**
@@ -949,21 +949,10 @@ public class NodeGroupService extends StatefulService {
         }
     }
 
-    public NodeState[] shuffleGroupMembers(NodeGroupState localState) {
-        // randomize the list of peers and place them in array. Then pick the first N peers to
-        // probe. We can probably come up with a single pass, probabilistic approach
-        // but this works for now and is relatively cheap even for groups with thousands of members
-        NodeState[] randomizedPeers = new NodeState[localState.nodes.size()];
-        localState.nodes.values().toArray(randomizedPeers);
-
-        ThreadLocalRandom random = ThreadLocalRandom.current();
-        for (int i = randomizedPeers.length - 1; i > 0; i--) {
-            int index = random.nextInt(i + 1);
-            NodeState t = randomizedPeers[index];
-            randomizedPeers[index] = randomizedPeers[i];
-            randomizedPeers[i] = t;
-        }
-        return randomizedPeers;
+    private List<NodeState> shuffleGroupMembers(NodeGroupState localState) {
+        List<NodeState> peers = new ArrayList<>(localState.nodes.values());
+        Collections.shuffle(peers, ThreadLocalRandom.current());
+        return peers;
     }
 
     private NodeGroupState getStateFromBody(Operation o) {

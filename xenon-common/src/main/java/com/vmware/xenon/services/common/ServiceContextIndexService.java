@@ -96,9 +96,11 @@ public class ServiceContextIndexService extends StatefulService {
             put.fail(e);
             return;
         } finally {
-            try {
-                output.close();
-            } catch (IOException e) {
+            if (output != null) {
+                try {
+                    output.close();
+                } catch (IOException e) {
+                }
             }
         }
 
