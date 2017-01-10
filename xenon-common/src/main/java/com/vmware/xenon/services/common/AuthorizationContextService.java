@@ -282,13 +282,32 @@ public class AuthorizationContextService extends StatelessService {
             return false;
         }
         JoinedCompletionHandler handler = (ops, failures) -> {
+            Collection<Operation> userGroupOps = null;
             if (failures != null && !failures.isEmpty()) {
-                failThrowable(claims.getSubject(), failures.values().iterator().next());
+                userGroupOps = new HashSet<>(ops.values());
+                for (Operation groupOp : ops.values()) {
+                    if (groupOp.getStatusCode() == Operation.STATUS_CODE_OK) {
+                        continue;
+                    } else if (groupOp.getStatusCode() == Operation.STATUS_CODE_NOT_FOUND) {
+                        userGroupOps.remove(groupOp);
+                        continue;
+                    }
+                    failThrowable(claims.getSubject(), failures.values().iterator().next());
+                    return;
+                }
+            } else {
+                userGroupOps = ops.values();
+            }
+
+            // If no user groups apply to this user, we are sure no roles
+            // will apply and we can populate the authorization context with a null context.
+            if (userGroupOps.isEmpty()) {
+                populateAuthorizationContext(ctx, claims, null);
                 return;
             }
             try {
                 Collection<UserGroupState> userGroupStates = new HashSet<>();
-                for (Operation op : ops.values()) {
+                for (Operation op : userGroupOps) {
                     UserGroupState userGroupState = op.getBody(UserGroupState.class);
                     userGroupStates.add(userGroupState);
                 }
