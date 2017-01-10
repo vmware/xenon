@@ -432,7 +432,6 @@ public class TestTransactionService extends BasicReusableHostTestCase {
         countAccounts(null, 0);
     }
 
-    @Ignore
     @Test
     public void testSingleClientMultiDocumentConcurrentTransactions() throws Throwable {
         String txid = newTransaction();
@@ -449,7 +448,6 @@ public class TestTransactionService extends BasicReusableHostTestCase {
         countAccounts(null, 0);
     }
 
-    @Ignore
     @Test
     public void testTransactionWithFailedOperations() throws Throwable {
         // create accounts, each with an initial balance of 100
@@ -1063,6 +1061,8 @@ public class TestTransactionService extends BasicReusableHostTestCase {
             BankAccountServiceRequest body = patch.getBody(BankAccountServiceRequest.class);
 
             currentState.balance += body.amount;
+            logInfo("Deposited %f (txid: %s). New balance: %f", body.amount,
+                    patch.getTransactionId(), currentState.balance);
 
             setState(patch, currentState);
             patch.setBody(currentState);
@@ -1078,6 +1078,8 @@ public class TestTransactionService extends BasicReusableHostTestCase {
                 return;
             }
             currentState.balance -= body.amount;
+            logInfo("Withdrew %f (txid: %s). New balance: %f", body.amount,
+                    patch.getTransactionId(), currentState.balance);
 
             setState(patch, currentState);
             patch.setBody(currentState);
