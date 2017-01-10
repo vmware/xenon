@@ -448,6 +448,9 @@ public class TransactionService extends StatefulService {
             }
         }
 
+        logInfo("Recieved check conflict request from %s on %s. res.subStage: %s, res.serviceInWriteSet: %b",
+                op.getRequestHeader(Operation.TRANSACTION_REFLINK_HEADER), req.serviceLink,
+                res.subStage, res.serviceIsInWriteSet);
         op.setBodyNoCloning(res);
         op.complete();
 
@@ -635,6 +638,8 @@ public class TransactionService extends StatefulService {
             String header, Operation.CompletionHandler callback) {
         ConflictCheckRequest body = new ConflictCheckRequest();
         body.serviceLink = serviceLink;
+        logInfo("Creating check conflict request to %s (serviceLink: %s)", coordinator,
+                serviceLink);
         return Operation
                 .createPatch(this, coordinator)
                 .addRequestHeader(Operation.TRANSACTION_HEADER, header)

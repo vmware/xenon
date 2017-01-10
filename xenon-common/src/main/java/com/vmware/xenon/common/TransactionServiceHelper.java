@@ -150,6 +150,8 @@ public final class TransactionServiceHelper {
     static Operation notifyTransactionCoordinatorOp(StatefulService s, Operation op, Throwable e) {
         URI txCoordinator = UriUtils.buildTransactionUri(s.getHost(), op.getTransactionId());
         s.addPendingTransaction(txCoordinator.getPath());
+        s.logInfo("Added %s to %s pending transactions. Op id: %d", txCoordinator.getPath(),
+                s.getSelfLink(), op.getId());
 
         Operation.TransactionContext operationsLogRecord = new Operation.TransactionContext();
         operationsLogRecord.action = op.getAction();
@@ -201,6 +203,10 @@ public final class TransactionServiceHelper {
             s.removePendingTransaction(txRefLink);
             s.getHost().clearTransactionalCachedServiceState(s,
                     UriUtils.getLastPathSegment(txRefLink));
+            s.logInfo("COMMIT: %s: cleared transaction %s. hasPending: %b. op id: %d",
+                    s.getSelfLink(),
+                    UriUtils.getLastPathSegment(txRefLink), s.hasPendingTransactions(),
+                    request.getId());
 
             QueryTask.QuerySpecification q = new QueryTask.QuerySpecification();
             QueryTask.Query txnIdClause = new QueryTask.Query().setTermPropertyName(
@@ -230,6 +236,10 @@ public final class TransactionServiceHelper {
             s.removePendingTransaction(txRefLink);
             s.getHost().clearTransactionalCachedServiceState(s,
                     UriUtils.getLastPathSegment(txRefLink));
+            s.logInfo("ABORT: %s: cleared transaction %s. hasPending: %b. op id: %d",
+                    s.getSelfLink(),
+                    UriUtils.getLastPathSegment(txRefLink), s.hasPendingTransactions(),
+                    request.getId());
             request.complete();
         } else {
             request.fail(new IllegalArgumentException(
@@ -265,6 +275,10 @@ public final class TransactionServiceHelper {
         sd.documentTransactionId = null;
         // ..and stick back in.
         s.setState(original, sd);
+        String txRefLink = original.getRequestHeader(Operation.TRANSACTION_REFLINK_HEADER);
+        s.logInfo("COMMIT: transaction %s unshadowed state of %s: %s. Op id: %d",
+                UriUtils.getLastPathSegment(txRefLink), s.getSelfLink(), Utils.toJson(sd),
+                original.getId());
         original.complete();
     }
 
