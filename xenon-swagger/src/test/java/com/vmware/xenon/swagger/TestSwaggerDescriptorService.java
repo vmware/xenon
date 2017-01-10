@@ -19,9 +19,14 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
+import static com.vmware.xenon.common.Operation.ACCEPT_ENCODING_HEADER;
+import static com.vmware.xenon.common.Operation.CONTENT_ENCODING_GZIP;
+
 import java.io.IOException;
 import java.net.URI;
+import java.nio.ByteBuffer;
 import java.util.Map;
+import java.util.Objects;
 
 import io.swagger.models.Info;
 import io.swagger.models.Model;
@@ -30,6 +35,7 @@ import io.swagger.models.Swagger;
 import io.swagger.models.properties.Property;
 import io.swagger.util.Json;
 import io.swagger.util.Yaml;
+
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
@@ -37,6 +43,7 @@ import org.junit.Test;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
+import com.vmware.xenon.common.test.TestRequestSender;
 import com.vmware.xenon.common.test.VerificationHost;
 import com.vmware.xenon.services.common.ExampleService;
 import com.vmware.xenon.services.common.ServiceUriPaths;
@@ -95,35 +102,57 @@ public class TestSwaggerDescriptorService {
 
     @Test
     public void getDescriptionInJson() throws Throwable {
-        host.testStart(1);
+        TestRequestSender sender = host.getTestRequestSender();
+
+        Operation op = Operation
+                .createGet(UriUtils.buildUri(host, SwaggerDescriptorService.SELF_LINK))
+                .setReferer(host.getUri());
+
+        Operation result = null;
+        Throwable error = null;
+        try {
+            result = sender.sendAndWait(op);
+        } catch (Throwable e) {
+            error = e;
+        }
+
+        assertDescriptorJson(result, error);
+    }
+
+    @Test
+    public void getDescriptionInCompressedJson() throws Throwable {
+        TestRequestSender sender = host.getTestRequestSender();
 
         Operation op = Operation
                 .createGet(UriUtils.buildUri(host, SwaggerDescriptorService.SELF_LINK))
                 .setReferer(host.getUri())
-                .setCompletion(host.getSafeHandler(this::assertDescriptorJson));
+                .addRequestHeader(ACCEPT_ENCODING_HEADER, CONTENT_ENCODING_GZIP);
+        Operation result = null;
+        Throwable error = null;
+        try {
+            result = sender.sendAndWait(op);
+        } catch (Throwable e) {
+            error = e;
+        }
 
-        host.sendRequest(op);
-
-        host.testWait();
+        assertDescriptorJson(result, error);
     }
 
     @Test
     public void getDescriptionInYaml() throws Throwable {
-        host.testStart(1);
+        TestRequestSender sender = host.getTestRequestSender();
 
         Operation op = Operation
                 .createGet(UriUtils.buildUri(host, SwaggerDescriptorService.SELF_LINK))
                 .addRequestHeader(Operation.ACCEPT_HEADER, "text/x-yaml")
-                .setReferer(host.getUri())
-                .setCompletion(host.getSafeHandler(this::assertDescriptorYaml));
+                .setReferer(host.getUri());
 
-        host.sendRequest(op);
+        Operation result = sender.sendAndWait(op);
 
-        host.testWait();
+        assertDescriptorYaml(result);
     }
 
-    private void assertDescriptorYaml(Operation o, Throwable e) {
-        assertNull(e);
+    private void assertDescriptorYaml(Operation o) {
         try {
             Swagger swagger = Yaml.mapper().readValue(o.getBody(String.class), Swagger.class);
             assertSwagger(swagger);
@@ -134,20 +163,19 @@ public class TestSwaggerDescriptorService {
 
     @Test
     public void testSwaggerUiAvailable() throws Throwable {
-        host.testStart(1);
+        TestRequestSender sender = host.getTestRequestSender();
 
         URI uri = UriUtils.buildUri(host, SwaggerDescriptorService.SELF_LINK + ServiceUriPaths.UI_PATH_SUFFIX);
         Operation op = Operation
                 .createGet(new URI(uri.toString() + "/"))
-                .setReferer(host.getUri())
-                .setCompletion(host.getSafeHandler(this::assertSwaggerUiAvailable));
+                .setReferer(host.getUri());
 
-        host.sendRequest(op);
+        Operation result = sender.sendAndWait(op);
 
-        host.testWait();
+        assertSwaggerUiAvailable(result);
     }
 
-    private void assertSwaggerUiAvailable(Operation o, Throwable e) {
+    private void assertSwaggerUiAvailable(Operation o) {
         assertEquals(Operation.STATUS_CODE_OK, o.getStatusCode());
 
         String body = o.getBody(String.class);
@@ -156,6 +184,11 @@ public class TestSwaggerDescriptorService {
 
     private void assertDescriptorJson(Operation o, Throwable e) {
         if (e != null) {
+            Throwable[] suppressed = e.getSuppressed();
+            if (suppressed != null && suppressed.length > 0) {
+                e = suppressed[0];
+            }
+
             e.printStackTrace();
 
             if (e.getMessage().contains("Unparseable JSON body")) {
@@ -171,11 +204,35 @@ public class TestSwaggerDescriptorService {
             }
         }
 
+        decompressResponse(o);
+
         try {
             Swagger swagger = Json.mapper().readValue(o.getBody(String.class), Swagger.class);
             assertSwagger(swagger);
         } catch (IOException ioe) {
             fail(ioe.getMessage());
+        }
+    }
+
+    private void decompressResponse(Operation o) {
+        String acceptEncoding = o.getRequestHeader(ACCEPT_ENCODING_HEADER);
+        if (acceptEncoding != null && acceptEncoding.contains(CONTENT_ENCODING_GZIP)) {
+            acceptEncoding = CONTENT_ENCODING_GZIP;
+        }
+
+        String encoding = o.getResponseHeader(Operation.CONTENT_ENCODING_HEADER);
+
+        if (CONTENT_ENCODING_GZIP.equals(acceptEncoding)
+                && CONTENT_ENCODING_GZIP.equals(encoding)) {
+            try {
+                byte[] bytes = o.getBody(byte[].class);
+                Utils.decodeBody(o, ByteBuffer.wrap(bytes), false);
+            } catch (Exception ex) {
+                fail(ex.getMessage());
+            }
+        } else if (!Objects.equals(acceptEncoding, encoding)) {
+            fail(String.format("Wrong encoding accept-encoding=%s, encoding=%s",
+                    acceptEncoding, encoding));
         }
     }
 

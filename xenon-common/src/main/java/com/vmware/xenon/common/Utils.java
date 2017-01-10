@@ -48,6 +48,7 @@ import java.util.function.Supplier;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.zip.GZIPInputStream;
+import java.util.zip.GZIPOutputStream;
 
 import com.esotericsoftware.kryo.Kryo;
 import com.esotericsoftware.kryo.io.Output;
@@ -977,6 +978,19 @@ public final class Utils {
             zis.close();
             out.close();
         }
+        return ByteBuffer.wrap(out.toByteArray());
+    }
+
+    /**
+     * Compresses text to gzip byte buffer.
+     */
+    public static ByteBuffer compressGZip(String text) throws Exception {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        try (GZIPOutputStream zos = new GZIPOutputStream(out)) {
+            byte[] bytes = text.getBytes(CHARSET);
+            zos.write(bytes, 0, bytes.length);
+        }
+
         return ByteBuffer.wrap(out.toByteArray());
     }
 
