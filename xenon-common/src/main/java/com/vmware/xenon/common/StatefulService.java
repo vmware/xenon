@@ -1375,8 +1375,8 @@ public class StatefulService implements Service {
         boolean isMarkedDeleted = false;
         if (synchRsp.getStatusCode() == Operation.STATUS_CODE_CONFLICT && synchRsp.hasBody()) {
             ServiceErrorResponse rsp = synchRsp.getBody(ServiceErrorResponse.class);
-            isMarkedDeleted = rsp != null && rsp.getErrorCode() ==
-                    ServiceErrorResponse.ERROR_CODE_STATE_MARKED_DELETED;
+            isMarkedDeleted = rsp != null
+                    && rsp.getErrorCode() == ServiceErrorResponse.ERROR_CODE_STATE_MARKED_DELETED;
         }
 
         // If the synch failure was caused because this service is marked
@@ -2158,7 +2158,7 @@ public class StatefulService implements Service {
      * Most of the transaction-related code becomes obsolete if we haven't seen transactions. A good
      * idea is to check whether the service has pending transactions
      */
-    private boolean hasPendingTransactions() {
+    boolean hasPendingTransactions() {
         synchronized (this.context) {
             return this.context.txCoordinatorLinks != null
                     && !this.context.txCoordinatorLinks.isEmpty();
