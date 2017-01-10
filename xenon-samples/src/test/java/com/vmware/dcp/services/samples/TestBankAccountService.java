@@ -29,6 +29,7 @@ import com.vmware.xenon.common.Service.Action;
 import com.vmware.xenon.common.ServiceDocumentDescription;
 import com.vmware.xenon.common.ServiceHost;
 import com.vmware.xenon.common.UriUtils;
+import com.vmware.xenon.services.common.LuceneDocumentIndexService;
 import com.vmware.xenon.services.samples.BankAccountService;
 import com.vmware.xenon.services.samples.BankAccountService.BankAccountServiceRequest;
 import com.vmware.xenon.services.samples.BankAccountService.BankAccountServiceState;
@@ -133,6 +134,8 @@ public class TestBankAccountService extends BasicReusableHostTestCase {
 
     @Test
     public void testGetTemplate() throws Throwable {
+        LuceneDocumentIndexService
+        .setImplicitQueryResultLimit(LuceneDocumentIndexService.DEFAULT_QUERY_RESULT_LIMIT);
         // locate factory and create a service instance
         URI factoryUri = UriUtils.buildUri(this.host, BankAccountService.FACTORY_LINK);
         this.host.testStart(1);

@@ -14,6 +14,7 @@
 package com.vmware.xenon.services.samples;
 
 import com.vmware.xenon.common.FactoryService;
+import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Service;
 import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.StatefulService;
@@ -36,6 +37,16 @@ public class SampleSimpleEchoService extends StatefulService {
 
     public SampleSimpleEchoService() {
         super(EchoServiceState.class);
+        super.toggleOption(ServiceOption.PERSISTENCE, true);
+        super.toggleOption(ServiceOption.REPLICATION, true);
+        super.toggleOption(ServiceOption.OWNER_SELECTION, true);
         super.toggleOption(ServiceOption.INSTRUMENTATION, true);
+    }
+    
+    @Override
+    public void handlePatch(Operation patch) {
+        EchoServiceState p = patch.getBody(EchoServiceState.class);
+        setState(patch, p);
+        patch.complete();
     }
 }
