@@ -201,6 +201,8 @@ public final class TransactionServiceHelper {
             s.removePendingTransaction(txRefLink);
             s.getHost().clearTransactionalCachedServiceState(s,
                     UriUtils.getLastPathSegment(txRefLink));
+            s.logInfo("COMMIT: %s: cleared transaction %s. hasPending: %b", s.getSelfLink(),
+                    UriUtils.getLastPathSegment(txRefLink), s.hasPendingTransactions());
 
             QueryTask.QuerySpecification q = new QueryTask.QuerySpecification();
             QueryTask.Query txnIdClause = new QueryTask.Query().setTermPropertyName(
@@ -230,6 +232,8 @@ public final class TransactionServiceHelper {
             s.removePendingTransaction(txRefLink);
             s.getHost().clearTransactionalCachedServiceState(s,
                     UriUtils.getLastPathSegment(txRefLink));
+            s.logInfo("ABORT: %s: cleared transaction %s. hasPending: %b", s.getSelfLink(),
+                    UriUtils.getLastPathSegment(txRefLink), s.hasPendingTransactions());
             request.complete();
         } else {
             request.fail(new IllegalArgumentException(
@@ -265,6 +269,9 @@ public final class TransactionServiceHelper {
         sd.documentTransactionId = null;
         // ..and stick back in.
         s.setState(original, sd);
+        String txRefLink = original.getRequestHeader(Operation.TRANSACTION_REFLINK_HEADER);
+        s.logInfo("COMMIT: transaction %s unshadowed state of %s: %s",
+                UriUtils.getLastPathSegment(txRefLink), s.getSelfLink(), Utils.toJson(sd));
         original.complete();
     }
 
