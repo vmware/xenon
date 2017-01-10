@@ -164,7 +164,12 @@ public class QueryTask extends ServiceDocument {
             /**
              * Groups results using the {@link QuerySpecification::groupByTerms}
              */
-            GROUP_BY
+            GROUP_BY,
+
+            /**
+             * Gives the results according to asked Historical documentUpdateTimeStamp
+             */
+            HISTORICAL_QUERY
         }
 
         public enum SortOrder {
@@ -249,6 +254,12 @@ public class QueryTask extends ServiceDocument {
          * Infrastructure use only
          */
         public transient QueryRuntimeContext context = new QueryRuntimeContext();
+
+        /**
+         * For historical results
+         */
+        @Since(ReleaseConstants.RELEASE_VERSION_1_3_5)
+        public Long documentsUpdatedBeforeInMicros;
 
         public static String buildCompositeFieldName(String... fieldNames) {
             StringBuilder sb = new StringBuilder();
@@ -1149,6 +1160,14 @@ public class QueryTask extends ServiceDocument {
          */
         public Builder setIndexLink(String indexLink) {
             this.queryTask.indexLink = indexLink;
+            return this;
+        }
+
+        /**
+         *
+         */
+        public Builder setQueryTimeStamp(Long documentsUpdatedBeforeInMicros) {
+            this.querySpec.documentsUpdatedBeforeInMicros = documentsUpdatedBeforeInMicros;
             return this;
         }
 
