@@ -13,6 +13,7 @@
 
 package com.vmware.xenon.swagger;
 
+import java.nio.ByteBuffer;
 import java.util.EnumSet;
 
 import io.swagger.models.Info;
@@ -22,6 +23,7 @@ import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.ServiceDocumentQueryResult;
 import com.vmware.xenon.common.ServiceHost;
 import com.vmware.xenon.common.StatelessService;
+import com.vmware.xenon.common.Utils;
 import com.vmware.xenon.services.common.ServiceUriPaths;
 
 /**
@@ -77,6 +79,11 @@ public class SwaggerDescriptorService extends StatelessService {
 
     @Override
     public void handleGet(Operation get) {
+        String acceptEncoding = get.getRequestHeader(Operation.ACCEPT_ENCODING_HEADER);
+        if (acceptEncoding != null && acceptEncoding.contains(Operation.CONTENT_ENCODING_GZIP)) {
+            addCompressHandler(get);
+        }
+
         Operation op = Operation.createGet(this, "/");
         op.setCompletion((o, e) -> {
             SwaggerAssembler
@@ -95,5 +102,24 @@ public class SwaggerDescriptorService extends StatelessService {
                 op,
                 // exclude factory items
                 EnumSet.of(ServiceOption.FACTORY_ITEM));
+    }
+
+    private void addCompressHandler(Operation get) {
+        get.nestCompletion((o, e) -> {
+            String content = o.getBody(String.class);
+            ByteBuffer compressed;
+            try {
+                compressed = Utils.compressGZip(content);
+            } catch (Exception ex) {
+                o.fail(ex);
+                return;
+            }
+
+            o.addResponseHeader(Operation.CONTENT_ENCODING_HEADER, Operation.CONTENT_ENCODING_GZIP);
+            o.setBodyNoCloning(compressed.array());
+            o.setContentLength(compressed.limit());
+
+            o.complete();
+        });
     }
 }

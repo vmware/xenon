@@ -21,7 +21,9 @@ import static org.junit.Assert.fail;
 
 import java.io.IOException;
 import java.net.URI;
+import java.nio.ByteBuffer;
 import java.util.Map;
+import java.util.Objects;
 
 import io.swagger.models.Info;
 import io.swagger.models.Model;
@@ -108,6 +110,21 @@ public class TestSwaggerDescriptorService {
     }
 
     @Test
+    public void getDescriptionInCompressedJson() throws Throwable {
+        host.testStart(1);
+
+        Operation op = Operation
+                .createGet(UriUtils.buildUri(host, SwaggerDescriptorService.SELF_LINK))
+                .setReferer(host.getUri())
+                .addRequestHeader(Operation.ACCEPT_ENCODING_HEADER, Operation.CONTENT_ENCODING_GZIP)
+                .setCompletion(host.getSafeHandler(this::assertDescriptorJson));
+
+        host.sendRequest(op);
+
+        host.testWait();
+    }
+
+    @Test
     public void getDescriptionInYaml() throws Throwable {
         host.testStart(1);
 
@@ -171,11 +188,35 @@ public class TestSwaggerDescriptorService {
             }
         }
 
+        decompressResponse(o);
+
         try {
             Swagger swagger = Json.mapper().readValue(o.getBody(String.class), Swagger.class);
             assertSwagger(swagger);
         } catch (IOException ioe) {
             fail(ioe.getMessage());
+        }
+    }
+
+    private void decompressResponse(Operation o) {
+        String acceptEncoding = o.getRequestHeader(Operation.ACCEPT_ENCODING_HEADER);
+        if (acceptEncoding != null && acceptEncoding.contains(Operation.CONTENT_ENCODING_GZIP)) {
+            acceptEncoding = Operation.CONTENT_ENCODING_GZIP;
+        }
+
+        String encoding = o.getResponseHeader(Operation.CONTENT_ENCODING_HEADER);
+
+        if (Operation.CONTENT_ENCODING_GZIP.equals(acceptEncoding)
+                && Operation.CONTENT_ENCODING_GZIP.equals(encoding)) {
+            try {
+                byte[] bytes = o.getBody(byte[].class);
+                Utils.decodeBody(o, ByteBuffer.wrap(bytes), false);
+            } catch (Exception ex) {
+                fail(ex.getMessage());
+            }
+        } else if (!Objects.equals(acceptEncoding, encoding)) {
+            fail(String.format("Wrong encoding accept-encoding=%s, encoding=%s",
+                    acceptEncoding, encoding));
         }
     }
 
