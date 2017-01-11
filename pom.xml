@@ -91,7 +91,6 @@
     <module>xenon-loader</module>
     <module>xenon-samples</module>
     <module>xenon-slf4j</module>
-    <module>xenon-swagger</module>
     <module>xenon-ui</module>
     <module>xenon-websocket-test</module>
     <module>xenon-quickstart</module>
