@@ -30,6 +30,7 @@ import com.vmware.xenon.services.common.NodeState;
  */
 public interface NodeSelectorService extends Service {
     public static final String STAT_NAME_QUEUED_REQUEST_COUNT = "queuedRequestCount";
+    public static final String STAT_NAME_FAILED_LIMIT_EXCEEDED_REQUEST_COUNT = "failedWithLimitExceededRequestCount";
     public static final String STAT_NAME_SYNCHRONIZATION_COUNT = "synchronizationCount";
 
     public static final OperationOption FORWARDING_OPERATION_OPTION = getOperationOption(
