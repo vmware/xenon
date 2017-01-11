@@ -14,6 +14,8 @@
 package com.vmware.xenon.common.serialization;
 
 import java.lang.reflect.Type;
+import java.util.ArrayList;
+import java.util.Arrays;
 
 import com.google.gson.JsonDeserializationContext;
 import com.google.gson.JsonDeserializer;
@@ -24,6 +26,9 @@ import com.google.gson.JsonSerializationContext;
 import com.google.gson.JsonSerializer;
 import com.google.gson.reflect.TypeToken;
 
+import io.netty.util.internal.StringUtil;
+
+import com.vmware.xenon.common.RequestRouter;
 import com.vmware.xenon.common.RequestRouter.Route;
 import com.vmware.xenon.common.Service.Action;
 
@@ -71,6 +76,34 @@ public enum RequestRouteConverter implements JsonSerializer<Route>, JsonDeserial
         try {
             String requestType = checkAndGetFromJson(jsonObject, "requestType");
             route.requestType = requestType == null ? null : Class.forName(requestType);
+
+            //If null, try to fill in if the condition field is filled in.
+            String condition = checkAndGetFromJson(jsonObject, "condition");
+            if (!StringUtil.isNullOrEmpty(condition)) {
+                // If condition starts with ? then it is RequestUriMatcher, so construct
+                // QueryParam, else it will be RequestBodyMatcher, so fill in the
+                if (condition.startsWith("?")) {
+                    String queryParam = condition.substring(1, condition.length());
+                    String[] paramPairs = queryParam.split("&");
+                    route.parameters = new ArrayList<>(paramPairs.length);
+                    for (String paramPair: paramPairs) {
+                        String[] pairs = paramPair.split("=");
+                        route.parameters
+                                .add(new RequestRouter.Parameter(pairs[0], StringUtil.EMPTY_STRING,
+                                        "string", true, pairs[1], RequestRouter.ParamDef.QUERY));
+                    }
+                } else {
+                    String[] conditionParts = condition.split("#");
+                    if (route.requestType == null) {
+                        route.requestType = Class.forName(conditionParts[0]);
+                    }
+                    String[] bodyParts = conditionParts[1].split("=");
+                    RequestRouter.Parameter parameter = new RequestRouter.Parameter(bodyParts[0],
+                            StringUtil.EMPTY_STRING, "string", true, bodyParts[1],
+                            RequestRouter.ParamDef.BODY);
+                    route.parameters = Arrays.asList(parameter);
+                }
+            }
 
             String responseType = checkAndGetFromJson(jsonObject, "responseType");
             route.responseType = responseType == null ? null : Class.forName(responseType);
