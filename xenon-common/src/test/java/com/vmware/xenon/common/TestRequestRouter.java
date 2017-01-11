@@ -14,9 +14,17 @@
 package com.vmware.xenon.common;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
 import java.net.URI;
+
+import java.util.ArrayList;
+import java.util.List;
+
+import java.lang.reflect.Type;
+
+import com.google.gson.reflect.TypeToken;
 
 import org.junit.After;
 import org.junit.Before;
@@ -71,6 +79,18 @@ public class TestRequestRouter {
 
         assertEquals(NUM / 2, this.xCount);
         assertEquals(NUM / 2, this.yCount);
+
+        //Test the serialize and deserialize of Routes
+        List<RequestRouter.Route> routes = this.router.getRoutes().get(Action.PATCH);
+        RequestRouter.Route r = routes.get(0);
+
+        String routeSer = Utils.toJson(r);
+        assertTrue(routeSer.contains("condition"));
+        //Deserialize of route
+        RequestRouter.Route route = Utils.fromJson(routeSer, RequestRouter.Route.class);
+        assertTrue(route.parameters.size() == 1);
+        assertEquals("doX", route.parameters.get(0).value);
+        assertEquals(RequestRouter.ParamDef.QUERY, route.parameters.get(0).paramDef);
     }
 
     @Test
@@ -105,6 +125,18 @@ public class TestRequestRouter {
         assertEquals(NUM / 3, this.xCount);
         assertEquals(NUM / 3, this.yCount);
         assertEquals(NUM / 3, this.zCount);
+
+        //Test the serialize and deserialize of Routes
+        List<RequestRouter.Route> routes = this.router.getRoutes().get(Action.PATCH);
+        RequestRouter.Route r = routes.get(0);
+
+        String routeSer = Utils.toJson(r);
+        assertTrue(routeSer.contains("condition"));
+        //Deserialize of route
+        RequestRouter.Route route = Utils.fromJson(routeSer, RequestRouter.Route.class);
+        assertTrue(route.parameters.size() == 1);
+        assertEquals("X", route.parameters.get(0).value);
+        assertEquals(RequestRouter.ParamDef.BODY, route.parameters.get(0).paramDef);
     }
 
     private void doX(Operation op) {

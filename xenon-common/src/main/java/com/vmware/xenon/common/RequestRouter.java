@@ -33,6 +33,40 @@ import com.vmware.xenon.common.Service.Action;
  */
 public class RequestRouter implements Predicate<Operation> {
 
+    public static class Parameter {
+        public String name;
+        public String description;
+        public String type;
+        public boolean required;
+        public String value;
+        public ParamDef paramDef;
+
+        public Parameter(String name, String description, String type, boolean required,
+                String value, ParamDef paramDef) {
+            this.name = name;
+            this.description = description;
+            this.type = type;
+            this.required = required;
+            this.value = value;
+            this.paramDef = paramDef;
+        }
+    }
+
+    // Defines where the parameter appears in the given request.
+    public enum ParamDef {
+        QUERY("query"), PATH("path"), BODY("body");
+
+        String value;
+
+        ParamDef(String value) {
+            this.value = value;
+        }
+
+        public String getValue() {
+            return this.value;
+        }
+    }
+
     public static class Route {
         public Action action;
         public Predicate<Operation> matcher;
@@ -40,6 +74,7 @@ public class RequestRouter implements Predicate<Operation> {
         public String description;
         public Class<?> requestType;
         public Class<?> responseType;
+        public List<Parameter> parameters;
 
         public Route(Action action, Predicate<Operation> matcher, Consumer<Operation> handler,
                 String description) {
@@ -111,8 +146,8 @@ public class RequestRouter implements Predicate<Operation> {
 
         @Override
         public String toString() {
-            return String.format("body.%s=%s", this.field != null ? this.field.getName() : "<<bad field>>",
-                    this.fieldValue);
+            return String.format("%s#%s=%s", this.typeParameterClass.getCanonicalName(),
+                    this.field != null ? this.field.getName() : "<<bad field>>", this.fieldValue);
         }
     }
 
