@@ -78,10 +78,10 @@ public final class UriUtils {
     public static final Pattern pathParamPattern = Pattern.compile(URI_PATH_PARAM_REGEX);
     private static final Pattern TRIM_PATH_SLASHES_PATTERN = Pattern.compile("^/*|/*$");
 
+    public static final char URI_QUERY_PARAM_KV_CHAR_CONST = '=';
     private static final char URI_PATH_CHAR_CONST = '/';
     private static final char URI_QUERY_CHAR_CONST = '?';
     private static final char URI_QUERY_PARAM_LINK_CHAR_CONST = '&';
-    private static final char URI_QUERY_PARAM_KV_CHAR_CONST = '=';
 
     private UriUtils() {
     }
