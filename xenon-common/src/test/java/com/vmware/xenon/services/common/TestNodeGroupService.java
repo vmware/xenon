@@ -1901,10 +1901,17 @@ public class TestNodeGroupService {
         // expect failure, since we will stop some hosts, break quorum
         this.expectFailure = true;
 
+        for (URI h : this.host.getInProcessHostMap().keySet()) {
+            URI nodeSelectorUri = UriUtils.buildUri(h, this.replicationNodeSelector);
+            // set a extremely small operation queue limit on node selectors, in each host which will force
+            // them to fail requests
+            this.host.setOperationQueueLimit(nodeSelectorUri, 1);
+        }
+
         // when quorum is not met the runtime will just queue requests until expiration, so
         // we set expiration to something quick. Some requests will make it past queuing
         // and will fail because replication quorum is not met
-        long opTimeoutMicros = TimeUnit.MILLISECONDS.toMicros(500);
+        long opTimeoutMicros = TimeUnit.MILLISECONDS.toMicros(2000);
         setOperationTimeoutMicros(opTimeoutMicros);
 
         int i = 0;
@@ -1929,24 +1936,45 @@ public class TestNodeGroupService {
         };
         this.host.schedule(r, 1, TimeUnit.MILLISECONDS);
 
-        childStates = doStateUpdateReplicationTest(Action.PATCH, this.serviceCount,
-                this.updateCount,
-                this.updateCount,
-                this.exampleStateUpdateBodySetter,
-                this.exampleStateConvergenceChecker,
-                childStates);
+        Map<String, ExampleServiceState> initialStates = childStates;
+        this.host.waitFor("limit stat never incremented", () -> {
+            Map<String, ExampleServiceState> states = doStateUpdateReplicationTest(Action.PATCH,
+                    this.serviceCount,
+                    this.updateCount,
+                    this.updateCount,
+                    this.exampleStateUpdateBodySetter,
+                    this.exampleStateConvergenceChecker,
+                    initialStates);
 
-        doStateUpdateReplicationTest(Action.PATCH, childStates.size(), this.updateCount,
-                this.updateCount * 2,
-                this.exampleStateUpdateBodySetter,
-                this.exampleStateConvergenceChecker,
-                childStates);
+            doStateUpdateReplicationTest(Action.PATCH, states.size(), this.updateCount,
+                    this.updateCount * 2,
+                    this.exampleStateUpdateBodySetter,
+                    this.exampleStateConvergenceChecker,
+                    states);
 
-        doStateUpdateReplicationTest(Action.PATCH, childStates.size(), 1,
-                this.updateCount * 2,
-                this.exampleStateUpdateBodySetter,
-                this.exampleStateConvergenceChecker,
-                childStates);
+            doStateUpdateReplicationTest(Action.PATCH, states.size(), 1,
+                    this.updateCount * 2,
+                    this.exampleStateUpdateBodySetter,
+                    this.exampleStateConvergenceChecker,
+                    states);
+
+            // confirm that at least one host failed requests due to limit exceeded
+            int limitExceededCount = 0;
+            for (URI h : this.host.getInProcessHostMap().keySet()) {
+                URI nodeSelectorUri = UriUtils.buildUri(h, this.replicationNodeSelector);
+                Map<String, ServiceStat> stats = this.host.getServiceStats(nodeSelectorUri);
+                ServiceStat limitExceededCountStat = stats.get(
+                        ConsistentHashingNodeSelectorService.STAT_NAME_LIMIT_EXCEEDED_FAILED_REQUEST_COUNT);
+                if (limitExceededCountStat != null) {
+                    limitExceededCount += limitExceededCountStat.latestValue;
+                }
+            }
+            if (limitExceededCount == 0) {
+                this.host.log("Node selectors did not queue and fail any requests, retrying");
+                return false;
+            }
+            return true;
+        });
     }
 
     private void validatePerOperationReplicationQuorum(Map<String, ExampleServiceState> childStates,
