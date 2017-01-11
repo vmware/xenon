@@ -445,7 +445,7 @@ public class StatelessService implements Service {
         return false;
     }
 
-    private void allocateUtilityService() {
+    protected void allocateUtilityService() {
         synchronized (this.options) {
             if (this.utilityService == null) {
                 this.utilityService = new UtilityService().setParent(this);

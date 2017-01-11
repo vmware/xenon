@@ -1901,10 +1901,17 @@ public class TestNodeGroupService {
         // expect failure, since we will stop some hosts, break quorum
         this.expectFailure = true;
 
+        for (URI h : this.host.getInProcessHostMap().keySet()) {
+            URI nodeSelectorUri = UriUtils.buildUri(h, this.replicationNodeSelector);
+            // set a extremely small operation queue limit on node selectors, in each host which will force
+            // them to fail requests
+            this.host.setOperationQueueLimit(nodeSelectorUri, 1);
+        }
+
         // when quorum is not met the runtime will just queue requests until expiration, so
         // we set expiration to something quick. Some requests will make it past queuing
         // and will fail because replication quorum is not met
-        long opTimeoutMicros = TimeUnit.MILLISECONDS.toMicros(500);
+        long opTimeoutMicros = TimeUnit.MILLISECONDS.toMicros(2000);
         setOperationTimeoutMicros(opTimeoutMicros);
 
         int i = 0;
@@ -1947,6 +1954,19 @@ public class TestNodeGroupService {
                 this.exampleStateUpdateBodySetter,
                 this.exampleStateConvergenceChecker,
                 childStates);
+
+        // confirm that at least one host failed requests due to limit exceeded
+        int limitExceededCount = 0;
+        for (URI h : this.host.getInProcessHostMap().keySet()) {
+            URI nodeSelectorUri = UriUtils.buildUri(h, this.replicationNodeSelector);
+            Map<String, ServiceStat> stats = this.host.getServiceStats(nodeSelectorUri);
+            ServiceStat limitExceededCountStat = stats.get(
+                    ConsistentHashingNodeSelectorService.STAT_NAME_LIMIT_EXCEEDED_FAILED_REQUEST_COUNT);
+            if (limitExceededCountStat != null) {
+                limitExceededCount += limitExceededCountStat.latestValue;
+            }
+        }
+        assertTrue(limitExceededCount > 0);
     }
 
     private void validatePerOperationReplicationQuorum(Map<String, ExampleServiceState> childStates,

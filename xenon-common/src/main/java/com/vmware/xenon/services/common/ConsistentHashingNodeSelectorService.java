@@ -19,6 +19,7 @@ import java.util.TreeMap;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 
 import com.vmware.xenon.common.FNVHash;
@@ -29,6 +30,8 @@ import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Operation.CompletionHandler;
 import com.vmware.xenon.common.Service;
 import com.vmware.xenon.common.ServiceClient;
+import com.vmware.xenon.common.ServiceConfigUpdateRequest;
+import com.vmware.xenon.common.ServiceConfiguration;
 import com.vmware.xenon.common.ServiceErrorResponse;
 import com.vmware.xenon.common.ServiceHost;
 import com.vmware.xenon.common.StatelessService;
@@ -44,7 +47,9 @@ import com.vmware.xenon.services.common.NodeGroupService.UpdateQuorumRequest;
 public class ConsistentHashingNodeSelectorService extends StatelessService implements
         NodeSelectorService {
 
-    private ConcurrentLinkedQueue<SelectAndForwardRequest> pendingRequests = new ConcurrentLinkedQueue<>();
+    private long operationQueueLimit = Service.OPERATION_QUEUE_DEFAULT_LIMIT;
+    private AtomicLong pendingOperationCount = new AtomicLong();
+    private ConcurrentLinkedQueue<SelectAndForwardRequest> pendingRequestQueue = new ConcurrentLinkedQueue<>();
 
     // Cached node group state. Refreshed during maintenance
     private NodeGroupState cachedGroupState;
@@ -124,6 +129,8 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
     }
 
     private void startHelperServices(Operation op) {
+        allocateUtilityService();
+
         AtomicInteger remaining = new AtomicInteger(4);
         CompletionHandler h = (o, e) -> {
             if (e != null) {
@@ -230,6 +237,26 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
         }
 
         selectAndForward(op, body);
+    }
+
+    @Override
+    public void handleConfigurationRequest(Operation op) {
+        if (op.getAction() == Action.PATCH && op.hasBody()) {
+            ServiceConfigUpdateRequest body = op.getBody(ServiceConfigUpdateRequest.class);
+            if (body.operationQueueLimit != null) {
+                this.operationQueueLimit = body.operationQueueLimit;
+            }
+        }
+        if (op.getAction() == Action.GET) {
+            ServiceConfiguration cfg = new ServiceConfiguration();
+            cfg.options = getOptions();
+            cfg.maintenanceIntervalMicros = getMaintenanceIntervalMicros();
+            cfg.epoch = 0;
+            cfg.operationQueueLimit = (int) this.operationQueueLimit;
+            op.setBodyNoCloning(cfg).complete();
+            return;
+        }
+        super.handleConfigurationRequest(op);
     }
 
     /**
@@ -485,13 +512,21 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
             return false;
         }
 
+        // approximate check for queue limit (not atomic)
+        if (this.operationQueueLimit <= this.pendingOperationCount.get()) {
+            adjustStat(STAT_NAME_LIMIT_EXCEEDED_FAILED_REQUEST_COUNT, 1);
+            this.getHost().failRequestLimitExceeded(op);
+            return true;
+        }
+
         adjustStat(STAT_NAME_QUEUED_REQUEST_COUNT, 1);
 
         body.associatedOp = null;
         body = Utils.clone(body);
         body.associatedOp = op;
 
-        this.pendingRequests.add(body);
+        this.pendingOperationCount.incrementAndGet();
+        this.pendingRequestQueue.add(body);
         return true;
     }
 
@@ -508,11 +543,11 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
     }
 
     private void performPendingRequestMaintenance() {
-        if (this.pendingRequests.isEmpty()) {
+        if (this.pendingRequestQueue.isEmpty()) {
             return;
         }
 
-        while (!this.pendingRequests.isEmpty()) {
+        while (!this.pendingRequestQueue.isEmpty()) {
             if (!NodeSelectorState.isAvailable(this.cachedState)) {
                 // update status in case group state changed
                 NodeSelectorState.updateStatus(getHost(), this.cachedGroupState, this.cachedState);
@@ -521,10 +556,12 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
                 return;
             }
 
-            SelectAndForwardRequest req = this.pendingRequests.poll();
+            SelectAndForwardRequest req = this.pendingRequestQueue.poll();
             if (req == null) {
                 break;
             }
+
+            this.pendingOperationCount.decrementAndGet();
 
             if (getHost().isStopping()) {
                 req.associatedOp.fail(new CancellationException());
@@ -686,9 +723,8 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
         if (uriPath.endsWith(ServiceHost.SERVICE_URI_SUFFIX_REPLICATION)) {
             // update utility with latest set of peers
             return this.replicationUtility;
-        } else if (uriPath.endsWith(ServiceHost.SERVICE_URI_SUFFIX_STATS)) {
+        } else {
             return super.getUtilityService(uriPath);
         }
-        return null;
     }
 }
