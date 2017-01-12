@@ -1170,9 +1170,9 @@ public class Operation implements Cloneable {
             ServiceErrorResponse rsp;
             if (Utils.isValidationError(e)) {
                 this.statusCode = STATUS_CODE_BAD_REQUEST;
-                rsp = Utils.toValidationErrorResponse(e);
+                rsp = Utils.toValidationErrorResponse(e, this);
             } else {
-                rsp = Utils.toServiceErrorResponse(e, this);
+                rsp = Utils.toServiceErrorResponse(e);
             }
             rsp.statusCode = this.statusCode;
             setBodyNoCloning(rsp).setContentType(Operation.MEDIA_TYPE_APPLICATION_JSON);
