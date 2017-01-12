@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2014-2015 VMware, Inc. All Rights Reserved.
+ * Copyright (c) 2014-2017 VMware, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not
  * use this file except in compliance with the License.  You may obtain a copy of
@@ -275,28 +275,30 @@ public class TestExampleService {
         nodeGroup.joinNodeGroupAndWaitForConvergence();
 
         // wait the service to be available in cluster
-        nodeGroup.waitForFactoryServiceAvailable("/core/examples");
+        nodeGroup.waitForFactoryServiceAvailable(ExampleService.FACTORY_LINK);
 
         // prepare operation sender(client)
         ServiceHost peer = nodeGroup.getHost();
         TestRequestSender sender = new TestRequestSender(peer);
 
         // POST request
+        String suffix = "foo";
         ExampleServiceState body = new ExampleServiceState();
-        body.documentSelfLink = "/foo";
-        body.name = "foo";
-        Operation post = Operation.createPost(peer, "/core/examples").setBody(body);
+        body.name = "FOO";
+        body.documentSelfLink = suffix;  // static self link: /core/examples/foo
+        Operation post = Operation.createPost(peer, ExampleService.FACTORY_LINK).setBody(body);
 
         // verify post response
         ExampleServiceState result = sender.sendAndWait(post, ExampleServiceState.class);
-        assertEquals("foo", result.name);
+        assertEquals("FOO", result.name);
 
         // make get and validate result
-        Operation get = Operation.createGet(peer, "/core/examples/foo");
+        String servicePath = UriUtils.buildUriPath(ExampleService.FACTORY_LINK, suffix);
+        Operation get = Operation.createGet(peer, servicePath);
         ExampleServiceState getResult = sender.sendAndWait(get, ExampleServiceState.class);
 
         // validate get result...
-        assertEquals("foo", getResult.name);
+        assertEquals("FOO", getResult.name);
     }
 
     @Test
@@ -329,16 +331,17 @@ public class TestExampleService {
                 .joinNodeGroupAndWaitForConvergence();  // make them join groupB
 
         // wait the service to be available in cluster
-        groupA.waitForFactoryServiceAvailable("/core/examples");
-        groupB.waitForFactoryServiceAvailable("/core/examples");
+        groupA.waitForFactoryServiceAvailable(ExampleService.FACTORY_LINK);
+        groupB.waitForFactoryServiceAvailable(ExampleService.FACTORY_LINK);
 
         // perform operation and verify...
 
         // POST request to host2 which is in groupA
+        String suffix = "foo";
         ExampleServiceState body = new ExampleServiceState();
-        body.documentSelfLink = "/foo";
-        body.name = "foo";
-        Operation post = Operation.createPost(host2, "/core/examples").setBody(body);
+        body.name = "FOO";
+        body.documentSelfLink = suffix;  // static self link: /core/examples/foo
+        Operation post = Operation.createPost(host2, ExampleService.FACTORY_LINK).setBody(body);
 
         ExampleServiceState postResult = sender.sendAndWait(post, ExampleServiceState.class);
 
@@ -351,7 +354,8 @@ public class TestExampleService {
 
 
         // send a GET to host4 which is in groupB. It should fail.
-        Operation get = Operation.createGet(host4, "/core/examples/foo");
+        String servicePath = UriUtils.buildUriPath(ExampleService.FACTORY_LINK, suffix);
+        Operation get = Operation.createGet(host4, servicePath);
         FailureResponse failure = sender.sendAndWaitFailure(get);
         assertEquals(failure.op.getStatusCode(), 404);
 
@@ -373,7 +377,8 @@ public class TestExampleService {
         ServiceHost node = manager.getHost();
         TestRequestSender sender = new TestRequestSender(node);
 
-        String nodeGroupPath = "/core/node-groups/" + manager.getNodeGroupName();
+
+        String nodeGroupPath = UriUtils.buildUriPath(ServiceUriPaths.NODE_GROUP_FACTORY, manager.getNodeGroupName());
         Operation op = Operation.createGet(node, nodeGroupPath);
         NodeGroupState nodeGroupState = sender.sendAndWait(op, NodeGroupState.class);
 
@@ -393,7 +398,7 @@ public class TestExampleService {
         // see user creation below to perform logic under system auth context in descriptive way
         AuthTestUtils.executeWithSystemAuthContext(nodeGroup, () -> {
             nodeGroup.joinNodeGroupAndWaitForConvergence();
-            nodeGroup.waitForFactoryServiceAvailable("/core/examples");
+            nodeGroup.waitForFactoryServiceAvailable(ExampleService.FACTORY_LINK);
         });
 
 
@@ -424,18 +429,20 @@ public class TestExampleService {
         AuthTestUtils.loginAndSetToken(nodeGroup, "foo@vmware.com", "password");
 
         // POST request
+        String suffix = "foo";
         ExampleServiceState body = new ExampleServiceState();
-        body.documentSelfLink = "/foo";
-        body.name = "foo";
-        Operation post = Operation.createPost(host, "/core/examples").setBody(body);
+        body.name = "FOO";
+        body.documentSelfLink = suffix;  // static self link: /core/examples/foo
+        Operation post = Operation.createPost(host, ExampleService.FACTORY_LINK).setBody(body);
 
         // verify post response
         TestRequestSender sender = new TestRequestSender(host);
         ExampleServiceState postResult = sender.sendAndWait(post, ExampleServiceState.class);
-        assertEquals("foo", postResult.name);
+        assertEquals("FOO", postResult.name);
         assertEquals("/core/authz/users/foo@vmware.com", postResult.documentAuthPrincipalLink);
 
-        Operation get = Operation.createGet(host, "/core/examples/foo");
+        String servicePath = UriUtils.buildUriPath(ExampleService.FACTORY_LINK, suffix);
+        Operation get = Operation.createGet(host, servicePath);
         Operation getResponse = sender.sendAndWait(get);
         assertEquals(200, getResponse.getStatusCode());
 
@@ -443,7 +450,7 @@ public class TestExampleService {
         AuthTestUtils.logout(nodeGroup);
 
         // after logout, request should fail
-        Operation getAfterLogout = Operation.createGet(host, "/core/examples/foo");
+        Operation getAfterLogout = Operation.createGet(host, servicePath);
         FailureResponse failureResponse = sender.sendAndWaitFailure(getAfterLogout);
         assertEquals(403, failureResponse.op.getStatusCode());
     }
