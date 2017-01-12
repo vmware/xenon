@@ -55,12 +55,9 @@ public class LocalizableValidationException extends RuntimeException {
         this.arguments = arguments.clone();
     }
 
-    public String getSystemMessage() {
+    @Override
+    public String getMessage() {
         return this.systemMessage;
-    }
-
-    public void setSystemMessage(String systemMessage) {
-        this.systemMessage = systemMessage;
     }
 
     @Override
