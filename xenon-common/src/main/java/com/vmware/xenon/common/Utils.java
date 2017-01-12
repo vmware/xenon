@@ -485,35 +485,28 @@ public final class Utils {
     }
 
     public static ServiceErrorResponse toServiceErrorResponse(Throwable e) {
-        return toServiceErrorResponse(e, null);
-    }
-
-    public static ServiceErrorResponse toServiceErrorResponse(Throwable e, Operation op) {
-        ServiceErrorResponse serviceErrorResponse = ServiceErrorResponse.create(e, Operation.STATUS_CODE_BAD_REQUEST);
-        if (e instanceof LocalizableValidationException) {
-            String localizedMessage = LocalizationUtil.resolveMessage((LocalizableValidationException) e, op);
-            serviceErrorResponse.message = localizedMessage;
-        }
-
-        return serviceErrorResponse;
+        return ServiceErrorResponse.create(e, Operation.STATUS_CODE_BAD_REQUEST);
     }
 
     public static String toServiceErrorResponseJson(Throwable e) {
-        return toServiceErrorResponseJson(e, null);
+        return Utils.toJson(toServiceErrorResponse(e));
     }
 
-    public static String toServiceErrorResponseJson(Throwable e, Operation op) {
-        return Utils.toJson(toServiceErrorResponse(e, op));
-    }
-
-    public static ServiceErrorResponse toValidationErrorResponse(Throwable t) {
+    public static ServiceErrorResponse toValidationErrorResponse(Throwable t, Operation op) {
         ServiceErrorResponse rsp = new ServiceErrorResponse();
-        rsp.message = t.getLocalizedMessage();
+
+        if (t instanceof LocalizableValidationException) {
+            String localizedMessage = LocalizationUtil.resolveMessage((LocalizableValidationException) t, op);
+            rsp.message = localizedMessage;
+        } else {
+            rsp.message = t.getLocalizedMessage();
+        }
         return rsp;
     }
 
     public static boolean isValidationError(Throwable e) {
-        return e instanceof IllegalArgumentException;
+        return (e instanceof IllegalArgumentException)
+                || (e instanceof LocalizableValidationException);
     }
 
     public static String toHexString(byte[] data) {

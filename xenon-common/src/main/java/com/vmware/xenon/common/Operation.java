@@ -599,6 +599,7 @@ public class Operation implements Cloneable {
     private short retriesRemaining;
 
     private EnumSet<OperationOption> options = EnumSet.of(OperationOption.KEEP_ALIVE);
+    private String locale;
 
     public static Operation create(SerializedOperation ctx, ServiceHost host) {
         Operation op = new Operation();
@@ -622,6 +623,7 @@ public class Operation implements Cloneable {
         this.authorizationCtx = opCtx.authContext;
         this.transactionId = opCtx.transactionId;
         this.contextId = opCtx.contextId;
+        this.locale = opCtx.locale;
     }
 
     static Operation createOperation(Action action, URI uri) {
@@ -817,6 +819,15 @@ public class Operation implements Cloneable {
 
     public Operation setContextId(String id) {
         this.contextId = id;
+        return this;
+    }
+
+    public String getLocale() {
+        return this.locale;
+    }
+
+    public Operation setLocale(String lang) {
+        this.locale = lang;
         return this;
     }
 
@@ -1170,9 +1181,9 @@ public class Operation implements Cloneable {
             ServiceErrorResponse rsp;
             if (Utils.isValidationError(e)) {
                 this.statusCode = STATUS_CODE_BAD_REQUEST;
-                rsp = Utils.toValidationErrorResponse(e);
+                rsp = Utils.toValidationErrorResponse(e, this);
             } else {
-                rsp = Utils.toServiceErrorResponse(e, this);
+                rsp = Utils.toServiceErrorResponse(e);
             }
             rsp.statusCode = this.statusCode;
             setBodyNoCloning(rsp).setContentType(Operation.MEDIA_TYPE_APPLICATION_JSON);

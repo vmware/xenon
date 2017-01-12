@@ -32,10 +32,12 @@ public final class OperationContext implements Cloneable {
     AuthorizationContext authContext;
     String contextId;
     String transactionId;
+    String locale;
 
     private OperationContext() {
     }
 
+    @Override
     public OperationContext clone() {
         try {
             return (OperationContext) super.clone();
@@ -57,6 +59,14 @@ public final class OperationContext implements Cloneable {
 
     public static String getContextId() {
         return threadOperationContext.get().contextId;
+    }
+
+    public static void setLocale(String locale) {
+        threadOperationContext.get().locale = locale;
+    }
+
+    public static String getLocale() {
+        return threadOperationContext.get().locale;
     }
 
     static void setAuthorizationContext(AuthorizationContext ctx) {
@@ -92,6 +102,7 @@ public final class OperationContext implements Cloneable {
         currentOpCtx.authContext = opCtx.authContext;
         currentOpCtx.transactionId = opCtx.transactionId;
         currentOpCtx.contextId = opCtx.contextId;
+        currentOpCtx.locale = opCtx.locale;
     }
 
     /**
@@ -103,6 +114,7 @@ public final class OperationContext implements Cloneable {
         currentOpCtx.authContext = op.getAuthorizationContext();
         currentOpCtx.transactionId = op.getTransactionId();
         currentOpCtx.contextId = op.getContextId();
+        currentOpCtx.locale = op.getLocale();
     }
 
     /**
@@ -113,6 +125,7 @@ public final class OperationContext implements Cloneable {
         opCtx.authContext = null;
         opCtx.transactionId = null;
         opCtx.contextId = null;
+        opCtx.locale = null;
     }
 
     /**
@@ -124,5 +137,6 @@ public final class OperationContext implements Cloneable {
         currentOpCtx.authContext = opCtx.authContext;
         currentOpCtx.transactionId = opCtx.transactionId;
         currentOpCtx.contextId = opCtx.contextId;
+        currentOpCtx.locale = opCtx.locale;
     }
 }

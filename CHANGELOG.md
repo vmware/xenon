@@ -15,6 +15,11 @@
   operations sent or received by a service host instance via an interactive query builder
   and examine results visually.
 
+* Remove Utils.toServiceErrorResponse(Throwable t, Operation op).
+  Utils.toServiceErrorResponse(Throwable t) or
+  toValidationErrorResponse(Throwable t, Operation op) can be used. The
+  Operation argument is needed for localization of the error.
+
 ## 1.3.5
 
 * Add a new GatewayService to facilitate with blue/green upgrades of xenon

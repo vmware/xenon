@@ -3212,6 +3212,11 @@ public class ServiceHost implements ServiceRequestSender {
             return true;
         }
 
+        String requestLang = inboundOp.getRequestHeader(Operation.ACCEPT_LANGUAGE_HEADER);
+        if (requestLang != null) {
+            inboundOp.setLocale(requestLang);
+        }
+
         if (this.isAuthorizationEnabled()) {
             checkAndPopulateAuthContext(service, inboundOp);
         } else {
@@ -3888,7 +3893,7 @@ public class ServiceHost implements ServiceRequestSender {
 
     private static void failRequest(Operation request, int statusCode, int errorCode, Throwable e) {
         request.setStatusCode(statusCode);
-        ServiceErrorResponse r = Utils.toServiceErrorResponse(e, request);
+        ServiceErrorResponse r = Utils.toServiceErrorResponse(e);
         r.statusCode = statusCode;
         r.errorCode = errorCode;
 
