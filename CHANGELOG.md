@@ -2,6 +2,11 @@
 
 ## 1.3.6-SNAPSHOT
 
+* Remove Utils.toServiceErrorResponse(Throwable t, Operation op).
+  Utils.toServiceErrorResponse(Throwable t) or
+  toValidationErrorResponse(Throwable t, Operation op) can be used. The
+  Operation argument is needed for localization of the error.
+
 ## 1.3.5
 * Add a new GatewayService to facilitate with blue/green upgrades of xenon
   node-groups. The GatewayService can be used during upgrades to pause incoming

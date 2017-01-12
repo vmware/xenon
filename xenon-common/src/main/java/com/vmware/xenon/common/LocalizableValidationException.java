@@ -21,22 +21,21 @@ public class LocalizableValidationException extends RuntimeException {
 
     private static final long serialVersionUID = 1L;
 
-    private String systemMessage;
     private String errorMessageCode;
     private Object[] arguments;
-    private Throwable cause;
 
     public LocalizableValidationException(String systemMsg, String errorMessageCode,
             Object... errorMessageArguments) {
-        this.systemMessage = systemMsg;
+        super(systemMsg);
         this.errorMessageCode = errorMessageCode;
         this.arguments = errorMessageArguments.clone();
     }
 
     public LocalizableValidationException(Throwable ex, String systemMsg, String errorMessageCode,
             Object... errorMessageArguments) {
-        this(systemMsg, errorMessageCode, errorMessageArguments);
-        this.cause = ex;
+        super(systemMsg, ex);
+        this.errorMessageCode = errorMessageCode;
+        this.arguments = errorMessageArguments.clone();
     }
 
     public String getErrorMessageCode() {
@@ -55,16 +54,4 @@ public class LocalizableValidationException extends RuntimeException {
         this.arguments = arguments.clone();
     }
 
-    public String getSystemMessage() {
-        return this.systemMessage;
-    }
-
-    public void setSystemMessage(String systemMessage) {
-        this.systemMessage = systemMessage;
-    }
-
-    @Override
-    public Throwable getCause() {
-        return this.cause;
-    }
 }
