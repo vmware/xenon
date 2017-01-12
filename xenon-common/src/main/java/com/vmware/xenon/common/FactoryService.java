@@ -66,7 +66,19 @@ public abstract class FactoryService extends StatelessService {
         FactoryService fs = new FactoryService(childServiceDocumentType) {
             @Override
             public Service createServiceInstance() throws Throwable {
-                return childServiceType.newInstance();
+                Service s = childServiceType.newInstance();
+                // apply latest relevant options, they might have been toggled after factory
+                // was started
+                if (hasOption(ServiceOption.ON_DEMAND_LOAD)) {
+                    s.toggleOption(ServiceOption.ON_DEMAND_LOAD, true);
+                }
+                if (hasOption(ServiceOption.REPLICATION)) {
+                    s.toggleOption(ServiceOption.REPLICATION, true);
+                }
+                if (hasOption(ServiceOption.OWNER_SELECTION)) {
+                    s.toggleOption(ServiceOption.OWNER_SELECTION, true);
+                }
+                return s;
             }
         };
         Arrays.stream(options).forEach(option -> fs.toggleOption(option, true));
