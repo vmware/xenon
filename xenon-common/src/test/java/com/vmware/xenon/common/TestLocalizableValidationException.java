@@ -60,6 +60,7 @@ public class TestLocalizableValidationException extends BasicReusableHostTestCas
         ServiceErrorResponse response = result.op.getBody(ServiceErrorResponse.class);
 
         assertEquals(ERROR_MESSAGE_GERMAN, response.message);
+        assertEquals(Operation.STATUS_CODE_BAD_REQUEST, response.statusCode);
     }
 
     @Test

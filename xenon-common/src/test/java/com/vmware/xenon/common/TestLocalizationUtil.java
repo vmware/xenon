@@ -42,7 +42,8 @@ public class TestLocalizationUtil {
 
     @Test
     public void testLocalizatioMessageResolution() {
-        Operation op = Operation.createGet(URI.create("127.0.0.1")).addRequestHeader(Operation.ACCEPT_LANGUAGE_HEADER, "de,en-US;q=0.8,en;q=0.6");
+        Operation op = Operation.createGet(URI.create("127.0.0.1"))
+                .addRequestHeader(Operation.ACCEPT_LANGUAGE_HEADER, "de,en-US;q=0.8,en;q=0.6");
 
         Locale locale = LocalizationUtil.resolveLocale(op);
         assertEquals(Locale.GERMAN, locale);
@@ -53,7 +54,8 @@ public class TestLocalizationUtil {
 
     @Test
     public void testResolveSecondaryLocaleMessage() {
-        Operation op = Operation.createGet(URI.create("127.0.0.1")).addRequestHeader(Operation.ACCEPT_LANGUAGE_HEADER, "cn,en-GB;q=0.8,en;q=0.6");
+        Operation op = Operation.createGet(URI.create("127.0.0.1"))
+                .addRequestHeader(Operation.ACCEPT_LANGUAGE_HEADER, "cn,en-GB;q=0.8,en;q=0.6");
 
         Locale locale = LocalizationUtil.resolveLocale(op);
         assertEquals(Locale.ENGLISH, locale);
@@ -64,7 +66,8 @@ public class TestLocalizationUtil {
 
     @Test
     public void testResolveUnsupportedLocaleMessage() {
-        Operation op = Operation.createGet(URI.create("127.0.0.1")).addRequestHeader(Operation.ACCEPT_LANGUAGE_HEADER, "cn");
+        Operation op = Operation.createGet(URI.create("127.0.0.1"))
+                .addRequestHeader(Operation.ACCEPT_LANGUAGE_HEADER, "cn");
 
         Locale locale = LocalizationUtil.resolveLocale(op);
         assertEquals(LocalizationUtil.DEFAULT_LOCALE, locale);

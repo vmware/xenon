@@ -742,7 +742,7 @@ public class StatelessService implements Service {
         if (requestUri.startsWith(uiResourcePath)) {
             Exception e = new ServiceNotFoundException(UriUtils.buildUri(uri.getScheme(), uri.getHost(),
                     uri.getPort(), uri.getPath().substring(uiResourcePath.length()), uri.getQuery()).toString());
-            ServiceErrorResponse r = Utils.toServiceErrorResponse(e, get);
+            ServiceErrorResponse r = Utils.toServiceErrorResponse(e);
             r.statusCode = Operation.STATUS_CODE_NOT_FOUND;
             r.stackTrace = null;
 
