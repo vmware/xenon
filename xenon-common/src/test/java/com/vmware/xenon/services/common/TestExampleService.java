@@ -23,6 +23,7 @@ import static org.junit.Assert.assertTrue;
 import java.net.URI;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -33,6 +34,8 @@ import org.junit.Test;
 
 import com.vmware.xenon.common.AuthorizationSetupHelper;
 import com.vmware.xenon.common.Operation;
+import com.vmware.xenon.common.Service.ServiceOption;
+import com.vmware.xenon.common.ServiceConfiguration;
 import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.ServiceDocumentDescription.PropertyDescription;
 import com.vmware.xenon.common.ServiceDocumentDescription.PropertyIndexingOption;
@@ -64,7 +67,8 @@ public class TestExampleService {
 
         // to speed up tests, set short maintenance interval.
         // it needs to "explicitly" set for VerificationHost instance
-        host.setMaintenanceIntervalMicros(TimeUnit.MILLISECONDS.toMicros(VerificationHost.FAST_MAINT_INTERVAL_MILLIS));
+        host.setMaintenanceIntervalMicros(
+                TimeUnit.MILLISECONDS.toMicros(VerificationHost.FAST_MAINT_INTERVAL_MILLIS));
         host.start();
 
         // add to the list for cleanup after each test run
@@ -299,6 +303,69 @@ public class TestExampleService {
 
         // validate get result...
         assertEquals("FOO", getResult.name);
+    }
+
+    @Test
+    public void multiNodeOnDemandLoad() throws Throwable {
+        // scenario:
+        //   create 2 nodes and join to default group
+        //   post & get example service
+
+        // prepare multiple nodes (for simplicity, using VerificationHost)
+        VerificationHost host1 = createAndStartHost(false);
+        VerificationHost host2 = createAndStartHost(false);
+
+        TestNodeGroupManager nodeGroup = new TestNodeGroupManager();
+        int maintMillis = 50;
+        nodeGroup.setMaintenanceInterval(Duration.ofMillis(maintMillis));
+        host1.setServiceCacheClearDelayMicros(TimeUnit.MILLISECONDS.toMicros(maintMillis));
+        nodeGroup.addHost(host1);
+        nodeGroup.addHost(host2);
+
+        // make node group join to the "default" node group, then wait cluster to be stabilized
+        nodeGroup.joinNodeGroupAndWaitForConvergence();
+
+        // wait the service to be available in cluster
+        nodeGroup.waitForFactoryServiceAvailable(ExampleService.FACTORY_LINK);
+
+        // enable ODL option dynamically!
+        host1.toggleServiceOptions(UriUtils.buildUri(host1, ExampleService.FACTORY_LINK),
+                EnumSet.of(ServiceOption.ON_DEMAND_LOAD), null);
+
+        host2.toggleServiceOptions(UriUtils.buildUri(host2, ExampleService.FACTORY_LINK),
+                EnumSet.of(ServiceOption.ON_DEMAND_LOAD), null);
+
+        // create a request sender which can be any host in this scenario
+        TestRequestSender sender = new TestRequestSender(host1);
+
+        String suffix = "foo";
+        ExampleServiceState postBody = new ExampleServiceState();
+        postBody.name = suffix;
+        postBody.counter = 0L;
+        postBody.documentSelfLink = suffix; // static self link: /core/examples/foo
+
+        Operation post = Operation.createPost(host1, ExampleService.FACTORY_LINK).setBody(postBody);
+
+        // send POST and wait for response
+        sender.sendAndWait(post, ExampleServiceState.class);
+
+        String servicePath = UriUtils.buildUriPath(ExampleService.FACTORY_LINK, suffix);
+
+        // verify ODL is enabled
+        URI configUri = UriUtils.buildConfigUri(UriUtils.buildUri(host1, servicePath));
+        ServiceConfiguration configState = sender.sendGetAndWait(configUri,
+                ServiceConfiguration.class);
+        assertTrue(configState.options.contains(ServiceOption.ON_DEMAND_LOAD));
+
+        for (int i = 0; i < 5; i++) {
+            ExampleServiceState patchBody = new ExampleServiceState();
+            patchBody.name = "foo-" + i;
+            patchBody.counter = (long) (i + 1);
+            Operation patch = Operation.createPatch(host1, servicePath).setBody(patchBody);
+            sender.sendAndWait(patch);
+            host1.log("Sent patch, now sleeping to induce on demand stop / load");
+            Thread.sleep(maintMillis * 5);
+        }
     }
 
     @Test
