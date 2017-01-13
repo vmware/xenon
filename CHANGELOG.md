@@ -11,6 +11,10 @@
   | com.vmware.xenon:xenon-swagger:1.3.6 | com.vmware.xenon:xenon-swagger-adapter:0.0.1 |
   | com.vmware.xenon:xenon-slf4j:1.3.6   | com.vmware.xenon:slf4j-xenon:0.0.1  |
 
+* Introduce "Operation Tracing" feature to Xenon UI that allows users to trace
+  operations sent or received by a service host instance via an interactive query builder
+  and examine results visually.
+
 ## 1.3.5
 
 * Add a new GatewayService to facilitate with blue/green upgrades of xenon
