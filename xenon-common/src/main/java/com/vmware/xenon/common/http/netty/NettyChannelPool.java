@@ -23,6 +23,7 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.logging.Level;
 import java.util.logging.Logger;
 import javax.net.ssl.SSLContext;
 
@@ -688,14 +689,24 @@ public class NettyChannelPool {
 
     private void handleHttp1Maintenance(long now) {
         for (NettyChannelGroup g : this.channelGroups.values()) {
+            logGroupStatus(g);
             closeIdleChannelContexts(g, false, now);
         }
     }
 
     private void handleHttp2Maintenance(long now) {
         for (NettyChannelGroup g : this.channelGroups.values()) {
+            logGroupStatus(g);
             closeInvalidHttp2ChannelContexts(g, now);
         }
+    }
+
+    private void logGroupStatus(NettyChannelGroup g) {
+        if (!LOGGER.isLoggable(Level.FINE)) {
+            return;
+        }
+        LOGGER.info(String.format("Maintenance on %s, pending: %d, available channels: %d",
+                g.getKey(), g.pendingRequests.size(), g.availableChannels.size()));
     }
 
     /**
@@ -713,7 +724,8 @@ public class NettyChannelPool {
                         continue;
                     }
                     try {
-                        if (c.getChannel() == null || !c.getChannel().isOpen()) {
+                        if (group.pendingRequests.isEmpty() &&
+                                (c.getChannel() == null || !c.getChannel().isOpen())) {
                             continue;
                         }
                     } catch (Throwable e) {
@@ -726,39 +738,7 @@ public class NettyChannelPool {
             }
         }
 
-        if (group.pendingRequests.isEmpty()) {
-            return;
-        }
-
-        // The HTTP client is responsible for failing expired operations and maintains
-        // an independent tracking list. As a defense-in-depth check however, warn when
-        // operations remain in our pending list AFTER they are expired
-        final int searchLimit = 1000;
-        int count = 0;
-        int removedCount = 0;
-        Iterator<Operation> pendingOpIt = group.pendingRequests.iterator();
-        while (pendingOpIt.hasNext() && ++count < searchLimit) {
-            Operation pendingOp = pendingOpIt.next();
-
-            if (pendingOp.getStatusCode() < Operation.STATUS_CODE_FAILURE_THRESHOLD) {
-                if (count > 10) {
-                    // We are using a FIFO queue, so if oldest operations have not expired,
-                    // assume no others have. This is not always true, for operations with
-                    // widely different expirations, but this is defense in depth, not a primary
-                    // mechanism for expiration and we want to keep the overhead small
-                    break;
-                } else {
-                    continue;
-                }
-            }
-            pendingOpIt.remove();
-            removedCount++;
-        }
-
-        if (removedCount == 0) {
-            return;
-        }
-        LOGGER.warning("Pending, failed operations removed: " + removedCount);
+        checkPendingOperations(group);
     }
 
     /**
@@ -793,6 +773,44 @@ public class NettyChannelPool {
             }
 
         }
+
+        checkPendingOperations(group);
+    }
+
+    private void checkPendingOperations(NettyChannelGroup group) {
+        if (group.pendingRequests.isEmpty()) {
+            return;
+        }
+
+        // The HTTP client is responsible for failing expired operations and maintains
+        // an independent tracking list. As a defense-in-depth check however, warn when
+        // operations remain in our pending list AFTER they are expired
+        final int searchLimit = 1000;
+        int count = 0;
+        int removedCount = 0;
+        Iterator<Operation> pendingOpIt = group.pendingRequests.iterator();
+        while (pendingOpIt.hasNext() && ++count < searchLimit) {
+            Operation pendingOp = pendingOpIt.next();
+
+            if (pendingOp.getStatusCode() < Operation.STATUS_CODE_FAILURE_THRESHOLD) {
+                if (count > 10) {
+                    // We are using a FIFO queue, so if oldest operations have not expired,
+                    // assume no others have. This is not always true, for operations with
+                    // widely different expirations, but this is defense in depth, not a primary
+                    // mechanism for expiration and we want to keep the overhead small
+                    break;
+                } else {
+                    continue;
+                }
+            }
+            pendingOpIt.remove();
+            removedCount++;
+        }
+
+        if (removedCount == 0) {
+            return;
+        }
+        LOGGER.warning("Pending, failed operations removed: " + removedCount);
     }
 
     public void setHttp2SslContext(SslContext context) {
