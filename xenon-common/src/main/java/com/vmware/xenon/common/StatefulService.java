@@ -755,7 +755,8 @@ public class StatefulService implements Service {
             return;
         }
 
-        if (op.getAction() == Action.DELETE && op.getTransactionId() == null && handleDeleteCompletion(op)) {
+        if (op.getAction() == Action.DELETE && op.getTransactionId() == null
+                && handleDeleteCompletion(op)) {
             return;
         }
 
@@ -1010,6 +1011,9 @@ public class StatefulService implements Service {
         try {
             op.nestCompletion((o, failure) -> {
                 if (failure != null) {
+                    if (op.isWithinTransaction()) {
+                        processPending(op);
+                    }
                     failRequest(op, failure);
                     return;
                 }
@@ -1019,7 +1023,9 @@ public class StatefulService implements Service {
             ServiceDocument mergedState = op.getLinkedState();
             this.context.host.saveServiceState(this, op, mergedState);
         } finally {
-            processPending(op);
+            if (!op.isWithinTransaction()) {
+                processPending(op);
+            }
         }
     }
 
@@ -1037,6 +1043,9 @@ public class StatefulService implements Service {
         } else {
             op.nestCompletion((o, failure) -> {
                 if (failure != null) {
+                    if (op.isWithinTransaction()) {
+                        processPending(op);
+                    }
                     failRequest(op, failure);
                     return;
                 }
@@ -1058,6 +1067,8 @@ public class StatefulService implements Service {
             allocatePendingTransactions();
             notifyTransactionCoordinatorOp(this, op, e)
                     .setCompletion((txOp, txE) -> {
+                        processPending(op);
+
                         if (txE != null) {
                             failRequest(op, txE);
                             return;
@@ -1071,6 +1082,10 @@ public class StatefulService implements Service {
                         failRequest(op, e);
                     }).sendWith(this);
             return;
+        }
+
+        if (op.isWithinTransaction()) {
+            processPending(op);
         }
 
         if (e == null) {
@@ -1365,8 +1380,8 @@ public class StatefulService implements Service {
         boolean isMarkedDeleted = false;
         if (synchRsp.getStatusCode() == Operation.STATUS_CODE_CONFLICT && synchRsp.hasBody()) {
             ServiceErrorResponse rsp = synchRsp.getBody(ServiceErrorResponse.class);
-            isMarkedDeleted = rsp != null && rsp.getErrorCode() ==
-                    ServiceErrorResponse.ERROR_CODE_STATE_MARKED_DELETED;
+            isMarkedDeleted = rsp != null
+                    && rsp.getErrorCode() == ServiceErrorResponse.ERROR_CODE_STATE_MARKED_DELETED;
         }
 
         // If the synch failure was caused because this service is marked
