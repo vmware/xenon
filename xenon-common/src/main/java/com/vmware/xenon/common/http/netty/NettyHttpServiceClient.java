@@ -634,7 +634,12 @@ public class NettyHttpServiceClient implements ServiceClient {
                     httpHeaders.add(HttpHeaderNames.ACCEPT, acceptValue);
                 }
 
-                httpHeaders.add(HttpHeaderNames.HOST, op.getUri().getHost());
+                String hostAndPort = op.getUri().getHost();
+                int port = op.getUri().getPort();
+                if (port != -1) {
+                    hostAndPort += ":" + port;
+                }
+                httpHeaders.add(HttpHeaderNames.HOST, hostAndPort);
             } else {
                 if (acceptValue != null) {
                     httpHeaders.add(HttpHeaderNames.ACCEPT, acceptValue);
