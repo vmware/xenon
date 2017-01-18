@@ -13,6 +13,8 @@
 
 package com.vmware.xenon.services.common;
 
+import static com.vmware.xenon.services.common.LuceneIndexDocumentHelper.NUMERIC_PROPERTY_GROUP;
+
 import java.io.File;
 import java.io.IOException;
 import java.net.URI;
@@ -132,6 +134,7 @@ public class LuceneDocumentIndexService extends StatelessService {
     public static final int DEFAULT_INDEX_SEARCHER_COUNT_THRESHOLD = 200;
 
     public static final int DEFAULT_QUERY_RESULT_LIMIT = 10000;
+    private static final String DOCUMENTS_WITH_NO_GROUP = "DocumentsWithNoGroups";
 
     private String indexDirectory;
 
@@ -1162,7 +1165,14 @@ public class LuceneDocumentIndexService extends StatelessService {
             groupSort = LuceneQueryConverter.convertToLuceneSort(qs, true);
         }
 
-        GroupingSearch groupingSearch = new GroupingSearch(qs.groupByTerm.propertyName);
+        GroupingSearch groupingSearch;
+        if (qs.groupByTerm.propertyType == ServiceDocumentDescription.TypeName.LONG ||
+                qs.groupByTerm.propertyType == ServiceDocumentDescription.TypeName.DOUBLE) {
+            groupingSearch = new GroupingSearch(qs.groupByTerm.propertyName + NUMERIC_PROPERTY_GROUP);
+        } else {
+            groupingSearch = new GroupingSearch(qs.groupByTerm.propertyName);
+        }
+
         groupingSearch.setGroupSort(groupSort);
         groupingSearch.setSortWithinGroup(sort);
 
@@ -1196,15 +1206,34 @@ public class LuceneDocumentIndexService extends StatelessService {
                 continue;
             }
             QueryTask.Query perGroupQuery = Utils.clone(qs.query);
-            String groupValue = ((BytesRef) groupDocs.groupValue).utf8ToString();
+
+            String groupValue;
+
+            // groupValue can be ANY OF ( GROUPS, null )
+            // The "null" group signifies documents that do not have the property.
+            if (groupDocs.groupValue != null) {
+                groupValue = ((BytesRef) groupDocs.groupValue).utf8ToString();
+            } else {
+                groupValue = DOCUMENTS_WITH_NO_GROUP;
+            }
 
             // we need to modify the query to include a top level clause that restricts scope
             // to documents with the groupBy field and value
             QueryTask.Query clause = new QueryTask.Query()
                     .setTermPropertyName(qs.groupByTerm.propertyName)
-                    .setTermMatchValue(groupValue)
                     .setTermMatchType(MatchType.TERM);
             clause.occurance = QueryTask.Query.Occurance.MUST_OCCUR;
+
+            if (qs.groupByTerm.propertyType == ServiceDocumentDescription.TypeName.LONG
+                    && groupDocs.groupValue != null) {
+                clause.setNumericRange(QueryTask.NumericRange.createEqualRange(Long.parseLong(groupValue)));
+            } else if (qs.groupByTerm.propertyType == ServiceDocumentDescription.TypeName.DOUBLE
+                    && groupDocs.groupValue != null) {
+                clause.setNumericRange(QueryTask.NumericRange.createEqualRange(Double.parseDouble(groupValue)));
+            } else {
+                clause.setTermMatchValue(groupValue);
+            }
+
             if (perGroupQuery.booleanClauses == null) {
                 QueryTask.Query topLevelClause = perGroupQuery;
                 perGroupQuery.addBooleanClause(topLevelClause);
