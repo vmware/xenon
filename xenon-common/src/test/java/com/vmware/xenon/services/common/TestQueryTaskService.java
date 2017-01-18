@@ -1195,6 +1195,17 @@ public class TestQueryTaskService {
                         + ServiceStats.STAT_NAME_SUFFIX_PER_DAY);
         assertTrue(groupQueryDuration != null);
         assertTrue(groupQueryDuration.logHistogram != null);
+
+        // delete or prior services,start fresh, now do paginated queries on the per group results
+        exampleServices.clear();
+        this.host.deleteAllChildServices(exampleFactoryURI);
+
+        // create new batch of example services grouped by numeric fields
+        Long[] numericGroupArray = new Long[] { 1L, 2L, 3L, 4L };
+        List<Long> numericGroups = Arrays.asList(numericGroupArray);
+        createNumericGroupedExampleServices(numericGroups, exampleFactoryURI, exampleServices);
+        verifyNumericGroupQueryPaginatedPerGroup(targetHost, numericGroups);
+        verifyNumericGroupQueryPaginatedAcrossGroups(targetHost, numericGroups);
     }
 
     private void verifyGroupQueryStateValidation(VerificationHost targetHost, List<String> groups)
@@ -1388,6 +1399,70 @@ public class TestQueryTaskService {
         this.host.testWait(ctx);
     }
 
+    private void verifyNumericGroupQueryPaginatedPerGroup(VerificationHost targetHost,
+                                                          List<Long> groups) throws Throwable {
+        Query query = Query.Builder.create()
+                .addKindFieldClause(ExampleServiceState.class)
+                .build();
+        QueryTask queryTask = QueryTask.Builder.create()
+                .addOption(QueryOption.GROUP_BY)
+                .addOption(QueryOption.EXPAND_CONTENT)
+                .setResultLimit(this.serviceCount / 5)
+                .orderAscending(ExampleServiceState.FIELD_NAME_NAME, TypeName.STRING)
+                .groupOrder(ExampleServiceState.FIELD_NAME_SORTED_COUNTER, TypeName.LONG, SortOrder.ASC)
+                .setQuery(query).build();
+        URI queryTaskURI = this.host.createQueryTaskService(queryTask);
+        QueryTask finalState = this.host.waitForQueryTask(queryTaskURI, TaskStage.FINISHED);
+        int expectedCountPerPage = queryTask.querySpec.resultLimit;
+        validateNumericGroupByResults(targetHost, groups, null, finalState, null,
+                expectedCountPerPage);
+    }
+
+    private void verifyNumericGroupQueryPaginatedAcrossGroups(VerificationHost targetHost,
+                                                              List<Long> groups) throws Throwable {
+        Query query = Query.Builder.create()
+                .addKindFieldClause(ExampleServiceState.class)
+                .build();
+        // two pagination across two dimensions: number of groups, and documents per group
+        QueryTask queryTask = QueryTask.Builder.create()
+                .addOption(QueryOption.GROUP_BY)
+                .addOption(QueryOption.EXPAND_CONTENT)
+                .setResultLimit(this.serviceCount / 5)
+                .setGroupResultLimit(2)
+                .orderAscending(ExampleServiceState.FIELD_NAME_NAME, TypeName.STRING)
+                .groupOrder(ExampleServiceState.FIELD_NAME_SORTED_COUNTER, TypeName.LONG,
+                        SortOrder.DESC)
+                .setQuery(query).build();
+        URI queryTaskURI = this.host.createQueryTaskService(queryTask);
+        QueryTask finalState = this.host.waitForQueryTask(queryTaskURI, TaskStage.FINISHED);
+        int expectedCountPerPage = queryTask.querySpec.resultLimit;
+        validateNumericGroupByResults(targetHost, groups, null, finalState, null,
+                expectedCountPerPage);
+    }
+
+    private void createNumericGroupedExampleServices(Collection<Long> groups, URI exampleFactoryURI,
+                                                     List<URI> exampleServices)
+            throws Throwable {
+        TestContext ctx = this.host.testCreate(this.serviceCount * groups.size());
+        for (Long group : groups) {
+            for (int i = 0; i < this.serviceCount; i++) {
+                ExampleServiceState s = new ExampleServiceState();
+                String name = UUID.randomUUID().toString();
+                s.id = name;
+                s.name = name;
+                s.sortedCounter = group;
+                s.documentSelfLink = name;
+                exampleServices.add(UriUtils.buildUri(this.host.getUri(),
+                        ExampleService.FACTORY_LINK, s.documentSelfLink));
+                this.host.send(Operation.createPost(exampleFactoryURI)
+                        .setBody(s)
+                        .setCompletion(ctx.getCompletion()));
+            }
+            this.host.log("Creating %d example services for group %d", this.serviceCount, group);
+        }
+        this.host.testWait(ctx);
+    }
+
     private void createExampleServices(URI exampleFactoryURI, List<URI> exampleServices)
             throws Throwable {
         createExampleServices(exampleFactoryURI, exampleServices, false);
@@ -1456,6 +1531,64 @@ public class TestQueryTaskService {
                     for (Object doc : perGroupPage.results.documents.values()) {
                         ExampleServiceState st = Utils.fromJson(doc, ExampleServiceState.class);
                         assertEquals(g, st.name);
+                    }
+                    pageLinkForGroup = perGroupPage.results.nextPageLink;
+                }
+            }
+            if (!isPaginatedAcrossGroups) {
+                break;
+            }
+            if (finalState.results.nextPageLink == null) {
+                break;
+            }
+            URI nextPageUri = UriUtils.buildUri(targetHost, finalState.results.nextPageLink);
+            finalState = this.host.getServiceState(null, QueryTask.class, nextPageUri);
+        }
+        assertEquals(groups.size(), totalGroupsFound);
+    }
+
+    private void validateNumericGroupByResults(VerificationHost targetHost, List<Long> groups,
+                                               Long groupToDelete, QueryTask finalState,
+                                               Map<String, ServiceDocumentQueryResult> resultsPerGroup,
+                                               int expectedCountPerPage) throws Throwable {
+        assertTrue(finalState.results != null);
+        assertTrue(finalState.results.documentLinks.isEmpty());
+        assertTrue(finalState.results.documents == null
+                || finalState.results.documents.isEmpty());
+        assertTrue(finalState.results.nextPageLinksPerGroup != null);
+        boolean isPaginatedAcrossGroups = finalState.querySpec.groupResultLimit != null;
+        // groups.size() + 1 is to handle the "null" a.k.a. "DocumentsWithNoGroup" group.
+        int expectedGroupCount = isPaginatedAcrossGroups
+                ? finalState.querySpec.groupResultLimit : groups.size() + 1;
+
+        assertTrue(finalState.results.nextPageLinksPerGroup.size() == expectedGroupCount);
+        int totalGroupsFound = 0;
+        while (finalState != null) {
+            for (Long g : groups) {
+                String pageLinkForGroup = finalState.results.nextPageLinksPerGroup.get(g.toString());
+                if (isPaginatedAcrossGroups && pageLinkForGroup == null) {
+                    continue;
+                }
+                totalGroupsFound++;
+                assertTrue(pageLinkForGroup != null);
+                while (pageLinkForGroup != null) {
+                    QueryTask perGroupPage = this.host.getServiceState(null,
+                            QueryTask.class, UriUtils.buildUri(targetHost, pageLinkForGroup));
+                    assertTrue(perGroupPage.results != null);
+                    if (resultsPerGroup != null) {
+                        resultsPerGroup.computeIfAbsent(g.toString(), gg -> perGroupPage.results);
+                    }
+                    int expectedCount = expectedCountPerPage;
+                    if (groupToDelete != null && groupToDelete.equals(g)) {
+                        expectedCount = 0;
+                    }
+                    assertEquals(expectedCount, (long) perGroupPage.results.documentCount);
+                    assertEquals(expectedCount, perGroupPage.results.documentLinks.size());
+                    assertEquals(expectedCount, perGroupPage.results.documents.size());
+
+                    for (Object doc : perGroupPage.results.documents.values()) {
+                        ExampleServiceState st = Utils.fromJson(doc, ExampleServiceState.class);
+                        assertEquals(g, st.sortedCounter);
                     }
                     pageLinkForGroup = perGroupPage.results.nextPageLink;
                 }

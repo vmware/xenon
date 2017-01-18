@@ -15,6 +15,13 @@
   operations sent or received by a service host instance via an interactive query builder
   and examine results visually.
 
+* Fix groupBy on numeric fields. When annotated with PropertyIndexingOption.SORT,
+  add a SortedDocValuesField for the numeric property. The change has no impact on
+  how query specification is written. However a blue-green update is necessary in
+  order for previously indexed documents to be queried using groupBy on a numeric field.
+  Documents which match the query but have the groupBy term is missing are returned
+  under a special group "DocumentsWithNoResults".
+
 ## 1.3.5
 
 * Add a new GatewayService to facilitate with blue/green upgrades of xenon
