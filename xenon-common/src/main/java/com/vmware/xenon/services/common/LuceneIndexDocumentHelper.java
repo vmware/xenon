@@ -58,6 +58,7 @@ import com.vmware.xenon.services.common.QueryTask.QuerySpecification;
  * avoid allocations of Document and Field instances for every service state update.
  */
 class LuceneIndexDocumentHelper {
+    public static final String GROUP_BY_PROPERTY_NAME_SUFFIX = "_groupBySuffix";
     private Document doc = new Document();
 
     public Document getDoc() {
@@ -225,7 +226,7 @@ class LuceneIndexDocumentHelper {
     }
 
     void addNumericField(String propertyName, long propertyValue,
-            boolean isStored, boolean isCollectionItem) {
+            boolean isStored, boolean isCollectionItem, boolean sorted) {
         if (isStored) {
             Field field = isCollectionItem ? new StoredField(propertyName, propertyValue)
                     : getAndSetStoredField(propertyName, propertyValue);
@@ -248,10 +249,18 @@ class LuceneIndexDocumentHelper {
         NumericDocValuesField ndField = getAndSetNumericField(propertyName, propertyValue,
                 isCollectionItem);
         this.doc.add(ndField);
+
+        if (sorted) {
+            // special handling for groupBy queries, docValuesField can not be added twice
+            // We suffix the property name with "_group", add a SortedDocValuesField
+            Field sdField = getAndSetSortedStoredField(propertyName + GROUP_BY_PROPERTY_NAME_SUFFIX,
+                    Long.toString(propertyValue));
+            this.doc.add(sdField);
+        }
     }
 
     private void addNumericField(String propertyName, double propertyValue,
-            boolean stored, boolean isCollectionItem) {
+            boolean stored, boolean isCollectionItem, boolean sorted) {
         long longPropertyValue = NumericUtils.doubleToSortableLong(propertyValue);
 
         if (stored) {
@@ -276,6 +285,14 @@ class LuceneIndexDocumentHelper {
         NumericDocValuesField ndField = getAndSetNumericField(propertyName, longPropertyValue,
                 isCollectionItem);
         this.doc.add(ndField);
+
+        if (sorted) {
+            // special handling for groupBy queries
+            Field sdField = getAndSetSortedStoredField(propertyName + GROUP_BY_PROPERTY_NAME_SUFFIX,
+                    Double.toString(propertyValue));
+            this.doc.add(sdField);
+        }
+
     }
 
     public void addBinaryStateFieldToDocument(ServiceDocument s, byte[] serializedDocument,
@@ -327,7 +344,7 @@ class LuceneIndexDocumentHelper {
         Field luceneField = null;
         Field luceneDocValuesField = null;
         Field.Store fsv = Field.Store.NO;
-        boolean isSortedString = false;
+        boolean isSortedField = false;
         boolean expandField = false;
         Object v = podo;
         if (v == null) {
@@ -341,7 +358,7 @@ class LuceneIndexDocumentHelper {
                 return;
             }
             if (opts.contains(PropertyIndexingOption.SORT)) {
-                isSortedString = true;
+                isSortedField = true;
             }
             if (opts.contains(PropertyIndexingOption.EXPAND)) {
                 expandField = true;
@@ -383,23 +400,25 @@ class LuceneIndexDocumentHelper {
             luceneField = getAndSetStringField(fieldName, enumValue, fsv, isCollectionItem);
         } else if (pd.typeName.equals(TypeName.LONG)) {
             long value = ((Number) v).longValue();
-            addNumericField(fieldName, value, isStored, isCollectionItem);
-            isSortedString = false;
+            addNumericField(fieldName, value, isStored, isCollectionItem, isSortedField);
+            // Set sorted to false; Appropriate SortedDocValues field is added in addNumericField
+            isSortedField = false;
         } else if (pd.typeName.equals(TypeName.DATE)) {
             // Index as microseconds since UNIX epoch
             long value = ((Date) v).getTime() * 1000;
-            addNumericField(fieldName, value, isStored, isCollectionItem);
-            isSortedString = false;
+            addNumericField(fieldName, value, isStored, isCollectionItem, false);
+            isSortedField = false;
         } else if (pd.typeName.equals(TypeName.DOUBLE)) {
             double value = ((Number) v).doubleValue();
-            addNumericField(fieldName, value, isStored, isCollectionItem);
-            isSortedString = false;
+            addNumericField(fieldName, value, isStored, isCollectionItem, isSortedField);
+            // Set sorted to false; Appropriate SortedDocValues field is added in addNumericField
+            isSortedField = false;
         } else if (pd.typeName.equals(TypeName.BOOLEAN)) {
             String booleanValue = QuerySpecification.toMatchValue((boolean) v);
             luceneField = getAndSetStringField(fieldName, booleanValue, fsv, isCollectionItem);
         } else if (pd.typeName.equals(TypeName.BYTES)) {
             // Don't store bytes in the index
-            isSortedString = false;
+            isSortedField = false;
         } else if (pd.typeName.equals(TypeName.PODO)) {
             // Ignore all complex fields if they are not explicitly marked with EXPAND.
             // We special case all fields of TaskState to ensure task based services have
@@ -419,7 +438,7 @@ class LuceneIndexDocumentHelper {
             luceneField = getAndSetStringField(fieldName, v.toString(), fsv, isCollectionItem);
         }
 
-        if (isSortedString) {
+        if (isSortedField) {
             luceneDocValuesField = getAndSetSortedStoredField(fieldName, v.toString());
         }
 
