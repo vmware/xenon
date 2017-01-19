@@ -3531,7 +3531,6 @@ public class ServiceHost implements ServiceRequestSender {
             return true;
         }
 
-        String nodeSelectorPath;
         Service parent = null;
         EnumSet<ServiceOption> options;
         if (s != null) {
@@ -3596,6 +3595,13 @@ public class ServiceHost implements ServiceRequestSender {
             return false;
         }
 
+        return selectAndForwardRequestToOwner(s, path, op, parent, options);
+    }
+
+    private boolean selectAndForwardRequestToOwner(Service s, String path, Operation op,
+            Service parent,
+            EnumSet<ServiceOption> options) {
+
         if (options.contains(ServiceOption.ON_DEMAND_LOAD) &&
                 op.getAction() == Action.DELETE &&
                 op.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_NO_INDEX_UPDATE)) {
@@ -3609,6 +3615,7 @@ public class ServiceHost implements ServiceRequestSender {
             return false;
         }
 
+        String nodeSelectorPath;
         if (parent != null) {
             nodeSelectorPath = parent.getPeerNodeSelectorPath();
         } else {
@@ -3644,48 +3651,7 @@ public class ServiceHost implements ServiceRequestSender {
                 return;
             }
 
-            CompletionHandler fc = (fo, fe) -> {
-                if (fe != null) {
-                    retryOrFailRequest(op, fo, fe);
-                    return;
-                }
-
-                op.setStatusCode(fo.getStatusCode());
-                if (fo.hasBody()) {
-                    op.setBodyNoCloning(fo.getBodyRaw());
-                }
-                op.transferResponseHeadersFrom(fo);
-                op.complete();
-            };
-
-            Operation forwardOp = op.clone().setCompletion(fc);
-            if (rsp.isLocalHostOwner) {
-                if (s == null) {
-                    queueOrFailRequestForServiceNotFoundOnOwner(
-                            parentService, servicePath, op, rsp.availableNodeCount);
-                    return;
-                }
-                queueOrScheduleRequest(s, forwardOp);
-                return;
-            }
-
-            if (op.isForwarded()) {
-                // this was forwarded from another node, but we do not think we own the service
-                failRequestOwnerMismatch(op, op.getUri().getPath(), null);
-                return;
-            }
-
-            // Forwarded operations are retried until the parent operation, from the client,
-            // expires. Since a peer might have become unresponsive, we want short time outs
-            // and retries, to whatever peer we select, on each retry.
-            forwardOp.setExpiration(Utils.fromNowMicrosUtc(
-                    this.state.operationTimeoutMicros / 10));
-            forwardOp.setUri(SelectOwnerResponse.buildUriToOwner(rsp, op));
-
-            prepareForwardRequest(forwardOp);
-            // Local host is not the owner, but is the entry host for a client. Forward to owner
-            // node
-            sendRequest(forwardOp);
+            forwardRequestToOwner(s, op, servicePath, parentService, rsp);
         };
 
         Operation selectOwnerOp = Operation
@@ -3694,6 +3660,52 @@ public class ServiceHost implements ServiceRequestSender {
                 .setCompletion(ch);
         selectOwner(nodeSelectorPath, path, selectOwnerOp);
         return true;
+    }
+
+    private void forwardRequestToOwner(Service s, Operation op, String servicePath,
+            Service parentService, SelectOwnerResponse rsp) {
+        CompletionHandler fc = (fo, fe) -> {
+            if (fe != null) {
+                retryOrFailRequest(op, fo, fe);
+                return;
+            }
+
+            op.setStatusCode(fo.getStatusCode());
+            if (fo.hasBody()) {
+                op.setBodyNoCloning(fo.getBodyRaw());
+            }
+            op.transferResponseHeadersFrom(fo);
+            op.complete();
+        };
+
+        Operation forwardOp = op.clone().setCompletion(fc);
+        if (rsp.isLocalHostOwner) {
+            if (s == null) {
+                queueOrFailRequestForServiceNotFoundOnOwner(
+                        parentService, servicePath, op, rsp.availableNodeCount);
+                return;
+            }
+            queueOrScheduleRequest(s, forwardOp);
+            return;
+        }
+
+        if (op.isForwarded()) {
+            // this was forwarded from another node, but we do not think we own the service
+            failRequestOwnerMismatch(op, op.getUri().getPath(), null);
+            return;
+        }
+
+        // Forwarded operations are retried until the parent operation, from the client,
+        // expires. Since a peer might have become unresponsive, we want short time outs
+        // and retries, to whatever peer we select, on each retry.
+        forwardOp.setExpiration(Utils.fromNowMicrosUtc(
+                this.state.operationTimeoutMicros / 10));
+        forwardOp.setUri(SelectOwnerResponse.buildUriToOwner(rsp, op));
+
+        prepareForwardRequest(forwardOp);
+        // Local host is not the owner, but is the entry host for a client. Forward to owner
+        // node
+        sendRequest(forwardOp);
     }
 
     private void queueOrFailRequestForServiceNotFoundOnOwner(

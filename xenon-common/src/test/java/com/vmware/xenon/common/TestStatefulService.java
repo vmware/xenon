@@ -348,10 +348,14 @@ public class TestStatefulService extends BasicReusableHostTestCase {
         }
         this.host.testWait();
 
-        for (int i = 0; i < 5; i++) {
+        double avgThpt = 0;
+        for (int i = 0; i < this.iterationCount; i++) {
             double tput = this.host.doServiceUpdates(Action.PUT, c, props, services);
+            avgThpt += tput;
             this.testResults.getReport().all(TestResults.KEY_THROUGHPUT, tput);
         }
+        avgThpt /= this.iterationCount;
+        this.host.log("Avg throughput: %f", avgThpt);
     }
 
     @Test
