@@ -3806,4 +3806,97 @@ public class TestQueryTaskService {
         }
         return st;
     }
+
+    @Test
+    public void singleFieldTimeSnapshotQuery() throws Throwable {
+        setUpHost();
+
+        // sending argument for creating one service instance and three update versions
+        long c = 1;
+        doTimeSnapshotTest((int) c, 3, false);
+    }
+
+    public void doTimeSnapshotTest(int serviceCount, int versionCount, boolean forceRemote)
+            throws Throwable {
+
+        String prefix = "testPrefix";
+        List<URI> services = createQueryTargetServices(serviceCount);
+
+        // start two different types of services, creating two sets of documents
+        // first start the query validation service instances, setting the id
+        // field
+        // to the same value
+        QueryValidationServiceState newState = new QueryValidationServiceState();
+        newState.id = prefix + UUID.randomUUID().toString();
+        newState = putStateOnQueryTargetServices(services, versionCount,
+                newState);
+
+        // issue a query that matches a specific link. This is essentially a primary key query
+        Query query = Query.Builder.create()
+                .addFieldClause(ServiceDocument.FIELD_NAME_SELF_LINK, services.get(0).getPath())
+                .build();
+
+        QueryTask queryTask = QueryTask.Builder.create().setQuery(query).build();
+        URI u = this.host.createQueryTaskService(queryTask, forceRemote);
+        QueryTask finishedTaskState = this.host.waitForQueryTaskCompletion(queryTask.querySpec,
+                services.size(), versionCount, u, forceRemote, true);
+        assertTrue(finishedTaskState.results.documentLinks.size() == 1);
+
+        // now make sure expand and include all version works. Issue same query, but enable expand and include all versions
+        queryTask.querySpec.options = EnumSet.of(QueryOption.EXPAND_CONTENT,
+                QueryOption.INCLUDE_ALL_VERSIONS);
+        u = this.host.createQueryTaskService(queryTask, forceRemote);
+        // result for finished state will be
+        //  Service 1   Version     documentLinks
+        //               0       link?documentVersion=0
+        //               1       link?documentVersion=1
+        //               2       link?documentVersion=2
+        //               3       link?documentVersion=3
+        finishedTaskState = this.host.waitForQueryTaskCompletion(queryTask.querySpec,
+                services.size(), versionCount, u, forceRemote, true);
+        assertTrue(finishedTaskState.results.documentLinks.size() == 4);
+        assertTrue(finishedTaskState.results.documents.size() == 4);
+
+        //get the document version=1 documentUpdateTimeMicros
+        long documentUpdatedTime = -1;
+        long firstVersionDocumentUpdatedTime = -1;
+        long secondVersionDocumentUpdatedTime = -1;
+        for (Map.Entry<String, Object> entry : finishedTaskState.results.documents.entrySet()) {
+            QueryValidationServiceState state = Utils.fromJson(entry.getValue(),
+                    QueryValidationServiceState.class);
+            if (state.documentVersion == 1) {
+                firstVersionDocumentUpdatedTime = state.documentUpdateTimeMicros;
+            } else if (state.documentVersion == 2) {
+                secondVersionDocumentUpdatedTime = state.documentUpdateTimeMicros;
+            }
+        }
+
+        //documentUpdatedTime asked will be in the mid of first and second version
+        documentUpdatedTime = (firstVersionDocumentUpdatedTime + secondVersionDocumentUpdatedTime)
+                / 2;
+
+        //create a new query with documentUpdatedTime as a rangeClause
+        query = Query.Builder.create()
+                .addFieldClause(ServiceDocument.FIELD_NAME_SELF_LINK, services.get(0).getPath())
+                .addRangeClause(ServiceDocument.FIELD_NAME_UPDATE_TIME_MICROS,
+                        NumericRange.createLessThanOrEqualRange(documentUpdatedTime),
+                        Occurance.MUST_OCCUR)
+                .build();
+        queryTask = QueryTask.Builder.create().setQuery(query).build();
+        queryTask.querySpec.options = EnumSet.of(QueryOption.EXPAND_CONTENT,
+                QueryOption.TIME_SNAPSHOT);
+        queryTask.querySpec.timeSnapshotBoundaryMicros = documentUpdatedTime;
+        u = this.host.createQueryTaskService(queryTask, forceRemote);
+        finishedTaskState = this.host.waitForQueryTaskCompletion(queryTask.querySpec,
+                services.size(), versionCount, u, forceRemote, true);
+
+        QueryValidationServiceState finishedState = Utils.fromJson(
+                finishedTaskState.results.documents
+                        .get(finishedTaskState.results.documentLinks.get(0)),
+                QueryValidationServiceState.class);
+        assertTrue(finishedTaskState.results.documentLinks.size() == 1);
+        assertTrue(finishedTaskState.results.documents.size() == 1);
+        assertTrue(finishedState.documentVersion == 1);
+        verifyNoPaginatedIndexSearchers();
+    }
 }
