@@ -213,6 +213,10 @@ public class StatefulService implements Service {
             return false;
         }
 
+        return cancelPendingRequests(op, stop, isAlreadyStopped);
+    }
+
+    private boolean cancelPendingRequests(Operation op, boolean stop, boolean isAlreadyStopped) {
         // even if service is stopped, check the pending queue for operations
         setProcessingStage(Service.ProcessingStage.STOPPED);
         Collection<Operation> opsToCancel = null;
@@ -244,37 +248,20 @@ public class StatefulService implements Service {
         return isAlreadyStopped;
     }
 
+    private static final int PAUSE_FLAG = 0x00000001;
+    private static final int ODL_STOP_FLAG = 0x00000002;
+    private static final int RETURN_TRUE_FLAG = 0x10000000;
+
     /**
      * Returns true if a request was handled (caller should not attempt to dispatch it)
      */
     private boolean queueRequestInternal(final Operation op) {
-        boolean isPaused = false;
-        boolean isOdlStopped = false;
+        int pausedOrOdlStopped = 0;
+
         if (op.getAction() != Action.GET && op.getAction() != Action.OPTIONS) {
-            // serialize updates
-            synchronized (this.context) {
-                if (this.context.processingStage == ProcessingStage.PAUSED) {
-                    isPaused = true;
-                } else if (this.context.processingStage == ProcessingStage.STOPPED) {
-                    isOdlStopped = hasOption(ServiceOption.ON_DEMAND_LOAD);
-                } else if ((this.context.isUpdateActive || this.context.getActiveCount != 0)) {
-                    if (op.isSynchronizeOwner()) {
-                        // Synchronization requests are queued in a separate queue
-                        // so that they can prioritized higher than other updates.
-                        if (this.context.synchQueue == null) {
-                            this.context.synchQueue = OperationQueue
-                                    .createFifo(Service.SYNCH_QUEUE_DEFAULT_LIMIT);
-                        }
-                        if (!this.context.synchQueue.offer(op)) {
-                            getHost().failRequestLimitExceeded(op);
-                        }
-                    } else if (!this.context.operationQueue.offer(op)) {
-                        getHost().failRequestLimitExceeded(op);
-                    }
-                    return true;
-                } else {
-                    this.context.isUpdateActive = true;
-                }
+            pausedOrOdlStopped = queueUpdateRequestInternal(op, pausedOrOdlStopped);
+            if ((pausedOrOdlStopped & RETURN_TRUE_FLAG) != 0) {
+                return true;
             }
         } else {
             if (op.getAction() == Action.OPTIONS) {
@@ -287,9 +274,11 @@ public class StatefulService implements Service {
                 // queue GETs, if updates are pending
                 synchronized (this.context) {
                     if (this.context.processingStage == ProcessingStage.PAUSED) {
-                        isPaused = true;
+                        pausedOrOdlStopped |= PAUSE_FLAG;
                     } else if (this.context.processingStage == ProcessingStage.STOPPED) {
-                        isOdlStopped = hasOption(ServiceOption.ON_DEMAND_LOAD);
+                        pausedOrOdlStopped |= hasOption(ServiceOption.ON_DEMAND_LOAD)
+                                ? ODL_STOP_FLAG
+                                : 0;
                     } else if (this.context.isUpdateActive) {
                         if (!this.context.operationQueue.offer(op)) {
                             getHost().failRequestLimitExceeded(op);
@@ -302,9 +291,10 @@ public class StatefulService implements Service {
             }
         }
 
-        if ((isOdlStopped || isPaused) && !getHost().isStopping()) {
+        if (pausedOrOdlStopped != 0 && !getHost().isStopping()) {
             logWarning("Service in stage %s, retrying request", this.context.processingStage);
-            getHost().retryPauseOrOnDemandLoadConflict(op, isOdlStopped);
+            getHost().retryPauseOrOnDemandLoadConflict(op,
+                    (pausedOrOdlStopped & ODL_STOP_FLAG) != 0);
             return true;
         }
 
@@ -314,6 +304,35 @@ public class StatefulService implements Service {
         }
 
         return false;
+    }
+
+    private int queueUpdateRequestInternal(final Operation op, int pausedOrOdlStopped) {
+        // serialize updates
+        synchronized (this.context) {
+            if (this.context.processingStage == ProcessingStage.PAUSED) {
+                pausedOrOdlStopped |= PAUSE_FLAG;
+            } else if (this.context.processingStage == ProcessingStage.STOPPED) {
+                pausedOrOdlStopped |= hasOption(ServiceOption.ON_DEMAND_LOAD) ? ODL_STOP_FLAG : 0;
+            } else if ((this.context.isUpdateActive || this.context.getActiveCount != 0)) {
+                if (op.isSynchronizeOwner()) {
+                    // Synchronization requests are queued in a separate queue
+                    // so that they can prioritized higher than other updates.
+                    if (this.context.synchQueue == null) {
+                        this.context.synchQueue = OperationQueue
+                                .createFifo(Service.SYNCH_QUEUE_DEFAULT_LIMIT);
+                    }
+                    if (!this.context.synchQueue.offer(op)) {
+                        getHost().failRequestLimitExceeded(op);
+                    }
+                } else if (!this.context.operationQueue.offer(op)) {
+                    getHost().failRequestLimitExceeded(op);
+                }
+                return RETURN_TRUE_FLAG;
+            } else {
+                this.context.isUpdateActive = true;
+            }
+        }
+        return pausedOrOdlStopped;
     }
 
     @Override

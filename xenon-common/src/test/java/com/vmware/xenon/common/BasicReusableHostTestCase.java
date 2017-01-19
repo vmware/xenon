@@ -49,6 +49,8 @@ public class BasicReusableHostTestCase {
 
     public long serviceCount = 10;
 
+    public long iterationCount = 5;
+
     public long testDurationSeconds = 0;
 
     public boolean enableAuth = false;
