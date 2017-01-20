@@ -23,6 +23,8 @@ import com.google.gson.FieldAttributes;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonElement;
+import com.google.gson.internal.Streams;
+import com.google.gson.stream.JsonWriter;
 
 import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.ServiceDocumentDescription;
@@ -36,20 +38,17 @@ import com.vmware.xenon.common.Utils;
 public class JsonMapper {
 
     private static final int MAX_SERIALIZATION_ATTEMPTS = 100;
+    private static final String JSON_INDENT = "  ";
 
     private final Gson compact;
-    private final Gson pretty;
     private final Gson compactSensitive;
-    private final Gson prettySensitive;
 
     /**
      * Instantiates a mapper with default GSON configurations.
      */
     public JsonMapper() {
         this(createDefaultGson(true, false),
-                createDefaultGson(false, false),
-                createDefaultGson(true, true),
-                createDefaultGson(false, true));
+                createDefaultGson(true, true));
     }
 
     /**
@@ -60,19 +59,29 @@ public class JsonMapper {
      */
     public JsonMapper(Consumer<GsonBuilder> gsonConfigCallback) {
         this(createCustomGson(true, false, gsonConfigCallback),
-                createCustomGson(false, false, gsonConfigCallback),
-                createCustomGson(true, true, gsonConfigCallback),
-                createCustomGson(false, true, gsonConfigCallback));
+                createCustomGson(true, true, gsonConfigCallback));
     }
 
     /**
      * Instantiates a mapper with the compact and pretty GSON instances explicitly supplied.
      */
-    public JsonMapper(Gson compact, Gson pretty, Gson compactSensitive, Gson prettySensitive) {
+    public JsonMapper(Gson compact, Gson compactSensitive) {
         this.compact = compact;
-        this.pretty = pretty;
         this.compactSensitive = compactSensitive;
-        this.prettySensitive = prettySensitive;
+    }
+
+    /**
+     * Use {@link #JsonMapper(Gson, Gson)} instead.
+     * The extra parameters are ignored.
+     *
+     * @param compact
+     * @param pretty
+     * @param compactSensitive
+     * @param prettySensitive
+     */
+    @Deprecated
+    public JsonMapper(Gson compact, Gson pretty, Gson compactSensitive, Gson prettySensitive) {
+        this(compact, compactSensitive);
     }
 
     /**
@@ -103,9 +112,15 @@ public class JsonMapper {
      * Outputs a JSON representation of the given object in pretty-printed, HTML-friendly JSON.
      */
     public String toJsonHtml(Object body) {
+        if (body == null) {
+            return this.compact.toJson(null);
+        }
+
         for (int i = 1;; i++) {
             try {
-                return this.pretty.toJson(body);
+                StringBuilder appendable = new StringBuilder();
+                this.toJsonHtml(body, appendable);
+                return appendable.toString();
             } catch (IllegalStateException e) {
                 handleIllegalStateException(e, i);
             }
@@ -122,7 +137,7 @@ public class JsonMapper {
             try {
                 if (hideSensitiveFields) {
                     if (useHtmlFormatting) {
-                        this.prettySensitive.toJson(body, appendable);
+                        this.compactSensitive.toJson(body, body.getClass(), makePrettyJsonWriter(appendable));
                         return;
                     } else {
                         this.compactSensitive.toJson(body, appendable);
@@ -130,7 +145,7 @@ public class JsonMapper {
                     }
                 } else {
                     if (useHtmlFormatting) {
-                        this.pretty.toJson(body, appendable);
+                        this.compact.toJson(body, body.getClass(), makePrettyJsonWriter(appendable));
                         return;
                     } else {
                         this.compact.toJson(body, appendable);
@@ -224,14 +239,26 @@ public class JsonMapper {
     }
 
     public void toJsonHtml(Object body, Appendable appendable) {
+        if (body == null) {
+            this.compact.toJson(null, appendable);
+            return;
+        }
+
         for (int i = 1;; i++) {
             try {
-                this.pretty.toJson(body, appendable);
+                JsonWriter jsonWriter = makePrettyJsonWriter(appendable);
+                this.compact.toJson(body, body.getClass(), jsonWriter);
                 return;
             } catch (IllegalStateException e) {
                 handleIllegalStateException(e, i);
             }
         }
+    }
+
+    private JsonWriter makePrettyJsonWriter(Appendable appendable) {
+        JsonWriter jsonWriter = new JsonWriter(Streams.writerForAppendable(appendable));
+        jsonWriter.setIndent(JSON_INDENT);
+        return jsonWriter;
     }
 
     /**

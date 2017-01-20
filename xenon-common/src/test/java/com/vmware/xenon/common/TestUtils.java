@@ -702,6 +702,19 @@ public class TestUtils {
     }
 
     @Test
+    public void toJsonHtml() {
+        ServiceDocument doc = new ServiceDocument();
+        String json = Utils.toJsonHtml(doc);
+        assertTrue(json.contains("  "));
+    }
+
+    @Test
+    public void toJsonHtmlNull() {
+        String json = Utils.toJsonHtml(null);
+        assertEquals(json, "null");
+    }
+
+    @Test
     public void validateServiceOption() {
         // positive tests
         EnumSet<ServiceOption> options = EnumSet.of(ServiceOption.REPLICATION,
