@@ -1,0 +1,78 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>com.vmware.xenon</groupId>
+    <artifactId>xenon-parent</artifactId>
+    <version>1.3.6-SNAPSHOT</version>
+    <relativePath>../../pom.xml</relativePath>
+  </parent>
+
+  <artifactId>xenon-workshop</artifactId>
+  <packaging>pom</packaging>
+
+  <properties>
+    <!-- For xenon-workshop module, disable analysis(checkstyle, findbugs, pmd) not to slowdown build time -->
+    <skipAnalysis>true</skipAnalysis>
+  </properties>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.codehaus.mojo</groupId>
+        <artifactId>findbugs-maven-plugin</artifactId>
+        <configuration>
+          <excludeFilterFile>${project.parent.parent.basedir}/findbugs-exclude.xml</excludeFilterFile>
+        </configuration>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-pmd-plugin</artifactId>
+        <version>3.7</version>
+        <configuration>
+          <rulesets>
+            <ruleset>${project.parent.parent.basedir}/contrib/pmd.xml</ruleset>
+          </rulesets>
+        </configuration>
+      </plugin>
+
+    </plugins>    
+  </build>
+
+  <modules>
+    <module>auth</module>
+    <module>multinode</module>
+    <module>query</module>
+    <module>stateful</module>
+    <module>stateless</module>
+    <module>subscription</module>
+    <module>task</module>
+    <module>upgrade/upgrade-01-initial</module>
+    <module>upgrade/upgrade-02-add-logging</module>
+    <module>upgrade/upgrade-03-add-fields-validation</module>
+  </modules>
+
+  <dependencies>
+    <dependency>
+      <groupId>${project.groupId}</groupId>
+      <artifactId>xenon-common</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>${project.groupId}</groupId>
+      <artifactId>xenon-ui</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>${project.groupId}</groupId>
+      <artifactId>xenon-common</artifactId>
+      <version>${project.version}</version>
+      <type>test-jar</type>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+
+</project>
