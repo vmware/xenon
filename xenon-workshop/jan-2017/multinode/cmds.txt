@@ -1,0 +1,13 @@
+Joining two nodes:
+{
+  "memberGroupReference": "http://127.0.0.1:8000/core/node-groups/default",
+  "kind": "com:vmware:xenon:services:common:NodeGroupService:JoinPeerRequest"
+}
+
+
+Updating Quorum:
+{
+  "isGroupUpdate": true,
+  "membershipQuorum": 3,
+  "kind": "com:vmware:xenon:services:common:NodeGroupService:UpdateQuorumRequest"
+}
