@@ -19,6 +19,7 @@ import static org.junit.Assert.fail;
 
 import java.net.URI;
 
+import java.util.Collections;
 import java.util.List;
 
 import org.junit.After;
@@ -147,6 +148,25 @@ public class TestRequestRouter {
         assertEquals(route.action, routeDeserialize.action);
         assertEquals(route.description, routeDeserialize.description);
         assertEquals(null, routeDeserialize.parameters);
+    }
+
+    @Test
+    public void testRouteSerializationWithParameters() {
+        RequestRouter.Route route = new RequestRouter.Route();
+        route.action = Action.PATCH;
+        route.description = "Testing Empty Matcher";
+        route.parameters = Collections.singletonList(new RequestRouter.Parameter("key", "desc",
+                ServiceDocumentDescription.TypeName.STRING.name(), false, "value",
+                RequestRouter.ParamDef.BODY));
+
+        String routeSer = Utils.toJson(route);
+        assertTrue(routeSer.contains(route.description));
+        assertTrue(!routeSer.contains("condition"));
+        assertTrue(routeSer.contains("parameters"));
+        RequestRouter.Route routeDeserialize = Utils.fromJson(routeSer, RequestRouter.Route.class);
+        assertEquals(route.action, routeDeserialize.action);
+        assertEquals(route.description, routeDeserialize.description);
+        assertEquals(1, routeDeserialize.parameters.size());
     }
 
     private void doX(Operation op) {

@@ -33,6 +33,7 @@ import java.util.stream.Collectors;
 
 import com.vmware.xenon.common.RequestRouter.Route;
 import com.vmware.xenon.common.Service.Action;
+import com.vmware.xenon.common.ServiceDocument.ClassDocumentation;
 import com.vmware.xenon.common.ServiceDocument.Documentation;
 import com.vmware.xenon.common.ServiceDocument.IndexingParameters;
 import com.vmware.xenon.common.ServiceDocument.PropertyOptions;
@@ -220,6 +221,8 @@ public class ServiceDocumentDescription {
     public EnumSet<Service.ServiceOption> serviceCapabilities;
     public Map<Action, List<Route>> serviceRequestRoutes;
     public String userInterfaceResourcePath;
+    public String name;
+    public String description;
 
     /**
      * Upper bound on how many state versions to track in the index. Versions that exceed the limit will
@@ -263,6 +266,13 @@ public class ServiceDocumentDescription {
             }
 
             desc.propertyDescriptions = root.fieldDescriptions;
+            // Fill in name and description if present at the class level annotation
+            ClassDocumentation documentation = type.getAnnotation(ClassDocumentation.class);
+            if (documentation != null) {
+                desc.name = documentation.name();
+                desc.description = documentation.description();
+            }
+
             return desc;
         }
 

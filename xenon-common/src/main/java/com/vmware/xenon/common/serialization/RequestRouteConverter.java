@@ -13,14 +13,18 @@
 
 package com.vmware.xenon.common.serialization;
 
+import static io.netty.util.internal.StringUtil.isNullOrEmpty;
+
 import static com.vmware.xenon.common.ServiceDocumentDescription.TypeName;
 import static com.vmware.xenon.common.UriUtils.URI_QUERY_PARAM_KV_CHAR;
 
 import java.lang.reflect.Type;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Map;
 
+import com.google.gson.JsonArray;
 import com.google.gson.JsonDeserializationContext;
 import com.google.gson.JsonDeserializer;
 import com.google.gson.JsonElement;
@@ -36,6 +40,7 @@ import com.vmware.xenon.common.RequestRouter;
 import com.vmware.xenon.common.RequestRouter.Route;
 import com.vmware.xenon.common.Service.Action;
 import com.vmware.xenon.common.UriUtils;
+import com.vmware.xenon.common.Utils;
 
 /**
  * GSON {@link JsonSerializer} for representing a {@link Route}s as a JSON string.
@@ -72,6 +77,22 @@ public enum RequestRouteConverter implements JsonSerializer<Route>, JsonDeserial
             ob.addProperty("responseType", src.responseType.getName());
         }
 
+        if (src.parameters != null && !src.parameters.isEmpty()) {
+            JsonArray jsonArray = new JsonArray();
+            src.parameters.stream().forEach((p) -> {
+                JsonObject jsonObject = new JsonObject();
+                jsonObject.addProperty("name", p.name);
+                jsonObject.addProperty("description", p.description);
+                jsonObject.addProperty("type", p.type);
+                jsonObject.addProperty("required", p.required);
+                jsonObject.addProperty("value", p.value);
+                jsonObject.addProperty("paramDef", p.paramDef.name());
+
+                jsonArray.add(jsonObject);
+            });
+            ob.add("parameters", jsonArray);
+        }
+
         return ob;
     }
 
@@ -99,9 +120,10 @@ public enum RequestRouteConverter implements JsonSerializer<Route>, JsonDeserial
             String requestType = checkAndGetFromJson(jsonObject, "requestType");
             route.requestType = requestType == null ? null : Class.forName(requestType);
 
-            // If null, try to fill in if the condition field is filled in.
+            // If null, try to fill in if the condition field is filled in. This will be the case
+            // when Operation processing chain is used
             String condition = checkAndGetFromJson(jsonObject, "condition");
-            if (!StringUtil.isNullOrEmpty(condition)) {
+            if (!isNullOrEmpty(condition)) {
                 // If condition starts with ? then it is RequestUriMatcher, so construct
                 // QueryParam, else it will be RequestBodyMatcher, so fill in the
                 if (condition.startsWith("?")) {
@@ -123,6 +145,15 @@ public enum RequestRouteConverter implements JsonSerializer<Route>, JsonDeserial
                             StringUtil.EMPTY_STRING, TypeName.STRING.name(), true, bodyParts[1],
                             RequestRouter.ParamDef.BODY);
                     route.parameters = Arrays.asList(parameter);
+                }
+            } else {
+                // This will be the case when getDocumentTemplate() is manually overridden. For a
+                // single route it is either / or only and not both options.
+                if (jsonObject.has("parameters")) {
+                    JsonArray parameters = jsonObject.getAsJsonArray("parameters");
+
+                    Type gsonType = new TypeToken<List<RequestRouter.Parameter>>() {}.getType();
+                    route.parameters = Utils.fromJson(parameters, gsonType);
                 }
             }
 
