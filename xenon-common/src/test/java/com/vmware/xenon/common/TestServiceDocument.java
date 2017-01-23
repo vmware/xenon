@@ -521,6 +521,7 @@ public class TestServiceDocument {
 
     @ServiceDocument.IndexingParameters(serializedStateSize = 8, versionRetention = 44,
             versionRetentionFloor = 22)
+    @ServiceDocument.Documentation(name = "Test Document Name", description = "Test Document Desc")
     private static class AnnotatedDoc extends ServiceDocument {
         @UsageOption(option = ServiceDocumentDescription.PropertyUsageOption.AUTO_MERGE_IF_NOT_NULL)
         @PropertyOptions(indexing = ServiceDocumentDescription.PropertyIndexingOption.STORE_ONLY)
@@ -557,6 +558,8 @@ public class TestServiceDocument {
     public void testAnnotationOnFields() {
         ServiceDocumentDescription.Builder builder = ServiceDocumentDescription.Builder.create();
         ServiceDocumentDescription desc = builder.buildDescription(AnnotatedDoc.class);
+        assertEquals("Test Document Name", desc.name);
+        assertEquals("Test Document Desc", desc.description);
         assertEquals(8, desc.serializedStateSizeLimit);
         assertEquals(44, desc.versionRetentionLimit);
         assertEquals(22, desc.versionRetentionFloor);

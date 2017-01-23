@@ -31,13 +31,18 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+import com.esotericsoftware.kryo.serializers.VersionFieldSerializer.Since;
+
 import com.vmware.xenon.common.RequestRouter.Route;
 import com.vmware.xenon.common.Service.Action;
+
 import com.vmware.xenon.common.ServiceDocument.Documentation;
 import com.vmware.xenon.common.ServiceDocument.IndexingParameters;
 import com.vmware.xenon.common.ServiceDocument.PropertyOptions;
 import com.vmware.xenon.common.ServiceDocument.UsageOption;
 import com.vmware.xenon.common.ServiceDocument.UsageOptions;
+
+import com.vmware.xenon.common.serialization.ReleaseConstants;
 
 public class ServiceDocumentDescription {
 
@@ -222,6 +227,17 @@ public class ServiceDocumentDescription {
     public String userInterfaceResourcePath;
 
     /**
+     * Property to be used for describing the custom tag name (swagger) for the service
+     */
+    @Since(ReleaseConstants.RELEASE_VERSION_1_3_6)
+    public String name;
+    /**
+     * Property to be used for describing the custom tag description (swagger) for the service
+     */
+    @Since(ReleaseConstants.RELEASE_VERSION_1_3_6)
+    public String description;
+
+    /**
      * Upper bound on how many state versions to track in the index. Versions that exceed the limit will
      * be permanently deleted.
      */
@@ -263,6 +279,13 @@ public class ServiceDocumentDescription {
             }
 
             desc.propertyDescriptions = root.fieldDescriptions;
+            // Fill in name and description if present at the class level annotation
+            Documentation documentation = type.getAnnotation(Documentation.class);
+            if (documentation != null) {
+                desc.name = documentation.name();
+                desc.description = documentation.description();
+            }
+
             return desc;
         }
 

@@ -118,8 +118,11 @@ public class ServiceDocument {
      * Annotations for ServiceDocumentDescription
      */
     @Retention(RetentionPolicy.RUNTIME)
-    @Target(ElementType.FIELD)
+    @Target({ElementType.FIELD, ElementType.TYPE})
     public @interface Documentation {
+        // sets property name
+        String name() default "";
+
         // sets propertyDocumentation
         String description() default "";
 
