@@ -1373,9 +1373,7 @@ public class StatefulService implements Service {
         clonedRequest.setRetryCount(0);
         clonedRequest.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_SYNCH_PEER);
 
-        boolean isFactorySync = request
-                .hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_NO_FORWARDING);
-        getHost().selectServiceOwnerAndSynchState(this, clonedRequest, isFactorySync);
+        getHost().selectServiceOwnerAndSynchState(this, clonedRequest);
     }
 
     private void handleSynchronizeWithPeersCompletion(Operation request, Throwable failure,

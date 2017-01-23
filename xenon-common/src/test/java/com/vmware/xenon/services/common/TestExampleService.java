@@ -32,7 +32,10 @@ import org.junit.After;
 import org.junit.Test;
 
 import com.vmware.xenon.common.AuthorizationSetupHelper;
+import com.vmware.xenon.common.FactoryService;
 import com.vmware.xenon.common.Operation;
+import com.vmware.xenon.common.Service.ServiceOption;
+import com.vmware.xenon.common.ServiceConfiguration;
 import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.ServiceDocumentDescription.PropertyDescription;
 import com.vmware.xenon.common.ServiceDocumentDescription.PropertyIndexingOption;
@@ -52,6 +55,24 @@ import com.vmware.xenon.services.common.NodeGroupService.NodeGroupState;
 
 public class TestExampleService {
 
+    public static class ExampleODLService extends ExampleService {
+        public static final String FACTORY_LINK = ServiceUriPaths.CORE + "/odl-examples";
+
+        /**
+         * Create a default factory service that starts instances of this service on POST.
+         * This method is optional, {@code FactoryService.create} can be used directly
+         */
+        public static FactoryService createFactory() {
+            return FactoryService.create(ExampleODLService.class);
+        }
+
+        public ExampleODLService() {
+            super();
+            super.toggleOption(ServiceOption.ON_DEMAND_LOAD, true);
+            super.toggleOption(ServiceOption.INSTRUMENTATION, false);
+        }
+    }
+
     private static final Long COUNTER_VALUE = Long.MAX_VALUE;
     private static final String PREFIX = "example-";
 
@@ -64,7 +85,8 @@ public class TestExampleService {
 
         // to speed up tests, set short maintenance interval.
         // it needs to "explicitly" set for VerificationHost instance
-        host.setMaintenanceIntervalMicros(TimeUnit.MILLISECONDS.toMicros(VerificationHost.FAST_MAINT_INTERVAL_MILLIS));
+        host.setMaintenanceIntervalMicros(
+                TimeUnit.MILLISECONDS.toMicros(VerificationHost.FAST_MAINT_INTERVAL_MILLIS));
         host.start();
 
         // add to the list for cleanup after each test run
@@ -299,6 +321,65 @@ public class TestExampleService {
 
         // validate get result...
         assertEquals("FOO", getResult.name);
+    }
+
+    @Test
+    public void multiNodeOnDemandLoad() throws Throwable {
+        // scenario:
+        //   create 2 nodes and join to default group
+        //   post & get example service
+
+        // prepare multiple nodes (for simplicity, using VerificationHost)
+        VerificationHost host1 = createAndStartHost(false);
+        host1.startFactory(ExampleODLService::createFactory, ExampleODLService.FACTORY_LINK);
+        VerificationHost host2 = createAndStartHost(false);
+        host2.startFactory(ExampleODLService::createFactory, ExampleODLService.FACTORY_LINK);
+
+        TestNodeGroupManager nodeGroup = new TestNodeGroupManager();
+        int maintMillis = VerificationHost.FAST_MAINT_INTERVAL_MILLIS / 2;
+        nodeGroup.setMaintenanceInterval(Duration.ofMillis(maintMillis));
+        host1.setServiceCacheClearDelayMicros(TimeUnit.MILLISECONDS.toMicros(maintMillis));
+        nodeGroup.addHost(host1);
+        nodeGroup.addHost(host2);
+
+        // make node group join to the "default" node group, then wait cluster to be stabilized
+        nodeGroup.joinNodeGroupAndWaitForConvergence();
+
+        // wait the service to be available in cluster
+        nodeGroup.waitForFactoryServiceAvailable(ExampleODLService.FACTORY_LINK);
+
+        // create a request sender which can be any host in this scenario
+        TestRequestSender sender = new TestRequestSender(host1);
+
+        String suffix = "foo";
+        ExampleServiceState postBody = new ExampleServiceState();
+        postBody.name = suffix;
+        postBody.counter = 0L;
+        postBody.documentSelfLink = suffix; // static self link: /core/examples/foo
+
+        Operation post = Operation.createPost(host1, ExampleODLService.FACTORY_LINK)
+                .setBody(postBody);
+
+        // send POST and wait for response
+        sender.sendAndWait(post, ExampleServiceState.class);
+
+        String servicePath = UriUtils.buildUriPath(ExampleODLService.FACTORY_LINK, suffix);
+
+        // verify ODL is enabled
+        URI configUri = UriUtils.buildConfigUri(UriUtils.buildUri(host1, servicePath));
+        ServiceConfiguration configState = sender.sendGetAndWait(configUri,
+                ServiceConfiguration.class);
+        assertTrue(configState.options.contains(ServiceOption.ON_DEMAND_LOAD));
+
+        for (int i = 0; i < 5; i++) {
+            ExampleServiceState patchBody = new ExampleServiceState();
+            patchBody.name = "foo-" + i;
+            patchBody.counter = (long) (i + 1);
+            Operation patch = Operation.createPatch(host1, servicePath).setBody(patchBody);
+            sender.sendAndWait(patch);
+            host1.log("Sent patch, now sleeping to induce on demand stop / load");
+            Thread.sleep(maintMillis * 5);
+        }
     }
 
     @Test
