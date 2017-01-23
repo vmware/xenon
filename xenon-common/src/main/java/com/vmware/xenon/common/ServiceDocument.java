@@ -127,6 +127,19 @@ public class ServiceDocument {
         String exampleString() default "";
     }
 
+    /**
+     * Annotations for Service name & description
+     */
+    @Retention(RetentionPolicy.RUNTIME)
+    @Target(ElementType.TYPE)
+    public @interface ServiceStateDocumentation {
+        // sets property name
+        String name() default "";
+
+        // sets propertyDocumentation
+        String description() default "";
+    }
+
     public static final String FIELD_NAME_SELF_LINK = "documentSelfLink";
     public static final String FIELD_NAME_VERSION = "documentVersion";
     public static final String FIELD_NAME_EPOCH = "documentEpoch";
