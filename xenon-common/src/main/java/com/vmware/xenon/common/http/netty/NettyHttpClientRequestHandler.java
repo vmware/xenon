@@ -206,6 +206,38 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
             return;
         }
 
+        parseCoreRequestHeaders(request, nettyRequest, headers);
+
+        for (Entry<String, String> h : headers) {
+            String key = h.getKey();
+            String value = h.getValue();
+            if (Operation.STREAM_ID_HEADER.equals(key)) {
+                continue;
+            }
+            if (Operation.HTTP2_SCHEME_HEADER.equals(key)) {
+                continue;
+            }
+
+            request.addRequestHeader(key, value);
+        }
+
+        if (this.sslHandler == null) {
+            return;
+        }
+        try {
+            if (this.sslHandler.engine().getWantClientAuth()
+                    || this.sslHandler.engine().getNeedClientAuth()) {
+                SSLSession session = this.sslHandler.engine().getSession();
+                request.setPeerCertificates(session.getPeerPrincipal(),
+                        session.getPeerCertificateChain());
+            }
+        } catch (Exception e) {
+            this.host.log(Level.WARNING, "Failed to get peer principal " + Utils.toString(e));
+        }
+    }
+
+    private void parseCoreRequestHeaders(Operation request, HttpRequest nettyRequest,
+            HttpHeaders headers) {
         request.setKeepAlive(HttpUtil.isKeepAlive(nettyRequest));
         if (HttpUtil.isContentLengthSet(nettyRequest)) {
             request.setContentLength(HttpUtil.getContentLength(nettyRequest));
@@ -247,35 +279,8 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
 
         String host = getAndRemove(headers, HttpHeaderNames.HOST);
 
-        for (Entry<String, String> h : headers) {
-            String key = h.getKey();
-            String value = h.getValue();
-            if (Operation.STREAM_ID_HEADER.equals(key)) {
-                continue;
-            }
-            if (Operation.HTTP2_SCHEME_HEADER.equals(key)) {
-                continue;
-            }
-
-            request.addRequestHeader(key, value);
-        }
-
         if (host != null) {
             request.addRequestHeader(Operation.HOST_HEADER, host);
-        }
-
-        if (this.sslHandler == null) {
-            return;
-        }
-        try {
-            if (this.sslHandler.engine().getWantClientAuth()
-                    || this.sslHandler.engine().getNeedClientAuth()) {
-                SSLSession session = this.sslHandler.engine().getSession();
-                request.setPeerCertificates(session.getPeerPrincipal(),
-                        session.getPeerCertificateChain());
-            }
-        } catch (Exception e) {
-            this.host.log(Level.WARNING, "Failed to get peer principal " + Utils.toString(e));
         }
     }
 
@@ -323,35 +328,9 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
         ByteBuf bodyBuffer = null;
         FullHttpResponse response;
 
-        try {
-            byte[] data = Utils.encodeBody(request);
-
-            // if some service returns a response that is greater than the maximum allowed size,
-            // we return an INTERNAL_SERVER_ERROR.
-            if (request.getContentLength() > this.responsePayloadSizeLimit) {
-                String errorMessage = "Content-Length " + request.getContentLength()
-                        + " is greater than max size allowed " + this.responsePayloadSizeLimit;
-                this.host.log(Level.SEVERE, errorMessage);
-                writeInternalServerError(ctx, request, streamId, errorMessage);
-                return;
-            }
-            if (data != null) {
-                bodyBuffer = Unpooled.wrappedBuffer(data);
-            }
-        } catch (Throwable e1) {
-            // Note that this is a program logic error - some service isn't properly checking or setting Content-Type
-            this.host.log(Level.SEVERE, "Error encoding body: %s", Utils.toString(e1));
-            writeInternalServerError(ctx, request, streamId,
-                    "Error encoding body: " + e1.getMessage());
+        response = buildFullHttpResponse(ctx, request, streamId, bodyBuffer);
+        if (response == null) {
             return;
-        }
-
-        if (bodyBuffer == null || request.getStatusCode() == Operation.STATUS_CODE_NOT_MODIFIED) {
-            response = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1,
-                    HttpResponseStatus.valueOf(request.getStatusCode()), false, false);
-        } else {
-            response = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1,
-                    HttpResponseStatus.valueOf(request.getStatusCode()), bodyBuffer, false, false);
         }
 
         if (streamId != null) {
@@ -377,6 +356,12 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
             }
         }
 
+        setAuthResponseHeaders(request, response);
+
+        writeResponse(ctx, request, response);
+    }
+
+    private void setAuthResponseHeaders(Operation request, FullHttpResponse response) {
         // Add auth token to response if authorization context
         AuthorizationContext authorizationContext = request.getAuthorizationContext();
         if (authorizationContext != null && authorizationContext.shouldPropagateToClient()) {
@@ -402,8 +387,42 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
             }
             response.headers().add(Operation.SET_COOKIE_HEADER, buf.toString());
         }
+    }
 
-        writeResponse(ctx, request, response);
+    private FullHttpResponse buildFullHttpResponse(ChannelHandlerContext ctx, Operation request,
+            Integer streamId, ByteBuf bodyBuffer) {
+        FullHttpResponse response;
+        try {
+            byte[] data = Utils.encodeBody(request);
+
+            // if some service returns a response that is greater than the maximum allowed size,
+            // we return an INTERNAL_SERVER_ERROR.
+            if (request.getContentLength() > this.responsePayloadSizeLimit) {
+                String errorMessage = "Content-Length " + request.getContentLength()
+                        + " is greater than max size allowed " + this.responsePayloadSizeLimit;
+                this.host.log(Level.SEVERE, errorMessage);
+                writeInternalServerError(ctx, request, streamId, errorMessage);
+                return null;
+            }
+            if (data != null) {
+                bodyBuffer = Unpooled.wrappedBuffer(data);
+            }
+        } catch (Throwable e1) {
+            // Note that this is a program logic error - some service isn't properly checking or setting Content-Type
+            this.host.log(Level.SEVERE, "Error encoding body: %s", Utils.toString(e1));
+            writeInternalServerError(ctx, request, streamId,
+                    "Error encoding body: " + e1.getMessage());
+            return null;
+        }
+
+        if (bodyBuffer == null || request.getStatusCode() == Operation.STATUS_CODE_NOT_MODIFIED) {
+            response = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1,
+                    HttpResponseStatus.valueOf(request.getStatusCode()), false, false);
+        } else {
+            response = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1,
+                    HttpResponseStatus.valueOf(request.getStatusCode()), bodyBuffer, false, false);
+        }
+        return response;
     }
 
     private void writeInternalServerError(ChannelHandlerContext ctx, Operation request,

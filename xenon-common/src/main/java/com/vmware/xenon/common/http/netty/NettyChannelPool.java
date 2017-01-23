@@ -437,21 +437,7 @@ public class NettyChannelPool {
                 }
             }
 
-            int activeChannelCount = group.inUseChannels.size();
-            if (context != null && context.hasActiveStreams()
-                    && activeChannelCount < limit) {
-                // create a new channel, we are below limit for concurrent connections
-                context = null;
-            } else if (context == null) {
-                // This is rare: do a search until we find a valid channel, the modulo scheme did
-                // not produce a valid context
-                for (NettyChannelContext ctx : group.inUseChannels) {
-                    if (ctx.isValid()) {
-                        context = ctx;
-                        break;
-                    }
-                }
-            }
+            context = checkAndFindValidContext(group, context, limit);
 
             if (context != null && context.getChannel() != null
                     && !context.getChannel().isOpen()) {
@@ -470,6 +456,26 @@ public class NettyChannelPool {
 
         closeBadChannelContext(badContext);
         context.updateLastUseTime();
+        return context;
+    }
+
+    private NettyChannelContext checkAndFindValidContext(NettyChannelGroup group,
+            NettyChannelContext context, int limit) {
+        int activeChannelCount = group.inUseChannels.size();
+        if (context != null && context.hasActiveStreams()
+                && activeChannelCount < limit) {
+            // create a new channel, we are below limit for concurrent connections
+            context = null;
+        } else if (context == null) {
+            // This is rare: do a search until we find a valid channel, the modulo scheme did
+            // not produce a valid context
+            for (NettyChannelContext ctx : group.inUseChannels) {
+                if (ctx.isValid()) {
+                    context = ctx;
+                    break;
+                }
+            }
+        }
         return context;
     }
 

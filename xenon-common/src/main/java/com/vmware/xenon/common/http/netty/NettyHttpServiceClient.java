@@ -340,33 +340,9 @@ public class NettyHttpServiceClient implements ServiceClient {
             isHttpScheme = scheme.equals(UriUtils.HTTP_SCHEME);
         }
 
-        if (!isHttpScheme && !isHttpsScheme) {
-            op.setRetryCount(0);
-            fail(new IllegalArgumentException(
-                    "Scheme is not supported: " + op.getUri().getScheme()), op, op.getBodyRaw());
+        port = checkSchemeAndPort(op, port, isHttpScheme, isHttpsScheme);
+        if (port < 0) {
             return;
-        }
-
-        if (isHttpsScheme && this.getSSLContext() == null) {
-            op.setRetryCount(0);
-            fail(new IllegalArgumentException(
-                    "HTTPS not enabled, set SSL context before starting client:" + op.getUri()),
-                    op, op.getBodyRaw());
-            return;
-        }
-
-        // if there are no ports specified, choose the default ports http or https
-        if (port == -1) {
-            port = isHttpScheme ? UriUtils.HTTP_DEFAULT_PORT : UriUtils.HTTPS_DEFAULT_PORT;
-        }
-
-        if (op.isConnectionSharing() && isHttpsScheme && !NettyChannelContext.isALPNEnabled()) {
-            op.setConnectionSharing(false);
-            if (!this.warnHttp2DisablingConnectionSharing) {
-                this.warnHttp2DisablingConnectionSharing = true;
-                LOGGER.warning(
-                        "HTTP/2 requests are not supported on HTTPS. Falling back to HTTP1.1");
-            }
         }
 
         // Determine the channel pool used for this request.
@@ -383,6 +359,39 @@ public class NettyHttpServiceClient implements ServiceClient {
         }
 
         connectChannel(pool, op, remoteHost, port);
+    }
+
+    private int checkSchemeAndPort(Operation op, int port, boolean isHttpScheme,
+            boolean isHttpsScheme) {
+        if (!isHttpScheme && !isHttpsScheme) {
+            op.setRetryCount(0);
+            fail(new IllegalArgumentException(
+                    "Scheme is not supported: " + op.getUri().getScheme()), op, op.getBodyRaw());
+            return -1;
+        }
+
+        if (isHttpsScheme && this.getSSLContext() == null) {
+            op.setRetryCount(0);
+            fail(new IllegalArgumentException(
+                    "HTTPS not enabled, set SSL context before starting client:" + op.getUri()),
+                    op, op.getBodyRaw());
+            return -1;
+        }
+
+        // if there are no ports specified, choose the default ports http or https
+        if (port == -1) {
+            port = isHttpScheme ? UriUtils.HTTP_DEFAULT_PORT : UriUtils.HTTPS_DEFAULT_PORT;
+        }
+
+        if (op.isConnectionSharing() && isHttpsScheme && !NettyChannelContext.isALPNEnabled()) {
+            op.setConnectionSharing(false);
+            if (!this.warnHttp2DisablingConnectionSharing) {
+                this.warnHttp2DisablingConnectionSharing = true;
+                LOGGER.warning(
+                        "HTTP/2 requests are not supported on HTTPS. Falling back to HTTP1.1");
+            }
+        }
+        return port;
     }
 
     private void connectChannel(NettyChannelPool pool, Operation op,
@@ -411,12 +420,7 @@ public class NettyHttpServiceClient implements ServiceClient {
         final Object originalBody = op.getBodyRaw();
         try {
             byte[] body = Utils.encodeBody(op);
-            if (op.getContentLength() > getRequestPayloadSizeLimit()) {
-                String error = String.format("Content length %d, limit is %d",
-                        op.getContentLength(), getRequestPayloadSizeLimit());
-                Exception e = new IllegalArgumentException(error);
-                op.setBody(ServiceErrorResponse.create(e, Operation.STATUS_CODE_BAD_REQUEST));
-                fail(e, op, originalBody);
+            if (!checkContentLength(op, originalBody)) {
                 return;
             }
 
@@ -436,16 +440,7 @@ public class NettyHttpServiceClient implements ServiceClient {
                 pathAndQuery = op.getUri().toString();
             }
 
-            NettyFullHttpRequest request = null;
-            HttpMethod method = toHttpMethod(op.getAction());
-            if (body == null || body.length == 0) {
-                request = new NettyFullHttpRequest(HttpVersion.HTTP_1_1, method, pathAndQuery,
-                        Unpooled.buffer(0), false);
-            } else {
-                ByteBuf content = Unpooled.wrappedBuffer(body, 0, (int) op.getContentLength());
-                request = new NettyFullHttpRequest(HttpVersion.HTTP_1_1, method, pathAndQuery,
-                        content, false);
-            }
+            NettyFullHttpRequest request = buildFullHttpRequest(op, body, pathAndQuery);
 
             HttpHeaders httpHeaders = request.headers();
 
@@ -468,85 +463,15 @@ public class NettyHttpServiceClient implements ServiceClient {
                 request.setOperation(op);
             }
 
-            String pragmaValue = op.getAndRemoveRequestHeaderAsIs(Operation.PRAGMA_HEADER);
+            boolean isXenonToXenon = op.isFromReplication() || op.isForwarded();
             String acceptValue = op.getAndRemoveRequestHeaderAsIs(Operation.ACCEPT_HEADER);
             String authTokenValue = op
                     .getAndRemoveRequestHeaderAsIs(Operation.REQUEST_AUTH_TOKEN_HEADER);
 
-            if (op.isFromReplication() && pragmaValue == null) {
-                httpHeaders.add(HttpHeaderNames.PRAGMA, PRAGMA_DIRECTIVE_REPLICATED_ASCII);
-            } else if (pragmaValue != null) {
-                httpHeaders.add(HttpHeaderNames.PRAGMA, pragmaValue);
-            }
+            hasRequestHeaders = setCoreRequestHeaders(op, httpHeaders);
 
-            if (op.getTransactionId() != null) {
-                httpHeaders.add(TRANSACTION_ID_HEADER_ASCII, op.getTransactionId());
-            }
-
-            if (op.getContextId() != null) {
-                httpHeaders.add(CONTEXT_ID_HEADER_ASCII, op.getContextId());
-            }
-
-            hasRequestHeaders = op.hasRequestHeaders();
-            boolean isXenonToXenon = op.isFromReplication() || op.isForwarded();
-            if (hasRequestHeaders) {
-                // remove all headers that we will set explicitly
-                op.getAndRemoveRequestHeaderAsIs(Operation.CONTENT_LENGTH_HEADER);
-                op.getAndRemoveRequestHeaderAsIs(Operation.CONTENT_TYPE_HEADER);
-                op.getAndRemoveRequestHeaderAsIs(Operation.CONNECTION_HEADER);
-                op.getAndRemoveRequestHeaderAsIs(Operation.REFERER_HEADER);
-                op.getAndRemoveRequestHeaderAsIs(Operation.HOST_HEADER);
-                op.getAndRemoveRequestHeaderAsIs(Operation.USER_AGENT_HEADER);
-                hasRequestHeaders = op.hasRequestHeaders();
-            }
-
-            if (hasRequestHeaders) {
-                for (Entry<String, String> nameValue : op.getRequestHeaders().entrySet()) {
-                    httpHeaders.add(nameValue.getKey(), nameValue.getValue());
-                }
-            }
-
-            if (authTokenValue != null) {
-                httpHeaders.add(AUTH_TOKEN_HEADER_ASCII, authTokenValue);
-            } else {
-                AuthorizationContext ctx = op.getAuthorizationContext();
-                if (ctx != null && ctx.getToken() != null) {
-                    httpHeaders.add(AUTH_TOKEN_HEADER_ASCII, ctx.getToken());
-                }
-            }
-
-            setAsciiContentType(op, httpHeaders);
-
-            httpHeaders.add(HttpHeaderNames.CONTENT_LENGTH,
-                    Long.toString(op.getContentLength()));
-
-            if (op.isKeepAlive()) {
-                httpHeaders.add(HttpHeaderNames.CONNECTION, HttpHeaderValues.KEEP_ALIVE);
-            }
-
-            if (op.hasReferer() && !op.isFromReplication()) {
-                httpHeaders.add(HttpHeaderNames.REFERER, op.getRefererAsString());
-            }
-
-            if (!isXenonToXenon) {
-                if (op.getCookies() != null) {
-                    String header = CookieJar.encodeCookies(op.getCookies());
-                    httpHeaders.set(HttpHeaderNames.COOKIE, header);
-                }
-
-                request.headers().set(HttpHeaderNames.USER_AGENT, this.userAgentAscii);
-                if (acceptValue == null) {
-                    httpHeaders.add(HttpHeaderNames.ACCEPT, DEFAULT_MEDIA_TYPE_ASCII);
-                } else {
-                    httpHeaders.add(HttpHeaderNames.ACCEPT, acceptValue);
-                }
-
-                httpHeaders.add(HttpHeaderNames.HOST, op.getUri().getHost());
-            }
-
-            if (LOGGER.isLoggable(Level.FINEST)) {
-                logRequestFraming(op, request);
-            }
+            setRequestHeaders(op, request, httpHeaders, hasRequestHeaders, acceptValue,
+                    authTokenValue, isXenonToXenon);
 
             boolean doCookieJarUpdate = !isXenonToXenon;
             op.nestCompletion((o, e) -> {
@@ -571,6 +496,117 @@ public class NettyHttpServiceClient implements ServiceClient {
             op.setBody(ServiceErrorResponse.create(e, Operation.STATUS_CODE_BAD_REQUEST,
                     EnumSet.of(ErrorDetail.SHOULD_RETRY)));
             fail(e, op, originalBody);
+        }
+    }
+
+    private boolean setCoreRequestHeaders(Operation op, HttpHeaders httpHeaders) {
+        boolean hasRequestHeaders;
+        String pragmaValue = op.getAndRemoveRequestHeaderAsIs(Operation.PRAGMA_HEADER);
+        if (op.isFromReplication() && pragmaValue == null) {
+            httpHeaders.add(HttpHeaderNames.PRAGMA, PRAGMA_DIRECTIVE_REPLICATED_ASCII);
+        } else if (pragmaValue != null) {
+            httpHeaders.add(HttpHeaderNames.PRAGMA, pragmaValue);
+        }
+
+        if (op.getTransactionId() != null) {
+            httpHeaders.add(TRANSACTION_ID_HEADER_ASCII, op.getTransactionId());
+        }
+
+        if (op.getContextId() != null) {
+            httpHeaders.add(CONTEXT_ID_HEADER_ASCII, op.getContextId());
+        }
+
+        hasRequestHeaders = op.hasRequestHeaders();
+
+        if (hasRequestHeaders) {
+            // remove all headers that we will set explicitly
+            op.getAndRemoveRequestHeaderAsIs(Operation.CONTENT_LENGTH_HEADER);
+            op.getAndRemoveRequestHeaderAsIs(Operation.CONTENT_TYPE_HEADER);
+            op.getAndRemoveRequestHeaderAsIs(Operation.CONNECTION_HEADER);
+            op.getAndRemoveRequestHeaderAsIs(Operation.REFERER_HEADER);
+            op.getAndRemoveRequestHeaderAsIs(Operation.HOST_HEADER);
+            op.getAndRemoveRequestHeaderAsIs(Operation.USER_AGENT_HEADER);
+            hasRequestHeaders = op.hasRequestHeaders();
+        }
+        return hasRequestHeaders;
+    }
+
+    private boolean checkContentLength(Operation op, final Object originalBody) {
+        if (op.getContentLength() > getRequestPayloadSizeLimit()) {
+            String error = String.format("Content length %d, limit is %d",
+                    op.getContentLength(), getRequestPayloadSizeLimit());
+            Exception e = new IllegalArgumentException(error);
+            op.setBody(ServiceErrorResponse.create(e, Operation.STATUS_CODE_BAD_REQUEST));
+            fail(e, op, originalBody);
+            return false;
+        }
+        return true;
+    }
+
+    private NettyFullHttpRequest buildFullHttpRequest(Operation op, byte[] body,
+            String pathAndQuery) {
+        NettyFullHttpRequest request = null;
+        HttpMethod method = toHttpMethod(op.getAction());
+        if (body == null || body.length == 0) {
+            request = new NettyFullHttpRequest(HttpVersion.HTTP_1_1, method, pathAndQuery,
+                    Unpooled.buffer(0), false);
+        } else {
+            ByteBuf content = Unpooled.wrappedBuffer(body, 0, (int) op.getContentLength());
+            request = new NettyFullHttpRequest(HttpVersion.HTTP_1_1, method, pathAndQuery,
+                    content, false);
+        }
+        return request;
+    }
+
+    private void setRequestHeaders(Operation op, NettyFullHttpRequest request,
+            HttpHeaders httpHeaders, boolean hasRequestHeaders, String acceptValue,
+            String authTokenValue, boolean isXenonToXenon) {
+        if (hasRequestHeaders) {
+            for (Entry<String, String> nameValue : op.getRequestHeaders().entrySet()) {
+                httpHeaders.add(nameValue.getKey(), nameValue.getValue());
+            }
+        }
+
+        if (authTokenValue != null) {
+            httpHeaders.add(AUTH_TOKEN_HEADER_ASCII, authTokenValue);
+        } else {
+            AuthorizationContext ctx = op.getAuthorizationContext();
+            if (ctx != null && ctx.getToken() != null) {
+                httpHeaders.add(AUTH_TOKEN_HEADER_ASCII, ctx.getToken());
+            }
+        }
+
+        setAsciiContentType(op, httpHeaders);
+
+        httpHeaders.add(HttpHeaderNames.CONTENT_LENGTH,
+                Long.toString(op.getContentLength()));
+
+        if (op.isKeepAlive()) {
+            httpHeaders.add(HttpHeaderNames.CONNECTION, HttpHeaderValues.KEEP_ALIVE);
+        }
+
+        if (op.hasReferer() && !op.isFromReplication()) {
+            httpHeaders.add(HttpHeaderNames.REFERER, op.getRefererAsString());
+        }
+
+        if (!isXenonToXenon) {
+            if (op.getCookies() != null) {
+                String header = CookieJar.encodeCookies(op.getCookies());
+                httpHeaders.set(HttpHeaderNames.COOKIE, header);
+            }
+
+            request.headers().set(HttpHeaderNames.USER_AGENT, this.userAgentAscii);
+            if (acceptValue == null) {
+                httpHeaders.add(HttpHeaderNames.ACCEPT, DEFAULT_MEDIA_TYPE_ASCII);
+            } else {
+                httpHeaders.add(HttpHeaderNames.ACCEPT, acceptValue);
+            }
+
+            httpHeaders.add(HttpHeaderNames.HOST, op.getUri().getHost());
+        }
+
+        if (LOGGER.isLoggable(Level.FINEST)) {
+            logRequestFraming(op, request);
         }
     }
 
