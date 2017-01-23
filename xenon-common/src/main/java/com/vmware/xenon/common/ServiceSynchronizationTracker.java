@@ -231,19 +231,26 @@ class ServiceSynchronizationTracker {
      * This method is called in the following cases:
      *
      * 1) Synchronization of a factory service, due to node group change. This includes
-     * synchronization after host restart. In this case isFactorySync is true and we proceed
-     * with synchronizing state on behalf of the factory, even if the local node is not owner
-     * for the specific child service. This solves the case where a new node is elected owner
-     * for a factory but does not have any services
+     * synchronization after host restart. Since factory synchronization uses SYNCH_OWNER
+     * request that is ONLY sent to the document owner, this function will not be executed
+     * on non-owner nodes (during factory synchronization).
      *
      * 2) Synchronization due to conflict on epoch, version or owner, on a specific stateful
      * service instance. The service instance will call this method to synchronize peers.
      *
-     * Note that case 1) actually causes PUTs to be send out, which implicitly invokes 2). Its
-     * this recursion that we need to break which is why we check in the completion below if
-     * the rsp.isLocalHostOwner == true || isFactorySync.
+     * 3) When an On-demand load service is re-started due to an incoming request.
+     *
+     * Note that case 1) actually causes SYNCH_PEER requests to be sent out to peers, that can
+     * implicitly invoke case 2). That's because a SYNCH_PEER POST request is converted to a PUT
+     * on the peer node and is forwarded to the StatefulService. Validating ownership in this
+     * method is critical to avoid recursive loops between OWNER and PEERs trying to synchronize
+     * each other endlessly.
+     *
+     * Also note that the SYNCH_OWNER request since it is only sent to owner nodes, it is
+     * not really required to again validate document ownership in this method. So, a future
+     * optimization could be to skip ownership validation for case 1) ONLY.
      */
-    void selectServiceOwnerAndSynchState(Service s, Operation op, boolean isFactorySync) {
+    void selectServiceOwnerAndSynchState(Service s, Operation op) {
         CompletionHandler c = (o, e) -> {
             if (e != null) {
                 this.host.log(Level.WARNING, "Failure partitioning %s: %s", op.getUri(),
@@ -265,7 +272,7 @@ class ServiceSynchronizationTracker {
 
             s.toggleOption(ServiceOption.DOCUMENT_OWNER, rsp.isLocalHostOwner);
 
-            if (ServiceHost.isServiceCreate(op) || (!isFactorySync && !rsp.isLocalHostOwner)) {
+            if (ServiceHost.isServiceCreate(op) || !rsp.isLocalHostOwner) {
                 // if this is from a client, do not synchronize. an conflict can be resolved
                 // when we attempt to replicate the POST.
                 // if this is synchronization attempt and we are not the owner, do nothing

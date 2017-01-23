@@ -2542,8 +2542,7 @@ public class ServiceHost implements ServiceRequestSender {
                             hasInitialState);
                 });
 
-                boolean isFactorySync = !ServiceHost.isServiceCreate(post);
-                selectServiceOwnerAndSynchState(s, post, isFactorySync);
+                selectServiceOwnerAndSynchState(s, post);
                 break;
 
             case EXECUTING_CREATE_HANDLER:
@@ -5124,10 +5123,10 @@ public class ServiceHost implements ServiceRequestSender {
 
     /**
      * Infrastructure use only
-     * @see ServiceSynchronizationTracker#selectServiceOwnerAndSynchState(Service, Operation, boolean)
+     * @see ServiceSynchronizationTracker#selectServiceOwnerAndSynchState(Service, Operation)
      */
-    void selectServiceOwnerAndSynchState(Service s, Operation op, boolean isFactorySync) {
-        this.serviceSynchTracker.selectServiceOwnerAndSynchState(s, op, isFactorySync);
+    void selectServiceOwnerAndSynchState(Service s, Operation op) {
+        this.serviceSynchTracker.selectServiceOwnerAndSynchState(s, op);
     }
 
     NodeSelectorService findNodeSelectorService(String path,
