@@ -58,9 +58,9 @@ public class NettyHttpClientRequestInitializer extends ChannelInitializer<Socket
         private NettyHttpClientRequestInitializer initializer;
         private ChannelPromise settingsPromise;
 
-        public Http2NegotiationHandler(NettyHttpClientRequestInitializer initializer,
+        Http2NegotiationHandler(NettyHttpClientRequestInitializer initializer,
                 ChannelPromise settingsPromise) {
-            super("");
+            super("Fallback protocol");
             this.initializer = initializer;
             this.settingsPromise = settingsPromise;
         }
@@ -68,12 +68,36 @@ public class NettyHttpClientRequestInitializer extends ChannelInitializer<Socket
         @Override
         protected void configurePipeline(ChannelHandlerContext ctx, String protocol)
                 throws Exception {
-            if (ApplicationProtocolNames.HTTP_2.equals(protocol)) {
-                this.initializer.initializeHttp2Pipeline(ctx.pipeline(), this.settingsPromise);
-                return;
+            try {
+                if (ApplicationProtocolNames.HTTP_2.equals(protocol)) {
+                    this.initializer.initializeHttp2Pipeline(ctx.pipeline(), this.settingsPromise);
+                    return;
+                }
+                throw new IllegalStateException("Unexptected protocol: " + protocol);
+            } catch (Exception ex) {
+                log(Level.WARNING, "HTTP/2 pipeline initialization failed: %s",
+                        Utils.toString(ex));
+                ctx.close();
             }
+        }
+
+        @Override
+        protected void handshakeFailure(ChannelHandlerContext ctx, Throwable cause)
+                throws Exception {
+            log(Level.WARNING, "TLS handshake failed: %s", Utils.toString(cause));
             ctx.close();
-            throw new IllegalStateException("Unexpected protocol: " + protocol);
+        }
+
+        @Override
+        public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause)
+                throws Exception {
+            log(Level.WARNING, "ALPN protocol negotiation failed: %s", Utils.toString(cause));
+            ctx.close();
+        }
+
+        private void log(Level level, String fmt, Object... args) {
+            Utils.log(Http2NegotiationHandler.class, Http2NegotiationHandler.class.getSimpleName(),
+                    level, fmt, args);
         }
     }
 

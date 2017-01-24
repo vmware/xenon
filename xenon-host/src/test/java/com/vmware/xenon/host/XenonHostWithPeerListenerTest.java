@@ -17,26 +17,25 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotEquals;
 
 import java.io.FileInputStream;
-import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
-import java.net.URISyntaxException;
-import java.security.KeyManagementException;
 import java.security.KeyStore;
-import java.security.KeyStoreException;
-import java.security.NoSuchAlgorithmException;
-import java.security.UnrecoverableKeyException;
-import java.security.cert.CertificateException;
-import java.security.cert.X509Certificate;
 import java.util.UUID;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
-
 import javax.net.ssl.KeyManagerFactory;
 import javax.net.ssl.SSLContext;
-import javax.net.ssl.TrustManager;
-import javax.net.ssl.X509TrustManager;
 
+import io.netty.handler.codec.http2.Http2SecurityUtil;
+import io.netty.handler.ssl.ApplicationProtocolConfig;
+import io.netty.handler.ssl.ApplicationProtocolNames;
+import io.netty.handler.ssl.OpenSsl;
+import io.netty.handler.ssl.SslContext;
+import io.netty.handler.ssl.SslContextBuilder;
+import io.netty.handler.ssl.SupportedCipherSuiteFilter;
+import io.netty.handler.ssl.util.InsecureTrustManagerFactory;
+import org.junit.AfterClass;
+import org.junit.Assume;
+import org.junit.BeforeClass;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 
@@ -48,6 +47,35 @@ import com.vmware.xenon.common.test.TestRequestSender;
 import com.vmware.xenon.services.common.ServiceUriPaths;
 
 public class XenonHostWithPeerListenerTest {
+
+    private static final String JAVAX_NET_SSL_TRUST_STORE = "javax.net.ssl.trustStore";
+    private static final String JAVAX_NET_SSL_TRUST_STORE_PASSWORD = "javax.net.ssl.trustStorePassword";
+
+    private static String savedTrustStore;
+    private static String savedTrustStorePassword;
+
+    @BeforeClass
+    public static void setUpClass() throws Exception {
+        savedTrustStore = System.getProperty(JAVAX_NET_SSL_TRUST_STORE);
+        savedTrustStorePassword = System.getProperty(JAVAX_NET_SSL_TRUST_STORE_PASSWORD);
+        System.setProperty(JAVAX_NET_SSL_TRUST_STORE,
+                "../xenon-common/src/test/resources/ssl/trustedcerts.jks");
+        System.setProperty(JAVAX_NET_SSL_TRUST_STORE_PASSWORD, "changeit");
+    }
+
+    @AfterClass
+    public static void tearDownClass() throws Exception {
+        if (savedTrustStore == null) {
+            System.clearProperty(JAVAX_NET_SSL_TRUST_STORE);
+        } else {
+            System.setProperty(JAVAX_NET_SSL_TRUST_STORE, savedTrustStore);
+        }
+        if (savedTrustStorePassword == null) {
+            System.clearProperty(JAVAX_NET_SSL_TRUST_STORE_PASSWORD);
+        } else {
+            System.setProperty(JAVAX_NET_SSL_TRUST_STORE_PASSWORD, savedTrustStorePassword);
+        }
+    }
 
     @Test
     public void startUpWithArguments() throws Throwable {
@@ -90,12 +118,24 @@ public class XenonHostWithPeerListenerTest {
     }
 
     @Test
-    public void startWithSslConfigInheritedFromDefaultListener() throws Throwable {
+    public void testSslConfigInheritedFromDefaultListener() throws Throwable {
+        ServiceClient client = createAllTrustingServiceClient();
+        doSslConfigInheritedFromDefaultListener(client, false);
+    }
+
+    @Test
+    public void testHttp2SslConfigInheritedFromDefaultListener() throws Throwable {
+        Assume.assumeTrue(OpenSsl.isAlpnSupported());
+        ServiceClient client = createAllTrustingHttp2ServiceClient();
+        doSslConfigInheritedFromDefaultListener(client, true);
+    }
+
+    private void doSslConfigInheritedFromDefaultListener(ServiceClient client,
+            boolean connectionSharing) throws Throwable {
         XenonHostWithPeerListener h = new XenonHostWithPeerListener();
         TemporaryFolder tmpFolder = new TemporaryFolder();
         tmpFolder.create();
 
-        ServiceClient client = createAllTrustingServiceClient();
         try {
             String bindAddress = "127.0.0.1";
             String nodeGroupUri = "https://127.0.0.1:0";
@@ -108,6 +148,7 @@ public class XenonHostWithPeerListenerTest {
                     "--nodeGroupPublicUri=" + nodeGroupUri,
                     "--keyFile=" + "../xenon-common/src/test/resources/ssl/server.pem",
                     "--certificateFile=" + "../xenon-common/src/test/resources/ssl/server.crt",
+                    "--sslClientAuthMode=NEED",
                     "--sandbox=" + tmpFolder.getRoot().getAbsolutePath(),
                     "--bindAddress=" + bindAddress,
                     "--id=" + hostId
@@ -123,10 +164,10 @@ public class XenonHostWithPeerListenerTest {
             assertNotEquals(nodeGroupUri, h.getPublicUri().toString());
 
             URI u = makeNodeGroupUri(h.getPublicUri());
-            assertCanGetNodeGroup(client, u);
+            assertCanGetNodeGroup(client, u, connectionSharing);
 
             u = makeNodeGroupUri(h.getUri());
-            assertCanGetNodeGroup(client, u);
+            assertCanGetNodeGroup(client, u, connectionSharing);
         } finally {
             h.stop();
             tmpFolder.delete();
@@ -134,12 +175,24 @@ public class XenonHostWithPeerListenerTest {
     }
 
     @Test
-    public void startWithDifferentSslConfig() throws Throwable {
+    public void testDifferentSslConfig() throws Throwable {
+        ServiceClient client = createAllTrustingServiceClient();
+        doDifferentSslConfig(client, false);
+    }
+
+    @Test
+    public void testHttp2DifferentSslConfig() throws Throwable {
+        Assume.assumeTrue(OpenSsl.isAlpnSupported());
+        ServiceClient client = createAllTrustingHttp2ServiceClient();
+        doDifferentSslConfig(client, true);
+    }
+
+    private void doDifferentSslConfig(ServiceClient client, boolean connectionSharing)
+            throws Throwable {
         XenonHostWithPeerListener h = new XenonHostWithPeerListener();
         TemporaryFolder tmpFolder = new TemporaryFolder();
         tmpFolder.create();
 
-        ServiceClient client = createAllTrustingServiceClient();
         try {
             String bindAddress = "127.0.0.1";
             String nodeGroupUri = "https://127.0.0.1:0";
@@ -151,6 +204,7 @@ public class XenonHostWithPeerListenerTest {
                     "--nodeGroupPublicUri=" + nodeGroupUri,
                     "--peerKeyFile=" + "../xenon-common/src/test/resources/ssl/server.pem",
                     "--peerCertificateFile=" + "../xenon-common/src/test/resources/ssl/server.crt",
+                    "--sslClientAuthMode=NEED",
                     "--sandbox=" + tmpFolder.getRoot().getAbsolutePath(),
                     "--bindAddress=" + bindAddress,
                     "--id=" + hostId
@@ -166,19 +220,17 @@ public class XenonHostWithPeerListenerTest {
             assertNotEquals(nodeGroupUri, h.getPublicUri().toString());
 
             URI u = makeNodeGroupUri(h.getPublicUri());
-            assertCanGetNodeGroup(client, u);
+            assertCanGetNodeGroup(client, u, connectionSharing);
 
             u = makeNodeGroupUri(h.getUri());
-            assertCanGetNodeGroup(client, u);
+            assertCanGetNodeGroup(client, u, connectionSharing);
         } finally {
             h.stop();
             tmpFolder.delete();
         }
     }
 
-    private ServiceClient createAllTrustingServiceClient()
-            throws URISyntaxException, NoSuchAlgorithmException, KeyStoreException, IOException, CertificateException,
-            UnrecoverableKeyException, KeyManagementException {
+    private ServiceClient newAllTrustingServiceClient() throws Throwable {
         // Create ServiceClient with client SSL auth support
         ServiceClient client = NettyHttpServiceClient.create(
                 getClass().getCanonicalName(),
@@ -193,36 +245,56 @@ public class XenonHostWithPeerListenerTest {
             keyStore.load(stream, "changeit".toCharArray());
         }
         kmf.init(keyStore, "changeit".toCharArray());
-        clientContext.init(kmf.getKeyManagers(), new TrustManager[] {
-                new X509TrustManager() {
-                    @Override
-                    public void checkClientTrusted(X509Certificate[] x509Certificates, String s)
-                            throws CertificateException {
-
-                    }
-
-                    @Override
-                    public void checkServerTrusted(X509Certificate[] x509Certificates, String s)
-                            throws CertificateException {
-
-                    }
-
-                    @Override public X509Certificate[] getAcceptedIssuers() {
-                        return new X509Certificate[0];
-                    }
-                }
-        }, null);
+        clientContext.init(kmf.getKeyManagers(),
+                InsecureTrustManagerFactory.INSTANCE.getTrustManagers(), null);
         client.setSSLContext(clientContext);
+        return client;
+    }
+
+    private ServiceClient createAllTrustingServiceClient() throws Throwable {
+        ServiceClient client = newAllTrustingServiceClient();
         client.start();
         return client;
     }
 
-    private void assertCanGetNodeGroup(ServiceClient client, URI u)
-            throws InterruptedException, ExecutionException {
+    private ServiceClient createAllTrustingHttp2ServiceClient() throws Throwable {
+        ServiceClient client = newAllTrustingServiceClient();
+
+        KeyManagerFactory kmf = KeyManagerFactory.getInstance(KeyManagerFactory
+                .getDefaultAlgorithm());
+        KeyStore keyStore = KeyStore.getInstance("PKCS12");
+        try (InputStream stream = new FileInputStream("../xenon-common/src/test/resources/ssl/client.p12")) {
+            keyStore.load(stream, "changeit".toCharArray());
+        }
+        kmf.init(keyStore, "changeit".toCharArray());
+
+        SslContext http2ClientContext = SslContextBuilder.forClient()
+                .keyManager(kmf)
+                .trustManager(InsecureTrustManagerFactory.INSTANCE)
+                .ciphers(Http2SecurityUtil.CIPHERS, SupportedCipherSuiteFilter.INSTANCE)
+                .applicationProtocolConfig(new ApplicationProtocolConfig(
+                        ApplicationProtocolConfig.Protocol.ALPN,
+                        ApplicationProtocolConfig.SelectorFailureBehavior.NO_ADVERTISE,
+                        ApplicationProtocolConfig.SelectedListenerFailureBehavior.ACCEPT,
+                        ApplicationProtocolNames.HTTP_2))
+                .build();
+
+        ((NettyHttpServiceClient) client).setHttp2SslContext(http2ClientContext);
+        client.start();
+        return client;
+    }
+
+    private void assertCanGetNodeGroup(ServiceClient client, URI u) throws Throwable {
+        assertCanGetNodeGroup(client, u, false);
+    }
+
+    private void assertCanGetNodeGroup(ServiceClient client, URI u, boolean connectionSharing)
+            throws Throwable {
 
         TestRequestSender sender = new TestRequestSender(client);
         Operation op = Operation.createGet(u)
                 .forceRemote()
+                .setConnectionSharing(connectionSharing)
                 .setReferer(u);
 
         op = sender.sendAndWait(op);
