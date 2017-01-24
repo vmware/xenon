@@ -495,6 +495,41 @@ public class ServiceHost implements ServiceRequestSender {
         HTTP_ONLY, HTTPS_ONLY, HTTP_AND_HTTPS, NONE
     }
 
+    /**
+     * Simple way of creating ServiceHost.
+     *
+     * This method initialize service host, register shutdown hook, then start the host.
+     * If more detailed configuration is required, create a dedicated host class extending ServiceHost.
+     *
+     * Sample:
+     * <pre>
+     *     ServiceHost host = ServiceHost.create();
+     *     host.startCoreServicesSynchronously();
+     *     host.startService(...);
+     *     host.start();  // this start is optional
+     * </pre>
+     *
+     * @param args initialization arguments
+     * @return a ServiceHost
+     */
+    public static ServiceHost create(String... args) throws Throwable {
+        ServiceHost host = new ServiceHost();
+        host.initialize(args);
+        host.registerRuntimeShutdownHook();
+        host.start();
+        return host;
+    }
+
+    /**
+     * Default shutdown hook to stop this host.
+     */
+    protected final Thread defaultShutdownHook = new Thread(() -> {
+        this.log(Level.WARNING, "Host stopping ...");
+        this.stop();
+        this.log(Level.WARNING, "Host is stopped");
+    });
+
+
     private Logger logger = Logger.getLogger(getClass().getName());
     private FileHandler handler;
 
@@ -5780,4 +5815,30 @@ public class ServiceHost implements ServiceRequestSender {
 
         return ipAddresses.contains(remoteService.getHost());
     }
+
+    /**
+     * Returns shutdown hook that stops this host.
+     * Override this method to change the shutdown hook behavior.
+     *
+     * @return shutdown hook that stops the host
+     */
+    public Thread getRuntimeShutdownHook() {
+        return this.defaultShutdownHook;
+    }
+
+    /**
+     * Register host shutdown hook.
+     */
+    public void registerRuntimeShutdownHook() {
+        Runtime.getRuntime().addShutdownHook(getRuntimeShutdownHook());
+    }
+
+    /**
+     * Remove host shutdown hook.
+     * @return
+     */
+    public boolean unregisterRuntimeShutdownHook() {
+        return Runtime.getRuntime().removeShutdownHook(getRuntimeShutdownHook());
+    }
+
 }
