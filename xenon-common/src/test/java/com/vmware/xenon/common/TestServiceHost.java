@@ -27,6 +27,8 @@ import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.Duration;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Date;
@@ -46,7 +48,6 @@ import java.util.function.Consumer;
 import java.util.logging.Level;
 
 import io.netty.handler.ssl.util.SelfSignedCertificate;
-
 import org.junit.After;
 import org.junit.Rule;
 import org.junit.Test;
@@ -68,6 +69,7 @@ import com.vmware.xenon.common.jwt.Verifier;
 import com.vmware.xenon.common.test.MinimalTestServiceState;
 import com.vmware.xenon.common.test.TestContext;
 import com.vmware.xenon.common.test.TestProperty;
+import com.vmware.xenon.common.test.TestRequestSender;
 import com.vmware.xenon.common.test.VerificationHost;
 import com.vmware.xenon.common.test.VerificationHost.WaitHandler;
 import com.vmware.xenon.services.common.AuthorizationContextService;
@@ -2630,6 +2632,39 @@ public class TestServiceHost {
         assertEquals(ServiceHost.HttpScheme.HTTPS_ONLY, this.host.getCurrentHttpScheme());
         assertTrue("public uri scheme should be HTTPS",
                 this.host.getPublicUri().getScheme().equals("https"));
+    }
+
+    @Test
+    public void create() throws Throwable {
+        ServiceHost h = ServiceHost.create("--port=0");
+        try {
+            h.start();
+            h.startDefaultCoreServicesSynchronously();
+
+            // Start the example service factory
+            h.startFactory(ExampleService.class, ExampleService::createFactory);
+
+            boolean[] isReady = new boolean[1];
+            h.registerForServiceAvailability((o, e) -> {
+                isReady[0] = true;
+            }, ExampleService.FACTORY_LINK);
+
+
+            Duration timeout = Duration.of(ServiceHost.ServiceHostState.DEFAULT_MAINTENANCE_INTERVAL_MICROS * 5, ChronoUnit.MICROS);
+            TestContext.waitFor(timeout, () -> {
+                return isReady[0];
+            }, "ExampleService did not start");
+
+            // verify ExampleService exists
+            TestRequestSender sender = new TestRequestSender(h);
+            Operation get = Operation.createGet(h, ExampleService.FACTORY_LINK);
+            sender.sendAndWait(get);
+        } finally {
+            if (h != null) {
+                h.unregisterRuntimeShutdownHook();
+                h.stop();
+            }
+        }
     }
 
     @After
