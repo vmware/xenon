@@ -306,6 +306,7 @@ public class LuceneDocumentIndexService extends StatelessService {
 
     private final Map<String, DocumentUpdateInfo> updatesPerLink = new HashMap<>();
     private final Map<String, Long> liveVersionsPerLink = new HashMap<>();
+    private final Map<String, Long> immutableParentLinks = new HashMap<>();
     private long updateMapMemoryLimitMB;
 
     private Sort versionSort;
@@ -467,10 +468,11 @@ public class LuceneDocumentIndexService extends StatelessService {
         IndexWriterConfig iwc = new IndexWriterConfig(analyzer);
         Long totalMBs = getHost().getServiceMemoryLimitMB(getSelfLink(), MemoryLimitType.EXACT);
         if (totalMBs != null) {
-            long cacheSizeMB = (totalMBs * 9) / 10;
+            long cacheSizeMB = (totalMBs * 99) / 100;
             cacheSizeMB = Math.max(1, cacheSizeMB);
             iwc.setRAMBufferSizeMB(cacheSizeMB);
-            this.updateMapMemoryLimitMB = totalMBs / 10;
+            // reserve 1% of service memory budget for version cache
+            this.updateMapMemoryLimitMB = totalMBs / 100;
         }
 
         Directory dir = MMapDirectory.open(directory.toPath());
@@ -1880,6 +1882,14 @@ public class LuceneDocumentIndexService extends StatelessService {
             if (dui != null && dui.updateTimeMicros <= searcherUpdateTime) {
                 return Math.max(version, dui.version);
             }
+
+            if (!this.immutableParentLinks.isEmpty()) {
+                String parentLink = UriUtils.getParentPath(link);
+                if (this.immutableParentLinks.containsKey(parentLink)) {
+                    // all immutable services have just a single, zero, version
+                    return 0;
+                }
+            }
         }
 
         if (hasOption(ServiceOption.INSTRUMENTATION)) {
@@ -1899,7 +1909,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         long updateTime = updateTimeField.numericValue().longValue();
         // attempt to refresh or create new version cache entry, from the entry in the query results
         // The update method will reject the update if the version is stale
-        updateLinkInfoCache(link, latestVersion, updateTime);
+        updateLinkInfoCache(null, link, latestVersion, updateTime);
         return latestVersion;
     }
 
@@ -2142,7 +2152,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         // be reflected in the new searcher. If the start time would be used,
         // it is possible to race with updating the searcher and NOT have this
         // change be reflected in the searcher.
-        updateLinkInfoCache(link, newestVersion, Utils.getNowMicrosUtc());
+        updateLinkInfoCache(null, link, newestVersion, Utils.getNowMicrosUtc());
         delete.complete();
     }
 
@@ -2166,24 +2176,41 @@ public class LuceneDocumentIndexService extends StatelessService {
         // be reflected in the new searcher. If the start time would be used,
         // it is possible to race with updating the searcher and NOT have this
         // change be reflected in the searcher.
-        updateLinkInfoCache(sd.documentSelfLink, sd.documentVersion, Utils.getNowMicrosUtc());
+        updateLinkInfoCache(desc, sd.documentSelfLink, sd.documentVersion, Utils.getNowMicrosUtc());
         op.setBody(null).complete();
         checkDocumentRetentionLimit(sd, desc);
         applyActiveQueries(op, sd, desc);
     }
 
-    private void updateLinkInfoCache(String link, long version, long lastAccessTime) {
+    private void updateLinkInfoCache(ServiceDocumentDescription desc,
+            String link, long version, long lastAccessTime) {
+        boolean isImmutable = desc != null
+                && desc.serviceCapabilities != null
+                && desc.serviceCapabilities.contains(ServiceOption.IMMUTABLE);
         synchronized (this.searchSync) {
-            this.updatesPerLink.compute(link, (k, entry) -> {
-                if (entry == null) {
-                    entry = new DocumentUpdateInfo();
-                }
-                if (version >= entry.version) {
-                    entry.updateTimeMicros = Math.max(entry.updateTimeMicros, lastAccessTime);
-                    entry.version = version;
-                }
-                return entry;
-            });
+            if (isImmutable) {
+                String parent = UriUtils.getParentPath(link);
+                this.immutableParentLinks.compute(parent, (k, time) -> {
+                    if (time == null) {
+                        time = lastAccessTime;
+                    } else {
+                        time = Math.max(time, lastAccessTime);
+                    }
+                    return time;
+                });
+            } else {
+                this.updatesPerLink.compute(link, (k, entry) -> {
+                    if (entry == null) {
+                        entry = new DocumentUpdateInfo();
+                    }
+                    if (version >= entry.version) {
+                        entry.updateTimeMicros = Math.max(entry.updateTimeMicros, lastAccessTime);
+                        entry.version = version;
+                    }
+                    return entry;
+                });
+            }
+
             // The index update time may only be increased.
             if (this.writerUpdateTimeMicros < lastAccessTime) {
                 this.writerUpdateTimeMicros = lastAccessTime;
@@ -2230,6 +2257,12 @@ public class LuceneDocumentIndexService extends StatelessService {
                 if (du != null
                         && du.updateTimeMicros >= searcherUpdateTime) {
                     needNewSearcher = !doNotRefresh;
+                } else {
+                    String parent = UriUtils.getParentPath(selfLink);
+                    Long updateTime = this.immutableParentLinks.get(parent);
+                    if (updateTime != null && updateTime >= searcherUpdateTime) {
+                        needNewSearcher = !doNotRefresh;
+                    }
                 }
             } else if (searcherUpdateTime < this.writerUpdateTimeMicros) {
                 needNewSearcher = !doNotRefresh;
