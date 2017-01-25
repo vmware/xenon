@@ -393,6 +393,27 @@ public class TestGatewayService {
         }
     }
 
+    /**
+     * This test verifies that the gateway service will reject a
+     * DELETE request on the gateway service self-link.
+     */
+    @Test
+    public void testGatewayServiceStop() throws Throwable {
+        makeRequest(Action.DELETE,
+                GatewayService.SELF_LINK, null,
+                ServiceErrorResponse.class, Operation.STATUS_CODE_BAD_METHOD);
+
+        // Host stops should still work.
+        TestContext ctx = this.gatewayHost.testCreate(1);
+        Operation
+                .createDelete(this.gatewayHost, GatewayService.SELF_LINK)
+                .setReferer(this.gatewayHost.getUri())
+                .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_NO_INDEX_UPDATE)
+                .setCompletion(ctx.getCompletion())
+                .sendWith(this.gatewayHost);
+        ctx.await();
+    }
+
     @SuppressWarnings("unchecked")
     private <T, S> T makeRequest(Action action, String path,
                                  S body, Class<T> clazz,

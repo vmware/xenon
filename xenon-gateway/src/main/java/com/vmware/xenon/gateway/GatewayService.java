@@ -175,7 +175,9 @@ public class GatewayService extends StatelessService {
         if (!op.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_NO_INDEX_UPDATE)) {
             failOperation(op, Operation.STATUS_CODE_BAD_METHOD,
                     "DELETE not supported on Gateway endpoint.");
+            return;
         }
+        op.complete();
     }
 
     /**
