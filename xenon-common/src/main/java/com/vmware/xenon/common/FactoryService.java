@@ -93,6 +93,8 @@ public abstract class FactoryService extends StatelessService {
     public static final Integer SELF_QUERY_RESULT_LIMIT = Integer.getInteger(
             Utils.PROPERTY_NAME_PREFIX
                     + "FactoryService.SELF_QUERY_RESULT_LIMIT", 1000);
+
+    private boolean useBodyForSelfLink = false;
     private EnumSet<ServiceOption> childOptions;
     private String nodeSelectorLink = ServiceUriPaths.DEFAULT_NODE_SELECTOR;
     private int selfQueryResultLimit = SELF_QUERY_RESULT_LIMIT;
@@ -134,6 +136,14 @@ public abstract class FactoryService extends StatelessService {
      */
     public int getSelfQueryResultLimit() {
         return this.selfQueryResultLimit;
+    }
+
+    /**
+     * Sets a flag that instructs the FactoryService to use the body of the
+     * POST request to determine a self-link for the child service.
+     */
+    public void setUseBodyForSelfLink(boolean useBody) {
+        this.useBodyForSelfLink = useBody;
     }
 
     /**
@@ -323,18 +333,23 @@ public abstract class FactoryService extends StatelessService {
                 // the body is already in native form (not serialized)
                 initialState = Utils.clone(initialState);
             }
+
             String suffix;
-            if (initialState == null) {
-                // create a unique path that is prefixed by the URI path of the factory
-                // We do not use UUID since its not a good primary key, given our index.
-                suffix = buildDefaultChildSelfLink();
-                initialState = new ServiceDocument();
+            if (this.useBodyForSelfLink) {
+                suffix = buildDefaultChildSelfLink(initialState);
             } else {
-                if (initialState.documentSelfLink == null) {
+                if (initialState == null) {
+                    // create a unique path that is prefixed by the URI path of the factory
+                    // We do not use UUID since its not a good primary key, given our index.
                     suffix = buildDefaultChildSelfLink();
+                    initialState = new ServiceDocument();
                 } else {
-                    // treat the supplied selfLink as a suffix
-                    suffix = initialState.documentSelfLink;
+                    if (initialState.documentSelfLink == null) {
+                        suffix = buildDefaultChildSelfLink();
+                    } else {
+                        // treat the supplied selfLink as a suffix
+                        suffix = initialState.documentSelfLink;
+                    }
                 }
             }
 
@@ -378,6 +393,13 @@ public abstract class FactoryService extends StatelessService {
 
     protected String buildDefaultChildSelfLink() {
         return getHost().nextUUID();
+    }
+
+    // This method is called by the factory only when useBodyForSelfLink is set,
+    // through setUseBodyForSelfLink. Can be overridden by factory services to
+    // create a custom self-link based on the body of the POST request.
+    protected String buildDefaultChildSelfLink(ServiceDocument document) {
+        return buildDefaultChildSelfLink();
     }
 
     @Override

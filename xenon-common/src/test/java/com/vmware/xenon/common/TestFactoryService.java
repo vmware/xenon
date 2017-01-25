@@ -1365,6 +1365,46 @@ public class TestFactoryService extends BasicReusableHostTestCase {
         assertEquals("Default Message modified", response.message);
     }
 
+    @Test
+    public void buildChildSelfLinksUsingRequestBody() throws Throwable {
+        FactoryService factoryService = new SomeFactoryService();
+        factoryService.setUseBodyForSelfLink(true);
+        factoryService.toggleOption(ServiceOption.IDEMPOTENT_POST, false);
+
+        String factoryPath = SomeFactoryService.SELF_LINK + "/self-links";
+
+        TestContext ctx = this.host.testCreate(1);
+        Operation post = Operation
+                .createPost(this.host, factoryPath)
+                .setCompletion(ctx.getCompletion());
+        this.host.startService(post, factoryService);
+        ctx.await();
+
+        TestRequestSender sender = new TestRequestSender(this.host);
+        SomeDocument state = new SomeDocument();
+        state.stringValue = UUID.randomUUID().toString();
+
+        // Create a service and verify that the self-link is
+        // based on the value set for the stringValue field.
+        Operation op = Operation
+                .createPost(this.host, factoryPath)
+                .setReferer(this.host.getUri())
+                .setBody(state);
+        Operation response = sender.sendAndWait(op);
+        String selfLink = response.getBody(SomeDocument.class).documentSelfLink;
+        assertTrue(selfLink.equals(factoryPath + "/" + state.stringValue));
+
+        // Try re-creating a service instance using the same stringValue
+        // field. Because the service does not use idempotent-post, we should
+        // get a CONFLICT error.
+        op = Operation
+                .createPost(this.host, factoryPath)
+                .setReferer(this.host.getUri())
+                .setBody(state);
+        TestRequestSender.FailureResponse failureResponse = sender.sendAndWaitFailure(op);
+        assertTrue(failureResponse.op.getStatusCode() == Operation.STATUS_CODE_CONFLICT);
+    }
+
     public static class SomeFactoryService extends FactoryService {
 
         public static final String SELF_LINK = FAC_PATH;
@@ -1379,6 +1419,10 @@ public class TestFactoryService extends BasicReusableHostTestCase {
             return new SomeStatefulService();
         }
 
+        @Override
+        public String buildDefaultChildSelfLink(ServiceDocument document) {
+            return ((SomeDocument)document).stringValue;
+        }
     }
 
     public static class SomeStatefulService extends StatefulService {
@@ -1399,9 +1443,8 @@ public class TestFactoryService extends BasicReusableHostTestCase {
     }
 
     public static class SomeDocument extends ServiceDocument {
-
         public int value;
-
+        public String stringValue;
     }
 
     public static class ExampleBarService extends StatelessService {
