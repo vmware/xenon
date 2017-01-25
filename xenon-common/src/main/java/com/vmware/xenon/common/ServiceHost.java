@@ -2880,7 +2880,17 @@ public class ServiceHost implements ServiceRequestSender {
                     }
 
                     ServiceDocument st = o.getBody(s.getStateType());
-                    if (!isAuthorized(s, st, op)) {
+
+                    boolean authorized = false;
+                    try {
+                        authorized = isAuthorized(s, st, op);
+                    } catch (Throwable t) {
+                        this.log(Level.SEVERE, "Authorization failed %s", t);
+                        op.fail(t);
+                        return;
+                    }
+
+                    if (!authorized) {
                         op.fail(Operation.STATUS_CODE_FORBIDDEN);
                         return;
                     }
