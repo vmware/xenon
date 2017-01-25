@@ -27,6 +27,11 @@
   toValidationErrorResponse(Throwable t, Operation op) can be used. The
   Operation argument is needed for localization of the error.
 
+* Added support for index upgrade from pre 1.1.1 version. Should be used only as a last resort.
+  If the `xenon.kryo.useLegacySerializer` system property is set to true, index contents
+  can be read back. If documents don't hold instances created by Collections.emptyList()
+  and friends upgrade will still be possible without using this property.
+
 ## 1.3.5
 
 * Add a new GatewayService to facilitate with blue/green upgrades of xenon

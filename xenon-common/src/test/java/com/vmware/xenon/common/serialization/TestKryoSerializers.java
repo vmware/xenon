@@ -22,6 +22,7 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.lang.reflect.Field;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.Collection;
@@ -43,6 +44,7 @@ import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.ServiceDocumentDescription;
 import com.vmware.xenon.common.TestUtils;
 import com.vmware.xenon.common.Utils;
+import com.vmware.xenon.common.serialization.KryoSerializers.KryoForObjectThreadLocal;
 import com.vmware.xenon.services.common.ExampleService;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
 
@@ -65,9 +67,8 @@ public class TestKryoSerializers {
         assertNull(deser.documentKind);
     }
 
-
     public void makeTestData() throws IOException {
-        String prefix = "post-1.1.1-";
+        String prefix = "pre-1.1.1-";
         ByteBuffer byteBuffer;
 
         byteBuffer = KryoSerializers.serializeObject(Collections.EMPTY_LIST, 1000);
@@ -104,24 +105,62 @@ public class TestKryoSerializers {
         writeToFile(byteBuffer, prefix + "singletonMap");
     }
 
+    @Test
+    public void readPre111() throws Exception {
+        String prefix = "pre-1.1.1-";
+
+        Field useLegacySerializerField = KryoSerializers.class.getDeclaredField("USE_LEGACY_KRYO_SERIALIZER");
+        useLegacySerializerField.setAccessible(true);
+
+        try {
+            KryoSerializers.register(new KryoForObjectThreadLocal(), false);
+            useLegacySerializerField.set(null, true);
+            readFileAndDeserialize(prefix + "emptyList");
+
+            readFileAndDeserialize(prefix + "emptyMap");
+            readFileAndDeserialize(prefix + "emptyNavigableMap");
+            readFileAndDeserialize(prefix + "emptySortedMap");
+
+            readFileAndDeserialize(prefix + "emptySet");
+
+            // Legacy Kryo does not support these classes;
+            // @see com.esotericsoftware.kryo.Kryo constructor for details
+
+            // readFileAndDeserialize(prefix + "asList");
+            // readFileAndDeserialize(prefix + "emptyNavigableSet");
+            // readFileAndDeserialize(prefix + "emptySortedSet");
+
+            readFileAndDeserialize(prefix + "singletonSet");
+            readFileAndDeserialize(prefix + "singletonList");
+            readFileAndDeserialize(prefix + "singletonMap");
+        } finally {
+            // restore context not to mess up other tests
+            useLegacySerializerField.set(null, false);
+            KryoSerializers.register(null, false);
+        }
+    }
 
     @Test
-    public void readPost1111() throws IOException {
+    public void readPost111() throws IOException {
         String prefix = "post-1.1.1-";
         assertCollectionEqualAndUsable(Collections.emptyList(), readFileAndDeserialize(prefix + "emptyList"));
         assertCollectionEqualAndUsable(Arrays.asList("test"), readFileAndDeserialize(prefix + "asList"));
 
         assertCollectionEqualAndUsable(Collections.emptyMap(), readFileAndDeserialize(prefix + "emptyMap"));
-        assertCollectionEqualAndUsable(Collections.emptyNavigableMap(),readFileAndDeserialize(prefix + "emptyNavigableMap"));
+        assertCollectionEqualAndUsable(Collections.emptyNavigableMap(),
+                readFileAndDeserialize(prefix + "emptyNavigableMap"));
         assertCollectionEqualAndUsable(Collections.emptySortedMap(), readFileAndDeserialize(prefix + "emptySortedMap"));
 
         assertCollectionEqualAndUsable(Collections.emptySet(), readFileAndDeserialize(prefix + "emptySet"));
-        assertCollectionEqualAndUsable(Collections.emptyNavigableSet(),readFileAndDeserialize(prefix + "emptyNavigableSet"));
+        assertCollectionEqualAndUsable(Collections.emptyNavigableSet(),
+                readFileAndDeserialize(prefix + "emptyNavigableSet"));
         assertCollectionEqualAndUsable(Collections.emptySortedSet(), readFileAndDeserialize(prefix + "emptySortedSet"));
 
         assertCollectionEqualAndUsable(Collections.singleton("test"), readFileAndDeserialize(prefix + "singletonSet"));
-        assertCollectionEqualAndUsable(Collections.singletonList("test"),readFileAndDeserialize(prefix + "singletonList"));
-        assertCollectionEqualAndUsable(Collections.singletonMap("k", "v"),readFileAndDeserialize(prefix + "singletonMap"));
+        assertCollectionEqualAndUsable(Collections.singletonList("test"),
+                readFileAndDeserialize(prefix + "singletonList"));
+        assertCollectionEqualAndUsable(Collections.singletonMap("k", "v"),
+                readFileAndDeserialize(prefix + "singletonMap"));
     }
 
     private Object readFileAndDeserialize(String name) throws IOException {
