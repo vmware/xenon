@@ -34,6 +34,7 @@ import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
@@ -306,6 +307,7 @@ public class LuceneDocumentIndexService extends StatelessService {
 
     private final Map<String, DocumentUpdateInfo> updatesPerLink = new HashMap<>();
     private final Map<String, Long> liveVersionsPerLink = new HashMap<>();
+    private final Set<String> immutableParentLinks = new ConcurrentSkipListSet<>();
     private long updateMapMemoryLimitMB;
 
     private Sort versionSort;
@@ -467,10 +469,11 @@ public class LuceneDocumentIndexService extends StatelessService {
         IndexWriterConfig iwc = new IndexWriterConfig(analyzer);
         Long totalMBs = getHost().getServiceMemoryLimitMB(getSelfLink(), MemoryLimitType.EXACT);
         if (totalMBs != null) {
-            long cacheSizeMB = (totalMBs * 9) / 10;
+            long cacheSizeMB = (totalMBs * 99) / 100;
             cacheSizeMB = Math.max(1, cacheSizeMB);
             iwc.setRAMBufferSizeMB(cacheSizeMB);
-            this.updateMapMemoryLimitMB = totalMBs / 10;
+            // reserve 1% of service memory budget for version cache
+            this.updateMapMemoryLimitMB = totalMBs / 100;
         }
 
         Directory dir = MMapDirectory.open(directory.toPath());
@@ -1882,6 +1885,14 @@ public class LuceneDocumentIndexService extends StatelessService {
             }
         }
 
+        if (!this.immutableParentLinks.isEmpty()) {
+            String parentLink = UriUtils.getParentPath(link);
+            if (this.immutableParentLinks.contains(parentLink)) {
+                // all immutable services have just a single, zero, version
+                return 0;
+            }
+        }
+
         if (hasOption(ServiceOption.INSTRUMENTATION)) {
             adjustStat(STAT_NAME_VERSION_CACHE_MISS_COUNT, 1);
         }
@@ -1899,7 +1910,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         long updateTime = updateTimeField.numericValue().longValue();
         // attempt to refresh or create new version cache entry, from the entry in the query results
         // The update method will reject the update if the version is stale
-        updateLinkInfoCache(link, latestVersion, updateTime);
+        updateLinkInfoCache(null, link, latestVersion, updateTime);
         return latestVersion;
     }
 
@@ -2142,7 +2153,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         // be reflected in the new searcher. If the start time would be used,
         // it is possible to race with updating the searcher and NOT have this
         // change be reflected in the searcher.
-        updateLinkInfoCache(link, newestVersion, Utils.getNowMicrosUtc());
+        updateLinkInfoCache(null, link, newestVersion, Utils.getNowMicrosUtc());
         delete.complete();
     }
 
@@ -2166,24 +2177,33 @@ public class LuceneDocumentIndexService extends StatelessService {
         // be reflected in the new searcher. If the start time would be used,
         // it is possible to race with updating the searcher and NOT have this
         // change be reflected in the searcher.
-        updateLinkInfoCache(sd.documentSelfLink, sd.documentVersion, Utils.getNowMicrosUtc());
+        updateLinkInfoCache(desc, sd.documentSelfLink, sd.documentVersion, Utils.getNowMicrosUtc());
         op.setBody(null).complete();
         checkDocumentRetentionLimit(sd, desc);
         applyActiveQueries(op, sd, desc);
     }
 
-    private void updateLinkInfoCache(String link, long version, long lastAccessTime) {
+    private void updateLinkInfoCache(ServiceDocumentDescription desc,
+            String link, long version, long lastAccessTime) {
         synchronized (this.searchSync) {
-            this.updatesPerLink.compute(link, (k, entry) -> {
-                if (entry == null) {
-                    entry = new DocumentUpdateInfo();
-                }
-                if (version >= entry.version) {
-                    entry.updateTimeMicros = Math.max(entry.updateTimeMicros, lastAccessTime);
-                    entry.version = version;
-                }
-                return entry;
-            });
+            if (desc != null
+                    && desc.serviceCapabilities != null
+                    && desc.serviceCapabilities.contains(ServiceOption.IMMUTABLE)) {
+                String parent = UriUtils.getParentPath(link);
+                this.immutableParentLinks.add(parent);
+            } else {
+                this.updatesPerLink.compute(link, (k, entry) -> {
+                    if (entry == null) {
+                        entry = new DocumentUpdateInfo();
+                    }
+                    if (version >= entry.version) {
+                        entry.updateTimeMicros = Math.max(entry.updateTimeMicros, lastAccessTime);
+                        entry.version = version;
+                    }
+                    return entry;
+                });
+            }
+
             // The index update time may only be increased.
             if (this.writerUpdateTimeMicros < lastAccessTime) {
                 this.writerUpdateTimeMicros = lastAccessTime;
