@@ -195,6 +195,14 @@ public class MigrationTaskService extends StatefulService {
          * finished successfully.
          */
         public Long latestSourceUpdateTimeMicros = 0L;
+
+        @Override
+        public String toString() {
+            String stage = taskInfo != null && taskInfo.stage != null ? taskInfo.stage.name() : "null";
+            return String.format(
+                    "MigrationTaskService: [documentSelfLink=%s] [stage=%s] [sourceFactoryLink=%s]",
+                    documentSelfLink, stage, sourceFactoryLink);
+        }
     }
 
     /** The request body that is sent to a transform service as input. */
@@ -234,6 +242,7 @@ public class MigrationTaskService extends StatefulService {
     @Override
     public void handleStart(Operation startPost) {
         State initState = getBody(startPost);
+        logInfo("Starting migration with initState: %s", initState);
         initState = initialize(initState);
         if (TaskState.isFinished(initState.taskInfo)) {
             startPost.complete();
@@ -342,6 +351,7 @@ public class MigrationTaskService extends StatefulService {
             return;
         }
         patchOperation.complete();
+        logInfo("After PATCH, the latest state is: %s", currentState);
         if (TaskState.isFinished(currentState.taskInfo) ||
                 TaskState.isFailed(currentState.taskInfo) ||
                 TaskState.isCancelled(currentState.taskInfo)) {
@@ -432,6 +442,8 @@ public class MigrationTaskService extends StatefulService {
     }
 
     private void resolveNodeGroupReferences(State currentState) {
+        logInfo("Resolving node group differences. [source=%s] [destination=%s]",
+                currentState.sourceNodeGroupReference, currentState.destinationNodeGroupReference);
         Operation sourceGet = Operation.createGet(currentState.sourceNodeGroupReference);
         Operation destinationGet = Operation.createGet(currentState.destinationNodeGroupReference);
 
@@ -509,6 +521,7 @@ public class MigrationTaskService extends StatefulService {
 
 
     private void computeFirstCurrentPageLinks(State currentState, List<URI> sourceURIs, List<URI> destinationURIs) {
+        logInfo("Node groups are stable. Computing pages to be migrated...");
         QueryTask queryTask = QueryTask.create(currentState.querySpec).setDirect(true);
         long documentExpirationTimeMicros = currentState.documentExpirationTimeMicros;
         queryTask.documentExpirationTimeMicros = documentExpirationTimeMicros;
@@ -582,6 +595,8 @@ public class MigrationTaskService extends StatefulService {
         Collection<Operation> gets = currentPageLinks.stream()
                 .map(uri -> Operation.createGet(uri))
                 .collect(Collectors.toSet());
+        logFine("Migrating results using %d GET operations, which came from %d currentPageLinks",
+                gets.size(), currentPageLinks.size());
 
         OperationJoin.create(gets)
             .setCompletion((os, ts) -> {
@@ -697,6 +712,8 @@ public class MigrationTaskService extends StatefulService {
 
         // post to transformation service
         if (state.transformationServiceLink != null) {
+            logInfo("Transforming results using [migrationOptions=%s] [transformLink=%s]",
+                    state.migrationOptions, state.transformationServiceLink);
             if (state.migrationOptions.contains(MigrationOption.USE_TRANSFORM_REQUEST)) {
                 transformUsingObject(state, cleanJson, nextPageLinks, destinationURIs, lastUpdateTimesPerOwner);
             } else {
