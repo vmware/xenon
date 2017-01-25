@@ -643,15 +643,25 @@ public class TestLuceneDocumentIndexService {
         double durationNanos = 0;
         long s = System.nanoTime();
         TestContext ctx = this.host.testCreate(this.iterationCount);
-        TestContext postCtx = this.host.testCreate(this.iterationCount % this.updatesPerQuery);
+        int postCount = this.iterationCount / this.updatesPerQuery;
+        if (postCount < 1) {
+            postCount = 1;
+        }
+
+        int posts = 0;
+        TestContext postCtx = this.host.testCreate(postCount);
         for (int i = 0; i < this.iterationCount; i++) {
             this.host.send(Operation.createGet(factoryUri).setCompletion(ctx.getCompletion()));
-            if (interleaveUpdates && i % this.updatesPerQuery == 0) {
+            if (posts < postCount && interleaveUpdates) {
+                if (postCount > 1 && i % this.updatesPerQuery != 0) {
+                    continue;
+                }
                 ExampleServiceState st = new ExampleServiceState();
                 st.name = "a-" + i;
                 this.host.send(Operation.createPost(factoryUri)
                         .setBody(st)
                         .setCompletion(postCtx.getCompletion()));
+                posts++;
             }
         }
         this.host.testWait(ctx);
@@ -1547,12 +1557,30 @@ public class TestLuceneDocumentIndexService {
                     ServiceHostState.DEFAULT_OPERATION_TIMEOUT_MICROS);
         }
         setUpHost(false);
+
+        // throughput test for immutable factory
         URI factoryUri = createImmutableFactoryService(this.host);
         prePopulateIndexWithServiceDocuments(factoryUri);
         verifyImmutableEagerServiceStop(factoryUri, this.documentCountAtStart);
-        doThroughputPost(true, factoryUri);
-        doThroughputPost(false, factoryUri);
+
+        boolean interleaveQueries = true;
+        long stVersion = doThroughputImmutablePost(0, interleaveQueries, factoryUri);
+        interleaveQueries = false;
+        doThroughputImmutablePost(stVersion, interleaveQueries, factoryUri);
+
+        // similar test but with regular, mutable, example factory
+        double initialPauseCount = getHostPauseCount();
+        interleaveQueries = true;
+        factoryUri = UriUtils.buildFactoryUri(this.host, ExampleService.class);
+        doMultipleIterationsThroughputPost(interleaveQueries, this.iterationCount, factoryUri);
+
+        interleaveQueries = false;
+        doMultipleIterationsThroughputPost(interleaveQueries, this.iterationCount, factoryUri);
+
+        double finalPauseCount = getHostPauseCount();
+        assertTrue(initialPauseCount == finalPauseCount);
     }
+
 
     @Test
     public void throughputPostWithExpirationLongRunning() throws Throwable {
@@ -1626,15 +1654,38 @@ public class TestLuceneDocumentIndexService {
         this.host.log(stringBuilder.toString());
     }
 
-    private void doThroughputPost(boolean interleaveQueries, URI factoryUri) throws Throwable {
+    private long doThroughputImmutablePost(long statVersion, boolean interleaveQueries,
+            URI immutableFactoryUri)
+            throws Throwable {
         this.host.log("Starting throughput POST, query interleaving: %s", interleaveQueries);
 
-        double initialPauseCount = getHostPauseCount();
-        doMultipleIterationsThroughputPost(interleaveQueries, this.iterationCount, factoryUri);
-        factoryUri = UriUtils.buildFactoryUri(this.host, ExampleService.class);
-        doMultipleIterationsThroughputPost(interleaveQueries, this.iterationCount, factoryUri);
-        double finalPauseCount = getHostPauseCount();
-        assertTrue(initialPauseCount == finalPauseCount);
+        // the version cache stats are updated once per maintenance so we must make sure
+        // they are updated at least once initially, and then at least once after the
+        // test has run
+
+        this.host.waitFor("stat did not update", () -> {
+            ServiceStat st = getLuceneStat(
+                    LuceneDocumentIndexService.STAT_NAME_VERSION_CACHE_ENTRY_COUNT);
+            return st.version > statVersion;
+        });
+        ServiceStat initialVersionStat = getLuceneStat(
+                LuceneDocumentIndexService.STAT_NAME_VERSION_CACHE_ENTRY_COUNT);
+
+        doMultipleIterationsThroughputPost(interleaveQueries, this.iterationCount,
+                immutableFactoryUri);
+        this.host.waitFor("stat did not update", () -> {
+            ServiceStat st = getLuceneStat(
+                    LuceneDocumentIndexService.STAT_NAME_VERSION_CACHE_ENTRY_COUNT);
+            return st.version > initialVersionStat.version + 1;
+        });
+        ServiceStat afterVersionStat = getLuceneStat(
+                LuceneDocumentIndexService.STAT_NAME_VERSION_CACHE_ENTRY_COUNT);
+
+        if (afterVersionStat.latestValue > initialVersionStat.latestValue) {
+            throw new IllegalStateException("Immutable services caused version cache increase");
+        }
+
+        return afterVersionStat.version;
     }
 
     void prePopulateIndexWithServiceDocuments(URI factoryUri) throws Throwable {
