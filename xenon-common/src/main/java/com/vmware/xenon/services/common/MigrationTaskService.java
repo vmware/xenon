@@ -565,11 +565,7 @@ public class MigrationTaskService extends StatefulService {
 
                 // if there are no next page links we are done early with migration
                 if (currentPageLinks.isEmpty()) {
-                    State patch = new State();
-                    patch.taskInfo = TaskState.createAsFinished();
-                    Operation.createPatch(getUri())
-                        .setBody(patch)
-                        .sendWith(this);
+                    patchToFinished(null);
                 } else {
                     migrate(currentState, currentPageLinks, destinationURIs, new HashMap<String, Long>());
                 }
@@ -583,11 +579,7 @@ public class MigrationTaskService extends StatefulService {
         // will call here with empty currentPageLinks.
         // In that case, this has processed all entries, thus self patch to mark finish, then exit.
         if (currentPageLinks.isEmpty()) {
-            State patch = new State();
-            patch.taskInfo = TaskState.createAsFinished();
-            patch.latestSourceUpdateTimeMicros = lastUpdateTimesPerOwner.values()
-                    .stream().mapToLong(x -> x).min().orElse(0);
-            Operation.createPatch(getUri()).setBody(patch).sendWith(this);
+            patchToFinished(lastUpdateTimesPerOwner);
             return;
         }
 
@@ -726,6 +718,11 @@ public class MigrationTaskService extends StatefulService {
     }
 
     private void migrateEntities(Map<Object, String> json, State state, Set<URI> nextPageLinks, List<URI> destinationURIs, Map<String, Long> lastUpdateTimesPerOwner) {
+        if (json.isEmpty()) {
+            logInfo("No entities to migrate.");
+            patchToFinished(null);
+            return;
+        }
         // create objects on destination
         Map<Operation, Object> posts = json.entrySet().stream()
                 .map(d -> {
@@ -738,22 +735,39 @@ public class MigrationTaskService extends StatefulService {
                 })
                 .collect(Collectors.toMap(e -> e.getKey(), e -> e.getValue()));
 
+
         OperationJoin.create(posts.keySet())
-            .setCompletion((os, ts) -> {
-                if (ts != null && !ts.isEmpty()) {
-                    if (state.migrationOptions.contains(MigrationOption.DELETE_AFTER)) {
-                        logWarning("Migrating entities failed with exception: %s; Retrying operation.", ts.values().iterator().next());
-                        useFallBack(state, posts, ts, nextPageLinks, destinationURIs, lastUpdateTimesPerOwner);
+                .setCompletion((os, ts) -> {
+                    if (ts != null && !ts.isEmpty()) {
+                        if (state.migrationOptions.contains(MigrationOption.DELETE_AFTER)) {
+                            logWarning(
+                                    "Migrating entities failed with exception: %s; Retrying operation.",
+                                    ts.values().iterator().next());
+                            useFallBack(state, posts, ts, nextPageLinks, destinationURIs,
+                                    lastUpdateTimesPerOwner);
+                        } else {
+                            failTask(ts.values());
+                            return;
+                        }
                     } else {
-                        failTask(ts.values());
-                        return;
+                        adjustStat(STAT_NAME_PROCESSED_DOCUMENTS, posts.size());
+                        migrate(state, nextPageLinks, destinationURIs, lastUpdateTimesPerOwner);
                     }
-                } else {
-                    adjustStat(STAT_NAME_PROCESSED_DOCUMENTS, posts.size());
-                    migrate(state, nextPageLinks, destinationURIs, lastUpdateTimesPerOwner);
-                }
-            })
-            .sendWith(this);
+                })
+                .sendWith(this);
+    }
+
+    /**
+     * Patch the task state to finished.
+     */
+    private void patchToFinished(Map<String, Long> lastUpdateTimesPerOwner) {
+        State patch = new State();
+        patch.taskInfo = TaskState.createAsFinished();
+        if (lastUpdateTimesPerOwner != null) {
+            patch.latestSourceUpdateTimeMicros = lastUpdateTimesPerOwner.values()
+                    .stream().mapToLong(x -> x).min().orElse(0);
+        }
+        Operation.createPatch(getUri()).setBody(patch).sendWith(this);
     }
 
     private void useFallBack(State state, Map<Operation, Object> posts, Map<Long, Throwable> operationFailures, Set<URI> nextPageLinks, List<URI> destinationURIs, Map<String, Long> lastUpdateTimesPerOwner) {
