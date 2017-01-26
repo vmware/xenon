@@ -721,22 +721,29 @@ public class MigrationTaskService extends StatefulService {
                 })
                 .collect(Collectors.toMap(e -> e.getKey(), e -> e.getValue()));
 
-        OperationJoin.create(posts.keySet())
-            .setCompletion((os, ts) -> {
-                if (ts != null && !ts.isEmpty()) {
-                    if (state.migrationOptions.contains(MigrationOption.DELETE_AFTER)) {
-                        logWarning("Migrating entities failed with exception: %s; Retrying operation.", ts.values().iterator().next());
-                        useFallBack(state, posts, ts, nextPageLinks, destinationURIs, lastUpdateTimesPerOwner);
-                    } else {
-                        failTask(ts.values());
-                        return;
-                    }
-                } else {
-                    adjustStat(STAT_NAME_PROCESSED_DOCUMENTS, posts.size());
-                    migrate(state, nextPageLinks, destinationURIs, lastUpdateTimesPerOwner);
-                }
-            })
-            .sendWith(this);
+        if (!posts.isEmpty()) {
+            OperationJoin.create(posts.keySet())
+                    .setCompletion((os, ts) -> {
+                        if (ts != null && !ts.isEmpty()) {
+                            if (state.migrationOptions.contains(MigrationOption.DELETE_AFTER)) {
+                                logWarning(
+                                        "Migrating entities failed with exception: %s; Retrying operation.",
+                                        ts.values().iterator().next());
+                                useFallBack(state, posts, ts, nextPageLinks, destinationURIs,
+                                        lastUpdateTimesPerOwner);
+                            } else {
+                                failTask(ts.values());
+                                return;
+                            }
+                        } else {
+                            adjustStat(STAT_NAME_PROCESSED_DOCUMENTS, posts.size());
+                            migrate(state, nextPageLinks, destinationURIs, lastUpdateTimesPerOwner);
+                        }
+                    })
+                    .sendWith(this);
+        } else {
+            logInfo("No entities to migrate.");
+        }
     }
 
     private void useFallBack(State state, Map<Operation, Object> posts, Map<Long, Throwable> operationFailures, Set<URI> nextPageLinks, List<URI> destinationURIs, Map<String, Long> lastUpdateTimesPerOwner) {
