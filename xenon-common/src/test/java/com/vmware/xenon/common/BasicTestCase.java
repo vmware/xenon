@@ -13,6 +13,8 @@
 
 package com.vmware.xenon.common;
 
+import java.util.concurrent.TimeUnit;
+
 import org.junit.Rule;
 import org.junit.rules.ExternalResource;
 import org.junit.rules.RuleChain;
@@ -46,6 +48,8 @@ public class BasicTestCase {
         protected void before() throws Throwable {
             CommandLineArgumentParser.parseFromProperties(BasicTestCase.this);
             BasicTestCase.this.host = createHost();
+            host.setMaintenanceIntervalMicros(TimeUnit.MILLISECONDS.toMicros(5));
+
             CommandLineArgumentParser.parseFromProperties(BasicTestCase.this.host);
             BasicTestCase.this.host.setStressTest(BasicTestCase.this.isStressTest);
             initializeHost(BasicTestCase.this.host);
