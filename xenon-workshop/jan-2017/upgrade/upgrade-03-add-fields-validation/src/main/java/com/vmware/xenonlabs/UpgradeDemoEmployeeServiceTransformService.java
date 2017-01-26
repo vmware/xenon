@@ -36,18 +36,17 @@ public class UpgradeDemoEmployeeServiceTransformService extends StatelessService
             logInfo("Defaulted 'location' of %s to: %s", state.documentSelfLink, state.location);
         }
 
-        try {
-            UpgradeDemoEmployeeService.validateManagerLink(state, this);
-        } catch (IllegalArgumentException e) {
-            logWarning("Problem when migrating: %s%n[managerLink=%s] does not exist. Will default it to 'null'",
-                    state, state.managerLink);
-            state.managerLink = null;
-        }
+        UpgradeDemoEmployeeService.validateManagerLink(state, this, (e) -> {
+            if (e != null) {
+                logWarning("Problem when migrating: %s%n[managerLink=%s] does not exist. Will default it to 'null'",
+                        state, state.managerLink);
+                state.managerLink = null;
+            }
 
-        MigrationTaskService.TransformResponse response = new MigrationTaskService.TransformResponse();
-        response.destinationLinks = new HashMap<>();
-        response.destinationLinks.put(Utils.toJson(state), request.destinationLink);
-        postOperation.setBody(response).complete();
+            MigrationTaskService.TransformResponse response = new MigrationTaskService.TransformResponse();
+            response.destinationLinks = new HashMap<>();
+            response.destinationLinks.put(Utils.toJson(state), request.destinationLink);
+            postOperation.setBody(response).complete();
+        });
     }
-
 }

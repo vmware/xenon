@@ -13,6 +13,11 @@
   <artifactId>xenon-workshop</artifactId>
   <packaging>pom</packaging>
 
+  <properties>
+    <!-- For xenon-workshop module, disable analysis(checkstyle, findbugs, pmd) not to slowdown build time -->
+    <skipAnalysis>true</skipAnalysis>
+  </properties>
+
   <build>
     <plugins>
       <plugin>

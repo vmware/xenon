@@ -13,9 +13,7 @@
 
 package com.vmware.xenonlabs;
 
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Consumer;
 import java.util.logging.Level;
 
 import com.vmware.xenon.common.Operation;
@@ -64,65 +62,22 @@ public class UpgradeDemoEmployeeService extends StatefulService {
      *
      * @param employee - the employee to validate
      * @param service  - the service performing the validation
-     * @throws IllegalArgumentException if the validation fails for any reason
+     * @param consumer - validation callback. if validation fails, it receives Throwable, otherwise null.
      */
-    static void validateManagerLink(Employee employee, Service service) {
-        if (employee.managerLink != null) {
-            ServiceHost host = service.getHost();
-            host.log(Level.INFO, "Verifying [managerLink=%s] exists...", employee.managerLink);
+    static void validateManagerLink(Employee employee, Service service, Consumer<Throwable> consumer) {
 
-            // Wait on returning until we get a result back
-            CountDownLatch latch = new CountDownLatch(1);
-            AtomicBoolean foundResult = new AtomicBoolean(false);
-
-            Operation getManager = Operation.createGet(service, employee.managerLink)
-                    .setReferer(service.getUri())
-                    .setCompletion((op, err) -> {
-
-                        if (err != null) {
-                            host.log(Level.WARNING, "Couldn't verify [managerLink=%s]: Error: %s",
-                                    employee.managerLink, Utils.toString(err));
-                        } else {
-                            Employee manager = op.getBody(Employee.class);
-                            host.log(Level.INFO, "Verified [managerLink=%s] exists: %s",
-                                    employee.managerLink, manager);
-                            foundResult.getAndSet(true);
-                        }
-                        latch.countDown();
-                    });
-            host.sendRequest(getManager);
-
-            /* Seems to have performance problems when done in bulk...
-            QueryTaskClientHelper.create(Employee.class)
-                    .setDocumentLink(employee.managerLink)
-                    .setResultHandler((result, e) -> {
-                        if (e != null) {
-                            host.log(Level.WARNING, "Couldn't verify [managerLink=%s]: Error: %s",
-                                    employee.managerLink, Utils.toString(e));
-                        } else if (result.hasResult()) {
-                            host.log(Level.INFO, "Verified [managerLink=%s] exists: %s", employee.managerLink,
-                                    result.getResult());
-                            foundResult.getAndSet(true);
-                        } else {
-                            host.log(Level.FINE, "No more results");
-                        }
-                        latch.countDown();
-                    })
-                    .sendWith(host);
-                    */
-
-            // Wait on latch to ensure managerLink exists
-            try {
-                if (!latch.await(host.getState().operationTimeoutMicros, TimeUnit.MICROSECONDS)) {
-                    throw new IllegalArgumentException("Timed out while verifying: " + employee.managerLink);
-                }
-                if (!foundResult.get()) {
-                    throw new IllegalArgumentException(employee.managerLink + ": manager does not exist");
-                }
-            } catch (InterruptedException e) {
-                throw new IllegalArgumentException("Interrupted while verifying whether managerLink exists", e);
-            }
+        if (employee.managerLink == null) {
+            consumer.accept(null);
+            return;
         }
+
+        ServiceHost host = service.getHost();
+        host.log(Level.INFO, "Verifying [managerLink=%s] exists...", employee.managerLink);
+
+        Operation.createGet(service, employee.managerLink)
+                .setReferer(service.getUri())
+                .setCompletion((o,e) -> consumer.accept(e))
+                .sendWith(host);
     }
 
     @Override
@@ -130,10 +85,14 @@ public class UpgradeDemoEmployeeService extends StatefulService {
         Employee s = startPost.getBody(Employee.class);
         // Checks for REQUIRED fields
         Utils.validateState(getStateDescription(), s);
-        validateManagerLink(s, this);
-        startPost.complete();
-
-        logInfo("Successfully created via POST: %s", s);
+        validateManagerLink(s, this, (e) -> {
+            if (e != null) {
+                startPost.fail(e);
+                return;
+            }
+            startPost.complete();
+            logInfo("Successfully created via POST: %s", s);
+        });
     }
 
     @Override
