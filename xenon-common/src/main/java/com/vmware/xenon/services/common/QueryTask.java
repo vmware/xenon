@@ -164,7 +164,12 @@ public class QueryTask extends ServiceDocument {
             /**
              * Groups results using the {@link QuerySpecification::groupByTerms}
              */
-            GROUP_BY
+            GROUP_BY,
+
+            /**
+             * Query will return latest versions of documents before {@link QuerySpecification#timeSnapshotBoundaryMicros}
+             */
+            TIME_SNAPSHOT
         }
 
         public enum SortOrder {
@@ -249,6 +254,12 @@ public class QueryTask extends ServiceDocument {
          * Infrastructure use only
          */
         public transient QueryRuntimeContext context = new QueryRuntimeContext();
+
+        /**
+         * Used with {@link QueryOption#TIME_SNAPSHOT}
+         */
+        @Since(ReleaseConstants.RELEASE_VERSION_1_3_6)
+        public Long timeSnapshotBoundaryMicros;
 
         public static String buildCompositeFieldName(String... fieldNames) {
             StringBuilder sb = new StringBuilder();
@@ -1149,6 +1160,14 @@ public class QueryTask extends ServiceDocument {
          */
         public Builder setIndexLink(String indexLink) {
             this.queryTask.indexLink = indexLink;
+            return this;
+        }
+
+        /**
+         *
+         */
+        public Builder setQueryTimeStamp(Long documentsUpdatedBeforeInMicros) {
+            this.querySpec.timeSnapshotBoundaryMicros = documentsUpdatedBeforeInMicros;
             return this;
         }
 
