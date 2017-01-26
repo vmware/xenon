@@ -738,6 +738,7 @@ public class TestLuceneDocumentIndexService {
     private void doServiceHostRestartWithDurableServices() throws Throwable {
         setUpHost(false);
         VerificationHost h = VerificationHost.create();
+        h.maintenanceIntervalMillis = 5;
         TemporaryFolder tmpFolder = new TemporaryFolder();
         tmpFolder.create();
         try {
@@ -749,7 +750,7 @@ public class TestLuceneDocumentIndexService {
             args.port = 0;
             args.sandbox = tmpFolder.getRoot().toPath();
             h.initialize(args);
-            h.setMaintenanceIntervalMicros(TimeUnit.MILLISECONDS.toMicros(250));
+            h.setMaintenanceIntervalMicros(TimeUnit.MILLISECONDS.toMicros(5));
             h.setOperationTimeOutMicros(this.host.getOperationTimeoutMicros());
             h.start();
             this.host.toggleServiceOptions(h.getDocumentIndexServiceUri(),
@@ -774,12 +775,13 @@ public class TestLuceneDocumentIndexService {
             h.stop();
 
             h = VerificationHost.create();
+            h.maintenanceIntervalMillis = 5;
             args.port = 0;
             h.initialize(args);
 
             if (!this.host.isStressTest()) {
                 h.setServiceStateCaching(false);
-                h.setMaintenanceIntervalMicros(TimeUnit.MILLISECONDS.toMicros(250));
+                h.setMaintenanceIntervalMicros(TimeUnit.MILLISECONDS.toMicros(5));
             }
 
             if (!VerificationHost.restartStatefulHost(h)) {
