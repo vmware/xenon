@@ -80,6 +80,7 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
     private static final URI FAKE_URI = UriUtils.buildUri("127.0.0.1", UNACCESSABLE_PORT, null, null);
     private static final String TRANSFORMATION = "transformation";
     private static final String TRANSFORMATION_V2 = "transformation-v2";
+    private static final String TRANSFORMATION_V3 = "transformation-v3";
     private URI sourceFactoryUri;
     private URI destinationFactoryUri;
     private URI exampleSourceFactory;
@@ -745,16 +746,25 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
     @Test
     public void successMigrateTransformedDocuments() throws Throwable {
         runSuccessfulTransformationTest(ExampleTranformationService.class, TRANSFORMATION,
-                EnumSet.noneOf(MigrationOption.class), "-transformed");
+                EnumSet.noneOf(MigrationOption.class), "-transformed", true);
     }
 
     @Test
     public void successMigrateTransformedDocumentsUsingTransformRequest() throws Throwable {
         runSuccessfulTransformationTest(ExampleTransformationServiceV2.class, TRANSFORMATION_V2,
-                EnumSet.of(MigrationOption.USE_TRANSFORM_REQUEST), "-transformed-v2");
+                EnumSet.of(MigrationOption.USE_TRANSFORM_REQUEST), "-transformed-v2", true);
     }
 
-    private void runSuccessfulTransformationTest(Class<? extends StatelessService> transformServiceClass, String transformPath, EnumSet<MigrationOption> migrationOptions, String expectedTransformedSuffix) throws Throwable {
+    @Test
+    public void successMigrateTransformResultNoDocuments() throws Throwable {
+        runSuccessfulTransformationTest(ExampleTransformationServiceV3.class, TRANSFORMATION_V3,
+                EnumSet.of(MigrationOption.USE_TRANSFORM_REQUEST), "-transformed-v3", false);
+    }
+
+    private void runSuccessfulTransformationTest(
+            Class<? extends StatelessService> transformServiceClass, String transformPath,
+            EnumSet<MigrationOption> migrationOptions, String expectedTransformedSuffix, boolean isVerifyMigration)
+            throws Throwable {
         // start transformation service
         URI u = UriUtils.buildUri(getDestinationHost(), transformPath);
         Operation post = Operation.createPost(u);
@@ -791,22 +801,25 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
 
         State waitForServiceCompletion = waitForServiceCompletion(out[0], getDestinationHost());
         ServiceStats stats = getStats(out[0], getDestinationHost());
-        Long processedDocuments = Long.valueOf((long) stats.entries.get(MigrationTaskService.STAT_NAME_PROCESSED_DOCUMENTS).latestValue);
-
         assertEquals(waitForServiceCompletion.taskInfo.stage, TaskStage.FINISHED);
-        assertEquals(Long.valueOf(this.serviceCount), processedDocuments);
 
-        // check if object is in new host and transformed
-        Collection<URI> uris = links.stream()
-                .map(link -> UriUtils.buildUri(getDestinationHost(), link))
-                .collect(Collectors.toList());
-        getDestinationHost().getServiceState(EnumSet.noneOf(TestProperty.class),
-                ExampleServiceState.class, uris)
-                .values()
-                .stream()
-                .forEach(state -> {
-                    assertTrue(state.name.endsWith(expectedTransformedSuffix));
-                });
+        if (isVerifyMigration) {
+            Long processedDocuments = Long.valueOf((long) stats.entries
+                    .get(MigrationTaskService.STAT_NAME_PROCESSED_DOCUMENTS).latestValue);
+            assertEquals(Long.valueOf(this.serviceCount), processedDocuments);
+
+            // check if object is in new host and transformed
+            Collection<URI> uris = links.stream()
+                    .map(link -> UriUtils.buildUri(getDestinationHost(), link))
+                    .collect(Collectors.toList());
+            getDestinationHost().getServiceState(EnumSet.noneOf(TestProperty.class),
+                    ExampleServiceState.class, uris)
+                    .values()
+                    .stream()
+                    .forEach(state -> {
+                        assertTrue(state.name.endsWith(expectedTransformedSuffix));
+                    });
+        }
     }
 
     @Test
@@ -943,6 +956,18 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
             MigrationTaskService.TransformResponse response = new MigrationTaskService.TransformResponse();
             response.destinationLinks = new HashMap<>();
             response.destinationLinks.put(Utils.toJson(state), request.destinationLink);
+            postOperation.setBody(response).complete();
+        }
+    }
+
+    /**
+     * Transformation service which returns empty documents
+     */
+    public static class ExampleTransformationServiceV3 extends StatelessService {
+        @Override
+        public void handlePost(Operation postOperation) {
+            MigrationTaskService.TransformResponse response = new MigrationTaskService.TransformResponse();
+            response.destinationLinks = new HashMap<>();
             postOperation.setBody(response).complete();
         }
     }
