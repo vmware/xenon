@@ -33,6 +33,10 @@
   created by Collections.emptyList() and friends upgrade will still be possible
   without using this property.
 
+* Added support for QueryOption#TIME_SNAPSHOT. The new query option will return results that contain
+  latest versions of documents as on a given time. QuerySpecification#timeSnapshotBoundaryMicros
+  will allow specifying the time.
+
 ## 1.3.5
 
 * Add a new GatewayService to facilitate with blue/green upgrades of xenon
