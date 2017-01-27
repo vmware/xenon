@@ -13,10 +13,19 @@
 
 package com.vmware.xenon.common;
 
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.net.URL;
+import java.security.AccessController;
+import java.security.PrivilegedActionException;
+import java.security.PrivilegedExceptionAction;
 import java.text.MessageFormat;
+import java.util.Enumeration;
 import java.util.List;
 import java.util.Locale;
 import java.util.MissingResourceException;
+import java.util.PropertyResourceBundle;
 import java.util.ResourceBundle;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
@@ -26,9 +35,13 @@ import java.util.stream.Collectors;
  */
 public class LocalizationUtil {
 
+    private static final String PROPERTIES_EXT = "properties";
+
+    private static final String I18N_FOLDER = "i18n";
+
     public static final Locale DEFAULT_LOCALE = Locale.ENGLISH;
 
-    private static final String MESSAGES_BASE_FILENAME = "i18n/messages";
+    private static final String MESSAGES_BASE_FILENAME = "/messages";
 
     private LocalizationUtil() {
     }
@@ -58,19 +71,75 @@ public class LocalizationUtil {
             locale = DEFAULT_LOCALE;
         }
 
-        ResourceBundle messages = ResourceBundle.getBundle(MESSAGES_BASE_FILENAME, locale);
-
-        String message;
+        String message  = "";
         try {
-            message = messages.getString(e.getErrorMessageCode());
-        } catch (MissingResourceException ex) {
+            Enumeration<URL> urls = e.getClass().getClassLoader().getResources(I18N_FOLDER);
+            while (urls.hasMoreElements()) {
+                URL url = urls.nextElement();
+                ResourceBundle messages = getResourceBundle(locale, url);
+
+                if (messages.containsKey(e.getErrorMessageCode())) {
+                    message = messages.getString(e.getErrorMessageCode());
+                    break;
+                }
+            }
+
+            if (message.isEmpty()) {
+                message = e.getMessage();
+            } else {
+                MessageFormat f = new MessageFormat(message, locale);
+                message = f.format(e.getArguments());
+            }
+        } catch (MissingResourceException | IOException ex) {
             message = e.getMessage();
         }
 
-        MessageFormat f = new MessageFormat(message, locale);
-        message = f.format(e.getArguments());
-
         return message;
+    }
+
+    private static ResourceBundle getResourceBundle(Locale locale, URL url) {
+        // Load the file from the file system instead of the classpath in order to be able to load by
+        // absolute path each of the resource files i18n/messages_*.properties. URL here represents the
+        // path to the current resources/i18n folder.
+        ResourceBundle messages = ResourceBundle.getBundle(url.getPath() + MESSAGES_BASE_FILENAME, locale,
+                new ResourceBundle.Control() {
+                @Override
+                public ResourceBundle newBundle(String baseName, Locale locale,
+                        String format, ClassLoader loader, boolean reload)
+                    throws IllegalAccessException, InstantiationException,
+                    IOException {
+                    if (format.equals("java.properties")) {
+                        String bundleName = toBundleName(baseName, locale);
+                        final String resourceName = toResourceName(bundleName, PROPERTIES_EXT);
+
+                        InputStream stream = null;
+                        try {
+                            stream = AccessController.doPrivileged(
+                                new PrivilegedExceptionAction<InputStream>() {
+                                    @Override
+                                    public InputStream run() throws IOException {
+                                        InputStream is = new FileInputStream(resourceName);
+                                        return is;
+                                    }
+                                });
+                        } catch (PrivilegedActionException e) {
+                            throw (IOException) e.getException();
+                        }
+                        ResourceBundle bundle = null;
+                        if (stream != null) {
+                            try {
+                                bundle = new PropertyResourceBundle(stream);
+                            } finally {
+                                stream.close();
+                            }
+                        }
+                        return bundle;
+                    } else {
+                        return super.newBundle(baseName, locale, format, loader, reload);
+                    }
+                }
+            });
+        return messages;
     }
 
     public static Locale resolveLocale(Operation op) {
