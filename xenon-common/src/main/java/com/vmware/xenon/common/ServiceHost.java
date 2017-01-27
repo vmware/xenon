@@ -2933,9 +2933,14 @@ public class ServiceHost implements ServiceRequestSender {
             document.documentKind = Utils.buildKind(clazz);
         }
 
-        ServiceDocumentDescription documentDescription = buildDocumentDescription(service);
-        QueryFilter queryFilter = ctx.getResourceQueryFilter(op.getAction());
-        if (queryFilter == null || !queryFilter.evaluate(document, documentDescription)) {
+        try {
+            ServiceDocumentDescription documentDescription = buildDocumentDescription(service);
+            QueryFilter queryFilter = ctx.getResourceQueryFilter(op.getAction());
+            if (queryFilter == null || !queryFilter.evaluate(document, documentDescription)) {
+                return false;
+            }
+        } catch (Throwable t) {
+            log(Level.SEVERE, "Unexpected failure during authorization check. %s", t.toString());
             return false;
         }
 
