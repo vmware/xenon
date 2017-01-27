@@ -2886,6 +2886,73 @@ public class TestLuceneDocumentIndexService {
         assertTrue(mismatchCount == 0);
     }
 
+    @Test
+    public void testImplicitQueryPageSize() throws Throwable {
+        setUpHost(false);
+        this.indexService.toggleOption(ServiceOption.INSTRUMENTATION, true);
+        URI factoryUri = UriUtils.buildUri(this.host, ExampleService.FACTORY_LINK);
+        Map<URI, ExampleServiceState> exampleStates = this.host.doFactoryChildServiceStart(
+                null, this.serviceCount, ExampleServiceState.class,
+                (o) -> {
+                    ExampleServiceState state = new ExampleServiceState();
+                    state.name = UUID.randomUUID().toString();
+                    o.setBody(state);
+                }, factoryUri);
+
+        Collection<URI> exampleUris = exampleStates.keySet();
+
+        this.host.testStart(this.serviceCount * this.updateCount);
+        for (int i = 0; i < this.updateCount; i++) {
+            for (URI u : exampleUris) {
+                ExampleServiceState state = new ExampleServiceState();
+                state.name = i + "";
+                this.host.send(Operation.createPut(u)
+                        .setBody(state)
+                        .setCompletion(this.host.getCompletion()));
+            }
+        }
+        this.host.testWait();
+
+        Query query = QueryTask.Query.Builder.create()
+                .addKindFieldClause(ExampleServiceState.class)
+                .build();
+
+        QueryTask.QuerySpecification querySpec = new QueryTask.QuerySpecification();
+        querySpec.query = query;
+        querySpec.options = EnumSet.of(QueryOption.TOP_RESULTS);
+        querySpec.resultLimit = (int) this.serviceCount;
+
+        // Sort by document version in order to ensure that the document index service sees all
+        // non-current document versions first.
+        querySpec.sortTerm = new QueryTask.QueryTerm();
+        querySpec.sortTerm.propertyName = "documentVersion";
+        querySpec.sortTerm.propertyType = ServiceDocumentDescription.TypeName.LONG;
+
+        int pageSize = LuceneDocumentIndexService.getImplicitQueryProcessingPageSize();
+        try {
+            // Without an implicit processing limit, we should see n passes per query
+            verifyImplicitQueryPageSize(querySpec, 1, (1 + this.updateCount));
+            // With an implicit processing limit, we should see one pass per query
+            int size = (int) (1 + this.serviceCount) * this.updateCount;
+            verifyImplicitQueryPageSize(querySpec, size, 1.0);
+        } finally {
+            LuceneDocumentIndexService.setImplicitQueryProcessingPageSize(pageSize);
+        }
+    }
+
+    private void verifyImplicitQueryPageSize(QueryTask.QuerySpecification querySpec, int pageSize,
+            double expectedIterationCount) {
+
+        LuceneDocumentIndexService.setImplicitQueryProcessingPageSize(pageSize);
+
+        QueryTask qt = QueryTask.create(querySpec).setDirect(true);
+        this.host.createQueryTaskService(qt, false, true, qt, null);
+        assertEquals(qt.results.documentLinks.size(), this.serviceCount);
+
+        ServiceStat st = getLuceneStat(LuceneDocumentIndexService.STAT_NAME_ITERATIONS_PER_QUERY);
+        assertEquals(st.latestValue, expectedIterationCount, 0.01);
+    }
+
     /**
      * Test Lucene index upgrade to Version.CURRENT.  On host start, the index should
      * be upgraded in place.  We've embedded an old index with a example service documents.
