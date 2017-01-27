@@ -2886,6 +2886,70 @@ public class TestLuceneDocumentIndexService {
         assertTrue(mismatchCount == 0);
     }
 
+    @Test
+    public void testImplicitQueryPageSize() throws Throwable {
+        setUpHost(false);
+        URI factoryUri = UriUtils.buildUri(this.host, ExampleService.FACTORY_LINK);
+        Map<URI, ExampleServiceState> exampleStates = this.host.doFactoryChildServiceStart(
+                null, this.serviceCount, ExampleServiceState.class,
+                (o) -> {
+                    ExampleServiceState state = new ExampleServiceState();
+                    state.name = UUID.randomUUID().toString();
+                    o.setBody(state);
+                }, factoryUri);
+
+        Collection<URI> exampleUris = exampleStates.keySet();
+
+        this.host.testStart(this.serviceCount * 1000);
+        for (int i = 0; i < 1000; i++) {
+            for (URI u : exampleUris) {
+                ExampleServiceState state = new ExampleServiceState();
+                state.name = i + "";
+                this.host.send(Operation.createPut(u)
+                        .setBody(state)
+                        .setCompletion(this.host.getCompletion()));
+            }
+        }
+        this.host.testWait();
+
+        Query query = QueryTask.Query.Builder.create()
+                .addKindFieldClause(ExampleServiceState.class)
+                .build();
+
+        QueryTask.QuerySpecification querySpec = new QueryTask.QuerySpecification();
+        querySpec.query = query;
+        querySpec.options = EnumSet.of(QueryOption.TOP_RESULTS);
+        querySpec.resultLimit = (int) this.serviceCount;
+
+        // Warm up the index to ensure that our measurements aren't hugely off
+        for (int i = 0; i < 10; i++) {
+            QueryTask qt = QueryTask.create(querySpec).setDirect(true);
+            this.host.createQueryTaskService(qt, false, true, qt, null);
+            assertEquals(qt.results.documentLinks.size(), this.serviceCount);
+        }
+
+        // Do a query
+        QueryTask qt = QueryTask.create(querySpec).setDirect(true);
+        this.host.createQueryTaskService(qt, false, true, qt, null);
+        assertEquals(qt.results.documentLinks.size(), this.serviceCount);
+        long duration = qt.results.queryTimeMicros;
+
+        int processingSize = LuceneDocumentIndexService.getImplicitQueryProcessingPageSize();
+        LuceneDocumentIndexService.setImplicitQueryProcessingPageSize(
+                (int) this.serviceCount * 1000);
+
+        try {
+            querySpec.resultLimit = 1;
+            qt = QueryTask.create(querySpec).setDirect(true);
+            this.host.createQueryTaskService(qt, false, true, qt, null);
+            assertEquals(qt.results.documentLinks.size(), 1);
+            assertTrue(qt.results.queryTimeMicros * 100 > duration);
+            assertTrue(qt.results.queryTimeMicros < 100 * duration);
+        } finally {
+            LuceneDocumentIndexService.setImplicitQueryProcessingPageSize(processingSize);
+        }
+    }
+
     /**
      * Test Lucene index upgrade to Version.CURRENT.  On host start, the index should
      * be upgraded in place.  We've embedded an old index with a example service documents.
