@@ -388,6 +388,8 @@ public class Operation implements Cloneable {
     public static final String HOST_HEADER = "host";
     public static final String ACCEPT_HEADER = "accept";
     public static final String ACCEPT_ENCODING_HEADER = "accept-encoding";
+    public static final String IF_NONE_MATCH = "if-none-match";
+    public static final String ETAG = "etag";
     public static final String AUTHORIZATION_HEADER = "Authorization";
     public static final String ACCEPT_LANGUAGE_HEADER = "accept-language";
 

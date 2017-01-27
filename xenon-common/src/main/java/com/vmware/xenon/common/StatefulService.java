@@ -21,6 +21,7 @@ import java.net.URI;
 import java.util.Collection;
 import java.util.EnumSet;
 import java.util.HashSet;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.CancellationException;
 import java.util.function.Supplier;
@@ -688,6 +689,31 @@ public class StatefulService implements Service {
     }
 
     /**
+     * Handles a GET request honouring the if-none-match header and serving 304 if
+     * the current state has the same ETag. Etag are calculated using {@link Utils#calculateEtag(ServiceDocument)}
+     *
+     * @param get
+     */
+    protected void handleGetEtag(Operation get) {
+        String matchVersion = get.getRequestHeader(Operation.IF_NONE_MATCH);
+        if (matchVersion == null) {
+            handleGetDefault(get);
+            return;
+        }
+
+        ServiceDocument state = getState(get);
+        String etag = Utils.calculateEtag(state);
+        if (Objects.equals(etag, matchVersion)) {
+            get.setStatusCode(Operation.STATUS_CODE_NOT_MODIFIED);
+            get.setBody(null);
+            get.complete();
+            return;
+        }
+
+        handleGetDefault(get);
+    }
+
+    /**
      * Replace current state, with the body of the request, in one step
      */
     public void handlePut(Operation put) {
@@ -697,6 +723,10 @@ public class StatefulService implements Service {
     }
 
     public void handleGet(Operation get) {
+        handleGetDefault(get);
+    }
+
+    private void handleGetDefault(Operation get) {
         if (!hasPendingTransactions()) {
             handleGetSimple(get);
             return;
