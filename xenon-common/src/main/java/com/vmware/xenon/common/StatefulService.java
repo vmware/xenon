@@ -56,6 +56,9 @@ public class StatefulService implements Service {
         public boolean isUpdateActive;
         public int getActiveCount;
 
+        public Operation currentOp;
+        public String currentOpCallStack;
+
         public transient ServiceHost host;
         public transient OperationProcessingChain opProcessingChain;
 
@@ -340,6 +343,9 @@ public class StatefulService implements Service {
                 } else if (!this.context.operationQueue.offer(op)) {
                     getHost().failRequestLimitExceeded(op);
                 }
+
+                // request was successfully queued.
+                checkCurrentOperationIfExpired();
                 return RETURN_TRUE_FLAG;
             } else {
                 this.context.isUpdateActive = true;
@@ -348,9 +354,34 @@ public class StatefulService implements Service {
         return pausedOrOdlStopped;
     }
 
+    private void checkCurrentOperationIfExpired() {
+        //this.logInfo("checking current operation if expired");
+        Operation op = this.context.currentOp;
+        if (op != null) {
+            long opExp = op.getExpirationMicrosUtc();
+            long currentTime = Utils.getSystemNowMicrosUtc();
+            if (opExp <= currentTime) {
+                this.logInfo("New request was queued, but head of queue is expired. %s", op.toString());
+                this.logInfo("Current Operation call-stack. %s", this.context.currentOpCallStack);
+            }
+        }
+    }
+
     @Override
     public void handleRequest(Operation request) {
+        setCurrentOperation(request);
         handleRequest(request, OperationProcessingStage.LOADING_STATE);
+    }
+
+    private void setCurrentOperation(Operation request) {
+        if (request.isUpdate() ||
+                request.getAction() == Action.POST ||
+                request.getAction() == Action.DELETE) {
+            synchronized (this.context) {
+                this.context.currentOp = request;
+                this.context.currentOpCallStack = Utils.toString(new Exception());
+            }
+        }
     }
 
     @Override

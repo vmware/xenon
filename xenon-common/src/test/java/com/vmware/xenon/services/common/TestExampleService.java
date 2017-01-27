@@ -42,6 +42,8 @@ import com.vmware.xenon.common.ServiceDocumentDescription.PropertyIndexingOption
 import com.vmware.xenon.common.ServiceDocumentDescription.PropertyUsageOption;
 import com.vmware.xenon.common.ServiceDocumentQueryResult;
 import com.vmware.xenon.common.ServiceHost;
+import com.vmware.xenon.common.StatefulService;
+import com.vmware.xenon.common.StatelessService;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
 import com.vmware.xenon.common.test.AuthTestUtils;
@@ -73,6 +75,69 @@ public class TestExampleService {
         }
     }
 
+    public static class QueueValidationService extends StatefulService {
+        public static final String FACTORY_LINK = ServiceUriPaths.CORE + "/queue-examples";
+
+        public static FactoryService createFactory() {
+            return FactoryService.create(QueueValidationService.class);
+        }
+
+        public QueueValidationService() {
+            super(ExampleServiceState.class);
+        }
+
+        @Override
+        public void handlePatch(Operation op) {
+            ExampleServiceState state = op.getBody(ExampleServiceState.class);
+            if (state.counter == 100) {
+                try {
+                    Thread.sleep(5000);
+                } catch (Throwable e) {
+                }
+            }
+            op.complete();
+            return;
+        }
+    }
+
+
+    public static class QueueCallerService extends StatelessService {
+        public static final String SELF_LINK = ServiceUriPaths.CORE + "/queue-caller";
+
+        public static FactoryService createFactory() {
+            return FactoryService.create(QueueValidationService.class);
+        }
+
+        public QueueCallerService() {
+            super(ExampleServiceState.class);
+            super.toggleOption(ServiceOption.URI_NAMESPACE_OWNER, true);
+        }
+
+        @Override
+        public void handleRequest(Operation op) {
+            String path = op.getUri().getPath()
+                    .replace(QueueCallerService.SELF_LINK, QueueValidationService.FACTORY_LINK);
+            // Forward the request to the selected backend node.
+            Operation outboundOp = op.clone();
+            outboundOp.setUri(UriUtils.buildUri(getHost(), path));
+            outboundOp.setExpiration(Utils.fromNowMicrosUtc(TimeUnit.MILLISECONDS.toMicros(2)));
+            outboundOp.setCompletion((o, e) -> {
+                op.transferResponseHeadersFrom(o);
+                op.setStatusCode(o.getStatusCode());
+                op.setContentType(o.getContentType());
+                op.setContentLength(o.getContentLength());
+                op.setBodyNoCloning(o.getBodyRaw());
+                if (e != null) {
+                    op.fail(e);
+                    return;
+                }
+                op.complete();
+            });
+            getHost().sendRequest(outboundOp);
+        }
+    }
+
+
     private static final Long COUNTER_VALUE = Long.MAX_VALUE;
     private static final String PREFIX = "example-";
 
@@ -100,6 +165,56 @@ public class TestExampleService {
         this.hostsToCleanup.clear();
     }
 
+    @Test
+    public void testQueuing() throws Throwable {
+        VerificationHost host = createAndStartHost(false);
+        host.startFactory(new QueueValidationService());
+        host.startService(new QueueCallerService());
+
+        ExampleServiceState state = new ExampleServiceState();
+        state.name = "foo";
+        state.counter = 1L;
+
+        List<String> documentLink = new ArrayList<>();
+
+        TestContext ctx = host.testCreate(1);
+        Operation.createPost(host, QueueValidationService.FACTORY_LINK)
+                .setBody(state)
+                .setReferer(host.getUri())
+                .setCompletion((o, e) -> {
+                    if (e != null) {
+                        ctx.failIteration(e);
+                        return;
+                    }
+                    String documentSelfLink = o.getBody(ExampleServiceState.class).documentSelfLink;
+                    documentLink.add(UriUtils.getLastPathSegment(documentSelfLink));
+                    ctx.completeIteration();
+                })
+                .sendWith(host);
+        ctx.await();
+
+        ExampleServiceState patchState = new ExampleServiceState();
+        patchState.counter = 100L;
+
+        String link = documentLink.get(0);
+        TestContext ctx2 = host.testCreate(100);
+        for (int i = 0; i < 100; i++) {
+            patchState.counter += i;
+            Operation.createPatch(host, QueueCallerService.SELF_LINK + "/" + link)
+                    .setBody(patchState)
+                    .setReferer(host.getUri())
+                    .setCompletion((o, e) -> {
+                        if (e != null) {
+                            ctx2.failIteration(e);
+                            return;
+                        }
+                        ctx2.completeIteration();
+                    })
+                    .sendWith(host);
+        }
+        ctx2.await();
+
+    }
 
     @Test
     public void singleNodeFactoryPost() throws Throwable {
