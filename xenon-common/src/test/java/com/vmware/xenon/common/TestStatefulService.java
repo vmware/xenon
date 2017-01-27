@@ -83,6 +83,19 @@ class DeleteVerificationTestService extends StatefulService {
     }
 }
 
+class ExampleServiceWithEtag extends StatefulService {
+    public static final String FACTORY_LINK = ServiceUriPaths.CORE + "/tests/etag-examples";
+
+    public ExampleServiceWithEtag() {
+        super(ExampleServiceState.class);
+    }
+
+    @Override
+    public void handleGet(Operation get) {
+        handleGetEtag(get);
+    }
+}
+
 class DeleteVerificationTestFactoryService extends FactoryService {
     public static final String SELF_LINK = ServiceUriPaths.CORE + "/tests/deleteverification";
 
@@ -301,6 +314,41 @@ public class TestStatefulService extends BasicReusableHostTestCase {
                 .noneOf(Service.ServiceOption.class);
 
         doThroughputPutTest(props, type, caps);
+    }
+
+    @Test
+    public void getWithEtag() {
+        this.host.startFactory(new ExampleServiceWithEtag());
+
+        ExampleServiceState doc = new ExampleServiceState();
+        doc.name = "name";
+        doc.id = "id";
+
+        Operation post = Operation.createPost(UriUtils.buildFactoryUri(this.host, ExampleServiceWithEtag.class))
+                .setBody(doc);
+
+        Operation response = this.host.waitForResponse(post);
+        ExampleServiceState initialState = response.getBody(ExampleServiceState.class);
+
+        // no etag
+        Operation get = Operation.createGet(UriUtils.buildUri(this.host, initialState.documentSelfLink));
+        response = this.host.waitForResponse(get);
+        assertEquals(Operation.STATUS_CODE_OK, response.getStatusCode());
+
+        // valid etag
+        String etag = Utils.calculateEtag(initialState);
+        get = Operation.createGet(UriUtils.buildUri(this.host, initialState.documentSelfLink))
+                .addRequestHeader(Operation.IF_NONE_MATCH_HEADER, etag);
+
+        response = this.host.waitForResponse(get);
+        assertEquals(Operation.STATUS_CODE_NOT_MODIFIED, response.getStatusCode());
+
+        // "expired" etag
+        get = Operation.createGet(UriUtils.buildUri(this.host, initialState.documentSelfLink))
+                .addRequestHeader(Operation.IF_NONE_MATCH_HEADER, "\"made-up-etag\"");
+
+        response = this.host.waitForResponse(get);
+        assertEquals(Operation.STATUS_CODE_OK, response.getStatusCode());
     }
 
     @Test

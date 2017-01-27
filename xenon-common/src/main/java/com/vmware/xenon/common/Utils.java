@@ -1103,6 +1103,25 @@ public final class Utils {
     }
 
     /**
+     * Calculate an ETag of a document based on its version and epoch.
+     * @param doc
+     * @return
+     */
+    public static String calculateEtag(ServiceDocument doc) {
+        if (doc == null) {
+            return null;
+        }
+
+        return new StringBuilder(6)
+                .append('\"')
+                .append(doc.documentEpoch == null ? 0 : doc.documentEpoch)
+                .append('-')
+                .append(doc.documentVersion)
+                .append('\"')
+                .toString();
+    }
+
+    /**
      * Update the state of collections that are part of the service state
      * @param currentState The current state
      * @param op Operation with the patch request

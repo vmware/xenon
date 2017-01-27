@@ -2,6 +2,9 @@
 
 ## 1.3.7-SNAPSHOT
 
+* Support for ETags on stateful service. It must be enabled explicitly by
+  overriding handleGet(). ETags are based by default on the document version and epoch.
+
 ## 1.3.6
 
 * Integrations with 3rd party libraries are migrated to a [new repository](https://github.com/vmware/xenon-utils)
