@@ -248,6 +248,8 @@ public class LuceneDocumentIndexService extends StatelessService {
     public static final String STAT_NAME_MAINTENANCE_VERSION_RETENTION_DURATION_MICROS =
             "maintenanceVersionRetentionDurationMicros";
 
+    public static final String STAT_NAME_DOCUMENT_KIND_QUERY_COUNT_FORMAT = "documentKindQueryCount-%s";
+
     private static final String STAT_NAME_MAINTENANCE_MEMORY_LIMIT_DURATION_MICROS =
             "maintenanceMemoryLimitDurationMicros";
 
@@ -461,6 +463,34 @@ public class LuceneDocumentIndexService extends StatelessService {
         ServiceStat hourStat = getTimeSeriesHistogramStat(name + ServiceStats.STAT_NAME_SUFFIX_PER_HOUR,
                 (int) TimeUnit.HOURS.toMinutes(1), TimeUnit.MINUTES.toMillis(1), type);
         this.setStat(hourStat, v);
+    }
+
+    private String getQueryStatName(QueryTask.Query query) {
+        if (query.term != null) {
+            if (query.term.propertyName.equals(ServiceDocument.FIELD_NAME_KIND)) {
+                return String.format(STAT_NAME_DOCUMENT_KIND_QUERY_COUNT_FORMAT, query.term.matchValue);
+            }
+            return null;
+        }
+
+        StringBuilder kindSb = new StringBuilder();
+        for (QueryTask.Query clause : query.booleanClauses) {
+            if (clause.term == null || clause.term.propertyName == null || clause.term.matchValue == null) {
+                continue;
+            }
+            if (clause.term.propertyName.equals(ServiceDocument.FIELD_NAME_KIND)) {
+                if (kindSb.length() > 0) {
+                    kindSb.append(", ");
+                }
+                kindSb.append(clause.term.matchValue);
+            }
+        }
+
+        if (kindSb.length() > 0) {
+            return String.format(STAT_NAME_DOCUMENT_KIND_QUERY_COUNT_FORMAT, kindSb.toString());
+        }
+
+        return null;
     }
 
     public IndexWriter createWriter(File directory, boolean doUpgrade) throws Exception {
@@ -1000,6 +1030,11 @@ public class LuceneDocumentIndexService extends StatelessService {
         tq = updateQuery(op, tq, queryStartTimeMicros);
         if (tq == null) {
             return false;
+        }
+
+        if (qs != null && qs.query != null && this.hasOption(ServiceOption.INSTRUMENTATION)) {
+            String queryStat = getQueryStatName(qs.query);
+            this.adjustStat(queryStat, 1);
         }
 
         ServiceDocumentQueryResult result;

@@ -686,12 +686,38 @@ public class TestQueryTaskService {
         for (int i = 0; i < this.iterationCount; i++) {
             doThroughputQuery(services, q, 1, newState, interleaveWrites);
         }
+
         // now update the index, once for every N queries. This will have a significant
         // impact on performance
         interleaveWrites = true;
         for (int i = 0; i < this.iterationCount; i++) {
             doThroughputQuery(services, q, 1, newState, interleaveWrites);
         }
+    }
+
+    @Test
+    public void documentKindQueryStats() throws Throwable {
+        setUpHost();
+        Query q = Query.Builder.create()
+                .addKindFieldClause(QueryValidationServiceState.class)
+                .addKindFieldClause(ExampleServiceState.class)
+                .build();
+
+        QueryTask task = QueryTask.Builder.createDirectTask()
+                .setQuery(q).build();
+
+        for (int i = 0; i < this.queryCount; i++) {
+            this.host.createQueryTaskService(task, false,
+                    task.taskInfo.isDirect, task, null);
+        }
+
+        Map<String, ServiceStat> stats = this.host.getServiceStats(this.host.getDocumentIndexServiceUri());
+        String statName = String.format(LuceneDocumentIndexService.STAT_NAME_DOCUMENT_KIND_QUERY_COUNT_FORMAT,
+                Utils.buildKind(QueryValidationServiceState.class) + ", " +
+                        Utils.buildKind(ExampleServiceState.class));
+        ServiceStat kindStat = stats.get(statName);
+        assertNotNull(kindStat);
+        assertEquals(this.queryCount, kindStat.latestValue, 0);
     }
 
     public void doThroughputQuery(List<URI> services, Query q, int expectedResults,
