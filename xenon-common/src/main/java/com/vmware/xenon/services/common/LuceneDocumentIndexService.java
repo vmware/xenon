@@ -129,6 +129,12 @@ public class LuceneDocumentIndexService extends StatelessService {
 
     public static final String FILE_PATH_LUCENE = "lucene";
 
+    public static final String KIND_STAT_FORMAT = "kind-%s";
+
+    public static final String WILDCARD_SELF_LINK_STAT_FORMAT = "link-%s";
+
+    public static final String MISC_QUERY_STAT = "misc-query";
+
     public static final int DEFAULT_INDEX_FILE_COUNT_THRESHOLD_FOR_WRITER_REFRESH = 10000;
 
     public static final int DEFAULT_INDEX_SEARCHER_COUNT_THRESHOLD = 200;
@@ -354,6 +360,7 @@ public class LuceneDocumentIndexService extends StatelessService {
     public LuceneDocumentIndexService(String indexDirectory) {
         super(ServiceDocument.class);
         super.toggleOption(ServiceOption.PERIODIC_MAINTENANCE, true);
+        super.toggleOption(ServiceOption.INSTRUMENTATION, true);
         this.indexDirectory = indexDirectory;
     }
 
@@ -779,7 +786,7 @@ public class LuceneDocumentIndexService extends StatelessService {
             s = createPaginatedQuerySearcher(task.documentExpirationTimeMicros, this.writer);
         }
 
-        if (!queryIndex(s, op, null, qs.options, luceneQuery, lucenePage,
+        if (!queryIndex(s, op, null, qs.options, task.querySpec.query, luceneQuery, lucenePage,
                 qs.resultLimit,
                 task.documentExpirationTimeMicros, task.indexLink, rsp, qs)) {
             op.setBodyNoCloning(rsp).complete();
@@ -906,7 +913,7 @@ public class LuceneDocumentIndexService extends StatelessService {
 
         ServiceDocumentQueryResult rsp = new ServiceDocumentQueryResult();
         rsp.documentLinks = new ArrayList<>();
-        if (queryIndex(null, get, selfLink, options, tq, null, resultLimit, 0, null, rsp,
+        if (queryIndex(null, get, selfLink, options, null, tq, null, resultLimit, 0, null, rsp,
                 null)) {
             return;
         }
@@ -964,6 +971,7 @@ public class LuceneDocumentIndexService extends StatelessService {
             Operation op,
             String selfLinkPrefix,
             EnumSet<QueryOption> options,
+            QueryTask.Query q,
             Query tq,
             LuceneQueryPage page,
             int count,
@@ -1002,6 +1010,11 @@ public class LuceneDocumentIndexService extends StatelessService {
             return false;
         }
 
+        if (q != null) {
+            String queryStat = createQueryStatName(q);
+            this.adjustStat(queryStat, 1);
+        }
+
         ServiceDocumentQueryResult result;
         if (options.contains(QueryOption.COUNT)) {
             result = queryIndexCount(options, s, tq, rsp, qs, queryStartTimeMicros);
@@ -1016,6 +1029,49 @@ public class LuceneDocumentIndexService extends StatelessService {
         }
         op.setBodyNoCloning(result).complete();
         return true;
+    }
+
+    private String createQueryStatName(QueryTask.Query query) {
+        if (query.term != null) {
+            if (query.term.propertyName.equals(ServiceDocument.FIELD_NAME_KIND)) {
+                return String.format(KIND_STAT_FORMAT, query.term.matchValue);
+            }
+            if (query.term.propertyName.equals(ServiceDocument.FIELD_NAME_SELF_LINK)
+                    && query.term.matchType == MatchType.WILDCARD) {
+                return String.format(WILDCARD_SELF_LINK_STAT_FORMAT, query.term.matchValue);
+            }
+            return MISC_QUERY_STAT;
+        }
+
+        StringBuilder kindSb = new StringBuilder();
+        StringBuilder selfLinkSb = new StringBuilder();
+        for (QueryTask.Query clause : query.booleanClauses) {
+            if (clause.term == null || clause.term.propertyName == null || clause.term.matchValue == null) {
+                continue;
+            }
+            if (clause.term.propertyName.equals(ServiceDocument.FIELD_NAME_KIND)) {
+                if (kindSb.length() > 0) {
+                    kindSb.append(", ");
+                }
+                kindSb.append(clause.term.matchValue);
+            } else if (clause.term.propertyName.equals(ServiceDocument.FIELD_NAME_SELF_LINK) &&
+                    clause.term.matchType == MatchType.WILDCARD) {
+                if (selfLinkSb.length() > 0) {
+                    selfLinkSb.append(", ");
+                }
+                selfLinkSb.append(clause.term.matchValue);
+            }
+        }
+
+        if (kindSb.length() > 0) {
+            return String.format(KIND_STAT_FORMAT, kindSb.toString());
+        }
+
+        if (selfLinkSb.length() > 0) {
+            return String.format(WILDCARD_SELF_LINK_STAT_FORMAT, selfLinkSb.toString());
+        }
+
+        return MISC_QUERY_STAT;
     }
 
     private void queryIndexSingle(String selfLink, Operation op, Long version)
