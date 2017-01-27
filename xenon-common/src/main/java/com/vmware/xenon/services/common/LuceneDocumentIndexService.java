@@ -135,6 +135,8 @@ public class LuceneDocumentIndexService extends StatelessService {
 
     public static final int DEFAULT_QUERY_RESULT_LIMIT = 10000;
 
+    public static final int DEFAULT_QUERY_PAGE_RESULT_LIMIT = 10000;
+
     private static final String DOCUMENTS_WITHOUT_RESULTS = "DocumentsWithoutResults";
 
     private String indexDirectory;
@@ -149,12 +151,22 @@ public class LuceneDocumentIndexService extends StatelessService {
 
     private static int queryResultLimit = DEFAULT_QUERY_RESULT_LIMIT;
 
+    private static int queryPageResultLimit = DEFAULT_QUERY_PAGE_RESULT_LIMIT;
+
     public static void setImplicitQueryResultLimit(int limit) {
         queryResultLimit = limit;
     }
 
-    public static int getImplicitQueryResultLimit() {
+    public static int getImplicitQueryPageSize() {
         return queryResultLimit;
+    }
+
+    public static void setImplicitQueryProcessingPageSize(int limit) {
+        queryPageResultLimit = limit;
+    }
+
+    public static int getImplicitQueryProcessingPageSize() {
+        return queryPageResultLimit;
     }
 
     public static void setIndexFileCountThresholdForWriterRefresh(int count) {
@@ -284,7 +296,6 @@ public class LuceneDocumentIndexService extends StatelessService {
             return new LuceneIndexDocumentHelper();
         }
     };
-
 
     /**
      * Searcher refresh time, per searcher (using hash code)
@@ -1349,25 +1360,36 @@ public class LuceneDocumentIndexService extends StatelessService {
         boolean useDirectSearch = options.contains(QueryOption.TOP_RESULTS)
                 && options.contains(QueryOption.INCLUDE_ALL_VERSIONS);
         int resultLimit = count;
+        int hitCount;
 
+        if (isPaginatedQuery && !hasPage) {
+            // QueryTask.resultLimit was set, but we don't have a page param yet, which means this
+            // is the initial POST to create the queryTask. Since the initial query results will be
+            // discarded in this case, just set the limit to 1 and do not process results.
+            resultLimit = 1;
+            hitCount = 1;
+            shouldProcessResults = false;
+            rsp.documentCount = 1L;
+        } else if (!hasExplicitLimit) {
+            // The query does not have an explicit result limit set. We still specify an implicit
+            // limit in order to avoid out of memory conditions, since Lucene will use the limit in
+            // order to allocate a results array; however, if the number of hits returned by Lucene
+            // is higher than the default limit, we will fail the query later.
+            hitCount = queryResultLimit;
+        } else if (!options.contains(QueryOption.INCLUDE_ALL_VERSIONS)) {
+            // The query has an explicit result limit set, but the value is specified in terms of
+            // the number of desired results in the QueryTask, not the expected number of Lucene
+            // documents which must be processed in order to generate these results. Adjust the
+            // Lucene query page size to account for this discrepancy.
+            hitCount = Math.max(resultLimit, queryPageResultLimit);
+        } else {
+            hitCount = resultLimit;
+        }
 
         if (hasPage) {
             // For example, via GET of QueryTask.nextPageLink
             after = page.after;
             rsp.prevPageLink = page.previousPageLink;
-        } else if (isPaginatedQuery) {
-            // QueryTask.resultLimit was set, but we don't have a page param yet,
-            // which means this is the initial POST to create the QueryTask.
-            // Since we are going to throw away TopDocs.hits in this case,
-            // just set the limit to 1 and do not process the results.
-            resultLimit = 1;
-            shouldProcessResults = false;
-            rsp.documentCount = 1L;
-        } else if (!hasExplicitLimit) {
-            // The query does not have a explicit limit set. We still use a limit, to avoid out of memory
-            // exceptions, since lucene will use the limit to allocated a score / sorted values array!
-            // If the number of hits returned by lucene is higher than the default limit, we will fail the query
-            resultLimit = queryResultLimit;
         }
 
         Sort sort = this.versionSort;
@@ -1392,15 +1414,15 @@ public class LuceneDocumentIndexService extends StatelessService {
             // searchAfter(). This will prevent Lucene from holding the full result set in memory.
             if (useDirectSearch) {
                 if (sort == null) {
-                    results = s.search(tq, resultLimit);
+                    results = s.search(tq, hitCount);
                 } else {
-                    results = s.search(tq, resultLimit, sort, false, false);
+                    results = s.search(tq, hitCount, sort, false, false);
                 }
             } else {
                 if (sort == null) {
-                    results = s.searchAfter(after, tq, resultLimit);
+                    results = s.searchAfter(after, tq, hitCount);
                 } else {
-                    results = s.searchAfter(after, tq, resultLimit, sort, false, false);
+                    results = s.searchAfter(after, tq, hitCount, sort, false, false);
                 }
             }
 
@@ -1411,7 +1433,7 @@ public class LuceneDocumentIndexService extends StatelessService {
             long end = Utils.getNowMicrosUtc();
 
             if (!hasExplicitLimit && !hasPage && !isPaginatedQuery
-                    && results.totalHits > resultLimit) {
+                    && results.totalHits > hitCount) {
                 throw new IllegalStateException(
                         "Query returned large number of results, please specify a resultLimit. Results:"
                                 + results.totalHits);
@@ -1461,7 +1483,7 @@ public class LuceneDocumentIndexService extends StatelessService {
                     boolean createNextPageLink = true;
                     if (hasPage) {
                         createNextPageLink = checkNextPageHasEntry(bottom, options, s,
-                                tq, sort, count, qs, queryStartTimeMicros);
+                                tq, sort, hitCount, qs, queryStartTimeMicros);
                     }
 
                     if (createNextPageLink) {
@@ -1479,7 +1501,6 @@ public class LuceneDocumentIndexService extends StatelessService {
 
         return rsp;
     }
-
 
     /**
      * Checks next page exists or not.
