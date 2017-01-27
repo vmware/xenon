@@ -2171,7 +2171,31 @@ public class LuceneDocumentIndexService extends StatelessService {
         if (hasOption(ServiceOption.INSTRUMENTATION)) {
             startNanos = System.nanoTime();
         }
-        wr.addDocument(doc);
+
+        boolean isOutOfOrder = false;
+        if (desc.versionRetentionLimit == 1) {
+            synchronized (this.searchSync) {
+                DocumentUpdateInfo dui = this.updatesPerLink.get(sd.documentSelfLink);
+                if (dui != null && dui.version > sd.documentVersion) {
+                    isOutOfOrder = true;
+                } else {
+                    updateLinkInfoCache(desc, sd.documentSelfLink, sd.documentVersion,
+                            Utils.getNowMicrosUtc());
+                    Term selfLinkTerm = new Term(ServiceDocument.FIELD_NAME_SELF_LINK,
+                            sd.documentSelfLink);
+
+                    wr.updateDocument(selfLinkTerm, doc);
+                }
+            }
+        }
+
+        if (isOutOfOrder) {
+            op.setBody(null).complete();
+            return;
+        }
+
+
+        //wr.addDocument(doc);
 
         if (hasOption(ServiceOption.INSTRUMENTATION)) {
             long durationNanos = System.nanoTime() - startNanos;

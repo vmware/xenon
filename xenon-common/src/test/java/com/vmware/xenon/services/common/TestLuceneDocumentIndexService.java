@@ -1666,7 +1666,7 @@ public class TestLuceneDocumentIndexService {
         this.host.waitFor("stat did not update", () -> {
             ServiceStat st = getLuceneStat(
                     LuceneDocumentIndexService.STAT_NAME_VERSION_CACHE_ENTRY_COUNT);
-            return st.version > statVersion;
+            return st.version >= statVersion;
         });
         ServiceStat initialVersionStat = getLuceneStat(
                 LuceneDocumentIndexService.STAT_NAME_VERSION_CACHE_ENTRY_COUNT);
@@ -2800,6 +2800,20 @@ public class TestLuceneDocumentIndexService {
                                 versions.size(), upperBound);
                     });
             throw t;
+        }
+    }
+
+    @Test
+    public void throughputPutSingleVersionRetention() throws Throwable {
+        long limit = MinimalTestService.getVersionRetentionLimit();
+        long floor = MinimalTestService.getVersionRetentionFloor();
+        try {
+            MinimalTestService.setVersionRetentionLimit(1);
+            MinimalTestService.setVersionRetentionFloor(1);
+            throughputPut();
+        } finally {
+            MinimalTestService.setVersionRetentionLimit(limit);
+            MinimalTestService.setVersionRetentionFloor(floor);
         }
     }
 
