@@ -1427,6 +1427,7 @@ public class VerificationHost extends ExampleServiceHost {
             URI serviceUri = UriUtils.buildUri(this, st.documentSelfLink);
             ServiceDocument beforeSt = statesBeforeUpdate.get(serviceUri);
             long expectedVersion = beforeSt.documentVersion + count;
+
             if (st.documentVersion != expectedVersion) {
                 QueryTestUtils.logVersionInfoForService(this.sender, serviceUri, expectedVersion);
                 throw new IllegalStateException("got " + st.documentVersion + ", expected "
