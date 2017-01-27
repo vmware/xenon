@@ -1666,7 +1666,7 @@ public class TestLuceneDocumentIndexService {
         this.host.waitFor("stat did not update", () -> {
             ServiceStat st = getLuceneStat(
                     LuceneDocumentIndexService.STAT_NAME_VERSION_CACHE_ENTRY_COUNT);
-            return st.version > statVersion;
+            return st.version >= statVersion;
         });
         ServiceStat initialVersionStat = getLuceneStat(
                 LuceneDocumentIndexService.STAT_NAME_VERSION_CACHE_ENTRY_COUNT);
@@ -2804,11 +2804,34 @@ public class TestLuceneDocumentIndexService {
     }
 
     @Test
+    public void throughputPutSingleVersionRetention() throws Throwable {
+        long limit = this.retentionLimit;
+        long floor = this.retentionFloor;
+        try {
+            this.retentionFloor = 1L;
+            this.retentionLimit = 1L;
+            throughputPut();
+            this.host.waitFor("stat did not update", () -> {
+                ServiceStat indexDocSingleVersionCountSt = getLuceneStat(
+                        LuceneDocumentIndexService.STAT_NAME_VERSION_RETENTION_SERVICE_COUNT
+                                + ServiceStats.STAT_NAME_SUFFIX_PER_DAY);
+
+                return indexDocSingleVersionCountSt.latestValue >= this.serviceCount;
+            });
+        } finally {
+            this.retentionFloor = floor;
+            this.retentionLimit = limit;
+        }
+    }
+
+    @Test
     public void throughputPut() throws Throwable {
+        int serviceThreshold = LuceneDocumentIndexService.getVersionRetentionServiceThreshold();
         long limit = MinimalTestService.getVersionRetentionLimit();
         long floor = MinimalTestService.getVersionRetentionFloor();
         try {
             setUpHost(false);
+            LuceneDocumentIndexService.setVersionRetentionServiceThreshold((int) this.serviceCount);
             MinimalTestService.setVersionRetentionLimit(this.retentionLimit);
             MinimalTestService.setVersionRetentionFloor(this.retentionFloor);
             if (this.host.isStressTest()) {
@@ -2819,6 +2842,7 @@ public class TestLuceneDocumentIndexService {
             Utils.setTimeDriftThreshold(Utils.DEFAULT_TIME_DRIFT_THRESHOLD_MICROS);
             MinimalTestService.setVersionRetentionLimit(limit);
             MinimalTestService.setVersionRetentionFloor(floor);
+            LuceneDocumentIndexService.setVersionRetentionServiceThreshold(serviceThreshold);
         }
     }
 
@@ -2826,8 +2850,6 @@ public class TestLuceneDocumentIndexService {
             Integer putCount,
             EnumSet<ServiceOption> caps) throws Throwable {
         EnumSet<TestProperty> props = EnumSet.noneOf(TestProperty.class);
-
-        this.indexService.toggleOption(ServiceOption.INSTRUMENTATION, this.enableInstrumentation);
 
         if (caps == null) {
             caps = EnumSet.of(ServiceOption.PERSISTENCE);

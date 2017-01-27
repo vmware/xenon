@@ -232,6 +232,8 @@ public class LuceneDocumentIndexService extends StatelessService {
 
     public static final String STAT_NAME_INDEXED_DOCUMENT_COUNT = "indexedDocumentCount";
 
+    public static final String STAT_NAME_SINGLE_VERSION_DOCUMENT_DELETE_COUNT = "singleVersionDocumentDeleteCount";
+
     public static final String STAT_NAME_FIELD_COUNT_PER_DOCUMENT = "fieldCountPerDocument";
 
     public static final String STAT_NAME_INDEXING_DURATION_MICROS = "indexingDurationMicros";
@@ -269,7 +271,7 @@ public class LuceneDocumentIndexService extends StatelessService {
     private static final String STAT_NAME_MAINTENANCE_FILE_LIMIT_REFRESH_DURATION_MICROS =
             "maintenanceFileLimitRefreshDurationMicros";
 
-    private static final String STAT_NAME_VERSION_RETENTION_SERVICE_COUNT = "versionRetentionServiceCount";
+    static final String STAT_NAME_VERSION_RETENTION_SERVICE_COUNT = "versionRetentionServiceCount";
 
     static final String STAT_NAME_ITERATIONS_PER_QUERY = "iterationsPerQuery";
 
@@ -2174,11 +2176,22 @@ public class LuceneDocumentIndexService extends StatelessService {
         }
     }
 
-    private void checkDocumentRetentionLimit(ServiceDocument state, ServiceDocumentDescription desc) {
+    private void checkDocumentRetentionLimit(ServiceDocument state, ServiceDocumentDescription desc)
+            throws IOException {
 
         if (desc.versionRetentionLimit
                 == ServiceDocumentDescription.FIELD_VALUE_DISABLED_VERSION_RETENTION) {
             return;
+        }
+
+        if (desc.versionRetentionLimit == 1) {
+            if (hasOption(ServiceOption.INSTRUMENTATION)) {
+                adjustStat(STAT_NAME_SINGLE_VERSION_DOCUMENT_DELETE_COUNT, 1);
+            }
+            // delete now, avoid deferring until maintenance
+            //deleteDocumentFromIndex(state.documentSelfLink, state.documentVersion - 1,
+            //        state.documentVersion - 1, this.writer);
+            //return;
         }
 
         long limit = Math.max(1L, desc.versionRetentionLimit);
@@ -2253,15 +2266,7 @@ public class LuceneDocumentIndexService extends StatelessService {
             return;
         }
 
-        Query linkQuery = new TermQuery(new Term(ServiceDocument.FIELD_NAME_SELF_LINK, link));
-        Query versionQuery = LongPoint.newRangeQuery(ServiceDocument.FIELD_NAME_VERSION,
-                oldestVersion, newestVersion);
-
-        BooleanQuery.Builder builder = new BooleanQuery.Builder();
-        builder.add(versionQuery, Occur.MUST);
-        builder.add(linkQuery, Occur.MUST);
-        BooleanQuery bq = builder.build();
-        wr.deleteDocuments(bq);
+        deleteDocumentFromIndex(link, oldestVersion, newestVersion, wr);
 
         // Use time AFTER index was updated to be sure that it can be compared
         // against the time the searcher was updated and have this change
@@ -2272,12 +2277,26 @@ public class LuceneDocumentIndexService extends StatelessService {
         delete.complete();
     }
 
+    private void deleteDocumentFromIndex(String link, long oldestVersion, long newestVersion,
+            IndexWriter wr) throws IOException {
+        Query linkQuery = new TermQuery(new Term(ServiceDocument.FIELD_NAME_SELF_LINK, link));
+        Query versionQuery = LongPoint.newRangeQuery(ServiceDocument.FIELD_NAME_VERSION,
+                oldestVersion, newestVersion);
+
+        BooleanQuery.Builder builder = new BooleanQuery.Builder();
+        builder.add(versionQuery, Occur.MUST);
+        builder.add(linkQuery, Occur.MUST);
+        BooleanQuery bq = builder.build();
+        wr.deleteDocuments(bq);
+    }
+
     private void addDocumentToIndex(IndexWriter wr, Operation op, Document doc, ServiceDocument sd,
             ServiceDocumentDescription desc) throws IOException {
         long startNanos = 0;
         if (hasOption(ServiceOption.INSTRUMENTATION)) {
             startNanos = System.nanoTime();
         }
+
         wr.addDocument(doc);
 
         if (hasOption(ServiceOption.INSTRUMENTATION)) {
@@ -2598,6 +2617,8 @@ public class LuceneDocumentIndexService extends StatelessService {
         if (links.isEmpty()) {
             return;
         }
+
+        logInfo("%d", links.size());
 
         adjustTimeSeriesStat(STAT_NAME_VERSION_RETENTION_SERVICE_COUNT, AGGREGATION_TYPE_SUM,
                 links.size());
