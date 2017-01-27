@@ -2,6 +2,12 @@
 
 ## 1.3.7-SNAPSHOT
 
+* The index service will now purge all document versions for a previously
+  deleted self link, if its recreated with POST + PRAGMA_FORCE_INDEX_UPDATE.
+  This avoids duplicate versions, for the same self link appearing in the index,
+  which can happen due to synchronization or migration (even if the runtime does
+  do a best effort to increment the version when a self is recreated)
+
 * Added support for simple ODATA filtering on service stats, using URI query parameters.
   For example:
   GET /core/document-index/stats?$filter name eq indexedDocumentCount
