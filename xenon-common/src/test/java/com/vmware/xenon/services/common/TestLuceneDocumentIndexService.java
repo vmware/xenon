@@ -1696,13 +1696,16 @@ public class TestLuceneDocumentIndexService {
         this.host.waitFor("stat did not update", () -> {
             ServiceStat st = getLuceneStat(
                     LuceneDocumentIndexService.STAT_NAME_VERSION_CACHE_ENTRY_COUNT);
-            return st.version > statVersion;
+            return st.version >= statVersion;
         });
         ServiceStat initialVersionStat = getLuceneStat(
                 LuceneDocumentIndexService.STAT_NAME_VERSION_CACHE_ENTRY_COUNT);
 
         doMultipleIterationsThroughputPost(interleaveQueries, this.iterationCount,
                 immutableFactoryUri);
+        if (!this.enableInstrumentation && this.host.isStressTest()) {
+            return initialVersionStat.version;
+        }
         this.host.waitFor("stat did not update", () -> {
             ServiceStat st = getLuceneStat(
                     LuceneDocumentIndexService.STAT_NAME_VERSION_CACHE_ENTRY_COUNT);
@@ -2055,6 +2058,75 @@ public class TestLuceneDocumentIndexService {
             }
         }
 
+    }
+
+    @Test
+    public void forcedIndexUpdateDuplicateVersionRemoval() throws Throwable {
+        setUpHost(false);
+        URI factoryUri = UriUtils.buildFactoryUri(this.host, ExampleService.class);
+        long originalExpMicros = Utils.getSystemNowMicrosUtc() + TimeUnit.MINUTES.toMicros(1);
+        Consumer<Operation> setBody = (o) -> {
+            ExampleServiceState body = new ExampleServiceState();
+            body.name = UUID.randomUUID().toString();
+            body.documentExpirationTimeMicros = originalExpMicros;
+            o.setBody(body);
+        };
+
+        long totalExpectedVersionCount = 3;
+        // create N documents with expiration set to future time
+        Map<URI, ExampleServiceState> services = this.host.doFactoryChildServiceStart(
+                null,
+                this.serviceCount, ExampleServiceState.class,
+                setBody, factoryUri);
+
+        // patch once, each service, to build up some version history
+        TestContext ctx = this.host.testCreate(services.size());
+        for (ExampleServiceState st : services.values()) {
+            st.counter = 1L;
+            Operation patch = Operation.createPatch(this.host, st.documentSelfLink)
+                    .setBody(st)
+                    .setCompletion(ctx.getCompletion());
+            this.host.send(patch);
+        }
+        this.host.testWait(ctx);
+
+        // now delete everything. We should now have 3 versions (0,1,2) per link
+        this.host.deleteAllChildServices(factoryUri);
+
+        // get all versions
+        Query kindQuery = Query.Builder.create()
+                .addKindFieldClause(ExampleServiceState.class)
+                .build();
+        QueryTask qt = QueryTask.Builder
+                .createDirectTask()
+                .addOption(QueryOption.INCLUDE_ALL_VERSIONS)
+                .addOption(QueryOption.EXPAND_CONTENT)
+                .setQuery(kindQuery)
+                .build();
+        this.host.createQueryTaskService(qt, false, true, qt, null);
+        this.host.log("Results before forced update: %s", Utils.toJsonHtml(qt.results));
+        assertEquals(services.size() * totalExpectedVersionCount, (long) qt.results.documentCount);
+
+        // now force a POST, which should create a new version history, per link,
+        // and a single new version per link, at zero
+        ctx = this.host.testCreate(services.size());
+        for (ExampleServiceState st : services.values()) {
+            st.counter = totalExpectedVersionCount + 1;
+            st.documentVersion = 0L;
+            Operation post = Operation.createPost(factoryUri)
+                    .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_FORCE_INDEX_UPDATE)
+                    .setBody(st)
+                    .setCompletion(ctx.getCompletion());
+            this.host.send(post);
+        }
+        this.host.testWait(ctx);
+
+        qt.results = null;
+
+        // query again, verify version history has been reset
+        this.host.createQueryTaskService(qt, false, true, qt, null);
+        this.host.log("Results after forced update: %s", Utils.toJsonHtml(qt.results));
+        assertEquals(services.size(), (long) qt.results.documentCount);
     }
 
     /**
@@ -2834,11 +2906,34 @@ public class TestLuceneDocumentIndexService {
     }
 
     @Test
+    public void throughputPutSingleVersionRetention() throws Throwable {
+        long limit = this.retentionLimit;
+        long floor = this.retentionFloor;
+        try {
+            this.retentionFloor = 1L;
+            this.retentionLimit = 1L;
+            throughputPut();
+            this.host.waitFor("stat did not update", () -> {
+                ServiceStat indexDocSingleVersionCountSt = getLuceneStat(
+                        LuceneDocumentIndexService.STAT_NAME_VERSION_RETENTION_SERVICE_COUNT
+                                + ServiceStats.STAT_NAME_SUFFIX_PER_DAY);
+
+                return indexDocSingleVersionCountSt.latestValue >= this.serviceCount;
+            });
+        } finally {
+            this.retentionFloor = floor;
+            this.retentionLimit = limit;
+        }
+    }
+
+    @Test
     public void throughputPut() throws Throwable {
+        int serviceThreshold = LuceneDocumentIndexService.getVersionRetentionServiceThreshold();
         long limit = MinimalTestService.getVersionRetentionLimit();
         long floor = MinimalTestService.getVersionRetentionFloor();
         try {
             setUpHost(false);
+            LuceneDocumentIndexService.setVersionRetentionServiceThreshold((int) this.serviceCount);
             MinimalTestService.setVersionRetentionLimit(this.retentionLimit);
             MinimalTestService.setVersionRetentionFloor(this.retentionFloor);
             if (this.host.isStressTest()) {
@@ -2849,6 +2944,7 @@ public class TestLuceneDocumentIndexService {
             Utils.setTimeDriftThreshold(Utils.DEFAULT_TIME_DRIFT_THRESHOLD_MICROS);
             MinimalTestService.setVersionRetentionLimit(limit);
             MinimalTestService.setVersionRetentionFloor(floor);
+            LuceneDocumentIndexService.setVersionRetentionServiceThreshold(serviceThreshold);
         }
     }
 
@@ -2856,8 +2952,6 @@ public class TestLuceneDocumentIndexService {
             Integer putCount,
             EnumSet<ServiceOption> caps) throws Throwable {
         EnumSet<TestProperty> props = EnumSet.noneOf(TestProperty.class);
-
-        this.indexService.toggleOption(ServiceOption.INSTRUMENTATION, this.enableInstrumentation);
 
         if (caps == null) {
             caps = EnumSet.of(ServiceOption.PERSISTENCE);

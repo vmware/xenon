@@ -5158,6 +5158,11 @@ public class ServiceHost implements ServiceRequestSender {
                     op.complete();
                 });
 
+        if (op.getAction() == Action.POST
+                && op.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_FORCE_INDEX_UPDATE)) {
+            post.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_FORCE_INDEX_UPDATE);
+        }
+
         // Just like we do in loadServiceState, special case co-located indexing service and bypass
         // normal processing path, to reduce latency. The call is still assumed to be asynchronous
         // and the request can be processed in arbitrary thread context.
