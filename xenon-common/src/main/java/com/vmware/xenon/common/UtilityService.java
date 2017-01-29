@@ -659,6 +659,17 @@ public class UtilityService implements Service {
                 st.name = name;
                 this.stats.entries.put(name, st);
             }
+
+            if (create && st != null && initialStat != null) {
+                // if the statistic already exists make sure it has the same features
+                // as the statistic we are trying to create
+                if (st.timeSeriesStats == null && initialStat.timeSeriesStats != null) {
+                    st.timeSeriesStats = initialStat.timeSeriesStats;
+                }
+                if (st.logHistogram == null && initialStat.logHistogram != null) {
+                    st.logHistogram = initialStat.logHistogram;
+                }
+            }
             return st;
         }
     }

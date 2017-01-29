@@ -29,6 +29,7 @@ import org.junit.Test;
 
 import com.vmware.xenon.common.Service.ServiceOption;
 import com.vmware.xenon.common.ServiceStats.ServiceStat;
+import com.vmware.xenon.common.ServiceStats.ServiceStatLogHistogram;
 import com.vmware.xenon.common.ServiceStats.TimeSeriesStats;
 import com.vmware.xenon.common.ServiceStats.TimeSeriesStats.AggregationType;
 import com.vmware.xenon.common.ServiceStats.TimeSeriesStats.TimeBin;
@@ -182,7 +183,7 @@ public class TestUtilityService extends BasicReusableHostTestCase {
     }
 
     @Test
-    public void testUtilityStats() throws Throwable {
+    public void statRESTActions() throws Throwable {
         String name = UUID.randomUUID().toString();
         ExampleServiceState s = new ExampleServiceState();
         s.name = name;
@@ -304,6 +305,31 @@ public class TestUtilityService extends BasicReusableHostTestCase {
         retStatEntry = allStats.entries.get("key3");
         assertTrue(retStatEntry.latestValue == 225);
         assertTrue(retStatEntry.version == 2);
+
+        // Create a stat without a log histogram or time series, then try to recreate with
+        // the extra features and make sure its updated
+
+        List<Service> services = this.host.doThroughputServiceStart(
+                1, MinimalTestService.class,
+                this.host.buildMinimalTestState(), EnumSet.of(ServiceOption.INSTRUMENTATION), null);
+
+        final String statName = "foo";
+        for (Service service : services) {
+            service.setStat(statName, 1.0);
+            ServiceStat st = service.getStat(statName);
+            assertTrue(st.timeSeriesStats == null);
+            assertTrue(st.logHistogram == null);
+            ServiceStat stNew = new ServiceStat();
+            stNew.name = statName;
+            stNew.logHistogram = new ServiceStatLogHistogram();
+            stNew.timeSeriesStats = new TimeSeriesStats(60,
+                    TimeUnit.MINUTES.toMillis(1), EnumSet.of(AggregationType.AVG));
+            service.setStat(stNew, 11.0);
+            st = service.getStat(statName);
+            assertTrue(st.timeSeriesStats != null);
+            assertTrue(st.logHistogram != null);
+        }
+
     }
 
     @Test
