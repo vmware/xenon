@@ -2,6 +2,10 @@
 
 ## 1.3.7-SNAPSHOT
 
+* Added support for QueryOption#TIME_SNAPSHOT. The new query option will return results that contain
+  latest versions of documents as on a given time. QuerySpecification#timeSnapshotBoundaryMicros
+  will allow specifying the time.
+
 ## 1.3.6
 
 * Integrations with 3rd party libraries are migrated to a [new repository](https://github.com/vmware/xenon-utils)
