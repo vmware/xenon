@@ -72,6 +72,7 @@ import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
 import com.vmware.xenon.common.test.MinimalTestServiceState;
 import com.vmware.xenon.common.test.TestContext;
+import com.vmware.xenon.common.test.TestRequestSender;
 import com.vmware.xenon.common.test.VerificationHost;
 
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
@@ -3964,5 +3965,150 @@ public class TestQueryTaskService {
             return new ServiceStat();
         }
         return st;
+    }
+
+    @Test
+    public void timeSnapshotQuery() throws Throwable {
+        setUpHost();
+        doTimeSnapshotTest(1, 3, false);
+        doPaginatedTimeSnapshotTest(5, 3, false);
+    }
+
+    public void doTimeSnapshotTest(int serviceCount, int versionCount, boolean forceRemote)
+            throws Throwable {
+
+        String prefix = "testPrefix";
+        List<URI> services = createQueryTargetServices(serviceCount);
+
+        // after starting a service, update it's document version
+        QueryValidationServiceState newState = new QueryValidationServiceState();
+        newState.id = prefix + UUID.randomUUID().toString();
+        newState = putStateOnQueryTargetServices(services, versionCount,
+                newState);
+
+        // issue a query that matches a specific link. This is essentially a primary key query
+        Query query = Query.Builder.create()
+                .addFieldClause(ServiceDocument.FIELD_NAME_SELF_LINK, services.get(0).getPath())
+                .build();
+
+        QueryTask queryTask = QueryTask.Builder.create().setQuery(query).build();
+        URI u = this.host.createQueryTaskService(queryTask, forceRemote);
+        QueryTask finishedTaskState = this.host.waitForQueryTaskCompletion(queryTask.querySpec,
+                services.size(), versionCount, u, forceRemote, true);
+        assertTrue(finishedTaskState.results.documentLinks.size() == 1);
+
+        // now make sure expand and include all version works. Issue same query, but enable expand and include all versions
+        queryTask.querySpec.options = EnumSet.of(QueryOption.EXPAND_CONTENT,
+                QueryOption.INCLUDE_ALL_VERSIONS);
+        u = this.host.createQueryTaskService(queryTask, forceRemote);
+        // result for finished state will be
+        //  Service 1   Version     documentLinks
+        //               0       link?documentVersion=0
+        //               1       link?documentVersion=1
+        //               2       link?documentVersion=2
+        //               3       link?documentVersion=3
+        finishedTaskState = this.host.waitForQueryTaskCompletion(queryTask.querySpec,
+                services.size(), versionCount, u, forceRemote, true);
+        assertTrue(finishedTaskState.results.documentLinks.size() == 4);
+        assertTrue(finishedTaskState.results.documents.size() == 4);
+
+        // get the document version=1 documentUpdateTimeMicros
+        long documentUpdatedTime = -1;
+        long firstVersionDocumentUpdatedTime = -1;
+        long secondVersionDocumentUpdatedTime = -1;
+        for (Map.Entry<String, Object> entry : finishedTaskState.results.documents.entrySet()) {
+            QueryValidationServiceState state = Utils.fromJson(entry.getValue(),
+                    QueryValidationServiceState.class);
+            if (state.documentVersion == 1) {
+                firstVersionDocumentUpdatedTime = state.documentUpdateTimeMicros;
+            } else if (state.documentVersion == 2) {
+                secondVersionDocumentUpdatedTime = state.documentUpdateTimeMicros;
+            }
+        }
+
+        // documentUpdatedTime asked will be in the mid of first and second version
+        documentUpdatedTime = (firstVersionDocumentUpdatedTime + secondVersionDocumentUpdatedTime)
+                / 2;
+
+        // create a new query with documentUpdatedTime as a rangeClause
+        query = Query.Builder.create()
+                .addFieldClause(ServiceDocument.FIELD_NAME_SELF_LINK, services.get(0).getPath())
+                .addRangeClause(ServiceDocument.FIELD_NAME_UPDATE_TIME_MICROS,
+                        NumericRange.createLessThanOrEqualRange(documentUpdatedTime),
+                        Occurance.MUST_OCCUR)
+                .build();
+        queryTask = QueryTask.Builder.create().setQuery(query).build();
+        queryTask.querySpec.options = EnumSet.of(QueryOption.EXPAND_CONTENT,
+                QueryOption.TIME_SNAPSHOT);
+        queryTask.querySpec.timeSnapshotBoundaryMicros = documentUpdatedTime;
+        u = this.host.createQueryTaskService(queryTask, forceRemote);
+        finishedTaskState = this.host.waitForQueryTaskCompletion(queryTask.querySpec,
+                services.size(), versionCount, u, forceRemote, true);
+
+        QueryValidationServiceState finishedState = Utils.fromJson(
+                finishedTaskState.results.documents
+                        .get(finishedTaskState.results.documentLinks.get(0)),
+                QueryValidationServiceState.class);
+        assertTrue(finishedTaskState.results.documentLinks.size() == 1);
+        assertTrue(finishedTaskState.results.documents.size() == 1);
+        assertTrue(finishedState.documentVersion == 1);
+        verifyNoPaginatedIndexSearchers();
+        deleteServices(services);
+    }
+
+    private void doPaginatedTimeSnapshotTest(int count, int versionCount, boolean forceRemote) throws Throwable {
+        String prefix = "testPrefix";
+
+        List<URI> services = createQueryTargetServices(count);
+
+        // after starting a service, update it's document version
+        QueryValidationServiceState newState = new QueryValidationServiceState();
+        newState.id = prefix + UUID.randomUUID().toString();
+        putStateOnQueryTargetServices(services, versionCount, newState);
+
+        // Mark a time to query for
+        long timeSnapshotBoundaryMicros = Utils.getNowMicrosUtc();
+
+        // Update the documents versionCount more times
+        newState.id = prefix + UUID.randomUUID().toString();
+        putStateOnQueryTargetServices(services, versionCount, newState);
+
+        // create a new query with documentUpdatedTime as a rangeClause
+        Query query = Query.Builder.create()
+                .addKindFieldClause(QueryValidationServiceState.class)
+                .build();
+        QueryTask queryTask = QueryTask.Builder.create().setQuery(query).build();
+        queryTask.querySpec.options = EnumSet.of(QueryOption.EXPAND_CONTENT,
+                QueryOption.TIME_SNAPSHOT);
+        queryTask.querySpec.timeSnapshotBoundaryMicros = timeSnapshotBoundaryMicros;
+        // only one result for page ( expect 5 pages )
+        queryTask.querySpec.resultLimit = 1;
+        URI u = this.host.createQueryTaskService(queryTask, forceRemote);
+        QueryTask finishedTaskState = this.host.waitForQueryTaskCompletion(queryTask.querySpec,
+                services.size(), versionCount, u, forceRemote, false);
+
+        assertTrue(finishedTaskState.results.nextPageLink != null);
+
+        TestRequestSender sender = this.host.getTestRequestSender();
+
+        int totalPages = 0;
+        while (finishedTaskState.results.nextPageLink != null) {
+            totalPages++;
+            finishedTaskState = sender.sendGetAndWait(
+                    UriUtils.buildUri(this.host, finishedTaskState.results.nextPageLink), QueryTask.class);
+            assertTrue(finishedTaskState.results.documentLinks != null);
+            assertTrue(finishedTaskState.results.documentLinks.size() == 1);
+            assertTrue(finishedTaskState.results.documents.size() == 1);
+            String documentLink = finishedTaskState.results.documentLinks.get(0);
+            QueryValidationServiceState state =
+                    Utils.fromJson(finishedTaskState.results.documents.get(documentLink), QueryValidationServiceState.class);
+
+            assertTrue(state.documentUpdateTimeMicros <  timeSnapshotBoundaryMicros);
+            // Should match versionCount which is the version latest before timeSnapshotBoundaryMicros
+            assertTrue(state.documentVersion ==  versionCount);
+        }
+        assertTrue(totalPages == count);
+
+        deleteServices(services);
     }
 }

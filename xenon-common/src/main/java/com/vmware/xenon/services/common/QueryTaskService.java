@@ -190,6 +190,19 @@ public class QueryTaskService extends StatefulService {
             return false;
         }
 
+        if (initState.querySpec.options.contains(QueryOption.TIME_SNAPSHOT)
+                && initState.querySpec.timeSnapshotBoundaryMicros == null) {
+            startPost.fail(new IllegalArgumentException(QueryOption.TIME_SNAPSHOT
+                    + " will return latest versions of documents only if querySpec.timeSnapshotBoundaryMicros is provided"));
+            return false;
+        }
+
+        if (!initState.querySpec.options.contains(QueryOption.TIME_SNAPSHOT)
+                && initState.querySpec.timeSnapshotBoundaryMicros != null) {
+            startPost.fail(new IllegalArgumentException("Either enable " + QueryOption.TIME_SNAPSHOT
+                    + " for retreiving latest versions of documents, for the given querySpec.timeSnapshotBoundaryMicros or do not provide querySpec.timeSnapshotBoundaryMicros"));
+            return false;
+        }
         return true;
     }
 

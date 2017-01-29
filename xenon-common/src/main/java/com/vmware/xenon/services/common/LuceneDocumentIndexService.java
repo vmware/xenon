@@ -22,6 +22,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -798,6 +799,14 @@ public class LuceneDocumentIndexService extends StatelessService {
 
         if (luceneQuery == null) {
             luceneQuery = LuceneQueryConverter.convertToLuceneQuery(task.querySpec.query);
+            if (qs.options.contains(QueryOption.TIME_SNAPSHOT)) {
+                Query latestDocumentClause = LongPoint.newRangeQuery(
+                        ServiceDocument.FIELD_NAME_UPDATE_TIME_MICROS, 0,
+                        qs.timeSnapshotBoundaryMicros);
+                luceneQuery = new BooleanQuery.Builder()
+                        .add(latestDocumentClause, Occur.MUST)
+                        .add(luceneQuery, Occur.FILTER).build();
+            }
             qs.context.nativeQuery = luceneQuery;
         }
 
@@ -1086,7 +1095,7 @@ public class LuceneDocumentIndexService extends StatelessService {
         IndexSearcher s = createOrRefreshSearcher(selfLink, 1, w, false);
 
         long startNanos = System.nanoTime();
-        TopDocs hits = queryIndexForVersion(selfLink, s, version);
+        TopDocs hits = queryIndexForVersion(selfLink, s, version, null);
         long durationNanos = System.nanoTime() - startNanos;
         setTimeSeriesHistogramStat(STAT_NAME_QUERY_SINGLE_DURATION_MICROS,
                 AGGREGATION_TYPE_AVG_MAX, TimeUnit.NANOSECONDS.toMicros(durationNanos));
@@ -1134,14 +1143,20 @@ public class LuceneDocumentIndexService extends StatelessService {
      * If given version is null then function returns the latest version.
      * And if given version is not found then no document is returned.
      */
-    private TopDocs queryIndexForVersion(String selfLink, IndexSearcher s, Long version)
+    private TopDocs queryIndexForVersion(String selfLink, IndexSearcher s, Long version, Long documentsUpdatedBeforeInMicros)
             throws IOException {
         Query tqSelfLink = new TermQuery(new Term(ServiceDocument.FIELD_NAME_SELF_LINK, selfLink));
 
         BooleanQuery.Builder builder = new BooleanQuery.Builder();
         builder.add(tqSelfLink, Occur.MUST);
 
-        if (version != null) {
+        // when QueryOption.TIME_SNAPSHOT  is enabled (documentsUpdatedBeforeInMicros i.e. QuerySpecification.timeSnapshotBoundaryMicros is present)
+        // perform query to find a document with link updated before supplied time.
+        if (documentsUpdatedBeforeInMicros != null) {
+            Query documentsUpdatedBeforeInMicrosQuery = LongPoint.newRangeQuery(
+                    ServiceDocument.FIELD_NAME_UPDATE_TIME_MICROS, 0, documentsUpdatedBeforeInMicros);
+            builder.add(documentsUpdatedBeforeInMicrosQuery, Occur.MUST);
+        } else if (version != null) {
             Query versionQuery = LongPoint.newRangeQuery(
                     ServiceDocument.FIELD_NAME_VERSION, version, version);
             builder.add(versionQuery, Occur.MUST);
@@ -1720,8 +1735,19 @@ public class LuceneDocumentIndexService extends StatelessService {
         final boolean hasCountOption = options.contains(QueryOption.COUNT);
         boolean hasIncludeAllVersionsOption = options.contains(QueryOption.INCLUDE_ALL_VERSIONS);
         Set<String> linkWhiteList = null;
-        if (qs != null && qs.context != null && qs.context.documentLinkWhiteList != null) {
-            linkWhiteList = qs.context.documentLinkWhiteList;
+        long documentsUpdatedBefore = -1;
+
+        // will contain the links for which post processing should to be skipped
+        // added to support TIME_SNAPSHOT, can be extended in future to represent qs.context.documentLinkBlackList
+        Set<String> linkBlackList = options.contains(QueryOption.TIME_SNAPSHOT)
+                ? Collections.emptySet() : null;
+        if (qs != null) {
+            if (qs.context != null && qs.context.documentLinkWhiteList != null) {
+                linkWhiteList = qs.context.documentLinkWhiteList;
+            }
+            if (qs.timeSnapshotBoundaryMicros != null) {
+                documentsUpdatedBefore = qs.timeSnapshotBoundaryMicros;
+            }
         }
 
         long searcherUpdateTime = getSearcherUpdateTime(s, queryStartTimeMicros);
@@ -1738,7 +1764,9 @@ public class LuceneDocumentIndexService extends StatelessService {
             String originalLink = link;
 
             // ignore results not in supplied white list
-            if (linkWhiteList != null && !linkWhiteList.contains(link)) {
+            // and also those are in blacklisted links
+            if ((linkWhiteList != null && !linkWhiteList.contains(link))
+                    || (linkBlackList != null && linkBlackList.contains(originalLink))) {
                 continue;
             }
 
@@ -1755,8 +1783,16 @@ public class LuceneDocumentIndexService extends StatelessService {
                 // We first determine what is the latest document version.
                 // We then use the latest version to determine if the current document result is relevant.
                 if (latestVersion == null) {
-                    latestVersion = getLatestVersion(s, searcherUpdateTime, link,
-                            documentVersion);
+                    latestVersion = getLatestVersion(s, searcherUpdateTime, link, documentVersion,
+                            documentsUpdatedBefore);
+
+                    // latestVersion == -1 means there was no document version
+                    // in history, adding it to blacklist so as to avoid
+                    // processing the documents which were found later
+                    if (latestVersion == -1) {
+                        linkBlackList.add(originalLink);
+                        continue;
+                    }
                     latestVersionPerLink.put(originalLink, latestVersion);
                 }
 
@@ -1945,14 +1981,14 @@ public class LuceneDocumentIndexService extends StatelessService {
 
     private long getLatestVersion(IndexSearcher s,
             long searcherUpdateTime,
-            String link, long version) throws IOException {
+            String link, long version, long documentsUpdatedBeforeInMicros) throws IOException {
         if (hasOption(ServiceOption.INSTRUMENTATION)) {
             adjustStat(STAT_NAME_VERSION_CACHE_LOOKUP_COUNT, 1);
         }
 
         synchronized (this.searchSync) {
             DocumentUpdateInfo dui = this.updatesPerLink.get(link);
-            if (dui != null && dui.updateTimeMicros <= searcherUpdateTime) {
+            if (documentsUpdatedBeforeInMicros == -1 && dui != null && dui.updateTimeMicros <= searcherUpdateTime) {
                 return Math.max(version, dui.version);
             }
 
@@ -1969,10 +2005,17 @@ public class LuceneDocumentIndexService extends StatelessService {
             adjustStat(STAT_NAME_VERSION_CACHE_MISS_COUNT, 1);
         }
 
-        TopDocs td = queryIndexForVersion(link, s, null);
+        TopDocs td = queryIndexForVersion(link, s, null,
+                documentsUpdatedBeforeInMicros > 0 ? documentsUpdatedBeforeInMicros : null);
+        // Checking if total hits were Zero when QueryOption.TIME_SNAPSHOT is enabled
+        if (documentsUpdatedBeforeInMicros != -1 && td.totalHits == 0) {
+            return -1;
+        }
+
         if (td.totalHits == 0) {
             return version;
         }
+
         Document latestVersionDoc = s.doc(td.scoreDocs[0].doc,
                 this.fieldToLoadVersionLookup);
         IndexableField versionField = latestVersionDoc.getField(ServiceDocument.FIELD_NAME_VERSION);
@@ -2673,7 +2716,7 @@ public class LuceneDocumentIndexService extends StatelessService {
             Long latestVersion = latestVersions.get(documentSelfLink);
             if (latestVersion == null) {
                 long searcherUpdateTime = getSearcherUpdateTime(s, 0);
-                latestVersion = getLatestVersion(s, searcherUpdateTime, documentSelfLink, 0);
+                latestVersion = getLatestVersion(s, searcherUpdateTime, documentSelfLink, 0, -1);
                 latestVersions.put(documentSelfLink, latestVersion);
             }
 
