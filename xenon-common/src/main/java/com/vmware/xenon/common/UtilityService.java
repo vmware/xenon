@@ -36,6 +36,11 @@ import com.vmware.xenon.common.Operation.OperationOption;
 import com.vmware.xenon.common.ServiceStats.ServiceStat;
 import com.vmware.xenon.common.ServiceStats.TimeSeriesStats;
 import com.vmware.xenon.common.ServiceSubscriptionState.ServiceSubscriber;
+import com.vmware.xenon.services.common.QueryTask;
+import com.vmware.xenon.services.common.QueryTask.Query;
+import com.vmware.xenon.services.common.QueryTask.Query.Occurance;
+import com.vmware.xenon.services.common.QueryTask.QueryTerm;
+import com.vmware.xenon.services.common.QueryTask.QueryTerm.MatchType;
 import com.vmware.xenon.services.common.ServiceUriPaths;
 import com.vmware.xenon.services.common.UiContentService;
 
@@ -456,11 +461,16 @@ public class UtilityService implements Service {
                 populateDocumentProperties(s);
                 op.setBody(s).complete();
             } else {
-                ServiceDocument rsp;
+                ServiceStats rsp;
                 synchronized (this.stats) {
                     rsp = populateDocumentProperties(this.stats);
                     rsp = Utils.clone(rsp);
                 }
+
+                if (handleStatsGetWithODATARequest(op, rsp)) {
+                    return;
+                }
+
                 op.setBodyNoCloning(rsp);
                 op.complete();
             }
@@ -470,6 +480,64 @@ public class UtilityService implements Service {
             break;
 
         }
+    }
+
+    /**
+     * Selects statistics entries that satisfy a simple sub set of ODATA filter expressions
+     */
+    private boolean handleStatsGetWithODATARequest(Operation op, ServiceStats rsp) {
+        if (UriUtils.getODataFilterParamValue(op.getUri()) == null) {
+            return false;
+        }
+        QueryTask task = ODataUtils.toQuery(op, false, null);
+        if (task == null || task.querySpec.query == null) {
+            return false;
+        }
+
+        List<Query> clauses = task.querySpec.query.booleanClauses;
+        if (clauses == null || clauses.size() == 0) {
+            clauses = new ArrayList<Query>();
+            if (task.querySpec.query.term == null) {
+                return false;
+            }
+            clauses.add(task.querySpec.query);
+        }
+
+        for (Query q : clauses) {
+            if (!Occurance.MUST_OCCUR.equals(q.occurance)) {
+                op.fail(new IllegalArgumentException("only AND expressions are supported"));
+                return true;
+            }
+            QueryTerm term = q.term;
+            // we support ODATA $filter expressions only. Look in the formed query
+            // for terms and only accept those that match ServiceStat field names
+            if (!ServiceStat.FIELD_NAME_NAME.equals(term.propertyName)) {
+                // we can add support for more fields, including numeric range queries, in the future
+                op.fail(new IllegalArgumentException(
+                        "property not supported for filter"));
+                return true;
+            }
+
+            // prune entries using the filter match value and property
+            Iterator<Entry<String, ServiceStat>> statIt = rsp.entries.entrySet().iterator();
+            while (statIt.hasNext()) {
+                Entry<String, ServiceStat> e = statIt.next();
+                // we currently only support name filtering
+                if (ServiceStat.FIELD_NAME_NAME.equals(term.propertyName)) {
+                    if (term.matchType.equals(MatchType.TERM)
+                            && e.getKey().equals(term.matchValue)) {
+                        continue;
+                    }
+                    if (term.matchType.equals(MatchType.PREFIX)
+                            && e.getKey().startsWith(term.matchValue)) {
+                        continue;
+                    }
+                }
+                statIt.remove();
+            }
+        }
+
+        return false;
     }
 
     private ServiceStats populateDocumentProperties(ServiceStats stats) {
