@@ -89,7 +89,6 @@
     <module>xenon-loader</module>
     <module>xenon-ui</module>
     <module>xenon-loader-test</module>
-    <module>xenon-gateway</module>
   </modules>
 
   <properties>
@@ -142,6 +141,7 @@
         <module>xenon-samples</module>
         <module>xenon-websocket-test</module>
         <module>xenon-quickstart</module>
+        <module>xenon-gateway</module>
         <module>xenon-workshop/jan-2017</module>
       </modules>
       <activation>
