@@ -33,9 +33,16 @@ import java.util.logging.Level;
 import com.vmware.xenon.common.Operation.AuthorizationContext;
 import com.vmware.xenon.common.Operation.CompletionHandler;
 import com.vmware.xenon.common.Operation.OperationOption;
+import com.vmware.xenon.common.ServiceDocumentDescription.TypeName;
 import com.vmware.xenon.common.ServiceStats.ServiceStat;
 import com.vmware.xenon.common.ServiceStats.TimeSeriesStats;
 import com.vmware.xenon.common.ServiceSubscriptionState.ServiceSubscriber;
+import com.vmware.xenon.services.common.QueryTask;
+import com.vmware.xenon.services.common.QueryTask.NumericRange;
+import com.vmware.xenon.services.common.QueryTask.Query;
+import com.vmware.xenon.services.common.QueryTask.Query.Occurance;
+import com.vmware.xenon.services.common.QueryTask.QueryTerm;
+import com.vmware.xenon.services.common.QueryTask.QueryTerm.MatchType;
 import com.vmware.xenon.services.common.ServiceUriPaths;
 import com.vmware.xenon.services.common.UiContentService;
 
@@ -456,11 +463,16 @@ public class UtilityService implements Service {
                 populateDocumentProperties(s);
                 op.setBody(s).complete();
             } else {
-                ServiceDocument rsp;
+                ServiceStats rsp;
                 synchronized (this.stats) {
                     rsp = populateDocumentProperties(this.stats);
                     rsp = Utils.clone(rsp);
                 }
+
+                if (handleStatsGetWithODATARequest(op, rsp)) {
+                    return;
+                }
+
                 op.setBodyNoCloning(rsp);
                 op.complete();
             }
@@ -470,6 +482,127 @@ public class UtilityService implements Service {
             break;
 
         }
+    }
+
+    /**
+     * Selects statistics entries that satisfy a simple sub set of ODATA filter expressions
+     */
+    private boolean handleStatsGetWithODATARequest(Operation op, ServiceStats rsp) {
+        if (UriUtils.getODataCountParamValue(op.getUri())) {
+            op.fail(new IllegalArgumentException(
+                    UriUtils.URI_PARAM_ODATA_COUNT + " is not supported"));
+            return true;
+        }
+
+        if (UriUtils.getODataOrderByParamValue(op.getUri()) != null) {
+            op.fail(new IllegalArgumentException(
+                    UriUtils.URI_PARAM_ODATA_ORDER_BY + " is not supported"));
+            return true;
+        }
+
+        if (UriUtils.getODataSkipToParamValue(op.getUri()) != null) {
+            op.fail(new IllegalArgumentException(
+                    UriUtils.URI_PARAM_ODATA_SKIP_TO + " is not supported"));
+            return true;
+        }
+
+        if (UriUtils.getODataTopParamValue(op.getUri()) != null) {
+            op.fail(new IllegalArgumentException(
+                    UriUtils.URI_PARAM_ODATA_TOP + " is not supported"));
+            return true;
+        }
+
+        if (UriUtils.getODataFilterParamValue(op.getUri()) == null) {
+            return false;
+        }
+
+        QueryTask task = ODataUtils.toQuery(op, false, null);
+        if (task == null || task.querySpec.query == null) {
+            return false;
+        }
+
+        List<Query> clauses = task.querySpec.query.booleanClauses;
+        if (clauses == null || clauses.size() == 0) {
+            clauses = new ArrayList<Query>();
+            if (task.querySpec.query.term == null) {
+                return false;
+            }
+            clauses.add(task.querySpec.query);
+        }
+
+        return processStatsODATAQueryClauses(op, rsp, clauses);
+    }
+
+    private boolean processStatsODATAQueryClauses(Operation op, ServiceStats rsp,
+            List<Query> clauses) {
+        for (Query q : clauses) {
+            if (!Occurance.MUST_OCCUR.equals(q.occurance)) {
+                op.fail(new IllegalArgumentException("only AND expressions are supported"));
+                return true;
+            }
+
+            QueryTerm term = q.term;
+
+            if (term == null) {
+                return processStatsODATAQueryClauses(op, rsp, q.booleanClauses);
+            }
+
+            // prune entries using the filter match value and property
+            Iterator<Entry<String, ServiceStat>> statIt = rsp.entries.entrySet().iterator();
+            while (statIt.hasNext()) {
+                Entry<String, ServiceStat> e = statIt.next();
+                if (ServiceStat.FIELD_NAME_NAME.equals(term.propertyName)) {
+                    // match against the name property which is the also the key for the
+                    // entry table
+                    if (term.matchType.equals(MatchType.TERM)
+                            && e.getKey().equals(term.matchValue)) {
+                        continue;
+                    }
+                    if (term.matchType.equals(MatchType.PREFIX)
+                            && e.getKey().startsWith(term.matchValue)) {
+                        continue;
+                    }
+                    if (term.matchType.equals(MatchType.WILDCARD)) {
+                        // we only support two types of wild card queries:
+                        // *something or something*
+                        if (term.matchValue.endsWith(UriUtils.URI_WILDCARD_CHAR)) {
+                            // prefix match
+                            String mv = term.matchValue.replace(UriUtils.URI_WILDCARD_CHAR, "");
+                            if (e.getKey().startsWith(mv)) {
+                                continue;
+                            }
+                        } else if (term.matchValue.startsWith(UriUtils.URI_WILDCARD_CHAR)) {
+                            // suffix match
+                            String mv = term.matchValue.replace(UriUtils.URI_WILDCARD_CHAR, "");
+
+                            if (e.getKey().endsWith(mv)) {
+                                continue;
+                            }
+                        }
+                    }
+                } else if (ServiceStat.FIELD_NAME_LATEST_VALUE.equals(term.propertyName)) {
+                    // support numeric range queries on latest value
+                    if (term.range == null || term.range.type != TypeName.DOUBLE) {
+                        op.fail(new IllegalArgumentException(
+                                ServiceStat.FIELD_NAME_LATEST_VALUE
+                                        + "requires double numeric range"));
+                        return true;
+                    }
+                    @SuppressWarnings("unchecked")
+                    NumericRange<Double> nr = (NumericRange<Double>) term.range;
+                    ServiceStat st = e.getValue();
+                    boolean withinMax = nr.isMaxInclusive && st.latestValue <= nr.max ||
+                            st.latestValue < nr.max;
+                    boolean withinMin = nr.isMinInclusive && st.latestValue >= nr.min ||
+                            st.latestValue > nr.min;
+                    if (withinMin && withinMax) {
+                        continue;
+                    }
+                }
+                statIt.remove();
+            }
+        }
+        return false;
     }
 
     private ServiceStats populateDocumentProperties(ServiceStats stats) {
