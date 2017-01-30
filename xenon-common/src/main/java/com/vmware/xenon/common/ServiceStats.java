@@ -142,6 +142,17 @@ public class ServiceStats extends ServiceDocument {
 
     public static class ServiceStat {
         public static final String KIND = Utils.buildKind(ServiceStat.class);
+
+        public static final String FIELD_NAME_NAME = "name";
+
+        public static final String FIELD_NAME_VERSION = "version";
+
+        public static final String FIELD_NAME_LAST_UPDATE_TIME_MICROS_UTC = "lastUpdateMicrosUtc";
+
+        public static final String FIELD_NAME_LATEST_VALUE = "latestValue";
+
+        public static final String FIELD_NAME_UNIT = "unit";
+
         /**
          * Name of the stat.
          */
