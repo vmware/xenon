@@ -13,6 +13,8 @@
 
 package com.vmware.xenon.services.common;
 
+import static java.util.stream.Collectors.toList;
+
 import java.net.URI;
 import java.util.AbstractMap;
 import java.util.ArrayList;
@@ -22,8 +24,11 @@ import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.Optional;
 import java.util.Set;
+import java.util.SortedSet;
+import java.util.TreeSet;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
@@ -34,6 +39,8 @@ import com.vmware.xenon.common.OperationJoin;
 import com.vmware.xenon.common.Service;
 import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.ServiceDocumentDescription.PropertyUsageOption;
+import com.vmware.xenon.common.ServiceDocumentDescription.TypeName;
+import com.vmware.xenon.common.ServiceHost;
 import com.vmware.xenon.common.ServiceMaintenanceRequest;
 import com.vmware.xenon.common.ServiceMaintenanceRequest.MaintenanceReason;
 import com.vmware.xenon.common.StatefulService;
@@ -44,6 +51,7 @@ import com.vmware.xenon.common.Utils;
 import com.vmware.xenon.services.common.NodeGroupService.NodeGroupState;
 import com.vmware.xenon.services.common.QueryTask.NumericRange;
 import com.vmware.xenon.services.common.QueryTask.Query;
+import com.vmware.xenon.services.common.QueryTask.Query.Builder;
 import com.vmware.xenon.services.common.QueryTask.QuerySpecification;
 import com.vmware.xenon.services.common.QueryTask.QuerySpecification.QueryOption;
 
@@ -107,7 +115,12 @@ public class MigrationTaskService extends StatefulService {
         /**
          * Enables v2 of TransformationService contract, which sends an object instead of a map.
          */
-        USE_TRANSFORM_REQUEST
+        USE_TRANSFORM_REQUEST,
+
+        /**
+         * TODO: document
+         */
+        ALL_VERSIONS,
     }
 
     /**
@@ -456,11 +469,11 @@ public class MigrationTaskService extends StatefulService {
 
                     NodeGroupState sourceGroup = os.get(sourceGet.getId())
                             .getBody(NodeGroupState.class);
-                    List<URI> sourceURIs = filterAvailabeNodeUris(sourceGroup);
+                    List<URI> sourceURIs = filterAvailableNodeUris(sourceGroup);
 
                     NodeGroupState destinationGroup = os.get(destinationGet.getId())
                             .getBody(NodeGroupState.class);
-                    List<URI> destinationURIs = filterAvailabeNodeUris(destinationGroup);
+                    List<URI> destinationURIs = filterAvailableNodeUris(destinationGroup);
 
                     waitUntilNodeGroupsAreStable(
                             currentState,
@@ -470,7 +483,7 @@ public class MigrationTaskService extends StatefulService {
                 }).sendWith(this);
     }
 
-    private List<URI> filterAvailabeNodeUris(NodeGroupState destinationGroup) {
+    private List<URI> filterAvailableNodeUris(NodeGroupState destinationGroup) {
         return destinationGroup.nodes.values().stream()
                 .map(e -> {
                     if (NodeState.isUnAvailable(e)) {
@@ -608,7 +621,10 @@ public class MigrationTaskService extends StatefulService {
                         .filter(operation -> operation.getBody(QueryTask.class).results.nextPageLink != null)
                         .map(operation -> getNextPageLinkUri(operation))
                         .collect(Collectors.toSet());
+
                 Collection<Object> results = new ArrayList<>();
+                Map<Object, URI> hostUriByResult = new HashMap<>();
+
                 // merging results, only select documents that have the same owner as the query tasks to ensure
                 // we get the most up to date version of the document and documents without owner.
                 for (Operation op : os.values()) {
@@ -623,21 +639,140 @@ public class MigrationTaskService extends StatefulService {
                         if (documentOwner.equals(queryTask.results.documentOwner)) {
                             Long lastUpdateTime = lastUpdateTimesPerOwner.getOrDefault(documentOwner, 0L);
                             lastUpdateTimesPerOwner
-                                .put(document.documentOwner, Math.max(lastUpdateTime, document.documentUpdateTimeMicros));
+                                    .put(document.documentOwner, Math.max(lastUpdateTime, document.documentUpdateTimeMicros));
                             results.add(doc);
+
+                            URI hostUri = getHostUri(op);
+                            hostUriByResult.put(doc, hostUri);
                         }
                     }
                 }
 
-                if (results.isEmpty()) {
-                    // The results might be empty if all the local queries returned documents the respective hosts don't own.
-                    // In this case we can just move on to the next set of pages.
-                    migrate(currentState, nextPages, destinationURIs, lastUpdateTimesPerOwner);
+
+                // TODO: handle deleted version
+
+                // For ALL_VERSIONS, retrieve all versions of target documents
+                if (currentState.migrationOptions.contains(MigrationOption.ALL_VERSIONS)) {
+
+                    Collection<Object> allVersions = new ArrayList<>();
+                    List<Operation> docDescOps = new ArrayList<>();
+                    List<Operation> queryOps = new ArrayList<>();
+                    List<Operation> queryResultNextPageOps = new ArrayList<>();
+
+                    for (Object doc : results) {
+
+                        // full host URI where authoritative doc resides
+                        URI hostUri = hostUriByResult.get(doc);
+
+                        ServiceDocument document = Utils.fromJson(doc, ServiceDocument.class);
+                        String selfLink = document.documentSelfLink;
+                        URI templateUri = UriUtils.buildUri(hostUri, selfLink, ServiceHost.SERVICE_URI_SUFFIX_TEMPLATE);
+
+                        // retrieve retentionLimit from template for the doc
+                        Operation o = Operation.createGet(templateUri);
+                        o.setCompletion((op, ex) -> {
+                            if (ex != null) {
+                                failTask(ex);
+                                return;
+                            }
+
+                            // based on doc desc, create a query op that retrieves all versions
+                            ServiceDocument template = op.getBody(ServiceDocument.class);
+                            int resultLimit = Long.valueOf(template.documentDescription.versionRetentionLimit).intValue();
+
+                            Query qs = Builder.create()
+                                    .addFieldClause(ServiceDocument.FIELD_NAME_SELF_LINK, selfLink)
+                                    .build();
+
+                            QueryTask q = QueryTask.Builder.createDirectTask()
+                                    .addOption(QueryOption.INCLUDE_ALL_VERSIONS)
+                                    .addOption(QueryOption.EXPAND_CONTENT)
+                                    .setQuery(qs)
+                                    .setResultLimit(resultLimit)
+                                    .orderAscending(ServiceDocument.FIELD_NAME_VERSION, TypeName.LONG)
+                                    .build();
+
+                            URI postUri = UriUtils.buildUri(hostUri, ServiceUriPaths.CORE_LOCAL_QUERY_TASKS);
+
+                            Operation queryOp = Operation.createPost(postUri)
+                                    .setBody(q)
+                                    .setCompletion((queryResultOp, queryResultEx) -> {
+                                        if (queryResultEx != null) {
+                                            failTask(queryResultEx);
+                                            return;
+                                        }
+
+                                        Operation getNextPageOp = Operation.createGet(getNextPageLinkUri(queryResultOp))
+                                                .setCompletion((nextPageOp, nextPageEx) -> {
+                                                    if (nextPageEx != null) {
+                                                        failTask(nextPageEx);
+                                                        return;
+                                                    }
+                                                    QueryTask queryTask = nextPageOp.getBody(QueryTask.class);
+                                                    List<Object> docs = queryTask.results.documentLinks.stream()
+                                                            .map(link -> queryTask.results.documents.get(link))
+                                                            .collect(toList());
+                                                    allVersions.addAll(docs);
+                                                });
+
+                                        // these ops are called after query results are returned
+                                        queryResultNextPageOps.add(getNextPageOp);
+                                    });
+
+                            // these ops are called after retrieval of document descriptions
+                            queryOps.add(queryOp);
+                        });
+
+                        docDescOps.add(o);
+                    }
+
+                    // retrieve document description, perform query, retrieve next pages, then collect all documents
+                    OperationJoin.create(docDescOps)
+                            .setCompletion((docDescResultOps, docDescResultExs) -> {
+                                if (failTaskIfNotEmpty(docDescResultExs)) {
+                                    return;
+                                }
+
+                                OperationJoin.create(queryOps)
+                                        .setCompletion((queryResultOps, queryResultExs) -> {
+                                            if (failTaskIfNotEmpty(queryResultExs)) {
+                                                return;
+                                            }
+
+                                            OperationJoin.create(queryResultNextPageOps)
+                                                    .setCompletion((nextPageResultOps, nextPageResultExs) -> {
+                                                        if (failTaskIfNotEmpty(nextPageResultExs)) {
+                                                            return;
+                                                        }
+
+                                                        // docs with all versions are retrieved, call next phase
+                                                        transformResults(currentState, allVersions, nextPages, destinationURIs, lastUpdateTimesPerOwner);
+                                                    })
+                                                    .sendWith(this);
+                                        })
+                                        .sendWith(this);
+                            })
+                            .sendWith(this);
                 } else {
-                    transformResults(currentState, results, nextPages, destinationURIs, lastUpdateTimesPerOwner);
+
+                    if (results.isEmpty()) {
+                        // The results might be empty if all the local queries returned documents the respective hosts don't own.
+                        // In this case we can just move on to the next set of pages.
+                        migrate(currentState, nextPages, destinationURIs, lastUpdateTimesPerOwner);
+                    } else {
+                        transformResults(currentState, results, nextPages, destinationURIs, lastUpdateTimesPerOwner);
+                    }
                 }
             })
             .sendWith(this);
+    }
+
+    private boolean failTaskIfNotEmpty(Map<Long, Throwable> failures) {
+        if (failures != null && !failures.isEmpty()) {
+            failTask(failures.values());
+            return true;
+        }
+        return false;
     }
 
     private void transformUsingMap(State state, Collection<Object> cleanJson, Set<URI> nextPageLinks, List<URI> destinationURIs, Map<String, Long> lastUpdateTimesPerOwner) {
@@ -727,33 +862,110 @@ public class MigrationTaskService extends StatefulService {
 
     private void migrateEntities(Map<Object, String> json, State state, Set<URI> nextPageLinks, List<URI> destinationURIs, Map<String, Long> lastUpdateTimesPerOwner) {
         // create objects on destination
-        Map<Operation, Object> posts = json.entrySet().stream()
-                .map(d -> {
-                    Operation op = Operation.createPost(
-                            UriUtils.buildUri(
-                                    selectRandomUri(destinationURIs),
-                                    d.getValue()))
-                            .setBodyNoCloning(d.getKey());
-                    return new AbstractMap.SimpleEntry<Operation, Object>(op, d.getKey());
-                })
-                .collect(Collectors.toMap(e -> e.getKey(), e -> e.getValue()));
 
-        OperationJoin.create(posts.keySet())
-            .setCompletion((os, ts) -> {
-                if (ts != null && !ts.isEmpty()) {
-                    if (state.migrationOptions.contains(MigrationOption.DELETE_AFTER)) {
-                        logWarning("Migrating entities failed with exception: %s; Retrying operation.", ts.values().iterator().next());
-                        useFallBack(state, posts, ts, nextPageLinks, destinationURIs, lastUpdateTimesPerOwner);
-                    } else {
-                        failTask(ts.values());
-                        return;
-                    }
-                } else {
-                    adjustStat(STAT_NAME_PROCESSED_DOCUMENTS, posts.size());
-                    migrate(state, nextPageLinks, destinationURIs, lastUpdateTimesPerOwner);
+        if (state.migrationOptions.contains(MigrationOption.ALL_VERSIONS)) {
+
+            // map: selflink -> version sorted docs
+            Map<String, SortedSet<Object>> docsBySelfLink = new HashMap<>();
+            Map<String, String> factoryLinkBySelfLink = new HashMap<>();
+
+            for (Entry<Object, String> entry : json.entrySet()) {
+                Object docJson = entry.getKey();
+                String factoryLink = entry.getValue();
+                String selfLink = Utils.fromJson(docJson, ServiceDocument.class).documentSelfLink;
+
+                factoryLinkBySelfLink.putIfAbsent(selfLink, factoryLink);
+                SortedSet<Object> docs = docsBySelfLink.computeIfAbsent(selfLink, key -> {
+                    // sort by version ascending
+                    return new TreeSet<>((left, right) -> {
+                        ServiceDocument leftDoc = Utils.fromJson(left, ServiceDocument.class);
+                        ServiceDocument rightDoc = Utils.fromJson(right, ServiceDocument.class);
+                        return Long.compare(leftDoc.documentVersion, rightDoc.documentVersion);
+                    });
+                });
+
+                docs.add(docJson);
+            }
+
+
+            List<Operation> migrationOps = new ArrayList<>();
+
+            for (Entry<String, SortedSet<Object>> entry : docsBySelfLink.entrySet()) {
+                String selfLink = entry.getKey();
+                SortedSet<Object> docs = entry.getValue();
+                String factoryLink = factoryLinkBySelfLink.get(selfLink);
+
+                Object firstDoc = docs.first();
+                docs.remove(firstDoc);
+
+                URI destinationPostUri = UriUtils.buildUri(selectRandomUri(destinationURIs), factoryLink);
+                URI destinationPutUri = UriUtils.extendUri(destinationPostUri, selfLink);
+
+                Operation post = Operation.createPost(destinationPostUri)
+                        .setBodyNoCloning(firstDoc)
+                        .setCompletion((o, x) -> {
+                            // TODO: error handling for POST
+                        });
+
+                // put operations
+                for (Object doc : docs) {
+                    post.appendCompletion((op, ex) -> {
+                        Operation.createPut(destinationPutUri)
+                                .setBodyNoCloning(doc)
+                                .setCompletion((putOp, putEx) -> {
+                                    if (putEx != null) {
+                                        // TODO: error handling for PUT
+                                        return;
+                                    }
+                                    // trigger next put
+                                    op.complete();
+                                })
+                                .sendWith(this);
+                    });
                 }
-            })
-            .sendWith(this);
+
+                migrationOps.add(post);
+            }
+
+            OperationJoin.create(migrationOps)
+                    .setCompletion((ops, exs) -> {
+                        if (failTaskIfNotEmpty(exs)) {
+                            return;
+                        }
+
+                        adjustStat(STAT_NAME_PROCESSED_DOCUMENTS, json.size());
+                        migrate(state, nextPageLinks, destinationURIs, lastUpdateTimesPerOwner);
+                    })
+                    .sendWith(this);
+        } else {
+
+            Map<Operation, Object> posts = json.entrySet().stream()
+                    .map(d -> {
+                        Object docJson = d.getKey();
+                        String factoryLink = d.getValue();
+                        URI uri = UriUtils.buildUri(selectRandomUri(destinationURIs), factoryLink);
+                        Operation op = Operation.createPost(uri).setBodyNoCloning(docJson);
+                        return new AbstractMap.SimpleEntry<>(op, docJson);
+                    })
+                    .collect(Collectors.toMap(Entry::getKey, Entry::getValue));
+
+            OperationJoin.create(posts.keySet())
+                    .setCompletion((os, ts) -> {
+                        if (ts != null && !ts.isEmpty()) {
+                            if (state.migrationOptions.contains(MigrationOption.DELETE_AFTER)) {
+                                logWarning("Migrating entities failed with exception: %s; Retrying operation.", ts.values().iterator().next());
+                                useFallBack(state, posts, ts, nextPageLinks, destinationURIs, lastUpdateTimesPerOwner);
+                            } else {
+                                failTask(ts.values());
+                                return;
+                            }
+                        } else {
+                            adjustStat(STAT_NAME_PROCESSED_DOCUMENTS, posts.size());
+                            migrate(state, nextPageLinks, destinationURIs, lastUpdateTimesPerOwner);
+                        }
+                    })
+                    .sendWith(this);
+        }
     }
 
     private void useFallBack(State state, Map<Operation, Object> posts, Map<Long, Throwable> operationFailures, Set<URI> nextPageLinks, List<URI> destinationURIs, Map<String, Long> lastUpdateTimesPerOwner) {
@@ -872,6 +1084,11 @@ public class MigrationTaskService extends StatefulService {
                 queryUri.getPort(),
                 operation.getBody(QueryTask.class).results.nextPageLink,
                 null);
+    }
+
+    private URI getHostUri(Operation operation) {
+        URI uri = operation.getUri();
+        return UriUtils.buildUri(uri.getScheme(), uri.getHost(), uri.getPort(), null, null);
     }
 
     private void failTask(Throwable t) {
