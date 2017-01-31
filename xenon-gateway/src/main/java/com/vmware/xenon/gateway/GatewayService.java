@@ -203,6 +203,6 @@ public class GatewayService extends StatelessService {
         ServiceErrorResponse rsp = new ServiceErrorResponse();
         rsp.message = String.format(msgFormat, args);
         rsp.statusCode = statusCode;
-        op.fail(statusCode, null, rsp);
+        op.fail(statusCode, new IllegalStateException(rsp.message), rsp);
     }
 }
