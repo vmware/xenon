@@ -17,6 +17,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import com.vmware.xenon.common.FactoryService;
 import com.vmware.xenon.common.Operation;
@@ -166,8 +167,12 @@ public class ExampleService extends StatefulService {
         return hasStateChanged;
     }
 
+    private static AtomicInteger deleteCounter = new AtomicInteger();
+
     @Override
     public void handleDelete(Operation delete) {
+        int count = deleteCounter.incrementAndGet();
+        logInfo("DEBUG: delete on service. uri=%s, body=%s, count=%s", delete.getUri(), delete.getBodyRaw(), count);
         if (!delete.hasBody()) {
             delete.complete();
             return;
