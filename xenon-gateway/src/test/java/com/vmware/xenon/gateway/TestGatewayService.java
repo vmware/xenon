@@ -30,30 +30,35 @@ import org.junit.Before;
 import org.junit.Test;
 
 import com.vmware.xenon.common.CommandLineArgumentParser;
-import com.vmware.xenon.common.FactoryService;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Service.Action;
 import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.ServiceDocumentDescription;
 import com.vmware.xenon.common.ServiceDocumentQueryResult;
 import com.vmware.xenon.common.ServiceErrorResponse;
+import com.vmware.xenon.common.ServiceHost;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
 import com.vmware.xenon.common.test.MinimalTestServiceState;
 import com.vmware.xenon.common.test.TestContext;
 import com.vmware.xenon.common.test.VerificationHost;
+import com.vmware.xenon.gateway.app.GatewayAppArguments;
 import com.vmware.xenon.services.common.ExampleService;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
 import com.vmware.xenon.services.common.MinimalTestService;
-import com.vmware.xenon.services.common.RootNamespaceService;
 
 public class TestGatewayService {
 
     private static final String MINIMAL_SERVICE_LINK = "/minimal-service";
 
+    private static final int DISPATCH_PORT = 8080;
+    private static final int CONFIG_PORT = 8010;
+
     private TestGatewayManager gatewayMgr;
-    private VerificationHost gatewayHost;
     private VerificationHost backendHost;
+
+    private VerificationHost host;
+    private VerificationGatewayApp gatewayApp;
 
     public int serviceCount = 10;
     public int updateCount = 10;
@@ -62,45 +67,25 @@ public class TestGatewayService {
     @Before
     public void setUp() throws Throwable {
         CommandLineArgumentParser.parseFromProperties(this);
-        if (this.gatewayHost == null) {
-            this.gatewayHost = VerificationHost.create(0);
-            this.gatewayHost.setMaintenanceIntervalMicros(TimeUnit.MILLISECONDS.toMicros(
+        if (this.gatewayApp == null) {
+            this.gatewayApp = new VerificationGatewayApp();
+            this.gatewayApp.startSynchronously(createGatewayArguments());
+        }
+
+        if (this.host == null) {
+            this.host = VerificationHost.create(0);
+            this.host.setMaintenanceIntervalMicros(TimeUnit.MILLISECONDS.toMicros(
                     VerificationHost.FAST_MAINT_INTERVAL_MILLIS));
-            this.gatewayHost.start();
-            setupGatewayHost(this.gatewayHost);
+            this.host.start();
         }
+
+        ServiceHost configHost = this.gatewayApp.getConfigHost();
+        waitForReplicatedFactoryServiceAvailable(configHost, GatewayConfigService.FACTORY_LINK);
+        waitForReplicatedFactoryServiceAvailable(configHost, GatewayPathService.FACTORY_LINK);
+
         if (this.gatewayMgr == null) {
-            this.gatewayMgr = new TestGatewayManager(this.gatewayHost);
+            this.gatewayMgr = new TestGatewayManager(this.host, this.gatewayApp);
         }
-    }
-
-    private void setupGatewayHost(VerificationHost host) throws Throwable {
-        // Stop ExampleService. Otherwise any requests to example-service
-        // will be served by the Gateway.
-        FactoryService exampleFactory = ExampleService.createFactory();
-        exampleFactory.setSelfLink(ExampleService.FACTORY_LINK);
-        host.stopService(exampleFactory);
-
-        // Stop RootNamespaceService, since gateway will listen on "/"
-        RootNamespaceService service2 = new RootNamespaceService();
-        service2.setSelfLink(RootNamespaceService.SELF_LINK);
-        host.stopService(service2);
-
-        // Start Stateful services
-        host.startFactory(GatewayPathService.class, GatewayPathService::createFactory);
-        host.startFactory(GatewayConfigService.class, GatewayConfigService::createFactory);
-
-        // Wait for the factories to become available.
-        waitForReplicatedFactoryServiceAvailable(host, GatewayPathService.FACTORY_LINK);
-        waitForReplicatedFactoryServiceAvailable(host, GatewayConfigService.FACTORY_LINK);
-
-        // Start the gateway service.
-        TestContext ctx = host.testCreate(1);
-        Operation postOp = Operation
-                .createPost(host.getUri())
-                .setCompletion(ctx.getCompletion());
-        host.startService(postOp, new GatewayService(host.getUri()));
-        ctx.await();
     }
 
     private void setupBackendHost() throws Throwable {
@@ -113,9 +98,9 @@ public class TestGatewayService {
         startMinimalTestService(this.backendHost);
     }
 
-    private void waitForReplicatedFactoryServiceAvailable(VerificationHost host, String factoryLink) {
+    private void waitForReplicatedFactoryServiceAvailable(ServiceHost host, String factoryLink) {
         URI factoryUri = UriUtils.buildUri(host, factoryLink);
-        host.waitForReplicatedFactoryServiceAvailable(factoryUri);
+        this.host.waitForReplicatedFactoryServiceAvailable(factoryUri);
     }
 
     private void startMinimalTestService(VerificationHost host) throws Throwable {
@@ -128,10 +113,9 @@ public class TestGatewayService {
     @After
     public void tearDown() {
         this.gatewayMgr = null;
-        if (this.gatewayHost != null) {
-            this.gatewayHost.tearDownInProcessPeers();
-            this.gatewayHost.tearDown();
-            this.gatewayHost = null;
+        if (this.gatewayApp != null) {
+            this.gatewayApp.stop();
+            this.gatewayApp = null;
         }
         if (this.backendHost != null) {
             this.backendHost.tearDownInProcessPeers();
@@ -158,19 +142,21 @@ public class TestGatewayService {
         ServiceDocumentDescription desc = ServiceDocumentDescription
                 .Builder.create().buildDescription(ExampleServiceState.class);
 
+        ServiceHost dispatchHost = this.gatewayApp.getDispatchHost();
+
         // Verify POSTs
         List<URI> exampleUris = new ArrayList<>();
-        this.gatewayHost.createExampleServices(
-                this.gatewayHost, this.serviceCount, exampleUris, null, true);
+        this.host.createExampleServices(
+                dispatchHost, this.serviceCount, exampleUris, null, true);
 
         // Verify GETs
-        Map<URI, ExampleServiceState> examples = this.gatewayHost.getServiceState(
+        Map<URI, ExampleServiceState> examples = this.host.getServiceState(
                 null, ExampleServiceState.class, exampleUris);
 
         // Verify GET with Query Params
-        URI factoryUri = UriUtils.buildUri(this.gatewayHost, ExampleService.FACTORY_LINK);
+        URI factoryUri = UriUtils.buildUri(dispatchHost, ExampleService.FACTORY_LINK);
         URI expandedUri = UriUtils.buildExpandLinksQueryUri(factoryUri);
-        ServiceDocumentQueryResult result = this.gatewayHost.getFactoryState(expandedUri);
+        ServiceDocumentQueryResult result = this.host.getFactoryState(expandedUri);
         assertTrue(result.documents.size() == examples.size());
         for (ExampleServiceState example : examples.values()) {
             assertTrue(result.documentLinks.contains(example.documentSelfLink));
@@ -184,33 +170,33 @@ public class TestGatewayService {
             ExampleServiceState state = new ExampleServiceState();
             state.name = UUID.randomUUID().toString();
             state.counter = 100L + i;
-            this.gatewayHost.doServiceUpdates(examples.keySet(), Action.PUT, state);
+            this.host.doServiceUpdates(examples.keySet(), Action.PUT, state);
         }
 
         // Verify PATCHes
         for (int i = 0; i < this.updateCount; i++) {
             ExampleServiceState state = new ExampleServiceState();
             state.counter = 100L + i;
-            this.gatewayHost.doServiceUpdates(examples.keySet(), Action.PATCH, state);
+            this.host.doServiceUpdates(examples.keySet(), Action.PATCH, state);
         }
 
         // Verify DELETEs
-        this.gatewayHost.deleteAllChildServices(
-                UriUtils.buildUri(this.gatewayHost, ExampleService.FACTORY_LINK));
+        this.host.deleteAllChildServices(
+                UriUtils.buildUri(dispatchHost, ExampleService.FACTORY_LINK));
 
         // Verify errors.
         // 400 - BAD REQUEST
         ExampleServiceState state = new ExampleServiceState();
         state.name = null;
         ServiceErrorResponse rsp = makeRequest(Action.POST,
-                ExampleService.FACTORY_LINK, state,
+                getDispatchUri(ExampleService.FACTORY_LINK), state,
                 ServiceErrorResponse.class, Operation.STATUS_CODE_BAD_REQUEST);
         assertTrue(rsp.statusCode == Operation.STATUS_CODE_BAD_REQUEST);
 
         // 404 - NOT-FOUND
         rsp = makeRequest(Action.GET,
-                ExampleService.FACTORY_LINK + "/does-not-exist", null,
-                ServiceErrorResponse.class, Operation.STATUS_CODE_NOT_FOUND);
+                getDispatchUri(ExampleService.FACTORY_LINK + "/does-not-exist"),
+                null, ServiceErrorResponse.class, Operation.STATUS_CODE_NOT_FOUND);
         assertTrue(rsp.statusCode == Operation.STATUS_CODE_NOT_FOUND);
 
         // 409 - CONFLICT
@@ -218,18 +204,18 @@ public class TestGatewayService {
         state.name = "contoso";
         state.counter = 1000L;
         state.documentSelfLink = documentSelfLink;
-        rsp = makeRequest(Action.POST, ExampleService.FACTORY_LINK, state,
-                ServiceErrorResponse.class, Operation.STATUS_CODE_CONFLICT);
+        rsp = makeRequest(Action.POST, getDispatchUri(ExampleService.FACTORY_LINK),
+                state, ServiceErrorResponse.class, Operation.STATUS_CODE_CONFLICT);
         assertTrue(rsp.statusCode == Operation.STATUS_CODE_CONFLICT);
 
         // Verify requests with Custom Request/Response headers
-        TestContext ctx = this.gatewayHost.testCreate(1);
+        TestContext ctx = this.host.testCreate(1);
         MinimalTestServiceState minimalState = new MinimalTestServiceState();
         minimalState.id = UUID.randomUUID().toString();
         Operation putOp = Operation
-                .createPut(this.gatewayHost, MINIMAL_SERVICE_LINK)
+                .createPut(dispatchHost, MINIMAL_SERVICE_LINK)
                 .setBody(minimalState)
-                .setReferer(this.gatewayHost.getUri())
+                .setReferer(this.host.getUri())
                 .setCompletion((o, e) -> {
                     if (e != null) {
                         ctx.failIteration(e);
@@ -243,7 +229,7 @@ public class TestGatewayService {
                     ctx.failIteration(new IllegalStateException("response did not contain expected header"));
                 });
         putOp.addRequestHeader(MinimalTestService.TEST_HEADER_NAME, "request-" + minimalState.id);
-        this.gatewayHost.send(putOp);
+        this.host.send(putOp);
         ctx.await();
     }
 
@@ -257,7 +243,7 @@ public class TestGatewayService {
         // Gateway is currently UNAVAILABLE. All http requests
         // should fail with http 503.
         ServiceErrorResponse rsp = makeRequest(
-                Action.GET, ExampleService.FACTORY_LINK, null,
+                Action.GET, getDispatchUri(ExampleService.FACTORY_LINK), null,
                 ServiceErrorResponse.class, Operation.STATUS_CODE_UNAVAILABLE);
         assertTrue(rsp.statusCode == Operation.STATUS_CODE_UNAVAILABLE);
 
@@ -267,7 +253,7 @@ public class TestGatewayService {
         this.gatewayMgr.addConfig(configState);
         this.gatewayMgr.verifyGatewayState();
         rsp = makeRequest(
-                Action.GET, ExampleService.FACTORY_LINK, null,
+                Action.GET, getDispatchUri(ExampleService.FACTORY_LINK), null,
                 ServiceErrorResponse.class, Operation.STATUS_CODE_NOT_FOUND);
         assertTrue(rsp.statusCode == Operation.STATUS_CODE_NOT_FOUND);
 
@@ -277,7 +263,7 @@ public class TestGatewayService {
                 ExampleService.FACTORY_LINK, 1, EnumSet.of(Action.POST));
         this.gatewayMgr.verifyGatewayState();
         rsp = makeRequest(
-                Action.GET, ExampleService.FACTORY_LINK, null,
+                Action.GET, getDispatchUri(ExampleService.FACTORY_LINK), null,
                 ServiceErrorResponse.class, Operation.STATUS_CODE_BAD_METHOD);
         assertTrue(rsp.statusCode == Operation.STATUS_CODE_BAD_METHOD);
 
@@ -286,7 +272,7 @@ public class TestGatewayService {
         this.gatewayMgr.updatePaths(paths, EnumSet.noneOf(Action.class));
         this.gatewayMgr.verifyGatewayState();
         rsp = makeRequest(
-                Action.GET, ExampleService.FACTORY_LINK, null,
+                Action.GET, getDispatchUri(ExampleService.FACTORY_LINK), null,
                 ServiceErrorResponse.class, Operation.STATUS_CODE_UNAVAILABLE);
         assertTrue(rsp.statusCode == Operation.STATUS_CODE_UNAVAILABLE);
 
@@ -295,7 +281,7 @@ public class TestGatewayService {
         this.gatewayMgr.changeConfigStatus(GatewayStatus.AVAILABLE);
         this.gatewayMgr.verifyGatewayState();
         rsp = makeRequest(
-                Action.GET, ExampleService.FACTORY_LINK, null,
+                Action.GET, getDispatchUri(ExampleService.FACTORY_LINK), null,
                 ServiceErrorResponse.class, Operation.STATUS_CODE_UNAVAILABLE);
         assertTrue(rsp.statusCode == Operation.STATUS_CODE_UNAVAILABLE);
 
@@ -306,7 +292,7 @@ public class TestGatewayService {
         ExampleServiceState state = new ExampleServiceState();
         state.name = "testing";
         ExampleServiceState result = makeRequest(
-                Action.POST, ExampleService.FACTORY_LINK, state,
+                Action.POST, getDispatchUri(ExampleService.FACTORY_LINK), state,
                 ExampleServiceState.class, Operation.STATUS_CODE_OK);
         assertTrue(result.name.equals(state.name));
     }
@@ -340,13 +326,7 @@ public class TestGatewayService {
 
         // Restart the gateway host. And make sure that the
         // config gets populated correctly during bootstrap.
-        this.gatewayHost.stop();
-        this.gatewayHost.setPort(0);
-        if (!VerificationHost.restartStatefulHost(this.gatewayHost)) {
-            this.gatewayHost.log("Restart of gatewayHost failed, aborting");
-            return;
-        }
-        setupGatewayHost(this.gatewayHost);
+        this.gatewayApp.restart();
         this.gatewayMgr.verifyGatewayState();
 
         // Make some config changes again.
@@ -372,15 +352,10 @@ public class TestGatewayService {
         // Start adding nodes and make sure after every addition
         // that each node reflects the latest and up-to-date cache
         // state.
-        this.gatewayHost.addPeerNode(this.gatewayHost);
         for (int i = 0; i < this.peerCount; i++) {
-            VerificationHost peerHost = VerificationHost.create(0);
-            peerHost.setMaintenanceIntervalMicros(TimeUnit.MILLISECONDS.toMicros(
-                    VerificationHost.FAST_MAINT_INTERVAL_MILLIS));
-            peerHost.start();
-            setupGatewayHost(peerHost);
-            this.gatewayHost.addPeerNode(peerHost);
-            this.gatewayHost.joinNodesAndVerifyConvergence(i + 1);
+            VerificationGatewayApp peer = new VerificationGatewayApp();
+            peer.startSynchronously(createGatewayArguments());
+            this.gatewayApp.addPeerGateway(peer);
 
             // Wait for each gateway host to reflect the same config.
             this.gatewayMgr.verifyGatewayStateAcrossPeers();
@@ -400,29 +375,29 @@ public class TestGatewayService {
     @Test
     public void testGatewayServiceStop() throws Throwable {
         makeRequest(Action.DELETE,
-                GatewayService.SELF_LINK, null,
+                getDispatchUri(GatewayService.SELF_LINK), null,
                 ServiceErrorResponse.class, Operation.STATUS_CODE_BAD_METHOD);
 
         // Host stops should still work.
-        TestContext ctx = this.gatewayHost.testCreate(1);
+        TestContext ctx = this.host.testCreate(1);
         Operation
-                .createDelete(this.gatewayHost, GatewayService.SELF_LINK)
-                .setReferer(this.gatewayHost.getUri())
+                .createDelete(getDispatchUri(GatewayService.SELF_LINK))
+                .setReferer(this.host.getUri())
                 .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_NO_INDEX_UPDATE)
                 .setCompletion(ctx.getCompletion())
-                .sendWith(this.gatewayHost);
+                .sendWith(this.host);
         ctx.await();
     }
 
     @SuppressWarnings("unchecked")
-    private <T, S> T makeRequest(Action action, String path,
+    private <T, S> T makeRequest(Action action, URI serviceUri,
                                  S body, Class<T> clazz,
                                  int statusCode) {
         T[] response = (T[]) Array.newInstance(clazz, 1);
-        TestContext ctx = this.gatewayHost.testCreate(1);
-        Operation op = Operation.createPost(this.gatewayHost, path)
+        TestContext ctx = this.host.testCreate(1);
+        Operation op = Operation.createPost(serviceUri)
                 .setBody(body)
-                .setReferer(this.gatewayHost.getUri())
+                .setReferer(this.host.getUri())
                 .setCompletion((o, e) -> {
                     if (o.getStatusCode() != statusCode) {
                         Exception ex = new IllegalStateException(
@@ -435,10 +410,22 @@ public class TestGatewayService {
                     ctx.completeIteration();
                 });
         op.setAction(action);
-        this.gatewayHost.sendRequest(op);
+        this.host.sendRequest(op);
         ctx.await();
 
         return response[0];
+    }
+
+    private GatewayAppArguments createGatewayArguments() {
+        GatewayAppArguments args = new GatewayAppArguments();
+        // By explicitly setting both ports to 0, we make sure
+        // that netty randomly picks ports that are available.
+        args.dispatchPort = 0;
+        args.port = 0;
+        args.maintenanceIntervalMicros = TimeUnit.MILLISECONDS.toMicros(
+                VerificationHost.FAST_MAINT_INTERVAL_MILLIS);
+
+        return args;
     }
 
     private GatewayConfigService.State createConfigState(GatewayStatus status) {
@@ -448,5 +435,9 @@ public class TestGatewayService {
         configState.status = GatewayStatus.AVAILABLE;
         configState.documentSelfLink = GatewayUriPaths.DEFAULT_CONFIG_PATH;
         return configState;
+    }
+
+    private URI getDispatchUri(String selfLink) {
+        return UriUtils.buildUri(this.gatewayApp.getDispatchHost(), selfLink);
     }
 }
