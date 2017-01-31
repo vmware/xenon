@@ -25,6 +25,7 @@ import java.util.logging.Level;
 
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Service.Action;
+import com.vmware.xenon.common.ServiceHost;
 import com.vmware.xenon.common.test.TestRequestSender;
 import com.vmware.xenon.common.test.VerificationHost;
 
@@ -35,24 +36,29 @@ import com.vmware.xenon.common.test.VerificationHost;
 public class TestGatewayManager {
 
     private TestRequestSender sender;
-    private VerificationHost gatewayHost;
+    private VerificationHost host;
+    private VerificationGatewayApp gatewayApp;
 
     private GatewayConfigService.State configState;
     private Map<String, GatewayPathService.State> paths = new ConcurrentSkipListMap<>();
 
-    public TestGatewayManager(VerificationHost gatewayHost) {
-        this.gatewayHost = gatewayHost;
-        this.sender = new TestRequestSender(this.gatewayHost);
+    public TestGatewayManager(VerificationHost host, VerificationGatewayApp gatewayApp) {
+        this.host = host;
+        this.gatewayApp = gatewayApp;
+        this.sender = new TestRequestSender(this.host);
     }
 
     public void addConfig(GatewayConfigService.State state) {
+        ServiceHost configHost = this.gatewayApp.getConfigHost();
         Operation op = Operation
-                .createPost(this.gatewayHost, GatewayConfigService.FACTORY_LINK)
+                .createPost(configHost, GatewayConfigService.FACTORY_LINK)
                 .setBody(state);
         this.configState = this.sender.sendAndWait(op, GatewayConfigService.State.class);
     }
 
     public Set<String> addPaths(String pathTemplate, int count, EnumSet<Action> actions) {
+        ServiceHost configHost = this.gatewayApp.getConfigHost();
+
         Set<String> returnVal = new HashSet<>(count);
         List<Operation> ops = new ArrayList<>(count);
         for (int i = 0; i < count; i++) {
@@ -61,7 +67,7 @@ public class TestGatewayManager {
             state.actions = actions;
             state.documentSelfLink = GatewayPathService.createSelfLinkFromState(state);
             ops.add(Operation
-                    .createPost(this.gatewayHost, GatewayPathService.FACTORY_LINK)
+                    .createPost(configHost, GatewayPathService.FACTORY_LINK)
                     .setBody(state));
         }
         List<GatewayPathService.State> responses = this.sender
@@ -94,14 +100,18 @@ public class TestGatewayManager {
     }
 
     public void patchConfig(GatewayConfigService.State patchState) {
+        ServiceHost configHost = this.gatewayApp.getConfigHost();
+
         Operation op = Operation
-                .createPatch(this.gatewayHost, this.configState.documentSelfLink)
+                .createPatch(configHost, this.configState.documentSelfLink)
                 .setBody(patchState);
         this.configState = this.sender
                 .sendAndWait(op, GatewayConfigService.State.class);
     }
 
     public void updatePaths(Set<String> pathLinks, EnumSet<Action> actions) {
+        ServiceHost configHost = this.gatewayApp.getConfigHost();
+
         List<Operation> ops = new ArrayList<>(pathLinks.size());
         for (String pathLink : pathLinks) {
             GatewayPathService.State state = this.paths.get(pathLink);
@@ -110,7 +120,7 @@ public class TestGatewayManager {
             }
             state.actions = actions;
             ops.add(Operation
-                    .createPut(this.gatewayHost, pathLink)
+                    .createPut(configHost, pathLink)
                     .setBody(state));
         }
         List<GatewayPathService.State> responses = this.sender
@@ -119,19 +129,23 @@ public class TestGatewayManager {
     }
 
     public void deleteConfig() {
+        ServiceHost configHost = this.gatewayApp.getConfigHost();
+
         Operation op = Operation
-                .createDelete(this.gatewayHost, this.configState.documentSelfLink);
+                .createDelete(configHost, this.configState.documentSelfLink);
         this.sender.sendAndWait(op);
         this.configState = null;
     }
 
     public void deletePaths(Set<String> pathLinks) {
+        ServiceHost configHost = this.gatewayApp.getConfigHost();
+
         if (pathLinks == null) {
             pathLinks = this.paths.keySet();
         }
         List<Operation> ops = new ArrayList<>(pathLinks.size());
         for (String pathLink : pathLinks) {
-            ops.add(Operation.createDelete(this.gatewayHost, pathLink));
+            ops.add(Operation.createDelete(configHost, pathLink));
         }
 
         this.sender.sendAndWait(ops);
@@ -139,17 +153,18 @@ public class TestGatewayManager {
     }
 
     public void verifyGatewayState() {
-        verifyGatewayState(this.gatewayHost);
+        verifyGatewayState(this.gatewayApp);
     }
 
     public void verifyGatewayStateAcrossPeers() {
         verifyGatewayState();
-        this.gatewayHost.getInProcessHostMap().values().forEach(peer -> verifyGatewayState(peer));
+        this.gatewayApp.getPeerGateways().forEach(peer -> verifyGatewayState(peer));
     }
 
-    private void verifyGatewayState(VerificationHost host) {
-        this.gatewayHost.waitFor("Gateway cache was not updated", () -> {
-            Operation rspOp = this.sender.sendAndWait(Operation.createGet(host.getUri()));
+    private void verifyGatewayState(VerificationGatewayApp app) {
+        this.host.waitFor("Gateway cache was not updated", () -> {
+            ServiceHost dispatchHost = app.getDispatchHost();
+            Operation rspOp = this.sender.sendAndWait(Operation.createGet(dispatchHost.getUri()));
             if (rspOp.getStatusCode() != Operation.STATUS_CODE_OK) {
                 return false;
             }
@@ -157,7 +172,7 @@ public class TestGatewayManager {
             GatewayCache.CachedState cache = rspOp.getBody(GatewayCache.CachedState.class);
             if ((this.configState == null && cache.configState.status != GatewayStatus.UNAVAILABLE) ||
                     (this.configState != null && cache.configState.status != this.configState.status)) {
-                host.log(Level.INFO, "Unexpected gateway Status. Cached Status:%s, Expected:%s",
+                this.host.log(Level.INFO, "Unexpected gateway Status. Cached Status:%s, Expected:%s",
                         cache.configState.status, this.configState != null ? this.configState.status : "Unknown");
                 return false;
             }
@@ -166,19 +181,19 @@ public class TestGatewayManager {
                         (this.configState.forwardingUri != null && !this.configState.forwardingUri.equals(cache.configState.forwardingUri)) ||
                         (this.configState.filterRequests == null && !cache.configState.filterRequests) ||
                         (this.configState.filterRequests != null && cache.configState.filterRequests != this.configState.filterRequests)) {
-                    host.log(Level.INFO, "Unexpected gateway Config");
+                    this.host.log(Level.INFO, "Unexpected gateway Config");
                     return false;
                 }
             }
             if (cache.paths.size() != this.paths.size()) {
-                host.log(Level.INFO, "Unexpected number of paths. Cached count:%d, Expected:%d",
+                this.host.log(Level.INFO, "Unexpected number of paths. Cached count:%d, Expected:%d",
                         cache.paths.size(), this.paths.size());
                 return false;
             }
             for (GatewayPathService.State pathState : this.paths.values()) {
                 GatewayPathService.State state = cache.paths.get(pathState.path);
                 if (state == null || state.actions == null) {
-                    host.log(Level.INFO,
+                    this.host.log(Level.INFO,
                             "Cached path state contain zero registered actions. Path %s", pathState.path);
                     return false;
                 }
@@ -188,14 +203,14 @@ public class TestGatewayManager {
                     srcActions = EnumSet.allOf(Action.class);
                 }
                 if (actions.size() != srcActions.size()) {
-                    host.log(Level.INFO,
+                    this.host.log(Level.INFO,
                             "Unexpected action count for path %s. Cached:%d, Expected:%d",
                             pathState.path, actions.size(), srcActions.size());
                     return false;
                 }
                 for (Action action : actions) {
                     if (!srcActions.contains(action)) {
-                        host.log(Level.INFO,
+                        this.host.log(Level.INFO,
                                 "Unexpected action %s for path %s",
                                 pathState.path, action);
                         return false;
