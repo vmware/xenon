@@ -76,7 +76,7 @@
                     </descriptorRefs>
                     <archive>
                         <manifest>
-                            <mainClass>com.vmware.xenon.samples.SampleHost</mainClass>
+                            <mainClass>com.vmware.xenon.gateway.app.GatewayApp</mainClass>
                         </manifest>
                     </archive>
                 </configuration>
