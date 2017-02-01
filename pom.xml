@@ -140,7 +140,6 @@
         <module>xenon-host</module>
         <module>xenon-samples</module>
         <module>xenon-websocket-test</module>
-        <module>xenon-quickstart</module>
         <module>xenon-gateway</module>
         <module>xenon-workshop/jan-2017</module>
       </modules>
@@ -155,7 +154,6 @@
         <module>xenon-host</module>
         <module>xenon-samples</module>
         <module>xenon-websocket-test</module>
-        <module>xenon-quickstart</module>
         <module>xenon-gateway</module>
       </modules>
       <properties>
@@ -170,7 +168,6 @@
         <module>xenon-host</module>
         <module>xenon-samples</module>
         <module>xenon-websocket-test</module>
-        <module>xenon-quickstart</module>
         <module>xenon-gateway</module>
       </modules>
       <build>
@@ -300,6 +297,17 @@
           </plugin>
         </plugins>
       </build>
+    </profile>
+    <profile>
+      <id>unix</id>
+      <activation>
+        <os>
+          <family>Unix</family>
+        </os>
+      </activation>
+      <modules>
+        <module>xenon-quickstart</module>
+      </modules>
     </profile>
   </profiles>
 
