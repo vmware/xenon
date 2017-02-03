@@ -64,6 +64,8 @@ public class StatefulService implements Service {
 
         public Set<String> txCoordinatorLinks;
         public long lastCommitTimeMicros;
+
+        public OperationPriorityQueue outOfOrderQueue;
     }
 
     private final RuntimeContext context = new RuntimeContext();
@@ -169,15 +171,12 @@ public class StatefulService implements Service {
             // Special processing for ODL services: they have a high probability of
             // STOP requests, due to inactivity, colliding with new client requests that
             // re-start the service.
-            boolean hasActiveUpdates = false;
+            boolean hasActiveUpdates;
             synchronized (this.context) {
                 isAlreadyStopped = this.context.processingStage == ProcessingStage.STOPPED;
-                if (!hasActiveUpdates && this.context.synchQueue != null) {
-                    hasActiveUpdates = true;
-                }
-                if (!hasActiveUpdates && !this.context.operationQueue.isEmpty()) {
-                    hasActiveUpdates = true;
-                }
+                hasActiveUpdates = !this.context.operationQueue.isEmpty()
+                        || this.context.synchQueue != null
+                        || this.context.outOfOrderQueue != null;
             }
 
             if (isAlreadyStopped) {
@@ -227,6 +226,11 @@ public class StatefulService implements Service {
             if (this.context.synchQueue != null) {
                 opsToCancel.addAll(this.context.synchQueue.toCollection());
                 this.context.synchQueue.clear();
+            }
+
+            if (this.context.outOfOrderQueue != null) {
+                opsToCancel.addAll(this.context.outOfOrderQueue.toCollection());
+                this.context.outOfOrderQueue.clear();
             }
         }
 
@@ -341,11 +345,39 @@ public class StatefulService implements Service {
                     getHost().failRequestLimitExceeded(op);
                 }
                 return RETURN_TRUE_FLAG;
+            } else if (enqueueOutOfOrderUpdate(op)) {
+                if (this.context.outOfOrderQueue == null) {
+                    this.context.outOfOrderQueue = OperationPriorityQueue.create(
+                            Service.OPERATION_QUEUE_DEFAULT_LIMIT);
+                }
+                if (!this.context.outOfOrderQueue.offer(op)) {
+                    getHost().failRequestLimitExceeded(op);
+                }
+                return RETURN_TRUE_FLAG;
             } else {
                 this.context.isUpdateActive = true;
             }
         }
         return pausedOrOdlStopped;
+    }
+
+    private boolean enqueueOutOfOrderUpdate(Operation op) {
+        if (!hasOption(ServiceOption.OWNER_SELECTION)) {
+            return false;
+        }
+
+        if (!op.isFromReplication()) {
+            return false;
+        }
+
+        ServiceDocument sd = op.getLinkedState();
+        if (sd == null
+                || sd.documentEpoch != this.context.epoch
+                || sd.documentVersion > this.context.version + 1) {
+            return false;
+        }
+
+        return true;
     }
 
     @Override
@@ -361,7 +393,7 @@ public class StatefulService implements Service {
 
                 if (hasOption(ServiceOption.IMMUTABLE)
                         && (request.getAction() == Action.PATCH
-                                || request.getAction() == Action.PUT)) {
+                        || request.getAction() == Action.PUT)) {
                     processPending(request);
                     getHost().failRequestActionNotSupported(request);
                     return;
@@ -1007,7 +1039,7 @@ public class StatefulService implements Service {
 
             if (latestState.documentVersion < this.context.version
                     || (latestState.documentEpoch != null
-                            && latestState.documentEpoch < this.context.epoch)) {
+                    && latestState.documentEpoch < this.context.epoch)) {
                 return;
             }
 
@@ -1295,6 +1327,19 @@ public class StatefulService implements Service {
                 op = this.context.synchQueue.poll();
                 if (this.context.synchQueue.isEmpty()) {
                     this.context.synchQueue = null;
+                }
+            }
+            if (op == null && this.context.outOfOrderQueue != null) {
+                op = this.context.outOfOrderQueue.peek();
+                ServiceDocument sd = op.getLinkedState();
+                if (sd.documentEpoch == this.context.epoch
+                        && sd.documentVersion > this.context.version + 1) {
+                    op = null;
+                } else {
+                    this.context.outOfOrderQueue.remove(op);
+                    if (this.context.outOfOrderQueue.isEmpty()) {
+                        this.context.outOfOrderQueue = null;
+                    }
                 }
             }
             if (op == null) {
@@ -1604,7 +1649,7 @@ public class StatefulService implements Service {
 
         if (option == ServiceOption.PERIODIC_MAINTENANCE && hasOption(ServiceOption.ON_DEMAND_LOAD)
                 || option == ServiceOption.ON_DEMAND_LOAD
-                        && hasOption(ServiceOption.PERIODIC_MAINTENANCE)) {
+                && hasOption(ServiceOption.PERIODIC_MAINTENANCE)) {
             throw new IllegalArgumentException("Service option PERIODIC_MAINTENANCE and " +
                     "ON_DEMAND_LOAD cannot co-exist.");
         }
@@ -1690,10 +1735,10 @@ public class StatefulService implements Service {
                         return null;
                     }
 
-                    if (this.context.isUpdateActive ||
-                            (this.context.synchQueue != null && !this.context.synchQueue.isEmpty())
-                            ||
-                            !this.context.operationQueue.isEmpty()) {
+                    if (this.context.isUpdateActive
+                            || this.context.synchQueue != null
+                            || !this.context.operationQueue.isEmpty()
+                            || this.context.outOfOrderQueue != null) {
                         failure = new IllegalStateException("Service has active updates");
                         return null;
                     }
@@ -2044,7 +2089,7 @@ public class StatefulService implements Service {
 
         if (micros > 0 && micros < Service.MIN_MAINTENANCE_INTERVAL_MICROS) {
             logWarning("Maintenance interval %d is less than the minimum interval %d"
-                    + ", reducing to min interval", micros,
+                            + ", reducing to min interval", micros,
                     Service.MIN_MAINTENANCE_INTERVAL_MICROS);
             micros = Service.MIN_MAINTENANCE_INTERVAL_MICROS;
         }
