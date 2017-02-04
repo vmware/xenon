@@ -396,9 +396,9 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
             // Add an Max-Age qualifier if an expiration is set in the Claims object
             if (authorizationContext.getClaims().getExpirationTime() != null) {
                 buf.append("; Max-Age=");
-                long maxAge = authorizationContext.getClaims().getExpirationTime()
-                        - Utils.getSystemNowMicrosUtc();
-                buf.append(maxAge > 0 ? TimeUnit.MICROSECONDS.toSeconds(maxAge) : 0);
+                long nowSeconds = Utils.getSystemNowMicrosUtc() / 1000 / 1000;
+                long maxAge = authorizationContext.getClaims().getExpirationTime() - nowSeconds;
+                buf.append(maxAge > 0 ? maxAge : 0);
             }
             response.headers().add(Operation.SET_COOKIE_HEADER, buf.toString());
         }
