@@ -587,7 +587,7 @@ public abstract class FactoryService extends StatelessService {
         sendRequest(Operation.createPost(this, ServiceUriPaths.CORE_QUERY_TASKS).setBody(task)
                 .setCompletion((o, e) -> {
                     if (e != null) {
-                        op.fail(e);
+                        failODataRequest(op, o, e);
                         return;
                     }
                     ServiceDocumentQueryResult result = o.getBody(QueryTask.class).results;
@@ -598,6 +598,19 @@ public abstract class FactoryService extends StatelessService {
                 }));
     }
 
+    private void failODataRequest(Operation originalOp, Operation o, Throwable e) {
+        if (o.getStatusCode() != Operation.STATUS_CODE_FORBIDDEN) {
+            originalOp.setStatusCode(o.getStatusCode()).fail(e);
+            return;
+        }
+        String error = String.format(
+                "Forbidden: please specify %s URI query parameter for ODATA queries",
+                UriUtils.URI_PARAM_ODATA_TENANTLINKS);
+        e = new IllegalAccessException(error);
+        ServiceErrorResponse rsp = ServiceErrorResponse.create(e, o.getStatusCode());
+        originalOp.fail(o.getStatusCode(), e, rsp);
+    }
+
     private void handleNavigationRequest(Operation op) {
         String path = UriUtils.buildUriPath(ServiceUriPaths.DEFAULT_NODE_SELECTOR,
                 ServiceUriPaths.SERVICE_URI_SUFFIX_FORWARDING);
@@ -605,16 +618,17 @@ public abstract class FactoryService extends StatelessService {
                 UriUtils.FORWARDING_URI_PARAM_NAME_PATH, UriUtils.getPathParamValue(op.getUri()),
                 UriUtils.FORWARDING_URI_PARAM_NAME_PEER, UriUtils.getPeerParamValue(op.getUri()),
                 UriUtils.FORWARDING_URI_PARAM_NAME_TARGET, ForwardingTarget.PEER_ID.toString());
-        sendRequest(Operation.createGet(UriUtils.buildUri(this.getHost(), path, query)).setCompletion((o, e) -> {
-            if (e != null) {
-                op.fail(e);
-                return;
-            }
+        sendRequest(Operation.createGet(UriUtils.buildUri(this.getHost(), path, query))
+                .setCompletion((o, e) -> {
+                    if (e != null) {
+                        failODataRequest(op, o, e);
+                        return;
+                    }
 
-            ServiceDocumentQueryResult result = o.getBody(QueryTask.class).results;
-            prepareNavigationResult(result);
-            op.setBodyNoCloning(result).complete();
-        }));
+                    ServiceDocumentQueryResult result = o.getBody(QueryTask.class).results;
+                    prepareNavigationResult(result);
+                    op.setBodyNoCloning(result).complete();
+                }));
     }
 
     private void handleODataLimitRequest(Operation op, QueryTask task) {
@@ -665,7 +679,7 @@ public abstract class FactoryService extends StatelessService {
         sendRequest(Operation.createPost(this, ServiceUriPaths.CORE_QUERY_TASKS).setBody(task)
                 .setCompletion((o, e) -> {
                     if (e != null) {
-                        op.fail(e);
+                        failODataRequest(op, o, e);
                         return;
                     }
 

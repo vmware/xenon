@@ -50,6 +50,8 @@ import com.vmware.xenon.common.TestAuthorization.AuthzStatefulService.AuthzState
 import com.vmware.xenon.common.test.AuthorizationHelper;
 import com.vmware.xenon.common.test.QueryTestUtils;
 import com.vmware.xenon.common.test.TestContext;
+import com.vmware.xenon.common.test.TestRequestSender;
+import com.vmware.xenon.common.test.TestRequestSender.FailureResponse;
 import com.vmware.xenon.common.test.VerificationHost;
 import com.vmware.xenon.services.common.AuthorizationCacheUtils;
 import com.vmware.xenon.services.common.AuthorizationContextService;
@@ -137,6 +139,32 @@ public class TestAuthorization extends BasicTestCase {
         this.userServicePath = this.authHelper.createUserService(this.host, "jane@doe.com");
         this.authHelper.createRoles(this.host, "jane@doe.com");
         this.host.resetAuthorizationContext();
+    }
+
+    @Test
+    public void factoryGetWithOData() {
+        // GET with ODATA will be implicitly converted to a query task. Query tasks
+        // require explicit authorization for the principal to be able to create them
+        URI exampleFactoryUriWithOData = UriUtils.buildUri(this.host, ExampleService.FACTORY_LINK,
+                "$limit=10");
+        TestRequestSender sender = this.host.getTestRequestSender();
+        FailureResponse rsp = sender.sendAndWaitFailure(Operation.createGet(exampleFactoryUriWithOData));
+        ServiceErrorResponse errorRsp = rsp.op.getBody(ServiceErrorResponse.class);
+        assertTrue(errorRsp.message.toLowerCase().contains("forbidden"));
+        assertTrue(errorRsp.message.contains(UriUtils.URI_PARAM_ODATA_TENANTLINKS));
+
+        exampleFactoryUriWithOData = UriUtils.buildUri(this.host, ExampleService.FACTORY_LINK,
+                "$filter=name eq someone");
+        rsp = sender.sendAndWaitFailure(Operation.createGet(exampleFactoryUriWithOData));
+        errorRsp = rsp.op.getBody(ServiceErrorResponse.class);
+        assertTrue(errorRsp.message.toLowerCase().contains("forbidden"));
+        assertTrue(errorRsp.message.contains(UriUtils.URI_PARAM_ODATA_TENANTLINKS));
+
+        // GET without ODATA should succeed but return empty result set
+        URI exampleFactoryUri = UriUtils.buildUri(this.host, ExampleService.FACTORY_LINK);
+        Operation rspOp = sender.sendAndWait(Operation.createGet(exampleFactoryUri));
+        ServiceDocumentQueryResult queryRsp = rspOp.getBody(ServiceDocumentQueryResult.class);
+        assertEquals(0L, (long) queryRsp.documentCount);
     }
 
     @Test
