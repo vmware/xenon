@@ -3441,7 +3441,7 @@ public class ServiceHost implements ServiceRequestSender {
                                 Claims claims = resultOp.getBody(Claims.class);
                                 // check to see if the subject is valid
                                 Operation getUserOp = Operation.createGet(
-                                        AuthUtils.buildAuthProviderHostUri(this, claims.getSubject()))
+                                        buildUserUriFromClaims(claims))
                                         .setReferer(parentOp.getUri())
                                         .setCompletion((getOp, getEx) -> {
                                             if (getEx != null) {
@@ -3461,6 +3461,20 @@ public class ServiceHost implements ServiceRequestSender {
                         });
         verifyOp.setAuthorizationContext(getSystemAuthorizationContext());
         sendRequest(verifyOp);
+    }
+
+    /**
+     * Builds an URI to the subject of the claims object.
+     * Default behavior treats {@link Claims#getSubject()} as a selfLink and is
+     * used by the built-in {@link BasicAuthenticationService}.
+     * Setting a custom authentication service using {@link #setAuthenticationService(Service)}
+     * most probably requires overriding this method too.
+     *
+     * @param claims
+     * @return
+     */
+    public URI buildUserUriFromClaims(Claims claims) {
+        return AuthUtils.buildAuthProviderHostUri(this, claims.getSubject());
     }
 
     private AuthorizationContext checkAndGetAuthorizationContext(AuthorizationContext ctx,
