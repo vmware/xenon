@@ -14,8 +14,13 @@
 package com.vmware.xenon.common;
 
 import java.net.URI;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.function.Function;
 
 public final class AuthUtils {
+
+    private static final ConcurrentMap<String, Function<Claims, String>> URI_BUILDERS = new ConcurrentSkipListMap<>();
 
     private AuthUtils() {
     }
@@ -24,8 +29,42 @@ public final class AuthUtils {
      * Build the URI for the auth provider host
      */
     public static URI buildAuthProviderHostUri(ServiceHost host, String serviceLink) {
-        URI baseUri =  (host.getStateNoCloning().authProviderHostURI != null) ?
-                host.getStateNoCloning().authProviderHostURI : host.getUri();
+        URI uri = host.getStateNoCloning().authProviderHostURI;
+        URI baseUri = uri != null ? uri : host.getUri();
         return UriUtils.extendUri(baseUri, serviceLink);
+    }
+
+    /**
+     * Register a system-wide function for converting a Claims object to a use selfLink.
+     * All hosts in a process will be affected.
+     *
+     * @param authnServiceLink
+     * @param userLinkBuilder
+     */
+    public static void registerUserLinkBuilder(String authnServiceLink, Function<Claims, String> userLinkBuilder) {
+        URI_BUILDERS.putIfAbsent(authnServiceLink, userLinkBuilder);
+    }
+
+    /**
+     * Builds an URI to the subject of the claims object.
+     * Default behavior treats {@link Claims#getSubject()} as a selfLink and is
+     * used by the built-in {@link com.vmware.xenon.services.common.authn.BasicAuthenticationService}.
+     * This can be customized using {@link #registerUserLinkBuilder(String, Function)} to register
+     * a global link builder.
+     *
+     * @param host
+     * @param claims
+     * @return
+     */
+    public static URI buildUserUriFromClaims(ServiceHost host, Claims claims) {
+        String authnServiceLink = host.getAuthenticationService().getSelfLink();
+
+        String userLink = claims.getSubject();
+        Function<Claims, String> func = URI_BUILDERS.get(authnServiceLink);
+        if (func != null) {
+            userLink = func.apply(claims);
+        }
+
+        return buildAuthProviderHostUri(host, userLink);
     }
 }

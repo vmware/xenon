@@ -151,7 +151,7 @@ public final class BasicAuthenticationUtils {
      * This method invokes the query specified by the service to check if the user is
      * valid
      * @param service service invoking this method
-     * @param op Operation context of the login request
+     * @param parentOp Operation context of the login request
      * @param authContext authContext to perform the login checks
      */
     private static void queryUserService(StatelessService service, Operation parentOp, BasicAuthenticationContext authContext) {
@@ -190,7 +190,7 @@ public final class BasicAuthenticationUtils {
      * This method invokes the query specified by the service to check if
      * the user credentials are valid
      * @param service service invoking this method
-     * @param parentOop Operation context of the login request
+     * @param parentOp Operation context of the login request
      * @param userLink service link for the user
      * @param authContext authContext to perform the login checks
      */
