@@ -118,7 +118,8 @@ public class TestAuthorizationContext extends BasicTestCase {
         Claims.Builder builder = new Claims.Builder();
         builder.setIssuer(AuthenticationConstants.DEFAULT_ISSUER);
         builder.setSubject(UriUtils.buildUriPath(ServiceUriPaths.CORE_AUTHZ_USERS, subject));
-        builder.setExpirationTime(Utils.fromNowMicrosUtc(TimeUnit.HOURS.toMicros(1)));
+        long expirationTimeMicros = Utils.fromNowMicrosUtc(TimeUnit.HOURS.toMicros(1));
+        builder.setExpirationTime(TimeUnit.MICROSECONDS.toSeconds(expirationTimeMicros));
         builder.setProperties(properties);
 
         Claims claims = builder.getResult();
@@ -241,7 +242,8 @@ public class TestAuthorizationContext extends BasicTestCase {
 
         Claims.Builder builder = new Claims.Builder();
         builder.setSubject(UriUtils.buildUriPath(ServiceUriPaths.CORE_AUTHZ_USERS, user));
-        builder.setExpirationTime(Utils.fromNowMicrosUtc(TimeUnit.HOURS.toMicros(1)));
+        long expirationTimeMicros = Utils.fromNowMicrosUtc(TimeUnit.HOURS.toMicros(1));
+        builder.setExpirationTime(TimeUnit.MICROSECONDS.toSeconds(expirationTimeMicros));
         Claims expected = builder.getResult();
 
         // Post to get a cookie

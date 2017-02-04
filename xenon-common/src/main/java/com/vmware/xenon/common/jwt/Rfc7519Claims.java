@@ -149,8 +149,8 @@ public class Rfc7519Claims {
             return this;
         }
 
-        public Rfc7519Builder<T> setExpirationTime(Long expirationTime) {
-            this.claims.expirationTime = expirationTime;
+        public Rfc7519Builder<T> setExpirationTime(Long expirationTimeSeconds) {
+            this.claims.expirationTime = expirationTimeSeconds;
             return this;
         }
 

@@ -247,14 +247,14 @@ public final class BasicAuthenticationUtils {
      * @param service service invoking this method
      * @param op Operation context of the login request
      * @param userLink service link for the user
-     * @param expirationTime expiration time for the auth token
+     * @param expirationTimeMicros expiration time for the auth token
      * @return
      */
-    private static boolean associateAuthorizationContext(StatelessService service, Operation op, String userLink, long expirationTime) {
+    private static boolean associateAuthorizationContext(StatelessService service, Operation op, String userLink, long expirationTimeMicros) {
         Claims.Builder builder = new Claims.Builder();
         builder.setIssuer(AuthenticationConstants.DEFAULT_ISSUER);
         builder.setSubject(userLink);
-        builder.setExpirationTime(expirationTime);
+        builder.setExpirationTime(TimeUnit.MICROSECONDS.toSeconds(expirationTimeMicros));
 
         // Generate token for set of claims
         Claims claims = builder.getResult();

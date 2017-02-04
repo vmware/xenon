@@ -340,7 +340,7 @@ public class TestBasicAuthenticationService extends BasicTestCase {
         // Next send a valid request
         String headerVal = constructBasicAuth(USER, PASSWORD);
 
-        long oneHourFromNowBeforeAuth = Utils.getSystemNowMicrosUtc() + TimeUnit.HOURS.toMicros(1);
+        long oneHourFromNowBeforeAuth = Utils.getSystemNowMicrosUtc() / 1000 / 1000 * 1000 * 1000 + TimeUnit.HOURS.toMicros(1);
 
         // do not specify expiration
         AuthenticationRequest authReq = new AuthenticationRequest();
@@ -450,7 +450,7 @@ public class TestBasicAuthenticationService extends BasicTestCase {
         assertNotNull(authContext);
         assertNotNull(authContext.getClaims());
         assertNotNull(authContext.getClaims().getExpirationTime());
-        long expirationInMicro = authContext.getClaims().getExpirationTime();
+        long expirationInMicro =  TimeUnit.SECONDS.toMicros(authContext.getClaims().getExpirationTime());
 
         if (fromInMicro != null && expirationInMicro < fromInMicro) {
             String msg = String.format("expiration must be greater than %d but was %d", fromInMicro,

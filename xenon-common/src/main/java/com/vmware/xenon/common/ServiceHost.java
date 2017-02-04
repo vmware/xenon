@@ -3473,7 +3473,7 @@ public class ServiceHost implements ServiceRequestSender {
         }
 
         Long expirationTime = claims.getExpirationTime();
-        if (expirationTime != null && expirationTime <= Utils.getSystemNowMicrosUtc()) {
+        if (expirationTime != null && TimeUnit.SECONDS.toMicros(expirationTime) <= Utils.getSystemNowMicrosUtc()) {
             synchronized (this.state) {
                 this.authorizationContextCache.remove(token);
                 this.userLinkToTokenMap.remove(claims.getSubject());
@@ -5653,7 +5653,7 @@ public class ServiceHost implements ServiceRequestSender {
         // Set an effective expiration to never
         Calendar cal = Calendar.getInstance();
         cal.set(9999, Calendar.DECEMBER, 31);
-        cb.setExpirationTime(TimeUnit.MILLISECONDS.toMicros(cal.getTimeInMillis()));
+        cb.setExpirationTime(TimeUnit.MILLISECONDS.toSeconds(cal.getTimeInMillis()));
 
         // Generate token for set of claims
         Claims claims = cb.getResult();

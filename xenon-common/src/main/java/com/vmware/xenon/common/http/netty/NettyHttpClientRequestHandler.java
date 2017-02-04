@@ -394,11 +394,12 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
             // Add Path qualifier, cookie applies everywhere
             buf.append("; Path=/");
             // Add an Max-Age qualifier if an expiration is set in the Claims object
-            if (authorizationContext.getClaims().getExpirationTime() != null) {
+            Long expirationTime = authorizationContext.getClaims().getExpirationTime();
+            if (expirationTime != null) {
                 buf.append("; Max-Age=");
-                long maxAge = authorizationContext.getClaims().getExpirationTime()
-                        - Utils.getSystemNowMicrosUtc();
-                buf.append(maxAge > 0 ? TimeUnit.MICROSECONDS.toSeconds(maxAge) : 0);
+                long nowSeconds = TimeUnit.MICROSECONDS.toSeconds(Utils.getSystemNowMicrosUtc());
+                long maxAge = expirationTime - nowSeconds;
+                buf.append(maxAge > 0 ? maxAge : 0);
             }
             response.headers().add(Operation.SET_COOKIE_HEADER, buf.toString());
         }
