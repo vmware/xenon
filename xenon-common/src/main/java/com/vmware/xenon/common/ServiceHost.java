@@ -3473,7 +3473,7 @@ public class ServiceHost implements ServiceRequestSender {
         }
 
         Long expirationTime = claims.getExpirationTime();
-        if (expirationTime != null && expirationTime <= Utils.getSystemNowMicrosUtc()) {
+        if (expirationTime != null && expirationTime * 1000 * 1000 <= Utils.getSystemNowMicrosUtc()) {
             synchronized (this.state) {
                 this.authorizationContextCache.remove(token);
                 this.userLinkToTokenMap.remove(claims.getSubject());
