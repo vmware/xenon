@@ -57,6 +57,7 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.logging.ConsoleHandler;
 import java.util.logging.FileHandler;
@@ -343,6 +344,9 @@ public class ServiceHost implements ServiceRequestSender {
      */
     public static final int DEFAULT_SERVICE_STATE_COST_BYTES = 4096;
 
+
+    private Function<Claims, URI> userUriBuilder;
+
     /**
      * Estimate for service class runtime context cost, in bytes. It takes into account:
      *
@@ -599,6 +603,7 @@ public class ServiceHost implements ServiceRequestSender {
     protected ServiceHost() {
         this.state = new ServiceHostState();
         this.state.id = UUID.randomUUID().toString();
+        this.userUriBuilder = claims -> AuthUtils.buildAuthProviderHostUri(this, claims.getSubject());
     }
 
     public ServiceHost initialize(String[] args) throws Throwable {
@@ -3441,7 +3446,7 @@ public class ServiceHost implements ServiceRequestSender {
                                 Claims claims = resultOp.getBody(Claims.class);
                                 // check to see if the subject is valid
                                 Operation getUserOp = Operation.createGet(
-                                        AuthUtils.buildAuthProviderHostUri(this, claims.getSubject()))
+                                        buildUserUriFromClaims(claims))
                                         .setReferer(parentOp.getUri())
                                         .setCompletion((getOp, getEx) -> {
                                             if (getEx != null) {
@@ -3461,6 +3466,34 @@ public class ServiceHost implements ServiceRequestSender {
                         });
         verifyOp.setAuthorizationContext(getSystemAuthorizationContext());
         sendRequest(verifyOp);
+    }
+
+    /**
+     * Infrastructure use only.
+     *
+     * @param claims
+     * @return
+     */
+    public URI buildUserUriFromClaims(Claims claims) {
+        return this.userUriBuilder.apply(claims);
+    }
+
+    /**
+     * Builds an URI to the subject of the claims object.
+     * Default behavior treats {@link Claims#getSubject()} as a selfLink and is
+     * used by the built-in {@link BasicAuthenticationService}.
+     * Setting a custom authentication service using {@link #setAuthenticationService(Service)}
+     * most probably requires overriding this method too.
+     *
+     * @param func
+     * @return
+     */
+    public void setUserUriBuilder(Function<Claims, URI> func) {
+        if (func == null) {
+            throw new IllegalArgumentException("function cannot be null");
+        }
+
+        this.userUriBuilder = func;
     }
 
     private AuthorizationContext checkAndGetAuthorizationContext(AuthorizationContext ctx,
