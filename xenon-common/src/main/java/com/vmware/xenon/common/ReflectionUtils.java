@@ -144,6 +144,14 @@ public final class ReflectionUtils {
         }
     }
 
+    public static Field getFieldIfExists(Class<?> type, String fieldName) {
+        try {
+            return type.getField(fieldName);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
     /**
      * Retrieve field and make it accessible.
      */

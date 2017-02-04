@@ -3441,7 +3441,7 @@ public class ServiceHost implements ServiceRequestSender {
                                 Claims claims = resultOp.getBody(Claims.class);
                                 // check to see if the subject is valid
                                 Operation getUserOp = Operation.createGet(
-                                        AuthUtils.buildAuthProviderHostUri(this, claims.getSubject()))
+                                        AuthUtils.buildUserUriFromClaims(this, claims))
                                         .setReferer(parentOp.getUri())
                                         .setCompletion((getOp, getEx) -> {
                                             if (getEx != null) {

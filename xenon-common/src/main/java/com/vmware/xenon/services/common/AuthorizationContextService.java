@@ -220,7 +220,7 @@ public class AuthorizationContextService extends StatelessService {
     }
 
     private void getSubject(AuthorizationContext ctx, Claims claims) {
-        URI getSubjectUri = AuthUtils.buildAuthProviderHostUri(getHost(), claims.getSubject());
+        URI getSubjectUri = AuthUtils.buildUserUriFromClaims(getHost(), claims);
         Operation get = Operation.createGet(getSubjectUri)
                 .setConnectionSharing(true)
                 .setCompletion((o, e) -> {
@@ -263,10 +263,13 @@ public class AuthorizationContextService extends StatelessService {
     }
 
     private boolean loadUserGroupsFromUserState(AuthorizationContext ctx, Claims claims, ServiceDocument userServiceDocument) {
-        if (!ReflectionUtils.hasField(userServiceDocument.getClass(), UserState.FIELD_NAME_USER_GROUP_LINKS)) {
+        Field groupLinksField = ReflectionUtils.getFieldIfExists(userServiceDocument.getClass(),
+                UserState.FIELD_NAME_USER_GROUP_LINKS);
+
+        if (groupLinksField == null) {
             return false;
         }
-        Field groupLinksField = ReflectionUtils.getField(userServiceDocument.getClass(), UserState.FIELD_NAME_USER_GROUP_LINKS);
+
         Object fieldValue;
         try {
             fieldValue = groupLinksField.get(userServiceDocument);
