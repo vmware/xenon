@@ -646,7 +646,8 @@ public class UtilityService implements Service {
                 && updateBody.epoch == null
                 && (updateBody.addOptions == null || updateBody.addOptions.isEmpty())
                 && (updateBody.removeOptions == null || updateBody.removeOptions
-                .isEmpty())) {
+                .isEmpty())
+                && updateBody.versionRetentionLimit == null) {
             op.fail(new IllegalArgumentException(
                     "At least one configuraton field must be specified"));
             return;
