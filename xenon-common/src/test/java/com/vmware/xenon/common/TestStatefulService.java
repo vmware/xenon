@@ -17,7 +17,10 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
+import static com.vmware.xenon.common.Operation.PRAGMA_DIRECTIVE_NO_FORWARDING;
+
 import java.net.URI;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.EnumSet;
 import java.util.HashSet;
@@ -41,6 +44,9 @@ import com.vmware.xenon.common.ServiceStats.ServiceStat;
 import com.vmware.xenon.common.test.MinimalTestServiceState;
 import com.vmware.xenon.common.test.TestContext;
 import com.vmware.xenon.common.test.TestProperty;
+import com.vmware.xenon.common.test.TestRequestSender;
+import com.vmware.xenon.common.test.TestRequestSender.FailureResponse;
+import com.vmware.xenon.common.test.VerificationHost;
 import com.vmware.xenon.services.common.ExampleService;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
 import com.vmware.xenon.services.common.MinimalTestService;
@@ -767,4 +773,74 @@ public class TestStatefulService extends BasicReusableHostTestCase {
                         }));
         this.host.testWait();
     }
+
+    @Test
+    public void patchDeleteThenPost() throws Throwable {
+        int nodeCount = 3;
+
+        this.host.setPeerSynchronizationEnabled(true);
+        this.host.setUpPeerHosts(nodeCount);
+        this.host.joinNodesAndVerifyConvergence(nodeCount, true);
+        this.host.setNodeGroupQuorum(nodeCount);
+
+        for (VerificationHost host : this.host.getInProcessHostMap().values()) {
+            host.waitForServiceAvailable(ExampleService.FACTORY_LINK);
+        }
+
+        TestRequestSender sender = this.host.getTestRequestSender();
+
+        VerificationHost targetHost = this.host.getPeerHost();
+
+        List<Operation> posts = new ArrayList<>();
+        List<Operation> patches = new ArrayList<>();
+        List<Operation> deletes = new ArrayList<>();
+        List<Operation> newPosts = new ArrayList<>();
+        List<Operation> gets = new ArrayList<>();
+        for (int i = 0; i < this.serviceCount; i++) {
+            String name = "doc-" + i;
+            String selfLink = UriUtils.buildUriPath(ExampleService.FACTORY_LINK, name);
+
+            // POST
+            ExampleServiceState doc = new ExampleServiceState();
+            doc.name = name;
+            doc.documentSelfLink = selfLink;
+            posts.add(Operation.createPost(targetHost, ExampleService.FACTORY_LINK).setBody(doc));
+
+            // PATCH
+            doc.name += "-patch";
+            patches.add(Operation.createPatch(targetHost, selfLink)
+                    .setBody(doc));
+
+            // DELETE
+            deletes.add(Operation.createDelete(targetHost, selfLink)
+                    .addRequestHeader(Operation.REPLICATION_QUORUM_HEADER, Operation.REPLICATION_QUORUM_HEADER_VALUE_ALL)
+            );
+
+            // GETs to verify service deletion on all nodes
+            for (VerificationHost host : this.host.getInProcessHostMap().values()) {
+                gets.add(Operation.createGet(host, selfLink).addPragmaDirective(PRAGMA_DIRECTIVE_NO_FORWARDING));
+            }
+
+            // POST
+            doc = new ExampleServiceState();
+            doc.name = name + "-new-post";
+            doc.documentSelfLink = selfLink;
+            newPosts.add(Operation.createPost(targetHost, ExampleService.FACTORY_LINK)
+                    .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_FORCE_INDEX_UPDATE)
+                    .setBody(doc)
+            );
+        }
+        sender.sendAndWait(posts);
+        sender.sendAndWait(patches);
+        sender.sendAndWait(deletes);
+
+        // verify docs are deleted on all nodes
+        for (Operation get : gets) {
+            FailureResponse res = sender.sendAndWaitFailure(get);
+            assertEquals("service should be deleted. uri=" + get.getUri(), 404, res.op.getStatusCode());
+        }
+
+        sender.sendAndWait(newPosts);
+    }
+
 }
