@@ -64,6 +64,8 @@ public class StatefulService implements Service {
 
         public Set<String> txCoordinatorLinks;
         public long lastCommitTimeMicros;
+
+        public OperationPriorityQueue replicationExecutionQueue;
     }
 
     private final RuntimeContext context = new RuntimeContext();
@@ -169,15 +171,12 @@ public class StatefulService implements Service {
             // Special processing for ODL services: they have a high probability of
             // STOP requests, due to inactivity, colliding with new client requests that
             // re-start the service.
-            boolean hasActiveUpdates = false;
+            boolean hasActiveUpdates;
             synchronized (this.context) {
                 isAlreadyStopped = this.context.processingStage == ProcessingStage.STOPPED;
-                if (!hasActiveUpdates && this.context.synchQueue != null) {
-                    hasActiveUpdates = true;
-                }
-                if (!hasActiveUpdates && !this.context.operationQueue.isEmpty()) {
-                    hasActiveUpdates = true;
-                }
+                hasActiveUpdates = !this.context.operationQueue.isEmpty()
+                        || this.context.synchQueue != null
+                        || this.context.replicationExecutionQueue != null;
             }
 
             if (isAlreadyStopped) {
@@ -227,6 +226,11 @@ public class StatefulService implements Service {
             if (this.context.synchQueue != null) {
                 opsToCancel.addAll(this.context.synchQueue.toCollection());
                 this.context.synchQueue.clear();
+            }
+
+            if (this.context.replicationExecutionQueue != null) {
+                opsToCancel.addAll(this.context.replicationExecutionQueue.toCollection());
+                this.context.replicationExecutionQueue.clear();
             }
         }
 
@@ -524,7 +528,6 @@ public class StatefulService implements Service {
         }
 
         // do basic version checking, regardless of service options
-        ServiceDocument stateFromOwner = request.getLinkedState();
         if (!request.isFromReplication()) {
             if (request.isSynchronizeOwner()) {
                 synchronizeWithPeers(request, null);
@@ -547,7 +550,7 @@ public class StatefulService implements Service {
         }
 
         // the code below applies to replicated updates that came from a remote owner
-
+        ServiceDocument stateFromOwner = request.getLinkedState();
         if (stateFromOwner == null) {
             failRequest(request, new IllegalArgumentException("missing state in replicated op:"
                     + request.toString()), true);
@@ -596,6 +599,23 @@ public class StatefulService implements Service {
             // request if we disagreed with the sender, on who the owner is. Here we simply
             // toggle the owner option off
             toggleOption(ServiceOption.DOCUMENT_OWNER, false);
+        }
+
+        if (stateFromOwner.documentVersion > this.context.version + 1) {
+            // Replication requests are not guaranteed to be delivered to hosts in order. If this
+            // request is for a document version which is higher than the next expected version,
+            // then queue the request until the reordered versions arrive so that the requests can
+            // be processed in order.
+            synchronized (this.context) {
+                if (this.context.replicationExecutionQueue == null) {
+                    this.context.replicationExecutionQueue = OperationPriorityQueue.create(
+                            Service.OPERATION_QUEUE_DEFAULT_LIMIT);
+                }
+                if (!this.context.replicationExecutionQueue.offer(request)) {
+                    this.context.host.failRequestLimitExceeded(request);
+                    return true;
+                }
+            }
         }
 
         return false;
@@ -1297,6 +1317,19 @@ public class StatefulService implements Service {
                     this.context.synchQueue = null;
                 }
             }
+            if (op == null && this.context.replicationExecutionQueue != null) {
+                op = this.context.replicationExecutionQueue.peek();
+                ServiceDocument sd = op.getLinkedState();
+                if (sd.documentEpoch == this.context.epoch
+                        && sd.documentVersion > this.context.version + 1) {
+                    op = null;
+                } else {
+                    this.context.replicationExecutionQueue.remove(op);
+                    if (this.context.replicationExecutionQueue.isEmpty()) {
+                        this.context.replicationExecutionQueue = null;
+                    }
+                }
+            }
             if (op == null) {
                 op = this.context.operationQueue.poll();
             }
@@ -1690,10 +1723,10 @@ public class StatefulService implements Service {
                         return null;
                     }
 
-                    if (this.context.isUpdateActive ||
-                            (this.context.synchQueue != null && !this.context.synchQueue.isEmpty())
-                            ||
-                            !this.context.operationQueue.isEmpty()) {
+                    if (this.context.isUpdateActive
+                            || !this.context.operationQueue.isEmpty()
+                            || this.context.synchQueue != null
+                            || this.context.replicationExecutionQueue != null) {
                         failure = new IllegalStateException("Service has active updates");
                         return null;
                     }
