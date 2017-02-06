@@ -579,7 +579,7 @@ public class TestNodeGroupService {
         ExampleServiceState patchState = new ExampleServiceState();
         for (int i = 0; i < this.updateCount; i++) {
             TestContext patchCtx = this.host.testCreate(links.size());
-            patchState.counter = (long)(i + 10);
+            patchState.counter = (long) (i + 10);
 
             for (String documentSelfLink : links) {
                 Operation patchOp = Operation
@@ -699,7 +699,7 @@ public class TestNodeGroupService {
     }
 
     private void startSynchronizationTaskAndWait(VerificationHost owner,
-              String factoryLink, Class<?> stateType, long membershipUpdateTimeMicros) {
+            String factoryLink, Class<?> stateType, long membershipUpdateTimeMicros) {
         SynchronizationTaskService.State task = new SynchronizationTaskService.State();
         task.documentSelfLink = UriUtils.convertPathCharsFromLink(factoryLink);
         task.factorySelfLink = factoryLink;
@@ -2400,6 +2400,101 @@ public class TestNodeGroupService {
     }
 
     @Test
+    public void replicationWithMissedUpdates() throws Throwable {
+        setUp(this.nodeCount);
+        this.host.joinNodesAndVerifyConvergence(this.host.getPeerCount());
+        this.host.setNodeGroupQuorum((this.nodeCount / 2) + 1);
+
+        waitForReplicatedFactoryServiceAvailable(
+                this.host.getPeerServiceUri(
+                        ReplicationFactoryTestService.OWNER_SELECTION_SELF_LINK),
+                ServiceUriPaths.DEFAULT_NODE_SELECTOR);
+
+        // Start an owner selected replication test service instance on all nodes using a POST with
+        // full quorum
+        Operation post = Operation
+                .createPost(this.host.getPeerHost(),
+                        ReplicationFactoryTestService.OWNER_SELECTION_SELF_LINK)
+                .setBody(new ReplicationTestServiceState())
+                .setReferer(this.host.getUri())
+                .addRequestHeader(Operation.REPLICATION_QUORUM_HEADER,
+                        Operation.REPLICATION_QUORUM_HEADER_VALUE_ALL);
+
+        ReplicationTestServiceState initialState = this.host.getTestRequestSender()
+                .sendAndWait(post, ReplicationTestServiceState.class);
+        String selfLink = initialState.documentSelfLink;
+
+        // Determine the owner node for the new service instance
+        this.host.testStart(1);
+        final String[] ownerId = new String[1];
+        Operation selectOwnerOp = Operation.createPost(null)
+                .setExpiration(Utils.fromNowMicrosUtc(TimeUnit.SECONDS.toMicros(10)))
+                .setCompletion((o, e) -> {
+                    if (e != null) {
+                        this.host.failIteration(e);
+                        return;
+                    }
+
+                    SelectOwnerResponse rsp = o.getBody(SelectOwnerResponse.class);
+                    ownerId[0] = rsp.ownerNodeId;
+                    this.host.completeIteration();
+                });
+
+        this.host.getPeerHost()
+                .selectOwner(ServiceUriPaths.DEFAULT_NODE_SELECTOR, selfLink, selectOwnerOp);
+
+        this.host.testWait();
+
+        this.host.log(Level.INFO, "Owner node ID is %s", ownerId[0]);
+
+        // Send an update to the new service and force a replication failure on one node.
+        String failureNodeId = null;
+        for (Entry<URI, VerificationHost> entry : this.host.getInProcessHostMap().entrySet()) {
+            String nodeId = entry.getValue().getId();
+            if (nodeId.equals(ownerId[0])) {
+                continue;
+            }
+
+            failureNodeId = nodeId;
+            break;
+        }
+
+        this.host.log(Level.INFO, "Failure node ID is %s", failureNodeId);
+
+        ReplicationTestServiceState patchBody = new ReplicationTestServiceState();
+        patchBody.documentSelfLink = selfLink;
+        // FIXME: Why is this required, again?
+        patchBody.stringField = selfLink;
+        patchBody.failureNodeId = failureNodeId;
+
+        Operation partialFailurePatch = Operation
+                .createPatch(this.host.getPeerHost(), selfLink)
+                .setBody(patchBody)
+                .setReferer(this.host.getUri())
+                .setCompletion(this.host.getCompletion());
+
+        this.host.testStart(1);
+        this.host.send(partialFailurePatch);
+        this.host.testWait();
+
+        this.host.setNodeGroupQuorum(this.nodeCount);
+
+        // Now send another update to the service and force processing on all nodes using full
+        // quorum
+        patchBody.failureNodeId = null;
+
+        Operation fullQuorumPatch = Operation
+                .createPatch(this.host.getPeerHost(), selfLink)
+                .setBody(patchBody)
+                .setReferer(this.host.getUri())
+                .setCompletion(this.host.getCompletion());
+
+        this.host.testStart(1);
+        this.host.send(fullQuorumPatch);
+        this.host.testWait();
+    }
+
+    @Test
     public void replication() throws Throwable {
         this.replicationTargetFactoryLink = ExampleService.FACTORY_LINK;
         doReplication();
@@ -2599,7 +2694,7 @@ public class TestNodeGroupService {
                                 for (URI u : this.host.getNodeGroupMap().keySet()) {
                                     if (!u.getHost().equals(rsp.ownerNodeGroupReference.getHost())
                                             || u.getPort() != rsp.ownerNodeGroupReference
-                                                    .getPort()) {
+                                            .getPort()) {
                                         nonOwner = u;
                                         break;
                                     }
@@ -3218,7 +3313,6 @@ public class TestNodeGroupService {
         testContext.await();
         this.host.joinNodesAndVerifyConvergence(this.host.getPeerCount());
     }
-
 
     @Test
     public void forwardingAndSelection() throws Throwable {

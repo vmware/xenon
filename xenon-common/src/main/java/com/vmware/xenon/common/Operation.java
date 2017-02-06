@@ -528,6 +528,12 @@ public class Operation implements Cloneable {
      */
     public static final String PRAGMA_DIRECTIVE_AUTHN_INVALIDATE = "xn-authn-invalidate";
 
+    /**
+     * Infrastructure use only. Instructs StatefulService to process this replicated request rather
+     * than queueing it to await out-of-order replication requests.
+     */
+    public static final String PRAGMA_DIRECTIVE_FORCE_REPLICATION = "xn-force-replication";
+
     public static final String TX_ENSURE_COMMIT = "ensure-commit";
     public static final String TX_COMMIT = "commit";
     public static final String TX_ABORT = "abort";
