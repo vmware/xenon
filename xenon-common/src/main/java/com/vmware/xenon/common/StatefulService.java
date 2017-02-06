@@ -1001,7 +1001,7 @@ public class StatefulService implements Service {
 
             ServiceDocument latestState = op.getLinkedState();
             long delta = latestState.documentUpdateTimeMicros - this.context.lastCommitTimeMicros;
-            if (delta < getHost().getMaintenanceIntervalMicros()) {
+            if (op.getAction() != Action.DELETE && delta < getHost().getMaintenanceIntervalMicros()) {
                 return;
             }
 
