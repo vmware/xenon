@@ -22,6 +22,8 @@
 * Fix bug with JWT token timestamps being interpreted as micros instead of seconds. As the default auth
   provider in Xenon doesn't persist tokens anyway this is not a breaking change.
 
+* Update version retention limit through service config update for the service instance.
+
 ## 1.3.6
 
 * Integrations with 3rd party libraries are migrated to a [new repository](https://github.com/vmware/xenon-utils)
