@@ -314,8 +314,8 @@ public class MigrationTaskService extends StatefulService {
 
     private Query buildFieldClause(State initState) {
         Query query = Query.Builder.create()
-                .addFieldClause(ServiceDocument.FIELD_NAME_SELF_LINK, addSlash(initState.sourceFactoryLink) + "*",
-                        QueryTask.QueryTerm.MatchType.WILDCARD)
+                .addFieldClause(ServiceDocument.FIELD_NAME_SELF_LINK, addSlash(initState.sourceFactoryLink),
+                        QueryTask.QueryTerm.MatchType.PREFIX)
                 .build();
         return query;
     }
