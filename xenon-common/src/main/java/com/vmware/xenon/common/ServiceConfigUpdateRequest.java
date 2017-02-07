@@ -33,8 +33,9 @@ public class ServiceConfigUpdateRequest {
     public EnumSet<ServiceOption> addOptions;
     public EnumSet<ServiceOption> removeOptions;
     public Integer operationQueueLimit;
+    public Long versionRetentionLimit;
+    public Long versionRetentionFloor;
     public Long epoch;
     public Long maintenanceIntervalMicros;
     public String kind;
-
 }
