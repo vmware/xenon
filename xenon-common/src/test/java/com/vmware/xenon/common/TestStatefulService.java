@@ -21,6 +21,7 @@ import static com.vmware.xenon.common.Operation.PRAGMA_DIRECTIVE_NO_FORWARDING;
 
 import java.net.URI;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Date;
 import java.util.EnumSet;
 import java.util.HashSet;
@@ -33,10 +34,12 @@ import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import org.junit.After;
 import org.junit.Rule;
 import org.junit.Test;
 
 import com.vmware.xenon.common.DefaultHandlerTestService.DefaultHandlerState;
+import com.vmware.xenon.common.ExampleVersionRetentionService.ExampleVersionRetentionState;
 import com.vmware.xenon.common.Operation.CompletionHandler;
 import com.vmware.xenon.common.Service.Action;
 import com.vmware.xenon.common.Service.ServiceOption;
@@ -50,6 +53,8 @@ import com.vmware.xenon.common.test.VerificationHost;
 import com.vmware.xenon.services.common.ExampleService;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
 import com.vmware.xenon.services.common.MinimalTestService;
+import com.vmware.xenon.services.common.QueryTask;
+import com.vmware.xenon.services.common.QueryTask.QuerySpecification.QueryOption;
 import com.vmware.xenon.services.common.ServiceUriPaths;
 
 class DeleteVerificationTestService extends StatefulService {
@@ -201,10 +206,43 @@ class IdempotentPostService extends StatefulService {
     }
 }
 
+/**
+ * Example service that is used for version retention update
+ */
+class ExampleVersionRetentionService extends StatefulService {
+    public static final String FACTORY_LINK = ServiceUriPaths.CORE + "/tests/example";
+
+    public static class ExampleVersionRetentionState extends ServiceDocument {
+        public String name;
+    }
+
+    public ExampleVersionRetentionService() {
+        super(ExampleVersionRetentionState.class);
+        toggleOption(ServiceOption.PERSISTENCE, true);
+        toggleOption(ServiceOption.REPLICATION, true);
+        toggleOption(ServiceOption.OWNER_SELECTION, true);
+    }
+
+    @Override
+    public ServiceDocument getDocumentTemplate() {
+        ServiceDocument template = super.getDocumentTemplate();
+
+        // instruct the index to only keep the most recent 2 versions
+        template.documentDescription.versionRetentionLimit = 4;
+        template.documentDescription.versionRetentionFloor = 2;
+        return template;
+    }
+}
+
 public class TestStatefulService extends BasicReusableHostTestCase {
 
     @Rule
     public TestResults testResults = new TestResults();
+
+    @After
+    public void tearDown() {
+        this.host.tearDownInProcessPeers();
+    }
 
     @Test
     public void optionsValidation() throws Throwable {
@@ -843,4 +881,73 @@ public class TestStatefulService extends BasicReusableHostTestCase {
         sender.sendAndWait(newPosts);
     }
 
+    @Test
+    public void testVersionRetentionConfigUpdate() throws InterruptedException {
+        // 1. Create a service instance whose retention limit is 2.
+        host.startFactory(new ExampleVersionRetentionService());
+
+        URI uri = UriUtils.buildUri(this.host, ExampleVersionRetentionService.FACTORY_LINK);
+        ExampleVersionRetentionState serviceState = new ExampleVersionRetentionState();
+        serviceState.name = "example1";
+        serviceState.documentSelfLink = "example1";
+        Operation op = Operation.createPost(uri).setBody(serviceState);
+        serviceState = this.host.getTestRequestSender().sendAndWait(op, ExampleVersionRetentionState.class);
+
+        // 2. Update the same instance multiple times.
+        updateExampleDocument(serviceState, 1, 6);
+
+        // 3. Query all the version
+        queryAllVersions(serviceState, 4, 2);
+
+        // 4. Now update the version retention using config update.
+        URI example1ConfigUri = UriUtils.extendUri(UriUtils.buildUri(this.host, serviceState
+                .documentSelfLink), "config");
+        ServiceConfigUpdateRequest configUpdateRequest = ServiceConfigUpdateRequest.create();
+        configUpdateRequest.versionRetentionLimit = 10L;
+        this.host.getTestRequestSender()
+                .sendAndWait(Operation.createPatch(example1ConfigUri).setBody(configUpdateRequest));
+
+        // 5. Assert that the version is updated
+        Operation getOp = Operation.createGet(example1ConfigUri);
+        ServiceConfiguration serviceConfiguration = this.host.getTestRequestSender().sendAndWait(getOp,
+                ServiceConfiguration.class);
+        assertEquals(10, serviceConfiguration.versionRetentionLimit);
+        assertEquals(5, serviceConfiguration.versionRetentionFloor);
+
+        // 6. Now run more updates
+        updateExampleDocument(serviceState, 6, 15);
+
+        // 7. Now verify the count.
+        queryAllVersions(serviceState, 10, 5);
+    }
+
+    private void updateExampleDocument(ExampleVersionRetentionState serviceState, int start, int end) {
+        List<URI> serviceUris = Arrays.asList(UriUtils.buildUri(this.host, serviceState
+                .documentSelfLink));
+        for (int i = start; i < end; i++) {
+            ExampleVersionRetentionState updateState = new ExampleVersionRetentionState();
+            updateState.name = serviceState.name + " " + i;
+            this.host.doServiceUpdates(serviceUris, Action.PUT, updateState);
+        }
+    }
+
+    private void queryAllVersions(ExampleVersionRetentionState serviceState, int
+            versionRetentionLimit, int versionRetentionFloor) {
+        QueryTask.Query.Builder b = QueryTask.Query.Builder.create();
+        b.addFieldClause(ServiceDocument.FIELD_NAME_SELF_LINK,
+                serviceState.documentSelfLink, QueryTask.Query.Occurance.SHOULD_OCCUR);
+
+        QueryTask.QuerySpecification q = new QueryTask.QuerySpecification();
+        q.query = b.build();
+        q.options = EnumSet.of(QueryOption.COUNT, QueryOption.INCLUDE_ALL_VERSIONS);
+
+        this.host.waitFor("Version retention failed to remove some documents", () -> {
+            QueryTask qt = QueryTask.create(q).setDirect(true);
+            this.host.createQueryTaskService(UriUtils.buildUri(this.host, ServiceUriPaths
+                    .CORE_QUERY_TASKS), qt, false, true, qt, null);
+            return qt.results.documentCount >= versionRetentionFloor && qt.results.documentCount
+                    <= versionRetentionLimit;
+        });
+    }
 }
+
