@@ -2392,6 +2392,8 @@ public class ServiceHost implements ServiceRequestSender {
 
     private boolean checkIfServiceExistsAndAttach(Service service, String servicePath,
             Operation post) {
+
+        boolean isImmutable = service.hasOption(ServiceOption.IMMUTABLE);
         boolean isCreateOrSynchRequest = post.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_CREATED)
                 || post.isSynchronize();
         Service existing = null;
@@ -2399,6 +2401,11 @@ public class ServiceHost implements ServiceRequestSender {
         synchronized (this.state) {
             existing = this.attachedServices.get(servicePath);
             if (existing != null) {
+                if (isImmutable) {
+                    // if it's an immutable service, its up to the client to enforce unique links.
+                    return false;
+                }
+
                 if (isCreateOrSynchRequest
                         && existing.getProcessingStage() == ProcessingStage.STOPPED) {
                     // service was just stopped and about to be removed. We are creating a new instance, so
@@ -2450,7 +2457,7 @@ public class ServiceHost implements ServiceRequestSender {
             }
             // service already attached, not idempotent, and this is not a synchronization attempt.
             // We fail request with conflict
-            failRequestServiceAlreadyStarted(servicePath, service, post);
+            failRequestServiceAlreadyStarted(servicePath, existing, post);
             return true;
         }
 
