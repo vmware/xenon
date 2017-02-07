@@ -2100,6 +2100,7 @@ public class StatefulService implements Service {
             if (body.operationQueueLimit != null) {
                 setOperationQueueLimit(body.operationQueueLimit);
             }
+
             this.context.utilityService.handlePatchConfiguration(request, body);
             return;
         }
@@ -2110,6 +2111,10 @@ public class StatefulService implements Service {
             cfg.maintenanceIntervalMicros = getMaintenanceIntervalMicros();
             cfg.epoch = this.context.epoch;
             cfg.operationQueueLimit = this.context.operationQueue.getLimit();
+            // Get the version retention limits from service document description
+            ServiceDocumentDescription serviceDocumentDescription = getStateDescription();
+            cfg.versionRetentionLimit = serviceDocumentDescription.versionRetentionLimit;
+            cfg.versionRetentionFloor = serviceDocumentDescription.versionRetentionFloor;
             request.setBodyNoCloning(cfg).complete();
             return;
         }

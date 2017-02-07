@@ -23,6 +23,8 @@ public class ServiceConfiguration extends ServiceDocument {
     public int operationQueueLimit;
     public long epoch;
     public long version;
+    public long versionRetentionLimit;
+    public long versionRetentionFloor;
     public EnumSet<ServiceOption> options;
 
     public ServiceConfiguration() {
