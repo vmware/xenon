@@ -646,10 +646,31 @@ public class UtilityService implements Service {
                 && updateBody.epoch == null
                 && (updateBody.addOptions == null || updateBody.addOptions.isEmpty())
                 && (updateBody.removeOptions == null || updateBody.removeOptions
-                .isEmpty())) {
+                .isEmpty())
+                && updateBody.versionRetentionLimit == null) {
             op.fail(new IllegalArgumentException(
                     "At least one configuraton field must be specified"));
             return;
+        }
+
+        if (updateBody.versionRetentionLimit != null) {
+            // Fail the request for immutable service as it is not allowed to change the version
+            // retention.
+            if (this.parent.getOptions().contains(ServiceOption.IMMUTABLE)) {
+                op.fail(new IllegalArgumentException(String.format(
+                        "Service %s has option %s, retention limit cannot be modified",
+                        this.parent.getSelfLink(), ServiceOption.IMMUTABLE)));
+                return;
+            }
+            ServiceDocumentDescription serviceDocumentDescription = this.parent
+                    .getDocumentTemplate().documentDescription;
+            serviceDocumentDescription.versionRetentionLimit = updateBody.versionRetentionLimit;
+            if (updateBody.versionRetentionFloor != null) {
+                serviceDocumentDescription.versionRetentionFloor = updateBody.versionRetentionFloor;
+            } else {
+                serviceDocumentDescription.versionRetentionFloor =
+                        updateBody.versionRetentionLimit / 2;
+            }
         }
 
         // service might fail a capability toggle if the capability can not be changed after start
@@ -668,7 +689,6 @@ public class UtilityService implements Service {
         if (updateBody.maintenanceIntervalMicros != null) {
             this.parent.setMaintenanceIntervalMicros(updateBody.maintenanceIntervalMicros);
         }
-
         op.complete();
     }
 
