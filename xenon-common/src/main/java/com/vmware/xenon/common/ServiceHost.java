@@ -99,7 +99,6 @@ import com.vmware.xenon.services.common.FileContentService;
 import com.vmware.xenon.services.common.GraphQueryTaskService;
 import com.vmware.xenon.services.common.GuestUserService;
 import com.vmware.xenon.services.common.LocalQueryTaskFactoryService;
-import com.vmware.xenon.services.common.LuceneBlobIndexService;
 import com.vmware.xenon.services.common.LuceneDocumentIndexService;
 import com.vmware.xenon.services.common.NodeGroupFactoryService;
 import com.vmware.xenon.services.common.NodeGroupService.JoinPeerRequest;
@@ -1415,7 +1414,6 @@ public class ServiceHost implements ServiceRequestSender {
 
         addPrivilegedService(this.managementService.getClass());
         addPrivilegedService(OperationIndexService.class);
-        addPrivilegedService(LuceneBlobIndexService.class);
         addPrivilegedService(BasicAuthenticationService.class);
 
         // Capture authorization context; this function executes as the system user
@@ -1458,7 +1456,6 @@ public class ServiceHost implements ServiceRequestSender {
             if (this.documentIndexService instanceof LuceneDocumentIndexService) {
                 Service[] queryServiceArray = new Service[] {
                         this.documentIndexService,
-                        new LuceneBlobIndexService(),
                         new ServiceContextIndexService(),
                         new QueryTaskFactoryService(),
                         new LocalQueryTaskFactoryService(),

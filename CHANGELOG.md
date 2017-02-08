@@ -2,6 +2,10 @@
 
 ## 1.3.7-SNAPSHOT
 
+* Remove LuceneBlobIndexService. The service was originally used for binary
+  serializing service context in pause / resume, which now uses a custom
+  file based service (since 1.2.0)
+
 * The index service will now purge all document versions for a previously
   deleted self link, if its recreated with POST + PRAGMA_FORCE_INDEX_UPDATE.
   This avoids duplicate versions, for the same self link appearing in the index,
