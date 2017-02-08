@@ -44,6 +44,7 @@ import com.vmware.xenon.common.test.MinimalTestServiceState;
 import com.vmware.xenon.common.test.TestContext;
 import com.vmware.xenon.common.test.TestProperty;
 import com.vmware.xenon.common.test.TestRequestSender;
+import com.vmware.xenon.common.test.TestRequestSender.FailureResponse;
 import com.vmware.xenon.common.test.VerificationHost;
 import com.vmware.xenon.services.common.ExampleService;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
@@ -410,6 +411,39 @@ public class TestFactoryService extends BasicReusableHostTestCase {
         doFactoryServiceChildCreation(EnumSet.of(ServiceOption.PERSISTENCE),
                 EnumSet.of(TestProperty.DELETE_DURABLE_SERVICE), count,
                 factoryService.getUri());
+    }
+
+    @Test
+    public void doubleSlashPost() throws Throwable {
+        MinimalFactoryTestService f = new MinimalFactoryTestService();
+        f.setChildServiceCaps(EnumSet.of(ServiceOption.PERSISTENCE));
+        f = (MinimalFactoryTestService) this.host
+                .startServiceAndWait(f, UUID.randomUUID().toString(), null);
+        this.host.waitForServiceAvailable(f.getUri());
+
+        // create a child
+        MinimalTestServiceState initialState = (MinimalTestServiceState) this.host
+                .buildMinimalTestState();
+        initialState.documentSelfLink = "foo";
+        Operation post = Operation
+                .createPost(f.getUri())
+                .setBody(initialState);
+        this.host.sendAndWaitExpectSuccess(post);
+
+        // confirm child is running with a GET
+        Operation get = Operation
+                .createGet(UriUtils.extendUri(f.getUri(), initialState.documentSelfLink));
+        this.host.sendAndWaitExpectSuccess(get);
+
+        // create a bogus URI with a nested suffix, should result in error
+        TestRequestSender sender = this.host.getTestRequestSender();
+
+        get = Operation
+                .createGet(UriUtils.extendUri(f.getUri(),
+                        initialState.documentSelfLink + "/sub-child"));
+        FailureResponse fRsp = sender.sendAndWaitFailure(get);
+        ServiceErrorResponse ser = fRsp.op.getBody(ServiceErrorResponse.class);
+        assertEquals(ServiceErrorResponse.ERROR_CODE_SERVICE_PARENT_NOT_A_FACTORY, ser.errorCode);
     }
 
     private void doFactoryServiceChildCreation(long count, URI factoryUri)

@@ -141,23 +141,14 @@ public class ServiceHost implements ServiceRequestSender {
     public static class ServiceAlreadyStartedException extends IllegalStateException {
         private static final long serialVersionUID = -1444810129515584386L;
 
-        /**
-         * Constructs an instance of this class.
-         */
         public ServiceAlreadyStartedException(String servicePath) {
             super("Service already started: " + servicePath);
         }
 
-        /**
-         * Constructs an instance of this class.
-         */
         public ServiceAlreadyStartedException(String servicePath, ProcessingStage stage) {
             super("Service already started: " + servicePath + " stage: " + stage);
         }
 
-        /**
-         * Constructs an instance of this class.
-         */
         public ServiceAlreadyStartedException(String servicePath, String customErrorMessage) {
             super("Service already started: " + servicePath + ". " + customErrorMessage);
         }
@@ -172,6 +163,10 @@ public class ServiceHost implements ServiceRequestSender {
 
         public ServiceNotFoundException(String servicePath) {
             super("Service not found: " + servicePath);
+        }
+
+        public ServiceNotFoundException(String servicePath, String customErrorMessage) {
+            super("Service not found: " + servicePath + ". " + customErrorMessage);
         }
     }
 
@@ -3513,6 +3508,12 @@ public class ServiceHost implements ServiceRequestSender {
     void failRequestServiceNotFound(Operation inboundOp) {
         failRequestServiceNotFound(inboundOp,
                 ServiceErrorResponse.ERROR_CODE_INTERNAL_MASK);
+    }
+
+    void failRequestServiceNotFound(Operation inboundOp, int errorCode, String errorMsg) {
+        failRequest(inboundOp, Operation.STATUS_CODE_NOT_FOUND,
+                errorCode,
+                new ServiceNotFoundException(inboundOp.getUri().toString(), errorMsg));
     }
 
     void failRequestServiceNotFound(Operation inboundOp, int errorCode) {
