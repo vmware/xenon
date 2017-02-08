@@ -155,6 +155,13 @@ public class ServiceHost implements ServiceRequestSender {
         public ServiceAlreadyStartedException(String servicePath, ProcessingStage stage) {
             super("Service already started: " + servicePath + " stage: " + stage);
         }
+
+        /**
+         * Constructs an instance of this class.
+         */
+        public ServiceAlreadyStartedException(String servicePath, String customErrorMessage) {
+            super("Service already started: " + servicePath + ". " + customErrorMessage);
+        }
     }
 
     public static class ServiceNotFoundException extends IllegalStateException {
@@ -3536,7 +3543,20 @@ public class ServiceHost implements ServiceRequestSender {
         if (s != null) {
             st = s.getProcessingStage();
         }
-        Exception e = new ServiceAlreadyStartedException(path, st);
+
+        Exception e;
+        if (s != null && s.hasOption(ServiceOption.IMMUTABLE)) {
+            // Even though we were able to detect violation of self-link uniqueness
+            // in this case, generally we do not try to enforce uniqueness for
+            // IMMUTABLE services in all cases. Instead it is the responsibility of
+            // the caller to ensure uniqueness of self-links.
+            e = new ServiceAlreadyStartedException(path,
+                    "Self-link uniqueness not guaranteed for Immutable Services.");
+            log(Level.WARNING, e.getMessage());
+        } else {
+            e = new ServiceAlreadyStartedException(path, st);
+        }
+
         failRequest(post, Operation.STATUS_CODE_CONFLICT,
                 ServiceErrorResponse.ERROR_CODE_SERVICE_ALREADY_EXISTS,
                 e);
