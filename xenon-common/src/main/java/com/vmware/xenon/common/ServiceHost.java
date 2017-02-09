@@ -2388,31 +2388,53 @@ public class ServiceHost implements ServiceRequestSender {
         boolean isCreateOrSynchRequest = post.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_CREATED)
                 || post.isSynchronize();
         Service existing = null;
+        boolean synchPendingDelete = false;
 
         synchronized (this.state) {
             existing = this.attachedServices.get(servicePath);
-            if (existing != null) {
-                if (isCreateOrSynchRequest
-                        && existing.getProcessingStage() == ProcessingStage.STOPPED) {
-                    // service was just stopped and about to be removed. We are creating a new instance, so
-                    // its fine to re-attach. We will do a state version check if this is a persisted service
-                    existing = null;
+            if (existing == null &&
+                    this.pendingServiceDeletions.contains(servicePath) &&
+                    post.isSynchronizeOwner()) {
+                // We may receive a synch request while a delete is being processed.
+                // If we don't look at pendingServiceDeletions, we may end up starting
+                // a service that is in the deletion phase.
+                synchPendingDelete = true;
+            } else if (existing != null &&
+                    existing.getProcessingStage() == ProcessingStage.STOPPED &&
+                    post.isSynchronizeOwner()) {
+                // Same as above. We might be in the middle of stopping the service.
+                synchPendingDelete = true;
+            } else {
+                if (existing != null) {
+                    if (isCreateOrSynchRequest
+                            && existing.getProcessingStage() == ProcessingStage.STOPPED) {
+                        // service was just stopped and about to be removed. We are creating a new instance, so
+                        // its fine to re-attach. We will do a state version check if this is a persisted service
+                        existing = null;
+                    }
+                }
+
+                if (existing == null) {
+                    this.attachedServices.put(servicePath, service);
+                    if (service.hasOption(ServiceOption.URI_NAMESPACE_OWNER)) {
+                        this.attachedNamespaceServices.put(servicePath, service);
+                    }
+
+                    if (service.hasOption(ServiceOption.REPLICATION)
+                            && service.hasOption(ServiceOption.FACTORY)) {
+                        this.serviceSynchTracker.addService(servicePath, 0L);
+                    }
+                    this.state.serviceCount++;
+                    return false;
                 }
             }
+        }
 
-            if (existing == null) {
-                this.attachedServices.put(servicePath, service);
-                if (service.hasOption(ServiceOption.URI_NAMESPACE_OWNER)) {
-                    this.attachedNamespaceServices.put(servicePath, service);
-                }
-
-                if (service.hasOption(ServiceOption.REPLICATION)
-                        && service.hasOption(ServiceOption.FACTORY)) {
-                    this.serviceSynchTracker.addService(servicePath, 0L);
-                }
-                this.state.serviceCount++;
-                return false;
-            }
+        if (synchPendingDelete) {
+            // If this is a synch request and the service was going
+            // through deletion, we fail the synch request.
+            failRequestServiceMarkedDeleted(servicePath, post);
+            return true;
         }
 
         boolean isIdempotent = service.hasOption(ServiceOption.IDEMPOTENT_POST);
@@ -3046,7 +3068,7 @@ public class ServiceHost implements ServiceRequestSender {
         if (!serviceStartPost.hasBody()) {
             if (isDeleted) {
                 // this POST is due to a restart which will never have a body
-                failRequestServiceMarkedDeleted(stateFromStore, serviceStartPost);
+                failRequestServiceMarkedDeleted(stateFromStore.documentSelfLink, serviceStartPost);
                 return false;
             } else {
                 // this POST is due to a restart, which will never have a body
@@ -3067,7 +3089,7 @@ public class ServiceHost implements ServiceRequestSender {
                         stateFromStore.documentVersion,
                         initState.documentVersion,
                         serviceStartPost.getRequestHeaderAsIs(Operation.PRAGMA_HEADER));
-                failRequestServiceMarkedDeleted(stateFromStore, serviceStartPost);
+                failRequestServiceMarkedDeleted(stateFromStore.documentSelfLink, serviceStartPost);
                 return false;
             }
         }
@@ -3090,12 +3112,17 @@ public class ServiceHost implements ServiceRequestSender {
     void markAsPendingDelete(Service service) {
         if (isServiceIndexed(service)) {
             this.pendingServiceDeletions.add(service.getSelfLink());
+            this.managementService.adjustStat(
+                    ServiceHostManagementService.STAT_NAME_PENDING_SERVICE_DELETION_COUNT, 1);
         }
     }
 
     void unmarkAsPendingDelete(Service service) {
         if (isServiceIndexed(service)) {
             this.pendingServiceDeletions.remove(service.getSelfLink());
+            this.managementService.adjustStat(
+                    ServiceHostManagementService.STAT_NAME_PENDING_SERVICE_DELETION_COUNT, -1);
+
         }
     }
 
@@ -3522,12 +3549,12 @@ public class ServiceHost implements ServiceRequestSender {
                 new ServiceNotFoundException(inboundOp.getUri().toString()));
     }
 
-    private void failRequestServiceMarkedDeleted(ServiceDocument stateFromStore,
+    void failRequestServiceMarkedDeleted(String documentSelfLink,
             Operation serviceStartPost) {
         failRequest(serviceStartPost, Operation.STATUS_CODE_CONFLICT,
                 ServiceErrorResponse.ERROR_CODE_STATE_MARKED_DELETED,
                 new IllegalStateException("Service marked deleted: "
-                        + stateFromStore.documentSelfLink));
+                        + documentSelfLink));
     }
 
     void failRequestServiceAlreadyStarted(String path, Service s, Operation post) {
@@ -5025,6 +5052,11 @@ public class ServiceHost implements ServiceRequestSender {
                 // the current maintenance run.
                 this.managementService.adjustStat(
                         Service.STAT_NAME_SERVICE_HOST_MAINTENANCE_COUNT, 1);
+
+                // Update the count of services that are pending delete on the service host.
+                this.managementService.setStat(
+                        ServiceHostManagementService.STAT_NAME_PENDING_SERVICE_DELETION_COUNT,
+                        this.pendingServiceDeletions.size());
 
                 post.complete();
                 scheduleMaintenance();

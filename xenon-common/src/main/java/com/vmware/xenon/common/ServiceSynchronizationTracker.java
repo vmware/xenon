@@ -353,18 +353,18 @@ class ServiceSynchronizationTracker {
                 selectedState = o.getBody(s.getStateType());
             } else {
                 // peers did not have a better state to offer
+                if (ServiceDocument.isDeleted(t.state)) {
+                    this.host.failRequestServiceMarkedDeleted(t.state.documentSelfLink, op);
+                    return;
+                }
+
                 op.linkState(null);
                 op.complete();
                 return;
             }
 
             if (ServiceDocument.isDeleted(selectedState)) {
-                Exception ex = new IllegalStateException(
-                        "Document marked deleted by peers: " + s.getSelfLink());
-                ServiceErrorResponse rsp = ServiceErrorResponse.create(ex, Operation.STATUS_CODE_CONFLICT);
-                rsp.setInternalErrorCode(ServiceErrorResponse.ERROR_CODE_STATE_MARKED_DELETED);
-                op.setStatusCode(Operation.STATUS_CODE_CONFLICT);
-                op.fail(ex, rsp);
+                this.host.failRequestServiceMarkedDeleted(t.state.documentSelfLink, op);
 
                 boolean isVersionSame = ServiceDocument
                         .compare(selectedState, t.state, t.stateDescription, Utils.getTimeComparisonEpsilonMicros())
