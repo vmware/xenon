@@ -27,6 +27,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
+import java.util.logging.Level;
 
 import org.junit.Test;
 
@@ -36,11 +37,14 @@ import com.vmware.xenon.common.Service.ProcessingStage;
 import com.vmware.xenon.common.Service.ServiceOption;
 import com.vmware.xenon.common.ServiceStats.ServiceStat;
 import com.vmware.xenon.common.test.MinimalTestServiceState;
+import com.vmware.xenon.common.test.TestContext;
 import com.vmware.xenon.common.test.TestProperty;
+import com.vmware.xenon.common.test.TestRequestSender;
 import com.vmware.xenon.common.test.VerificationHost;
 import com.vmware.xenon.services.common.ExampleService;
 import com.vmware.xenon.services.common.MinimalFactoryTestService;
 import com.vmware.xenon.services.common.MinimalTestService;
+import com.vmware.xenon.services.common.ServiceHostManagementService;
 import com.vmware.xenon.services.common.ServiceUriPaths;
 
 /**
@@ -169,6 +173,66 @@ public class TestServiceModel extends BasicReusableHostTestCase {
         } finally {
             setUpOnce();
         }
+    }
+
+    @Test
+    public void stopServiceWithSynch() throws Throwable {
+        long count = Math.max(this.serviceCount, 10L);
+
+        // create example services.
+        List<URI> exampleUris = new ArrayList<URI>();
+        this.host.createExampleServices(this.host, count, exampleUris, null);
+
+        // do GETs on the example services to make sure all have started successfully.
+        this.host.getServiceState(null, ExampleService.ExampleServiceState.class, exampleUris);
+
+        // Create DELETE and SYNCH_OWNER requests for each service
+        TestContext ctx = this.host.testCreate(exampleUris.size() * 2);
+        List<Operation> operations = new ArrayList<>(exampleUris.size() * 2);
+        for (URI exampleUri : exampleUris) {
+
+            // It's ok if the synch request fails
+            ServiceDocument doc = new ServiceDocument();
+            doc.documentSelfLink = exampleUri.getPath();
+            Operation synchPost = Operation
+                    .createPost(this.host, ExampleService.FACTORY_LINK)
+                    .setBody(doc)
+                    .addPragmaDirective(Operation.PRAGMA_DIRECTIVE_SYNCH_OWNER)
+                    .setReferer(this.host.getUri())
+                    .setCompletion((o, e) -> {
+                        this.host.log(Level.INFO, "Sync completed for %s. Failure: %s",
+                                exampleUri, e != null ? e.getMessage() : "none");
+                        ctx.completeIteration();
+                    });
+            operations.add(synchPost);
+
+            // Deletes should not fail.
+            Operation delete = Operation
+                    .createDelete(exampleUri)
+                    .setReferer(this.host.getUri())
+                    .setCompletion(ctx.getCompletion());
+            operations.add(delete);
+        }
+
+        // Send all DELETE and SYNCH_OWNER requests together to maximize their
+        // chance of getting intervleaved.
+        for (Operation op : operations) {
+            this.host.send(op);
+        }
+        ctx.await();
+
+        // Do gets on each service and make sure each one returns a 404 error.
+        for (URI exampleUri : exampleUris) {
+            Operation op = Operation.createGet(exampleUri);
+            TestRequestSender.FailureResponse response = this.host
+                    .getTestRequestSender().sendAndWaitFailure(op);
+            assertEquals(Operation.STATUS_CODE_NOT_FOUND, response.op.getStatusCode(), 0);
+        }
+
+        // Verify there are no services that are pending delete.
+        Map<String, ServiceStat> stats = this.host.getServiceStats(this.host.getManagementServiceUri());
+        ServiceStat stat = stats.get(ServiceHostManagementService.STAT_NAME_PENDING_SERVICE_DELETION_COUNT);
+        assertEquals(stat.latestValue, 0, 0);
     }
 
     /**
