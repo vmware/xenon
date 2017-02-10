@@ -221,7 +221,7 @@ public class NettyHttpServerResponseHandler extends SimpleChannelInboundHandler<
         } else if (Operation.MEDIA_TYPE_APPLICATION_JSON.equals(op.getContentType())) {
             try {
                 Object originalBody = op.getBodyRaw();
-                ServiceErrorResponse rsp = op.getBody(ServiceErrorResponse.class);
+                ServiceErrorResponse rsp = op.getErrorResponseBody();
                 if (rsp != null) {
                     errorMsg += " message " + rsp.message;
                 }

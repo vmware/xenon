@@ -861,9 +861,7 @@ class ServiceResourceTracker {
                 }
 
                 Action a = inboundOp.getAction();
-                ServiceErrorResponse response = o.hasBody()
-                        ? o.getBody(ServiceErrorResponse.class)
-                        : null;
+                ServiceErrorResponse response = o.getErrorResponseBody();
 
                 if (response != null) {
                     // Since we do a POST first for services using ON_DEMAND_LOAD to start the service,

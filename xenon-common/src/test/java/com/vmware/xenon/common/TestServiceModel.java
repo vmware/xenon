@@ -535,7 +535,7 @@ public class TestServiceModel extends BasicReusableHostTestCase {
         Operation post = Operation.createPost(uri);
         this.host.startService(post, new GetIllegalDocumentService());
         assertEquals(500, post.getStatusCode());
-        assertTrue(post.getBody(ServiceErrorResponse.class).message.contains("myLink"));
+        assertTrue(post.getErrorResponseBody().message.contains("myLink"));
     }
 
     public static class PrefixDispatchService extends StatelessService {

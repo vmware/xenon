@@ -2035,7 +2035,7 @@ public class TestLuceneDocumentIndexService {
                                         "Request should have failed"));
                                 return;
                             }
-                            ServiceErrorResponse rsp = o.getBody(ServiceErrorResponse.class);
+                            ServiceErrorResponse rsp = o.getErrorResponseBody();
                             if (!rsp.message.contains("size limit")) {
                                 this.host.failIteration(new IllegalStateException(
                                         "Error message not expected"));

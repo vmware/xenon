@@ -149,14 +149,14 @@ public class TestAuthorization extends BasicTestCase {
                 "$limit=10");
         TestRequestSender sender = this.host.getTestRequestSender();
         FailureResponse rsp = sender.sendAndWaitFailure(Operation.createGet(exampleFactoryUriWithOData));
-        ServiceErrorResponse errorRsp = rsp.op.getBody(ServiceErrorResponse.class);
+        ServiceErrorResponse errorRsp = rsp.op.getErrorResponseBody();
         assertTrue(errorRsp.message.toLowerCase().contains("forbidden"));
         assertTrue(errorRsp.message.contains(UriUtils.URI_PARAM_ODATA_TENANTLINKS));
 
         exampleFactoryUriWithOData = UriUtils.buildUri(this.host, ExampleService.FACTORY_LINK,
                 "$filter=name eq someone");
         rsp = sender.sendAndWaitFailure(Operation.createGet(exampleFactoryUriWithOData));
-        errorRsp = rsp.op.getBody(ServiceErrorResponse.class);
+        errorRsp = rsp.op.getErrorResponseBody();
         assertTrue(errorRsp.message.toLowerCase().contains("forbidden"));
         assertTrue(errorRsp.message.contains(UriUtils.URI_PARAM_ODATA_TENANTLINKS));
 

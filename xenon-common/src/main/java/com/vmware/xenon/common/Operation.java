@@ -849,6 +849,18 @@ public class Operation implements Cloneable {
         return this;
     }
 
+    public ServiceErrorResponse getErrorResponseBody() {
+        if (!hasBody()) {
+            return null;
+        }
+        ServiceErrorResponse rsp = getBody(ServiceErrorResponse.class);
+        if (rsp.message == null && rsp.statusCode == 0) {
+            // very likely not a error response body
+            return null;
+        }
+        return rsp;
+    }
+
     /**
      * Deserializes the body associated with the operation, given the type.
      *

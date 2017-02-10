@@ -204,8 +204,9 @@ public final class NodeGroupUtils {
                         }
                         String error = op.getStatusCode() + "";
                         if (op.hasBody()) {
-                            ServiceErrorResponse rsp = op.getBody(ServiceErrorResponse.class);
-                            error = rsp.message + ":" + op.getStatusCode();
+                            ServiceErrorResponse rsp = op.getErrorResponseBody();
+                            String msg = rsp != null ? rsp.message : "";
+                            error = msg + ":" + op.getStatusCode();
                         }
                         errorRsp.append("node ")
                                 .append(op.getUri())

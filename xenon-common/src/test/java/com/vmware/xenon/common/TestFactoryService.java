@@ -798,7 +798,7 @@ public class TestFactoryService extends BasicReusableHostTestCase {
                                 this.host.failIteration(new IllegalStateException(
                                         "Should have rejected request"));
                             } else {
-                                ServiceErrorResponse rsp = o.getBody(ServiceErrorResponse.class);
+                                ServiceErrorResponse rsp = o.getErrorResponseBody();
                                 if (rsp.message == null
                                         || !rsp.message.toLowerCase()
                                                 .contains("body is required")) {
@@ -1497,6 +1497,7 @@ public class TestFactoryService extends BasicReusableHostTestCase {
             return FactoryService.create(ExampleBarService.class);
         }
 
+        @Override
         public void handleStart(Operation start) {
             ExampleBarServiceContext body = start.getBody(ExampleBarServiceContext.class);
             if (body.message == null) {
@@ -1507,10 +1508,12 @@ public class TestFactoryService extends BasicReusableHostTestCase {
             start.complete();
         }
 
+        @Override
         public void handleGet(Operation get) {
             get.setBody(this.context).complete();
         }
 
+        @Override
         public void handlePost(Operation post) {
             this.context.message += " modified";
             post.setBody(this.context).complete();

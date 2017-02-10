@@ -96,7 +96,7 @@ public class TestValidationError extends BasicTestCase {
 
     private void validateServiceValidationError(Operation response, String expectedMsg) {
         assertEquals(Operation.STATUS_CODE_BAD_REQUEST, response.getStatusCode());
-        ServiceErrorResponse error = response.getBody(ServiceErrorResponse.class);
+        ServiceErrorResponse error = response.getErrorResponseBody();
         assertEquals(Operation.STATUS_CODE_BAD_REQUEST, error.statusCode);
         assertEquals(expectedMsg, error.message);
         assertNull(error.stackTrace);

@@ -330,7 +330,7 @@ public class VerificationHost extends ExampleServiceHost {
             }
 
             if (o.hasBody()) {
-                ServiceErrorResponse rsp = o.getBody(ServiceErrorResponse.class);
+                ServiceErrorResponse rsp = o.getErrorResponseBody();
                 if (rsp.message != null && rsp.message.toLowerCase().contains("timeout")
                         && rsp.statusCode != Operation.STATUS_CODE_TIMEOUT) {
                     failIteration(new IllegalArgumentException(

@@ -1731,7 +1731,7 @@ public class TestQueryTaskService {
     private void validateBroadcastQueryPostFailure(VerificationHost targetHost, Operation o,
             Throwable e) {
         if (e != null) {
-            ServiceErrorResponse rsp = o.getBody(ServiceErrorResponse.class);
+            ServiceErrorResponse rsp = o.getErrorResponseBody();
             if (rsp.message == null
                     || !rsp.message.contains(QueryOption.BROADCAST.toString())) {
                 targetHost.failIteration(new IllegalStateException("Expected failure"));

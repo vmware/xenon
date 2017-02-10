@@ -75,7 +75,7 @@ public class TestSamplePreviousEchoService extends BasicReusableHostTestCase {
                 .setBody(newState)
                 .setCompletion((o, e) -> {
                     if (e != null) {
-                        ServiceErrorResponse rsp = o.getBody(ServiceErrorResponse.class);
+                        ServiceErrorResponse rsp = o.getErrorResponseBody();
                         if (rsp.message == null || rsp.message.isEmpty()) {
                             this.host.failIteration(new IllegalStateException(
                                     "Missing error response"));

@@ -57,7 +57,7 @@ public class TestLocalizableValidationException extends BasicReusableHostTestCas
         TestRequestSender sender = this.host.getTestRequestSender();
         FailureResponse result = sender.sendAndWaitFailure(get);
 
-        ServiceErrorResponse response = result.op.getBody(ServiceErrorResponse.class);
+        ServiceErrorResponse response = result.op.getErrorResponseBody();
 
         assertEquals(ERROR_MESSAGE_GERMAN, response.message);
         assertEquals(Operation.STATUS_CODE_BAD_REQUEST, response.statusCode);
@@ -76,7 +76,7 @@ public class TestLocalizableValidationException extends BasicReusableHostTestCas
         TestRequestSender sender = this.host.getTestRequestSender();
         FailureResponse result = sender.sendAndWaitFailure(post);
 
-        ServiceErrorResponse response = result.op.getBody(ServiceErrorResponse.class);
+        ServiceErrorResponse response = result.op.getErrorResponseBody();
 
         assertEquals(ERROR_MESSAGE_GERMAN, response.message);
     }
@@ -94,7 +94,7 @@ public class TestLocalizableValidationException extends BasicReusableHostTestCas
         TestRequestSender sender = this.host.getTestRequestSender();
         FailureResponse result = sender.sendAndWaitFailure(post);
 
-        ServiceErrorResponse response = result.op.getBody(ServiceErrorResponse.class);
+        ServiceErrorResponse response = result.op.getErrorResponseBody();
 
         assertEquals(ERROR_MESSAGE_GERMAN, response.message);
     }
