@@ -717,8 +717,28 @@ public class TestQueryTaskService {
                 Utils.buildKind(QueryValidationServiceState.class) + ", " +
                         Utils.buildKind(ExampleServiceState.class));
         ServiceStat kindStat = stats.get(statName);
+        ServiceStat nonKindQueryStat = stats.get(
+                LuceneDocumentIndexService.STAT_NAME_NON_DOCUMENT_KIND_QUERY_COUNT);
         assertNotNull(kindStat);
+        assertNull(nonKindQueryStat);
         assertEquals(this.queryCount, kindStat.latestValue, 0);
+
+        q = Query.Builder.create()
+                .addFieldClause("dummy-property", "dummy-value")
+                .build();
+        task = QueryTask.Builder.createDirectTask()
+                .setQuery(q).build();
+
+        for (int i = 0; i < this.queryCount; i++) {
+            this.host.createQueryTaskService(task, false,
+                    task.taskInfo.isDirect, task, null);
+        }
+
+        stats = this.host.getServiceStats(this.host.getDocumentIndexServiceUri());
+        nonKindQueryStat = stats.get(
+                LuceneDocumentIndexService.STAT_NAME_NON_DOCUMENT_KIND_QUERY_COUNT);
+        assertNotNull(nonKindQueryStat);
+        assertEquals(this.queryCount, nonKindQueryStat.latestValue, 0);
     }
 
     public void doThroughputQuery(List<URI> services, Query q, int expectedResults,

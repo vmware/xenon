@@ -265,6 +265,8 @@ public class LuceneDocumentIndexService extends StatelessService {
 
     public static final String STAT_NAME_DOCUMENT_KIND_QUERY_COUNT_FORMAT = "documentKindQueryCount-%s";
 
+    public static final String STAT_NAME_NON_DOCUMENT_KIND_QUERY_COUNT = "nonDocumentKindQueryCount";
+
     public static final String STAT_NAME_SINGLE_QUERY_BY_FACTORY_COUNT_FORMAT = "singleQueryByFactoryCount-%s";
 
     private static final String STAT_NAME_MAINTENANCE_MEMORY_LIMIT_DURATION_MICROS =
@@ -497,7 +499,7 @@ public class LuceneDocumentIndexService extends StatelessService {
             if (query.term.propertyName.equals(ServiceDocument.FIELD_NAME_KIND)) {
                 return String.format(STAT_NAME_DOCUMENT_KIND_QUERY_COUNT_FORMAT, query.term.matchValue);
             }
-            return null;
+            return STAT_NAME_NON_DOCUMENT_KIND_QUERY_COUNT;
         }
 
         StringBuilder kindSb = new StringBuilder();
@@ -517,7 +519,7 @@ public class LuceneDocumentIndexService extends StatelessService {
             return String.format(STAT_NAME_DOCUMENT_KIND_QUERY_COUNT_FORMAT, kindSb.toString());
         }
 
-        return null;
+        return STAT_NAME_NON_DOCUMENT_KIND_QUERY_COUNT;
     }
 
     public IndexWriter createWriter(File directory, boolean doUpgrade) throws Exception {
