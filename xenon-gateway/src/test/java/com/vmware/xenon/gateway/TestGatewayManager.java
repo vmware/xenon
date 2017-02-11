@@ -65,9 +65,8 @@ public class TestGatewayManager {
             GatewayPathService.State state = new GatewayPathService.State();
             state.path = String.format(pathTemplate, i);
             state.actions = actions;
-            state.documentSelfLink = GatewayPathService.createSelfLinkFromState(state);
             ops.add(Operation
-                    .createPost(configHost, GatewayPathService.FACTORY_LINK)
+                    .createPost(configHost, GatewayPathFactoryService.SELF_LINK)
                     .setBody(state));
         }
         List<GatewayPathService.State> responses = this.sender

@@ -13,6 +13,7 @@
 
 package com.vmware.xenon.gateway;
 
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
 import java.lang.reflect.Array;
@@ -41,6 +42,7 @@ import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
 import com.vmware.xenon.common.test.MinimalTestServiceState;
 import com.vmware.xenon.common.test.TestContext;
+import com.vmware.xenon.common.test.TestRequestSender;
 import com.vmware.xenon.common.test.VerificationHost;
 import com.vmware.xenon.gateway.hosts.GatewayHost;
 import com.vmware.xenon.services.common.ExampleService;
@@ -78,7 +80,7 @@ public class TestGatewayService {
 
         ServiceHost configHost = this.gatewayHost.getConfigHost();
         waitForReplicatedFactoryServiceAvailable(configHost, GatewayConfigService.FACTORY_LINK);
-        waitForReplicatedFactoryServiceAvailable(configHost, GatewayPathService.FACTORY_LINK);
+        waitForReplicatedFactoryServiceAvailable(configHost, GatewayPathFactoryService.SELF_LINK);
 
         if (this.gatewayMgr == null) {
             this.gatewayMgr = new TestGatewayManager(this.host, this.gatewayHost);
@@ -384,6 +386,77 @@ public class TestGatewayService {
                 .setCompletion(ctx.getCompletion())
                 .sendWith(this.host);
         ctx.await();
+    }
+
+    /**
+     * This test validates negative cases for the GatewayPathService.
+     */
+    @Test
+    public void testPathServiceValidation() throws Throwable {
+        // Register a path
+        String factoryPath = "/core/factoryA";
+        this.gatewayMgr.addPaths(factoryPath, 1, EnumSet.of(Action.POST));
+
+        // Try to register the same path again. It should fail with CONFLICT error.
+        GatewayPathService.State state = new GatewayPathService.State();
+        state.path = factoryPath;
+        state.actions = EnumSet.allOf(Action.class);
+
+        URI factoryUri = UriUtils.buildUri(
+                this.gatewayHost.getConfigHost(), GatewayPathFactoryService.SELF_LINK);
+        Operation postOp = Operation
+                .createPost(factoryUri)
+                .setBody(state);
+
+        TestRequestSender.FailureResponse response = this.host
+                .getTestRequestSender().sendAndWaitFailure(postOp);
+        assertEquals(response.op.getStatusCode(), Operation.STATUS_CODE_CONFLICT);
+
+        // Try to change the path
+        String link = GatewayPathFactoryService.createSelfLinkFromState(state);
+        state = new GatewayPathService.State();
+        state.path = "/core/path1/facdtoryA";
+        Operation patchOp = Operation
+                .createPatch(UriUtils.buildUri(this.gatewayHost.getConfigHost(), link))
+                .setBody(state);
+
+        response = this.host.getTestRequestSender().sendAndWaitFailure(patchOp);
+        assertEquals(Operation.STATUS_CODE_BAD_REQUEST, response.op.getStatusCode());
+
+        Operation putOp = Operation
+                .createPut(UriUtils.buildUri(this.gatewayHost.getConfigHost(), link))
+                .setBody(state);
+
+        response = this.host.getTestRequestSender().sendAndWaitFailure(putOp);
+        assertEquals(Operation.STATUS_CODE_BAD_REQUEST, response.op.getStatusCode());
+
+        // Try to create a PathService with empty path
+        state = new GatewayPathService.State();
+        state.actions = EnumSet.allOf(Action.class);
+        postOp = Operation
+                .createPost(factoryUri)
+                .setBody(state);
+
+        response = this.host.getTestRequestSender().sendAndWaitFailure(postOp);
+        assertEquals(Operation.STATUS_CODE_BAD_REQUEST, response.op.getStatusCode());
+    }
+
+    /**
+     * This test validates negative cases for the GatewayConfigService.
+     */
+    @Test
+    public void testConfigServiceValidation() throws Throwable {
+        GatewayConfigService.State state = new GatewayConfigService.State();
+        state.forwardingUri = new URI("http://127.0.0.1:8001");
+        URI factoryUri = UriUtils.buildUri(
+                this.gatewayHost.getConfigHost(), GatewayConfigService.FACTORY_LINK);
+        Operation postOp = Operation
+                .createPost(factoryUri)
+                .setBody(state);
+
+        TestRequestSender.FailureResponse response = this.host
+                .getTestRequestSender().sendAndWaitFailure(postOp);
+        assertEquals(Operation.STATUS_CODE_BAD_REQUEST, response.op.getStatusCode());
     }
 
     @SuppressWarnings("unchecked")

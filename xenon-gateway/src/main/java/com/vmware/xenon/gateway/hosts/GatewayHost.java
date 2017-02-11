@@ -20,7 +20,7 @@ import java.util.logging.Level;
 import com.vmware.xenon.common.CommandLineArgumentParser;
 import com.vmware.xenon.common.ServiceHost;
 import com.vmware.xenon.gateway.GatewayConfigService;
-import com.vmware.xenon.gateway.GatewayPathService;
+import com.vmware.xenon.gateway.GatewayPathFactoryService;
 
 /**
  * This class represents the gateway application and
@@ -96,7 +96,7 @@ public class GatewayHost {
         // host is available, it has all configuration information available.
         String[] factories = new String[] {
                 GatewayConfigService.FACTORY_LINK,
-                GatewayPathService.FACTORY_LINK
+                GatewayPathFactoryService.SELF_LINK
         };
         AtomicInteger count = new AtomicInteger(factories.length);
         this.configHost.registerForServiceAvailability((o, e) -> {

@@ -15,12 +15,10 @@ package com.vmware.xenon.gateway;
 
 import java.util.EnumSet;
 
-import com.vmware.xenon.common.FactoryService;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.ServiceDocumentDescription.PropertyUsageOption;
 import com.vmware.xenon.common.StatefulService;
-import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
 
 /**
@@ -28,12 +26,6 @@ import com.vmware.xenon.common.Utils;
  * actions for a {@link GatewayService}
  */
 public class GatewayPathService extends StatefulService {
-
-    public static final String FACTORY_LINK = GatewayUriPaths.PATHS;
-
-    public static FactoryService createFactory() {
-        return FactoryService.create(GatewayPathService.class);
-    }
 
     public static class State extends ServiceDocument {
         public static final String KIND = Utils.buildKind(State.class);
@@ -71,32 +63,17 @@ public class GatewayPathService extends StatefulService {
 
     private State validateStartState(Operation start) {
         if (!start.hasBody()) {
-            start.fail(new IllegalStateException("Body is required"));
+            start.fail(new IllegalArgumentException("Body is required"));
             return null;
         }
 
         State state = getBody(start);
         if (state.path == null) {
-            start.fail(new IllegalStateException("path is missing"));
-            return null;
-        }
-
-        // A specific format for the self-link is used to guarantee
-        // uniqueness of uri paths for a specific gateway.
-        String selfLink = createSelfLinkFromState(state);
-        if (!getSelfLink().equals(selfLink)) {
-            Exception ex = new IllegalStateException(
-                    "gatewayId and/or path do not match documentSelfLink");
-            start.fail(ex);
+            start.fail(new IllegalArgumentException("path is missing"));
             return null;
         }
 
         return state;
-    }
-
-    public static final String createSelfLinkFromState(State state) {
-        String path = UriUtils.convertPathCharsFromLink(state.path);
-        return UriUtils.buildUriPath(FACTORY_LINK, path);
     }
 
     @Override
@@ -127,14 +104,14 @@ public class GatewayPathService extends StatefulService {
 
     private State validateUpdateState(Operation update) {
         if (!update.hasBody()) {
-            update.fail(new IllegalStateException("Body is required"));
+            update.fail(new IllegalArgumentException("Body is required"));
             return null;
         }
 
         State body = getBody(update);
         State state = getState(update);
         if (body.path != null && !state.path.equals(body.path)) {
-            update.fail(new IllegalStateException("path cannot be changed"));
+            update.fail(new IllegalArgumentException("path cannot be changed"));
             return null;
         }
         return body;

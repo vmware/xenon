@@ -15,7 +15,7 @@ package com.vmware.xenon.gateway.hosts;
 
 import com.vmware.xenon.common.ServiceHost;
 import com.vmware.xenon.gateway.GatewayConfigService;
-import com.vmware.xenon.gateway.GatewayPathService;
+import com.vmware.xenon.gateway.GatewayPathFactoryService;
 import com.vmware.xenon.services.common.RootNamespaceService;
 
 /**
@@ -38,7 +38,10 @@ public class GatewayConfigHost extends ServiceHost {
 
         // Starting factory services for Gateway configuration
         super.startFactory(new GatewayConfigService());
-        super.startFactory(new GatewayPathService());
+
+        GatewayPathFactoryService factoryService = new GatewayPathFactoryService();
+        factoryService.setUseBodyForSelfLink(true);
+        super.startService(factoryService);
 
         return this;
     }
