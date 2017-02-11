@@ -16,6 +16,8 @@
   <properties>
     <!-- For xenon-workshop module, disable analysis(checkstyle, findbugs, pmd) not to slowdown build time -->
     <skipAnalysis>true</skipAnalysis>
+    <!-- Skip tests for build time improvement -->
+    <skipTests>true</skipTests>
   </properties>
 
   <build>
