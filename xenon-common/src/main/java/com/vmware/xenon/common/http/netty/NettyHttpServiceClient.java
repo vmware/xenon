@@ -150,7 +150,6 @@ public class NettyHttpServiceClient implements ServiceClient {
             sc.setHttpProxy(new URI(proxy));
         }
 
-        sc.setConnectionLimitPerHost(DEFAULT_CONNECTION_LIMIT_PER_HOST);
         sc.setConnectionLimitPerTag(ServiceClient.CONNECTION_TAG_DEFAULT,
                 DEFAULT_CONNECTIONS_PER_HOST);
         sc.setConnectionLimitPerTag(ServiceClient.CONNECTION_TAG_HTTP2_DEFAULT,
@@ -828,30 +827,16 @@ public class NettyHttpServiceClient implements ServiceClient {
                 + forcedExpiredCount);
     }
 
-    /**
-     * @see ServiceClient#setConnectionLimitPerHost(int)
-     */
+    @Deprecated
     @Override
     public ServiceClient setConnectionLimitPerHost(int limit) {
-        this.channelPool.setConnectionLimitPerHost(limit);
-        if (this.sslChannelPool != null) {
-            this.sslChannelPool.setConnectionLimitPerHost(limit);
-        }
-        if (this.http2ChannelPool != null) {
-            this.http2ChannelPool.setConnectionLimitPerHost(limit);
-        }
-        if (this.http2SslChannelPool != null) {
-            this.http2SslChannelPool.setConnectionLimitPerHost(limit);
-        }
         return this;
     }
 
-    /**
-     * @see ServiceClient#getConnectionLimitPerHost()
-     */
+    @Deprecated
     @Override
     public int getConnectionLimitPerHost() {
-        return this.channelPool.getConnectionLimitPerHost();
+        return DEFAULT_CONNECTION_LIMIT_PER_HOST;
     }
 
     /**

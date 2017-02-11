@@ -53,23 +53,24 @@ public class NettyHttpServiceClientChannelPoolsTest {
     public void testDefaultConnectionLimit() {
         this.client.start();
 
-        assertEquals(NettyHttpServiceClient.DEFAULT_CONNECTIONS_PER_HOST, this.client
-                .getChannelPool()
-                .getConnectionLimitPerHost());
-        assertEquals(NettyHttpServiceClient.DEFAULT_CONNECTIONS_PER_HOST, this.client
-                .getSslChannelPool().getConnectionLimitPerHost());
+        assertEquals(NettyHttpServiceClient.DEFAULT_CONNECTIONS_PER_HOST,
+                this.client.getChannelPool().getConnectionLimitPerTag(
+                        NettyHttpServiceClient.CONNECTION_TAG_DEFAULT));
     }
 
     @Test
     public void testSetConnectionLimitBeforeSslChannelPoolStart() {
         int connectionLimit = 11;
 
-        this.client.setConnectionLimitPerHost(connectionLimit);
+        this.client.setConnectionLimitPerTag(NettyHttpServiceClient.CONNECTION_TAG_DEFAULT,
+                connectionLimit);
 
         this.client.start();
 
-        assertEquals(connectionLimit, this.client.getChannelPool().getConnectionLimitPerHost());
-        assertEquals(connectionLimit, this.client.getSslChannelPool().getConnectionLimitPerHost());
+        assertEquals(connectionLimit, this.client.getChannelPool().getConnectionLimitPerTag(
+                NettyHttpServiceClient.CONNECTION_TAG_DEFAULT));
+        assertEquals(connectionLimit, this.client.getSslChannelPool().getConnectionLimitPerTag(
+                NettyHttpServiceClient.CONNECTION_TAG_DEFAULT));
     }
 
     @Test
@@ -78,9 +79,12 @@ public class NettyHttpServiceClientChannelPoolsTest {
 
         this.client.start();
 
-        this.client.setConnectionLimitPerHost(connectionLimit);
+        this.client.setConnectionLimitPerTag(NettyHttpServiceClient.CONNECTION_TAG_DEFAULT,
+                connectionLimit);
 
-        assertEquals(connectionLimit, this.client.getChannelPool().getConnectionLimitPerHost());
-        assertEquals(connectionLimit, this.client.getSslChannelPool().getConnectionLimitPerHost());
+        assertEquals(connectionLimit, this.client.getChannelPool().getConnectionLimitPerTag(
+                NettyHttpServiceClient.CONNECTION_TAG_DEFAULT));
+        assertEquals(connectionLimit, this.client.getSslChannelPool().getConnectionLimitPerTag(
+                NettyHttpServiceClient.CONNECTION_TAG_DEFAULT));
     }
 }

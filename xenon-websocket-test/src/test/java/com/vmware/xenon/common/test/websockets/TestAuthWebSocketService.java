@@ -63,7 +63,6 @@ public class TestAuthWebSocketService extends AbstractWebSocketServiceTest {
     }
 
     private void testAuthContextPropagation() throws Throwable {
-        this.host.getClient().setConnectionLimitPerHost(2);
         // do a regular HTTP operation, with no context, it should fail. we are validating
         // that the web socket client handler does not leak its context on all operations
         this.host.resetSystemAuthorizationContext();

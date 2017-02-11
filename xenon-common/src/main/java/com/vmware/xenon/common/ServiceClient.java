@@ -105,11 +105,13 @@ public interface ServiceClient extends ServiceRequestSender {
      *
      * For fine grained control of connection limits please use {@code ServiceClient#setConnectionLimitPerTag(int)}
      */
+    @Deprecated
     ServiceClient setConnectionLimitPerHost(int limit);
 
     /**
      * Returns the maximum number of connections per host and port tuple
      */
+    @Deprecated
     int getConnectionLimitPerHost();
 
     /**
