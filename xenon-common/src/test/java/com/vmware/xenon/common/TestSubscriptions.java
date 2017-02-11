@@ -322,12 +322,7 @@ public class TestSubscriptions extends BasicTestCase {
         this.serviceCount = NettyHttpServiceClient.DEFAULT_CONNECTIONS_PER_HOST / 2;
         // set the connection limit higher for the test host since it will be issuing parallel
         // subscribes, POSTs
-        this.host.getClient().setConnectionLimitPerHost(this.serviceCount * 4);
         setUpPeers();
-
-        for (VerificationHost h : this.host.getInProcessHostMap().values()) {
-            h.getClient().setConnectionLimitPerHost(this.serviceCount * 4);
-        }
 
         this.host.waitForReplicatedFactoryServiceAvailable(
                 this.host.getPeerServiceUri(ExampleService.FACTORY_LINK));

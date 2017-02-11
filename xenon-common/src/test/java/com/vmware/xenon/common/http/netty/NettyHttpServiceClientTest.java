@@ -212,7 +212,6 @@ public class NettyHttpServiceClientTest {
                 "Starting HTTP GET stress test against %s, request count: %d, connection limit: %d",
                 this.testURI, this.requestCount, this.connectionCount);
 
-        this.host.getClient().setConnectionLimitPerHost(this.connectionCount);
         for (int i = 0; i < 3; i++) {
             long start = System.nanoTime();
             getThirdPartyServerResponse(this.testURI, this.requestCount);
@@ -232,11 +231,9 @@ public class NettyHttpServiceClientTest {
         }
         this.host.setOperationTimeOutMicros(TimeUnit.SECONDS.toMicros(120));
         this.host.setTimeoutSeconds(120);
-        this.host
-                .log(
-                        "Starting HTTP POST stress test against %s, request count: %d, connection limit: %d",
-                        this.testURI, this.requestCount, this.connectionCount);
-        this.host.getClient().setConnectionLimitPerHost(this.connectionCount);
+        this.host.log(
+                "Starting HTTP POST stress test against %s, request count: %d, connection limit: %d",
+                this.testURI, this.requestCount, this.connectionCount);
         long start = System.nanoTime();
         ExampleServiceState body = new ExampleServiceState();
         body.name = UUID.randomUUID().toString();
@@ -396,9 +393,7 @@ public class NettyHttpServiceClientTest {
             MinimalTestServiceState body = new MinimalTestServiceState();
             body.id = MinimalTestService.STRING_MARKER_TIMEOUT_REQUEST;
 
-            int connectionLimit = NettyHttpServiceClient.DEFAULT_CONNECTIONS_PER_HOST;
-            int count = connectionLimit;
-            this.host.getClient().setConnectionLimitPerHost(connectionLimit);
+            int count = NettyHttpServiceClient.DEFAULT_CONNECTIONS_PER_HOST;
 
             // Use a random boolean to test the keep-alive and close code paths
             Random r = new Random();
@@ -835,13 +830,10 @@ public class NettyHttpServiceClientTest {
 
         if (!this.host.isStressTest()) {
             this.host.log("Single connection runs");
-            this.host.getClient().setConnectionLimitPerHost(1);
             this.host.doPutPerService(
                     this.requestCount,
                     EnumSet.of(TestProperty.FORCE_REMOTE),
                     services);
-            this.host.getClient()
-                    .setConnectionLimitPerHost(NettyHttpServiceClient.DEFAULT_CONNECTIONS_PER_HOST);
             validateTagInfo(tag);
         } else {
             this.host.setOperationTimeOutMicros(
@@ -849,7 +841,7 @@ public class NettyHttpServiceClientTest {
         }
 
         // use global limit, which applies by default to all tags
-        int limit = this.host.getClient().getConnectionLimitPerHost();
+        int limit = NettyHttpServiceClient.DEFAULT_CONNECTIONS_PER_HOST;
         this.host.connectionTag = null;
         this.host.log("Using client global connection limit %d", limit);
 
@@ -884,7 +876,6 @@ public class NettyHttpServiceClientTest {
     @Test
     public void throughputNonPersistedServiceGetSingleConnection() throws Throwable {
         long serviceCount = 256;
-        this.host.getClient().setConnectionLimitPerHost(1);
         MinimalTestServiceState body = (MinimalTestServiceState) this.host.buildMinimalTestState();
 
         EnumSet<TestProperty> props = EnumSet.of(TestProperty.FORCE_REMOTE);
