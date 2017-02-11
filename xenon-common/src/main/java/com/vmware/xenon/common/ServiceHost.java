@@ -2562,7 +2562,7 @@ public class ServiceHost implements ServiceRequestSender {
                 break;
             case LOADING_INITIAL_STATE:
                 boolean isImmutableStart = ServiceHost.isServiceCreate(post)
-                        && isServiceImmutable(s);
+                        && isServiceImmutable(s) && buildDocumentDescription(s).skipSelfLinkCheckAtStartup;
                 if (!isImmutableStart && isServiceIndexed(s) && !post.isFromReplication()) {
                     // Skip querying the index for existing state if any of the following is true:
                     // 1) Service is marked IMMUTABLE. This means no previous version should exist,

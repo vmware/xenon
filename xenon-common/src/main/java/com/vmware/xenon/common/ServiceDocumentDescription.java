@@ -255,6 +255,12 @@ public class ServiceDocumentDescription {
     public int serializedStateSizeLimit = DEFAULT_SERIALIZED_STATE_LIMIT;
 
     /**
+     * Allows callers to speed-up service creation by skipping self-link
+     * check at service start.
+     */
+    public boolean skipSelfLinkCheckAtStartup = true;
+
+    /**
      * Builder is a parameterized factory for ServiceDocumentDescription instances.
      */
     public static class Builder {

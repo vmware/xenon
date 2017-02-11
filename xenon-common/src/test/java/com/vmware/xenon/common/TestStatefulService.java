@@ -55,6 +55,7 @@ import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
 import com.vmware.xenon.services.common.MinimalTestService;
 import com.vmware.xenon.services.common.QueryTask;
 import com.vmware.xenon.services.common.QueryTask.QuerySpecification.QueryOption;
+import com.vmware.xenon.services.common.ServiceHostManagementService;
 import com.vmware.xenon.services.common.ServiceUriPaths;
 
 class DeleteVerificationTestService extends StatefulService {
@@ -234,6 +235,29 @@ class ExampleVersionRetentionService extends StatefulService {
     }
 }
 
+/**
+ * Example service that is used for version retention update
+ */
+class ExampleImmutableService extends StatefulService {
+    public static final String FACTORY_LINK = ServiceUriPaths.CORE + "/tests/immutable-example";
+
+    public ExampleImmutableService() {
+        super(ExampleServiceState.class);
+        toggleOption(ServiceOption.PERSISTENCE, true);
+        toggleOption(ServiceOption.REPLICATION, true);
+        toggleOption(ServiceOption.OWNER_SELECTION, true);
+        toggleOption(ServiceOption.IMMUTABLE, true);
+        toggleOption(ServiceOption.ON_DEMAND_LOAD, true);
+    }
+
+    @Override
+    public ServiceDocument getDocumentTemplate() {
+        ServiceDocument template = super.getDocumentTemplate();
+        template.documentDescription.skipSelfLinkCheckAtStartup = false;
+        return template;
+    }
+}
+
 public class TestStatefulService extends BasicReusableHostTestCase {
 
     @Rule
@@ -334,6 +358,46 @@ public class TestStatefulService extends BasicReusableHostTestCase {
                 DefaultHandlerState.class, uri);
         assertEquals(currentState.stateInt, newState.stateInt);
         assertEquals(currentState.stateString, newState.stateString);
+    }
+
+    @Test
+    public void indexCheckForImmutableServices() throws Throwable {
+        this.host.startFactory(new ExampleImmutableService());
+        ExampleServiceState state = new ExampleServiceState();
+        state.name = "singleton";
+        state.documentSelfLink = "singleton-instance";
+
+        final URI mgmtUri = this.host.getManagementServiceUri();
+        Map<String, ServiceStat> stats = this.host.getServiceStats(mgmtUri);
+        ServiceStat stopCountStat = stats.get(ServiceHostManagementService.STAT_NAME_ODL_STOP_COUNT);
+        double stopCount = stopCountStat != null ? stopCountStat.latestValue : 0;
+
+        TestContext ctx = this.host.testCreate(1);
+        Operation postOp = Operation
+                .createPost(UriUtils.buildUri(this.host, ExampleImmutableService.FACTORY_LINK))
+                .setReferer(this.host.getUri())
+                .setBody(state)
+                .setCompletion(ctx.getCompletion());
+        this.host.sendRequest(postOp);
+        ctx.await();
+
+        this.host.waitFor("Expected singleton service instance to be stopped", () -> {
+            Map<String, ServiceStat> currentStats = this.host.getServiceStats(mgmtUri);
+            ServiceStat newStopCountStat = currentStats.get(ServiceHostManagementService.STAT_NAME_ODL_STOP_COUNT);
+            double newStopCount = newStopCountStat != null ? newStopCountStat.latestValue : 0;
+            return newStopCount == stopCount + 1;
+        });
+
+        TestContext ctx2 = this.host.testCreate(1);
+        postOp.setCompletion((o, e) -> {
+            if (e != null && o.getStatusCode() == Operation.STATUS_CODE_CONFLICT) {
+                ctx2.completeIteration();
+                return;
+            }
+            ctx2.failIteration(new IllegalArgumentException("reqeust did not fail with 409."));
+        });
+        this.host.sendRequest(postOp);
+        ctx2.await();
     }
 
     @Test
