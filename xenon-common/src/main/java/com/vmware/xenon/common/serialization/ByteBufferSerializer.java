@@ -23,6 +23,11 @@ import com.esotericsoftware.kryo.io.Output;
 final class ByteBufferSerializer extends Serializer<ByteBuffer> {
     public static final Serializer<ByteBuffer> INSTANCE = new ByteBufferSerializer();
 
+    public ByteBufferSerializer() {
+        setImmutable(true);
+        setAcceptsNull(false);
+    }
+
     @Override
     public void write(Kryo kryo, Output output, ByteBuffer object) {
         int count = object.limit();

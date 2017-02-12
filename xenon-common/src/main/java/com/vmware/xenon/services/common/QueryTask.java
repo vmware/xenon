@@ -104,6 +104,12 @@ public class QueryTask extends ServiceDocument {
             EXPAND_CONTENT,
 
             /**
+             * Query results will include the Byte documents in the {@link ServiceDocumentQueryResult#documents}
+             * collection.
+             */
+            EXPAND_BINARY_CONTENT,
+
+            /**
              * Infrastructure use only. Modifier option on EXPAND_CONTENT:
              * Selects and expands only the the built-in document fields
              * See {@link ServiceDocument}
@@ -169,7 +175,7 @@ public class QueryTask extends ServiceDocument {
             /**
              * Query will return latest versions of documents before {@link QuerySpecification#timeSnapshotBoundaryMicros}
              */
-            TIME_SNAPSHOT
+            TIME_SNAPSHOT,
         }
 
         public enum SortOrder {

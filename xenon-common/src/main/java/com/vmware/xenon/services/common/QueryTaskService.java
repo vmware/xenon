@@ -120,6 +120,25 @@ public class QueryTaskService extends StatefulService {
             }
         }
 
+        if (startPost.isRemote() && initState.querySpec.options
+                .contains(QueryOption.EXPAND_BINARY_CONTENT)) {
+            final String errFmt = "%s will work only for co-located clients.";
+            startPost.fail(new IllegalArgumentException(
+                    String.format(errFmt, QueryOption.EXPAND_BINARY_CONTENT)));
+            return false;
+        }
+
+        if (initState.querySpec.options.contains(QueryOption.EXPAND_BINARY_CONTENT)
+                && (initState.querySpec.options.contains(QueryOption.OWNER_SELECTION)
+                || initState.querySpec.options.contains(QueryOption.EXPAND_BUILTIN_CONTENT_ONLY)
+                || initState.querySpec.options.contains(QueryOption.EXPAND_CONTENT))) {
+            final String errFmt = "%s is not compatible with %s / %s / %s";
+            startPost.fail(new IllegalArgumentException(
+                    String.format(errFmt, QueryOption.EXPAND_BINARY_CONTENT, QueryOption.OWNER_SELECTION,
+                            QueryOption.EXPAND_BUILTIN_CONTENT_ONLY, QueryOption.EXPAND_CONTENT)));
+            return false;
+        }
+
         if (initState.querySpec.options.contains(QueryOption.EXPAND_LINKS)) {
             if (!initState.querySpec.options.contains(QueryOption.SELECT_LINKS)) {
                 startPost.fail(new IllegalArgumentException(

@@ -343,7 +343,7 @@ public class TestQueryTaskService {
         }
 
         // update services
-        newState = putSimpleStateOnQueryTargetServices(services, newState);
+        putSimpleStateOnQueryTargetServices(services, newState);
 
         // send DELETEs, wait for DELETE notifications
         this.host.testStart(services.size() - servicesWithExpirationCount);
@@ -3994,7 +3994,7 @@ public class TestQueryTaskService {
         doPaginatedTimeSnapshotTest(5, 3, false);
     }
 
-    public void doTimeSnapshotTest(int serviceCount, int versionCount, boolean forceRemote)
+    private void doTimeSnapshotTest(int serviceCount, int versionCount, boolean forceRemote)
             throws Throwable {
 
         String prefix = "testPrefix";
@@ -4130,5 +4130,96 @@ public class TestQueryTaskService {
         assertTrue(totalPages == count);
 
         deleteServices(services);
+    }
+
+    @Test
+    public void expandContentBinaryResult() throws Throwable {
+        setUpHost();
+        Long counter = 10L;
+        this.host.doFactoryChildServiceStart(null,
+                this.serviceCount,
+                ExampleServiceState.class, (o) -> {
+                    ExampleServiceState initialState = new ExampleServiceState();
+                    initialState.name = UUID.randomUUID().toString();
+                    initialState.counter = counter;
+                    o.setBody(initialState);
+                },
+                UriUtils.buildFactoryUri(this.host, ExampleService.class));
+
+        Query kindClause = Query.Builder.create()
+                .addKindFieldClause(ExampleServiceState.class)
+                .build();
+
+        QueryTask task = QueryTask.Builder.createDirectTask()
+                .setQuery(kindClause)
+                .addOption(QueryOption.EXPAND_BINARY_CONTENT)
+                .build();
+
+        if (task.documentExpirationTimeMicros != 0) {
+            // the value was set as an interval by the calling test. Make absolute here so
+            // account for service creation above
+            task.documentExpirationTimeMicros = Utils.fromNowMicrosUtc(
+                    +task.documentExpirationTimeMicros);
+        }
+
+        this.host.logThroughput();
+
+        this.host.createQueryTaskService(task, false,
+                task.taskInfo.isDirect, task, null);
+
+        // verify expand from direct query task
+        ServiceDocumentQueryResult taskResult = task.results;
+        assertNotNull(taskResult.documents);
+        assertEquals(this.serviceCount, taskResult.documents.size());
+        Object queryResult = taskResult.documents.get(taskResult.documentLinks.get(0));
+        validateBinaryExampleServiceState(queryResult, taskResult.documentLinks.get(0), counter);
+
+        // verify expand from factory
+        URI factoryURI = UriUtils.buildFactoryUri(this.host, ExampleService.class);
+        factoryURI = UriUtils.buildExpandLinksQueryUri(factoryURI);
+        ServiceDocumentQueryResult factoryGetResult = this.host.getFactoryState(factoryURI);
+        assertNotNull(factoryGetResult.documents);
+        assertEquals(this.serviceCount, factoryGetResult.documents.size());
+        Object factoryResult = taskResult.documents.get(taskResult.documentLinks.get(0));
+        validateBinaryExampleServiceState(factoryResult, taskResult.documentLinks.get(0), counter);
+    }
+
+    private void validateBinaryExampleServiceState(Object queryResult, String link, Long counter) {
+        ServiceDocument serviceDocument = Utils.fromQueryBinaryDocument(link, queryResult);
+        assertNotNull(serviceDocument);
+        ExampleServiceState resultState = (ExampleServiceState) serviceDocument;
+        assertEquals(counter, resultState.counter);
+        assertEquals(Action.POST.toString(), resultState.documentUpdateAction);
+        assertEquals(Utils.buildKind(ExampleServiceState.class), resultState.documentKind);
+        assertNotNull(resultState.name);
+    }
+
+    @Test
+    public void expandContentBinaryResultNegative() throws Throwable {
+        setUpHost();
+        Query kindClause = Query.Builder.create()
+                .addKindFieldClause(ExampleServiceState.class)
+                .build();
+
+        QueryTask task = QueryTask.Builder.createDirectTask()
+                .setQuery(kindClause)
+                .addOption(QueryOption.EXPAND_CONTENT)
+                .addOption(QueryOption.EXPAND_BINARY_CONTENT)
+                .build();
+
+        try {
+            this.host.createQueryTaskService(task, false,
+                    task.taskInfo.isDirect, task, null);
+        } catch (IllegalArgumentException e) {
+            assertTrue(e.getMessage().contains("EXPAND_BINARY_CONTENT is not compatible with OWNER_SELECTION / "
+                    + "EXPAND_BUILTIN_CONTENT_ONLY / EXPAND_CONTENT"));
+        }
+
+        try {
+            this.host.createQueryTaskService(task, true,
+                    task.taskInfo.isDirect, task, null);
+        } catch (Throwable e) {
+            assertTrue(e.getMessage().contains("EXPAND_BINARY_CONTENT will work only for co-located clients."));
+        }
     }
 }

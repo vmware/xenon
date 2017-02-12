@@ -18,6 +18,7 @@ import static com.vmware.xenon.services.common.LuceneIndexDocumentHelper.GROUP_B
 import java.io.File;
 import java.io.IOException;
 import java.net.URI;
+import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -1042,7 +1043,8 @@ public class LuceneDocumentIndexService extends StatelessService {
             options = EnumSet.noneOf(QueryOption.class);
         }
 
-        if (options.contains(QueryOption.EXPAND_CONTENT)) {
+        if (options.contains(QueryOption.EXPAND_CONTENT) || options
+                .contains(QueryOption.EXPAND_BINARY_CONTENT)) {
             rsp.documents = new HashMap<>();
         }
 
@@ -1732,7 +1734,8 @@ public class LuceneDocumentIndexService extends StatelessService {
         ScoreDoc lastDocVisited = null;
         Set<String> fieldsToLoad = this.fieldsToLoadNoExpand;
         if (options.contains(QueryOption.EXPAND_CONTENT)
-                || options.contains(QueryOption.OWNER_SELECTION)) {
+                || options.contains(QueryOption.OWNER_SELECTION)
+                || options.contains(QueryOption.EXPAND_BINARY_CONTENT)) {
             fieldsToLoad = this.fieldsToLoadWithExpand;
         }
 
@@ -1860,19 +1863,29 @@ public class LuceneDocumentIndexService extends StatelessService {
                 }
             }
 
-            if (options.contains(QueryOption.EXPAND_CONTENT) && !rsp.documents.containsKey(link)) {
-                if (options.contains(QueryOption.EXPAND_BUILTIN_CONTENT_ONLY)) {
-                    ServiceDocument stateClone = new ServiceDocument();
-                    state.copyTo(stateClone);
-                    rsp.documents.put(link, stateClone);
-                } else {
-                    JsonObject jo = new JsonParser().parse(json).getAsJsonObject();
-                    rsp.documents.put(link, jo);
+            if (options.contains(QueryOption.EXPAND_BINARY_CONTENT) && !rsp.documents.containsKey(link)) {
+                BytesRef binaryData = getBinaryFromLuceneDocument(d);
+                if (binaryData != null) {
+                    ByteBuffer buffer = ByteBuffer.wrap(binaryData.bytes, binaryData.offset,
+                            binaryData.length);
+                    rsp.documents.put(link, buffer);
+                }
+            } else {
+                if (options.contains(QueryOption.EXPAND_CONTENT) && !rsp.documents
+                        .containsKey(link)) {
+                    if (options.contains(QueryOption.EXPAND_BUILTIN_CONTENT_ONLY)) {
+                        ServiceDocument stateClone = new ServiceDocument();
+                        state.copyTo(stateClone);
+                        rsp.documents.put(link, stateClone);
+                    } else {
+                        JsonObject jo = new JsonParser().parse(json).getAsJsonObject();
+                        rsp.documents.put(link, jo);
+                    }
                 }
             }
 
             if (options.contains(QueryOption.SELECT_LINKS)) {
-                state = processQueryResultsForSelectLinks(s, qs, rsp, d, sd.doc, link, state);
+                processQueryResultsForSelectLinks(s, qs, rsp, d, sd.doc, link, state);
             }
 
             uniques.add(link);
@@ -1962,13 +1975,17 @@ public class LuceneDocumentIndexService extends StatelessService {
         return state;
     }
 
-    private ServiceDocument getStateFromLuceneDocument(Document doc, String link) {
+    private BytesRef getBinaryFromLuceneDocument(Document doc) {
         BytesRef binaryStateField = doc.getBinaryValue(LUCENE_FIELD_NAME_BINARY_SERIALIZED_STATE);
+        return binaryStateField;
+    }
+
+    private ServiceDocument getStateFromLuceneDocument(Document doc, String link) {
+        BytesRef binaryStateField = getBinaryFromLuceneDocument(doc);
         if (binaryStateField == null) {
             logWarning("State not found for %s", link);
             return null;
         }
-
         ServiceDocument state = (ServiceDocument) KryoSerializers.deserializeDocument(
                 binaryStateField.bytes,
                 binaryStateField.offset, binaryStateField.length);
