@@ -295,6 +295,22 @@ public final class Utils {
         return KryoSerializers.deserializeObject(bytes, position, length);
     }
 
+    /**
+     * Deserializes bytes into ServiceDocument.
+     * See {@link KryoSerializers#deserializeDocument(byte[], int, int)}
+     */
+    public static ServiceDocument fromQueryBinaryDocument(String link, Object binaryData) {
+        ServiceDocument serviceDocument = (ServiceDocument) KryoSerializers
+                .deserializeDocument((ByteBuffer) binaryData);
+        if (serviceDocument.documentSelfLink == null) {
+            serviceDocument.documentSelfLink = link;
+        }
+        if (serviceDocument.documentKind == null) {
+            serviceDocument.documentKind = Utils.buildKind(serviceDocument.getClass());
+        }
+        return serviceDocument;
+    }
+
     public static void performMaintenance() {
 
     }

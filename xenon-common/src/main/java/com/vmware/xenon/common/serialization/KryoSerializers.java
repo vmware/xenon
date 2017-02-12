@@ -39,6 +39,7 @@ import com.esotericsoftware.kryo.io.Output;
 import com.esotericsoftware.kryo.serializers.CollectionSerializer;
 import com.esotericsoftware.kryo.serializers.MapSerializer;
 import com.esotericsoftware.kryo.serializers.VersionFieldSerializer;
+
 import org.objenesis.strategy.StdInstantiatorStrategy;
 
 import com.vmware.xenon.common.ServiceDocument;
@@ -322,4 +323,12 @@ public final class KryoSerializers {
         return k.readClassAndObject(in);
     }
 
+    /**
+     * Deserializes ByteBuffer into a native ServiceDocument derived type, using the document
+     * serializer.
+     * @see #deserializeDocument(byte[], int, int)
+     */
+    public static Object deserializeDocument(ByteBuffer bb) {
+        return deserializeDocument(bb.array(), bb.position(), bb.limit());
+    }
 }
