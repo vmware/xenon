@@ -3974,7 +3974,7 @@ public class TestQueryTaskService {
         doPaginatedTimeSnapshotTest(5, 3, false);
     }
 
-    public void doTimeSnapshotTest(int serviceCount, int versionCount, boolean forceRemote)
+    private void doTimeSnapshotTest(int serviceCount, int versionCount, boolean forceRemote)
             throws Throwable {
 
         String prefix = "testPrefix";
@@ -4110,5 +4110,97 @@ public class TestQueryTaskService {
         assertTrue(totalPages == count);
 
         deleteServices(services);
+    }
+
+    @Test
+    public void expandContentBinaryResult() throws Throwable {
+        setUpHost();
+        this.host.doFactoryChildServiceStart(null,
+                this.serviceCount,
+                ExampleServiceState.class, (o) -> {
+                    ExampleServiceState initialState = new ExampleServiceState();
+                    initialState.name = UUID.randomUUID().toString();
+                    o.setBody(initialState);
+                },
+                UriUtils.buildFactoryUri(this.host, ExampleService.class));
+
+        Query kindClause = Query.Builder.create()
+                .addKindFieldClause(ExampleServiceState.class)
+                .build();
+
+        QueryTask task = QueryTask.Builder.createDirectTask()
+                .setQuery(kindClause)
+                .addOption(QueryOption.EXPAND_CONTENT)
+                .addOption(QueryOption.BINARY)
+                .build();
+
+        if (task.documentExpirationTimeMicros != 0) {
+            // the value was set as an interval by the calling test. Make absolute here so
+            // account for service creation above
+            task.documentExpirationTimeMicros = Utils.fromNowMicrosUtc(
+                    +task.documentExpirationTimeMicros);
+        }
+
+        this.host.logThroughput();
+
+        this.host.createQueryTaskService(task, false,
+                task.taskInfo.isDirect, task, null);
+
+        // verify expand from direct query task
+        ServiceDocumentQueryResult taskResult = task.results;
+        assertNotNull(taskResult.documents);
+        assertEquals(this.serviceCount, taskResult.documents.size());
+        Object queryResult = taskResult.documents.get(taskResult.documentLinks.get(0));
+        assertTrue(queryResult.toString().startsWith("["));
+
+        // verify expand from factory
+        URI factoryURI = UriUtils.buildFactoryUri(this.host, ExampleService.class);
+        factoryURI = UriUtils.buildExpandLinksQueryUri(factoryURI);
+        ServiceDocumentQueryResult factoryGetResult = this.host.getFactoryState(factoryURI);
+        assertNotNull(factoryGetResult.documents);
+        assertEquals(this.serviceCount, factoryGetResult.documents.size());
+        Object factoryResult = taskResult.documents.get(taskResult.documentLinks.get(0));
+        assertTrue(factoryResult.toString().startsWith("["));
+        assertEquals(queryResult.toString(), factoryResult.toString());
+    }
+
+    @Test
+    public void expandContentBinaryResultNegative() throws Throwable {
+        setUpHost();
+        this.host.doFactoryChildServiceStart(null,
+                this.serviceCount,
+                ExampleServiceState.class, (o) -> {
+                    ExampleServiceState initialState = new ExampleServiceState();
+                    initialState.name = UUID.randomUUID().toString();
+                    o.setBody(initialState);
+                },
+                UriUtils.buildFactoryUri(this.host, ExampleService.class));
+
+        Query kindClause = Query.Builder.create()
+                .addKindFieldClause(ExampleServiceState.class)
+                .build();
+
+        QueryTask task = QueryTask.Builder.createDirectTask()
+                .setQuery(kindClause)
+                .addOption(QueryOption.EXPAND_CONTENT)
+                .addOption(QueryOption.BINARY)
+                .addOption(QueryOption.EXPAND_BUILTIN_CONTENT_ONLY)
+                .build();
+
+        if (task.documentExpirationTimeMicros != 0) {
+            // the value was set as an interval by the calling test. Make absolute here so
+            // account for service creation above
+            task.documentExpirationTimeMicros = Utils.fromNowMicrosUtc(
+                    +task.documentExpirationTimeMicros);
+        }
+
+        this.host.logThroughput();
+
+        try {
+            this.host.createQueryTaskService(task, false,
+                    task.taskInfo.isDirect, task, null);
+        } catch (IllegalArgumentException e) {
+            assertTrue(e.getMessage().contains("BINARY is not compatible with OWNER_SELECTION / EXPAND_BUILTIN_CONTENT_ONLY"));
+        }
     }
 }

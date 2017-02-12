@@ -1837,40 +1837,52 @@ public class LuceneDocumentIndexService extends StatelessService {
 
             String json = null;
             ServiceDocument state = null;
+            BytesRef binaryData = null;
 
             if (options.contains(QueryOption.EXPAND_CONTENT)
                     || options.contains(QueryOption.OWNER_SELECTION)) {
-                state = getStateFromLuceneDocument(d, originalLink);
-                if (state == null) {
-                    // support reading JSON serialized state for backwards compatibility
-                    json = d.get(LUCENE_FIELD_NAME_JSON_SERIALIZED_STATE);
-                    if (json == null) {
-                        continue;
-                    }
+                if (options.contains(QueryOption.BINARY)) {
+                    binaryData = getBinaryFromLuceneDocument(d);
                 } else {
-                    json = Utils.toJson(state);
+                    state = getStateFromLuceneDocument(d, originalLink);
+                }
+                if (binaryData == null) {
+                    if (state == null) {
+                        // support reading JSON serialized state for backwards compatibility
+                        json = d.get(LUCENE_FIELD_NAME_JSON_SERIALIZED_STATE);
+                        if (json == null) {
+                            continue;
+                        }
+                    } else {
+                        json = Utils.toJson(state);
+                    }
                 }
             }
 
-            if (options.contains(QueryOption.OWNER_SELECTION)) {
+            if (options.contains(QueryOption.OWNER_SELECTION) && !options.contains(QueryOption.BINARY)) {
                 if (!processQueryResultsForOwnerSelection(json, state)) {
                     continue;
                 }
             }
 
             if (options.contains(QueryOption.EXPAND_CONTENT) && !rsp.documents.containsKey(link)) {
-                if (options.contains(QueryOption.EXPAND_BUILTIN_CONTENT_ONLY)) {
-                    ServiceDocument stateClone = new ServiceDocument();
-                    state.copyTo(stateClone);
-                    rsp.documents.put(link, stateClone);
+                if (binaryData != null) {
+                    BytesRef cloneBytes = BytesRef.deepCopyOf(binaryData);
+                    rsp.documents.put(link, cloneBytes);
                 } else {
-                    JsonObject jo = new JsonParser().parse(json).getAsJsonObject();
-                    rsp.documents.put(link, jo);
+                    if (options.contains(QueryOption.EXPAND_BUILTIN_CONTENT_ONLY)) {
+                        ServiceDocument stateClone = new ServiceDocument();
+                        state.copyTo(stateClone);
+                        rsp.documents.put(link, stateClone);
+                    } else {
+                        JsonObject jo = new JsonParser().parse(json).getAsJsonObject();
+                        rsp.documents.put(link, jo);
+                    }
                 }
             }
 
             if (options.contains(QueryOption.SELECT_LINKS)) {
-                state = processQueryResultsForSelectLinks(s, qs, rsp, d, sd.doc, link, state);
+                processQueryResultsForSelectLinks(s, qs, rsp, d, sd.doc, link, state);
             }
 
             uniques.add(link);
@@ -1960,13 +1972,17 @@ public class LuceneDocumentIndexService extends StatelessService {
         return state;
     }
 
-    private ServiceDocument getStateFromLuceneDocument(Document doc, String link) {
+    private BytesRef getBinaryFromLuceneDocument(Document doc) {
         BytesRef binaryStateField = doc.getBinaryValue(LUCENE_FIELD_NAME_BINARY_SERIALIZED_STATE);
+        return binaryStateField;
+    }
+
+    private ServiceDocument getStateFromLuceneDocument(Document doc, String link) {
+        BytesRef binaryStateField = getBinaryFromLuceneDocument(doc);
         if (binaryStateField == null) {
             logWarning("State not found for %s", link);
             return null;
         }
-
         ServiceDocument state = (ServiceDocument) KryoSerializers.deserializeDocument(
                 binaryStateField.bytes,
                 binaryStateField.offset, binaryStateField.length);
