@@ -57,6 +57,8 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.google.gson.reflect.TypeToken;
 
+import org.apache.lucene.util.BytesRef;
+
 import com.vmware.xenon.common.Service.Action;
 import com.vmware.xenon.common.Service.ServiceOption;
 import com.vmware.xenon.common.ServiceDocumentDescription.PropertyDescription;
@@ -293,6 +295,27 @@ public final class Utils {
      */
     public static Object fromBytes(byte[] bytes, int position, int length) {
         return KryoSerializers.deserializeObject(bytes, position, length);
+    }
+
+    /**
+     * See {@link KryoSerializers#deserializeDocument(byte[], int, int)}
+     */
+    public static ServiceDocument fromBytes(Object bytesRefObj, String link) {
+        BytesRef bytesRef = null;
+        try {
+            bytesRef = Utils.fromJson(bytesRefObj, BytesRef.class);
+        } catch (Exception e) {
+            throw new IllegalArgumentException("Supports only bytes deserialization.");
+        }
+        ServiceDocument state = (ServiceDocument) KryoSerializers
+                .deserializeDocument(bytesRef.bytes, bytesRef.offset, bytesRef.length);
+        if (state.documentSelfLink == null) {
+            state.documentSelfLink = link;
+        }
+        if (state.documentKind == null) {
+            state.documentKind = Utils.buildKind(state.getClass());
+        }
+        return state;
     }
 
     public static void performMaintenance() {

@@ -169,7 +169,13 @@ public class QueryTask extends ServiceDocument {
             /**
              * Query will return latest versions of documents before {@link QuerySpecification#timeSnapshotBoundaryMicros}
              */
-            TIME_SNAPSHOT
+            TIME_SNAPSHOT,
+
+            /**
+             * Query will return serialized version of documents as the query result when expand
+             * content is requested. See related option {@link QueryOption.EXPAND_CONTENT}
+             */
+            BINARY
         }
 
         public enum SortOrder {

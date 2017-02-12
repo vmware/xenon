@@ -120,6 +120,24 @@ public class QueryTaskService extends StatefulService {
             }
         }
 
+        if (initState.querySpec.options.contains(QueryOption.BINARY)
+                && !initState.querySpec.options.contains(QueryOption.EXPAND_CONTENT)) {
+            final String errFmt = "%s should be used along with %s";
+            startPost.fail(new IllegalArgumentException(
+                    String.format(errFmt, QueryOption.BINARY, QueryOption.EXPAND_CONTENT)));
+            return false;
+        }
+
+        if (initState.querySpec.options.contains(QueryOption.BINARY)
+                && (initState.querySpec.options.contains(QueryOption.OWNER_SELECTION)
+                || initState.querySpec.options.contains(QueryOption.EXPAND_BUILTIN_CONTENT_ONLY))) {
+            final String errFmt = "%s is not compatible with %s / %s";
+            startPost.fail(new IllegalArgumentException(
+                    String.format(errFmt, QueryOption.BINARY, QueryOption.OWNER_SELECTION,
+                            QueryOption.EXPAND_BUILTIN_CONTENT_ONLY)));
+            return false;
+        }
+
         if (initState.querySpec.options.contains(QueryOption.EXPAND_LINKS)) {
             if (!initState.querySpec.options.contains(QueryOption.SELECT_LINKS)) {
                 startPost.fail(new IllegalArgumentException(
