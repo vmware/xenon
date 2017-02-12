@@ -104,6 +104,13 @@ public class QueryTask extends ServiceDocument {
             EXPAND_CONTENT,
 
             /**
+             * Query results will be in binary form. This option should only be set on local query tasks,
+             * with the client co-located (same service host) as the query task. This should not
+             * be used along with EXPAND_CONTENT / EXPAND_BUILTIN_CONTENT_ONLY / OWNER_SELECTION.
+             */
+            EXPAND_BINARY_CONTENT,
+
+            /**
              * Infrastructure use only. Modifier option on EXPAND_CONTENT:
              * Selects and expands only the the built-in document fields
              * See {@link ServiceDocument}
@@ -169,7 +176,7 @@ public class QueryTask extends ServiceDocument {
             /**
              * Query will return latest versions of documents before {@link QuerySpecification#timeSnapshotBoundaryMicros}
              */
-            TIME_SNAPSHOT
+            TIME_SNAPSHOT,
         }
 
         public enum SortOrder {

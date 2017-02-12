@@ -33,6 +33,11 @@
 
 * Update version retention limit through service config update for the service instance.
 
+* Added support for QueryOption#EXPAND_BINARY_CONTENT. The new query option will return results
+  that contain documents in the binary form. This option should only be set on
+  local query tasks, with the client co-located (same service host) as the query task. This should
+  not be used along with EXPAND_CONTENT / EXPAND_BUILTIN_CONTENT_ONLY / OWNER_SELECTION.
+
 ## 1.3.6
 
 * Integrations with 3rd party libraries are migrated to a [new repository](https://github.com/vmware/xenon-utils)
