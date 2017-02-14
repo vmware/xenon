@@ -149,6 +149,9 @@ public class ServiceHostManagementService extends StatefulService {
 
         /** Request kind **/
         public String kind;
+
+        /** Recover the data to the specified point in time */
+        public Long timeSnapshotBoundaryMicros;
     }
 
     @Override
@@ -341,6 +344,7 @@ public class ServiceHostManagementService extends StatefulService {
                 LuceneDocumentIndexService.RestoreRequest luceneRestore = new LuceneDocumentIndexService.RestoreRequest();
                 luceneRestore.documentKind = LuceneDocumentIndexService.RestoreRequest.KIND;
                 luceneRestore.backupFile = backupFileUri;
+                luceneRestore.timeSnapshotBoundaryMicros = req.timeSnapshotBoundaryMicros;
 
                 op.nestCompletion((ox, ex) -> {
                     if (ex != null) {

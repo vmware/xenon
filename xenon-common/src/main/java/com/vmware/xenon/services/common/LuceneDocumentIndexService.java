@@ -362,6 +362,7 @@ public class LuceneDocumentIndexService extends StatelessService {
 
     public static class RestoreRequest extends ServiceDocument {
         public URI backupFile;
+        public Long timeSnapshotBoundaryMicros;
         static final String KIND = Utils.buildKind(RestoreRequest.class);
     }
 
@@ -669,7 +670,15 @@ public class LuceneDocumentIndexService extends StatelessService {
                     FileUtils.md5sum(new File(req.backupFile)));
             FileUtils.extractZipArchive(new File(req.backupFile), directory.toPath());
             this.writerUpdateTimeMicros = Utils.getNowMicrosUtc();
-            createWriter(directory, true);
+            IndexWriter writer = createWriter(directory, true);
+
+            // perform time snapshot recovery which means deleting all docs updated after given time
+            if (req.timeSnapshotBoundaryMicros != null) {
+                Query luceneQuery = LongPoint.newRangeQuery(ServiceDocument.FIELD_NAME_UPDATE_TIME_MICROS,
+                        req.timeSnapshotBoundaryMicros + 1, Long.MAX_VALUE);
+                writer.deleteDocuments(luceneQuery);
+            }
+
             op.complete();
             this.logInfo("restore complete");
         } catch (Throwable e) {

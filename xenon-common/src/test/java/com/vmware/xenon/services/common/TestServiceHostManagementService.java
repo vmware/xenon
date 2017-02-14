@@ -28,7 +28,9 @@ import java.util.Map.Entry;
 import java.util.UUID;
 import java.util.concurrent.TimeoutException;
 
+import org.junit.Rule;
 import org.junit.Test;
+import org.junit.rules.TemporaryFolder;
 
 import com.vmware.xenon.common.BasicTestCase;
 import com.vmware.xenon.common.FileUtils;
@@ -41,10 +43,14 @@ import com.vmware.xenon.common.ServiceStats.ServiceStat;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
 import com.vmware.xenon.common.test.TestProperty;
+import com.vmware.xenon.common.test.TestRequestSender;
 import com.vmware.xenon.common.test.VerificationHost;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
 
 public class TestServiceHostManagementService extends BasicTestCase {
+
+    @Rule
+    public TemporaryFolder tempDir = new TemporaryFolder();
 
     @Test
     public void getStateAndDelete() throws Throwable {
@@ -213,6 +219,69 @@ public class TestServiceHostManagementService extends BasicTestCase {
         Map<String, ServiceStat> stats = this.host.getServiceStats(this.host.getManagementServiceUri());
         double threadCountValue = stats.get(STAT_NAME_THREAD_COUNT).latestValue;
         assertEquals("threadCount in management/stats", Utils.DEFAULT_THREAD_COUNT, threadCountValue, 0);
+    }
+
+    @Test
+    public void timeSnapshotRecovery() throws Throwable {
+        int serviceVersion = 10;
+        int snapshotServiceVersion = serviceVersion / 2;
+
+        File backupFile = this.tempDir.newFile();
+        TestRequestSender sender = this.host.getTestRequestSender();
+
+        // start blob store for backup
+        MinimalFileStore.MinimalFileState mfsState = new MinimalFileStore.MinimalFileState();
+        mfsState.fileUri = backupFile.toURI();
+        MinimalFileStore mfs = new MinimalFileStore();
+        mfs = (MinimalFileStore) this.host.startServiceAndWait(mfs, "/mfs", mfsState);
+
+        // create and update a document
+        String selfLink = UriUtils.buildUriPath(ExampleService.FACTORY_LINK, "/foo");
+        ExampleServiceState doc = new ExampleServiceState();
+        doc.name = "init";
+        doc.documentSelfLink = selfLink;
+        doc = sender.sendAndWait(Operation.createPost(this.host, ExampleService.FACTORY_LINK).setBody(doc), ExampleServiceState.class);
+
+        long snapshotTime = 0;
+        for (int i = 1; i <= serviceVersion; i++) {
+            doc.name = "updated-v" + i;
+            sender.sendAndWait(Operation.createPatch(this.host, doc.documentSelfLink).setBody(doc));
+            if (i == snapshotServiceVersion) {
+                snapshotTime = Utils.getNowMicrosUtc();
+            }
+        }
+
+        // perform backup
+        ServiceHostManagementService.BackupRequest backupRequest = new ServiceHostManagementService.BackupRequest();
+        backupRequest.destination = mfs.getUri();
+        backupRequest.kind = ServiceHostManagementService.BackupRequest.KIND;
+
+        sender.sendAndWait(Operation.createPatch(this.host, ServiceHostManagementService.SELF_LINK).setBody(backupRequest));
+        this.host.tearDown();
+
+        // create new host
+        this.host = VerificationHost.create(0);
+        this.host.start();
+        sender = this.host.getTestRequestSender();
+
+        // start blob store
+        mfs = new MinimalFileStore();
+        mfsState = new MinimalFileStore.MinimalFileState();
+        mfsState.fileUri = backupFile.toURI();
+        mfsState.fileComplete = true;
+        mfs = (MinimalFileStore) this.host.startServiceAndWait(mfs, "/mfs", mfsState);
+
+        // perform restore with time snapshot boundary
+        ServiceHostManagementService.RestoreRequest restoreRequest = new ServiceHostManagementService.RestoreRequest();
+        restoreRequest.destination = mfs.getUri();
+        restoreRequest.kind = ServiceHostManagementService.RestoreRequest.KIND;
+        restoreRequest.timeSnapshotBoundaryMicros = snapshotTime;
+        sender.sendAndWait(Operation.createPatch(this.host, ServiceHostManagementService.SELF_LINK).setBody(restoreRequest));
+
+        // verify document version is the one specified as snapshotTime
+        this.host.waitForReplicatedFactoryServiceAvailable(UriUtils.buildUri(this.host, ExampleService.FACTORY_LINK));
+        ExampleServiceState result = sender.sendAndWait(Operation.createGet(this.host, selfLink), ExampleServiceState.class);
+        assertEquals("Point-in-time version", snapshotServiceVersion, result.documentVersion);
     }
 
 }
