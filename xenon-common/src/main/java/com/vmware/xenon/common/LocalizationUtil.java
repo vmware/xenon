@@ -81,7 +81,7 @@ public class LocalizationUtil {
         }
 
         List<Locale> locales = Locale.LanguageRange.parse(requestedLangs).stream()
-                .map(rang‌​e -> new Locale(rang‌​e.getRange()))
+                .map(range -> new Locale(range.getRange()))
                 .collect(Collectors.toList());
 
         for (Locale locale : locales) {
