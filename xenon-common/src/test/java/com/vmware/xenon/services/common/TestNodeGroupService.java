@@ -480,7 +480,9 @@ public class TestNodeGroupService {
             TestContext ctx = this.host.testCreate(filteredUris.size() - 1);
 
             // Service at the 0th index will be used test the negative case.
-            for (int i = 1; i < filteredUris.size(); i++) {
+            // Using half of the services for PATCH testing and other half for GET on utility service.
+            int i = 1;
+            for (; i < filteredUris.size() / 2; i++) {
                 URI exampleUri = filteredUris.get(i);
                 ExampleServiceState state = new ExampleServiceState();
                 state.name = UUID.randomUUID().toString();
@@ -492,6 +494,19 @@ public class TestNodeGroupService {
                         .setCompletion(ctx.getCompletion());
                 this.host.send(patchOp);
             }
+
+            // Test scenario when the service URI ends with the utility path (i.e. examples/example1/stats).
+            // On-demand sync should strip utility path from the end of the uri and then
+            // synchronize the child service.
+            for (; i < filteredUris.size(); i++) {
+                URI exampleUri = UriUtils.buildStatsUri(filteredUris.get(i));
+                Operation patchOp = Operation
+                        .createGet(exampleUri)
+                        .setReferer(this.host.getUri())
+                        .setCompletion(ctx.getCompletion());
+                this.host.send(patchOp);
+            }
+
             ctx.await();
         }
 
@@ -509,11 +524,12 @@ public class TestNodeGroupService {
         this.host.send(put);
         factoryCtx.await();
 
-        // Patch the service at 0th index. This PATCH request should fail
+        // Patch the service at 0th index. This PATCH request on service
+        // and GET request on utility endpoint of that service should fail
         // with 404 - not found error because on-demand synchronization
         // will check the factory availability and determine that node-group
         // is in steady state.
-        TestContext patchCtx = this.host.testCreate(1);
+        TestContext patchCtx = this.host.testCreate(2);
         URI exampleUri = filteredUris.get(0);
         ExampleServiceState state = new ExampleServiceState();
         state.name = UUID.randomUUID().toString();
@@ -521,6 +537,19 @@ public class TestNodeGroupService {
         Operation patchOp = Operation
                 .createPatch(exampleUri)
                 .setBody(state)
+                .setReferer(this.host.getUri())
+                .setCompletion((o, e) -> {
+                    if (e != null && o.getStatusCode() == Operation.STATUS_CODE_NOT_FOUND) {
+                        patchCtx.completeIteration();
+                        return;
+                    }
+                    patchCtx.failIteration(
+                            new IllegalStateException("Operation was expected to fail with 404"));
+                });
+        exampleUri = UriUtils.buildStatsUri(exampleUri);
+        this.host.send(patchOp);
+        patchOp = Operation
+                .createGet(exampleUri)
                 .setReferer(this.host.getUri())
                 .setCompletion((o, e) -> {
                     if (e != null && o.getStatusCode() == Operation.STATUS_CODE_NOT_FOUND) {
