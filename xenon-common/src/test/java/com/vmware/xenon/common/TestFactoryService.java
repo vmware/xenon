@@ -1436,7 +1436,26 @@ public class TestFactoryService extends BasicReusableHostTestCase {
                 .setReferer(this.host.getUri())
                 .setBody(state);
         TestRequestSender.FailureResponse failureResponse = sender.sendAndWaitFailure(op);
-        assertTrue(failureResponse.op.getStatusCode() == Operation.STATUS_CODE_CONFLICT);
+        assertEquals(Operation.STATUS_CODE_CONFLICT, failureResponse.op.getStatusCode());
+
+        // Try sending a request with null body, we should
+        // get a BAD REQUEST error.
+        op = Operation
+                .createPost(this.host, factoryPath)
+                .setReferer(this.host.getUri())
+                .setBody(null);
+        failureResponse = sender.sendAndWaitFailure(op);
+        assertEquals(Operation.STATUS_CODE_BAD_REQUEST, failureResponse.op.getStatusCode());
+
+        // Try sending a request with stringValue set to null, we should again
+        // get a BAD REQUEST error.
+        state.stringValue = null;
+        op = Operation
+                .createPost(this.host, factoryPath)
+                .setReferer(this.host.getUri())
+                .setBody(state);
+        failureResponse = sender.sendAndWaitFailure(op);
+        assertEquals(Operation.STATUS_CODE_BAD_REQUEST, failureResponse.op.getStatusCode());
     }
 
     public static class SomeFactoryService extends FactoryService {
@@ -1455,6 +1474,9 @@ public class TestFactoryService extends BasicReusableHostTestCase {
 
         @Override
         public String buildDefaultChildSelfLink(ServiceDocument document) {
+            if (((SomeDocument)document).stringValue == null) {
+                throw new IllegalArgumentException("stringValue is required");
+            }
             return ((SomeDocument)document).stringValue;
         }
     }

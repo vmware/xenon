@@ -141,6 +141,9 @@ public abstract class FactoryService extends StatelessService {
     /**
      * Sets a flag that instructs the FactoryService to use the body of the
      * POST request to determine a self-link for the child service.
+     *
+     * Note: if body is missing from the request, the factory service will fail
+     * the request with Http 400 error.
      */
     public void setUseBodyForSelfLink(boolean useBody) {
         this.useBodyForSelfLink = useBody;
@@ -334,8 +337,19 @@ public abstract class FactoryService extends StatelessService {
                 initialState = Utils.clone(initialState);
             }
 
-            String suffix;
-            if (this.useBodyForSelfLink) {
+            String suffix = null;
+            if (o.isSynchronizeOwner()) {
+                // If it's a synchronization request, let's re-use the documentSelfLink.
+                suffix = initialState.documentSelfLink;
+
+            } else if (this.useBodyForSelfLink) {
+                if (initialState == null) {
+                    // If the body of the request was null , fail the request with
+                    // HTTP 400 (BAD REQUEST) error.
+                    o.fail(new IllegalArgumentException("body is required"));
+                    return;
+                }
+
                 suffix = buildDefaultChildSelfLink(initialState);
             } else {
                 if (initialState == null) {
@@ -396,8 +410,11 @@ public abstract class FactoryService extends StatelessService {
     }
 
     // This method is called by the factory only when useBodyForSelfLink is set,
-    // through setUseBodyForSelfLink. Can be overridden by factory services to
+    // through setUseBodyForSelfLink. It can be overridden by factory services to
     // create a custom self-link based on the body of the POST request.
+    // Note: For negative cases, the override can throw an IllegalArgumentException
+    // to indicate a request with a bad body and will cause the factory service
+    // to return HTTP 400 (Bad-Request) error.
     protected String buildDefaultChildSelfLink(ServiceDocument document) {
         return buildDefaultChildSelfLink();
     }

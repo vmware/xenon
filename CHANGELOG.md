@@ -2,6 +2,9 @@
 
 ## 1.3.7-SNAPSHOT
 
+* For factories using setUseBodyForSelfLink, FactoryService will
+  fail the request with 400 (BAD REQUEST) if body is missing in request.
+
 * Add TestRequestSender sendStatsGetAndWait helper method
 
 * Add convenience method Operation.getErrorResponseBody() that retrieves
