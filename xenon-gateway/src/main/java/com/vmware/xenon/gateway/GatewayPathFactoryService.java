@@ -36,18 +36,11 @@ public class GatewayPathFactoryService extends FactoryService {
 
     @Override
     protected String buildDefaultChildSelfLink(ServiceDocument document) {
-        // A specific format for the self-link is used to guarantee
-        // uniqueness of uri paths for a specific gateway.
         GatewayPathService.State state = (GatewayPathService.State)document;
-        if (state.path != null) {
-            return createSelfLinkFromState(state);
+        if (state.path == null) {
+            return null;
         }
-
-        if (state.documentSelfLink != null) {
-            return state.documentSelfLink;
-        }
-
-        return super.buildDefaultChildSelfLink();
+        return createSelfLinkFromState(state);
     }
 
     public static final String createSelfLinkFromState(GatewayPathService.State state) {

@@ -141,6 +141,9 @@ public abstract class FactoryService extends StatelessService {
     /**
      * Sets a flag that instructs the FactoryService to use the body of the
      * POST request to determine a self-link for the child service.
+     *
+     * Note: if body is missing from the request, the factory service will fail
+     * the request with Http 400 error.
      */
     public void setUseBodyForSelfLink(boolean useBody) {
         this.useBodyForSelfLink = useBody;
@@ -334,9 +337,22 @@ public abstract class FactoryService extends StatelessService {
                 initialState = Utils.clone(initialState);
             }
 
-            String suffix;
-            if (this.useBodyForSelfLink) {
-                suffix = buildDefaultChildSelfLink(initialState);
+            String suffix = null;
+            if (o.isSynchronizeOwner()) {
+                // If it's a synchronization request, let's re-use the documentSelfLink.
+                suffix = initialState.documentSelfLink;
+
+            } else if (this.useBodyForSelfLink) {
+                if (initialState != null) {
+                    suffix = buildDefaultChildSelfLink(initialState);
+                }
+                // If the body of the request was null or buildDefaultChildSelfLink
+                // returned a null suffix, fail the request with HTTP 400 (BAD REQUEST)
+                // error.
+                if (suffix == null) {
+                    o.fail(new IllegalArgumentException("Missing or invalid POST body"));
+                    return;
+                }
             } else {
                 if (initialState == null) {
                     // create a unique path that is prefixed by the URI path of the factory
@@ -396,8 +412,9 @@ public abstract class FactoryService extends StatelessService {
     }
 
     // This method is called by the factory only when useBodyForSelfLink is set,
-    // through setUseBodyForSelfLink. Can be overridden by factory services to
-    // create a custom self-link based on the body of the POST request.
+    // through setUseBodyForSelfLink. It can be overridden by factory services to
+    // create a custom self-link based on the body of the POST request. If null
+    // is returned, the post request is failed with Http 400 error (BAD REQUEST).
     protected String buildDefaultChildSelfLink(ServiceDocument document) {
         return buildDefaultChildSelfLink();
     }
