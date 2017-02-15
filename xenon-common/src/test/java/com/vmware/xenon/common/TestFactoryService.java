@@ -96,6 +96,9 @@ class SynchTestFactoryService extends FactoryService {
 
     @Override
     public void handleNodeGroupMaintenance(Operation post) {
+
+        logInfo("pendingTask: %s", this.pendingTask);
+
         Runnable task = null;
         // use a local instance field to make sure the task is reset atomically
         synchronized (this.options) {
@@ -172,10 +175,12 @@ public class TestFactoryService extends BasicReusableHostTestCase {
     */
     @Test
     public void synchronizationWithIdempotentPostAndDelete() throws Throwable {
+        this.host.toggleDebuggingMode(true);
         for (int i = 0; i < this.hostRestartCount; i++) {
             this.host.log("iteration %s", i);
             createHostAndServicePostDeletePost();
         }
+        this.host.toggleDebuggingMode(false);
     }
 
     private void createHostAndServicePostDeletePost() throws Throwable {
@@ -200,13 +205,20 @@ public class TestFactoryService extends BasicReusableHostTestCase {
             doc.documentSelfLink = SynchTestFactoryService.TEST_SERVICE_PATH;
             doc.name = doc.documentSelfLink;
             TestContext ctx = testCreate(1);
+
             doPost(h, doc, (e) -> {
                 if (e != null) {
                     ctx.failIteration(e);
                     return;
                 }
+
+                this.host.log("First doPost finished");
+
                 this.factoryService.setTaskToRunOnNextMaintenance(() -> {
+                    this.host.log("Maintenance task started");
                     doDelete(h, doc.documentSelfLink, (e1) -> {
+
+                        this.host.log("Delete finished in maintenance task");
 
                         if (e1 != null) {
                             ctx.failIteration(e1);
@@ -214,10 +226,13 @@ public class TestFactoryService extends BasicReusableHostTestCase {
                         }
 
                         doPost(h, doc, (e2) -> {
+                            this.host.log("Post after Delete finished in maintenance task");
+
                             if (e2 != null && !(e2 instanceof CancellationException)) {
                                 ctx.failIteration(e2);
                                 return;
                             }
+
                             ctx.completeIteration();
                         });
                     });
@@ -227,6 +242,7 @@ public class TestFactoryService extends BasicReusableHostTestCase {
             });
 
             testWait(ctx);
+
         } finally {
             h.tearDown();
         }

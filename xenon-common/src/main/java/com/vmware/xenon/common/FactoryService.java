@@ -899,6 +899,7 @@ public abstract class FactoryService extends StatelessService {
 
     @Override
     public void handleNodeGroupMaintenance(Operation maintOp) {
+        logWarning("op uri: %s", maintOp.getUri());
         if (hasOption(ServiceOption.ON_DEMAND_LOAD)) {
             // on demand load child services are synchronized on first use, or when an explicit
             // migration task runs
