@@ -1,7 +1,5 @@
 # CHANGELOG
 
-## 1.4.0-SNAPSHOT
-
 ## 1.3.7
 
 * For factories using setUseBodyForSelfLink, FactoryService will
