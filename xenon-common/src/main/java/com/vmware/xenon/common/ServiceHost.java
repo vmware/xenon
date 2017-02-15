@@ -2430,15 +2430,22 @@ public class ServiceHost implements ServiceRequestSender {
             }
         }
 
+        // since sync task will fail its attempt if the service is marked deleted
+        log(Level.INFO, "existing (%s), synchPendingDelete (%s)",
+                existing,
+                synchPendingDelete);
+
         if (synchPendingDelete) {
             // If this is a synch request and the service was going
             // through deletion, we fail the synch request.
+            log(Level.INFO, "failRequestServiceMarkedDeleted called");
             failRequestServiceMarkedDeleted(servicePath, post);
             return true;
         }
 
         boolean isIdempotent = service.hasOption(ServiceOption.IDEMPOTENT_POST);
         if (!isIdempotent) {
+            log(Level.INFO, "! isIdempotent");
             // check factory, its more likely to have the IDEMPOTENT option
             String parentPath = UriUtils.getParentPath(servicePath);
             Service parent = parentPath != null ? findService(parentPath) : null;
@@ -2447,6 +2454,7 @@ public class ServiceHost implements ServiceRequestSender {
         }
 
         if (!isIdempotent && !post.isSynchronize()) {
+            log(Level.INFO, "! isIdempotent ! post.isSynchronize()");
             ProcessingStage ps = existing.getProcessingStage();
             if (ps == ProcessingStage.STOPPED || ServiceHost.isServiceStarting(ps)) {
                 // there is a possibility of collision with a synchronization attempt: The sync task
