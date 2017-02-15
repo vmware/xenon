@@ -53,6 +53,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -544,8 +545,9 @@ public class ServiceHost implements ServiceRequestSender {
     private final Map<String, ServiceDocumentDescription> descriptionCachePerFactoryLink = new HashMap<>();
     private final ServiceDocumentDescription.Builder descriptionBuilder = Builder.create();
 
+
     private ExecutorService executor;
-    private ScheduledExecutorService scheduledExecutor;
+    public ScheduledExecutorService scheduledExecutor;
 
     private final ConcurrentHashMap<String, Service> attachedServices = new ConcurrentHashMap<>();
     private final ConcurrentSkipListMap<String, Service> attachedNamespaceServices = new ConcurrentSkipListMap<>();
@@ -713,17 +715,7 @@ public class ServiceHost implements ServiceRequestSender {
         return this;
     }
 
-    private void allocateExecutors() {
-        if (this.executor != null) {
-            this.executor.shutdownNow();
-        }
-        if (this.scheduledExecutor != null) {
-            this.scheduledExecutor.shutdownNow();
-        }
-        this.executor = Executors.newWorkStealingPool(Utils.DEFAULT_THREAD_COUNT);
-        this.scheduledExecutor = Executors.newScheduledThreadPool(Utils.DEFAULT_THREAD_COUNT,
-                r -> new Thread(r, getUri().toString() + "/scheduled/" + this.state.id));
-    }
+
 
     /**
      * Retrieve secret for sign/verify JSON(JWT)
@@ -4161,6 +4153,7 @@ public class ServiceHost implements ServiceRequestSender {
         for (String excludedPath : this.state.operationTracingLinkExclusionList) {
             if (op.getUri().getPath().startsWith(excludedPath)) {
                 return;
+
             }
         }
 
@@ -4994,6 +4987,60 @@ public class ServiceHost implements ServiceRequestSender {
         });
     }
 
+    private void allocateExecutors() {
+        if (this.executor != null) {
+            this.executor.shutdownNow();
+        }
+        if (this.scheduledExecutor != null) {
+            this.scheduledExecutor.shutdownNow();
+        }
+
+        this.executor = Executors.newWorkStealingPool(Utils.DEFAULT_THREAD_COUNT);
+        this.scheduledExecutor =  new ScheduledThreadPoolExecutor(Utils.DEFAULT_THREAD_COUNT,
+                r -> new Thread(r, getUri().toString() + "/scheduled/" + this.state.id))
+        {
+            private ConcurrentHashMap<Runnable, String> running = new ConcurrentHashMap<>();
+
+            /**
+             * @throws NullPointerException       {@inheritDoc}
+             */
+            @Override
+            public ScheduledFuture<?> schedule(Runnable command,
+                                               long delay,
+                                               TimeUnit unit) {
+                ScheduledFuture<?> r = super.schedule(command, delay, unit);
+                this.running.put((Runnable) r, command.toString());
+                if (!command.toString().startsWith("com.vmware.xenon.common.ServiceMaintenanceTracker") &&
+                        !command.toString().startsWith("com.vmware.xenon.common.ServiceHost")) {
+                    log(Level.INFO, "Entered the schedule: %s", command.toString());
+                }
+
+                return r;
+            }
+
+            @Override
+            protected void beforeExecute(Thread t, Runnable r) {
+                super.beforeExecute(t, r);
+                String val = this.running.get(r);
+                if (val != null && val.toString().startsWith("com.vmware.xenon.common.TestFactoryService")) {
+                    log(Level.INFO, "Task in beforeExecute: %s, Thread: %s", val.toString(), t.toString());
+                }
+            }
+
+            @Override
+            protected void afterExecute(Runnable r, Throwable t) {
+                super.afterExecute(r, t);
+                String val = this.running.get(r);
+                if (val != null) {
+                    running.remove(r);
+                    if (val.startsWith("com.vmware.xenon.common.TestFactoryService")) {
+                        log(Level.INFO, "Task in afterExecute: %s, Queue size: %d", val, this.running.size());
+                    }
+                }
+            }
+        };
+    }
+
     public ScheduledFuture<?> schedule(Runnable task, long delay, TimeUnit unit) {
         if (this.isStopping()) {
             throw new IllegalStateException("Stopped");
@@ -5002,11 +5049,11 @@ public class ServiceHost implements ServiceRequestSender {
             throw new IllegalStateException("Stopped");
         }
 
-        OperationContext origContext = OperationContext.getOperationContext();
-        return this.scheduledExecutor.schedule(() -> {
-            OperationContext.setFrom(origContext);
-            executeRunnableSafe(task);
-        }, delay, unit);
+        if (task.toString().startsWith("com.vmware.xenon.common.TestFactoryService")) {
+            log(Level.INFO, "Scheduling runnable for: %s", task);
+        }
+
+        return this.scheduledExecutor.schedule(task, delay, unit);
     }
 
     private void executeRunnableSafe(Runnable task) {
