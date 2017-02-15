@@ -195,7 +195,7 @@ public class TestContext {
 
             // keep polling latch every interval
             while (waitExpirationInstant.isAfter(Instant.now())) {
-                beforeCheck.execute();
+
                 if (this.latch.await(this.interval.toNanos(), TimeUnit.NANOSECONDS)) {
                     break;
                 }
@@ -217,6 +217,9 @@ public class TestContext {
                         waitExpirationInstant.toEpochMilli(), expireAtLocal,
                         this.duration, actualDuration,
                         this.initialCount, countAtAwait, this.latch.getCount());
+
+                beforeCheck.execute();
+
                 throw new TimeoutException(msg);
             }
 

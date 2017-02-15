@@ -17,6 +17,9 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
+import java.lang.management.ManagementFactory;
+import java.lang.management.ThreadInfo;
+import java.lang.management.ThreadMXBean;
 import java.lang.reflect.Field;
 import java.net.URI;
 import java.util.Collections;
@@ -27,6 +30,8 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.UUID;
 import java.util.concurrent.CancellationException;
+import java.util.concurrent.RunnableScheduledFuture;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
@@ -106,6 +111,7 @@ class SynchTestFactoryService extends FactoryService {
         }
 
         if (task != null) {
+            logInfo("pendingTask: %s", this.pendingTask);
             getHost().schedule(task, MAINTENANCE_DELAY_HANDLE_MICROS,
                     TimeUnit.MICROSECONDS);
         }
@@ -172,10 +178,12 @@ public class TestFactoryService extends BasicReusableHostTestCase {
     */
     @Test
     public void synchronizationWithIdempotentPostAndDelete() throws Throwable {
+        this.host.toggleDebuggingMode(true);
         for (int i = 0; i < this.hostRestartCount; i++) {
             this.host.log("iteration %s", i);
             createHostAndServicePostDeletePost();
         }
+        this.host.toggleDebuggingMode(false);
     }
 
     private void createHostAndServicePostDeletePost() throws Throwable {
@@ -185,6 +193,10 @@ public class TestFactoryService extends BasicReusableHostTestCase {
         args.port = 0;
         args.sandbox = tmp.getRoot().toPath();
         VerificationHost h = VerificationHost.create(args);
+        this.host.toggleServiceOptions(this.host.getDocumentIndexServiceUri(),
+                EnumSet.of(ServiceOption.INSTRUMENTATION),
+                null);
+
         try {
             h.setMaintenanceIntervalMicros(TimeUnit.MILLISECONDS.toMicros(50));
             h.setTemporaryFolder(tmp);
@@ -192,7 +204,10 @@ public class TestFactoryService extends BasicReusableHostTestCase {
             // before we set the task below, the test will timeout/hang
             h.setPeerSynchronizationEnabled(false);
             h.start();
-
+            h.waitForServiceAvailable(ExampleService.FACTORY_LINK);
+            h.toggleServiceOptions(h.getDocumentIndexServiceUri(),
+                    EnumSet.of(ServiceOption.INSTRUMENTATION),
+                    null);
             this.factoryUri = UriUtils.buildUri(h, SynchTestFactoryService.class);
             this.factoryService = startSynchFactoryService(h);
 
@@ -205,8 +220,13 @@ public class TestFactoryService extends BasicReusableHostTestCase {
                     ctx.failIteration(e);
                     return;
                 }
+
+                this.host.log("First doPost finished");
+
                 this.factoryService.setTaskToRunOnNextMaintenance(() -> {
+                    this.host.log("Maintenance task started");
                     doDelete(h, doc.documentSelfLink, (e1) -> {
+                        this.host.log("Delete finished in maintenance task");
 
                         if (e1 != null) {
                             ctx.failIteration(e1);
@@ -214,19 +234,79 @@ public class TestFactoryService extends BasicReusableHostTestCase {
                         }
 
                         doPost(h, doc, (e2) -> {
+                            this.host.log("Post after Delete finished in maintenance task");
+
                             if (e2 != null && !(e2 instanceof CancellationException)) {
                                 ctx.failIteration(e2);
                                 return;
                             }
+
                             ctx.completeIteration();
                         });
                     });
                 });
+
                 // trigger maintenance
                 h.scheduleNodeGroupChangeMaintenance(ServiceUriPaths.DEFAULT_NODE_SELECTOR);
+
+
             });
 
-            testWait(ctx);
+            ctx.await(()-> {
+                try {
+                    this.host.logServiceStats(h.getDocumentIndexServiceUri());
+                    this.host.logServiceStats(this.host.getDocumentIndexServiceUri());
+
+                    ThreadMXBean mxBean = ManagementFactory.getThreadMXBean();
+                    long[] threadIds = mxBean.getAllThreadIds();
+                    ThreadInfo[] threadInfos =
+                            mxBean.getThreadInfo(threadIds);
+                    for (ThreadInfo threadInfo : threadInfos) {
+                        System.out.printf("blocked count: %d, block time: %d waited count: %d, " +
+                                "waited time: %d Thread name: %20s,\n",
+                                threadInfo.getBlockedCount(),
+                                threadInfo.getBlockedTime(),
+                                threadInfo.getWaitedCount(),
+                                threadInfo.getWaitedTime(),
+                                threadInfo.getThreadName());
+                    }
+                    this.host.log("Failure time executor Queue size: %s", ((ScheduledThreadPoolExecutor) h.scheduledExecutor).getQueue().size());
+                    ((ScheduledThreadPoolExecutor) h.scheduledExecutor).getQueue().forEach((s) ->  {
+                        this.host.log("Task delay: %d, name: %s", ((RunnableScheduledFuture) s).getDelay(TimeUnit.MILLISECONDS), ((RunnableScheduledFuture) s).toString());
+                    });
+                } catch (Throwable e) {
+                    this.host.log("Error logging stats: %s", e.toString());
+                }
+            });
+
+            try {
+                this.host.logServiceStats(h.getDocumentIndexServiceUri());
+                this.host.logServiceStats(this.host.getDocumentIndexServiceUri());
+
+                ThreadMXBean mxBean = ManagementFactory.getThreadMXBean();
+                long[] threadIds = mxBean.getAllThreadIds();
+                ThreadInfo[] threadInfos =
+                        mxBean.getThreadInfo(threadIds);
+                for (ThreadInfo threadInfo : threadInfos) {
+                    System.out.printf("blocked count: %d, block time: %d waited count: %d, " +
+                            "waited time: %d Thread name: %20s,\n",
+                            threadInfo.getBlockedCount(),
+                            threadInfo.getBlockedTime(),
+                            threadInfo.getWaitedCount(),
+                            threadInfo.getWaitedTime(),
+                            threadInfo.getThreadName());
+                }
+                this.host.log("Failure time executor Queue size: %s", ((ScheduledThreadPoolExecutor) h.scheduledExecutor).getQueue().size());
+                ((ScheduledThreadPoolExecutor) h.scheduledExecutor).getQueue().forEach((s) ->  {
+                    this.host.log("Task delay: %d, name: %s", ((RunnableScheduledFuture) s).getDelay(TimeUnit.MILLISECONDS), ((RunnableScheduledFuture) s).toString());
+                });
+            } catch (Throwable e) {
+                this.host.log("Error logging stats: %s", e.toString());
+            }
+
+            this.host.log("Success time executor queue size: %s", ((ScheduledThreadPoolExecutor) h.scheduledExecutor).getQueue().size());
+        } catch (InterruptedException e) {
+            e.printStackTrace();
         } finally {
             h.tearDown();
         }
