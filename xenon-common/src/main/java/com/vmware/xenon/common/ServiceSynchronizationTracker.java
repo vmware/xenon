@@ -82,6 +82,8 @@ class ServiceSynchronizationTracker {
                 .setReferer(this.host.getUri())
                 .setCompletion(
                         (o, e) -> {
+                            this.host.log(Level.INFO, "GET on nodeGroup completed");
+
                             if (e != null) {
                                 this.host.log(Level.WARNING,
                                         "Failure getting node group state: %s", e.toString());
