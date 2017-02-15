@@ -27,6 +27,7 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.UUID;
 import java.util.concurrent.CancellationException;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
@@ -106,6 +107,7 @@ class SynchTestFactoryService extends FactoryService {
         }
 
         if (task != null) {
+            logInfo("pendingTask: %s", this.pendingTask);
             getHost().schedule(task, MAINTENANCE_DELAY_HANDLE_MICROS,
                     TimeUnit.MICROSECONDS);
         }
@@ -172,10 +174,12 @@ public class TestFactoryService extends BasicReusableHostTestCase {
     */
     @Test
     public void synchronizationWithIdempotentPostAndDelete() throws Throwable {
+        this.host.toggleDebuggingMode(true);
         for (int i = 0; i < this.hostRestartCount; i++) {
             this.host.log("iteration %s", i);
             createHostAndServicePostDeletePost();
         }
+        this.host.toggleDebuggingMode(false);
     }
 
     private void createHostAndServicePostDeletePost() throws Throwable {
@@ -205,8 +209,14 @@ public class TestFactoryService extends BasicReusableHostTestCase {
                     ctx.failIteration(e);
                     return;
                 }
+
+                this.host.log("First doPost finished");
+
                 this.factoryService.setTaskToRunOnNextMaintenance(() -> {
+                    this.host.log("Maintenance task started");
                     doDelete(h, doc.documentSelfLink, (e1) -> {
+
+                        this.host.log("Delete finished in maintenance task");
 
                         if (e1 != null) {
                             ctx.failIteration(e1);
@@ -214,19 +224,27 @@ public class TestFactoryService extends BasicReusableHostTestCase {
                         }
 
                         doPost(h, doc, (e2) -> {
+                            this.host.log("Post after Delete finished in maintenance task");
+
                             if (e2 != null && !(e2 instanceof CancellationException)) {
                                 ctx.failIteration(e2);
                                 return;
                             }
+
                             ctx.completeIteration();
                         });
                     });
                 });
+
                 // trigger maintenance
                 h.scheduleNodeGroupChangeMaintenance(ServiceUriPaths.DEFAULT_NODE_SELECTOR);
+
+
             });
 
+            this.host.log("1 Executor queue size: %s", ((ScheduledThreadPoolExecutor) h.scheduledExecutor).getQueue().size());
             testWait(ctx);
+            this.host.log("2 Executor queue size: %s", ((ScheduledThreadPoolExecutor) h.scheduledExecutor).getQueue().size());
         } finally {
             h.tearDown();
         }

@@ -544,7 +544,7 @@ public class ServiceHost implements ServiceRequestSender {
     private final ServiceDocumentDescription.Builder descriptionBuilder = Builder.create();
 
     private ExecutorService executor;
-    private ScheduledExecutorService scheduledExecutor;
+    public ScheduledExecutorService scheduledExecutor;
 
     private final ConcurrentHashMap<String, Service> attachedServices = new ConcurrentHashMap<>();
     private final ConcurrentSkipListMap<String, Service> attachedNamespaceServices = new ConcurrentSkipListMap<>();
@@ -4153,6 +4153,7 @@ public class ServiceHost implements ServiceRequestSender {
         for (String excludedPath : this.state.operationTracingLinkExclusionList) {
             if (op.getUri().getPath().startsWith(excludedPath)) {
                 return;
+
             }
         }
 
@@ -4968,7 +4969,15 @@ public class ServiceHost implements ServiceRequestSender {
         }
 
         OperationContext origContext = OperationContext.getOperationContext();
+
+        if (task.toString().startsWith("com.vmware.xenon.common.TestFactoryService")) {
+            log(Level.INFO, "Scheduling runnable for: %s", task);
+        }
+
         return this.scheduledExecutor.schedule(() -> {
+            if (task.toString().startsWith("com.vmware.xenon.common.TestFactoryService")) {
+                log(Level.INFO, "delay: %s, unit %s, task = %s", delay, unit, task);
+            }
             OperationContext.setFrom(origContext);
             executeRunnableSafe(task);
         }, delay, unit);
