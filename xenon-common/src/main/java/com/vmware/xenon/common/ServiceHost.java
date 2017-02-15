@@ -28,6 +28,7 @@ import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.security.GeneralSecurityException;
 import java.security.KeyStore;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Calendar;
@@ -2430,15 +2431,22 @@ public class ServiceHost implements ServiceRequestSender {
             }
         }
 
+        // since sync task will fail its attempt if the service is marked deleted
+        log(Level.INFO, "existing (%s), synchPendingDelete (%s)",
+                existing,
+                synchPendingDelete);
+
         if (synchPendingDelete) {
             // If this is a synch request and the service was going
             // through deletion, we fail the synch request.
+            log(Level.INFO, "failRequestServiceMarkedDeleted called");
             failRequestServiceMarkedDeleted(servicePath, post);
             return true;
         }
 
         boolean isIdempotent = service.hasOption(ServiceOption.IDEMPOTENT_POST);
         if (!isIdempotent) {
+            log(Level.INFO, "! isIdempotent");
             // check factory, its more likely to have the IDEMPOTENT option
             String parentPath = UriUtils.getParentPath(servicePath);
             Service parent = parentPath != null ? findService(parentPath) : null;
@@ -2447,6 +2455,7 @@ public class ServiceHost implements ServiceRequestSender {
         }
 
         if (!isIdempotent && !post.isSynchronize()) {
+            log(Level.INFO, "! isIdempotent ! post.isSynchronize()");
             ProcessingStage ps = existing.getProcessingStage();
             if (ps == ProcessingStage.STOPPED || ServiceHost.isServiceStarting(ps)) {
                 // there is a possibility of collision with a synchronization attempt: The sync task
@@ -4557,6 +4566,7 @@ public class ServiceHost implements ServiceRequestSender {
 
         List<String> replicatedServiceLinks = new ArrayList<>();
 
+        Thread.dumpStack();
         synchronized (this.state) {
             for (int i = 0; i < clonedLinks.length; i++) {
                 String link = clonedLinks[i];
@@ -4564,27 +4574,46 @@ public class ServiceHost implements ServiceRequestSender {
 
                 // service is null if this method is called before even the service is registered
                 if (s != null) {
+                    log(Level.INFO, "link %s service %s", link, s);
+
                     if (checkReplica &&
                             s.hasOption(ServiceOption.FACTORY) &&
                             s.hasOption(ServiceOption.REPLICATION)) {
                         // null the link so we do not attempt to invoke the completion below
                         clonedLinks[i] = null;
                         replicatedServiceLinks.add(link);
+                        log(Level.INFO, "[%d] %s in stage %s, completing %d (%s)",
+                                Thread.currentThread().getStackTrace()[1].getLineNumber(),
+                                link, getServiceStage(link),
+                                opTemplate.getId(), opTemplate.getContextId());
                         continue;
                     }
 
                     if (s.getProcessingStage() == Service.ProcessingStage.AVAILABLE) {
+                        log(Level.INFO, "[%d] %s in stage %s, completing %d (%s)",
+                                Thread.currentThread().getStackTrace()[1].getLineNumber(),
+                                link, getServiceStage(link),
+                                opTemplate.getId(), opTemplate.getContextId());
                         continue;
                     }
 
+                    log(Level.INFO, "[%d] %s in stage %s, completing %d (%s)",
+                            Thread.currentThread().getStackTrace()[1].getLineNumber(),
+                            link, getServiceStage(link),
+                            opTemplate.getId(), opTemplate.getContextId());
                     // track operation
                     this.operationTracker.trackServiceAvailableCompletion(link, opTemplate,
                             doOpClone);
                 } else {
+                    log(Level.INFO, "link %s service %s", link, s);
                     final Operation opTemplateClone = getOperationForServiceAvailability(opTemplate,
                             link,
                             doOpClone);
                     if (checkReplica) {
+                        log(Level.INFO, "[%d] %s in stage %s, completing %d (%s)",
+                                Thread.currentThread().getStackTrace()[1].getLineNumber(),
+                                link, getServiceStage(link),
+                                opTemplate.getId(), opTemplate.getContextId());
                         // when local service is not yet started and required to check replicated
                         // service, delay the node-group-service-availability-check until local
                         // service becomes available by nesting the logic to the opTemplate.
@@ -4606,6 +4635,11 @@ public class ServiceHost implements ServiceRequestSender {
 
                     }
 
+                    log(Level.INFO, "[%d] registerForServiceAvailability called %s",
+                            Thread.currentThread().getStackTrace()[1].getLineNumber(),
+                            String.join(", ",clonedLinks));
+
+
                     // Track operation but do not clone again.
                     // Add the operation with the specific nested completion
                     this.operationTracker.trackServiceAvailableCompletion(link, opTemplateClone,
@@ -4614,16 +4648,33 @@ public class ServiceHost implements ServiceRequestSender {
 
                 // null the link so we do not attempt to invoke the completion below
                 clonedLinks[i] = null;
+
+                log(Level.INFO, "[%d] %s in stage %s, completing %d (%s)",
+                        Thread.currentThread().getStackTrace()[1].getLineNumber(),
+                        link, getServiceStage(link),
+                        opTemplate.getId(), opTemplate.getContextId());
             }
         }
 
+
         for (String link : clonedLinks) {
+
+            log(Level.INFO, "[%d] in stage , completing (%s)",
+                    Thread.currentThread().getStackTrace()[1].getLineNumber(),
+                    link);
+
             if (link == null) {
                 continue;
             }
 
-            log(Level.INFO, "%s in stage %s, completing %d (%s)", link, getServiceStage(link),
+            log(Level.INFO, "[%d] %s in stage %s, completing %d (%s)",
+                    Thread.currentThread().getStackTrace()[1].getLineNumber(),
+                    link, getServiceStage(link),
                     opTemplate.getId(), opTemplate.getContextId());
+
+            Thread.dumpStack();
+
+
             final Operation opFinal = opTemplate;
             run(() -> {
                 Operation o = getOperationForServiceAvailability(opFinal, link, doOpClone);
@@ -4632,6 +4683,11 @@ public class ServiceHost implements ServiceRequestSender {
         }
 
         for (String link : replicatedServiceLinks) {
+            log(Level.INFO, "[%d] %s  in stage %s, completing %d (%s)",
+                    Thread.currentThread().getStackTrace()[1].getLineNumber(),
+                    link, getServiceStage(link),
+                    opTemplate.getId(), opTemplate.getContextId());
+
             Operation o = getOperationForServiceAvailability(opTemplate, link, doOpClone);
             run(() -> {
                 NodeGroupUtils
