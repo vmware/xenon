@@ -2682,21 +2682,30 @@ public class VerificationHost extends ExampleServiceHost {
     }
 
     /**
-     * Toggles the operation tracing service
-     *
-     * @param baseHostURI  the uri of the tracing service
-     * @param enable state to toggle to
+     * Toggles operation tracing on the service host using the management service
      */
     public void toggleOperationTracing(URI baseHostURI, boolean enable) {
+        toggleOperationTracing(baseHostURI, null, enable);
+    }
+
+    /**
+     * Toggles operation tracing on the service host using the management service
+     */
+    public void toggleOperationTracing(URI baseHostURI, Level level, boolean enable) {
         ServiceHostManagementService.ConfigureOperationTracingRequest r = new ServiceHostManagementService.ConfigureOperationTracingRequest();
         r.enable = enable ? ServiceHostManagementService.OperationTracingEnable.START
                 : ServiceHostManagementService.OperationTracingEnable.STOP;
+        if (level != null) {
+            r.level = level.toString();
+        }
         r.kind = ServiceHostManagementService.ConfigureOperationTracingRequest.KIND;
 
         this.setSystemAuthorizationContext();
+        // we convert body to JSON to verify client requests using HTTP client
+        // with JSON, will work
         this.sender.sendAndWait(Operation.createPatch(
                 UriUtils.extendUri(baseHostURI, ServiceHostManagementService.SELF_LINK))
-                .setBody(r));
+                .setBody(Utils.toJson(r)));
         this.resetAuthorizationContext();
     }
 

@@ -113,6 +113,7 @@ public class ServiceHostManagementService extends StatefulService {
         public static final String KIND = Utils.buildKind(ConfigureOperationTracingRequest.class);
 
         public OperationTracingEnable enable = OperationTracingEnable.START;
+        public String level;
         /** Request kind **/
         public String kind;
     }
@@ -255,7 +256,15 @@ public class ServiceHostManagementService extends StatefulService {
             this.logInfo("%s %s", start ? "Started" : "Stopped",
                     operationTracingServiceUri.toString());
 
-            this.getHost().setOperationTracingLevel(start ? Level.ALL : Level.OFF);
+            Level level = start ? Level.ALL : Level.OFF;
+            try {
+                if (req.level != null) {
+                    level = Level.parse(req.level);
+                }
+            } catch (Throwable ex) {
+                logSevere(ex);
+            }
+            this.getHost().setOperationTracingLevel(level);
             op.complete();
         };
 
