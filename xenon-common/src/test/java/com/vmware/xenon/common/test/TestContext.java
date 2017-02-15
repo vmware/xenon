@@ -195,6 +195,7 @@ public class TestContext {
 
             // keep polling latch every interval
             while (waitExpirationInstant.isAfter(Instant.now())) {
+
                 beforeCheck.execute();
                 if (this.latch.await(this.interval.toNanos(), TimeUnit.NANOSECONDS)) {
                     break;
@@ -217,6 +218,60 @@ public class TestContext {
                         waitExpirationInstant.toEpochMilli(), expireAtLocal,
                         this.duration, actualDuration,
                         this.initialCount, countAtAwait, this.latch.getCount());
+
+                throw new TimeoutException(msg);
+            }
+
+            this.finishInstant = now;
+
+            // prevent this latch from being reused
+            this.latch = null;
+
+            if (this.error != null) {
+                throw this.error;
+            }
+        });
+    }
+
+    public void awaitDebug(ExecutableBlock beforeCheck) {
+
+        ExceptionTestUtils.executeSafely(() -> {
+
+            if (this.latch == null) {
+                throw new IllegalStateException("This context is already used");
+            }
+
+            Instant waitStartInstant = Instant.now();
+            Instant waitExpirationInstant = waitStartInstant.plus(this.duration);
+            long countAtAwait = this.latch.getCount();
+
+            // keep polling latch every interval
+            while (waitExpirationInstant.isAfter(Instant.now())) {
+
+                if (this.latch.await(this.interval.toNanos(), TimeUnit.NANOSECONDS)) {
+                    break;
+                }
+            }
+
+            Instant now = Instant.now();
+            if (waitExpirationInstant.isBefore(now)) {
+                LocalDateTime startAtLocal = LocalDateTime.ofInstant(waitStartInstant,
+                        ZoneId.systemDefault());
+                LocalDateTime expireAtLocal = LocalDateTime.ofInstant(waitExpirationInstant,
+                        ZoneId.systemDefault());
+
+                Duration actualDuration = Duration.between(waitStartInstant, now);
+                String msg = String.format("%s has expired. [start=%s(%s), expire=%s(%s), " +
+                        "durationGiven=%s, durationActual=%s, " +
+                        "countAtInit=%d, countAtAwait=%d, countNow=%d]",
+                        getClass().getSimpleName(),
+                        waitStartInstant.toEpochMilli(), startAtLocal,
+                        waitExpirationInstant.toEpochMilli(), expireAtLocal,
+                        this.duration, actualDuration,
+                        this.initialCount, countAtAwait, this.latch.getCount());
+
+                beforeCheck.execute();
+
                 throw new TimeoutException(msg);
             }
 
