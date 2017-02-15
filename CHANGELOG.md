@@ -1,6 +1,6 @@
 # CHANGELOG
 
-## 1.3.7
+## 1.3.7-SNAPSHOT
 
 * For factories using setUseBodyForSelfLink, FactoryService will
   fail the request with 400 (BAD REQUEST) if body is missing in request.
