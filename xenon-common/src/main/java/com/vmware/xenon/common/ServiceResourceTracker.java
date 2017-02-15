@@ -184,7 +184,7 @@ class ServiceResourceTracker {
 
     }
 
-    private void createTimeSeriesStat(String name, double v) {
+    void createTimeSeriesStat(String name, double v) {
         createDayTimeSeriesStat(name, v);
         createHourTimeSeriesStat(name, v);
     }
