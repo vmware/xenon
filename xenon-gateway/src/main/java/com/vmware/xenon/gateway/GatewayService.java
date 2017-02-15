@@ -16,12 +16,14 @@ package com.vmware.xenon.gateway;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.EnumSet;
+import java.util.logging.Level;
 
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.ServiceErrorResponse;
 import com.vmware.xenon.common.StatelessService;
 import com.vmware.xenon.common.UriUtils;
+import com.vmware.xenon.common.Utils;
 
 /**
  * This class represents a data driven, highly-available Gateway service,
@@ -44,8 +46,14 @@ import com.vmware.xenon.common.UriUtils;
 public class GatewayService extends StatelessService {
     public static final String SELF_LINK = "/";
 
+    public static final String PROPERTY_NAME_GATEWAY_SERVICE_LOGGING = Utils.PROPERTY_NAME_PREFIX
+            + "gatewayService.isRequestLoggingEnabled";
+
     private GatewayCache cache;
     private URI configHostUri;
+
+    private final boolean isRequestLoggingEnabled = Boolean
+            .getBoolean(PROPERTY_NAME_GATEWAY_SERVICE_LOGGING);
 
     public GatewayService(URI configHostUri) {
         super(ServiceDocument.class);
@@ -88,10 +96,12 @@ public class GatewayService extends StatelessService {
             return;
         }
 
+        final long startTimeMicros = Utils.getSystemNowMicrosUtc();
+
         // Fail the request if the gateway is marked as
         // UN-AVAILABLE.
         if (this.cache.getGatewayStatus() == GatewayStatus.UNAVAILABLE) {
-            failOperation(op, Operation.STATUS_CODE_UNAVAILABLE,
+            failRequest(op, startTimeMicros, Operation.STATUS_CODE_UNAVAILABLE,
                     "Gateway is currently unavailable. Please retry later.");
             return;
         }
@@ -105,7 +115,7 @@ public class GatewayService extends StatelessService {
                 path = UriUtils.getParentPath(path);
                 actions = this.cache.getSupportedActions(path);
                 if (actions == null) {
-                    failOperation(op, Operation.STATUS_CODE_NOT_FOUND,
+                    failRequest(op, startTimeMicros, Operation.STATUS_CODE_NOT_FOUND,
                             "Requested path %s not found.", path);
                     return;
                 }
@@ -113,7 +123,7 @@ public class GatewayService extends StatelessService {
 
             // Check if the requested Action is allowed on the requested path.
             if (!actions.contains(op.getAction())) {
-                failOperation(op, Operation.STATUS_CODE_BAD_METHOD,
+                failRequest(op, startTimeMicros, Operation.STATUS_CODE_BAD_METHOD,
                         "Requested verb %s not allowed on path %s.", op.getAction(), path);
                 return;
             }
@@ -121,7 +131,7 @@ public class GatewayService extends StatelessService {
 
         // Check if the Gateway has been PAUSED. If so, queue the operation.
         if (this.cache.getGatewayStatus() == GatewayStatus.PAUSED) {
-            failOperation(op, Operation.STATUS_CODE_UNAVAILABLE,
+            failRequest(op, startTimeMicros, Operation.STATUS_CODE_UNAVAILABLE,
                     "Gateway is currently PAUSED. Please retry later.");
             return;
         }
@@ -130,7 +140,7 @@ public class GatewayService extends StatelessService {
         // nodes that are currently available, simply fail the request.
         URI nodeAddress = this.cache.getForwardingUri();
         if (nodeAddress == null) {
-            failOperation(op, Operation.STATUS_CODE_UNAVAILABLE,
+            failRequest(op, startTimeMicros, Operation.STATUS_CODE_UNAVAILABLE,
                     "Gateway is currently unavailable. Please retry later.");
             return;
         }
@@ -147,9 +157,10 @@ public class GatewayService extends StatelessService {
             op.setBodyNoCloning(o.getBodyRaw());
             if (e != null) {
                 op.fail(e);
-                return;
+            } else {
+                op.complete();
             }
-            op.complete();
+            logRequest(op, startTimeMicros, o.getStatusCode(), o.getContentLength());
         });
         getHost().sendRequest(outboundOp);
     }
@@ -171,8 +182,9 @@ public class GatewayService extends StatelessService {
      */
     @Override
     public void handleDelete(Operation op) {
+        long startTimeMicros = Utils.getSystemNowMicrosUtc();
         if (!op.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_NO_INDEX_UPDATE)) {
-            failOperation(op, Operation.STATUS_CODE_BAD_METHOD,
+            failRequest(op, startTimeMicros, Operation.STATUS_CODE_BAD_METHOD,
                     "DELETE not supported on Gateway endpoint.");
             return;
         }
@@ -198,11 +210,25 @@ public class GatewayService extends StatelessService {
         }
     }
 
-    private void failOperation(Operation op,
-            int statusCode, String msgFormat, Object... args) {
+    private void failRequest(Operation op, long startTimeMicros,
+                             int statusCode, String msgFormat, Object... args) {
         ServiceErrorResponse rsp = new ServiceErrorResponse();
         rsp.message = String.format(msgFormat, args);
         rsp.statusCode = statusCode;
         op.fail(statusCode, new IllegalStateException(rsp.message), rsp);
+        logRequest(op, startTimeMicros, statusCode, op.getContentLength());
+    }
+
+    // Requests are logged in the following format:
+    // Action - Requested UriPath - StatusCode - ContentLength (in bytes) - Time taken (in milliseconds)
+    // Sample: POST /core/examples 200 416B 11.00ms
+    private void logRequest(Operation op, long startTimeMicros, int statusCode, long contentLength) {
+        if (this.isRequestLoggingEnabled) {
+            long endTimeMicros = Utils.getSystemNowMicrosUtc();
+            Level level = op.getStatusCode() < Operation.STATUS_CODE_FAILURE_THRESHOLD ?
+                    Level.INFO : Level.WARNING;
+            log(level, "%s %s %d %dB %.2fms", op.getAction(), op.getUri().getPath(),
+                    statusCode, contentLength, (endTimeMicros - startTimeMicros) / 1000.0);
+        }
     }
 }
