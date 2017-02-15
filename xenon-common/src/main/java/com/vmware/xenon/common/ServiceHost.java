@@ -4968,6 +4968,9 @@ public class ServiceHost implements ServiceRequestSender {
         }
 
         OperationContext origContext = OperationContext.getOperationContext();
+
+        log(Level.INFO, "Scheduling runnable for: %s", Utils.toString(new Exception()));
+
         return this.scheduledExecutor.schedule(() -> {
             OperationContext.setFrom(origContext);
             executeRunnableSafe(task);
