@@ -82,6 +82,7 @@ import com.vmware.xenon.common.ServiceHost.RequestRateInfo.Option;
 import com.vmware.xenon.common.ServiceHost.ServiceHostState.MemoryLimitType;
 import com.vmware.xenon.common.ServiceHost.ServiceHostState.SslClientAuthMode;
 import com.vmware.xenon.common.ServiceMaintenanceRequest.MaintenanceReason;
+import com.vmware.xenon.common.ServiceStats.ServiceStat;
 import com.vmware.xenon.common.ServiceStats.TimeSeriesStats;
 import com.vmware.xenon.common.ServiceStats.TimeSeriesStats.AggregationType;
 import com.vmware.xenon.common.ServiceStats.TimeSeriesStats.TimeBin;
@@ -570,6 +571,7 @@ public class ServiceHost implements ServiceRequestSender {
     private ServiceRequestListener httpsListener;
 
     private URI documentIndexServiceUri;
+    private URI operationIndexServiceUri;
     private URI authorizationServiceUri;
     private URI transactionServiceUri;
     private URI managementServiceUri;
@@ -4156,8 +4158,31 @@ public class ServiceHost implements ServiceRequestSender {
             }
         }
 
+        if (getOperationTracingLevel() == Level.FINE) {
+            String name = op.getUri().getPath() + ":" + op.getAction();
+            ServiceStat st = this.getManagementService().getStat(name);
+            // add a statistic for the service and action
+            synchronized (name.intern()) {
+                if (st == null || st.timeSeriesStats == null) {
+                    this.serviceResourceTracker.createTimeSeriesStat(name, 1.0);
+                    st = getManagementService().getStat(name);
+                }
+            }
+            getManagementService().adjustStat(st, 1.0);
+        } else if (getOperationTracingLevel() == Level.FINER) {
+            log(Level.INFO, "%s", op.toString());
+        }
+
+        if (getOperationTracingLevel() != Level.ALL || getOperationTracingLevel() != Level.FINEST) {
+            return;
+        }
+
+        if (this.operationIndexServiceUri == null) {
+            this.operationIndexServiceUri = UriUtils.buildUri(this, OperationIndexService.class);
+        }
+
         Operation.SerializedOperation tracingOp = Operation.SerializedOperation.create(op);
-        sendRequest(Operation.createPost(UriUtils.buildUri(this, OperationIndexService.class))
+        sendRequest(Operation.createPost(this.operationIndexServiceUri)
                 .setReferer(getUri())
                 .setBodyNoCloning(tracingOp));
     }

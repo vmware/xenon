@@ -2682,15 +2682,20 @@ public class VerificationHost extends ExampleServiceHost {
     }
 
     /**
-     * Toggles the operation tracing service
-     *
-     * @param baseHostURI  the uri of the tracing service
-     * @param enable state to toggle to
+     * Toggles operation tracing on the service host using the management service
      */
     public void toggleOperationTracing(URI baseHostURI, boolean enable) {
+        toggleOperationTracing(baseHostURI, null, enable);
+    }
+
+    /**
+     * Toggles operation tracing on the service host using the management service
+     */
+    public void toggleOperationTracing(URI baseHostURI, Level level, boolean enable) {
         ServiceHostManagementService.ConfigureOperationTracingRequest r = new ServiceHostManagementService.ConfigureOperationTracingRequest();
         r.enable = enable ? ServiceHostManagementService.OperationTracingEnable.START
                 : ServiceHostManagementService.OperationTracingEnable.STOP;
+        r.level = level;
         r.kind = ServiceHostManagementService.ConfigureOperationTracingRequest.KIND;
 
         this.setSystemAuthorizationContext();

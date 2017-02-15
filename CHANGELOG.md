@@ -2,6 +2,15 @@
 
 ## 1.4.0-SNAPSHOT
 
+* Additional levels of Operation tracing, making operation inspection
+  easier. The tracing toggle PATCH request to /core/management now takes
+  a new level property that determines the operation tracing behavior:
+  Level.Fine - Operations are tracked through time series stats available on
+  /core/management/stats named as follows: <service path>:<action>
+  Level.Finer - Operations are logged to the java logging output
+  Level.Finest/Level.All - Operations are deeply indexed in the core/operation-index
+  (this was the only level of tracing until now)
+
 ## 1.3.7
 
 * For factories using setUseBodyForSelfLink, FactoryService will

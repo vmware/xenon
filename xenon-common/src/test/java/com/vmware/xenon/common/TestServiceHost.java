@@ -54,6 +54,7 @@ import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 
 import com.vmware.xenon.common.Operation.CompletionHandler;
+import com.vmware.xenon.common.Service.Action;
 import com.vmware.xenon.common.Service.ProcessingStage;
 import com.vmware.xenon.common.Service.ServiceOption;
 import com.vmware.xenon.common.ServiceHost.RequestRateInfo;
@@ -149,6 +150,42 @@ public class TestServiceHost {
             this.host.completeIteration();
         });
         this.host.testWait();
+    }
+
+    @Test
+    public void fineAndFinerOpTracing() throws Throwable {
+        setUp(false);
+        TestRequestSender sender = this.host.getTestRequestSender();
+        this.host.toggleOperationTracing(this.host.getUri(), Level.FINE, true);
+        // send some requests and confirm stats get populated
+
+        URI factoryUri = UriUtils.buildUri(this.host, ExampleService.FACTORY_LINK);
+        Map<URI, ExampleServiceState> states = this.host.doFactoryChildServiceStart(null,
+                this.serviceCount,
+                ExampleServiceState.class, (op) -> {
+                    ExampleServiceState st = new ExampleServiceState();
+                    st.name = "foo";
+                    op.setBody(st);
+                }, factoryUri);
+        TestContext ctx = this.host.testCreate(states.size() * 2);
+        for (URI u : states.keySet()) {
+            ExampleServiceState state = new ExampleServiceState();
+            state.name = this.host.nextUUID();
+            sender.sendRequest(Operation.createGet(u).setCompletion(ctx.getCompletion()));
+            sender.sendRequest(
+                    Operation.createPatch(u).setBody(state).setCompletion(ctx.getCompletion()));
+        }
+        ctx.await();
+        ServiceStats after = sender.sendStatsGetAndWait(this.host.getManagementServiceUri());
+        for (URI u : states.keySet()) {
+            String getStatName = u.getPath() + ":" + Action.GET;
+            String patchStatName = u.getPath() + ":" + Action.PATCH;
+            ServiceStat getStat = after.entries.get(getStatName);
+            assertTrue(getStat != null && getStat.latestValue > 0);
+            ServiceStat patchStat = after.entries.get(patchStatName);
+            assertTrue(patchStat != null && getStat.latestValue > 0);
+        }
+        this.host.toggleOperationTracing(this.host.getUri(), Level.FINE, false);
     }
 
     @Test
