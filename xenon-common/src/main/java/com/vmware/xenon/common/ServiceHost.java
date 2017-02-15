@@ -28,9 +28,9 @@ import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.security.GeneralSecurityException;
 import java.security.KeyStore;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Calendar;
 import java.util.Collections;
 import java.util.EnumSet;
 import java.util.Enumeration;
@@ -5699,10 +5699,7 @@ public class ServiceHost implements ServiceRequestSender {
         cb.setIssuer(AuthenticationConstants.DEFAULT_ISSUER);
         cb.setSubject(userLink);
 
-        // Set an effective expiration to never
-        Calendar cal = Calendar.getInstance();
-        cal.set(9999, Calendar.DECEMBER, 31);
-        cb.setExpirationTime(TimeUnit.MILLISECONDS.toSeconds(cal.getTimeInMillis()));
+        cb.setExpirationTime(Instant.MAX.getEpochSecond());
 
         // Generate token for set of claims
         Claims claims = cb.getResult();
@@ -5740,11 +5737,16 @@ public class ServiceHost implements ServiceRequestSender {
     }
 
     /**
-     * Creates and returns an authorization context for a given user.
+     * Returns an authorization context for a given user.
      *
      * @return authorization context.
      */
     protected AuthorizationContext getAuthorizationContextForSubject(String subject) {
+        if (subject.equals(SystemUserService.SELF_LINK)) {
+            return getSystemAuthorizationContext();
+        } else if (subject.equals(GuestUserService.SELF_LINK)) {
+            return getGuestAuthorizationContext();
+        }
         return createAuthorizationContext(subject);
     }
 
