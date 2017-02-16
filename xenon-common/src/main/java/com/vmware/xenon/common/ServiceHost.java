@@ -2256,7 +2256,13 @@ public class ServiceHost implements ServiceRequestSender {
             return this;
         }
 
-        service.setProcessingStage(ProcessingStage.CREATED);
+        try {
+            service.setProcessingStage(ProcessingStage.CREATED);
+        } catch (Throwable t) {
+            log(Level.SEVERE, "Unhandled error: %s", Utils.toString(t));
+            post.fail(t);
+            return this;
+        }
 
         // make sure we detach the service on start failure
         post.nestCompletion((o, e) -> {
