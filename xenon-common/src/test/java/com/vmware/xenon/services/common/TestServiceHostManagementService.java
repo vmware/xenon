@@ -34,7 +34,6 @@ import org.junit.rules.TemporaryFolder;
 
 import com.vmware.xenon.common.BasicTestCase;
 import com.vmware.xenon.common.FileUtils;
-import com.vmware.xenon.common.MinimalFileStore;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.ServiceDocumentQueryResult;
 import com.vmware.xenon.common.ServiceHost;
@@ -46,6 +45,9 @@ import com.vmware.xenon.common.test.TestProperty;
 import com.vmware.xenon.common.test.TestRequestSender;
 import com.vmware.xenon.common.test.VerificationHost;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
+import com.vmware.xenon.services.common.LocalFileService.FileType;
+import com.vmware.xenon.services.common.LocalFileService.LocalFileServiceState;
+import com.vmware.xenon.services.common.LocalFileService.WritingState;
 
 public class TestServiceHostManagementService extends BasicTestCase {
 
@@ -123,6 +125,10 @@ public class TestServiceHostManagementService extends BasicTestCase {
 
     @Test
     public void testBackupAndRestoreFromRemoteHost() throws Throwable {
+        // start our blob store
+        this.host.startFactory(new LocalFileService());
+        this.host.waitForServiceAvailable(LocalFileService.FACTORY_LINK);
+
         testBackupAndRestore(100, 100);
         // the expected count includes the number of services created in the previous iteration.
         testBackupAndRestore(1001, 1101);
@@ -130,15 +136,11 @@ public class TestServiceHostManagementService extends BasicTestCase {
 
     private void testBackupAndRestore(int serviceCount, int expectedCount) throws Throwable {
 
-        // start our blob store
-        MinimalFileStore mfs = new MinimalFileStore();
-        MinimalFileStore.MinimalFileState mfsState = new MinimalFileStore.MinimalFileState();
         File tmpFile = File.createTempFile("intermediate-file", ".zip", null);
         tmpFile.deleteOnExit();
-        mfsState.fileUri = tmpFile.toURI();
 
-        mfs = (MinimalFileStore) this.host.startServiceAndWait(mfs, UUID.randomUUID().toString(),
-                mfsState);
+        LocalFileServiceState backupFileState = createBackupFileService(tmpFile.getPath(), UUID.randomUUID().toString());
+        URI backupFileServiceUri = UriUtils.buildUri(this.host, backupFileState.documentSelfLink);
 
         // Post some documents to populate the index.
         URI factoryUri = UriUtils.buildFactoryUri(this.host, ExampleService.class);
@@ -152,15 +154,13 @@ public class TestServiceHostManagementService extends BasicTestCase {
                 }, factoryUri);
 
         ServiceHostManagementService.BackupRequest backupRequest = new ServiceHostManagementService.BackupRequest();
-        backupRequest.destination = mfs.getUri();
+        backupRequest.destination = backupFileServiceUri;
         backupRequest.kind = ServiceHostManagementService.BackupRequest.KIND;
 
-        this.host.testStart(1);
-        this.host.sendRequest(Operation
-                .createPatch(UriUtils.buildUri(this.host, ServiceHostManagementService.SELF_LINK))
-                .setReferer(this.host.getUri()).setBody(backupRequest)
-                .setCompletion(this.host.getCompletion()));
-        this.host.testWait();
+        // trigger backup
+        URI backupOpUri = UriUtils.buildUri(this.host, ServiceHostManagementService.SELF_LINK);
+        Operation backupOp = Operation.createPatch(backupOpUri).setBody(backupRequest);
+        this.host.getTestRequestSender().sendAndWait(backupOp);
 
         this.host.tearDown();
 
@@ -169,25 +169,21 @@ public class TestServiceHostManagementService extends BasicTestCase {
 
         this.host = VerificationHost.create(0);
         this.host.start();
+        this.host.startFactory(new LocalFileService());
+        this.host.waitForServiceAvailable(LocalFileService.FACTORY_LINK);
 
-        mfs = new MinimalFileStore();
-        mfsState = new MinimalFileStore.MinimalFileState();
-        mfsState.fileUri = tmpFile.toURI();
-        mfsState.fileComplete = true;
 
-        mfs = (MinimalFileStore) this.host.startServiceAndWait(mfs, UUID.randomUUID().toString(),
-                mfsState);
+        LocalFileServiceState restoreFileState = createRestoreFileService(tmpFile.getPath(), UUID.randomUUID().toString());
+        URI restoreFileServiceUri = UriUtils.buildUri(this.host, restoreFileState.documentSelfLink);
 
         ServiceHostManagementService.RestoreRequest restoreRequest = new ServiceHostManagementService.RestoreRequest();
-        restoreRequest.destination = mfs.getUri();
+        restoreRequest.destination = restoreFileServiceUri;
         restoreRequest.kind = ServiceHostManagementService.RestoreRequest.KIND;
 
-        this.host.testStart(1);
-        this.host.sendRequest(Operation
-                .createPatch(UriUtils.buildUri(this.host, ServiceHostManagementService.SELF_LINK))
-                .setReferer(this.host.getUri()).setBody(restoreRequest)
-                .setCompletion(this.host.getCompletion()));
-        this.host.testWait();
+        // perform restore
+        URI restoreOpUri = UriUtils.buildUri(this.host, ServiceHostManagementService.SELF_LINK);
+        Operation restoreOp = Operation.createPatch(restoreOpUri).setBody(restoreRequest);
+        this.host.getTestRequestSender().sendAndWait(restoreOp);
 
         // Check our documents are still there
         ServiceDocumentQueryResult queryResult = this.host
@@ -230,10 +226,11 @@ public class TestServiceHostManagementService extends BasicTestCase {
         TestRequestSender sender = this.host.getTestRequestSender();
 
         // start blob store for backup
-        MinimalFileStore.MinimalFileState mfsState = new MinimalFileStore.MinimalFileState();
-        mfsState.fileUri = backupFile.toURI();
-        MinimalFileStore mfs = new MinimalFileStore();
-        mfs = (MinimalFileStore) this.host.startServiceAndWait(mfs, "/mfs", mfsState);
+        this.host.startFactory(new LocalFileService());
+        this.host.waitForServiceAvailable(LocalFileService.FACTORY_LINK);
+
+        LocalFileServiceState backupFileState = createBackupFileService(backupFile.getPath(), "/backup");
+        URI backupFileServiceUri = UriUtils.buildUri(this.host, backupFileState.documentSelfLink);
 
         // create and update a document
         String selfLink = UriUtils.buildUriPath(ExampleService.FACTORY_LINK, "/foo");
@@ -253,10 +250,18 @@ public class TestServiceHostManagementService extends BasicTestCase {
 
         // perform backup
         ServiceHostManagementService.BackupRequest backupRequest = new ServiceHostManagementService.BackupRequest();
-        backupRequest.destination = mfs.getUri();
+        backupRequest.destination = backupFileServiceUri;
         backupRequest.kind = ServiceHostManagementService.BackupRequest.KIND;
 
         sender.sendAndWait(Operation.createPatch(this.host, ServiceHostManagementService.SELF_LINK).setBody(backupRequest));
+
+        // wait until backup process finishes
+        TestRequestSender requestSender = sender;
+        this.host.waitFor("Failed to create backup file.", () -> {
+            LocalFileServiceState state = requestSender.sendAndWait(Operation.createGet(backupFileServiceUri), LocalFileServiceState.class);
+            return state.writingState != WritingState.STARTED;
+        });
+
         this.host.tearDown();
 
         // create new host
@@ -264,16 +269,15 @@ public class TestServiceHostManagementService extends BasicTestCase {
         this.host.start();
         sender = this.host.getTestRequestSender();
 
-        // start blob store
-        mfs = new MinimalFileStore();
-        mfsState = new MinimalFileStore.MinimalFileState();
-        mfsState.fileUri = backupFile.toURI();
-        mfsState.fileComplete = true;
-        mfs = (MinimalFileStore) this.host.startServiceAndWait(mfs, "/mfs", mfsState);
+        // start blob store for restore
+        this.host.startFactory(new LocalFileService());
+        this.host.waitForServiceAvailable(LocalFileService.FACTORY_LINK);
+
+        LocalFileServiceState restoreFileState = createRestoreFileService(backupFile.getPath(), "/restore");
 
         // perform restore with time snapshot boundary
         ServiceHostManagementService.RestoreRequest restoreRequest = new ServiceHostManagementService.RestoreRequest();
-        restoreRequest.destination = mfs.getUri();
+        restoreRequest.destination = UriUtils.buildUri(this.host, restoreFileState.documentSelfLink);
         restoreRequest.kind = ServiceHostManagementService.RestoreRequest.KIND;
         restoreRequest.timeSnapshotBoundaryMicros = snapshotTime;
         sender.sendAndWait(Operation.createPatch(this.host, ServiceHostManagementService.SELF_LINK).setBody(restoreRequest));
@@ -284,4 +288,23 @@ public class TestServiceHostManagementService extends BasicTestCase {
         assertEquals("Point-in-time version", snapshotServiceVersion, result.documentVersion);
     }
 
+    private LocalFileServiceState createBackupFileService(String localFilePath, String selfLink) {
+        LocalFileServiceState state = new LocalFileServiceState();
+        state.type = FileType.WRITE;
+        state.localFilePath = localFilePath;
+        state.documentSelfLink = selfLink;
+
+        Operation post = Operation.createPost(this.host, LocalFileService.FACTORY_LINK).setBody(state);
+        return this.host.getTestRequestSender().sendAndWait(post, LocalFileServiceState.class);
+    }
+
+    private LocalFileServiceState createRestoreFileService(String localFilePath, String selfLink) {
+        LocalFileServiceState state = new LocalFileServiceState();
+        state.type = FileType.READ;
+        state.localFilePath = localFilePath;
+        state.documentSelfLink = selfLink;
+
+        Operation post = Operation.createPost(this.host, LocalFileService.FACTORY_LINK).setBody(state);
+        return this.host.getTestRequestSender().sendAndWait(post, LocalFileServiceState.class);
+    }
 }

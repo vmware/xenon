@@ -104,6 +104,9 @@ public final class ServiceUriPaths {
     public static final String CORE_TRANSACTIONS = UriUtils.buildUriPath(ServiceUriPaths.CORE,
             "transactions");
 
+    public static final String CORE_LOCAL_FILES = UriUtils.buildUriPath(ServiceUriPaths.CORE,
+            "local-files");
+
     public static final String UI_RESOURCES = "/user-interface/resources";
 
     public static final String UI_RESOURCE_DEFAULT_FILE = "index.html";
