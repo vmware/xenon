@@ -65,9 +65,9 @@ public final class FileUtils {
     }
 
     public static class ContentRange {
-        long start;
-        long end;
-        long fileSize;
+        public long start;
+        public long end;
+        public long fileSize;
 
         public static final int CHUNK_SIZE = 512 * 1024;
         public static final int MAX_IN_FLIGHT_CHUNKS = 10;
@@ -80,13 +80,13 @@ public final class FileUtils {
         private static final String RANGE_PATTERN = "=(\\d*)[-](\\d*)";
         private static final Pattern rangePattern = Pattern.compile(RANGE_PATTERN);
 
-        ContentRange() {
+        public ContentRange() {
             this.start = 0;
             this.end = CHUNK_SIZE;
             this.fileSize = 0;
         }
 
-        ContentRange(String headerString) {
+        public ContentRange(String headerString) {
             if (headerString == null || headerString.isEmpty()) {
                 return;
             }
@@ -100,13 +100,13 @@ public final class FileUtils {
             this.fileSize = Long.parseLong(m.group(3));
         }
 
-        ContentRange(int start, int end, int fileSize) {
+        public ContentRange(int start, int end, int fileSize) {
             this.start = start;
             this.end = Integer.min(end, fileSize);
             this.fileSize = fileSize;
         }
 
-        ContentRange(int fileSize) {
+        public ContentRange(int fileSize) {
             this.start = 0;
             this.end = Integer.min(fileSize, CHUNK_SIZE);
             this.fileSize = fileSize;
