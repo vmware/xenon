@@ -718,6 +718,27 @@ public class Operation implements Cloneable {
         return Utils.toJsonHtml(sop);
     }
 
+    /**
+     * Returns a string summary of the operation appropriate for logging
+     */
+    public String toLogString() {
+        StringBuilder sb = Utils.getBuilder();
+        sb.append(this.action.toString()).append(" ")
+                .append(this.getUri()).append(" ")
+                .append(this.id).append(" ")
+                .append(this.getRefererAsString()).append(" ");
+        if (this.contextId != null) {
+            sb.append("[ctxId] ").append(this.contextId);
+        }
+        if (this.transactionId != null) {
+            sb.append("[txId] ").append(this.transactionId);
+        }
+        if (this.authorizationCtx != null && this.authorizationCtx.claims != null) {
+            sb.append("[subject] ").append(this.authorizationCtx.claims.getSubject());
+        }
+        return sb.toString();
+    }
+
     @Override
     public Operation clone() {
         Operation clone;

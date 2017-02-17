@@ -232,6 +232,7 @@ public class TestAuthorization extends BasicTestCase {
         this.host.startService(post, new AuthzStatelessService());
         this.host.testWait();
 
+        this.host.setOperationTracingLevel(Level.FINER);
         // Verify PATCH
         Operation patch = Operation.createPatch(UriUtils.buildUri(this.host, serviceLink));
         patch.setBody(new ServiceDocument());
@@ -239,6 +240,7 @@ public class TestAuthorization extends BasicTestCase {
         patch.setCompletion(this.host.getCompletion());
         this.host.send(patch);
         this.host.testWait();
+        this.host.setOperationTracingLevel(Level.ALL);
 
         // Verify DENY PATCH
         this.host.resetAuthorizationContext();

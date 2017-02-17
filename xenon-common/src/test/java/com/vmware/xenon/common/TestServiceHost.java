@@ -174,7 +174,9 @@ public class TestServiceHost {
             state.name = this.host.nextUUID();
             sender.sendRequest(Operation.createGet(u).setCompletion(ctx.getCompletion()));
             sender.sendRequest(
-                    Operation.createPatch(u).setBody(state).setCompletion(ctx.getCompletion()));
+                    Operation.createPatch(u)
+                            .setContextId(this.host.nextUUID())
+                            .setBody(state).setCompletion(ctx.getCompletion()));
         }
         ctx.await();
         ServiceStats after = sender.sendStatsGetAndWait(this.host.getManagementServiceUri());
@@ -198,7 +200,8 @@ public class TestServiceHost {
             state.name = this.host.nextUUID();
             sender.sendRequest(Operation.createGet(u).setCompletion(ctx.getCompletion()));
             sender.sendRequest(
-                    Operation.createPatch(u).setBody(state).setCompletion(ctx.getCompletion()));
+                    Operation.createPatch(u).setContextId(this.host.nextUUID()).setBody(state)
+                            .setCompletion(ctx.getCompletion()));
         }
         ctx.await();
 

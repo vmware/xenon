@@ -4180,7 +4180,7 @@ public class ServiceHost implements ServiceRequestSender {
 
         if (getOperationTracingLevel() == Level.FINER) {
             // we log only on the specific level, intentionally, to reduce side-effects
-            log(Level.INFO, op.toString());
+            log(Level.INFO, op.toLogString());
         }
 
         if (getOperationTracingLevel().intValue() > Level.FINEST.intValue()) {
