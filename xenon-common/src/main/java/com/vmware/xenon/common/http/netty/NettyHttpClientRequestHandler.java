@@ -13,6 +13,8 @@
 
 package com.vmware.xenon.common.http.netty;
 
+import static com.vmware.xenon.common.UriUtils.URI_PARAM_ODATA_FILTER;
+
 import java.io.UnsupportedEncodingException;
 import java.net.InetSocketAddress;
 import java.net.URI;
@@ -166,6 +168,11 @@ public class NettyHttpClientRequestHandler extends SimpleChannelInboundHandler<O
         }
 
         String query = decodedQuery == null ? targetUri.getRawQuery() : decodedQuery;
+
+        if (query != null && query.contains(URI_PARAM_ODATA_FILTER)) {
+            request.addRequestHeader(Operation.ODATA_PROCESSED_QUERY, query);
+        }
+
         URI uri = new URI(UriUtils.HTTP_SCHEME, targetUri.getUserInfo(),
                 ServiceHost.LOCAL_HOST,
                 this.host.getPort(), targetUri.getPath(), query, targetUri.getFragment());

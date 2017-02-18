@@ -324,10 +324,10 @@ public class TestODataQueryService extends BasicReusableHostTestCase {
 
     private void testSimpleStringQuery() throws Throwable {
         ExampleService.ExampleServiceState inState = new ExampleService.ExampleServiceState();
-        inState.name = "TEST STRING";
+        inState.name = "TEST [STRING]";
         postExample(inState);
 
-        String queryString = "$filter=name eq 'TEST STRING'";
+        String queryString = "$filter=name eq 'TEST [STRING]'";
 
         Map<String, Object> out = doQuery(queryString, false).documents;
         assertNotNull(out);
@@ -337,6 +337,13 @@ public class TestODataQueryService extends BasicReusableHostTestCase {
         assertTrue(outState.name.equals(inState.name));
 
         out = doFactoryServiceQuery(queryString, false);
+        assertNotNull(out);
+        outState = Utils.fromJson(
+                out.get(inState.documentSelfLink), ExampleService.ExampleServiceState.class);
+        assertTrue(outState.name.equals(inState.name));
+
+        // Also test if it passes through external call
+        out = doFactoryServiceQuery(queryString, true);
         assertNotNull(out);
         outState = Utils.fromJson(
                 out.get(inState.documentSelfLink), ExampleService.ExampleServiceState.class);

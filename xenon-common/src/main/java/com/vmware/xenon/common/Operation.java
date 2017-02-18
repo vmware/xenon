@@ -390,6 +390,7 @@ public class Operation implements Cloneable {
     public static final String ACCEPT_ENCODING_HEADER = "accept-encoding";
     public static final String AUTHORIZATION_HEADER = "Authorization";
     public static final String ACCEPT_LANGUAGE_HEADER = "accept-language";
+    public static final String ODATA_PROCESSED_QUERY = "odata-processed-query";
 
     // HTTP2 Header definitions
     public static final String STREAM_ID_HEADER = "x-http2-stream-id";
