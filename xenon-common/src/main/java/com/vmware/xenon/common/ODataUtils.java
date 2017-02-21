@@ -67,7 +67,7 @@ public final class ODataUtils {
             task.querySpec.options.add(QueryOption.EXPAND_CONTENT);
         }
 
-        String filter = UriUtils.getODataFilterParamValue(op.getUri());
+        String filter = UriUtils.getODataFilterParamValue(op);
         if (filter != null) {
             Query q = new ODataQueryVisitor(wildcardFilterUnfoldPropertyNames).toQuery(filter);
             if (q != null) {

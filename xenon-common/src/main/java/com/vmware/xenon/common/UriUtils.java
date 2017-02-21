@@ -506,6 +506,10 @@ public final class UriUtils {
 
     public static Map<String, String> parseUriQueryParams(URI uri) {
         String query = uri.getQuery();
+        return parseUriQueryParams(query);
+    }
+
+    public static Map<String, String> parseUriQueryParams(String query) {
         if (query == null || query.isEmpty()) {
             return new HashMap<>();
         }
@@ -719,6 +723,33 @@ public final class UriUtils {
         }
 
         Map<String, String> queryParams = parseUriQueryParams(uri);
+
+        String filterParamValue = queryParams.get(URI_PARAM_ODATA_FILTER);
+        if (filterParamValue == null || filterParamValue.isEmpty()) {
+            return null;
+        }
+
+        return filterParamValue;
+    }
+
+    public static String getODataFilterParamValue(Operation operation) {
+
+        String query = operation.getRequestHeader(Operation.ODATA_PROCESSED_QUERY);
+
+        if (query == null) {
+            query = operation.getUri().getQuery();
+        }
+
+
+        if (query == null || query.isEmpty()) {
+            return null;
+        }
+
+        if (!query.contains(URI_PARAM_ODATA_FILTER)) {
+            return null;
+        }
+
+        Map<String, String> queryParams = parseUriQueryParams(query);
 
         String filterParamValue = queryParams.get(URI_PARAM_ODATA_FILTER);
         if (filterParamValue == null || filterParamValue.isEmpty()) {

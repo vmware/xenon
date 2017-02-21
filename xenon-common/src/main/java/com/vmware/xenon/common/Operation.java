@@ -412,6 +412,7 @@ public class Operation implements Cloneable {
             + "tx-phase";
     public static final String TRANSACTION_ID_HEADER = HEADER_NAME_PREFIX + "tx-id";
     public static final String TRANSACTION_REFLINK_HEADER = HEADER_NAME_PREFIX + "tx-reflink";
+    public static final String ODATA_PROCESSED_QUERY = HEADER_NAME_PREFIX + "odata-processed-query";
 
     /**
      * Infrastructure use only. Set when a service is first created due to a client request. Since

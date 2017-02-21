@@ -313,6 +313,7 @@ public class TestODataQueryService extends BasicReusableHostTestCase {
     public void filterQueries() throws Throwable {
         this.selfLinks = postExample(this.min, this.max);
         testSimpleStringQuery();
+        testComplexStringQuery();
         testGTQuery();
         testGEQuery();
         testLTQuery();
@@ -337,6 +338,28 @@ public class TestODataQueryService extends BasicReusableHostTestCase {
         assertTrue(outState.name.equals(inState.name));
 
         out = doFactoryServiceQuery(queryString, false);
+        assertNotNull(out);
+        outState = Utils.fromJson(
+                out.get(inState.documentSelfLink), ExampleService.ExampleServiceState.class);
+        assertTrue(outState.name.equals(inState.name));
+    }
+
+    private void testComplexStringQuery() throws Throwable {
+        ExampleService.ExampleServiceState inState = new ExampleService.ExampleServiceState();
+        inState.name = "TEST [ STRING ]";
+        postExample(inState);
+
+        String queryString = "$filter=name eq 'TEST [ STRING ]'";
+
+        Map<String, Object> out = doQuery(queryString, true).documents;
+        assertNotNull(out);
+
+        ExampleService.ExampleServiceState outState = Utils.fromJson(
+                out.get(inState.documentSelfLink), ExampleService.ExampleServiceState.class);
+        assertTrue(outState.name.equals(inState.name));
+
+        // Test if it passes through external call
+        out = doFactoryServiceQuery(queryString, true);
         assertNotNull(out);
         outState = Utils.fromJson(
                 out.get(inState.documentSelfLink), ExampleService.ExampleServiceState.class);
