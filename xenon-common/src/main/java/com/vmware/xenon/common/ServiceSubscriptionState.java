@@ -31,6 +31,7 @@ public class ServiceSubscriptionState extends ServiceDocument {
 
         public URI reference;
         public Long notificationLimit;
+        public String subscriptionId;
 
         /**
          * If replayState is true, when the subscription is created, the current state will
@@ -62,6 +63,11 @@ public class ServiceSubscriptionState extends ServiceDocument {
 
         public ServiceSubscriber setUsePublicUri(boolean usePublicUri) {
             this.usePublicUri = usePublicUri;
+            return this;
+        }
+
+        public ServiceSubscriber setSubscriptionId(String subscriptionId) {
+            this.subscriptionId = subscriptionId;
             return this;
         }
 

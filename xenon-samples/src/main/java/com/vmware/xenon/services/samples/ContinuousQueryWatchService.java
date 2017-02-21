@@ -13,15 +13,12 @@
 
 package com.vmware.xenon.services.samples;
 
-import java.net.URI;
-
-import java.util.function.Consumer;
 import java.util.logging.Level;
 
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.ServiceDocument;
-import com.vmware.xenon.common.ServiceDocumentDescription.PropertyUsageOption;
 import com.vmware.xenon.common.ServiceHost;
+import com.vmware.xenon.common.ServiceSubscriptionState.ServiceSubscriber;
 import com.vmware.xenon.common.StatefulService;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
@@ -52,6 +49,10 @@ public abstract class ContinuousQueryWatchService extends StatefulService implem
 
     public String getQueryTaskLink() {
         return UriUtils.buildUriPath(ServiceUriPaths.CORE_LOCAL_QUERY_TASKS, "query-" + getId());
+    }
+
+    public String getSubscriptionId() {
+        return UriUtils.buildUriPath(ServiceUriPaths.CORE_LOCAL_QUERY_TASKS, "subscription-" + getId());
     }
 
     /**
@@ -90,10 +91,6 @@ public abstract class ContinuousQueryWatchService extends StatefulService implem
     public void handlePatch(Operation patch) {
         State state = getState(patch);
         State patchBody = getBody(patch);
-
-        if (patchBody.subscriptionLink != null) {
-            state.subscriptionLink = patchBody.subscriptionLink;
-        }
 
         state.notificationsCounter += patchBody.notificationsCounter;
 
@@ -148,34 +145,19 @@ public abstract class ContinuousQueryWatchService extends StatefulService implem
                 .whenCompleteNotify(op);
     }
 
+    private ServiceSubscriber getSubscriberRequest() {
+        return ServiceSubscriber.create(true).setUsePublicUri(true).setSubscriptionId(getSubscriptionId());
+    }
+
     public void subscribeToContinuousQuery() {
-        Operation post = Operation
-                .createPost(UriUtils.buildUri(getHost(), getQueryTaskLink()))
-                .setReferer(getHost().getUri());
-
-        URI subscriptionUri = getHost().startSubscriptionService(post, this::processAllResults);
-        updateSubscriptionLink(subscriptionUri);
+        Operation op = Operation.createPost(UriUtils.buildUri(getHost(), getQueryTaskLink())).setReferer(getUri());
+        getHost().startSubscriptionService(op, this::processAllResults, getSubscriberRequest());
     }
 
-    private void updateSubscriptionLink(URI subscriptionLink) {
-        State state = new State();
-        state.subscriptionLink = subscriptionLink == null ? "" : subscriptionLink.toString();
-        Operation patch = Operation.createPatch(getUri())
-                .setBody(state)
-                .setReferer(getUri());
-        this.sendRequest(patch);
-    }
-
-    private void deleteSubscriptionAndContinuousQuery(Operation op) {
-        Operation unsubscribeOperation = Operation.createPost(UriUtils.buildUri(getHost(), getQueryTaskLink()))
-                .setReferer(getUri())
-                .setCompletion((o, e) -> {
-                    updateSubscriptionLink(null);
-                    deleteContinuousQuery();
-                });
-
-        getStateAndApply(state -> getHost().stopSubscriptionService(unsubscribeOperation,
-                UriUtils.buildUri(state.subscriptionLink)));
+    private void deleteSubscriptionAndContinuousQuery(Operation operation) {
+        Operation op = Operation.createPost(UriUtils.buildUri(getHost(), getQueryTaskLink())).setReferer(getUri())
+                .setCompletion((o, e) -> deleteContinuousQuery());
+        getHost().stopSubscriptionService(op, getSubscriberRequest());
     }
 
     private void deleteContinuousQuery() {
@@ -184,21 +166,7 @@ public abstract class ContinuousQueryWatchService extends StatefulService implem
                 .setReferer(getUri()));
     }
 
-    private void getStateAndApply(Consumer<? super State> action) {
-        Operation get = Operation
-                .createGet(this, this.getSelfLink())
-                .setReferer(getUri());
-
-        getHost().sendWithDeferredResult(get, State.class)
-                .thenAccept(action)
-                .whenCompleteNotify(get);
-    }
-
     public static class State extends ServiceDocument {
-
-        @UsageOption(option = PropertyUsageOption.AUTO_MERGE_IF_NOT_NULL)
-        public String subscriptionLink;
-
         public int notificationsCounter;
     }
 }
