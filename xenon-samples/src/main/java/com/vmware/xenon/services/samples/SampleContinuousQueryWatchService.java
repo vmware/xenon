@@ -18,7 +18,7 @@ import java.util.function.Consumer;
 
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.ServiceDocument;
-import com.vmware.xenon.common.ServiceDocumentDescription.PropertyUsageOption;
+import com.vmware.xenon.common.ServiceSubscriptionState.ServiceSubscriber;
 import com.vmware.xenon.common.StatefulService;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.services.common.QueryTask;
@@ -42,6 +42,11 @@ public class SampleContinuousQueryWatchService extends StatefulService {
      * A known self-link for query task service, so that we can refer it easily for start and stop.
      */
     public static final String QUERY_SELF_LINK = ServiceUriPaths.CORE_LOCAL_QUERY_TASKS + "/sample-continuous-query";
+
+    /**
+     * A known self-link for subscription service, so that we can refer it easily for start and stop.
+     */
+    public static final String SUBSCRIPTION_SELF_LINK = ServiceUriPaths.CORE_CALLBACKS + "/sample-cq-subscription";
 
     public SampleContinuousQueryWatchService() {
         super(State.class);
@@ -71,13 +76,7 @@ public class SampleContinuousQueryWatchService extends StatefulService {
     public void handlePatch(Operation patch) {
         State state = getState(patch);
         State patchBody = getBody(patch);
-
-        if (patchBody.subscriptionLink != null) {
-            state.subscriptionLink = patchBody.subscriptionLink;
-        }
-
         state.notificationsCounter += patchBody.notificationsCounter;
-
         patch.setBody(state);
         patch.complete();
     }
@@ -152,19 +151,17 @@ public class SampleContinuousQueryWatchService extends StatefulService {
                 .createPost(getHost(), QUERY_SELF_LINK)
                 .setReferer(getHost().getUri());
 
+        URI subscriptionUri = UriUtils.buildPublicUri(getHost(), SUBSCRIPTION_SELF_LINK);
+
+        ServiceSubscriber sr = ServiceSubscriber
+                .create(false)
+                .setUsePublicUri(true)
+                .setSubscriberReference(subscriptionUri);
+
         // Create subscription service with processResults as callback to process the results.
-        URI subscriptionUri = getHost().startSubscriptionService(post, this::processResults);
-        updateSubscriptionLink(subscriptionUri);
+        getHost().startSubscriptionService(post, this::processResults, sr);
     }
 
-    /**
-     * Update subscription link in service state using send PATCH request to self.
-     */
-    private void updateSubscriptionLink(URI subscriptionLink) {
-        State state = new State();
-        state.subscriptionLink = subscriptionLink == null ? "" : subscriptionLink.toString();
-        Operation.createPatch(getUri()).setBody(state).sendWith(this);
-    }
 
     /**
      * Called by handleNodeGroupMaintenance() to delete the continuous query and subscription when
@@ -173,13 +170,10 @@ public class SampleContinuousQueryWatchService extends StatefulService {
     private void deleteSubscriptionAndContinuousQuery(Operation op) {
         Operation unsubscribeOperation = Operation.createPost(getHost(), QUERY_SELF_LINK)
                 .setReferer(getHost().getUri())
-                .setCompletion((o, e) -> {
-                    updateSubscriptionLink(null);
-                    deleteContinuousQuery();
-                });
+                .setCompletion((o, e) -> deleteContinuousQuery());
 
-        getStateAndApply(state -> getHost().stopSubscriptionService(unsubscribeOperation,
-                UriUtils.buildUri(state.subscriptionLink)));
+        URI notificationTarget = UriUtils.buildPublicUri(getHost(), SUBSCRIPTION_SELF_LINK);
+        getHost().stopSubscriptionService(unsubscribeOperation, notificationTarget);
     }
 
     /**
@@ -212,11 +206,6 @@ public class SampleContinuousQueryWatchService extends StatefulService {
     }
 
     public static class State extends ServiceDocument {
-
-        // must call Utils.mergeWithState to leverage this
-        @UsageOption(option = PropertyUsageOption.AUTO_MERGE_IF_NOT_NULL)
-        public String subscriptionLink;
-
         public QuerySpecification querySpec;
 
         public int notificationsCounter;

@@ -2082,7 +2082,12 @@ public class ServiceHost implements ServiceRequestSender {
             }, delta, TimeUnit.MICROSECONDS);
         }
 
-        request.reference = subscriptionUri;
+        if (request.reference == null) {
+            request.reference = subscriptionUri;
+        } else {
+            subscriptionUri = request.reference;
+        }
+
         subscribe.setBody(request);
         Operation post = Operation
                 .createPost(subscriptionUri)
