@@ -2023,18 +2023,8 @@ public class ServiceHost implements ServiceRequestSender {
             Service notificationTarget,
             ServiceSubscriber request) {
 
-        if (subscribe == null) {
-            throw new IllegalArgumentException("subscribe operation is required");
-        }
-
-        if (subscribe.getUri() == null) {
-            subscribe.fail(new IllegalArgumentException("subscribe URI is required"));
+        if (sanitizeSubscriptionOperation(subscribe)) {
             return null;
-        }
-
-        if (!subscribe.getUri().getPath().endsWith(SERVICE_URI_SUFFIX_SUBSCRIPTIONS)) {
-            subscribe.setUri(UriUtils.extendUri(subscribe.getUri(),
-                    SERVICE_URI_SUFFIX_SUBSCRIPTIONS));
         }
 
         // After a service has been stopped it cannot be reused
@@ -2058,7 +2048,7 @@ public class ServiceHost implements ServiceRequestSender {
         } else {
             if (notificationTargetSelfLink == null) {
                 notificationTargetSelfLink = UriUtils.buildUriPath(ServiceUriPaths.CORE_CALLBACKS,
-                        nextUUID());
+                        request.subscriptionId == null ? nextUUID() : request.subscriptionId);
             }
             if (request.usePublicUri) {
                 subscriptionUri = UriUtils.buildPublicUri(this, notificationTargetSelfLink);
@@ -2101,6 +2091,31 @@ public class ServiceHost implements ServiceRequestSender {
         }
         return subscriptionUri;
     }
+    /**
+     * Delete subscription from publisher and stop notification target service
+     */
+    public void stopSubscriptionService(
+            Operation unsubscribe,
+            ServiceSubscriber request) {
+        if (sanitizeSubscriptionOperation(unsubscribe)) {
+            return;
+        }
+
+        unsubscribe.setAction(Action.DELETE);
+
+        String notificationTargetSelfLink = UriUtils.buildUriPath(ServiceUriPaths.CORE_CALLBACKS,
+                    request.subscriptionId == null ? nextUUID() : request.subscriptionId);
+
+        URI subscriptionUri;
+        if (request.usePublicUri) {
+            subscriptionUri = UriUtils.buildPublicUri(this, notificationTargetSelfLink);
+        } else {
+            subscriptionUri = UriUtils.buildUri(this, notificationTargetSelfLink);
+        }
+
+        request.reference = subscriptionUri;
+        sendUnsubscribeRequest(unsubscribe, subscriptionUri, request);
+    }
 
     /**
      * Delete subscription from publisher and stop notification target service
@@ -2108,24 +2123,36 @@ public class ServiceHost implements ServiceRequestSender {
     public void stopSubscriptionService(
             Operation unsubscribe,
             URI notificationTarget) {
-        if (unsubscribe == null) {
-            throw new IllegalArgumentException("unsubscribe operation is required");
-        }
-
-        if (unsubscribe.getUri() == null) {
-            unsubscribe.fail(new IllegalArgumentException("unsubscribe URI is required"));
+        if (sanitizeSubscriptionOperation(unsubscribe)) {
             return;
         }
 
-        if (!unsubscribe.getUri().getPath().endsWith(SERVICE_URI_SUFFIX_SUBSCRIPTIONS)) {
-            unsubscribe.setUri(UriUtils.extendUri(unsubscribe.getUri(),
+        unsubscribe.setAction(Action.DELETE);
+        ServiceSubscriber unSubscribeBody = new ServiceSubscriber();
+        unSubscribeBody.reference = notificationTarget;
+        sendUnsubscribeRequest(unsubscribe, notificationTarget, unSubscribeBody);
+    }
+
+    private boolean sanitizeSubscriptionOperation(Operation sub) {
+        if (sub == null) {
+            throw new IllegalArgumentException("(un)subscribe operation is required");
+        }
+
+        if (sub.getUri() == null) {
+            sub.fail(new IllegalArgumentException("(un)subscribe URI is required"));
+            return true;
+        }
+
+        if (!sub.getUri().getPath().endsWith(SERVICE_URI_SUFFIX_SUBSCRIPTIONS)) {
+            sub.setUri(UriUtils.extendUri(sub.getUri(),
                     SERVICE_URI_SUFFIX_SUBSCRIPTIONS));
         }
 
-        unsubscribe.setAction(Action.DELETE);
+        return false;
+    }
 
-        ServiceSubscriber unSubscribeBody = new ServiceSubscriber();
-        unSubscribeBody.reference = notificationTarget;
+    private void sendUnsubscribeRequest(
+            Operation unsubscribe, URI notificationTarget, ServiceSubscriber unSubscribeBody) {
         sendRequest(unsubscribe
                 .setBodyNoCloning(unSubscribeBody)
                 .nestCompletion(
