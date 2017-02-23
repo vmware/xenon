@@ -17,6 +17,8 @@
   When **patch** expiration time is 0, **source** expiration time will NOT be updated.
   Any other value is set, then source expiration time will be updated to that value.
 
+* Added local file support for ServiceHostManagementService backup/restore request.
+  "destination" URI parameter now takes "file" scheme for local file in addition to "http" and "https".
 
 ## 1.3.7
 
