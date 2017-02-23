@@ -2493,6 +2493,8 @@ public class LuceneDocumentIndexService extends StatelessService {
                 return;
             }
 
+            long deadline = Utils.getSystemNowMicrosUtc() + getMaintenanceIntervalMicros();
+
             long startNanos = System.nanoTime();
             IndexSearcher s = createOrRefreshSearcher(null, Integer.MAX_VALUE, w, false);
             long endNanos = System.nanoTime();
@@ -2501,14 +2503,14 @@ public class LuceneDocumentIndexService extends StatelessService {
                     TimeUnit.NANOSECONDS.toMicros(endNanos - startNanos));
 
             startNanos = endNanos;
-            applyDocumentExpirationPolicy(s);
+            applyDocumentExpirationPolicy(s, deadline);
             endNanos = System.nanoTime();
             setTimeSeriesHistogramStat(STAT_NAME_MAINTENANCE_DOCUMENT_EXPIRATION_DURATION_MICROS,
                     AGGREGATION_TYPE_AVG_MAX,
                     TimeUnit.NANOSECONDS.toMicros(endNanos - startNanos));
 
             startNanos = endNanos;
-            applyDocumentVersionRetentionPolicy();
+            applyDocumentVersionRetentionPolicy(deadline);
             endNanos = System.nanoTime();
             setTimeSeriesHistogramStat(STAT_NAME_MAINTENANCE_VERSION_RETENTION_DURATION_MICROS,
                     AGGREGATION_TYPE_AVG_MAX,
@@ -2633,16 +2635,13 @@ public class LuceneDocumentIndexService extends StatelessService {
         }
     }
 
-    private void applyDocumentVersionRetentionPolicy() throws Throwable {
+    private void applyDocumentVersionRetentionPolicy(long deadline) throws Throwable {
         Map<String, Long> links = new HashMap<>();
         Iterator<Entry<String, Long>> it;
-        int count = 0;
-        synchronized (this.liveVersionsPerLink) {
-            int size = this.liveVersionsPerLink.size();
-            if (size > versionRetentionBulkCleanupThreshold) {
-                links.putAll(this.liveVersionsPerLink);
-                this.liveVersionsPerLink.clear();
-            } else {
+
+        do {
+            int count = 0;
+            synchronized (this.liveVersionsPerLink) {
                 it = this.liveVersionsPerLink.entrySet().iterator();
                 while (it.hasNext() && count < versionRetentionServiceThreshold) {
                     Entry<String, Long> e = it.next();
@@ -2651,23 +2650,26 @@ public class LuceneDocumentIndexService extends StatelessService {
                     count++;
                 }
             }
-        }
 
-        if (links.isEmpty()) {
-            return;
-        }
-
-        adjustTimeSeriesStat(STAT_NAME_VERSION_RETENTION_SERVICE_COUNT, AGGREGATION_TYPE_SUM,
-                links.size());
-
-        Operation dummyDelete = Operation.createDelete(null);
-        for (Entry<String, Long> e : links.entrySet()) {
-            IndexWriter wr = this.writer;
-            if (wr == null) {
-                return;
+            if (links.isEmpty()) {
+                break;
             }
-            deleteDocumentsFromIndex(dummyDelete, e.getKey(), 0, e.getValue());
-        }
+
+            adjustTimeSeriesStat(STAT_NAME_VERSION_RETENTION_SERVICE_COUNT, AGGREGATION_TYPE_SUM,
+                    links.size());
+
+            Operation dummyDelete = Operation.createDelete(null);
+            for (Entry<String, Long> e : links.entrySet()) {
+                IndexWriter wr = this.writer;
+                if (wr == null) {
+                    return;
+                }
+                deleteDocumentsFromIndex(dummyDelete, e.getKey(), 0, e.getValue());
+            }
+
+            links.clear();
+
+        } while (Utils.getSystemNowMicrosUtc() < deadline);
     }
 
     private void applyMemoryLimit() {
@@ -2750,58 +2752,68 @@ public class LuceneDocumentIndexService extends StatelessService {
         logInfo("Cleared %d document update entries", count);
     }
 
-    private void applyDocumentExpirationPolicy(IndexSearcher s) throws Throwable {
-        long expirationUpperBound = Utils.getNowMicrosUtc();
+    private void applyDocumentExpirationPolicy(IndexSearcher s, long deadline) throws Throwable {
 
         Query versionQuery = LongPoint.newRangeQuery(
-                ServiceDocument.FIELD_NAME_EXPIRATION_TIME_MICROS, 1L, expirationUpperBound);
+                ServiceDocument.FIELD_NAME_EXPIRATION_TIME_MICROS, 1L, Utils.getNowMicrosUtc());
 
-        TopDocs results = s.search(versionQuery, expiredDocumentSearchThreshold);
-        if (results.totalHits == 0) {
-            return;
-        }
-
-        if (results.totalHits > expiredDocumentSearchThreshold) {
-            adjustTimeSeriesStat(STAT_NAME_DOCUMENT_EXPIRATION_FORCED_MAINTENANCE_COUNT,
-                    AGGREGATION_TYPE_SUM, 1);
-        }
-
-        Map<String, Long> latestVersions = new HashMap<>();
+        ScoreDoc after = null;
         Operation dummyDelete = null;
-        for (ScoreDoc scoreDoc : results.scoreDocs) {
-            Document doc = s.doc(scoreDoc.doc, this.fieldsToLoadNoExpand);
-            String documentSelfLink = doc.get(ServiceDocument.FIELD_NAME_SELF_LINK);
-            Long latestVersion = latestVersions.get(documentSelfLink);
-            if (latestVersion == null) {
-                long searcherUpdateTime = getSearcherUpdateTime(s, 0);
-                latestVersion = getLatestVersion(s, searcherUpdateTime, documentSelfLink, 0, -1);
-                latestVersions.put(documentSelfLink, latestVersion);
+        boolean firstQuery = true;
+        Map<String, Long> latestVersions = new HashMap<>();
+
+        do {
+            TopDocs results = s.searchAfter(after, versionQuery, expiredDocumentSearchThreshold,
+                    this.versionSort, false, false);
+            if (results.scoreDocs == null || results.scoreDocs.length == 0) {
+                return;
             }
 
-            IndexableField versionField = doc.getField(ServiceDocument.FIELD_NAME_VERSION);
-            long expiredVersion = versionField.numericValue().longValue();
-            if (expiredVersion < latestVersion) {
-                continue;
+            after = results.scoreDocs[results.scoreDocs.length - 1];
+
+            if (firstQuery && results.totalHits > expiredDocumentSearchThreshold) {
+                adjustTimeSeriesStat(STAT_NAME_DOCUMENT_EXPIRATION_FORCED_MAINTENANCE_COUNT,
+                        AGGREGATION_TYPE_SUM, 1);
             }
 
-            adjustTimeSeriesStat(STAT_NAME_DOCUMENT_EXPIRATION_COUNT, AGGREGATION_TYPE_SUM, 1);
+            firstQuery = false;
 
-            // update document with one that has all fields, including binary state
-            doc = s.doc(scoreDoc.doc, this.fieldsToLoadWithExpand);
-            ServiceDocument serviceDocument = null;
-            try {
-                serviceDocument = getStateFromLuceneDocument(doc, documentSelfLink);
-            } catch (Throwable e) {
-                logWarning("Error deserializing state for %s: %s", documentSelfLink,
-                        e.getMessage());
+            for (ScoreDoc scoreDoc : results.scoreDocs) {
+                Document doc = s.doc(scoreDoc.doc, this.fieldsToLoadNoExpand);
+                String documentSelfLink = doc.get(ServiceDocument.FIELD_NAME_SELF_LINK);
+                Long latestVersion = latestVersions.get(documentSelfLink);
+                if (latestVersion == null) {
+                    long searcherUpdateTime = getSearcherUpdateTime(s, 0);
+                    latestVersion = getLatestVersion(s, searcherUpdateTime, documentSelfLink, 0,
+                            -1);
+                    latestVersions.put(documentSelfLink, latestVersion);
+                }
+
+                IndexableField versionField = doc.getField(ServiceDocument.FIELD_NAME_VERSION);
+                long expiredVersion = versionField.numericValue().longValue();
+                if (expiredVersion < latestVersion) {
+                    continue;
+                }
+
+                adjustTimeSeriesStat(STAT_NAME_DOCUMENT_EXPIRATION_COUNT, AGGREGATION_TYPE_SUM, 1);
+
+                // update document with one that has all fields, including binary state
+                doc = s.doc(scoreDoc.doc, this.fieldsToLoadWithExpand);
+                ServiceDocument serviceDocument = null;
+                try {
+                    serviceDocument = getStateFromLuceneDocument(doc, documentSelfLink);
+                } catch (Throwable e) {
+                    logWarning("Error deserializing state for %s: %s", documentSelfLink,
+                            e.getMessage());
+                }
+
+                if (dummyDelete == null) {
+                    dummyDelete = Operation.createDelete(null);
+                }
+
+                deleteAllDocumentsForSelfLink(dummyDelete, documentSelfLink, serviceDocument);
             }
-
-            if (dummyDelete == null) {
-                dummyDelete = Operation.createDelete(null);
-            }
-
-            deleteAllDocumentsForSelfLink(dummyDelete, documentSelfLink, serviceDocument);
-        }
+        } while (Utils.getSystemNowMicrosUtc() < deadline);
     }
 
     private void applyActiveQueries(Operation op, ServiceDocument latestState,

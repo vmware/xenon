@@ -1620,10 +1620,6 @@ public class TestLuceneDocumentIndexService {
                     ServiceHostState.DEFAULT_OPERATION_TIMEOUT_MICROS);
         }
 
-        // Set the document expiration limit to something high enough that we won't allow the index
-        // to grow in unbounded fashion.
-        LuceneDocumentIndexService.setExpiredDocumentSearchThreshold(100000);
-
         // This code path is designed to simulate POST and query throughput under heavy load,
         // processing queries which match many results.
         QueryTask queryTask = QueryTask.Builder.createDirectTask()
