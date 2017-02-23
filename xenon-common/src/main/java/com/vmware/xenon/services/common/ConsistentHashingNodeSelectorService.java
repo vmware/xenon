@@ -538,7 +538,10 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
     @Override
     public void handleMaintenance(Operation maintOp) {
         performPendingRequestMaintenance();
-        checkAndScheduleSynchronization(this.cachedGroupState.membershipUpdateTimeMicros);
+        if (checkAndScheduleSynchronization(this.cachedGroupState.membershipUpdateTimeMicros,
+                maintOp)) {
+            return;
+        }
         maintOp.complete();
     }
 
@@ -572,51 +575,55 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
 
     }
 
-    private void checkAndScheduleSynchronization(long membershipUpdateMicros) {
+    private boolean checkAndScheduleSynchronization(long membershipUpdateMicros,
+            Operation maintOp) {
         if (getHost().isStopping()) {
-            return;
+            return false;
         }
 
         if (!this.isSynchronizationRequired) {
             // this boolean is set to false on notifications for node group changes
-            return;
+            return false;
         }
 
         if (!NodeGroupUtils.isMembershipSettled(getHost(), getHost().getMaintenanceIntervalMicros(),
                 this.cachedGroupState)) {
-            checkConvergence(membershipUpdateMicros);
-            return;
+            checkConvergence(membershipUpdateMicros, maintOp);
+            return true;
         }
 
         if (!this.isNodeGroupConverged) {
-            checkConvergence(membershipUpdateMicros);
-            return;
+            checkConvergence(membershipUpdateMicros, maintOp);
+            return true;
         }
 
         if (!getHost().isPeerSynchronizationEnabled()
                 || !this.isSynchronizationRequired) {
-            return;
+            return false;
         }
 
         this.isSynchronizationRequired = false;
         logInfo("Scheduling synchronization (%d nodes)", this.cachedGroupState.nodes.size());
         adjustStat(STAT_NAME_SYNCHRONIZATION_COUNT, 1);
         getHost().scheduleNodeGroupChangeMaintenance(getSelfLink());
+        return false;
     }
 
-    private void checkConvergence(long membershipUpdateMicros) {
+    private void checkConvergence(long membershipUpdateMicros, Operation maintOp) {
 
         CompletionHandler c = (o, e) -> {
             if (e != null) {
                 if (!getHost().isStopping()) {
                     logSevere(e);
                 }
+                maintOp.complete();
                 return;
             }
 
             final int quorumWarningsBeforeQuiet = 10;
             if (!o.hasBody()) {
                 logWarning("Missing node group state");
+                maintOp.complete();
                 return;
             }
             NodeGroupState ngs = o.getBody(NodeGroupState.class);
@@ -633,6 +640,7 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
                                 if (e1 != null) {
                                     logWarning("Failed convergence check, will retry: %s",
                                             e1.getMessage());
+                                    maintOp.complete();
                                     return;
                                 }
 
@@ -644,6 +652,7 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
                                         logWarning("Synchronization quorum not met, warning will be silenced");
                                     }
                                     this.synchQuorumWarningCount++;
+                                    maintOp.complete();
                                     return;
                                 }
 
@@ -655,6 +664,7 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
                                         this.synchQuorumWarningCount = 0;
                                     }
                                 }
+                                maintOp.complete();
                             }));
         };
 
