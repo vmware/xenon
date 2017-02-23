@@ -175,6 +175,7 @@ public class NodeGroupService extends StatefulService {
         super(NodeGroupState.class);
         super.toggleOption(ServiceOption.INSTRUMENTATION, true);
         super.toggleOption(ServiceOption.PERIODIC_MAINTENANCE, true);
+        super.toggleOption(ServiceOption.CONCURRENT_GET_HANDLING, true);
     }
 
     @Override
@@ -221,8 +222,7 @@ public class NodeGroupService extends StatefulService {
 
     @Override
     public void handleGet(Operation get) {
-        NodeGroupState state = getState(get);
-        get.setBody(state).complete();
+        get.setBody(this.cachedState).complete();
     }
 
     @Override
