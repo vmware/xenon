@@ -20,6 +20,10 @@
 * Remove `VerificationHost#createExampleServices(ServiceHost, long, List<URI>, Long)`.
   Instead of passing `List<URI> exampleURIs`, overloading methods returns list of full uris.
 
+* Added local file support for ServiceHostManagementService backup/restore request.
+  "destination" URI parameter now takes "file" scheme for local file in addition to "http" and "https".
+
+
 ## 1.3.7
 
 * For factories using setUseBodyForSelfLink, FactoryService will
