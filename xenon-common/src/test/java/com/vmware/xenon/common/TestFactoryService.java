@@ -68,7 +68,7 @@ class TypeMismatchTestFactoryService extends FactoryService {
 }
 
 class SynchTestFactoryService extends FactoryService {
-    private static final int MAINTENANCE_DELAY_HANDLE_MICROS = 50;
+    private static final int MAINTENANCE_DELAY_HANDLE_MILLISECONDS = 150;
     public static final String TEST_FACTORY_PATH = "/subpath/testfactory";
     public static final String TEST_SERVICE_PATH = TEST_FACTORY_PATH + "/instanceX";
 
@@ -106,8 +106,8 @@ class SynchTestFactoryService extends FactoryService {
         }
 
         if (task != null) {
-            getHost().schedule(task, MAINTENANCE_DELAY_HANDLE_MICROS,
-                    TimeUnit.MICROSECONDS);
+            getHost().schedule(task, MAINTENANCE_DELAY_HANDLE_MILLISECONDS,
+                    TimeUnit.MILLISECONDS);
         }
         super.handleNodeGroupMaintenance(post);
     }
