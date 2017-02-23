@@ -16,6 +16,8 @@ package com.vmware.xenon.services.common;
 import java.io.File;
 import java.io.IOException;
 import java.net.URI;
+import java.nio.file.StandardOpenOption;
+import java.util.EnumSet;
 import java.util.logging.Level;
 
 import com.vmware.xenon.common.FileUtils;
@@ -26,6 +28,7 @@ import com.vmware.xenon.common.ServiceStats;
 import com.vmware.xenon.common.StatefulService;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
+import com.vmware.xenon.services.common.LocalFileService.LocalFileServiceState;
 
 /**
  * Provides host information and allows for host configuration. It can also be used to determine
@@ -128,7 +131,14 @@ public class ServiceHostManagementService extends StatefulService {
         /** Auth token for upload, if any **/
         public String bearer;
 
-        /** Where the file should go **/
+        /**
+         * Where the file should go
+         *
+         * Supported UIR scheme: http, https, file with local file
+         * When http/https is specified, destination is expected to accept put request with range header.
+         *
+         * @see LocalFileService
+         **/
         public URI destination;
 
         /** Request kind **/
@@ -145,7 +155,14 @@ public class ServiceHostManagementService extends StatefulService {
         /** Auth token for upload, if any **/
         public String bearer;
 
-        /** Where the file to download exists **/
+        /**
+         * Where the file to download exists
+         *
+         * Supported UIR scheme: http, https, file with local file
+         * When http/https scheme is specified, destination is expected to accept get with range header.
+         *
+         * @see LocalFileService
+         **/
         public URI destination;
 
         /** Request kind **/
@@ -283,6 +300,15 @@ public class ServiceHostManagementService extends StatefulService {
         URI indexServiceUri = UriUtils
                 .buildUri(this.getHost(), ServiceUriPaths.CORE_DOCUMENT_INDEX);
 
+        // when local file is specified to the destination, create a LocalFileService and make it to the destination
+        boolean createLocalFileService = isLocalFileUri(req.destination);
+        URI backupServiceUri;
+        if (createLocalFileService) {
+            backupServiceUri = createLocalFileServiceUri();
+        } else {
+            backupServiceUri = req.destination;
+        }
+
         LuceneDocumentIndexService.BackupRequest luceneBackup = new LuceneDocumentIndexService.BackupRequest();
         luceneBackup.documentKind = LuceneDocumentIndexService.BackupRequest.KIND;
 
@@ -296,6 +322,22 @@ public class ServiceHostManagementService extends StatefulService {
             // upload the result.
             LuceneDocumentIndexService.BackupResponse r = o
                     .getBody(LuceneDocumentIndexService.BackupResponse.class);
+
+            if (createLocalFileService) {
+                // delete local file service when finished
+                op.nestCompletion((ox, ex) -> {
+                    Operation.createDelete(backupServiceUri)
+                            .setCompletion((deleteOp, deleteOx) -> {
+                                if (deleteOx != null) {
+                                    logInfo("Failed to delete local file service %s for backup. %s",
+                                            backupServiceUri, Utils.toString(deleteOx));
+                                    // we will not fail entire backup operation if deletion of local file failed
+                                }
+                                op.complete();
+                            })
+                            .sendWith(this);
+                });
+            }
 
             op.nestCompletion((ox, ex) -> {
                 if (ex != null) {
@@ -311,19 +353,55 @@ public class ServiceHostManagementService extends StatefulService {
             });
 
             try {
-                uploadFile(op, r.backupFile, req);
+                uploadFile(op, r.backupFile, backupServiceUri);
             } catch (Exception ex) {
                 op.fail(ex);
             }
         };
 
-        sendRequest(Operation.createPatch(indexServiceUri).setBody(luceneBackup).setCompletion(c));
+        Operation initialPost = Operation.createPost(getHost(), backupServiceUri.getPath())
+                .setCompletion((o, e) -> {
+                    if (e != null) {
+                        op.fail(e);
+                        return;
+                    }
+                    sendRequest(Operation.createPatch(indexServiceUri).setBody(luceneBackup).setCompletion(c));
+                });
+
+        if (createLocalFileService) {
+            LocalFileServiceState body = new LocalFileServiceState();
+            body.fileOptions = EnumSet.of(StandardOpenOption.WRITE, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
+            body.localFilePath = req.destination.getPath();
+            body.documentSelfLink = UriUtils.buildUriPath(LocalFileService.SERVICE_PREFIX, getHost().nextUUID());
+
+            initialPost.setBody(body);
+
+            getHost().startService(initialPost, new LocalFileService());
+        } else {
+            // skip LocalFileService creation
+            initialPost.complete();
+        }
+
     }
 
-    private void uploadFile(Operation op, URI file, BackupRequest req) throws Exception {
+    private boolean isLocalFileUri(URI uri) {
+        try {
+            new File(uri);
+        } catch (IllegalArgumentException e) {
+            // if uri is not file scheme("file:"), it throws exception
+            return false;
+        }
+        return true;
+    }
+
+    private URI createLocalFileServiceUri() {
+        return UriUtils.buildUri(getHost().getUri(), LocalFileService.SERVICE_PREFIX, getHost().nextUUID());
+    }
+
+    private void uploadFile(Operation op, URI file, URI destination) throws Exception {
         File f = new File(file);
 
-        Operation post = Operation.createPost(req.destination)
+        Operation post = Operation.createPost(destination)
                 .transferRefererFrom(op).setCompletion((o, e) -> {
                     if (e != null) {
                         op.fail(e);
@@ -338,10 +416,16 @@ public class ServiceHostManagementService extends StatefulService {
         URI indexServiceUri = UriUtils
                 .buildUri(this.getHost(), ServiceUriPaths.CORE_DOCUMENT_INDEX);
 
+        boolean isLocalRestoreFile = isLocalFileUri(req.destination);
+
         try {
-            File fileToDownload = File.createTempFile("restore-" + Utils.getNowMicrosUtc(), ".zip",
-                    null);
-            final URI backupFileUri = fileToDownload.toURI();
+
+            File fileToDownload;
+            if (isLocalRestoreFile) {
+                fileToDownload = new File(req.destination);
+            } else {
+                fileToDownload = File.createTempFile("restore-" + Utils.getNowMicrosUtc(), ".zip");
+            }
 
             // download complete.  now restore the zip
             CompletionHandler c = (o, e) -> {
@@ -352,7 +436,7 @@ public class ServiceHostManagementService extends StatefulService {
 
                 LuceneDocumentIndexService.RestoreRequest luceneRestore = new LuceneDocumentIndexService.RestoreRequest();
                 luceneRestore.documentKind = LuceneDocumentIndexService.RestoreRequest.KIND;
-                luceneRestore.backupFile = backupFileUri;
+                luceneRestore.backupFile = fileToDownload.toURI();
                 luceneRestore.timeSnapshotBoundaryMicros = req.timeSnapshotBoundaryMicros;
 
                 op.nestCompletion((ox, ex) -> {
@@ -380,9 +464,14 @@ public class ServiceHostManagementService extends StatefulService {
                         }));
             };
 
-            Operation downloadFileOp = Operation.createGet(req.destination)
-                    .transferRefererFrom(op).setCompletion(c);
-            FileUtils.getFile(this.getHost().getClient(), downloadFileOp, fileToDownload);
+            Operation downloadFileOp = Operation.createGet(req.destination).transferRefererFrom(op).setCompletion(c);
+
+            if (isLocalRestoreFile) {
+                // skip download
+                downloadFileOp.complete();
+            } else {
+                FileUtils.getFile(this.getHost().getClient(), downloadFileOp, fileToDownload);
+            }
 
         } catch (IOException e) {
             op.fail(e);
