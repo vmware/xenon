@@ -42,6 +42,7 @@ import com.vmware.xenon.common.ServiceHost.ServiceHostState;
 import com.vmware.xenon.common.ServiceStats.ServiceStat;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
+import com.vmware.xenon.common.test.TestContext;
 import com.vmware.xenon.common.test.TestProperty;
 import com.vmware.xenon.common.test.TestRequestSender;
 import com.vmware.xenon.common.test.VerificationHost;
@@ -49,6 +50,8 @@ import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
 import com.vmware.xenon.services.common.LocalFileService.LocalFileServiceState;
 
 public class TestServiceHostManagementService extends BasicTestCase {
+
+    public int serviceCount = 100;
 
     @Rule
     public TemporaryFolder tempDir = new TemporaryFolder();
@@ -140,15 +143,7 @@ public class TestServiceHostManagementService extends BasicTestCase {
         URI backupFileServiceUri = UriUtils.buildUri(this.host, backupServiceLink);
 
         // Post some documents to populate the index.
-        URI factoryUri = UriUtils.buildFactoryUri(this.host, ExampleService.class);
-        Map<URI, ExampleServiceState> exampleStates = this.host.doFactoryChildServiceStart(null,
-                serviceCount,
-                ExampleServiceState.class,
-                (o) -> {
-                    ExampleServiceState s = new ExampleServiceState();
-                    s.name = UUID.randomUUID().toString();
-                    o.setBody(s);
-                }, factoryUri);
+        Map<URI, ExampleServiceState> exampleStates = populateExampleServices(serviceCount);
 
         ServiceHostManagementService.BackupRequest backupRequest = new ServiceHostManagementService.BackupRequest();
         backupRequest.destination = backupFileServiceUri;
@@ -161,7 +156,7 @@ public class TestServiceHostManagementService extends BasicTestCase {
 
         this.host.tearDown();
 
-        this.host.log("MFS file %s (bytes:%d md5:%s)", tmpFile.toString(), tmpFile.length(),
+        this.host.log("backup file %s (bytes:%d md5:%s)", tmpFile.toString(), tmpFile.length(),
                 FileUtils.md5sum(tmpFile));
 
         this.host = VerificationHost.create(0);
@@ -200,6 +195,98 @@ public class TestServiceHostManagementService extends BasicTestCase {
             assertEquals(in.name, testState.name);
             assertEquals(in.counter, testState.counter);
         }
+    }
+
+    @Test
+    public void testBackupAndRestoreWithLocalFile() throws Throwable {
+
+        File tmpFile = this.tempDir.newFile();
+        URI localFileUri = tmpFile.toURI();
+
+        // Post some documents to populate the index.
+        Map<URI, ExampleServiceState> exampleStates = populateExampleServices(this.serviceCount);
+
+        // specify local file uri to the destination
+        ServiceHostManagementService.BackupRequest backupRequest = new ServiceHostManagementService.BackupRequest();
+        backupRequest.destination = localFileUri;
+        backupRequest.kind = ServiceHostManagementService.BackupRequest.KIND;
+
+        // trigger backup
+        URI backupOpUri = UriUtils.buildUri(this.host, ServiceHostManagementService.SELF_LINK);
+        Operation backupOp = Operation.createPatch(backupOpUri).setBody(backupRequest);
+        this.host.getTestRequestSender().sendAndWait(backupOp);
+
+        // verify no LocalFileService has left after backup request has finished
+        TestContext testContext = this.host.testCreate(1);
+        Operation dummyOp = Operation.createGet(this.host, "")
+                .setCompletion((op, ex) -> {
+                    if (ex != null) {
+                        String msg = "Failed to check service existence. %s" + Utils.toString(ex);
+                        testContext.fail(new RuntimeException(msg, ex));
+                    }
+                    ServiceDocumentQueryResult result = op.getBody(ServiceDocumentQueryResult.class);
+                    if (!result.documentLinks.isEmpty()) {
+                        String msg = "LocalFileService still exist after backup. path=" + result.documentLinks;
+                        testContext.fail(new RuntimeException(msg));
+                    }
+                    testContext.complete();
+                });
+        String servicePath = UriUtils.buildUriPath(LocalFileService.SERVICE_PREFIX, UriUtils.URI_WILDCARD_CHAR);
+        this.host.queryServiceUris(servicePath, dummyOp);
+        testContext.await();
+
+        this.host.tearDown();
+
+        this.host.log("backup file %s (bytes:%d md5:%s)",
+                tmpFile.toString(), tmpFile.length(), FileUtils.md5sum(tmpFile));
+
+        this.host = VerificationHost.create(0);
+        this.host.start();
+
+        // specify local file URI
+        ServiceHostManagementService.RestoreRequest restoreRequest = new ServiceHostManagementService.RestoreRequest();
+        restoreRequest.destination = localFileUri;
+        restoreRequest.kind = ServiceHostManagementService.RestoreRequest.KIND;
+
+        // perform restore
+        URI restoreOpUri = UriUtils.buildUri(this.host, ServiceHostManagementService.SELF_LINK);
+        Operation restoreOp = Operation.createPatch(restoreOpUri).setBody(restoreRequest);
+        this.host.getTestRequestSender().sendAndWait(restoreOp);
+
+        // Check our documents are still there
+        ServiceDocumentQueryResult queryResult = this.host
+                .getFactoryState(UriUtils.buildExpandLinksQueryUri(UriUtils.buildUri(this.host,
+                        ExampleService.FACTORY_LINK)));
+        assertNotNull(queryResult);
+        assertNotNull(queryResult.documents);
+        assertEquals(this.serviceCount, queryResult.documents.size());
+
+        HashMap<String, ExampleServiceState> out = TestLuceneDocumentIndexService
+                .queryResultToExampleState(queryResult);
+
+        // now test the reference bodies match the query results
+        for (Entry<URI, ExampleServiceState> exampleDoc : exampleStates.entrySet()) {
+            ExampleServiceState in = exampleDoc.getValue();
+            ExampleServiceState testState = out.get(in.documentSelfLink);
+            assertNotNull(testState);
+            assertEquals(in.name, testState.name);
+            assertEquals(in.counter, testState.counter);
+        }
+    }
+
+    private Map<URI, ExampleServiceState> populateExampleServices(int serviceCount) {
+        // Post some documents to populate the index.
+        URI factoryUri = UriUtils.buildFactoryUri(this.host, ExampleService.class);
+        Map<URI, ExampleServiceState> exampleStates = this.host.doFactoryChildServiceStart(null,
+                serviceCount,
+                ExampleServiceState.class,
+                (o) -> {
+                    ExampleServiceState s = new ExampleServiceState();
+                    s.name = UUID.randomUUID().toString();
+                    o.setBody(s);
+                }, factoryUri);
+
+        return exampleStates;
     }
 
     @Test
