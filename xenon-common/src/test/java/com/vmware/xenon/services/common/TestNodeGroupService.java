@@ -1336,8 +1336,7 @@ public class TestNodeGroupService {
         VerificationHost remainingHost = peersIt.next();
 
         // Create a few example services
-        List<URI> exampleUris = new ArrayList<>();
-        this.host.createExampleServices(remainingHost, this.serviceCount, exampleUris, null);
+        List<URI> exampleUris = this.host.createExampleServices(remainingHost, this.serviceCount, null);
 
         // create targetUris using the peer (remainingHost)
         List<URI> targetUris = new ArrayList<>();
