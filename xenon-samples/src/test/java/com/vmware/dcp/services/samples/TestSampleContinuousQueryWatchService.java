@@ -23,7 +23,6 @@ import java.util.concurrent.TimeUnit;
 
 import org.junit.After;
 import org.junit.Before;
-import org.junit.Ignore;
 import org.junit.Test;
 
 import com.vmware.xenon.common.Operation;
@@ -77,7 +76,6 @@ public class TestSampleContinuousQueryWatchService {
         this.hostsToCleanup.clear();
     }
 
-    @Ignore("https://www.pivotaltracker.com/story/show/140538447")
     @Test
     public void testSampleWatchService() throws Throwable {
         VerificationHost host = createAndStartHost(false);
@@ -140,7 +138,7 @@ public class TestSampleContinuousQueryWatchService {
             SampleContinuousQueryWatchService.State updatedWatchState =
                     sender.sendAndWait(getQueryWatchState, SampleContinuousQueryWatchService.State.class);
             host.log("notification count: %d", updatedWatchState.notificationsCounter);
-            return (this.serviceCount == updatedWatchState.notificationsCounter);
+            return (this.serviceCount <= updatedWatchState.notificationsCounter);
         });
 
         // update the state of all the SamplePreviousEchoService we created
@@ -163,7 +161,7 @@ public class TestSampleContinuousQueryWatchService {
             SampleContinuousQueryWatchService.State updatedQueryWatchState =
                     sender.sendAndWait(getQueryWatchState, SampleContinuousQueryWatchService.State.class);
             host.log("notification count: %d", updatedQueryWatchState.notificationsCounter);
-            return (this.serviceCount * 2 == updatedQueryWatchState.notificationsCounter);
+            return (this.serviceCount * 2 <= updatedQueryWatchState.notificationsCounter);
         });
 
         // delete all the services
@@ -183,7 +181,7 @@ public class TestSampleContinuousQueryWatchService {
             SampleContinuousQueryWatchService.State updatedQueryWatchState =
                     sender.sendAndWait(getQueryWatchState, SampleContinuousQueryWatchService.State.class);
             host.log("notification count: %d", updatedQueryWatchState.notificationsCounter);
-            return (this.serviceCount * 3 == updatedQueryWatchState.notificationsCounter);
+            return (this.serviceCount * 3 <= updatedQueryWatchState.notificationsCounter);
         });
     }
 }
