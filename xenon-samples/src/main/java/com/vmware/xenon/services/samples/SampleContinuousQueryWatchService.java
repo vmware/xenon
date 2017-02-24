@@ -19,6 +19,7 @@ import java.util.function.Consumer;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.ServiceDocumentDescription.PropertyUsageOption;
+import com.vmware.xenon.common.ServiceSubscriptionState.ServiceSubscriber;
 import com.vmware.xenon.common.StatefulService;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.services.common.QueryTask;
@@ -152,8 +153,12 @@ public class SampleContinuousQueryWatchService extends StatefulService {
                 .createPost(getHost(), QUERY_SELF_LINK)
                 .setReferer(getHost().getUri());
 
+        ServiceSubscriber sr = ServiceSubscriber
+                .create(true)
+                .setUsePublicUri(true);
+
         // Create subscription service with processResults as callback to process the results.
-        URI subscriptionUri = getHost().startSubscriptionService(post, this::processResults);
+        URI subscriptionUri = getHost().startSubscriptionService(post, this::processResults, sr);
         updateSubscriptionLink(subscriptionUri);
     }
 

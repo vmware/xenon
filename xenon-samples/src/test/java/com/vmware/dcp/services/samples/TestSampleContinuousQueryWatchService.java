@@ -23,7 +23,6 @@ import java.util.concurrent.TimeUnit;
 
 import org.junit.After;
 import org.junit.Before;
-import org.junit.Ignore;
 import org.junit.Test;
 
 import com.vmware.xenon.common.Operation;
@@ -77,7 +76,6 @@ public class TestSampleContinuousQueryWatchService {
         this.hostsToCleanup.clear();
     }
 
-    @Ignore("https://www.pivotaltracker.com/story/show/140538447")
     @Test
     public void testSampleWatchService() throws Throwable {
         VerificationHost host = createAndStartHost(false);
