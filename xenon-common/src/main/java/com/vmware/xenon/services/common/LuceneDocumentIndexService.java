@@ -108,7 +108,6 @@ import com.vmware.xenon.common.ServiceDocumentDescription.PropertyUsageOption;
 import com.vmware.xenon.common.ServiceDocumentDescription.TypeName;
 import com.vmware.xenon.common.ServiceDocumentQueryResult;
 import com.vmware.xenon.common.ServiceHost.ServiceHostState.MemoryLimitType;
-import com.vmware.xenon.common.ServiceMaintenanceRequest;
 import com.vmware.xenon.common.ServiceStats;
 import com.vmware.xenon.common.ServiceStats.ServiceStat;
 import com.vmware.xenon.common.ServiceStats.TimeSeriesStats;
@@ -2396,7 +2395,8 @@ public class LuceneDocumentIndexService extends StatelessService {
                 return;
             }
 
-            applyDocumentExpirationPolicy(w);
+            long deadline = Utils.getNowMicrosUtc() + getMaintenanceIntervalMicros();
+            applyDocumentExpirationPolicy(w, deadline);
             applyDocumentVersionRetentionPolicy();
             w.commit();
 
@@ -2621,7 +2621,7 @@ public class LuceneDocumentIndexService extends StatelessService {
 
     }
 
-    private void applyDocumentExpirationPolicy(IndexWriter w) throws Throwable {
+    private void applyDocumentExpirationPolicy(IndexWriter w, long deadline) throws Throwable {
         // if we miss a document update, we will catch it, and refresh the searcher on the
         // next update or maintenance
         IndexSearcher s =
@@ -2635,40 +2635,45 @@ public class LuceneDocumentIndexService extends StatelessService {
         Query versionQuery = LongPoint.newRangeQuery(
                 ServiceDocument.FIELD_NAME_EXPIRATION_TIME_MICROS, 1L, expirationUpperBound);
 
-        TopDocs results = s.search(versionQuery, EXPIRED_DOCUMENT_SEARCH_THRESHOLD);
-        if (results.totalHits == 0) {
-            return;
-        }
+        ScoreDoc after = null;
+        boolean firstQuery = true;
+        Map<String, Long> latestVersions = new HashMap<>();
 
-        // The expiration query will return all versions for a link. Use a set so we only delete once per link
-        Set<String> links = new HashSet<>();
-        long now = Utils.getNowMicrosUtc();
-        for (ScoreDoc sd : results.scoreDocs) {
-            Document d = s.getIndexReader().document(sd.doc, this.fieldsToLoadNoExpand);
-            String link = d.get(ServiceDocument.FIELD_NAME_SELF_LINK);
-            IndexableField versionField = d.getField(ServiceDocument.FIELD_NAME_VERSION);
-            long versionExpired = versionField.numericValue().longValue();
-            long latestVersion = this.getLatestVersion(s, link);
-            if (versionExpired < latestVersion) {
-                continue;
+        do {
+            TopDocs results = s.searchAfter(after, versionQuery, EXPIRED_DOCUMENT_SEARCH_THRESHOLD,
+                    this.versionSort, false, false);
+            if (results.scoreDocs == null || results.scoreDocs.length == 0) {
+                return;
             }
-            if (!links.add(link)) {
-                continue;
-            }
-            checkAndDeleteExpiratedDocuments(link, s, sd.doc, d, now);
-        }
 
-        // More documents to be expired trigger maintenance right away.
-        if (results.totalHits > EXPIRED_DOCUMENT_SEARCH_THRESHOLD) {
-            adjustStat(STAT_NAME_DOCUMENT_EXPIRATION_FORCED_MAINTENANCE_COUNT, 1);
-            ServiceMaintenanceRequest body = ServiceMaintenanceRequest.create();
-            Operation servicePost = Operation
-                    .createPost(UriUtils.buildUri(getHost(), getSelfLink()))
-                    .setReferer(getHost().getUri())
-                    .setBody(body);
-            // servicePost can be cached
-            handleMaintenance(servicePost);
-        }
+            after = results.scoreDocs[results.scoreDocs.length - 1];
+
+            if (firstQuery && results.totalHits > EXPIRED_DOCUMENT_SEARCH_THRESHOLD) {
+                adjustStat(STAT_NAME_DOCUMENT_EXPIRATION_FORCED_MAINTENANCE_COUNT, 1);
+            }
+
+            firstQuery = false;
+
+            long now = Utils.getNowMicrosUtc();
+            for (ScoreDoc sd : results.scoreDocs) {
+                Document d = s.getIndexReader().document(sd.doc, this.fieldsToLoadNoExpand);
+                String link = d.get(ServiceDocument.FIELD_NAME_SELF_LINK);
+                IndexableField versionField = d.getField(ServiceDocument.FIELD_NAME_VERSION);
+                long versionExpired = versionField.numericValue().longValue();
+
+                Long latestVersion = latestVersions.get(link);
+                if (latestVersion == null) {
+                    latestVersion = getLatestVersion(s, link);
+                    latestVersions.put(link, latestVersion);
+                }
+
+                if (versionExpired < latestVersion) {
+                    continue;
+                }
+
+                checkAndDeleteExpiratedDocuments(link, s, sd.doc, d, now);
+            }
+        } while (Utils.getNowMicrosUtc() < deadline);
     }
 
     private void applyActiveQueries(Operation op, ServiceDocument latestState,

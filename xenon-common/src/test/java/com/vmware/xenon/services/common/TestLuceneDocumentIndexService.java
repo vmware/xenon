@@ -1862,10 +1862,8 @@ public class TestLuceneDocumentIndexService {
                     LuceneDocumentIndexService.STAT_NAME_DOCUMENT_EXPIRATION_FORCED_MAINTENANCE_COUNT);
 
             // in batch expiration mode, wait till at least first batch completes
-            if (servicesFinal.size() > LuceneDocumentIndexService
-                    .getExpiredDocumentSearchThreshold()
-                    && (expiredDocumentForcedMaintenanceCount == null
-                            || expiredDocumentForcedMaintenanceCount.latestValue < 2)) {
+            if (expiredDocumentForcedMaintenanceCount == null
+                    || expiredDocumentForcedMaintenanceCount.latestValue < 1) {
                 return false;
             }
 
