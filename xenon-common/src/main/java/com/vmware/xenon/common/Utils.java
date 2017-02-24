@@ -14,6 +14,8 @@
 package com.vmware.xenon.common;
 
 
+import static com.vmware.xenon.common.ServiceDocument.FIELD_NAME_EXPIRATION_TIME_MICROS;
+
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
@@ -1103,6 +1105,13 @@ public final class Utils {
                     prop.usageOptions.contains(PropertyUsageOption.AUTO_MERGE_IF_NOT_NULL)) {
                 Object o = ReflectionUtils.getPropertyValue(prop, patch);
                 if (o != null) {
+
+                    // when patch.documentExpirationTimeMicros is 0, do not override source.documentExpirationTimeMicros
+                    if (FIELD_NAME_EXPIRATION_TIME_MICROS.equals(prop.accessor.getName())
+                            && Long.valueOf(0).equals(o)) {
+                        continue;
+                    }
+
                     if ((prop.typeName == TypeName.COLLECTION && !o.getClass().isArray())
                             || prop.typeName == TypeName.MAP) {
                         modified |= ReflectionUtils.setOrUpdatePropertyValue(prop, source, o);

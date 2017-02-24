@@ -460,6 +460,33 @@ public class TestServiceDocument {
     }
 
     @Test
+    public void expirationTimeMerge() {
+        MergeTest source = new MergeTest();
+        source.documentExpirationTimeMicros = SOME_EXPIRATION_VALUE;
+
+        // patch has default expiration time(0)
+        MergeTest patch = new MergeTest();
+        patch.documentExpirationTimeMicros = 0;
+
+        ServiceDocumentDescription d = ServiceDocumentDescription.Builder.create().buildDescription(MergeTest.class);
+
+        boolean merged = Utils.mergeWithState(d, source, patch);
+        String msg = "source.expirationTime should NOT change when patch.expirationTime=0";
+        assertFalse(msg, merged);
+        assertEquals(msg, SOME_EXPIRATION_VALUE, source.documentExpirationTimeMicros);
+
+        // when patch.documentExpirationTimeMicros has some value
+        patch = new MergeTest();
+        patch.documentExpirationTimeMicros = SOME_OTHER_EXPIRATION_VALUE;
+
+        merged = Utils.mergeWithState(d, source, patch);
+        msg = "source.expirationTime should change when patch.expirationTime!=0";
+        assertTrue(msg, merged);
+        assertEquals(msg, SOME_OTHER_EXPIRATION_VALUE, source.documentExpirationTimeMicros);
+    }
+
+
+    @Test
     public void testComputeSignatureChanged() {
         ServiceDocumentDescription description = ServiceDocumentDescription.Builder.create()
                 .buildDescription(QueryValidationTestService.QueryValidationServiceState.class);
