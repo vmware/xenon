@@ -16,7 +16,6 @@ package com.vmware.xenon.services.common;
 import static com.vmware.xenon.common.Operation.HEADER_FIELD_VALUE_SEPARATOR;
 
 import java.io.IOException;
-import java.net.URI;
 import java.nio.ByteBuffer;
 import java.nio.channels.AsynchronousFileChannel;
 import java.nio.channels.CompletionHandler;
@@ -183,7 +182,7 @@ public class LocalFileService extends StatefulService {
             String value = contentRangeHeader.substring(idx + 1);
             get.addResponseHeader(name, value);
 
-            String contentType = FileUtils.getContentType(URI.create(state.localFilePath));
+            String contentType = FileUtils.getContentType(path.toUri());
             ByteBuffer b = ByteBuffer.allocate((int) (r.end - r.start));
             channel.read(b, r.start, null, new CompletionHandler<Integer, Void>() {
 
