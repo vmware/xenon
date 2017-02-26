@@ -33,6 +33,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.logging.Level;
 
 import org.junit.After;
 import org.junit.Rule;
@@ -46,6 +47,7 @@ import com.vmware.xenon.common.Service.ServiceOption;
 import com.vmware.xenon.common.ServiceStats.ServiceStat;
 import com.vmware.xenon.common.test.MinimalTestServiceState;
 import com.vmware.xenon.common.test.TestContext;
+import com.vmware.xenon.common.test.TestNodeGroupManager;
 import com.vmware.xenon.common.test.TestProperty;
 import com.vmware.xenon.common.test.TestRequestSender;
 import com.vmware.xenon.common.test.TestRequestSender.FailureResponse;
@@ -230,6 +232,98 @@ class ExampleVersionRetentionService extends StatefulService {
         // instruct the index to only keep the most recent 2 versions
         template.documentDescription.versionRetentionLimit = 4;
         template.documentDescription.versionRetentionFloor = 2;
+        return template;
+    }
+}
+
+class ExampleChildService extends StatefulService {
+    public static final String FACTORY_LINK = ServiceUriPaths.CORE + "/tests/child-services/";
+    public static String dummyMessage;
+
+    public static class ExampleChildServiceState extends ServiceDocument {
+        public String masterLink;
+        public int counter;
+    }
+
+    public static class StatusUpdate {
+        public String message;
+    }
+
+    public ExampleChildService() {
+        super(ExampleChildServiceState.class);
+        toggleOption(ServiceOption.PERSISTENCE, true);
+        toggleOption(ServiceOption.REPLICATION, true);
+        toggleOption(ServiceOption.OWNER_SELECTION, true);
+        toggleOption(ServiceOption.PERIODIC_MAINTENANCE, true);
+        char[] data = new char[100];
+        Arrays.fill(data, 'a');
+        dummyMessage = new String(data);
+    }
+
+    public void handlePeriodicMaintenance(Operation post) {
+        Operation.createGet(this.getUri())
+                .setCompletion( (o, e) -> {
+                    if (e != null) {
+                        post.fail(e);
+                        return;
+                    }
+
+                    ExampleChildServiceState state = o.getBody(ExampleChildServiceState.class);
+
+                    StatusUpdate statusUpdate = new StatusUpdate();
+                    statusUpdate.message = String.format("Child state is %d", state.counter) + dummyMessage;
+
+                    Operation.createPost(this, state.masterLink)
+                            .setBody(statusUpdate)
+                            .setCompletion( (o1, e1) -> {
+                                if ( e1 != null) {
+                                    post.fail(e1);
+                                    return;
+                                }
+                                post.complete();
+                            }).sendWith(this);
+
+                })
+                .sendWith(this);
+    }
+
+    public void handlePatch(Operation patch) {
+        ExampleChildServiceState state = getState(patch);
+        ExampleChildServiceState body = getBody(patch);
+        state.counter = body.counter;
+        patch.complete();
+    }
+}
+
+
+class ExampleMasterService extends StatefulService {
+    public static final String FACTORY_LINK = ServiceUriPaths.CORE + "/tests/master-services/";
+
+    public static class ExampleMasterServiceState extends ServiceDocument {
+        public List<String> messages = new ArrayList<>();
+    }
+
+    public ExampleMasterService() {
+        super(ExampleMasterServiceState.class);
+        toggleOption(ServiceOption.PERSISTENCE, true);
+        toggleOption(ServiceOption.REPLICATION, true);
+        toggleOption(ServiceOption.OWNER_SELECTION, true);
+    }
+
+    public void handlePost(Operation post) {
+        ExampleChildService.StatusUpdate statusUpdate = post.getBody(ExampleChildService.StatusUpdate.class);
+        ExampleMasterServiceState currentState = getState(post);
+        if (statusUpdate.message != null) {
+            currentState.messages.add(statusUpdate.message);
+        }
+        post.complete();
+    }
+
+    @Override
+    public ServiceDocument getDocumentTemplate() {
+        ServiceDocument template = super.getDocumentTemplate();
+
+        template.documentDescription.serializedStateSizeLimit = 5 * 1024 * 1024;
         return template;
     }
 }
@@ -948,6 +1042,70 @@ public class TestStatefulService extends BasicReusableHostTestCase {
             return qt.results.documentCount >= versionRetentionFloor && qt.results.documentCount
                     <= versionRetentionLimit;
         });
+    }
+
+    @Test
+    public void testReplicationForLargeFields() throws Throwable {
+        this.host.setTimeoutSeconds(120);
+        int childServiceCount = 10;
+        int iterationCount = 100;
+        TestNodeGroupManager nodeGroupManager = new TestNodeGroupManager();
+        VerificationHost h1 = VerificationHost.create(0);
+        h1.start();
+        VerificationHost h2 = VerificationHost.create(0);
+        h2.start();
+        nodeGroupManager.addHost(h1);
+        nodeGroupManager.addHost(h2);
+        nodeGroupManager.addHost(host);
+        List<ExampleChildService.ExampleChildServiceState> childServices = new ArrayList<>();
+        host.startFactory(new ExampleChildService());
+        host.startFactory(new ExampleMasterService());
+
+        h1.startFactory(new ExampleChildService());
+        h1.startFactory(new ExampleMasterService());
+
+        h2.startFactory(new ExampleChildService());
+        h2.startFactory(new ExampleMasterService());
+
+        nodeGroupManager.joinNodeGroupAndWaitForConvergence();
+
+        TestRequestSender sender = host.getTestRequestSender();
+
+        ExampleMasterService.ExampleMasterServiceState masterService =
+                sender.sendPostAndWait(UriUtils.buildUri(host, ExampleMasterService.FACTORY_LINK),
+                        new ExampleMasterService.ExampleMasterServiceState(),
+                        ExampleMasterService.ExampleMasterServiceState.class);
+
+        ExampleChildService.ExampleChildServiceState childServiceState = null;
+        for (int i = 0; i < childServiceCount; i++ ) {
+            childServiceState = new ExampleChildService.ExampleChildServiceState();
+            childServiceState.masterLink = masterService.documentSelfLink;
+            childServices.add(sender.sendPostAndWait(UriUtils.buildUri(host, ExampleChildService.FACTORY_LINK),
+                    childServiceState,
+                    ExampleChildService.ExampleChildServiceState.class));
+        }
+
+
+        for (int j = 0; j < iterationCount; j++ ) {
+            List<Operation> ops = new ArrayList<>();
+            for (int i = 0; i < childServiceCount; i++) {
+                childServiceState = new ExampleChildService.ExampleChildServiceState();
+                childServiceState.counter = j;
+                Operation patch = Operation.createPatch(host, childServices.get(i).documentSelfLink).setBody(childServiceState);
+                ops.add(patch);
+            }
+            sender.sendAndWait(ops);
+        }
+
+        host.waitFor("Not enough Messages", () -> {
+            ExampleMasterService.ExampleMasterServiceState masterServiceLocal =
+                    sender.sendGetAndWait(UriUtils.buildUri(host, masterService.documentSelfLink), ExampleMasterService.ExampleMasterServiceState.class);
+            host.log(Level.INFO, "Message count %d\n", masterServiceLocal.messages.size());
+            return masterServiceLocal.messages.size() == 1000;
+        });
+        host.logMemoryInfo();
+        host.logNodeGroupState();
+        host.logThroughput();
     }
 }
 
