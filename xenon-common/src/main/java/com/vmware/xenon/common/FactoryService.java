@@ -19,6 +19,7 @@ import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 
 import com.vmware.xenon.common.NodeSelectorService.SelectOwnerResponse;
 import com.vmware.xenon.common.Operation.CompletionHandler;
@@ -906,7 +907,10 @@ public abstract class FactoryService extends StatelessService {
             maintOp.complete();
             return;
         }
+        synchronizeChildServicesIfOwner(maintOp);
+    }
 
+    private void synchronizeChildServicesIfOwner(Operation maintOp) {
         // Become unavailable until synchronization is complete.
         // If we are not the owner, we stay unavailable
         setAvailable(false);
@@ -919,6 +923,7 @@ public abstract class FactoryService extends StatelessService {
             OperationContext.restoreOperationContext(opContext);
             if (e != null) {
                 logWarning("owner selection failed: %s", e.toString());
+                scheduleSynchronizationRetryOnFailure(maintOp);
                 maintOp.fail(e);
                 return;
             }
@@ -982,6 +987,71 @@ public abstract class FactoryService extends StatelessService {
                     parentOp.complete();
                 });
         sendRequest(post);
+        adjustStat(STAT_NAME_SYNCH_TASK_RETRY_COUNT, 1);
+
+        // Schedule a task that checks if synchronization task got FAILED,
+        // if true, then retry synchronization again.
+        scheduleSynchronizationRetryOnFailure(parentOp);
+    }
+
+    private void scheduleSynchronizationRetryOnFailure(Operation parentOp) {
+        // Clone the parent operation for reuse outside the schedule call for
+        // the original operation to be freed in current thread.
+        Operation op = parentOp.clone();
+
+        // Use exponential backoff algorithm in retry logic. The idea is to exponentially
+        // increase the delay for each retry based on the number of previous retries.
+        // This is done to reduce the load of retries on the system by all the synch tasks
+        // of all factories at the same time, and giving system more time to stabilize
+        // in next retry then the previous retry.
+        long delay = getExponentialDelay();
+
+        getHost().schedule(() -> synchronizationRetryOnFailure(op),
+                delay, TimeUnit.MICROSECONDS);
+    }
+
+    /**
+     * Exponential backoff rely on synch task retry count stat. If this stat is not available
+     * then we will fall back to constant delay for each retry.
+     * To get exponential delay, multiply retry count's power of 2 with constant delay.
+     */
+    private long getExponentialDelay() {
+        long delay = getHost().getMaintenanceIntervalMicros();
+        ServiceStats.ServiceStat stat = getStat(STAT_NAME_SYNCH_TASK_RETRY_COUNT);
+        if (stat != null && stat.latestValue  > 0) {
+            return (1 << ((long)stat.latestValue - 1)) * delay;
+        }
+        return delay;
+    }
+
+    private void synchronizationRetryOnFailure(Operation op) {
+        URI synchTaskFactoryUri = UriUtils.buildUri(
+                getHost().getUri(), SynchronizationTaskService.FACTORY_LINK);
+        URI synchTaskUri = UriUtils.extendUri(
+                synchTaskFactoryUri, UriUtils.convertPathCharsFromLink(this.getSelfLink()));
+
+        Operation get = Operation
+                .createGet(synchTaskUri)
+                .setCompletion((o, e) -> {
+                    boolean retrySynch = false;
+                    if (e != null) {
+                        logWarning("Failure on GET for synch task state: %s", e.getMessage());
+                        retrySynch = true;
+                    } else {
+                        SynchronizationTaskService.State rsp = null;
+                        rsp = o.getBody(SynchronizationTaskService.State.class);
+                        if (rsp.taskInfo.stage.equals(TaskState.TaskStage.FAILED)) {
+                            logWarning("Failure on synch task state: %s", rsp.taskInfo.stage);
+                            retrySynch = true;
+                        }
+                    }
+
+                    if (retrySynch) {
+                        logInfo("Retrying synchronization again");
+                        synchronizeChildServicesIfOwner(op);
+                    }
+                });
+        sendRequest(get);
     }
 
     private SynchronizationTaskService.State createSynchronizationTaskState(
