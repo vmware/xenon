@@ -2138,6 +2138,12 @@ public class VerificationHost extends ExampleServiceHost {
 
     }
 
+    public void waitForNodeGroupConvergence() {
+        ArrayList<URI> nodeGroupUris = new ArrayList<>();
+        nodeGroupUris.add(UriUtils.extendUri(this.getUri(), ServiceUriPaths.DEFAULT_NODE_GROUP));
+        waitForNodeGroupConvergence(nodeGroupUris, 0, null, new HashMap<>(), false);
+    }
+
     public void waitForNodeGroupConvergence(int memberCount) {
         waitForNodeGroupConvergence(memberCount, null);
     }

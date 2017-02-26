@@ -31,6 +31,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.LongStream;
 import java.util.stream.Stream;
@@ -52,6 +53,44 @@ import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
 import com.vmware.xenon.services.common.MinimalFactoryTestService;
 import com.vmware.xenon.services.common.MinimalTestService;
 import com.vmware.xenon.services.common.ServiceUriPaths;
+import com.vmware.xenon.services.common.TaskService;
+
+class ControlledStateSynchTaskService extends TaskService<ControlledStateSynchTaskService.State> {
+
+    public ControlledStateSynchTaskService() {
+        super(State.class);
+        toggleOption(ServiceOption.IDEMPOTENT_POST, true);
+    }
+
+    public static class State extends SynchronizationTaskService.State {
+        int maxFailureCount;
+        int failureCount;
+    }
+
+    @Override
+    public void handlePut(Operation put) {
+        State state = this.getState(put);
+
+        if (state.failureCount < state.maxFailureCount) {
+            state.taskInfo.stage = TaskState.TaskStage.FAILED;
+        } else {
+            state.taskInfo.stage = TaskState.TaskStage.FINISHED;
+        }
+
+        state.failureCount++;
+        put.setBody(state);
+        put.complete();
+    }
+
+    @Override
+    public void handlePatch(Operation patch) {
+        State state = this.getState(patch);
+        State body = patch.getBody(State.class);
+        state.maxFailureCount = body.maxFailureCount;
+        patch.setBody(state);
+        patch.complete();
+    }
+}
 
 class TypeMismatchTestFactoryService extends FactoryService {
 
@@ -162,6 +201,101 @@ public class TestFactoryService extends BasicReusableHostTestCase {
         thpt = (double) this.iterationCount / (e - s);
         thpt *= TimeUnit.SECONDS.toNanos(1);
         this.host.log("UUID.randomUUID().toString() throughput (calls/sec) %f", thpt);
+    }
+
+    /**
+     * Test verifies that FactoryService retries child services' synchronization task on task's failure.
+     *
+     * 1. First a Test Factory Service is created, which internally creates SynchronizationTaskService for
+     *    synchronization of its child services.
+     * 2. We need to control the failures of SynchronizationTaskService. For that we delete it and create our
+     *    own test Synch Task Service on the same link as of SynchronizationTaskService for our Test Facotry Service.
+     * 3. In test Synch Task Service we control its failures and verify that our Test Factory Service retired
+     *    calling test Synch Task Service again and again on failures.
+     *    And stopped retrying after success or maximum retries.
+     */
+    @Test
+    public void synchronizationTaskRetryOnFailure() throws Throwable {
+        int testSynchRetryCount = 3;
+
+        this.host.waitForNodeGroupConvergence();
+
+        // Create test factory service
+        this.host.waitForReplicatedFactoryServiceAvailable(
+                UriUtils.buildUri(this.host, ExampleService.FACTORY_LINK),
+                ServiceUriPaths.DEFAULT_NODE_SELECTOR);
+
+        String synchTaskServicePath = UriUtils.buildUriPath(
+                SynchronizationTaskService.FACTORY_LINK,
+                UriUtils.convertPathCharsFromLink(ExampleService.FACTORY_LINK));
+
+        URI synchTaskServiceUri = UriUtils.buildUri(this.host.getUri(), synchTaskServicePath);
+
+        // Delete the original synchronization Task associated with test factory service. We will later
+        // replace self-link of this Task with our test Task service to control the success/failure of synch task.
+        this.host.sendAndWaitExpectSuccess(Operation
+                .createDelete(synchTaskServiceUri)
+                .setCompletion(this.host.getCompletion()));
+
+        // Create synchronization Task with same link, but new Task service.
+        ControlledStateSynchTaskService.State state = new ControlledStateSynchTaskService.State();
+        state.taskInfo = new TaskState();
+        state.maxFailureCount = testSynchRetryCount;
+        state.documentSelfLink = synchTaskServicePath;
+
+        Operation post = Operation
+                .createPost(this.host, synchTaskServicePath)
+                .setBody(state);
+
+        this.host.startService(post, new ControlledStateSynchTaskService());
+        this.host.waitForServiceAvailable(synchTaskServiceUri);
+
+        // Trigger node group maintenance. This will call handleNodeGroupMaintenance in test factory service,
+        // which will trigger the synchronization Task, but this time, our injected synch Task will be called.
+        this.host.scheduleNodeGroupChangeMaintenance(ServiceUriPaths.DEFAULT_NODE_SELECTOR);
+
+        // Verify that synchronization was retried at-least 1 time.
+        waitForSynchRetries(Service.STAT_NAME_SYNCH_TASK_RETRY_COUNT,
+                (synchRetryCount) -> synchRetryCount.latestValue >= 1);
+
+        // Wait for synchronization gets completed after retries, and retry counter is reset to 0.
+        waitForSynchRetries(Service.STAT_NAME_SYNCH_TASK_RETRY_COUNT,
+                (synchRetryCount) -> synchRetryCount.latestValue == 0);
+
+        // Make test synch Task to be in FAILED state forever, to test maximum retry limit.
+        state = new ControlledStateSynchTaskService.State();
+        state.maxFailureCount = Integer.MAX_VALUE;
+        state.documentSelfLink = synchTaskServicePath;
+
+        this.host.sendAndWaitExpectSuccess(
+                Operation.createPatch(this.host, synchTaskServicePath)
+                    .setBody(state)
+                    .setCompletion(this.host.getCompletion()));
+
+        this.host.scheduleNodeGroupChangeMaintenance(ServiceUriPaths.DEFAULT_NODE_SELECTOR);
+
+        // Speed up the retries.
+        this.host.setMaintenanceIntervalMicros(TimeUnit.MILLISECONDS.toMicros(1));
+
+        // Verify that synchronization was retried maximum times.
+        waitForSynchRetries(Service.STAT_NAME_SYNCH_TASK_RETRY_COUNT,
+                (synchRetryCount) -> synchRetryCount.latestValue >= FactoryService.MAX_SYNCH_RETRY_COUNT);
+
+        // Verify overall synch failure count
+        waitForSynchRetries(Service.STAT_NAME_CHILD_SYNCH_FAILURE_COUNT,
+                (synchFailureCount) -> synchFailureCount.latestValue >= 1);
+    }
+
+    private void waitForSynchRetries(String statName,
+                                     Function<ServiceStats.ServiceStat, Boolean> check) {
+        this.host.waitFor("Expected retries not completed", () -> {
+            URI statsURI = UriUtils.buildStatsUri(this.host, ExampleService.FACTORY_LINK);
+            ServiceStats factoryStats = this.host.getServiceState(null, ServiceStats.class, statsURI);
+            ServiceStats.ServiceStat synchRetryCount = factoryStats.entries
+                    .get(statName);
+
+            return synchRetryCount != null && check.apply(synchRetryCount);
+        });
     }
 
     /**

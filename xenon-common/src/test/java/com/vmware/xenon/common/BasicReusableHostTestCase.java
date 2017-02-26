@@ -62,6 +62,8 @@ public class BasicReusableHostTestCase {
 
     public String adminPassword = "changeme";
 
+    public boolean detailedLogging = false;
+
     @BeforeClass
     public static void setUpOnce() throws Exception {
         startHost(false);
@@ -86,6 +88,7 @@ public class BasicReusableHostTestCase {
     public void setUpPerMethod() throws Throwable {
         CommandLineArgumentParser.parseFromProperties(this);
         this.host = HOST;
+        this.host.toggleDebuggingMode(this.detailedLogging);
         this.sender = this.host.getTestRequestSender();
         if (HOST.isStressTest()) {
             Utils.setTimeDriftThreshold(TimeUnit.SECONDS.toMicros(120));
