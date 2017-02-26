@@ -293,7 +293,8 @@ public class SynchronizationTaskService
         boolean isMembershipTimeSet = (putTask.membershipUpdateTimeMicros != null);
         boolean hasReplicationOption = currentTask.childOptions.contains(ServiceOption.REPLICATION);
         if (!isMembershipTimeSet && hasReplicationOption || isMembershipTimeSet && !hasReplicationOption) {
-            put.fail(new IllegalArgumentException("membershipUpdateTimeMicros not set correctly"));
+            put.fail(new IllegalArgumentException("membershipUpdateTimeMicros not set correctly: "
+                    + putTask.membershipUpdateTimeMicros));
             return null;
         }
         if (currentTask.childOptions.contains(ServiceOption.ON_DEMAND_LOAD)) {
