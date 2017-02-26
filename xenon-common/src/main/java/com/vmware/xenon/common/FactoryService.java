@@ -19,6 +19,7 @@ import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 
 import com.vmware.xenon.common.NodeSelectorService.SelectOwnerResponse;
 import com.vmware.xenon.common.Operation.CompletionHandler;
@@ -38,6 +39,11 @@ import com.vmware.xenon.services.common.ServiceUriPaths;
  * respond to the sender
  */
 public abstract class FactoryService extends StatelessService {
+
+    // Maximum synch-task retry limit.
+    // We are using exponential backoff for synchronization retry, that means last retry will
+    // take 2 ^ 10 * 1sec = ~17 minutes.
+    public static final int MAX_SYNCH_RETRY_COUNT = 10;
 
     /**
      * Creates a factory service instance that starts the specified child service
@@ -906,7 +912,10 @@ public abstract class FactoryService extends StatelessService {
             maintOp.complete();
             return;
         }
+        synchronizeChildServicesIfOwner(maintOp);
+    }
 
+    private void synchronizeChildServicesIfOwner(Operation maintOp) {
         // Become unavailable until synchronization is complete.
         // If we are not the owner, we stay unavailable
         setAvailable(false);
@@ -919,6 +928,7 @@ public abstract class FactoryService extends StatelessService {
             OperationContext.restoreOperationContext(opContext);
             if (e != null) {
                 logWarning("owner selection failed: %s", e.toString());
+                scheduleSynchronizationRetry(maintOp);
                 maintOp.fail(e);
                 return;
             }
@@ -963,25 +973,88 @@ public abstract class FactoryService extends StatelessService {
                 .createPost(this, ServiceUriPaths.SYNCHRONIZATION_TASKS)
                 .setBody(task)
                 .setCompletion((o, e) -> {
+                    boolean retrySynch = false;
+
                     // Ignore if the request failed because the current synch-request
                     // was considered out-dated by the synchronization-task.
-                    if (o.getStatusCode() == Operation.STATUS_CODE_BAD_REQUEST) {
+                    if (o.getStatusCode() == Operation.STATUS_CODE_CREATED) {
                         ServiceErrorResponse rsp = o.getBody(ServiceErrorResponse.class);
-                        logInfo("Failure on POST to synch task: %s", Utils.toJsonHtml(rsp));
-                        if (rsp.getErrorCode() == ServiceErrorResponse.ERROR_CODE_OUTDATED_SYNCH_REQUEST) {
+                        logWarning("Failure on POST to synch task: %s", Utils.toJsonHtml(rsp));
+                        if (o.getStatusCode() != Operation.STATUS_CODE_BAD_REQUEST &&
+                                rsp.getErrorCode() == ServiceErrorResponse.ERROR_CODE_OUTDATED_SYNCH_REQUEST) {
                             parentOp.complete();
                             return;
                         }
+
+                        retrySynch = true;
                     }
+
                     if (e != null) {
-                        logInfo("Failure on POST to synch task: %s", e.getMessage());
+                        logWarning("Failure on POST to synch task: %s", e.getMessage());
                         parentOp.fail(e);
+                        retrySynch = true;
+                    } else {
+                        SynchronizationTaskService.State rsp = null;
+                        rsp = o.getBody(SynchronizationTaskService.State.class);
+                        if (rsp.taskInfo.stage.equals(TaskState.TaskStage.FAILED)) {
+                            logWarning("Synch task failed %s", Utils.toJsonHtml(rsp));
+                            retrySynch = true;
+                        }
+                        parentOp.complete();
+                    }
+
+                    if (retrySynch) {
+                        logInfo("Retrying child service synchronization task again");
+
+                        // Schedule a task to retry synchronization again.
+                        scheduleSynchronizationRetry(parentOp);
                         return;
                     }
 
-                    parentOp.complete();
+                    setStat(STAT_NAME_SYNCH_TASK_RETRY_COUNT, 0);
                 });
         sendRequest(post);
+    }
+
+    private void scheduleSynchronizationRetry(Operation parentOp) {
+        adjustStat(STAT_NAME_SYNCH_TASK_RETRY_COUNT, 1);
+
+        ServiceStats.ServiceStat stat = getStat(STAT_NAME_SYNCH_TASK_RETRY_COUNT);
+        if (stat != null && stat.latestValue  > 0) {
+            if (stat.latestValue >= MAX_SYNCH_RETRY_COUNT) {
+                logSevere("Synchronization task failed after %d tries", (long)stat.latestValue);
+                adjustStat(STAT_NAME_CHILD_SYNCH_FAILURE_COUNT, 1);
+                return;
+            }
+        }
+
+        // Clone the parent operation for reuse outside the schedule call for
+        // the original operation to be freed in current thread.
+        Operation op = parentOp.clone();
+
+        // Use exponential backoff algorithm in retry logic. The idea is to exponentially
+        // increase the delay for each retry based on the number of previous retries.
+        // This is done to reduce the load of retries on the system by all the synch tasks
+        // of all factories at the same time, and giving system more time to stabilize
+        // in next retry then the previous retry.
+        long delay = getExponentialDelay();
+
+        getHost().schedule(() -> synchronizeChildServicesIfOwner(op),
+                delay, TimeUnit.MICROSECONDS);
+    }
+
+    /**
+     * Exponential backoff rely on synch task retry count stat. If this stat is not available
+     * then we will fall back to constant delay for each retry.
+     * To get exponential delay, multiply retry count's power of 2 with constant delay.
+     */
+    private long getExponentialDelay() {
+        long delay = getHost().getMaintenanceIntervalMicros();
+        ServiceStats.ServiceStat stat = getStat(STAT_NAME_SYNCH_TASK_RETRY_COUNT);
+        if (stat != null && stat.latestValue  > 0) {
+            return (1 << ((long)stat.latestValue - 1)) * delay;
+        }
+        return delay;
     }
 
     private SynchronizationTaskService.State createSynchronizationTaskState(
