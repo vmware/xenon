@@ -519,7 +519,12 @@ class ServiceResourceTracker {
             // If neither the cache nor the lastAccessTime maps contain an entry
             // for the Service, and it's a PERSISTENT service, then probably the
             // service is just starting up. Skipping service pause...
-            if (lastAccessTime == null && ServiceHost.isServiceIndexed(service)) {
+            // The above check is very specific to services running on owner nodes.
+            // For services started on replicas, the cache and lastAccessTime will
+            // have no data, so it is important to stop them.
+            if (lastAccessTime == null &&
+                    ServiceHost.isServiceIndexed(service) &&
+                    service.hasOption(ServiceOption.DOCUMENT_OWNER)) {
                 continue;
             }
 

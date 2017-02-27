@@ -417,6 +417,44 @@ public class TestNodeGroupService {
     }
 
     @Test
+    public void newOwnerHasLatestState() throws Throwable {
+        setUp(this.nodeCount);
+        this.host.joinNodesAndVerifyConvergence(this.host.getPeerCount());
+        this.host.setNodeGroupQuorum(this.nodeCount);
+        this.host.waitForNodeGroupConvergence(this.nodeCount);
+
+        // Wait for Example factory service to become available.
+        Iterator<VerificationHost> peersIt = this.host.getInProcessHostMap().values().iterator();
+        List<URI> exampleUris = new ArrayList<>();
+        VerificationHost peer = peersIt.next();
+        this.host.waitForReplicatedFactoryServiceAvailable(
+                UriUtils.buildUri(peer, ExampleService.FACTORY_LINK));
+
+        // Create a few example services
+        this.host.createExampleServices(peer, this.serviceCount, exampleUris, null);
+
+        // Patch these services
+        ExampleServiceState state = new ExampleServiceState();
+        state.name = "patched-name";
+        this.host.doServiceUpdates(exampleUris, Action.PATCH, state);
+
+        // Stop one of the nodes
+        this.host.stopHost(peer);
+        this.host.setNodeGroupQuorum(this.nodeCount - 1);
+        this.host.waitForNodeGroupConvergence(this.nodeCount - 1);
+
+        // GET the states now and make sure each one has the name property
+        // set as expected
+        VerificationHost peer2 = peersIt.next();
+        List<URI> newUris = new ArrayList<>(this.serviceCount);
+        exampleUris.forEach(u -> newUris.add(UriUtils.buildUri(peer2, u.getPath())));
+        Collection<ExampleServiceState> serviceStates = this.host.getServiceState(
+                null, ExampleServiceState.class, newUris).values();
+
+        serviceStates.forEach(s -> assertEquals("patched-name", s.name));
+    }
+
+    @Test
     public void synchronizationServiceNotFoundOnNewOwner() throws Throwable {
         this.isPeerSynchronizationEnabled = false;
         setUp(this.nodeCount);

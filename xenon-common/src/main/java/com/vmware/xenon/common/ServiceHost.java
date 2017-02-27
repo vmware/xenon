@@ -2721,8 +2721,15 @@ public class ServiceHost implements ServiceRequestSender {
                         log(Level.WARNING, "documentKind is null for %s", s.getSelfLink());
                         state.documentKind = Utils.buildKind(s.getStateType());
                     }
-                    this.serviceResourceTracker.updateCachedServiceState(s,
-                            state, post);
+
+                    // Skip caching for replication requests if the service
+                    // is indexed.
+                    boolean skipCaching = post.isFromReplication() &&
+                            isServiceIndexed(s);
+                    if (!skipCaching) {
+                        this.serviceResourceTracker.updateCachedServiceState(s,
+                                state, post);
+                    }
                 }
 
                 if (!post.hasBody() || !needsIndexing) {
