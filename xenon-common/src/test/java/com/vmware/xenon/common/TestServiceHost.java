@@ -2386,60 +2386,85 @@ public class TestServiceHost {
             o.setBody(body);
         };
 
-        // Create one OnDemandLoad Service
+        // Create one OnDemandLoad Services
         String factoryLink = OnDemandLoadFactoryService.create(this.host);
         Map<URI, ExampleServiceState> states = this.host.doFactoryChildServiceStart(
                 null,
-                1,
+                this.serviceCount,
                 ExampleServiceState.class,
                 bodySetter,
                 UriUtils.buildUri(this.host, factoryLink));
 
-        URI serviceUri = states.keySet().iterator().next();
-        ExampleServiceState st = new ExampleServiceState();
-        st.name = "firstPatch";
+        TestContext ctx = this.host.testCreate(this.serviceCount);
+        TestContext notifyCtx = this.host.testCreate(this.serviceCount * 2);
+        notifyCtx.setTestName("notifications");
 
-        // Subscribe to created service
-        TestContext ctx = this.host.testCreate(1);
-        Operation subscribe = Operation.createPost(serviceUri)
-                .setCompletion(ctx.getCompletion())
-                .setReferer(this.host.getReferer());
+        // Subscribe to created services
+        ctx.setTestName("Subscriptions").logBefore();
+        for (URI serviceUri : states.keySet()) {
+            Operation subscribe = Operation.createPost(serviceUri)
+                    .setCompletion(ctx.getCompletion())
+                    .setReferer(this.host.getReferer());
 
-        TestContext notifyCtx = this.host.testCreate(2);
-        this.host.startReliableSubscriptionService(subscribe, (notifyOp) -> {
-            notifyOp.complete();
-            notifyCtx.completeIteration();
-        });
+            this.host.startReliableSubscriptionService(subscribe, (notifyOp) -> {
+                notifyOp.complete();
+                notifyCtx.completeIteration();
+            });
+        }
         this.host.testWait(ctx);
+        ctx.logAfter();
 
+        TestContext firstPatchCtx = this.host.testCreate(this.serviceCount);
+        firstPatchCtx.setTestName("Initial patch").logBefore();
         // do a PATCH, to trigger a notification
-        TestContext patchCtx = this.host.testCreate(1);
-        Operation patch = Operation
-                .createPatch(serviceUri)
-                .setBody(st)
-                .setCompletion(patchCtx.getCompletion());
-        this.host.send(patch);
-        this.host.testWait(patchCtx);
+        for (URI serviceUri : states.keySet()) {
+            ExampleServiceState st = new ExampleServiceState();
+            st.name = "firstPatch";
+            Operation patch = Operation
+                    .createPatch(serviceUri)
+                    .setBody(st)
+                    .setCompletion(firstPatchCtx.getCompletion());
+            this.host.send(patch);
+        }
+        this.host.testWait(firstPatchCtx);
+        firstPatchCtx.logAfter();
 
         // Let's change the maintenance interval to low so that the service pauses.
         this.host.setMaintenanceIntervalMicros(TimeUnit.MILLISECONDS.toMicros(100));
 
+        this.host.log("Waiting for service pauses after reduced maint. interval");
         // Wait for the service to get paused.
         this.host.waitFor("Service failed to pause",
-                () -> this.host.getServiceStage(serviceUri.getPath()) == null);
+                () -> {
+                    for (URI uri : states.keySet()) {
+                        if (this.host.getServiceStage(uri.getPath()) != null) {
+                            return false;
+                        }
+                    }
+                    return true;
+                });
 
-        // Let's do a PATCH again
-        st.name = "secondPatch";
-        patchCtx = this.host.testCreate(1);
-        patch = Operation
-                .createPatch(serviceUri)
-                .setBody(st)
-                .setCompletion(patchCtx.getCompletion());
-        this.host.send(patch);
+        // do a PATCH, after pause, to trigger a resume and another notification
+        TestContext patchCtx = this.host.testCreate(this.serviceCount);
+        patchCtx.setTestName("second patch, post pause").logBefore();
+        for (URI serviceUri : states.keySet()) {
+            ExampleServiceState st = new ExampleServiceState();
+            st.name = "firstPatch";
+
+            Operation patch = Operation
+                    .createPatch(serviceUri)
+                    .setBody(st)
+                    .setCompletion(patchCtx.getCompletion());
+            this.host.send(patch);
+        }
+
+        // wait for PATCHs
         this.host.testWait(patchCtx);
+        patchCtx.logAfter();
 
-        // Wait for the patch notifications. This will exit only
+        // Wait for all the patch notifications. This will exit only
         // when both notifications have been received.
+        notifyCtx.logBefore();
         this.host.testWait(notifyCtx);
     }
 

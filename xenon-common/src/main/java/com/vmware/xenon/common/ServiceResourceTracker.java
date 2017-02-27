@@ -700,15 +700,21 @@ class ServiceResourceTracker {
             factoryService = (FactoryService) parentService;
         }
 
-        if (factoryService != null
-                && !this.serviceFactoriesWithPauseResume.contains(factoryPath)) {
-            // minor optimization: if the service factory has never experienced a pause for one of the child
-            // services, do not bother querying the blob index. A node might never come under memory
-            // pressure so this lookup avoids the index query.
-            if (factoryService.hasOption(ServiceOption.ON_DEMAND_LOAD)) {
-                inboundOp.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_INDEX_CHECK);
-            } else {
-                return false;
+        if (factoryService != null) {
+            if (!this.serviceFactoriesWithPauseResume.contains(factoryPath)) {
+                // minor optimization: if the service factory has never experienced a pause for one of the child
+                // services, do not bother querying the blob index. A node might never come under memory
+                // pressure so this lookup avoids the index query.
+                if (factoryService.hasOption(ServiceOption.ON_DEMAND_LOAD)) {
+                    inboundOp.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_INDEX_CHECK);
+                } else {
+                    return false;
+                }
+            } else if (this.host.getServiceStage(key) == ProcessingStage.PAUSED) {
+                // if the service is paused, skip ODL on demand start
+                this.host.log(Level.WARNING, "ODL service %s is paused, attempting resume",
+                        key);
+                inboundOp.removePragmaDirective(Operation.PRAGMA_DIRECTIVE_INDEX_CHECK);
             }
         }
 
