@@ -95,6 +95,7 @@ import com.vmware.xenon.common.RoundRobinOperationQueue;
 import com.vmware.xenon.common.ServiceDocument;
 import com.vmware.xenon.common.ServiceDocumentDescription;
 import com.vmware.xenon.common.ServiceDocumentQueryResult;
+import com.vmware.xenon.common.ServiceHost;
 import com.vmware.xenon.common.ServiceHost.ServiceHostState.MemoryLimitType;
 import com.vmware.xenon.common.ServiceStats;
 import com.vmware.xenon.common.ServiceStats.ServiceStat;
@@ -701,13 +702,13 @@ public class LuceneDocumentIndexService extends StatelessService {
     public void handleRequest(Operation op) {
         Action a = op.getAction();
         if (a == Action.PUT) {
-            getHost().failRequestActionNotSupported(op);
+            ServiceHost.failRequestActionNotSupported(op);
             return;
         }
 
         if (a == Action.PATCH && op.isRemote()) {
             // PATCH is reserved for in-process QueryTaskService
-            getHost().failRequestActionNotSupported(op);
+            ServiceHost.failRequestActionNotSupported(op);
             return;
         }
 
@@ -754,7 +755,7 @@ public class LuceneDocumentIndexService extends StatelessService {
                             break;
                         }
                     }
-                    getHost().failRequestActionNotSupported(op);
+                    ServiceHost.failRequestActionNotSupported(op);
                     break;
                 default:
                     break;
@@ -792,7 +793,7 @@ public class LuceneDocumentIndexService extends StatelessService {
                             break;
                         }
                     }
-                    getHost().failRequestActionNotSupported(op);
+                    ServiceHost.failRequestActionNotSupported(op);
                     break;
                 default:
                     break;

@@ -56,6 +56,7 @@ import com.vmware.xenon.common.Service;
 import com.vmware.xenon.common.ServiceClient;
 import com.vmware.xenon.common.ServiceClient.ConnectionPoolMetrics;
 import com.vmware.xenon.common.ServiceDocument;
+import com.vmware.xenon.common.ServiceErrorResponse;
 import com.vmware.xenon.common.ServiceHost.ServiceHostState;
 import com.vmware.xenon.common.StatefulService;
 import com.vmware.xenon.common.StatelessService;
@@ -64,6 +65,7 @@ import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
 import com.vmware.xenon.common.test.AuthorizationHelper;
 import com.vmware.xenon.common.test.MinimalTestServiceState;
+import com.vmware.xenon.common.test.TestContext;
 import com.vmware.xenon.common.test.TestProperty;
 import com.vmware.xenon.common.test.TestRequestSender;
 import com.vmware.xenon.common.test.TestRequestSender.FailureResponse;
@@ -831,6 +833,8 @@ public class NettyHttpServiceClientTest {
                 this.host.buildMinimalTestState(),
                 null, null);
 
+        verifyPerHostPendingRequestLimit(this.host, services, this.requestCount, false);
+
         String tag = ServiceClient.CONNECTION_TAG_DEFAULT;
 
         if (!this.host.isStressTest()) {
@@ -1235,4 +1239,42 @@ public class NettyHttpServiceClientTest {
         assertEquals("<error>hello</error>", resp.op.getBodyRaw());
     }
 
+    public static void verifyPerHostPendingRequestLimit(
+            VerificationHost host,
+            List<Service> services,
+            long requestCount,
+            boolean connectionSharing) {
+        int pendingLimit = host.getClient().getPendingRequestQueueLimit();
+        try {
+            host.getClient().setPendingRequestQueueLimit(1);
+            // verify pending request limit enforcement
+            TestContext ctx = host.testCreate(services.size() * requestCount);
+            AtomicInteger limitFailures = new AtomicInteger();
+            for (Service s : services) {
+                for (int i = 0; i < requestCount; i++) {
+                    Operation put = Operation.createPut(s.getUri())
+                            .forceRemote()
+                            .setBodyNoCloning(host.buildMinimalTestState())
+                            .setConnectionSharing(connectionSharing)
+                            .setCompletion((o, e) -> {
+                                if (e == null) {
+                                    ctx.complete();
+                                    return;
+                                }
+                                ServiceErrorResponse rsp = o.getBody(ServiceErrorResponse.class);
+                                if (ServiceErrorResponse.ERROR_CODE_CLIENT_QUEUE_LIMIT_EXCEEDED == rsp
+                                        .getErrorCode()) {
+                                    limitFailures.incrementAndGet();
+                                }
+                                ctx.complete();
+                            });
+                    host.send(put);
+                }
+            }
+            ctx.await();
+            assertTrue(limitFailures.get() > 0);
+        } finally {
+            host.getClient().setPendingRequestQueueLimit(pendingLimit);
+        }
+    }
 }

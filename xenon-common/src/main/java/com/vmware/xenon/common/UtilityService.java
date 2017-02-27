@@ -144,7 +144,7 @@ public class UtilityService implements Service {
             }
             handleStatsRequest(op);
         } else {
-            getHost().failRequestActionNotSupported(op);
+            ServiceHost.failRequestActionNotSupported(op);
         }
     }
 
