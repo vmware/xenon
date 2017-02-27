@@ -192,7 +192,7 @@ class ServiceSynchronizationTracker {
                             op.complete();
                             return;
                         }
-                        this.host.failRequestServiceNotFound(op);
+                        ServiceHost.failRequestServiceNotFound(op);
                         return;
                     }
 
@@ -208,7 +208,7 @@ class ServiceSynchronizationTracker {
             }
             // Since the factory is marked available, we assume steady state for the node-group
             // and fail the request with NOT-FOUND.
-            this.host.failRequestServiceNotFound(op);
+            ServiceHost.failRequestServiceNotFound(op);
         };
 
         NodeGroupUtils.checkServiceAvailability(ch, parent);
@@ -361,7 +361,7 @@ class ServiceSynchronizationTracker {
             } else {
                 // peers did not have a better state to offer
                 if (ServiceDocument.isDeleted(t.state)) {
-                    this.host.failRequestServiceMarkedDeleted(t.state.documentSelfLink, op);
+                    ServiceHost.failRequestServiceMarkedDeleted(t.state.documentSelfLink, op);
                     return;
                 }
 
@@ -371,7 +371,7 @@ class ServiceSynchronizationTracker {
             }
 
             if (ServiceDocument.isDeleted(selectedState)) {
-                this.host.failRequestServiceMarkedDeleted(t.state.documentSelfLink, op);
+                ServiceHost.failRequestServiceMarkedDeleted(t.state.documentSelfLink, op);
 
                 boolean isVersionSame = ServiceDocument
                         .compare(selectedState, t.state, t.stateDescription, Utils.getTimeComparisonEpsilonMicros())

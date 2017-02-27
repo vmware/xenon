@@ -16,6 +16,7 @@ package com.vmware.xenon.common;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Deque;
+import java.util.Iterator;
 import java.util.concurrent.ConcurrentLinkedDeque;
 
 /**
@@ -23,7 +24,7 @@ import java.util.concurrent.ConcurrentLinkedDeque;
  * it will act as a limited capacity {@code Deque} with either FIFO or LIFO behavior.
  * The queue is not thread safe and should be used within a synchronized context
  */
-class OperationQueue {
+public class OperationQueue {
 
     public static OperationQueue createFifo(int limit) {
         OperationQueue opDeque = new OperationQueue();
@@ -127,7 +128,28 @@ class OperationQueue {
         return clone;
     }
 
+    /**
+     * Inserts all items to the supplied collection and clears this queue
+     */
+    public void transferAll(Collection<Operation> pendingOps) {
+        pendingOps.addAll(this.store);
+        this.store.clear();
+    }
+
+    /**
+     * Clears all items
+     */
     public void clear() {
         this.store.clear();
     }
+
+    public int size() {
+        this.elementCount = this.store.size();
+        return this.elementCount;
+    }
+
+    public Iterator<Operation> iterator() {
+        return this.store.iterator();
+    }
+
 }

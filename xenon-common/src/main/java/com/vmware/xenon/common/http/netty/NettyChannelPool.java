@@ -39,8 +39,11 @@ import io.netty.handler.ssl.SslContext;
 
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Operation.OperationOption;
+import com.vmware.xenon.common.OperationQueue;
 import com.vmware.xenon.common.ServiceClient;
 import com.vmware.xenon.common.ServiceClient.ConnectionPoolMetrics;
+import com.vmware.xenon.common.ServiceErrorResponse;
+import com.vmware.xenon.common.ServiceHost;
 import com.vmware.xenon.common.ServiceHost.ServiceHostState;
 import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
@@ -136,8 +139,9 @@ public class NettyChannelPool {
     public static class NettyChannelGroup {
         private NettyChannelGroupKey key;
 
-        public NettyChannelGroup(NettyChannelGroupKey key) {
+        public NettyChannelGroup(NettyChannelGroupKey key, int queueLimit) {
             this.key = key;
+            this.pendingRequests = OperationQueue.createFifo(queueLimit);
         }
 
         public NettyChannelGroupKey getKey() {
@@ -148,7 +152,7 @@ public class NettyChannelPool {
         public Queue<NettyChannelContext> availableChannels = new ConcurrentLinkedQueue<>();
 
         public List<NettyChannelContext> inUseChannels = new ArrayList<>();
-        public Queue<Operation> pendingRequests = new ConcurrentLinkedQueue<>();
+        public OperationQueue pendingRequests;
     }
 
     public static final Logger LOGGER = Logger.getLogger(NettyChannelPool.class
@@ -175,6 +179,8 @@ public class NettyChannelPool {
     private SSLContext sslContext;
 
     private int requestPayloadSizeLimit;
+
+    private int pendingRequestQueueLimit;
 
     public NettyChannelPool() {
     }
@@ -242,8 +248,9 @@ public class NettyChannelPool {
         return this.connectionLimit;
     }
 
-    public void setConnectionLimitPerTag(String tag, int limit) {
+    public NettyChannelPool setConnectionLimitPerTag(String tag, int limit) {
         this.connectionLimitsPerTag.put(tag, limit);
+        return this;
     }
 
     public int getConnectionLimitPerTag(String tag) {
@@ -251,12 +258,29 @@ public class NettyChannelPool {
                 ServiceClient.DEFAULT_CONNECTION_LIMIT_PER_TAG);
     }
 
-    public void setRequestPayloadSizeLimit(int requestPayloadSizeLimit) {
+    public NettyChannelPool setRequestPayloadSizeLimit(int requestPayloadSizeLimit) {
         this.requestPayloadSizeLimit = requestPayloadSizeLimit;
+        return this;
     }
 
     public int getRequestPayloadSizeLimit() {
         return this.requestPayloadSizeLimit;
+    }
+
+    /**
+     * Sets pending request limit per host connection. This should only be called
+     * before the client is started, or in a test setting
+     */
+    public NettyChannelPool setPendingRequestQueueLimit(int limit) {
+        this.pendingRequestQueueLimit = limit;
+        for (NettyChannelGroup g : this.channelGroups.values()) {
+            g.pendingRequests.setLimit(limit);
+        }
+        return this;
+    }
+
+    public int getPendingRequestQueueLimit() {
+        return this.pendingRequestQueueLimit;
     }
 
     private NettyChannelGroup getChannelGroup(String tag, String host, int port) {
@@ -270,7 +294,7 @@ public class NettyChannelPool {
             group = this.channelGroups.get(threadLocalKey);
             if (group == null) {
                 NettyChannelGroupKey clonedKey = new NettyChannelGroupKey(threadLocalKey);
-                group = new NettyChannelGroup(clonedKey);
+                group = new NettyChannelGroup(clonedKey, this.pendingRequestQueueLimit);
                 this.channelGroups.put(clonedKey, group);
             }
         }
@@ -294,7 +318,6 @@ public class NettyChannelPool {
     }
 
     public void connectOrReuse(NettyChannelGroupKey key, Operation request) {
-
         if (request == null) {
             throw new IllegalArgumentException("request is required");
         }
@@ -431,7 +454,7 @@ public class NettyChannelPool {
                     // If the channel is being opened, indicate that caller should
                     // queue the operation to be delivered later.
                     if (request != null) {
-                        group.pendingRequests.add(request);
+                        queuePendingRequest(request, group);
                     }
                     return null;
                 }
@@ -474,6 +497,17 @@ public class NettyChannelPool {
     }
 
     /**
+     * Must be called with the group synchronized
+     */
+    private void queuePendingRequest(Operation request, NettyChannelGroup group) {
+        if (group.pendingRequests.offer(request)) {
+            return;
+        }
+        ServiceHost.failRequestLimitExceeded(request,
+                ServiceErrorResponse.ERROR_CODE_CLIENT_QUEUE_LIMIT_EXCEEDED);
+    }
+
+    /**
      * If there is an HTTP/1.1 context available, return it. We only send one request
      * at a time per context, so one may not be available. If one isn't, we return null
      * to indicate that the request needs to be queued to be sent later.
@@ -486,7 +520,7 @@ public class NettyChannelPool {
             if (context == null) {
                 int limit = getConnectionLimitPerTag(group.getKey().connectionTag);
                 if (group.inUseChannels.size() >= limit) {
-                    group.pendingRequests.add(request);
+                    queuePendingRequest(request, group);
                     return null;
                 }
                 context = new NettyChannelContext(group.getKey(),
@@ -538,8 +572,7 @@ public class NettyChannelPool {
                         contextFinal.setOpenInProgress(false);
                         contextFinal.setChannel(future.channel()).setOperation(request);
                         request.toggleOption(OperationOption.SOCKET_ACTIVE, true);
-                        pendingOps.addAll(group.pendingRequests);
-                        group.pendingRequests.clear();
+                        group.pendingRequests.transferAll(pendingOps);
                     }
 
                     sendAfterConnect(future.channel(), contextFinal, request, group);
@@ -787,29 +820,34 @@ public class NettyChannelPool {
         final int searchLimit = 1000;
         int count = 0;
         int removedCount = 0;
-        Iterator<Operation> pendingOpIt = group.pendingRequests.iterator();
-        while (pendingOpIt.hasNext() && ++count < searchLimit) {
-            Operation pendingOp = pendingOpIt.next();
 
-            if (pendingOp.getStatusCode() < Operation.STATUS_CODE_FAILURE_THRESHOLD) {
-                if (count > 10) {
-                    // We are using a FIFO queue, so if oldest operations have not expired,
-                    // assume no others have. This is not always true, for operations with
-                    // widely different expirations, but this is defense in depth, not a primary
-                    // mechanism for expiration and we want to keep the overhead small
-                    break;
-                } else {
-                    continue;
+        synchronized (group) {
+            Iterator<Operation> pendingOpIt = group.pendingRequests.iterator();
+            while (pendingOpIt.hasNext() && ++count < searchLimit) {
+                Operation pendingOp = pendingOpIt.next();
+
+                if (pendingOp.getStatusCode() < Operation.STATUS_CODE_FAILURE_THRESHOLD) {
+                    if (count > 10) {
+                        // We are using a FIFO queue, so if oldest operations have not expired,
+                        // assume no others have. This is not always true, for operations with
+                        // widely different expirations, but this is defense in depth, not a primary
+                        // mechanism for expiration and we want to keep the overhead small
+                        break;
+                    } else {
+                        continue;
+                    }
                 }
+                pendingOpIt.remove();
+                removedCount++;
             }
-            pendingOpIt.remove();
-            removedCount++;
         }
 
         if (removedCount == 0) {
             return;
         }
-        LOGGER.warning("Pending, failed operations removed: " + removedCount);
+
+        LOGGER.warning(String.format("Pending %d, failed pending operations removed: %d",
+                group.pendingRequests.size(), removedCount));
     }
 
     public void setHttp2SslContext(SslContext context) {

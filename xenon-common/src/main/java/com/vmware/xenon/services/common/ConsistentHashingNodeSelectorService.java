@@ -221,7 +221,7 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
         }
 
         if (op.getAction() != Action.POST) {
-            getHost().failRequestActionNotSupported(op);
+            ServiceHost.failRequestActionNotSupported(op);
             return;
         }
 
@@ -515,7 +515,8 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
         // approximate check for queue limit (not atomic)
         if (this.operationQueueLimit <= this.pendingOperationCount.get()) {
             adjustStat(STAT_NAME_LIMIT_EXCEEDED_FAILED_REQUEST_COUNT, 1);
-            this.getHost().failRequestLimitExceeded(op);
+            ServiceHost.failRequestLimitExceeded(op,
+                    ServiceErrorResponse.ERROR_CODE_SERVICE_QUEUE_LIMIT_EXCEEDED);
             return true;
         }
 

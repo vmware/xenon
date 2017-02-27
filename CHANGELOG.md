@@ -2,6 +2,12 @@
 
 ## 1.4.0-SNAPSHOT
 
+* ServiceHost.failRequestXXX methods have been made static so they are
+  useful without a host reference
+
+* Add pending request queue limit on ServiceClient interface and NettyHttpServiceClient
+  implementation. Default is configured through JVM parameter.
+
 * Additional levels of Operation tracing, making operation inspection
   easier. The tracing toggle PATCH request to /core/management now takes
   a new level property that determines the operation tracing behavior:

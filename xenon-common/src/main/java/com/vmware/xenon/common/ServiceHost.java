@@ -3552,56 +3552,6 @@ public class ServiceHost implements ServiceRequestSender {
         userLinktoTokenMap.put(userServiceLink, tokenSet);
     }
 
-    void failRequestServiceNotFound(Operation inboundOp) {
-        failRequestServiceNotFound(inboundOp,
-                ServiceErrorResponse.ERROR_CODE_INTERNAL_MASK);
-    }
-
-    void failRequestServiceNotFound(Operation inboundOp, int errorCode, String errorMsg) {
-        failRequest(inboundOp, Operation.STATUS_CODE_NOT_FOUND,
-                errorCode,
-                new ServiceNotFoundException(inboundOp.getUri().toString(), errorMsg));
-    }
-
-    void failRequestServiceNotFound(Operation inboundOp, int errorCode) {
-        failRequest(inboundOp, Operation.STATUS_CODE_NOT_FOUND,
-                errorCode,
-                new ServiceNotFoundException(inboundOp.getUri().toString()));
-    }
-
-    void failRequestServiceMarkedDeleted(String documentSelfLink,
-            Operation serviceStartPost) {
-        failRequest(serviceStartPost, Operation.STATUS_CODE_CONFLICT,
-                ServiceErrorResponse.ERROR_CODE_STATE_MARKED_DELETED,
-                new IllegalStateException("Service marked deleted: "
-                        + documentSelfLink));
-    }
-
-    void failRequestServiceAlreadyStarted(String path, Service s, Operation post) {
-        ProcessingStage st = ProcessingStage.AVAILABLE;
-        if (s != null) {
-            st = s.getProcessingStage();
-        }
-
-        Exception e;
-        if (s != null && s.hasOption(ServiceOption.IMMUTABLE)) {
-            // Even though we were able to detect violation of self-link uniqueness
-            // in this case, generally we do not try to enforce uniqueness for
-            // IMMUTABLE services in all cases. Instead it is the responsibility of
-            // the caller to ensure uniqueness of self-links.
-            e = new ServiceAlreadyStartedException(path,
-                    "Self-link uniqueness not guaranteed for Immutable Services.");
-            log(Level.WARNING, e.getMessage());
-        } else {
-            e = new ServiceAlreadyStartedException(path, st);
-        }
-
-        failRequest(post, Operation.STATUS_CODE_CONFLICT,
-                ServiceErrorResponse.ERROR_CODE_SERVICE_ALREADY_EXISTS,
-                e);
-    }
-
-
     /**
      * Forwards request to a peer, if local node is not the owner for the service. This method is
      * part of the consensus logic for the replication protocol. It serves the following functions:
@@ -3841,7 +3791,7 @@ public class ServiceHost implements ServiceRequestSender {
 
     void checkPragmaAndRegisterForAvailability(String path, Operation op) {
         if (!op.hasPragmaDirective(Operation.PRAGMA_DIRECTIVE_QUEUE_FOR_SERVICE_AVAILABILITY)) {
-            this.failRequestServiceNotFound(op);
+            failRequestServiceNotFound(op);
             return;
         }
 
@@ -3852,37 +3802,6 @@ public class ServiceHost implements ServiceRequestSender {
             handleRequest(null, op);
         });
         registerForServiceAvailability(op, path);
-    }
-
-    void failRequestOwnerMismatch(Operation op, String id, ServiceDocument body) {
-        String owner = body != null ? body.documentOwner : "";
-        op.setStatusCode(Operation.STATUS_CODE_CONFLICT);
-        Throwable e = new IllegalStateException(String.format(
-                "Owner in body: %s, computed locally: %s",
-                owner, id));
-        ServiceErrorResponse rsp = ServiceErrorResponse.create(e, op.getStatusCode(),
-                EnumSet.of(ErrorDetail.SHOULD_RETRY));
-        rsp.setInternalErrorCode(ServiceErrorResponse.ERROR_CODE_OWNER_MISMATCH);
-        op.fail(e, rsp);
-    }
-
-    public void failRequestActionNotSupported(Operation request) {
-        request.setStatusCode(Operation.STATUS_CODE_BAD_METHOD).fail(
-                new IllegalArgumentException("Action not supported: " + request.getAction()));
-    }
-
-    public void failRequestLimitExceeded(Operation request) {
-        // Add a header indicating retry should be attempted after some interval.
-        // Currently set to just one second, subject to change in the future
-        request.addResponseHeader(Operation.RETRY_AFTER_HEADER, "1");
-        // a specific ServiceErrorResponse will be added in the future with retry hints
-        request.setStatusCode(Operation.STATUS_CODE_UNAVAILABLE)
-                .fail(new CancellationException("queue limit exceeded"));
-    }
-
-    private void failForwardRequest(Operation op, Operation fo, Throwable fe) {
-        op.setStatusCode(fo.getStatusCode());
-        op.setBodyNoCloning(fo.getBodyRaw()).fail(fe);
     }
 
     void retryPauseOrOnDemandLoadConflict(Operation op,
@@ -3919,7 +3838,7 @@ public class ServiceHost implements ServiceRequestSender {
         }
 
         if (!shouldRetry) {
-            failForwardRequest(op, fo, fe);
+            failForwardedRequest(op, fo, fe);
             return;
         }
 
@@ -4007,18 +3926,6 @@ public class ServiceHost implements ServiceRequestSender {
 
         // indicate we are not waiting for service start, request should be forwarded or failed
         return false;
-    }
-
-    private static void failRequest(Operation request, int statusCode, int errorCode, Throwable e) {
-        request.setStatusCode(statusCode);
-        ServiceErrorResponse r = Utils.toServiceErrorResponse(e);
-        r.statusCode = statusCode;
-        r.errorCode = errorCode;
-
-        if (e instanceof ServiceNotFoundException) {
-            r.stackTrace = null;
-        }
-        request.setContentType(Operation.MEDIA_TYPE_APPLICATION_JSON).fail(e, r);
     }
 
     private void queueOrScheduleRequest(Service s, Operation op) {
@@ -4127,7 +4034,7 @@ public class ServiceHost implements ServiceRequestSender {
             return false;
         }
 
-        failRequestLimitExceeded(op);
+        failRequestLimitExceeded(op, ServiceErrorResponse.ERROR_CODE_HOST_RATE_LIMIT_EXCEEDED);
         Operation nextOp = s.dequeueRequest();
         if (nextOp != null) {
             run(() -> handleRequest(null, nextOp));
@@ -5948,6 +5855,98 @@ public class ServiceHost implements ServiceRequestSender {
      */
     public boolean unregisterRuntimeShutdownHook() {
         return Runtime.getRuntime().removeShutdownHook(getRuntimeShutdownHook());
+    }
+
+    private static void failRequest(Operation request, int statusCode, int errorCode, Throwable e) {
+        request.setStatusCode(statusCode);
+        ServiceErrorResponse r = Utils.toServiceErrorResponse(e);
+        r.statusCode = statusCode;
+        r.errorCode = errorCode;
+
+        if (e instanceof ServiceNotFoundException) {
+            r.stackTrace = null;
+        }
+        request.setContentType(Operation.MEDIA_TYPE_APPLICATION_JSON).fail(e, r);
+    }
+
+    public static void failRequestOwnerMismatch(Operation op, String id, ServiceDocument body) {
+        String owner = body != null ? body.documentOwner : "";
+        op.setStatusCode(Operation.STATUS_CODE_CONFLICT);
+        Throwable e = new IllegalStateException(String.format(
+                "Owner in body: %s, computed locally: %s",
+                owner, id));
+        ServiceErrorResponse rsp = ServiceErrorResponse.create(e, op.getStatusCode(),
+                EnumSet.of(ErrorDetail.SHOULD_RETRY));
+        rsp.setInternalErrorCode(ServiceErrorResponse.ERROR_CODE_OWNER_MISMATCH);
+        op.fail(e, rsp);
+    }
+
+    public static void failRequestActionNotSupported(Operation request) {
+        request.setStatusCode(Operation.STATUS_CODE_BAD_METHOD).fail(
+                new IllegalArgumentException("Action not supported: " + request.getAction()));
+    }
+
+    public static void failRequestLimitExceeded(Operation request, int errorCode) {
+        // Add a header indicating retry should be attempted after some interval.
+        // Currently set to just one second, subject to change in the future
+        request.addResponseHeader(Operation.RETRY_AFTER_HEADER, "1");
+        failRequest(request, Operation.STATUS_CODE_UNAVAILABLE,
+                errorCode,
+                new CancellationException("queue limit exceeded"));
+    }
+
+    private static void failForwardedRequest(Operation op, Operation fo, Throwable fe) {
+        op.setStatusCode(fo.getStatusCode());
+        op.setBodyNoCloning(fo.getBodyRaw()).fail(fe);
+    }
+
+    static void failRequestServiceNotFound(Operation inboundOp) {
+        failRequestServiceNotFound(inboundOp,
+                ServiceErrorResponse.ERROR_CODE_INTERNAL_MASK);
+    }
+
+    static void failRequestServiceNotFound(Operation inboundOp, int errorCode, String errorMsg) {
+        failRequest(inboundOp, Operation.STATUS_CODE_NOT_FOUND,
+                errorCode,
+                new ServiceNotFoundException(inboundOp.getUri().toString(), errorMsg));
+    }
+
+    static void failRequestServiceNotFound(Operation inboundOp, int errorCode) {
+        failRequest(inboundOp, Operation.STATUS_CODE_NOT_FOUND,
+                errorCode,
+                new ServiceNotFoundException(inboundOp.getUri().toString()));
+    }
+
+    static void failRequestServiceMarkedDeleted(String documentSelfLink,
+            Operation serviceStartPost) {
+        failRequest(serviceStartPost, Operation.STATUS_CODE_CONFLICT,
+                ServiceErrorResponse.ERROR_CODE_STATE_MARKED_DELETED,
+                new IllegalStateException("Service marked deleted: "
+                        + documentSelfLink));
+    }
+
+    void failRequestServiceAlreadyStarted(String path, Service s, Operation post) {
+        ProcessingStage st = ProcessingStage.AVAILABLE;
+        if (s != null) {
+            st = s.getProcessingStage();
+        }
+
+        Exception e;
+        if (s != null && s.hasOption(ServiceOption.IMMUTABLE)) {
+            // Even though we were able to detect violation of self-link uniqueness
+            // in this case, generally we do not try to enforce uniqueness for
+            // IMMUTABLE services in all cases. Instead it is the responsibility of
+            // the caller to ensure uniqueness of self-links.
+            e = new ServiceAlreadyStartedException(path,
+                    "Self-link uniqueness not guaranteed for Immutable Services.");
+            log(Level.WARNING, e.getMessage());
+        } else {
+            e = new ServiceAlreadyStartedException(path, st);
+        }
+
+        failRequest(post, Operation.STATUS_CODE_CONFLICT,
+                ServiceErrorResponse.ERROR_CODE_SERVICE_ALREADY_EXISTS,
+                e);
     }
 
 }

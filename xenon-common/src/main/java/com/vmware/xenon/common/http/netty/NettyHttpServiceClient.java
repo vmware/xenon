@@ -150,6 +150,7 @@ public class NettyHttpServiceClient implements ServiceClient {
             sc.setHttpProxy(new URI(proxy));
         }
 
+        sc.setPendingRequestQueueLimit(ServiceClient.DEFAULT_PENDING_REQUEST_QUEUE_LIMIT);
         sc.setConnectionLimitPerHost(DEFAULT_CONNECTION_LIMIT_PER_HOST);
         sc.setConnectionLimitPerTag(ServiceClient.CONNECTION_TAG_DEFAULT,
                 DEFAULT_CONNECTIONS_PER_HOST);
@@ -393,9 +394,16 @@ public class NettyHttpServiceClient implements ServiceClient {
                 return;
             }
             if (e != null) {
-                op.setBody(ServiceErrorResponse.create(e, Operation.STATUS_CODE_BAD_REQUEST,
-                        EnumSet.of(ErrorDetail.SHOULD_RETRY)));
-                fail(e, op, op.getBodyRaw());
+                Object originalBody = op.getBodyRaw();
+                ServiceErrorResponse rsp = null;
+                if (o.hasBody() && (o.getBodyRaw() instanceof ServiceErrorResponse)) {
+                    rsp = (ServiceErrorResponse) o.getBodyRaw();
+                } else {
+                    rsp = ServiceErrorResponse.create(e, Operation.STATUS_CODE_BAD_REQUEST,
+                            EnumSet.of(ErrorDetail.SHOULD_RETRY));
+                }
+                op.setBodyNoCloning(rsp);
+                fail(e, op, originalBody);
                 return;
             }
             op.toggleOption(OperationOption.SOCKET_ACTIVE, true);
@@ -831,6 +839,32 @@ public class NettyHttpServiceClient implements ServiceClient {
         }
         LOGGER.info("Failed expired operations, count: " + expiredCount + " forced count: "
                 + forcedExpiredCount);
+    }
+
+    /**
+     * @see ServiceClient#setPendingRequestQueueLimitPerHost()
+     */
+    @Override
+    public ServiceClient setPendingRequestQueueLimit(int limit) {
+        this.channelPool.setPendingRequestQueueLimit(limit);
+        if (this.sslChannelPool != null) {
+            this.sslChannelPool.setPendingRequestQueueLimit(limit);
+        }
+        if (this.http2ChannelPool != null) {
+            this.http2ChannelPool.setPendingRequestQueueLimit(limit);
+        }
+        if (this.http2SslChannelPool != null) {
+            this.http2SslChannelPool.setPendingRequestQueueLimit(limit);
+        }
+        return this;
+    }
+
+    /**
+     * @see ServiceClient#getPendingRequestQueueLimit()
+     */
+    @Override
+    public int getPendingRequestQueueLimit() {
+        return this.channelPool.getPendingRequestQueueLimit();
     }
 
     /**
