@@ -18,7 +18,6 @@ import static org.junit.Assert.assertTrue;
 
 import java.lang.reflect.Array;
 import java.net.URI;
-import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
@@ -152,9 +151,7 @@ public class TestGatewayService {
         ServiceHost dispatchHost = this.gatewayHost.getDispatchHost();
 
         // Verify POSTs
-        List<URI> exampleUris = new ArrayList<>();
-        this.host.createExampleServices(
-                dispatchHost, this.serviceCount, exampleUris, null, true);
+        List<URI> exampleUris = this.host.createExampleServices(dispatchHost, this.serviceCount, null, true);
 
         // Verify GETs
         Map<URI, ExampleServiceState> examples = this.host.getServiceState(

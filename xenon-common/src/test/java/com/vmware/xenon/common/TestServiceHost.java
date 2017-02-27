@@ -2514,9 +2514,7 @@ public class TestServiceHost {
     public void getAvailableServicesWithOptions() throws Throwable {
         setUp(false);
         int serviceCount = 5;
-        List<URI> exampleURIs = new ArrayList<>();
-        this.host.createExampleServices(this.host, serviceCount, exampleURIs,
-                Utils.getNowMicrosUtc());
+        this.host.createExampleServices(this.host, serviceCount, Utils.getNowMicrosUtc());
 
         EnumSet<ServiceOption> options = EnumSet.of(ServiceOption.INSTRUMENTATION,
                 ServiceOption.OWNER_SELECTION, ServiceOption.FACTORY_ITEM);

@@ -191,8 +191,7 @@ public class TestServiceModel extends BasicReusableHostTestCase {
         double oldCount = (stat != null) ? stat.latestValue : 0;
 
         // create example services.
-        List<URI> exampleUris = new ArrayList<URI>();
-        this.host.createExampleServices(this.host, count, exampleUris, null);
+        List<URI> exampleUris = this.host.createExampleServices(this.host, count, null);
 
         // do GETs on the example services to make sure all have started successfully.
         this.host.getServiceState(null, ExampleService.ExampleServiceState.class, exampleUris);

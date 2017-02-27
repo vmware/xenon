@@ -94,9 +94,7 @@ public class TestSynchronizationTaskService extends BasicTestCase {
         // self-cancel.
         setUpMultiNode();
 
-        List<URI> exampleURIs = new ArrayList<>();
-        this.host.createExampleServices(
-                this.host.getPeerHost(), this.serviceCount, exampleURIs, null);
+        this.host.createExampleServices(this.host.getPeerHost(), this.serviceCount, null);
 
         long membershipUpdateTimeMicros = getLatestMembershipUpdateTime(this.host.getPeerHostUri());
 

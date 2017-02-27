@@ -92,9 +92,8 @@ public class TestSubscriptions extends BasicTestCase {
         // test host to receive notifications
         VerificationHost localHost = this.host;
         int serviceCount = 1;
-        List<URI> exampleURIs = new ArrayList<>();
         // create example service documents across all nodes
-        serviceHost.createExampleServices(serviceHost, serviceCount, exampleURIs, null);
+        List<URI> exampleURIs = serviceHost.createExampleServices(serviceHost, serviceCount, null);
         TestContext oneUseNotificationCtx = this.host.testCreate(1);
         StatelessService notificationTarget = new StatelessService() {
             @Override
