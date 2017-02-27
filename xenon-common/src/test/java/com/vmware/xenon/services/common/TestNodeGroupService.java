@@ -1332,10 +1332,36 @@ public class TestNodeGroupService {
     public void doNodeStopWithUpdates(Map<String, ExampleServiceState> exampleStatesPerSelfLink)
             throws Throwable {
         this.host.log("Starting to stop nodes and send updates");
-        VerificationHost remainingHost = this.host.getPeerHost();
-        Collection<VerificationHost> hostsToStop = new ArrayList<>(this.host.getInProcessHostMap()
-                .values());
-        hostsToStop.remove(remainingHost);
+
+        Iterator<VerificationHost> peersIt = this.host.getInProcessHostMap().values().iterator();
+        VerificationHost remainingHost = peersIt.next();
+
+        // Create a few example services
+        List<URI> exampleUris = new ArrayList<>();
+        this.host.createExampleServices(remainingHost, this.serviceCount, exampleUris, null);
+
+        // create targetUris using the peer (remainingHost)
+        List<URI> targetUris = new ArrayList<>();
+        exampleUris.forEach(s -> targetUris.add(UriUtils.buildUri(remainingHost, s.getPath())));
+
+        // Patch these services
+        ExampleServiceState state = new ExampleServiceState();
+        state.name = "patched-name";
+        this.host.doServiceUpdates(targetUris, Action.PATCH, state);
+
+        // Stop one of the nodes
+        this.host.stopHost(peersIt.next());
+        this.host.setNodeGroupQuorum(this.nodeCount - 1);
+        this.host.waitForNodeGroupConvergence(this.nodeCount - 1);
+
+        // GET the state of example service and validate they represent correct state
+        Collection<ExampleServiceState> serviceStates = this.host.getServiceState(
+                null, ExampleServiceState.class, targetUris).values();
+        serviceStates.forEach(s -> assertEquals("patched-name", s.name));
+
+        List<VerificationHost> hostsToStop = new ArrayList<>();
+        peersIt.forEachRemaining(h -> hostsToStop.add(h));
+
         List<URI> targetServices = new ArrayList<>();
         for (String link : exampleStatesPerSelfLink.keySet()) {
             // build the URIs using the host we plan to keep, so the maps we use below to lookup
