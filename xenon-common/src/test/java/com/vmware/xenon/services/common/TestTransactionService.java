@@ -135,8 +135,7 @@ public class TestTransactionService extends BasicReusableHostTestCase {
     @Test
     public void transactionResolution() throws Throwable {
         ExampleService.ExampleServiceState verifyState;
-        List<URI> exampleURIs = new ArrayList<>();
-        this.defaultHost.createExampleServices(this.defaultHost, 1, exampleURIs, null);
+        List<URI> exampleURIs = this.defaultHost.createExampleServices(this.defaultHost, 1, null);
 
         String txid = newTransaction();
 
@@ -164,9 +163,8 @@ public class TestTransactionService extends BasicReusableHostTestCase {
     public void singleUpdate() throws Throwable {
         // used to verify current state
         ExampleServiceState verifyState;
-        List<URI> exampleURIs = new ArrayList<>();
         // create example service documents across all nodes
-        this.defaultHost.createExampleServices(this.defaultHost, 1, exampleURIs, null);
+        List<URI> exampleURIs = this.defaultHost.createExampleServices(this.defaultHost, 1, null);
 
         // 0 -- no transaction
         ExampleServiceState initialState = new ExampleServiceState();

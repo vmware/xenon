@@ -17,6 +17,8 @@
   When **patch** expiration time is 0, **source** expiration time will NOT be updated.
   Any other value is set, then source expiration time will be updated to that value.
 
+* Remove `VerificationHost#createExampleServices(ServiceHost, long, List<URI>, Long)`.
+  Instead of passing `List<URI> exampleURIs`, overloading methods returns list of full uris.
 
 ## 1.3.7
 

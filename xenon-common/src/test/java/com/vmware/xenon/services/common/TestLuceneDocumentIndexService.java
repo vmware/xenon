@@ -791,9 +791,8 @@ public class TestLuceneDocumentIndexService {
             String onDemandFactoryLink = OnDemandLoadFactoryService.create(h);
             createOnDemandLoadServices(h, onDemandFactoryLink);
 
-            List<URI> exampleURIs = new ArrayList<>();
-            Map<URI, ExampleServiceState> beforeState = verifyIdempotentServiceStartDeleteWithStats(
-                    h, exampleURIs);
+            Map<URI, ExampleServiceState> beforeState = verifyIdempotentServiceStartDeleteWithStats(h);
+            List<URI> exampleURIs = new ArrayList<>(beforeState.keySet());
 
             verifyInitialStatePost(h);
 
@@ -1001,14 +1000,13 @@ public class TestLuceneDocumentIndexService {
         verifyFactoryStartedAndSynchronizedAfterNodeSynch(h, statName);
     }
 
-    private Map<URI, ExampleServiceState> verifyIdempotentServiceStartDeleteWithStats(
-            VerificationHost h, List<URI> exampleURIs) throws Throwable {
+    private Map<URI, ExampleServiceState> verifyIdempotentServiceStartDeleteWithStats(VerificationHost h) throws Throwable {
         int vc = 2;
         ExampleServiceState bodyBefore = new ExampleServiceState();
         bodyBefore.name = UUID.randomUUID().toString();
 
         // create example, IDEMPOTENT services
-        this.host.createExampleServices(h, this.serviceCount, exampleURIs, null);
+        List<URI> exampleURIs = this.host.createExampleServices(h, this.serviceCount, null);
 
         verifyCreateStatCount(exampleURIs, 1.0);
 

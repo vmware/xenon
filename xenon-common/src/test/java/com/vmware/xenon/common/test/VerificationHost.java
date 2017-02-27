@@ -2462,36 +2462,40 @@ public class VerificationHost extends ExampleServiceHost {
 
     }
 
-    public void createExampleServices(ServiceHost h,
-            long serviceCount, List<URI> exampleURIs, Long expiration) {
-        createExampleServices(h, serviceCount, exampleURIs, expiration, false);
+    /**
+     * @return list of full urls of the created example services
+     */
+    public List<URI> createExampleServices(ServiceHost h, long serviceCount, Long expiration) {
+        return createExampleServices(h, serviceCount, expiration, false);
     }
 
-    public void createExampleServices(ServiceHost h, long serviceCount, List<URI> exampleURIs,
-            Long expiration, boolean skipAvailabilityCheck) {
+    /**
+     * @return list of full urls of the created example services
+     */
+    public List<URI> createExampleServices(ServiceHost h, long serviceCount, Long expiration, boolean skipAvailabilityCheck) {
 
         if (!skipAvailabilityCheck) {
             waitForServiceAvailable(ExampleService.FACTORY_LINK);
         }
 
-        ExampleServiceState initialState = new ExampleServiceState();
-        URI exampleFactoryUri = UriUtils.buildFactoryUri(h,
-                ExampleService.class);
-
         // create example services
         List<Operation> ops = new ArrayList<>();
         for (int i = 0; i < serviceCount; i++) {
-            initialState.counter = 123L;
+            ExampleServiceState initState = new ExampleServiceState();
+            initState.counter = 123L;
             if (expiration != null) {
-                initialState.documentExpirationTimeMicros = expiration;
+                initState.documentExpirationTimeMicros = expiration;
             }
-            initialState.name = initialState.documentSelfLink = UUID.randomUUID().toString();
-            exampleURIs.add(UriUtils.extendUri(exampleFactoryUri, initialState.documentSelfLink));
-
-            Operation createPost = Operation.createPost(exampleFactoryUri).setBody(initialState);
-            ops.add(createPost);
+            initState.name = initState.documentSelfLink = UUID.randomUUID().toString();
+            Operation post = Operation.createPost(UriUtils.buildFactoryUri(h, ExampleService.class)).setBody(initState);
+            ops.add(post);
         }
-        this.sender.sendAndWait(ops);
+        List<ExampleServiceState> result =  this.sender.sendAndWait(ops, ExampleServiceState.class);
+
+        // returns list of full url
+        return result.stream()
+                .map(state -> UriUtils.extendUri(h.getUri(), state.documentSelfLink))
+                .collect(toList());
     }
 
     public Date getTestExpiration() {
