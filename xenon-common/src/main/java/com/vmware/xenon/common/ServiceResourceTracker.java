@@ -702,7 +702,14 @@ class ServiceResourceTracker {
             // services, do not bother querying the blob index. A node might never come under memory
             // pressure so this lookup avoids the index query.
             if (factoryService.hasOption(ServiceOption.ON_DEMAND_LOAD)) {
-                inboundOp.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_INDEX_CHECK);
+                // if the service is paused, skip ODL on demand start
+                if (this.host.getServiceStage(key) == ProcessingStage.PAUSED) {
+                    this.host.log(Level.WARNING, "ODL service %s is paused, attempting resume",
+                            key);
+                    this.serviceFactoriesWithPauseResume.add(factoryPath);
+                } else {
+                    inboundOp.addPragmaDirective(Operation.PRAGMA_DIRECTIVE_INDEX_CHECK);
+                }
             } else {
                 return false;
             }
