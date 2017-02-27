@@ -516,10 +516,14 @@ class ServiceResourceTracker {
                 }
             }
 
-            // If neither the cache nor the lastAccessTime maps contain an entry
-            // for the Service, and it's a PERSISTENT service, then probably the
-            // service is just starting up. Skipping service pause...
-            if (lastAccessTime == null && ServiceHost.isServiceIndexed(service)) {
+            // If this host is the OWNER for the service and we didn't find it's entry
+            // in the cache or the lastAccessTime map, and it's also a PERSISTENT service,
+            // then probably the service is just starting up. So, we will skip pause..
+            // However, if this host is not the OWNER, then we will proceed with Stop or Pause.
+            // This is because state is not cached on replicas.
+            if (lastAccessTime == null &&
+                    ServiceHost.isServiceIndexed(service) &&
+                    service.hasOption(ServiceOption.DOCUMENT_OWNER)) {
                 continue;
             }
 

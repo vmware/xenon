@@ -1332,10 +1332,26 @@ public class TestNodeGroupService {
     public void doNodeStopWithUpdates(Map<String, ExampleServiceState> exampleStatesPerSelfLink)
             throws Throwable {
         this.host.log("Starting to stop nodes and send updates");
-        VerificationHost remainingHost = this.host.getPeerHost();
-        Collection<VerificationHost> hostsToStop = new ArrayList<>(this.host.getInProcessHostMap()
-                .values());
-        hostsToStop.remove(remainingHost);
+
+        Iterator<VerificationHost> peersIt = this.host.getInProcessHostMap().values().iterator();
+        VerificationHost remainingHost = peersIt.next();
+
+        // Create a few example services
+        List<URI> exampleUris = new ArrayList<>();
+        this.host.createExampleServices(remainingHost, this.serviceCount, exampleUris, null);
+
+        // create targetUris using the peer (remainingHost)
+        List<URI> targetUris = new ArrayList<>();
+        exampleUris.forEach(s -> targetUris.add(UriUtils.buildUri(remainingHost, s.getPath())));
+
+        // Patch these services
+        ExampleServiceState state = new ExampleServiceState();
+        state.name = "patched-name";
+        this.host.doServiceUpdates(targetUris, Action.PATCH, state);
+
+        List<VerificationHost> hostsToStop = new ArrayList<>();
+        peersIt.forEachRemaining(h -> hostsToStop.add(h));
+
         List<URI> targetServices = new ArrayList<>();
         for (String link : exampleStatesPerSelfLink.keySet()) {
             // build the URIs using the host we plan to keep, so the maps we use below to lookup
@@ -1352,6 +1368,11 @@ public class TestNodeGroupService {
                 null);
 
         stopHostsAndVerifyQueuing(hostsToStop, remainingHost, targetServices);
+
+        // GET the state of example service and validate they represent correct state
+        Collection<ExampleServiceState> serviceStates = this.host.getServiceState(
+                null, ExampleServiceState.class, targetUris).values();
+        serviceStates.forEach(s -> assertEquals("patched-name", s.name));
 
         // its important to verify document ownership before we do any updates on the services.
         // This is because we verify, that even without any on demand synchronization,
