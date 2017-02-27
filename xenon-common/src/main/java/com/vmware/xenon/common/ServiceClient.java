@@ -32,6 +32,9 @@ public interface ServiceClient extends ServiceRequestSender {
     public static final String PROPERTY_NAME_REQUEST_PAYLOAD_SIZE_LIMIT =
             Utils.PROPERTY_NAME_PREFIX + "ServiceClient.REQUEST_PAYLOAD_SIZE_LIMIT";
 
+    public static final String PROPERTY_NAME_PENDING_REQUEST_QUEUE_LIMIT = Utils.PROPERTY_NAME_PREFIX
+            + "ServiceClient.PENDING_REQUEST_QUEUE_LIMIT";
+
     public static final String PROPERTY_NAME_MAX_BINARY_SERIALIZED_BODY_LIMIT =
             Utils.PROPERTY_NAME_PREFIX + "ServiceClient.MAX_BINARY_SERIALIZED_BODY_LIMIT";
 
@@ -52,6 +55,9 @@ public interface ServiceClient extends ServiceRequestSender {
 
     public static final int REQUEST_PAYLOAD_SIZE_LIMIT = Integer.getInteger(
             PROPERTY_NAME_REQUEST_PAYLOAD_SIZE_LIMIT, 1024 * 1024 * 64);
+
+    public static final int DEFAULT_PENDING_REQUEST_QUEUE_LIMIT = Integer.getInteger(
+            PROPERTY_NAME_PENDING_REQUEST_QUEUE_LIMIT, 100000);
 
     /**
      * Connection tag used by node group service for peer to peer random probing and liveness checks
@@ -97,6 +103,16 @@ public interface ServiceClient extends ServiceRequestSender {
      * @param op
      */
     void send(Operation op);
+
+    /**
+     * Maximum number of pending requests waiting for a connection to become available
+     */
+    ServiceClient setPendingRequestQueueLimitPerHost(int limit);
+
+    /**
+     * Returns the maximum number of pending requests
+     */
+    int getPendingRequestQueueLimitPerHost();
 
     /**
      * Maximum number of connections cached and re-used for a given host and port tuple. This

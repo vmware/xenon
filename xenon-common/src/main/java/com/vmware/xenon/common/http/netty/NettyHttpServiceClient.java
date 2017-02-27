@@ -150,6 +150,7 @@ public class NettyHttpServiceClient implements ServiceClient {
             sc.setHttpProxy(new URI(proxy));
         }
 
+        sc.setPendingRequestQueueLimitPerHost(ServiceClient.DEFAULT_PENDING_REQUEST_QUEUE_LIMIT);
         sc.setConnectionLimitPerHost(DEFAULT_CONNECTION_LIMIT_PER_HOST);
         sc.setConnectionLimitPerTag(ServiceClient.CONNECTION_TAG_DEFAULT,
                 DEFAULT_CONNECTIONS_PER_HOST);
@@ -831,6 +832,32 @@ public class NettyHttpServiceClient implements ServiceClient {
         }
         LOGGER.info("Failed expired operations, count: " + expiredCount + " forced count: "
                 + forcedExpiredCount);
+    }
+
+    /**
+     * @see ServiceClient#setPendingRequestQueueLimitPerHost()
+     */
+    @Override
+    public ServiceClient setPendingRequestQueueLimitPerHost(int limit) {
+        this.channelPool.setPendingRequestQueueLimit(limit);
+        if (this.sslChannelPool != null) {
+            this.sslChannelPool.setPendingRequestQueueLimit(limit);
+        }
+        if (this.http2ChannelPool != null) {
+            this.http2ChannelPool.setPendingRequestQueueLimit(limit);
+        }
+        if (this.http2SslChannelPool != null) {
+            this.http2SslChannelPool.setPendingRequestQueueLimit(limit);
+        }
+        return this;
+    }
+
+    /**
+     * @see ServiceClient#getPendingRequestQueueLimitPerHost()
+     */
+    @Override
+    public int getPendingRequestQueueLimitPerHost() {
+        return this.channelPool.getPendingRequestQueueLimit();
     }
 
     /**
