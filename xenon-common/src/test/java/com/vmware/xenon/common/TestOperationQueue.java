@@ -67,6 +67,8 @@ public class TestOperationQueue {
 
         assertTrue(!q.isEmpty());
 
+        assertTrue(q.size() == this.count);
+
         // verify operations beyond limit are not queued
         assertTrue(false == q.offer(Operation.createGet(null)));
 
@@ -129,6 +131,24 @@ public class TestOperationQueue {
 
         q.clear();
         assertTrue(q.isEmpty());
+    }
+
+    @Test
+    public void transferAll() {
+        OperationQueue q = OperationQueue.createFifo(this.count);
+        final String pragma = UUID.randomUUID().toString();
+        for (int i = 0; i < this.count; i++) {
+            Operation op = Operation.createPost(null).addPragmaDirective(pragma);
+            q.offer(op);
+        }
+
+        Collection<Operation> ops = new ArrayList<>(this.count);
+        q.transferAll(ops);
+        assertTrue(ops.size() == this.count);
+        assertTrue(q.isEmpty());
+        for (Operation op : ops) {
+            assertEquals(pragma, op.getRequestHeader(Operation.PRAGMA_HEADER));
+        }
     }
 
 }
