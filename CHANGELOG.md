@@ -2,6 +2,9 @@
 
 ## 1.4.0-SNAPSHOT
 
+* Add pending request queue limit on ServiceClient interface and NettyHttpServiceClient
+  implementation. Default is configured through JVM parameter.
+
 * Additional levels of Operation tracing, making operation inspection
   easier. The tracing toggle PATCH request to /core/management now takes
   a new level property that determines the operation tracing behavior:

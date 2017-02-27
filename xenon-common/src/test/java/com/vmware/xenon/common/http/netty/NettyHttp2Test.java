@@ -87,6 +87,9 @@ public class NettyHttp2Test {
 
         try {
             this.host.start();
+            if (this.host.isStressTest()) {
+                this.host.getClient().setPendingRequestQueueLimit(1000000);
+            }
         } catch (Throwable e) {
             throw new RuntimeException(e);
         }
@@ -470,12 +473,15 @@ public class NettyHttp2Test {
                 this.host.buildMinimalTestState(),
                 null, null);
 
+        NettyHttpServiceClientTest.verifyPerHostPendingRequestLimit(this.host, services,
+                this.requestCount, true);
+
         // use global limit, which applies by default to all tags
         int limit = this.host.getClient()
                 .getConnectionLimitPerTag(ServiceClient.CONNECTION_TAG_HTTP2_DEFAULT);
         this.host.connectionTag = null;
         this.host.log("Using default http2 connection limit %d", limit);
-        //this.host.getClient().setConnectionLimitPerHost(limit);
+
         for (int i = 0; i < 5; i++) {
             double throughput = this.host.doPutPerService(
                     this.requestCount,

@@ -64,6 +64,7 @@ import com.vmware.xenon.common.UriUtils;
 import com.vmware.xenon.common.Utils;
 import com.vmware.xenon.common.test.AuthorizationHelper;
 import com.vmware.xenon.common.test.MinimalTestServiceState;
+import com.vmware.xenon.common.test.TestContext;
 import com.vmware.xenon.common.test.TestProperty;
 import com.vmware.xenon.common.test.TestRequestSender;
 import com.vmware.xenon.common.test.TestRequestSender.FailureResponse;
@@ -831,6 +832,8 @@ public class NettyHttpServiceClientTest {
                 this.host.buildMinimalTestState(),
                 null, null);
 
+        verifyPerHostPendingRequestLimit(this.host, services, this.requestCount, false);
+
         String tag = ServiceClient.CONNECTION_TAG_DEFAULT;
 
         if (!this.host.isStressTest()) {
@@ -1235,4 +1238,37 @@ public class NettyHttpServiceClientTest {
         assertEquals("<error>hello</error>", resp.op.getBodyRaw());
     }
 
+    public static void verifyPerHostPendingRequestLimit(
+            VerificationHost host,
+            List<Service> services,
+            long requestCount,
+            boolean connectionSharing) {
+        int pendingLimit = host.getClient().getPendingRequestQueueLimit();
+        try {
+            host.getClient().setPendingRequestQueueLimit(1);
+            // verify pending request limit enforcement
+            TestContext ctx = host.testCreate(services.size() * requestCount);
+            AtomicInteger limitFailures = new AtomicInteger();
+            for (Service s : services) {
+                for (int i = 0; i < requestCount; i++) {
+                    Operation put = Operation.createPut(s.getUri())
+                            .forceRemote()
+                            .setBodyNoCloning(host.buildMinimalTestState())
+                            .setConnectionSharing(connectionSharing)
+                            .setCompletion((o, e) -> {
+                                if (e != null
+                                        && o.getStatusCode() == Operation.STATUS_CODE_UNAVAILABLE) {
+                                    limitFailures.incrementAndGet();
+                                }
+                                ctx.complete();
+                            });
+                    host.send(put);
+                }
+            }
+            ctx.await();
+            assertTrue(limitFailures.get() > 0);
+        } finally {
+            host.getClient().setPendingRequestQueueLimit(pendingLimit);
+        }
+    }
 }
