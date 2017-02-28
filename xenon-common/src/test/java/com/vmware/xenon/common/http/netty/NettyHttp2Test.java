@@ -473,12 +473,13 @@ public class NettyHttp2Test {
                 this.host.buildMinimalTestState(),
                 null, null);
 
-        NettyHttpServiceClientTest.verifyPerHostPendingRequestLimit(this.host, services,
-                this.requestCount, true);
-
         // use global limit, which applies by default to all tags
         int limit = this.host.getClient()
                 .getConnectionLimitPerTag(ServiceClient.CONNECTION_TAG_HTTP2_DEFAULT);
+
+        NettyHttpServiceClientTest.verifyPerHostPendingRequestLimit(this.host, services,
+                limit, true);
+
         this.host.connectionTag = null;
         this.host.log("Using default http2 connection limit %d", limit);
 

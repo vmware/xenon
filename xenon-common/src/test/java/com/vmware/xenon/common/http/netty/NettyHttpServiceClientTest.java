@@ -192,6 +192,10 @@ public class NettyHttpServiceClientTest {
                     .findUserServiceLink(SAMPLE_EMAIL);
             this.host.assumeIdentity(userServicePath);
         }
+
+        if (this.host.isStressTest()) {
+            this.host.getClient().setPendingRequestQueueLimit(1000000);
+        }
     }
 
     @After
@@ -833,9 +837,10 @@ public class NettyHttpServiceClientTest {
                 this.host.buildMinimalTestState(),
                 null, null);
 
-        verifyPerHostPendingRequestLimit(this.host, services, this.requestCount, false);
-
         String tag = ServiceClient.CONNECTION_TAG_DEFAULT;
+        verifyPerHostPendingRequestLimit(this.host, services,
+                this.host.getClient().getConnectionLimitPerTag(tag),
+                false);
 
         if (!this.host.isStressTest()) {
             this.host.log("Single connection runs");
@@ -1249,6 +1254,7 @@ public class NettyHttpServiceClientTest {
             host.getClient().setPendingRequestQueueLimit(1);
             // verify pending request limit enforcement
             TestContext ctx = host.testCreate(services.size() * requestCount);
+            ctx.setTestName("Request limit validation").logBefore();
             AtomicInteger limitFailures = new AtomicInteger();
             for (Service s : services) {
                 for (int i = 0; i < requestCount; i++) {
@@ -1272,6 +1278,7 @@ public class NettyHttpServiceClientTest {
                 }
             }
             ctx.await();
+            ctx.logAfter();
             assertTrue(limitFailures.get() > 0);
         } finally {
             host.getClient().setPendingRequestQueueLimit(pendingLimit);
