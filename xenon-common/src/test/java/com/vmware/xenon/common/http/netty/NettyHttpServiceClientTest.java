@@ -143,6 +143,10 @@ public class NettyHttpServiceClientTest {
         HOST.setPrivateKeyFileReference(ssc.privateKey().toURI());
         HOST.setSecurePort(0);
 
+        if (HOST.isStressTest()) {
+            client.setPendingRequestQueueLimit(1000000);
+        }
+
         try {
             HOST.start();
             CommandLineArgumentParser.parseFromProperties(HOST);
@@ -278,18 +282,18 @@ public class NettyHttpServiceClientTest {
         this.host.testWait();
 
         String tag = ServiceClient.CONNECTION_TAG_DEFAULT;
-        validateTagInfo(tag);
+        validateTagInfo(this.host, tag);
     }
 
-    private void validateTagInfo(String tag) {
-        this.host.waitFor("pending requests", () -> {
-            ConnectionPoolMetrics tagInfo = this.host.getClient().getConnectionPoolMetrics(tag);
+    private static void validateTagInfo(VerificationHost host, String tag) {
+        host.waitFor("pending requests", () -> {
+            ConnectionPoolMetrics tagInfo = host.getClient().getConnectionPoolMetrics(tag);
             if (tagInfo == null) {
                 return false;
             }
-            this.host.log("%s", Utils.toJson(tagInfo));
+            host.log("%s", Utils.toJson(tagInfo));
             if (tagInfo.pendingRequestCount != 0 || tagInfo.inUseConnectionCount > 0) {
-                this.host.log("Requests still pending: %s", Utils.toJson(tagInfo));
+                host.log("Requests still pending: %s", Utils.toJson(tagInfo));
                 return false;
             }
             return true;
@@ -427,7 +431,7 @@ public class NettyHttpServiceClientTest {
 
             }
             this.host.testWait();
-            validateTagInfo(ServiceClient.CONNECTION_TAG_DEFAULT);
+            validateTagInfo(this.host, ServiceClient.CONNECTION_TAG_DEFAULT);
         } finally {
             this.host.toggleNegativeTestMode(false);
             this.host.setOperationTimeOutMicros(
@@ -450,7 +454,7 @@ public class NettyHttpServiceClientTest {
                 services);
 
         String tag = ServiceClient.CONNECTION_TAG_DEFAULT;
-        validateTagInfo(tag);
+        validateTagInfo(this.host, tag);
 
         // check that query and fragment make it to the service
         URI u = services.get(0).getUri();
@@ -626,7 +630,7 @@ public class NettyHttpServiceClientTest {
                 });
         this.host.send(put);
         this.host.testWait();
-        validateTagInfo(ServiceClient.CONNECTION_TAG_DEFAULT);
+        validateTagInfo(this.host, ServiceClient.CONNECTION_TAG_DEFAULT);
     }
 
     @Test
@@ -833,8 +837,6 @@ public class NettyHttpServiceClientTest {
                 this.host.buildMinimalTestState(),
                 null, null);
 
-        verifyPerHostPendingRequestLimit(this.host, services, this.requestCount, false);
-
         String tag = ServiceClient.CONNECTION_TAG_DEFAULT;
 
         if (!this.host.isStressTest()) {
@@ -846,7 +848,7 @@ public class NettyHttpServiceClientTest {
                     services);
             this.host.getClient()
                     .setConnectionLimitPerHost(NettyHttpServiceClient.DEFAULT_CONNECTIONS_PER_HOST);
-            validateTagInfo(tag);
+            validateTagInfo(this.host, tag);
         } else {
             this.host.setOperationTimeOutMicros(
                     TimeUnit.SECONDS.toMicros(this.host.getTimeoutSeconds()));
@@ -882,7 +884,7 @@ public class NettyHttpServiceClientTest {
                 services);
 
         tag = this.host.connectionTag;
-        validateTagInfo(tag);
+        validateTagInfo(this.host, tag);
     }
 
     @Test
@@ -1242,6 +1244,7 @@ public class NettyHttpServiceClientTest {
     public static void verifyPerHostPendingRequestLimit(
             VerificationHost host,
             List<Service> services,
+            String tag,
             long requestCount,
             boolean connectionSharing) {
         int pendingLimit = host.getClient().getPendingRequestQueueLimit();
@@ -1249,6 +1252,7 @@ public class NettyHttpServiceClientTest {
             host.getClient().setPendingRequestQueueLimit(1);
             // verify pending request limit enforcement
             TestContext ctx = host.testCreate(services.size() * requestCount);
+            ctx.setTestName("Request limit validation").logBefore();
             AtomicInteger limitFailures = new AtomicInteger();
             for (Service s : services) {
                 for (int i = 0; i < requestCount; i++) {
@@ -1272,7 +1276,12 @@ public class NettyHttpServiceClientTest {
                 }
             }
             ctx.await();
+            ctx.logAfter();
+            host.log("Queue limit failures: %d", limitFailures.get());
             assertTrue(limitFailures.get() > 0);
+            if (!connectionSharing) {
+                validateTagInfo(host, tag);
+            }
         } finally {
             host.getClient().setPendingRequestQueueLimit(pendingLimit);
         }

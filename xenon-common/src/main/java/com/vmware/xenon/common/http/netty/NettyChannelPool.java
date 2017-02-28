@@ -23,6 +23,7 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ForkJoinPool;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import javax.net.ssl.SSLContext;
@@ -503,8 +504,10 @@ public class NettyChannelPool {
         if (group.pendingRequests.offer(request)) {
             return;
         }
-        ServiceHost.failRequestLimitExceeded(request,
-                ServiceErrorResponse.ERROR_CODE_CLIENT_QUEUE_LIMIT_EXCEEDED);
+        ForkJoinPool.commonPool().execute(() -> {
+            ServiceHost.failRequestLimitExceeded(request,
+                    ServiceErrorResponse.ERROR_CODE_CLIENT_QUEUE_LIMIT_EXCEEDED);
+        });
     }
 
     /**
