@@ -1,6 +1,6 @@
-FROM java:openjdk-8-jdk-alpine
+FROM java:8-jdk
 
-ENV JAVA_HOME=/usr/lib/jvm/default-jvm
+ENV JAVA_HOME=/usr/lib/jvm/java-8-openjdk-amd64
 WORKDIR /src
 ENTRYPOINT ["./mvnw"]
 COPY . /src
