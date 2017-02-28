@@ -92,7 +92,7 @@ public abstract class FactoryService extends StatelessService {
 
     public static final Integer SELF_QUERY_RESULT_LIMIT = Integer.getInteger(
             Utils.PROPERTY_NAME_PREFIX
-                    + "FactoryService.SELF_QUERY_RESULT_LIMIT", 1000);
+                    + "FactoryService.SELF_QUERY_RESULT_LIMIT", 100);
 
     private boolean useBodyForSelfLink = false;
     private EnumSet<ServiceOption> childOptions;
