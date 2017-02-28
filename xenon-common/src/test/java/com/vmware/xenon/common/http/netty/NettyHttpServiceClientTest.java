@@ -192,6 +192,10 @@ public class NettyHttpServiceClientTest {
                     .findUserServiceLink(SAMPLE_EMAIL);
             this.host.assumeIdentity(userServicePath);
         }
+
+        if (this.host.isStressTest()) {
+            this.host.getClient().setPendingRequestQueueLimit(1000000);
+        }
     }
 
     @After
@@ -833,9 +837,10 @@ public class NettyHttpServiceClientTest {
                 this.host.buildMinimalTestState(),
                 null, null);
 
-        verifyPerHostPendingRequestLimit(this.host, services, this.requestCount, false);
-
         String tag = ServiceClient.CONNECTION_TAG_DEFAULT;
+        verifyPerHostPendingRequestLimit(this.host, services,
+                this.host.getClient().getConnectionLimitPerTag(tag) * 10,
+                false);
 
         if (!this.host.isStressTest()) {
             this.host.log("Single connection runs");
