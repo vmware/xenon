@@ -39,6 +39,7 @@ import java.nio.file.SimpleFileVisitor;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.BasicFileAttributes;
+import java.nio.file.spi.FileSystemProvider;
 import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -46,7 +47,9 @@ import java.util.Collections;
 import java.util.Enumeration;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
 import java.util.Properties;
+import java.util.ServiceLoader;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.jar.JarEntry;
@@ -507,7 +510,6 @@ public final class FileUtils {
                             closeFileChannelSafe(ch);
                             op.fail(exc);
                         }
-
                     });
         } catch (Throwable e) {
             closeFileChannelSafe(channel);
@@ -527,9 +529,9 @@ public final class FileUtils {
     /**
      * GET a file.
      *
-     * @param h  ServiceClient used to connect to the host
+     * @param h   ServiceClient used to connect to the host
      * @param get The Operation used to GET the given file URI
-     * @param f File to write to
+     * @param f   File to write to
      * @throws IOException
      */
     public static void getFile(ServiceClient h, final Operation get, File f) throws IOException {
@@ -573,14 +575,13 @@ public final class FileUtils {
                 .addHeader(new ContentRange().toRangeHeader(), false)
                 .setExpiration(get.getExpirationMicrosUtc())
                 .setCompletion(getCompletion));
-
     }
 
     private static void getChunks(ServiceClient h, ContentRange nextRange, Operation parentGet,
             AsynchronousFileChannel ch,
             AtomicInteger bytesWritten) {
 
-        final ContentRange[] range = { nextRange };
+        final ContentRange[] range = {nextRange};
         for (int chunksInFlight = 0; (chunksInFlight < ContentRange.MAX_IN_FLIGHT_CHUNKS)
                 && !range[0].isDone(); chunksInFlight++) {
 
@@ -611,7 +612,6 @@ public final class FileUtils {
 
             h.send(nextGet);
         }
-
     }
 
     private static void writeBody(Operation parentOp, Operation o, AsynchronousFileChannel ch,
@@ -653,15 +653,14 @@ public final class FileUtils {
                         parentOp.fail(exc);
                     }
                 });
-
     }
 
     /**
      * Given a POST operation and a File, post the file to the URI.
      *
-     * @param h ServiceClient
+     * @param h   ServiceClient
      * @param put Operation used to PUT the file at the given URL
-     * @param f File to put
+     * @param f   File to put
      * @throws IOException
      */
     public static void putFile(ServiceClient h, final Operation put, File f) throws IOException {
@@ -671,7 +670,7 @@ public final class FileUtils {
         AtomicInteger completionCount = new AtomicInteger(0);
         String contentType = FileUtils.getContentType(f.toURI());
 
-        final boolean[] fileIsDone = { false };
+        final boolean[] fileIsDone = {false};
 
         putChunks(h, put, ch, contentType, f.length(), 0, completionCount, fileIsDone);
     }
@@ -823,7 +822,75 @@ public final class FileUtils {
             throw new IllegalArgumentException("zip file not found");
         }
 
-        try (FileSystem zipFileSystem = FileSystems.newFileSystem(zipFile.toPath(), null)) {
+//        URI zipUri = new URI("jar:file:", zipFile.toURI().getPath(), null);
+//        URI fileUri = zipFile.toURI(); // here
+
+        URI uri = URI.create("jar:file:" + zipFile.toURI().getPath());
+//        URI zipUri = new URI("jar:" + fileUri.getScheme(), fileUri.getPath(), null);
+        String msg = String.format("AAA zip file newUri=%s, oldUri=%s, oldPath=%s", uri, zipFile.toURI(), zipFile.toPath());
+        Logger.getAnonymousLogger().info(msg);
+
+        for (FileSystemProvider provider : FileSystemProvider.installedProviders()) {
+            msg = String.format("AAA installed provider scheme=%s, provider=%s", provider.getScheme(), provider);
+            Logger.getAnonymousLogger().info(msg);
+        }
+
+        // check installed providers
+//        Map<String,?> env = Collections.emptyMap();
+//        FileSystemProvider chosen = null;
+//        for (FileSystemProvider provider: FileSystemProvider.installedProviders()) {
+//            try {
+////                FileSystem fs = provider.newFileSystem(zipFile.toPath(), env);
+//                FileSystem fs = provider.newFileSystem(uri, env);
+//                msg = String.format("AAA chosen provider=%s, fs=%s open=%s ro=%s",
+//                        provider, fs, fs.isOpen(), fs.isReadOnly());
+//                Logger.getAnonymousLogger().info(msg);
+//                chosen = provider;
+//                break;
+//            } catch (Exception ex) {
+//                msg = String.format("AAA NOT chosen provider %s - %s", provider, ex.getMessage());
+//                Logger.getAnonymousLogger().info(msg);
+//            }
+//        }
+//
+//        if (chosen == null) {
+//            Logger.getAnonymousLogger().info("AAA no logger chosen");
+//        } else {
+//            Logger.getAnonymousLogger().info("AAA logger chosen");
+//        }
+
+        ClassLoader loader = Thread.currentThread().getContextClassLoader();
+        ServiceLoader<FileSystemProvider> sl = ServiceLoader.load(FileSystemProvider.class, loader);
+
+        Logger.getAnonymousLogger().info("AAA loading providers with UTF-8");
+        Map<String, ?> envWithUtf = Collections.singletonMap("encoding", "UTF-8");
+        for (FileSystemProvider provider: sl) {
+            try (FileSystem fs = provider.newFileSystem(uri, envWithUtf)) {
+//                provider.newFileSystem(uri, env);
+                msg = String.format("AAA chosen loaded provider %s %s", provider, fs.isOpen());
+                Logger.getAnonymousLogger().info(msg);
+            } catch (UnsupportedOperationException uoe) {
+                msg = String.format("AAA NOT chosen loaded provider %s", provider);
+                Logger.getAnonymousLogger().info(msg);
+            }
+        }
+
+        Logger.getAnonymousLogger().info("AAA loading providers with ISO-8859-1");
+        Map<String, ?> envWithIso = Collections.singletonMap("encoding", "ISO-8859-1");
+        for (FileSystemProvider provider: sl) {
+            try (FileSystem fs = provider.newFileSystem(uri, envWithIso)) {
+//                provider.newFileSystem(uri2, env);
+                msg = String.format("AAA chosen loaded provider %s, %s", provider, fs.isOpen());
+                Logger.getAnonymousLogger().info(msg);
+            } catch (UnsupportedOperationException uoe) {
+                msg = String.format("AAA NOT chosen loaded provider %s", provider);
+                Logger.getAnonymousLogger().info(msg);
+            }
+        }
+
+
+
+        try (FileSystem zipFileSystem = FileSystems.newFileSystem(uri, envWithUtf)) {
             final Path root = zipFileSystem.getPath("/");
 
             // walk the zip file tree and copy files to the destination
