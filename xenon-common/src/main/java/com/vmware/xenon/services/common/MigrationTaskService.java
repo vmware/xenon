@@ -1112,6 +1112,8 @@ public class MigrationTaskService extends StatefulService {
             }
 
 
+            setAuthorizationContext(operation, getSystemAuthorizationContext());
+            setAuthorizationContext(operation, getAuthorizationContextForSubject("user link"));
             ops.add(operation);
         }
 
