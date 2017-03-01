@@ -21,6 +21,7 @@ import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
 import java.util.EnumSet;
 
+import org.junit.Ignore;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
@@ -33,6 +34,7 @@ import com.vmware.xenon.common.test.TestContext;
 import com.vmware.xenon.common.test.TestRequestSender;
 import com.vmware.xenon.services.common.LocalFileService.LocalFileServiceState;
 
+@Ignore("https://www.pivotaltracker.com/story/show/140758667")
 public class TestLocalFileService extends BasicReusableHostTestCase {
 
     @Rule
