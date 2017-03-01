@@ -28,8 +28,9 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.UUID;
 import java.util.concurrent.TimeoutException;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
-import org.junit.Ignore;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
@@ -198,12 +199,13 @@ public class TestServiceHostManagementService extends BasicTestCase {
         }
     }
 
-    @Ignore("https://www.pivotaltracker.com/story/show/140807509")
     @Test
     public void testBackupAndRestoreWithLocalFile() throws Throwable {
 
-        File tmpFile = this.tempDir.newFile();
+        File tmpFile = this.tempDir.newFile("backup.zip");
         URI localFileUri = tmpFile.toURI();
+
+        Logger.getAnonymousLogger().log(Level.INFO, String.format("AAA localFileUri=%s", localFileUri));
 
         // Post some documents to populate the index.
         Map<URI, ExampleServiceState> exampleStates = populateExampleServices(this.serviceCount);
@@ -217,6 +219,13 @@ public class TestServiceHostManagementService extends BasicTestCase {
         URI backupOpUri = UriUtils.buildUri(this.host, ServiceHostManagementService.SELF_LINK);
         Operation backupOp = Operation.createPatch(backupOpUri).setBody(backupRequest);
         this.host.getTestRequestSender().sendAndWait(backupOp);
+
+        this.host.waitFor("", () -> {
+            long size = tmpFile.length();
+            Logger.getAnonymousLogger().log(Level.INFO,
+                    String.format("AAA waiting backup file to be populated. size=%s", size));
+            return size > 0;
+        });
 
         // verify no LocalFileService has left after backup request has finished
         TestContext testContext = this.host.testCreate(1);

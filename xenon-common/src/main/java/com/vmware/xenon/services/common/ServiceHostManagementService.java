@@ -353,6 +353,7 @@ public class ServiceHostManagementService extends StatefulService {
             });
 
             try {
+                logInfo("AAA uploading file to %s, createLocalFileService=%s", backupServiceUri, createLocalFileService);
                 uploadFile(op, r.backupFile, backupServiceUri);
             } catch (Exception ex) {
                 op.fail(ex);
@@ -376,6 +377,7 @@ public class ServiceHostManagementService extends StatefulService {
 
             initialPost.setBody(body);
 
+            logInfo("AAA localFilePath=%s", body.localFilePath);
             getHost().startService(initialPost, new LocalFileService());
         } else {
             // skip LocalFileService creation
