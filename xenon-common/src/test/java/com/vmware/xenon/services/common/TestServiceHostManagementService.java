@@ -200,7 +200,7 @@ public class TestServiceHostManagementService extends BasicTestCase {
     @Test
     public void testBackupAndRestoreWithLocalFile() throws Throwable {
 
-        File tmpFile = this.tempDir.newFile();
+        File tmpFile = this.tempDir.newFile("backup.zip");
         URI localFileUri = tmpFile.toURI();
 
         // Post some documents to populate the index.
