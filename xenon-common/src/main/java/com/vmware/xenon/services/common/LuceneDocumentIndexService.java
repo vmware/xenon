@@ -21,6 +21,7 @@ import java.net.URI;
 import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -669,8 +670,11 @@ public class LuceneDocumentIndexService extends StatelessService {
                 }
             }
 
-            this.logInfo("restoring index %s from %s md5sum(%s)", directory, req.backupFile,
-                    FileUtils.md5sum(new File(req.backupFile)));
+//            this.logInfo("restoring index %s from %s md5sum(%s)", directory, req.backupFile,
+//                    FileUtils.md5sum(new File(req.backupFile)));
+            Path path = Files.createTempDirectory("my-backup-");
+            Files.copy(Paths.get(req.backupFile), path.resolve("mine.zip"));
+            logInfo("AAA backup file to %s", path);
             FileUtils.extractZipArchive(new File(req.backupFile), directory.toPath());
             this.writerUpdateTimeMicros = Utils.getNowMicrosUtc();
             IndexWriter writer = createWriter(directory, true);

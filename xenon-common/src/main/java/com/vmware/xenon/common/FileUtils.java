@@ -28,14 +28,11 @@ import java.nio.ByteBuffer;
 import java.nio.channels.AsynchronousFileChannel;
 import java.nio.channels.CompletionHandler;
 import java.nio.file.DirectoryStream;
-import java.nio.file.FileSystem;
-import java.nio.file.FileSystems;
 import java.nio.file.FileVisitResult;
 import java.nio.file.FileVisitor;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.nio.file.SimpleFileVisitor;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.BasicFileAttributes;
@@ -56,6 +53,7 @@ import java.util.logging.Logger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.zip.ZipEntry;
+import java.util.zip.ZipFile;
 import java.util.zip.ZipOutputStream;
 
 public final class FileUtils {
@@ -507,7 +505,6 @@ public final class FileUtils {
                             closeFileChannelSafe(ch);
                             op.fail(exc);
                         }
-
                     });
         } catch (Throwable e) {
             closeFileChannelSafe(channel);
@@ -527,9 +524,9 @@ public final class FileUtils {
     /**
      * GET a file.
      *
-     * @param h  ServiceClient used to connect to the host
+     * @param h   ServiceClient used to connect to the host
      * @param get The Operation used to GET the given file URI
-     * @param f File to write to
+     * @param f   File to write to
      * @throws IOException
      */
     public static void getFile(ServiceClient h, final Operation get, File f) throws IOException {
@@ -573,14 +570,13 @@ public final class FileUtils {
                 .addHeader(new ContentRange().toRangeHeader(), false)
                 .setExpiration(get.getExpirationMicrosUtc())
                 .setCompletion(getCompletion));
-
     }
 
     private static void getChunks(ServiceClient h, ContentRange nextRange, Operation parentGet,
             AsynchronousFileChannel ch,
             AtomicInteger bytesWritten) {
 
-        final ContentRange[] range = { nextRange };
+        final ContentRange[] range = {nextRange};
         for (int chunksInFlight = 0; (chunksInFlight < ContentRange.MAX_IN_FLIGHT_CHUNKS)
                 && !range[0].isDone(); chunksInFlight++) {
 
@@ -611,7 +607,6 @@ public final class FileUtils {
 
             h.send(nextGet);
         }
-
     }
 
     private static void writeBody(Operation parentOp, Operation o, AsynchronousFileChannel ch,
@@ -653,15 +648,14 @@ public final class FileUtils {
                         parentOp.fail(exc);
                     }
                 });
-
     }
 
     /**
      * Given a POST operation and a File, post the file to the URI.
      *
-     * @param h ServiceClient
+     * @param h   ServiceClient
      * @param put Operation used to PUT the file at the given URL
-     * @param f File to put
+     * @param f   File to put
      * @throws IOException
      */
     public static void putFile(ServiceClient h, final Operation put, File f) throws IOException {
@@ -671,7 +665,7 @@ public final class FileUtils {
         AtomicInteger completionCount = new AtomicInteger(0);
         String contentType = FileUtils.getContentType(f.toURI());
 
-        final boolean[] fileIsDone = { false };
+        final boolean[] fileIsDone = {false};
 
         putChunks(h, put, ch, contentType, f.length(), 0, completionCount, fileIsDone);
     }
@@ -734,6 +728,10 @@ public final class FileUtils {
                                 if (contentType != null) {
                                     rangePut.setContentType(contentType);
                                 }
+
+                                Logger.getAnonymousLogger().log(Level.INFO,
+                                        String.format("AAA Putting file to %s",
+                                                put.getUri()));
 
                                 h.send(rangePut);
                             } catch (Throwable e) {
@@ -823,35 +821,56 @@ public final class FileUtils {
             throw new IllegalArgumentException("zip file not found");
         }
 
-        try (FileSystem zipFileSystem = FileSystems.newFileSystem(zipFile.toPath(), null)) {
-            final Path root = zipFileSystem.getPath("/");
+        try (ZipFile backup = new ZipFile(zipFile)) {
+            Enumeration<? extends ZipEntry> entries = backup.entries();
+            while (entries.hasMoreElements()) {
+                ZipEntry entry = entries.nextElement();
+                Path target = Paths.get(destDir.toString(), entry.getName());
 
-            // walk the zip file tree and copy files to the destination
-            Files.walkFileTree(root, new SimpleFileVisitor<Path>() {
-                @Override
-                public FileVisitResult visitFile(Path file,
-                        BasicFileAttributes attrs) throws IOException {
-                    final Path destFile = Paths.get(destDir.toString(),
-                            file.toString());
-
-                    Logger.getAnonymousLogger().info("Extracting file " + destFile);
-                    Files.copy(file, destFile, StandardCopyOption.REPLACE_EXISTING);
-                    return FileVisitResult.CONTINUE;
-                }
-
-                @Override
-                public FileVisitResult preVisitDirectory(Path dir,
-                        BasicFileAttributes attrs) throws IOException {
-                    final Path dirToCreate = Paths.get(destDir.toString(),
-                            dir.toString());
-                    if (Files.notExists(dirToCreate)) {
-                        Logger.getAnonymousLogger().info("Creating directory %s" + dirToCreate);
-                        Files.createDirectory(dirToCreate);
+                if (entry.isDirectory()) {
+                    if (Files.notExists(target)) {
+                        Logger.getAnonymousLogger().info("Creating directory %s" + target);
+                        Files.createDirectory(target);
                     }
-                    return FileVisitResult.CONTINUE;
+                } else {
+                    try (InputStream is = backup.getInputStream(entry)) {
+                        Logger.getAnonymousLogger().info("Extracting file " + target);
+                        Files.copy(is, target, StandardCopyOption.REPLACE_EXISTING);
+                    }
                 }
-            });
+            }
         }
+
+
+//        try (FileSystem zipFileSystem = FileSystems.newFileSystem(uri, envWithUtf)) {
+//            final Path root = zipFileSystem.getPath("/");
+//
+//            // walk the zip file tree and copy files to the destination
+//            Files.walkFileTree(root, new SimpleFileVisitor<Path>() {
+//                @Override
+//                public FileVisitResult visitFile(Path file,
+//                        BasicFileAttributes attrs) throws IOException {
+//                    final Path destFile = Paths.get(destDir.toString(),
+//                            file.toString());
+//
+//                    Logger.getAnonymousLogger().info("Extracting file " + destFile);
+//                    Files.copy(file, destFile, StandardCopyOption.REPLACE_EXISTING);
+//                    return FileVisitResult.CONTINUE;
+//                }
+//
+//                @Override
+//                public FileVisitResult preVisitDirectory(Path dir,
+//                        BasicFileAttributes attrs) throws IOException {
+//                    final Path dirToCreate = Paths.get(destDir.toString(),
+//                            dir.toString());
+//                    if (Files.notExists(dirToCreate)) {
+//                        Logger.getAnonymousLogger().info("Creating directory %s" + dirToCreate);
+//                        Files.createDirectory(dirToCreate);
+//                    }
+//                    return FileVisitResult.CONTINUE;
+//                }
+//            });
+//        }
     }
 
     public static String md5sum(File f) throws Exception {

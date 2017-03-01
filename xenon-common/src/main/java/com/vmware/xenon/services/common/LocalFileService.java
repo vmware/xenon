@@ -105,6 +105,8 @@ public class LocalFileService extends StatefulService {
         }
 
 
+        logInfo("AAA start writing to backup file: %s", path);
+
         try {
             FileUtils.ContentRange r = new FileUtils.ContentRange(rangeString);
             ByteBuffer b = ByteBuffer.wrap((byte[]) put.getBodyRaw());
@@ -113,6 +115,7 @@ public class LocalFileService extends StatefulService {
                 @Override
                 public void completed(Integer bytesWritten, Operation op) {
                     try {
+                        logInfo("AAA completing async write");
                         channel.close();
                         logInfo("%s complete (bytes:%d md5:%s)",
                                 path, bytesWritten, FileUtils.md5sum(path.toFile()));
