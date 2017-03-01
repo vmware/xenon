@@ -151,7 +151,6 @@ public class NettyHttpServiceClient implements ServiceClient {
         }
 
         sc.setPendingRequestQueueLimit(ServiceClient.DEFAULT_PENDING_REQUEST_QUEUE_LIMIT);
-        sc.setConnectionLimitPerHost(DEFAULT_CONNECTION_LIMIT_PER_HOST);
         sc.setConnectionLimitPerTag(ServiceClient.CONNECTION_TAG_DEFAULT,
                 DEFAULT_CONNECTIONS_PER_HOST);
         sc.setConnectionLimitPerTag(ServiceClient.CONNECTION_TAG_HTTP2_DEFAULT,
@@ -847,7 +846,7 @@ public class NettyHttpServiceClient implements ServiceClient {
     }
 
     /**
-     * @see ServiceClient#setPendingRequestQueueLimitPerHost()
+     * @see ServiceClient#setPendingRequestQueueLimit(int)
      */
     @Override
     public ServiceClient setPendingRequestQueueLimit(int limit) {
@@ -870,32 +869,6 @@ public class NettyHttpServiceClient implements ServiceClient {
     @Override
     public int getPendingRequestQueueLimit() {
         return this.channelPool.getPendingRequestQueueLimit();
-    }
-
-    /**
-     * @see ServiceClient#setConnectionLimitPerHost(int)
-     */
-    @Override
-    public ServiceClient setConnectionLimitPerHost(int limit) {
-        this.channelPool.setConnectionLimitPerHost(limit);
-        if (this.sslChannelPool != null) {
-            this.sslChannelPool.setConnectionLimitPerHost(limit);
-        }
-        if (this.http2ChannelPool != null) {
-            this.http2ChannelPool.setConnectionLimitPerHost(limit);
-        }
-        if (this.http2SslChannelPool != null) {
-            this.http2SslChannelPool.setConnectionLimitPerHost(limit);
-        }
-        return this;
-    }
-
-    /**
-     * @see ServiceClient#getConnectionLimitPerHost()
-     */
-    @Override
-    public int getConnectionLimitPerHost() {
-        return this.channelPool.getConnectionLimitPerHost();
     }
 
     /**

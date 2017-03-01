@@ -227,7 +227,6 @@ public class NettyHttp2Test {
         this.host.startServiceAndWait(service, UUID.randomUUID().toString(), initialState);
 
         // we must set connection limit to 1, to ensure a single http2 connection
-        this.host.getClient().setConnectionLimitPerHost(1);
         this.host.connectionTag = ServiceClient.CONNECTION_TAG_HTTP2_DEFAULT;
         this.host.getClient().setConnectionLimitPerTag(this.host.connectionTag, 1);
 
@@ -303,7 +302,6 @@ public class NettyHttp2Test {
         this.host.startServiceAndWait(service, UUID.randomUUID().toString(), initialState);
 
         // force single connection
-        this.host.getClient().setConnectionLimitPerHost(1);
         this.host.connectionTag = ServiceClient.CONNECTION_TAG_HTTP2_DEFAULT;
         this.host.getClient().setConnectionLimitPerTag(this.host.connectionTag, 1);
 

@@ -173,8 +173,6 @@ public class NettyChannelPool {
     private final Map<NettyChannelGroupKey, NettyChannelGroup> channelGroups = new ConcurrentSkipListMap<>();
     private Map<String, Integer> connectionLimitsPerTag = new ConcurrentSkipListMap<>();
 
-    private int connectionLimit = 1;
-
     private SslContext http2SslContext;
     private SSLContext sslContext;
 
@@ -237,15 +235,6 @@ public class NettyChannelPool {
 
     public boolean isStarted() {
         return this.bootStrap != null;
-    }
-
-    public NettyChannelPool setConnectionLimitPerHost(int limit) {
-        this.connectionLimit = limit;
-        return this;
-    }
-
-    public int getConnectionLimitPerHost() {
-        return this.connectionLimit;
     }
 
     public NettyChannelPool setConnectionLimitPerTag(String tag, int limit) {
