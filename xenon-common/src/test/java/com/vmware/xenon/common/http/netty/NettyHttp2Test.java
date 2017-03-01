@@ -59,6 +59,9 @@ public class NettyHttp2Test {
     // Number of service instances to target
     public int serviceCount = 32;
 
+    // number of iterations per test (that supports multiple iterations)
+    public int iterationCount = 1;
+
     @Rule
     public TestResults testResults = new TestResults();
 
@@ -98,7 +101,11 @@ public class NettyHttp2Test {
     @After
     public void tearDown() throws Throwable {
         NettyChannelContext.setMaxStreamId(Integer.MAX_VALUE / 2);
+        if (this.host == null) {
+            return;
+        }
         this.host.tearDown();
+        this.host = null;
     }
 
     @Test
@@ -454,30 +461,34 @@ public class NettyHttp2Test {
         client.start();
     }
 
-    @Ignore("https://www.pivotaltracker.com/story/show/140797353")
     @Test
     public void pendingRequestLimit() throws Throwable {
-        setUpHost(false);
-        List<Service> services = this.host.doThroughputServiceStart(this.serviceCount,
-                MinimalTestService.class,
-                this.host.buildMinimalTestState(),
-                null, null);
-        String tag = ServiceClient.CONNECTION_TAG_DEFAULT;
+        for (int i = 0; i < this.iterationCount; i++) {
+            this.tearDown();
+            setUpHost(false);
+            List<Service> services = this.host.doThroughputServiceStart(this.serviceCount,
+                    MinimalTestService.class,
+                    this.host.buildMinimalTestState(),
+                    null, null);
+            String tag = ServiceClient.CONNECTION_TAG_DEFAULT;
 
-        int http11Count = services.size() * this.requestCount;
-        // we need a fresh connection pool, with no connections already created
-        // HTTP1.1 test
-        NettyHttpServiceClientTest.verifyPerHostPendingRequestLimit(this.host, services,
-                tag,
-                http11Count,
-                false);
+            int http11Count = Math.max(services.size() * this.requestCount,
+                    services.size() * this.host.getClient().getConnectionLimitPerTag(tag) * 4);
+            // we need a fresh connection pool, with no connections already created
+            // HTTP1.1 test
+            NettyHttpServiceClientTest.verifyPerHostPendingRequestLimit(this.host, services,
+                    tag,
+                    http11Count / services.size(),
+                    false);
 
-        tag = ServiceClient.CONNECTION_TAG_HTTP2_DEFAULT;
-        // HTTP/2 test (connectionSharing == true)
-        NettyHttpServiceClientTest.verifyPerHostPendingRequestLimit(this.host, services,
-                tag,
-                this.host.getClient().getConnectionLimitPerTag(tag) * this.requestCount,
-                true);
+            tag = ServiceClient.CONNECTION_TAG_HTTP2_DEFAULT;
+            // HTTP/2 test (connectionSharing == true)
+            NettyHttpServiceClientTest.verifyPerHostPendingRequestLimit(this.host, services,
+                    tag,
+                    this.host.getClient().getConnectionLimitPerTag(tag) * this.requestCount,
+                    true);
+            this.host.getClient().stop();
+        }
     }
 
     @Test
