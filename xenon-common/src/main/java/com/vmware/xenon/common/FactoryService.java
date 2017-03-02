@@ -39,6 +39,11 @@ import com.vmware.xenon.services.common.ServiceUriPaths;
  */
 public abstract class FactoryService extends StatelessService {
 
+    public static class FactoryServiceConfiguration extends ServiceConfiguration {
+        public static final String KIND = Utils.buildKind(FactoryServiceConfiguration.class);
+        public EnumSet<ServiceOption> childOptions;
+    }
+
     /**
      * Creates a factory service instance that starts the specified child service
      * on POST
@@ -895,6 +900,23 @@ public abstract class FactoryService extends StatelessService {
             }
         }
         return this.childTemplate;
+    }
+
+    @Override
+    public void handleConfigurationRequest(Operation request) {
+        if (request.getAction() == Action.PATCH) {
+            super.handleConfigurationRequest(request);
+            return;
+        }
+
+        if (request.getAction() != Action.GET) {
+            request.fail(new IllegalArgumentException("Action not supported: " + request.getAction()));
+            return;
+        }
+
+        FactoryServiceConfiguration config = Utils.buildServiceConfig(new FactoryServiceConfiguration(), this);
+        config.childOptions = this.childOptions;
+        request.setBodyNoCloning(config).complete();
     }
 
     @Override

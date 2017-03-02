@@ -248,9 +248,7 @@ public class ConsistentHashingNodeSelectorService extends StatelessService imple
             }
         }
         if (op.getAction() == Action.GET) {
-            ServiceConfiguration cfg = new ServiceConfiguration();
-            cfg.options = getOptions();
-            cfg.maintenanceIntervalMicros = getMaintenanceIntervalMicros();
+            ServiceConfiguration cfg = Utils.buildServiceConfig(new ServiceConfiguration(), this);
             cfg.epoch = 0;
             cfg.operationQueueLimit = (int) this.operationQueueLimit;
             op.setBodyNoCloning(cfg).complete();

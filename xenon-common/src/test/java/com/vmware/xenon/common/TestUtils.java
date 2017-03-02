@@ -67,6 +67,7 @@ import com.vmware.xenon.common.SystemHostInfo.OsFamily;
 import com.vmware.xenon.common.serialization.KryoSerializers;
 import com.vmware.xenon.common.test.TestContext;
 import com.vmware.xenon.common.test.VerificationHost;
+import com.vmware.xenon.services.common.ExampleService;
 import com.vmware.xenon.services.common.ExampleService.ExampleServiceState;
 import com.vmware.xenon.services.common.QueryValidationTestService.QueryValidationServiceState;
 
@@ -1035,4 +1036,19 @@ public class TestUtils {
         assertNotEquals(sign2, sign3);
         assertNotEquals(sign1, sign3);
     }
+
+    @Test
+    public void testBuildServiceConfig() {
+        Service exampleService = new ExampleService();
+        exampleService.setHost(VerificationHost.create());
+
+        ServiceConfiguration config = new ServiceConfiguration();
+        Utils.buildServiceConfig(config, exampleService);
+
+        assertEquals(exampleService.getOptions(), config.options);
+        assertEquals(exampleService.getMaintenanceIntervalMicros(), config.maintenanceIntervalMicros);
+        assertEquals(ExampleServiceState.VERSION_RETENTION_LIMIT, config.versionRetentionLimit);
+        assertEquals(ExampleServiceState.VERSION_RETENTION_FLOOR, config.versionRetentionFloor);
+    }
+
 }

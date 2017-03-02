@@ -1520,4 +1520,18 @@ public final class Utils {
                 .append(Long.toHexString(Utils.getNowMicrosUtc()))
                 .toString();
     }
+
+    /**
+     * Construct common data in {@link ServiceConfiguration}.
+     */
+    public static <T extends ServiceConfiguration> T buildServiceConfig(T config, Service service) {
+        ServiceDocumentDescription desc = service.getHost().buildDocumentDescription(service);
+
+        config.options = service.getOptions();
+        config.maintenanceIntervalMicros = service.getMaintenanceIntervalMicros();
+        config.versionRetentionLimit = desc.versionRetentionLimit;
+        config.versionRetentionFloor = desc.versionRetentionFloor;
+
+        return config;
+    }
 }

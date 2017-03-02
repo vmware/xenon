@@ -647,10 +647,8 @@ public class StatelessService implements Service {
             return;
         }
 
-        ServiceConfiguration cfg = new ServiceConfiguration();
-        cfg.options = getOptions();
-        cfg.maintenanceIntervalMicros = getMaintenanceIntervalMicros();
-        request.setBodyNoCloning(cfg).complete();
+        ServiceConfiguration config = Utils.buildServiceConfig(new ServiceConfiguration(), this);
+        request.setBodyNoCloning(config).complete();
     }
 
     /**

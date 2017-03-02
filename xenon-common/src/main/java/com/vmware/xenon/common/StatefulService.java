@@ -2109,15 +2109,9 @@ public class StatefulService implements Service {
         }
 
         if (request.getAction() == Action.GET) {
-            ServiceConfiguration cfg = new ServiceConfiguration();
-            cfg.options = getOptions();
-            cfg.maintenanceIntervalMicros = getMaintenanceIntervalMicros();
+            ServiceConfiguration cfg = Utils.buildServiceConfig(new ServiceConfiguration(), this);
             cfg.epoch = this.context.epoch;
             cfg.operationQueueLimit = this.context.operationQueue.getLimit();
-            // Get the version retention limits from service document description
-            ServiceDocumentDescription serviceDocumentDescription = getStateDescription();
-            cfg.versionRetentionLimit = serviceDocumentDescription.versionRetentionLimit;
-            cfg.versionRetentionFloor = serviceDocumentDescription.versionRetentionFloor;
             request.setBodyNoCloning(cfg).complete();
             return;
         }
