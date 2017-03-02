@@ -39,6 +39,7 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 
+import com.vmware.xenon.common.FactoryService.FactoryServiceConfiguration;
 import com.vmware.xenon.common.Service.ServiceOption;
 import com.vmware.xenon.common.test.MinimalTestServiceState;
 import com.vmware.xenon.common.test.TestContext;
@@ -1456,6 +1457,15 @@ public class TestFactoryService extends BasicReusableHostTestCase {
                 .setBody(state);
         failureResponse = sender.sendAndWaitFailure(op);
         assertEquals(Operation.STATUS_CODE_BAD_REQUEST, failureResponse.op.getStatusCode());
+    }
+
+    @Test
+    public void childOptionsInConfigGetRequest() throws Throwable {
+        EnumSet<ServiceOption> exampleOptions = new ExampleService().getOptions();
+        URI configUri = UriUtils.buildConfigUri(this.host, ExampleService.FACTORY_LINK);
+        Operation get = Operation.createGet(configUri);
+        FactoryServiceConfiguration config = this.host.getTestRequestSender().sendAndWait(get, FactoryServiceConfiguration.class);
+        assertEquals(exampleOptions, config.childOptions);
     }
 
     public static class SomeFactoryService extends FactoryService {
