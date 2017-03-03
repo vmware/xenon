@@ -2261,6 +2261,7 @@ public class LuceneDocumentIndexService extends StatelessService {
             return;
         }
 
+        logSevere("Exception on index service thread: %s", Utils.toString(e));
         this.adjustStat(STAT_NAME_WRITER_ALREADY_CLOSED_EXCEPTION_COUNT, 1);
         applyFileLimitRefreshWriter(true);
     }
