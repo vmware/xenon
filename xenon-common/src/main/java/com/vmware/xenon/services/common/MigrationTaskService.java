@@ -593,6 +593,12 @@ public class MigrationTaskService extends StatefulService {
                     setStat(STAT_NAME_COUNT_QUERY_TIME_DURATION_MICRO, countQueryTask.results.queryTimeMicros);
 
                     QueryTask queryTask = QueryTask.create(currentState.querySpec).setDirect(true);
+
+                    // to speed up query for immutable docs, also include include_all_version option for retrieval
+                    if (countQueryTask.querySpec.options.contains(QueryOption.INCLUDE_ALL_VERSIONS)) {
+                        queryTask.querySpec.options.add(QueryOption.INCLUDE_ALL_VERSIONS);
+                    }
+
                     queryTask.documentExpirationTimeMicros = documentExpirationTimeMicros;
 
                     Set<Operation> queryOps = sourceURIs.stream()
