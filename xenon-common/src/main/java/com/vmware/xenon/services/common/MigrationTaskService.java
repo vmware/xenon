@@ -29,6 +29,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.SortedSet;
 import java.util.TreeSet;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.TimeUnit;
@@ -36,6 +37,7 @@ import java.util.stream.Collectors;
 
 import com.vmware.xenon.common.DeferredResult;
 import com.vmware.xenon.common.FactoryService;
+import com.vmware.xenon.common.FactoryService.FactoryServiceConfiguration;
 import com.vmware.xenon.common.Operation;
 import com.vmware.xenon.common.Operation.CompletionHandler;
 import com.vmware.xenon.common.OperationJoin;
@@ -546,55 +548,77 @@ public class MigrationTaskService extends StatefulService {
 
     private void computeFirstCurrentPageLinks(State currentState, List<URI> sourceURIs, List<URI> destinationURIs) {
         logInfo("Node groups are stable. Computing pages to be migrated...");
-        QueryTask queryTask = QueryTask.create(currentState.querySpec).setDirect(true);
         long documentExpirationTimeMicros = currentState.documentExpirationTimeMicros;
-        queryTask.documentExpirationTimeMicros = documentExpirationTimeMicros;
-        Collection<Operation> queryOps = sourceURIs.stream()
-                .map(uri -> {
-                    return Operation.createPost(UriUtils.buildUri(uri, ServiceUriPaths.CORE_LOCAL_QUERY_TASKS))
-                            .setBody(queryTask);
+
+        // 1) request config GET on source factory, and checks whether target docs are immutable or not
+        // 2) compose count query
+        // 3) perform count query and set as estimated total count to migrate
+        // 4) start migration
+
+        URI sourceHostUri = selectRandomUri(sourceURIs);
+        URI factoryUri = UriUtils.buildUri(sourceHostUri, currentState.destinationFactoryLink);
+        URI factoryConfigUri = UriUtils.buildConfigUri(factoryUri);
+        Operation configGet = Operation.createGet(factoryConfigUri);
+        this.sendWithDeferredResult(configGet)
+                .thenCompose(op -> {
+                    FactoryServiceConfiguration factoryConfig = op.getBody(FactoryServiceConfiguration.class);
+
+                    QueryTask countQuery = QueryTask.Builder.createDirectTask()
+                            .addOption(QueryOption.COUNT)
+                            .setQuery(buildFieldClause(currentState))
+                            .build();
+
+                    // Use INCLUDE_ALL_VERSIONS boosts count query for immutable docs
+                    if (factoryConfig.childOptions.contains(ServiceOption.IMMUTABLE)) {
+                        countQuery.querySpec.options.add(QueryOption.INCLUDE_ALL_VERSIONS);
+                    }
+
+                    countQuery.documentExpirationTimeMicros = documentExpirationTimeMicros;
+                    Operation countOp = Operation.createPost(UriUtils.buildUri(sourceHostUri, ServiceUriPaths.CORE_QUERY_TASKS))
+                            .setBody(countQuery);
+                    return this.sendWithDeferredResult(countOp);
                 })
-                .collect(Collectors.toSet());
+                .thenAccept(countOp -> {
+                    Long estimatedTotalServiceCount = countOp.getBody(QueryTask.class).results.documentCount;
 
-        QueryTask resultCountQuery = QueryTask.Builder.createDirectTask()
-                .addOption(QueryOption.COUNT)
-                .setQuery(buildFieldClause(currentState))
-                .build();
-        resultCountQuery.documentExpirationTimeMicros = documentExpirationTimeMicros;
-        Operation resultCountOperation = Operation.createPost(
-                UriUtils.buildUri(
-                        selectRandomUri(sourceURIs),
-                        ServiceUriPaths.CORE_QUERY_TASKS))
-                .setBody(resultCountQuery);
+                    QueryTask queryTask = QueryTask.create(currentState.querySpec).setDirect(true);
+                    queryTask.documentExpirationTimeMicros = documentExpirationTimeMicros;
 
-        queryOps.add(resultCountOperation);
+                    Set<Operation> queryOps = sourceURIs.stream()
+                            .map(sourceUri -> {
+                                URI uri = UriUtils.buildUri(sourceUri, ServiceUriPaths.CORE_LOCAL_QUERY_TASKS);
+                                return Operation.createPost(uri).setBody(queryTask);
+                            })
+                            .collect(Collectors.toSet());
 
-        OperationJoin.create(queryOps)
-            .setCompletion((os, ts) -> {
-                if (ts != null && !ts.isEmpty()) {
-                    failTask(ts.values());
-                    return;
-                }
 
-                Set<URI> currentPageLinks = os.values().stream()
-                        .filter(operation -> operation.getId() != resultCountOperation.getId())
-                        .filter(operation -> operation.getBody(QueryTask.class).results.nextPageLink != null)
-                        .map(operation -> getNextPageLinkUri(operation))
-                        .collect(Collectors.toSet());
+                    OperationJoin.create(queryOps)
+                            .setCompletion((os, ts) -> {
+                                if (ts != null && !ts.isEmpty()) {
+                                    failTask(ts.values());
+                                    return;
+                                }
 
-                Long estimatedTotalServiceCount
-                        = os.get(resultCountOperation.getId()).getBody(QueryTask.class).results.documentCount;
+                                Set<URI> currentPageLinks = os.values().stream()
+                                        .filter(operation -> operation.getBody(QueryTask.class).results.nextPageLink != null)
+                                        .map(this::getNextPageLinkUri)
+                                        .collect(Collectors.toSet());
 
-                adjustStat(STAT_NAME_ESTIMATED_TOTAL_SERVICE_COUNT, estimatedTotalServiceCount);
+                                adjustStat(STAT_NAME_ESTIMATED_TOTAL_SERVICE_COUNT, estimatedTotalServiceCount);
 
-                // if there are no next page links we are done early with migration
-                if (currentPageLinks.isEmpty()) {
-                    patchToFinished(null);
-                } else {
-                    migrate(currentState, currentPageLinks, destinationURIs, new HashMap<String, Long>());
-                }
-            })
-            .sendWith(this);
+                                // if there are no next page links we are done early with migration
+                                if (currentPageLinks.isEmpty()) {
+                                    patchToFinished(null);
+                                } else {
+                                    migrate(currentState, currentPageLinks, destinationURIs, new HashMap<>());
+                                }
+                            })
+                            .sendWith(this);
+                })
+                .exceptionally(throwable -> {
+                    failTask(throwable);
+                    throw new CompletionException(throwable);
+                });
     }
 
     private void migrate(State currentState, Set<URI> currentPageLinks, List<URI> destinationURIs, Map<String, Long> lastUpdateTimesPerOwner) {
