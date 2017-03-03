@@ -581,9 +581,16 @@ public class MigrationTaskService extends StatefulService {
                     return this.sendWithDeferredResult(countOp);
                 })
                 .thenAccept(countOp -> {
-                    Long estimatedTotalServiceCount = countOp.getBody(QueryTask.class).results.documentCount;
+                    QueryTask countQueryTask = countOp.getBody(QueryTask.class);
+                    Long estimatedTotalServiceCount = countQueryTask.results.documentCount;
 
                     QueryTask queryTask = QueryTask.create(currentState.querySpec).setDirect(true);
+
+                    // to speed up query for immutable docs, also include include_all_version option for retrieval
+                    if (countQueryTask.querySpec.options.contains(QueryOption.INCLUDE_ALL_VERSIONS)) {
+                        queryTask.querySpec.options.add(QueryOption.INCLUDE_ALL_VERSIONS);
+                    }
+
                     queryTask.documentExpirationTimeMicros = documentExpirationTimeMicros;
 
                     Set<Operation> queryOps = sourceURIs.stream()
