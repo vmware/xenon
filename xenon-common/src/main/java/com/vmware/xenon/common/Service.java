@@ -334,6 +334,15 @@ public interface Service extends ServiceRequestSender {
     static final String STAT_NAME_PAUSE_COUNT = "pauseCount";
     static final String STAT_NAME_RESUME_COUNT = "resumeCount";
     static final String STAT_NAME_MAINTENANCE_DURATION = "maintenanceDuration";
+    static final String STAT_NAME_QUERY_RETRY_COUNT = "queryRetryCount";
+    static final String STAT_NAME_QUERY_FAILURE_COUNT = "queryFailureCount";
+    static final String STAT_NAME_PAGE_RETRIEVAL_RETRY_COUNT = "pageRetrievalRetryCount";
+    static final String STAT_NAME_PAGE_RETRIEVAL_FAILURE_COUNT = "pageRetrievalFailureCount";
+    static final String STAT_NAME_OWNER_SELECTION_RETRY_COUNT = "ownerSelectionRetryCount";
+    static final String STAT_NAME_OWNER_SELECTION_FAILURE_COUNT = "ownerSelectionFailureCount";
+    static final String STAT_NAME_SET_AVAILABILITY_RETRY_COUNT = "setFactoryAvailabilityRetryCount";
+    static final String STAT_NAME_SET_AVAILABILITY_FAILURE_COUNT = "setFactoryAvailabilityFailureCount";
+
 
     /**
      * Estimate on run time context cost in bytes, per service instance. Services should not use instanced
