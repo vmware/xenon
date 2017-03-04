@@ -19,7 +19,6 @@ import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.TimeUnit;
 
 import com.vmware.xenon.common.NodeSelectorService.SelectOwnerResponse;
 import com.vmware.xenon.common.Operation.CompletionHandler;
@@ -954,7 +953,15 @@ public abstract class FactoryService extends StatelessService {
             OperationContext.restoreOperationContext(opContext);
             if (e != null) {
                 logWarning("owner selection failed: %s", e.toString());
-                scheduleSynchronizationRetry(maintOp);
+                Operation cloneOp = maintOp.clone();
+                Utils.scheduleRetry(
+                        this,
+                        () -> synchronizeChildServicesIfOwner(cloneOp),
+                        null,
+                        STAT_NAME_SYNCH_TASK_RETRY_COUNT,
+                        STAT_NAME_CHILD_SYNCH_FAILURE_COUNT,
+                        MAX_SYNCH_RETRY_COUNT);
+
                 maintOp.fail(e);
                 return;
             }
@@ -1032,57 +1039,20 @@ public abstract class FactoryService extends StatelessService {
 
                     if (retrySynch) {
                         // Schedule a task to retry synchronization again.
-                        scheduleSynchronizationRetry(parentOp);
+                        Operation cloneOp = parentOp.clone();
+                        Utils.scheduleRetry(
+                                this,
+                                () -> synchronizeChildServicesIfOwner(cloneOp),
+                                null,
+                                STAT_NAME_SYNCH_TASK_RETRY_COUNT,
+                                STAT_NAME_CHILD_SYNCH_FAILURE_COUNT,
+                                MAX_SYNCH_RETRY_COUNT);
                         return;
                     }
 
                     setStat(STAT_NAME_SYNCH_TASK_RETRY_COUNT, 0);
                 });
         sendRequest(post);
-    }
-
-    private void scheduleSynchronizationRetry(Operation parentOp) {
-        adjustStat(STAT_NAME_SYNCH_TASK_RETRY_COUNT, 1);
-
-        ServiceStats.ServiceStat stat = getStat(STAT_NAME_SYNCH_TASK_RETRY_COUNT);
-        if (stat != null && stat.latestValue  > 0) {
-            if (stat.latestValue > MAX_SYNCH_RETRY_COUNT) {
-                logSevere("Synchronization task failed after %d tries", (long)stat.latestValue - 1);
-                adjustStat(STAT_NAME_CHILD_SYNCH_FAILURE_COUNT, 1);
-                return;
-            }
-        }
-
-        // Clone the parent operation for reuse outside the schedule call for
-        // the original operation to be freed in current thread.
-        Operation op = parentOp.clone();
-
-        // Use exponential backoff algorithm in retry logic. The idea is to exponentially
-        // increase the delay for each retry based on the number of previous retries.
-        // This is done to reduce the load of retries on the system by all the synch tasks
-        // of all factories at the same time, and giving system more time to stabilize
-        // in next retry then the previous retry.
-        long delay = getExponentialDelay();
-
-        logWarning("Scheduling retry of child service synchronization task in %d seconds",
-                TimeUnit.MICROSECONDS.toSeconds(delay));
-        getHost().schedule(() -> synchronizeChildServicesIfOwner(op),
-                delay, TimeUnit.MICROSECONDS);
-    }
-
-    /**
-     * Exponential backoff rely on synch task retry count stat. If this stat is not available
-     * then we will fall back to constant delay for each retry.
-     * To get exponential delay, multiply retry count's power of 2 with constant delay.
-     */
-    private long getExponentialDelay() {
-        long delay = getHost().getMaintenanceIntervalMicros();
-        ServiceStats.ServiceStat stat = getStat(STAT_NAME_SYNCH_TASK_RETRY_COUNT);
-        if (stat != null && stat.latestValue > 0) {
-            return (1 << ((long)stat.latestValue)) * delay;
-        }
-
-        return delay;
     }
 
     private SynchronizationTaskService.State createSynchronizationTaskState(

@@ -32,6 +32,16 @@ import com.vmware.xenon.services.common.TaskService;
 public class SynchronizationTaskService
         extends TaskService<SynchronizationTaskService.State> {
 
+
+    public static final String PROPERTY_NAME_MAX_SYNCH_RETRY_COUNT =
+            Utils.PROPERTY_NAME_PREFIX + "SynchronizationTaskService.MAX_SYNCH_RETRY_COUNT";
+
+    // Maximum synch-task retry limit.
+    // We are using exponential backoff for synchronization retry, that means last synch retry will
+    // be tried after 2 ^ 8 * getMaintenanceIntervalMicros(), which is ~4 minutes if maintenance interval is 1 second.
+    public static final int MAX_SYNCH_RETRY_COUNT = Integer.getInteger(
+            PROPERTY_NAME_MAX_SYNCH_RETRY_COUNT, 8);
+
     public static final String FACTORY_LINK = ServiceUriPaths.SYNCHRONIZATION_TASKS;
     public static final String PROPERTY_NAME_SYNCHRONIZATION_LOGGING = Utils.PROPERTY_NAME_PREFIX
             + "SynchronizationTaskService.isDetailedLoggingEnabled";
@@ -106,6 +116,7 @@ public class SynchronizationTaskService
     public SynchronizationTaskService() {
         super(State.class);
         toggleOption(ServiceOption.IDEMPOTENT_POST, true);
+        toggleOption(ServiceOption.INSTRUMENTATION, true);
     }
 
     /**
@@ -422,10 +433,18 @@ public class SynchronizationTaskService
                         if (!getHost().isStopping()) {
                             logWarning("Query failed with %s", e.toString());
                         }
-                        sendSelfFailurePatch(task, e.getMessage());
+
+                        Utils.scheduleRetry(
+                                this,
+                                () -> handleQueryStage(task),
+                                () -> sendSelfFailurePatch(task, e.getMessage()),
+                                STAT_NAME_QUERY_RETRY_COUNT,
+                                STAT_NAME_QUERY_FAILURE_COUNT,
+                                MAX_SYNCH_RETRY_COUNT);
                         return;
                     }
 
+                    setStat(STAT_NAME_QUERY_RETRY_COUNT, 0);
                     ServiceDocumentQueryResult rsp = o.getBody(QueryTask.class).results;
 
                     // Query returned zero results.Self-patch the task
@@ -509,11 +528,19 @@ public class SynchronizationTaskService
                             task.queryPageReference,
                             e.toString());
                 }
-                sendSelfFailurePatch(task,
-                        "failure retrieving query page results");
+
+                Utils.scheduleRetry(
+                        this,
+                        () -> handleSynchronizeStage(task, verifyOwnership),
+                        () -> sendSelfFailurePatch(task, "failure retrieving query page results"),
+                        STAT_NAME_PAGE_RETRIEVAL_RETRY_COUNT,
+                        STAT_NAME_PAGE_RETRIEVAL_FAILURE_COUNT,
+                        MAX_SYNCH_RETRY_COUNT);
+
                 return;
             }
 
+            setStat(STAT_NAME_PAGE_RETRIEVAL_RETRY_COUNT, 0);
             ServiceDocumentQueryResult rsp = o.getBody(QueryTask.class).results;
             if (rsp.documentCount == 0 || rsp.documentLinks.isEmpty()) {
                 sendSelfFinishedPatch(task);
@@ -584,10 +611,17 @@ public class SynchronizationTaskService
                 .setExpiration(task.documentExpirationTimeMicros)
                 .setCompletion((o, e) -> {
                     if (e != null) {
-                        sendSelfFailurePatch(task, e.getMessage());
+                        Utils.scheduleRetry(
+                                this,
+                                () -> verifySynchronizationOwnership(task),
+                                () -> sendSelfFailurePatch(task, e.getMessage()),
+                                STAT_NAME_OWNER_SELECTION_RETRY_COUNT,
+                                STAT_NAME_OWNER_SELECTION_FAILURE_COUNT,
+                                MAX_SYNCH_RETRY_COUNT);
                         return;
                     }
 
+                    setStat(STAT_NAME_OWNER_SELECTION_RETRY_COUNT, 0);
                     NodeSelectorService.SelectOwnerResponse rsp = o.getBody(
                             NodeSelectorService.SelectOwnerResponse.class);
 
@@ -653,9 +687,18 @@ public class SynchronizationTaskService
                     }
                     if (e != null) {
                         logSevere("Setting factory availability failed with error %s", e.getMessage());
-                        sendSelfFailurePatch(task, "Failed to set Factory Availability");
+                        Utils.scheduleRetry(
+                                this,
+                                () -> setFactoryAvailability(task, isAvailable, action, parentOp),
+                                () -> sendSelfFailurePatch(task, "Failed to set Factory Availability"),
+                                STAT_NAME_SET_AVAILABILITY_RETRY_COUNT,
+                                STAT_NAME_SET_AVAILABILITY_FAILURE_COUNT,
+                                MAX_SYNCH_RETRY_COUNT);
                         return;
                     }
+
+                    setStat(STAT_NAME_SET_AVAILABILITY_RETRY_COUNT, 0);
+
                     if (action != null) {
                         action.accept(o);
                     }

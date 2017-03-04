@@ -24,6 +24,7 @@ import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
+import java.util.function.Function;
 
 import org.junit.After;
 import org.junit.AfterClass;
@@ -36,6 +37,7 @@ import com.vmware.xenon.common.test.TestRequestSender;
 import com.vmware.xenon.common.test.VerificationHost;
 import com.vmware.xenon.services.common.ExampleService;
 import com.vmware.xenon.services.common.NodeGroupService;
+import com.vmware.xenon.services.common.QueryTaskFactoryService;
 import com.vmware.xenon.services.common.ServiceUriPaths;
 
 public class TestSynchronizationTaskService extends BasicTestCase {
@@ -119,6 +121,95 @@ public class TestSynchronizationTaskService extends BasicTestCase {
             }
         }
         assertTrue(finishedCount == 1);
+    }
+
+    @Test
+    public void queryRetries() throws Throwable {
+        // Delete CORE_QUERY_TASKS factory to force queries to fail in SynchronizationTaskService
+        Operation delete = Operation.createDelete(this.host, ServiceUriPaths.CORE_QUERY_TASKS);
+        this.host.sendAndWaitExpectSuccess(delete);
+
+        // Speed up the retries.
+        this.host.setMaintenanceIntervalMicros(TimeUnit.MILLISECONDS.toMicros(1000));
+
+        this.host.testStart(1);
+        SynchronizationTaskService.State task = createSynchronizationTaskState(Utils.getSystemNowMicrosUtc());
+        Operation op = Operation
+                        .createPost(UriUtils.buildUri(this.host, SynchronizationTaskService.FACTORY_LINK))
+                        .setBody(task)
+                        .setCompletion((o, e) -> {
+                            SynchronizationTaskService.State state = o.getBody(SynchronizationTaskService.State.class);
+                            // Should be in FINISHED state after some retries.
+                            assertTrue(state.taskInfo.stage == TaskState.TaskStage.FINISHED);
+                            this.host.getCompletion().handle(o, e);
+                        });
+
+        this.host.send(op);
+
+        // Verify that query retry was triggered at-least for 1 time
+        // because all queries will fail when CORE_QUERY_TASKS factory is not available.
+        waitForRetries(op, Service.STAT_NAME_QUERY_RETRY_COUNT, (retryCount) -> retryCount.latestValue >= 1);
+
+        // Bring back the CORE_QUERY_TASKS factory, causing the task to FINISH finally.
+        QueryTaskFactoryService factoryService = new QueryTaskFactoryService();
+        this.host.startService(
+                Operation.createPost(this.host, ServiceUriPaths.CORE_QUERY_TASKS)
+                        .setCompletion(this.host.getCompletion()), factoryService);
+
+        // Wait for task gets completed after retries, and retry counter is reset to 0.
+        waitForRetries(op, Service.STAT_NAME_QUERY_RETRY_COUNT, (retryCount) -> retryCount.latestValue == 0);
+
+        this.host.testWait();
+
+        // Test maximum retries.
+        // Again delete CORE_QUERY_TASKS factory to force queries to fail in SynchronizationTaskService
+        delete = Operation.createDelete(this.host, ServiceUriPaths.CORE_QUERY_TASKS);
+        this.host.sendAndWaitExpectSuccess(delete);
+
+        // Create a new task, and test that after maximum retry task is in FAILED state.
+        this.host.testStart(1);
+        task = createSynchronizationTaskState(Utils.getSystemNowMicrosUtc());
+        op = Operation
+                .createPost(UriUtils.buildUri(this.host, SynchronizationTaskService.FACTORY_LINK))
+                .setBody(task)
+                .setCompletion((o, e) -> {
+                    SynchronizationTaskService.State st = o.getBody(SynchronizationTaskService.State.class);
+                    // Should be in FAILED state after all the retires.
+                    assertTrue(st.taskInfo.stage == TaskState.TaskStage.FAILED);
+                    this.host.getCompletion().handle(o, e);
+                });
+
+        this.host.send(op);
+
+        // Speed up the retries.
+        this.host.setMaintenanceIntervalMicros(TimeUnit.MILLISECONDS.toMicros(1));
+
+        // Verify maximum retry limit.
+        waitForRetries(op, Service.STAT_NAME_QUERY_RETRY_COUNT,
+                (retryCount) -> retryCount.latestValue >= SynchronizationTaskService.MAX_SYNCH_RETRY_COUNT);
+
+        waitForRetries(op, Service.STAT_NAME_QUERY_FAILURE_COUNT,
+                (retryCount) -> retryCount.latestValue == 1);
+        this.host.testWait();
+    }
+
+    private void waitForRetries(Operation op,
+                                String statName,
+                                Function<ServiceStats.ServiceStat, Boolean> check) {
+        this.host.waitFor("Expected retries not completed", () -> {
+            String selfLink = op.getBody(SynchronizationTaskService.State.class).documentSelfLink;
+            URI uri = UriUtils.buildUri(op.getUri(), ServiceUriPaths.SYNCHRONIZATION_TASKS, selfLink);
+
+            URI statsURI = UriUtils.buildStatsUri(uri);
+            ServiceStats factoryStats = this.host.getServiceState(null, ServiceStats.class, statsURI);
+            ServiceStats.ServiceStat retryCount = factoryStats.entries.get(statName);
+
+            if (retryCount != null && check.apply(retryCount)) {
+                return true;
+            }
+
+            return false;
+        });
     }
 
     @Test
