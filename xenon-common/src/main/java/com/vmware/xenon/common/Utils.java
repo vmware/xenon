@@ -466,6 +466,10 @@ public final class Utils {
         Logger.getAnonymousLogger().warning(String.format(fmt, args));
     }
 
+    public static void logSevere(String fmt, Object... args) {
+        Logger.getAnonymousLogger().severe(String.format(fmt, args));
+    }
+
     public static String toDocumentKind(Class<?> type) {
         return type.getCanonicalName().replace('.', ':');
     }
@@ -1533,5 +1537,67 @@ public final class Utils {
         config.versionRetentionFloor = desc.versionRetentionFloor;
 
         return config;
+    }
+
+    public static void scheduleRetry(
+            Service service, Runnable task, Runnable failure, String statNameRetryCount,
+            String statNameFailureCount, int maxRetryCount) {
+        service.adjustStat(statNameRetryCount, 1);
+        ServiceStats.ServiceStat stat = service.getStat(statNameRetryCount);
+
+        long retryCounter = 0;
+        if (stat != null) {
+            retryCounter = (long) stat.latestValue;
+        }
+
+        if (retryCounter  > 0) {
+            if (stat.latestValue > maxRetryCount) {
+                service.adjustStat(statNameFailureCount, 1);
+                ServiceStats.ServiceStat failureCountStat = service.getStat(statNameFailureCount);
+                logSevere("%s: Retry counter (%s) exhausted maximum %d retires; %s: %d",
+                        service.getSelfLink(),
+                        statNameRetryCount,
+                        maxRetryCount,
+                        statNameFailureCount,
+                        (long) failureCountStat.latestValue);
+                service.adjustStat(statNameFailureCount, 1);
+                if (failure != null) {
+                    failure.run();
+                }
+
+                return;
+            }
+        }
+
+        // Use exponential backoff algorithm in retry logic. The idea is to exponentially
+        // increase the delay for each retry based on the number of previous retries.
+        // This is done to reduce the load of retries on the system by all the tasks
+        // at same time, and giving system more time to stabilize
+        // in next retry then the previous retry.
+        long delay = Utils.getExponentialDelay(service, statNameRetryCount);
+
+        logWarning("%s: Scheduling retry #%d of task (counter:%s) in %d seconds",
+                service.getSelfLink(),
+                retryCounter,
+                statNameRetryCount,
+                TimeUnit.MICROSECONDS.toSeconds(delay));
+
+        service.getHost().schedule(task, delay, TimeUnit.MICROSECONDS);
+    }
+
+    /**
+     * Exponential backoff rely on retry count stat. If this stat is not available
+     * then we will fall back to constant delay for each retry.
+     * To get exponential delay, multiply retry count's power of 2 with constant delay.
+     * @param statNameRetryCount
+     */
+    public static long getExponentialDelay(Service service, String statNameRetryCount) {
+        long delay = service.getHost().getMaintenanceIntervalMicros();
+        ServiceStats.ServiceStat stat = service.getStat(statNameRetryCount);
+        if (stat != null && stat.latestValue > 0) {
+            return (1 << ((long)stat.latestValue)) * delay;
+        }
+
+        return delay;
     }
 }
