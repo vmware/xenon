@@ -32,6 +32,16 @@ import com.vmware.xenon.services.common.TaskService;
 public class SynchronizationTaskService
         extends TaskService<SynchronizationTaskService.State> {
 
+
+    public static final String PROPERTY_NAME_MAX_SYNCH_RETRY_COUNT =
+            Utils.PROPERTY_NAME_PREFIX + "SynchronizationTaskService.MAX_SYNCH_RETRY_COUNT";
+
+    // Maximum synch-task retry limit.
+    // We are using exponential backoff for synchronization retry, that means last synch retry will
+    // be tried after 2 ^ 8 * getMaintenanceIntervalMicros(), which is ~4 minutes if maintenance interval is 1 second.
+    public static final int MAX_SYNCH_RETRY_COUNT = Integer.getInteger(
+            PROPERTY_NAME_MAX_SYNCH_RETRY_COUNT, 8);
+
     public static final String FACTORY_LINK = ServiceUriPaths.SYNCHRONIZATION_TASKS;
     public static final String PROPERTY_NAME_SYNCHRONIZATION_LOGGING = Utils.PROPERTY_NAME_PREFIX
             + "SynchronizationTaskService.isDetailedLoggingEnabled";
@@ -421,10 +431,15 @@ public class SynchronizationTaskService
                         if (!getHost().isStopping()) {
                             logWarning("Query failed with %s", e.toString());
                         }
-                        sendSelfFailurePatch(task, e.getMessage());
+
+                        scheduleRetryTaskOnFailure(
+                                () -> handleQueryStage(task),
+                                () -> sendSelfFailurePatch(task, e.getMessage()),
+                                STAT_NAME_QUERY_RETRY_COUNT);
                         return;
                     }
 
+                    setStat(STAT_NAME_QUERY_RETRY_COUNT, 0);
                     ServiceDocumentQueryResult rsp = o.getBody(QueryTask.class).results;
 
                     // Query returned zero results.Self-patch the task
@@ -442,6 +457,48 @@ public class SynchronizationTaskService
                 });
 
         sendRequest(queryPost);
+    }
+
+    private void scheduleRetryTaskOnFailure(Runnable task, Runnable failure, String statName) {
+        adjustStat(statName, 1);
+
+        ServiceStats.ServiceStat stat = getStat(statName);
+        if (stat != null) {
+            if (stat.latestValue >= MAX_SYNCH_RETRY_COUNT) {
+                logSevere("Query failed after %d tries", (long)stat.latestValue);
+                adjustStat(STAT_NAME_QUERY_FAILURE_COUNT, 1);
+                failure.run();
+                return;
+            }
+        }
+
+        // Use exponential backoff algorithm in retry logic. The idea is to exponentially
+        // increase the delay for each retry based on the number of previous retries.
+        // This is done to reduce the load of retries on the system by all the synch tasks
+        // of all factories at the same time, and giving system more time to stabilize
+        // in next retry then the previous retry.
+        long delay = getExponentialDelay();
+
+        logWarning("Scheduling retry of child service synchronization task in %d seconds",
+                TimeUnit.MICROSECONDS.toSeconds(delay));
+        getHost().schedule(() -> task.run(),
+                delay, TimeUnit.MICROSECONDS);
+    }
+
+    /**
+     * Exponential backoff rely on retry count stat. If this stat is not available
+     * then we will fall back to constant delay for each retry.
+     * To get exponential delay, multiply retry count's power of 2 with constant delay.
+     */
+    private long getExponentialDelay() {
+        long delay = getHost().getMaintenanceIntervalMicros();
+
+        ServiceStats.ServiceStat stat = getStat(STAT_NAME_QUERY_RETRY_COUNT);
+        if (stat != null && stat.latestValue >= 0) {
+            return (1 << ((long)stat.latestValue + 1)) * delay;
+        }
+
+        return delay;
     }
 
     private QueryTask buildChildQueryTask(State task) {
@@ -508,11 +565,16 @@ public class SynchronizationTaskService
                             task.queryPageReference,
                             e.toString());
                 }
-                sendSelfFailurePatch(task,
-                        "failure retrieving query page results");
+
+                scheduleRetryTaskOnFailure(
+                        () -> handleSynchronizeStage(task, verifyOwnership),
+                        () -> sendSelfFailurePatch(task, "failure retrieving query page results"),
+                        STAT_NAME_PAGE_RETRIEVAL_RETRY_COUNT);
+
                 return;
             }
 
+            setStat(STAT_NAME_PAGE_RETRIEVAL_RETRY_COUNT, 0);
             ServiceDocumentQueryResult rsp = o.getBody(QueryTask.class).results;
             if (rsp.documentCount == 0 || rsp.documentLinks.isEmpty()) {
                 sendSelfFinishedPatch(task);
@@ -583,10 +645,15 @@ public class SynchronizationTaskService
                 .setExpiration(task.documentExpirationTimeMicros)
                 .setCompletion((o, e) -> {
                     if (e != null) {
-                        sendSelfFailurePatch(task, e.getMessage());
+                        scheduleRetryTaskOnFailure(
+                                () -> verifySynchronizationOwnership(task),
+                                () -> sendSelfFailurePatch(task, e.getMessage()),
+                                STAT_NAME_OWNER_SELECTION_RETRY_COUNT);
+
                         return;
                     }
 
+                    setStat(STAT_NAME_OWNER_SELECTION_RETRY_COUNT, 0);
                     NodeSelectorService.SelectOwnerResponse rsp = o.getBody(
                             NodeSelectorService.SelectOwnerResponse.class);
 
@@ -652,9 +719,16 @@ public class SynchronizationTaskService
                     }
                     if (e != null) {
                         logSevere("Setting factory availability failed with error %s", e.getMessage());
-                        sendSelfFailurePatch(task, "Failed to set Factory Availability");
+                        scheduleRetryTaskOnFailure(
+                                () -> setFactoryAvailability(task, isAvailable, action, parentOp),
+                                () -> sendSelfFailurePatch(task, "Failed to set Factory Availability"),
+                                STAT_NAME_SET_AVAILABILITY_RETRY_COUNT);
+
                         return;
                     }
+
+                    setStat(STAT_NAME_SET_AVAILABILITY_RETRY_COUNT, 0);
+
                     if (action != null) {
                         action.accept(o);
                     }
