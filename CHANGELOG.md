@@ -1,5 +1,7 @@
 # CHANGELOG
 
+## 1.1.0-CR5
+
 ## 1.1.0-CR4
 
 * Various bug fixes related to synchronization
