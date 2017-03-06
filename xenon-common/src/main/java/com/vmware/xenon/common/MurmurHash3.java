@@ -72,6 +72,7 @@ public final class MurmurHash3 {
     }
 
     /** Returns the MurmurHash3_x86_32 hash. */
+    @SuppressWarnings("fallthrough")
     public static int murmurhash3_x86_32(byte[] data, int offset, int len, int seed) {
 
         final int c1 = 0xcc9e2d51;
@@ -95,17 +96,22 @@ public final class MurmurHash3 {
 
         // tail
         int k1 = 0;
-        int r = len & 0x03;
-        if (r == 3) {
+        switch (len & 0x03) {
+        case 3:
             k1 = (data[roundedEnd + 2] & 0xff) << 16;
-        } else if (r == 2) {
+            // fall through
+        case 2:
             k1 |= (data[roundedEnd + 1] & 0xff) << 8;
-        } else if (r == 1) {
+            // fall through
+        case 1:
             k1 |= (data[roundedEnd] & 0xff);
             k1 *= c1;
             k1 = (k1 << 15) | (k1 >>> 17); // ROTL32(k1,15);
             k1 *= c2;
             h1 ^= k1;
+            break;
+        default:
+            // unreachable
         }
 
         // finalization
@@ -219,6 +225,7 @@ public final class MurmurHash3 {
     }
 
     /** Returns the MurmurHash3_x64_128 hash, placing the result in "out". */
+    @SuppressWarnings("fallthrough")
     public static void murmurhash3_x64_128(byte[] key, int offset, int len, int seed, LongPair out) {
         // The original algorithm does have a 32 bit unsigned seed.
         // We have to mask to match the behavior of the unsigned types and prevent sign extension.
@@ -251,45 +258,62 @@ public final class MurmurHash3 {
         long k1 = 0;
         long k2 = 0;
 
-        int r = len & 15;
-        if (r == 15) {
+        switch (len & 15) {
+        case 15:
             k2 = (key[roundedEnd + 14] & 0xffL) << 48;
-        } else if (r == 14) {
+            // fallthrough
+        case 14:
             k2 |= (key[roundedEnd + 13] & 0xffL) << 40;
-        } else if (r == 13) {
+            // fallthrough
+        case 13:
             k2 |= (key[roundedEnd + 12] & 0xffL) << 32;
-        } else if (r == 12) {
+            // fallthrough
+        case 12:
             k2 |= (key[roundedEnd + 11] & 0xffL) << 24;
-        } else if (r == 11) {
+            // fallthrough
+        case 11:
             k2 |= (key[roundedEnd + 10] & 0xffL) << 16;
-        } else if (r == 10) {
+            // fallthrough
+        case 10:
             k2 |= (key[roundedEnd + 9] & 0xffL) << 8;
-        } else if (r == 9) {
+            // fallthrough
+        case 9:
             k2 |= (key[roundedEnd + 8] & 0xffL);
             k2 *= c2;
             k2 = Long.rotateLeft(k2, 33);
             k2 *= c1;
             h2 ^= k2;
-        } else if (r == 8) {
+            // fallthrough
+        case 8:
             k1 = ((long) key[roundedEnd + 7]) << 56;
-        } else if (r == 7) {
+            // fallthrough
+        case 7:
             k1 |= (key[roundedEnd + 6] & 0xffL) << 48;
-        } else if (r == 6) {
+            // fallthrough
+        case 6:
             k1 |= (key[roundedEnd + 5] & 0xffL) << 40;
-        } else if (r == 5) {
+            // fallthrough
+        case 5:
             k1 |= (key[roundedEnd + 4] & 0xffL) << 32;
-        } else if (r == 4) {
+            // fallthrough
+        case 4:
             k1 |= (key[roundedEnd + 3] & 0xffL) << 24;
-        } else if (r == 3) {
+            // fallthrough
+        case 3:
             k1 |= (key[roundedEnd + 2] & 0xffL) << 16;
-        } else if (r == 2) {
+            // fallthrough
+        case 2:
             k1 |= (key[roundedEnd + 1] & 0xffL) << 8;
-        } else if (r == 1) {
+            // fallthrough
+        case 1:
             k1 |= (key[roundedEnd] & 0xffL);
             k1 *= c1;
             k1 = Long.rotateLeft(k1, 31);
             k1 *= c2;
             h1 ^= k1;
+            break;
+        default:
+            // unreachable
         }
 
         //----------

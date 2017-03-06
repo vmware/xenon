@@ -2,6 +2,8 @@
 
 ## 1.1.0-CR5
 
+* Bug fix in Murmur3 hash computation
+
 ## 1.1.0-CR4
 
 * Various bug fixes related to synchronization

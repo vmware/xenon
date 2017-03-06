@@ -25,4 +25,11 @@
        <Class name="com.vmware.xenon.services.common.ServiceHostManagementService"/>
        <Method name="handleDelete"/>
      </Match>
+
+     <!-- Findbugs reports that we allow switch statements with fallthroughs, and -->
+     <!-- that's bad practice. Murmur3 uses fallthroughs in its implementation. -->
+     <Match>
+        <Bug pattern="SF_SWITCH_FALLTHROUGH"/>
+        <Class name="com.vmware.xenon.common.MurmurHash3"/>
+     </Match>
 </FindBugsFilter>
