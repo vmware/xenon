@@ -570,8 +570,14 @@ public class MigrationTaskService extends StatefulService {
                             .setQuery(buildFieldClause(currentState))
                             .build();
 
-                    // Use INCLUDE_ALL_VERSIONS speeds up count query for immutable docs
-                    if (factoryConfig.childOptions.contains(ServiceOption.IMMUTABLE)) {
+                    // When source hosts are older version of xenon, factory config request may not contain childOptions.
+                    // To support count query to use "INCLUDE_ALL_VERSIONS" in that case, here also checks user specified
+                    // query options.
+                    // When retrieval query(user specified) contains INCLUDE_ALL_VERSIONS, or target data is immutable,
+                    // add INCLUDE_ALL_VERSIONS to count query
+                    if (currentState.querySpec.options.contains(QueryOption.INCLUDE_ALL_VERSIONS) ||
+                            factoryConfig.childOptions.contains(ServiceOption.IMMUTABLE)) {
+                        // Use INCLUDE_ALL_VERSIONS speeds up count query for immutable docs
                         countQuery.querySpec.options.add(QueryOption.INCLUDE_ALL_VERSIONS);
                     }
 

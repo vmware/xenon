@@ -379,6 +379,35 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
     }
 
     @Test
+    public void successMigrateDocumentsWithCustomQueryWithIncludeAllVersions() throws Throwable {
+
+        // since this test uses INCLUDE_ALL_VERSIONS for example services, destroy source hosts to set them up in clean state
+        this.host.tearDownInProcessPeers();
+        setUp();
+
+        List<ExampleServiceState> states = createExampleDocuments(this.exampleSourceFactory, getSourceHost(), this.serviceCount);
+
+        // start migration with custom query using QueryOption.INCLUDE_ALL_VERSIONS
+        MigrationTaskService.State migrationState = validMigrationState(ExampleService.FACTORY_LINK);
+        migrationState.querySpec = new QuerySpecification();
+        migrationState.querySpec.options.add(QueryOption.INCLUDE_ALL_VERSIONS);
+
+        Operation op = Operation.createPost(this.destinationFactoryUri).setBody(migrationState);
+        State taskState = this.sender.sendAndWait(op, State.class);
+
+        State finalServiceState = waitForServiceCompletion(taskState.documentSelfLink, getDestinationHost());
+        assertEquals(TaskStage.FINISHED, finalServiceState.taskInfo.stage);
+
+        // validate destination
+        List<Operation> ops = new ArrayList<>();
+        for (ExampleServiceState state : states) {
+            Operation get = Operation.createGet(getDestinationHost(), state.documentSelfLink);
+            ops.add(get);
+        }
+        this.sender.sendAndWait(ops);
+    }
+
+    @Test
     public void successMigrateImmutableDocuments() throws Throwable {
         // For migrating immutable documents, it adds query option for count query.
         // Check migration works fine with that path.
