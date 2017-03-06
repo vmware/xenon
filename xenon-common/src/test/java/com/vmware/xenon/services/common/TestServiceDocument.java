@@ -17,7 +17,10 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
+import java.util.Collections;
 import java.util.EnumSet;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.UUID;
 
 import org.junit.Test;
@@ -67,7 +70,21 @@ public class TestServiceDocument {
     }
 
     public static class ComparableServiceState extends ExampleService.ExampleServiceState {
+        public Set<String> collectionValue;
         public Boolean booleanValue;
+    }
+
+    public static class DatastoreServiceState extends ServiceDocument {
+
+        public static final String FIELD_NAME_TAGS = "tags";
+        public static final String FIELD_NAME_ID = "id";
+        public static final String FIELD_NAME_TYPE = "type";
+
+        public String id;
+        public String name;
+        public String type;
+        public Set<String> tags;
+        public Boolean isImageDatastore;
     }
 
     @Test
@@ -103,11 +120,13 @@ public class TestServiceDocument {
         initialState = new ComparableServiceState();
         initialState.name = UUID.randomUUID().toString();
         initialState.counter = 5L;
+        initialState.collectionValue = new HashSet<>(Collections.singleton("String 1"));
         initialState.booleanValue = false;
 
         modifiedState = new ComparableServiceState();
         modifiedState.name = initialState.name;
         modifiedState.counter = initialState.counter;
+        modifiedState.collectionValue = new HashSet<>(Collections.singleton("String 1"));
         modifiedState.booleanValue = true;
 
         value = ServiceDocument.equals(description, initialState, modifiedState);
@@ -125,6 +144,33 @@ public class TestServiceDocument {
 
         value = ServiceDocument.equals(description, initialState, modifiedState);
         assertEquals(true, value);
+
+        description = TestUtils.buildStateDescription(DatastoreServiceState.class, null);
+        DatastoreServiceState initialDatastoreState = new DatastoreServiceState();
+        initialDatastoreState.id = "vsan:043fc4b7673845a1-95f0756475e582e6";
+        initialDatastoreState.name = "vsanDatastore";
+        initialDatastoreState.type = "VSAN";
+        initialDatastoreState.tags = new HashSet<>(Collections.singleton("VSAN"));
+        initialDatastoreState.isImageDatastore = false;
+        initialDatastoreState.documentKind = Utils.buildKind(DatastoreServiceState.class);
+        initialDatastoreState.documentSelfLink =
+                "/photon/cloudstore/datastores/vsan:043fc4b7673845a1-95f0756475e582e6";
+        initialDatastoreState.documentUpdateTimeMicros = 1488729691543004L;
+        initialDatastoreState.documentUpdateAction = "POST";
+        initialDatastoreState.documentOwner = "855728ab-d836-4d3c-abb5-fd95d78354c2";
+
+        DatastoreServiceState newDatastoreState = new DatastoreServiceState();
+        newDatastoreState.id = initialDatastoreState.id;
+        newDatastoreState.name = initialDatastoreState.name;
+        newDatastoreState.type = initialDatastoreState.type;
+        newDatastoreState.tags = initialDatastoreState.tags;
+        newDatastoreState.isImageDatastore = true;
+        newDatastoreState.documentKind = initialDatastoreState.documentKind;
+        newDatastoreState.documentSelfLink = initialDatastoreState.documentSelfLink;
+        newDatastoreState.documentOwner = initialDatastoreState.documentOwner;
+
+        value = ServiceDocument.equals(description, initialDatastoreState, newDatastoreState);
+        assertEquals(value, false);
     }
 
     @Test
