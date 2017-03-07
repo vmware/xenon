@@ -3210,11 +3210,13 @@ public class TestQueryTaskService {
                 .setTermMatchValue(newState.textValue)
                 .setTermMatchType(MatchType.PHRASE);
 
+        Long expiration = null;
+
         if (task.documentExpirationTimeMicros != 0) {
             // the value was set as an interval by the calling test. Make absolute here so
             // account for service creation above
-            task.documentExpirationTimeMicros = Utils.fromNowMicrosUtc(
-                    task.documentExpirationTimeMicros);
+            expiration = Utils.fromNowMicrosUtc(task.documentExpirationTimeMicros);
+            task.documentExpirationTimeMicros = expiration;
         }
 
         URI taskURI = this.host.createQueryTaskService(task, false,
@@ -3223,6 +3225,10 @@ public class TestQueryTaskService {
         if (!task.taskInfo.isDirect) {
             task = this.host.waitForQueryTaskCompletion(task.querySpec, 0, 0,
                     taskURI, false, false);
+        }
+
+        if (expiration == null) {
+            expiration = task.documentExpirationTimeMicros;
         }
 
         String nextPageLink = task.results.nextPageLink;
@@ -3243,7 +3249,8 @@ public class TestQueryTaskService {
         newState = putStateOnQueryTargetServices(services, 1);
 
         this.host.testStart(1);
-        getNextPageLinks(task, nextPageLink, resultLimit, numberOfDocumentLinks, queryPageURIs);
+        getNextPageLinks(task, nextPageLink, resultLimit, numberOfDocumentLinks, queryPageURIs,
+                expiration);
         this.host.testWait();
 
         assertEquals(sc, numberOfDocumentLinks[0]);
@@ -3442,7 +3449,7 @@ public class TestQueryTaskService {
     }
 
     private void getNextPageLinks(QueryTask task, String nextPageLink, int resultLimit,
-            final int[] numberOfDocumentLinks, final List<URI> serviceURIs) {
+            final int[] numberOfDocumentLinks, final List<URI> serviceURIs, long expiration) {
 
         URI u = UriUtils.buildUri(this.host, nextPageLink);
         serviceURIs.add(u);
@@ -3459,6 +3466,7 @@ public class TestQueryTaskService {
                 this.host.log("page: %s", Utils.toJsonHtml(page));
                 assertTrue(nlinks <= resultLimit);
                 assertTrue(page.querySpec.context == null);
+                assertTrue(page.documentExpirationTimeMicros == expiration);
                 verifyLinks(nextPageLink, serviceURIs, page);
 
                 numberOfDocumentLinks[0] += nlinks;
@@ -3474,7 +3482,7 @@ public class TestQueryTaskService {
                 }
 
                 getNextPageLinks(task, page.results.nextPageLink,
-                        resultLimit, numberOfDocumentLinks, serviceURIs);
+                        resultLimit, numberOfDocumentLinks, serviceURIs, expiration);
             } catch (Throwable e1) {
                 this.host.failIteration(e1);
             }
