@@ -357,9 +357,10 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
         State state = this.sender.sendAndWait(op, State.class);
 
         State finalServiceState = waitForServiceCompletion(state.documentSelfLink, getDestinationHost());
-        ServiceStats stats = getStats(state.documentSelfLink, getDestinationHost());
-
         assertEquals(TaskStage.FINISHED, finalServiceState.taskInfo.stage);
+
+        // check stats
+        ServiceStats stats = getStats(state.documentSelfLink, getDestinationHost());
         long processedDocuments = (long) stats.entries.get(MigrationTaskService.STAT_NAME_PROCESSED_DOCUMENTS).latestValue;
         long estimatedTotalServiceCount = (long) stats.entries.get(MigrationTaskService.STAT_NAME_ESTIMATED_TOTAL_SERVICE_COUNT).latestValue;
         long fetchedCount = (long) stats.entries.get(MigrationTaskService.STAT_NAME_FETCHED_DOCUMENT_COUNT).latestValue;
@@ -372,6 +373,18 @@ public class TestMigrationTaskService extends BasicReusableHostTestCase {
         assertEquals("fetched docs count", expectedFetchedCount, fetchedCount);
         assertEquals("owner mismatch count", expectedOwnerMismatchCount, ownerMismatchCount);
         assertEquals("latest source update time", time, finalServiceState.latestSourceUpdateTimeMicros);
+
+        ServiceStat countQueryDurationStat = stats.entries.get(MigrationTaskService.STAT_NAME_COUNT_QUERY_TIME_DURATION_MICRO);
+        ServiceStat retrievalOpDurationStat = stats.entries.get(MigrationTaskService.STAT_NAME_RETRIEVAL_OPERATIONS_DURATION_MICRO);
+        assertNotNull("count query duration stat", countQueryDurationStat);
+        assertNotNull("retrieval operation duration stat", retrievalOpDurationStat);
+
+        for (VerificationHost sourceHost : this.host.getInProcessHostMap().values()) {
+            String sourceHostAuthority = sourceHost.getUri().getAuthority();
+            String statKey = String.format(MigrationTaskService.STAT_NAME_RETRIEVAL_QUERY_TIME_DURATION_MICRO_FORMAT, sourceHostAuthority);
+            ServiceStat stat = stats.entries.get(statKey);
+            assertNotNull("query time duration stat for " + sourceHostAuthority, stat);
+        }
 
         // check if object is in new host
         List<URI> uris = getFullUri(getDestinationHost(), states);
