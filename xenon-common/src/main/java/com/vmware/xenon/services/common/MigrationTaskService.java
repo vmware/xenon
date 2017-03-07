@@ -106,6 +106,9 @@ public class MigrationTaskService extends StatefulService {
     public static final String STAT_NAME_ESTIMATED_TOTAL_SERVICE_COUNT = "estimatedTotalServiceCount";
     public static final String STAT_NAME_FETCHED_DOCUMENT_COUNT = "fetchedDocumentCount";
     public static final String STAT_NAME_OWNER_MISMATCH_COUNT = "ownerMismatchDocumentCount";
+    public static final String STAT_NAME_COUNT_QUERY_TIME_DURATION_MICRO = "countQueryTimeDurationMicros";
+    public static final String STAT_NAME_RETRIEVAL_OPERATIONS_DURATION_MICRO = "retrievalOperationsDurationMicros";
+    public static final String STAT_NAME_RETRIEVAL_QUERY_TIME_DURATION_MICRO_FORMAT = "retrievalQueryTimeDurationMicros-%s";
     public static final String FACTORY_LINK = ServiceUriPaths.MIGRATION_TASKS;
 
     public enum MigrationOption {
@@ -581,7 +584,11 @@ public class MigrationTaskService extends StatefulService {
                     return this.sendWithDeferredResult(countOp);
                 })
                 .thenAccept(countOp -> {
-                    Long estimatedTotalServiceCount = countOp.getBody(QueryTask.class).results.documentCount;
+                    QueryTask countQueryTask = countOp.getBody(QueryTask.class);
+                    Long estimatedTotalServiceCount = countQueryTask.results.documentCount;
+
+                    // query time for count query
+                    setStat(STAT_NAME_COUNT_QUERY_TIME_DURATION_MICRO, countQueryTask.results.queryTimeMicros);
 
                     QueryTask queryTask = QueryTask.create(currentState.querySpec).setDirect(true);
                     queryTask.documentExpirationTimeMicros = documentExpirationTimeMicros;
@@ -640,12 +647,17 @@ public class MigrationTaskService extends StatefulService {
         logFine("Migrating results using %d GET operations, which came from %d currentPageLinks",
                 gets.size(), currentPageLinks.size());
 
+        long start = Utils.getNowMicrosUtc();
         OperationJoin.create(gets)
             .setCompletion((os, ts) -> {
                 if (ts != null && !ts.isEmpty()) {
                     failTask(ts.values());
                     return;
                 }
+
+                // update how long it took to retrieve page documents
+                setStat(STAT_NAME_RETRIEVAL_OPERATIONS_DURATION_MICRO, Utils.getNowMicrosUtc() - start);
+
                 Set<URI> nextPages = os.values().stream()
                         .filter(operation -> operation.getBody(QueryTask.class).results.nextPageLink != null)
                         .map(operation -> getNextPageLinkUri(operation))
@@ -658,6 +670,12 @@ public class MigrationTaskService extends StatefulService {
                 // we get the most up to date version of the document and documents without owner.
                 for (Operation op : os.values()) {
                     QueryTask queryTask = op.getBody(QueryTask.class);
+
+                    // actual query time per source host
+                    String authority = op.getUri().getAuthority();
+                    setStat(String.format(STAT_NAME_RETRIEVAL_QUERY_TIME_DURATION_MICRO_FORMAT, authority),
+                            queryTask.results.queryTimeMicros);
+
                     Collection<Object> docs = queryTask.results.documents.values();
                     int totalFetched = docs.size();
                     int ownerMissMatched = 0;
