@@ -208,6 +208,8 @@ public class TestUtilityService extends BasicReusableHostTestCase {
         ServiceStat retStatEntry = allStats.entries.get("key1");
         assertTrue(retStatEntry.accumulatedValue == 100);
         assertTrue(retStatEntry.latestValue == 100);
+        assertEquals(100, retStatEntry.minValue, 0);
+        assertEquals(100, retStatEntry.maxValue, 0);
         assertTrue(retStatEntry.version == 1);
         assertTrue(retStatEntry.unit.equals("unit"));
         assertTrue(retStatEntry.sourceTimeMicrosUtc == null);
@@ -224,6 +226,8 @@ public class TestUtilityService extends BasicReusableHostTestCase {
         retStatEntry = allStats.entries.get("key1");
         assertTrue(retStatEntry.accumulatedValue == 150);
         assertTrue(retStatEntry.latestValue == 50);
+        assertEquals(50, retStatEntry.minValue, 0);
+        assertEquals(100, retStatEntry.maxValue, 0);
         assertTrue(retStatEntry.version == 2);
         assertTrue(retStatEntry.unit.equals("unit1"));
         assertTrue(retStatEntry.sourceTimeMicrosUtc == updatedMicrosUtc1);
@@ -248,6 +252,8 @@ public class TestUtilityService extends BasicReusableHostTestCase {
         retStatEntry = allStats.entries.get("key2");
         assertTrue(retStatEntry.accumulatedValue == 50);
         assertTrue(retStatEntry.latestValue == 50);
+        assertEquals(50, retStatEntry.minValue, 0);
+        assertEquals(50, retStatEntry.maxValue, 0);
         assertTrue(retStatEntry.version == 1);
         assertTrue(retStatEntry.unit.equals("unit2"));
         assertTrue(retStatEntry.sourceTimeMicrosUtc == updatedMicrosUtc2);
@@ -263,6 +269,8 @@ public class TestUtilityService extends BasicReusableHostTestCase {
         retStatEntry = allStats.entries.get("key1");
         assertTrue(retStatEntry.accumulatedValue == 75);
         assertTrue(retStatEntry.latestValue == 75);
+        assertEquals(75, retStatEntry.minValue, 0);
+        assertEquals(75, retStatEntry.maxValue, 0);
         assertTrue(retStatEntry.version == 1);
         assertTrue(retStatEntry.unit.equals("replaceUnit"));
         assertTrue(retStatEntry.sourceTimeMicrosUtc == null);

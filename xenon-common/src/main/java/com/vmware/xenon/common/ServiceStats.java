@@ -169,6 +169,16 @@ public class ServiceStats extends ServiceDocument {
         public double accumulatedValue;
 
         /**
+         * The minimum value for the stat.
+         */
+        public double minValue;
+
+        /**
+         * The maximum value for the stat.
+         */
+        public double maxValue;
+
+        /**
          * The stat document version.
          */
         public long version;

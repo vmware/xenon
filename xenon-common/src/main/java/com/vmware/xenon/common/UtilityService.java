@@ -711,6 +711,8 @@ public class UtilityService implements Service {
         synchronized (stat) {
             stat.version++;
             stat.accumulatedValue += newValue;
+            stat.minValue = stat.version == 1 ? newValue : Math.min(stat.minValue, newValue);
+            stat.maxValue = Math.max(stat.maxValue, newValue);
             stat.latestValue = newValue;
             if (stat.logHistogram != null) {
                 int binIndex = 0;
