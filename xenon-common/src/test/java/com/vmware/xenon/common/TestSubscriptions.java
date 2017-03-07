@@ -314,6 +314,49 @@ public class TestSubscriptions extends BasicTestCase {
     }
 
     @Test
+    public void testSubscriptionsWithExpiry() throws Throwable {
+        MinimalTestService s = new MinimalTestService();
+        MinimalTestServiceState serviceState = new MinimalTestServiceState();
+        serviceState.id = UUID.randomUUID().toString();
+        String minimalServiceUUID = UUID.randomUUID().toString();
+        TestContext notifyContext = this.host.testCreate(1);
+        TestContext notifyDeleteContext = this.host.testCreate(1);
+        this.host.startServiceAndWait(s, minimalServiceUUID, serviceState);
+
+        Service notificationTarget = new StatelessService() {
+            @Override
+            public void authorizeRequest(Operation op) {
+                op.complete();
+                return;
+            }
+
+            @Override
+            public void handleRequest(Operation op) {
+                if (!op.isNotification()) {
+                    if (op.getAction() == Action.DELETE && op.getUri().equals(getUri())) {
+                        notifyDeleteContext.completeIteration();
+                    }
+                    super.handleRequest(op);
+                    return;
+                }
+                if (op.getAction() == Action.PUT) {
+                    notifyContext.completeIteration();
+                }
+            }
+        };
+        Operation subscribe = Operation.createPost(UriUtils.buildUri(host, minimalServiceUUID));
+        subscribe.setReferer(host.getReferer());
+        ServiceSubscriber subscriber = new ServiceSubscriber();
+        subscriber.replayState = true;
+        // Set a 500ms expiry
+        subscriber.documentExpirationTimeMicros = Utils
+                .fromNowMicrosUtc(TimeUnit.MILLISECONDS.toMicros(500));
+        host.startSubscriptionService(subscribe, notificationTarget, subscriber);
+        host.testWait(notifyContext);
+        host.testWait(notifyDeleteContext);
+    }
+
+    @Test
     public void subscribeAndWaitForServiceAvailability() throws Throwable {
         // until HTTP2 support is we must only subscribe to less than max connections!
         // otherwise we deadlock: the connection for the queued subscribe is used up,

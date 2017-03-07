@@ -2077,8 +2077,9 @@ public class ServiceHost implements ServiceRequestSender {
             }
 
             schedule(() -> {
-                sendRequest(Operation.createDelete(UriUtils.buildUri(this,
-                        notificationTarget.getSelfLink())));
+                sendRequest(Operation.createDelete(
+                        UriUtils.buildUri(this, notificationTarget.getSelfLink()))
+                        .transferRefererFrom(subscribe));
             }, delta, TimeUnit.MICROSECONDS);
         }
 
