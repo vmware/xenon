@@ -3459,6 +3459,7 @@ public class TestQueryTaskService {
                 this.host.log("page: %s", Utils.toJsonHtml(page));
                 assertTrue(nlinks <= resultLimit);
                 assertTrue(page.querySpec.context == null);
+                assertEquals(task.documentExpirationTimeMicros, page.documentExpirationTimeMicros);
                 verifyLinks(nextPageLink, serviceURIs, page);
 
                 numberOfDocumentLinks[0] += nlinks;

@@ -1574,7 +1574,6 @@ public class LuceneDocumentIndexService extends StatelessService {
                     }
 
                     if (createNextPageLink) {
-                        expiration += queryTime;
                         rsp.nextPageLink = createNextPage(op, s, qs, tq, sort, bottom,
                                 null, expiration, indexLink, hasPage);
                     }
