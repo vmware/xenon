@@ -336,6 +336,9 @@ public interface Service extends ServiceRequestSender {
     static final String STAT_NAME_MAINTENANCE_DURATION = "maintenanceDuration";
     static final String STAT_NAME_SYNCH_TASK_RETRY_COUNT = "synchTaskRetryCount";
     static final String STAT_NAME_CHILD_SYNCH_FAILURE_COUNT = "childSynchFailureCount";
+    static final String STAT_NAME_CHILD_SERVICES_FOR_SYNCH_COUNT = "childServicesForSynchCount";
+    static final String STAT_NAME_CHILD_SERVICES_SYNCH_STARTED_COUNT = "childServicesSynchStartedCount";
+    static final String STAT_NAME_CHILD_SERVICES_SYNCH_REQUEST_FAILED_COUNT = "childServicesSynchRequestFailedCount";
 
     /**
      * Estimate on run time context cost in bytes, per service instance. Services should not use instanced
